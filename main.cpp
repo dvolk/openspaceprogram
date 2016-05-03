@@ -525,8 +525,8 @@ int main(int argc, char **argv)
 {
     Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
 
-    extern int text_init_resources();
-    assert(text_init_resources() == true);
+    //extern int text_init_resources();
+    //assert(text_init_resources() == true);
 
     // start bullet; see physics.cpp
     void create_physics(void);
@@ -757,7 +757,7 @@ int main(int argc, char **argv)
                    );
 
             void drawtext(const char *fmt, ...);
-            drawtext("Speed: %0.fm/s, time accel: %dx", speed, time_accel);
+            //drawtext("Speed: %0.fm/s, time accel: %dx", speed, time_accel);
 
             // doesn't work any more?
             glm::mat4 view = camera.GetView();
