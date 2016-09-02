@@ -10,7 +10,7 @@ Body *create_body(Model *model, float x, float y, float z, float mass, glm::vec4
     body->mass = mass;
     glm::vec3 pos = glm::vec3(x, y, z);
     body->color = color;
-    RegisterPhysicsBody(body, pos, glm::vec3(0.0, 0.0, 0.0), planet);
+    RegisterPhysicsBody(body, pos, glm::vec3(0, 0, 0.0), planet);
     return body;
 }
 

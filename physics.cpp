@@ -204,6 +204,8 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     btRigidBody::btRigidBodyConstructionInfo
         rbInfo(body->mass, myMotionState, shape, localInertia);
 
+    rbInfo.m_friction = 4.0;
+
     btRigidBody *b = new btRigidBody(rbInfo);
 
     setRigidBody(body, b);
@@ -221,9 +223,9 @@ void PhysicsEngine::GlueTogether(Body *parent, Body *child) {
     //                                 btVector3(0,-1,0), btVector3(0,1,0));
 
     btTransform t1 = btTransform(btQuaternion(1,1,1), // what's this?
-                                 btVector3(0,-1,0));
+                                 btVector3(0,0,-1));
     btTransform t2 = btTransform(btQuaternion(1,1,1),
-                                 btVector3(0, 1,0));
+                                 btVector3( 0,0,1));
 
     btGeneric6DofConstraint *constraint =
         new btGeneric6DofConstraint(*btParent, *btChild, t1, t2, false);

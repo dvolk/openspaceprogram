@@ -10,27 +10,36 @@ using namespace std;
 
 Renderer::Renderer(int width, int height)
 {
-    m_screen_width = width;
-    m_screen_height = height;
-    
-    SDL_Init(SDL_INIT_VIDEO);
-    m_window =
-        SDL_CreateWindow("Hello?",
-                         SDL_WINDOWPOS_CENTERED,
-                         SDL_WINDOWPOS_CENTERED,
-                         width, height,
-                         SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
-    if (m_window == NULL) {
-        cerr << "Error: can't create window: " << SDL_GetError() << endl;
-    }
-
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    //SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_DisplayMode current;
+    SDL_GetCurrentDisplayMode(0, &current);
+    m_window = SDL_CreateWindow("oglplay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
+    SDL_GLContext glcontext = SDL_GL_CreateContext(m_window);
 
-    if (SDL_GL_CreateContext(m_window) == NULL) {
-        cerr << "Error: SDL_GL_CreateContext: " << SDL_GetError() << endl;
-    }
+    // m_screen_width = width;
+    // m_screen_height = height;
+    // SDL_DisplayMode current;
+    // SDL_GetCurrentDisplayMode(0, &current);
+    // m_window =
+    //     SDL_CreateWindow("Hello?", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    //                      width, height,
+    //                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+    // if (m_window == NULL) {
+    //     cerr << "Error: can't create window: " << SDL_GetError() << endl;
+    // }
+
+    // SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    // SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    // //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+    // if (SDL_GL_CreateContext(m_window) == NULL) {
+    //     cerr << "Error: SDL_GL_CreateContext: " << SDL_GetError() << endl;
+    // }
 
     GLenum glew_status = glewInit();
 
@@ -47,10 +56,9 @@ Renderer::Renderer(int width, int height)
     glCullFace(GL_BACK);
 
     GLenum res = glewInit();
-    if(res != GLEW_OK)
-        {
-            std::cerr << "Glew failed to initialize!" << std::endl;
-        }
+    if(res != GLEW_OK) {
+      std::cerr << "Glew failed to initialize!" << std::endl;
+    }
 }
 
 Renderer::~Renderer()
