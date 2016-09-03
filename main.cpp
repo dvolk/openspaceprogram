@@ -15,21 +15,25 @@
   TODO:
   * MORE COMMENTS
   * Better camera controls
+  * drawing force, velocities, orientations, etc
   * Fix kill-rot
+  * Calculate orbital elements
+  * Reference frames and other bodies
   * Check memory management
   * Glue quad tree patches together
   * Ground textures
   * Better ship placement
   * Better ship mesh
   * Better planet gen
-  * Reference frames and other bodies
+  * Add a sun billboard
+  * Atmosphere functionality
   * Orbit stability (different integrator?)
   * Ship construction
   * More debug information
-  * drawing force, velocities, orientations, etc
   * Bullet physics debug drawing
   * Multithreaded patch generation
   * Shadowmapping
+  * Atmosphere rendering
   * ... lots more ...
 
  */
@@ -57,6 +61,8 @@
 
 #include "../../lib/imgui/imgui.h"
 #include "../../lib/imgui/examples/sdl_opengl_example/imgui_impl_sdl.h"
+
+ImFont *bigger;
 
 // static const int DISPLAY_WIDTH = 1440;
 // static const int DISPLAY_HEIGHT = 900;
@@ -588,6 +594,10 @@ int main(int argc, char **argv)
   Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
   ImGui_ImplSdl_Init(display.get_display());
 
+  ImGuiIO& io = ImGui::GetIO();
+  io.Fonts->AddFontDefault();
+  bigger = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 40.0);
+
   //extern int text_init_resources();
   //assert(text_init_resources() == true);
 
@@ -626,8 +636,8 @@ int main(int argc, char **argv)
       create_body(space_port_model, start.x-3, start.y-3, start.z + 5, 0,
     		  glm::vec4(1.0, 0.5, 1.0, 1.0), true);
 
-    double ship_height = 1300;
-    
+    double ship_height = 14;
+
     // top
     Body *capsule =
       create_body(box_model, start.x, start.y, start.z + ship_height + 7, 0.5,
@@ -673,6 +683,9 @@ int main(int argc, char **argv)
   double accumulator = 0.0;
   int time_accel = 1;
   int cam_speed = 1;
+  bool shipInfoWindow = true;
+  bool gameInfoWindow = true;
+  bool controlsWindow = true;
 
   /* main loop timing from
      http://gafferongames.com/game-physics/fix-your-timestep/
@@ -699,11 +712,17 @@ int main(int argc, char **argv)
 	if(ev.key.keysym.sym == SDLK_PERIOD) {
 	  if(time_accel < 1000) {
 	    time_accel *= 10;
+	    if(time_accel == 0) {
+	      time_accel = 1;
+	    }
 	  }
 	}
 	if(ev.key.keysym.sym == SDLK_COMMA) {
 	  if(time_accel > 1) {
 	    time_accel /= 10;
+	  }
+	  else if(time_accel == 1) {
+	    time_accel = 0;
 	  }
 	}
 	if(ev.key.keysym.sym == SDLK_l) {
@@ -750,8 +769,6 @@ int main(int argc, char **argv)
     */
     double newTime = (double)(SDL_GetTicks()) * 0.001;
     double frameTime = newTime - currentTime;
-    bool shipInfoWindow = true;
-    bool gameInfoWindow = true;
     currentTime = newTime;
     accumulator += frameTime;
 
@@ -789,19 +806,27 @@ int main(int argc, char **argv)
 
       void physics_tick(float timeStep);
       void collisions();
-      grav = ship->processGravity();
-      physics_tick(dt * time_accel);
+
+      if(time_accel != 0) {
+	grav = ship->processGravity();
+	physics_tick(dt * time_accel);
+      }
       //collisions();
 
       accumulator -= dt;
-      redraw = true;
     }
+
+    redraw = true;
 
     /*
       RENDERING
     */
     if(redraw == true) {
       ImGui_ImplSdl_NewFrame(display.get_display());
+
+      if(poly_mode == true) {
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+      }
 
       display.Clear(0, 0, 0, 1);
 
@@ -837,14 +862,36 @@ int main(int argc, char **argv)
       // glm::mat4 proj = camera.GetProjection();
       glUseProgram(0);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
+      if(poly_mode == true) {
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+      }
 
       // int display_x, display_y;
       // glfwGetFramebufferSize(window, &display_x, &display_y);
       // glViewport(0, 0, display_x, display_y);
 
+      ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+      ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
+      ImGui::Begin("Top Middle Window", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+      ImGui::PushFont(bigger);
+      int terrain_height = (int)(distance - moon->GetTerrainHeight(pos));
+      ImGui::Text("%08dm", terrain_height);
+      ImGui::PopFont();
+      ImGui::End();
+      ImGui::Begin("Bottom Middle Window", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+      ImGui::PushFont(bigger);
+      ImGui::Text("%06dm/s", (int)speed);
+      ImGui::PopFont();
+      ImGui::End();
+
+      ImGui::PopStyleColor();
+      ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15, 0.15, 0.15, 1.0));
+
       ImGui::Begin("Open Space Program");
-      gameInfoWindow ^= ImGui::Button("Game Debug Info");
-      shipInfoWindow ^= ImGui::Button("Vessel Info");
+      ImGui::Spacing();
+      ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
+      ImGui::Checkbox("Vessel Info", &shipInfoWindow);
+      ImGui::Checkbox("Controls help", &controlsWindow);
       ImGui::End();
 
       if(gameInfoWindow == true) {
@@ -857,13 +904,39 @@ int main(int argc, char **argv)
 
       if(shipInfoWindow == true) {
 	ImGui::Begin("Vessel Info");
-	ImGui::Text("pos(%0.fkm): %0.f %0.f %0.f", distance / 1000, pos.x, pos.y, pos.z);
-	ImGui::Text("vel(%0.fm/s): %0.f %0.f %0.f", speed, vel.x, vel.y, vel.z);
-	ImGui::Text("grav(%0.f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
-	ImGui::Text("energy: %f", e);
+	ImGui::Text("pos(%2.fkm): %0.f %0.f %0.f", distance / 1000, pos.x, pos.y, pos.z);
+	ImGui::Text("vel(%2.fm/s): %0.f %0.f %0.f", speed, vel.x, vel.y, vel.z);
+	ImGui::Text("grav(%2.f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
+	ImGui::Text("energy: %0.f kJ", e / 1000.0);
 	ImGui::Text("SMa: %f", a);
+	ImGui::Text("Radial velocity: %2.f", radial_vel);
 	ImGui::End();
       }
+      if(controlsWindow == true) {
+	ImGui::Begin("Controls help");
+	ImGui::Text("Game");
+	ImGui::Separator();
+	ImGui::Text("p - toggle wireframe mode");
+	ImGui::Text(", - decrease time acceleration");
+	ImGui::Text(". - increase time acceleration");
+	ImGui::Text("k - decrease camera speed");
+	ImGui::Text("l - increase camera speed");
+	ImGui::Text("c - toggle camera ship follow mode");
+	ImGui::Text("v - capture/release mouse pointer");
+	ImGui::Text("e & q - roll camera");
+	ImGui::Text("w & s - forward/backward camera");
+	ImGui::Text("r & f - camera pitch");
+	ImGui::Spacing();
+	ImGui::Text("Ship");
+	ImGui::Separator();
+	ImGui::Text("i - fire ship engines");
+	ImGui::Text("x - kill rotation (buggy)");
+	ImGui::Text("l & j - ship X rotation");
+	ImGui::Text("u & o - ship Y rotation");
+	ImGui::Text("y & h - ship Z rotation");
+	ImGui::End();
+      }
+      ImGui::PopStyleColor();
 
       ImGui::Render();
 

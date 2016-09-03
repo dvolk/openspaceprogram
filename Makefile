@@ -8,7 +8,13 @@ LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -l
 
 SRCS=body.cpp  display.cpp  gldebug.cpp  main.cpp  mesh.cpp  obj_loader.cpp  physics.cpp  shader.cpp  shader_utils.cpp  stb_image.cpp  texture.cpp
 OBJS=$(subst .cpp,.o,$(SRCS))
+
+# imgui: https://github.com/ocornut/imgui
+
+# compile with:
 # g++ -fPIC -c $imgui.cpp -o $imgui.o
+
+# edit these paths:
 IMGUI_OBJS=imgui_impl_sdl/imgui_impl_sdl.o ../../lib/imgui/imgui.o ../../lib/imgui/imgui_draw.o
 
 

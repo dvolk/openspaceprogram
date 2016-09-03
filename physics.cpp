@@ -92,7 +92,7 @@ PhysicsEngine::PhysicsEngine() {
     dynamicsWorld->setGravity(btVector3(0, 0, 0));
     dynamicsWorld->setApplySpeculativeContactRestitution(true);
 
-    debugShape = new btBoxShape(btVector3(0.5, 1.0, 0.5));
+    debugShape = new btBoxShape(btVector3(0.5, 0.5, 1.0));
     planetShape = new btBoxShape(btVector3(10, 10, 10));
 
     GLDebugDrawer *debugDrawer = new GLDebugDrawer;
@@ -289,7 +289,7 @@ btVector3 getRelAxis(Body *body, int n) {
 }
 
 void ApplyCentralForceForward(Body *body, double mag) {
-    btVector3 forward = getRelAxis(body, 1);
+    btVector3 forward = getRelAxis(body, 2);
     getRigidBody(body)->applyCentralForce(mag * forward.normalized());
 }
 
