@@ -255,6 +255,10 @@ void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {
                                    btVector3(force.x, force.y, force.z));
 }
 
+void ApplyTorque(Body *body, glm::dvec3 torque) {
+  getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
+}
+
 glm::dvec3 GetPosition(Body *b) {
     const btVector3& pos = getRigidBody(b)->getCenterOfMassPosition();
     return glm::dvec3(pos.getX(), pos.getY(), pos.getZ());

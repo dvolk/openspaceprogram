@@ -16,9 +16,10 @@
   * MORE COMMENTS
   * Better camera controls
   * drawing force, velocities, orientations, etc
-  * Fix kill-rot
+  * // Fix kill-rot
   * Calculate orbital elements
   * Reference frames and other bodies
+  * Patched conics
   * Check memory management
   * Glue quad tree patches together
   * Ground textures
@@ -377,11 +378,13 @@ public:
     for(auto&& reaction_wheel : m_reaction_wheels) {
       ApplyTorqueRelY(reaction_wheel, 2);
     }
+    m_stabilize = false;
   }
   void ApplyRotYMinus() {
     for(auto&& reaction_wheel : m_reaction_wheels) {
       ApplyTorqueRelY(reaction_wheel, -2);
     }
+    m_stabilize = false;
   }
   void ApplyRotZPlus() {
     for(auto&& reaction_wheel : m_reaction_wheels) {
@@ -397,13 +400,16 @@ public:
     const double angvel_treshhold = 0.001;
     glm::dvec3 ang_vel = GetAngVelocity(m_reaction_wheels.front());
 
-    if(ang_vel.x > angvel_treshhold) { ApplyRotXMinus(); }
-    else if(ang_vel.x < -angvel_treshhold) { ApplyRotXPlus(); }
-    if(ang_vel.y > angvel_treshhold) { ApplyRotYMinus(); }
-    else if(ang_vel.y < -angvel_treshhold) { ApplyRotYPlus(); }
-    if(ang_vel.z > angvel_treshhold) { ApplyRotZMinus(); }
-    else if(ang_vel.z < -angvel_treshhold) { ApplyRotZPlus(); }
+    if(glm::length(ang_vel) < angvel_treshhold) {
+      return;
+    }
+    else {
+      void ApplyTorque(Body *body, glm::dvec3 torque);
+
+      ApplyTorque(m_reaction_wheels.front(), - glm::normalize(ang_vel));
+    }
   }
+
   glm::dvec3 GetVel() {
     return GetVelocity(controller);
   }
@@ -501,6 +507,23 @@ Mesh *create_grid_mesh(int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm:
   return grid_mesh;
 }
 
+Mesh *create_triangle_mesh(float size_x, float size_y) {
+  Mesh *trig_mesh = new Mesh;
+
+  Vertex vertices[] = {
+    Vertex(glm::vec3(0,       0, -size_y), glm::vec2(1, 0), glm::vec3(0, 1, 0)),
+    Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), glm::vec3(0, 1, 0)),
+    Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), glm::vec3(0, 1, 0)),
+  };
+
+  unsigned int indices[] = {
+    0, 1, 2,
+  };
+
+  trig_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
+  return trig_mesh;
+}
+
 Mesh *create_plane_mesh(float size_x, float size_y, glm::vec3 normal) {
   Mesh *plane_mesh = new Mesh;
 
@@ -525,7 +548,7 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z) {
 
   Vertex vertices[] = {
     Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1)),
-    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1)),
+    Vertex(glm::vec3(-1, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1)),
     Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1)),
     Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1)),
 
@@ -589,6 +612,7 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z) {
   return box_mesh;
 }
 
+
 int main(int argc, char **argv)
 {
   Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
@@ -597,9 +621,6 @@ int main(int argc, char **argv)
   ImGuiIO& io = ImGui::GetIO();
   io.Fonts->AddFontDefault();
   bigger = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 40.0);
-
-  //extern int text_init_resources();
-  //assert(text_init_resources() == true);
 
   // start bullet; see physics.cpp
   void create_physics(void);
@@ -614,6 +635,10 @@ int main(int argc, char **argv)
   TerrainBody *moon = new TerrainBody;
   moon->shader = shader;
   moon->Create(600000, 5.2915793e22);
+
+  Mesh *trig_mesh = create_triangle_mesh(1, 1);
+  Model *trig_model = new Model;
+  trig_model->FromData(trig_mesh, shader);
 
   Vehicle *ship = new Vehicle;
   Body *space_port;
@@ -654,6 +679,7 @@ int main(int argc, char **argv)
     ship->parts = { capsule,
 		    reaction_wheel,
 		    thruster };
+
     ship->controller = capsule;
     ship->m_parent = moon;
     ship->m_thrusters = { thruster };
@@ -683,7 +709,8 @@ int main(int argc, char **argv)
   double accumulator = 0.0;
   int time_accel = 1;
   int cam_speed = 1;
-  bool shipInfoWindow = true;
+  bool orbitInfoWindow = true;
+  bool shipPartsWindow = true;
   bool gameInfoWindow = true;
   bool controlsWindow = true;
 
@@ -755,6 +782,9 @@ int main(int argc, char **argv)
 	    SDL_SetRelativeMouseMode(SDL_FALSE);
 	  }
 	}
+	if(ev.key.keysym.sym == SDLK_t) {
+	  // toggle stabilization
+	}
       }
       if(ev.type == SDL_MOUSEMOTION) {
 	if(capture_pointer == true) {
@@ -798,7 +828,7 @@ int main(int argc, char **argv)
       if(key[SDL_SCANCODE_U]) { ship->ApplyRotYPlus(); }
       else if(key[SDL_SCANCODE_O]) { ship->ApplyRotYMinus(); }
 
-      if(key[SDL_SCANCODE_Y]) { ship->ApplyRotXPlus(); }
+      if(key[SDL_SCANCODE_Y]) { ship->ApplyRotZPlus(); }
       else if(key[SDL_SCANCODE_H]) { ship->ApplyRotZMinus(); }
 
       if(key[SDL_SCANCODE_R]) { camera.Pitch(0.1); }
@@ -841,21 +871,53 @@ int main(int argc, char **argv)
       space_port->Draw(camera);
       ship->Draw(camera);
 
-      glm::dvec3 pos = com;
-      glm::dvec3 vel = ship->GetVel();
-      double distance = glm::length(pos);
-      double speed = glm::length(vel);
+      const glm::dvec3 pos = com;
+      const glm::dvec3 vel = ship->GetVel();
+      const double distance = glm::length(pos);
+      const double speed = glm::length(vel);
       // https://en.wikipedia.org/wiki/Standard_gravitational_parameter
       const double G = 6.674e-11;
       const double M = moon->mass;
       // https://en.wikipedia.org/wiki/Characteristic_energy
       const double e = (0.5 * pow(speed, 2)) - (G*M / distance);
-      const double a = 1.0 / (-((speed * speed) / (G*M)) + (2.0 / distance));
+      const double SMa = 1.0 / (-((speed * speed) / (G*M)) + (2.0 / distance));
       const double radial_vel = glm::dot(pos, vel) / distance;
 
+      const glm::dvec3 ang_momentum = glm::cross(pos, vel);
+      const glm::dvec3 eccentricity_vector = glm::cross(vel, ang_momentum) / (G * M) - pos/distance;
 
-      void drawtext(const char *fmt, ...);
-      //drawtext("Speed: %0.fm/s, time accel: %dx", speed, time_accel);
+      const double ecc = glm::length(eccentricity_vector);
+
+      const double ApA = (1 + ecc) * SMa;
+      const double PeA = (1 - ecc) * SMa;
+
+      const double inclination = acos(ang_momentum.z / glm::length(ang_momentum));
+
+      const glm::dvec3 node_vector = glm::cross(glm::dvec3(0, 0, 1), ang_momentum);
+
+      // raan = acos(n.x / norm(n))
+
+      const double raan = acos(node_vector.x / glm::length(node_vector));
+
+      // arg_pe = acos(dot(n, ev) / (norm(n) * norm(ev)))
+
+      const double arg_pe = acos(
+				 glm::dot(node_vector, eccentricity_vector) /
+				 (glm::length(node_vector) * glm::length(eccentricity_vector))
+				 );
+
+      glm::dvec3 GetAngVelocity_(Body *b);
+      const glm::dvec3 ang_vel_ = GetAngVelocity(ship->m_reaction_wheels.front());
+
+      const glm::dvec3 AoA = glm::dvec3();
+
+      const double TrueAnomaly = acos(glm::dot(eccentricity_vector, pos) / (glm::length(eccentricity_vector) * glm::length(pos)));
+      double EccentricAnomaly = (sqrt(1 - ecc*ecc) * sin(TrueAnomaly)) / (ecc + cos(TrueAnomaly));
+      if(EccentricAnomaly < 0) { EccentricAnomaly += 2 * M_PI; }
+      const double MeanAnomaly = EccentricAnomaly - ecc * sin(EccentricAnomaly);
+      const double PeT = sqrt((SMa * SMa * SMa) / (G*M)) * MeanAnomaly;
+      const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (G * M));
+      const double ApT = T - PeT;
 
       // doesn't work any more?
       // glm::mat4 view = camera.GetView();
@@ -865,10 +927,6 @@ int main(int argc, char **argv)
       if(poly_mode == true) {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
       }
-
-      // int display_x, display_y;
-      // glfwGetFramebufferSize(window, &display_x, &display_y);
-      // glViewport(0, 0, display_x, display_y);
 
       ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
@@ -884,13 +942,28 @@ int main(int argc, char **argv)
       ImGui::PopFont();
       ImGui::End();
 
+      if(e < 0) {
+	ImGui::Begin("Elliptic Orbit Window", NULL, ImGuiWindowFlags_NoTitleBar);
+	ImGui::PushFont(bigger);
+	ImGui::Text("Elliptic Orbit");
+	ImGui::PopFont();
+	ImGui::End();
+      }
+      else {
+	ImGui::Begin("Hyperbolic Orbit Window", NULL, ImGuiWindowFlags_NoTitleBar);
+	ImGui::PushFont(bigger);
+	ImGui::Text("Hyperbolic Orbit");
+	ImGui::PopFont();
+	ImGui::End();
+      }
+
       ImGui::PopStyleColor();
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15, 0.15, 0.15, 1.0));
 
       ImGui::Begin("Open Space Program");
       ImGui::Spacing();
       ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
-      ImGui::Checkbox("Vessel Info", &shipInfoWindow);
+      ImGui::Checkbox("Orbit Info", &orbitInfoWindow);
       ImGui::Checkbox("Controls help", &controlsWindow);
       ImGui::End();
 
@@ -902,16 +975,36 @@ int main(int argc, char **argv)
 	ImGui::End();
       }
 
-      if(shipInfoWindow == true) {
-	ImGui::Begin("Vessel Info");
+      if(orbitInfoWindow == true) {
+	ImGui::Begin("ORBITAL");
+ 	ImGui::Text("ApA: %.1fm", ApA);
+	ImGui::Text("ApT: %.1f", ApT);
+ 	ImGui::Text("PeA: %.1fm", PeA);
+	ImGui::Text("PeT: %.1f", PeT);
+	ImGui::Text("Inc: %frad", inclination);
+	ImGui::Text("Ecc: %f ", ecc);
+	ImGui::Text("SMa: %fm", SMa);
+	ImGui::Text("Angle to Prograde:");
+	ImGui::Text("Angle to Retrograde:");
+	ImGui::Separator();
 	ImGui::Text("pos(%2.fkm): %0.f %0.f %0.f", distance / 1000, pos.x, pos.y, pos.z);
 	ImGui::Text("vel(%2.fm/s): %0.f %0.f %0.f", speed, vel.x, vel.y, vel.z);
 	ImGui::Text("grav(%2.f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
 	ImGui::Text("energy: %0.f kJ", e / 1000.0);
-	ImGui::Text("SMa: %f", a);
 	ImGui::Text("Radial velocity: %2.f", radial_vel);
+	ImGui::Text("Period: %f", T);
+	ImGui::Text("Right Ascension of AN: %f", raan);
+	ImGui::Text("Argument of Periapsis: %f", arg_pe);
+	ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
 	ImGui::End();
       }
+
+      if(shipPartsWindow == true) {
+	for(auto&& part : ship->parts) {
+	  // TODO
+	}
+      }
+
       if(controlsWindow == true) {
 	ImGui::Begin("Controls help");
 	ImGui::Text("Game");
@@ -930,7 +1023,7 @@ int main(int argc, char **argv)
 	ImGui::Text("Ship");
 	ImGui::Separator();
 	ImGui::Text("i - fire ship engines");
-	ImGui::Text("x - kill rotation (buggy)");
+	ImGui::Text("x - kill rotation");
 	ImGui::Text("l & j - ship X rotation");
 	ImGui::Text("u & o - ship Y rotation");
 	ImGui::Text("y & h - ship Z rotation");
