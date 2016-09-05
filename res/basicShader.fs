@@ -10,6 +10,6 @@ uniform vec4 color;
 
 void main()
 {
-    gl_FragColor = color * clamp(dot(-lightDirection, normal0), 0.04, 1.0);
+    gl_FragColor = color * clamp(dot(-lightDirection, normal0), 0.05, 1.0);
     gl_FragDepth = logz;
 }

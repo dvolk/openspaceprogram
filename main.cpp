@@ -92,7 +92,7 @@ struct GeoPatch {
   Model *model;
   GeoPatch *parent_geopatch;
   btRigidBody *collision;
-  static const int max_depth = 9;
+  static const int max_depth = 14;
   int quadrant;
 
   GeoPatch *kids[4];
@@ -378,13 +378,11 @@ public:
     for(auto&& reaction_wheel : m_reaction_wheels) {
       ApplyTorqueRelY(reaction_wheel, 2);
     }
-    m_stabilize = false;
   }
   void ApplyRotYMinus() {
     for(auto&& reaction_wheel : m_reaction_wheels) {
       ApplyTorqueRelY(reaction_wheel, -2);
     }
-    m_stabilize = false;
   }
   void ApplyRotZPlus() {
     for(auto&& reaction_wheel : m_reaction_wheels) {
@@ -439,7 +437,8 @@ float noise3d(const glm::vec3& p, int octaves, float persistence) {
   return sum;
 }
 
-#define NOISE_FUNC (((noise3d(sphere_p, 3, 1) * 10000) + noise3d(sphere_p, 8, 8) / 5000))
+#define NOISE_FUNC (((noise3d(sphere_p, 12, 0.63) * 2500)))
+//(((noise3d(sphere_p, 3, 0.5) * 15000)))
 
 float TerrainBody::GetTerrainHeight(const glm::dvec3& p) {
   glm::vec3 sphere_p = glm::normalize(p);
@@ -451,6 +450,9 @@ float TerrainBody::GetTerrainHeight(const glm::dvec3& p) {
 Mesh *create_grid_mesh(int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
   int size = 25;
+  glm::vec3 green = glm::vec3(0.1, 0.7, 0.1);
+  glm::vec3 blue = glm::vec3(0.1, 0.1, 0.7);
+  glm::vec3 color = green;
 
   Vertex vertices[size * size];
   unsigned int indices[size * size * 6] = {0};
@@ -465,11 +467,19 @@ Mesh *create_grid_mesh(int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm:
       // 				    + (noise3d(sphere_p, 8, 8) / 25000));
 
       glm::vec3 noise = sphere_p * NOISE_FUNC;
-      //glm::vec3 noise = glm::vec3(0);
+      glm::vec3 height = sphere_coord + noise;
 
-      vertices[j+size*i] = Vertex(sphere_coord + noise,
+      if(height > radius) {
+	color = green;
+      }
+      else {
+	color = blue;
+      }
+
+      vertices[j+size*i] = Vertex(height,
 				  glm::vec2(0, 0),
-				  glm::normalize(glm::vec3(1, 1, 1)));
+				  glm::normalize(glm::vec3(1, 1, 1)),
+				  color);
     }
   }
 
@@ -547,7 +557,7 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z) {
   Mesh *box_mesh = new Mesh;
 
   Vertex vertices[] = {
-    Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1)),
+    Vertex(glm::vec3(-1, -2, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1)),
     Vertex(glm::vec3(-1, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1)),
     Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1)),
     Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1)),
@@ -619,7 +629,8 @@ int main(int argc, char **argv)
   ImGui_ImplSdl_Init(display.get_display());
 
   ImGuiIO& io = ImGui::GetIO();
-  io.Fonts->AddFontDefault();
+  // io.Fonts->AddFontDefault();
+  io.Fonts->AddFontFromFileTTF("DroidSansMono.ttf", 14.0);
   bigger = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 40.0);
 
   // start bullet; see physics.cpp
@@ -930,27 +941,27 @@ int main(int argc, char **argv)
 
       ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
-      ImGui::Begin("Top Middle Window", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+      ImGui::Begin("Top Middle Window", NULL, flags);
       ImGui::PushFont(bigger);
       int terrain_height = (int)(distance - moon->GetTerrainHeight(pos));
       ImGui::Text("%08dm", terrain_height);
       ImGui::PopFont();
       ImGui::End();
-      ImGui::Begin("Bottom Middle Window", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+      ImGui::Begin("Bottom Middle Window", NULL, flags);
       ImGui::PushFont(bigger);
       ImGui::Text("%06dm/s", (int)speed);
       ImGui::PopFont();
       ImGui::End();
 
       if(e < 0) {
-	ImGui::Begin("Elliptic Orbit Window", NULL, ImGuiWindowFlags_NoTitleBar);
+	ImGui::Begin("Elliptic Orbit Window", NULL, flags);
 	ImGui::PushFont(bigger);
 	ImGui::Text("Elliptic Orbit");
 	ImGui::PopFont();
 	ImGui::End();
       }
       else {
-	ImGui::Begin("Hyperbolic Orbit Window", NULL, ImGuiWindowFlags_NoTitleBar);
+	ImGui::Begin("Hyperbolic Orbit Window", NULL, flags);
 	ImGui::PushFont(bigger);
 	ImGui::Text("Hyperbolic Orbit");
 	ImGui::PopFont();
@@ -972,6 +983,7 @@ int main(int argc, char **argv)
 	ImGui::Text("Patches: %d", moon->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
+	ImGui::Text("Camera altitude: %0.f", glm::length(camera.GetPos()) - moon->GetTerrainHeight(camera.GetPos()));
 	ImGui::End();
       }
 
