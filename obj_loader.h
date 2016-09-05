@@ -21,6 +21,7 @@ public:
     std::vector<glm::vec2> texCoords;
     std::vector<glm::vec3> normals;
     std::vector<unsigned int> indices;
+    std::vector<glm::vec3> colors;
     
     void CalcNormals();
 };

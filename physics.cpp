@@ -292,6 +292,15 @@ btVector3 getRelAxis(Body *body, int n) {
     return getRigidBody(body)->getCenterOfMassTransform().getBasis().getColumn(n);
 }
 
+glm::dvec3 getRelAxis_(Body *body, int n) {
+    btVector3 v = getRigidBody(body)->getCenterOfMassTransform().getBasis().getColumn(n);
+    return glm::dvec3(v.getX(), v.getY(), v.getZ());
+}
+
+double angleFacing(Body *body, glm::dvec3 dir) {
+  return getRelAxis(body, 2).angle(btVector3(dir.x, dir.y, dir.z));
+}
+
 void ApplyCentralForceForward(Body *body, double mag) {
     btVector3 forward = getRelAxis(body, 2);
     getRigidBody(body)->applyCentralForce(mag * forward.normalized());

@@ -39,6 +39,11 @@ void Mesh::InitMesh(const IndexedModel& model)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vertexArrayBuffers[INDEX_VB]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), &model.indices[0], GL_STATIC_DRAW);
 
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[COLOR_VB]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(model.colors[0]) * model.colors.size(), &model.colors[0], GL_STATIC_DRAW);
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
     glBindVertexArray(0);
 }
 
@@ -51,6 +56,7 @@ void Mesh::FromData(Vertex* vertices, unsigned int numVertices, unsigned int* in
             model.positions.push_back(*vertices[i].GetPos());
             // model.texCoords.push_back(*vertices[i].GetTexCoord());
             model.normals.push_back(*vertices[i].GetNormal());
+	    model.colors.push_back(vertices[i].color);
 	}
 
     for(unsigned int i = 0; i < numIndices; i++)

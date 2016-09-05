@@ -14,7 +14,9 @@
 
   TODO:
   * MORE COMMENTS
+  * Attitude autopilots
   * Better camera controls
+  * Vessel orbiting camera
   * drawing force, velocities, orientations, etc
   * // Fix kill-rot
   * Calculate orbital elements
@@ -29,6 +31,7 @@
   * Add a sun billboard
   * Atmosphere functionality
   * Orbit stability (different integrator?)
+  * Better elevation palette and mixin with moisture noise
   * Ship construction
   * More debug information
   * Bullet physics debug drawing
@@ -79,7 +82,10 @@ struct Frame {
   double m_angSpeed;
 };
 
-Mesh *create_grid_mesh(int depth,
+class TerrainBody;
+
+Mesh *create_grid_mesh(TerrainBody *body,
+		       int depth,
                        float radius,
                        glm::vec3 p1, glm::vec3 p2,
                        glm::vec3 p3, glm::vec3 p4);
@@ -183,7 +189,9 @@ struct TerrainBody {
   float radius;
   float mass;
 
-  float GetTerrainHeight(const glm::dvec3& p);
+  float GetTerrainHeight(const glm::vec3& p);
+  float GetTerrainHeightUnscaled(const glm::vec3& p);
+  float ScaleHeightNoise(float noise);
 
   void Create(float radius, float mass) {
     this->radius = radius;
@@ -248,7 +256,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
   this->v2 = v2;
   this->v3 = v3;
   this->centroid = glm::normalize(v0 + v1 + v2 + v3);
-  Mesh *grid_mesh = create_grid_mesh(depth, body->radius, v0, v1, v2, v3);
+  Mesh *grid_mesh = create_grid_mesh(body, depth, body->radius, v0, v1, v2, v3);
   model->FromData(grid_mesh, shader);
   if(depth > max_depth) {
       collision = addTerrainCollision(grid_mesh);
@@ -411,6 +419,17 @@ public:
   glm::dvec3 GetVel() {
     return GetVelocity(controller);
   }
+
+  void RotateToward(glm::dvec3 dir) {
+    void ApplyTorque(Body *body, glm::dvec3 torque);
+    glm::dvec3 getRelAxis_(Body *body, int n);
+    double angleFacing(Body *body, glm::dvec3 dir);
+
+    glm::dvec3 facing = getRelAxis_(m_reaction_wheels.front(), 2);
+    glm::dvec3 torque = -glm::normalize(glm::cross(dir, facing) / 10.0);
+
+    ApplyTorque(m_reaction_wheels.front(), torque);
+  }
 };
 
 glm::vec3 getSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
@@ -437,53 +456,136 @@ float noise3d(const glm::vec3& p, int octaves, float persistence) {
   return sum;
 }
 
-#define NOISE_FUNC (((noise3d(sphere_p, 12, 0.63) * 2500)))
+#define NOISE_FUNC (((noise3d(sphere_p, 12, 0.60) * 2500)))
 //(((noise3d(sphere_p, 3, 0.5) * 15000)))
 
-float TerrainBody::GetTerrainHeight(const glm::dvec3& p) {
-  glm::vec3 sphere_p = glm::normalize(p);
-  glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
-  glm::vec3 noise = sphere_p * NOISE_FUNC;
-  return glm::length(sphere_coord + noise);
+// float TerrainBody::GetTerrainHeight(const glm::dvec3& p) {
+//   glm::vec3 sphere_p = glm::normalize(p);
+//   glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
+//   glm::vec3 noise = sphere_p * NOISE_FUNC;
+//   return glm::length(sphere_coord + noise);
+// }
+
+float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
+  // glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
+  float noise = noise3d(sphere_p, 12, 0.60) * 2500;
+
+  if(noise < 0) {
+    noise = 0;
+  }
+
+  return radius + ScaleHeightNoise(noise);
 }
 
-Mesh *create_grid_mesh(int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
+float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) {
+  // glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
+  float noise = noise3d(sphere_p, 12, 0.60) * 2500;
+
+  if(noise < 0) {
+    noise = 0;
+  }
+
+  return radius + noise;
+}
+
+float TerrainBody::ScaleHeightNoise(float noise) {
+  constexpr float max_height = 3000.0; // guess
+
+  // rescale noise by altitude
+  noise *= pow(noise / max_height, 2);
+
+  return noise;
+}
+
+typedef struct {
+    float r, g, b;
+} COLOUR;
+
+inline COLOUR GetColour(float v, float vmin, float vmax)
+{
+   COLOUR c = {1.0,1.0,1.0}; // white
+   float dv;
+
+   if (v < vmin)
+      v = vmin;
+   if (v > vmax)
+      v = vmax;
+   dv = vmax - vmin;
+
+   if (v < (vmin + 0.25 * dv)) {
+      c.r = 0;
+      c.g = 4 * (v - vmin) / dv;
+   } else if (v < (vmin + 0.5 * dv)) {
+      c.r = 0;
+      c.b = 1 + 4 * (vmin + 0.25 * dv - v) / dv;
+   } else if (v < (vmin + 0.75 * dv)) {
+      c.r = 4 * (v - vmin - 0.5 * dv) / dv;
+      c.b = 0;
+   } else {
+      c.g = 1 + 4 * (vmin + 0.75 * dv - v) / dv;
+      c.b = 0;
+   }
+
+   return(c);
+}
+
+Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
   int size = 25;
-  glm::vec3 green = glm::vec3(0.1, 0.7, 0.1);
-  glm::vec3 blue = glm::vec3(0.1, 0.1, 0.7);
-  glm::vec3 color = green;
+
+  glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
   Vertex vertices[size * size];
   unsigned int indices[size * size * 6] = {0};
-  //const float height = 500.0 / (depth * depth * depth);
+
+  glm::vec2 dummyuv = glm::vec2(0, 0);
+  glm::vec3 dummynormal = glm::vec3(1, 1, 1);
 
   for (int i = 0; i < size; i++) {
     for (int j = 0; j < size; j++) {
       glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i/(float)(size-1), j/(float)(size-1));
-      glm::vec3 sphere_coord = radius * sphere_p;
-      // glm::vec3 noise = sphere_p * (((noise3d(sphere_p, 3, 8) * 1000) + noise3d(sphere_p, 8, 8) / 1000));
-      // glm::vec3 noise = sphere_p * (((noise3d(sphere_p, 3, 1) * 1000))
-      // 				    + (noise3d(sphere_p, 8, 8) / 25000));
+      float height = body->GetTerrainHeightUnscaled(sphere_p);
 
-      glm::vec3 noise = sphere_p * NOISE_FUNC;
-      glm::vec3 height = sphere_coord + noise;
+      // set the color based on unscaled noise for better gradient
+      COLOUR c = GetColour(height, radius - 1, radius + 3000);
+      glm::vec3 color = glm::vec3(c.r, c.g, c.b);
 
-      if(height > radius) {
-	color = green;
-      }
-      else {
-	color = blue;
+      if(height <= radius) {
+      	color = blue;
       }
 
-      vertices[j+size*i] = Vertex(height,
-				  glm::vec2(0, 0),
-				  glm::normalize(glm::vec3(1, 1, 1)),
+      // add back scaling
+      height = radius + body->ScaleHeightNoise(height - radius);
+
+      glm::vec3 p = sphere_p * height;
+
+     // else if(height < radius + 75) {
+      // 	color = beach;
+      // }
+      // else if(height < radius + 1500) {
+      // 	color = green;
+      // }
+      // else if(height < radius + 2800) {
+      // 	color = brown;
+      // }
+      // else {
+      // 	color = snow;
+      // }
+
+      vertices[j+size*i] = Vertex(p,
+				  dummyuv,
+				  dummynormal,
 				  color);
     }
   }
 
   glm::dvec3 centroid = glm::normalize(p1 + p2 + p3 + p4);
+
+  for (int i = 0; i < size; i++) {
+    for (int j = 0; j < size; j++) {
+      *vertices[j + size * i].GetNormal() = -centroid;
+    }
+  }
 
   for (int i = 1; i < size-1; i++) {
     for (int j = 1; j < size-1; j++) {
@@ -496,6 +598,14 @@ Mesh *create_grid_mesh(int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm:
       *vertices[j + size * i].GetNormal() = n;
     }
   }
+
+  // for(int i = 4; i < size-4; i++) {
+  //   *vertices[i].GetNormal() = centroid;
+  // }
+
+  // for(int i = (size-2) * (size-1); i < (size-1) * (size-1); i++) {
+  //   *vertices[i].GetNormal() = *vertices[i - size].GetNormal();
+  // }
 
   int i = 0;
   for (int y = 0; y < (size - 1); y++) {
@@ -553,39 +663,39 @@ Mesh *create_plane_mesh(float size_x, float size_y, glm::vec3 normal) {
   return plane_mesh;
 }
 
-Mesh *create_box_mesh(float size_x, float size_y, float size_z) {
+Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color) {
   Mesh *box_mesh = new Mesh;
 
   Vertex vertices[] = {
-    Vertex(glm::vec3(-1, -2, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1)),
-    Vertex(glm::vec3(-1, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1)),
-    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1)),
-    Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1)),
+    Vertex(glm::vec3(-1, -2, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(-1, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1), color),
 
-    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(0, 0, 1)),
-    Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(0, 0, 1)),
-    Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 1), glm::vec3(0, 0, 1)),
-    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 1), glm::vec3(0, 0, 1)),
+    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(0, 0, 1), color),
+    Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(0, 0, 1), color),
+    Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 1), glm::vec3(0, 0, 1), color),
+    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 1), glm::vec3(0, 0, 1), color),
 
-    Vertex(glm::vec3(-1, -1, -1), glm::vec2(0, 1), glm::vec3(0, -1, 0)),
-    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 1), glm::vec3(0, -1, 0)),
-    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(0, -1, 0)),
-    Vertex(glm::vec3(1, -1, -1), glm::vec2(0, 0), glm::vec3(0, -1, 0)),
+    Vertex(glm::vec3(-1, -1, -1), glm::vec2(0, 1), glm::vec3(0, -1, 0), color),
+    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 1), glm::vec3(0, -1, 0), color),
+    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(0, -1, 0), color),
+    Vertex(glm::vec3(1, -1, -1), glm::vec2(0, 0), glm::vec3(0, -1, 0), color),
 
-    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 1, 0)),
-    Vertex(glm::vec3(-1, 1, 1), glm::vec2(1, 1), glm::vec3(0, 1, 0)),
-    Vertex(glm::vec3(1, 1, 1), glm::vec2(1, 0), glm::vec3(0, 1, 0)),
-    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 0), glm::vec3(0, 1, 0)),
+    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 1, 0), color),
+    Vertex(glm::vec3(-1, 1, 1), glm::vec2(1, 1), glm::vec3(0, 1, 0), color),
+    Vertex(glm::vec3(1, 1, 1), glm::vec2(1, 0), glm::vec3(0, 1, 0), color),
+    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 0), glm::vec3(0, 1, 0), color),
 
-    Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 1), glm::vec3(-1, 0, 0)),
-    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(-1, 0, 0)),
-    Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(-1, 0, 0)),
-    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 1), glm::vec3(-1, 0, 0)),
+    Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 1), glm::vec3(-1, 0, 0), color),
+    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(-1, 0, 0), color),
+    Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(-1, 0, 0), color),
+    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 1), glm::vec3(-1, 0, 0), color),
 
-    Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(1, 0, 0)),
-    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(1, 0, 0)),
-    Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 0), glm::vec3(1, 0, 0)),
-    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(1, 0, 0)),
+    Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(1, 0, 0), color),
+    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(1, 0, 0), color),
+    Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 0), glm::vec3(1, 0, 0), color),
+    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(1, 0, 0), color),
   };
 
   int vertex_count = sizeof(vertices)/sizeof(vertices[0]);
@@ -629,8 +739,8 @@ int main(int argc, char **argv)
   ImGui_ImplSdl_Init(display.get_display());
 
   ImGuiIO& io = ImGui::GetIO();
-  // io.Fonts->AddFontDefault();
-  io.Fonts->AddFontFromFileTTF("DroidSansMono.ttf", 14.0);
+  io.Fonts->AddFontDefault();
+  // io.Fonts->AddFontFromFileTTF("DroidSansMono.ttf", 14.0);
   bigger = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 40.0);
 
   // start bullet; see physics.cpp
@@ -651,20 +761,25 @@ int main(int argc, char **argv)
   Model *trig_model = new Model;
   trig_model->FromData(trig_mesh, shader);
 
+  glm::vec3 grey = glm::vec3(1.0, 0.5, 0.5);
+
   Vehicle *ship = new Vehicle;
   Body *space_port;
   {
-    Mesh *space_port_mesh = create_box_mesh(10, 10, 10);
+    Mesh *space_port_mesh = create_box_mesh(10, 10, 10, grey);
     Model *space_port_model = new Model;
     space_port_model->FromData(space_port_mesh, shader);
 
-    Mesh *box_mesh = create_box_mesh(0.5, 0.5, 1.0);
+    Mesh *box_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
+    Mesh *capsule_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
 
     Model *box_model = new Model;
+    Model *capsule_model = new Model;
     box_model->FromData(box_mesh, shader);
+    box_model->FromData(capsule_mesh, shader);
 
     glm::dvec3 start(0);
-    glm::dvec3 p = glm::normalize(glm::dvec3(0.1, 0.1, 1.0));
+    glm::dvec3 p = glm::normalize(glm::dvec3(0.05, 0.05, 1.0));
     double ground_alt = moon->GetTerrainHeight(p);
     start = ((ground_alt + 0.0f) * p);
 
@@ -676,8 +791,8 @@ int main(int argc, char **argv)
 
     // top
     Body *capsule =
-      create_body(box_model, start.x, start.y, start.z + ship_height + 7, 0.5,
-		  glm::vec4(0.5, 0.5, 0.5, 1.0), false);
+      create_body(capsule_model, start.x, start.y, start.z + ship_height + 7, 0.5,
+		  glm::vec4(0.5, 0.5, 0.5, 1.0) /*redundant*/, false);
     // middle
     Body *reaction_wheel =
       create_body(box_model, start.x, start.y, start.z + ship_height + 5, 1,
@@ -718,12 +833,13 @@ int main(int argc, char **argv)
   const double dt = 1.0/50.0;
   double currentTime = 0.001 * (double)(SDL_GetTicks());
   double accumulator = 0.0;
-  int time_accel = 1;
+  int time_accel = 0;
   int cam_speed = 1;
   bool orbitInfoWindow = true;
   bool shipPartsWindow = true;
   bool gameInfoWindow = true;
   bool controlsWindow = true;
+  bool autoPilotWindow = true;
 
   /* main loop timing from
      http://gafferongames.com/game-physics/fix-your-timestep/
@@ -841,6 +957,8 @@ int main(int argc, char **argv)
 
       if(key[SDL_SCANCODE_Y]) { ship->ApplyRotZPlus(); }
       else if(key[SDL_SCANCODE_H]) { ship->ApplyRotZMinus(); }
+
+      if(key[SDL_SCANCODE_B]) { ship->RotateToward(GetVelocity(ship->controller)); }
 
       if(key[SDL_SCANCODE_R]) { camera.Pitch(0.1); }
       else if(key[SDL_SCANCODE_F]) { camera.Pitch(-0.1); }
@@ -984,6 +1102,7 @@ int main(int argc, char **argv)
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
 	ImGui::Text("Camera altitude: %0.f", glm::length(camera.GetPos()) - moon->GetTerrainHeight(camera.GetPos()));
+	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - moon->radius);
 	ImGui::End();
       }
 
@@ -1041,6 +1160,18 @@ int main(int argc, char **argv)
 	ImGui::Text("y & h - ship Z rotation");
 	ImGui::End();
       }
+
+      if(autoPilotWindow == true) {
+	ImGui::Begin("Autopilot");
+	ImGui::Button("Prograde");
+	ImGui::Button("Retrograde");
+	ImGui::Button("Radial-in");
+	ImGui::Button("Radial-out");
+	ImGui::Button("Normal");
+	ImGui::Button("Anti-normal");
+	ImGui::End();
+      }
+
       ImGui::PopStyleColor();
 
       ImGui::Render();

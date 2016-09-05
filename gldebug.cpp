@@ -26,6 +26,6 @@ void _check_gl_error(const char *file, int line) {
             break;
         }
 
-        fprintf(stderr, "GL_%s - %s:%d\n", error, file, line);
+        fprintf(stdout, "GL_%s - %s:%d\n", error, file, line);
     }
 }

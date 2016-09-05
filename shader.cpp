@@ -23,6 +23,8 @@ void Shader::FromFile(const std::string& fileName)
     check_gl_error();
     glBindAttribLocation(m_program, 2, "normal");
     check_gl_error();
+    glBindAttribLocation(m_program, 3, "color");
+    check_gl_error();
 
     glLinkProgram(m_program);
     check_gl_error();

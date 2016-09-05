@@ -11,11 +11,19 @@ struct Vertex
 {
 public:
     Vertex() {};
-    Vertex(const glm::vec3& pos, const glm::vec2& texCoord, const glm::vec3& normal)
+  Vertex(const glm::vec3& pos, const glm::vec2& texCoord, const glm::vec3& normal, const glm::vec3& color)
     {
         this->pos = pos;
         this->texCoord = texCoord;
         this->normal = normal;
+	this->color = color;
+    }
+  Vertex(const glm::vec3& pos, const glm::vec2& texCoord, const glm::vec3& normal)
+    {
+        this->pos = pos;
+        this->texCoord = texCoord;
+        this->normal = normal;
+	this->color = glm::vec3(1.0, 0.5, 0.5);
     }
 
     glm::vec3* GetPos() { return &pos; }
@@ -26,6 +34,7 @@ public:
     glm::vec3 pos;
     glm::vec2 texCoord;
     glm::vec3 normal;
+  glm::vec3 color;
 };
 
 enum MeshBufferPositions
@@ -33,7 +42,8 @@ enum MeshBufferPositions
 	POSITION_VB,
 	TEXCOORD_VB,
 	NORMAL_VB,
-	INDEX_VB
+	INDEX_VB,
+	COLOR_VB
     };
 
 class Mesh
@@ -54,7 +64,7 @@ class Mesh
 
  protected:
  private:
-    static const unsigned int NUM_BUFFERS = 4;
+    static const unsigned int NUM_BUFFERS = 5;
 
     void InitMesh(const IndexedModel& model);
 
