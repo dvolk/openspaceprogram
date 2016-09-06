@@ -6,7 +6,7 @@ CPPFLAGS=-O2 -Wall -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/includ
 LDFLAGS=$(CPPFLAGS)
 LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath
 
-SRCS=body.cpp  display.cpp  gldebug.cpp  main.cpp  mesh.cpp  obj_loader.cpp  physics.cpp  shader.cpp  shader_utils.cpp  stb_image.cpp  texture.cpp
+SRCS=body.cpp  display.cpp  gldebug.cpp  main.cpp  mesh.cpp  obj_loader.cpp  physics.cpp  shader.cpp
 OBJS=$(subst .cpp,.o,$(SRCS))
 
 # imgui: https://github.com/ocornut/imgui

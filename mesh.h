@@ -20,10 +20,11 @@ public:
     }
   Vertex(const glm::vec3& pos, const glm::vec2& texCoord, const glm::vec3& normal)
     {
+      static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
         this->pos = pos;
         this->texCoord = texCoord;
         this->normal = normal;
-	this->color = glm::vec3(1.0, 0.5, 0.5);
+	this->color = pink;
     }
 
     glm::vec3* GetPos() { return &pos; }

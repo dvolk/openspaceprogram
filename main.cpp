@@ -19,7 +19,10 @@
   * Vessel orbiting camera
   * drawing force, velocities, orientations, etc
   * // Fix kill-rot
+  * surface information (lat, long, hor, vert speeds)
   * Calculate orbital elements
+  * walking around on the ground
+  * fix seams between patches
   * Reference frames and other bodies
   * Patched conics
   * Check memory management
@@ -49,6 +52,8 @@
 
 #include <glm/gtc/noise.hpp>
 #include <glm/gtx/norm.hpp>
+#include <glm/gtx/projection.hpp>
+#include <glm/gtx/vector_angle.hpp>
 
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
@@ -56,7 +61,6 @@
 #include "display.h"
 #include "mesh.h"
 #include "shader.h"
-#include "texture.h"
 #include "camera.h"
 #include "model.h"
 #include "body.h"
@@ -271,7 +275,7 @@ void GeoPatch::Update(const Camera& camera) {
     return;
 
   const glm::dvec3& camera_pos = camera.GetPos();
-  const glm::dvec3& centroid_pos = body->radius * centroid;
+  const glm::dvec3& centroid_pos = body->GetTerrainHeight(glm::normalize(camera_pos)) * centroid;
   const float dist = glm::length(camera_pos - centroid_pos);
   const float subdiv = 2.0f * body->radius * glm::length(v0 - centroid);
 
@@ -320,6 +324,8 @@ public:
   std::vector<Body *> m_thrusters;
   std::vector<Body *> m_reaction_wheels;
 
+  float thruster_util = 0.5;
+
   void setVelocity(glm::dvec3 vel) {
     for(auto&& part : parts) {
       SetVelocity(part, vel);
@@ -367,9 +373,18 @@ public:
     for(auto&& part : parts) { part->Draw(camera); }
   }
 
+  void ThrottleUp() {
+    thruster_util += 0.01;
+    if(thruster_util > 1) thruster_util = 1;
+  }
+  void ThrottleDown() {
+    thruster_util -= 0.01;
+    if(thruster_util < 0) thruster_util = 0;
+  }
+
   void ApplyThrust() {
     for(auto&& thruster : m_thrusters) {
-      ApplyCentralForceForward(thruster, 500);
+      ApplyCentralForceForward(thruster, 100 * thruster_util);
     }
   }
   void ApplyRotXPlus() {
@@ -627,56 +642,59 @@ Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1,
   return grid_mesh;
 }
 
-Mesh *create_triangle_mesh(float size_x, float size_y) {
-  Mesh *trig_mesh = new Mesh;
+// Mesh *create_triangle_mesh(float size_x, float size_y) {
+//   Mesh *trig_mesh = new Mesh;
 
-  Vertex vertices[] = {
-    Vertex(glm::vec3(0,       0, -size_y), glm::vec2(1, 0), glm::vec3(0, 1, 0)),
-    Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), glm::vec3(0, 1, 0)),
-    Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), glm::vec3(0, 1, 0)),
-  };
+//   Vertex vertices[] = {
+//     Vertex(glm::vec3(0,       0, -size_y), glm::vec2(1, 0), glm::vec3(0, 1, 0)),
+//     Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), glm::vec3(0, 1, 0)),
+//     Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), glm::vec3(0, 1, 0)),
+//   };
 
-  unsigned int indices[] = {
-    0, 1, 2,
-  };
+//   unsigned int indices[] = {
+//     0, 1, 2,
+//   };
 
-  trig_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
-  return trig_mesh;
-}
+//   trig_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
+//   return trig_mesh;
+// }
 
-Mesh *create_plane_mesh(float size_x, float size_y, glm::vec3 normal) {
-  Mesh *plane_mesh = new Mesh;
+// Mesh *create_plane_mesh(float size_x, float size_y, glm::vec3 normal) {
+//   Mesh *plane_mesh = new Mesh;
 
-  Vertex vertices[] = {
-    Vertex(glm::vec3(-size_x, 0, -size_y), glm::vec2(1, 0), normal),
-    Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), normal),
-    Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), normal),
-    Vertex(glm::vec3( size_x, 0, -size_y), glm::vec2(1, 1), normal),
-  };
+//   Vertex vertices[] = {
+//     Vertex(glm::vec3(-size_x, 0, -size_y), glm::vec2(1, 0), normal),
+//     Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), normal),
+//     Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), normal),
+//     Vertex(glm::vec3( size_x, 0, -size_y), glm::vec2(1, 1), normal),
+//   };
 
-  unsigned int indices[] = {
-    0, 1, 2,
-    0, 2, 3,
-  };
+//   unsigned int indices[] = {
+//     0, 1, 2,
+//     0, 2, 3,
+//   };
 
-  plane_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
-  return plane_mesh;
-}
+//   plane_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
+//   return plane_mesh;
+// }
 
 Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color) {
   Mesh *box_mesh = new Mesh;
 
   Vertex vertices[] = {
-    Vertex(glm::vec3(-1, -2, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(-1, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1), color),
+    // bottom
+    Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1), color),
     Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1), color),
     Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1), color),
 
+    // top
     Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(0, 0, 1), color),
     Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(0, 0, 1), color),
     Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 1), glm::vec3(0, 0, 1), color),
     Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 1), glm::vec3(0, 0, 1), color),
 
+    // sides
     Vertex(glm::vec3(-1, -1, -1), glm::vec2(0, 1), glm::vec3(0, -1, 0), color),
     Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 1), glm::vec3(0, -1, 0), color),
     Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(0, -1, 0), color),
@@ -757,29 +775,36 @@ int main(int argc, char **argv)
   moon->shader = shader;
   moon->Create(600000, 5.2915793e22);
 
-  Mesh *trig_mesh = create_triangle_mesh(1, 1);
-  Model *trig_model = new Model;
-  trig_model->FromData(trig_mesh, shader);
+  // Mesh *trig_mesh = create_triangle_mesh(1, 1);
+  // Model *trig_model = new Model;
+  // trig_model->FromData(trig_mesh, shader);
 
-  glm::vec3 grey = glm::vec3(1.0, 0.5, 0.5);
 
   Vehicle *ship = new Vehicle;
   Body *space_port;
   {
-    Mesh *space_port_mesh = create_box_mesh(10, 10, 10, grey);
+    glm::vec3 grey = glm::vec3(0.5, 0.5, 0.5);
+    glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
+    glm::vec3 red = glm::vec3(1,0,0);
+    glm::vec3 blue = glm::vec3(0,0,1);
+
+    Mesh *space_port_mesh = create_box_mesh(10, 10, 10, pink);
     Model *space_port_model = new Model;
     space_port_model->FromData(space_port_mesh, shader);
 
-    Mesh *box_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
-    Mesh *capsule_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
+    Mesh *capsule_mesh = create_box_mesh(0.1, 0.1, 1.0, blue);
+    Mesh *wheel_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
+    Mesh *engine_mesh = create_box_mesh(1.0, 1.0, 1.0, red);
 
-    Model *box_model = new Model;
     Model *capsule_model = new Model;
-    box_model->FromData(box_mesh, shader);
-    box_model->FromData(capsule_mesh, shader);
+    Model *wheel_model = new Model;
+    Model *engine_model = new Model;
+    capsule_model->FromData(capsule_mesh, shader);
+    wheel_model->FromData(wheel_mesh, shader);
+    engine_model->FromData(engine_mesh, shader);
 
     glm::dvec3 start(0);
-    glm::dvec3 p = glm::normalize(glm::dvec3(0.05, 0.05, 1.0));
+    glm::dvec3 p = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     double ground_alt = moon->GetTerrainHeight(p);
     start = ((ground_alt + 0.0f) * p);
 
@@ -795,11 +820,11 @@ int main(int argc, char **argv)
 		  glm::vec4(0.5, 0.5, 0.5, 1.0) /*redundant*/, false);
     // middle
     Body *reaction_wheel =
-      create_body(box_model, start.x, start.y, start.z + ship_height + 5, 1,
+      create_body(wheel_model, start.x, start.y, start.z + ship_height + 5, 1,
 		  glm::vec4(0.9, 0.9, 0.9, 1.0), false);
     // bottom
     Body *thruster =
-      create_body(box_model, start.x, start.y, start.z + ship_height + 3, 1,
+      create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3,
 		  glm::vec4(1.0, 0.25, 0.25, 1.0), false);
 
     ship->parts = { capsule,
@@ -840,6 +865,7 @@ int main(int argc, char **argv)
   bool gameInfoWindow = true;
   bool controlsWindow = true;
   bool autoPilotWindow = true;
+  bool surfaceInfoWindow = true;
 
   /* main loop timing from
      http://gafferongames.com/game-physics/fix-your-timestep/
@@ -959,9 +985,10 @@ int main(int argc, char **argv)
       else if(key[SDL_SCANCODE_H]) { ship->ApplyRotZMinus(); }
 
       if(key[SDL_SCANCODE_B]) { ship->RotateToward(GetVelocity(ship->controller)); }
+      if(key[SDL_SCANCODE_N]) { ship->RotateToward(-GetVelocity(ship->controller)); }
 
-      if(key[SDL_SCANCODE_R]) { camera.Pitch(0.1); }
-      else if(key[SDL_SCANCODE_F]) { camera.Pitch(-0.1); }
+      if(key[SDL_SCANCODE_R]) { ship->ThrottleUp(); }
+      else if(key[SDL_SCANCODE_F]) { ship->ThrottleDown(); }
 
       void physics_tick(float timeStep);
       void collisions();
@@ -1044,9 +1071,30 @@ int main(int argc, char **argv)
       double EccentricAnomaly = (sqrt(1 - ecc*ecc) * sin(TrueAnomaly)) / (ecc + cos(TrueAnomaly));
       if(EccentricAnomaly < 0) { EccentricAnomaly += 2 * M_PI; }
       const double MeanAnomaly = EccentricAnomaly - ecc * sin(EccentricAnomaly);
-      const double PeT = sqrt((SMa * SMa * SMa) / (G*M)) * MeanAnomaly;
+      const double PeT = sqrt((SMa * SMa * SMa) / (G*M)) * MeanAnomaly; // TODO units?
       const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (G * M));
       const double ApT = T - PeT;
+
+      const double ver_speed = glm::length(glm::proj(vel, pos));
+      glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, vel)); // hmm
+      const double hor_speed = glm::length(glm::proj(vel, surface_tangent));
+      /*  y
+	  |
+          |
+	  |
+	  /-----x
+	 /
+	/
+       z
+       */
+      const double longitude = glm::orientedAngle(glm::dvec3(0, 0, 1),
+						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),
+						 glm::dvec3(0, 1, 0)
+						 );
+      const double latitude = glm::orientedAngle(glm::dvec3(0, 1, 0),
+						  glm::normalize(glm::dvec3(pos.x, pos.y, 0)),
+						  glm::dvec3(0, 0, -1)
+						  );
 
       // doesn't work any more?
       // glm::mat4 view = camera.GetView();
@@ -1061,7 +1109,7 @@ int main(int argc, char **argv)
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
       ImGui::Begin("Top Middle Window", NULL, flags);
       ImGui::PushFont(bigger);
-      int terrain_height = (int)(distance - moon->GetTerrainHeight(pos));
+      int terrain_height = (int)(distance - moon->GetTerrainHeight(glm::normalize(pos)));
       ImGui::Text("%08dm", terrain_height);
       ImGui::PopFont();
       ImGui::End();
@@ -1091,9 +1139,12 @@ int main(int argc, char **argv)
 
       ImGui::Begin("Open Space Program");
       ImGui::Spacing();
-      ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
       ImGui::Checkbox("Orbit Info", &orbitInfoWindow);
-      ImGui::Checkbox("Controls help", &controlsWindow);
+      ImGui::Checkbox("Surface Info", &surfaceInfoWindow);
+      ImGui::Checkbox("Vessel Info", &shipPartsWindow);
+      ImGui::Checkbox("DUMB-ASS", &autoPilotWindow);
+      ImGui::Checkbox("Controls Help", &controlsWindow);
+      ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
       ImGui::End();
 
       if(gameInfoWindow == true) {
@@ -1101,8 +1152,10 @@ int main(int argc, char **argv)
 	ImGui::Text("Patches: %d", moon->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
-	ImGui::Text("Camera altitude: %0.f", glm::length(camera.GetPos()) - moon->GetTerrainHeight(camera.GetPos()));
+	ImGui::Text("Camera altitude: %0.f",
+		    glm::length(camera.GetPos()) - moon->GetTerrainHeight(glm::normalize(camera.GetPos())));
 	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - moon->radius);
+	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera.GetPos().x, camera.GetPos().y, camera.GetPos().z);
 	ImGui::End();
       }
 
@@ -1112,28 +1165,42 @@ int main(int argc, char **argv)
 	ImGui::Text("ApT: %.1f", ApT);
  	ImGui::Text("PeA: %.1fm", PeA);
 	ImGui::Text("PeT: %.1f", PeT);
+	ImGui::Text("T: %f", T);
 	ImGui::Text("Inc: %frad", inclination);
 	ImGui::Text("Ecc: %f ", ecc);
 	ImGui::Text("SMa: %fm", SMa);
 	ImGui::Text("Angle to Prograde:");
 	ImGui::Text("Angle to Retrograde:");
 	ImGui::Separator();
-	ImGui::Text("pos(%2.fkm): %0.f %0.f %0.f", distance / 1000, pos.x, pos.y, pos.z);
-	ImGui::Text("vel(%2.fm/s): %0.f %0.f %0.f", speed, vel.x, vel.y, vel.z);
-	ImGui::Text("grav(%2.f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
-	ImGui::Text("energy: %0.f kJ", e / 1000.0);
-	ImGui::Text("Radial velocity: %2.f", radial_vel);
-	ImGui::Text("Period: %f", T);
+	ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
+	ImGui::Text("Energy: %.2f kJ", e / 1000.0);
+	ImGui::Text("Radial velocity: %.2f", radial_vel);
 	ImGui::Text("Right Ascension of AN: %f", raan);
 	ImGui::Text("Argument of Periapsis: %f", arg_pe);
 	ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
 	ImGui::End();
       }
 
+      if(surfaceInfoWindow == true) {
+	ImGui::Begin("SURFACE");
+	ImGui::Text("V speed: %.2fm/s", ver_speed);
+	ImGui::Text("H speed: %.2fm/s", hor_speed);
+	ImGui::Text("Latitude: %.4f", latitude * 180/M_PI);
+	ImGui::Text("Longitude: %.4f", longitude * 180/M_PI);
+	ImGui::Text("Pos (%.3fkm): %0.f %0.f %0.f", distance / 1000, pos.x, pos.y, pos.z);
+	ImGui::Text("Vel (%.3fm/s): %0.f %0.f %0.f", speed, vel.x, vel.y, vel.z);
+	ImGui::End();
+      }
+
       if(shipPartsWindow == true) {
+	ImGui::Begin("VESSEL");
+	ImGui::Text("Thrust: %d%%", (int)(ship->thruster_util * 100));
+	float TWR = (100 * ship->thruster_util) / (4.5 * 10);
+	ImGui::Text("TWR: %.2f", TWR);
 	for(auto&& part : ship->parts) {
 	  // TODO
 	}
+	ImGui::End();
       }
 
       if(controlsWindow == true) {

@@ -92,7 +92,7 @@ PhysicsEngine::PhysicsEngine() {
     dynamicsWorld->setGravity(btVector3(0, 0, 0));
     dynamicsWorld->setApplySpeculativeContactRestitution(true);
 
-    debugShape = new btBoxShape(btVector3(0.5, 0.5, 1.0));
+    debugShape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
     planetShape = new btBoxShape(btVector3(10, 10, 10));
 
     GLDebugDrawer *debugDrawer = new GLDebugDrawer;
