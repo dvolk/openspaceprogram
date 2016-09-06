@@ -3,6 +3,8 @@
 #include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 #include <glm/gtx/transform.hpp>
 
+#include <iostream>
+
 #include "physics.h"
 #include "body.h"
 
@@ -19,10 +21,10 @@ public:
     virtual void draw3dText(const btVector3& location,const char* textString);
     virtual void setDebugMode(int debugMode);
     virtual int getDebugMode() const { return m_debugMode;}
-      
+
 };
 
-GLDebugDrawer::GLDebugDrawer() :m_debugMode(0) { 
+GLDebugDrawer::GLDebugDrawer() :m_debugMode(0) {
 }
 
 void GLDebugDrawer::drawLine(const btVector3& from,const btVector3& to,const btVector3& color)
@@ -56,10 +58,10 @@ void    GLDebugDrawer::drawContactPoint(const btVector3& pointOnB,const btVector
     {
         //btVector3 to=pointOnB+normalOnB*distance;
         //const btVector3&from = pointOnB;
-        //glColor4f(color.getX(), color.getY(), color.getZ(), 1.0f);   
-      
+        //glColor4f(color.getX(), color.getY(), color.getZ(), 1.0f);
+
         //GLDebugDrawer::drawLine(from, to, color);
-      
+
         //glRasterPos3f(from.x(),  from.y(),  from.z());
         //char buf[12];
         //sprintf(buf," %d",lifeTime);
@@ -82,7 +84,7 @@ void PhysicsEngine::Draw() {
 PhysicsEngine::PhysicsEngine() {
     printf("sizeof(btScalar): %d\n", sizeof(btScalar));
     assert(sizeof(btScalar) == 8);
-    
+
     collisionConfiguration = new btDefaultCollisionConfiguration();
     dispatcher = new btCollisionDispatcher(collisionConfiguration);
     overlappingPairCache = new btDbvtBroadphase();
@@ -163,15 +165,11 @@ btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m) {
 }
 
 void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
-                                   glm::vec3 rot, bool planet)
+                                   glm::vec3 rot, bool debug_mesh)
 {
     btTransform startTransform;
     startTransform.setIdentity();
     btVector3 localInertia(0.0f, 0.0f, 0.0f);
-
-    if(body->mass != 0.0f) {
-        debugShape->calculateLocalInertia(body->mass, localInertia);
-    }
 
     startTransform.setOrigin(btVector3(pos.x, pos.y, pos.z));
     btQuaternion euler_rot(rot.x, rot.y, rot.z);
@@ -181,9 +179,14 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
         new btDefaultMotionState(startTransform);
 
     btCollisionShape *shape;
-    if(planet == true) {
+    if(debug_mesh == false) {
         Mesh *m = body->model->mesh;
-        
+
+	printf("m->num_indices: %d\n", m->num_indices);
+	printf("m->num_vertices: %d\n", m->num_vertices);
+	assert(m->num_indices > 3);
+	assert(m->num_vertices > 3);
+
         btTriangleIndexVertexArray *mesh_interface
             = new btTriangleIndexVertexArray(m->num_indices / 3,
                                              m->is,
@@ -192,15 +195,19 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
                                              m->vs,
                                              3*sizeof(double));
 
-        btBvhTriangleMeshShape *terrain
+        btBvhTriangleMeshShape *mesh_shape
             = new btBvhTriangleMeshShape(mesh_interface, true, true);
-            
-        shape = terrain;
+
+        shape = mesh_shape;
     }
     else {
         shape = debugShape;
     }
-    
+
+    if(body->mass != 0.0f) {
+        shape->calculateLocalInertia(body->mass, localInertia);
+    }
+
     btRigidBody::btRigidBodyConstructionInfo
         rbInfo(body->mass, myMotionState, shape, localInertia);
 

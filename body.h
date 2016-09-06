@@ -41,4 +41,4 @@ void RegisterPhysicsBody(Body *body, glm::vec3 pos,
                          glm::vec3 rot, bool planet);
 
 Body *create_body(Model *model, float x, float y, float z,
-                  float mass, glm::vec4 color, bool planet);
+                  float mass, bool planet);

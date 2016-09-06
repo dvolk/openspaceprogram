@@ -747,6 +747,7 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color)
   int index_count = sizeof(indices)/sizeof(indices[0]);
 
   box_mesh->FromData(vertices, vertex_count, indices, index_count);
+  printf("create_box_mesh: %d %d\n", vertex_count, index_count);
   return box_mesh;
 }
 
@@ -788,17 +789,19 @@ int main(int argc, char **argv)
     glm::vec3 red = glm::vec3(1,0,0);
     glm::vec3 blue = glm::vec3(0,0,1);
 
-    Mesh *space_port_mesh = create_box_mesh(10, 10, 10, pink);
-    Model *space_port_model = new Model;
-    space_port_model->FromData(space_port_mesh, shader);
+    // space_port_mesh->FromFile("test.obj");
 
+    Mesh *space_port_mesh = create_box_mesh(10, 10, 10, pink);
     Mesh *capsule_mesh = create_box_mesh(0.1, 0.1, 1.0, blue);
     Mesh *wheel_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
     Mesh *engine_mesh = create_box_mesh(1.0, 1.0, 1.0, red);
 
+    Model *space_port_model = new Model;
     Model *capsule_model = new Model;
     Model *wheel_model = new Model;
     Model *engine_model = new Model;
+
+    space_port_model->FromData(space_port_mesh, shader);
     capsule_model->FromData(capsule_mesh, shader);
     wheel_model->FromData(wheel_mesh, shader);
     engine_model->FromData(engine_mesh, shader);
@@ -809,23 +812,19 @@ int main(int argc, char **argv)
     start = ((ground_alt + 0.0f) * p);
 
     space_port =
-      create_body(space_port_model, start.x-3, start.y-3, start.z + 5, 0,
-    		  glm::vec4(1.0, 0.5, 1.0, 1.0), true);
+      create_body(space_port_model, start.x-3, start.y-3, start.z + 30, 0, false);
 
-    double ship_height = 14;
+    double ship_height = 50;
 
     // top
     Body *capsule =
-      create_body(capsule_model, start.x, start.y, start.z + ship_height + 7, 0.5,
-		  glm::vec4(0.5, 0.5, 0.5, 1.0) /*redundant*/, false);
+      create_body(capsule_model, start.x, start.y, start.z + ship_height + 7, 0.5, true);
     // middle
     Body *reaction_wheel =
-      create_body(wheel_model, start.x, start.y, start.z + ship_height + 5, 1,
-		  glm::vec4(0.9, 0.9, 0.9, 1.0), false);
+      create_body(wheel_model, start.x, start.y, start.z + ship_height + 5, 1, true);
     // bottom
     Body *thruster =
-      create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3,
-		  glm::vec4(1.0, 0.25, 0.25, 1.0), false);
+      create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3, true);
 
     ship->parts = { capsule,
 		    reaction_wheel,
@@ -997,7 +996,8 @@ int main(int argc, char **argv)
 	grav = ship->processGravity();
 	physics_tick(dt * time_accel);
       }
-      //collisions();
+
+      // collisions();
 
       accumulator -= dt;
     }

@@ -9,7 +9,17 @@
 
 void Mesh::FromFile(const std::string& fileName)
 {
-    InitMesh(OBJModel(fileName).ToIndexedModel());
+  OBJModel m = OBJModel(fileName);
+  printf("*** OBJModel vertices: %d\n", m.vertices.size());
+  printf("*** OBJModel normals: %d\n", m.normals.size());
+  IndexedModel im = m.ToIndexedModel();
+  printf("*** IndexedModel vertices: %d\n", im.positions.size());
+  printf("*** IndexedModel normals: %d\n", im.normals.size());
+  printf("*** IndexedModel colors: %d\n", im.colors.size());
+  printf("*** IndexedModel indices: %d\n", im.indices.size());
+  InitMesh(im);
+  printf("*** Mesh vertices: %d\n", num_vertices);
+  printf("*** Mesh normals: %d\n", num_indices);
 }
 
 void Mesh::InitMesh(const IndexedModel& model)
