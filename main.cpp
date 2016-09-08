@@ -18,10 +18,13 @@
   * Better camera controls
   * Vessel orbiting camera
   * drawing force, velocities, orientations, etc
+  * Fuel
+  * Staging
   * // Fix kill-rot
   * surface information (lat, long, hor, vert speeds)
   * Calculate orbital elements
   * walking around on the ground
+  * Why doesn't the collision between trigmeshes work?
   * fix seams between patches
   * Reference frames and other bodies
   * Patched conics
@@ -192,6 +195,7 @@ struct TerrainBody {
   Shader *shader;
   float radius;
   float mass;
+  const char *name;
 
   float GetTerrainHeight(const glm::vec3& p);
   float GetTerrainHeightUnscaled(const glm::vec3& p);
@@ -312,9 +316,52 @@ void GeoPatch::Update(const Camera& camera) {
   }
 }
 
+enum class ResourceType {
+  Hydrogen,
+    LOX,
+    EC,
+    Oxygen,
+    Water,
+    Food,
+  Num
+};
+
+struct ResourceContent {
+  float current[(int)ResourceType::Num];
+  float capacity[(int)ResourceType::Num];
+
+  ResourceContent() {
+    for(int i = 0; i < (int)ResourceType::Num; i++) {
+      current[i] = 0;
+      capacity[i] = 0;
+    }
+  }
+};
+
+enum class VesselPartType {
+  Capsule,
+    ReactionWheel,
+    Engine
+};
+
+const char *VesselPartTypeStr(VesselPartType& p) {
+  switch(p)
+    {
+    case VesselPartType::Capsule:{ return "Capsule"; }
+      break;
+    case VesselPartType::ReactionWheel:{ return "Reaction wheel"; }
+      break;
+    case VesselPartType::Engine:{ return "Engine block"; }
+      break;
+    default:{ assert(false); }
+    }
+}
+
 class Vehicle {
 public:
   std::vector<Body *> parts;
+  std::vector<ResourceContent> partResources;
+  std::vector<VesselPartType> partTypes;
 
   TerrainBody *m_parent;
 
@@ -325,6 +372,68 @@ public:
   std::vector<Body *> m_reaction_wheels;
 
   float thruster_util = 0.5;
+
+  /* returns true if fuel was consumed*/
+  bool consumeResourceMass(enum class ResourceType type, float amt /* kg */) {
+    int i = 0;
+    float consp_factor = 60; // since fps = 60 and fuel flow is kg/s
+    for(auto&& partResource : partResources) {
+      if(partResource.current[(int)type] >= amt / consp_factor) {
+	partResource.current[(int)type] -= amt / consp_factor;
+	parts[i]->mass -= amt / consp_factor; /* why does Body have mass at all? */
+	void SetMass(Body *body, double newMass);
+	SetMass(parts[i], parts[i]->mass);
+	return true;
+      }
+      i++;
+    }
+    return false;
+  }
+
+  float getFuelMass(const std::vector /* eh */ <enum class ResourceType>& types) {
+    float fuel = 0;
+    for(auto&& type : types) {
+      for(auto&& partResource : partResources) {
+	fuel += partResource.current[(int)type];
+      }
+    }
+    return fuel;
+  }
+
+  float getDeltaV() {
+    float exaust_vel = 8123; /* m/s */
+    float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }) / 2.0; /* kg */
+    return exaust_vel * log(getMass() / (getMass() - remaining_fuel));
+  }
+  
+  /* TODO should be cached per frame */
+  float getMass() {
+    float r = 0;
+    for(auto&& part : parts) {
+      r += part->mass;
+    }
+    return r;
+  }
+
+  float getThrust() {
+    return GetMaxThrust() * thruster_util;
+  }
+
+  // current Thrust-to-weight ratio
+  float getTWR() {
+    return (thruster_util * GetMaxThrust()) / (getMass() * 10);
+  }
+
+  // full throttle TWR
+  float getFullThrustTWR() {
+    return GetMaxThrust() / (getMass() * 10);
+  }
+
+  // empty TWR
+  float getMaxTWR() {
+    float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
+    return GetMaxThrust() / ((getMass() - remaining_fuel) * 10);
+  }
 
   void setVelocity(glm::dvec3 vel) {
     for(auto&& part : parts) {
@@ -359,7 +468,6 @@ public:
     }
     return gf;
   }
-  ;
 
 public:
   Vehicle() { }
@@ -382,9 +490,24 @@ public:
     if(thruster_util < 0) thruster_util = 0;
   }
 
+  float GetMaxFuelRate() {
+    return 0.01; /* kg/[T] fixme T == ?? */
+  }
+
+  float GetMaxThrust() {
+    float exaust_velocity = 8123; /* m/s */
+    return GetMaxFuelRate() * exaust_velocity;
+  }
+
   void ApplyThrust() {
+    float max_fuel_rate = GetMaxFuelRate();
+
     for(auto&& thruster : m_thrusters) {
-      ApplyCentralForceForward(thruster, 100 * thruster_util);
+      if(consumeResourceMass(ResourceType::Hydrogen, max_fuel_rate * thruster_util /* could == 0? */) and
+	 consumeResourceMass(ResourceType::LOX,      max_fuel_rate * thruster_util))
+	{
+	  ApplyCentralForceForward(thruster, GetMaxThrust() * thruster_util);
+	}
     }
   }
   void ApplyRotXPlus() {
@@ -527,17 +650,19 @@ inline COLOUR GetColour(float v, float vmin, float vmax)
       v = vmax;
    dv = vmax - vmin;
 
+   const int factor = 3;
+
    if (v < (vmin + 0.25 * dv)) {
       c.r = 0;
-      c.g = 4 * (v - vmin) / dv;
+      c.g = factor * (v - vmin) / dv;
    } else if (v < (vmin + 0.5 * dv)) {
       c.r = 0;
-      c.b = 1 + 4 * (vmin + 0.25 * dv - v) / dv;
+      c.b = 1 + factor * (vmin + 0.25 * dv - v) / dv;
    } else if (v < (vmin + 0.75 * dv)) {
-      c.r = 4 * (v - vmin - 0.5 * dv) / dv;
+      c.r = factor * (v - vmin - 0.5 * dv) / dv;
       c.b = 0;
    } else {
-      c.g = 1 + 4 * (vmin + 0.75 * dv - v) / dv;
+      c.g = 1 + 2 * (vmin + 0.75 * dv - v) / dv;
       c.b = 0;
    }
 
@@ -561,9 +686,18 @@ Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1,
       glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i/(float)(size-1), j/(float)(size-1));
       float height = body->GetTerrainHeightUnscaled(sphere_p);
 
+      // add some color noise
+      float color_noise = noise3d(sphere_p * radius, 1, 0.60) * 100;
+
+      COLOUR c = GetColour(height + ((color_noise / 2) - color_noise), radius - 1, radius + 3000);
+
       // set the color based on unscaled noise for better gradient
-      COLOUR c = GetColour(height, radius - 1, radius + 3000);
       glm::vec3 color = glm::vec3(c.r, c.g, c.b);
+      float brightness = (c.r + c.g + c.b) / 6;
+
+      color = float(0.5) * color + glm::vec3(brightness,
+					     brightness,
+					     brightness);
 
       if(height <= radius) {
       	color = blue;
@@ -683,10 +817,10 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color)
 
   Vertex vertices[] = {
     // bottom
-    Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(-2, -2, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(-2, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(2, 2, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1), color),
+    Vertex(glm::vec3(2, -2, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1), color),
 
     // top
     Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(0, 0, 1), color),
@@ -695,25 +829,25 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color)
     Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 1), glm::vec3(0, 0, 1), color),
 
     // sides
-    Vertex(glm::vec3(-1, -1, -1), glm::vec2(0, 1), glm::vec3(0, -1, 0), color),
+    Vertex(glm::vec3(-2, -2, -1), glm::vec2(0, 1), glm::vec3(0, -1, 0), color),
     Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 1), glm::vec3(0, -1, 0), color),
     Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(0, -1, 0), color),
-    Vertex(glm::vec3(1, -1, -1), glm::vec2(0, 0), glm::vec3(0, -1, 0), color),
+    Vertex(glm::vec3(2, -2, -1), glm::vec2(0, 0), glm::vec3(0, -1, 0), color),
 
-    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 1), glm::vec3(0, 1, 0), color),
+    Vertex(glm::vec3(-2, 2, -1), glm::vec2(0, 1), glm::vec3(0, 1, 0), color),
     Vertex(glm::vec3(-1, 1, 1), glm::vec2(1, 1), glm::vec3(0, 1, 0), color),
     Vertex(glm::vec3(1, 1, 1), glm::vec2(1, 0), glm::vec3(0, 1, 0), color),
-    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 0), glm::vec3(0, 1, 0), color),
+    Vertex(glm::vec3(2, 2, -1), glm::vec2(0, 0), glm::vec3(0, 1, 0), color),
 
-    Vertex(glm::vec3(-1, -1, -1), glm::vec2(1, 1), glm::vec3(-1, 0, 0), color),
+    Vertex(glm::vec3(-2, -2, -1), glm::vec2(1, 1), glm::vec3(-1, 0, 0), color),
     Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(-1, 0, 0), color),
     Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(-1, 0, 0), color),
-    Vertex(glm::vec3(-1, 1, -1), glm::vec2(0, 1), glm::vec3(-1, 0, 0), color),
+    Vertex(glm::vec3(-2, 2, -1), glm::vec2(0, 1), glm::vec3(-1, 0, 0), color),
 
-    Vertex(glm::vec3(1, -1, -1), glm::vec2(1, 1), glm::vec3(1, 0, 0), color),
+    Vertex(glm::vec3(2, -2, -1), glm::vec2(1, 1), glm::vec3(1, 0, 0), color),
     Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(1, 0, 0), color),
     Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 0), glm::vec3(1, 0, 0), color),
-    Vertex(glm::vec3(1, 1, -1), glm::vec2(0, 1), glm::vec3(1, 0, 0), color),
+    Vertex(glm::vec3(2, 2, -1), glm::vec2(0, 1), glm::vec3(1, 0, 0), color),
   };
 
   int vertex_count = sizeof(vertices)/sizeof(vertices[0]);
@@ -723,6 +857,15 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color)
 				      vertices[i].GetPos()->z * size_z);
     *vertices[i].GetNormal() = - *vertices[i].GetNormal();
   }
+
+  // // fix normals for slanted sides
+  // for(int i = 2; i < 6; i++) {
+  //   glm::vec3 normal = -glm::cross(*vertices[i*4].GetPos(), *vertices[i*4+2].GetPos());
+  //   *vertices[i*4].GetNormal() = normal;
+  //   *vertices[i*4+1].GetNormal() = normal;
+  //   *vertices[i*4+2].GetNormal() = normal;
+  //   *vertices[i*4+3].GetNormal() = normal;
+  // }
 
   unsigned int indices[] = {
     0, 1, 2,
@@ -774,6 +917,7 @@ int main(int argc, char **argv)
 
   TerrainBody *moon = new TerrainBody;
   moon->shader = shader;
+  moon->name = "Eerbon";
   moon->Create(600000, 5.2915793e22);
 
   // Mesh *trig_mesh = create_triangle_mesh(1, 1);
@@ -792,7 +936,7 @@ int main(int argc, char **argv)
     // space_port_mesh->FromFile("test.obj");
 
     Mesh *space_port_mesh = create_box_mesh(10, 10, 10, pink);
-    Mesh *capsule_mesh = create_box_mesh(0.1, 0.1, 1.0, blue);
+    Mesh *capsule_mesh = create_box_mesh(0.25, 0.25, 1.0, blue);
     Mesh *wheel_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
     Mesh *engine_mesh = create_box_mesh(1.0, 1.0, 1.0, red);
 
@@ -812,19 +956,19 @@ int main(int argc, char **argv)
     start = ((ground_alt + 0.0f) * p);
 
     space_port =
-      create_body(space_port_model, start.x-3, start.y-3, start.z + 30, 0, false);
+      create_body(space_port_model, start.x-3, start.y-3, start.z + 10, 0, false);
 
-    double ship_height = 50;
+    double ship_height = 19;
 
     // top
     Body *capsule =
       create_body(capsule_model, start.x, start.y, start.z + ship_height + 7, 0.5, true);
     // middle
     Body *reaction_wheel =
-      create_body(wheel_model, start.x, start.y, start.z + ship_height + 5, 1, true);
+      create_body(wheel_model, start.x, start.y, start.z + ship_height + 5, 1.0, true);
     // bottom
     Body *thruster =
-      create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3, true);
+      create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3.0, true);
 
     ship->parts = { capsule,
 		    reaction_wheel,
@@ -839,6 +983,17 @@ int main(int argc, char **argv)
     NeverSleep(ship->controller);
     GlueTogether(reaction_wheel, thruster);
     GlueTogether(capsule, reaction_wheel);
+
+    ship->partResources.resize(3);
+
+    ship->partResources[2].capacity[(int)ResourceType::Hydrogen] = 1.0;
+    ship->partResources[2].capacity[(int)ResourceType::LOX] = 1.0;
+    ship->partResources[2].current[(int)ResourceType::Hydrogen] = 1.0;
+    ship->partResources[2].current[(int)ResourceType::LOX] = 1.0;
+
+    ship->partTypes = { VesselPartType::Capsule,
+			VesselPartType::ReactionWheel,
+			VesselPartType::Engine };
   }
 
   /* camera init */
@@ -860,11 +1015,15 @@ int main(int argc, char **argv)
   int time_accel = 0;
   int cam_speed = 1;
   bool orbitInfoWindow = true;
-  bool shipPartsWindow = true;
+  bool shipInfoWindow = true;
   bool gameInfoWindow = true;
-  bool controlsWindow = true;
-  bool autoPilotWindow = true;
+  bool controlsWindow = false;
+  bool autoPilotWindow = false;
   bool surfaceInfoWindow = true;
+  bool resourcesWindow = true;
+  bool targetInfoWindow = false;
+  bool topHUDWindows = true;
+  bool shipDetailWindow = true;
 
   /* main loop timing from
      http://gafferongames.com/game-physics/fix-your-timestep/
@@ -1087,6 +1246,13 @@ int main(int argc, char **argv)
 	/
        z
        */
+      glm::dvec3 getRelAxis_(Body *body, int n);
+      glm::dvec3 facing = getRelAxis_(ship->controller, 2);
+      glm::dvec3 up = getRelAxis_(ship->controller, 1);
+      double roll = glm::angle(glm::normalize(glm::cross(pos, vel)), glm::normalize(up));
+      double pitch = 0;
+      double yaw = 0;
+
       const double longitude = glm::orientedAngle(glm::dvec3(0, 0, 1),
 						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),
 						 glm::dvec3(0, 1, 0)
@@ -1105,46 +1271,52 @@ int main(int argc, char **argv)
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
       }
 
-      ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
-      ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
-      ImGui::Begin("Top Middle Window", NULL, flags);
-      ImGui::PushFont(bigger);
-      int terrain_height = (int)(distance - moon->GetTerrainHeight(glm::normalize(pos)));
-      ImGui::Text("%08dm", terrain_height);
-      ImGui::PopFont();
-      ImGui::End();
-      ImGui::Begin("Bottom Middle Window", NULL, flags);
-      ImGui::PushFont(bigger);
-      ImGui::Text("%06dm/s", (int)speed);
-      ImGui::PopFont();
-      ImGui::End();
-
-      if(e < 0) {
-	ImGui::Begin("Elliptic Orbit Window", NULL, flags);
+      if(topHUDWindows == true) {
+	ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
+	ImGui::Begin("Top Middle Window", NULL, flags);
 	ImGui::PushFont(bigger);
-	ImGui::Text("Elliptic Orbit");
+	int terrain_height = (int)(distance - moon->GetTerrainHeight(glm::normalize(pos)));
+	ImGui::Text("%08dm", terrain_height);
 	ImGui::PopFont();
 	ImGui::End();
-      }
-      else {
-	ImGui::Begin("Hyperbolic Orbit Window", NULL, flags);
+	ImGui::Begin("Bottom Middle Window", NULL, flags);
 	ImGui::PushFont(bigger);
-	ImGui::Text("Hyperbolic Orbit");
+	ImGui::Text("%06dm/s", (int)speed);
 	ImGui::PopFont();
 	ImGui::End();
+
+	if(e < 0) {
+	  ImGui::Begin("Elliptic Orbit Window", NULL, flags);
+	  ImGui::PushFont(bigger);
+	  ImGui::Text("Elliptic Orbit");
+	  ImGui::PopFont();
+	  ImGui::End();
+	}
+	else {
+	  ImGui::Begin("Hyperbolic Orbit Window", NULL, flags);
+	  ImGui::PushFont(bigger);
+	  ImGui::Text("Hyperbolic Orbit");
+	  ImGui::PopFont();
+	  ImGui::End();
+	}
+	ImGui::PopStyleColor();
       }
 
-      ImGui::PopStyleColor();
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15, 0.15, 0.15, 1.0));
 
       ImGui::Begin("Open Space Program");
       ImGui::Spacing();
+      ImGui::Checkbox("Resources", &resourcesWindow);
       ImGui::Checkbox("Orbit Info", &orbitInfoWindow);
       ImGui::Checkbox("Surface Info", &surfaceInfoWindow);
-      ImGui::Checkbox("Vessel Info", &shipPartsWindow);
+      ImGui::Checkbox("Vessel Info", &shipInfoWindow);
+      ImGui::Checkbox("Vessel Parts", &shipDetailWindow);
+      ImGui::Checkbox("Target Info", &targetInfoWindow);
       ImGui::Checkbox("DUMB-ASS", &autoPilotWindow);
       ImGui::Checkbox("Controls Help", &controlsWindow);
       ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
+      ImGui::Checkbox("Top HUD", &topHUDWindows);
       ImGui::End();
 
       if(gameInfoWindow == true) {
@@ -1161,14 +1333,15 @@ int main(int argc, char **argv)
 
       if(orbitInfoWindow == true) {
 	ImGui::Begin("ORBITAL");
+	ImGui::Text("r: %.1fm", distance);
  	ImGui::Text("ApA: %.1fm", ApA);
 	ImGui::Text("ApT: %.1f", ApT);
  	ImGui::Text("PeA: %.1fm", PeA);
 	ImGui::Text("PeT: %.1f", PeT);
-	ImGui::Text("T: %f", T);
-	ImGui::Text("Inc: %frad", inclination);
+	ImGui::Text("T: %.1f", T);
+	ImGui::Text("Inc: %.1f", inclination);
 	ImGui::Text("Ecc: %f ", ecc);
-	ImGui::Text("SMa: %fm", SMa);
+	ImGui::Text("SMa: %.1fm", SMa);
 	ImGui::Text("Angle to Prograde:");
 	ImGui::Text("Angle to Retrograde:");
 	ImGui::Separator();
@@ -1183,22 +1356,52 @@ int main(int argc, char **argv)
 
       if(surfaceInfoWindow == true) {
 	ImGui::Begin("SURFACE");
+	ImGui::Text("Altitude (True): %.1fm", distance - moon->GetTerrainHeight(glm::normalize(pos)));
+	ImGui::Text("Altitude (ASL): %.1fm", distance - moon->radius);
 	ImGui::Text("V speed: %.2fm/s", ver_speed);
 	ImGui::Text("H speed: %.2fm/s", hor_speed);
 	ImGui::Text("Latitude: %.4f", latitude * 180/M_PI);
 	ImGui::Text("Longitude: %.4f", longitude * 180/M_PI);
-	ImGui::Text("Pos (%.3fkm): %0.f %0.f %0.f", distance / 1000, pos.x, pos.y, pos.z);
-	ImGui::Text("Vel (%.3fm/s): %0.f %0.f %0.f", speed, vel.x, vel.y, vel.z);
+	ImGui::Text("Pos: %.3fkm", distance / 1000);
+	ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
+	ImGui::Text("Vel: %.3fm/s", speed);
+	ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
+	ImGui::Text("Roll: %.1f", roll);
+	ImGui::Text("Pitch: %.1f", yaw);
+	ImGui::Text("Yaw: %.1f", pitch);
 	ImGui::End();
       }
 
-      if(shipPartsWindow == true) {
+      if(shipInfoWindow == true) {
 	ImGui::Begin("VESSEL");
-	ImGui::Text("Thrust: %d%%", (int)(ship->thruster_util * 100));
-	float TWR = (100 * ship->thruster_util) / (4.5 * 10);
-	ImGui::Text("TWR: %.2f", TWR);
+	ImGui::Text("Status: Orbiting %s", moon->name);
+	ImGui::Text("Mass: %.3fkg", ship->getMass());
+	ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
+	ImGui::Text("Thrust Util: %.0f%%", ship->thruster_util * 100);
+	ImGui::Text("Thrust: %.2fN", ship->getThrust());
+	ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
+	ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
 	for(auto&& part : ship->parts) {
 	  // TODO
+	}
+	ImGui::End();
+      }
+      if(shipDetailWindow == true) {
+	ImGui::Begin("SHIP PARTS");
+	int i = 0;
+	for(auto&& part : ship->parts) {
+	  ImGui::Text("Part #%d", i);
+	  ImGui::Separator();
+	  ImGui::Text("Name: %s", VesselPartTypeStr(ship->partTypes[i]));
+	  ImGui::Text("Mass: %.3fkg", part->mass);
+	  ImGui::Text("Hydrogen: %.3fkg/%.3fkg",
+		      ship->partResources[i].current[(int)ResourceType::Hydrogen],
+		      ship->partResources[i].capacity[(int)ResourceType::Hydrogen]);
+	  ImGui::Text("LOX: %.3fkg/%.3fkg",
+		      ship->partResources[i].current[(int)ResourceType::LOX],
+		      ship->partResources[i].capacity[(int)ResourceType::LOX]);
+	  ImGui::Spacing();
+	  i++;
 	}
 	ImGui::End();
       }
@@ -1236,6 +1439,25 @@ int main(int argc, char **argv)
 	ImGui::Button("Radial-out");
 	ImGui::Button("Normal");
 	ImGui::Button("Anti-normal");
+	ImGui::End();
+      }
+
+      if(resourcesWindow == true) {
+	ImGui::Begin("RESOURCES");
+	float hydrogen_frac =
+	  ship->partResources[2].current[(int)ResourceType::Hydrogen] /
+	  ship->partResources[2].capacity[(int)ResourceType::Hydrogen];
+	float lox_frac =
+	  ship->partResources[2].current[(int)ResourceType::LOX] /
+	  ship->partResources[2].capacity[(int)ResourceType::LOX];
+	
+	ImGui::ProgressBar(hydrogen_frac, ImVec2(-1, 0), "Hydrogen");
+	ImGui::ProgressBar(lox_frac, ImVec2(-1, 0), "LOX");
+	ImGui::ProgressBar(0.13, ImVec2(-1, 0), "Hydrazine");
+	ImGui::ProgressBar(0.45, ImVec2(-1, 0), "Electric charge");
+	ImGui::ProgressBar(0.75, ImVec2(-1, 0), "Oxygen");
+	ImGui::ProgressBar(0.83, ImVec2(-1, 0), "Water");
+	ImGui::ProgressBar(0.94, ImVec2(-1, 0), "Food");
 	ImGui::End();
       }
 

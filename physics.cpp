@@ -169,21 +169,13 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
 {
     btTransform startTransform;
     startTransform.setIdentity();
-    btVector3 localInertia(0.0f, 0.0f, 0.0f);
-
-    startTransform.setOrigin(btVector3(pos.x, pos.y, pos.z));
-    btQuaternion euler_rot(rot.x, rot.y, rot.z);
-    startTransform.setRotation(euler_rot);
-
-    btDefaultMotionState* myMotionState =
-        new btDefaultMotionState(startTransform);
 
     btCollisionShape *shape;
     if(debug_mesh == false) {
         Mesh *m = body->model->mesh;
 
-	printf("m->num_indices: %d\n", m->num_indices);
-	printf("m->num_vertices: %d\n", m->num_vertices);
+	printf("PhysicsEngine::RegisterObject(): m->num_indices: %d\n", m->num_indices);
+	printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
 	assert(m->num_indices > 3);
 	assert(m->num_vertices > 3);
 
@@ -198,11 +190,22 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
         btBvhTriangleMeshShape *mesh_shape
             = new btBvhTriangleMeshShape(mesh_interface, true, true);
 
+	mesh_shape->setMargin(0.5);
+
         shape = mesh_shape;
     }
     else {
         shape = debugShape;
     }
+
+    startTransform.setOrigin(btVector3(pos.x, pos.y, pos.z));
+    btQuaternion euler_rot(rot.x, rot.y, rot.z);
+    startTransform.setRotation(euler_rot);
+
+    btDefaultMotionState* myMotionState =
+        new btDefaultMotionState(startTransform);
+
+    btVector3 localInertia(1.0f, 1.0f, 1.0f);
 
     if(body->mass != 0.0f) {
         shape->calculateLocalInertia(body->mass, localInertia);
@@ -255,6 +258,10 @@ void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag) {
 
 void ApplyCentralForce(Body *body, glm::dvec3 force) {
     getRigidBody(body)->applyCentralForce(btVector3(force.x, force.y, force.z));
+}
+
+void SetMass(Body *body, double newMass) {
+  getRigidBody(body)->setMassProps(newMass, btVector3(1, 1, 1) /* fixme */);
 }
 
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {

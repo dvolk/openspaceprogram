@@ -10,6 +10,7 @@ struct Body {
     Model *model;
 
     // color of the body
+  // TODO remove this
     glm::vec4 color;
 
     // bullet object, stores all the physical body information
