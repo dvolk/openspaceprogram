@@ -370,8 +370,43 @@ public:
   Body *controller;
   std::vector<Body *> m_thrusters;
   std::vector<Body *> m_reaction_wheels;
+  std::vector<void *> constraints;
 
   float thruster_util = 0.5;
+
+  void setRoot(Body *part) {
+    parts = { part };
+  }
+  
+  void attachDown(Body *part) {
+    void *constraint = GlueTogether(parts.back(), part);
+    parts.push_back(part);
+    constraints.push_back(constraint);
+  }
+
+  void Detach() {
+    void Detach(void *constraint);
+    Detach(constraints.back());
+  }
+
+  void init() {
+    setVelocity(glm::dvec3(2300, 0, 0));
+    partResources.resize(parts.size());
+    controller = parts.back();
+    NeverSleep(controller);
+    for(int i = 0; i < parts.size(); i++) {
+      if(partTypes[i] == VesselPartType::ReactionWheel) {
+	m_reaction_wheels.push_back(parts[i]);
+      }
+      else if(partTypes[i] == VesselPartType::Engine) {
+	partResources[i].capacity[(int)ResourceType::Hydrogen] = 1.0;
+	partResources[i].capacity[(int)ResourceType::LOX] = 1.0;
+	partResources[i].current[(int)ResourceType::Hydrogen] = 1.0;
+	partResources[i].current[(int)ResourceType::LOX] = 1.0;
+	m_thrusters.push_back(parts[i]);
+      }
+    }
+  }
 
   /* returns true if fuel was consumed*/
   bool consumeResourceMass(enum class ResourceType type, float amt /* kg */) {
@@ -401,7 +436,7 @@ public:
   }
 
   float getDeltaV() {
-    float exaust_vel = 8123; /* m/s */
+    float exaust_vel = 10123; /* m/s */
     float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }) / 2.0; /* kg */
     return exaust_vel * log(getMass() / (getMass() - remaining_fuel));
   }
@@ -495,7 +530,7 @@ public:
   }
 
   float GetMaxThrust() {
-    float exaust_velocity = 8123; /* m/s */
+    float exaust_velocity = 10123; /* m/s */
     return GetMaxFuelRate() * exaust_velocity;
   }
 
@@ -690,6 +725,7 @@ Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1,
       float color_noise = noise3d(sphere_p * radius, 1, 0.60) * 100;
 
       COLOUR c = GetColour(height + ((color_noise / 2) - color_noise), radius - 1, radius + 3000);
+      
 
       // set the color based on unscaled noise for better gradient
       glm::vec3 color = glm::vec3(c.r, c.g, c.b);
@@ -894,7 +930,6 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color)
   return box_mesh;
 }
 
-
 int main(int argc, char **argv)
 {
   Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
@@ -958,7 +993,7 @@ int main(int argc, char **argv)
     space_port =
       create_body(space_port_model, start.x-3, start.y-3, start.z + 10, 0, false);
 
-    double ship_height = 19;
+    double ship_height = 190000;
 
     // top
     Body *capsule =
@@ -970,30 +1005,16 @@ int main(int argc, char **argv)
     Body *thruster =
       create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3.0, true);
 
-    ship->parts = { capsule,
-		    reaction_wheel,
-		    thruster };
-
-    ship->controller = capsule;
+    ship->setRoot(capsule);
+    ship->attachDown(reaction_wheel);
+    ship->attachDown(thruster);
     ship->m_parent = moon;
-    ship->m_thrusters = { thruster };
-    ship->m_reaction_wheels = { reaction_wheel };
-    ship->setVelocity(glm::dvec3(0, 0, 0));
-    printf("%f\n", ship->controller->mass);
-    NeverSleep(ship->controller);
-    GlueTogether(reaction_wheel, thruster);
-    GlueTogether(capsule, reaction_wheel);
-
-    ship->partResources.resize(3);
-
-    ship->partResources[2].capacity[(int)ResourceType::Hydrogen] = 1.0;
-    ship->partResources[2].capacity[(int)ResourceType::LOX] = 1.0;
-    ship->partResources[2].current[(int)ResourceType::Hydrogen] = 1.0;
-    ship->partResources[2].current[(int)ResourceType::LOX] = 1.0;
-
+    
     ship->partTypes = { VesselPartType::Capsule,
 			VesselPartType::ReactionWheel,
 			VesselPartType::Engine };
+
+    ship->init();
   }
 
   /* camera init */
@@ -1015,6 +1036,7 @@ int main(int argc, char **argv)
   int time_accel = 0;
   int cam_speed = 1;
   bool orbitInfoWindow = true;
+  bool orbitMapWindow = true;
   bool shipInfoWindow = true;
   bool gameInfoWindow = true;
   bool controlsWindow = false;
@@ -1072,6 +1094,9 @@ int main(int argc, char **argv)
 	  if(cam_speed > 1) {
 	    cam_speed /= 10;
 	  }
+	}
+	if(ev.key.keysym.sym == SDLK_t) {
+	  ship->Detach();
 	}
 	if(ev.key.keysym.sym == SDLK_c) {
 	  follow_ship = not follow_ship;
@@ -1212,23 +1237,37 @@ int main(int argc, char **argv)
 
       // raan = acos(n.x / norm(n))
 
-      const double raan = acos(node_vector.x / glm::length(node_vector));
+      double raan = acos(node_vector.x / glm::length(node_vector));
+      if(node_vector.y < 0) {
+	raan = 2 * M_PI - raan;
+      }
 
       // arg_pe = acos(dot(n, ev) / (norm(n) * norm(ev)))
 
-      const double arg_pe = acos(
-				 glm::dot(node_vector, eccentricity_vector) /
-				 (glm::length(node_vector) * glm::length(eccentricity_vector))
-				 );
+      double arg_pe = acos( glm::dot(node_vector, eccentricity_vector) /
+				 (glm::length(node_vector) * glm::length(eccentricity_vector)) );
+      if(eccentricity_vector.z < 0) {
+	arg_pe = 2 * M_PI - arg_pe;
+      }
 
       glm::dvec3 GetAngVelocity_(Body *b);
       const glm::dvec3 ang_vel_ = GetAngVelocity(ship->m_reaction_wheels.front());
 
       const glm::dvec3 AoA = glm::dvec3();
 
-      const double TrueAnomaly = acos(glm::dot(eccentricity_vector, pos) / (glm::length(eccentricity_vector) * glm::length(pos)));
-      double EccentricAnomaly = (sqrt(1 - ecc*ecc) * sin(TrueAnomaly)) / (ecc + cos(TrueAnomaly));
-      if(EccentricAnomaly < 0) { EccentricAnomaly += 2 * M_PI; }
+      double TrueAnomaly = acos(glm::dot(eccentricity_vector, pos) / (glm::length(eccentricity_vector) * glm::length(pos)));
+      if(glm::dot(pos, vel) < 0) {
+	TrueAnomaly = 2 * M_PI - TrueAnomaly;
+      }
+
+      // damn wikipedia
+      // double EccentricAnomaly = atan((sqrt(1 - ecc*ecc) * sin(TrueAnomaly)) / (ecc + cos(TrueAnomaly)));
+      // http://www.bogan.ca/orbits/kepler/e_anomly.html
+      double EccentricAnomaly = acos((((1 - ecc*ecc)*cos(TrueAnomaly)) / (1 + ecc * cos(TrueAnomaly))) + ecc);
+      if(TrueAnomaly > M_PI) {
+      	EccentricAnomaly = 2 * M_PI - EccentricAnomaly;
+      }
+
       const double MeanAnomaly = EccentricAnomaly - ecc * sin(EccentricAnomaly);
       const double PeT = sqrt((SMa * SMa * SMa) / (G*M)) * MeanAnomaly; // TODO units?
       const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (G * M));
@@ -1309,6 +1348,7 @@ int main(int argc, char **argv)
       ImGui::Spacing();
       ImGui::Checkbox("Resources", &resourcesWindow);
       ImGui::Checkbox("Orbit Info", &orbitInfoWindow);
+      ImGui::Checkbox("Orbit Map", &orbitMapWindow);
       ImGui::Checkbox("Surface Info", &surfaceInfoWindow);
       ImGui::Checkbox("Vessel Info", &shipInfoWindow);
       ImGui::Checkbox("Vessel Parts", &shipDetailWindow);
@@ -1458,6 +1498,74 @@ int main(int argc, char **argv)
 	ImGui::ProgressBar(0.75, ImVec2(-1, 0), "Oxygen");
 	ImGui::ProgressBar(0.83, ImVec2(-1, 0), "Water");
 	ImGui::ProgressBar(0.94, ImVec2(-1, 0), "Food");
+	ImGui::End();
+      }
+
+      if(orbitMapWindow == true) {
+	ImVec2 pts[26];
+	// ImVec2 planet[26];
+	// ImGui::Text("%.1f %.1f", center.x, center.y);
+	int i = 0;
+	ImU32 color = ImGui::GetColorU32(ImVec4(255,255,255,255));
+	ImU32 color2 = ImGui::GetColorU32(ImVec4(255,0,0,255));
+	ImGui::Begin("Orbital map");
+	const ImVec2 p = ImGui::GetCursorScreenPos();
+	double E = 0;
+	static float div = 6000.0;
+	for(i = 0; i < 26; i++) {
+	  double r = SMa * (1 - ecc * cos(E));
+	  // ImGui::Text("%.0f", r);
+	  double argX = cos(E) - ecc;
+	  double argY = sqrt(1 - (ecc * ecc)) * sin(E);
+	  double phi = atan2(argY, argX);
+	  pts[i].x = 200 + p.x + (r / div * cos(phi));
+	  pts[i].y = 200 + p.y + (r / div * sin(phi));
+	  // planet[i].x = 200 + p.x + (600000 / div * cos(phi));
+	  // planet[i].y = 200 + p.y + (600000 / div * sin(phi));
+	  // double t = sqrt((SMa * SMa * SMa / (G * M))) * (E - ecc * sin(E));
+	  // ImGui::Text("E=%.2f r=%.0f, phi=%.1f, t=%.1f", E, r, (phi + (E > M_PI ? 0 : 2 * M_PI)) * (180/M_PI), t);
+	  E += 2 * M_PI / 25;
+	}
+
+	ImVec2 periapsis = {};
+
+	double argX = cos(EccentricAnomaly) - ecc;
+	double argY = sqrt(1 - (ecc * ecc)) * sin(EccentricAnomaly);
+	double phi = atan2(argY, argX);
+
+	ImVec2 ship = { 200 + p.x + distance / div * cos(phi),
+			200 + p.y + distance / div * sin(phi) };
+
+	ImVec2 raan_p = { 200 + p.x + 100 * cos(raan),
+			  200 + p.y + 100 * sin(raan) };
+
+	/* incorrect */
+	ImVec2 peri_p = { 200 + p.x + PeA / div * cos(arg_pe - M_PI / 2),
+			  200 + p.y + PeA / div * sin(arg_pe - M_PI / 2) };
+
+	ImVec2 apo_p = { 200 + p.x + ApA / div * cos(arg_pe + M_PI / 2),
+			  200 + p.y + ApA / div * sin(arg_pe + M_PI / 2) };
+
+	// auto whut = ;
+	// ImGui::GetWindowDrawList()->AddPolyline(&planet[0], 26, color2, false, 1, true);
+
+	// ImGui::Text("True anomaly: %.2f", TrueAnomaly);
+	// ImGui::Text("Eccentric anomaly: %.2f", EccentricAnomaly);
+
+	ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1, true);
+	ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2( 200 + p.x,
+						      200 + p.y ),
+					      100 / (div / 6000),
+					      color2, 26);
+	ImGui::GetWindowDrawList()->AddCircleFilled(ship, 5, color);
+	ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship, color);
+	// ImGui::GetWindowDrawList()->AddCircleFilled(raan_p, 5, color);
+	// ImGui::GetWindowDrawList()->AddCircleFilled(peri_p, 5, color);
+	// ImGui::GetWindowDrawList()->AddCircleFilled(apo_p, 5, color);
+	// ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
+
+      
+	ImGui::SliderFloat("Scale", &div, 6000, 60000, "");
 	ImGui::End();
       }
 

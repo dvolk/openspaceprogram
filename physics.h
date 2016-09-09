@@ -21,9 +21,10 @@ class PhysicsEngine {
                         glm::vec3 rot, bool planet);
     btRigidBody *AddTerrainCollision(Mesh *mesh);
     void RemoveTerrainCollision(btRigidBody *b);
-    void GlueTogether(Body *parent, Body *child);
+    void * GlueTogether(Body *parent, Body *child);
     void collisions(void);
     void Draw();
+    void Detach(void * constraint);
 
  private:
     btDefaultCollisionConfiguration *collisionConfiguration;
@@ -57,6 +58,6 @@ glm::dvec3 GetVelocity(Body *body);
 glm::dvec3 GetAngVelocity(Body *b);
 glm::dvec3 getCOM(Body *body);
 
-void GlueTogether(Body *parent, Body *child);
+void * GlueTogether(Body *parent, Body *child);
 
 void debug_draw(void);

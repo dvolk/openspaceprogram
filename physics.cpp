@@ -224,7 +224,9 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
 
 btRigidBody* getRigidBody(Body *b);
 
-void PhysicsEngine::GlueTogether(Body *parent, Body *child) {
+
+
+void *PhysicsEngine::GlueTogether(Body *parent, Body *child) {
     btRigidBody *btParent = getRigidBody(parent);
     btRigidBody *btChild = getRigidBody(child);
 
@@ -244,6 +246,16 @@ void PhysicsEngine::GlueTogether(Body *parent, Body *child) {
     constraint->setAngularUpperLimit(btVector3(0, 0, 0));
 
     dynamicsWorld->addConstraint(constraint, true);
+
+    return (void *)constraint;
+}
+
+void Detach(void *constraint) {
+  physics->Detach(constraint);
+}
+
+void PhysicsEngine::Detach(void *constraint) {
+  dynamicsWorld->removeConstraint((btTypedConstraint *)constraint);
 }
 
 void RegisterPhysicsBody(Body *body,
@@ -343,8 +355,8 @@ void ApplyTorque(Body *body, glm::dvec3 dir, double mag) {
     getRigidBody(body)->applyTorque(mag * ndir);
 }
 
-void GlueTogether(Body *parent, Body *child) {
-    physics->GlueTogether(parent, child);
+void *GlueTogether(Body *parent, Body *child) {
+    return physics->GlueTogether(parent, child);
 }
 
 void PhysicsEngine::collisions() {
