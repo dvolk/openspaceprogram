@@ -57,6 +57,7 @@
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/projection.hpp>
 #include <glm/gtx/vector_angle.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
@@ -119,8 +120,8 @@ struct GeoPatch {
   ~GeoPatch();
 
   void Subdivide(void);
-  void Draw(const Camera& camera);
-  void Update(const Camera& camera);
+  void Draw(const Camera& camera, const glm::dmat4& transform);
+  void Update(const Camera& camera, const glm::dmat4& transform);
 
   int CountChildren() {
     int ret = 1;
@@ -173,22 +174,26 @@ void GeoPatch::Subdivide(void) {
   }
 }
 
-void GeoPatch::Draw(const Camera& camera) {
+void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform) {
   if(kids[0] == NULL) {
     // patch isn't subdivided
     glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
-    glm::dmat4 id = glm::dmat4();
+    // glm::dmat4 id = glm::dmat4();
     model->shader->Bind();
-    model->shader->Update(id, color, camera);
+    model->shader->Update(transform, color, camera);
     model->mesh->Draw();
   }
   else {
-    kids[0]->Draw(camera);
-    kids[1]->Draw(camera);
-    kids[2]->Draw(camera);
-    kids[3]->Draw(camera);
+    kids[0]->Draw(camera, transform);
+    kids[1]->Draw(camera, transform);
+    kids[2]->Draw(camera, transform);
+    kids[3]->Draw(camera, transform);
   }
 }
+
+typedef struct {
+    float r, g, b;
+} COLOUR;
 
 struct TerrainBody {
   GeoPatch *patches[6];
@@ -196,7 +201,15 @@ struct TerrainBody {
   float radius;
   float mass;
   const char *name;
+  double seed = 1;
+  bool has_sea;
+  int power_scaler;
+  glm::dmat4 transform;
+  bool moves = false;
 
+  COLOUR (*colour_func)(float v, float vmin, float vmax);
+
+  Mesh *create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
   float GetTerrainHeight(const glm::vec3& p);
   float GetTerrainHeightUnscaled(const glm::vec3& p);
   float ScaleHeightNoise(float noise);
@@ -229,16 +242,47 @@ struct TerrainBody {
     }
   }
 
-  void Draw(const Camera& camera) {
+  void Draw(Camera camera) {
+    ImGui::Begin("Planets");
+
+    glm::dmat4 draw_transform = transform;
+    // glm::dmat4 * view = camera.GetView_();
+
+    glm::dvec3 cam_pos = camera.GetPos();
+    double cam_dist = glm::length(cam_pos - glm::dvec3(transform[3]));
+    ImGui::Text("%s distance: %.0f", name, cam_dist);
+
+    // if(cam_dist > 2e6) {
+    //   glm::dvec3 scale;
+    //   glm::dquat rotation;
+    //   glm::dvec3 translation;
+    //   glm::dvec3 skew;
+    //   glm::dvec4 perspective;
+    //   glm::decompose(transform, scale, rotation, translation, skew, perspective);
+
+    //   double scale_factor = cam_dist / 2e6;
+    //   ImGui::Text("%s scale_factor: %f", name, scale_factor);
+    //   draw_transform = glm::scale(transform, glm::dvec3(1.0/scale_factor, 1.0/scale_factor, 1.0/scale_factor));
+    //   draw_transform = glm::translate(draw_transform, 2e6 * glm::normalize(translation - cam_pos));
+
+    //   glm::dvec3 xyz = glm::dvec3(draw_transform[3]);
+    //   ImGui::Text("xyz %.0f, %.0f, %.0f", xyz.x,xyz.y,xyz.z);
+    // }
+
+
     for(auto&& patch : patches) {
       // patch isn't subdivided
-      patch->Draw(camera);
+      patch->Draw(camera, draw_transform);
     }
+    ImGui::End();
   }
 
   void Update(const Camera& camera) {
     for(auto&& patch : patches) {
-      patch->Update(camera);
+      patch->Update(camera, transform);
+    }
+    if(moves == true) {
+      transform = glm::rotate(transform, 1/60.0/10.0, glm::dvec3(0,1,0));
     }
   }
 
@@ -264,7 +308,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
   this->v2 = v2;
   this->v3 = v3;
   this->centroid = glm::normalize(v0 + v1 + v2 + v3);
-  Mesh *grid_mesh = create_grid_mesh(body, depth, body->radius, v0, v1, v2, v3);
+  Mesh *grid_mesh = body->create_grid_mesh(depth, v0, v1, v2, v3);
   model->FromData(grid_mesh, shader);
   if(depth > max_depth) {
       collision = addTerrainCollision(grid_mesh);
@@ -274,7 +318,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
   }
 }
 
-void GeoPatch::Update(const Camera& camera) {
+void GeoPatch::Update(const Camera& camera, const glm::dmat4& transform) {
   if(depth > max_depth)
     return;
 
@@ -309,10 +353,10 @@ void GeoPatch::Update(const Camera& camera) {
   }
 
   if(kids[0] != NULL) {
-    kids[0]->Update(camera);
-    kids[1]->Update(camera);
-    kids[2]->Update(camera);
-    kids[3]->Update(camera);
+    kids[0]->Update(camera, transform);
+    kids[1]->Update(camera, transform);
+    kids[2]->Update(camera, transform);
+    kids[3]->Update(camera, transform);
   }
 }
 
@@ -377,7 +421,7 @@ public:
   void setRoot(Body *part) {
     parts = { part };
   }
-  
+
   void attachDown(Body *part) {
     void *constraint = GlueTogether(parts.back(), part);
     parts.push_back(part);
@@ -440,7 +484,7 @@ public:
     float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }) / 2.0; /* kg */
     return exaust_vel * log(getMass() / (getMass() - remaining_fuel));
   }
-  
+
   /* TODO should be cached per frame */
   float getMass() {
     float r = 0;
@@ -644,7 +688,9 @@ float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
   float noise = noise3d(sphere_p, 12, 0.60) * 2500;
 
   if(noise < 0) {
-    noise = 0;
+    if(has_sea == true) {
+      noise = 0;
+    }
   }
 
   return radius + ScaleHeightNoise(noise);
@@ -655,7 +701,9 @@ float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) {
   float noise = noise3d(sphere_p, 12, 0.60) * 2500;
 
   if(noise < 0) {
-    noise = 0;
+    if(has_sea == true) {
+      noise = 0;
+    }
   }
 
   return radius + noise;
@@ -665,16 +713,16 @@ float TerrainBody::ScaleHeightNoise(float noise) {
   constexpr float max_height = 3000.0; // guess
 
   // rescale noise by altitude
-  noise *= pow(noise / max_height, 2);
+  noise *= pow(noise / max_height, power_scaler);
 
   return noise;
 }
 
-typedef struct {
-    float r, g, b;
-} COLOUR;
+inline COLOUR GetColourMoon(float v, float vmin, float vmax) {
+  return { 0.5, 0.5, 0.5 };
+}
 
-inline COLOUR GetColour(float v, float vmin, float vmax)
+inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 {
    COLOUR c = {1.0,1.0,1.0}; // white
    float dv;
@@ -704,7 +752,7 @@ inline COLOUR GetColour(float v, float vmin, float vmax)
    return(c);
 }
 
-Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
+Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
   int size = 25;
 
@@ -719,13 +767,13 @@ Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1,
   for (int i = 0; i < size; i++) {
     for (int j = 0; j < size; j++) {
       glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i/(float)(size-1), j/(float)(size-1));
-      float height = body->GetTerrainHeightUnscaled(sphere_p);
+      float height = GetTerrainHeightUnscaled(sphere_p);
 
       // add some color noise
       float color_noise = noise3d(sphere_p * radius, 1, 0.60) * 100;
 
-      COLOUR c = GetColour(height + ((color_noise / 2) - color_noise), radius - 1, radius + 3000);
-      
+      COLOUR c = (*colour_func)(height + ((color_noise / 2) - color_noise), radius - 1, radius + 3000);
+
 
       // set the color based on unscaled noise for better gradient
       glm::vec3 color = glm::vec3(c.r, c.g, c.b);
@@ -736,11 +784,13 @@ Mesh *create_grid_mesh(TerrainBody *body, int depth, float radius, glm::vec3 p1,
 					     brightness);
 
       if(height <= radius) {
-      	color = blue;
+      	if(has_sea == true) {
+      	  color = blue;
+      	}
       }
 
       // add back scaling
-      height = radius + body->ScaleHeightNoise(height - radius);
+      height = radius + ScaleHeightNoise(height - radius);
 
       glm::vec3 p = sphere_p * height;
 
@@ -950,10 +1000,27 @@ int main(int argc, char **argv)
 
   // earth->Create(6300000, 5.97237e24);
 
+  TerrainBody *earth = new TerrainBody;
+  earth->shader = shader;
+  earth->name = "Eerbon";
+  earth->colour_func = GetColourEerbon;
+  earth->seed = 1;
+  earth->has_sea = true;
+  earth->power_scaler = 3;
+  earth->transform = glm::dmat4();
+  earth->Create(600000, 5.2915793e22);
+
   TerrainBody *moon = new TerrainBody;
   moon->shader = shader;
-  moon->name = "Eerbon";
-  moon->Create(600000, 5.2915793e22);
+  moon->name = "Moon";
+  moon->colour_func = GetColourMoon;
+  moon->seed = 0.1;
+  moon->moves =true;
+  moon->has_sea = false;
+  moon->power_scaler = 1;
+  moon->transform = glm::translate(glm::dmat4(), glm::dvec3(6000000, 0, 0));
+  // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
+  moon->Create(200000, 9.7600236e20);
 
   // Mesh *trig_mesh = create_triangle_mesh(1, 1);
   // Model *trig_model = new Model;
@@ -987,7 +1054,7 @@ int main(int argc, char **argv)
 
     glm::dvec3 start(0);
     glm::dvec3 p = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-    double ground_alt = moon->GetTerrainHeight(p);
+    double ground_alt = earth->GetTerrainHeight(p);
     start = ((ground_alt + 0.0f) * p);
 
     space_port =
@@ -1008,8 +1075,8 @@ int main(int argc, char **argv)
     ship->setRoot(capsule);
     ship->attachDown(reaction_wheel);
     ship->attachDown(thruster);
-    ship->m_parent = moon;
-    
+    ship->m_parent = earth;
+
     ship->partTypes = { VesselPartType::Capsule,
 			VesselPartType::ReactionWheel,
 			VesselPartType::Engine };
@@ -1017,11 +1084,14 @@ int main(int argc, char **argv)
     ship->init();
   }
 
+  std::vector<TerrainBody *> planets = { earth, moon };
+  TerrainBody *focused_planet = earth;
+
   /* camera init */
   Camera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
 		(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
 		0.00001f, 10000000.0f);
-  moon->Update(camera);
+  focused_planet->Update(camera);
 
   bool running = true;
   bool redraw = false;
@@ -1119,7 +1189,17 @@ int main(int argc, char **argv)
 	  }
 	}
 	if(ev.key.keysym.sym == SDLK_t) {
-	  // toggle stabilization
+	  orbitInfoWindow = false;
+	  orbitMapWindow = false;
+	  shipInfoWindow = false;
+	  gameInfoWindow = false;
+	  controlsWindow = false;
+	  autoPilotWindow = false;
+	  surfaceInfoWindow = false;
+	  resourcesWindow = false;
+	  targetInfoWindow = false;
+	  topHUDWindows = false;
+	  shipDetailWindow = false;
 	}
       }
       if(ev.type == SDL_MOUSEMOTION) {
@@ -1192,6 +1272,7 @@ int main(int argc, char **argv)
       RENDERING
     */
     if(redraw == true) {
+      camera.ComputeView();
       ImGui_ImplSdl_NewFrame(display.get_display());
 
       if(poly_mode == true) {
@@ -1206,25 +1287,29 @@ int main(int argc, char **argv)
 	camera.Follow(com);
       }
 
-      moon->Update(camera);
-      moon->Draw(camera);
+      for(auto&& planet : planets) {
+	planet->Update(camera);
+	planet->Draw(camera);
+      }
       space_port->Draw(camera);
       ship->Draw(camera);
+
+      const double mu = 3.5316000e12;
 
       const glm::dvec3 pos = com;
       const glm::dvec3 vel = ship->GetVel();
       const double distance = glm::length(pos);
       const double speed = glm::length(vel);
       // https://en.wikipedia.org/wiki/Standard_gravitational_parameter
-      const double G = 6.674e-11;
-      const double M = moon->mass;
+      // const double G = 6.674e-11;
+      // const double M = moon->mass;
       // https://en.wikipedia.org/wiki/Characteristic_energy
-      const double e = (0.5 * pow(speed, 2)) - (G*M / distance);
-      const double SMa = 1.0 / (-((speed * speed) / (G*M)) + (2.0 / distance));
+      const double e = (0.5 * pow(speed, 2)) - (mu / distance);
+      const double SMa = 1.0 / (-((speed * speed) / (mu)) + (2.0 / distance));
       const double radial_vel = glm::dot(pos, vel) / distance;
 
       const glm::dvec3 ang_momentum = glm::cross(pos, vel);
-      const glm::dvec3 eccentricity_vector = glm::cross(vel, ang_momentum) / (G * M) - pos/distance;
+      const glm::dvec3 eccentricity_vector = glm::cross(vel, ang_momentum) / (mu) - pos/distance;
 
       const double ecc = glm::length(eccentricity_vector);
 
@@ -1269,13 +1354,13 @@ int main(int argc, char **argv)
       }
 
       const double MeanAnomaly = EccentricAnomaly - ecc * sin(EccentricAnomaly);
-      const double PeT = sqrt((SMa * SMa * SMa) / (G*M)) * MeanAnomaly; // TODO units?
-      const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (G * M));
-      const double ApT = T - PeT;
+      const double PeT = sqrt((SMa * SMa * SMa) / (mu)) * MeanAnomaly; // s
+      const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (mu)); // s
+      const double ApT = T - PeT; // s
 
-      const double ver_speed = glm::length(glm::proj(vel, pos));
+      const double ver_speed = glm::length(glm::proj(vel, pos)); // m/s
       glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, vel)); // hmm
-      const double hor_speed = glm::length(glm::proj(vel, surface_tangent));
+      const double hor_speed = glm::length(glm::proj(vel, surface_tangent)); // m/s
       /*  y
 	  |
           |
@@ -1315,7 +1400,7 @@ int main(int argc, char **argv)
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
 	ImGui::Begin("Top Middle Window", NULL, flags);
 	ImGui::PushFont(bigger);
-	int terrain_height = (int)(distance - moon->GetTerrainHeight(glm::normalize(pos)));
+	int terrain_height = (int)(distance - focused_planet->GetTerrainHeight(glm::normalize(pos)));
 	ImGui::Text("%08dm", terrain_height);
 	ImGui::PopFont();
 	ImGui::End();
@@ -1361,12 +1446,12 @@ int main(int argc, char **argv)
 
       if(gameInfoWindow == true) {
 	ImGui::Begin("Game Debug Info");
-	ImGui::Text("Patches: %d", moon->CountPatches());
+	ImGui::Text("Patches: %d", focused_planet->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
 	ImGui::Text("Camera altitude: %0.f",
-		    glm::length(camera.GetPos()) - moon->GetTerrainHeight(glm::normalize(camera.GetPos())));
-	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - moon->radius);
+		    glm::length(camera.GetPos()) - focused_planet->GetTerrainHeight(glm::normalize(camera.GetPos())));
+	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - focused_planet->radius);
 	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera.GetPos().x, camera.GetPos().y, camera.GetPos().z);
 	ImGui::End();
       }
@@ -1396,8 +1481,8 @@ int main(int argc, char **argv)
 
       if(surfaceInfoWindow == true) {
 	ImGui::Begin("SURFACE");
-	ImGui::Text("Altitude (True): %.1fm", distance - moon->GetTerrainHeight(glm::normalize(pos)));
-	ImGui::Text("Altitude (ASL): %.1fm", distance - moon->radius);
+	ImGui::Text("Altitude (True): %.1fm", distance - focused_planet->GetTerrainHeight(glm::normalize(pos)));
+	ImGui::Text("Altitude (ASL): %.1fm", distance - focused_planet->radius);
 	ImGui::Text("V speed: %.2fm/s", ver_speed);
 	ImGui::Text("H speed: %.2fm/s", hor_speed);
 	ImGui::Text("Latitude: %.4f", latitude * 180/M_PI);
@@ -1414,7 +1499,7 @@ int main(int argc, char **argv)
 
       if(shipInfoWindow == true) {
 	ImGui::Begin("VESSEL");
-	ImGui::Text("Status: Orbiting %s", moon->name);
+	ImGui::Text("Status: Orbiting %s", focused_planet->name);
 	ImGui::Text("Mass: %.3fkg", ship->getMass());
 	ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
 	ImGui::Text("Thrust Util: %.0f%%", ship->thruster_util * 100);
@@ -1490,7 +1575,7 @@ int main(int argc, char **argv)
 	float lox_frac =
 	  ship->partResources[2].current[(int)ResourceType::LOX] /
 	  ship->partResources[2].capacity[(int)ResourceType::LOX];
-	
+
 	ImGui::ProgressBar(hydrogen_frac, ImVec2(-1, 0), "Hydrogen");
 	ImGui::ProgressBar(lox_frac, ImVec2(-1, 0), "LOX");
 	ImGui::ProgressBar(0.13, ImVec2(-1, 0), "Hydrazine");
@@ -1559,13 +1644,15 @@ int main(int argc, char **argv)
 					      color2, 26);
 	ImGui::GetWindowDrawList()->AddCircleFilled(ship, 5, color);
 	ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship, color);
+
+	ImGui::GetWindowDrawList()->AddCircle(ImVec2(200 + p.x, 200 + p.y), 3 * 600000 / div, color2);
 	// ImGui::GetWindowDrawList()->AddCircleFilled(raan_p, 5, color);
 	// ImGui::GetWindowDrawList()->AddCircleFilled(peri_p, 5, color);
 	// ImGui::GetWindowDrawList()->AddCircleFilled(apo_p, 5, color);
 	// ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
 
-      
-	ImGui::SliderFloat("Scale", &div, 6000, 60000, "");
+
+	ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
 	ImGui::End();
       }
 

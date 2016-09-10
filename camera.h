@@ -20,9 +20,17 @@ public:
     {
         return projection;
     }
+    void ComputeView()
+    {
+      view = glm::lookAt(pos, pos + forward, up);
+    }
     inline glm::dmat4 GetView() const
     {
-        return glm::lookAt(pos, pos + forward, up);
+      return view;//glm::lookAt(pos, pos + forward, up);
+    }
+    inline glm::dmat4 *GetView_()
+    {
+      return &view;
     }
 
     void Follow(const glm::dvec3 p) {
