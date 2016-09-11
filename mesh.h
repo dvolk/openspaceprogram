@@ -50,6 +50,7 @@ enum MeshBufferPositions
 class Mesh
 {
  public:
+  void AssImpFromFile(const std::string& fileName);
     void FromFile(const std::string& fileName);
     void FromData(Vertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices);
 

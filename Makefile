@@ -2,9 +2,9 @@ CC=gcc
 CXX=g++
 RM=rm -f
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
-CPPFLAGS=-O2 -Wall -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2
+CPPFLAGS=-O2 -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2
 LDFLAGS=$(CPPFLAGS)
-LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath
+LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath -lassimp
 
 SRCS=body.cpp  display.cpp  gldebug.cpp  main.cpp  mesh.cpp  obj_loader.cpp  physics.cpp  shader.cpp
 OBJS=$(subst .cpp,.o,$(SRCS))

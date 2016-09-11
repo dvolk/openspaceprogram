@@ -7,14 +7,24 @@
 struct Camera
 {
 public:
-    Camera(const glm::vec3& pos, float fov, float aspect, float zNear, float zFar)
+  float fov, aspect, zNear, zFar;
+
+  Camera(const glm::vec3& pos, float fov, float aspect, float zNear, float zFar)
     {
-        this->pos = pos;
-        this->forward = glm::vec3(0.0f, 0.0f, 1.0f);
-        this->up = glm::vec3(0.0f, 1.0f, 0.0f);
-        this->projection = glm::perspective(fov, aspect, zNear, zFar);
-        this->view = glm::translate(pos);
+      this->fov = fov;
+      this->aspect = aspect;
+      this->zNear = zNear;
+      this->zFar = zFar;
+      this->pos = pos;
+      this->forward = glm::vec3(0.0f, 0.0f, 1.0f);
+      this->up = glm::vec3(0.0f, 1.0f, 0.0f);
+      this->projection = glm::perspective(fov, aspect, zNear, zFar);
+      this->view = glm::translate(pos);
     }
+
+  void setAspect(float _aspect) {
+    this->projection = glm::perspective(fov, _aspect, zNear, zFar);
+  }
 
     inline glm::mat4 GetProjection() const
     {

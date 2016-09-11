@@ -24,7 +24,7 @@ void main()
     // depth buffer hack. see:
     // http://outerra.blogspot.com/2009/08/logarithmic-z-buffer.html
 
-    const float C=0.01;
+    const float C=11;
     const float far = 10000000;
     const float FC = 1.0/log(far*C + 1);
             

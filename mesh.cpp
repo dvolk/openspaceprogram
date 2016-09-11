@@ -6,20 +6,83 @@
 #include <fstream>
 #include <iostream>
 #include <stdlib.h>
+#include <assimp/Importer.hpp>      // C++ importer interface
+#include <assimp/scene.h>           // Output data structure
+#include <assimp/postprocess.h>     // Post processing flags
+
+void Mesh::AssImpFromFile(const std::string& pFile)
+{
+  Assimp::Importer importer;
+
+  const aiScene* scene = importer.ReadFile( pFile, 
+        aiProcess_CalcTangentSpace       | 
+        aiProcess_Triangulate            |
+        aiProcess_JoinIdenticalVertices  |
+        aiProcess_SortByPType);
+  
+  if(!scene) {
+    printf("Error: %s\n", importer.GetErrorString());
+    return;
+  }
+
+  printf("scene meshes: %d\n", scene->HasMeshes());
+
+  aiMesh *aim = scene->mMeshes[0];
+
+  IndexedModel model;
+  static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
+
+  for(int i = 0; i < aim->mNumVertices; i++) {
+    model.positions.push_back(glm::vec3(aim->mVertices[i].x, aim->mVertices[i].y, aim->mVertices[i].z));
+    model.texCoords.push_back(glm::vec2(0,0));
+    model.normals.push_back(glm::vec3(aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z));
+    model.colors.push_back(pink// glm::vec3(aim->mColors[i][0].x, aim->mColors[i][0].y, aim->mColors[i][0].z)
+			   );
+  }
+
+  for(int i = 0; i < aim->mNumFaces; i++) {
+    for(int j = 0; j < aim->mFaces[i].mNumIndices; j++) {
+      model.indices.push_back(aim->mFaces[i].mIndices[j]);
+    }
+  }
+
+  /* for bullet physics */
+  printf("model.positions.size(): %d\n", model.positions.size());
+  vs = new double[model.positions.size() * 3];
+  num_vertices = model.positions.size();
+  int j = 0;
+  for(unsigned int i = 0; i < num_vertices; i++) {
+    vs[j + 0] = model.positions[i].x;
+    vs[j + 1] = model.positions[i].y;
+    vs[j + 2] = model.positions[i].z;
+    j+=3;
+  }
+
+  is = new int[model.indices.size()];
+  num_indices = model.indices.size();
+  memcpy(is, &model.indices[0], sizeof(unsigned int) * num_indices);
+  /* end for bullet physics */
+  
+  InitMesh(model);
+}
 
 void Mesh::FromFile(const std::string& fileName)
 {
-  OBJModel m = OBJModel(fileName);
-  printf("*** OBJModel vertices: %d\n", m.vertices.size());
-  printf("*** OBJModel normals: %d\n", m.normals.size());
-  IndexedModel im = m.ToIndexedModel();
-  printf("*** IndexedModel vertices: %d\n", im.positions.size());
-  printf("*** IndexedModel normals: %d\n", im.normals.size());
-  printf("*** IndexedModel colors: %d\n", im.colors.size());
-  printf("*** IndexedModel indices: %d\n", im.indices.size());
-  InitMesh(im);
-  printf("*** Mesh vertices: %d\n", num_vertices);
-  printf("*** Mesh normals: %d\n", num_indices);
+  AssImpFromFile(fileName);
+  // DoTheImportThing(fileName);
+  // IndexedModel im;
+  
+  // OBJModel m = OBJModel(fileName);
+  // printf("*** OBJModel vertices: %d\n", m.vertices.size());
+  // printf("*** OBJModel normals: %d\n", m.normals.size());
+  // IndexedModel im = m.ToIndexedModel();
+  // printf("*** IndexedModel vertices: %d\n", im.positions.size());
+  // printf("*** IndexedModel normals: %d\n", im.normals.size());
+  // printf("*** IndexedModel colors: %d\n", im.colors.size());
+  // printf("*** IndexedModel indices: %d\n", im.indices.size());
+  // InitMesh(im);
+  // printf("*** Mesh vertices: %d\n", num_vertices);
+  // printf("*** Mesh normals: %d\n", num_indices);
 }
 
 void Mesh::InitMesh(const IndexedModel& model)

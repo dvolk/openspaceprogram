@@ -71,6 +71,10 @@
 #include "physics.h"
 #include "gldebug.h"
 
+#include <assimp/Importer.hpp>      // C++ importer interface
+#include <assimp/scene.h>           // Output data structure
+#include <assimp/postprocess.h>     // Post processing flags
+
 #include "../../lib/imgui/imgui.h"
 #include "../../lib/imgui/examples/sdl_opengl_example/imgui_impl_sdl.h"
 
@@ -233,46 +237,24 @@ struct TerrainBody {
     patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7);
     patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5);
 
-    for(auto&& patch : patches) {
-      patch->Subdivide();
-      // patch->kids[0]->Subdivide();
-      // patch->kids[1]->Subdivide();
-      // patch->kids[2]->Subdivide();
-      // patch->kids[3]->Subdivide();
-    }
+    // for(auto&& patch : patches) {
+    //   patch->Subdivide();
+    //   // patch->kids[0]->Subdivide();
+    //   // patch->kids[1]->Subdivide();
+    //   // patch->kids[2]->Subdivide();
+    //   // patch->kids[3]->Subdivide();
+    // }
   }
 
   void Draw(Camera camera) {
     ImGui::Begin("Planets");
 
-    glm::dmat4 draw_transform = transform;
-    // glm::dmat4 * view = camera.GetView_();
-
-    glm::dvec3 cam_pos = camera.GetPos();
-    double cam_dist = glm::length(cam_pos - glm::dvec3(transform[3]));
+    double cam_dist = glm::length(camera.GetPos() - glm::dvec3(transform[3]));
     ImGui::Text("%s distance: %.0f", name, cam_dist);
-
-    // if(cam_dist > 2e6) {
-    //   glm::dvec3 scale;
-    //   glm::dquat rotation;
-    //   glm::dvec3 translation;
-    //   glm::dvec3 skew;
-    //   glm::dvec4 perspective;
-    //   glm::decompose(transform, scale, rotation, translation, skew, perspective);
-
-    //   double scale_factor = cam_dist / 2e6;
-    //   ImGui::Text("%s scale_factor: %f", name, scale_factor);
-    //   draw_transform = glm::scale(transform, glm::dvec3(1.0/scale_factor, 1.0/scale_factor, 1.0/scale_factor));
-    //   draw_transform = glm::translate(draw_transform, 2e6 * glm::normalize(translation - cam_pos));
-
-    //   glm::dvec3 xyz = glm::dvec3(draw_transform[3]);
-    //   ImGui::Text("xyz %.0f, %.0f, %.0f", xyz.x,xyz.y,xyz.z);
-    // }
-
 
     for(auto&& patch : patches) {
       // patch isn't subdivided
-      patch->Draw(camera, draw_transform);
+      patch->Draw(camera, transform);
     }
     ImGui::End();
   }
@@ -281,9 +263,9 @@ struct TerrainBody {
     for(auto&& patch : patches) {
       patch->Update(camera, transform);
     }
-    if(moves == true) {
-      transform = glm::rotate(transform, 1/60.0/10.0, glm::dvec3(0,1,0));
-    }
+    // if(moves == true) {
+    //   transform = glm::rotate(transform, 1/60.0/10.0, glm::dvec3(0,1,0));
+    // }
   }
 
   int CountPatches() {
@@ -322,7 +304,7 @@ void GeoPatch::Update(const Camera& camera, const glm::dmat4& transform) {
   if(depth > max_depth)
     return;
 
-  const glm::dvec3& camera_pos = camera.GetPos();
+  const glm::dvec3& camera_pos = camera.GetPos() - (glm::dvec3)(transform[3]);
   const glm::dvec3& centroid_pos = body->GetTerrainHeight(glm::normalize(camera_pos)) * centroid;
   const float dist = glm::length(camera_pos - centroid_pos);
   const float subdiv = 2.0f * body->radius * glm::length(v0 - centroid);
@@ -341,7 +323,8 @@ void GeoPatch::Update(const Camera& camera, const glm::dmat4& transform) {
       Subdivide();
     }
   }
-  else if(depth >= 3 and dist > subdiv * 2) {
+  else if(// depth >= 3 and 
+	  dist > subdiv * 2) {
     delete kids[0];
     delete kids[1];
     delete kids[2];
@@ -434,7 +417,7 @@ public:
   }
 
   void init() {
-    setVelocity(glm::dvec3(2300, 0, 0));
+    setVelocity(glm::dvec3(0, 0, 0));
     partResources.resize(parts.size());
     controller = parts.back();
     NeverSleep(controller);
@@ -722,6 +705,10 @@ inline COLOUR GetColourMoon(float v, float vmin, float vmax) {
   return { 0.5, 0.5, 0.5 };
 }
 
+inline COLOUR GetColourSun(float v, float vmin, float vmax) {
+  return { 1.0, 1.0, 0.0 };
+}
+
 inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 {
    COLOUR c = {1.0,1.0,1.0}; // white
@@ -818,7 +805,7 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
 
   for (int i = 0; i < size; i++) {
     for (int j = 0; j < size; j++) {
-      *vertices[j + size * i].GetNormal() = -centroid;
+      *vertices[j + size * i].GetNormal() = centroid;
     }
   }
 
@@ -830,7 +817,7 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
       glm::vec3 &y2 = vertices[j + (i+1)*size].pos;
       // glm::vec3 n = centroid;//glm::normalize(centroid);
       glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
-      *vertices[j + size * i].GetNormal() = n;
+      *vertices[j + size * i].GetNormal() = -n;
     }
   }
 
@@ -941,7 +928,7 @@ Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color)
     *vertices[i].GetPos() = glm::vec3(vertices[i].GetPos()->x * size_x,
 				      vertices[i].GetPos()->y * size_y,
 				      vertices[i].GetPos()->z * size_z);
-    *vertices[i].GetNormal() = - *vertices[i].GetNormal();
+    *vertices[i].GetNormal() = *vertices[i].GetNormal();
   }
 
   // // fix normals for slanted sides
@@ -998,6 +985,9 @@ int main(int argc, char **argv)
   Shader *shader = new Shader;
   shader->FromFile("./res/basicShader");
 
+  Shader *sunshader = new Shader;
+  sunshader->FromFile("./res/sunShader");
+
   // earth->Create(6300000, 5.97237e24);
 
   TerrainBody *earth = new TerrainBody;
@@ -1018,14 +1008,31 @@ int main(int argc, char **argv)
   moon->moves =true;
   moon->has_sea = false;
   moon->power_scaler = 1;
-  moon->transform = glm::translate(glm::dmat4(), glm::dvec3(6000000, 0, 0));
+  moon->transform = glm::translate(glm::dmat4(), glm::dvec3(12e6, 0, 0));
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   moon->Create(200000, 9.7600236e20);
+
+
+  TerrainBody *sun = new TerrainBody;
+  sun->shader = sunshader;
+  sun->name = "Sun";
+  sun->colour_func = GetColourSun;
+  sun->seed = 0.1;
+  sun->moves = false;
+  sun->has_sea = false;
+  sun->power_scaler = 1;
+  sun->transform = glm::translate(glm::dmat4(), glm::dvec3(0, 0, 100e6));
+  // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
+  sun->Create(6000000, 9.7600236e20);
+
+  std::vector<TerrainBody *> planets = { // sun, 
+					 earth// , moon
+  };
+  TerrainBody *focused_planet = earth;
 
   // Mesh *trig_mesh = create_triangle_mesh(1, 1);
   // Model *trig_model = new Model;
   // trig_model->FromData(trig_mesh, shader);
-
 
   Vehicle *ship = new Vehicle;
   Body *space_port;
@@ -1035,12 +1042,15 @@ int main(int argc, char **argv)
     glm::vec3 red = glm::vec3(1,0,0);
     glm::vec3 blue = glm::vec3(0,0,1);
 
-    // space_port_mesh->FromFile("test.obj");
 
     Mesh *space_port_mesh = create_box_mesh(10, 10, 10, pink);
+    // space_port_mesh->FromFile("test.obj");
     Mesh *capsule_mesh = create_box_mesh(0.25, 0.25, 1.0, blue);
     Mesh *wheel_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
     Mesh *engine_mesh = create_box_mesh(1.0, 1.0, 1.0, red);
+
+    // Mesh *test = new Mesh;
+    // test->FromFile("test.obj");
 
     Model *space_port_model = new Model;
     Model *capsule_model = new Model;
@@ -1060,7 +1070,7 @@ int main(int argc, char **argv)
     space_port =
       create_body(space_port_model, start.x-3, start.y-3, start.z + 10, 0, false);
 
-    double ship_height = 190000;
+    double ship_height = 19;
 
     // top
     Body *capsule =
@@ -1072,9 +1082,10 @@ int main(int argc, char **argv)
     Body *thruster =
       create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3.0, true);
 
-    ship->setRoot(capsule);
-    ship->attachDown(reaction_wheel);
-    ship->attachDown(thruster);
+    ship->parts = { capsule, reaction_wheel, thruster };
+    
+    GlueTogether(reaction_wheel, thruster);
+    GlueTogether(capsule, reaction_wheel);
     ship->m_parent = earth;
 
     ship->partTypes = { VesselPartType::Capsule,
@@ -1083,9 +1094,6 @@ int main(int argc, char **argv)
 
     ship->init();
   }
-
-  std::vector<TerrainBody *> planets = { earth, moon };
-  TerrainBody *focused_planet = earth;
 
   /* camera init */
   Camera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
@@ -1136,6 +1144,7 @@ int main(int argc, char **argv)
       if (ev.type == SDL_WINDOWEVENT) {
 	if(ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
 	  display.onResize(ev.window.data1, ev.window.data2);
+	  camera.setAspect((float)ev.window.data1 / (float)ev.window.data2);
 	}
       }
       if(ev.type == SDL_KEYDOWN) {
@@ -1156,7 +1165,7 @@ int main(int argc, char **argv)
 	  }
 	}
 	if(ev.key.keysym.sym == SDLK_l) {
-	  if(cam_speed < 100000) {
+	  if(cam_speed < 10000000) {
 	    cam_speed *= 10;
 	  }
 	}
@@ -1165,9 +1174,9 @@ int main(int argc, char **argv)
 	    cam_speed /= 10;
 	  }
 	}
-	if(ev.key.keysym.sym == SDLK_t) {
-	  ship->Detach();
-	}
+	// if(ev.key.keysym.sym == SDLK_g) {
+	//   ship->Detach();
+	// }
 	if(ev.key.keysym.sym == SDLK_c) {
 	  follow_ship = not follow_ship;
 	}
@@ -1287,12 +1296,13 @@ int main(int argc, char **argv)
 	camera.Follow(com);
       }
 
+      space_port->Draw(camera);
+      ship->Draw(camera);
+
       for(auto&& planet : planets) {
 	planet->Update(camera);
 	planet->Draw(camera);
       }
-      space_port->Draw(camera);
-      ship->Draw(camera);
 
       const double mu = 3.5316000e12;
 
