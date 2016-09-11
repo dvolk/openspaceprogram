@@ -36,7 +36,8 @@ void Mesh::AssImpFromFile(const std::string& pFile)
     model.positions.push_back(glm::vec3(aim->mVertices[i].x, aim->mVertices[i].y, aim->mVertices[i].z));
     model.texCoords.push_back(glm::vec2(0,0));
     model.normals.push_back(glm::vec3(aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z));
-    model.colors.push_back(pink// glm::vec3(aim->mColors[i][0].x, aim->mColors[i][0].y, aim->mColors[i][0].z)
+    model.colors.push_back(color
+			   // glm::vec3(aim->mColors[i][0].r, aim->mColors[i][0].g, aim->mColors[i][0].b)
 			   );
   }
 

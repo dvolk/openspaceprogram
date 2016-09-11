@@ -56,6 +56,8 @@ class Mesh
 
     void Draw();
 
+    glm::vec3 color;
+
     virtual ~Mesh();
 
     // for bullet physics

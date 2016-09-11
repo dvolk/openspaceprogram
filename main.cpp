@@ -849,42 +849,6 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
   return grid_mesh;
 }
 
-// Mesh *create_triangle_mesh(float size_x, float size_y) {
-//   Mesh *trig_mesh = new Mesh;
-
-//   Vertex vertices[] = {
-//     Vertex(glm::vec3(0,       0, -size_y), glm::vec2(1, 0), glm::vec3(0, 1, 0)),
-//     Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), glm::vec3(0, 1, 0)),
-//     Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), glm::vec3(0, 1, 0)),
-//   };
-
-//   unsigned int indices[] = {
-//     0, 1, 2,
-//   };
-
-//   trig_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
-//   return trig_mesh;
-// }
-
-// Mesh *create_plane_mesh(float size_x, float size_y, glm::vec3 normal) {
-//   Mesh *plane_mesh = new Mesh;
-
-//   Vertex vertices[] = {
-//     Vertex(glm::vec3(-size_x, 0, -size_y), glm::vec2(1, 0), normal),
-//     Vertex(glm::vec3(-size_x, 0,  size_y), glm::vec2(0, 0), normal),
-//     Vertex(glm::vec3( size_x, 0,  size_y), glm::vec2(0, 1), normal),
-//     Vertex(glm::vec3( size_x, 0, -size_y), glm::vec2(1, 1), normal),
-//   };
-
-//   unsigned int indices[] = {
-//     0, 1, 2,
-//     0, 2, 3,
-//   };
-
-//   plane_mesh->FromData(vertices, sizeof(vertices)/sizeof(vertices[0]), indices, sizeof(indices)/sizeof(indices[0]));
-//   return plane_mesh;
-// }
-
 Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color) {
   Mesh *box_mesh = new Mesh;
 
@@ -982,8 +946,11 @@ int main(int argc, char **argv)
   create_physics();
 
   /* data init */
-  Shader *shader = new Shader;
-  shader->FromFile("./res/basicShader");
+  Shader *partsshader = new Shader;
+  partsshader->FromFile("./res/partsShader");
+
+  Shader *terrainshader = new Shader;
+  terrainshader->FromFile("./res/terrainShader");
 
   Shader *sunshader = new Shader;
   sunshader->FromFile("./res/sunShader");
@@ -991,7 +958,7 @@ int main(int argc, char **argv)
   // earth->Create(6300000, 5.97237e24);
 
   TerrainBody *earth = new TerrainBody;
-  earth->shader = shader;
+  earth->shader = terrainshader;
   earth->name = "Eerbon";
   earth->colour_func = GetColourEerbon;
   earth->seed = 1;
@@ -1001,7 +968,7 @@ int main(int argc, char **argv)
   earth->Create(600000, 5.2915793e22);
 
   TerrainBody *moon = new TerrainBody;
-  moon->shader = shader;
+  moon->shader = terrainshader;
   moon->name = "Moon";
   moon->colour_func = GetColourMoon;
   moon->seed = 0.1;
@@ -1025,14 +992,8 @@ int main(int argc, char **argv)
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   sun->Create(6000000, 9.7600236e20);
 
-  std::vector<TerrainBody *> planets = { // sun, 
-					 earth// , moon
-  };
+  std::vector<TerrainBody *> planets = { sun, earth, moon };
   TerrainBody *focused_planet = earth;
-
-  // Mesh *trig_mesh = create_triangle_mesh(1, 1);
-  // Model *trig_model = new Model;
-  // trig_model->FromData(trig_mesh, shader);
 
   Vehicle *ship = new Vehicle;
   Body *space_port;
@@ -1042,25 +1003,29 @@ int main(int argc, char **argv)
     glm::vec3 red = glm::vec3(1,0,0);
     glm::vec3 blue = glm::vec3(0,0,1);
 
+    Mesh *space_port_mesh = new Mesh;
+    space_port_mesh->color = grey;
+    Mesh *capsule_mesh = new Mesh;
+    capsule_mesh->color = blue;
+    Mesh *wheel_mesh = new Mesh;
+    wheel_mesh->color = grey;
+    Mesh *engine_mesh = new Mesh;
+    engine_mesh->color = red;
 
-    Mesh *space_port_mesh = create_box_mesh(10, 10, 10, pink);
-    // space_port_mesh->FromFile("test.obj");
-    Mesh *capsule_mesh = create_box_mesh(0.25, 0.25, 1.0, blue);
-    Mesh *wheel_mesh = create_box_mesh(0.5, 0.5, 1.0, grey);
-    Mesh *engine_mesh = create_box_mesh(1.0, 1.0, 1.0, red);
-
-    // Mesh *test = new Mesh;
-    // test->FromFile("test.obj");
+    space_port_mesh->FromFile("space_port.obj");
+    capsule_mesh->FromFile("capsule.obj");
+    wheel_mesh->FromFile("reaction_wheel.obj");
+    engine_mesh->FromFile("engine.obj");
 
     Model *space_port_model = new Model;
     Model *capsule_model = new Model;
     Model *wheel_model = new Model;
     Model *engine_model = new Model;
 
-    space_port_model->FromData(space_port_mesh, shader);
-    capsule_model->FromData(capsule_mesh, shader);
-    wheel_model->FromData(wheel_mesh, shader);
-    engine_model->FromData(engine_mesh, shader);
+    space_port_model->FromData(space_port_mesh, partsshader);
+    capsule_model->FromData(capsule_mesh, partsshader);
+    wheel_model->FromData(wheel_mesh, partsshader);
+    engine_model->FromData(engine_mesh, partsshader);
 
     glm::dvec3 start(0);
     glm::dvec3 p = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
@@ -1068,9 +1033,9 @@ int main(int argc, char **argv)
     start = ((ground_alt + 0.0f) * p);
 
     space_port =
-      create_body(space_port_model, start.x-3, start.y-3, start.z + 10, 0, false);
+      create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
 
-    double ship_height = 19;
+    double ship_height = 4.5;
 
     // top
     Body *capsule =
@@ -1082,10 +1047,9 @@ int main(int argc, char **argv)
     Body *thruster =
       create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3.0, true);
 
-    ship->parts = { capsule, reaction_wheel, thruster };
-    
-    GlueTogether(reaction_wheel, thruster);
-    GlueTogether(capsule, reaction_wheel);
+    ship->setRoot(capsule);
+    ship->attachDown(reaction_wheel);
+    ship->attachDown(thruster);
     ship->m_parent = earth;
 
     ship->partTypes = { VesselPartType::Capsule,
@@ -1098,7 +1062,7 @@ int main(int argc, char **argv)
   /* camera init */
   Camera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
 		(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-		0.00001f, 10000000.0f);
+		0.00001f, 10e6);
   focused_planet->Update(camera);
 
   bool running = true;
@@ -1281,7 +1245,6 @@ int main(int argc, char **argv)
       RENDERING
     */
     if(redraw == true) {
-      camera.ComputeView();
       ImGui_ImplSdl_NewFrame(display.get_display());
 
       if(poly_mode == true) {
@@ -1295,6 +1258,7 @@ int main(int argc, char **argv)
       if(follow_ship == true) {
 	camera.Follow(com);
       }
+      camera.ComputeView();
 
       space_port->Draw(camera);
       ship->Draw(camera);
