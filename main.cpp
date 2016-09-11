@@ -323,7 +323,7 @@ void GeoPatch::Update(const Camera& camera, const glm::dmat4& transform) {
       Subdivide();
     }
   }
-  else if(// depth >= 3 and 
+  else if(// depth >= 3 and
 	  dist > subdiv * 2) {
     delete kids[0];
     delete kids[1];
@@ -749,7 +749,6 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
   unsigned int indices[size * size * 6] = {0};
 
   glm::vec2 dummyuv = glm::vec2(0, 0);
-  glm::vec3 dummynormal = glm::vec3(1, 1, 1);
 
   for (int i = 0; i < size; i++) {
     for (int j = 0; j < size; j++) {
@@ -796,18 +795,18 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
 
       vertices[j+size*i] = Vertex(p,
 				  dummyuv,
-				  dummynormal,
+				  sphere_p,
 				  color);
     }
   }
 
   glm::dvec3 centroid = glm::normalize(p1 + p2 + p3 + p4);
 
-  for (int i = 0; i < size; i++) {
-    for (int j = 0; j < size; j++) {
-      *vertices[j + size * i].GetNormal() = centroid;
-    }
-  }
+  // for (int i = 0; i < size; i++) {
+  //   for (int j = 0; j < size; j++) {
+  //     *vertices[j + size * i].GetNormal() = centroid;
+  //   }
+  // }
 
   for (int i = 1; i < size-1; i++) {
     for (int j = 1; j < size-1; j++) {
@@ -1012,10 +1011,10 @@ int main(int argc, char **argv)
     Mesh *engine_mesh = new Mesh;
     engine_mesh->color = red;
 
-    space_port_mesh->FromFile("space_port.obj");
-    capsule_mesh->FromFile("capsule.obj");
-    wheel_mesh->FromFile("reaction_wheel.obj");
-    engine_mesh->FromFile("engine.obj");
+    space_port_mesh->FromFile("./res/space_port.obj");
+    capsule_mesh->FromFile("./res/capsule.obj");
+    wheel_mesh->FromFile("./res/reaction_wheel.obj");
+    engine_mesh->FromFile("./res/engine.obj");
 
     Model *space_port_model = new Model;
     Model *capsule_model = new Model;
