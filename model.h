@@ -11,4 +11,8 @@ struct Model {
         this->mesh = mesh;
         this->shader = shader;
     }
+
+  ~Model() {
+    delete mesh;
+  }
 };

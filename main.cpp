@@ -139,7 +139,6 @@ struct GeoPatch {
 };
 
 GeoPatch::~GeoPatch() {
-  delete model->mesh;
   delete kids[0];
   delete kids[1];
   delete kids[2];
@@ -149,6 +148,7 @@ GeoPatch::~GeoPatch() {
     removeTerrainCollision(collision);
     delete collision;
   }
+  delete model;
 }
 
 void GeoPatch::Subdivide(void) {
@@ -1349,15 +1349,19 @@ int main(int argc, char **argv)
       double roll = glm::angle(glm::normalize(glm::cross(pos, vel)), glm::normalize(up));
       double pitch = 0;
       double yaw = 0;
+      glm::dvec3 dir = glm::normalize(pos);
 
-      const double longitude = glm::orientedAngle(glm::dvec3(0, 0, 1),
-						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),
-						 glm::dvec3(0, 1, 0)
-						 );
-      const double latitude = glm::orientedAngle(glm::dvec3(0, 1, 0),
-						  glm::normalize(glm::dvec3(pos.x, pos.y, 0)),
-						  glm::dvec3(0, 0, -1)
-						  );
+      const double longitude = (180 / M_PI) * atan2(dir.x, dir.z);
+      const double latitude = (180 / M_PI) * asin(dir.y);
+
+      // 	glm::orientedAngle(glm::dvec3(0, 0, 1),
+      // 						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),
+      // 						 glm::dvec3(0, 1, 0)
+      // 						 );
+      // const double latitude = glm::orientedAngle(glm::dvec3(0, 1, 0),
+      // 						  glm::normalize(glm::dvec3(pos.x, pos.y, 0)),
+      // 						  glm::dvec3(0, 0, -1)
+      // 						  );
 
       // doesn't work any more?
       // glm::mat4 view = camera.GetView();
@@ -1431,23 +1435,23 @@ int main(int argc, char **argv)
 
       if(orbitInfoWindow == true) {
 	ImGui::Begin("ORBITAL");
-	ImGui::Text("r: %.1fm", distance);
+	ImGui::Text("Alt:   %.1fm", distance);
  	ImGui::Text("ApA: %.1fm", ApA);
 	ImGui::Text("ApT: %.1f", ApT);
  	ImGui::Text("PeA: %.1fm", PeA);
 	ImGui::Text("PeT: %.1f", PeT);
-	ImGui::Text("T: %.1f", T);
+	ImGui::Text("T:   %.1f", T);
 	ImGui::Text("Inc: %.1f", inclination);
 	ImGui::Text("Ecc: %f ", ecc);
 	ImGui::Text("SMa: %.1fm", SMa);
+	ImGui::Text("LAN: %f", raan);
+	ImGui::Text("LPe: %f", arg_pe);
+	ImGui::Separator();
 	ImGui::Text("Angle to Prograde:");
 	ImGui::Text("Angle to Retrograde:");
-	ImGui::Separator();
 	ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
 	ImGui::Text("Energy: %.2f kJ", e / 1000.0);
 	ImGui::Text("Radial velocity: %.2f", radial_vel);
-	ImGui::Text("Right Ascension of AN: %f", raan);
-	ImGui::Text("Argument of Periapsis: %f", arg_pe);
 	ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
 	ImGui::End();
       }
