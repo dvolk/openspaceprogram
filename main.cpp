@@ -87,12 +87,115 @@ static const int DISPLAY_HEIGHT = 480;
 static const int FPS = 60;
 
 struct Frame {
-  Frame *m_parent;
-  std::vector<Frame *> m_children;
+  const char *name;
 
-  btTransform m_transform;
-  double m_angSpeed;
+  Frame *parent; /* NULL if root */
+  std::vector<Frame *> children;
+  bool rotating;
+
+  double radius;
+
+  /* relative to parent */
+  glm::dvec3 pos;
+  glm::dvec3 initial_pos;
+  glm::dmat3 initial_orient;
+  glm::dmat3 orient;
+  glm::dvec3 vel;
+  double orb_ang_speed;
+  double rot_ang_speed;
+
+  /* relative to universe root (i.e. the sun) */
+  glm::dvec3 root_pos;
+  glm::dvec3 root_vel;
+  glm::dmat3 root_orient;
+
+  double ang;
+
+  void UpdateRootRelative(double time, double timestep);
+  void UpdateOrbitRails(double time, double timestep);
 };
+
+void Frame::UpdateRootRelative(double time, double timestep) {
+  if(parent == NULL) {
+  }
+  else {
+    root_pos = parent->root_orient * pos + parent->root_pos;
+    root_vel = parent->root_orient * vel + parent->root_vel;
+    root_orient = parent->root_orient * orient;
+  }
+}
+
+void Frame::UpdateOrbitRails(double time, double timestep) {
+  if(parent != NULL and not rotating) {
+  }
+
+  if(rotating) {
+    ang = 0.1 * time; //fmod(rot_ang_speed * time, 2.0 * M_PI);
+    if(ang != 0) {
+      orient = initial_orient * glm::dmat3(glm::rotate(ang, glm::dvec3(0,1,0)));
+    }
+  }
+
+  pos = orient * initial_pos;
+
+  UpdateRootRelative(time, timestep);
+
+  for(Frame *child : children) {
+    child->UpdateOrbitRails(time, timestep);
+  }
+}
+
+std::vector<Frame *> setup_frames() {
+  Frame *sun = new Frame;
+  Frame *eerbon = new Frame;
+  Frame *moon = new Frame;
+  sun->parent = NULL;
+  sun->children = std::vector<Frame *>{ eerbon };
+  sun->rotating = false;
+  sun->pos = glm::dvec3(0);
+  sun->initial_pos = sun->pos;
+  sun->initial_orient = glm::dmat3();
+  sun->orient = glm::dmat3();
+  sun->vel = glm::dvec3(0);
+  sun->rot_ang_speed = 0;
+  sun->orb_ang_speed = 0;
+  sun->radius = 10e6;
+  sun->root_pos = glm::dvec3(0);
+  sun->root_vel = glm::dvec3(0);
+  sun->root_orient = glm::dmat3();
+
+  eerbon->parent = sun;
+  eerbon->rotating = true;
+  eerbon->children = std::vector<Frame *>{ moon };
+  eerbon->pos = glm::dvec3(0, 0, -100e6);
+  eerbon->initial_pos = glm::dvec3(0, 0, -100e6);
+  eerbon->initial_orient = glm::dmat3();
+  eerbon->orient = glm::dmat3();
+  eerbon->vel = glm::dvec3(0);
+  eerbon->orb_ang_speed = 2e-7; // rad/s
+  eerbon->rot_ang_speed = 7.2921159e-5; // rad/s
+  eerbon->radius = 6e5;
+  eerbon->root_pos = glm::dvec3(0);
+  eerbon->root_vel = glm::dvec3(0);
+  eerbon->root_orient = glm::dmat3();
+
+  moon->parent = eerbon;
+  moon->rotating = true;
+  moon->children = std::vector<Frame *> { };
+  moon->pos = glm::dvec3(-12e6, 0, 0);
+  moon->initial_pos = glm::dvec3(-12e6, 0, 0);
+  moon->initial_orient = glm::dmat3();
+  moon->orient = glm::dmat3();
+  moon->vel = glm::dvec3(0,0,1000);
+  moon->orb_ang_speed = 2.7e-6; // rad/s
+  moon->rot_ang_speed = 2.7e-6; // rad/s
+  moon->radius = 6e5;
+  moon->root_pos = glm::dvec3(0);
+  moon->root_vel = glm::dvec3(0);
+  moon->root_orient = glm::dmat3();
+
+  return std::vector<Frame *>{ sun, eerbon, moon };
+}
 
 class TerrainBody;
 
@@ -208,8 +311,9 @@ struct TerrainBody {
   double seed = 1;
   bool has_sea;
   int power_scaler;
-  glm::dmat4 transform;
   bool moves = false;
+  Frame *frame;
+  glm::dmat4 transform;
 
   COLOUR (*colour_func)(float v, float vmin, float vmax);
 
@@ -251,6 +355,10 @@ struct TerrainBody {
 
     double cam_dist = glm::length(camera.GetPos() - glm::dvec3(transform[3]));
     ImGui::Text("%s distance: %.0f", name, cam_dist);
+    ImGui::Text("%s rotational angle: %0.f", name, frame->ang);
+
+    // glm::dmat4 draw_transform(0);
+    // draw_transform = glm::translate(frame->pos);
 
     for(auto&& patch : patches) {
       // patch isn't subdivided
@@ -991,6 +1099,14 @@ int main(int argc, char **argv)
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   sun->Create(6000000, 9.7600236e20);
 
+  std::vector<Frame *> frames = setup_frames();
+
+  sun->frame = frames[0];
+  earth->frame = frames[1];
+  moon->frame = frames[2];
+
+  sun->frame->UpdateOrbitRails(0, 1/60.0);
+
   std::vector<TerrainBody *> planets = { sun, earth, moon };
   TerrainBody *focused_planet = earth;
 
@@ -1034,7 +1150,7 @@ int main(int argc, char **argv)
     space_port =
       create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
 
-    double ship_height = 4.5;
+    double ship_height = 400000.5;
 
     // top
     Body *capsule =
@@ -1062,7 +1178,7 @@ int main(int argc, char **argv)
   Camera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
 		(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
 		0.00001f, 10e6);
-  focused_planet->Update(camera);
+  // focused_planet->Update(camera);
 
   bool running = true;
   bool redraw = false;
@@ -1087,6 +1203,8 @@ int main(int argc, char **argv)
   bool targetInfoWindow = false;
   bool topHUDWindows = true;
   bool shipDetailWindow = true;
+
+  double time = 0;
 
   /* main loop timing from
      http://gafferongames.com/game-physics/fix-your-timestep/
@@ -1228,7 +1346,15 @@ int main(int argc, char **argv)
       void physics_tick(float timeStep);
       void collisions();
 
+      // // star system body updates
+      // earth->transform = glm::rotate(earth->transform, 0.001,
+      // 				     glm::dvec3(0, 1, 0));
+
+
+      time += 1/60.0 * time_accel;
+
       if(time_accel != 0) {
+	sun->frame->UpdateOrbitRails(time, 1/60.0 * time_accel);
 	grav = ship->processGravity();
 	physics_tick(dt * time_accel);
       }
@@ -1257,7 +1383,21 @@ int main(int argc, char **argv)
       if(follow_ship == true) {
 	camera.Follow(com);
       }
+
+      for(auto&& planet : planets) {
+	planet->transform =
+	  glm::translate(planet->frame->root_pos); // * glm::dmat4(planet->frame->root_orient) ;
+      }
+
       camera.ComputeView();
+      *camera.GetView_() = *camera.GetView_() * glm::inverse(moon->transform);
+
+	//	glm::dmat4(planet->frame->orient) * glm::translate(planet->frame->pos);
+
+      // if(glm::length(camera.GetPos()) < 700000) {
+      // 	// rotational frame
+      // 	*camera.GetView_() = *camera.GetView_() * glm::inverse(earth->transform);
+      // }
 
       space_port->Draw(camera);
       ship->Draw(camera);
@@ -1423,6 +1563,7 @@ int main(int argc, char **argv)
 
       if(gameInfoWindow == true) {
 	ImGui::Begin("Game Debug Info");
+	ImGui::Text("Time: %f", time);
 	ImGui::Text("Patches: %d", focused_planet->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
@@ -1629,7 +1770,7 @@ int main(int argc, char **argv)
 	// ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
 
 
-	ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
+	ImGui::SliderFloat("Scale", &div, 5000, 10000000, "");
 	ImGui::End();
       }
 
