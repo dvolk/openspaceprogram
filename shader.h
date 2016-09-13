@@ -12,8 +12,8 @@ class Shader
     void FromFile(const std::string& fileName);
 
     void Bind();
-    void Update(const Transform& transform, glm::vec4& color, const Camera& camera);
-    void Update(const glm::dmat4& Model, glm::vec4& color, const Camera& camera);
+    /* void Update(const Transform& transform, glm::vec4& color, const Camera& camera, const glm::vec3& sunlightVec); */
+    void Update(const glm::dmat4& Model, glm::vec4& color, const Camera& camera, const glm::vec3& sunlightVec);
 
     virtual ~Shader();
  protected:

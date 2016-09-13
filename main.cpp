@@ -79,6 +79,7 @@
 #include "../../lib/imgui/examples/sdl_opengl_example/imgui_impl_sdl.h"
 
 ImFont *bigger;
+bool planetsWindow = false;
 
 // static const int DISPLAY_WIDTH = 1440;
 // static const int DISPLAY_HEIGHT = 900;
@@ -86,10 +87,13 @@ static const int DISPLAY_WIDTH = 720;
 static const int DISPLAY_HEIGHT = 480;
 static const int FPS = 60;
 
+struct TerrainBody;
+
 struct Frame {
   const char *name;
 
   Frame *parent; /* NULL if root */
+  TerrainBody *body;
   std::vector<Frame *> children;
   bool rotating;
 
@@ -113,7 +117,30 @@ struct Frame {
 
   void UpdateRootRelative(double time, double timestep);
   void UpdateOrbitRails(double time, double timestep);
+
+  glm::dvec3 GetVelocityRelTo(const Frame *relTo) const;
+  glm::dvec3 GetPositionRelTo(const Frame *relTo) const;
+  glm::dmat3 GetOrientRelTo(const Frame *relTo) const;
 };
+
+glm::dvec3 Frame::GetVelocityRelTo(const Frame *relTo) const
+{
+  if (this == relTo) return glm::dvec3(0, 0, 0);
+  glm::dvec3 diff = root_vel - relTo->root_vel;
+  return diff;
+}
+
+glm::dvec3 Frame::GetPositionRelTo(const Frame *relTo) const
+{
+  glm::dvec3 diff = root_pos - relTo->root_pos;
+  return diff;
+}
+
+glm::dmat3 Frame::GetOrientRelTo(const Frame *relTo) const
+{
+  if (this == relTo) return glm::dmat3();
+  return glm::transpose(relTo->root_orient) * root_orient;
+}
 
 void Frame::UpdateRootRelative(double time, double timestep) {
   if(parent == NULL) {
@@ -227,7 +254,7 @@ struct GeoPatch {
   ~GeoPatch();
 
   void Subdivide(void);
-  void Draw(const Camera& camera, const glm::dmat4& transform);
+  void Draw(const Camera& camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec);
   void Update(const Camera& camera, const glm::dmat4& transform);
 
   int CountChildren() {
@@ -255,7 +282,7 @@ GeoPatch::~GeoPatch() {
 }
 
 void GeoPatch::Subdivide(void) {
-  printf("%p subdiving (%d)!\n", this, depth);
+  // printf("%p subdiving (%d)!\n", this, depth);
   const glm::vec3 v01 = glm::normalize(v0+v1);
   const glm::vec3 v12 = glm::normalize(v1+v2);
   const glm::vec3 v23 = glm::normalize(v2+v3);
@@ -281,20 +308,20 @@ void GeoPatch::Subdivide(void) {
   }
 }
 
-void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform) {
+void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
   if(kids[0] == NULL) {
     // patch isn't subdivided
     glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
     // glm::dmat4 id = glm::dmat4();
     model->shader->Bind();
-    model->shader->Update(transform, color, camera);
+    model->shader->Update(transform, color, camera, sunlightVec);
     model->mesh->Draw();
   }
   else {
-    kids[0]->Draw(camera, transform);
-    kids[1]->Draw(camera, transform);
-    kids[2]->Draw(camera, transform);
-    kids[3]->Draw(camera, transform);
+    kids[0]->Draw(camera, transform, sunlightVec);
+    kids[1]->Draw(camera, transform, sunlightVec);
+    kids[2]->Draw(camera, transform, sunlightVec);
+    kids[3]->Draw(camera, transform, sunlightVec);
   }
 }
 
@@ -306,6 +333,9 @@ struct TerrainBody {
   GeoPatch *patches[6];
   Shader *shader;
   float radius;
+  double mu;
+  double g; // [m/s^2]
+  double soi; // [m]
   float mass;
   const char *name;
   double seed = 1;
@@ -314,6 +344,7 @@ struct TerrainBody {
   bool moves = false;
   Frame *frame;
   glm::dmat4 transform;
+  glm::vec3 sunlightVec;
 
   COLOUR (*colour_func)(float v, float vmin, float vmax);
 
@@ -350,21 +381,25 @@ struct TerrainBody {
     // }
   }
 
-  void Draw(Camera camera) {
-    ImGui::Begin("Planets");
-
+  void Draw(const Camera& camera) {
     double cam_dist = glm::length(camera.GetPos() - glm::dvec3(transform[3]));
-    ImGui::Text("%s distance: %.0f", name, cam_dist);
-    ImGui::Text("%s rotational angle: %0.f", name, frame->ang);
 
     // glm::dmat4 draw_transform(0);
     // draw_transform = glm::translate(frame->pos);
 
+    sunlightVec = glm::normalize(frame->root_pos);
+
     for(auto&& patch : patches) {
       // patch isn't subdivided
-      patch->Draw(camera, transform);
+      patch->Draw(camera, transform, sunlightVec);
     }
-    ImGui::End();
+
+    if(planetsWindow) {
+      ImGui::Begin("Planets");
+      ImGui::Text("%s distance: %.0f", name, cam_dist);
+      ImGui::Text("%s rotational angle: %0.f", name, frame->ang);
+      ImGui::End();
+    }
   }
 
   void Update(const Camera& camera) {
@@ -591,23 +626,30 @@ public:
 
   // current Thrust-to-weight ratio
   float getTWR() {
-    return (thruster_util * GetMaxThrust()) / (getMass() * 10);
+    return (thruster_util * GetMaxThrust()) / (getMass() * m_parent->g);
   }
 
   // full throttle TWR
   float getFullThrustTWR() {
-    return GetMaxThrust() / (getMass() * 10);
+    return GetMaxThrust() / (getMass() * m_parent->g);
   }
 
   // empty TWR
   float getMaxTWR() {
     float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
-    return GetMaxThrust() / ((getMass() - remaining_fuel) * 10);
+    return GetMaxThrust() / ((getMass() - remaining_fuel) * m_parent->g);
   }
 
   void setVelocity(glm::dvec3 vel) {
     for(auto&& part : parts) {
       SetVelocity(part, vel);
+    }
+  }
+
+  void setPosition(glm::dvec3 pos) {
+    void SetPosition(Body *b, glm::dvec3 com, glm::dvec3 pos);
+    for(auto&& part : parts) {
+      SetPosition(part, get_center_of_mass(), pos);
     }
   }
 
@@ -648,7 +690,9 @@ public:
   }
 
   void Draw(const Camera& camera) {
-    for(auto&& part : parts) { part->Draw(camera); }
+    glm::vec3 sunlightVec = m_parent->sunlightVec; // more or less correct?
+
+    for(auto&& part : parts) { part->Draw(camera, sunlightVec); }
   }
 
   void ThrottleUp() {
@@ -737,6 +781,18 @@ public:
     glm::dvec3 torque = -glm::normalize(glm::cross(dir, facing) / 10.0);
 
     ApplyTorque(m_reaction_wheels.front(), torque);
+  }
+};
+
+class StaticBuilding {
+public:
+  TerrainBody *parent;
+  Body *body;
+
+  void Draw(const Camera& camera, const TerrainBody *current) {
+    if(current == parent) {
+      body->Draw(camera, parent->sunlightVec);
+    }
   }
 };
 
@@ -1071,6 +1127,9 @@ int main(int argc, char **argv)
   earth->seed = 1;
   earth->has_sea = true;
   earth->power_scaler = 3;
+  earth->g = 9.81;
+  earth->mu = 3.5316000e12;
+  earth->soi = 84159286;
   earth->transform = glm::dmat4();
   earth->Create(600000, 5.2915793e22);
 
@@ -1082,6 +1141,10 @@ int main(int argc, char **argv)
   moon->moves =true;
   moon->has_sea = false;
   moon->power_scaler = 1;
+  moon->g = 1.63;
+  moon->mu = 6.5138398e10;
+  // moon->soi = 2429559.1;
+  moon->soi = 250000;
   moon->transform = glm::translate(glm::dmat4(), glm::dvec3(12e6, 0, 0));
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   moon->Create(200000, 9.7600236e20);
@@ -1095,6 +1158,9 @@ int main(int argc, char **argv)
   sun->moves = false;
   sun->has_sea = false;
   sun->power_scaler = 1;
+  sun->g = 17.1;
+  sun->mu = 1.1723328e18;
+  sun->soi = -1;
   sun->transform = glm::translate(glm::dmat4(), glm::dvec3(0, 0, 100e6));
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   sun->Create(6000000, 9.7600236e20);
@@ -1104,14 +1170,18 @@ int main(int argc, char **argv)
   sun->frame = frames[0];
   earth->frame = frames[1];
   moon->frame = frames[2];
+  sun->frame->body = sun;
+  earth->frame->body = earth;
+  moon->frame->body = moon;
 
   sun->frame->UpdateOrbitRails(0, 1/60.0);
 
   std::vector<TerrainBody *> planets = { sun, earth, moon };
-  TerrainBody *focused_planet = earth;
 
   Vehicle *ship = new Vehicle;
-  Body *space_port;
+  ship->m_parent = moon;
+
+  StaticBuilding *space_port;
   {
     glm::vec3 grey = glm::vec3(0.5, 0.5, 0.5);
     glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
@@ -1144,13 +1214,14 @@ int main(int argc, char **argv)
 
     glm::dvec3 start(0);
     glm::dvec3 p = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-    double ground_alt = earth->GetTerrainHeight(p);
+    double ground_alt = ship->m_parent->GetTerrainHeight(p);
     start = ((ground_alt + 0.0f) * p);
 
-    space_port =
-      create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
+    space_port = new StaticBuilding;
+    space_port->body = create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
+    space_port->parent = ship->m_parent;
 
-    double ship_height = 400000.5;
+    double ship_height = 24504.5;
 
     // top
     Body *capsule =
@@ -1165,13 +1236,13 @@ int main(int argc, char **argv)
     ship->setRoot(capsule);
     ship->attachDown(reaction_wheel);
     ship->attachDown(thruster);
-    ship->m_parent = earth;
 
     ship->partTypes = { VesselPartType::Capsule,
 			VesselPartType::ReactionWheel,
 			VesselPartType::Engine };
 
     ship->init();
+    ship->setVelocity(glm::dvec3(0, 0, 700));
   }
 
   /* camera init */
@@ -1195,14 +1266,15 @@ int main(int argc, char **argv)
   bool orbitInfoWindow = true;
   bool orbitMapWindow = true;
   bool shipInfoWindow = true;
-  bool gameInfoWindow = true;
+  bool gameInfoWindow = false;
   bool controlsWindow = false;
   bool autoPilotWindow = false;
   bool surfaceInfoWindow = true;
   bool resourcesWindow = true;
   bool targetInfoWindow = false;
-  bool topHUDWindows = true;
-  bool shipDetailWindow = true;
+  bool topHUDWindows = false;
+  bool shipDetailWindow = false;
+  bool referenceFramesWindow = true;
 
   double time = 0;
 
@@ -1309,6 +1381,7 @@ int main(int argc, char **argv)
     accumulator += frameTime;
 
     glm::dvec3 grav;
+    glm::dvec3 com;
 
     if(accumulator > 10 * dt) {
       accumulator = 10 * dt;
@@ -1354,7 +1427,33 @@ int main(int argc, char **argv)
       time += 1/60.0 * time_accel;
 
       if(time_accel != 0) {
-	sun->frame->UpdateOrbitRails(time, 1/60.0 * time_accel);
+	// sun->frame->UpdateOrbitRails(time, 1/60.0 * time_accel);
+
+	double ship_r = glm::length(GetPosition(ship->controller));
+	if(ship_r > ship->m_parent->soi) {
+	  // switching to parent SOI if there is one
+	  if(ship->m_parent->frame->parent != NULL) {
+	    glm::dvec3 old_vel = GetVelocity(ship->controller);
+	    glm::dvec3 old_pos = GetPosition(ship->controller);
+	    glm::dvec3 new_vel = ship->m_parent->frame->GetVelocityRelTo(ship->m_parent->frame->parent);
+	    glm::dvec3 new_pos = ship->m_parent->frame->GetPositionRelTo(ship->m_parent->frame->parent);
+ 	    ship->setPosition(new_pos);
+	    ship->setVelocity(new_vel);
+	    ship->m_parent = ship->m_parent->frame->parent->body;
+	    printf("@@@ switching frame\n");
+	    printf("@@@ old position: %.0f %.0f %.0f\n", old_pos.x, old_pos.y, old_pos.z);
+	    printf("@@@ old velocity: %.0f %.0f %.0f\n", old_vel.x, old_vel.y, old_vel.z);
+	    printf("@@@ new position: %.0f %.0f %.0f\n", new_pos.x, new_pos.y, new_pos.z);
+	    printf("@@@ new velocity: %.0f %.0f %.0f\n", new_vel.x, new_vel.y, new_vel.z);
+	  }
+	}
+	else {
+	  // check if we've entered a child SOI
+	  for(auto&& child : ship->m_parent->frame->children) {
+	    // ...
+	  }
+	}
+
 	grav = ship->processGravity();
 	physics_tick(dt * time_accel);
       }
@@ -1378,7 +1477,7 @@ int main(int argc, char **argv)
 
       display.Clear(0, 0, 0, 1);
 
-      glm::dvec3 com = ship->get_center_of_mass();
+      com = ship->get_center_of_mass();
 
       if(follow_ship == true) {
 	camera.Follow(com);
@@ -1386,11 +1485,13 @@ int main(int argc, char **argv)
 
       for(auto&& planet : planets) {
 	planet->transform =
-	  glm::translate(planet->frame->root_pos); // * glm::dmat4(planet->frame->root_orient) ;
+	  glm::translate(planet->frame->GetPositionRelTo(ship->m_parent->frame));
+
+	// * glm::dmat4(planet->frame->root_orient) ;
       }
 
       camera.ComputeView();
-      *camera.GetView_() = *camera.GetView_() * glm::inverse(moon->transform);
+      //      *camera.GetView_() = *camera.GetView_(); * glm::inverse(moon->transform);
 
 	//	glm::dmat4(planet->frame->orient) * glm::translate(planet->frame->pos);
 
@@ -1399,7 +1500,8 @@ int main(int argc, char **argv)
       // 	*camera.GetView_() = *camera.GetView_() * glm::inverse(earth->transform);
       // }
 
-      space_port->Draw(camera);
+      space_port->Draw(camera, ship->m_parent);
+
       ship->Draw(camera);
 
       for(auto&& planet : planets) {
@@ -1407,7 +1509,7 @@ int main(int argc, char **argv)
 	planet->Draw(camera);
       }
 
-      const double mu = 3.5316000e12;
+      const double mu = ship->m_parent->mu;
 
       const glm::dvec3 pos = com;
       const glm::dvec3 vel = ship->GetVel();
@@ -1517,7 +1619,7 @@ int main(int argc, char **argv)
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
 	ImGui::Begin("Top Middle Window", NULL, flags);
 	ImGui::PushFont(bigger);
-	int terrain_height = (int)(distance - focused_planet->GetTerrainHeight(glm::normalize(pos)));
+	int terrain_height = (int)(distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
 	ImGui::Text("%08dm", terrain_height);
 	ImGui::PopFont();
 	ImGui::End();
@@ -1559,29 +1661,33 @@ int main(int argc, char **argv)
       ImGui::Checkbox("Controls Help", &controlsWindow);
       ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
       ImGui::Checkbox("Top HUD", &topHUDWindows);
+      ImGui::Checkbox("Planets", &planetsWindow);
+      ImGui::Checkbox("Frames", &referenceFramesWindow);
       ImGui::End();
 
       if(gameInfoWindow == true) {
 	ImGui::Begin("Game Debug Info");
 	ImGui::Text("Time: %f", time);
-	ImGui::Text("Patches: %d", focused_planet->CountPatches());
+	ImGui::Text("Patches: %d", ship->m_parent->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
 	ImGui::Text("Camera altitude: %0.f",
-		    glm::length(camera.GetPos()) - focused_planet->GetTerrainHeight(glm::normalize(camera.GetPos())));
-	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - focused_planet->radius);
+		    glm::length(camera.GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera.GetPos())));
+	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - ship->m_parent->radius);
 	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera.GetPos().x, camera.GetPos().y, camera.GetPos().z);
+	ImGui::Text("Earth distance: %f",
+		    glm::length(ship->m_parent->frame->GetPositionRelTo(earth->frame)));
 	ImGui::End();
       }
 
       if(orbitInfoWindow == true) {
 	ImGui::Begin("ORBITAL");
-	ImGui::Text("Alt:   %.1fm", distance);
+	ImGui::Text("Alt: %.1fm", distance);
  	ImGui::Text("ApA: %.1fm", ApA);
 	ImGui::Text("ApT: %.1f", ApT);
  	ImGui::Text("PeA: %.1fm", PeA);
 	ImGui::Text("PeT: %.1f", PeT);
-	ImGui::Text("T:   %.1f", T);
+	ImGui::Text("  T: %.1f", T);
 	ImGui::Text("Inc: %.1f", inclination);
 	ImGui::Text("Ecc: %f ", ecc);
 	ImGui::Text("SMa: %.1fm", SMa);
@@ -1591,7 +1697,7 @@ int main(int argc, char **argv)
 	ImGui::Text("Angle to Prograde:");
 	ImGui::Text("Angle to Retrograde:");
 	ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
-	ImGui::Text("Energy: %.2f kJ", e / 1000.0);
+	ImGui::Text("Energy: %.2f J", e);
 	ImGui::Text("Radial velocity: %.2f", radial_vel);
 	ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
 	ImGui::End();
@@ -1599,8 +1705,8 @@ int main(int argc, char **argv)
 
       if(surfaceInfoWindow == true) {
 	ImGui::Begin("SURFACE");
-	ImGui::Text("Altitude (True): %.1fm", distance - focused_planet->GetTerrainHeight(glm::normalize(pos)));
-	ImGui::Text("Altitude (ASL): %.1fm", distance - focused_planet->radius);
+	ImGui::Text("Altitude (True): %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
+	ImGui::Text("Altitude (ASL): %.1fm", distance - ship->m_parent->radius);
 	ImGui::Text("V speed: %.2fm/s", ver_speed);
 	ImGui::Text("H speed: %.2fm/s", hor_speed);
 	ImGui::Text("Latitude: %.4f", latitude * 180/M_PI);
@@ -1617,16 +1723,13 @@ int main(int argc, char **argv)
 
       if(shipInfoWindow == true) {
 	ImGui::Begin("VESSEL");
-	ImGui::Text("Status: Orbiting %s", focused_planet->name);
+	ImGui::Text("Reference frame: %s", ship->m_parent->name);
 	ImGui::Text("Mass: %.3fkg", ship->getMass());
 	ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
 	ImGui::Text("Thrust Util: %.0f%%", ship->thruster_util * 100);
 	ImGui::Text("Thrust: %.2fN", ship->getThrust());
 	ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
 	ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
-	for(auto&& part : ship->parts) {
-	  // TODO
-	}
 	ImGui::End();
       }
       if(shipDetailWindow == true) {
@@ -1685,6 +1788,12 @@ int main(int argc, char **argv)
 	ImGui::End();
       }
 
+      if(referenceFramesWindow == true) {
+	ImGui::Begin("Reference frames");
+	// ...
+	ImGui::End();
+      }
+
       if(resourcesWindow == true) {
 	ImGui::Begin("RESOURCES");
 	float hydrogen_frac =
@@ -1730,14 +1839,12 @@ int main(int argc, char **argv)
 	  E += 2 * M_PI / 25;
 	}
 
-	ImVec2 periapsis = {};
-
 	double argX = cos(EccentricAnomaly) - ecc;
 	double argY = sqrt(1 - (ecc * ecc)) * sin(EccentricAnomaly);
 	double phi = atan2(argY, argX);
 
-	ImVec2 ship = { 200 + p.x + distance / div * cos(phi),
-			200 + p.y + distance / div * sin(phi) };
+	ImVec2 ship_p = { 200 + p.x + distance / div * cos(phi),
+			  200 + p.y + distance / div * sin(phi) };
 
 	ImVec2 raan_p = { 200 + p.x + 100 * cos(raan),
 			  200 + p.y + 100 * sin(raan) };
@@ -1757,20 +1864,21 @@ int main(int argc, char **argv)
 
 	ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1, true);
 	ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2( 200 + p.x,
-						      200 + p.y ),
-					      100 / (div / 6000),
-					      color2, 26);
-	ImGui::GetWindowDrawList()->AddCircleFilled(ship, 5, color);
-	ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship, color);
+							    200 + p.y ),
+						    ship->m_parent->radius / div,
+ 						    // 100 / (div / 6000),
+						    color2, 26);
+	ImGui::GetWindowDrawList()->AddCircleFilled(ship_p, 5, color);
+	ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship_p, color);
 
-	ImGui::GetWindowDrawList()->AddCircle(ImVec2(200 + p.x, 200 + p.y), 3 * 600000 / div, color2);
+	// ImGui::GetWindowDrawList()->AddCircle(ImVec2(200 + p.x, 200 + p.y), 3 * 600000 / div, color2);
 	// ImGui::GetWindowDrawList()->AddCircleFilled(raan_p, 5, color);
 	// ImGui::GetWindowDrawList()->AddCircleFilled(peri_p, 5, color);
 	// ImGui::GetWindowDrawList()->AddCircleFilled(apo_p, 5, color);
 	// ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
 
 
-	ImGui::SliderFloat("Scale", &div, 5000, 10000000, "");
+	ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
 	ImGui::End();
       }
 

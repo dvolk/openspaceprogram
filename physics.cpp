@@ -305,6 +305,21 @@ void SetVelocity(Body *b, glm::dvec3 vel) {
     getRigidBody(b)->setLinearVelocity(btvel);
 }
 
+void SetPosition(Body *b, glm::dvec3 com, glm::dvec3 pos) {
+  // void btRigidBody::setCenterOfMassTransform 	( 	const btTransform &  	xform	) 	
+  // const btTransform & 	getCenterOfMassTransform () const 
+  btVector3 btpos = btVector3(pos.x, pos.y, pos.z);
+
+  btTransform transform = getRigidBody(b)->getCenterOfMassTransform();
+  btVector3 origin = transform.getOrigin();
+  btVector3 btCom = btVector3(com.x, com.y, com.z);
+  btVector3 btPos = btVector3(pos.x, pos.y, pos.z);
+
+  transform.setOrigin(btPos - origin + btCom);
+  
+  getRigidBody(b)->setCenterOfMassTransform(transform);
+}
+
 glm::dvec3 getCOM(Body *body) {
     btVector3 COM = getRigidBody(body)->getCenterOfMassTransform().getOrigin();
     return glm::dvec3(COM.getX(), COM.getY(), COM.getX());

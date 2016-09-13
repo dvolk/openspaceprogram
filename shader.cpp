@@ -66,7 +66,7 @@ void Shader::Bind()
     check_gl_error();
 }
 
-void Shader::Update(const glm::dmat4& Model, glm::vec4& color, const Camera& camera)
+void Shader::Update(const glm::dmat4& Model, glm::vec4& color, const Camera& camera, const glm::vec3& sunlightVec)
 {
     const glm::dmat4 View = camera.GetView();
     // make sure View * Model happens with double precision
@@ -81,7 +81,7 @@ void Shader::Update(const glm::dmat4& Model, glm::vec4& color, const Camera& cam
     glUniformMatrix4fv(m_uniforms[1], 1, GL_FALSE, &ModelFloat[0][0]);
     check_gl_error();
 
-    glUniform3f(m_uniforms[2], 0.2f, 0.1f, 1.0f);
+    glUniform3f(m_uniforms[2], sunlightVec.x, sunlightVec.y, sunlightVec.z);
     check_gl_error();
     glUniform4f(m_uniforms[3], color.x, color.y, color.z, color.w);
     check_gl_error();

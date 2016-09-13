@@ -25,10 +25,10 @@ struct Body {
      btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);
     }
 
-    void Draw(const Camera& camera) {
+  void Draw(const Camera& camera, const glm::vec3 & sunlightVec) {
         UpdateModelMatrix();
         model->shader->Bind();
-        model->shader->Update(model_matrix, color, camera);
+        model->shader->Update(model_matrix, color, camera, sunlightVec);
         model->mesh->Draw();
 
         /* glUseProgram(0); */
