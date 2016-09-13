@@ -782,6 +782,38 @@ public:
 
     ApplyTorque(m_reaction_wheels.front(), torque);
   }
+
+// vector3d Body::GetPositionRelTo(const Frame *relTo) const
+// {
+// 	vector3d fpos = m_frame->GetPositionRelTo(relTo);
+// 	matrix3x3d forient = m_frame->GetOrientRelTo(relTo);
+// 	return forient * GetPosition() + fpos;
+// }
+
+  glm::dvec3 GetPositionRelTo(Body *part, const Frame *relTo) {
+    glm::dvec3 fpos = m_parent->frame->GetPositionRelTo(relTo);
+    glm::dmat3 forient = m_parent->frame->GetOrientRelTo(relTo);
+    return forient * GetPosition(part) + fpos;
+  }
+
+  glm::dvec3 GetVelocityRelTo(Body *part, const Frame *relTo) {
+    glm::dvec3 fvel = m_parent->frame->GetVelocityRelTo(relTo);
+    glm::dmat3 forient = m_parent->frame->GetOrientRelTo(relTo);
+    return forient * GetVelocity(part) + fvel;
+  }
+
+  glm::dmat4 moveToFrame(TerrainBody *to) {
+    void setModelMatrix(Body *b, glm::dmat4 model);
+    for(auto&& part : parts) {
+      glm::dvec3 np = GetPositionRelTo(part, to->frame);
+      glm::dvec3 nv = GetVelocityRelTo(part, to->frame);
+      glm::dmat3 orient = m_parent->frame->GetOrientRelTo(to->frame);
+      glm::dmat4 nmodel = glm::dmat4(orient) * translate(np);
+      setModelMatrix(part, nmodel);
+      SetVelocity(part, nv);
+    }
+    m_parent = to;
+  }
 };
 
 class StaticBuilding {
@@ -1143,8 +1175,8 @@ int main(int argc, char **argv)
   moon->power_scaler = 1;
   moon->g = 1.63;
   moon->mu = 6.5138398e10;
-  // moon->soi = 2429559.1;
-  moon->soi = 250000;
+  moon->soi = 2429559.1;
+  // moon->soi = 250000;
   moon->transform = glm::translate(glm::dmat4(), glm::dvec3(12e6, 0, 0));
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   moon->Create(200000, 9.7600236e20);
@@ -1221,7 +1253,7 @@ int main(int argc, char **argv)
     space_port->body = create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
     space_port->parent = ship->m_parent;
 
-    double ship_height = 24504.5;
+    double ship_height = 4.5;
 
     // top
     Body *capsule =
@@ -1242,7 +1274,7 @@ int main(int argc, char **argv)
 			VesselPartType::Engine };
 
     ship->init();
-    ship->setVelocity(glm::dvec3(0, 0, 700));
+    ship->setVelocity(glm::dvec3(0, 0, 0));
   }
 
   /* camera init */
@@ -1433,18 +1465,11 @@ int main(int argc, char **argv)
 	if(ship_r > ship->m_parent->soi) {
 	  // switching to parent SOI if there is one
 	  if(ship->m_parent->frame->parent != NULL) {
-	    glm::dvec3 old_vel = GetVelocity(ship->controller);
-	    glm::dvec3 old_pos = GetPosition(ship->controller);
-	    glm::dvec3 new_vel = ship->m_parent->frame->GetVelocityRelTo(ship->m_parent->frame->parent);
-	    glm::dvec3 new_pos = ship->m_parent->frame->GetPositionRelTo(ship->m_parent->frame->parent);
- 	    ship->setPosition(new_pos);
-	    ship->setVelocity(new_vel);
-	    ship->m_parent = ship->m_parent->frame->parent->body;
-	    printf("@@@ switching frame\n");
-	    printf("@@@ old position: %.0f %.0f %.0f\n", old_pos.x, old_pos.y, old_pos.z);
-	    printf("@@@ old velocity: %.0f %.0f %.0f\n", old_vel.x, old_vel.y, old_vel.z);
-	    printf("@@@ new position: %.0f %.0f %.0f\n", new_pos.x, new_pos.y, new_pos.z);
-	    printf("@@@ new velocity: %.0f %.0f %.0f\n", new_vel.x, new_vel.y, new_vel.z);
+	    printf("@@@ switching frame from %s to %s\n",
+		   ship->m_parent->name,
+		   ship->m_parent->frame->parent->body->name
+		   );
+	    ship->moveToFrame(ship->m_parent->frame->parent->body);
 	  }
 	}
 	else {
@@ -1676,7 +1701,7 @@ int main(int argc, char **argv)
 	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - ship->m_parent->radius);
 	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera.GetPos().x, camera.GetPos().y, camera.GetPos().z);
 	ImGui::Text("Earth distance: %f",
-		    glm::length(ship->m_parent->frame->GetPositionRelTo(earth->frame)));
+		    glm::length(ship->GetPositionRelTo(ship->controller, earth->frame)));
 	ImGui::End();
       }
 
