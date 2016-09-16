@@ -234,6 +234,9 @@ std::vector<Frame *> setup_frames() {
   Frame *moon = new Frame;
   Frame *moon_rot = new Frame;
 
+  /*
+    0
+  */
   sun->name = "sun (inertial)";
   sun->parent = NULL;
   sun->children = std::vector<Frame *>{ eerbon };
@@ -251,6 +254,9 @@ std::vector<Frame *> setup_frames() {
   sun->root_vel = glm::dvec3(0);
   sun->root_orient = glm::dmat3();
 
+  /*
+    1
+   */
   eerbon->name = "eerbon (inertial)";
   eerbon->parent = sun;
   eerbon->rotating = false;
@@ -268,6 +274,9 @@ std::vector<Frame *> setup_frames() {
   eerbon->root_vel = glm::dvec3(0);
   eerbon->root_orient = glm::dmat3();
 
+  /*
+    2
+  */
   eerbon_rot->name = "eerbon (rotational)";
   eerbon_rot->parent = eerbon;
   eerbon_rot->rotating = true;
@@ -285,6 +294,9 @@ std::vector<Frame *> setup_frames() {
   eerbon_rot->root_vel = glm::dvec3(0);
   eerbon_rot->root_orient = glm::dmat3();
 
+  /*
+    3
+  */
   moon->name = "moon (inertial)";
   moon->parent = eerbon;
   moon->rotating = false;
@@ -302,6 +314,9 @@ std::vector<Frame *> setup_frames() {
   moon->root_vel = glm::dvec3(0);
   moon->root_orient = glm::dmat3();
 
+  /*
+    4
+   */
   moon_rot->name = "moon (rotational)";
   moon_rot->parent = moon;
   moon_rot->rotating = true;
@@ -491,7 +506,10 @@ struct TerrainBody {
     // glm::dmat4 draw_transform(0);
     // draw_transform = glm::translate(frame->pos);
 
-    sunlightVec = glm::normalize(frame->getRotFrame()->GetOrientRelTo(sun->frame) * frame->GetPositionRelTo(sun->frame));
+    sunlightVec = -glm::normalize(
+				  frame->GetOrientRelTo(sun->frame) *
+				  sun->frame->GetPositionRelTo(frame)
+				  );
 
     for(auto&& patch : patches) {
       // patch isn't subdivided
@@ -501,13 +519,16 @@ struct TerrainBody {
     if(planetsWindow) {
       ImGui::Begin("Planets");
       ImGui::Text("%s distance: %.0f", name, cam_dist);
-      ImGui::Text("%s rotational angle: %0.f", name, frame->ang);
+      ImGui::Text("%s rotational angle: %.5f", name, frame->getRotFrame()->ang);
+      ImGui::Text("%s orbital angle: %.5f", name, frame->getNonRotFrame()->orb_ang);
       ImGui::End();
     }
   }
 
   void Update(const Camera& camera) {
     // transform = glm::translate(frame->root_pos) * glm::dmat4(frame->orient);
+
+    
 
     for(auto&& patch : patches) {
       patch->Update(camera, transform);
@@ -1103,7 +1124,7 @@ inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 
 Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
-  int size = 25;
+  int size = 50;
 
   glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
@@ -1420,7 +1441,8 @@ int main(int argc, char **argv)
     space_port->body = create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
     space_port->parent = ship->m_parent;
 
-    double ship_height = 190000.5; // 4.5
+    // double ship_height = 190000.5;
+    double ship_height = 4.5;
 
     // top
     Body *capsule =
@@ -1442,7 +1464,7 @@ int main(int argc, char **argv)
   };
 
     ship->init();
-    ship->setVelocity(glm::dvec3(0, 0, 300));
+    ship->setVelocity(glm::dvec3(0, 0, 0));
   }
 
   /* camera init */
@@ -1474,7 +1496,6 @@ int main(int argc, char **argv)
   bool targetInfoWindow = false;
   bool topHUDWindows = false;
   bool shipDetailWindow = false;
-  bool referenceFramesWindow = true;
 
   double time = 0;
 
@@ -1697,48 +1718,29 @@ int main(int argc, char **argv)
 	glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
 	glm::dmat4 transform;
 	glm::dmat3 rotate;
-	ImGui::Text("tr: %f %f %f", translate.x, translate.y, translate.z);
+	// ImGui::Text("tr: %f %f %f", translate.x, translate.y, translate.z);
 	// ;
 	if(planet == ship->m_parent) {
 	  /* this is the planet we're on.
 
 	     This means its position is always 0, 0, 0
 	   */
-	  transform = glm::dmat4(planet->frame->getRotFrame()->orient);
+
+	  if(ship->frame->isRotFrame()) {
+	    /* we're in a rotational frame */
+	  }
+	  else {
+	    transform = glm::dmat4(planet->frame->getRotFrame()->orient);
+	  }
 	}
 	else {
 	  transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
 	}
 
-      // 	if(ship->frame->isRotFrame()) {
-      // 	  if(planet != ship->m_parent) {
-      // 	    transform =
-      // 	      glm::dmat4(planet->frame->GetOrientRelTo(ship->frame->getRotFrame())) *
-      // 	      glm::translate(translate) *
-      // 	      glm::dmat4(planet->frame->orient);
-      // 	  }
-      // 	  else {
-      // 	    transform = glm::translate(translate);
-      // 	  }
-      // 	}
-      // 	else {
-      // 	  transform = glm::translate(translate) * glm::dmat4(planet->frame->orient);
-      // 	}
-
       	planet->transform = transform;
-      	  // glm::translate(tr) *
-      	  // glm::dmat4(rot);
       }
 
       camera.ComputeView();
-      //      *camera.GetView_() = *camera.GetView_(); * glm::inverse(moon->transform);
-
-	//	glm::dmat4(planet->frame->orient) * glm::translate(planet->frame->pos);
-
-      // if(glm::length(camera.GetPos()) < 700000) {
-      // 	// rotational frame
-      // 	*camera.GetView_() = *camera.GetView_() * glm::inverse(earth->transform);
-      // }
 
       space_port->Draw(camera, ship->m_parent);
 
@@ -1905,7 +1907,6 @@ int main(int argc, char **argv)
       ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
       ImGui::Checkbox("Top HUD", &topHUDWindows);
       ImGui::Checkbox("Planets", &planetsWindow);
-      ImGui::Checkbox("Frames", &referenceFramesWindow);
       ImGui::End();
 
       if(gameInfoWindow == true) {
@@ -2032,12 +2033,6 @@ int main(int argc, char **argv)
 	ImGui::End();
       }
 
-      if(referenceFramesWindow == true) {
-	ImGui::Begin("Reference frames");
-	// ...
-	ImGui::End();
-      }
-
       if(resourcesWindow == true) {
 	ImGui::Begin("RESOURCES");
 	float hydrogen_frac =
@@ -2103,9 +2098,6 @@ int main(int argc, char **argv)
 	// auto whut = ;
 	// ImGui::GetWindowDrawList()->AddPolyline(&planet[0], 26, color2, false, 1, true);
 
-	// ImGui::Text("True anomaly: %.2f", TrueAnomaly);
-	// ImGui::Text("Eccentric anomaly: %.2f", EccentricAnomaly);
-
 	ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1, true);
 	ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2( 200 + p.x,
 							    200 + p.y ),
@@ -2123,6 +2115,9 @@ int main(int argc, char **argv)
 
 
 	ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
+	ImGui::Text("True anomaly: %.2f", TrueAnomaly);
+	ImGui::Text("Eccentric anomaly: %.2f", EccentricAnomaly);
+
 	ImGui::End();
       }
 
