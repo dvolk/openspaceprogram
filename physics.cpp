@@ -1,7 +1,9 @@
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
 #include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
+
 #include <glm/gtx/transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <iostream>
 
@@ -300,16 +302,41 @@ glm::dvec3 GetAngVelocity(Body *b) {
     return glm::dvec3(vel.getX(), vel.getY(), vel.getZ());
 }
 
+glm::dmat3 GetOrient(Body *b) {
+  return glm::make_mat3x3(&getRigidBody(b)->getCenterOfMassTransform().getBasis()[0][0]);
+}
+
 void SetVelocity(Body *b, glm::dvec3 vel) {
     btVector3 btvel = btVector3(vel.x, vel.y, vel.z);
     getRigidBody(b)->setLinearVelocity(btvel);
 }
 
-void setModelMatrix(Body *b, glm::dmat4 model) {
+// void setRotation(Body *b, glm::dmat3 rot) {
+
+// }
+
+// void setPosition(Body *b, glm:;dvec3 pos) {
+// }
+
+void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
+{
   btTransform t;
-  t.setFromOpenGLMatrix(&model[0][0]);
-  getRigidBody(b)->setCenterOfMassTransform(t);
+  btMatrix3x3 r;
+  t.setIdentity();
+
+  t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+
+  r.setFromOpenGLSubMatrix((btScalar*)&rot[0][0]);
+  t.setBasis(r);
+
+  getRigidBody(b)->proceedToTransform(t);
 }
+
+// void setModelMatrix(Body *b, glm::dmat4 model) {
+//   btTransform t;
+//   t.setFromOpenGLMatrix(&model[0][0]);
+//   getRigidBody(b)->setCenterOfMassTransform(t);
+// }
 
 glm::dvec3 getCOM(Body *body) {
     btVector3 COM = getRigidBody(body)->getCenterOfMassTransform().getOrigin();

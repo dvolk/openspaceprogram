@@ -2,7 +2,7 @@ CC=gcc
 CXX=g++
 RM=rm -f
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
-CPPFLAGS=-O2 -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2
+CPPFLAGS=-g3 -O2 -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2
 LDFLAGS=$(CPPFLAGS)
 LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath -lassimp
 

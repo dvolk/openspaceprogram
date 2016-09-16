@@ -96,8 +96,9 @@ struct Frame {
   TerrainBody *body;
   std::vector<Frame *> children;
   bool rotating;
+  bool has_rot_frame;
 
-  double radius;
+  double soi; // sphere of influence
 
   /* relative to parent */
   glm::dvec3 pos;
@@ -114,29 +115,75 @@ struct Frame {
   glm::dmat3 root_orient;
 
   double ang;
+  double orb_ang;
 
   void UpdateRootRelative(double time, double timestep);
   void UpdateOrbitRails(double time, double timestep);
 
-  glm::dvec3 GetVelocityRelTo(const Frame *relTo) const;
-  glm::dvec3 GetPositionRelTo(const Frame *relTo) const;
-  glm::dmat3 GetOrientRelTo(const Frame *relTo) const;
+  glm::dvec3 GetVelocityRelTo(Frame *relTo);
+  glm::dvec3 GetPositionRelTo(Frame *relTo);
+  glm::dmat3 GetOrientRelTo(Frame *relTo);
+
+  bool isRotFrame() { return rotating; }
+  bool hasRotFrame() { return has_rot_frame; }
+  Frame *getNonRotFrame() {
+    if(isRotFrame() == true) {
+      return parent;
+    } else {
+      this;
+    }
+  }
+
+  Frame *getRotFrame() {
+    if(hasRotFrame() == true) {
+      return children.front();
+    }
+    else {
+      return this;
+    }
+  }
+  // For an object in a rotating frame, relative to non-rotating frames it
+  // must attain this velocity within rotating frame to be stationary.
+  // vector3d GetStasisVelocity(const vector3d &pos) const { return -vector3d(0,m_angSpeed,0).Cross(pos); }
+
+  glm::dvec3 GetStasisVelocity(glm::dvec3& pos) {
+    return -glm::cross(glm::dvec3(0, rot_ang_speed, 0), pos);
+  }
 };
 
-glm::dvec3 Frame::GetVelocityRelTo(const Frame *relTo) const
+// // doesn't consider stasis velocity
+// vector3d Frame::GetVelocityRelTo(const Frame *relTo) const
+// {
+// 	if (this == relTo) return vector3d(0,0,0); // early-out to avoid unnecessary computation
+// 	vector3d diff = m_rootVel - relTo->m_rootVel;
+// 	if (relTo->IsRotFrame()) return diff * relTo->m_rootOrient;
+// 	else return diff;
+// }
+
+glm::dvec3 Frame::GetVelocityRelTo(Frame *relTo)
 {
   if (this == relTo) return glm::dvec3(0, 0, 0);
   glm::dvec3 diff = root_vel - relTo->root_vel;
-  return diff;
+  if(relTo->isRotFrame()) {
+    return diff * relTo->root_orient;
+  }
+  else {
+    return diff;
+  }
 }
 
-glm::dvec3 Frame::GetPositionRelTo(const Frame *relTo) const
+glm::dvec3 Frame::GetPositionRelTo(Frame *relTo)
 {
   glm::dvec3 diff = root_pos - relTo->root_pos;
-  return diff;
+  if(relTo->isRotFrame()) {
+    return diff * relTo->root_orient;
+  }
+  else {
+    return diff;
+  }
 }
 
-glm::dmat3 Frame::GetOrientRelTo(const Frame *relTo) const
+glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)
 {
   if (this == relTo) return glm::dmat3();
   return glm::transpose(relTo->root_orient) * root_orient;
@@ -153,17 +200,25 @@ void Frame::UpdateRootRelative(double time, double timestep) {
 }
 
 void Frame::UpdateOrbitRails(double time, double timestep) {
-  if(parent != NULL and not rotating) {
-  }
+  if(parent != NULL and body != NULL and not rotating) {
+    // translate body in orbit
+    // orb_ang = fmod(orb_ang_speed * time, 2 * M_PI);
 
-  if(rotating) {
-    ang = 0.1 * time; //fmod(rot_ang_speed * time, 2.0 * M_PI);
-    if(ang != 0) {
-      orient = initial_orient * glm::dmat3(glm::rotate(ang, glm::dvec3(0,1,0)));
+    if(orb_ang_speed != 0) {
+      pos = glm::dmat3(glm::rotate(orb_ang_speed, glm::dvec3(0, 1, 0))) * pos;
     }
   }
 
-  pos = orient * initial_pos;
+  if(rotating) {
+    ang = fmod(rot_ang_speed * time, 2 * M_PI);
+    if(ang != 0) {
+      orient = initial_orient * glm::dmat3(glm::rotate(-ang , glm::dvec3(0, 1, 0)));
+      // printf("%s name rot %.2f", name, ang);
+    }
+  }
+
+  // pos = orient * initial_pos;
+  // printf("%s name pos %.0f, %.0f, %.0f\n", name, pos.x, pos.y, pos.z);
 
   UpdateRootRelative(time, timestep);
 
@@ -175,10 +230,15 @@ void Frame::UpdateOrbitRails(double time, double timestep) {
 std::vector<Frame *> setup_frames() {
   Frame *sun = new Frame;
   Frame *eerbon = new Frame;
+  Frame *eerbon_rot = new Frame;
   Frame *moon = new Frame;
+  Frame *moon_rot = new Frame;
+
+  sun->name = "sun (inertial)";
   sun->parent = NULL;
   sun->children = std::vector<Frame *>{ eerbon };
   sun->rotating = false;
+  sun->has_rot_frame = false;
   sun->pos = glm::dvec3(0);
   sun->initial_pos = sun->pos;
   sun->initial_orient = glm::dmat3();
@@ -186,42 +246,86 @@ std::vector<Frame *> setup_frames() {
   sun->vel = glm::dvec3(0);
   sun->rot_ang_speed = 0;
   sun->orb_ang_speed = 0;
-  sun->radius = 10e6;
+  sun->soi = 9999999999999999;
   sun->root_pos = glm::dvec3(0);
   sun->root_vel = glm::dvec3(0);
   sun->root_orient = glm::dmat3();
 
+  eerbon->name = "eerbon (inertial)";
   eerbon->parent = sun;
-  eerbon->rotating = true;
-  eerbon->children = std::vector<Frame *>{ moon };
+  eerbon->rotating = false;
+  eerbon->has_rot_frame = true;
+  eerbon->children = std::vector<Frame *>{ eerbon_rot, moon };
   eerbon->pos = glm::dvec3(0, 0, -100e6);
   eerbon->initial_pos = glm::dvec3(0, 0, -100e6);
   eerbon->initial_orient = glm::dmat3();
   eerbon->orient = glm::dmat3();
   eerbon->vel = glm::dvec3(0);
-  eerbon->orb_ang_speed = 2e-7; // rad/s
-  eerbon->rot_ang_speed = 7.2921159e-5; // rad/s
-  eerbon->radius = 6e5;
+  eerbon->orb_ang_speed = 0.01; // 0.00000068269186570822291594437651; // rad/s;
+  eerbon->rot_ang_speed = 0;
+  eerbon->soi = 84159286;
   eerbon->root_pos = glm::dvec3(0);
   eerbon->root_vel = glm::dvec3(0);
   eerbon->root_orient = glm::dmat3();
 
+  eerbon_rot->name = "eerbon (rotational)";
+  eerbon_rot->parent = eerbon;
+  eerbon_rot->rotating = true;
+  eerbon_rot->has_rot_frame = false;
+  eerbon_rot->children = std::vector<Frame *>{ };
+  eerbon_rot->pos = glm::dvec3(0, 0, 0);
+  eerbon_rot->initial_pos = glm::dvec3(0, 0, 0);
+  eerbon_rot->initial_orient = glm::dmat3();
+  eerbon_rot->orient = glm::dmat3();
+  eerbon_rot->vel = glm::dvec3(0);
+  eerbon_rot->orb_ang_speed = 0;
+  eerbon_rot->rot_ang_speed = 0.01; // 0.00029157090303706880702966723086; // rad/s
+  eerbon_rot->soi = 1000000;
+  eerbon_rot->root_pos = glm::dvec3(0);
+  eerbon_rot->root_vel = glm::dvec3(0);
+  eerbon_rot->root_orient = glm::dmat3();
+
+  moon->name = "moon (inertial)";
   moon->parent = eerbon;
-  moon->rotating = true;
-  moon->children = std::vector<Frame *> { };
+  moon->rotating = false;
+  moon->has_rot_frame = true;
+  moon->children = std::vector<Frame *> { moon_rot };
   moon->pos = glm::dvec3(-12e6, 0, 0);
   moon->initial_pos = glm::dvec3(-12e6, 0, 0);
   moon->initial_orient = glm::dmat3();
   moon->orient = glm::dmat3();
-  moon->vel = glm::dvec3(0,0,1000);
-  moon->orb_ang_speed = 2.7e-6; // rad/s
-  moon->rot_ang_speed = 2.7e-6; // rad/s
-  moon->radius = 6e5;
+  moon->vel = glm::dvec3(0);
+  moon->orb_ang_speed = 0.001;//0.00004520797578987211820731369629; // rad/s
+  moon->rot_ang_speed = 0; // rad/s
+  moon->soi = 2429559.1;
   moon->root_pos = glm::dvec3(0);
   moon->root_vel = glm::dvec3(0);
   moon->root_orient = glm::dmat3();
 
-  return std::vector<Frame *>{ sun, eerbon, moon };
+  moon_rot->name = "moon (rotational)";
+  moon_rot->parent = moon;
+  moon_rot->rotating = true;
+  moon_rot->has_rot_frame = false;
+  moon_rot->children = std::vector<Frame *> { };
+  moon_rot->pos = glm::dvec3(0, 0, 0);
+  moon_rot->initial_pos = glm::dvec3(0, 0, 0);
+  moon_rot->initial_orient = glm::dmat3();
+  moon_rot->orient = glm::dmat3();
+  moon_rot->vel = glm::dvec3(0);
+  moon_rot->orb_ang_speed = 0;
+  moon_rot->rot_ang_speed = 0.001;//0.00004520785218583258404235991675; // rad/s
+  moon_rot->soi = 400000;
+  moon_rot->root_pos = glm::dvec3(0);
+  moon_rot->root_vel = glm::dvec3(0);
+  moon_rot->root_orient = glm::dmat3();
+
+  return std::vector<Frame *>{
+    sun, // 0
+      eerbon,// 1
+      eerbon_rot,// 2
+      moon,// 3
+      moon_rot// 4
+      };
 }
 
 class TerrainBody;
@@ -381,13 +485,13 @@ struct TerrainBody {
     // }
   }
 
-  void Draw(const Camera& camera) {
+  void Draw(const Camera& camera, TerrainBody *sun) {
     double cam_dist = glm::length(camera.GetPos() - glm::dvec3(transform[3]));
 
     // glm::dmat4 draw_transform(0);
     // draw_transform = glm::translate(frame->pos);
 
-    sunlightVec = glm::normalize(frame->root_pos);
+    sunlightVec = glm::normalize(frame->getRotFrame()->GetOrientRelTo(sun->frame) * frame->GetPositionRelTo(sun->frame));
 
     for(auto&& patch : patches) {
       // patch isn't subdivided
@@ -403,6 +507,8 @@ struct TerrainBody {
   }
 
   void Update(const Camera& camera) {
+    // transform = glm::translate(frame->root_pos) * glm::dmat4(frame->orient);
+
     for(auto&& patch : patches) {
       patch->Update(camera, transform);
     }
@@ -534,6 +640,7 @@ public:
   std::vector<VesselPartType> partTypes;
 
   TerrainBody *m_parent;
+  Frame *frame;
 
   glm::dvec3 m_com;
 
@@ -560,7 +667,7 @@ public:
   }
 
   void init() {
-    setVelocity(glm::dvec3(0, 0, 0));
+    // setVelocity(glm::dvec3(0, 0, 0));
     partResources.resize(parts.size());
     controller = parts.back();
     NeverSleep(controller);
@@ -783,36 +890,95 @@ public:
     ApplyTorque(m_reaction_wheels.front(), torque);
   }
 
-// vector3d Body::GetPositionRelTo(const Frame *relTo) const
-// {
-// 	vector3d fpos = m_frame->GetPositionRelTo(relTo);
-// 	matrix3x3d forient = m_frame->GetOrientRelTo(relTo);
-// 	return forient * GetPosition() + fpos;
-// }
+  glm::dmat3 GetOrientRelTo(Body *part, Frame *relTo)
+  {
+    glm::dmat3 GetOrient(Body *b);
+    glm::dmat3 forient = frame->GetOrientRelTo(relTo);
+    return forient * GetOrient(part);
+  }
 
-  glm::dvec3 GetPositionRelTo(Body *part, const Frame *relTo) {
-    glm::dvec3 fpos = m_parent->frame->GetPositionRelTo(relTo);
-    glm::dmat3 forient = m_parent->frame->GetOrientRelTo(relTo);
+  // vector3d Body::GetPositionRelTo(const Frame *relTo) const
+  // {
+  // 	vector3d fpos = m_frame->GetPositionRelTo(relTo);
+  // 	matrix3x3d forient = m_frame->GetOrientRelTo(relTo);
+  // 	return forient * GetPosition() + fpos;
+  // }
+
+  glm::dvec3 GetPositionRelTo(Body *part, Frame *relTo) {
+    glm::dvec3 fpos = frame->GetPositionRelTo(relTo);
+    glm::dmat3 forient = frame->GetOrientRelTo(relTo);
     return forient * GetPosition(part) + fpos;
   }
+  // vector3d Body::GetVelocityRelTo(const Frame *relTo) const
+  // {
+  // 	matrix3x3d forient = m_frame->GetOrientRelTo(relTo);
+  // 	vector3d vel = GetVelocity();
+  // 	if (m_frame != relTo) vel -= m_frame->GetStasisVelocity(GetPosition());
+  // 	return forient * vel + m_frame->GetVelocityRelTo(relTo);
+  // }
 
-  glm::dvec3 GetVelocityRelTo(Body *part, const Frame *relTo) {
-    glm::dvec3 fvel = m_parent->frame->GetVelocityRelTo(relTo);
-    glm::dmat3 forient = m_parent->frame->GetOrientRelTo(relTo);
-    return forient * GetVelocity(part) + fvel;
+  glm::dvec3 GetVelocityRelTo(Body *part, Frame *relTo) {
+    glm::dmat3 forient = frame->GetOrientRelTo(relTo);
+    glm::dvec3 vel = GetVelocity(part);
+    glm::dvec3 pos = GetPosition(part);
+    if(frame != relTo) vel += frame->GetStasisVelocity(pos);
+    return forient * vel + frame->GetVelocityRelTo(relTo);
   }
 
-  glm::dmat4 moveToFrame(TerrainBody *to) {
-    void setModelMatrix(Body *b, glm::dmat4 model);
+// void Body::SwitchToFrame(Frame *newFrame)
+// {
+// 	const vector3d vel = GetVelocityRelTo(newFrame);		// do this first because it uses position
+// 	const vector3d fpos = m_frame->GetPositionRelTo(newFrame);
+// 	const matrix3x3d forient = m_frame->GetOrientRelTo(newFrame);
+// 	SetPosition(forient * GetPosition() + fpos);
+// 	SetOrient(forient * GetOrient());
+// 	SetVelocity(vel + newFrame->GetStasisVelocity(GetPosition()));
+// 	SetFrame(newFrame);
+
+// 	LuaEvent::Queue("onFrameChanged", this);
+// }
+
+  void moveToFrame(Frame *newFrame) {
+    // void setModelMatrix(Body *b, glm::dmat4 model);
+    void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
+    glm::dmat3 GetOrient(Body *b);
+
+    int i = 0;
     for(auto&& part : parts) {
-      glm::dvec3 np = GetPositionRelTo(part, to->frame);
-      glm::dvec3 nv = GetVelocityRelTo(part, to->frame);
-      glm::dmat3 orient = m_parent->frame->GetOrientRelTo(to->frame);
-      glm::dmat4 nmodel = glm::dmat4(orient) * translate(np);
-      setModelMatrix(part, nmodel);
-      SetVelocity(part, nv);
+      auto type = partTypes[i];
+      const char *name = VesselPartTypeStr(type);
+      i++;
+
+      glm::dvec3 oldVel = GetVelocity(part);
+      glm::dvec3 vel = GetVelocityRelTo(part, newFrame);
+      glm::dvec3 fpos = frame->GetPositionRelTo(newFrame);
+      glm::dmat3 forient = frame->GetOrientRelTo(newFrame);
+
+      glm::dvec3 newPos = forient * GetPosition(part) + fpos;
+      glm::dmat3 newOrient = forient * GetOrient(part);
+
+      glm::dvec3 pos = GetPosition(part);
+      printf("@@@ %s OLD position: %.0f %.0f %.0f\n", name, pos.x, pos.y, pos.z);
+      printf("@@@ %s NEW position: %.0f %.0f %.0f\n", name, newPos.x, newPos.y, newPos.z);
+
+      setPosRot(part, newPos, newOrient);
+      // setModelMatrix(part, newModelMatrix);
+
+      pos = GetPosition(part);
+      glm::dvec3 newVel = vel + newFrame->GetStasisVelocity(pos);
+      printf("@@@ %s OLD velocity: %.0f %.0f %.0f\n", name, oldVel.x, oldVel.y, oldVel.z);
+      printf("@@@ %s NEW velocity: %.0f %.0f %.0f\n", name, newVel.x, newVel.y, newVel.z);
+
+      /*
+	if we're moving from inertial to rotational frame, subtract stasis velocity?
+      */
+
+      SetVelocity(part, newVel);
+
+
     }
-    m_parent = to;
+    frame = newFrame;
+    m_parent = newFrame->body;
   }
 };
 
@@ -961,6 +1127,7 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
       glm::vec3 color = glm::vec3(c.r, c.g, c.b);
       float brightness = (c.r + c.g + c.b) / 6;
 
+      // lower contrast, increase brightness
       color = float(0.5) * color + glm::vec3(brightness,
 					     brightness,
 					     brightness);
@@ -1161,7 +1328,6 @@ int main(int argc, char **argv)
   earth->power_scaler = 3;
   earth->g = 9.81;
   earth->mu = 3.5316000e12;
-  earth->soi = 84159286;
   earth->transform = glm::dmat4();
   earth->Create(600000, 5.2915793e22);
 
@@ -1175,7 +1341,6 @@ int main(int argc, char **argv)
   moon->power_scaler = 1;
   moon->g = 1.63;
   moon->mu = 6.5138398e10;
-  moon->soi = 2429559.1;
   // moon->soi = 250000;
   moon->transform = glm::translate(glm::dmat4(), glm::dvec3(12e6, 0, 0));
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
@@ -1192,7 +1357,6 @@ int main(int argc, char **argv)
   sun->power_scaler = 1;
   sun->g = 17.1;
   sun->mu = 1.1723328e18;
-  sun->soi = -1;
   sun->transform = glm::translate(glm::dmat4(), glm::dvec3(0, 0, 100e6));
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   sun->Create(6000000, 9.7600236e20);
@@ -1201,10 +1365,12 @@ int main(int argc, char **argv)
 
   sun->frame = frames[0];
   earth->frame = frames[1];
-  moon->frame = frames[2];
+  moon->frame = frames[3];
   sun->frame->body = sun;
   earth->frame->body = earth;
   moon->frame->body = moon;
+  frames[2]->body = earth;
+  frames[4]->body = moon;
 
   sun->frame->UpdateOrbitRails(0, 1/60.0);
 
@@ -1212,6 +1378,7 @@ int main(int argc, char **argv)
 
   Vehicle *ship = new Vehicle;
   ship->m_parent = moon;
+  ship->frame = frames[4]; // moon rotational
 
   StaticBuilding *space_port;
   {
@@ -1253,7 +1420,7 @@ int main(int argc, char **argv)
     space_port->body = create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
     space_port->parent = ship->m_parent;
 
-    double ship_height = 4.5;
+    double ship_height = 190000.5; // 4.5
 
     // top
     Body *capsule =
@@ -1271,10 +1438,11 @@ int main(int argc, char **argv)
 
     ship->partTypes = { VesselPartType::Capsule,
 			VesselPartType::ReactionWheel,
-			VesselPartType::Engine };
+			VesselPartType::Engine
+  };
 
     ship->init();
-    ship->setVelocity(glm::dvec3(0, 0, 0));
+    ship->setVelocity(glm::dvec3(0, 0, 300));
   }
 
   /* camera init */
@@ -1459,23 +1627,39 @@ int main(int argc, char **argv)
       time += 1/60.0 * time_accel;
 
       if(time_accel != 0) {
-	// sun->frame->UpdateOrbitRails(time, 1/60.0 * time_accel);
+	sun->frame->UpdateOrbitRails(time, 1/60.0 * time_accel);
 
-	double ship_r = glm::length(GetPosition(ship->controller));
-	if(ship_r > ship->m_parent->soi) {
+	com = ship->get_center_of_mass();
+	double ship_r = glm::length(com);
+	if(ship_r > ship->frame->soi + 10000) {
 	  // switching to parent SOI if there is one
-	  if(ship->m_parent->frame->parent != NULL) {
-	    printf("@@@ switching frame from %s to %s\n",
-		   ship->m_parent->name,
-		   ship->m_parent->frame->parent->body->name
+	  if(ship->frame->parent != NULL) {
+	    glm::dvec3 pos = GetPosition(ship->controller);
+	    printf("@@@ switching frame from %s to parent %s\n",
+		   ship->frame->name,
+		   ship->frame->parent->name
 		   );
-	    ship->moveToFrame(ship->m_parent->frame->parent->body);
+	    glm::dvec3 offset = ship->frame->GetPositionRelTo(ship->frame->parent);
+	    printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
+	    printf("@@@@@ OLD position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
+	    ship->moveToFrame(ship->frame->parent);
+	    pos = GetPosition(ship->controller);
+	    printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
 	  }
 	}
 	else {
 	  // check if we've entered a child SOI
-	  for(auto&& child : ship->m_parent->frame->children) {
-	    // ...
+	  for(auto&& child : ship->frame->children) {
+	    double dist = glm::length(ship->GetPositionRelTo(ship->controller, child));
+	    if(dist < child->soi - 10000) {
+	      printf("@@@ switching frame from %s to child %s, distance: %.0f\n",
+		     ship->frame->name,
+		     child->name,
+		     dist
+		     );
+	      ship->moveToFrame(child);
+	      break;
+	    }
 	  }
 	}
 
@@ -1509,10 +1693,41 @@ int main(int argc, char **argv)
       }
 
       for(auto&& planet : planets) {
-	planet->transform =
-	  glm::translate(planet->frame->GetPositionRelTo(ship->m_parent->frame));
 
-	// * glm::dmat4(planet->frame->root_orient) ;
+	glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
+	glm::dmat4 transform;
+	glm::dmat3 rotate;
+	ImGui::Text("tr: %f %f %f", translate.x, translate.y, translate.z);
+	// ;
+	if(planet == ship->m_parent) {
+	  /* this is the planet we're on.
+
+	     This means its position is always 0, 0, 0
+	   */
+	  transform = glm::dmat4(planet->frame->getRotFrame()->orient);
+	}
+	else {
+	  transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
+	}
+
+      // 	if(ship->frame->isRotFrame()) {
+      // 	  if(planet != ship->m_parent) {
+      // 	    transform =
+      // 	      glm::dmat4(planet->frame->GetOrientRelTo(ship->frame->getRotFrame())) *
+      // 	      glm::translate(translate) *
+      // 	      glm::dmat4(planet->frame->orient);
+      // 	  }
+      // 	  else {
+      // 	    transform = glm::translate(translate);
+      // 	  }
+      // 	}
+      // 	else {
+      // 	  transform = glm::translate(translate) * glm::dmat4(planet->frame->orient);
+      // 	}
+
+      	planet->transform = transform;
+      	  // glm::translate(tr) *
+      	  // glm::dmat4(rot);
       }
 
       camera.ComputeView();
@@ -1531,13 +1746,16 @@ int main(int argc, char **argv)
 
       for(auto&& planet : planets) {
 	planet->Update(camera);
-	planet->Draw(camera);
+	planet->Draw(camera, sun);
       }
 
       const double mu = ship->m_parent->mu;
 
       const glm::dvec3 pos = com;
-      const glm::dvec3 vel = ship->GetVel();
+      glm::dvec3 vel = ship->GetVel();
+      if(ship->frame->isRotFrame() == true) {
+	vel += ship->frame->GetStasisVelocity(com);
+      }
       const double distance = glm::length(pos);
       const double speed = glm::length(vel);
       // https://en.wikipedia.org/wiki/Standard_gravitational_parameter
@@ -1576,7 +1794,7 @@ int main(int argc, char **argv)
       }
 
       glm::dvec3 GetAngVelocity_(Body *b);
-      const glm::dvec3 ang_vel_ = GetAngVelocity(ship->m_reaction_wheels.front());
+      const glm::dvec3 ang_vel_ = GetAngVelocity(ship->controller);
 
       const glm::dvec3 AoA = glm::dvec3();
 
@@ -1748,7 +1966,8 @@ int main(int argc, char **argv)
 
       if(shipInfoWindow == true) {
 	ImGui::Begin("VESSEL");
-	ImGui::Text("Reference frame: %s", ship->m_parent->name);
+	ImGui::Text("Reference frame: %s", ship->frame->name);
+	ImGui::Text("Reference frame type: %s", ship->frame->isRotFrame() ? "Rotational" : "Inertial");
 	ImGui::Text("Mass: %.3fkg", ship->getMass());
 	ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
 	ImGui::Text("Thrust Util: %.0f%%", ship->thruster_util * 100);
