@@ -3,7 +3,7 @@
 
 #include <string>
 #include <GL/glew.h>
-#include "transform.h"
+#include "camera.h"
 
 class Shader
 {

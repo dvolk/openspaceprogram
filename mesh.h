@@ -5,7 +5,15 @@
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
-#include "obj_loader.h"
+//#include "obj_loader.h"
+
+struct IndexedModel {
+  std::vector<glm::vec3> positions;
+  std::vector<glm::vec2> texCoords;
+  std::vector<glm::vec3> normals;
+  std::vector<unsigned int> indices;
+  std::vector<glm::vec3> colors;
+};
 
 struct Vertex
 {

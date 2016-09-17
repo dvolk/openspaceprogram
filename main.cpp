@@ -44,6 +44,9 @@
   * Multithreaded patch generation
   * Shadowmapping
   * Atmosphere rendering
+  * clamp reaction wheel torque
+  * fix frame transitions for multipart ships
+  * 
   * ... lots more ...
 
  */
@@ -76,7 +79,7 @@
 #include <assimp/postprocess.h>     // Post processing flags
 
 #include "../../lib/imgui/imgui.h"
-#include "../../lib/imgui/examples/sdl_opengl_example/imgui_impl_sdl.h"
+#include "imgui_impl_sdl/imgui_impl_sdl.h"
 
 ImFont *bigger;
 bool planetsWindow = false;
@@ -130,7 +133,7 @@ struct Frame {
     if(isRotFrame() == true) {
       return parent;
     } else {
-      this;
+      return this;
     }
   }
 
@@ -146,7 +149,7 @@ struct Frame {
   // must attain this velocity within rotating frame to be stationary.
   // vector3d GetStasisVelocity(const vector3d &pos) const { return -vector3d(0,m_angSpeed,0).Cross(pos); }
 
-  glm::dvec3 GetStasisVelocity(glm::dvec3& pos) {
+  glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
     return -glm::cross(glm::dvec3(0, rot_ang_speed, 0), pos);
   }
 };
@@ -234,6 +237,8 @@ std::vector<Frame *> setup_frames() {
   Frame *moon = new Frame;
   Frame *moon_rot = new Frame;
 
+  bool correct_rot_speeds = true;
+
   /*
     0
   */
@@ -248,7 +253,7 @@ std::vector<Frame *> setup_frames() {
   sun->orient = glm::dmat3();
   sun->vel = glm::dvec3(0);
   sun->rot_ang_speed = 0;
-  sun->orb_ang_speed = 0;
+  sun->orb_ang_speed = 0; 
   sun->soi = 9999999999999999;
   sun->root_pos = glm::dvec3(0);
   sun->root_vel = glm::dvec3(0);
@@ -267,7 +272,9 @@ std::vector<Frame *> setup_frames() {
   eerbon->initial_orient = glm::dmat3();
   eerbon->orient = glm::dmat3();
   eerbon->vel = glm::dvec3(0);
-  eerbon->orb_ang_speed = 0.01; // 0.00000068269186570822291594437651; // rad/s;
+  eerbon->orb_ang_speed = 0.01;
+  if(correct_rot_speeds)
+    eerbon->orb_ang_speed = 0.00000068269186570822291594437651; // rad/s;
   eerbon->rot_ang_speed = 0;
   eerbon->soi = 84159286;
   eerbon->root_pos = glm::dvec3(0);
@@ -289,6 +296,8 @@ std::vector<Frame *> setup_frames() {
   eerbon_rot->vel = glm::dvec3(0);
   eerbon_rot->orb_ang_speed = 0;
   eerbon_rot->rot_ang_speed = 0.01; // 0.00029157090303706880702966723086; // rad/s
+  if(correct_rot_speeds)
+    eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086; // rad/s
   eerbon_rot->soi = 1000000;
   eerbon_rot->root_pos = glm::dvec3(0);
   eerbon_rot->root_vel = glm::dvec3(0);
@@ -308,6 +317,8 @@ std::vector<Frame *> setup_frames() {
   moon->orient = glm::dmat3();
   moon->vel = glm::dvec3(0);
   moon->orb_ang_speed = 0.001;//0.00004520797578987211820731369629; // rad/s
+  if(correct_rot_speeds)
+    moon->orb_ang_speed = 0.00004520797578987211820731369629; // rad/s
   moon->rot_ang_speed = 0; // rad/s
   moon->soi = 2429559.1;
   moon->root_pos = glm::dvec3(0);
@@ -328,7 +339,9 @@ std::vector<Frame *> setup_frames() {
   moon_rot->orient = glm::dmat3();
   moon_rot->vel = glm::dvec3(0);
   moon_rot->orb_ang_speed = 0;
-  moon_rot->rot_ang_speed = 0.001;//0.00004520785218583258404235991675; // rad/s
+  moon_rot->rot_ang_speed = 0.001; // rad/s
+  if(correct_rot_speeds)
+    moon_rot->rot_ang_speed = 0.00004520785218583258404235991675; // rad/s
   moon_rot->soi = 400000;
   moon_rot->root_pos = glm::dvec3(0);
   moon_rot->root_vel = glm::dvec3(0);
@@ -427,23 +440,6 @@ void GeoPatch::Subdivide(void) {
   }
 }
 
-void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
-  if(kids[0] == NULL) {
-    // patch isn't subdivided
-    glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
-    // glm::dmat4 id = glm::dmat4();
-    model->shader->Bind();
-    model->shader->Update(transform, color, camera, sunlightVec);
-    model->mesh->Draw();
-  }
-  else {
-    kids[0]->Draw(camera, transform, sunlightVec);
-    kids[1]->Draw(camera, transform, sunlightVec);
-    kids[2]->Draw(camera, transform, sunlightVec);
-    kids[3]->Draw(camera, transform, sunlightVec);
-  }
-}
-
 typedef struct {
     float r, g, b;
 } COLOUR;
@@ -464,6 +460,7 @@ struct TerrainBody {
   Frame *frame;
   glm::dmat4 transform;
   glm::vec3 sunlightVec;
+  int dbg_drew_patches;
 
   COLOUR (*colour_func)(float v, float vmin, float vmax);
 
@@ -503,14 +500,15 @@ struct TerrainBody {
   void Draw(const Camera& camera, TerrainBody *sun) {
     double cam_dist = glm::length(camera.GetPos() - glm::dvec3(transform[3]));
 
-    // glm::dmat4 draw_transform(0);
-    // draw_transform = glm::translate(frame->pos);
-
+    /*
+      this is slightly wrong?
+    */
     sunlightVec = -glm::normalize(
 				  frame->GetOrientRelTo(sun->frame) *
 				  sun->frame->GetPositionRelTo(frame)
 				  );
 
+    dbg_drew_patches = 0;
     for(auto&& patch : patches) {
       // patch isn't subdivided
       patch->Draw(camera, transform, sunlightVec);
@@ -518,9 +516,14 @@ struct TerrainBody {
 
     if(planetsWindow) {
       ImGui::Begin("Planets");
-      ImGui::Text("%s distance: %.0f", name, cam_dist);
-      ImGui::Text("%s rotational angle: %.5f", name, frame->getRotFrame()->ang);
-      ImGui::Text("%s orbital angle: %.5f", name, frame->getNonRotFrame()->orb_ang);
+      // printf("%p\n", frame->getNonRotFrame());
+      ImGui::Text("%s", name);
+      ImGui::Separator();
+      ImGui::Text("Distance: %.0f", cam_dist);
+      ImGui::Text("Rotational angle: %f", frame->getRotFrame()->ang);
+      ImGui::Text("Orbital angle: %f", frame->getNonRotFrame()->orb_ang);
+      ImGui::Text("Patches drawn: %d", dbg_drew_patches);
+      ImGui::Spacing();
       ImGui::End();
     }
   }
@@ -567,6 +570,27 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
       printf("added terrain collision with %p\n", this);
   } else {
       collision = NULL;
+  }
+}
+
+void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
+  // if(glm::dot(glm::vec3(camera.GetForward()), centroid) 
+  
+  body->dbg_drew_patches++;
+
+  if(kids[0] == NULL) {
+    // patch isn't subdivided
+    glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
+    // glm::dmat4 id = glm::dmat4();
+    model->shader->Bind();
+    model->shader->Update(transform, color, camera, sunlightVec);
+    model->mesh->Draw();
+  }
+  else {
+    kids[0]->Draw(camera, transform, sunlightVec);
+    kids[1]->Draw(camera, transform, sunlightVec);
+    kids[2]->Draw(camera, transform, sunlightVec);
+    kids[3]->Draw(camera, transform, sunlightVec);
   }
 }
 
@@ -1124,7 +1148,7 @@ inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 
 Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
-  int size = 50;
+  int size = 25;
 
   glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
@@ -1322,7 +1346,7 @@ int main(int argc, char **argv)
   ImGuiIO& io = ImGui::GetIO();
   io.Fonts->AddFontDefault();
   // io.Fonts->AddFontFromFileTTF("DroidSansMono.ttf", 14.0);
-  bigger = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 40.0);
+  bigger = io.Fonts->AddFontFromFileTTF("res/DroidSans.ttf", 40.0);
 
   // start bullet; see physics.cpp
   void create_physics(void);
@@ -1398,8 +1422,8 @@ int main(int argc, char **argv)
   std::vector<TerrainBody *> planets = { sun, earth, moon };
 
   Vehicle *ship = new Vehicle;
-  ship->m_parent = moon;
-  ship->frame = frames[4]; // moon rotational
+  ship->m_parent = earth;
+  ship->frame = frames[2]; // moon rotational
 
   StaticBuilding *space_port;
   {
@@ -1714,10 +1738,7 @@ int main(int argc, char **argv)
       }
 
       for(auto&& planet : planets) {
-
-	glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
 	glm::dmat4 transform;
-	glm::dmat3 rotate;
 	// ImGui::Text("tr: %f %f %f", translate.x, translate.y, translate.z);
 	// ;
 	if(planet == ship->m_parent) {
@@ -1730,14 +1751,13 @@ int main(int argc, char **argv)
 	    /* we're in a rotational frame */
 	  }
 	  else {
-	    transform = glm::dmat4(planet->frame->getRotFrame()->orient);
+	    planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
 	  }
 	}
 	else {
-	  transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
+	  glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
+	  planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
 	}
-
-      	planet->transform = transform;
       }
 
       camera.ComputeView();
@@ -1755,9 +1775,9 @@ int main(int argc, char **argv)
 
       const glm::dvec3 pos = com;
       glm::dvec3 vel = ship->GetVel();
-      if(ship->frame->isRotFrame() == true) {
-	vel += ship->frame->GetStasisVelocity(com);
-      }
+      glm::dvec3 stasis_vel = ship->frame->getRotFrame()->GetStasisVelocity(pos);
+      glm::dvec3 orbital_vel = vel + stasis_vel;
+
       const double distance = glm::length(pos);
       const double speed = glm::length(vel);
       // https://en.wikipedia.org/wiki/Standard_gravitational_parameter
@@ -1821,6 +1841,7 @@ int main(int argc, char **argv)
       const double ver_speed = glm::length(glm::proj(vel, pos)); // m/s
       glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, vel)); // hmm
       const double hor_speed = glm::length(glm::proj(vel, surface_tangent)); // m/s
+
       /*  y
 	  |
           |
@@ -1926,6 +1947,8 @@ int main(int argc, char **argv)
 
       if(orbitInfoWindow == true) {
 	ImGui::Begin("ORBITAL");
+	ImGui::Text("Vel: %.1fm/s",
+		    glm::length(orbital_vel));
 	ImGui::Text("Alt: %.1fm", distance);
  	ImGui::Text("ApA: %.1fm", ApA);
 	ImGui::Text("ApT: %.1f", ApT);

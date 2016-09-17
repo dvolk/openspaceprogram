@@ -20,6 +20,11 @@ struct Body {
 
     glm::dmat4 model_matrix;
 
+  ~Body() {
+    delete model;
+    delete btBody;
+  }
+
     // model matrix received from bullet for drawing
     void UpdateModelMatrix() {
      btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);

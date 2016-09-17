@@ -78,6 +78,9 @@ public:
     const glm::dvec3& GetPos() const {
         return pos;
     }
+    const glm::dvec3& GetForward() const {
+        return forward;
+    }
 
 protected:
 private:
