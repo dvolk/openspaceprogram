@@ -1,38 +1,37 @@
-CC=gcc
-CXX=g++
-RM=rm -f
+TARGET=osp
+
+LTO=-flto # link-time optimization
+CXX= g++
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
-CPPFLAGS=-g3 -O2 -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2
-LDFLAGS=$(CPPFLAGS)
+CXXFLAGS=$(LTO) -g3 -O2 -Wall -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2 #-I../../../lib/imgui
+
+LINKER=g++ -o
 LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath -lassimp
 
-SRCS=body.cpp display.cpp gldebug.cpp main.cpp mesh.cpp physics.cpp shader.cpp
-OBJS=$(subst .cpp,.o,$(SRCS))
+# you'll need to build these manually
+IMGUI_OBJS=src/imgui_impl_sdl/imgui_impl_sdl.o ../../lib/imgui/imgui.o ../../lib/imgui/imgui_draw.o
 
-# imgui: https://github.com/ocornut/imgui
+LFLAGS=$(LTO) -Wall $(LDLIBS) $(IMGUI_LIBS)
 
-# compile with:
-# g++ -fPIC -c $imgui.cpp -o $imgui.o
+SRCDIR=src
+OBJDIR=obj
+BINDIR=.
 
-# edit these paths:
-IMGUI_OBJS=imgui_impl_sdl/imgui_impl_sdl.o ../../lib/imgui/imgui.o ../../lib/imgui/imgui_draw.o
+SOURCES := $(wildcard $(SRCDIR)/*.cpp)
+INCLUDES := $(wildcard $(SRCDIR)/*.h)
+OBJECTS  := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+rm = rm -f
 
+$(BINDIR)/$(TARGET): $(OBJECTS)
+	$(LINKER) $@ $(IMGUI_OBJS) $(OBJECTS) $(LFLAGS)
 
-all: tool
+$(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-tool: $(OBJS)
-	$(CXX) $(LDFLAGS) $(OBJS) $(IMGUI_OBJS) $(LDLIBS) -o osp
-
-depend: .depend
-
-.depend: $(SRCS)
-	rm -f ./.depend
-	$(CXX) $(CPPFLAGS) -MM $^>>./.depend;
-
+.PHONEY: clean
 clean:
-	$(RM) $(OBJS)
+	$(rm) $(OBJECTS)
 
-dist-clean: clean
-	$(RM) *~ .depend
-
-include .depend
+.PHONEY: remove
+remove: clean
+	$(rm) $(BINDIR)/$(TARGET)

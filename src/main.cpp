@@ -46,7 +46,7 @@
   * Atmosphere rendering
   * clamp reaction wheel torque
   * fix frame transitions for multipart ships
-  * 
+  * parts should be able to have several functions i.e. capsule + reaction wheel etc
   * ... lots more ...
 
  */
@@ -78,7 +78,7 @@
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post processing flags
 
-#include "../../lib/imgui/imgui.h"
+#include "../../../lib/imgui/imgui.h"
 #include "imgui_impl_sdl/imgui_impl_sdl.h"
 
 ImFont *bigger;
@@ -208,12 +208,12 @@ void Frame::UpdateOrbitRails(double time, double timestep) {
     // orb_ang = fmod(orb_ang_speed * time, 2 * M_PI);
 
     if(orb_ang_speed != 0) {
-      pos = glm::dmat3(glm::rotate(orb_ang_speed, glm::dvec3(0, 1, 0))) * pos;
+      pos = glm::dmat3(glm::rotate(orb_ang_speed * timestep, glm::dvec3(0, 1, 0))) * pos;
     }
   }
 
   if(rotating) {
-    ang = fmod(rot_ang_speed * time, 2 * M_PI);
+    ang = fmod(rot_ang_speed * time * timestep, 2 * M_PI);
     if(ang != 0) {
       orient = initial_orient * glm::dmat3(glm::rotate(-ang , glm::dvec3(0, 1, 0)));
       // printf("%s name rot %.2f", name, ang);
@@ -295,7 +295,7 @@ std::vector<Frame *> setup_frames() {
   eerbon_rot->orient = glm::dmat3();
   eerbon_rot->vel = glm::dvec3(0);
   eerbon_rot->orb_ang_speed = 0;
-  eerbon_rot->rot_ang_speed = 0.01; // 0.00029157090303706880702966723086; // rad/s
+  eerbon_rot->rot_ang_speed = 0.01;
   if(correct_rot_speeds)
     eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086; // rad/s
   eerbon_rot->soi = 1000000;
@@ -316,7 +316,7 @@ std::vector<Frame *> setup_frames() {
   moon->initial_orient = glm::dmat3();
   moon->orient = glm::dmat3();
   moon->vel = glm::dvec3(0);
-  moon->orb_ang_speed = 0.001;//0.00004520797578987211820731369629; // rad/s
+  moon->orb_ang_speed = 0.001;
   if(correct_rot_speeds)
     moon->orb_ang_speed = 0.00004520797578987211820731369629; // rad/s
   moon->rot_ang_speed = 0; // rad/s
