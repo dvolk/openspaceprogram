@@ -1,10 +1,10 @@
 TARGET=osp
 
 # link-time optimization
-#LTO=-flto
+OPT=-flto -O2
 CXX= g++
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
-CXXFLAGS=$(LTO) -g3 -O2 -Wall -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2 #-I../../../lib/imgui
+CXXFLAGS=$(OPT) -g3 -Wall -Wextra -Wpedantic -std=c++11 $(SANITIZE) -I/usr/local/include/bullet -I/usr/include/freetype2 -I/usr/include/SDL2 #-I../../../lib/imgui
 
 LINKER=g++ -o
 LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath -lassimp

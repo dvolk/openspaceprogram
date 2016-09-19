@@ -581,9 +581,21 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
   if(kids[0] == NULL) {
     // patch isn't subdivided
     glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
-    // glm::dmat4 id = glm::dmat4();
     model->shader->Bind();
-    model->shader->Update(transform, color, camera, sunlightVec);
+
+    glm::dmat4 View = camera->GetView();
+    // make sure View * Model happens with double precision
+    glm::dmat4 ModelView = View * transform;
+    glm::mat4 ModelViewFloat = ModelView;
+    glm::mat4 Projection = camera->GetProjection();
+    glm::mat4 MVP = Projection * ModelViewFloat;
+    glm::mat4 ModelFloat = transform;
+
+    model->shader->setUniform_mat4(0, MVP);
+    model->shader->setUniform_mat4(1, ModelFloat);
+    model->shader->setUniform_vec3(2, sunlightVec);
+    model->shader->setUniform_vec4(3, color);
+
     model->mesh->Draw();
   }
   else {
@@ -1354,12 +1366,18 @@ int main(int argc, char **argv)
 
   /* data init */
   Shader *partsshader = new Shader;
+  partsshader->registerAttribs({ "position", "texCoord", "normal", "color" });
+  partsshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   partsshader->FromFile("./res/partsShader");
 
   Shader *terrainshader = new Shader;
+  terrainshader->registerAttribs({ "position", "texCoord", "normal", "color" });
+  terrainshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   terrainshader->FromFile("./res/terrainShader");
 
   Shader *sunshader = new Shader;
+  sunshader->registerAttribs({ "position", "texCoord", "normal", "color" });
+  sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   sunshader->FromFile("./res/sunShader");
 
   // earth->Create(6300000, 5.97237e24);

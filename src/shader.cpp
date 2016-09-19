@@ -18,14 +18,10 @@ void Shader::FromFile(const std::string& fileName)
     check_gl_error();
   }
 
-  glBindAttribLocation(m_program, 0, "position");
-  check_gl_error();
-  glBindAttribLocation(m_program, 1, "texCoord");
-  check_gl_error();
-  glBindAttribLocation(m_program, 2, "normal");
-  check_gl_error();
-  glBindAttribLocation(m_program, 3, "color");
-  check_gl_error();
+  for(int i = 0; i < attribNames.size(); i++) {
+    glBindAttribLocation(m_program, i, attribNames[i]);
+    check_gl_error();
+  }
 
   glLinkProgram(m_program);
   check_gl_error();
@@ -37,14 +33,16 @@ void Shader::FromFile(const std::string& fileName)
   CheckShaderError(m_program, GL_LINK_STATUS, true, "Invalid shader program");
   check_gl_error();
 
-  m_uniforms[0] = glGetUniformLocation(m_program, "MVP");
-  check_gl_error();
-  m_uniforms[1] = glGetUniformLocation(m_program, "Normal");
-  check_gl_error();
-  m_uniforms[2] = glGetUniformLocation(m_program, "lightDirection");
-  check_gl_error();
-  m_uniforms[3] = glGetUniformLocation(m_program, "color");
-  check_gl_error();
+  for(int i = 0; i < uniformNames.size(); i++) {
+    m_uniforms[i] = glGetUniformLocation(m_program, uniformNames[i]);
+    check_gl_error();
+
+    if(m_uniforms[i] == -1) {
+      printf("WARNING: shader %s has no uniform named %s (optimized out by shader compiler?)\n",
+	     fileName.c_str(),
+	     uniformNames[i]);
+    }
+  }
 }
 
 Shader::~Shader()
@@ -67,28 +65,56 @@ void Shader::Bind()
   check_gl_error();
 }
 
-void Shader::Update(const glm::dmat4& Model, glm::vec4& color, const Camera* camera, const glm::vec3& sunlightVec)
-{
-  const glm::dmat4 View = camera->GetView();
-  // make sure View * Model happens with double precision
-  const glm::dmat4 ModelView = View * Model;
-  const glm::mat4 ModelViewFloat = ModelView;
-  const glm::mat4 Projection = camera->GetProjection();
-  const glm::mat4 MVP = Projection * ModelViewFloat;
-  const glm::mat4 ModelFloat = Model;
-  check_gl_error();
-  glUniformMatrix4fv(m_uniforms[0], 1, GL_FALSE, &MVP[0][0]);
-  check_gl_error();
-  glUniformMatrix4fv(m_uniforms[1], 1, GL_FALSE, &ModelFloat[0][0]);
-  check_gl_error();
-
-  glUniform3f(m_uniforms[2], sunlightVec.x, sunlightVec.y, sunlightVec.z);
-  check_gl_error();
-  glUniform4f(m_uniforms[3], color.x, color.y, color.z, color.w);
-  check_gl_error();
+void Shader::registerAttribs(std::vector<const char *> names) {
+  for(int i = 0; i < names.size(); i++) {
+    attribNames.push_back(names[i]);
+  }
 }
 
-std::string Shader::LoadShader(const std::string& fileName)
+void Shader::registerUniforms(std::vector<const char *> names) {
+  for(int i = 0; i < names.size(); i++) {
+    uniformNames.push_back(names[i]);
+  }
+}
+
+void Shader::setUniform_vec2(int index, const glm::vec2 & v2) {
+  glUniform2f(m_uniforms[index], v2.x, v2.y);
+}
+
+void Shader::setUniform_vec3(int index, const glm::vec3 & v3) {
+  glUniform3f(m_uniforms[index], v3.x, v3.y, v3.z);
+}
+
+void Shader::setUniform_vec4(int index, const glm::vec4 & v4) {
+  glUniform4f(m_uniforms[index], v4.x, v4.y, v4.z, v4.w);
+}
+
+void Shader::setUniform_mat4(int index, const glm::mat4 & m4) {
+  glUniformMatrix4fv(m_uniforms[index], 1, GL_FALSE, &m4[0][0]);
+}
+
+// void Shader::Old_Update(const glm::dmat4& Model, glm::vec4& color, const Camera* camera, const glm::vec3& sunlightVec)
+// {
+//   const glm::dmat4 View = camera->GetView();
+//   // make sure View * Model happens with double precision
+//   const glm::dmat4 ModelView = View * Model;
+//   const glm::mat4 ModelViewFloat = ModelView;
+//   const glm::mat4 Projection = camera->GetProjection();
+//   const glm::mat4 MVP = Projection * ModelViewFloat;
+//   const glm::mat4 ModelFloat = Model;
+//   check_gl_error();
+//   glUniformMatrix4fv(m_uniforms[0], 1, GL_FALSE, &MVP[0][0]);
+//   check_gl_error();
+//   glUniformMatrix4fv(m_uniforms[1], 1, GL_FALSE, &ModelFloat[0][0]);
+//   check_gl_error();
+
+//   glUniform3f(m_uniforms[2], sunlightVec.x, sunlightVec.y, sunlightVec.z);
+//   check_gl_error();
+//   glUniform4f(m_uniforms[3], color.x, color.y, color.z, color.w);
+//   check_gl_error();
+// }
+
+std::string LoadShader(const std::string& fileName)
 {
   std::ifstream file;
   file.open((fileName).c_str());
