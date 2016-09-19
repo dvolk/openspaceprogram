@@ -531,8 +531,6 @@ struct TerrainBody {
   void Update(const Camera* camera) {
     // transform = glm::translate(frame->root_pos) * glm::dmat4(frame->orient);
 
-
-
     for(auto&& patch : patches) {
       patch->Update(camera, transform);
     }
@@ -1382,6 +1380,20 @@ int main(int argc, char **argv)
 
   // earth->Create(6300000, 5.97237e24);
 
+  TerrainBody *sun = new TerrainBody;
+  sun->shader = sunshader;
+  sun->name = "Sun";
+  sun->colour_func = GetColourSun;
+  sun->seed = 0.1;
+  sun->moves = false;
+  sun->has_sea = false;
+  sun->power_scaler = 1;
+  sun->g = 17.1;
+  sun->mu = 1.1723328e18;
+  sun->transform = glm::translate(glm::dmat4(), glm::dvec3(0, 0, 100e6));
+  // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
+  sun->Create(6000000, 9.7600236e20);
+
   TerrainBody *earth = new TerrainBody;
   earth->shader = terrainshader;
   earth->name = "Eerbon";
@@ -1409,21 +1421,6 @@ int main(int argc, char **argv)
   // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   moon->Create(200000, 9.7600236e20);
 
-
-  TerrainBody *sun = new TerrainBody;
-  sun->shader = sunshader;
-  sun->name = "Sun";
-  sun->colour_func = GetColourSun;
-  sun->seed = 0.1;
-  sun->moves = false;
-  sun->has_sea = false;
-  sun->power_scaler = 1;
-  sun->g = 17.1;
-  sun->mu = 1.1723328e18;
-  sun->transform = glm::translate(glm::dmat4(), glm::dvec3(0, 0, 100e6));
-  // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
-  sun->Create(6000000, 9.7600236e20);
-
   std::vector<Frame *> frames = setup_frames();
 
   sun->frame = frames[0];
@@ -1440,8 +1437,8 @@ int main(int argc, char **argv)
   std::vector<TerrainBody *> planets = { sun, earth, moon };
 
   Vehicle *ship = new Vehicle;
-  ship->m_parent = earth;
-  ship->frame = frames[2]; // moon rotational
+  ship->m_parent = moon;
+  ship->frame = frames[4]; // moon rotational
 
   StaticBuilding *space_port;
   {
@@ -1500,23 +1497,26 @@ int main(int argc, char **argv)
     ship->attachDown(reaction_wheel);
     ship->attachDown(thruster);
 
-    ship->partTypes = { VesselPartType::Capsule,
-			VesselPartType::ReactionWheel,
-			VesselPartType::Engine
-  };
+    ship->partTypes = {
+      VesselPartType::Capsule,
+      VesselPartType::ReactionWheel,
+      VesselPartType::Engine
+    };
 
     ship->init();
     ship->setVelocity(glm::dvec3(0, 0, 0));
   }
 
   /* camera init */
-  // WeirdCamera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
-  // 		     (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-  // 		     0.00001f, 10e6);
+  // WeirdCamera *camera1 = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
+  // 					(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
+  // 					0.00001f, 10e6);
   // focused_planet->Update(camera);
   OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
-					45.0f, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-					0.0001f, 10e6);
+  					45.0f, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
+  					0.0001f, 10e6);
+
+  // Camera *camera = camera1;
 
   bool running = true;
   bool redraw = false;
@@ -1634,6 +1634,11 @@ int main(int argc, char **argv)
 	if(capture_pointer == true) {
 	  camera->RotateY(-ev.motion.xrel / 200.0f);
 	  camera->Pitch(ev.motion.yrel / 200.0f);
+	}
+      }
+      if(ev.type == SDL_MOUSEWHEEL) {
+	if(capture_pointer == true) {
+	  camera->wheel(ev.wheel.y);
 	}
       }
     }
@@ -1759,7 +1764,6 @@ int main(int argc, char **argv)
       }
 
       for(auto&& planet : planets) {
-	glm::dmat4 transform;
 	// ImGui::Text("tr: %f %f %f", translate.x, translate.y, translate.z);
 	// ;
 	if(planet == ship->m_parent) {
@@ -1770,12 +1774,15 @@ int main(int argc, char **argv)
 
 	  if(ship->frame->isRotFrame()) {
 	    /* we're in a rotational frame */
+	    planet->transform = glm::dmat4();
 	  }
 	  else {
+	    /* we're in an inertial frame */
 	    planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
 	  }
 	}
 	else {
+	  /* other planets */
 	  glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
 	  planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
 	}
@@ -2177,6 +2184,13 @@ int main(int argc, char **argv)
       }
 
       ImGui::PopStyleColor();
+
+      // for(auto&& frame : frames) {
+      // 	ImGui::Text("root pos: %.0f, %.0f, %.0f",
+      // 		    frame->root_pos.x,
+      // 		    frame->root_pos.y,
+      // 		    frame->root_pos.z);
+      // }
 
       ImGui::Render();
 

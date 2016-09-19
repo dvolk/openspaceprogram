@@ -30,16 +30,22 @@ OrbitCamera::OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, flo
   this->zNear = zNear;
   this->zFar = zFar;
   this->focusPoint = shipPos;
-  this->pos = focusPoint + glm::dvec3(10, 0, 0);
+  this->distance = 10;
+  this->pos = focusPoint + glm::dvec3(distance, 0, 0);
   this->forward = focusPoint - pos;
   this->up = glm::normalize(pos);
   this->projection = glm::perspective(fov, aspect, zNear, zFar);
   this->view = glm::translate(pos);
   this->orient = glm::dmat3();
 }
+
+void OrbitCamera::wheel(double amt) {
+  distance -=  amt * sqrt(distance);
+}
+
 void OrbitCamera::ComputeView()
 {
-  pos = focusPoint + orient * glm::dvec3(10, 0, 0);
+  pos = focusPoint + orient * glm::dvec3(distance, 0, 0);
   forward = glm::normalize(focusPoint - pos);
   up = glm::normalize(pos);
   view = glm::lookAt(pos, pos + forward, up);

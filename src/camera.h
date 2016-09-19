@@ -12,11 +12,13 @@ class Camera {
   glm::dvec3 up;
   float fov, aspect, zNear, zFar;
 
-  void Follow(const glm::dvec3 p);
-  void MoveForward(double amt);
-  void MoveRight(double amt);
-  void Pitch(double angle);
-  void RotateY(double angle);
+  void ComputeView() {};
+  void Follow(const glm::dvec3 p) {};
+  void MoveForward(double amt) {};
+  void MoveRight(double amt) {};
+  void Pitch(double angle) {};
+  void RotateY(double angle) {};
+  void wheel(double amt) {};
 
   void setAspect(float _aspect);
   const glm::dvec3& GetPos() const;
@@ -30,6 +32,7 @@ class OrbitCamera : public Camera {
  public:
   glm::dvec3 focusPoint;
   glm::dmat3 orient;
+  double distance;
 
   OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, float zNear, float zFar);
 
@@ -41,6 +44,8 @@ class OrbitCamera : public Camera {
 
   void Pitch(double angle);
   void RotateY(double angle);
+
+  void wheel(double amt);
 };
 
 struct WeirdCamera : public Camera {
@@ -55,4 +60,6 @@ struct WeirdCamera : public Camera {
 
   void Pitch(double angle);
   void RotateY(double angle);
+
+  void wheel(double amt) {}
 };
