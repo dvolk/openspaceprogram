@@ -3,7 +3,9 @@
 
 #include <string>
 #include <GL/glew.h>
-#include "camera.h"
+#include <glm/glm.hpp>
+
+class Camera;
 
 class Shader
 {
@@ -13,7 +15,7 @@ class Shader
 
     void Bind();
     /* void Update(const Transform& transform, glm::vec4& color, const Camera& camera, const glm::vec3& sunlightVec); */
-    void Update(const glm::dmat4& Model, glm::vec4& color, const Camera& camera, const glm::vec3& sunlightVec);
+    void Update(const glm::dmat4& Model, glm::vec4& color, const Camera* camera, const glm::vec3& sunlightVec);
 
     virtual ~Shader();
  protected:

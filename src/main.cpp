@@ -47,8 +47,8 @@
   * clamp reaction wheel torque
   * fix frame transitions for multipart ships
   * parts should be able to have several functions i.e. capsule + reaction wheel etc
+  * RCS
   * ... lots more ...
-
  */
 
 #include <stdio.h>
@@ -253,7 +253,7 @@ std::vector<Frame *> setup_frames() {
   sun->orient = glm::dmat3();
   sun->vel = glm::dvec3(0);
   sun->rot_ang_speed = 0;
-  sun->orb_ang_speed = 0; 
+  sun->orb_ang_speed = 0;
   sun->soi = 9999999999999999;
   sun->root_pos = glm::dvec3(0);
   sun->root_vel = glm::dvec3(0);
@@ -298,7 +298,7 @@ std::vector<Frame *> setup_frames() {
   eerbon_rot->rot_ang_speed = 0.01;
   if(correct_rot_speeds)
     eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086; // rad/s
-  eerbon_rot->soi = 1000000;
+  eerbon_rot->soi = 700000; // 700km
   eerbon_rot->root_pos = glm::dvec3(0);
   eerbon_rot->root_vel = glm::dvec3(0);
   eerbon_rot->root_orient = glm::dmat3();
@@ -342,7 +342,7 @@ std::vector<Frame *> setup_frames() {
   moon_rot->rot_ang_speed = 0.001; // rad/s
   if(correct_rot_speeds)
     moon_rot->rot_ang_speed = 0.00004520785218583258404235991675; // rad/s
-  moon_rot->soi = 400000;
+  moon_rot->soi = 300000;
   moon_rot->root_pos = glm::dvec3(0);
   moon_rot->root_vel = glm::dvec3(0);
   moon_rot->root_orient = glm::dmat3();
@@ -386,8 +386,8 @@ struct GeoPatch {
   ~GeoPatch();
 
   void Subdivide(void);
-  void Draw(const Camera& camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec);
-  void Update(const Camera& camera, const glm::dmat4& transform);
+  void Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec);
+  void Update(const Camera* camera, const glm::dmat4& transform);
 
   int CountChildren() {
     int ret = 1;
@@ -497,8 +497,8 @@ struct TerrainBody {
     // }
   }
 
-  void Draw(const Camera& camera, TerrainBody *sun) {
-    double cam_dist = glm::length(camera.GetPos() - glm::dvec3(transform[3]));
+  void Draw(const Camera* camera, TerrainBody *sun) {
+    double cam_dist = glm::length(camera->GetPos() - glm::dvec3(transform[3]));
 
     /*
       this is slightly wrong?
@@ -528,10 +528,10 @@ struct TerrainBody {
     }
   }
 
-  void Update(const Camera& camera) {
+  void Update(const Camera* camera) {
     // transform = glm::translate(frame->root_pos) * glm::dmat4(frame->orient);
 
-    
+
 
     for(auto&& patch : patches) {
       patch->Update(camera, transform);
@@ -573,9 +573,9 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
   }
 }
 
-void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
-  // if(glm::dot(glm::vec3(camera.GetForward()), centroid) 
-  
+void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
+  // if(glm::dot(glm::vec3(camera.GetForward()), centroid)
+
   body->dbg_drew_patches++;
 
   if(kids[0] == NULL) {
@@ -594,11 +594,11 @@ void GeoPatch::Draw(const Camera& camera, const glm::dmat4& transform, const glm
   }
 }
 
-void GeoPatch::Update(const Camera& camera, const glm::dmat4& transform) {
+void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform) {
   if(depth > max_depth)
     return;
 
-  const glm::dvec3& camera_pos = camera.GetPos() - (glm::dvec3)(transform[3]);
+  const glm::dvec3& camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
   const glm::dvec3& centroid_pos = body->GetTerrainHeight(glm::normalize(camera_pos)) * centroid;
   const float dist = glm::length(camera_pos - centroid_pos);
   const float subdiv = 2.0f * body->radius * glm::length(v0 - centroid);
@@ -841,7 +841,7 @@ public:
     return applyGravity();
   }
 
-  void Draw(const Camera& camera) {
+  void Draw(const Camera* camera) {
     glm::vec3 sunlightVec = m_parent->sunlightVec; // more or less correct?
 
     for(auto&& part : parts) { part->Draw(camera, sunlightVec); }
@@ -1032,7 +1032,7 @@ public:
   TerrainBody *parent;
   Body *body;
 
-  void Draw(const Camera& camera, const TerrainBody *current) {
+  void Draw(const Camera* camera, const TerrainBody *current) {
     if(current == parent) {
       body->Draw(camera, parent->sunlightVec);
     }
@@ -1492,10 +1492,13 @@ int main(int argc, char **argv)
   }
 
   /* camera init */
-  Camera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
-		(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-		0.00001f, 10e6);
+  // WeirdCamera camera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
+  // 		     (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
+  // 		     0.00001f, 10e6);
   // focused_planet->Update(camera);
+  OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
+					45.0f, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
+					0.0001f, 10e6);
 
   bool running = true;
   bool redraw = false;
@@ -1542,7 +1545,7 @@ int main(int argc, char **argv)
       if (ev.type == SDL_WINDOWEVENT) {
 	if(ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
 	  display.onResize(ev.window.data1, ev.window.data2);
-	  camera.setAspect((float)ev.window.data1 / (float)ev.window.data2);
+	  camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
 	}
       }
       if(ev.type == SDL_KEYDOWN) {
@@ -1611,8 +1614,8 @@ int main(int argc, char **argv)
       }
       if(ev.type == SDL_MOUSEMOTION) {
 	if(capture_pointer == true) {
-	  camera.RotateY(-ev.motion.xrel / 200.0f);
-	  camera.Pitch(ev.motion.yrel / 200.0f);
+	  camera->RotateY(-ev.motion.xrel / 200.0f);
+	  camera->Pitch(ev.motion.yrel / 200.0f);
 	}
       }
     }
@@ -1637,11 +1640,11 @@ int main(int argc, char **argv)
       const Uint8* key = SDL_GetKeyboardState(NULL);
       if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
 
-      if(key[SDL_SCANCODE_E]) { camera.RotateY(0.05); }
-      else if(key[SDL_SCANCODE_Q]) { camera.RotateY(-0.05); }
+      if(key[SDL_SCANCODE_E]) { camera->RotateY(0.05); }
+      else if(key[SDL_SCANCODE_Q]) { camera->RotateY(-0.05); }
 
-      if(key[SDL_SCANCODE_W]) { camera.MoveForward(cam_speed); }
-      else if(key[SDL_SCANCODE_S]) { camera.MoveForward(-cam_speed); }
+      if(key[SDL_SCANCODE_W]) { camera->MoveForward(cam_speed); }
+      else if(key[SDL_SCANCODE_S]) { camera->MoveForward(-cam_speed); }
 
       if(key[SDL_SCANCODE_I]) { ship->ApplyThrust(); }
       if(key[SDL_SCANCODE_X]) { ship->KillRot(); }
@@ -1734,7 +1737,7 @@ int main(int argc, char **argv)
       com = ship->get_center_of_mass();
 
       if(follow_ship == true) {
-	camera.Follow(com);
+	camera->Follow(com);
       }
 
       for(auto&& planet : planets) {
@@ -1760,7 +1763,7 @@ int main(int argc, char **argv)
 	}
       }
 
-      camera.ComputeView();
+      camera->ComputeView();
 
       space_port->Draw(camera, ship->m_parent);
 
@@ -1773,10 +1776,20 @@ int main(int argc, char **argv)
 
       const double mu = ship->m_parent->mu;
 
+      // surf pos??
       const glm::dvec3 pos = com;
+      /* orbital velocity */
       glm::dvec3 vel = ship->GetVel();
-      glm::dvec3 stasis_vel = ship->frame->getRotFrame()->GetStasisVelocity(pos);
-      glm::dvec3 orbital_vel = vel + stasis_vel;
+
+      glm::dvec3 surf_pos = pos;
+      glm::dvec3 surf_vel = vel;
+
+      if(ship->frame->isRotFrame() == false and
+	 ship->frame->hasRotFrame() == true) {
+	glm::dvec3 stasis_vel = ship->frame->getRotFrame()->GetStasisVelocity(pos);
+	surf_vel -= stasis_vel;
+	surf_pos = ship->frame->getRotFrame()->orient * pos;
+      }
 
       const double distance = glm::length(pos);
       const double speed = glm::length(vel);
@@ -1838,9 +1851,9 @@ int main(int argc, char **argv)
       const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (mu)); // s
       const double ApT = T - PeT; // s
 
-      const double ver_speed = glm::length(glm::proj(vel, pos)); // m/s
-      glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, vel)); // hmm
-      const double hor_speed = glm::length(glm::proj(vel, surface_tangent)); // m/s
+      const double ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
+      glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, surf_vel)); // hmm
+      const double hor_speed = glm::length(glm::proj(surf_vel, surface_tangent)); // m/s
 
       /*  y
 	  |
@@ -1857,7 +1870,8 @@ int main(int argc, char **argv)
       double roll = glm::angle(glm::normalize(glm::cross(pos, vel)), glm::normalize(up));
       double pitch = 0;
       double yaw = 0;
-      glm::dvec3 dir = glm::normalize(pos);
+
+      glm::dvec3 dir = glm::normalize(surf_pos);
 
       const double longitude = (180 / M_PI) * atan2(dir.x, dir.z);
       const double latitude = (180 / M_PI) * asin(dir.y);
@@ -1937,9 +1951,9 @@ int main(int argc, char **argv)
 	ImGui::Text("Cam speed: %d", cam_speed);
 	ImGui::Text("Time Accel: %d", time_accel);
 	ImGui::Text("Camera altitude: %0.f",
-		    glm::length(camera.GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera.GetPos())));
-	ImGui::Text("Camera ASL: %0.f", glm::length(camera.GetPos()) - ship->m_parent->radius);
-	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera.GetPos().x, camera.GetPos().y, camera.GetPos().z);
+		    glm::length(camera->GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera->GetPos())));
+	ImGui::Text("Camera ASL: %0.f", glm::length(camera->GetPos()) - ship->m_parent->radius);
+	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera->GetPos().x, camera->GetPos().y, camera->GetPos().z);
 	ImGui::Text("Earth distance: %f",
 		    glm::length(ship->GetPositionRelTo(ship->controller, earth->frame)));
 	ImGui::End();
@@ -1948,7 +1962,7 @@ int main(int argc, char **argv)
       if(orbitInfoWindow == true) {
 	ImGui::Begin("ORBITAL");
 	ImGui::Text("Vel: %.1fm/s",
-		    glm::length(orbital_vel));
+		    glm::length(vel));
 	ImGui::Text("Alt: %.1fm", distance);
  	ImGui::Text("ApA: %.1fm", ApA);
 	ImGui::Text("ApT: %.1f", ApT);
