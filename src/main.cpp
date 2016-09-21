@@ -73,6 +73,8 @@
 #include "body.h"
 #include "physics.h"
 #include "gldebug.h"
+#include "frame.h"
+#include "billboard.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -91,144 +93,6 @@ static const int DISPLAY_HEIGHT = 480;
 static const int FPS = 60;
 
 struct TerrainBody;
-
-struct Frame {
-  const char *name;
-
-  Frame *parent; /* NULL if root */
-  TerrainBody *body;
-  std::vector<Frame *> children;
-  bool rotating;
-  bool has_rot_frame;
-
-  double soi; // sphere of influence
-
-  /* relative to parent */
-  glm::dvec3 pos;
-  glm::dvec3 initial_pos;
-  glm::dmat3 initial_orient;
-  glm::dmat3 orient;
-  glm::dvec3 vel;
-  double orb_ang_speed;
-  double rot_ang_speed;
-
-  /* relative to universe root (i.e. the sun) */
-  glm::dvec3 root_pos;
-  glm::dvec3 root_vel;
-  glm::dmat3 root_orient;
-
-  double ang;
-  double orb_ang;
-
-  void UpdateRootRelative(double time, double timestep);
-  void UpdateOrbitRails(double time, double timestep);
-
-  glm::dvec3 GetVelocityRelTo(Frame *relTo);
-  glm::dvec3 GetPositionRelTo(Frame *relTo);
-  glm::dmat3 GetOrientRelTo(Frame *relTo);
-
-  bool isRotFrame() { return rotating; }
-  bool hasRotFrame() { return has_rot_frame; }
-  Frame *getNonRotFrame() {
-    if(isRotFrame() == true) {
-      return parent;
-    } else {
-      return this;
-    }
-  }
-
-  Frame *getRotFrame() {
-    if(hasRotFrame() == true) {
-      return children.front();
-    }
-    else {
-      return this;
-    }
-  }
-  // For an object in a rotating frame, relative to non-rotating frames it
-  // must attain this velocity within rotating frame to be stationary.
-  // vector3d GetStasisVelocity(const vector3d &pos) const { return -vector3d(0,m_angSpeed,0).Cross(pos); }
-
-  glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
-    return -glm::cross(glm::dvec3(0, rot_ang_speed, 0), pos);
-  }
-};
-
-// // doesn't consider stasis velocity
-// vector3d Frame::GetVelocityRelTo(const Frame *relTo) const
-// {
-// 	if (this == relTo) return vector3d(0,0,0); // early-out to avoid unnecessary computation
-// 	vector3d diff = m_rootVel - relTo->m_rootVel;
-// 	if (relTo->IsRotFrame()) return diff * relTo->m_rootOrient;
-// 	else return diff;
-// }
-
-glm::dvec3 Frame::GetVelocityRelTo(Frame *relTo)
-{
-  if (this == relTo) return glm::dvec3(0, 0, 0);
-  glm::dvec3 diff = root_vel - relTo->root_vel;
-  if(relTo->isRotFrame()) {
-    return diff * relTo->root_orient;
-  }
-  else {
-    return diff;
-  }
-}
-
-glm::dvec3 Frame::GetPositionRelTo(Frame *relTo)
-{
-  glm::dvec3 diff = root_pos - relTo->root_pos;
-  if(relTo->isRotFrame()) {
-    return diff * relTo->root_orient;
-  }
-  else {
-    return diff;
-  }
-}
-
-glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)
-{
-  if (this == relTo) return glm::dmat3();
-  return glm::transpose(relTo->root_orient) * root_orient;
-}
-
-void Frame::UpdateRootRelative(double time, double timestep) {
-  if(parent == NULL) {
-  }
-  else {
-    root_pos = parent->root_orient * pos + parent->root_pos;
-    root_vel = parent->root_orient * vel + parent->root_vel;
-    root_orient = parent->root_orient * orient;
-  }
-}
-
-void Frame::UpdateOrbitRails(double time, double timestep) {
-  if(parent != NULL and body != NULL and not rotating) {
-    // translate body in orbit
-    // orb_ang = fmod(orb_ang_speed * time, 2 * M_PI);
-
-    if(orb_ang_speed != 0) {
-      pos = glm::dmat3(glm::rotate(orb_ang_speed * timestep, glm::dvec3(0, 1, 0))) * pos;
-    }
-  }
-
-  if(rotating) {
-    ang = fmod(rot_ang_speed * time * timestep, 2 * M_PI);
-    if(ang != 0) {
-      orient = initial_orient * glm::dmat3(glm::rotate(-ang , glm::dvec3(0, 1, 0)));
-      // printf("%s name rot %.2f", name, ang);
-    }
-  }
-
-  // pos = orient * initial_pos;
-  // printf("%s name pos %.0f, %.0f, %.0f\n", name, pos.x, pos.y, pos.z);
-
-  UpdateRootRelative(time, timestep);
-
-  for(Frame *child : children) {
-    child->UpdateOrbitRails(time, timestep);
-  }
-}
 
 std::vector<Frame *> setup_frames() {
   Frame *sun = new Frame;
@@ -267,8 +131,9 @@ std::vector<Frame *> setup_frames() {
   eerbon->rotating = false;
   eerbon->has_rot_frame = true;
   eerbon->children = std::vector<Frame *>{ eerbon_rot, moon };
-  eerbon->pos = glm::dvec3(0, 0, -100e6);
-  eerbon->initial_pos = glm::dvec3(0, 0, -100e6);
+  // eerbon->pos = glm::dvec3(0, 0, -13599840256);
+  eerbon->pos = glm::dvec3(0, 0, -100000000);
+  eerbon->initial_pos = eerbon->pos;
   eerbon->initial_orient = glm::dmat3();
   eerbon->orient = glm::dmat3();
   eerbon->vel = glm::dvec3(0);
@@ -363,8 +228,6 @@ class TerrainBody;
 //                        float radius,
 //                        glm::vec3 p1, glm::vec3 p2,
 //                        glm::vec3 p3, glm::vec3 p4);
-
-struct TerrainBody;
 
 struct GeoPatch {
   TerrainBody *body;
@@ -585,11 +448,11 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
     glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
     model->shader->Bind();
 
-    glm::dmat4 View = camera->GetView();
+    const glm::dmat4 & View = camera->GetView();
     // make sure View * Model happens with double precision
     glm::dmat4 ModelView = View * transform;
     glm::mat4 ModelViewFloat = ModelView;
-    glm::mat4 Projection = camera->GetProjection();
+    const glm::mat4 & Projection = camera->GetProjection();
     glm::mat4 MVP = Projection * ModelViewFloat;
     glm::mat4 ModelFloat = transform;
 
@@ -1313,8 +1176,6 @@ int main(int argc, char **argv)
   sun->power_scaler = 1;
   sun->g = 17.1;
   sun->mu = 1.1723328e18;
-  sun->transform = glm::translate(glm::dmat4(), glm::dvec3(0, 0, 100e6));
-  // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   sun->Create(6000000, 9.7600236e20);
 
   TerrainBody *earth = new TerrainBody;
@@ -1326,7 +1187,6 @@ int main(int argc, char **argv)
   earth->power_scaler = 3;
   earth->g = 9.81;
   earth->mu = 3.5316000e12;
-  earth->transform = glm::dmat4();
   earth->Create(600000, 5.2915793e22);
 
   TerrainBody *moon = new TerrainBody;
@@ -1339,9 +1199,6 @@ int main(int argc, char **argv)
   moon->power_scaler = 1;
   moon->g = 1.63;
   moon->mu = 6.5138398e10;
-  // moon->soi = 250000;
-  moon->transform = glm::translate(glm::dmat4(), glm::dvec3(12e6, 0, 0));
-  // moon->transform = glm::rotate(moon->transform, 1.0, glm::dvec3(0,1,0));
   moon->Create(200000, 9.7600236e20);
 
   std::vector<Frame *> frames = setup_frames();
@@ -1430,14 +1287,28 @@ int main(int argc, char **argv)
     ship->setVelocity(glm::dvec3(0, 0, 0));
   }
 
-  /* camera init */
+  Shader *billboardshader = new Shader;
+  billboardshader->registerAttribs({ "position", "normal" });
+  billboardshader->registerUniforms({ "MVP", "Normal" });
+  billboardshader->FromFile("./res/billboardshader");
+
+  // Billboard *billboard =
+  //   mk_billboard(ship->frame,
+  // 		 billboardshader,
+  // 		 GetPosition(ship->controller) + glm::dvec3(0,0,10));
+  Billboard *sunbillboard =
+    mk_billboard(sun->frame,
+		 billboardshader,
+		 glm::dvec3(0, 0, 0));
+  
+    /* camera init */
   // WeirdCamera *camera1 = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
   // 					(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
   // 					0.00001f, 10e6);
   // focused_planet->Update(camera);
   OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
   					M_PI/3.0, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-  					0.0001f, 10e6);
+  					1.0f, 10e6);
 
   // Camera *camera = camera1;
 
@@ -1713,11 +1584,17 @@ int main(int argc, char **argv)
 
       camera->ComputeView();
 
+      glDisable(GL_DEPTH_TEST);
+      sunbillboard->model = glm::translate(sunbillboard->frame->GetPositionRelTo(ship->frame));
+      sunbillboard->Draw(camera);
+      glEnable(GL_DEPTH_TEST);
+
       space_port->Draw(camera, ship->m_parent);
 
       ship->Draw(camera);
 
       for(auto&& planet : planets) {
+	// if(planet == sun) continue;
 	planet->Update(camera);
 	planet->Draw(camera, sun);
       }

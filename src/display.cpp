@@ -18,7 +18,7 @@ Renderer::Renderer(int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
-    m_window = SDL_CreateWindow("oglplay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
+    m_window = SDL_CreateWindow("Open Space Program", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
     SDL_GLContext glcontext = SDL_GL_CreateContext(m_window);
 
     // m_screen_width = width;

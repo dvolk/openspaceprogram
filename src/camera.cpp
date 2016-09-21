@@ -34,7 +34,7 @@ OrbitCamera::OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, flo
   this->pos = focusPoint + glm::dvec3(distance, 0, 0);
   this->forward = focusPoint - pos;
   this->up = glm::normalize(pos);
-  this->projection = glm::perspective(fov, aspect, zNear, zFar);
+  this->projection = glm::infinitePerspective(fov, aspect, zNear);
   this->view = glm::translate(pos);
   this->orient = glm::dmat3();
 }

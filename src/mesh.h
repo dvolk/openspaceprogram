@@ -22,6 +22,16 @@ struct PosNorIndColInterface {
   std::vector<glm::vec3> colors;
 };
 
+struct PosVertex {
+  glm::vec3 pos;
+
+  PosVertex(float x, float y, float z) {
+    pos.x = x;
+    pos.y = y;
+    pos.z = z;
+  }
+};
+
 struct PosNorColVertex {
   glm::vec3 pos;
   glm::vec3 normal;
@@ -52,6 +62,7 @@ class Mesh
   void AssImpFromFile(const std::string& fileName, bool copyData);
   void FromFile(const std::string& fileName, bool copyData);
   void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData);
+  void InitMesh(const PosNorIndColInterface& model, bool copyData);
 
   void Draw();
 
@@ -64,7 +75,6 @@ class Mesh
   unsigned int num_indices;
 
  private:
-  void InitMesh(const PosNorIndColInterface& model, bool copyData);
 
   int num_VABs;
   GLuint *m_vertexArrayBuffers;
