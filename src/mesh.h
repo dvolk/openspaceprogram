@@ -7,7 +7,7 @@
 #include <vector>
 //#include "obj_loader.h"
 
-struct IndexedModel {
+struct PosTexNorIndColInterface {
   std::vector<glm::vec3> positions;
   std::vector<glm::vec2> texCoords;
   std::vector<glm::vec3> normals;
@@ -15,74 +15,61 @@ struct IndexedModel {
   std::vector<glm::vec3> colors;
 };
 
-struct Vertex
-{
-public:
-    Vertex() {};
-  Vertex(const glm::vec3& pos, const glm::vec2& texCoord, const glm::vec3& normal, const glm::vec3& color)
-    {
-        this->pos = pos;
-        this->texCoord = texCoord;
-        this->normal = normal;
-	this->color = color;
-    }
-  Vertex(const glm::vec3& pos, const glm::vec2& texCoord, const glm::vec3& normal)
-    {
-      static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
-        this->pos = pos;
-        this->texCoord = texCoord;
-        this->normal = normal;
-	this->color = pink;
-    }
-
-    glm::vec3* GetPos() { return &pos; }
-    glm::vec2* GetTexCoord() { return &texCoord; }
-    glm::vec3* GetNormal() { return &normal; }
-
-/* private: */
-    glm::vec3 pos;
-    glm::vec2 texCoord;
-    glm::vec3 normal;
-  glm::vec3 color;
+struct PosNorIndColInterface {
+  std::vector<glm::vec3> positions;
+  std::vector<glm::vec3> normals;
+  std::vector<unsigned int> indices;
+  std::vector<glm::vec3> colors;
 };
 
-enum MeshBufferPositions
-    {
-	POSITION_VB,
-	TEXCOORD_VB,
-	NORMAL_VB,
-	INDEX_VB,
-	COLOR_VB
-    };
+struct PosNorColVertex {
+  glm::vec3 pos;
+  glm::vec3 normal;
+  glm::vec3 color;
+
+  PosNorColVertex() {
+  }
+
+  PosNorColVertex(const glm::vec3& pos, const glm::vec3& normal, const glm::vec3& color) {
+    this->pos = pos;
+    this->normal = normal;
+    this->color = color;
+  }
+
+  PosNorColVertex(const glm::vec3& pos, const glm::vec3& normal) {
+    static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
+    this->pos = pos;
+    this->normal = normal;
+    this->color = pink;
+  }
+};
 
 class Mesh
 {
  public:
-  void AssImpFromFile(const std::string& fileName);
-    void FromFile(const std::string& fileName);
-    void FromData(Vertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices);
+  virtual ~Mesh();
 
-    void Draw();
+  void AssImpFromFile(const std::string& fileName, bool copyData);
+  void FromFile(const std::string& fileName, bool copyData);
+  void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData);
 
-    glm::vec3 color;
+  void Draw();
 
-    virtual ~Mesh();
+  glm::vec3 color;
 
-    // for bullet physics
-    double *vs;
-    int num_vertices;
-    int *is;
-    int num_indices;
+  // for bullet physics
+  double *vs;
+  unsigned int num_vertices;
+  int *is;
+  unsigned int num_indices;
 
- protected:
  private:
-    static const unsigned int NUM_BUFFERS = 5;
+  void InitMesh(const PosNorIndColInterface& model, bool copyData);
 
-    void InitMesh(const IndexedModel& model);
-
-    GLuint m_vertexArrayObject;
-    GLuint m_vertexArrayBuffers[NUM_BUFFERS];
-    unsigned int m_numIndices;
+  int num_VABs;
+  GLuint *m_vertexArrayBuffers;
+  GLuint m_vertexArrayObject;
+  unsigned int m_numIndices;
 };
 
 #endif

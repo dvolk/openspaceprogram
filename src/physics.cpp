@@ -132,7 +132,8 @@ void removeTerrainCollision(btRigidBody *b) {
 }
 
 void PhysicsEngine::RemoveTerrainCollision(btRigidBody *b) {
-    dynamicsWorld->removeRigidBody(b);
+  // delete b->getCollisionShape();
+  dynamicsWorld->removeRigidBody(b);
 }
 
 btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m) {

@@ -1,6 +1,5 @@
 #version 120
 
-varying vec2 texCoord0;
 varying vec3 normal0;
 varying vec4 color0;
 varying float logz;

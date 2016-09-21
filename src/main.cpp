@@ -358,12 +358,11 @@ std::vector<Frame *> setup_frames() {
 
 class TerrainBody;
 
-Mesh *create_grid_mesh(TerrainBody *body,
-		       int depth,
-                       float radius,
-                       glm::vec3 p1, glm::vec3 p2,
-                       glm::vec3 p3, glm::vec3 p4);
-
+// Mesh *create_grid_mesh(TerrainBody *body,
+// 		       bool has_collision,
+//                        float radius,
+//                        glm::vec3 p1, glm::vec3 p2,
+//                        glm::vec3 p3, glm::vec3 p4);
 
 struct TerrainBody;
 
@@ -462,9 +461,13 @@ struct TerrainBody {
   glm::vec3 sunlightVec;
   int dbg_drew_patches;
 
+  ~TerrainBody() {
+    for(int i = 0; i < 6; i++) { delete patches[i]; }
+  }
+
   COLOUR (*colour_func)(float v, float vmin, float vmax);
 
-  Mesh *create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
+  Mesh *create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
   float GetTerrainHeight(const glm::vec3& p);
   float GetTerrainHeightUnscaled(const glm::vec3& p);
   float ScaleHeightNoise(float noise);
@@ -561,9 +564,10 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
   this->v2 = v2;
   this->v3 = v3;
   this->centroid = glm::normalize(v0 + v1 + v2 + v3);
-  Mesh *grid_mesh = body->create_grid_mesh(depth, v0, v1, v2, v3);
+  bool has_collision = depth > max_depth;
+  Mesh *grid_mesh = body->create_grid_mesh(has_collision, v0, v1, v2, v3);
   model->FromData(grid_mesh, shader);
-  if(depth > max_depth) {
+  if(has_collision == true) {
       collision = addTerrainCollision(grid_mesh);
       printf("added terrain collision with %p\n", this);
   } else {
@@ -845,7 +849,9 @@ public:
 
 public:
   Vehicle() { }
-  virtual ~Vehicle() { }
+  virtual ~Vehicle() {
+    for(auto&& part : parts) { delete part; }
+  }
 
   glm::dvec3 processGravity() {
     return applyGravity();
@@ -1156,13 +1162,13 @@ inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
    return(c);
 }
 
-Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
+Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
   int size = 25;
 
   glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
-  Vertex vertices[size * size];
+  PosNorColVertex vertices[size * size];
   unsigned int indices[size * size * 6] = {0};
 
   glm::vec2 dummyuv = glm::vec2(0, 0);
@@ -1211,10 +1217,9 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
       // 	color = snow;
       // }
 
-      vertices[j+size*i] = Vertex(p,
-				  dummyuv,
-				  sphere_p,
-				  color);
+      vertices[j+size*i] = PosNorColVertex(p,
+					   sphere_p,
+					   color);
     }
   }
 
@@ -1234,7 +1239,7 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
       glm::vec3 &y2 = vertices[j + (i+1)*size].pos;
       // glm::vec3 n = centroid;//glm::normalize(centroid);
       glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
-      *vertices[j + size * i].GetNormal() = -n;
+      vertices[j + size * i].normal = -n;
     }
   }
 
@@ -1261,91 +1266,9 @@ Mesh *TerrainBody::create_grid_mesh(int depth, glm::vec3 p1, glm::vec3 p2, glm::
 
   // assert(find(indices.begin(), indices.end(), -1) == indices.end());
 
-  grid_mesh->FromData(vertices, size * size, indices, size * size * 6);
+  grid_mesh->FromData(vertices, size * size, indices, size * size * 6, has_collision);
 
   return grid_mesh;
-}
-
-Mesh *create_box_mesh(float size_x, float size_y, float size_z, glm::vec3 color) {
-  Mesh *box_mesh = new Mesh;
-
-  Vertex vertices[] = {
-    // bottom
-    Vertex(glm::vec3(-2, -2, -1), glm::vec2(1, 0), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(-2, 2, -1), glm::vec2(0, 0), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(2, 2, -1), glm::vec2(0, 1), glm::vec3(0, 0, -1), color),
-    Vertex(glm::vec3(2, -2, -1), glm::vec2(1, 1), glm::vec3(0, 0, -1), color),
-
-    // top
-    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(0, 0, 1), color),
-    Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(0, 0, 1), color),
-    Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 1), glm::vec3(0, 0, 1), color),
-    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 1), glm::vec3(0, 0, 1), color),
-
-    // sides
-    Vertex(glm::vec3(-2, -2, -1), glm::vec2(0, 1), glm::vec3(0, -1, 0), color),
-    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 1), glm::vec3(0, -1, 0), color),
-    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(0, -1, 0), color),
-    Vertex(glm::vec3(2, -2, -1), glm::vec2(0, 0), glm::vec3(0, -1, 0), color),
-
-    Vertex(glm::vec3(-2, 2, -1), glm::vec2(0, 1), glm::vec3(0, 1, 0), color),
-    Vertex(glm::vec3(-1, 1, 1), glm::vec2(1, 1), glm::vec3(0, 1, 0), color),
-    Vertex(glm::vec3(1, 1, 1), glm::vec2(1, 0), glm::vec3(0, 1, 0), color),
-    Vertex(glm::vec3(2, 2, -1), glm::vec2(0, 0), glm::vec3(0, 1, 0), color),
-
-    Vertex(glm::vec3(-2, -2, -1), glm::vec2(1, 1), glm::vec3(-1, 0, 0), color),
-    Vertex(glm::vec3(-1, -1, 1), glm::vec2(1, 0), glm::vec3(-1, 0, 0), color),
-    Vertex(glm::vec3(-1, 1, 1), glm::vec2(0, 0), glm::vec3(-1, 0, 0), color),
-    Vertex(glm::vec3(-2, 2, -1), glm::vec2(0, 1), glm::vec3(-1, 0, 0), color),
-
-    Vertex(glm::vec3(2, -2, -1), glm::vec2(1, 1), glm::vec3(1, 0, 0), color),
-    Vertex(glm::vec3(1, -1, 1), glm::vec2(1, 0), glm::vec3(1, 0, 0), color),
-    Vertex(glm::vec3(1, 1, 1), glm::vec2(0, 0), glm::vec3(1, 0, 0), color),
-    Vertex(glm::vec3(2, 2, -1), glm::vec2(0, 1), glm::vec3(1, 0, 0), color),
-  };
-
-  int vertex_count = sizeof(vertices)/sizeof(vertices[0]);
-  for(int i = 0; i < vertex_count; i++) {
-    *vertices[i].GetPos() = glm::vec3(vertices[i].GetPos()->x * size_x,
-				      vertices[i].GetPos()->y * size_y,
-				      vertices[i].GetPos()->z * size_z);
-    *vertices[i].GetNormal() = *vertices[i].GetNormal();
-  }
-
-  // // fix normals for slanted sides
-  // for(int i = 2; i < 6; i++) {
-  //   glm::vec3 normal = -glm::cross(*vertices[i*4].GetPos(), *vertices[i*4+2].GetPos());
-  //   *vertices[i*4].GetNormal() = normal;
-  //   *vertices[i*4+1].GetNormal() = normal;
-  //   *vertices[i*4+2].GetNormal() = normal;
-  //   *vertices[i*4+3].GetNormal() = normal;
-  // }
-
-  unsigned int indices[] = {
-    0, 1, 2,
-    0, 2, 3,
-
-    6, 5, 4,
-    7, 6, 4,
-
-    10, 9, 8,
-    11, 10, 8,
-
-    12, 13, 14,
-    12, 14, 15,
-
-    16, 17, 18,
-    16, 18, 19,
-
-    22, 21, 20,
-    23, 22, 20
-  };
-
-  int index_count = sizeof(indices)/sizeof(indices[0]);
-
-  box_mesh->FromData(vertices, vertex_count, indices, index_count);
-  printf("create_box_mesh: %d %d\n", vertex_count, index_count);
-  return box_mesh;
 }
 
 int main(int argc, char **argv)
@@ -1364,17 +1287,17 @@ int main(int argc, char **argv)
 
   /* data init */
   Shader *partsshader = new Shader;
-  partsshader->registerAttribs({ "position", "texCoord", "normal", "color" });
+  partsshader->registerAttribs({ "position", "normal", "color" });
   partsshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   partsshader->FromFile("./res/partsShader");
 
   Shader *terrainshader = new Shader;
-  terrainshader->registerAttribs({ "position", "texCoord", "normal", "color" });
+  terrainshader->registerAttribs({ "position", "normal", "color" });
   terrainshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   terrainshader->FromFile("./res/terrainShader");
 
   Shader *sunshader = new Shader;
-  sunshader->registerAttribs({ "position", "texCoord", "normal", "color" });
+  sunshader->registerAttribs({ "position", "normal", "color" });
   sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   sunshader->FromFile("./res/sunShader");
 
@@ -1437,8 +1360,8 @@ int main(int argc, char **argv)
   std::vector<TerrainBody *> planets = { sun, earth, moon };
 
   Vehicle *ship = new Vehicle;
-  ship->m_parent = moon;
-  ship->frame = frames[4]; // moon rotational
+  ship->m_parent = earth;
+  ship->frame = frames[2]; // moon rotational
 
   StaticBuilding *space_port;
   {
@@ -1456,10 +1379,10 @@ int main(int argc, char **argv)
     Mesh *engine_mesh = new Mesh;
     engine_mesh->color = red;
 
-    space_port_mesh->FromFile("./res/space_port.obj");
-    capsule_mesh->FromFile("./res/capsule.obj");
-    wheel_mesh->FromFile("./res/reaction_wheel.obj");
-    engine_mesh->FromFile("./res/engine.obj");
+    space_port_mesh->FromFile("./res/space_port.obj", true);
+    capsule_mesh->FromFile("./res/capsule.obj", false);
+    wheel_mesh->FromFile("./res/reaction_wheel.obj", false);
+    engine_mesh->FromFile("./res/engine.obj", false);
 
     Model *space_port_model = new Model;
     Model *capsule_model = new Model;
@@ -1513,7 +1436,7 @@ int main(int argc, char **argv)
   // 					0.00001f, 10e6);
   // focused_planet->Update(camera);
   OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
-  					45.0f, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
+  					M_PI/3.0, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
   					0.0001f, 10e6);
 
   // Camera *camera = camera1;
@@ -2207,5 +2130,14 @@ int main(int argc, char **argv)
       check_gl_error();
     }
   }
+
+  delete sun;
+  delete earth;
+  delete moon;
+
+  delete partsshader;
+  delete sunshader;
+  delete terrainshader;
+
   return 0;
 }
