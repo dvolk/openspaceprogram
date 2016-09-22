@@ -9,7 +9,7 @@
 
 struct PosTexNorIndColInterface {
   std::vector<glm::vec3> positions;
-  std::vector<glm::vec2> texCoords;
+  std::vector<glm::vec2> texcoords;
   std::vector<glm::vec3> normals;
   std::vector<unsigned int> indices;
   std::vector<glm::vec3> colors;
@@ -62,7 +62,9 @@ class Mesh
   void AssImpFromFile(const std::string& fileName, bool copyData);
   void FromFile(const std::string& fileName, bool copyData);
   void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData);
+
   void InitMesh(const PosNorIndColInterface& model, bool copyData);
+  void InitMesh(const PosTexNorIndColInterface& model, bool copyData);
 
   void Draw();
 

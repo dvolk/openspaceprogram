@@ -1,10 +1,16 @@
 #version 120
 
 varying vec4 color0;
-varying float logz;
+varying vec2 texcoord0;
+
+uniform sampler2D mytexture;
 
 void main()
 {
-    gl_FragColor = color0;
-    gl_FragDepth = logz;
+    if(color0.a < 0.5) {
+        discard;
+    }
+    else {
+        gl_FragColor = texture2D(mytexture, texcoord0);
+    }
 }

@@ -75,6 +75,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "billboard.h"
+#include "texture.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -1027,7 +1028,7 @@ inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 
 Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
-  int size = 25;
+  int size = 100;
 
   glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
@@ -1288,21 +1289,18 @@ int main(int argc, char **argv)
   }
 
   Shader *billboardshader = new Shader;
-  billboardshader->registerAttribs({ "position", "normal" });
+  billboardshader->registerAttribs({ "position", "texcoord", "normal" });
   billboardshader->registerUniforms({ "MVP", "Normal" });
   billboardshader->FromFile("./res/billboardshader");
 
-  // Billboard *billboard =
-  //   mk_billboard(ship->frame,
-  // 		 billboardshader,
-  // 		 GetPosition(ship->controller) + glm::dvec3(0,0,10));
-  Billboard *sunbillboard =
-    mk_billboard(sun->frame,
-		 billboardshader,
-		 glm::dvec3(0, 0, 0));
-  
+  Texture * front_indicator_texture = load_texture("front_crosshair.png");
+  Texture * prograde_indicator_texture = load_texture("prograde_icon.png");
+
+  Billboard *front_indicator = mk_billboard(billboardshader, front_indicator_texture, 1.0);
+  Billboard *prograde_indicator = mk_billboard(billboardshader, prograde_indicator_texture, 0.5);
+
     /* camera init */
-  // WeirdCamera *camera1 = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
+  // WeirdCamera *camera = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
   // 					(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
   // 					0.00001f, 10e6);
   // focused_planet->Update(camera);
@@ -1578,16 +1576,12 @@ int main(int argc, char **argv)
 	else {
 	  /* other planets */
 	  glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
-	  planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
+	  planet->transform =
+	    glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
 	}
       }
 
       camera->ComputeView();
-
-      glDisable(GL_DEPTH_TEST);
-      sunbillboard->model = glm::translate(sunbillboard->frame->GetPositionRelTo(ship->frame));
-      sunbillboard->Draw(camera);
-      glEnable(GL_DEPTH_TEST);
 
       space_port->Draw(camera, ship->m_parent);
 
@@ -1601,6 +1595,7 @@ int main(int argc, char **argv)
 
       const double mu = ship->m_parent->mu;
 
+      glm::dvec3 getRelAxis_(Body *body, int n);
       // surf pos??
       const glm::dvec3 pos = com;
       /* orbital velocity */
@@ -1689,8 +1684,7 @@ int main(int argc, char **argv)
 	/
        z
        */
-      glm::dvec3 getRelAxis_(Body *body, int n);
-      glm::dvec3 facing = getRelAxis_(ship->controller, 2);
+
       glm::dvec3 up = getRelAxis_(ship->controller, 1);
       double roll = glm::angle(glm::normalize(glm::cross(pos, vel)), glm::normalize(up));
       double pitch = 0;
@@ -1700,6 +1694,18 @@ int main(int argc, char **argv)
 
       const double longitude = (180 / M_PI) * atan2(dir.x, dir.z);
       const double latitude = (180 / M_PI) * asin(dir.y);
+
+      glm::dvec3 facing = getRelAxis_(ship->controller, 2);
+
+      glDisable(GL_DEPTH_TEST);
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      front_indicator->model = glm::translate(facing);
+      front_indicator->Draw(camera);
+      prograde_indicator->model = glm::translate(vel);
+      prograde_indicator->Draw(camera);
+      glDisable(GL_BLEND);
+      glEnable(GL_DEPTH_TEST);
 
       // 	glm::orientedAngle(glm::dvec3(0, 0, 1),
       // 						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),

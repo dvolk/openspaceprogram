@@ -110,6 +110,69 @@ void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)
   glBindVertexArray(0);
 }
 
+void Mesh::InitMesh(const PosTexNorIndColInterface& model, bool copyData)
+{
+  // printf("InitMesh(): copyData: %d\n", copyData);
+  // printf("InitMesh(): model.positions.size(): %d\n", model.positions.size());
+  // printf("InitMesh(): model.indices.size(): %d\n", model.indices.size());
+
+  if(copyData == true) {
+    num_vertices = model.positions.size();
+    vs = new double[num_vertices * 3];
+
+    int j = 0;
+    for(unsigned int i = 0; i < num_vertices; i++) {
+      vs[j + 0] = model.positions[i].x;
+      vs[j + 1] = model.positions[i].y;
+      vs[j + 2] = model.positions[i].z;
+      j += 3;
+    }
+
+    num_indices = model.indices.size();
+    is = new int[num_indices];
+    memcpy(is, &model.indices[0], sizeof(int) * num_indices);
+  }
+  else {
+    vs = NULL;
+    is = NULL;
+  }
+
+  m_numIndices = model.indices.size();
+
+  glGenVertexArrays(1, &m_vertexArrayObject);
+  glBindVertexArray(m_vertexArrayObject);
+
+  num_VABs = 5;
+  m_vertexArrayBuffers = (GLuint*)malloc(sizeof(GLuint) * num_VABs);
+
+  glGenBuffers(num_VABs, m_vertexArrayBuffers);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vertexArrayBuffers[0]);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(model.indices[0]) * model.indices.size(), &model.indices[0], GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[1]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), &model.positions[0], GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[2]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(model.texcoords[0]) * model.texcoords.size(), &model.texcoords[0], GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[3]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(model.normals[0]) * model.normals.size(), &model.normals[0], GL_STATIC_DRAW);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+  glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[4]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(model.colors[0]) * model.colors.size(), &model.colors[0], GL_STATIC_DRAW);
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+  glBindVertexArray(0);
+}
+
 void Mesh::FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData)
 {
   PosNorIndColInterface model;
