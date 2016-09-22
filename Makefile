@@ -8,7 +8,7 @@ CXX= g++
 CXXFLAGS=-O2 $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -std=c++11 -I/usr/local/include/bullet -I/usr/include/SDL2 #-I../../../lib/imgui
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
-LDLIBS=-lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath -lassimp
+LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL -lBulletSoftBody -lBulletDynamics -lBulletCollision -lLinearMath -lassimp
 
 # you'll need to build these manually
 IMGUI_OBJS=src/imgui_impl_sdl/imgui_impl_sdl.o ../../lib/imgui/imgui.o ../../lib/imgui/imgui_draw.o
