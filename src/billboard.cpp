@@ -48,7 +48,7 @@ Billboard *mk_billboard(Shader *shader, Texture *texture, float size) {
   return b;
 }
 
-void Billboard::Draw(const Camera * camera) {
+void Billboard::Draw(const Camera * camera, double angle) {
   glm::dmat4 View = camera->GetView();
   glm::dmat4 _View = glm::dmat4(glm::dmat3(View));
 
@@ -56,9 +56,14 @@ void Billboard::Draw(const Camera * camera) {
   glm::dmat4 inv_rot = glm::dmat4(transpose(glm::mat3(View)));
   glm::dvec3 pos = glm::dvec3(model[3]);
   // glm::dvec3 campos = glm::dvec3(View[3]);
-  model = glm::translate(10.0 * glm::normalize(pos)) * glm::dmat4(inv_rot);
+  model =
+    glm::translate(10.0 * glm::normalize(pos)) *
+    glm::rotate(angle, pos) *
+    glm::dmat4(inv_rot);
+
   glm::dmat4 ModelView = _View * model;
   // pos = glm::dvec3(ModelView[3]);
+  // ModelView = ModelView * glm::rotate(angle, pos);
   // printf("drawing at %.0f, %.0f, %.0f\n", pos.x, pos.y, pos.z);
   // ModelView = glm::dmat4(glm::transpose(glm::dmat3(ModelView)));
 

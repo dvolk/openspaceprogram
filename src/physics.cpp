@@ -9,78 +9,110 @@
 
 #include "physics.h"
 #include "body.h"
+#include "mesh.h"
+#include "camera.h"
+#include "shader.h"
+#include "gldebug.h"
 
 PhysicsEngine *physics;
 
-class GLDebugDrawer : public btIDebugDraw
-{
-    int m_debugMode;
+class GLDebugDrawer : public btIDebugDraw {
+  int m_debugMode;
+  Shader *lineshader;
 public:
-    GLDebugDrawer();
-    virtual void drawLine(const btVector3& from,const btVector3& to,const btVector3& color);
-    virtual void drawContactPoint(const btVector3& PointOnB,const btVector3& normalOnB,btScalar distance,int lifeTime,const btVector3& color);
-    virtual void reportErrorWarning(const char* warningString);
-    virtual void draw3dText(const btVector3& location,const char* textString);
-    virtual void setDebugMode(int debugMode);
-    virtual int getDebugMode() const { return m_debugMode;}
+  std::vector<float> lineBuffer;
 
+  void init();
+  void Draw(const Camera * camera);
+
+  void drawLine(const btVector3& from, const btVector3& to, const btVector3& color);
+  void reportErrorWarning(const char* warningString);
+
+  /* TODO */
+  void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) {}
+  /* TODO */
+  void draw3dText(const btVector3& location, const char* textString) {}
+
+  void setDebugMode(int debugMode) { m_debugMode = debugMode; }
+  int getDebugMode() const { return m_debugMode; }
 };
 
-GLDebugDrawer::GLDebugDrawer() :m_debugMode(0) {
+void GLDebugDrawer::reportErrorWarning(const char* warningString) {
+  printf("!!! BULLET: %s", warningString);
 }
 
-void GLDebugDrawer::drawLine(const btVector3& from,const btVector3& to,const btVector3& color)
-{
-    glLineWidth(1);
-    glBegin(GL_LINES);
-    glColor3f(color[0],color[1],color[2]);
-    glVertex3d(from[0],from[1],from[2]);
-    glVertex3d(to[0],to[1],to[2]);
-    glEnd();
+void GLDebugDrawer::Draw(const Camera * camera) {
+
+  const glm::mat4 view = camera->GetView();
+  const glm::mat4 projection = camera->GetProjection();
+
+  lineshader->Bind();
+  check_gl_error();
+
+  lineshader->setUniform_mat4(0, projection * view);
+  check_gl_error();
+
+  int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
+  check_gl_error();
+  assert(attribute_pos != -1);
+
+  glEnableVertexAttribArray(attribute_pos);
+  check_gl_error();
+  glVertexAttribPointer(
+			attribute_pos, // attribute
+			3,                 // number of elements per vertex, here (x,y)
+			GL_FLOAT,          // the type of each element
+			GL_FALSE,          // take our values as-is
+			0,                 // no extra data between each position
+			lineBuffer.data()  // pointer to the C array
+			);
+  check_gl_error();
+  glDrawArrays(GL_LINES, 0, lineBuffer.size() / 3);
+  check_gl_error();
+
+  glDisableVertexAttribArray(attribute_pos);
+  check_gl_error();
+
+  // printf("%d\n", lineBuffer.size());
 }
 
-void    GLDebugDrawer::setDebugMode(int debugMode)
-{
-    m_debugMode = debugMode;
+void GLDebugDrawer::init() {
+  lineBuffer.reserve(512 * 1024);
+
+  lineshader = new Shader;
+  lineshader->registerAttribs({ "pos" });
+  lineshader->registerUniforms({ "VP" });
+  lineshader->FromFile("./res/lineShader");
+
+  m_debugMode = DBG_DrawWireframe;
 }
 
-void    GLDebugDrawer::draw3dText(const btVector3& location,const char* textString)
-{
-    //glRasterPos3f(location.x(),  location.y(),  location.z());
-    //BMF_DrawString(BMF_GetFont(BMF_kHelvetica10),textString);
+void GLDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {
+  // lineBuffer.push_back(PosColVertex(from.getX(), from.getY(), from.getZ(),
+  // 				    color.getX(), color.getY(), color.getZ()));
+  // lineBuffer.push_back(PosColVertex(to.getX(), to.getY(), to.getZ(),
+  // 				    color.getX(), color.getY(), color.getZ()));
+  lineBuffer.push_back(from.getX());
+  lineBuffer.push_back(from.getY());
+  lineBuffer.push_back(from.getZ());
+  lineBuffer.push_back(to.getX());
+  lineBuffer.push_back(to.getY());
+  lineBuffer.push_back(to.getZ());
+
 }
 
-void    GLDebugDrawer::reportErrorWarning(const char* warningString)
-{
-    printf(warningString);
-}
-
-void    GLDebugDrawer::drawContactPoint(const btVector3& pointOnB,const btVector3& normalOnB,btScalar distance,int lifeTime,const btVector3& color)
-{
-    {
-        //btVector3 to=pointOnB+normalOnB*distance;
-        //const btVector3&from = pointOnB;
-        //glColor4f(color.getX(), color.getY(), color.getZ(), 1.0f);
-
-        //GLDebugDrawer::drawLine(from, to, color);
-
-        //glRasterPos3f(from.x(),  from.y(),  from.z());
-        //char buf[12];
-        //sprintf(buf," %d",lifeTime);
-        //BMF_DrawString(BMF_GetFont(BMF_kHelvetica10),buf);
-    }
-}
-
-void debug_draw(void) {
-    physics->Draw();
+void debug_draw(const Camera * camera) {
+    physics->Draw(camera);
 }
 
 void create_physics(void) {
     physics = new PhysicsEngine;
 }
 
-void PhysicsEngine::Draw() {
+void PhysicsEngine::Draw(const Camera * camera) {
     dynamicsWorld->debugDrawWorld();
+    debugDrawer->Draw(camera);
+    debugDrawer->lineBuffer.clear();
 }
 
 PhysicsEngine::PhysicsEngine() {
@@ -99,7 +131,8 @@ PhysicsEngine::PhysicsEngine() {
     debugShape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
     planetShape = new btBoxShape(btVector3(10, 10, 10));
 
-    GLDebugDrawer *debugDrawer = new GLDebugDrawer;
+    debugDrawer = new GLDebugDrawer;
+    debugDrawer->init();
     dynamicsWorld->setDebugDrawer(debugDrawer);
     debugDrawer->setDebugMode(btIDebugDraw::DBG_DrawWireframe);
 }

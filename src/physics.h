@@ -11,6 +11,9 @@ class btDiscreteDynamicsWorld;
 class btCollisionShape;
 class btRigidBody;
 
+class GLDebugDrawer;
+class Camera;
+
 class PhysicsEngine {
  public:
     PhysicsEngine();
@@ -23,7 +26,7 @@ class PhysicsEngine {
     void RemoveTerrainCollision(btRigidBody *b);
     void * GlueTogether(Body *parent, Body *child);
     void collisions(void);
-    void Draw();
+    void Draw(const Camera * camera);
     void Detach(void * constraint);
 
  private:
@@ -34,6 +37,7 @@ class PhysicsEngine {
     btDiscreteDynamicsWorld *dynamicsWorld;
     btCollisionShape *debugShape;
     btCollisionShape *planetShape;
+    GLDebugDrawer *debugDrawer;
 };
 
 btRigidBody *addTerrainCollision(Mesh *m);
@@ -60,4 +64,4 @@ glm::dvec3 getCOM(Body *body);
 
 void * GlueTogether(Body *parent, Body *child);
 
-void debug_draw(void);
+void debug_draw(const Camera * camera);

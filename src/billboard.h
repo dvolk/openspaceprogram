@@ -13,7 +13,7 @@ struct Billboard {
   Mesh *mesh;
   glm::dmat4 model;
 
-  void Draw(const Camera *camera);
+  void Draw(const Camera *camera, double angle);
 };
 
 Billboard *mk_billboard(Shader *shader, Texture *texture, float size);

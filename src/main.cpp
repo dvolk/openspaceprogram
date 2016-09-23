@@ -76,6 +76,7 @@
 #include "frame.h"
 #include "billboard.h"
 #include "texture.h"
+#include "skybox.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -1028,7 +1029,7 @@ inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 
 Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
   Mesh *grid_mesh = new Mesh;
-  int size = 100;
+  int size = 25;
 
   glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
@@ -1165,6 +1166,11 @@ int main(int argc, char **argv)
   sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
   sunshader->FromFile("./res/sunShader");
 
+  Shader *skyboxshader = new Shader;
+  skyboxshader->registerAttribs({ "position" });
+  skyboxshader->registerUniforms({ "projectionview" });
+  skyboxshader->FromFile("./res/skyboxShader");
+
   // earth->Create(6300000, 5.97237e24);
 
   TerrainBody *sun = new TerrainBody;
@@ -1223,10 +1229,10 @@ int main(int argc, char **argv)
 
   StaticBuilding *space_port;
   {
-    glm::vec3 grey = glm::vec3(0.5, 0.5, 0.5);
+    glm::vec3 grey = glm::vec3(0.55, 0.5, 0.6);
     glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
-    glm::vec3 red = glm::vec3(1,0,0);
-    glm::vec3 blue = glm::vec3(0,0,1);
+    glm::vec3 red = glm::vec3(0.9, 0.2, 0.1);
+    glm::vec3 blue = glm::vec3(0.1, 0.2, 0.9);
 
     Mesh *space_port_mesh = new Mesh;
     space_port_mesh->color = grey;
@@ -1293,8 +1299,8 @@ int main(int argc, char **argv)
   billboardshader->registerUniforms({ "MVP", "Normal" });
   billboardshader->FromFile("./res/billboardshader");
 
-  Texture * front_indicator_texture = load_texture("front_crosshair.png");
-  Texture * prograde_indicator_texture = load_texture("prograde_icon.png");
+  Texture * front_indicator_texture = load_texture("res/front_crosshair.png");
+  Texture * prograde_indicator_texture = load_texture("res/prograde_icon.png");
 
   Billboard *front_indicator = mk_billboard(billboardshader, front_indicator_texture, 1.0);
   Billboard *prograde_indicator = mk_billboard(billboardshader, prograde_indicator_texture, 0.5);
@@ -1333,12 +1339,16 @@ int main(int argc, char **argv)
   bool targetInfoWindow = false;
   bool topHUDWindows = false;
   bool shipDetailWindow = false;
+  bool physics_debug_drawing = true;
 
   double time = 0;
 
   /* main loop timing from
      http://gafferongames.com/game-physics/fix-your-timestep/
   */
+
+  Skybox skybox;
+  skybox.init();
 
   while (running == true) {
     /*
@@ -1390,6 +1400,9 @@ int main(int argc, char **argv)
 	// }
 	if(ev.key.keysym.sym == SDLK_c) {
 	  follow_ship = not follow_ship;
+	}
+	if(ev.key.keysym.sym == SDLK_m) {
+	  physics_debug_drawing = not physics_debug_drawing;
 	}
 	if(ev.key.keysym.sym == SDLK_p) {
 	  if(poly_mode == false) {
@@ -1697,15 +1710,23 @@ int main(int argc, char **argv)
 
       glm::dvec3 facing = getRelAxis_(ship->controller, 2);
 
+      skybox.Draw(camera, skyboxshader);
+
       glDisable(GL_DEPTH_TEST);
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       front_indicator->model = glm::translate(facing);
-      front_indicator->Draw(camera);
+      front_indicator->Draw(camera, roll);
       prograde_indicator->model = glm::translate(vel);
-      prograde_indicator->Draw(camera);
+      prograde_indicator->Draw(camera, 0);
       glDisable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
+
+      if(physics_debug_drawing == true) {
+	glDisable(GL_DEPTH_TEST);
+	debug_draw(camera);
+	glEnable(GL_DEPTH_TEST);
+      }
 
       // 	glm::orientedAngle(glm::dvec3(0, 0, 1),
       // 						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),
@@ -1716,9 +1737,10 @@ int main(int argc, char **argv)
       // 						  glm::dvec3(0, 0, -1)
       // 						  );
 
-      // doesn't work any more?
-      // glm::mat4 view = camera.GetView();
-      // glm::mat4 proj = camera.GetProjection();
+      /*
+	ImGui stuff below
+      */
+
       glUseProgram(0);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
       if(poly_mode == true) {
@@ -1777,6 +1799,7 @@ int main(int argc, char **argv)
 
       if(gameInfoWindow == true) {
 	ImGui::Begin("Game Debug Info");
+	ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
 	ImGui::Text("Time: %f", time);
 	ImGui::Text("Patches: %d", ship->m_parent->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
