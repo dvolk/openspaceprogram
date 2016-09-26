@@ -32,6 +32,7 @@ class OrbitCamera : public Camera {
  public:
   glm::dvec3 focusPoint;
   glm::dmat3 orient;
+  double x, y;
   double distance;
 
   OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, float zNear, float zFar);

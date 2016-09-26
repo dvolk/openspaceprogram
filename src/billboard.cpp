@@ -22,7 +22,7 @@ Mesh *make_quad_mesh(float sizex, float sizey) {
   for(int i = 0; i < 4; i++) {
     interface.positions.push_back(v[i].pos);
     interface.normals.push_back(glm::vec3(0, 0, 1));
-    interface.colors.push_back(glm::vec3(1, 1, 0));
+    interface.colors.push_back(glm::vec3(1, 1, 1));
   }
 
   interface.texcoords.push_back(glm::vec2(0, 0));
@@ -40,11 +40,12 @@ Mesh *make_quad_mesh(float sizex, float sizey) {
   return m;
 }
 
-Billboard *mk_billboard(Shader *shader, Texture *texture, float size) {
+Billboard *mk_billboard(Shader *shader, Texture *texture, float sizex, float sizey, glm::vec4 color) {
   Billboard *b = new Billboard;
   b->shader = shader;
-  b->mesh = make_quad_mesh(size, size);
+  b->mesh = make_quad_mesh(sizex, sizey);
   b->texture = texture;
+  b->color = color;
   return b;
 }
 
@@ -54,12 +55,12 @@ void Billboard::Draw(const Camera * camera, double angle) {
 
   // const glm::dmat4 & View = camera->GetView();
   glm::dmat4 inv_rot = glm::dmat4(transpose(glm::mat3(View)));
-  glm::dvec3 pos = glm::dvec3(model[3]);
+  // glm::dvec3 pos = glm::dvec3(model[3]);
   // glm::dvec3 campos = glm::dvec3(View[3]);
-  model =
+  glm::dmat4 model =
     glm::translate(10.0 * glm::normalize(pos)) *
     glm::rotate(angle, pos) *
-    glm::dmat4(inv_rot);
+    inv_rot;
 
   glm::dmat4 ModelView = _View * model;
   // pos = glm::dvec3(ModelView[3]);
@@ -76,7 +77,8 @@ void Billboard::Draw(const Camera * camera, double angle) {
   glBindTexture(GL_TEXTURE_2D, texture->id);
 
   shader->setUniform_mat4(0, MVP);
-  // shader->setUniform_mat4(1, ModelFloat);
+  shader->setUniform_vec4(1, color);
+
   mesh->Draw();
   glBindTexture(GL_TEXTURE_2D, 0);
 }

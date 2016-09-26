@@ -50,6 +50,7 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 void Mesh::FromFile(const std::string& fileName, bool copyData)
 {
   AssImpFromFile(fileName, copyData);
+  printf("Loaded file: %s\n", fileName.c_str());
 }
 
 void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)

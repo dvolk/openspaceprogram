@@ -1,5 +1,7 @@
 #include "camera.h"
 
+#include <glm/gtx/polar_coordinates.hpp>
+
 void Camera::setAspect(float _aspect) {
   this->projection = glm::perspective(fov, _aspect, zNear, zFar);
 }
@@ -31,6 +33,8 @@ OrbitCamera::OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, flo
   this->zFar = zFar;
   this->focusPoint = shipPos;
   this->distance = 10;
+  this->x = 0;
+  this->y = 0;
   this->pos = focusPoint + glm::dvec3(distance, 0, 0);
   this->forward = focusPoint - pos;
   this->up = glm::normalize(pos);
@@ -46,6 +50,7 @@ void OrbitCamera::wheel(double amt) {
 void OrbitCamera::ComputeView()
 {
   pos = focusPoint + orient * glm::dvec3(distance, 0, 0);
+  // pos = focusPoint + distance * glm::euclidean(glm::dvec2(x, y));
   forward = glm::normalize(focusPoint - pos);
   up = glm::normalize(pos);
   view = glm::lookAt(pos, pos + forward, up);
@@ -57,11 +62,13 @@ void OrbitCamera::Follow(const glm::dvec3 p) {
 
 void OrbitCamera::Pitch(double angle)
 {
+  // y -= angle;
   orient = orient * glm::dmat3(glm::rotate(angle, glm::dvec3(0, -1, 0)));
 }
 
 void OrbitCamera::RotateY(double angle)
 {
+  // x -= angle;
   orient = orient * glm::dmat3(glm::rotate(angle, glm::dvec3(0,  0, -1)));
 }
 

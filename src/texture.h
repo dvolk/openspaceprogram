@@ -1,6 +1,8 @@
 #pragma once
 
 struct Texture {
+  ~Texture();
+
   unsigned int id; /* really GLuint */
 };
 

@@ -4,6 +4,10 @@
 #include <SDL2/SDL.h>
 #include <SDL_image.h>
 
+Texture::~Texture() {
+  glDeleteTextures(1, &id);
+}
+
 Texture *load_texture(const char *filename) {
   Texture * ret = new Texture;
   

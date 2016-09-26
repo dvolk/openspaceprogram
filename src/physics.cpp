@@ -38,7 +38,7 @@ public:
 };
 
 void GLDebugDrawer::reportErrorWarning(const char* warningString) {
-  printf("!!! BULLET: %s", warningString);
+  printf("!!! BULLET: %s\n", warningString);
 }
 
 void GLDebugDrawer::Draw(const Camera * camera) {
@@ -110,9 +110,9 @@ void create_physics(void) {
 }
 
 void PhysicsEngine::Draw(const Camera * camera) {
+    debugDrawer->lineBuffer.clear();
     dynamicsWorld->debugDrawWorld();
     debugDrawer->Draw(camera);
-    debugDrawer->lineBuffer.clear();
 }
 
 PhysicsEngine::PhysicsEngine() {
@@ -390,9 +390,9 @@ glm::dvec3 getRelAxis_(Body *body, int n) {
     return glm::dvec3(v.getX(), v.getY(), v.getZ());
 }
 
-double angleFacing(Body *body, glm::dvec3 dir) {
-  return getRelAxis(body, 2).angle(btVector3(dir.x, dir.y, dir.z));
-}
+// double angleFacing(Body *body, glm::dvec3 dir) {
+//   return getRelAxis(body, 2).angle(btVector3(dir.x, dir.y, dir.z));
+// }
 
 void ApplyCentralForceForward(Body *body, double mag) {
     btVector3 forward = getRelAxis(body, 2);

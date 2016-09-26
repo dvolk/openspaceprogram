@@ -60,7 +60,8 @@
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/projection.hpp>
 #include <glm/gtx/vector_angle.hpp>
-#include <glm/gtx/matrix_decompose.hpp>
+// #include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/polar_coordinates.hpp>
 
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
@@ -93,6 +94,8 @@ bool planetsWindow = false;
 static const int DISPLAY_WIDTH = 720;
 static const int DISPLAY_HEIGHT = 480;
 static const int FPS = 60;
+
+#define RAD2DEG(rad) (((180.0/M_PI) * rad))
 
 struct TerrainBody;
 
@@ -808,7 +811,6 @@ public:
   void RotateToward(glm::dvec3 dir) {
     void ApplyTorque(Body *body, glm::dvec3 torque);
     glm::dvec3 getRelAxis_(Body *body, int n);
-    double angleFacing(Body *body, glm::dvec3 dir);
 
     glm::dvec3 facing = getRelAxis_(m_reaction_wheels.front(), 2);
     glm::dvec3 torque = -glm::normalize(glm::cross(dir, facing) / 10.0);
@@ -1136,6 +1138,14 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
   return grid_mesh;
 }
 
+glm::dvec3 projectVecOntoPlane(const glm::dvec3 & vec, const glm::dvec3 & normal) {
+  return vec - glm::dot(vec, normal) * normal;
+}
+
+double wrapAngleToPositive(const double theta) {
+  return theta >= 0.0 ? theta : M_PI * 2 + theta;
+}
+
 int main(int argc, char **argv)
 {
   Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
@@ -1296,14 +1306,37 @@ int main(int argc, char **argv)
 
   Shader *billboardshader = new Shader;
   billboardshader->registerAttribs({ "position", "texcoord", "normal" });
-  billboardshader->registerUniforms({ "MVP", "Normal" });
+  billboardshader->registerUniforms({ "MVP", "color_uniform" });
   billboardshader->FromFile("./res/billboardshader");
 
   Texture * front_indicator_texture = load_texture("res/front_crosshair.png");
   Texture * prograde_indicator_texture = load_texture("res/prograde_icon.png");
+  Texture * retrograde_indicator_texture = load_texture("res/retrograde_icon.png");
+  Texture * radial_in_indicator_texture = load_texture("res/radial_in_icon.png");
+  Texture * radial_out_indicator_texture = load_texture("res/radial_out_icon.png");
+  Texture * normal_plus_indicator_texture = load_texture("res/normal_plus_icon.png");
+  Texture * normal_minus_indicator_texture = load_texture("res/normal_minus_icon.png");
+  // Texture * horizon_indicator_texture = load_texture("res/horizon_icon.png");
 
-  Billboard *front_indicator = mk_billboard(billboardshader, front_indicator_texture, 1.0);
-  Billboard *prograde_indicator = mk_billboard(billboardshader, prograde_indicator_texture, 0.5);
+  // glm::vec4 billboardcolor = glm::vec4(83/255.0, 238/255.0, 83/255.0, 1.0);
+  glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0);
+
+  Billboard *front_indicator =
+    mk_billboard(billboardshader, front_indicator_texture, 1.0, 1.0, billboardcolor);
+  Billboard *prograde_indicator =
+    mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, billboardcolor);
+  Billboard *retrograde_indicator =
+    mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, billboardcolor);
+  Billboard *radial_in_indicator =
+    mk_billboard(billboardshader, radial_in_indicator_texture, 1.0, 1.0, billboardcolor);
+  Billboard *radial_out_indicator =
+    mk_billboard(billboardshader, radial_out_indicator_texture, 1.0, 1.0, billboardcolor);
+  Billboard *normal_plus_indicator =
+    mk_billboard(billboardshader, normal_plus_indicator_texture, 1.0, 1.0, billboardcolor);
+  Billboard *normal_minus_indicator =
+    mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
+  // Billboard *horizon_indicator =
+  //   mk_billboard(billboardshader, horizon_indicator_texture, 4.0, 1.0, billboardcolor);
 
     /* camera init */
   // WeirdCamera *camera = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
@@ -1339,7 +1372,8 @@ int main(int argc, char **argv)
   bool targetInfoWindow = false;
   bool topHUDWindows = false;
   bool shipDetailWindow = false;
-  bool physics_debug_drawing = true;
+  bool physics_debug_drawing = false;
+  bool world_drawing = true;
 
   double time = 0;
 
@@ -1569,8 +1603,6 @@ int main(int argc, char **argv)
       }
 
       for(auto&& planet : planets) {
-	// ImGui::Text("tr: %f %f %f", translate.x, translate.y, translate.z);
-	// ;
 	if(planet == ship->m_parent) {
 	  /* this is the planet we're on.
 
@@ -1578,11 +1610,11 @@ int main(int argc, char **argv)
 	   */
 
 	  if(ship->frame->isRotFrame()) {
-	    /* we're in a rotational frame */
+	    /* we're in its rotational frame */
 	    planet->transform = glm::dmat4();
 	  }
 	  else {
-	    /* we're in an inertial frame */
+	    /* we're in its inertial frame */
 	    planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
 	  }
 	}
@@ -1596,21 +1628,33 @@ int main(int argc, char **argv)
 
       camera->ComputeView();
 
-      space_port->Draw(camera, ship->m_parent);
+      /*
+	standard 3d stuff drawn here
+      */
 
-      ship->Draw(camera);
+      if(world_drawing == true) {
+	space_port->Draw(camera, ship->m_parent);
+	ship->Draw(camera);
+      }
 
       for(auto&& planet : planets) {
 	// if(planet == sun) continue;
 	planet->Update(camera);
-	planet->Draw(camera, sun);
+	if(world_drawing == true) {
+	  planet->Draw(camera, sun);
+	}
       }
+
+      /*
+	end 3d stuff drawn here
+      */
 
       const double mu = ship->m_parent->mu;
 
       glm::dvec3 getRelAxis_(Body *body, int n);
       // surf pos??
       const glm::dvec3 pos = com;
+      glm::dvec3 polar_pos = glm::polar(pos);
       /* orbital velocity */
       glm::dvec3 vel = ship->GetVel();
 
@@ -1684,10 +1728,6 @@ int main(int argc, char **argv)
       const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (mu)); // s
       const double ApT = T - PeT; // s
 
-      const double ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
-      glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, surf_vel)); // hmm
-      const double hor_speed = glm::length(glm::proj(surf_vel, surface_tangent)); // m/s
-
       /*  y
 	  |
           |
@@ -1698,27 +1738,71 @@ int main(int argc, char **argv)
        z
        */
 
-      glm::dvec3 up = getRelAxis_(ship->controller, 1);
-      double roll = glm::angle(glm::normalize(glm::cross(pos, vel)), glm::normalize(up));
-      double pitch = 0;
-      double yaw = 0;
+      const glm::dvec3 up = getRelAxis_(ship->controller, 1);
+      const glm::dvec3 facing = getRelAxis_(ship->controller, 2);
+      const glm::dvec3 other = getRelAxis_(ship->controller, 0);
 
-      glm::dvec3 dir = glm::normalize(surf_pos);
+      const glm::dvec3 facing_dir = glm::normalize(facing);
+      const glm::dvec3 vel_dir = glm::normalize(vel);
 
-      const double longitude = (180 / M_PI) * atan2(dir.x, dir.z);
-      const double latitude = (180 / M_PI) * asin(dir.y);
+      const glm::dvec3 _up = glm::normalize(pos);
+      const glm::dvec3 _north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), _up));
+      const glm::dvec3 _east = glm::cross(_up, _north);
 
-      glm::dvec3 facing = getRelAxis_(ship->controller, 2);
+      const double ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
+      const glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, surf_vel)); // hmm
+      // const double hor_speed = glm::length(glm::proj(surf_vel, surface_tangent)); // m/s
+      const double hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, _up)); // m/s
+
+      const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
+
+      const double hedNorth = glm::dot(groundHed, _north);
+      const double hedEast = glm::dot(groundHed, _east);
+      const double heading = wrapAngleToPositive(atan2(hedEast, hedNorth));
+
+      const double yaw = heading;
+      const double pitch = asin(glm::dot(_up, facing));
+      const double roll =
+	glm::orientedAngle(glm::normalize(projectVecOntoPlane(-pos, glm::normalize(facing))),
+			   glm::normalize(-up),
+			   glm::normalize(facing));
+
+      // ImGui::Text("pos: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
+      // ImGui::Text("facing: %.2f %.2f %.2f", facing.x, facing.y, facing.z);
+      // ImGui::Text("up: %.2f %.2f %.2f", up.x, up.y, up.z);
+      // ImGui::Text("other: %.2f %.2f %.2f", other.x, other.y, other.z);
+      // ImGui::Text("Ground hed: %.2f %.2f %.2f", groundHed.x, groundHed.y, groundHed.z);
+      // ImGui::Text("Pitch: %.2f", RAD2DEG(pitch));
+      // ImGui::Text("Heading: %.2f", RAD2DEG(heading));
+      // ImGui::Text("up: %.2f, %.2f, %.2f", up.x, up.y, up.z);
+      // ImGui::Text("facing: %.2f, %.2f, %.2f", facing.x, facing.y, facing.z);
+
+      const glm::dvec3 dir = glm::normalize(surf_pos);
+
+      const double longitude = atan2(dir.x, dir.z);
+      const double latitude = asin(dir.y);
 
       skybox.Draw(camera, skyboxshader);
 
       glDisable(GL_DEPTH_TEST);
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      front_indicator->model = glm::translate(facing);
-      front_indicator->Draw(camera, roll);
-      prograde_indicator->model = glm::translate(vel);
-      prograde_indicator->Draw(camera, 0);
+      front_indicator->pos = facing;
+      front_indicator->Draw(camera, M_PI /* <- ?? */ + roll);
+      prograde_indicator->pos = vel;
+      prograde_indicator->Draw(camera, M_PI);
+      retrograde_indicator->pos = - vel;
+      retrograde_indicator->Draw(camera, M_PI);
+      radial_in_indicator->pos = - pos;
+      radial_in_indicator->Draw(camera, M_PI);
+      radial_out_indicator->pos = pos;
+      radial_out_indicator->Draw(camera, M_PI);
+      normal_plus_indicator->pos = glm::cross(pos, vel);
+      normal_plus_indicator->Draw(camera, M_PI);
+      normal_minus_indicator->pos = -glm::cross(pos, vel);
+      normal_minus_indicator->Draw(camera, M_PI);
+      // horizon_indicator->pos = groundHed;
+      // horizon_indicator->Draw(camera, M_PI);
       glDisable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
 
@@ -1727,15 +1811,6 @@ int main(int argc, char **argv)
 	debug_draw(camera);
 	glEnable(GL_DEPTH_TEST);
       }
-
-      // 	glm::orientedAngle(glm::dvec3(0, 0, 1),
-      // 						 glm::normalize(glm::dvec3(pos.x, 0, pos.z)),
-      // 						 glm::dvec3(0, 1, 0)
-      // 						 );
-      // const double latitude = glm::orientedAngle(glm::dvec3(0, 1, 0),
-      // 						  glm::normalize(glm::dvec3(pos.x, pos.y, 0)),
-      // 						  glm::dvec3(0, 0, -1)
-      // 						  );
 
       /*
 	ImGui stuff below
@@ -1746,6 +1821,13 @@ int main(int argc, char **argv)
       if(poly_mode == true) {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
       }
+
+      // for(auto&& frame : frames) {
+      // 	ImGui::Text("root pos: %.0f, %.0f, %.0f",
+      // 		    frame->root_pos.x,
+      // 		    frame->root_pos.y,
+      // 		    frame->root_pos.z);
+      // }
 
       if(topHUDWindows == true) {
 	ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
@@ -1800,6 +1882,7 @@ int main(int argc, char **argv)
       if(gameInfoWindow == true) {
 	ImGui::Begin("Game Debug Info");
 	ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
+	ImGui::Checkbox("World draw", &world_drawing);
 	ImGui::Text("Time: %f", time);
 	ImGui::Text("Patches: %d", ship->m_parent->CountPatches());
 	ImGui::Text("Cam speed: %d", cam_speed);
@@ -1808,31 +1891,38 @@ int main(int argc, char **argv)
 		    glm::length(camera->GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera->GetPos())));
 	ImGui::Text("Camera ASL: %0.f", glm::length(camera->GetPos()) - ship->m_parent->radius);
 	ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera->GetPos().x, camera->GetPos().y, camera->GetPos().z);
+	ImGui::Text("Cam forward: %.2f %.2f %.2f",
+		    camera->forward.x, camera->forward.y, camera->forward.z);
 	ImGui::Text("Earth distance: %f",
 		    glm::length(ship->GetPositionRelTo(ship->controller, earth->frame)));
+	ImGui::Text("Pos: %.3fkm", distance / 1000);
+	ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
+	ImGui::Text("Vel: %.3fm/s", speed);
+	ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
 	ImGui::End();
       }
 
       if(orbitInfoWindow == true) {
 	ImGui::Begin("ORBITAL");
-	ImGui::Text("Vel: %.1fm/s",
-		    glm::length(vel));
+	ImGui::Text("Vel: %.1fm/s", speed);
 	ImGui::Text("Alt: %.1fm", distance);
  	ImGui::Text("ApA: %.1fm", ApA);
 	ImGui::Text("ApT: %.1f", ApT);
  	ImGui::Text("PeA: %.1fm", PeA);
 	ImGui::Text("PeT: %.1f", PeT);
 	ImGui::Text("  T: %.1f", T);
-	ImGui::Text("Inc: %.1f", inclination);
+	ImGui::Text("Inc: %.2f", RAD2DEG(inclination));
 	ImGui::Text("Ecc: %f ", ecc);
 	ImGui::Text("SMa: %.1fm", SMa);
-	ImGui::Text("LAN: %f", raan);
-	ImGui::Text("LPe: %f", arg_pe);
-	ImGui::Separator();
-	ImGui::Text("Angle to Prograde:");
-	ImGui::Text("Angle to Retrograde:");
-	ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
+	ImGui::Text("LAN: %.2f", RAD2DEG(raan));
+	ImGui::Text("LPe: %.2f", RAD2DEG(arg_pe));
+	double prograde_angle = glm::angle(facing_dir, vel_dir);
+	double retrograde_angle = glm::angle(facing_dir, - vel_dir);
+	ImGui::Text("Angle to Prograde: %.2f", RAD2DEG(prograde_angle));
+	ImGui::Text("Angle to Retrograde: %.2f", RAD2DEG(retrograde_angle));
 	ImGui::Text("Energy: %.2f J", e);
+	ImGui::Separator();
+	ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
 	ImGui::Text("Radial velocity: %.2f", radial_vel);
 	ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
 	ImGui::End();
@@ -1843,16 +1933,12 @@ int main(int argc, char **argv)
 	ImGui::Text("Altitude (True): %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
 	ImGui::Text("Altitude (ASL): %.1fm", distance - ship->m_parent->radius);
 	ImGui::Text("V speed: %.2fm/s", ver_speed);
-	ImGui::Text("H speed: %.2fm/s", hor_speed);
-	ImGui::Text("Latitude: %.4f", latitude * 180/M_PI);
-	ImGui::Text("Longitude: %.4f", longitude * 180/M_PI);
-	ImGui::Text("Pos: %.3fkm", distance / 1000);
-	ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
-	ImGui::Text("Vel: %.3fm/s", speed);
-	ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
-	ImGui::Text("Roll: %.1f", roll);
-	ImGui::Text("Pitch: %.1f", yaw);
-	ImGui::Text("Yaw: %.1f", pitch);
+	ImGui::Text("H speed: %.2fm/s", hor_speed2);
+	ImGui::Text("Latitude: %.4f", RAD2DEG(latitude));
+	ImGui::Text("Longitude: %.4f", RAD2DEG(longitude));
+	ImGui::Text("Pitch: %.2f", RAD2DEG(pitch));
+	ImGui::Text("Roll: %.2f", RAD2DEG(roll));
+	ImGui::Text("Heading: %.2f", RAD2DEG(yaw));
 	ImGui::End();
       }
 
@@ -2013,24 +2099,7 @@ int main(int argc, char **argv)
       }
 
       ImGui::PopStyleColor();
-
-      // for(auto&& frame : frames) {
-      // 	ImGui::Text("root pos: %.0f, %.0f, %.0f",
-      // 		    frame->root_pos.x,
-      // 		    frame->root_pos.y,
-      // 		    frame->root_pos.z);
-      // }
-
       ImGui::Render();
-
-      // glActiveTexture(GL_TEXTURE0);
-      // glMatrixMode(GL_PROJECTION);
-      // glLoadIdentity();
-      // glMultMatrixf(&proj[0][0]);
-      // glMatrixMode(GL_MODELVIEW);
-      // glLoadIdentity();
-      // glMultMatrixf(&view[0][0]);
-      // debug_draw();
 
       display.SwapBuffers();
       check_gl_error();
@@ -2041,9 +2110,24 @@ int main(int argc, char **argv)
   delete earth;
   delete moon;
 
+  delete space_port;
+  delete ship;
+
+  for(auto&& frame : frames) { delete frame; }
+
   delete partsshader;
   delete sunshader;
   delete terrainshader;
+  delete billboardshader;
+  delete skyboxshader;
+
+  delete front_indicator;
+  delete prograde_indicator;
+  delete retrograde_indicator;
+
+  delete front_indicator_texture;
+  delete prograde_indicator_texture;
+  delete retrograde_indicator_texture;
 
   return 0;
 }

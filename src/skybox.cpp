@@ -7,6 +7,15 @@
 #include "camera.h"
 #include "shader.h"
 
+GLuint skyboxVAO, skyboxVBO;
+GLuint cubemapTexture;
+
+Skybox::~Skybox() {
+  glDeleteBuffers(1, &skyboxVBO);
+  glDeleteVertexArrays(1, &skyboxVAO);
+  glDeleteTextures(1, &cubemapTexture);
+}
+
 GLuint loadCubemap(std::vector<const GLchar*> faces)
 {
   GLuint textureID;
@@ -25,11 +34,11 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
     // image = SOIL_load_image(faces[i], &width, &height, 0, SOIL_LOAD_RGB);
     glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
 		 0,
-		 GL_RGBA,
+		 GL_RGB,
 		 width,
 		 height,
 		 0,
-		 GL_RGBA,
+		 GL_RGB,
 		 GL_UNSIGNED_BYTE,
 		 image_data);
 
@@ -90,9 +99,6 @@ GLfloat skyboxVertices[] = {
     -1.0f, -1.0f,  1.0f,
      1.0f, -1.0f,  1.0f
 };
-
-GLuint skyboxVAO, skyboxVBO;
-GLuint cubemapTexture;
 
 void Skybox::init(void) {
   // Setup skybox VAO

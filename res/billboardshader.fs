@@ -7,10 +7,11 @@ uniform sampler2D mytexture;
 
 void main()
 {
-    if(color0.a < 0.5) {
-        discard;
+    vec4 tex_color = texture2D(mytexture, texcoord0);
+    if(tex_color.a > 0.01) {
+        gl_FragColor = color0 * tex_color.a;
     }
     else {
-        gl_FragColor = texture2D(mytexture, texcoord0);
+        discard;
     }
 }
