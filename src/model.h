@@ -1,18 +1,16 @@
 #pragma once
 
-#include "mesh.h"
-#include "shader.h"
+class Mesh;
+class Shader;
+class Texture;
 
 struct Model {
-    Mesh *mesh;
-    Shader *shader;
+  Mesh *mesh;
+  Shader *shader;
+  Texture *texture;
 
-    void FromData(Mesh *mesh, Shader *shader) {
-        this->mesh = mesh;
-        this->shader = shader;
-    }
+  ~Model();
 
-  ~Model() {
-    delete mesh;
-  }
+  void FromData(Mesh *mesh, Shader *shader, Texture *texture);
 };
+

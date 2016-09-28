@@ -5,14 +5,13 @@
 
 #include "model.h"
 #include "camera.h"
+#include "mesh.h"
+#include "shader.h"
+#include "texture.h"
 
 struct Body {
   // mesh + shader
   Model *model;
-
-  // color of the body
-  // TODO remove this
-  glm::vec4 color;
 
   // bullet object, stores all the physical body information
   btRigidBody *btBody;
@@ -33,7 +32,6 @@ struct Body {
 
   void Draw(const Camera* camera, glm::vec3 & sunlightVec) {
     UpdateModelMatrix();
-    model->shader->Bind();
 
     glm::dmat4 View = camera->GetView();
     // make sure View * Model happens with double precision
@@ -43,17 +41,17 @@ struct Body {
     glm::mat4 MVP = Projection * ModelViewFloat;
     glm::mat4 ModelFloat = model_matrix;
 
+    model->shader->Bind();
     model->shader->setUniform_mat4(0, MVP);
     model->shader->setUniform_mat4(1, ModelFloat);
     model->shader->setUniform_vec3(2, sunlightVec);
-    model->shader->setUniform_vec4(3, color);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, model->texture->id);
 
     model->mesh->Draw();
 
-    /* glUseProgram(0); */
-    /* draw_line(glm::vec3(0, 0, 0), */
-    /*           glm::vec3(10, 10, 10), */
-    /*           glm::vec3(1.0, 1.0, 1)); */
+    glBindTexture(GL_TEXTURE_2D, 0);
   }
 };
 

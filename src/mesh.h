@@ -5,7 +5,6 @@
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
-//#include "obj_loader.h"
 
 struct PosTexNorIndColInterface {
   std::vector<glm::vec3> positions;
@@ -15,11 +14,22 @@ struct PosTexNorIndColInterface {
   std::vector<glm::vec3> colors;
 };
 
+struct PosTexNorIndInterface {
+  std::vector<glm::vec3> positions;
+  std::vector<glm::vec2> texcoords;
+  std::vector<glm::vec3> normals;
+  std::vector<unsigned int> indices;
+};
+
 struct PosNorIndColInterface {
   std::vector<glm::vec3> positions;
   std::vector<glm::vec3> normals;
   std::vector<unsigned int> indices;
   std::vector<glm::vec3> colors;
+};
+
+struct PosInterface {
+  std::vector<glm::vec3> positions;
 };
 
 struct PosVertex {
@@ -63,12 +73,14 @@ class Mesh
   void FromFile(const std::string& fileName, bool copyData);
   void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData);
 
+  void InitMesh(const PosInterface& model);
   void InitMesh(const PosNorIndColInterface& model, bool copyData);
+  void InitMesh(const PosTexNorIndInterface& model, bool copyData);
   void InitMesh(const PosTexNorIndColInterface& model, bool copyData);
 
   void Draw();
-
-  glm::vec3 color;
+  // draw lines initialized by PosInterface
+  void Draw(GLenum mode);
 
   // for bullet physics
   double *vs;

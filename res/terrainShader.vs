@@ -23,7 +23,7 @@ void main()
     const float C=11;
     const float far = 1000000000;
     const float FC = 1.0/log(far*C + 1);
-            
+
     logz = log(gl_Position.w * C + 1) * FC;
     gl_Position.z = (2 * logz - 1) * gl_Position.w;
 }

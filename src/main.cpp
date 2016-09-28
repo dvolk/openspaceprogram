@@ -434,7 +434,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
   this->centroid = glm::normalize(v0 + v1 + v2 + v3);
   bool has_collision = depth > max_depth;
   Mesh *grid_mesh = body->create_grid_mesh(has_collision, v0, v1, v2, v3);
-  model->FromData(grid_mesh, shader);
+  model->FromData(grid_mesh, shader, NULL);
   if(has_collision == true) {
       collision = addTerrainCollision(grid_mesh);
       printf("added terrain collision with %p\n", this);
@@ -568,6 +568,7 @@ public:
 
   TerrainBody *m_parent;
   Frame *frame;
+  float m_thrust;
 
   glm::dvec3 m_com;
 
@@ -757,6 +758,7 @@ public:
 	 consumeResourceMass(ResourceType::LOX,      max_fuel_rate * thruster_util))
 	{
 	  ApplyCentralForceForward(thruster, GetMaxThrust() * thruster_util);
+	  m_thrust = 1.0;
 	}
     }
   }
@@ -1162,8 +1164,8 @@ int main(int argc, char **argv)
 
   /* data init */
   Shader *partsshader = new Shader;
-  partsshader->registerAttribs({ "position", "normal", "color" });
-  partsshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
+  partsshader->registerAttribs({ "position", "uv", "normal" });
+  partsshader->registerUniforms({ "MVP", "Normal", "lightDirection" });
   partsshader->FromFile("./res/partsShader");
 
   Shader *terrainshader = new Shader;
@@ -1180,6 +1182,11 @@ int main(int argc, char **argv)
   skyboxshader->registerAttribs({ "position" });
   skyboxshader->registerUniforms({ "projectionview" });
   skyboxshader->FromFile("./res/skyboxShader");
+
+  Shader *lineshader = new Shader;
+  lineshader->registerAttribs({ "position" });
+  lineshader->registerUniforms({ "MVP", "color" });
+  lineshader->FromFile("./res/lineShader2");
 
   // earth->Create(6300000, 5.97237e24);
 
@@ -1245,28 +1252,30 @@ int main(int argc, char **argv)
     glm::vec3 blue = glm::vec3(0.1, 0.2, 0.9);
 
     Mesh *space_port_mesh = new Mesh;
-    space_port_mesh->color = grey;
     Mesh *capsule_mesh = new Mesh;
-    capsule_mesh->color = blue;
     Mesh *wheel_mesh = new Mesh;
-    wheel_mesh->color = grey;
     Mesh *engine_mesh = new Mesh;
-    engine_mesh->color = red;
 
     space_port_mesh->FromFile("./res/space_port.obj", true);
     capsule_mesh->FromFile("./res/capsule.obj", false);
     wheel_mesh->FromFile("./res/reaction_wheel.obj", false);
     engine_mesh->FromFile("./res/engine.obj", false);
 
+    Texture *no_texture = load_texture("./res/no_texture.png");
+    Texture *space_port_texture = load_texture("./res/space_port.png");
+    Texture *reaction_wheel_texture = load_texture("res/reaction_wheel.png");
+    Texture *capsule_texture = load_texture("res/capsule.png");
+    Texture *engine_texture = load_texture("res/engine.png");
+
     Model *space_port_model = new Model;
     Model *capsule_model = new Model;
     Model *wheel_model = new Model;
     Model *engine_model = new Model;
 
-    space_port_model->FromData(space_port_mesh, partsshader);
-    capsule_model->FromData(capsule_mesh, partsshader);
-    wheel_model->FromData(wheel_mesh, partsshader);
-    engine_model->FromData(engine_mesh, partsshader);
+    space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
+    capsule_model->FromData(capsule_mesh, partsshader, capsule_texture);
+    wheel_model->FromData(wheel_mesh, partsshader, reaction_wheel_texture);
+    engine_model->FromData(engine_mesh, partsshader, engine_texture);
 
     glm::dvec3 start(0);
     glm::dvec3 p = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
@@ -1278,7 +1287,7 @@ int main(int argc, char **argv)
     space_port->parent = ship->m_parent;
 
     // double ship_height = 190000.5;
-    double ship_height = 4.5;
+    double ship_height = 3.5;
 
     // top
     Body *capsule =
@@ -1304,6 +1313,12 @@ int main(int argc, char **argv)
     ship->setVelocity(glm::dvec3(0, 0, 0));
   }
 
+  Mesh *engine_plume_mesh = new Mesh;
+  engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
+  Texture *engine_plume_texture = load_texture("res/engine_plume.png");
+  Model *engine_plume_model = new Model;
+  engine_plume_model->FromData(engine_plume_mesh, partsshader, engine_plume_texture);
+
   Shader *billboardshader = new Shader;
   billboardshader->registerAttribs({ "position", "texcoord", "normal" });
   billboardshader->registerUniforms({ "MVP", "color_uniform" });
@@ -1316,7 +1331,6 @@ int main(int argc, char **argv)
   Texture * radial_out_indicator_texture = load_texture("res/radial_out_icon.png");
   Texture * normal_plus_indicator_texture = load_texture("res/normal_plus_icon.png");
   Texture * normal_minus_indicator_texture = load_texture("res/normal_minus_icon.png");
-  // Texture * horizon_indicator_texture = load_texture("res/horizon_icon.png");
 
   // glm::vec4 billboardcolor = glm::vec4(83/255.0, 238/255.0, 83/255.0, 1.0);
   glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0);
@@ -1335,8 +1349,6 @@ int main(int argc, char **argv)
     mk_billboard(billboardshader, normal_plus_indicator_texture, 1.0, 1.0, billboardcolor);
   Billboard *normal_minus_indicator =
     mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
-  // Billboard *horizon_indicator =
-  //   mk_billboard(billboardshader, horizon_indicator_texture, 4.0, 1.0, billboardcolor);
 
     /* camera init */
   // WeirdCamera *camera = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
@@ -1383,6 +1395,28 @@ int main(int argc, char **argv)
 
   Skybox skybox;
   skybox.init();
+
+  Mesh *skylines = new Mesh;
+  {
+    PosInterface skyinterface;
+    float r = 1000;
+    int n = 128;
+    for(int i = 1; i < 128; i++) {
+      glm::vec3 p = glm::vec3(r * cos((2 * M_PI) * float(i-1)/float(n)),
+			      r * sin((2 * M_PI) * float(i-1)/float(n)),
+			      0);
+      skyinterface.positions.push_back(p);
+      // printf("%.2f %.2f %.2f\n", p.x, p.y, p.z);
+    }
+    for(int i = 1; i < 128; i++) {
+      glm::vec3 p = glm::vec3(r * cos((2 * M_PI) * float(i-1)/float(n)),
+			      0,
+			      r * sin((2 * M_PI) * float(i-1)/float(n)));
+      skyinterface.positions.push_back(p);
+    }
+    skylines->InitMesh(skyinterface);
+  }
+
 
   while (running == true) {
     /*
@@ -1496,6 +1530,9 @@ int main(int argc, char **argv)
     if(accumulator > 10 * dt) {
       accumulator = 10 * dt;
     }
+
+    // clear stats and stuff
+    ship->m_thrust = 0.0;
 
     while (accumulator >= dt) {
       // is this logic? ;_;
@@ -1635,6 +1672,7 @@ int main(int argc, char **argv)
       if(world_drawing == true) {
 	space_port->Draw(camera, ship->m_parent);
 	ship->Draw(camera);
+
       }
 
       for(auto&& planet : planets) {
@@ -1644,7 +1682,6 @@ int main(int argc, char **argv)
 	  planet->Draw(camera, sun);
 	}
       }
-
       /*
 	end 3d stuff drawn here
       */
@@ -1784,6 +1821,31 @@ int main(int argc, char **argv)
 
       skybox.Draw(camera, skyboxshader);
 
+      /* draw engine plume */
+      glm::dmat4 View = camera->GetView();
+      glm::mat4 Projection = camera->GetProjection();
+      if(ship->m_thrust > 0) {
+	for(auto&& thruster : ship->m_thrusters) {
+	  glm::dmat4 Model = thruster->model_matrix;
+	  glm::mat4 ModelViewFloat = View * Model;
+	  engine_plume_model->shader->Bind();
+	  engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
+	  engine_plume_model->shader->setUniform_mat4(1, glm::mat4());
+	  engine_plume_model->shader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+
+	  glActiveTexture(GL_TEXTURE0);
+	  glBindTexture(GL_TEXTURE_2D, engine_plume_model->texture->id);
+	  glEnable(GL_BLEND);
+	  glBlendFunc(GL_ONE, GL_ONE);
+	  glDisable(GL_CULL_FACE);
+	  engine_plume_model->mesh->Draw();
+	  glEnable(GL_CULL_FACE);
+	  glDisable(GL_BLEND);
+	  glBindTexture(GL_TEXTURE_2D, 0);
+	}
+      }
+      /* end draw engine plume */
+
       glDisable(GL_DEPTH_TEST);
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1803,6 +1865,13 @@ int main(int argc, char **argv)
       normal_minus_indicator->Draw(camera, M_PI);
       // horizon_indicator->pos = groundHed;
       // horizon_indicator->Draw(camera, M_PI);
+
+      glLineWidth(4);
+      lineshader->Bind();
+      lineshader->setUniform_mat4(0, glm::dmat4(camera->GetProjection()) * glm::dmat4(glm::dmat3(camera->GetView())));
+      lineshader->setUniform_vec4(1, glm::vec4(1, 1, 0, 0.5));
+      skylines->Draw(GL_LINE_LOOP);
+
       glDisable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
 

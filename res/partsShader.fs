@@ -1,15 +1,20 @@
 #version 120
 
 varying vec3 normal0;
-varying vec4 color0;
+varying vec2 uv0;
 varying float logz;
 
-//uniform sampler2D sampler;
 uniform vec3 lightDirection;
-uniform vec4 color;
+
+uniform sampler2D texture;
 
 void main()
 {
-    gl_FragColor = color0 * clamp(dot(-lightDirection, normal0), 0.15, 1.0);
+    vec2 uv1 = uv0;
+    uv1.y = 1 - uv1.y; // ??
+    vec4 tex_color = texture2D(texture, uv1);
+    const float min_light = 0.15;
+    const float max_light = 1.0;
+    gl_FragColor = tex_color * clamp(dot(-lightDirection, normal0), min_light, max_light);
     gl_FragDepth = logz;
 }
