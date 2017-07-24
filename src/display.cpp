@@ -14,11 +14,16 @@ Renderer::Renderer(int width, int height)
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    // SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 2);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 2);
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
-    m_window = SDL_CreateWindow("Open Space Program", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
+    m_window = SDL_CreateWindow("Open Space Program", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
+    m_screen_width = 1920;
+    m_screen_height = 1080;
     SDL_GLContext glcontext = SDL_GL_CreateContext(m_window);
 
     // m_screen_width = width;
@@ -59,6 +64,8 @@ Renderer::Renderer(int width, int height)
     if(res != GLEW_OK) {
       std::cerr << "Glew failed to initialize!" << std::endl;
     }
+
+
 }
 
 Renderer::~Renderer()
@@ -66,6 +73,7 @@ Renderer::~Renderer()
 }
 
 void Renderer::onResize(int width, int height) {
+    printf("Renderer::onResize(): old size: %d %d new size: %d %d\n", m_screen_width, m_screen_height, width, height);
     m_screen_width = width;
     m_screen_height = height;
     check_gl_error();
@@ -75,6 +83,7 @@ void Renderer::onResize(int width, int height) {
 }
 void Renderer::Clear(float r, float g, float b, float a)
 {
+    check_gl_error();
     glClearColor(r, g, b, a);
     check_gl_error();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

@@ -13,6 +13,8 @@ void Shader::FromFile(const std::string& fileName)
   m_shaders[1] = CreateShader(LoadShader(fileName + ".fs"), GL_FRAGMENT_SHADER);
   check_gl_error();
 
+  printf("Shader m_program: %d, vertex shader file %s\n", m_program, fileName.c_str());
+
   for(unsigned int i = 0; i < NUM_SHADERS; i++) {
     glAttachShader(m_program, m_shaders[i]);
     check_gl_error();
@@ -61,6 +63,7 @@ Shader::~Shader()
 
 void Shader::Bind()
 {
+  //printf("program: %d\n", m_program);
   glUseProgram(m_program);
   check_gl_error();
 }

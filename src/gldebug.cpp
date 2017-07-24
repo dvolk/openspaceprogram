@@ -1,5 +1,6 @@
 #include "gldebug.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <GL/glew.h>
 
 void _check_gl_error(const char *file, int line) {
@@ -27,5 +28,6 @@ void _check_gl_error(const char *file, int line) {
     }
 
     fprintf(stdout, "GL_%s - %s:%d\n", error, file, line);
+    exit(1);
   }
 }

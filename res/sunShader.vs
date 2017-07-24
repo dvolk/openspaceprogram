@@ -22,7 +22,7 @@ void main()
     // http://outerra.blogspot.com/2009/08/logarithmic-z-buffer.html
 
     const float C=11;
-    const float far = 100000000000;
+    const float far = 100000000;
     const float FC = 1.0/log(far*C + 1);
 
     logz = log(gl_Position.w * C + 1) * FC;

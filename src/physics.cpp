@@ -1,6 +1,6 @@
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
-#include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
+#include <bullet/BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -19,6 +19,8 @@ PhysicsEngine *physics;
 class GLDebugDrawer : public btIDebugDraw {
   int m_debugMode;
   Shader *lineshader;
+  GLuint m_vao;
+
 public:
   std::vector<float> lineBuffer;
 
@@ -41,39 +43,40 @@ void GLDebugDrawer::reportErrorWarning(const char* warningString) {
   printf("!!! BULLET: %s\n", warningString);
 }
 
-void GLDebugDrawer::Draw(const Camera * camera) {
-
+void GLDebugDrawer::Draw(const Camera * camera)
+{
   const glm::mat4 view = camera->GetView();
   const glm::mat4 projection = camera->GetProjection();
 
   lineshader->Bind();
   check_gl_error();
-
   lineshader->setUniform_mat4(0, projection * view);
   check_gl_error();
-
   int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
   check_gl_error();
   assert(attribute_pos != -1);
-
+  GLuint vao;
+  glBindVertexArray(m_vao);
+  check_gl_error();
+  GLuint bufs[1];
+  glGenBuffers(1, bufs);
+  check_gl_error();
+  glBindBuffer(GL_ARRAY_BUFFER, bufs[0]);
+  check_gl_error();
+  glBufferData(GL_ARRAY_BUFFER, sizeof(lineBuffer.data()[0]) * lineBuffer.size(), lineBuffer.data(), GL_STATIC_DRAW);
+  check_gl_error();
   glEnableVertexAttribArray(attribute_pos);
   check_gl_error();
-  glVertexAttribPointer(
-			attribute_pos, // attribute
-			3,                 // number of elements per vertex, here (x,y)
-			GL_FLOAT,          // the type of each element
-			GL_FALSE,          // take our values as-is
-			0,                 // no extra data between each position
-			lineBuffer.data()  // pointer to the C array
-			);
+  glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
   check_gl_error();
   glDrawArrays(GL_LINES, 0, lineBuffer.size() / 3);
   check_gl_error();
-
   glDisableVertexAttribArray(attribute_pos);
   check_gl_error();
-
-  // printf("%d\n", lineBuffer.size());
+  glBindVertexArray(0);
+  check_gl_error();
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  check_gl_error();
 }
 
 void GLDebugDrawer::init() {
@@ -85,6 +88,9 @@ void GLDebugDrawer::init() {
   lineshader->FromFile("./res/lineShader");
 
   m_debugMode = DBG_DrawWireframe;
+
+  glGenVertexArrays(1, &m_vao);
+  check_gl_error();
 }
 
 void GLDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {

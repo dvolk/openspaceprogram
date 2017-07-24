@@ -10,6 +10,8 @@
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post processing flags
 
+#include "gldebug.h"
+
 void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 {
   Assimp::Importer importer;
@@ -62,17 +64,29 @@ void Mesh::FromFile(const std::string& fileName, bool copyData)
 }
 
 void Mesh::InitMesh(const PosInterface & model) {
+  check_gl_error();
   glGenVertexArrays(1, &m_vertexArrayObject);
+  check_gl_error();
   glBindVertexArray(m_vertexArrayObject);
+  check_gl_error();
   num_VABs = 1;
+  check_gl_error();
   num_vertices = model.positions.size();
+  check_gl_error();
   m_vertexArrayBuffers = (GLuint*)malloc(sizeof(GLuint) * num_VABs);
-
+  check_gl_error();
+  glGenBuffers(num_VABs, m_vertexArrayBuffers);
+  check_gl_error();
   glBindBuffer(GL_ARRAY_BUFFER, m_vertexArrayBuffers[0]);
+  check_gl_error();
   glBufferData(GL_ARRAY_BUFFER, sizeof(model.positions[0]) * model.positions.size(), &model.positions[0], GL_STATIC_DRAW);
+  check_gl_error();
   glEnableVertexAttribArray(0);
+  check_gl_error();
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+  check_gl_error();
   glBindVertexArray(0);
+  check_gl_error();
 }
 
 void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)

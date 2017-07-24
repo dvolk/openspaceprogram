@@ -107,7 +107,7 @@ void WeirdCamera::Pitch(double angle) {
 }
 
 void WeirdCamera::RotateY(double angle) {
-  static const glm::dvec3 UP(0.0f, 1.0f, 0.0f);
+  static const glm::dvec3 UP(0.0f, -1.0f, 0.0f);
 
   glm::mat4 rotation = glm::rotate(angle, UP);
 

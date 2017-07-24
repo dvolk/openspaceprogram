@@ -83,16 +83,16 @@
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post processing flags
 
-#include "../../../lib/imgui/imgui.h"
-#include "imgui_impl_sdl/imgui_impl_sdl.h"
+#include "../middleware/imgui/imgui.h"
+#include "../middleware/imgui/examples/sdl_opengl3_example/imgui_impl_sdl_gl3.h"
 
 ImFont *bigger;
 bool planetsWindow = false;
 
 // static const int DISPLAY_WIDTH = 1440;
 // static const int DISPLAY_HEIGHT = 900;
-static const int DISPLAY_WIDTH = 720;
-static const int DISPLAY_HEIGHT = 480;
+static const int DISPLAY_WIDTH = 1920;
+static const int DISPLAY_HEIGHT = 1080;
 static const int FPS = 60;
 
 #define RAD2DEG(rad) (((180.0/M_PI) * rad))
@@ -1151,16 +1151,20 @@ double wrapAngleToPositive(const double theta) {
 int main(int argc, char **argv)
 {
   Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-  ImGui_ImplSdl_Init(display.get_display());
+  check_gl_error();
+  ImGui_ImplSdlGL3_Init(display.get_display());
+  check_gl_error();
 
   ImGuiIO& io = ImGui::GetIO();
-  io.Fonts->AddFontDefault();
-  // io.Fonts->AddFontFromFileTTF("DroidSansMono.ttf", 14.0);
+  //io.Fonts->AddFontDefault();
+  io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", 20.0);
   bigger = io.Fonts->AddFontFromFileTTF("res/DroidSans.ttf", 40.0);
+  check_gl_error();
 
   // start bullet; see physics.cpp
   void create_physics(void);
   create_physics();
+  check_gl_error();
 
   /* data init */
   Shader *partsshader = new Shader;
@@ -1176,7 +1180,7 @@ int main(int argc, char **argv)
   Shader *sunshader = new Shader;
   sunshader->registerAttribs({ "position", "normal", "color" });
   sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
-  sunshader->FromFile("./res/sunShader");
+  sunshader->FromFile("./res/terrainShader");
 
   Shader *skyboxshader = new Shader;
   skyboxshader->registerAttribs({ "position" });
@@ -1312,6 +1316,7 @@ int main(int argc, char **argv)
     ship->init();
     ship->setVelocity(glm::dvec3(0, 0, 0));
   }
+  check_gl_error();
 
   Mesh *engine_plume_mesh = new Mesh;
   engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
@@ -1355,7 +1360,7 @@ int main(int argc, char **argv)
   // 					(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
   // 					0.00001f, 10e6);
   // focused_planet->Update(camera);
-  OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
+  WeirdCamera *camera = new WeirdCamera(GetPosition(ship->controller),
   					M_PI/3.0, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
   					1.0f, 10e6);
 
@@ -1363,7 +1368,7 @@ int main(int argc, char **argv)
 
   bool running = true;
   bool redraw = false;
-  bool follow_ship = true;
+  bool follow_ship = false;
   bool poly_mode = false;
   bool capture_pointer = true;
   SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -1417,7 +1422,6 @@ int main(int argc, char **argv)
     skylines->InitMesh(skyinterface);
   }
 
-
   while (running == true) {
     /*
       EVENTS
@@ -1425,7 +1429,7 @@ int main(int argc, char **argv)
     SDL_Event ev;
 
     while (SDL_PollEvent(&ev)) {
-      ImGui_ImplSdl_ProcessEvent(&ev);
+      ImGui_ImplSdlGL3_ProcessEvent(&ev);
       if (ev.type == SDL_QUIT) {
 	running = false;
       }
@@ -1433,7 +1437,10 @@ int main(int argc, char **argv)
       if (ev.type == SDL_WINDOWEVENT) {
 	if(ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
 	  display.onResize(ev.window.data1, ev.window.data2);
+	  check_gl_error();
+	    
 	  camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
+	  check_gl_error();
 	}
       }
       if(ev.type == SDL_KEYDOWN) {
@@ -1625,10 +1632,13 @@ int main(int argc, char **argv)
       RENDERING
     */
     if(redraw == true) {
-      ImGui_ImplSdl_NewFrame(display.get_display());
+      check_gl_error();
+      ImGui_ImplSdlGL3_NewFrame(display.get_display());
+      check_gl_error();
 
       if(poly_mode == true) {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	check_gl_error();
       }
 
       display.Clear(0, 0, 0, 1);
@@ -1676,10 +1686,10 @@ int main(int argc, char **argv)
       }
 
       for(auto&& planet : planets) {
-	// if(planet == sun) continue;
+	if(planet == sun) continue;
 	planet->Update(camera);
 	if(world_drawing == true) {
-	  planet->Draw(camera, sun);
+          planet->Draw(camera, sun);
 	}
       }
       /*
