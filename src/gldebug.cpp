@@ -29,7 +29,7 @@ void _check_gl_error(const char *file, int line) {
     }
 
     fprintf(stdout, "GL_%s - %s:%d\n", error, file, line);
-    exit(1);
+    //exit(1);
   }
 }
 
