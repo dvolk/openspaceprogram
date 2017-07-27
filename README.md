@@ -35,9 +35,12 @@ Some textures are originally from Pioneer space sim: https://github.com/pioneers
     c++ `sdl2-config --cflags` -I ../.. -c ../../imgui.cpp `sdl2-config --libs`
     c++ `sdl2-config --cflags` -I ../.. -c ../../imgui_draw.cpp `sdl2-config --libs`
     c++ `sdl2-config --cflags` -I ../.. -c imgui_impl_sdl_gl3.cpp  `sdl2-config --libs` -lGL -lGLEW
+    
+finally
 
-finally,
+    make
+    
+run with
 
-   make
-   ./osp
+    ./osp
 
