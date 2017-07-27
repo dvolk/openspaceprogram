@@ -96,27 +96,6 @@ void Shader::setUniform_mat4(int index, const glm::mat4 & m4) {
   glUniformMatrix4fv(m_uniforms[index], 1, GL_FALSE, &m4[0][0]);
 }
 
-// void Shader::Old_Update(const glm::dmat4& Model, glm::vec4& color, const Camera* camera, const glm::vec3& sunlightVec)
-// {
-//   const glm::dmat4 View = camera->GetView();
-//   // make sure View * Model happens with double precision
-//   const glm::dmat4 ModelView = View * Model;
-//   const glm::mat4 ModelViewFloat = ModelView;
-//   const glm::mat4 Projection = camera->GetProjection();
-//   const glm::mat4 MVP = Projection * ModelViewFloat;
-//   const glm::mat4 ModelFloat = Model;
-//   check_gl_error();
-//   glUniformMatrix4fv(m_uniforms[0], 1, GL_FALSE, &MVP[0][0]);
-//   check_gl_error();
-//   glUniformMatrix4fv(m_uniforms[1], 1, GL_FALSE, &ModelFloat[0][0]);
-//   check_gl_error();
-
-//   glUniform3f(m_uniforms[2], sunlightVec.x, sunlightVec.y, sunlightVec.z);
-//   check_gl_error();
-//   glUniform4f(m_uniforms[3], color.x, color.y, color.z, color.w);
-//   check_gl_error();
-// }
-
 std::string LoadShader(const std::string& fileName)
 {
   std::ifstream file;

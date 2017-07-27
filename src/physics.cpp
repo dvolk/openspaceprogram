@@ -20,6 +20,7 @@ class GLDebugDrawer : public btIDebugDraw {
   int m_debugMode;
   Shader *lineshader;
   GLuint m_vao;
+  GLuint m_bufs[1];
 
 public:
   std::vector<float> lineBuffer;
@@ -48,30 +49,23 @@ void GLDebugDrawer::Draw(const Camera * camera)
   const glm::mat4 view = camera->GetView();
   const glm::mat4 projection = camera->GetProjection();
 
+  int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
+  check_gl_error();
   lineshader->Bind();
   check_gl_error();
   lineshader->setUniform_mat4(0, projection * view);
   check_gl_error();
-  int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
-  check_gl_error();
-  assert(attribute_pos != -1);
-  GLuint vao;
   glBindVertexArray(m_vao);
   check_gl_error();
-  GLuint bufs[1];
-  glGenBuffers(1, bufs);
-  check_gl_error();
-  glBindBuffer(GL_ARRAY_BUFFER, bufs[0]);
+  glBindBuffer(GL_ARRAY_BUFFER, m_bufs[0]);
   check_gl_error();
   glBufferData(GL_ARRAY_BUFFER, sizeof(lineBuffer.data()[0]) * lineBuffer.size(), lineBuffer.data(), GL_STATIC_DRAW);
   check_gl_error();
-  glEnableVertexAttribArray(attribute_pos);
+  glEnableVertexAttribArray(0);
   check_gl_error();
-  glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
   check_gl_error();
   glDrawArrays(GL_LINES, 0, lineBuffer.size() / 3);
-  check_gl_error();
-  glDisableVertexAttribArray(attribute_pos);
   check_gl_error();
   glBindVertexArray(0);
   check_gl_error();
@@ -90,6 +84,8 @@ void GLDebugDrawer::init() {
   m_debugMode = DBG_DrawWireframe;
 
   glGenVertexArrays(1, &m_vao);
+  check_gl_error();
+  glGenBuffers(1, &m_bufs[0]);
   check_gl_error();
 }
 

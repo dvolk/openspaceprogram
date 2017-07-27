@@ -20,6 +20,7 @@ class Renderer
  protected:
  private:
 
+    bool m_gl_debug;
     int m_screen_width;
     int m_screen_height;
     SDL_Window *m_window;
