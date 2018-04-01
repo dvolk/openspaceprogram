@@ -1152,13 +1152,15 @@ int main(int argc, char **argv)
 {
   Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
   check_gl_error();
+  ImGuiContext* ctx1 = ImGui::CreateContext();
+  ImGui::SetCurrentContext(ctx1);
   ImGui_ImplSdlGL3_Init(display.get_display());
   check_gl_error();
 
   ImGuiIO& io = ImGui::GetIO();
   //io.Fonts->AddFontDefault();
   io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", 20.0);
-  bigger = io.Fonts->AddFontFromFileTTF("res/DroidSans.ttf", 40.0);
+  bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 40.0);
   check_gl_error();
 
   // start bullet; see physics.cpp
@@ -2154,7 +2156,7 @@ int main(int argc, char **argv)
 	// auto whut = ;
 	// ImGui::GetWindowDrawList()->AddPolyline(&planet[0], 26, color2, false, 1, true);
 
-	ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1, true);
+	ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1.0);
 	ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2( 200 + p.x,
 							    200 + p.y ),
 						    ship->m_parent->radius / div,
@@ -2179,6 +2181,7 @@ int main(int argc, char **argv)
 
       ImGui::PopStyleColor();
       ImGui::Render();
+      ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 
       display.SwapBuffers();
       check_gl_error();
