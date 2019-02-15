@@ -1,0 +1,9 @@
+[submodule "middleware/glm"]
+	path = middleware/glm
+	url = https://github.com/g-truc/glm
+[submodule "middleware/bullet3"]
+	path = middleware/bullet3
+	url = https://github.com/bulletphysics/bullet3
+[submodule "middleware/imgui"]
+	path = middleware/imgui
+	url = https://github.com/ocornut/imgui

@@ -56,6 +56,8 @@
 
 #include "SDL2/SDL.h"
 
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include <glm/gtc/noise.hpp>
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/projection.hpp>

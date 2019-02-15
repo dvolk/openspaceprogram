@@ -1,5 +1,7 @@
 #include "frame.h"
 
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include <glm/gtx/transform.hpp>
 
 // // doesn't consider stasis velocity

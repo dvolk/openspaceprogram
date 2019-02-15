@@ -2,6 +2,8 @@
 #include <bullet/btBulletDynamicsCommon.h>
 #include <bullet/BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 

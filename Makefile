@@ -5,7 +5,7 @@ TARGET=osp
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
 
 CXX= g++
-CXXFLAGS=-O2 $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -std=c++11 -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I/usr/include/SDL2
+CXXFLAGS=-O2 $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I/usr/include/SDL2
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL -lassimp
