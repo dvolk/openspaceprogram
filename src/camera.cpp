@@ -60,16 +60,20 @@ void OrbitCamera::Follow(const glm::dvec3 p) {
     focusPoint = p;
 }
 
-void OrbitCamera::Pitch(double angle)
-{
-    // y -= angle;
-    orient = orient * glm::dmat3(glm::rotate(angle, glm::dvec3(0, -1, 0)));
+void OrbitCamera::Pitch(double angle) {
+    // 1.  Re-compute current basis from the *current* orient
+    glm::dvec3 right = glm::normalize(glm::cross(forward, up));
+
+    // 2.  Rotate around that right axis in WORLD space
+    orient = glm::dmat3(glm::rotate(angle, right)) * orient;
 }
 
-void OrbitCamera::RotateY(double angle)
-{
-    // x -= angle;
-    orient = orient * glm::dmat3(glm::rotate(angle, glm::dvec3(0,  0, -1)));
+void OrbitCamera::RotateY(double angle) {
+    // 1.  World-space up at the focus point is always POS normalised
+    glm::dvec3 worldUp = glm::normalize(pos);   // radial out of planet
+
+    // 2.  Rotate around that up axis in WORLD space
+    orient = glm::dmat3(glm::rotate(angle, worldUp)) * orient;
 }
 
 WeirdCamera::WeirdCamera(const glm::vec3& pos, float fov, float aspect, float zNear, float zFar) {
