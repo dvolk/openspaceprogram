@@ -5,12 +5,12 @@ class Shader;
 class Texture;
 
 struct Model {
-  Mesh *mesh;
-  Shader *shader;
-  Texture *texture;
+    Mesh *mesh;
+    Shader *shader;
+    Texture *texture;
 
-  ~Model();
+    ~Model();
 
-  void FromData(Mesh *mesh, Shader *shader, Texture *texture);
+    void FromData(Mesh *mesh, Shader *shader, Texture *texture);
 };
 

@@ -15,7 +15,7 @@ class GLDebugDrawer;
 class Camera;
 
 class PhysicsEngine {
- public:
+public:
     PhysicsEngine();
     ~PhysicsEngine();
 
@@ -29,7 +29,7 @@ class PhysicsEngine {
     void Draw(const Camera * camera);
     void Detach(void * constraint);
 
- private:
+private:
     btDefaultCollisionConfiguration *collisionConfiguration;
     btCollisionDispatcher *dispatcher;
     btBroadphaseInterface *overlappingPairCache;

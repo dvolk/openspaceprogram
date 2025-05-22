@@ -19,89 +19,89 @@
 PhysicsEngine *physics;
 
 class GLDebugDrawer : public btIDebugDraw {
-  int m_debugMode;
-  Shader *lineshader;
-  GLuint m_vao;
-  GLuint m_bufs[1];
+    int m_debugMode;
+    Shader *lineshader;
+    GLuint m_vao;
+    GLuint m_bufs[1];
 
 public:
-  std::vector<float> lineBuffer;
+    std::vector<float> lineBuffer;
 
-  void init();
-  void Draw(const Camera * camera);
+    void init();
+    void Draw(const Camera * camera);
 
-  void drawLine(const btVector3& from, const btVector3& to, const btVector3& color);
-  void reportErrorWarning(const char* warningString);
+    void drawLine(const btVector3& from, const btVector3& to, const btVector3& color);
+    void reportErrorWarning(const char* warningString);
 
-  /* TODO */
-  void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) {}
-  /* TODO */
-  void draw3dText(const btVector3& location, const char* textString) {}
+    /* TODO */
+    void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) {}
+    /* TODO */
+    void draw3dText(const btVector3& location, const char* textString) {}
 
-  void setDebugMode(int debugMode) { m_debugMode = debugMode; }
-  int getDebugMode() const { return m_debugMode; }
+    void setDebugMode(int debugMode) { m_debugMode = debugMode; }
+    int getDebugMode() const { return m_debugMode; }
 };
 
 void GLDebugDrawer::reportErrorWarning(const char* warningString) {
-  printf("!!! BULLET: %s\n", warningString);
+    printf("!!! BULLET: %s\n", warningString);
 }
 
 void GLDebugDrawer::Draw(const Camera * camera)
 {
-  const glm::mat4 view = camera->GetView();
-  const glm::mat4 projection = camera->GetProjection();
+    const glm::mat4 view = camera->GetView();
+    const glm::mat4 projection = camera->GetProjection();
 
-  int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
-  check_gl_error();
-  lineshader->Bind();
-  check_gl_error();
-  lineshader->setUniform_mat4(0, projection * view);
-  check_gl_error();
-  glBindVertexArray(m_vao);
-  check_gl_error();
-  glBindBuffer(GL_ARRAY_BUFFER, m_bufs[0]);
-  check_gl_error();
-  glBufferData(GL_ARRAY_BUFFER, sizeof(lineBuffer.data()[0]) * lineBuffer.size(), lineBuffer.data(), GL_STATIC_DRAW);
-  check_gl_error();
-  glEnableVertexAttribArray(0);
-  check_gl_error();
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-  check_gl_error();
-  glDrawArrays(GL_LINES, 0, lineBuffer.size() / 3);
-  check_gl_error();
-  glBindVertexArray(0);
-  check_gl_error();
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  check_gl_error();
+    int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
+    check_gl_error();
+    lineshader->Bind();
+    check_gl_error();
+    lineshader->setUniform_mat4(0, projection * view);
+    check_gl_error();
+    glBindVertexArray(m_vao);
+    check_gl_error();
+    glBindBuffer(GL_ARRAY_BUFFER, m_bufs[0]);
+    check_gl_error();
+    glBufferData(GL_ARRAY_BUFFER, sizeof(lineBuffer.data()[0]) * lineBuffer.size(), lineBuffer.data(), GL_STATIC_DRAW);
+    check_gl_error();
+    glEnableVertexAttribArray(0);
+    check_gl_error();
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    check_gl_error();
+    glDrawArrays(GL_LINES, 0, lineBuffer.size() / 3);
+    check_gl_error();
+    glBindVertexArray(0);
+    check_gl_error();
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    check_gl_error();
 }
 
 void GLDebugDrawer::init() {
-  lineBuffer.reserve(512 * 1024);
+    lineBuffer.reserve(512 * 1024);
 
-  lineshader = new Shader;
-  lineshader->registerAttribs({ "pos" });
-  lineshader->registerUniforms({ "VP" });
-  lineshader->FromFile("./res/lineShader");
+    lineshader = new Shader;
+    lineshader->registerAttribs({ "pos" });
+    lineshader->registerUniforms({ "VP" });
+    lineshader->FromFile("./res/lineShader");
 
-  m_debugMode = DBG_DrawWireframe;
+    m_debugMode = DBG_DrawWireframe;
 
-  glGenVertexArrays(1, &m_vao);
-  check_gl_error();
-  glGenBuffers(1, &m_bufs[0]);
-  check_gl_error();
+    glGenVertexArrays(1, &m_vao);
+    check_gl_error();
+    glGenBuffers(1, &m_bufs[0]);
+    check_gl_error();
 }
 
 void GLDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {
-  // lineBuffer.push_back(PosColVertex(from.getX(), from.getY(), from.getZ(),
-  // 				    color.getX(), color.getY(), color.getZ()));
-  // lineBuffer.push_back(PosColVertex(to.getX(), to.getY(), to.getZ(),
-  // 				    color.getX(), color.getY(), color.getZ()));
-  lineBuffer.push_back(from.getX());
-  lineBuffer.push_back(from.getY());
-  lineBuffer.push_back(from.getZ());
-  lineBuffer.push_back(to.getX());
-  lineBuffer.push_back(to.getY());
-  lineBuffer.push_back(to.getZ());
+    // lineBuffer.push_back(PosColVertex(from.getX(), from.getY(), from.getZ(),
+    // 				    color.getX(), color.getY(), color.getZ()));
+    // lineBuffer.push_back(PosColVertex(to.getX(), to.getY(), to.getZ(),
+    // 				    color.getX(), color.getY(), color.getZ()));
+    lineBuffer.push_back(from.getX());
+    lineBuffer.push_back(from.getY());
+    lineBuffer.push_back(from.getZ());
+    lineBuffer.push_back(to.getX());
+    lineBuffer.push_back(to.getY());
+    lineBuffer.push_back(to.getZ());
 
 }
 
@@ -169,8 +169,8 @@ void removeTerrainCollision(btRigidBody *b) {
 }
 
 void PhysicsEngine::RemoveTerrainCollision(btRigidBody *b) {
-  // delete b->getCollisionShape();
-  dynamicsWorld->removeRigidBody(b);
+    // delete b->getCollisionShape();
+    dynamicsWorld->removeRigidBody(b);
 }
 
 btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m) {
@@ -214,10 +214,10 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     if(debug_mesh == false) {
         Mesh *m = body->model->mesh;
 
-	printf("PhysicsEngine::RegisterObject(): m->num_indices: %d\n", m->num_indices);
-	printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
-	assert(m->num_indices > 3);
-	assert(m->num_vertices > 3);
+        printf("PhysicsEngine::RegisterObject(): m->num_indices: %d\n", m->num_indices);
+        printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
+        assert(m->num_indices > 3);
+        assert(m->num_vertices > 3);
 
         btTriangleIndexVertexArray *mesh_interface
             = new btTriangleIndexVertexArray(m->num_indices / 3,
@@ -230,7 +230,7 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
         btBvhTriangleMeshShape *mesh_shape
             = new btBvhTriangleMeshShape(mesh_interface, true, true);
 
-	mesh_shape->setMargin(0.5);
+        mesh_shape->setMargin(0.5);
 
         shape = mesh_shape;
     }
@@ -291,11 +291,11 @@ void *PhysicsEngine::GlueTogether(Body *parent, Body *child) {
 }
 
 void Detach(void *constraint) {
-  physics->Detach(constraint);
+    physics->Detach(constraint);
 }
 
 void PhysicsEngine::Detach(void *constraint) {
-  dynamicsWorld->removeConstraint((btTypedConstraint *)constraint);
+    dynamicsWorld->removeConstraint((btTypedConstraint *)constraint);
 }
 
 void RegisterPhysicsBody(Body *body,
@@ -313,7 +313,7 @@ void ApplyCentralForce(Body *body, glm::dvec3 force) {
 }
 
 void SetMass(Body *body, double newMass) {
-  getRigidBody(body)->setMassProps(newMass, btVector3(1, 1, 1) /* fixme */);
+    getRigidBody(body)->setMassProps(newMass, btVector3(1, 1, 1) /* fixme */);
 }
 
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {
@@ -322,7 +322,7 @@ void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {
 }
 
 void ApplyTorque(Body *body, glm::dvec3 torque) {
-  getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
+    getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
 }
 
 glm::dvec3 GetPosition(Body *b) {
@@ -341,7 +341,7 @@ glm::dvec3 GetAngVelocity(Body *b) {
 }
 
 glm::dmat3 GetOrient(Body *b) {
-  return glm::make_mat3x3(&getRigidBody(b)->getCenterOfMassTransform().getBasis()[0][0]);
+    return glm::make_mat3x3(&getRigidBody(b)->getCenterOfMassTransform().getBasis()[0][0]);
 }
 
 void SetVelocity(Body *b, glm::dvec3 vel) {
@@ -358,16 +358,16 @@ void SetVelocity(Body *b, glm::dvec3 vel) {
 
 void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 {
-  btTransform t;
-  btMatrix3x3 r;
-  t.setIdentity();
+    btTransform t;
+    btMatrix3x3 r;
+    t.setIdentity();
 
-  t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+    t.setOrigin(btVector3(pos.x, pos.y, pos.z));
 
-  r.setFromOpenGLSubMatrix((btScalar*)&rot[0][0]);
-  t.setBasis(r);
+    r.setFromOpenGLSubMatrix((btScalar*)&rot[0][0]);
+    t.setBasis(r);
 
-  getRigidBody(b)->proceedToTransform(t);
+    getRigidBody(b)->proceedToTransform(t);
 }
 
 // void setModelMatrix(Body *b, glm::dmat4 model) {

@@ -5,7 +5,7 @@ struct SDL_Window;
 
 class Renderer
 {
- public:
+public:
     Renderer(int width, int height);
 
     void Clear(float r, float g, float b, float a);
@@ -17,8 +17,8 @@ class Renderer
     int get_height() { return m_screen_height; }
 
     virtual ~Renderer();
- protected:
- private:
+protected:
+private:
 
     bool m_gl_debug;
     int m_screen_width;
