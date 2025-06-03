@@ -378,7 +378,7 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 
 glm::dvec3 getCOM(Body *body) {
     btVector3 COM = getRigidBody(body)->getCenterOfMassTransform().getOrigin();
-    return glm::dvec3(COM.getX(), COM.getY(), COM.getX());
+    return glm::dvec3(COM.getX(), COM.getY(), COM.getZ());
 }
 
 double GetMass(Body *body) {
