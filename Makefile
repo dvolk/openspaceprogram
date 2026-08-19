@@ -42,10 +42,17 @@ $(BINDIR)/$(TARGET): $(OBJECTS)
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# Unit tests for the pure-math core (reference frames, orbital math).
+# These link against src/frame.cpp directly, so they need no rendering/Bullet.
+test:
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
+	    tests/test_frames.cpp src/frame.cpp -o test_frames
+	./test_frames
+
 .PHONEY: clean
 clean:
 	$(rm) $(OBJECTS)
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET)
+	$(rm) $(BINDIR)/$(TARGET) test_frames

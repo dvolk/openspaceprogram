@@ -6,6 +6,7 @@
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <iostream>
 
@@ -341,7 +342,16 @@ glm::dvec3 GetAngVelocity(Body *b) {
 }
 
 glm::dmat3 GetOrient(Body *b) {
-    return glm::make_mat3x3(&getRigidBody(b)->getCenterOfMassTransform().getBasis()[0][0]);
+    // Read the orientation through a quaternion. Bullet's basis matrix is
+    // stored row-major (m_el[i] = row i) while a glm::dmat3 is column-major,
+    // so a direct element copy (the old make_mat3x3) silently transposed the
+    // orientation. A quaternion is four scalars with an unambiguous order,
+    // sidestepping the row/col-major trap entirely.
+    btQuaternion q;
+    getRigidBody(b)->getCenterOfMassTransform().getBasis().getRotation(q);
+    // GLM's 4-scalar quaternion constructor is (w, x, y, z) -- w FIRST.
+    glm::dquat gq(q.w(), q.x(), q.y(), q.z());
+    return glm::mat3_cast(gq);
 }
 
 void SetVelocity(Body *b, glm::dvec3 vel) {
@@ -359,13 +369,18 @@ void SetVelocity(Body *b, glm::dvec3 vel) {
 void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 {
     btTransform t;
-    btMatrix3x3 r;
     t.setIdentity();
 
     t.setOrigin(btVector3(pos.x, pos.y, pos.z));
 
-    r.setFromOpenGLSubMatrix((btScalar*)&rot[0][0]);
-    t.setBasis(r);
+    // Write the orientation through a quaternion. The old element-wise
+    // setValue() copy transposed the orientation (a glm::dmat3 is
+    // column-major while Bullet's m_el[i] is row i). Routing through a
+    // quaternion is unambiguous and stays consistent with GetOrient, which
+    // reads back the same way.
+    glm::dquat gq = glm::quat_cast(rot);
+    // Bullet's quaternion constructor is (x, y, z, w); GLM components are by name.
+    t.setRotation(btQuaternion(gq.x, gq.y, gq.z, gq.w));
 
     getRigidBody(b)->proceedToTransform(t);
 }

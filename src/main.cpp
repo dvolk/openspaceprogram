@@ -579,7 +579,7 @@ public:
     std::vector<Body *> m_reaction_wheels;
     std::vector<void *> constraints;
 
-    float thruster_util = 0.5;
+    float thruster_util = 1.0;
 
     void setRoot(Body *part) {
         parts = { part };
@@ -748,7 +748,7 @@ public:
     }
 
     float GetMaxThrust() {
-        float exaust_velocity = 10123; /* m/s */
+        float exaust_velocity = 40492; /* m/s (Isp ~4049 s; raised 4x for easier orbit insertion) */
         return GetMaxFuelRate() * exaust_velocity;
     }
 
@@ -1373,6 +1373,9 @@ int main(int argc, char **argv)
     bool running = true;
     bool redraw = false;
     bool follow_ship = false;
+    bool screenshot_requested = false;
+    int screenshot_count = 0;
+    bool teleport_beyond_soi_requested = false;
     bool poly_mode = false;
     bool capture_pointer = true;
     SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -1480,6 +1483,12 @@ int main(int argc, char **argv)
                 if(ev.key.keysym.sym == SDLK_c) {
                     follow_ship = not follow_ship;
                 }
+                if(ev.key.keysym.sym == SDLK_F12) {
+                    screenshot_requested = true;
+                }
+                if(ev.key.keysym.sym == SDLK_t) {
+                    teleport_beyond_soi_requested = true;
+                }
                 if(ev.key.keysym.sym == SDLK_m) {
                     physics_debug_drawing = not physics_debug_drawing;
                 }
@@ -1573,6 +1582,29 @@ int main(int argc, char **argv)
 
             if(key[SDL_SCANCODE_R]) { ship->ThrottleUp(); }
             else if(key[SDL_SCANCODE_F]) { ship->ThrottleDown(); }
+
+            /* DEBUG: teleport the ship beyond the current frame's SOI (radially
+               outward to 2x SOI) and zero its velocity, to force a reference-frame
+               switch on the next physics tick. Triggered by the 't' key event. */
+            if(teleport_beyond_soi_requested == true) {
+                void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
+                void SetVelocity(Body *b, glm::dvec3 vel);
+                glm::dmat3 GetOrient(Body *b);
+                double soi = ship->frame->soi;
+                glm::dvec3 com = ship->get_center_of_mass();
+                glm::dvec3 dir = glm::normalize(com);
+                glm::dvec3 target = dir * (soi * 2.0);
+                glm::dvec3 base = GetPosition(ship->parts[0]);
+                for(auto&& part : ship->parts) {
+                    glm::dvec3 p = GetPosition(part);
+                    glm::dvec3 np = target + (p - base);
+                    setPosRot(part, np, GetOrient(part));
+                    SetVelocity(part, glm::dvec3(0, 0, 0));
+                }
+                printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f)\n",
+                       glm::length(target), ship->frame->name, soi);
+                teleport_beyond_soi_requested = false;
+            }
 
             void physics_tick(float timeStep);
             void collisions();
@@ -2184,6 +2216,15 @@ int main(int argc, char **argv)
             ImGui::PopStyleColor();
             ImGui::Render();
             ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
+
+            if(screenshot_requested == true) {
+                char fname[256];
+                snprintf(fname, sizeof(fname), "./screenshot_%03d.png", screenshot_count);
+                if(display.SaveScreenshot(fname)) {
+                    screenshot_count++;
+                }
+                screenshot_requested = false;
+            }
 
             display.SwapBuffers();
             check_gl_error();

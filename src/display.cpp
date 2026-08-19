@@ -1,8 +1,10 @@
 #include <iostream>
 #include <assert.h>
+#include <cstring>
 
 #include <GL/glew.h>
 #include "SDL2/SDL.h"
+#include "SDL2/SDL_image.h"
 
 #include "display.h"
 #include "gldebug.h"
@@ -128,4 +130,35 @@ void Renderer::SwapBuffers()
     check_gl_error();
     SDL_GL_SwapWindow(m_window);
     check_gl_error();
+}
+
+bool Renderer::SaveScreenshot(const char *filename)
+{
+    const int w = m_screen_width;
+    const int h = m_screen_height;
+
+    unsigned char *pixels = new unsigned char[w * h * 4];
+    // read the current draw buffer (what we just rendered)
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    check_gl_error();
+
+    bool ok = false;
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_RGBA32);
+    if (surface) {
+        // glReadPixels is bottom-up; SDL surface is top-down. Flip vertically.
+        for (int y = 0; y < h; y++) {
+            const unsigned char *src = pixels + (h - 1 - y) * w * 4;
+            unsigned char *dst = (unsigned char *)surface->pixels + y * surface->pitch;
+            memcpy(dst, src, w * 4);
+        }
+        if (IMG_SavePNG(surface, filename) == 0) {
+            printf("Screenshot saved: %s (%dx%d)\n", filename, w, h);
+            ok = true;
+        } else {
+            printf("Failed to save screenshot %s: %s\n", filename, SDL_GetError());
+        }
+        SDL_FreeSurface(surface);
+    }
+    delete[] pixels;
+    return ok;
 }
