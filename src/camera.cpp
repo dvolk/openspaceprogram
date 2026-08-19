@@ -38,7 +38,10 @@ OrbitCamera::OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, flo
     this->pos = focusPoint + glm::dvec3(distance, 0, 0);
     this->forward = focusPoint - pos;
     this->up = glm::normalize(pos);
-    this->projection = glm::infinitePerspective(fov, aspect, zNear);
+    // Finite perspective (not infinitePerspective): reverse-Z + a 32-bit depth
+    // buffer handle the far plane cleanly, and a finite zFar keeps the
+    // projection consistent with Camera::setAspect (used on resize).
+    this->projection = glm::perspective(fov, aspect, zNear, zFar);
     this->view = glm::translate(pos);
     this->orient = glm::dmat3();
 }
@@ -50,10 +53,37 @@ void OrbitCamera::wheel(double amt) {
 void OrbitCamera::ComputeView()
 {
     pos = focusPoint + orient * glm::dvec3(distance, 0, 0);
-    // pos = focusPoint + distance * glm::euclidean(glm::dvec2(x, y));
     forward = glm::normalize(focusPoint - pos);
-    up = glm::normalize(pos);
-    view = glm::lookAt(pos, pos + forward, up);
+
+    // Build the camera basis by hand instead of glm::lookAt. lookAt takes our
+    // up vector (radial = normalize(pos)) and computes
+    // xAxis = normalize(cross(up, zAxis)); the instant the camera is pitched
+    // to look straight up or down along that radial, cross(up, zAxis) -> 0
+    // and normalize(0) -> NaN, so the whole view matrix becomes NaN and the
+    // far-plane sun disc flickers out of view exactly when you point at the
+    // sun. Substituting a safe up only in that degenerate case keeps the
+    // (intended) radial up everywhere else, so the view is identical to
+    // lookAt except that it stays finite when looking along the radial.
+    const glm::dvec3 zAxis = -forward; // unit view direction toward the target
+
+    glm::dvec3 upHint = glm::normalize(pos);
+    if (glm::abs(glm::dot(upHint, zAxis)) > 0.9999) {
+        // Looking along the radial: any non-parallel world axis works.
+        upHint = (std::abs(zAxis.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
+    }
+
+    const glm::dvec3 xAxis = glm::normalize(glm::cross(upHint, zAxis));
+    const glm::dvec3 yAxis = glm::cross(zAxis, xAxis);
+    up = yAxis; // the camera's actual up direction
+
+    glm::dmat4 m;
+    m[0] = glm::dvec4(xAxis.x, yAxis.x, zAxis.x, 0.0);
+    m[1] = glm::dvec4(xAxis.y, yAxis.y, zAxis.y, 0.0);
+    m[2] = glm::dvec4(xAxis.z, yAxis.z, zAxis.z, 0.0);
+    m[3] = glm::dvec4(-glm::dot(xAxis, pos),
+                       -glm::dot(yAxis, pos),
+                       -glm::dot(zAxis, pos), 1.0);
+    view = m;
 }
 
 void OrbitCamera::Follow(const glm::dvec3 p) {
