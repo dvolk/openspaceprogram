@@ -1493,13 +1493,14 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
 
     /* camera init */
-    // zFar must exceed the farthest visible body: from the solar-orbit
-    // starting point the sun sits ~1e8 m out and Eerbon can be ~1.5e8 m
-    // away. 1e9 m (1 million km) leaves ~10x headroom.
+    // zFar must exceed the farthest visible body. The log-depth shaders
+    // (res/*Shader.vs) define the hard far limit as `far = 1e13` m, which
+    // covers the real solar system (Pluto at ~5.9e12 m) and KSP-style
+    // AU scales (~1.4e10 m). Keep zFar consistent with that.
     const float camFov = M_PI/3.0;
     const float camAspect = (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT;
     const float camZNear = 1.0f;
-    const float camZFar = 1e9;
+    const float camZFar = 1e13;
 
     OrbitCamera *orbitCam = new OrbitCamera(GetPosition(ship->controller),
                                             camFov, camAspect, camZNear, camZFar);
