@@ -52,6 +52,7 @@
   */
 
 #include <stdio.h>
+#include <unistd.h>
 #include <chrono>
 
 #include "SDL2/SDL.h"
@@ -581,6 +582,13 @@ public:
 
     float thruster_util = 1.0;
 
+    /* Debug: when set, SOI-based reference-frame switching is suspended.
+       Used by the CLI starting locations, whose orbits are defined in a
+       specific frame (several of them sit outside that frame's SOI, so the
+       SOI logic would immediately move the ship elsewhere). Released by the
+       't' (teleport) key. */
+    bool frame_lock = false;
+
     void setRoot(Body *part) {
         parts = { part };
     }
@@ -914,6 +922,93 @@ public:
     }
 };
 
+/*
+  Debug starting locations (chosen at the CLI on startup, see main):
+    1 = landed on the spaceport pad (default; nothing to do)
+    2 = 75x75 km circular orbit around Eerbon
+    3 = 1000x30 km elliptical orbit around Eerbon (spawned at apoapsis)
+    4 = 30x30 km circular orbit around the Moon
+    5 = circular solar orbit halfway between Eerbon and the Sun
+
+  For the orbital ones: the ship's COM is placed at the given point in the
+  target frame, the parts keep their relative geometry, and the velocity of
+  a clean central orbit around that frame's body is applied (prograde, i.e.
+  in the system's +y rotation sense).
+
+  Several of these orbits sit outside the frame's SOI (Eerbon's SOI is only
+  700 km; a solar orbit is inside Eerbon's 8.4e7 m SOI), so the SOI logic
+  would move the ship to a different frame on the first physics tick. The
+  frame is locked (released by the 't' teleport key) so the orbit stays as
+  defined.
+*/
+static void spawn_vehicle(Vehicle *ship, int loc,
+                          Frame *sunFrame, Frame *eerbonFrame, Frame *moonFrame,
+                          TerrainBody *sunBody, TerrainBody *eerbonBody, TerrainBody *moonBody)
+{
+    if(loc == 1) { return; } // landed on the pad; already set up
+
+    void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
+    glm::dvec3 GetPosition(Body *b);
+    glm::dmat3 GetOrient(Body *b);
+    void SetVelocity(Body *b, glm::dvec3 vel);
+
+    double radius, speed;
+    glm::dvec3 target;
+    Frame *frame = ship->frame; // eerbon (rotational) at construction
+
+    switch(loc) {
+        case 2: // 75x75 km circular orbit around Eerbon (over the pad)
+            radius = eerbonBody->radius + 75e3;
+            target = glm::dvec3(0, 0, radius);
+            speed = sqrt(eerbonBody->mu / radius);
+            break;
+        case 3: // 1000x30 km elliptical orbit, spawned at apoapsis
+        {
+            double ra = eerbonBody->radius + 1000e3; // apoapsis radius
+            double rp = eerbonBody->radius + 30e3;   // periapsis radius
+            radius = ra;
+            target = glm::dvec3(0, 0, radius);
+            speed = sqrt(eerbonBody->mu * (2.0 / ra - 1.0 / (0.5 * (ra + rp))));
+            break;
+        }
+        case 4: // 30x30 km circular orbit around the Moon
+            frame = moonFrame;
+            radius = moonBody->radius + 30e3;
+            target = glm::dvec3(0, 0, radius);
+            speed = sqrt(moonBody->mu / radius);
+            break;
+        case 5: // circular solar orbit, halfway between Eerbon and the Sun
+            frame = sunFrame;
+            target = 0.5 * eerbonFrame->GetPositionRelTo(sunFrame);
+            radius = glm::length(target);
+            speed = sqrt(sunBody->mu / radius);
+            break;
+        default:
+            return;
+    }
+
+    // Prograde velocity: perpendicular to the radius vector, in the
+    // system's sense of rotation (+y axis).
+    glm::dvec3 vel = speed * glm::cross(glm::dvec3(0, 1, 0), glm::normalize(target));
+
+    if(frame != ship->frame) {
+        ship->moveToFrame(frame);
+    }
+
+    glm::dvec3 com = ship->get_center_of_mass();
+    for(auto&& part : ship->parts) {
+        glm::dvec3 p = GetPosition(part);
+        setPosRot(part, target + (p - com), GetOrient(part));
+        SetVelocity(part, vel);
+    }
+    ship->frame_lock = true;
+
+    printf("Spawn point %d: %s @ (%.0f, %.0f, %.0f), |v| = %.1f m/s\n",
+           loc, frame->name, target.x, target.y, target.z, speed);
+    printf("Reference frame is locked to '%s'; press 't' (teleport) to release it.\n",
+           frame->name);
+}
+
 class StaticBuilding {
 public:
     TerrainBody *parent;
@@ -1152,6 +1247,35 @@ double wrapAngleToPositive(const double theta) {
 
 int main(int argc, char **argv)
 {
+    /* Starting location: pass 1-5 as argv[1], or pick it at the CLI
+       prompt (only when stdin is a terminal; otherwise default to 1 so
+       background/headless runs never block).
+         1 = landed on the spaceport pad (default)
+         2 = 75x75 km circular orbit around Eerbon
+         3 = 1000x30 km elliptical orbit around Eerbon
+         4 = 30x30 km circular orbit around the Moon
+         5 = circular solar orbit halfway between Eerbon and the Sun */
+    int starting_location = 1;
+    {
+        if(argc > 1 && argv[1][0] >= '1' && argv[1][0] <= '5' && argv[1][1] == '\0') {
+            starting_location = argv[1][0] - '0';
+        } else if(isatty(fileno(stdin))) {
+            printf("Open Space Program - starting location:\n"
+                   "  1: landed on the spaceport pad (default)\n"
+                   "  2: 75x75 km circular orbit around Eerbon\n"
+                   "  3: 1000x30 km elliptical orbit around Eerbon\n"
+                   "  4: 30x30 km circular orbit around the Moon\n"
+                   "  5: circular solar orbit halfway between Eerbon and the Sun\n"
+                   "choice [1]: ");
+            fflush(stdout);
+            char line[32];
+            if(fgets(line, sizeof(line), stdin) != NULL &&
+               line[0] >= '1' && line[0] <= '5') {
+                starting_location = line[0] - '0';
+            }
+        }
+    }
+
     Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     check_gl_error();
     ImGuiContext* ctx1 = ImGui::CreateContext();
@@ -1322,6 +1446,12 @@ int main(int argc, char **argv)
     }
     check_gl_error();
 
+    /* Apply the CLI starting location (before the camera is constructed,
+       so the camera focuses on the spawn point). */
+    spawn_vehicle(ship, starting_location,
+                  frames[0], frames[1], frames[3],
+                  sun, earth, moon);
+
     Mesh *engine_plume_mesh = new Mesh;
     engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
     Texture *engine_plume_texture = load_texture("res/engine_plume.png");
@@ -1364,9 +1494,12 @@ int main(int argc, char **argv)
     // 					(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
     // 					0.00001f, 10e6);
     // focused_planet->Update(camera);
+    // zFar must exceed the farthest visible body: from the solar-orbit
+    // starting point the sun sits ~1e8 m out and Eerbon can be ~1.5e8 m
+    // away. 1e9 m (1 million km) leaves ~10x headroom.
     OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
                                           M_PI/3.0, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-                                          1.0f, 10e6);
+                                          1.0f, 1e9);
 
     // Camera *camera = camera1;
 
@@ -1601,7 +1734,10 @@ int main(int argc, char **argv)
                     setPosRot(part, np, GetOrient(part));
                     SetVelocity(part, glm::dvec3(0, 0, 0));
                 }
-                printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f)\n",
+                /* teleporting is an explicit frame change, so release a
+                   CLI starting-location frame lock if one is active. */
+                ship->frame_lock = false;
+                printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f); frame lock released\n",
                        glm::length(target), ship->frame->name, soi);
                 teleport_beyond_soi_requested = false;
             }
@@ -1621,7 +1757,7 @@ int main(int argc, char **argv)
 
                 com = ship->get_center_of_mass();
                 double ship_r = glm::length(com);
-                if(ship_r > ship->frame->soi + 10000) {
+                if(!ship->frame_lock && ship_r > ship->frame->soi + 10000) {
                     // switching to parent SOI if there is one
                     if(ship->frame->parent != NULL) {
                         glm::dvec3 pos = GetPosition(ship->controller);
@@ -1637,7 +1773,7 @@ int main(int argc, char **argv)
                         printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
                     }
                 }
-                else {
+                else if(!ship->frame_lock) {
                     // check if we've entered a child SOI
                     for(auto&& child : ship->frame->children) {
                         double dist = glm::length(ship->GetPositionRelTo(ship->controller, child));
