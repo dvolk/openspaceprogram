@@ -1490,22 +1490,47 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
 
     /* camera init */
-    // WeirdCamera *camera = new WeirdCamera(glm::vec3(1000000.0f, 0.0f, 0.0f), 45.0f,
-    // 					(float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-    // 					0.00001f, 10e6);
-    // focused_planet->Update(camera);
     // zFar must exceed the farthest visible body: from the solar-orbit
     // starting point the sun sits ~1e8 m out and Eerbon can be ~1.5e8 m
     // away. 1e9 m (1 million km) leaves ~10x headroom.
-    OrbitCamera *camera = new OrbitCamera(GetPosition(ship->controller),
-                                          M_PI/3.0, (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT,
-                                          1.0f, 1e9);
+    const float camFov = M_PI/3.0;
+    const float camAspect = (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT;
+    const float camZNear = 1.0f;
+    const float camZFar = 1e9;
 
-    // Camera *camera = camera1;
+    OrbitCamera *orbitCam = new OrbitCamera(GetPosition(ship->controller),
+                                            camFov, camAspect, camZNear, camZFar);
+    // Free camera starts from the orbit camera's initial pose so switching
+    // between modes does not jump.
+    FreeCamera *freeCam = new FreeCamera(orbitCam->GetPos(), orbitCam->GetForward(), orbitCam->up,
+                                        camFov, camAspect, camZNear, camZFar);
+    Camera *camera = orbitCam;   // active camera
+
+    enum CameraMode { CAM_ORBIT, CAM_FREE };
+    CameraMode camMode = CAM_ORBIT;
+
+    // Bodies the orbit camera can target (the ship is the default).
+    struct FocusTarget { const char *name; TerrainBody *body; };
+    FocusTarget focusTargets[] = {
+        { "ship",   nullptr },
+        { "Sun",    sun },
+        { "Eerbon", earth },
+        { "Moon",   moon },
+    };
+    const int numFocusTargets = 4;
+    int focusBody = 0;   // index into focusTargets
+
+    // World (ship-frame) position of a focus target, to point the orbit
+    // camera at it each frame.
+    auto focusWorldPos = [&](int i) -> glm::dvec3 {
+        if (focusTargets[i].body == nullptr) {
+            return ship->get_center_of_mass();
+        }
+        return focusTargets[i].body->frame->GetPositionRelTo(ship->frame);
+    };
 
     bool running = true;
     bool redraw = false;
-    bool follow_ship = false;
     bool screenshot_requested = false;
     int screenshot_count = 0;
     bool teleport_beyond_soi_requested = false;
@@ -1614,7 +1639,43 @@ int main(int argc, char **argv)
                 //   ship->Detach();
                 // }
                 if(ev.key.keysym.sym == SDLK_c) {
-                    follow_ship = not follow_ship;
+                    // Toggle between the body-orbit camera and the free camera.
+                    if(camMode == CAM_ORBIT) {
+                        // orbit -> free: start the free camera from the orbit
+                        // camera's current pose so the view does not jump.
+                        freeCam->pos = orbitCam->pos;
+                        freeCam->forward = orbitCam->forward;
+                        freeCam->up = orbitCam->up;
+                        camMode = CAM_FREE;
+                        camera = freeCam;
+                        printf("Camera: free flight (C = orbit, mouse = look)\n");
+                    } else {
+                        // free -> orbit: refocus the orbit camera on the current
+                        // target, keeping a similar distance.
+                        glm::dvec3 focus = focusWorldPos(focusBody);
+                        orbitCam->Follow(focus);
+                        double dist = glm::length(freeCam->pos - focus);
+                        if(dist < 10.0) { dist = 10.0; }
+                        orbitCam->distance = dist;
+                        camMode = CAM_ORBIT;
+                        camera = orbitCam;
+                        printf("Camera: orbiting %s (G = switch body, C = free)\n",
+                               focusTargets[focusBody].name);
+                    }
+                }
+                if(ev.key.keysym.sym == SDLK_g) {
+                    // Cycle the orbit camera's target body.
+                    if(camMode == CAM_ORBIT) {
+                        focusBody = (focusBody + 1) % numFocusTargets;
+                        orbitCam->Follow(focusWorldPos(focusBody));
+                        double d = (focusTargets[focusBody].body == nullptr)
+                            ? 50.0
+                            : (double)focusTargets[focusBody].body->radius * 3.0;
+                        orbitCam->distance = d;
+                        printf("Orbit camera targeting %s\n", focusTargets[focusBody].name);
+                    } else {
+                        printf("In free flight; press C to go to orbit, then G to switch body.\n");
+                    }
                 }
                 if(ev.key.keysym.sym == SDLK_F12) {
                     screenshot_requested = true;
@@ -1692,11 +1753,30 @@ int main(int argc, char **argv)
             const Uint8* key = SDL_GetKeyboardState(NULL);
             if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
 
-            if(key[SDL_SCANCODE_E]) { camera->RotateY(0.05); }
-            else if(key[SDL_SCANCODE_Q]) { camera->RotateY(-0.05); }
+            if(camMode == CAM_FREE) {
+                // Free flight: E/Q roll, W/S forward/back, A/D strafe,
+                // Shift/Ctrl up/down. Speed scales with the current zoom level
+                // (orbit distance) so it stays usable at system scale.
+                double base = orbitCam->distance;
+                if(base < 1.0) { base = 1.0; }
+                double freeScale = (double)cam_speed * base;
 
-            if(key[SDL_SCANCODE_W]) { camera->MoveForward(cam_speed); }
-            else if(key[SDL_SCANCODE_S]) { camera->MoveForward(-cam_speed); }
+                if(key[SDL_SCANCODE_E]) { camera->Roll(0.05); }
+                else if(key[SDL_SCANCODE_Q]) { camera->Roll(-0.05); }
+
+                if(key[SDL_SCANCODE_W]) { camera->MoveForward(freeScale); }
+                else if(key[SDL_SCANCODE_S]) { camera->MoveForward(-freeScale); }
+
+                if(key[SDL_SCANCODE_A]) { camera->MoveRight(-freeScale); }
+                else if(key[SDL_SCANCODE_D]) { camera->MoveRight(freeScale); }
+
+                if(key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(freeScale); }
+                else if(key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-freeScale); }
+            } else {
+                // Orbit: E/Q yaw (W/S/A/D are no-ops for the orbit camera).
+                if(key[SDL_SCANCODE_E]) { camera->RotateY(0.05); }
+                else if(key[SDL_SCANCODE_Q]) { camera->RotateY(-0.05); }
+            }
 
             if(key[SDL_SCANCODE_I]) { ship->ApplyThrust(); }
             if(key[SDL_SCANCODE_X]) { ship->KillRot(); }
@@ -1817,8 +1897,10 @@ int main(int argc, char **argv)
 
             com = ship->get_center_of_mass();
 
-            if(follow_ship == true) {
-                camera->Follow(com);
+            // Point the orbit camera at the current focus target (the ship, or
+            // whichever body is selected). The free camera keeps its own pos.
+            if(camMode == CAM_ORBIT) {
+                camera->Follow(focusWorldPos(focusBody));
             }
 
             for(auto&& planet : planets) {
@@ -2234,11 +2316,13 @@ int main(int argc, char **argv)
                 ImGui::Text(". - increase time acceleration");
                 ImGui::Text("k - decrease camera speed");
                 ImGui::Text("l - increase camera speed");
-                ImGui::Text("c - toggle camera ship follow mode");
+                ImGui::Text("c - switch camera: orbit <-> free flight");
+                ImGui::Text("g - orbit camera: cycle target (ship/sun/planet/moon)");
+                ImGui::Text("mouse - look (both modes)");
+                ImGui::Text("wheel - zoom (orbit mode)");
+                ImGui::Text("free: w/s fwd-back, a/d strafe, shift/ctrl up-down, e/q roll");
+                ImGui::Text("orbit: e/q yaw");
                 ImGui::Text("v - capture/release mouse pointer");
-                ImGui::Text("e & q - roll camera");
-                ImGui::Text("w & s - forward/backward camera");
-                ImGui::Text("r & f - camera pitch");
                 ImGui::Spacing();
                 ImGui::Text("Ship");
                 ImGui::Separator();

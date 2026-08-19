@@ -7,6 +7,8 @@
 
 class Camera {
 public:
+    virtual ~Camera() {}
+
     glm::dmat4 view;
     glm::mat4 projection;
     glm::dvec3 pos;
@@ -14,13 +16,17 @@ public:
     glm::dvec3 up;
     float fov, aspect, zNear, zFar;
 
-    void ComputeView() {};
-    void Follow(const glm::dvec3 p) {};
-    void MoveForward(double amt) {};
-    void MoveRight(double amt) {};
-    void Pitch(double angle) {};
-    void RotateY(double angle) {};
-    void wheel(double amt) {};
+    // The control methods are virtual so the game can drive either a
+    // FreeCamera or an OrbitCamera through a single base pointer.
+    virtual void ComputeView() {}
+    virtual void Follow(const glm::dvec3 p) {}
+    virtual void MoveForward(double amt) {}
+    virtual void MoveRight(double amt) {}
+    virtual void MoveUp(double amt) {}
+    virtual void Pitch(double angle) {}
+    virtual void RotateY(double angle) {}
+    virtual void Roll(double angle) {}
+    virtual void wheel(double amt) {}
 
     void setAspect(float _aspect);
     const glm::dvec3& GetPos() const;
@@ -30,6 +36,9 @@ public:
     glm::dmat4 *GetView_();
 };
 
+// Body-orbit camera: keeps a fixed offset (distance) from a focus point and
+// lets you look around it. The focus point is set each frame with Follow()
+// (the ship, or whichever body is selected).
 class OrbitCamera : public Camera {
 public:
     glm::dvec3 focusPoint;
@@ -39,30 +48,40 @@ public:
 
     OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, float zNear, float zFar);
 
-    void ComputeView();
-    void Follow(const glm::dvec3 p);
+    void ComputeView() override;
+    void Follow(const glm::dvec3 p) override;
 
-    void MoveForward(double amt) { }
-    void MoveRight(double amt) { }
+    void MoveForward(double amt) override { }
+    void MoveRight(double amt) override { }
+    void MoveUp(double amt) override { }
+    void Roll(double angle) override { }
 
-    void Pitch(double angle);
-    void RotateY(double angle);
+    void Pitch(double angle) override;
+    void RotateY(double angle) override;
 
-    void wheel(double amt);
+    void wheel(double amt) override;
 };
 
-struct WeirdCamera : public Camera {
+// Free-flight camera: a full 6DOF camera. pos/forward/up describe the camera
+// in world (ship-frame) coordinates; the mouse + E/Q rotate it, W/S/A/D and
+// Shift/Ctrl translate it.
+class FreeCamera : public Camera {
 public:
-    WeirdCamera(const glm::vec3& pos, float fov, float aspect, float zNear, float zFar);
+    glm::dvec3 right;
 
-    void ComputeView();
-    void Follow(const glm::dvec3 p);
+    FreeCamera(const glm::dvec3& pos, const glm::dvec3& forward, const glm::dvec3& up,
+               float fov, float aspect, float zNear, float zFar);
 
-    void MoveForward(double amt);
-    void MoveRight(double amt);
+    void ComputeView() override;
+    void Follow(const glm::dvec3 p) override { }
 
-    void Pitch(double angle);
-    void RotateY(double angle);
+    void MoveForward(double amt) override;
+    void MoveRight(double amt) override;
+    void MoveUp(double amt) override;
 
-    void wheel(double amt) {}
+    void Pitch(double angle) override;
+    void RotateY(double angle) override;
+    void Roll(double angle) override;
+
+    void wheel(double amt) override { }
 };

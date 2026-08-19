@@ -106,45 +106,77 @@ void OrbitCamera::RotateY(double angle) {
     orient = glm::dmat3(glm::rotate(angle, worldUp)) * orient;
 }
 
-WeirdCamera::WeirdCamera(const glm::vec3& pos, float fov, float aspect, float zNear, float zFar) {
+FreeCamera::FreeCamera(const glm::dvec3& p, const glm::dvec3& fwd, const glm::dvec3& upv,
+                       float fov, float aspect, float zNear, float zFar) {
     this->fov = fov;
     this->aspect = aspect;
     this->zNear = zNear;
     this->zFar = zFar;
-    this->pos = pos;
-    this->forward = glm::vec3(0.0f, 0.0f, 1.0f);
-    this->up = glm::vec3(0.0f, 1.0f, 0.0f);
+    this->pos = p;
+    this->forward = glm::normalize(fwd);
+    // Orthogonalise up against forward so the basis is well-defined.
+    this->up = glm::normalize(upv - this->forward * glm::dot(this->forward, upv));
+    this->right = glm::normalize(glm::cross(this->forward, this->up));
+    // Finite perspective, matching OrbitCamera and Camera::setAspect (resize).
     this->projection = glm::perspective(fov, aspect, zNear, zFar);
     this->view = glm::translate(pos);
+    this->ComputeView();
 }
 
-void WeirdCamera::ComputeView() {
-    view = glm::lookAt(pos, pos + forward, up);
-}
-void WeirdCamera::Follow(const glm::dvec3 p) {
-    pos = p - glm::dvec3(-15, 0, 0);
+void FreeCamera::ComputeView() {
+    // Camera basis: local -z is the view direction (forward), local +x is
+    // right, local +y is up. Same NaN-safe construction as OrbitCamera.
+    const glm::dvec3 zAxis = -forward;
+
+    glm::dvec3 upHint = up;
+    if (glm::abs(glm::dot(glm::normalize(upHint), zAxis)) > 0.9999) {
+        upHint = (std::abs(zAxis.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
+    }
+
+    const glm::dvec3 xAxis = glm::normalize(glm::cross(upHint, zAxis));
+    const glm::dvec3 yAxis = glm::cross(zAxis, xAxis);
+    up = yAxis;    // keep the stored basis orthonormal
+    right = xAxis;
+
+    glm::dmat4 m;
+    m[0] = glm::dvec4(xAxis.x, yAxis.x, zAxis.x, 0.0);
+    m[1] = glm::dvec4(xAxis.y, yAxis.y, zAxis.y, 0.0);
+    m[2] = glm::dvec4(xAxis.z, yAxis.z, zAxis.z, 0.0);
+    m[3] = glm::dvec4(-glm::dot(xAxis, pos),
+                       -glm::dot(yAxis, pos),
+                       -glm::dot(zAxis, pos), 1.0);
+    view = m;
 }
 
-void WeirdCamera::MoveForward(double amt) {
+void FreeCamera::MoveForward(double amt) {
     pos += forward * amt;
 }
 
-void WeirdCamera::MoveRight(double amt) {
-    pos += glm::cross(up, forward) * amt;
+void FreeCamera::MoveRight(double amt) {
+    pos += right * amt;
 }
 
-void WeirdCamera::Pitch(double angle) {
-    glm::dvec3 right = glm::normalize(glm::cross(up, forward));
-
-    forward = glm::dvec3(glm::normalize(glm::rotate(angle, right) * glm::vec4(forward, 0.0)));
-    up = glm::normalize(glm::cross(forward, right));
+void FreeCamera::MoveUp(double amt) {
+    pos += up * amt;
 }
 
-void WeirdCamera::RotateY(double angle) {
-    static const glm::dvec3 UP(0.0f, -1.0f, 0.0f);
+void FreeCamera::Pitch(double angle) {
+    // Rotate the view direction and up around the right axis.
+    const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, right));
+    forward = rot * forward;
+    up = rot * up;
+}
 
-    glm::mat4 rotation = glm::rotate(angle, UP);
+void FreeCamera::RotateY(double angle) {
+    // Yaw: rotate the view direction and right around the up axis.
+    const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, up));
+    forward = rot * forward;
+    right = rot * right;
+}
 
-    forward = glm::dvec3(glm::normalize(rotation * glm::dvec4(forward, 0.0)));
-    up = glm::dvec3(glm::normalize(rotation * glm::vec4(up, 0.0)));
+void FreeCamera::Roll(double angle) {
+    // Roll: rotate up and right around the view direction.
+    const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, forward));
+    up = rot * up;
+    right = rot * right;
 }
