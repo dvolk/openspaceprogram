@@ -1308,7 +1308,10 @@ int main(int argc, char **argv)
     Shader *sunshader = new Shader;
     sunshader->registerAttribs({ "position", "normal", "color" });
     sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
-    sunshader->FromFile("./res/terrainShader");
+    // The sun is the light source, so it must be self-illuminated: use the
+    // emissive sunShader (gl_FragColor = color0, no lightDirection) rather than
+    // the lit terrainShader, whose light vector is normalize(0) = NaN for the sun.
+    sunshader->FromFile("./res/sunShader");
 
     Shader *skyboxshader = new Shader;
     skyboxshader->registerAttribs({ "position" });
@@ -1940,7 +1943,6 @@ int main(int argc, char **argv)
             }
 
             for(auto&& planet : planets) {
-                if(planet == sun) continue;
                 planet->Update(camera);
                 if(world_drawing == true) {
                     planet->Draw(camera, sun);
