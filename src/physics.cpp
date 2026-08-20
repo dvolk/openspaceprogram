@@ -152,7 +152,13 @@ PhysicsEngine::~PhysicsEngine() {
 }
 
 void PhysicsEngine::tick(float timeStep) {
-    dynamicsWorld->stepSimulation(timeStep, 3, timeStep/3);
+    // Integrate a single substep. The caller (the main logic loop) is
+    // responsible for re-applying the forces (gravity + rotating-frame
+    // fictitious terms) before EVERY call, because stepSimulation clears
+    // accumulated forces on exit. Splitting the step into multiple
+    // stepSimulation calls here WITHOUT re-applying the forces in between
+    // would leave the ship force-free for all but the first substep.
+    dynamicsWorld->stepSimulation(timeStep, 1, timeStep);
 }
 
 void physics_tick(float timeStep) {

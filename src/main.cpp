@@ -1902,10 +1902,16 @@ int main(int argc, char **argv)
             // 				     glm::dvec3(0, 1, 0));
 
 
-            time += 1/60.0 * time_accel;
+            // Advance the analytic sim clock by exactly the physics timestep
+            // (dt * time_accel), matching physics_tick(dt * time_accel) below.
+            // The frame tree's analytic motion must run on the same clock as
+            // the ship's integration. The old 1/60.0 constant disagreed with
+            // dt (1/50), so the physics clock ran 20% faster than the analytic
+            // body positions and the ship systematically outran the planets.
+            time += dt * time_accel;
 
             if(time_accel != 0) {
-                sun->frame->UpdateOrbitRails(time, 1/60.0 * time_accel);
+                sun->frame->UpdateOrbitRails(time, dt * time_accel);
 
                 com = ship->get_center_of_mass();
                 double ship_r = glm::length(com);
@@ -1941,8 +1947,31 @@ int main(int argc, char **argv)
                     }
                 }
 
-                grav = ship->processGravity();
-                physics_tick(dt * time_accel);
+                // Integrate the (time-accelerated) step in substeps,
+                // re-applying gravity + the rotating-frame fictitious forces
+                // before EACH substep. Two reasons:
+                //  1. Bullet clears accumulated forces at the end of every
+                //     stepSimulation call, so applying gravity once and then
+                //     stepping multiple substeps would leave the ship
+                //     force-free for all but the first substep.
+                //  2. Re-applying per substep keeps the central-force
+                //     direction and the velocity-dependent Coriolis term
+                //     accurate across the step instead of frozen at the
+                //     step's start.
+                // Keep >=3 substeps so low-accel behavior matches the old
+                // 3-substep step, and grow the count so the substep stays
+                // <= kMaxSubStep at high time-accel.
+                const double step = dt * time_accel;
+                const double kMaxSubStep = 0.1;
+                int n = 3;
+                int need = (int)(step / kMaxSubStep + 0.5);
+                if (need > n) { n = need; }
+                if (n > 2000) { n = 2000; }
+                const double h = step / n;
+                for (int i = 0; i < n; i++) {
+                    grav = ship->processGravity();
+                    physics_tick(h);
+                }
             }
 
             // collisions();
