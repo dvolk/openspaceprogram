@@ -21,7 +21,9 @@ void main()
     // http://outerra.blogspot.com/2009/08/logarithmic-z-buffer.html
 
     const float C=11;
-    const float far = 10000000000000;
+    // 1e13, NOT 10000000000000: the GLSL compiler truncates int literals > 2^32
+    // to 32 bits (measured far = 1.3e9), which clipped far bodies to depth 1.0.
+    const float far = 1e13;
     const float FC = 1.0/log(far*C + 1);
 
     logz = log(gl_Position.w * C + 1) * FC;
