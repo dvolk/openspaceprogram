@@ -52,7 +52,6 @@
   */
 
 #include <stdio.h>
-#include <unistd.h>
 #include <chrono>
 
 #include "SDL2/SDL.h"
@@ -88,6 +87,8 @@
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/imgui/examples/sdl_opengl3_example/imgui_impl_sdl_gl3.h"
+
+#include <CLI11/CLI11.hpp>
 
 ImFont *bigger;
 bool planetsWindow = false;
@@ -1311,38 +1312,90 @@ double wrapAngleToPositive(const double theta) {
     return theta >= 0.0 ? theta : M_PI * 2 + theta;
 }
 
+// Two-body orbital elements of a (pos, vel) state relative to a central body
+// with gravitational parameter mu. pos/vel must be in the body's INERTIAL
+// (non-rotating) frame, where the trajectory is a Kepler conic. Used by the
+// --orbit-log periodic printout.
+struct OrbitElements {
+    double distance;      // m, radius from focus
+    double speed;         // m/s
+    double semi_major;    // m (negative for hyperbolic trajectories)
+    double ecc;           // eccentricity
+    double periapsis;     // m, radius at periapsis
+    double apoapsis;      // m, radius at apoapsis
+    double inclination;   // rad
+    double period;        // s (-1 for non-elliptic trajectories)
+    double ang_momentum;  // |h|, m^2/s
+    double energy;        // specific orbital energy, J/kg
+};
+
+OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel, double mu) {
+    const double distance = glm::length(pos);
+    const double speed = glm::length(vel);
+    const glm::dvec3 h = glm::cross(pos, vel);
+
+    OrbitElements o;
+    o.distance = distance;
+    o.speed = speed;
+    o.energy = 0.5 * speed * speed - mu / distance;
+    o.semi_major = 1.0 / (2.0 / distance - speed * speed / mu);
+    o.ang_momentum = glm::length(h);
+    o.ecc = glm::length(glm::cross(vel, h) / mu - pos / distance);
+    o.periapsis = (1.0 - o.ecc) * o.semi_major;
+    o.apoapsis = (1.0 + o.ecc) * o.semi_major;
+    o.inclination = o.ang_momentum > 0.0 ? acos(h.z / o.ang_momentum) : 0.0;
+    o.period = (o.semi_major > 0.0)
+        ? 2.0 * M_PI * sqrt(o.semi_major * o.semi_major * o.semi_major / mu)
+        : -1.0;
+    return o;
+}
+
 int main(int argc, char **argv)
 {
-    /* Starting location: pass 1-6 as argv[1], or pick it at the CLI
-       prompt (only when stdin is a terminal; otherwise default to 1 so
-       background/headless runs never block).
+    /* CLI (parsed with CLI11):
+       ./osp [--start N] [--time-accel N] [--orbit-log] [--orbit-interval S] [--help]
+
+       --start N: starting location, 1-6 (default 1)
          1 = landed on the spaceport pad (default)
          2 = 75x75 km circular orbit around Eerbon
          3 = 1000x30 km elliptical orbit around Eerbon
          4 = 30x30 km circular orbit around the Moon
          5 = circular solar orbit halfway between Eerbon and the Sun
-         6 = 10x1000 km elliptical orbit around Eerbon (periapsis) */
+         6 = 10x1000 km elliptical orbit around Eerbon (periapsis)
+
+       --time-accel N: initial time acceleration (0 = paused; runtime is
+                       still changed with the , / . keys)
+       --orbit-log:    print the ship's orbital elements to stdout every
+                       --orbit-interval wall-clock seconds, for measuring
+                       orbital stability */
+    CLI::App app{"Open Space Program"};
+
     int starting_location = 1;
-    {
-        if(argc > 1 && argv[1][0] >= '1' && argv[1][0] <= '6' && argv[1][1] == '\0') {
-            starting_location = argv[1][0] - '0';
-        } else if(isatty(fileno(stdin))) {
-            printf("Open Space Program - starting location:\n"
-                   "  1: landed on the spaceport pad (default)\n"
-                   "  2: 75x75 km circular orbit around Eerbon\n"
-                   "  3: 1000x30 km elliptical orbit around Eerbon\n"
-                   "  4: 30x30 km circular orbit around the Moon\n"
-                   "  5: circular solar orbit halfway between Eerbon and the Sun\n"
-                   "  6: 10x1000 km elliptical orbit around Eerbon (periapsis)\n"
-                   "choice [1]: ");
-            fflush(stdout);
-            char line[32];
-            if(fgets(line, sizeof(line), stdin) != NULL &&
-               line[0] >= '1' && line[0] <= '6') {
-                starting_location = line[0] - '0';
-            }
-        }
-    }
+    app.add_option("-s,--start", starting_location,
+        "Starting location [1-6]: 1 spaceport pad (default), "
+        "2 75x75 km circular Eerbon orbit, "
+        "3 1000x30 km elliptical Eerbon orbit, "
+        "4 30x30 km circular Moon orbit, "
+        "5 circular solar orbit halfway to the Sun, "
+        "6 10x1000 km elliptical Eerbon orbit (periapsis)")
+        ->check(CLI::Range(1, 6));
+
+    int initial_time_accel = 0;
+    app.add_option("-t,--time-accel", initial_time_accel,
+                   "Initial time acceleration (0 = paused, default 0)")
+        ->check(CLI::NonNegativeNumber);
+
+    bool orbit_log = false;
+    app.add_flag("--orbit-log", orbit_log,
+                 "Periodically print the ship's orbital elements to stdout "
+                 "(for measuring orbital stability)");
+
+    double orbit_interval = 1.0;
+    app.add_option("--orbit-interval", orbit_interval,
+                   "Wall-clock seconds between --orbit-log lines (default: 1)")
+        ->check(CLI::PositiveNumber);
+
+    CLI11_PARSE(app, argc, argv);
 
     Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     check_gl_error();
@@ -1614,7 +1667,7 @@ int main(int argc, char **argv)
     const double dt = 1.0/50.0;
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
-    int time_accel = 0;
+    int time_accel = initial_time_accel;
     int cam_speed = 1;
     bool orbitInfoWindow = true;
     bool orbitMapWindow = true;
@@ -1631,6 +1684,10 @@ int main(int argc, char **argv)
     bool world_drawing = true;
 
     double time = 0;
+
+    // --orbit-log: print at most once per wall-clock interval
+    const Uint32 orbit_log_interval_ms = (Uint32)(orbit_interval * 1000.0);
+    Uint32 orbit_log_last_ms = 0;
 
     /* main loop timing from
        http://gafferongames.com/game-physics/fix-your-timestep/
@@ -1971,6 +2028,39 @@ int main(int argc, char **argv)
                 for (int i = 0; i < n; i++) {
                     grav = ship->processGravity();
                     physics_tick(h);
+                }
+            }
+
+            // Periodic orbital-element printout (--orbit-log), once per
+            // wall-clock interval, for measuring orbital stability. The state
+            // is expressed in the current frame's body INERTIAL (non-rotating)
+            // frame, where the trajectory is a Kepler conic — the same
+            // conversion the orbit-info window does in the render section.
+            if(orbit_log) {
+                const Uint32 now_ms = SDL_GetTicks();
+                if(now_ms - orbit_log_last_ms >= orbit_log_interval_ms) {
+                    orbit_log_last_ms = now_ms;
+
+                    const double mu = ship->m_parent->mu;
+                    glm::dvec3 o_pos = ship->get_center_of_mass();
+                    glm::dvec3 o_vel = ship->GetVel();
+                    if(ship->frame->isRotFrame()) {
+                        Frame *inertial = ship->frame->getNonRotFrame();
+                        o_vel += ship->frame->GetStasisVelocity(o_pos);
+                        o_vel = ship->frame->GetOrientRelTo(inertial) * o_vel
+                              + ship->frame->GetVelocityRelTo(inertial);
+                        o_pos = ship->frame->GetOrientRelTo(inertial) * o_pos
+                              + ship->frame->GetPositionRelTo(inertial);
+                    }
+                    OrbitElements o = computeOrbitElements(o_pos, o_vel, mu);
+                    printf("[orbitlog] t=%.1fs frame=\"%s\" r=%.6g m v=%.6g m/s "
+                           "sma=%.6g m ecc=%.6g peri=%.6g m apo=%.6g m "
+                           "inc=%.4f deg T=%.6g s |h|=%.6f m2/s E=%.6f J/kg\n",
+                           time, ship->frame->name, o.distance, o.speed,
+                           o.semi_major, o.ecc, o.periapsis, o.apoapsis,
+                           RAD2DEG(o.inclination), o.period,
+                           o.ang_momentum, o.energy);
+                    fflush(stdout);
                 }
             }
 
