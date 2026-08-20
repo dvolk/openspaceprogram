@@ -53,6 +53,7 @@
 
 #include <stdio.h>
 #include <chrono>
+#include <vector>
 
 #include "SDL2/SDL.h"
 
@@ -1354,7 +1355,9 @@ OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel,
 int main(int argc, char **argv)
 {
     /* CLI (parsed with CLI11):
-       ./osp [--start N] [--time-accel N] [--orbit-log] [--orbit-interval S] [--help]
+       ./osp [--start N] [--time-accel N] [--orbit-log] [--orbit-interval S]
+             [--free-cam-pos X Y Z] [--free-cam-fwd X Y Z] [--free-cam-up X Y Z]
+             [--help]
 
        --start N: starting location, 1-6 (default 1)
          1 = landed on the spaceport pad (default)
@@ -1368,7 +1371,12 @@ int main(int argc, char **argv)
                        still changed with the , / . keys)
        --orbit-log:    print the ship's orbital elements to stdout every
                        --orbit-interval wall-clock seconds, for measuring
-                       orbital stability */
+                       orbital stability
+       --free-cam-pos/fwd/up: start directly in the free (6DOF) camera at this
+                       pose. Coordinates are world (ship-frame) space, i.e. the
+                       ship's centre of mass is the origin. --free-cam-fwd and
+                       --free-cam-up are directions (normalised). Giving any of
+                       the three switches the starting mode to free flight. */
     CLI::App app{"Open Space Program"};
 
     int starting_location = 1;
@@ -1396,7 +1404,31 @@ int main(int argc, char **argv)
                    "Wall-clock seconds between --orbit-log lines (default: 1)")
         ->check(CLI::PositiveNumber);
 
+    // Start directly in the free (6DOF) camera at an explicit pose. All
+    // coordinates are in the world (ship-frame) coordinate system, i.e. the
+    // same space the camera draws the scene in (ship centre of mass at origin).
+    std::vector<double> free_cam_pos;
+    app.add_option("--free-cam-pos", free_cam_pos,
+                   "Start in the free camera at this world position: X Y Z "
+                   "(ship-frame coordinates)")
+        ->expected(3);
+
+    std::vector<double> free_cam_fwd;
+    app.add_option("--free-cam-fwd", free_cam_fwd,
+                   "Initial free camera forward direction: X Y Z "
+                   "(normalised)")
+        ->expected(3);
+
+    std::vector<double> free_cam_up;
+    app.add_option("--free-cam-up", free_cam_up,
+                   "Initial free camera up direction: X Y Z (default: 0 1 0)")
+        ->expected(3);
+
     CLI11_PARSE(app, argc, argv);
+
+    // Any of the --free-cam-* options opts in to starting in free-cam mode.
+    const bool use_free_cam = !free_cam_pos.empty() || !free_cam_fwd.empty()
+                            || !free_cam_up.empty();
 
     Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     check_gl_error();
@@ -1628,14 +1660,31 @@ int main(int argc, char **argv)
 
     OrbitCamera *orbitCam = new OrbitCamera(GetPosition(ship->controller),
                                             camFov, camAspect, camZNear, camZFar);
-    // Free camera starts from the orbit camera's initial pose so switching
-    // between modes does not jump.
-    FreeCamera *freeCam = new FreeCamera(orbitCam->GetPos(), orbitCam->GetForward(), orbitCam->up,
-                                        camFov, camAspect, camZNear, camZFar);
+    // Free camera defaults to the orbit camera's initial pose so switching
+    // between modes does not jump; an explicit --free-cam-* pose overrides it.
+    glm::dvec3 freeCamPos  = orbitCam->GetPos();
+    glm::dvec3 freeCamFwd  = orbitCam->GetForward();
+    glm::dvec3 freeCamUp   = orbitCam->up;
+    if(free_cam_pos.size() == 3) {
+        freeCamPos = glm::dvec3(free_cam_pos[0], free_cam_pos[1], free_cam_pos[2]);
+    }
+    if(free_cam_fwd.size() == 3) {
+        freeCamFwd = glm::dvec3(free_cam_fwd[0], free_cam_fwd[1], free_cam_fwd[2]);
+    }
+    if(free_cam_up.size() == 3) {
+        freeCamUp = glm::dvec3(free_cam_up[0], free_cam_up[1], free_cam_up[2]);
+    }
+    FreeCamera *freeCam = new FreeCamera(freeCamPos, freeCamFwd, freeCamUp,
+                                         camFov, camAspect, camZNear, camZFar);
     Camera *camera = orbitCam;   // active camera
 
     enum CameraMode { CAM_ORBIT, CAM_FREE };
     CameraMode camMode = CAM_ORBIT;
+    if(use_free_cam) {
+        camMode = CAM_FREE;
+        camera = freeCam;
+        printf("Camera: free flight (C = orbit, mouse = look)\n");
+    }
 
     // Bodies the orbit camera can target (the ship is the default).
     struct FocusTarget { const char *name; TerrainBody *body; };
@@ -2440,6 +2489,17 @@ int main(int argc, char **argv)
                 ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera->GetPos().x, camera->GetPos().y, camera->GetPos().z);
                 ImGui::Text("Cam forward: %.2f %.2f %.2f",
                             camera->forward.x, camera->forward.y, camera->forward.z);
+                if(ImGui::Button("Print camera pose (CLI args)")) {
+                    // Copy-paste the printed line after ./osp to relaunch at this view.
+                    // pos/forward/up are world / ship-frame coordinates.
+                    printf("Camera pose:\n");
+                    printf("--free-cam-pos %.9g %.9g %.9g "
+                           "--free-cam-fwd %.9g %.9g %.9g "
+                           "--free-cam-up %.9g %.9g %.9g\n",
+                           camera->pos.x, camera->pos.y, camera->pos.z,
+                           camera->forward.x, camera->forward.y, camera->forward.z,
+                           camera->up.x, camera->up.y, camera->up.z);
+                }
                 ImGui::Text("Earth distance: %f",
                             glm::length(ship->GetPositionRelTo(ship->controller, earth->frame)));
                 ImGui::Text("Pos: %.3fkm", distance / 1000);
