@@ -100,6 +100,9 @@ static Frame *make_tree() {
     eerbon_rot->rotating = true;
     eerbon_rot->has_rot_frame = false;
     eerbon_rot->pos = glm::dvec3(0);
+    // UpdateOrbitRails re-derives orient as initial_orient * rotate(-ang, Y);
+    // at time 0 that must reproduce the initial 20-degree orientation.
+    eerbon_rot->initial_orient = glm::dmat3(glm::rotate(ang, glm::dvec3(0, 1, 0)));
     eerbon_rot->orient = glm::dmat3(glm::rotate(ang, glm::dvec3(0, 1, 0)));
     eerbon_rot->vel = glm::dvec3(0);
     eerbon_rot->rot_ang_speed = 0.001;
@@ -128,6 +131,7 @@ static Frame *make_tree() {
     moon_rot->rotating = true;
     moon_rot->has_rot_frame = false;
     moon_rot->pos = glm::dvec3(0);
+    moon_rot->initial_orient = glm::dmat3();
     moon_rot->orient = glm::dmat3();
     moon_rot->vel = glm::dvec3(0);
     moon_rot->rot_ang_speed = 0.0005;
@@ -244,6 +248,34 @@ int main() {
     // A non-rotating frame has zero stasis velocity.
     CHECK_TRUE(dvec_close(sun->GetStasisVelocity(glm::dvec3(1, 2, 3)), glm::dvec3(0), E),
                "stasis vel of inertial frame == 0");
+
+    printf("== stasis identity vs frame rotation ==\n");
+    // A point FIXED in the rotating frame (v = 0) drifts through root space
+    // at  R * stasis(pos)  (plus the frame origin's velocity, which is
+    // constant here). This links the rotate(-ang, Y) convention in
+    // UpdateOrbitRails to the sign of GetStasisVelocity; the velocity
+    // transforms in src/main.cpp rely on  v_root = R*(v + stasis(p)) + V,
+    // so this identity is what makes frame switching state-preserving.
+    {
+        Frame *N = eerbon_rot;
+        const glm::dvec3 p(0.3, 0.4, 1.1); // a point fixed in N
+        const double t0 = 37.0, h = 1e-4;
+
+        // The parent (eerbon) is static in this tree, so N's parent-relative
+        // orient is the rotation we want, without the 1e8 root_pos offset
+        // (which would swamp a central difference of O(1) quantities in
+        // double precision).
+        sun->UpdateOrbitRails(t0 - h, h);
+        glm::dvec3 X1 = N->orient * p;
+        sun->UpdateOrbitRails(t0 + h, h);
+        glm::dvec3 X2 = N->orient * p;
+        sun->UpdateOrbitRails(t0, h);
+
+        glm::dvec3 drift = (X2 - X1) / (2.0 * h);
+        glm::dvec3 expect = N->orient * N->GetStasisVelocity(p);
+        CHECK_TRUE(dvec_close(drift, expect, 1e-6),
+                   "fixed-point drift == orient * stasis(pos)");
+    }
 
     printf("== getRotFrame / getNonRotFrame ==\n");
     CHECK_TRUE(eerbon->getRotFrame() == eerbon_rot, "eerbon.getRotFrame() == eerbon_rot");

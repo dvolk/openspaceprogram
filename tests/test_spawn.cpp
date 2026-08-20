@@ -19,6 +19,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
+#include <utility>
 #include <vector>
 
 #include "frame.h"
@@ -89,6 +91,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     eerbon_rot->rotating = true;
     eerbon_rot->pos = glm::dvec3(0);
     eerbon_rot->orient = glm::dmat3();
+    eerbon_rot->initial_orient = glm::dmat3();
     eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086;
     eerbon_rot->orb_ang_speed = 0;
     eerbon_rot->soi = 700000.0;
@@ -110,6 +113,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     moon_rot->rotating = true;
     moon_rot->pos = glm::dvec3(0);
     moon_rot->orient = glm::dmat3();
+    moon_rot->initial_orient = glm::dmat3();
     moon_rot->rot_ang_speed = 0.00004520785218583258404235991675;
     moon_rot->orb_ang_speed = 0;
     moon_rot->soi = 300000.0;
@@ -217,14 +221,22 @@ int main() {
         glm::dvec3 rhat = glm::normalize(c.worldPos - c.orbitBodyFrame->root_pos);
         glm::dvec3 velWorld = speed * glm::cross(glm::dvec3(0, 1, 0), rhat);
         glm::dvec3 target = glm::transpose(frame->root_orient) * (c.worldPos - frame->root_pos);
+        // (matches the fixed spawn_vehicle: stasis of the TARGET frame is
+        // subtracted; see the sign note on GetStasisVelocity in frame.h)
         glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
-                        + frame->GetStasisVelocity(target);
+                        - frame->GetStasisVelocity(target);
 
-        // (a) Stasis round-trip: the implied inertial velocity must equal the
-        //     intended orbital velocity.
-        glm::dvec3 implied = frame->root_orient * (vel - frame->GetStasisVelocity(target));
-        snprintf(buf, sizeof buf, "loc %d: implied inertial vel == target orbital vel", c.loc);
-        CHECK_TRUE(glm::length(implied - velWorld) < 1e-6 * speed, buf);
+        // (a) Stasis round-trip: reconstruct the INERTIAL velocity with the
+        //     frame-dynamics relation  v_root = R*(v + stasis(p)) + V
+        //     (verified against the rotate(-ang) frame motion; see frame.h).
+        //     It must equal the body's velocity plus the intended relative
+        //     orbital velocity. (Comparing against velWorld alone would be
+        //     circular; the V term is what ties it to real inertial motion.)
+        glm::dvec3 implied = frame->root_orient * (vel + frame->GetStasisVelocity(target))
+                           + frame->root_vel;
+        glm::dvec3 intended = frame->root_vel + velWorld;
+        snprintf(buf, sizeof buf, "loc %d: implied inertial vel == body vel + orbital vel", c.loc);
+        CHECK_TRUE(glm::length(implied - intended) < 1e-6 * speed, buf);
 
         // (b) Ship must stay put under the main-loop SOI logic: not outside the
         //     resolved frame's SOI, and not inside any of its children's SOIs.
@@ -250,6 +262,138 @@ int main() {
 
         printf("  loc %d (%s): frame='%s'  r=%.0f m  |v|=%.1f m/s  OK\n",
                c.loc, c.desc, frame->name, ship_r, speed);
+    }
+
+    // -----------------------------------------------------------------
+    // Frame switching (GetVelocityRelTo + moveToFrame in src/main.cpp):
+    // switching frames must preserve the ship's inertial state EXACTLY —
+    // this is what used to be broken (the new frame's stasis term had the
+    // wrong sign, injecting ~2*stasis of delta-v at every inertial<->rot
+    // SOI crossing and visibly reshaping the orbit).
+    // These replicate the exact main.cpp formulas.
+    auto inertial_vel = [](Frame *F, const glm::dvec3 &p, const glm::dvec3 &v) {
+        return F->root_orient * (v + F->GetStasisVelocity(p)) + F->root_vel;
+    };
+    auto switch_state = [](Frame *F, Frame *N, const glm::dvec3 &p, const glm::dvec3 &v)
+        -> std::pair<glm::dvec3, glm::dvec3> {
+        // GetVelocityRelTo (main.cpp): OLD frame's stasis term is added...
+        glm::dvec3 vel = v;
+        if (F != N) vel += F->GetStasisVelocity(p);
+        glm::dvec3 vel_rel = F->GetOrientRelTo(N) * vel + F->GetVelocityRelTo(N);
+        glm::dvec3 p_n = F->GetOrientRelTo(N) * p + F->GetPositionRelTo(N);
+        // ...moveToFrame: NEW frame's stasis term is subtracted.
+        glm::dvec3 v_n = vel_rel - N->GetStasisVelocity(p_n);
+        return std::make_pair(p_n, v_n);
+    };
+    {
+        Frame *F = eerbon;      // inertial
+        Frame *N = eerbon_rot;  // rotating, same origin
+        glm::dvec3 p_F(120e3, 40e3, 610e3);
+        glm::dvec3 v_F(2895.0, 30.0, -120.0);
+
+        // inertial state must be identical before and after the switch
+        glm::dvec3 root_before = inertial_vel(F, p_F, v_F);
+        std::pair<glm::dvec3, glm::dvec3> st = switch_state(F, N, p_F, v_F);
+        glm::dvec3 root_after = inertial_vel(N, st.first, st.second);
+        CHECK_TRUE(glm::length(root_after - root_before) < 1e-9,
+                   "F->N switch preserves inertial velocity");
+
+        // and a round trip must be the exact identity
+        std::pair<glm::dvec3, glm::dvec3> back = switch_state(N, F, st.first, st.second);
+        CHECK_TRUE(glm::length(back.first - p_F) < 1e-9 * glm::length(p_F),
+                   "N->F round trip preserves position");
+        CHECK_TRUE(glm::length(back.second - v_F) < 1e-9,
+                   "N->F round trip preserves velocity");
+
+        // the other direction too (the one Denis hits: inertial -> rotational)
+        glm::dvec3 p_N(110e3, -25e3, 680e3);
+        glm::dvec3 v_N(-2400.0, 15.0, 80.0);
+        root_before = inertial_vel(N, p_N, v_N);
+        st = switch_state(N, F, p_N, v_N);
+        root_after = inertial_vel(F, st.first, st.second);
+        CHECK_TRUE(glm::length(root_after - root_before) < 1e-9,
+                   "N->F switch preserves inertial velocity");
+        back = switch_state(F, N, st.first, st.second);
+        CHECK_TRUE(glm::length(back.first - p_N) < 1e-9 * glm::length(p_N),
+                   "F->N round trip preserves position");
+        CHECK_TRUE(glm::length(back.second - v_N) < 1e-9,
+                   "F->N round trip preserves velocity");
+    }
+
+    // -----------------------------------------------------------------
+    // Fictitious forces (Frame::GetFictitiousAccel):
+    //
+    // The game integrates ships in whatever frame they are currently in.
+    // In the inertial frame that is pure Kepler.  In a ROTATING frame the
+    // integration must additionally include the Coriolis and centrifugal
+    // terms, otherwise the ship's true (inertial) trajectory is perturbed
+    // for as long as it stays there — every crossing into a rotating frame
+    // visibly reshaped the orbit (the "ApA 2699 -> 1664 -> 2836" bounce).
+    // This test: the same initial INERTIAL state, integrated for 300 s
+    // either in the inertial frame (pure Kepler) or in the rotating frame
+    // (Kepler + fictitious), must end at the same inertial state.
+    {
+        Frame *F = eerbon;      // inertial
+        Frame *N = eerbon_rot;  // rotating, same origin
+        const double mu = eerbon_mu;
+
+        // Position-6 spawn state at t=0 (R(0)=identity): 610/1600 km
+        // ellipse, at periapsis.
+        const double rp0 = 610e3, ra0 = 1600e3;
+        const double a0 = 0.5 * (rp0 + ra0);
+        const double vI0 = std::sqrt(mu * (2.0 / rp0 - 1.0 / a0));
+        glm::dvec3 p_I0(0.0, 0.0, rp0);
+        glm::dvec3 v_I0(vI0, 0.0, 0.0);
+        glm::dvec3 p_F0 = p_I0;
+        glm::dvec3 v_F0 = v_I0 - N->GetStasisVelocity(p_F0);
+
+        auto accel_inertial = [&](const glm::dvec3 &p, const glm::dvec3 &v) -> glm::dvec3 {
+            (void)v;
+            const double r = glm::length(p);
+            return -mu * p / (r * r * r);
+        };
+        auto accel_rotating = [&](const glm::dvec3 &p, const glm::dvec3 &v) -> glm::dvec3 {
+            const double r = glm::length(p);
+            return -mu * p / (r * r * r) + N->GetFictitiousAccel(p, v);
+        };
+        auto rk4 = [&](const std::function<glm::dvec3(const glm::dvec3 &, const glm::dvec3 &)> &a,
+                       glm::dvec3 p, glm::dvec3 v, double h)
+            -> std::pair<glm::dvec3, glm::dvec3> {
+            auto f = [&](const glm::dvec3 &p, const glm::dvec3 &v)
+                -> std::pair<glm::dvec3, glm::dvec3> { return std::make_pair(v, a(p, v)); };
+            auto k1 = f(p, v);
+            auto k2 = f(p + 0.5 * h * k1.first, v + 0.5 * h * k1.second);
+            auto k3 = f(p + 0.5 * h * k2.first, v + 0.5 * h * k2.second);
+            auto k4 = f(p + h * k3.first, v + h * k3.second);
+            return std::make_pair(p + h / 6.0 * (k1.first + 2.0 * k2.first + 2.0 * k3.first + k4.first),
+                                  v + h / 6.0 * (k1.second + 2.0 * k2.second + 2.0 * k3.second + k4.second));
+        };
+
+        const double T = 300.0, h = 0.5;
+        glm::dvec3 p1 = p_I0, v1 = v_I0; // integrated in the inertial frame
+        glm::dvec3 p2 = p_F0, v2 = v_F0; // integrated in the rotating frame
+        for(double t = 0.0; t < T - 1e-12; t += h) {
+            auto s1 = rk4(accel_inertial, p1, v1, h);
+            p1 = s1.first; v1 = s1.second;
+            auto s2 = rk4(accel_rotating, p2, v2, h);
+            p2 = s2.first; v2 = s2.second;
+        }
+
+        // Bring the rotating-frame end state back to inertial coordinates.
+        sun->UpdateOrbitRails(T, 1.0);
+        glm::dmat3 R = N->GetOrientRelTo(F);
+        glm::dvec3 p2_I = R * p2;
+        glm::dvec3 v2_I = R * (v2 + N->GetStasisVelocity(p2)) + N->GetVelocityRelTo(F);
+
+        char buf[160];
+        snprintf(buf, sizeof buf,
+                 "rotating + fictitious == inertial integration (position: %.3e vs %.3e)",
+                 glm::length(p2_I), glm::length(p1));
+        CHECK_TRUE(glm::length(p2_I - p1) < 1e-6 * glm::length(p1), buf);
+        snprintf(buf, sizeof buf,
+                 "rotating + fictitious == inertial integration (velocity: %.3e vs %.3e)",
+                 glm::length(v2_I), glm::length(v1));
+        CHECK_TRUE(glm::length(v2_I - v1) < 1e-6 * glm::length(v1), buf);
     }
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);

@@ -715,6 +715,14 @@ public:
             const double mag = G * m1m2 * invrsqr;
             gf = mag * sqrt(invrsqr) * -b1b2;
             ApplyCentralForce(part, gf, mag);
+            if(frame->isRotFrame()) {
+                // In rotating coordinates the ship additionally feels
+                // Coriolis + centrifugal; without these its true inertial
+                // orbit is perturbed for as long as it spends in the rotating
+                // frame (see GetFictitiousAccel in frame.h).
+                const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, GetVelocity(part));
+                ApplyCentralForce(part, part->mass * a_fict);
+            }
         }
         return gf;
     }
@@ -898,13 +906,15 @@ public:
             // setModelMatrix(part, newModelMatrix);
 
             pos = GetPosition(part);
-            glm::dvec3 newVel = vel + newFrame->GetStasisVelocity(pos);
+            // The stored velocity is the frame-coordinate velocity, so a ship's
+            // inertial velocity is R*(v + stasis(p)) + V.  GetVelocityRelTo
+            // already added the OLD frame's stasis term; the NEW frame's term
+            // must be SUBTRACTED, or the ship's inertial velocity is wrong by
+            // 2*stasis and the orbit jumps shape at every inertial->rotational
+            // switch.
+            glm::dvec3 newVel = vel - newFrame->GetStasisVelocity(pos);
             printf("@@@ %s OLD velocity: %.0f %.0f %.0f\n", name, oldVel.x, oldVel.y, oldVel.z);
             printf("@@@ %s NEW velocity: %.0f %.0f %.0f\n", name, newVel.x, newVel.y, newVel.z);
-
-            /*
-              if we're moving from inertial to rotational frame, subtract stasis velocity?
-            */
 
             SetVelocity(part, newVel);
 
@@ -1042,11 +1052,13 @@ static void spawn_vehicle(Vehicle *ship, int loc,
     glm::dvec3 velWorld = speed * glm::cross(glm::dvec3(0, 1, 0), rhat);
 
     // Express the spawn position and velocity in the resolved frame's local
-    // coordinates; add the stasis-velocity term so a rotating frame still
-    // yields the correct inertial orbital velocity.
+    // coordinates. The desired inertial velocity is the body's velocity plus
+    // velWorld (relative to the body); since the spawn frame's origin sits on
+    // the body (V_frame == V_body), those cancel and
+    // v = R^T * velWorld - stasis(p)  (inertial vel = R*(v + stasis(p)) + V).
     glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
     glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
-                    + frame->GetStasisVelocity(target);
+                    - frame->GetStasisVelocity(target);
 
     if(frame != ship->frame) {
         ship->moveToFrame(frame);
@@ -2018,28 +2030,48 @@ int main(int argc, char **argv)
             /* orbital velocity */
             glm::dvec3 vel = ship->GetVel();
 
+            // The orbit is a Kepler conic in the body's INERTIAL (non-rotating)
+            // frame — that is the frame the spawn/switching code targets and
+            // the frame in which the ship's trajectory is a conic.  Fit the
+            // conic from the state expressed in that frame, otherwise the
+            // same orbit reads as a different ellipse in each frame (a true
+            // 610/1600 km orbit shows up as ~610/2700 km in the rotating one).
+            glm::dvec3 orbit_pos = pos;
+            glm::dvec3 orbit_vel = vel;
+            if(ship->frame->isRotFrame() == true) {
+                Frame *inertial = ship->frame->getNonRotFrame();
+                orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
+                orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel
+                          + ship->frame->GetVelocityRelTo(inertial);
+                orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos
+                          + ship->frame->GetPositionRelTo(inertial);
+            }
+
+            // Surface-relative state: the ship's position/velocity in the
+            // ROTATING frame (i.e. relative to the ground).
             glm::dvec3 surf_pos = pos;
             glm::dvec3 surf_vel = vel;
 
             if(ship->frame->isRotFrame() == false and
                ship->frame->hasRotFrame() == true) {
-                glm::dvec3 stasis_vel = ship->frame->getRotFrame()->GetStasisVelocity(pos);
-                surf_vel -= stasis_vel;
-                surf_pos = ship->frame->getRotFrame()->orient * pos;
+                Frame *rot = ship->frame->getRotFrame();
+                surf_pos = ship->frame->GetOrientRelTo(rot) * pos;
+                surf_vel = ship->frame->GetOrientRelTo(rot) * vel
+                         - rot->GetStasisVelocity(surf_pos);
             }
 
-            const double distance = glm::length(pos);
-            const double speed = glm::length(vel);
+            const double distance = glm::length(orbit_pos);
+            const double speed = glm::length(orbit_vel);
             // https://en.wikipedia.org/wiki/Standard_gravitational_parameter
             // const double G = 6.674e-11;
             // const double M = moon->mass;
             // https://en.wikipedia.org/wiki/Characteristic_energy
             const double e = (0.5 * pow(speed, 2)) - (mu / distance);
             const double SMa = 1.0 / (-((speed * speed) / (mu)) + (2.0 / distance));
-            const double radial_vel = glm::dot(pos, vel) / distance;
+            const double radial_vel = glm::dot(orbit_pos, orbit_vel) / distance;
 
-            const glm::dvec3 ang_momentum = glm::cross(pos, vel);
-            const glm::dvec3 eccentricity_vector = glm::cross(vel, ang_momentum) / (mu) - pos/distance;
+            const glm::dvec3 ang_momentum = glm::cross(orbit_pos, orbit_vel);
+            const glm::dvec3 eccentricity_vector = glm::cross(orbit_vel, ang_momentum) / (mu) - orbit_pos/distance;
 
             const double ecc = glm::length(eccentricity_vector);
 
@@ -2070,8 +2102,8 @@ int main(int argc, char **argv)
 
             const glm::dvec3 AoA = glm::dvec3();
 
-            double TrueAnomaly = acos(glm::dot(eccentricity_vector, pos) / (glm::length(eccentricity_vector) * glm::length(pos)));
-            if(glm::dot(pos, vel) < 0) {
+            double TrueAnomaly = acos(glm::dot(eccentricity_vector, orbit_pos) / (glm::length(eccentricity_vector) * glm::length(orbit_pos)));
+            if(glm::dot(orbit_pos, orbit_vel) < 0) {
                 TrueAnomaly = 2 * M_PI - TrueAnomaly;
             }
 

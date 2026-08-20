@@ -59,11 +59,35 @@ struct Frame {
             return this;
         }
     }
-    // For an object in a rotating frame, relative to non-rotating frames it
-    // must attain this velocity within rotating frame to be stationary.
+    // A ship at (pos, vel) in this frame has inertial (root-frame) velocity
+    //   root_orient * (vel + GetStasisVelocity(pos)) + root_vel
+    // (verified against the frame rotation in UpdateOrbitRails:
+    // orient = initial_orient * rotate(-ang, Y)).
+    // Consequences for frame switching F -> N:
+    //   v_N = O(F,N) * (v_F + stasis_F(p_F)) + Vrel(F,N) - stasis_N(p_N)
+    // i.e. the OLD frame's stasis term is added, the NEW frame's subtracted.
+    // (A ship needing velocity -GetStasisVelocity(pos) to be inertially
+    // stationary is a useful mnemonic for the signs.)
     // vector3d GetStasisVelocity(const vector3d &pos) const { return -vector3d(0,m_angSpeed,0).Cross(pos); }
 
     glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
         return -glm::cross(glm::dvec3(0, rot_ang_speed, 0), pos);
+    }
+
+    // Fictitious (Coriolis + centrifugal) acceleration that a ship integrated
+    // IN this (rotating) frame must additionally feel, on top of gravity, so
+    // that its INERTIAL trajectory stays exactly the Kepler orbit the identity
+    // above describes.  With omega = (0, -rot_ang_speed, 0)
+    // (i.e. stasis(p) == omega x p), differentiating
+    //   v_root = R * (v + stasis(p)) + V
+    // gives  v_root' = R * (v' + 2*omega x v + omega x (omega x p)),
+    // so for v_root' == R * gravity the frame integration must use
+    //   v' = gravity - 2*omega x v - omega x (omega x p).
+    // Without this, time spent in a rotating frame perturbs the true orbit
+    // (Coriolis is ~2*w*v, up to ~20% of gravity at low orbits).
+    // Zero for non-rotating frames.
+    glm::dvec3 GetFictitiousAccel(const glm::dvec3 &pos, const glm::dvec3 &vel) {
+        const glm::dvec3 omega(0.0, -rot_ang_speed, 0.0);
+        return -2.0 * glm::cross(omega, vel) - glm::cross(omega, glm::cross(omega, pos));
     }
 };
