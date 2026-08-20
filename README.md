@@ -24,7 +24,7 @@ Some textures and code are from Pioneer space sim: https://github.com/pioneerspa
     cd middleware/bullet3
     mkdir build
     cd build
-    cmake -DUSE_DOUBLE_PRECISION=ON ..
+    cmake -DUSE_DOUBLE_PRECISION=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
     make
     cd ..
     ln -s src bullet
