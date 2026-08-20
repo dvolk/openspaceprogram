@@ -63,7 +63,10 @@ void Frame::UpdateOrbitRails(double time, double timestep) {
     }
 
     if(rotating) {
-        ang = fmod(rot_ang_speed * time * timestep, 2 * M_PI);
+        // total angle as a function of accumulated sim time. Must NOT scale
+        // with the current timestep, or the frame (and everything in it)
+        // snaps when the time acceleration changes.
+        ang = fmod(rot_ang_speed * time, 2 * M_PI);
         if(ang != 0) {
             orient = initial_orient * glm::dmat3(glm::rotate(-ang , glm::dvec3(0, 1, 0)));
             // printf("%s name rot %.2f", name, ang);
