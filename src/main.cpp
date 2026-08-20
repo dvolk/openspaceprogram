@@ -139,8 +139,8 @@ std::vector<Frame *> setup_frames() {
     eerbon->rotating = false;
     eerbon->has_rot_frame = true;
     eerbon->children = std::vector<Frame *>{ eerbon_rot, moon };
-    // eerbon->pos = glm::dvec3(0, 0, -13599840256);
-    eerbon->pos = glm::dvec3(0, 0, -100000000);
+    // Kerbin semi-major axis: 13,599,840.26 km (ksp_system.csv)
+    eerbon->pos = glm::dvec3(0, 0, -13599840260);
     eerbon->initial_pos = eerbon->pos;
     eerbon->initial_orient = glm::dmat3();
     eerbon->orient = glm::dmat3();
@@ -1345,9 +1345,10 @@ int main(int argc, char **argv)
     sun->moves = false;
     sun->has_sea = false;
     sun->power_scaler = 1;
-    sun->g = 17.1;
+    sun->g = 17.131;
     sun->mu = 1.1723328e18;
-    sun->Create(6000000, 9.7600236e20);
+    // Kerbol: radius 261,600 km, mass 1.757e28 kg (ksp_system.csv)
+    sun->Create(261600000, 1.757e28);
 
     TerrainBody *earth = new TerrainBody;
     earth->shader = terrainshader;
@@ -1368,7 +1369,7 @@ int main(int argc, char **argv)
     moon->moves =true;
     moon->has_sea = false;
     moon->power_scaler = 1;
-    moon->g = 1.63;
+    moon->g = 1.628;
     moon->mu = 6.5138398e10;
     moon->Create(200000, 9.7600236e20);
 
