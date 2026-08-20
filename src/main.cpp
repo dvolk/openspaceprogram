@@ -1406,8 +1406,8 @@ int main(int argc, char **argv)
 
     ImGuiIO& io = ImGui::GetIO();
     //io.Fonts->AddFontDefault();
-    io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", 20.0);
-    bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 40.0);
+    io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", 14.0);
+    bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 30.0);
     check_gl_error();
 
     // start bullet; see physics.cpp
