@@ -8,7 +8,7 @@ void _check_gl_error(const char *file, int line) {
     GLenum err;
 
     while((err = glGetError()) != GL_NO_ERROR) {
-        const char *error;
+        const char *error = "UNKNOWN_ERROR";
 
         switch(err) {
         case GL_INVALID_OPERATION:

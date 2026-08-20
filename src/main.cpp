@@ -441,7 +441,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     model->FromData(grid_mesh, shader, NULL);
     if(has_collision == true) {
         collision = addTerrainCollision(grid_mesh);
-        printf("added terrain collision with %p\n", this);
+        printf("added terrain collision with %p\n", (void*)this);
     } else {
         collision = NULL;
     }
@@ -603,7 +603,7 @@ public:
         partResources.resize(parts.size());
         controller = parts.back();
         NeverSleep(controller);
-        for(int i = 0; i < parts.size(); i++) {
+        for(size_t i = 0; i < parts.size(); i++) {
             if(partTypes[i] == VesselPartType::ReactionWheel) {
                 m_reaction_wheels.push_back(parts[i]);
             }
@@ -1197,7 +1197,7 @@ inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
 
 Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
     Mesh *grid_mesh = new Mesh;
-    int size = 25;
+    const int size = 25;
 
     glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
 
