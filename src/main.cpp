@@ -582,13 +582,6 @@ public:
 
     float thruster_util = 1.0;
 
-    /* Debug: when set, SOI-based reference-frame switching is suspended.
-       Used by the CLI starting locations, whose orbits are defined in a
-       specific frame (several of them sit outside that frame's SOI, so the
-       SOI logic would immediately move the ship elsewhere). Released by the
-       't' (teleport) key. */
-    bool frame_lock = false;
-
     void setRoot(Body *part) {
         parts = { part };
     }
@@ -923,6 +916,31 @@ public:
 };
 
 /*
+  Resolve the reference frame that owns a world position: walk down the frame
+  tree from the root, descending into whichever child's sphere of influence
+  contains the point. The deepest such frame is the ship's correct frame.
+  This is the same rule the per-tick SOI switching in the main loop applies,
+  so a ship spawned here is already in the frame the SOI logic expects and is
+  not moved on the first physics tick.
+*/
+static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
+    Frame *cur = root;
+    while(true) {
+        Frame *best = NULL;
+        double best_d = 1e30;
+        for(Frame *c : cur->children) {
+            double d = glm::length(worldPos - c->root_pos);
+            if(d < c->soi && d < best_d) {
+                best = c;
+                best_d = d;
+            }
+        }
+        if(best == NULL) { return cur; }
+        cur = best;
+    }
+}
+
+/*
   Debug starting locations (chosen at the CLI on startup, see main):
     1 = landed on the spaceport pad (default; nothing to do)
     2 = 75x75 km circular orbit around Eerbon
@@ -931,16 +949,16 @@ public:
     5 = circular solar orbit halfway between Eerbon and the Sun
     6 = 10x1000 km elliptical orbit around Eerbon (spawned at periapsis)
 
-  For the orbital ones: the ship's COM is placed at the given point in the
-  target frame, the parts keep their relative geometry, and the velocity of
-  a clean central orbit around that frame's body is applied (prograde, i.e.
-  in the system's +y rotation sense).
+  For the orbital ones: the ship's COM is placed at the given point, the parts
+  keep their relative geometry, and the velocity of a clean central orbit
+  around the orbit body is applied (prograde, i.e. in the system's +y rotation
+  sense).
 
-  Several of these orbits sit outside the frame's SOI (Eerbon's SOI is only
-  700 km; a solar orbit is inside Eerbon's 8.4e7 m SOI), so the SOI logic
-  would move the ship to a different frame on the first physics tick. The
-  frame is locked (released by the 't' teleport key) so the orbit stays as
-  defined.
+  The ship's reference frame is not hardcoded per location: it is resolved from
+  the innermost SOI containing the spawn point (see resolve_frame_by_soi). The
+  position and orbital velocity are expressed in that resolved frame, including
+  the stasis-velocity correction so a rotating frame still yields the correct
+  inertial orbital velocity.
 */
 static void spawn_vehicle(Vehicle *ship, int loc,
                           Frame *sunFrame, Frame *eerbonFrame, Frame *moonFrame,
@@ -953,53 +971,82 @@ static void spawn_vehicle(Vehicle *ship, int loc,
     glm::dmat3 GetOrient(Body *b);
     void SetVelocity(Body *b, glm::dvec3 vel);
 
-    double radius, speed;
-    glm::dvec3 target;
-    Frame *frame = ship->frame; // eerbon (rotational) at construction
+    // Per location: the body the orbit is around, the ship's world spawn
+    // position, and the orbital radii (current radius + semi-major axis) that
+    // set the orbital speed.
+    TerrainBody *orbitBody;
+    glm::dvec3 shipWorldPos;
+    double rCur, semiMajor;
 
     switch(loc) {
         case 2: // 75x75 km circular orbit around Eerbon (over the pad)
-            radius = eerbonBody->radius + 75e3;
-            target = glm::dvec3(0, 0, radius);
-            speed = sqrt(eerbonBody->mu / radius);
+        {
+            orbitBody = eerbonBody;
+            rCur = eerbonBody->radius + 75e3;
+            semiMajor = rCur;
+            shipWorldPos = eerbonFrame->root_pos
+                         + eerbonFrame->root_orient * glm::dvec3(0, 0, rCur);
             break;
+        }
         case 3: // 1000x30 km elliptical orbit, spawned at apoapsis
         {
+            orbitBody = eerbonBody;
             double ra = eerbonBody->radius + 1000e3; // apoapsis radius
             double rp = eerbonBody->radius + 30e3;   // periapsis radius
-            radius = ra;
-            target = glm::dvec3(0, 0, radius);
-            speed = sqrt(eerbonBody->mu * (2.0 / ra - 1.0 / (0.5 * (ra + rp))));
+            rCur = ra;
+            semiMajor = 0.5 * (ra + rp);
+            shipWorldPos = eerbonFrame->root_pos
+                         + eerbonFrame->root_orient * glm::dvec3(0, 0, ra);
             break;
         }
         case 4: // 30x30 km circular orbit around the Moon
-            frame = moonFrame;
-            radius = moonBody->radius + 30e3;
-            target = glm::dvec3(0, 0, radius);
-            speed = sqrt(moonBody->mu / radius);
+        {
+            orbitBody = moonBody;
+            rCur = moonBody->radius + 30e3;
+            semiMajor = rCur;
+            shipWorldPos = moonFrame->root_pos
+                         + moonFrame->root_orient * glm::dvec3(0, 0, rCur);
             break;
+        }
         case 5: // circular solar orbit, halfway between Eerbon and the Sun
-            frame = sunFrame;
-            target = 0.5 * eerbonFrame->GetPositionRelTo(sunFrame);
-            radius = glm::length(target);
-            speed = sqrt(sunBody->mu / radius);
+        {
+            orbitBody = sunBody;
+            shipWorldPos = 0.5 * eerbonFrame->root_pos; // the Sun sits at the origin
+            rCur = glm::length(shipWorldPos);
+            semiMajor = rCur;
             break;
+        }
         case 6: // 10x1000 km elliptical orbit around Eerbon, spawned at periapsis
         {
+            orbitBody = eerbonBody;
             double rp = eerbonBody->radius + 10e3;    // periapsis radius
             double ra = eerbonBody->radius + 1000e3;  // apoapsis radius
-            radius = rp;
-            target = glm::dvec3(0, 0, radius);
-            speed = sqrt(eerbonBody->mu * (2.0 / rp - 1.0 / (0.5 * (ra + rp))));
+            rCur = rp;
+            semiMajor = 0.5 * (ra + rp);
+            shipWorldPos = eerbonFrame->root_pos
+                         + eerbonFrame->root_orient * glm::dvec3(0, 0, rp);
             break;
         }
         default:
             return;
     }
 
-    // Prograde velocity: perpendicular to the radius vector, in the
-    // system's sense of rotation (+y axis).
-    glm::dvec3 vel = speed * glm::cross(glm::dvec3(0, 1, 0), glm::normalize(target));
+    Frame *frame = resolve_frame_by_soi(sunFrame, shipWorldPos);
+
+    // Orbital speed (vis-viva; reduces to circular speed when semiMajor == rCur).
+    double speed = sqrt(orbitBody->mu * (2.0 / rCur - 1.0 / semiMajor));
+
+    // Prograde: perpendicular to the radius vector, in the system's sense of
+    // rotation (+y axis). This is the physical (inertial) orbital velocity.
+    glm::dvec3 rhat = glm::normalize(shipWorldPos - orbitBody->frame->root_pos);
+    glm::dvec3 velWorld = speed * glm::cross(glm::dvec3(0, 1, 0), rhat);
+
+    // Express the spawn position and velocity in the resolved frame's local
+    // coordinates; add the stasis-velocity term so a rotating frame still
+    // yields the correct inertial orbital velocity.
+    glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
+    glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
+                    + frame->GetStasisVelocity(target);
 
     if(frame != ship->frame) {
         ship->moveToFrame(frame);
@@ -1011,12 +1058,9 @@ static void spawn_vehicle(Vehicle *ship, int loc,
         setPosRot(part, target + (p - com), GetOrient(part));
         SetVelocity(part, vel);
     }
-    ship->frame_lock = true;
 
-    printf("Spawn point %d: %s @ (%.0f, %.0f, %.0f), |v| = %.1f m/s\n",
-           loc, frame->name, target.x, target.y, target.z, speed);
-    printf("Reference frame is locked to '%s'; press 't' (teleport) to release it.\n",
-           frame->name);
+    printf("Spawn point %d: frame '%s' @ world (%.0f, %.0f, %.0f), |v| = %.1f m/s\n",
+           loc, frame->name, shipWorldPos.x, shipWorldPos.y, shipWorldPos.z, speed);
 }
 
 class StaticBuilding {
@@ -1831,10 +1875,9 @@ int main(int argc, char **argv)
                     setPosRot(part, np, GetOrient(part));
                     SetVelocity(part, glm::dvec3(0, 0, 0));
                 }
-                /* teleporting is an explicit frame change, so release a
-                   CLI starting-location frame lock if one is active. */
-                ship->frame_lock = false;
-                printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f); frame lock released\n",
+                /* teleporting is an explicit frame change; the SOI logic will
+                   switch the ship to the correct frame on the next tick. */
+                printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f)\n",
                        glm::length(target), ship->frame->name, soi);
                 teleport_beyond_soi_requested = false;
             }
@@ -1854,7 +1897,7 @@ int main(int argc, char **argv)
 
                 com = ship->get_center_of_mass();
                 double ship_r = glm::length(com);
-                if(!ship->frame_lock && ship_r > ship->frame->soi + 10000) {
+                if(ship_r > ship->frame->soi + 10000) {
                     // switching to parent SOI if there is one
                     if(ship->frame->parent != NULL) {
                         glm::dvec3 pos = GetPosition(ship->controller);
@@ -1870,7 +1913,7 @@ int main(int argc, char **argv)
                         printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
                     }
                 }
-                else if(!ship->frame_lock) {
+                else {
                     // check if we've entered a child SOI
                     for(auto&& child : ship->frame->children) {
                         double dist = glm::length(ship->GetPositionRelTo(ship->controller, child));

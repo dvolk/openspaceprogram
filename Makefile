@@ -48,6 +48,9 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
 	    tests/test_frames.cpp src/frame.cpp -o test_frames
 	./test_frames
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
+	    tests/test_spawn.cpp src/frame.cpp -o test_spawn
+	./test_spawn
 
 .PHONEY: clean
 clean:
