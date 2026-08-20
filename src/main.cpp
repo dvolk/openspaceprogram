@@ -929,6 +929,7 @@ public:
     3 = 1000x30 km elliptical orbit around Eerbon (spawned at apoapsis)
     4 = 30x30 km circular orbit around the Moon
     5 = circular solar orbit halfway between Eerbon and the Sun
+    6 = 10x1000 km elliptical orbit around Eerbon (spawned at periapsis)
 
   For the orbital ones: the ship's COM is placed at the given point in the
   target frame, the parts keep their relative geometry, and the velocity of
@@ -983,6 +984,15 @@ static void spawn_vehicle(Vehicle *ship, int loc,
             radius = glm::length(target);
             speed = sqrt(sunBody->mu / radius);
             break;
+        case 6: // 10x1000 km elliptical orbit around Eerbon, spawned at periapsis
+        {
+            double rp = eerbonBody->radius + 10e3;    // periapsis radius
+            double ra = eerbonBody->radius + 1000e3;  // apoapsis radius
+            radius = rp;
+            target = glm::dvec3(0, 0, radius);
+            speed = sqrt(eerbonBody->mu * (2.0 / rp - 1.0 / (0.5 * (ra + rp))));
+            break;
+        }
         default:
             return;
     }
@@ -1247,17 +1257,18 @@ double wrapAngleToPositive(const double theta) {
 
 int main(int argc, char **argv)
 {
-    /* Starting location: pass 1-5 as argv[1], or pick it at the CLI
+    /* Starting location: pass 1-6 as argv[1], or pick it at the CLI
        prompt (only when stdin is a terminal; otherwise default to 1 so
        background/headless runs never block).
          1 = landed on the spaceport pad (default)
          2 = 75x75 km circular orbit around Eerbon
          3 = 1000x30 km elliptical orbit around Eerbon
          4 = 30x30 km circular orbit around the Moon
-         5 = circular solar orbit halfway between Eerbon and the Sun */
+         5 = circular solar orbit halfway between Eerbon and the Sun
+         6 = 10x1000 km elliptical orbit around Eerbon (periapsis) */
     int starting_location = 1;
     {
-        if(argc > 1 && argv[1][0] >= '1' && argv[1][0] <= '5' && argv[1][1] == '\0') {
+        if(argc > 1 && argv[1][0] >= '1' && argv[1][0] <= '6' && argv[1][1] == '\0') {
             starting_location = argv[1][0] - '0';
         } else if(isatty(fileno(stdin))) {
             printf("Open Space Program - starting location:\n"
@@ -1266,11 +1277,12 @@ int main(int argc, char **argv)
                    "  3: 1000x30 km elliptical orbit around Eerbon\n"
                    "  4: 30x30 km circular orbit around the Moon\n"
                    "  5: circular solar orbit halfway between Eerbon and the Sun\n"
+                   "  6: 10x1000 km elliptical orbit around Eerbon (periapsis)\n"
                    "choice [1]: ");
             fflush(stdout);
             char line[32];
             if(fgets(line, sizeof(line), stdin) != NULL &&
-               line[0] >= '1' && line[0] <= '5') {
+               line[0] >= '1' && line[0] <= '6') {
                 starting_location = line[0] - '0';
             }
         }
