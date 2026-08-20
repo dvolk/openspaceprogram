@@ -28,17 +28,13 @@ Some textures and code are from Pioneer space sim: https://github.com/pioneerspa
     make
     cd ..
     ln -s src bullet
-    
+
     cd ..
-    cd imgui/examples/sdl_opengl3_example/
-    sed -i -- 's/#include <GL\/gl3w.h>/#include <GL\/glew.h>/g' imgui_impl_sdl_gl3.cpp
-    c++ `sdl2-config --cflags` -I ../.. -c ../../imgui.cpp `sdl2-config --libs`
-    c++ `sdl2-config --cflags` -I ../.. -c ../../imgui_draw.cpp `sdl2-config --libs`
-    c++ `sdl2-config --cflags` -I ../.. -c imgui_impl_sdl_gl3.cpp  `sdl2-config --libs` -lGL -lGLEW
-    
+
+(imgui is a submodule and is built by the top-level Makefile, no manual steps)
+
 finally
 
-    cd ../../../..
     make
     
 start osp with

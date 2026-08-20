@@ -86,7 +86,8 @@
 #include <assimp/postprocess.h>     // Post processing flags
 
 #include "../middleware/imgui/imgui.h"
-#include "../middleware/imgui/examples/sdl_opengl3_example/imgui_impl_sdl_gl3.h"
+#include "../middleware/imgui/backends/imgui_impl_sdl2.h"
+#include "../middleware/imgui/backends/imgui_impl_opengl3.h"
 
 #include <CLI11/CLI11.hpp>
 
@@ -1401,7 +1402,8 @@ int main(int argc, char **argv)
     check_gl_error();
     ImGuiContext* ctx1 = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx1);
-    ImGui_ImplSdlGL3_Init(display.get_display());
+    ImGui_ImplSDL2_InitForOpenGL(display.get_display(), SDL_GL_GetCurrentContext());
+    ImGui_ImplOpenGL3_Init("#version 430");
     check_gl_error();
 
     ImGuiIO& io = ImGui::GetIO();
@@ -1724,7 +1726,7 @@ int main(int argc, char **argv)
         SDL_Event ev;
 
         while (SDL_PollEvent(&ev)) {
-            ImGui_ImplSdlGL3_ProcessEvent(&ev);
+            ImGui_ImplSDL2_ProcessEvent(&ev);
             if (ev.type == SDL_QUIT) {
                 running = false;
             }
@@ -2076,7 +2078,9 @@ int main(int argc, char **argv)
         */
         if(redraw == true) {
             check_gl_error();
-            ImGui_ImplSdlGL3_NewFrame(display.get_display());
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
             check_gl_error();
 
             if(poly_mode == true) {
@@ -2645,7 +2649,7 @@ int main(int argc, char **argv)
 
             ImGui::PopStyleColor();
             ImGui::Render();
-            ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
             if(screenshot_requested == true) {
                 char fname[256];
@@ -2683,6 +2687,10 @@ int main(int argc, char **argv)
     delete front_indicator_texture;
     delete prograde_indicator_texture;
     delete retrograde_indicator_texture;
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
 
     return 0;
 }

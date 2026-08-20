@@ -10,15 +10,10 @@ CXXFLAGS=-O2 $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -std=c++11 -I./midd
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL -lassimp
 
-# you'll need to build these manually
-
-# clone imgui in ./middleware
-# cd ./middleware/imgui/examples/sdl_opengl3_example/
-# sed -i -- 's/#include <GL\/gl3w.h>/#include <GL\/glew.h>/g' imgui_impl_sdl_gl3.cpp
-# c++ `sdl2-config --cflags` -I ../.. -c ../../imgui.cpp -fPIC  `sdl2-config --libs`
-# c++ `sdl2-config --cflags` -I ../.. -c ../../imgui_draw.cpp -fPIC  `sdl2-config --libs`
-# c++ `sdl2-config --cflags` -I ../.. -c imgui_impl_sdl_gl3.cpp -fPIC  `sdl2-config --libs` -lGL -lGLEW
-IMGUI_OBJS=./middleware/imgui/examples/sdl_opengl3_example/imgui_impl_sdl_gl3.o ./middleware/imgui/examples/sdl_opengl3_example/imgui_draw.o ./middleware/imgui/examples/sdl_opengl3_example/imgui.o
+# imgui submodule (pinned to a tagged release), built like everything else
+# (the build rules are near the bottom, after the main target)
+IMGUI_DIR=./middleware/imgui
+IMGUI_OBJS=./obj/imgui/imgui.o ./obj/imgui/imgui_draw.o ./obj/imgui/imgui_widgets.o ./obj/imgui/imgui_tables.o ./obj/imgui/imgui_impl_sdl2.o ./obj/imgui/imgui_impl_opengl3.o
 # clone bullet3 in ./middleware
 # cd ./middleware/bullet3
 # ln -s bullet src
@@ -36,10 +31,34 @@ INCLUDES := $(wildcard $(SRCDIR)/*.h)
 OBJECTS  := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 rm = rm -f
 
-$(BINDIR)/$(TARGET): $(OBJECTS)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS)
 	$(LINKER) $@ $(IMGUI_OBJS) $(OBJECTS) $(LFLAGS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+./obj/imgui/imgui.o: $(IMGUI_DIR)/imgui.cpp
+	@mkdir -p ./obj/imgui
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+./obj/imgui/imgui_draw.o: $(IMGUI_DIR)/imgui_draw.cpp
+	@mkdir -p ./obj/imgui
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+./obj/imgui/imgui_widgets.o: $(IMGUI_DIR)/imgui_widgets.cpp
+	@mkdir -p ./obj/imgui
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+./obj/imgui/imgui_tables.o: $(IMGUI_DIR)/imgui_tables.cpp
+	@mkdir -p ./obj/imgui
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+./obj/imgui/imgui_impl_sdl2.o: $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
+	@mkdir -p ./obj/imgui
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+./obj/imgui/imgui_impl_opengl3.o: $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+	@mkdir -p ./obj/imgui
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Unit tests for the pure-math core (reference frames, orbital math).
@@ -54,7 +73,7 @@ test:
 
 .PHONEY: clean
 clean:
-	$(rm) $(OBJECTS)
+	$(rm) $(OBJECTS) $(IMGUI_OBJS)
 
 .PHONEY: remove
 remove: clean
