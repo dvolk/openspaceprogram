@@ -47,10 +47,13 @@ eerbon = {
                 "soi": 84159286,
                 "pos": [0, 0, -13599840260],
                 "orb_ang_speed": 0.00000068269186570822291594437651,
+                # coplanar with the Sun's reference plane
             },
             "rotating": {
                 "soi": 700000,
                 "rot_ang_speed": 0.00029157090303706880702966723086,
+                # Earth-like obliquity: spin axis 23.4 deg off the orbit normal
+                "axial_tilt": math.radians(23.4),
             },
         },
         {
@@ -68,10 +71,15 @@ eerbon = {
                 "soi": 2429559.1,
                 "pos": [-12000000, 0, 0],
                 "orb_ang_speed": 0.00004520797578987211820731369629,
+                # real-Moon-style 5.1 deg tilt of its orbit about Eerbon's
+                # orbital plane
+                "orb_incl": math.radians(5.1),
             },
             "rotating": {
                 "soi": 300000,
                 "rot_ang_speed": 0.00004520785218583258404235991675,
+                # the real Moon's obliquity to its orbit is ~6.7 deg
+                "axial_tilt": math.radians(6.7),
             },
         },
     ],

@@ -46,8 +46,12 @@ void Frame::UpdateRootRelative(double time, double timestep) {
     if(parent == NULL) {
     }
     else {
-        root_pos = parent->root_orient * pos + parent->root_pos;
-        root_vel = parent->root_orient * vel + parent->root_vel;
+        // orient carries pos/vel from this frame's local axes into the parent's.
+        // For a non-rotating (inertial) frame that is the orbital-plane tilt
+        // (orb_plane); for a rotating frame pos/vel are 0 so orient is a no-op
+        // here (its spin still feeds root_orient below).
+        root_pos = parent->root_orient * orient * pos + parent->root_pos;
+        root_vel = parent->root_orient * orient * vel + parent->root_vel;
         root_orient = parent->root_orient * orient;
     }
 }
@@ -68,7 +72,9 @@ void Frame::UpdateOrbitRails(double time, double timestep) {
         // snaps when the time acceleration changes.
         ang = fmod(rot_ang_speed * time, 2 * M_PI);
         if(ang != 0) {
-            orient = initial_orient * glm::dmat3(glm::rotate(-ang , glm::dvec3(0, 1, 0)));
+            // Spin about the (possibly tilted) spin axis; (0,1,0) with no axial
+            // tilt reproduces the old pure-Y spin.
+            orient = initial_orient * glm::dmat3(glm::rotate(-ang, spin_axis));
             // printf("%s name rot %.2f", name, ang);
         }
     }

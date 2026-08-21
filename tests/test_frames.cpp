@@ -249,6 +249,81 @@ int main() {
     CHECK_TRUE(dvec_close(sun->GetStasisVelocity(glm::dvec3(1, 2, 3)), glm::dvec3(0), E),
                "stasis vel of inertial frame == 0");
 
+    printf("== tilted spin axis (axial tilt) ==\n");
+    // A frame whose spin axis is tilted (here to +X) uses that axis for the
+    // stasis velocity: stasis = cross((-w,0,0), p).
+    {
+        Frame *N = new Frame;
+        N->rotating = true;
+        N->rot_ang_speed = 0.002;
+        N->spin_axis = glm::dvec3(1, 0, 0);   // spin about X (90-deg axial tilt)
+        const double w = N->rot_ang_speed;
+        glm::dvec3 sv = N->GetStasisVelocity(glm::dvec3(0, 1, 0));
+        CHECK_TRUE(dvec_close(sv, glm::dvec3(0, 0, -w), 1e-9),
+                   "tilted-spin: stasis(0,1,0) about X == (0,0,-w)");
+        sv = N->GetStasisVelocity(glm::dvec3(0, 0, 1));
+        CHECK_TRUE(dvec_close(sv, glm::dvec3(0, w, 0), 1e-9),
+                   "tilted-spin: stasis(0,0,1) about X == (0,w,0)");
+        delete N;
+    }
+    // The fictitious (centrifugal) term uses the same tilted axis: with
+    // omega = (-w,0,0) and p on +Y, -omega x (omega x p) == (0, +w^2, 0).
+    {
+        Frame *N = new Frame;
+        N->rotating = true;
+        N->rot_ang_speed = 0.002;
+        N->spin_axis = glm::dvec3(1, 0, 0);
+        const double w = N->rot_ang_speed;
+        glm::dvec3 a = N->GetFictitiousAccel(glm::dvec3(0, 1, 0), glm::dvec3(0));
+        CHECK_TRUE(dvec_close(a, glm::dvec3(0, w * w, 0), 1e-9),
+                   "tilted-spin: centrifugal at (0,1,0) about X == (0,+w^2,0)");
+        delete N;
+    }
+    // The default spin axis is the historical pure-Y convention.
+    {
+        Frame *N = new Frame;
+        N->rotating = true;
+        N->rot_ang_speed = 0.001;
+        // spin_axis left at its default (0,1,0)
+        CHECK_TRUE(dvec_close(N->spin_axis, glm::dvec3(0, 1, 0), 1e-12),
+                   "default spin_axis == (0,1,0)");
+        delete N;
+    }
+
+    printf("== orbital inclination ==\n");
+    // An inertial frame whose orbital plane is tilted about the parent's X
+    // carries pos (in the local plane) into the parent via orient:
+    // root_pos = orient * (0,0,-r) == (0, r sin i, -r cos i) for a root parent.
+    {
+        Frame *parent = new Frame;
+        parent->parent = NULL;
+        parent->rotating = false;
+        parent->pos = glm::dvec3(0);
+        parent->orient = glm::dmat3();
+        parent->root_pos = glm::dvec3(0);
+        parent->root_orient = glm::dmat3();
+
+        Frame *child = new Frame;
+        child->parent = parent;
+        child->rotating = false;
+        child->body = NULL;
+        child->pos = glm::dvec3(0, 0, -1.0e8);
+        const double i = 30.0 * M_PI / 180.0;
+        const double c = std::cos(i), s = std::sin(i);
+        child->orient = glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
+                                   glm::dvec3(0.0,  c,  s),
+                                   glm::dvec3(0.0, -s,  c));
+        child->root_pos = glm::dvec3(0);
+        parent->children.push_back(child);
+
+        parent->UpdateOrbitRails(0.0, 0.0);
+        glm::dvec3 expected(0.0, 1.0e8 * s, -1.0e8 * c);
+        CHECK_TRUE(dvec_close(child->root_pos, expected, 1.0),
+                   "orb-incl: tilted root_pos == (0, r sin i, -r cos i)");
+        delete child;
+        delete parent;
+    }
+
     printf("== stasis identity vs frame rotation ==\n");
     // A point FIXED in the rotating frame (v = 0) drifts through root space
     // at  R * stasis(pos)  (plus the frame origin's velocity, which is

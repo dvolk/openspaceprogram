@@ -421,9 +421,15 @@ struct System {
             "palette":     [ [t, [r,g,b]], ... ]   // land-color stops, t in 0..1
           },
           "moves":   bool,
-          "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s },
-          "rotating": { "soi": m, "rot_ang_speed": rad/s }   // optional; absent => dummy (zero spin, soi = radius + 100 km)
-        },
+          "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s,
+                        "orb_incl": rad },   // optional; tilt of the orbital
+                                             // plane about the parent's +X
+                                             // (line of nodes); 0 = coplanar
+          "rotating": { "soi": m, "rot_ang_speed": rad/s,
+                        "axial_tilt": rad }  // optional; lean of the spin axis
+                                             // from the orbital normal toward
+                                             // +X; 0 = pole on the orbit normal
+        },   // "rotating" absent => dummy (zero spin, soi = radius + 100 km)
         ...
       ]
     }
@@ -562,6 +568,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         f->vel = glm::dvec3(0);
         f->orb_ang_speed = 0;
         f->rot_ang_speed = 0;
+        f->spin_axis = glm::dvec3(0, 1, 0);   // inertial frame does not spin
         f->soi = 1e6;
         f->root_pos = glm::dvec3(0);
         f->root_vel = glm::dvec3(0);
@@ -578,6 +585,17 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                 f->initial_pos = f->pos;
             }
             f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
+            // Optional orbital inclination (radians): tilt the orbital plane
+            // about the parent's X axis (line of nodes along parent +X). orient
+            // then maps the local orbital plane (where pos lives) into the
+            // parent frame; identity when absent / zero.
+            const double orb_incl = in.value("orb_incl", 0.0);
+            if(orb_incl != 0.0) {
+                const double c = std::cos(orb_incl), s = std::sin(orb_incl);
+                f->orient = glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
+                                       glm::dvec3(0.0,  c,  s),
+                                       glm::dvec3(0.0, -s,  c));
+            }
         }
         body->frame = f;
         body->soi = f->soi;   // keep the body's soi in sync (display only)
@@ -601,6 +619,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         rf->orient = glm::dmat3();
         rf->vel = glm::dvec3(0);
         rf->orb_ang_speed = 0;
+        rf->spin_axis = glm::dvec3(0, 1, 0);   // no axial tilt by default
         rf->root_pos = glm::dvec3(0);
         rf->root_vel = glm::dvec3(0);
         rf->root_orient = glm::dmat3();
@@ -608,6 +627,14 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
             const nlohmann::json &rot = bv["rotating"];
             rf->soi = rot.value("soi", 1e5);
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
+            // Optional axial tilt (radians): lean the spin axis away from the
+            // orbital normal (local +Y) toward +X. The spin axis in the body
+            // frame is then (sin t, cos t, 0); (0,1,0) when absent / zero.
+            const double axial_tilt = rot.value("axial_tilt", 0.0);
+            if(axial_tilt != 0.0) {
+                rf->spin_axis = glm::dvec3(std::sin(axial_tilt),
+                                           std::cos(axial_tilt), 0.0);
+            }
         } else {
             rf->soi = radius + 100e3;       // near-body SOI convention
             rf->rot_ang_speed = 0.0;        // dummy: does not spin
