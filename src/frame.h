@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -7,7 +8,7 @@
 struct TerrainBody;
 
 struct Frame {
-    const char *name;
+    std::string name;
 
     Frame *parent; /* NULL if root */
     TerrainBody *body;

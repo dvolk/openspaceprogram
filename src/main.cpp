@@ -54,6 +54,10 @@
 #include <stdio.h>
 #include <chrono>
 #include <vector>
+#include <string>
+#include <cmath>
+#include <fstream>
+#include <map>
 
 #include "SDL2/SDL.h"
 
@@ -78,6 +82,7 @@
 #include "physics.h"
 #include "gldebug.h"
 #include "frame.h"
+#include <nlohmann/json.hpp>
 #include "billboard.h"
 #include "texture.h"
 #include "skybox.h"
@@ -105,132 +110,9 @@ static const int FPS = 60;
 
 struct TerrainBody;
 
-std::vector<Frame *> setup_frames() {
-    Frame *sun = new Frame;
-    Frame *eerbon = new Frame;
-    Frame *eerbon_rot = new Frame;
-    Frame *moon = new Frame;
-    Frame *moon_rot = new Frame;
-
-    bool correct_rot_speeds = true;
-
-    /*
-      0
-    */
-    sun->name = "sun (inertial)";
-    sun->parent = NULL;
-    sun->children = std::vector<Frame *>{ eerbon };
-    sun->rotating = false;
-    sun->has_rot_frame = false;
-    sun->pos = glm::dvec3(0);
-    sun->initial_pos = sun->pos;
-    sun->initial_orient = glm::dmat3();
-    sun->orient = glm::dmat3();
-    sun->vel = glm::dvec3(0);
-    sun->rot_ang_speed = 0;
-    sun->orb_ang_speed = 0;
-    sun->soi = 9999999999999999;
-    sun->root_pos = glm::dvec3(0);
-    sun->root_vel = glm::dvec3(0);
-    sun->root_orient = glm::dmat3();
-
-    /*
-      1
-    */
-    eerbon->name = "eerbon (inertial)";
-    eerbon->parent = sun;
-    eerbon->rotating = false;
-    eerbon->has_rot_frame = true;
-    eerbon->children = std::vector<Frame *>{ eerbon_rot, moon };
-    // Kerbin semi-major axis: 13,599,840.26 km (ksp_system.csv)
-    eerbon->pos = glm::dvec3(0, 0, -13599840260);
-    eerbon->initial_pos = eerbon->pos;
-    eerbon->initial_orient = glm::dmat3();
-    eerbon->orient = glm::dmat3();
-    eerbon->vel = glm::dvec3(0);
-    eerbon->orb_ang_speed = 0.01;
-    if(correct_rot_speeds)
-        eerbon->orb_ang_speed = 0.00000068269186570822291594437651; // rad/s;
-    eerbon->rot_ang_speed = 0;
-    eerbon->soi = 84159286;
-    eerbon->root_pos = glm::dvec3(0);
-    eerbon->root_vel = glm::dvec3(0);
-    eerbon->root_orient = glm::dmat3();
-
-    /*
-      2
-    */
-    eerbon_rot->name = "eerbon (rotational)";
-    eerbon_rot->parent = eerbon;
-    eerbon_rot->rotating = true;
-    eerbon_rot->has_rot_frame = false;
-    eerbon_rot->children = std::vector<Frame *>{ };
-    eerbon_rot->pos = glm::dvec3(0, 0, 0);
-    eerbon_rot->initial_pos = glm::dvec3(0, 0, 0);
-    eerbon_rot->initial_orient = glm::dmat3();
-    eerbon_rot->orient = glm::dmat3();
-    eerbon_rot->vel = glm::dvec3(0);
-    eerbon_rot->orb_ang_speed = 0;
-    eerbon_rot->rot_ang_speed = 0.01;
-    if(correct_rot_speeds)
-        eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086; // rad/s
-    eerbon_rot->soi = 700000; // 700km
-    eerbon_rot->root_pos = glm::dvec3(0);
-    eerbon_rot->root_vel = glm::dvec3(0);
-    eerbon_rot->root_orient = glm::dmat3();
-
-    /*
-      3
-    */
-    moon->name = "moon (inertial)";
-    moon->parent = eerbon;
-    moon->rotating = false;
-    moon->has_rot_frame = true;
-    moon->children = std::vector<Frame *> { moon_rot };
-    moon->pos = glm::dvec3(-12e6, 0, 0);
-    moon->initial_pos = glm::dvec3(-12e6, 0, 0);
-    moon->initial_orient = glm::dmat3();
-    moon->orient = glm::dmat3();
-    moon->vel = glm::dvec3(0);
-    moon->orb_ang_speed = 0.001;
-    if(correct_rot_speeds)
-        moon->orb_ang_speed = 0.00004520797578987211820731369629; // rad/s
-    moon->rot_ang_speed = 0; // rad/s
-    moon->soi = 2429559.1;
-    moon->root_pos = glm::dvec3(0);
-    moon->root_vel = glm::dvec3(0);
-    moon->root_orient = glm::dmat3();
-
-    /*
-      4
-    */
-    moon_rot->name = "moon (rotational)";
-    moon_rot->parent = moon;
-    moon_rot->rotating = true;
-    moon_rot->has_rot_frame = false;
-    moon_rot->children = std::vector<Frame *> { };
-    moon_rot->pos = glm::dvec3(0, 0, 0);
-    moon_rot->initial_pos = glm::dvec3(0, 0, 0);
-    moon_rot->initial_orient = glm::dmat3();
-    moon_rot->orient = glm::dmat3();
-    moon_rot->vel = glm::dvec3(0);
-    moon_rot->orb_ang_speed = 0;
-    moon_rot->rot_ang_speed = 0.001; // rad/s
-    if(correct_rot_speeds)
-        moon_rot->rot_ang_speed = 0.00004520785218583258404235991675; // rad/s
-    moon_rot->soi = 300000;
-    moon_rot->root_pos = glm::dvec3(0);
-    moon_rot->root_vel = glm::dvec3(0);
-    moon_rot->root_orient = glm::dmat3();
-
-    return std::vector<Frame *>{
-        sun, // 0
-        eerbon,// 1
-        eerbon_rot,// 2
-        moon,// 3
-        moon_rot// 4
-    };
-}
+// The reference-frame tree is built by load_system() below, together with the
+// TerrainBodies it belongs to (each body owns its inertial frame and, when it
+// spins, its rotating frame). There is no separate flat "frames" array.
 
 class TerrainBody;
 
@@ -325,18 +207,25 @@ struct TerrainBody {
     double g; // [m/s^2]
     double soi; // [m]
     float mass;
-    const char *name;
+    std::string name;
     double seed = 1;
     bool has_sea;
     int power_scaler;
     bool moves = false;
+    // The body OWNS its reference frames: `frame` is its inertial (non-rotating)
+    // frame and `rot_frame` its rotating frame (NULL for bodies that don't
+    // spin, e.g. the star). They are built alongside the body by load_system()
+    // and deleted here, so there is no separate flat frames array to manage.
     Frame *frame;
+    Frame *rot_frame;
     glm::dmat4 transform;
     glm::vec3 sunlightVec;
     int dbg_drew_patches;
 
     ~TerrainBody() {
         for(int i = 0; i < 6; i++) { delete patches[i]; }
+        delete frame;
+        delete rot_frame;
     }
 
     COLOUR (*colour_func)(float v, float vmin, float vmax);
@@ -394,7 +283,7 @@ struct TerrainBody {
         if(planetsWindow) {
             ImGui::Begin("Planets");
             // printf("%p\n", frame->getNonRotFrame());
-            ImGui::Text("%s", name);
+            ImGui::Text("%s", name.c_str());
             ImGui::Separator();
             ImGui::Text("Distance: %.0f", cam_dist);
             ImGui::Text("Rotational angle: %f", frame->getRotFrame()->ang);
@@ -424,6 +313,262 @@ struct TerrainBody {
         return ret;
     }
 };
+
+// Elevation palettes, defined later in the file; needed by load_system().
+COLOUR GetColourMoon(float v, float vmin, float vmax);
+COLOUR GetColourSun(float v, float vmin, float vmax);
+COLOUR GetColourEerbon(float v, float vmin, float vmax);
+
+/*
+  A loaded star system: the bodies, plus the few roles the rest of the game
+  needs (the star, the home planet the ship starts on, and the home planet's
+  first moon). The bodies own their frames (see TerrainBody::frame / rot_frame).
+*/
+struct System {
+    std::vector<TerrainBody *> bodies;
+    TerrainBody *root;      // the star (frame-tree root)
+    TerrainBody *home;      // the planet the ship starts on
+    TerrainBody *star;      // == root
+    TerrainBody *moon;      // home's first moon, or NULL
+
+    TerrainBody *find(const std::string &name) {
+        for(auto&& b : bodies) {
+            if(b->name == name) { return b; }
+        }
+        return nullptr;
+    }
+};
+
+/*
+  load_system() reads a star-system description from a JSON file and builds,
+  together, each TerrainBody (terrain mesh + physics constants) and the
+  reference frames that belong to it:
+
+    * every body gets an INERTIAL (non-rotating) frame, carrying the body's
+      true sphere of influence and its orbital angular speed;
+    * a body that spins (a "rotating" section in its JSON) also gets a
+      ROTATING frame, which is a child of its inertial frame in the frame tree
+      and carries the small "near body" SOI;
+    * the parent/child frame tree the per-tick SOI logic walks.
+
+  JSON layout (see system.json and ksp_system.json):
+    {
+      "home": "<name of the planet the ship starts on>",
+      "bodies": [
+        {
+          "name":  "...",
+          "type":  "star" | "planet" | "moon",
+          "orbits": "<parent body name>" | (omitted/null for the star),
+          "radius":  metres,
+          "mass":    kg,
+          "g":       m/s^2 (surface gravity, used for TWR),
+          "seed":    terrain-noise seed,
+          "has_sea": bool,
+          "power_scaler": int,
+          "moves":   bool,
+          "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s },
+          "rotating": { "soi": m, "rot_ang_speed": rad/s }   // optional
+        },
+        ...
+      ]
+    }
+
+  `mu` is derived from `mass` (mu = G * mass) to keep the files minimal. The
+  bodies must list parents before children is NOT required — the frame tree is
+  wired in a second pass, so the order in the file does not matter.
+
+  Must be called after create_physics(), because Create() builds Bullet terrain
+  collision.
+*/
+System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
+    std::ifstream f(path);
+    if(!f.is_open()) {
+        throw std::runtime_error(std::string("system: cannot open ") + path);
+    }
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(f, nullptr, true);
+    } catch(const std::exception &e) {
+        throw std::runtime_error(std::string("system: bad JSON in ") + path
+                                 + std::string(": ") + e.what());
+    }
+
+    if(!doc.is_object() || !doc.contains("bodies") || !doc["bodies"].is_array()
+       || doc["bodies"].empty()) {
+        throw std::runtime_error(std::string("system: no bodies in ") + path);
+    }
+    const nlohmann::json &bodies = doc["bodies"];
+    const std::string home_name = doc.value("home", std::string(""));
+
+    const double G = 6.674e-11;
+
+    System sys;
+    sys.root = nullptr;
+    sys.home = nullptr;
+    sys.star = nullptr;
+    sys.moon = nullptr;
+
+    // --- pass 1: create every body and its frames --------------------------
+    for(size_t i = 0; i < bodies.size(); i++) {
+        const nlohmann::json &bv = bodies[i];
+
+        TerrainBody *body = new TerrainBody;
+        body->frame = nullptr;
+        body->rot_frame = nullptr;
+
+        body->name       = bv.value("name", std::string("body"));
+        const std::string type = bv.value("type", std::string("planet"));
+        const double radius = bv.value("radius", 600000.0);
+        const double mass   = bv.value("mass", 5e22);
+        body->radius       = (float)radius;
+        body->mass         = (float)mass;
+        body->g            = bv.value("g", 9.81);
+        body->mu           = G * mass;
+        body->seed         = bv.value("seed", 1.0);
+        body->has_sea      = bv.value("has_sea", false);
+        body->power_scaler = bv.value("power_scaler", 3);
+        body->moves        = bv.value("moves", false);
+
+        // Shader + elevation palette by body type.
+        if(type == "star") {
+            body->shader = sunshader;
+            body->colour_func = GetColourSun;
+        } else if(type == "moon") {
+            body->shader = terrainshader;
+            body->colour_func = GetColourMoon;
+        } else { // "planet"
+            body->shader = terrainshader;
+            body->colour_func = GetColourEerbon;
+        }
+
+        // --- inertial (non-rotating) frame ---------------------------------
+        Frame *f = new Frame;
+        f->name  = body->name + " (inertial)";
+        f->body  = body;
+        f->parent = nullptr;                 // wired in pass 2
+        f->children.clear();
+        f->rotating = false;
+        f->has_rot_frame = false;
+        f->pos = glm::dvec3(0, 0, 0);
+        f->initial_pos = f->pos;
+        f->initial_orient = glm::dmat3();
+        f->orient = glm::dmat3();
+        f->vel = glm::dvec3(0);
+        f->orb_ang_speed = 0;
+        f->rot_ang_speed = 0;
+        f->soi = 1e6;
+        f->root_pos = glm::dvec3(0);
+        f->root_vel = glm::dvec3(0);
+        f->root_orient = glm::dmat3();
+
+        if(bv.contains("inertial") && bv["inertial"].is_object()) {
+            const nlohmann::json &in = bv["inertial"];
+            f->soi = in.value("soi", 1e6);
+            if(in.contains("pos") && in["pos"].is_array() && in["pos"].size() >= 3) {
+                const nlohmann::json &pos = in["pos"];
+                f->pos = glm::dvec3(pos[0].get<double>(),
+                                    pos[1].get<double>(),
+                                    pos[2].get<double>());
+                f->initial_pos = f->pos;
+            }
+            f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
+        }
+        body->frame = f;
+        body->soi = f->soi;   // keep the body's soi in sync (display only)
+
+        // --- rotating frame (optional) -------------------------------------
+        if(bv.contains("rotating") && bv["rotating"].is_object()) {
+            const nlohmann::json &rot = bv["rotating"];
+            Frame *rf = new Frame;
+            rf->name  = body->name + " (rotational)";
+            rf->body  = body;
+            rf->parent = f;                    // child of its own inertial frame
+            rf->children.clear();
+            rf->rotating = true;
+            rf->has_rot_frame = false;
+            rf->soi = rot.value("soi", 1e5);
+            rf->pos = glm::dvec3(0, 0, 0);
+            rf->initial_pos = glm::dvec3(0, 0, 0);
+            rf->initial_orient = glm::dmat3();
+            rf->orient = glm::dmat3();
+            rf->vel = glm::dvec3(0);
+            rf->orb_ang_speed = 0;
+            rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
+            rf->root_pos = glm::dvec3(0);
+            rf->root_vel = glm::dvec3(0);
+            rf->root_orient = glm::dmat3();
+            body->rot_frame = rf;
+            f->has_rot_frame = true;
+            f->children.push_back(rf);
+        }
+
+        // Build the terrain mesh + collision (needs shader/colour_func set).
+        body->Create((float)radius, (float)mass);
+
+        sys.bodies.push_back(body);
+    }
+
+    // --- pass 2: wire the parent/child frame tree --------------------------
+    for(size_t i = 0; i < sys.bodies.size(); i++) {
+        TerrainBody *body = sys.bodies[i];
+        const nlohmann::json &bv = bodies[i];
+        const std::string parent_name = bv.value("orbits", std::string(""));
+        if(parent_name.empty()) {
+            // The star: root of the frame tree.
+            if(sys.root != nullptr) {
+                throw std::runtime_error("system: more than one root body");
+            }
+            sys.root = body;
+        } else {
+            TerrainBody *parent = sys.find(parent_name);
+            if(parent == nullptr) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "' orbits unknown body '"
+                                         + parent_name + "'");
+            }
+            body->frame->parent = parent->frame;
+            parent->frame->children.push_back(body->frame);
+        }
+    }
+
+    if(sys.root == nullptr) {
+        throw std::runtime_error("system: no root (star) body found");
+    }
+    sys.star = sys.root;
+
+    // --- resolve the home planet and its first moon ------------------------
+    if(!home_name.empty()) {
+        sys.home = sys.find(home_name);
+        if(sys.home == nullptr) {
+            throw std::runtime_error("system: home body '" + home_name
+                                     + "' not found");
+        }
+        // First moon = the first body whose parent is the home planet.
+        for(size_t i = 0; i < sys.bodies.size(); i++) {
+            const nlohmann::json &bv = bodies[i];
+            if(bv.value("orbits", std::string("")) == home_name) {
+                sys.moon = sys.bodies[i];
+                break;
+            }
+        }
+    } else if(sys.bodies.size() > 1) {
+        // No explicit home: default to the first non-star body.
+        for(size_t i = 0; i < sys.bodies.size(); i++) {
+            if(sys.bodies[i] != sys.root) { sys.home = sys.bodies[i]; break; }
+        }
+    }
+
+    // Recompute the root-relative frame values so positions/velocities/orients
+    // are consistent before the first render.
+    sys.root->frame->UpdateOrbitRails(0.0, 1.0 / 60.0);
+
+    printf("Loaded system '%s': %zu bodies (home=%s, moon=%s)\n",
+           path, sys.bodies.size(),
+           sys.home ? sys.home->name.c_str() : "(none)",
+           sys.moon ? sys.moon->name.c_str() : "(none)");
+
+    return sys;
+}
 
 GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3) {
     model = new Model;
@@ -973,11 +1118,18 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
   the stasis-velocity correction so a rotating frame still yields the correct
   inertial orbital velocity.
 */
-static void spawn_vehicle(Vehicle *ship, int loc,
-                          Frame *sunFrame, Frame *eerbonFrame, Frame *moonFrame,
-                          TerrainBody *sunBody, TerrainBody *eerbonBody, TerrainBody *moonBody)
+static void spawn_vehicle(Vehicle *ship, int loc, System &sys)
 {
     if(loc == 1) { return; } // landed on the pad; already set up
+
+    // The bodies/frames for this system: the star, the home planet, and the
+    // home planet's first moon.
+    TerrainBody *sunBody    = sys.star;
+    TerrainBody *eerbonBody = sys.home;
+    TerrainBody *moonBody   = sys.moon;
+    Frame *sunFrame    = sys.star->frame;
+    Frame *eerbonFrame = sys.home->frame;
+    Frame *moonFrame   = (moonBody != nullptr) ? moonBody->frame : nullptr;
 
     void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
     glm::dvec3 GetPosition(Body *b);
@@ -1014,6 +1166,7 @@ static void spawn_vehicle(Vehicle *ship, int loc,
         }
         case 4: // 30x30 km circular orbit around the Moon
         {
+            if(moonBody == nullptr) { return; } // no moon in this system
             orbitBody = moonBody;
             rCur = moonBody->radius + 30e3;
             semiMajor = rCur;
@@ -1075,7 +1228,7 @@ static void spawn_vehicle(Vehicle *ship, int loc,
     }
 
     printf("Spawn point %d: frame '%s' @ world (%.0f, %.0f, %.0f), |v| = %.1f m/s\n",
-           loc, frame->name, shipWorldPos.x, shipWorldPos.y, shipWorldPos.z, speed);
+           loc, frame->name.c_str(), shipWorldPos.x, shipWorldPos.y, shipWorldPos.z, speed);
 }
 
 class StaticBuilding {
@@ -1355,10 +1508,12 @@ OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel,
 int main(int argc, char **argv)
 {
     /* CLI (parsed with CLI11):
-       ./osp [--start N] [--time-accel N] [--orbit-log] [--orbit-interval S]
-             [--free-cam-pos X Y Z] [--free-cam-fwd X Y Z] [--free-cam-up X Y Z]
-             [--help]
+       ./osp [--system FILE] [--start N] [--time-accel N] [--orbit-log]
+             [--orbit-interval S] [--free-cam-pos X Y Z] [--free-cam-fwd X Y Z]
+             [--free-cam-up X Y Z] [--help]
 
+       --system FILE: star-system JSON file to load (default: system.json).
+                       Use ksp_system.json to fly in the Kerbal system.
        --start N: starting location, 1-6 (default 1)
          1 = landed on the spaceport pad (default)
          2 = 75x75 km circular orbit around Eerbon
@@ -1388,6 +1543,11 @@ int main(int argc, char **argv)
         "5 circular solar orbit halfway to the Sun, "
         "6 10x1000 km elliptical Eerbon orbit (periapsis)")
         ->check(CLI::Range(1, 6));
+
+    std::string system_file = "system.json";
+    app.add_option("--system", system_file,
+                   "Star-system JSON file to load (default: system.json; "
+                   "try ksp_system.json for the Kerbal system)");
 
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
@@ -1478,62 +1638,20 @@ int main(int argc, char **argv)
     lineshader->registerUniforms({ "MVP", "color" });
     lineshader->FromFile("./res/lineShader2");
 
-    // earth->Create(6300000, 5.97237e24);
+    // Load the star system (bodies + their reference frames) from a JSON file.
+    // Default is the Eerbon system (system.json); --system picks another, e.g.
+    // ksp_system.json to fly in the Kerbal system.
+    System sys = load_system(system_file.c_str(), terrainshader, sunshader);
+    TerrainBody *sun   = sys.star;   // the star
+    TerrainBody *earth = sys.home;   // the home planet (the ship starts here)
 
-    TerrainBody *sun = new TerrainBody;
-    sun->shader = sunshader;
-    sun->name = "Sun";
-    sun->colour_func = GetColourSun;
-    sun->seed = 0.1;
-    sun->moves = false;
-    sun->has_sea = false;
-    sun->power_scaler = 1;
-    sun->g = 17.131;
-    sun->mu = 1.1723328e18;
-    // Kerbol: radius 261,600 km, mass 1.757e28 kg (ksp_system.csv)
-    sun->Create(261600000, 1.757e28);
-
-    TerrainBody *earth = new TerrainBody;
-    earth->shader = terrainshader;
-    earth->name = "Eerbon";
-    earth->colour_func = GetColourEerbon;
-    earth->seed = 1;
-    earth->has_sea = true;
-    earth->power_scaler = 3;
-    earth->g = 9.81;
-    earth->mu = 3.5316000e12;
-    earth->Create(600000, 5.2915793e22);
-
-    TerrainBody *moon = new TerrainBody;
-    moon->shader = terrainshader;
-    moon->name = "Moon";
-    moon->colour_func = GetColourMoon;
-    moon->seed = 0.1;
-    moon->moves =true;
-    moon->has_sea = false;
-    moon->power_scaler = 1;
-    moon->g = 1.628;
-    moon->mu = 6.5138398e10;
-    moon->Create(200000, 9.7600236e20);
-
-    std::vector<Frame *> frames = setup_frames();
-
-    sun->frame = frames[0];
-    earth->frame = frames[1];
-    moon->frame = frames[3];
-    sun->frame->body = sun;
-    earth->frame->body = earth;
-    moon->frame->body = moon;
-    frames[2]->body = earth;
-    frames[4]->body = moon;
-
-    sun->frame->UpdateOrbitRails(0, 1/60.0);
-
-    std::vector<TerrainBody *> planets = { sun, earth, moon };
+    std::vector<TerrainBody *> planets = sys.bodies;
 
     Vehicle *ship = new Vehicle;
     ship->m_parent = earth;
-    ship->frame = frames[2]; // moon rotational
+    // The ship starts in the home planet's rotating frame (its "surface"
+    // frame); fall back to the inertial frame if the planet doesn't spin.
+    ship->frame = (earth->rot_frame != nullptr) ? earth->rot_frame : earth->frame;
 
     StaticBuilding *space_port;
     {
@@ -1607,9 +1725,7 @@ int main(int argc, char **argv)
 
     /* Apply the CLI starting location (before the camera is constructed,
        so the camera focuses on the spawn point). */
-    spawn_vehicle(ship, starting_location,
-                  frames[0], frames[1], frames[3],
-                  sun, earth, moon);
+    spawn_vehicle(ship, starting_location, sys);
 
     Mesh *engine_plume_mesh = new Mesh;
     engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
@@ -1686,15 +1802,18 @@ int main(int argc, char **argv)
         printf("Camera: free flight (C = orbit, mouse = look)\n");
     }
 
-    // Bodies the orbit camera can target (the ship is the default).
+    // Bodies the orbit camera can target (the ship is the default). Built from
+    // the loaded system: the ship, the star, the home planet, and the home
+    // planet's first moon (when the system has one).
     struct FocusTarget { const char *name; TerrainBody *body; };
-    FocusTarget focusTargets[] = {
-        { "ship",   nullptr },
-        { "Sun",    sun },
-        { "Eerbon", earth },
-        { "Moon",   moon },
-    };
-    const int numFocusTargets = 4;
+    std::vector<FocusTarget> focusTargets;
+    focusTargets.push_back({ "ship", nullptr });
+    focusTargets.push_back({ sys.star->name.c_str(), sys.star });
+    focusTargets.push_back({ sys.home->name.c_str(), sys.home });
+    if (sys.moon != nullptr) {
+        focusTargets.push_back({ sys.moon->name.c_str(), sys.moon });
+    }
+    const int numFocusTargets = (int)focusTargets.size();
     int focusBody = 0;   // index into focusTargets
 
     // World (ship-frame) position of a focus target, to point the orbit
@@ -1998,7 +2117,7 @@ int main(int argc, char **argv)
                 /* teleporting is an explicit frame change; the SOI logic will
                    switch the ship to the correct frame on the next tick. */
                 printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f)\n",
-                       glm::length(target), ship->frame->name, soi);
+                       glm::length(target), ship->frame->name.c_str(), soi);
                 teleport_beyond_soi_requested = false;
             }
 
@@ -2028,8 +2147,8 @@ int main(int argc, char **argv)
                     if(ship->frame->parent != NULL) {
                         glm::dvec3 pos = GetPosition(ship->controller);
                         printf("@@@ switching frame from %s to parent %s\n",
-                               ship->frame->name,
-                               ship->frame->parent->name
+                               ship->frame->name.c_str(),
+                               ship->frame->parent->name.c_str()
                               );
                         glm::dvec3 offset = ship->frame->GetPositionRelTo(ship->frame->parent);
                         printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
@@ -2045,8 +2164,8 @@ int main(int argc, char **argv)
                         double dist = glm::length(ship->GetPositionRelTo(ship->controller, child));
                         if(dist < child->soi - 10000) {
                             printf("@@@ switching frame from %s to child %s, distance: %.0f\n",
-                                   ship->frame->name,
-                                   child->name,
+                                   ship->frame->name.c_str(),
+                                   child->name.c_str(),
                                    dist
                                   );
                             ship->moveToFrame(child);
@@ -2107,7 +2226,7 @@ int main(int argc, char **argv)
                     printf("[orbitlog] t=%.1fs frame=\"%s\" r=%.6g m v=%.6g m/s "
                            "sma=%.6g m ecc=%.6g peri=%.6g m apo=%.6g m "
                            "inc=%.4f deg T=%.6g s |h|=%.6f m2/s E=%.6f J/kg\n",
-                           time, ship->frame->name, o.distance, o.speed,
+                           time, ship->frame->name.c_str(), o.distance, o.speed,
                            o.semi_major, o.ecc, o.periapsis, o.apoapsis,
                            RAD2DEG(o.inclination), o.period,
                            o.ang_momentum, o.energy);
@@ -2551,7 +2670,7 @@ int main(int argc, char **argv)
 
             if(shipInfoWindow == true) {
                 ImGui::Begin("VESSEL");
-                ImGui::Text("Reference frame: %s", ship->frame->name);
+                ImGui::Text("Reference frame: %s", ship->frame->name.c_str());
                 ImGui::Text("Reference frame type: %s", ship->frame->isRotFrame() ? "Rotational" : "Inertial");
                 ImGui::Text("Mass: %.3fkg", ship->getMass());
                 ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
@@ -2725,14 +2844,13 @@ int main(int argc, char **argv)
         }
     }
 
-    delete sun;
-    delete earth;
-    delete moon;
-
+    // Bodies own their frames (Frame::name is a std::string now), so deleting
+    // every body releases exactly its inertial + rotating frames. The ship and
+    // space port reference a body via ->m_parent, so delete them first.
     delete space_port;
     delete ship;
 
-    for(auto&& frame : frames) { delete frame; }
+    for(auto&& body : sys.bodies) { delete body; }
 
     delete partsshader;
     delete sunshader;

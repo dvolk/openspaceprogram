@@ -1,0 +1,425 @@
+{
+  "home": "Kerbin",
+  "bodies": [
+    {
+      "name": "Kerbol",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "g": 17.131,
+      "seed": 0.1,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 1e+16,
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.0
+      }
+    },
+    {
+      "name": "Moho",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 250000,
+      "mass": 2.526e+21,
+      "g": 2.698,
+      "seed": 1,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 9646660,
+        "pos": [
+          0,
+          0,
+          -5263138300
+        ],
+        "orb_ang_speed": 2.835686967074049e-06
+      },
+      "rotating": {
+        "soi": 350000,
+        "rot_ang_speed": 5.1927151299004845e-06
+      }
+    },
+    {
+      "name": "Eve",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 700000,
+      "mass": 1.224e+23,
+      "g": 16.677,
+      "seed": 2,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 85109360,
+        "pos": [
+          0,
+          0,
+          -9832684540
+        ],
+        "orb_ang_speed": 1.1104967742336127e-06
+      },
+      "rotating": {
+        "soi": 800000,
+        "rot_ang_speed": 7.805199139353523e-05
+      }
+    },
+    {
+      "name": "Gilly",
+      "type": "moon",
+      "orbits": "Eve",
+      "radius": 13000,
+      "mass": 1.242e+17,
+      "g": 0.049,
+      "seed": 3,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 126120,
+        "pos": [
+          -31500000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 1.616929758190715e-05
+      },
+      "rotating": {
+        "soi": 113000,
+        "rot_ang_speed": 0.00022237428091239023
+      }
+    },
+    {
+      "name": "Kerbin",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 600000,
+      "mass": 5.292e+22,
+      "g": 9.81,
+      "seed": 1,
+      "has_sea": true,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 84159290,
+        "pos": [
+          0,
+          0,
+          -13599840260
+        ],
+        "orb_ang_speed": 6.826918953790463e-07
+      },
+      "rotating": {
+        "soi": 700000,
+        "rot_ang_speed": 0.00029157665354214053
+      }
+    },
+    {
+      "name": "Mun",
+      "type": "moon",
+      "orbits": "Kerbin",
+      "radius": 200000,
+      "mass": 9.76e+20,
+      "g": 1.628,
+      "seed": 5,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 2429560,
+        "pos": [
+          -12000000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 4.520784568037554e-05
+      },
+      "rotating": {
+        "soi": 300000,
+        "rot_ang_speed": 4.520797578987212e-05
+      }
+    },
+    {
+      "name": "Minmus",
+      "type": "moon",
+      "orbits": "Kerbin",
+      "radius": 60000,
+      "mass": 2.646e+19,
+      "g": 0.491,
+      "seed": 6,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 2247430,
+        "pos": [
+          -47000000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 5.83228819099005e-06
+      },
+      "rotating": {
+        "soi": 160000,
+        "rot_ang_speed": 0.00015552438879157392
+      }
+    },
+    {
+      "name": "Duna",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 320000,
+      "mass": 4.515e+21,
+      "g": 2.943,
+      "seed": 7,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 47921950,
+        "pos": [
+          0,
+          0,
+          -20726155260
+        ],
+        "orb_ang_speed": 3.628668855985364e-07
+      },
+      "rotating": {
+        "soi": 420000,
+        "rot_ang_speed": 9.590013900271049e-05
+      }
+    },
+    {
+      "name": "Ike",
+      "type": "moon",
+      "orbits": "Duna",
+      "radius": 130000,
+      "mass": 2.782e+20,
+      "g": 1.099,
+      "seed": 8,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 1049600,
+        "pos": [
+          -3200000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 9.590028537513544e-05
+      },
+      "rotating": {
+        "soi": 230000,
+        "rot_ang_speed": 9.590013900271049e-05
+      }
+    },
+    {
+      "name": "Dres",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 138000,
+      "mass": 3.219e+20,
+      "g": 1.128,
+      "seed": 9,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 32832840,
+        "pos": [
+          0,
+          0,
+          -40839348200
+        ],
+        "orb_ang_speed": 1.3119197020370965e-07
+      },
+      "rotating": {
+        "soi": 238000,
+        "rot_ang_speed": 0.0001805513019304479
+      }
+    },
+    {
+      "name": "Jool",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 6000000,
+      "mass": 4.233e+24,
+      "g": 7.848,
+      "seed": 10,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 2455985190,
+        "pos": [
+          0,
+          0,
+          -68773560320
+        ],
+        "orb_ang_speed": 6.003343525030542e-08
+      },
+      "rotating": {
+        "soi": 6100000,
+        "rot_ang_speed": 0.00017453292519943294
+      }
+    },
+    {
+      "name": "Laythe",
+      "type": "moon",
+      "orbits": "Jool",
+      "radius": 500000,
+      "mass": 2.94e+22,
+      "g": 7.848,
+      "seed": 11,
+      "has_sea": true,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 3723650,
+        "pos": [
+          -27184000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.00011859340455106625
+      },
+      "rotating": {
+        "soi": 600000,
+        "rot_ang_speed": 0.00011859318070968057
+      }
+    },
+    {
+      "name": "Vall",
+      "type": "moon",
+      "orbits": "Jool",
+      "radius": 300000,
+      "mass": 3.109e+21,
+      "g": 2.305,
+      "seed": 12,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 2406400,
+        "pos": [
+          -43152000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 5.929653439465229e-05
+      },
+      "rotating": {
+        "soi": 400000,
+        "rot_ang_speed": 5.9296590354840286e-05
+      }
+    },
+    {
+      "name": "Tylo",
+      "type": "moon",
+      "orbits": "Jool",
+      "radius": 600000,
+      "mass": 4.233e+22,
+      "g": 7.848,
+      "seed": 13,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 10856520,
+        "pos": [
+          -68500000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 2.9647959419777744e-05
+      },
+      "rotating": {
+        "soi": 700000,
+        "rot_ang_speed": 2.9648015378856705e-05
+      }
+    },
+    {
+      "name": "Bop",
+      "type": "moon",
+      "orbits": "Jool",
+      "radius": 65000,
+      "mass": 3.726e+19,
+      "g": 0.589,
+      "seed": 14,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 1221060,
+        "pos": [
+          -128500000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 1.1539210132276597e-05
+      },
+      "rotating": {
+        "soi": 165000,
+        "rot_ang_speed": 1.1539218609089665e-05
+      }
+    },
+    {
+      "name": "Pol",
+      "type": "moon",
+      "orbits": "Jool",
+      "radius": 44000,
+      "mass": 1.081e+19,
+      "g": 0.373,
+      "seed": 15,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 1042140,
+        "pos": [
+          -179890000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 6.966589637483678e-06
+      },
+      "rotating": {
+        "soi": 144000,
+        "rot_ang_speed": 6.966586547754677e-06
+      }
+    },
+    {
+      "name": "Eeloo",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 210000,
+      "mass": 1.115e+21,
+      "g": 1.687,
+      "seed": 16,
+      "has_sea": false,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 119082940,
+        "pos": [
+          0,
+          0,
+          -90118820000
+        ],
+        "orb_ang_speed": 4.0022315596333e-08
+      },
+      "rotating": {
+        "soi": 310000,
+        "rot_ang_speed": 0.0003228769428149839
+      }
+    }
+  ]
+}

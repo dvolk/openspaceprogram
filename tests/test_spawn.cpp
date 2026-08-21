@@ -213,7 +213,7 @@ int main() {
         char buf[256];
 
         snprintf(buf, sizeof buf, "loc %d (%s): resolves to '%s'",
-                 c.loc, c.desc, frame->name);
+                 c.loc, c.desc, frame->name.c_str());
         CHECK_TRUE(frame == c.expectedFrame, buf);
 
         // Position + velocity in the resolved frame (spawn_vehicle formulas).
@@ -254,14 +254,14 @@ int main() {
                 child_switch = true;
                 snprintf(buf, sizeof buf,
                          "loc %d: would switch into child '%s' (dist=%.0f < soi=%.0f)",
-                         c.loc, child->name, dist, child->soi);
+                         c.loc, child->name.c_str(), dist, child->soi);
                 CHECK_TRUE(false, buf);
             }
         }
         (void)child_switch;
 
         printf("  loc %d (%s): frame='%s'  r=%.0f m  |v|=%.1f m/s  OK\n",
-               c.loc, c.desc, frame->name, ship_r, speed);
+               c.loc, c.desc, frame->name.c_str(), ship_r, speed);
     }
 
     // -----------------------------------------------------------------

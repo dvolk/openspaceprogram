@@ -1,0 +1,75 @@
+{
+  "home": "Eerbon",
+  "bodies": [
+    {
+      "name": "Sun",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "g": 17.131,
+      "seed": 0.1,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": false,
+      "inertial": {
+        "soi": 1e+16,
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.0
+      }
+    },
+    {
+      "name": "Eerbon",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "g": 9.81,
+      "seed": 1,
+      "has_sea": true,
+      "power_scaler": 3,
+      "moves": false,
+      "inertial": {
+        "soi": 84159286,
+        "pos": [
+          0,
+          0,
+          -13599840260
+        ],
+        "orb_ang_speed": 6.82691865708223e-07
+      },
+      "rotating": {
+        "soi": 700000,
+        "rot_ang_speed": 0.0002915709030370688
+      }
+    },
+    {
+      "name": "Moon",
+      "type": "moon",
+      "orbits": "Eerbon",
+      "radius": 200000,
+      "mass": 9.7600236e+20,
+      "g": 1.628,
+      "seed": 0.1,
+      "has_sea": false,
+      "power_scaler": 1,
+      "moves": true,
+      "inertial": {
+        "soi": 2429559.1,
+        "pos": [
+          -12000000,
+          0,
+          0
+        ],
+        "orb_ang_speed": 4.520797578987212e-05
+      },
+      "rotating": {
+        "soi": 300000,
+        "rot_ang_speed": 4.5207852185832584e-05
+      }
+    }
+  ]
+}
