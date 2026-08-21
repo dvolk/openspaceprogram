@@ -10,6 +10,26 @@
       "seed": 0.1,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              1.0,
+              0.8,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              0.75
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 1e+16,
@@ -31,6 +51,35 @@
       "seed": 1,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "amplitude": 800,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.22,
+              0.2
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.5,
+              0.32,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.45,
+              0.42
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 9646660,
@@ -56,6 +105,35 @@
       "seed": 2,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "amplitude": 3000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.45,
+              0.08,
+              0.2
+            ]
+          ],
+          [
+            0.5,
+            [
+              0.65,
+              0.15,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.4,
+              0.45
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 85109360,
@@ -81,6 +159,35 @@
       "seed": 3,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 400,
+        "palette": [
+          [
+            0.0,
+            [
+              0.2,
+              0.16,
+              0.32
+            ]
+          ],
+          [
+            0.7,
+            [
+              0.4,
+              0.28,
+              0.45
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.6,
+              0.45,
+              0.5
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 126120,
@@ -106,6 +213,47 @@
       "seed": 1,
       "has_sea": true,
       "power_scaler": 3,
+      "surface": {
+        "sea_color": [
+          0.0,
+          0.35,
+          0.75
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.13,
+              0.45,
+              0.13
+            ]
+          ],
+          [
+            0.45,
+            [
+              0.45,
+              0.55,
+              0.2
+            ]
+          ],
+          [
+            0.8,
+            [
+              0.55,
+              0.45,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              1.0
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 84159290,
@@ -131,6 +279,27 @@
       "seed": 5,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 1500,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.35,
+              0.36
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.65,
+              0.67
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 2429560,
@@ -156,6 +325,27 @@
       "seed": 6,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 2000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.48,
+              0.55
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.9,
+              0.9
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 2247430,
@@ -181,6 +371,34 @@
       "seed": 7,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.22,
+              0.08
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.7,
+              0.35,
+              0.15
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.6,
+              0.4
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 47921950,
@@ -206,6 +424,27 @@
       "seed": 8,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 1000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.45,
+              0.35,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.55,
+              0.45
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 1049600,
@@ -231,6 +470,27 @@
       "seed": 9,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "amplitude": 2000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.4,
+              0.15,
+              0.1
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.35,
+              0.25
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 32832840,
@@ -256,6 +516,32 @@
       "seed": 10,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "amplitude": 15000,
+        "sea_color": [
+          0.0,
+          0.4,
+          0.5
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.2,
+              0.5,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.55,
+              0.75,
+              0.55
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 2455985190,
@@ -281,6 +567,40 @@
       "seed": 11,
       "has_sea": true,
       "power_scaler": 3,
+      "surface": {
+        "amplitude": 3000,
+        "sea_color": [
+          0.0,
+          0.4,
+          0.45
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.25,
+              0.55,
+              0.25
+            ]
+          ],
+          [
+            0.7,
+            [
+              0.5,
+              0.6,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              1.0
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 3723650,
@@ -306,6 +626,27 @@
       "seed": 12,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 2000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.6,
+              0.2,
+              0.25
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.7,
+              0.7
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 2406400,
@@ -331,6 +672,26 @@
       "seed": 13,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              0.45,
+              0.35,
+              0.25
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.75,
+              0.65,
+              0.5
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 10856520,
@@ -356,6 +717,27 @@
       "seed": 14,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 800,
+        "palette": [
+          [
+            0.0,
+            [
+              0.3,
+              0.3,
+              0.5
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.6,
+              0.6,
+              0.75
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 1221060,
@@ -381,6 +763,27 @@
       "seed": 15,
       "has_sea": false,
       "power_scaler": 1,
+      "surface": {
+        "amplitude": 600,
+        "palette": [
+          [
+            0.0,
+            [
+              0.3,
+              0.45,
+              0.55
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.8,
+              0.85
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 1042140,
@@ -406,6 +809,27 @@
       "seed": 16,
       "has_sea": false,
       "power_scaler": 3,
+      "surface": {
+        "amplitude": 5000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.6,
+              0.3,
+              0.2
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.5,
+              0.45
+            ]
+          ]
+        ]
+      },
       "moves": false,
       "inertial": {
         "soi": 119082940,

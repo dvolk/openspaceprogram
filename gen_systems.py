@@ -14,6 +14,8 @@ def spd(period):
 # ---------------------------------------------------------------------------
 # Eerbon system (single home planet + one moon) - values taken verbatim from
 # the pre-refactor setup_frames() / TerrainBody creation in src/main.cpp.
+# Seeds are 0 = the legacy (unseeded) noise pattern, so Eerbon keeps exactly
+# the terrain it always had.
 # ---------------------------------------------------------------------------
 eerbon = {
     "home": "Eerbon",
@@ -24,7 +26,7 @@ eerbon = {
             "radius": 261600000,
             "mass": 1.757e28,
             "g": 17.131,
-            "seed": 0.1,
+            "seed": 0,
             "has_sea": False,
             "power_scaler": 1,
             "moves": False,
@@ -37,7 +39,7 @@ eerbon = {
             "radius": 600000,
             "mass": 5.2915793e22,
             "g": 9.81,
-            "seed": 1,
+            "seed": 0,
             "has_sea": True,
             "power_scaler": 3,
             "moves": False,
@@ -58,7 +60,7 @@ eerbon = {
             "radius": 200000,
             "mass": 9.7600236e20,
             "g": 1.628,
-            "seed": 0.1,
+            "seed": 0,
             "has_sea": False,
             "power_scaler": 1,
             "moves": True,
@@ -106,6 +108,107 @@ K = [
     ("Eeloo",  "planet", "Kerbol", 90118820000, 1.115e21, 1.687,  210000,   156992048.4,19460,     119082940,    False, 16,  3),
 ]
 
+# ---------------------------------------------------------------------------
+# Per-body surface appearance (the optional "surface" JSON block):
+#   palette:  land-color stops [elevation 0..1, [r,g,b]], lerped by altitude
+#   sea_color / sea_level: ocean tint + level (m above base radius)
+#   amplitude: peak terrain noise height [m]
+# Colors are hand-picked KSP-flavored approximations.
+# ---------------------------------------------------------------------------
+SURFACES = {
+    "Kerbol": {
+        "palette": [[0.0, [1.00, 0.80, 0.35]], [1.0, [1.00, 1.00, 0.75]]],
+    },
+    "Moho": {
+        "amplitude": 800,
+        "palette": [[0.0, [0.35, 0.22, 0.20]],
+                    [0.6, [0.50, 0.32, 0.30]],
+                    [1.0, [0.65, 0.45, 0.42]]],
+    },
+    "Eve": {
+        "amplitude": 3000,
+        "palette": [[0.0, [0.45, 0.08, 0.20]],
+                    [0.5, [0.65, 0.15, 0.30]],
+                    [1.0, [0.80, 0.40, 0.45]]],
+    },
+    "Gilly": {
+        "amplitude": 400,
+        "palette": [[0.0, [0.20, 0.16, 0.32]],
+                    [0.7, [0.40, 0.28, 0.45]],
+                    [1.0, [0.60, 0.45, 0.50]]],
+    },
+    "Kerbin": {
+        "sea_color": [0.00, 0.35, 0.75],
+        "palette": [[0.0, [0.13, 0.45, 0.13]],
+                    [0.45, [0.45, 0.55, 0.20]],
+                    [0.8, [0.55, 0.45, 0.35]],
+                    [1.0, [1.00, 1.00, 1.00]]],
+    },
+    "Mun": {
+        "amplitude": 1500,
+        "palette": [[0.0, [0.35, 0.35, 0.36]],
+                    [1.0, [0.65, 0.65, 0.67]]],
+    },
+    "Minmus": {
+        "amplitude": 2000,
+        "palette": [[0.0, [0.28, 0.48, 0.55]],
+                    [1.0, [0.70, 0.90, 0.90]]],
+    },
+    "Duna": {
+        "palette": [[0.0, [0.55, 0.22, 0.08]],
+                    [0.6, [0.70, 0.35, 0.15]],
+                    [1.0, [0.85, 0.60, 0.40]]],
+    },
+    "Ike": {
+        "amplitude": 1000,
+        "palette": [[0.0, [0.45, 0.35, 0.30]],
+                    [1.0, [0.70, 0.55, 0.45]]],
+    },
+    "Dres": {
+        "amplitude": 2000,
+        "palette": [[0.0, [0.40, 0.15, 0.10]],
+                    [1.0, [0.65, 0.35, 0.25]]],
+    },
+    "Jool": {
+        "amplitude": 15000,
+        "sea_color": [0.00, 0.40, 0.50],
+        "palette": [[0.0, [0.20, 0.50, 0.30]],
+                    [1.0, [0.55, 0.75, 0.55]]],
+    },
+    "Laythe": {
+        "amplitude": 3000,
+        "sea_color": [0.00, 0.40, 0.45],
+        "palette": [[0.0, [0.25, 0.55, 0.25]],
+                    [0.7, [0.50, 0.60, 0.35]],
+                    [1.0, [1.00, 1.00, 1.00]]],
+    },
+    "Vall": {
+        "amplitude": 2000,
+        "palette": [[0.0, [0.60, 0.20, 0.25]],
+                    [1.0, [0.85, 0.70, 0.70]]],
+    },
+    "Tylo": {
+        "palette": [[0.0, [0.45, 0.35, 0.25]],
+                    [1.0, [0.75, 0.65, 0.50]]],
+    },
+    "Bop": {
+        "amplitude": 800,
+        "palette": [[0.0, [0.30, 0.30, 0.50]],
+                    [1.0, [0.60, 0.60, 0.75]]],
+    },
+    "Pol": {
+        "amplitude": 600,
+        "palette": [[0.0, [0.30, 0.45, 0.55]],
+                    [1.0, [0.70, 0.80, 0.85]]],
+    },
+    "Eeloo": {
+        "amplitude": 5000,
+        "palette": [[0.0, [0.60, 0.30, 0.20]],
+                    [1.0, [0.80, 0.50, 0.45]]],
+    },
+}
+
+
 def ksp_body(name, typ, orbits, sma, mass, g, radius, orb_s, rot_s, soi, has_sea, seed, ps):
     b = {
         "name": name,
@@ -119,6 +222,8 @@ def ksp_body(name, typ, orbits, sma, mass, g, radius, orb_s, rot_s, soi, has_sea
     b["seed"] = seed
     b["has_sea"] = has_sea
     b["power_scaler"] = ps
+    if name in SURFACES:
+        b["surface"] = SURFACES[name]
     b["moves"] = False
 
     if typ == "star":

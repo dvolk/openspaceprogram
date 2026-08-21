@@ -52,6 +52,7 @@
   */
 
 #include <stdio.h>
+#include <algorithm>
 #include <chrono>
 #include <vector>
 #include <string>
@@ -199,6 +200,50 @@ typedef struct {
     float r, g, b;
 } COLOUR;
 
+// One stop on a body's land-color ramp: elevation fraction t in [0,1]
+// (0 = sea level / lowest land, 1 = highest relief) and the color there.
+struct PaletteStop {
+    float t;
+    glm::vec3 color;
+};
+
+// Per-body terrain + color parameters (the optional "surface" JSON block).
+// Defaults reproduce the legacy hardcoded behavior.
+struct Surface {
+    float amplitude = 2500.0f;   // [m] peak noise height
+    int octaves = 12;            // simplex octaves
+    float persistence = 0.6f;    // octave falloff
+    float frequency = 1.0f;      // noise-domain scale
+    int power = 3;               // height-distribution exponent
+    bool has_sea = false;
+    float sea_level = 0.0f;      // [m] above base radius
+    glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
+    std::vector<PaletteStop> palette;  // empty => type-based default palette
+    float max_height = 1.0f;     // [m] scaled relief above sea level (computed)
+    glm::vec3 seed_offset = glm::vec3(0.0f);
+
+    COLOUR PaletteColor(float t) const {
+        const std::vector<PaletteStop> &s = palette;
+        if (s.empty()) {
+            return { 1.0f, 1.0f, 1.0f };
+        }
+        if (t <= s.front().t) {
+            return { s.front().color.x, s.front().color.y, s.front().color.z };
+        }
+        if (t >= s.back().t) {
+            return { s.back().color.x, s.back().color.y, s.back().color.z };
+        }
+        for (size_t i = 1; i < s.size(); i++) {
+            if (t <= s[i].t) {
+                float f = (t - s[i-1].t) / (s[i].t - s[i-1].t);
+                glm::vec3 c = glm::mix(s[i-1].color, s[i].color, f);
+                return { c.x, c.y, c.z };
+            }
+        }
+        return { 1.0f, 1.0f, 1.0f };
+    }
+};
+
 struct TerrainBody {
     GeoPatch *patches[6];
     Shader *shader;
@@ -208,9 +253,8 @@ struct TerrainBody {
     double soi; // [m]
     float mass;
     std::string name;
-    double seed = 1;
-    bool has_sea;
-    int power_scaler;
+    double seed = 0;   // noise-domain offset; 0 = legacy pattern
+    Surface surface;
     bool moves = false;
     // The body OWNS its reference frames: `frame` is its inertial (non-rotating)
     // frame and `rot_frame` its rotating frame (NULL for bodies that don't
@@ -362,9 +406,19 @@ struct System {
           "radius":  metres,
           "mass":    kg,
           "g":       m/s^2 (surface gravity, used for TWR),
-          "seed":    terrain-noise seed,
-          "has_sea": bool,
-          "power_scaler": int,
+          "seed":         terrain-noise seed (noise-domain offset; 0 = legacy pattern),
+          "has_sea":      bool,              // legacy: implies surface.sea_level = 0
+          "power_scaler": int,               // legacy: default for surface.power
+          "surface": {                       // optional; every field optional
+            "amplitude":   m,                // peak noise height        (2500)
+            "octaves":     int,              // simplex octaves          (12)
+            "persistence": 0..1,             // octave falloff           (0.6)
+            "frequency":   float,            // noise-domain scale       (1.0)
+            "power":       int,              // height-distribution exp  (3)
+            "sea_level":   m,                // key present => has ocean (0)
+            "sea_color":   [r,g,b],          //                         (0.1,0.1,0.8)
+            "palette":     [ [t, [r,g,b]], ... ]   // land-color stops, t in 0..1
+          },
           "moves":   bool,
           "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s },
           "rotating": { "soi": m, "rot_ang_speed": rad/s }   // optional
@@ -424,10 +478,61 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         body->mass         = (float)mass;
         body->g            = bv.value("g", 9.81);
         body->mu           = G * mass;
-        body->seed         = bv.value("seed", 1.0);
-        body->has_sea      = bv.value("has_sea", false);
-        body->power_scaler = bv.value("power_scaler", 3);
+        body->seed         = bv.value("seed", 0.0);
         body->moves        = bv.value("moves", false);
+
+        // Legacy flat fields act as defaults for the surface parameters.
+        Surface &s = body->surface;
+        s.power   = bv.value("power_scaler", 3);
+        s.has_sea = bv.value("has_sea", false);
+
+        if(bv.contains("surface") && bv["surface"].is_object()) {
+            const nlohmann::json &sv = bv["surface"];
+            s.amplitude   = sv.value("amplitude", s.amplitude);
+            s.octaves     = sv.value("octaves", s.octaves);
+            s.persistence = sv.value("persistence", s.persistence);
+            s.frequency   = sv.value("frequency", s.frequency);
+            s.power       = sv.value("power", s.power);
+            if(sv.contains("sea_level")) {
+                s.has_sea = true;
+                s.sea_level = sv.value("sea_level", 0.0);
+            }
+            if(sv.contains("sea_color") && sv["sea_color"].is_array()
+               && sv["sea_color"].size() >= 3) {
+                const nlohmann::json &c = sv["sea_color"];
+                s.sea_color = glm::vec3(c[0].get<float>(),
+                                        c[1].get<float>(),
+                                        c[2].get<float>());
+            }
+            if(sv.contains("palette") && sv["palette"].is_array()) {
+                for(const nlohmann::json &stop : sv["palette"]) {
+                    if(!stop.is_array() || stop.size() < 2
+                       || !stop[1].is_array() || stop[1].size() < 3) {
+                        continue;
+                    }
+                    PaletteStop ps;
+                    ps.t = stop[0].get<float>();
+                    ps.color = glm::vec3(stop[1][0].get<float>(),
+                                         stop[1][1].get<float>(),
+                                         stop[1][2].get<float>());
+                    s.palette.push_back(ps);
+                }
+                std::sort(s.palette.begin(), s.palette.end(),
+                          [](const PaletteStop &a, const PaletteStop &b) {
+                              return a.t < b.t;
+                          });
+            }
+        }
+        // Scaled relief a full-amplitude peak ends up at, after
+        // ScaleHeightNoise() — used to normalize palette elevation t.
+        if(s.amplitude > 0.0f) {
+            s.max_height = s.amplitude
+                           * std::pow(s.amplitude / 3000.0f, s.power);
+        }
+        if(s.max_height <= 0.0f) {
+            s.max_height = 1.0f;
+        }
+        s.seed_offset = glm::vec3((float)body->seed * 100.0f);
 
         // Shader + elevation palette by body type.
         if(type == "star") {
@@ -1278,38 +1383,37 @@ float noise3d(const glm::vec3& p, int octaves, float persistence) {
 // }
 
 float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
-    // glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
-    float noise = noise3d(sphere_p, 12, 0.60) * 2500;
+    const Surface &s = surface;
+    float noise = noise3d(sphere_p * s.frequency + s.seed_offset,
+                          s.octaves, s.persistence) * s.amplitude;
 
-    if(noise < 0) {
-        if(has_sea == true) {
-            noise = 0;
-        }
+    if(s.has_sea && noise < s.sea_level) {
+        noise = s.sea_level;
     }
 
     return radius + ScaleHeightNoise(noise);
 }
 
 float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) {
-    // glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
-    float noise = noise3d(sphere_p, 12, 0.60) * 2500;
+    const Surface &s = surface;
+    float noise = noise3d(sphere_p * s.frequency + s.seed_offset,
+                          s.octaves, s.persistence) * s.amplitude;
 
-    if(noise < 0) {
-        if(has_sea == true) {
-            noise = 0;
-        }
+    if(s.has_sea && noise < s.sea_level) {
+        noise = s.sea_level;
     }
 
     return radius + noise;
 }
 
 float TerrainBody::ScaleHeightNoise(float noise) {
-    constexpr float max_height = 3000.0; // guess
+    constexpr float ref_height = 3000.0; // guess
 
-    // rescale noise by altitude
-    noise *= pow(noise / max_height, power_scaler);
-
-    return noise;
+    // rescale noise by altitude (sign-safe for fractional powers)
+    float sign = noise < 0 ? -1.0f : 1.0f;
+    float n = sign * noise;
+    n *= pow(n / ref_height, surface.power);
+    return sign * n;
 }
 
 inline COLOUR GetColourMoon(float v, float vmin, float vmax) {
@@ -1354,8 +1458,6 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
     Mesh *grid_mesh = new Mesh;
     const int size = 25;
 
-    glm::vec3 blue = glm::vec3(0.1, 0.1, 0.8);
-
     PosNorColVertex vertices[size * size];
     unsigned int indices[size * size * 6] = {0};
 
@@ -1367,10 +1469,17 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
             float height = GetTerrainHeightUnscaled(sphere_p);
 
             // add some color noise
-            float color_noise = noise3d(sphere_p * radius, 1, 0.60) * 100;
+            float color_noise = noise3d(sphere_p * radius + surface.seed_offset, 1, 0.60) * 100;
+            float h = height + ((color_noise / 2) - color_noise);
 
-            COLOUR c = (*colour_func)(height + ((color_noise / 2) - color_noise), radius - 1, radius + 3000);
-
+            COLOUR c;
+            if(surface.palette.empty()) {
+                // no palette in the JSON: fall back to the type-based default
+                c = (*colour_func)(h, radius - 1, radius + 3000);
+            } else {
+                float t = (h - (radius + surface.sea_level)) / surface.max_height;
+                c = surface.PaletteColor(t);
+            }
 
             // set the color based on unscaled noise for better gradient
             glm::vec3 color = glm::vec3(c.r, c.g, c.b);
@@ -1381,10 +1490,8 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
                                                    brightness,
                                                    brightness);
 
-            if(height <= radius) {
-                if(has_sea == true) {
-                    color = blue;
-                }
+            if(surface.has_sea && height <= radius + surface.sea_level) {
+                color = surface.sea_color;
             }
 
             // add back scaling
@@ -1803,15 +1910,13 @@ int main(int argc, char **argv)
     }
 
     // Bodies the orbit camera can target (the ship is the default). Built from
-    // the loaded system: the ship, the star, the home planet, and the home
-    // planet's first moon (when the system has one).
+    // the loaded system: the ship, then every body in the system (in file
+    // order), so G cycles through all of them.
     struct FocusTarget { const char *name; TerrainBody *body; };
     std::vector<FocusTarget> focusTargets;
     focusTargets.push_back({ "ship", nullptr });
-    focusTargets.push_back({ sys.star->name.c_str(), sys.star });
-    focusTargets.push_back({ sys.home->name.c_str(), sys.home });
-    if (sys.moon != nullptr) {
-        focusTargets.push_back({ sys.moon->name.c_str(), sys.moon });
+    for (TerrainBody *b : sys.bodies) {
+        focusTargets.push_back({ b->name.c_str(), b });
     }
     const int numFocusTargets = (int)focusTargets.size();
     int focusBody = 0;   // index into focusTargets
