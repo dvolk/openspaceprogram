@@ -1,7 +1,7 @@
 //
 // Validates the spawn-frame logic introduced in spawn_vehicle (src/main.cpp):
 //   1. resolve_frame_by_soi picks the deepest/innermost SOI containing a point.
-//   2. For each debug spawn location, the resolved frame is the one the
+//   2. For each starting scenario, the resolved frame is the one the
 //      per-tick SOI switching in the main loop would also settle on, i.e. the
 //      ship is NOT displaced on the first physics tick (the whole reason the
 //      now-removed frame_lock existed).
@@ -135,13 +135,12 @@ static const double moon_radius = 200000.0;
 static const double moon_mu = 6.5138398e10;
 
 struct SpawnCase {
-    int loc;
     const char *desc;
-    double rCur;
-    double semiMajor;
+    bool on_pad;
+    double r;             // orbit radius from body center (pad: surface radius)
     double mu;
-    Frame *orbitBodyFrame; // frame whose root_pos is the orbit body's world pos
-    glm::dvec3 worldPos;   // ship world spawn position
+    bool polar;           // polar plane (body local +Y) vs equatorial (+Z)
+    Frame *bodyFrame;     // frame whose root_pos is the body's world pos
     Frame *expectedFrame;
 };
 
@@ -151,76 +150,72 @@ int main() {
     // Settle the root-relative values (as main does before spawn_vehicle).
     root->UpdateOrbitRails(0.0, 1.0 / 60.0);
 
-    // Build the six spawn cases exactly as spawn_vehicle computes them.
+    // Build the spawn cases (scenarios) exactly as spawn_vehicle computes them.
     std::vector<SpawnCase> cases;
 
-    { // loc 2: 75 km circular orbit around Eerbon
-        double rCur = eerbon_radius + 75e3;
+    // Helper: r = radius + alt_frac * (rot soi - radius); rot soi = radius + 100 km.
+    auto add = [&](const char *desc, bool on_pad, double alt_frac, bool polar,
+                   double bodyRadius, double bodyMu, Frame *bodyFrame,
+                   Frame *expectedFrame) {
         SpawnCase c;
-        c.loc = 2; c.desc = "75 km circular orbit, Eerbon";
-        c.rCur = rCur; c.semiMajor = rCur; c.mu = eerbon_mu;
-        c.orbitBodyFrame = eerbon;
-        c.worldPos = eerbon->root_pos + eerbon->root_orient * glm::dvec3(0, 0, rCur);
-        c.expectedFrame = eerbon_rot;
+        c.desc = desc; c.on_pad = on_pad;
+        c.r = on_pad ? bodyRadius
+                     : bodyRadius + alt_frac * 100000.0;
+        c.mu = bodyMu; c.polar = polar; c.bodyFrame = bodyFrame;
+        c.expectedFrame = expectedFrame;
         cases.push_back(c);
-    }
-    { // loc 3: 1000x30 km elliptical orbit around Eerbon, at apoapsis
-        double ra = eerbon_radius + 1000e3;
-        double rp = eerbon_radius + 30e3;
-        SpawnCase c;
-        c.loc = 3; c.desc = "1000x30 km elliptical @ apoapsis, Eerbon";
-        c.rCur = ra; c.semiMajor = 0.5 * (ra + rp); c.mu = eerbon_mu;
-        c.orbitBodyFrame = eerbon;
-        c.worldPos = eerbon->root_pos + eerbon->root_orient * glm::dvec3(0, 0, ra);
-        c.expectedFrame = eerbon;
-        cases.push_back(c);
-    }
-    { // loc 4: 30 km circular orbit around the Moon
-        double rCur = moon_radius + 30e3;
-        SpawnCase c;
-        c.loc = 4; c.desc = "30 km circular orbit, Moon";
-        c.rCur = rCur; c.semiMajor = rCur; c.mu = moon_mu;
-        c.orbitBodyFrame = moon;
-        c.worldPos = moon->root_pos + moon->root_orient * glm::dvec3(0, 0, rCur);
-        c.expectedFrame = moon_rot;
-        cases.push_back(c);
-    }
-    { // loc 5: circular solar orbit, halfway between Eerbon and the Sun
-        glm::dvec3 worldPos = 0.5 * eerbon->root_pos;
-        double rCur = glm::length(worldPos);
-        SpawnCase c;
-        c.loc = 5; c.desc = "circular solar orbit, halfway to Sun";
-        c.rCur = rCur; c.semiMajor = rCur; c.mu = sun_mu;
-        c.orbitBodyFrame = sun;
-        c.worldPos = worldPos;
-        c.expectedFrame = sun;
-        cases.push_back(c);
-    }
-    { // loc 6: 10x1000 km elliptical orbit around Eerbon, at periapsis
-        double rp = eerbon_radius + 10e3;
-        double ra = eerbon_radius + 1000e3;
-        SpawnCase c;
-        c.loc = 6; c.desc = "10x1000 km elliptical @ periapsis, Eerbon";
-        c.rCur = rp; c.semiMajor = 0.5 * (ra + rp); c.mu = eerbon_mu;
-        c.orbitBodyFrame = eerbon;
-        c.worldPos = eerbon->root_pos + eerbon->root_orient * glm::dvec3(0, 0, rp);
-        c.expectedFrame = eerbon_rot;
-        cases.push_back(c);
-    }
+    };
+
+    // Pad scenarios: on the surface (frame must be the rotating one).
+    add("pad (Eerbon)",            true,  0.0,  false, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
+    add("pad-polar (Eerbon)",      true,  0.0,  true,  eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
+    // Orbit scenarios around Eerbon (rot soi = 700 km):
+    //   0.85 -> 685 km (inside rot soi), 1.25 -> 725 km (outside), 5 -> 1100 km.
+    add("rot-orbit (Eerbon)",      false, 0.85, false, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
+    add("inertial-orbit (Eerbon)", false, 1.25, false, eerbon_radius, eerbon_mu, eerbon, eerbon);
+    add("high-orbit (Eerbon)",     false, 5.0,  false, eerbon_radius, eerbon_mu, eerbon, eerbon);
+    add("high-polar (Eerbon)",     false, 5.0,  true,  eerbon_radius, eerbon_mu, eerbon, eerbon);
+    // Same scenarios around the Moon (rot soi = 300 km): 285 km / 325 km.
+    add("rot-orbit (Moon)",        false, 0.85, false, moon_radius, moon_mu, moon, moon_rot);
+    add("inertial-orbit (Moon)",   false, 1.25, false, moon_radius, moon_mu, moon, moon);
+
+    // faceAlong -- same function as spawn_vehicle (src/main.cpp): nose
+    // (local +Z) along dir, roll axis = coordinate axis most orthogonal to dir.
+    auto faceAlong = [](const glm::dvec3 &dir) -> glm::dmat3 {
+        const glm::dvec3 z = glm::normalize(dir);
+        const glm::dvec3 refs[3] = { {1, 0, 0}, {0, 1, 0}, {0, 0, 1} };
+        int best = 0;
+        for(int i = 1; i < 3; i++) {
+            if(std::fabs(glm::dot(refs[i], z)) < std::fabs(glm::dot(refs[best], z))) best = i;
+        }
+        const glm::dvec3 x = glm::normalize(refs[best] - glm::dot(refs[best], z) * z);
+        const glm::dvec3 y = glm::cross(z, x);
+        return glm::dmat3(x, y, z);
+    };
 
     for(SpawnCase &c : cases) {
-        Frame *frame = resolve_frame_by_soi(sun, c.worldPos);
+        const glm::dvec3 rhat_local = c.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
+        const glm::dvec3 worldPos = c.bodyFrame->root_pos
+                                  + c.bodyFrame->root_orient * (rhat_local * c.r);
+        Frame *frame = resolve_frame_by_soi(sun, worldPos);
         char buf[256];
 
-        snprintf(buf, sizeof buf, "loc %d (%s): resolves to '%s'",
-                 c.loc, c.desc, frame->name.c_str());
+        snprintf(buf, sizeof buf, "%s: resolves to '%s'", c.desc, frame->name.c_str());
         CHECK_TRUE(frame == c.expectedFrame, buf);
 
+        if(c.on_pad) {
+            printf("  %s: frame='%s'  r=%.0f m  OK\n",
+                   c.desc, frame->name.c_str(), c.r);
+            continue; // pad cases are frame-resolution checks only
+        }
+
         // Position + velocity in the resolved frame (spawn_vehicle formulas).
-        double speed = std::sqrt(c.mu * (2.0 / c.rCur - 1.0 / c.semiMajor));
-        glm::dvec3 rhat = glm::normalize(c.worldPos - c.orbitBodyFrame->root_pos);
-        glm::dvec3 velWorld = speed * glm::cross(glm::dvec3(0, 1, 0), rhat);
-        glm::dvec3 target = glm::transpose(frame->root_orient) * (c.worldPos - frame->root_pos);
+        double speed = std::sqrt(c.mu / c.r);
+        glm::dvec3 rhat = glm::normalize(worldPos - c.bodyFrame->root_pos);
+        glm::dvec3 vhat = c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
+                                  : glm::cross(glm::dvec3(0, 1, 0), rhat);
+        glm::dvec3 velWorld = speed * vhat;
+        glm::dvec3 target = glm::transpose(frame->root_orient) * (worldPos - frame->root_pos);
         // (matches the fixed spawn_vehicle: stasis of the TARGET frame is
         // subtracted; see the sign note on GetStasisVelocity in frame.h)
         glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
@@ -235,33 +230,42 @@ int main() {
         glm::dvec3 implied = frame->root_orient * (vel + frame->GetStasisVelocity(target))
                            + frame->root_vel;
         glm::dvec3 intended = frame->root_vel + velWorld;
-        snprintf(buf, sizeof buf, "loc %d: implied inertial vel == body vel + orbital vel", c.loc);
+        snprintf(buf, sizeof buf, "%s: implied inertial vel == body vel + orbital vel", c.desc);
         CHECK_TRUE(glm::length(implied - intended) < 1e-6 * speed, buf);
 
         // (b) Ship must stay put under the main-loop SOI logic: not outside the
         //     resolved frame's SOI, and not inside any of its children's SOIs.
         double ship_r = glm::length(target);
-        snprintf(buf, sizeof buf, "loc %d: not outside resolved SOI (r=%.0f, soi=%.0f)",
-                 c.loc, ship_r, frame->soi);
+        snprintf(buf, sizeof buf, "%s: not outside resolved SOI (r=%.0f, soi=%.0f)",
+                 c.desc, ship_r, frame->soi);
         CHECK_TRUE(!(ship_r > frame->soi + 10000.0), buf);
 
-        bool child_switch = false;
         for(Frame *child : frame->children) {
             glm::dvec3 in_child = frame->GetOrientRelTo(child) * target
                                 + frame->GetPositionRelTo(child);
             double dist = glm::length(in_child);
-            if(dist < child->soi - 10000.0) {
-                child_switch = true;
-                snprintf(buf, sizeof buf,
-                         "loc %d: would switch into child '%s' (dist=%.0f < soi=%.0f)",
-                         c.loc, child->name.c_str(), dist, child->soi);
-                CHECK_TRUE(false, buf);
-            }
+            snprintf(buf, sizeof buf,
+                     "%s: would NOT switch into child '%s' (dist=%.0f >= soi=%.0f)",
+                     c.desc, child->name.c_str(), dist, child->soi);
+            CHECK_TRUE(dist > child->soi - 10000.0, buf);
         }
-        (void)child_switch;
 
-        printf("  loc %d (%s): frame='%s'  r=%.0f m  |v|=%.1f m/s  OK\n",
-               c.loc, c.desc, frame->name.c_str(), ship_r, speed);
+        // (c) Prograde orientation: the nose (local +Z, 3rd matrix column)
+        //     must point along vhat, and the orient must be orthonormal.
+        glm::dmat3 orient = faceAlong(vhat);
+        glm::dvec3 nose = orient * glm::dvec3(0, 0, 1);
+        snprintf(buf, sizeof buf, "%s: nose along prograde", c.desc);
+        CHECK_TRUE(glm::length(nose - vhat) < 1e-9, buf);
+        bool ortho = true;
+        const glm::dmat3 gram = orient * glm::transpose(orient);
+        for(int i = 0; i < 3 && ortho; i++)
+            for(int j = 0; j < 3; j++)
+                if(std::fabs(gram[i][j] - ((i == j) ? 1.0 : 0.0)) > 1e-9) ortho = false;
+        snprintf(buf, sizeof buf, "%s: orientation orthonormal", c.desc);
+        CHECK_TRUE(ortho, buf);
+
+        printf("  %s: frame='%s'  r=%.0f m  |v|=%.1f m/s  OK\n",
+               c.desc, frame->name.c_str(), ship_r, speed);
     }
 
     // -----------------------------------------------------------------

@@ -390,9 +390,10 @@ struct System {
 
     * every body gets an INERTIAL (non-rotating) frame, carrying the body's
       true sphere of influence and its orbital angular speed;
-    * a body that spins (a "rotating" section in its JSON) also gets a
-      ROTATING frame, which is a child of its inertial frame in the frame tree
-      and carries the small "near body" SOI;
+    * every body ALSO gets a ROTATING (near-body) frame, a child of its
+      inertial frame in the frame tree, carrying the small "near body" SOI;
+      bodies without a "rotating" JSON section (e.g. the star) get a dummy
+      one with zero spin and soi = radius + 100 km;
     * the parent/child frame tree the per-tick SOI logic walks.
 
   JSON layout (see system.json and ksp_system.json):
@@ -421,7 +422,7 @@ struct System {
           },
           "moves":   bool,
           "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s },
-          "rotating": { "soi": m, "rot_ang_speed": rad/s }   // optional
+          "rotating": { "soi": m, "rot_ang_speed": rad/s }   // optional; absent => dummy (zero spin, soi = radius + 100 km)
         },
         ...
       ]
@@ -581,31 +582,39 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         body->frame = f;
         body->soi = f->soi;   // keep the body's soi in sync (display only)
 
-        // --- rotating frame (optional) -------------------------------------
+        // --- rotating (near-body) frame -------------------------------------
+        // Every body gets one. A body without a "rotating" JSON section (e.g.
+        // the star) gets a DUMMY frame: zero spin (no stasis velocity, no
+        // fictitious forces) and the standard near-body SOI (radius + 100 km,
+        // the same convention the real data uses), so scenario radii, frame
+        // resolution and frame switching work uniformly for every body.
+        Frame *rf = new Frame;
+        rf->name  = body->name + " (rotational)";
+        rf->body  = body;
+        rf->parent = f;                    // child of its own inertial frame
+        rf->children.clear();
+        rf->rotating = true;
+        rf->has_rot_frame = false;
+        rf->pos = glm::dvec3(0, 0, 0);
+        rf->initial_pos = glm::dvec3(0, 0, 0);
+        rf->initial_orient = glm::dmat3();
+        rf->orient = glm::dmat3();
+        rf->vel = glm::dvec3(0);
+        rf->orb_ang_speed = 0;
+        rf->root_pos = glm::dvec3(0);
+        rf->root_vel = glm::dvec3(0);
+        rf->root_orient = glm::dmat3();
         if(bv.contains("rotating") && bv["rotating"].is_object()) {
             const nlohmann::json &rot = bv["rotating"];
-            Frame *rf = new Frame;
-            rf->name  = body->name + " (rotational)";
-            rf->body  = body;
-            rf->parent = f;                    // child of its own inertial frame
-            rf->children.clear();
-            rf->rotating = true;
-            rf->has_rot_frame = false;
             rf->soi = rot.value("soi", 1e5);
-            rf->pos = glm::dvec3(0, 0, 0);
-            rf->initial_pos = glm::dvec3(0, 0, 0);
-            rf->initial_orient = glm::dmat3();
-            rf->orient = glm::dmat3();
-            rf->vel = glm::dvec3(0);
-            rf->orb_ang_speed = 0;
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
-            rf->root_pos = glm::dvec3(0);
-            rf->root_vel = glm::dvec3(0);
-            rf->root_orient = glm::dmat3();
-            body->rot_frame = rf;
-            f->has_rot_frame = true;
-            f->children.push_back(rf);
+        } else {
+            rf->soi = radius + 100e3;       // near-body SOI convention
+            rf->rot_ang_speed = 0.0;        // dummy: does not spin
         }
+        body->rot_frame = rf;
+        f->has_rot_frame = true;
+        f->children.push_back(rf);
 
         // Build the terrain mesh + collision (needs shader/colour_func set).
         body->Create((float)radius, (float)mass);
@@ -1204,136 +1213,96 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
 }
 
 /*
-  Debug starting locations (chosen at the CLI on startup, see main):
-    1 = landed on the spaceport pad (default; nothing to do)
-    2 = 75x75 km circular orbit around Eerbon
-    3 = 1000x30 km elliptical orbit around Eerbon (spawned at apoapsis)
-    4 = 30x30 km circular orbit around the Moon
-    5 = circular solar orbit halfway between Eerbon and the Sun
-    6 = 10x1000 km elliptical orbit around Eerbon (spawned at periapsis)
+  Starting scenarios (chosen at the CLI on startup, see main). The pad
+  scenarios are already set up in main (the ship is built on the pad); the
+  orbit scenarios place the ship in a circular orbit around the home body at
+  r = radius + alt_frac * (rotating-frame SOI - radius), in the equatorial
+  plane (local +Z) or the polar plane (local +Y), nose prograde.
 
-  For the orbital ones: the ship's COM is placed at the given point, the parts
-  keep their relative geometry, and the velocity of a clean central orbit
-  around the orbit body is applied (prograde, i.e. in the system's +y rotation
-  sense).
-
-  The ship's reference frame is not hardcoded per location: it is resolved from
-  the innermost SOI containing the spawn point (see resolve_frame_by_soi). The
-  position and orbital velocity are expressed in that resolved frame, including
-  the stasis-velocity correction so a rotating frame still yields the correct
-  inertial orbital velocity.
+  As before, the ship's frame is resolved from the innermost SOI containing
+  the spawn point (resolve_frame_by_soi), with the stasis-velocity correction
+  so a rotating frame still yields the correct inertial orbital velocity.
 */
-static void spawn_vehicle(Vehicle *ship, int loc, System &sys)
+struct ScenarioDef {
+    const char *name;
+    bool on_pad;
+    double alt_frac; // orbit altitude as a fraction of (rot SOI - radius)
+    bool polar;
+};
+static const ScenarioDef kScenarios[] = {
+    {"pad",            true,  0.0,  false},
+    {"pad-polar",      true,  0.0,  true},
+    {"rot-orbit",      false, 0.85, false},
+    {"inertial-orbit", false, 1.25, false},
+    {"high-orbit",     false, 5.0,  false},
+    {"high-polar",     false, 5.0,  true},
+};
+
+// Orientation with the nose (local +Z) along `dir`; the roll axis is the
+// coordinate axis most orthogonal to dir (never singular for a unit dir).
+static glm::dmat3 faceAlong(const glm::dvec3 &dir)
 {
-    if(loc == 1) { return; } // landed on the pad; already set up
-
-    // The bodies/frames for this system: the star, the home planet, and the
-    // home planet's first moon.
-    TerrainBody *sunBody    = sys.star;
-    TerrainBody *eerbonBody = sys.home;
-    TerrainBody *moonBody   = sys.moon;
-    Frame *sunFrame    = sys.star->frame;
-    Frame *eerbonFrame = sys.home->frame;
-    Frame *moonFrame   = (moonBody != nullptr) ? moonBody->frame : nullptr;
-
-    void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
-    glm::dvec3 GetPosition(Body *b);
-    glm::dmat3 GetOrient(Body *b);
-    void SetVelocity(Body *b, glm::dvec3 vel);
-
-    // Per location: the body the orbit is around, the ship's world spawn
-    // position, and the orbital radii (current radius + semi-major axis) that
-    // set the orbital speed.
-    TerrainBody *orbitBody;
-    glm::dvec3 shipWorldPos;
-    double rCur, semiMajor;
-
-    switch(loc) {
-        case 2: // 75x75 km circular orbit around Eerbon (over the pad)
-        {
-            orbitBody = eerbonBody;
-            rCur = eerbonBody->radius + 75e3;
-            semiMajor = rCur;
-            shipWorldPos = eerbonFrame->root_pos
-                         + eerbonFrame->root_orient * glm::dvec3(0, 0, rCur);
-            break;
-        }
-        case 3: // 1000x30 km elliptical orbit, spawned at apoapsis
-        {
-            orbitBody = eerbonBody;
-            double ra = eerbonBody->radius + 1000e3; // apoapsis radius
-            double rp = eerbonBody->radius + 30e3;   // periapsis radius
-            rCur = ra;
-            semiMajor = 0.5 * (ra + rp);
-            shipWorldPos = eerbonFrame->root_pos
-                         + eerbonFrame->root_orient * glm::dvec3(0, 0, ra);
-            break;
-        }
-        case 4: // 30x30 km circular orbit around the Moon
-        {
-            if(moonBody == nullptr) { return; } // no moon in this system
-            orbitBody = moonBody;
-            rCur = moonBody->radius + 30e3;
-            semiMajor = rCur;
-            shipWorldPos = moonFrame->root_pos
-                         + moonFrame->root_orient * glm::dvec3(0, 0, rCur);
-            break;
-        }
-        case 5: // circular solar orbit, halfway between Eerbon and the Sun
-        {
-            orbitBody = sunBody;
-            shipWorldPos = 0.5 * eerbonFrame->root_pos; // the Sun sits at the origin
-            rCur = glm::length(shipWorldPos);
-            semiMajor = rCur;
-            break;
-        }
-        case 6: // 10x1000 km elliptical orbit around Eerbon, spawned at periapsis
-        {
-            orbitBody = eerbonBody;
-            double rp = eerbonBody->radius + 10e3;    // periapsis radius
-            double ra = eerbonBody->radius + 1000e3;  // apoapsis radius
-            rCur = rp;
-            semiMajor = 0.5 * (ra + rp);
-            shipWorldPos = eerbonFrame->root_pos
-                         + eerbonFrame->root_orient * glm::dvec3(0, 0, rp);
-            break;
-        }
-        default:
-            return;
+    const glm::dvec3 z = glm::normalize(dir);
+    const glm::dvec3 refs[3] = { {1, 0, 0}, {0, 1, 0}, {0, 0, 1} };
+    int best = 0;
+    for(int i = 1; i < 3; i++) {
+        if(fabs(glm::dot(refs[i], z)) < fabs(glm::dot(refs[best], z))) best = i;
     }
+    const glm::dvec3 x = glm::normalize(refs[best] - glm::dot(refs[best], z) * z);
+    const glm::dvec3 y = glm::cross(z, x);
+    return glm::dmat3(x, y, z);
+}
 
-    Frame *frame = resolve_frame_by_soi(sunFrame, shipWorldPos);
+static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home, System &sys)
+{
+    if(sc.on_pad) { return; } // already on the pad, set up in main
 
-    // Orbital speed (vis-viva; reduces to circular speed when semiMajor == rCur).
-    double speed = sqrt(orbitBody->mu * (2.0 / rCur - 1.0 / semiMajor));
+    // Circular orbit around the home body: radius measured from its frame origin.
+    const double r = home->radius + sc.alt_frac * (home->rot_frame->soi - home->radius);
+    const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
+    const glm::dvec3 shipWorldPos = home->frame->root_pos
+                                  + home->frame->root_orient * (rhat_local * r);
+
+    Frame *frame = resolve_frame_by_soi(sys.star->frame, shipWorldPos);
+
+    // Circular orbital speed (vis-viva with semi-major axis == r).
+    const double speed = sqrt(home->mu / r);
 
     // Prograde: perpendicular to the radius vector, in the system's sense of
-    // rotation (+y axis). This is the physical (inertial) orbital velocity.
-    glm::dvec3 rhat = glm::normalize(shipWorldPos - orbitBody->frame->root_pos);
-    glm::dvec3 velWorld = speed * glm::cross(glm::dvec3(0, 1, 0), rhat);
+    // rotation (+y axis); polar orbits go around the spin axis instead.
+    const glm::dvec3 rhat = glm::normalize(shipWorldPos - home->frame->root_pos);
+    const glm::dvec3 vhat = sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
+                                     : glm::cross(glm::dvec3(0, 1, 0), rhat);
+    const glm::dvec3 velWorld = speed * vhat;
 
     // Express the spawn position and velocity in the resolved frame's local
-    // coordinates. The desired inertial velocity is the body's velocity plus
-    // velWorld (relative to the body); since the spawn frame's origin sits on
-    // the body (V_frame == V_body), those cancel and
-    // v = R^T * velWorld - stasis(p)  (inertial vel = R*(v + stasis(p)) + V).
-    glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
-    glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
-                    - frame->GetStasisVelocity(target);
+    // coordinates: v = R^T * velWorld - stasis(p) (inertial vel =
+    // R*(v + stasis(p)) + V, with V == body velocity since the frame origin
+    // sits on the body).
+    const glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
+    const glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
+                          - frame->GetStasisVelocity(target);
 
     if(frame != ship->frame) {
         ship->moveToFrame(frame);
     }
 
-    glm::dvec3 com = ship->get_center_of_mass();
+    // Nose (local +Z) along prograde. The parts are currently stacked along
+    // their build axis (pad_dir); rotate the offsets by the same `orient`
+    // that is applied to every part, so the whole ship rigidly aligns its
+    // axis with vhat (capsule leading) instead of each part spinning in
+    // place.
+    const glm::dmat3 orient = faceAlong(vhat);
+    const glm::dvec3 com = ship->get_center_of_mass();
     for(auto&& part : ship->parts) {
-        glm::dvec3 p = GetPosition(part);
-        setPosRot(part, target + (p - com), GetOrient(part));
+        const glm::dvec3 p = GetPosition(part);
+        setPosRot(part, target + orient * (p - com), orient);
         SetVelocity(part, vel);
     }
 
-    printf("Spawn point %d: frame '%s' @ world (%.0f, %.0f, %.0f), |v| = %.1f m/s\n",
-           loc, frame->name.c_str(), shipWorldPos.x, shipWorldPos.y, shipWorldPos.z, speed);
+    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s\n",
+           sc.name, home->name.c_str(), frame->name.c_str(),
+           shipWorldPos.x, shipWorldPos.y, shipWorldPos.z, r, speed);
 }
 
 class StaticBuilding {
@@ -1615,19 +1584,26 @@ OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel,
 int main(int argc, char **argv)
 {
     /* CLI (parsed with CLI11):
-       ./osp [--system FILE] [--start N] [--time-accel N] [--orbit-log]
-             [--orbit-interval S] [--free-cam-pos X Y Z] [--free-cam-fwd X Y Z]
-             [--free-cam-up X Y Z] [--help]
+       ./osp [--system FILE] [--body NAME] [--scenario NAME] [--time-accel N]
+             [--orbit-log] [--orbit-interval S] [--free-cam-pos X Y Z]
+             [--free-cam-fwd X Y Z] [--free-cam-up X Y Z] [--help]
 
        --system FILE: star-system JSON file to load (default: system.json).
                        Use ksp_system.json to fly in the Kerbal system.
-       --start N: starting location, 1-6 (default 1)
-         1 = landed on the spaceport pad (default)
-         2 = 75x75 km circular orbit around Eerbon
-         3 = 1000x30 km elliptical orbit around Eerbon
-         4 = 30x30 km circular orbit around the Moon
-         5 = circular solar orbit halfway between Eerbon and the Sun
-         6 = 10x1000 km elliptical orbit around Eerbon (periapsis)
+       --body NAME: body the ship starts on / orbits (default: the system's
+                       "home" body). Any body in the system, star included.
+       --scenario NAME: starting scenario (default: pad)
+         pad            landed on the spaceport pad (equatorial)
+         pad-polar      landed on the spaceport pad over the north pole
+         rot-orbit      circular orbit, altitude 0.85 * (rot-SOI - radius):
+                        inside the rotating SOI, so the ship starts in the
+                        ROTATING frame
+         inertial-orbit circular orbit, altitude 1.25 * (rot-SOI - radius):
+                        just outside the rotating SOI, so the ship starts in
+                        the INERTIAL frame
+         high-orbit     circular orbit, altitude 5 * (rot-SOI - radius)
+         high-polar     same as high-orbit, but in a polar plane (the plane
+                        containing the body's spin axis)
 
        --time-accel N: initial time acceleration (0 = paused; runtime is
                        still changed with the , / . keys)
@@ -1641,15 +1617,16 @@ int main(int argc, char **argv)
                        the three switches the starting mode to free flight. */
     CLI::App app{"Open Space Program"};
 
-    int starting_location = 1;
-    app.add_option("-s,--start", starting_location,
-        "Starting location [1-6]: 1 spaceport pad (default), "
-        "2 75x75 km circular Eerbon orbit, "
-        "3 1000x30 km elliptical Eerbon orbit, "
-        "4 30x30 km circular Moon orbit, "
-        "5 circular solar orbit halfway to the Sun, "
-        "6 10x1000 km elliptical Eerbon orbit (periapsis)")
-        ->check(CLI::Range(1, 6));
+    std::string body_name;
+    app.add_option("--body", body_name,
+        "Body the ship starts on / orbits (default: the system's home body)");
+
+    std::string scenario = "pad";
+    app.add_option("--scenario", scenario,
+        "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
+        "high-orbit, high-polar (default: pad)")
+        ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
+                               "inertial-orbit", "high-orbit", "high-polar"}));
 
     std::string system_file = "system.json";
     app.add_option("--system", system_file,
@@ -1691,7 +1668,11 @@ int main(int argc, char **argv)
                    "Initial free camera up direction: X Y Z (default: 0 1 0)")
         ->expected(3);
 
-    CLI11_PARSE(app, argc, argv);
+    try {
+        CLI11_PARSE(app, argc, argv);
+    } catch(const CLI::ParseError &e) {
+        return app.exit(e);
+    }
 
     // Any of the --free-cam-* options opts in to starting in free-cam mode.
     const bool use_free_cam = !free_cam_pos.empty() || !free_cam_fwd.empty()
@@ -1750,15 +1731,42 @@ int main(int argc, char **argv)
     // ksp_system.json to fly in the Kerbal system.
     System sys = load_system(system_file.c_str(), terrainshader, sunshader);
     TerrainBody *sun   = sys.star;   // the star
-    TerrainBody *earth = sys.home;   // the home planet (the ship starts here)
+    // The body the ship starts on / orbits: --body, or the system's "home".
+    TerrainBody *home;
+    if(body_name.empty()) {
+        home = sys.home;
+    } else {
+        home = sys.find(body_name);
+        if(home == nullptr) {
+            std::string avail;
+            for(size_t i = 0; i < sys.bodies.size(); i++) {
+                if(i) avail += ", ";
+                avail += sys.bodies[i]->name;
+            }
+            printf("error: unknown body '%s' (available: %s)\n",
+                   body_name.c_str(), avail.c_str());
+            return 1;
+        }
+    }
 
     std::vector<TerrainBody *> planets = sys.bodies;
 
     Vehicle *ship = new Vehicle;
-    ship->m_parent = earth;
-    // The ship starts in the home planet's rotating frame (its "surface"
-    // frame); fall back to the inertial frame if the planet doesn't spin.
-    ship->frame = (earth->rot_frame != nullptr) ? earth->rot_frame : earth->frame;
+    ship->m_parent = home;
+    // The ship starts in the body's rotating (near-body) frame; every body
+    // has one (a zero-spin dummy for bodies that don't rotate, see load_system).
+    ship->frame = home->rot_frame;
+
+    // The pad the ship starts on: over the spin axis (+Y) for the polar pad,
+    // the legacy near-equator spot otherwise. Orbit scenarios build the ship
+    // here too, then teleport it into orbit (spawn_vehicle below).
+    const bool pad_polar = (scenario == "pad-polar");
+    const glm::dvec3 pad_dir = pad_polar
+        ? glm::dvec3(0.0, 1.0, 0.0)
+        : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+    // Nose (local +Z, the thrust axis) along the pad radial = the launch
+    // direction; ~identity at the legacy pad, a 90° tilt at the pole.
+    const glm::dmat3 pad_orient = faceAlong(pad_dir);
 
     StaticBuilding *space_port;
     {
@@ -1793,27 +1801,26 @@ int main(int argc, char **argv)
         wheel_model->FromData(wheel_mesh, partsshader, reaction_wheel_texture);
         engine_model->FromData(engine_mesh, partsshader, engine_texture);
 
-        glm::dvec3 start(0);
-        glm::dvec3 p = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-        double ground_alt = ship->m_parent->GetTerrainHeight(p);
-        start = ((ground_alt + 0.0f) * p);
+        const double ground_alt = home->GetTerrainHeight(pad_dir);
+        const glm::dvec3 start = pad_dir * ground_alt;
 
         space_port = new StaticBuilding;
-        space_port->body = create_body(space_port_model, start.x, start.y, start.z + 5, 0, false);
-        space_port->parent = ship->m_parent;
+        space_port->body = create_body(space_port_model, 0, 0, 0, 0, false);
+        setPosRot(space_port->body, start + pad_dir * 5.0, pad_orient);
+        space_port->parent = home;
 
         // double ship_height = 190000.5;
         double ship_height = 3.5;
 
         // top
-        Body *capsule =
-            create_body(capsule_model, start.x, start.y, start.z + ship_height + 7, 0.5, true);
+        Body *capsule = create_body(capsule_model, 0, 0, 0, 0.5, true);
+        setPosRot(capsule, start + pad_dir * (ship_height + 7), pad_orient);
         // middle
-        Body *reaction_wheel =
-            create_body(wheel_model, start.x, start.y, start.z + ship_height + 5, 1.0, true);
+        Body *reaction_wheel = create_body(wheel_model, 0, 0, 0, 1.0, true);
+        setPosRot(reaction_wheel, start + pad_dir * (ship_height + 5), pad_orient);
         // bottom
-        Body *thruster =
-            create_body(engine_model, start.x, start.y, start.z + ship_height + 3, 3.0, true);
+        Body *thruster = create_body(engine_model, 0, 0, 0, 3.0, true);
+        setPosRot(thruster, start + pad_dir * (ship_height + 3), pad_orient);
 
         ship->setRoot(capsule);
         ship->attachDown(reaction_wheel);
@@ -1830,9 +1837,13 @@ int main(int argc, char **argv)
     }
     check_gl_error();
 
-    /* Apply the CLI starting location (before the camera is constructed,
+    /* Apply the CLI scenario (before the camera is constructed,
        so the camera focuses on the spawn point). */
-    spawn_vehicle(ship, starting_location, sys);
+    const ScenarioDef *sc = &kScenarios[0];
+    for(size_t i = 0; i < sizeof(kScenarios) / sizeof(kScenarios[0]); i++) {
+        if(kScenarios[i].name == scenario) { sc = &kScenarios[i]; break; }
+    }
+    spawn_vehicle(ship, *sc, home, sys);
 
     Mesh *engine_plume_mesh = new Mesh;
     engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
@@ -2724,8 +2735,8 @@ int main(int argc, char **argv)
                            camera->forward.x, camera->forward.y, camera->forward.z,
                            camera->up.x, camera->up.y, camera->up.z);
                 }
-                ImGui::Text("Earth distance: %f",
-                            glm::length(ship->GetPositionRelTo(ship->controller, earth->frame)));
+                ImGui::Text("Home distance: %f",
+                            glm::length(ship->GetPositionRelTo(ship->controller, home->frame)));
                 ImGui::Text("Pos: %.3fkm", distance / 1000);
                 ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
                 ImGui::Text("Vel: %.3fm/s", speed);

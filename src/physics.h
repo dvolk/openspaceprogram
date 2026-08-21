@@ -55,12 +55,14 @@ void ApplyTorqueRelY(Body *body, double mag);
 void ApplyTorqueRelZ(Body *body, double mag);
 
 void SetVelocity(Body *body, glm::dvec3 vel);
+void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);
 void setGravity(Body *body, double acc);
 
 glm::dvec3 GetPosition(Body *body);
 glm::dvec3 GetVelocity(Body *body);
 glm::dvec3 GetAngVelocity(Body *b);
 glm::dvec3 getCOM(Body *body);
+glm::dmat3 GetOrient(Body *body);
 
 void * GlueTogether(Body *parent, Body *child);
 
