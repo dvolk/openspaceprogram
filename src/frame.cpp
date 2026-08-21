@@ -38,7 +38,9 @@ glm::dvec3 Frame::GetPositionRelTo(Frame *relTo)
 
 glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)
 {
-    if (this == relTo) return glm::dmat3();
+    // GLM 1.0.0+: default-constructed matrices are zero, not identity, so
+    // build the identity explicitly.
+    if (this == relTo) return glm::dmat3(1.0);
     return glm::transpose(relTo->root_orient) * root_orient;
 }
 

@@ -70,13 +70,13 @@ static Frame *make_tree() {
     sun->rotating = false;
     sun->has_rot_frame = false;
     sun->pos = glm::dvec3(0);
-    sun->orient = glm::dmat3();
+    sun->orient = glm::dmat3(1.0);
     sun->vel = glm::dvec3(0);
     sun->rot_ang_speed = 0;
     sun->orb_ang_speed = 0;
     sun->root_pos = glm::dvec3(0);
     sun->root_vel = glm::dvec3(0);
-    sun->root_orient = glm::dmat3();
+    sun->root_orient = glm::dmat3(1.0);
 
     eerbon->name = "eerbon";
     eerbon->parent = sun;
@@ -84,13 +84,13 @@ static Frame *make_tree() {
     eerbon->rotating = false;
     eerbon->has_rot_frame = true;
     eerbon->pos = glm::dvec3(0, 0, -1e8);
-    eerbon->orient = glm::dmat3();
+    eerbon->orient = glm::dmat3(1.0);
     eerbon->vel = glm::dvec3(100, 0, 0); // some orbital velocity
     eerbon->rot_ang_speed = 0;
     eerbon->orb_ang_speed = 0;
     eerbon->root_pos = glm::dvec3(0);
     eerbon->root_vel = glm::dvec3(0);
-    eerbon->root_orient = glm::dmat3();
+    eerbon->root_orient = glm::dmat3(1.0);
 
     // 20-degree rotation about Y
     const double ang = 20.0 * M_PI / 180.0;
@@ -109,7 +109,7 @@ static Frame *make_tree() {
     eerbon_rot->orb_ang_speed = 0;
     eerbon_rot->root_pos = glm::dvec3(0);
     eerbon_rot->root_vel = glm::dvec3(0);
-    eerbon_rot->root_orient = glm::dmat3();
+    eerbon_rot->root_orient = glm::dmat3(1.0);
 
     moon->name = "moon";
     moon->parent = eerbon;
@@ -117,13 +117,13 @@ static Frame *make_tree() {
     moon->rotating = false;
     moon->has_rot_frame = true;
     moon->pos = glm::dvec3(-12e6, 0, 0);
-    moon->orient = glm::dmat3();
+    moon->orient = glm::dmat3(1.0);
     moon->vel = glm::dvec3(0, 0, 50); // moon moves relative to its parent (eerbon)
     moon->rot_ang_speed = 0;
     moon->orb_ang_speed = 0;
     moon->root_pos = glm::dvec3(0);
     moon->root_vel = glm::dvec3(0);
-    moon->root_orient = glm::dmat3();
+    moon->root_orient = glm::dmat3(1.0);
 
     moon_rot->name = "moon_rot";
     moon_rot->parent = moon;
@@ -131,14 +131,14 @@ static Frame *make_tree() {
     moon_rot->rotating = true;
     moon_rot->has_rot_frame = false;
     moon_rot->pos = glm::dvec3(0);
-    moon_rot->initial_orient = glm::dmat3();
-    moon_rot->orient = glm::dmat3();
+    moon_rot->initial_orient = glm::dmat3(1.0);
+    moon_rot->orient = glm::dmat3(1.0);
     moon_rot->vel = glm::dvec3(0);
     moon_rot->rot_ang_speed = 0.0005;
     moon_rot->orb_ang_speed = 0;
     moon_rot->root_pos = glm::dvec3(0);
     moon_rot->root_vel = glm::dvec3(0);
-    moon_rot->root_orient = glm::dmat3();
+    moon_rot->root_orient = glm::dmat3(1.0);
 
     return sun;
 }
@@ -170,7 +170,7 @@ int main() {
     printf("== identity relations ==\n");
     CHECK_TRUE(dvec_close(sun->GetPositionRelTo(sun), glm::dvec3(0), E), "GetPos(A,A) == 0");
     CHECK_TRUE(dvec_close(eerbon->GetVelocityRelTo(eerbon), glm::dvec3(0), E), "GetVel(A,A) == 0");
-    CHECK_TRUE(mat_close(eerbon->GetOrientRelTo(eerbon), glm::dmat3(), E), "GetOrient(A,A) == I");
+    CHECK_TRUE(mat_close(eerbon->GetOrientRelTo(eerbon), glm::dmat3(1.0), E), "GetOrient(A,A) == I");
 
     printf("== concrete positions ==\n");
     // eerbon relative to sun is just its pos.
@@ -204,7 +204,7 @@ int main() {
     printf("== orient invertibility: O(A,B)*O(B,A) == I ==\n");
     {
         glm::dmat3 prod = eerbon_rot->GetOrientRelTo(sun) * sun->GetOrientRelTo(eerbon_rot);
-        CHECK_TRUE(mat_close(prod, glm::dmat3(), 1e-9), "O(rot,sun)*O(sun,rot) == I");
+        CHECK_TRUE(mat_close(prod, glm::dmat3(1.0), 1e-9), "O(rot,sun)*O(sun,rot) == I");
     }
 
     printf("== velocity relative ==\n");
@@ -299,9 +299,9 @@ int main() {
         parent->parent = NULL;
         parent->rotating = false;
         parent->pos = glm::dvec3(0);
-        parent->orient = glm::dmat3();
+        parent->orient = glm::dmat3(1.0);
         parent->root_pos = glm::dvec3(0);
-        parent->root_orient = glm::dmat3();
+        parent->root_orient = glm::dmat3(1.0);
 
         Frame *child = new Frame;
         child->parent = parent;

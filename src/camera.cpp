@@ -43,7 +43,7 @@ OrbitCamera::OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, flo
     // projection consistent with Camera::setAspect (used on resize).
     this->projection = glm::perspective(fov, aspect, zNear, zFar);
     this->view = glm::translate(pos);
-    this->orient = glm::dmat3();
+    this->orient = glm::dmat3(1.0); // GLM 1.0.0+: default mat ctor is zero, not identity
 }
 
 void OrbitCamera::wheel(double amt) {

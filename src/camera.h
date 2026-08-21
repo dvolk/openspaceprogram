@@ -9,8 +9,10 @@ class Camera {
 public:
     virtual ~Camera() {}
 
-    glm::dmat4 view;
-    glm::mat4 projection;
+    // GLM 1.0.0+: default-constructed matrices are zero, not identity, so
+    // default to identity explicitly (pre-1.0 glm semantics).
+    glm::dmat4 view = glm::dmat4(1.0);
+    glm::mat4 projection = glm::mat4(1.0);
     glm::dvec3 pos;
     glm::dvec3 forward;
     glm::dvec3 up;
@@ -42,7 +44,7 @@ public:
 class OrbitCamera : public Camera {
 public:
     glm::dvec3 focusPoint;
-    glm::dmat3 orient;
+    glm::dmat3 orient = glm::dmat3(1.0); // GLM 1.0.0+: default mat ctor is zero
     double x, y;
     double distance;
 

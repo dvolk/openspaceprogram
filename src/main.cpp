@@ -262,7 +262,7 @@ struct TerrainBody {
     // and deleted here, so there is no separate flat frames array to manage.
     Frame *frame;
     Frame *rot_frame;
-    glm::dmat4 transform;
+    glm::dmat4 transform = glm::dmat4(1.0); // GLM 1.0.0+: default mat ctor is zero
     glm::vec3 sunlightVec;
     int dbg_drew_patches;
 
@@ -563,8 +563,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         f->has_rot_frame = false;
         f->pos = glm::dvec3(0, 0, 0);
         f->initial_pos = f->pos;
-        f->initial_orient = glm::dmat3();
-        f->orient = glm::dmat3();
+        // GLM 1.0.0+: default-constructed matrices are zero, not identity.
+        f->initial_orient = glm::dmat3(1.0);
+        f->orient = glm::dmat3(1.0);
         f->vel = glm::dvec3(0);
         f->orb_ang_speed = 0;
         f->rot_ang_speed = 0;
@@ -572,7 +573,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         f->soi = 1e6;
         f->root_pos = glm::dvec3(0);
         f->root_vel = glm::dvec3(0);
-        f->root_orient = glm::dmat3();
+        f->root_orient = glm::dmat3(1.0);
 
         if(bv.contains("inertial") && bv["inertial"].is_object()) {
             const nlohmann::json &in = bv["inertial"];
@@ -615,14 +616,14 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         rf->has_rot_frame = false;
         rf->pos = glm::dvec3(0, 0, 0);
         rf->initial_pos = glm::dvec3(0, 0, 0);
-        rf->initial_orient = glm::dmat3();
-        rf->orient = glm::dmat3();
+        rf->initial_orient = glm::dmat3(1.0);
+        rf->orient = glm::dmat3(1.0);
         rf->vel = glm::dvec3(0);
         rf->orb_ang_speed = 0;
         rf->spin_axis = glm::dvec3(0, 1, 0);   // no axial tilt by default
         rf->root_pos = glm::dvec3(0);
         rf->root_vel = glm::dvec3(0);
-        rf->root_orient = glm::dmat3();
+        rf->root_orient = glm::dmat3(1.0);
         if(bv.contains("rotating") && bv["rotating"].is_object()) {
             const nlohmann::json &rot = bv["rotating"];
             rf->soi = rot.value("soi", 1e5);
@@ -2418,7 +2419,7 @@ int main(int argc, char **argv)
 
                     if(ship->frame->isRotFrame()) {
                         /* we're in its rotational frame */
-                        planet->transform = glm::dmat4();
+                        planet->transform = glm::dmat4(1.0); // identity (GLM 1.0.0+: default ctor is zero)
                     }
                     else {
                         /* we're in its inertial frame */
@@ -2619,7 +2620,7 @@ int main(int argc, char **argv)
                     glm::mat4 ModelViewFloat = View * Model;
                     engine_plume_model->shader->Bind();
                     engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
-                    engine_plume_model->shader->setUniform_mat4(1, glm::mat4());
+                    engine_plume_model->shader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
                     engine_plume_model->shader->setUniform_vec3(2, glm::vec3(1, 1, 1));
 
                     glActiveTexture(GL_TEXTURE0);

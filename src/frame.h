@@ -21,8 +21,11 @@ struct Frame {
     /* relative to parent */
     glm::dvec3 pos;
     glm::dvec3 initial_pos;
-    glm::dmat3 initial_orient;
-    glm::dmat3 orient;
+    // GLM 1.0.0+: default-constructed matrices are zero, so default these to
+    // the identity explicitly (matches the pre-1.0 glm behaviour these
+    // members relied on).
+    glm::dmat3 initial_orient = glm::dmat3(1.0);
+    glm::dmat3 orient = glm::dmat3(1.0);
     glm::dvec3 vel;
     double orb_ang_speed;
     double rot_ang_speed;
@@ -43,7 +46,7 @@ struct Frame {
     /* relative to universe root (i.e. the sun) */
     glm::dvec3 root_pos;
     glm::dvec3 root_vel;
-    glm::dmat3 root_orient;
+    glm::dmat3 root_orient = glm::dmat3(1.0);
 
     double ang;
     double orb_ang;

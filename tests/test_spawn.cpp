@@ -69,7 +69,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     sun->children = { eerbon };
     sun->rotating = false;
     sun->pos = glm::dvec3(0);
-    sun->orient = glm::dmat3();
+    sun->orient = glm::dmat3(1.0);
     sun->rot_ang_speed = 0;
     sun->orb_ang_speed = 0;
     sun->soi = 9999999999999999.0;
@@ -80,7 +80,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     eerbon->rotating = false;
     eerbon->has_rot_frame = true;
     eerbon->pos = glm::dvec3(0, 0, -13599840260.0);
-    eerbon->orient = glm::dmat3();
+    eerbon->orient = glm::dmat3(1.0);
     eerbon->rot_ang_speed = 0;
     eerbon->orb_ang_speed = 0.00000068269186570822291594437651;
     eerbon->soi = 84159286.0;
@@ -90,8 +90,8 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     eerbon_rot->children = {};
     eerbon_rot->rotating = true;
     eerbon_rot->pos = glm::dvec3(0);
-    eerbon_rot->orient = glm::dmat3();
-    eerbon_rot->initial_orient = glm::dmat3();
+    eerbon_rot->orient = glm::dmat3(1.0);
+    eerbon_rot->initial_orient = glm::dmat3(1.0);
     eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086;
     eerbon_rot->orb_ang_speed = 0;
     eerbon_rot->soi = 700000.0;
@@ -102,7 +102,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     moon->rotating = false;
     moon->has_rot_frame = true;
     moon->pos = glm::dvec3(-12e6, 0, 0);
-    moon->orient = glm::dmat3();
+    moon->orient = glm::dmat3(1.0);
     moon->rot_ang_speed = 0;
     moon->orb_ang_speed = 0.00004520797578987211820731369629;
     moon->soi = 2429559.1;
@@ -112,8 +112,8 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     moon_rot->children = {};
     moon_rot->rotating = true;
     moon_rot->pos = glm::dvec3(0);
-    moon_rot->orient = glm::dmat3();
-    moon_rot->initial_orient = glm::dmat3();
+    moon_rot->orient = glm::dmat3(1.0);
+    moon_rot->initial_orient = glm::dmat3(1.0);
     moon_rot->rot_ang_speed = 0.00004520785218583258404235991675;
     moon_rot->orb_ang_speed = 0;
     moon_rot->soi = 300000.0;
