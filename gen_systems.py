@@ -121,6 +121,7 @@ K = [
 #   palette:  land-color stops [elevation 0..1, [r,g,b]], lerped by altitude
 #   sea_color / sea_level: ocean tint + level (m above base radius)
 #   amplitude: peak terrain noise height [m]
+#   bands/band_count: gas giant — smooth sphere colored by latitude stripes
 # Colors are hand-picked KSP-flavored approximations.
 # ---------------------------------------------------------------------------
 SURFACES = {
@@ -178,10 +179,10 @@ SURFACES = {
                     [1.0, [0.65, 0.35, 0.25]]],
     },
     "Jool": {
-        "amplitude": 15000,
-        "sea_color": [0.00, 0.40, 0.50],
-        "palette": [[0.0, [0.20, 0.50, 0.30]],
-                    [1.0, [0.55, 0.75, 0.55]]],
+        "bands": True,
+        "band_count": 9,
+        "palette": [[0.0, [0.30, 0.42, 0.45]],
+                    [1.0, [0.80, 0.87, 0.83]]],
     },
     "Laythe": {
         "amplitude": 3000,

@@ -221,6 +221,8 @@ struct Surface {
     std::vector<PaletteStop> palette;  // empty => type-based default palette
     float max_height = 1.0f;     // [m] scaled relief above sea level (computed)
     glm::vec3 seed_offset = glm::vec3(0.0f);
+    bool bands = false;          // gas giant: smooth sphere, latitude bands
+    int band_count = 9;          // stripes pole to pole (odd => bright equator)
 
     COLOUR PaletteColor(float t) const {
         const std::vector<PaletteStop> &s = palette;
@@ -241,6 +243,17 @@ struct Surface {
             }
         }
         return { 1.0f, 1.0f, 1.0f };
+    }
+
+    // Gas-giant color at unit direction p: latitude runs through a triangle
+    // wave so each stripe is dark at its edges, light at its center, sampled
+    // through the palette (first stop = dark, last = light).
+    COLOUR BandColor(const glm::vec3& p) const {
+        float y = glm::clamp(p.y, -1.0f, 1.0f);
+        float u = 0.5f + 0.5f * y;           // 0 = south pole, 1 = north
+        float x = u * (float)band_count;
+        float v = 1.0f - std::fabs(2.0f * (x - std::floor(x)) - 1.0f);
+        return PaletteColor(v);
     }
 };
 
@@ -419,6 +432,10 @@ struct System {
             "sea_level":   m,                // key present => has ocean (0)
             "sea_color":   [r,g,b],          //                         (0.1,0.1,0.8)
             "palette":     [ [t, [r,g,b]], ... ]   // land-color stops, t in 0..1
+            "bands":       bool,             // gas giant: smooth sphere,
+                                             // latitude bands, no terrain
+            "band_count":  int,              // stripes pole to pole (9);
+                                             // odd => bright band at equator
           },
           "moves":   bool,
           "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s,
@@ -528,6 +545,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                           [](const PaletteStop &a, const PaletteStop &b) {
                               return a.t < b.t;
                           });
+            }
+            s.bands = sv.value("bands", false);
+            if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
+                s.band_count = std::max(1, sv["band_count"].get<int>());
             }
         }
         // Scaled relief a full-amplitude peak ends up at, after
@@ -1381,6 +1402,9 @@ float noise3d(const glm::vec3& p, int octaves, float persistence) {
 
 float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
     const Surface &s = surface;
+    if(s.bands) {
+        return radius;   // gas giant: smooth sphere
+    }
     float noise = noise3d(sphere_p * s.frequency + s.seed_offset,
                           s.octaves, s.persistence) * s.amplitude;
 
@@ -1463,6 +1487,21 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
             glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i/(float)(size-1), j/(float)(size-1));
+
+            if (surface.bands) {
+                // gas giant: smooth sphere, color by latitude band
+                COLOUR cb = surface.BandColor(sphere_p);
+                glm::vec3 color = glm::vec3(cb.r, cb.g, cb.b);
+                float brightness = (cb.r + cb.g + cb.b) / 6;
+                color = float(0.5) * color + glm::vec3(brightness,
+                                                       brightness,
+                                                       brightness);
+                vertices[j + size * i] = PosNorColVertex(sphere_p * radius,
+                                                         sphere_p,
+                                                         color);
+                continue;
+            }
+
             float height = GetTerrainHeightUnscaled(sphere_p);
 
             // add some color noise
