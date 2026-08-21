@@ -1616,8 +1616,8 @@ int main(int argc, char **argv)
              [--orbit-log] [--orbit-interval S] [--free-cam-pos X Y Z]
              [--free-cam-fwd X Y Z] [--free-cam-up X Y Z] [--help]
 
-       --system FILE: star-system JSON file to load (default: system.json).
-                       Use ksp_system.json to fly in the Kerbal system.
+       --system FILE: star-system JSON file to load (default: ksp_system.json).
+                       Use system.json for the Eerbon system.
        --body NAME: body the ship starts on / orbits (default: the system's
                        "home" body). Any body in the system, star included.
        --scenario NAME: starting scenario (default: pad)
@@ -1656,10 +1656,10 @@ int main(int argc, char **argv)
         ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
                                "inertial-orbit", "high-orbit", "high-polar"}));
 
-    std::string system_file = "system.json";
+    std::string system_file = "ksp_system.json";
     app.add_option("--system", system_file,
-                   "Star-system JSON file to load (default: system.json; "
-                   "try ksp_system.json for the Kerbal system)");
+                   "Star-system JSON file to load (default: ksp_system.json; "
+                   "try system.json for the Eerbon system)");
 
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
@@ -1755,8 +1755,8 @@ int main(int argc, char **argv)
     lineshader->FromFile("./res/lineShader2");
 
     // Load the star system (bodies + their reference frames) from a JSON file.
-    // Default is the Eerbon system (system.json); --system picks another, e.g.
-    // ksp_system.json to fly in the Kerbal system.
+    // Default is the Kerbal system (ksp_system.json); --system picks another,
+    // e.g. system.json for the Eerbon system.
     System sys = load_system(system_file.c_str(), terrainshader, sunshader);
     TerrainBody *sun   = sys.star;   // the star
     // The body the ship starts on / orbits: --body, or the system's "home".
