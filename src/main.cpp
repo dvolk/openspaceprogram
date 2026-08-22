@@ -874,6 +874,11 @@ const char *VesselPartTypeStr(VesselPartType& p) {
         }
 }
 
+// Per-part terrain shadow factor: 1.0 = lit, <1.0 = the planet's terrain
+// occludes the line to the sun (see ComputeTerrainShadow).
+float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
+                           const glm::dvec3 &posInFrame, TerrainBody *sun);
+
 class Vehicle {
 public:
     std::vector<Body *> parts;
@@ -882,6 +887,7 @@ public:
 
     TerrainBody *m_parent;
     Frame *frame;
+    TerrainBody *sun = nullptr; // the star (light source); set in main
     float m_thrust;
 
     glm::dvec3 m_com;
@@ -1051,7 +1057,13 @@ public:
     void Draw(const Camera* camera) {
         glm::vec3 sunlightVec = m_parent->sunlightVec; // more or less correct?
 
-        for(auto&& part : parts) { part->Draw(camera, sunlightVec); }
+        for(auto&& part : parts) {
+            // Per-part terrain shadow (approximate by design: one test point
+            // per part, hard lit/shadow result).
+            const float shadow = ComputeTerrainShadow(m_parent, frame,
+                                                      GetPosition(part), sun);
+            part->Draw(camera, sunlightVec, shadow);
+        }
     }
 
     void ThrottleUp() {
@@ -1357,11 +1369,18 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
 class StaticBuilding {
 public:
     TerrainBody *parent;
+    TerrainBody *sun = nullptr; // the star (light source); set in main
     Body *body;
 
     void Draw(const Camera* camera, const TerrainBody *current) {
         if(current == parent) {
-            body->Draw(camera, parent->sunlightVec);
+            // The port was spawned in the parent's rotating frame and is only
+            // ever rendered while the ship is in that same frame, so its
+            // (Bullet-world) position reads in the rot frame's coordinates.
+            const Frame *posFrame = parent->frame->getRotFrame();
+            const float shadow = ComputeTerrainShadow(parent, posFrame,
+                                                      GetPosition(body), sun);
+            body->Draw(camera, parent->sunlightVec, shadow);
         }
     }
 };
@@ -1435,6 +1454,63 @@ float TerrainBody::ScaleHeightNoise(float noise) {
     float n = sign * noise;
     n *= pow(n / ref_height, surface.power);
     return sign * n;
+}
+
+float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
+                           const glm::dvec3 &posInFrame, TerrainBody *sun) {
+    // Approximate terrain shadow for one point (a ship part / the space port):
+    // cast a ray from the point toward the sun and test it against the
+    // planet's terrain height function, which is analytic and therefore
+    // available everywhere (not just where collision leaves exist).
+    // Approximate by design: one test point per object, hard lit/shadow.
+
+    if(sun == nullptr) { return 1.0f; }
+
+    // Work in the root (star) frame: root_pos/root_orient are both expressed
+    // in root axes, so the composition below is unambiguous (and sidesteps
+    // the GetPositionRelTo vec*mat path).
+    const glm::dvec3 pos = posFrame->root_orient * posInFrame + posFrame->root_pos;
+    const glm::dvec3 sunPos = sun->frame->root_pos;
+    const glm::dvec3 dir = glm::normalize(sunPos - pos);
+
+    const glm::dvec3 center = planet->frame->root_pos;
+    const glm::dvec3 d = pos - center; // center -> point
+
+    // Cheap reject: does the ray pass within (radius + max relief) of the
+    // planet center?  If not, terrain cannot occlude. This is the common
+    // case (high orbit, interplanetary space) and costs one quadratic.
+    const double R = (double)planet->radius + (double)planet->surface.max_height;
+    const double b = glm::dot(d, dir);
+    const double c = glm::dot(d, d) - R * R;
+    const double disc = b * b - c;
+    if (disc <= 0.0) { return 1.0f; }
+
+    // Chord of the ray inside the (radius + max relief) sphere; the forward
+    // part of it is where terrain could occlude the sun.
+    const double s = std::sqrt(disc);
+    double t0 = -b - s;
+    const double t1 = -b + s;
+    if (t0 < 0.0) { t0 = 0.0; }
+    if (t0 >= t1) { return 1.0f; }
+
+    // March the chord against the actual height function. The terrain is a
+    // star function in the planet's ROTATING frame (the frame its meshes
+    // are built in), so convert each sample there.
+    const int steps = (int)glm::clamp((t1 - t0) / 100.0, 8.0, 128.0);
+    const double dt = (t1 - t0) / steps;
+    const glm::dmat3 toLocal = glm::transpose(planet->frame->getRotFrame()->root_orient);
+    for (int i = 0; i < steps; i++) {
+        const glm::dvec3 q = pos + (t0 + (i + 0.5) * dt) * dir;
+        const glm::dvec3 ql = toLocal * (q - center);
+        const double r = glm::length(ql);
+        if (r < 1.0) { continue; } // degenerate sample at the center
+        if (r < planet->GetTerrainHeight(glm::vec3(ql / r))) {
+            // Terrain occludes the line to the sun. 0.15 matches
+            // partsShader's min_light so a shadowed part reads as "night".
+            return 0.15f;
+        }
+    }
+    return 1.0f;
 }
 
 inline COLOUR GetColourMoon(float v, float vmin, float vmax) {
@@ -1767,7 +1843,7 @@ int main(int argc, char **argv)
     /* data init */
     Shader *partsshader = new Shader;
     partsshader->registerAttribs({ "position", "uv", "normal" });
-    partsshader->registerUniforms({ "MVP", "Normal", "lightDirection" });
+    partsshader->registerUniforms({ "MVP", "Normal", "lightDirection", "shadow" });
     partsshader->FromFile("./res/partsShader");
 
     Shader *terrainshader = new Shader;
@@ -1820,6 +1896,7 @@ int main(int argc, char **argv)
 
     Vehicle *ship = new Vehicle;
     ship->m_parent = home;
+    ship->sun = sun;
     // The ship starts in the body's rotating (near-body) frame; every body
     // has one (a zero-spin dummy for bodies that don't rotate, see load_system).
     ship->frame = home->rot_frame;
@@ -1875,6 +1952,7 @@ int main(int argc, char **argv)
         space_port->body = create_body(space_port_model, 0, 0, 0, 0, false);
         setPosRot(space_port->body, start + pad_dir * 5.0, pad_orient);
         space_port->parent = home;
+        space_port->sun = sun;
 
         // double ship_height = 190000.5;
         double ship_height = 3.5;

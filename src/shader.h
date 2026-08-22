@@ -20,6 +20,7 @@ public:
     void registerAttribs(std::vector<const char *> names);
     void registerUniforms(std::vector<const char *> names);
 
+    void setUniform_vec1(int index, float v);
     void setUniform_vec2(int index, const glm::vec2 & v2);
     void setUniform_vec3(int index, const glm::vec3 & v3);
     void setUniform_vec4(int index, const glm::vec4 & v4);

@@ -30,7 +30,7 @@ struct Body {
         btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);
     }
 
-    void Draw(const Camera* camera, glm::vec3 & sunlightVec) {
+    void Draw(const Camera* camera, glm::vec3 & sunlightVec, float shadow) {
         UpdateModelMatrix();
 
         glm::dmat4 View = camera->GetView();
@@ -45,6 +45,7 @@ struct Body {
         model->shader->setUniform_mat4(0, MVP);
         model->shader->setUniform_mat4(1, ModelFloat);
         model->shader->setUniform_vec3(2, sunlightVec);
+        model->shader->setUniform_vec1(3, shadow);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, model->texture->id);
