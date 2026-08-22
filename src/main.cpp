@@ -1,55 +1,4 @@
-/*
-  Open Space Program
-
-  Status: exploratory clusterfuck
-
-  Features:
-  * Planet generation with quad-tree surface
-  * Gravity
-  * Rigid body physics
-  * Ground collision
-  * Multipart ship
-  * Basic shader
-  * ImGui integration
-
-  TODO:
-  * MORE COMMENTS
-  * Attitude autopilots
-  * Better camera controls
-  * Vessel orbiting camera
-  * drawing force, velocities, orientations, etc
-  * Fuel
-  * Staging
-  * // Fix kill-rot
-  * surface information (lat, long, hor, vert speeds)
-  * Calculate orbital elements
-  * walking around on the ground
-  * Why doesn't the collision between trigmeshes work?
-  * fix seams between patches
-  * Reference frames and other bodies
-  * Patched conics
-  * Check memory management
-  * Glue quad tree patches together
-  * Ground textures
-  * Better ship placement
-  * Better ship mesh
-  * Better planet gen
-  * Add a sun billboard
-  * Atmosphere functionality
-  * Orbit stability (different integrator?)
-  * Better elevation palette and mixin with moisture noise
-  * Ship construction
-  * More debug information
-  * Bullet physics debug drawing
-  * Multithreaded patch generation
-  * Shadowmapping
-  * Atmosphere rendering
-  * clamp reaction wheel torque
-  * fix frame transitions for multipart ships
-  * parts should be able to have several functions i.e. capsule + reaction wheel etc
-  * RCS
-  * ... lots more ...
-  */
+// Open Space Program
 
 #include <stdio.h>
 #include <algorithm>
@@ -61,6 +10,7 @@
 #include <map>
 
 #include "SDL2/SDL.h"
+#include "SDL_keycode.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
 
@@ -68,7 +18,6 @@
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/projection.hpp>
 #include <glm/gtx/vector_angle.hpp>
-// #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/polar_coordinates.hpp>
 
 #define BT_USE_DOUBLE_PRECISION true
@@ -101,27 +50,11 @@
 ImFont *bigger;
 bool planetsWindow = false;
 
-// static const int DISPLAY_WIDTH = 1440;
-// static const int DISPLAY_HEIGHT = 900;
-static const int DISPLAY_WIDTH = 1920;
+static const int DISPLAY_WIDTH = 1920; // should be cli args
 static const int DISPLAY_HEIGHT = 1080;
-static const int FPS = 60;
-
-#define RAD2DEG(rad) (((180.0/M_PI) * rad))
+static const int FPS = 60; // TODO use FPS from display?
 
 struct TerrainBody;
-
-// The reference-frame tree is built by load_system() below, together with the
-// TerrainBodies it belongs to (each body owns its inertial frame and, when it
-// spins, its rotating frame). There is no separate flat "frames" array.
-
-class TerrainBody;
-
-// Mesh *create_grid_mesh(TerrainBody *body,
-// 		       bool has_collision,
-//                        float radius,
-//                        glm::vec3 p1, glm::vec3 p2,
-//                        glm::vec3 p3, glm::vec3 p4);
 
 struct GeoPatch {
     TerrainBody *body;
@@ -170,6 +103,7 @@ GeoPatch::~GeoPatch() {
 }
 
 void GeoPatch::Subdivide(void) {
+    // TOOO need debug levels?
     // printf("%p subdiving (%d)!\n", this, depth);
     const glm::vec3 v01 = glm::normalize(v0+v1);
     const glm::vec3 v12 = glm::normalize(v1+v2);
@@ -269,13 +203,9 @@ struct TerrainBody {
     double seed = 0;   // noise-domain offset; 0 = legacy pattern
     Surface surface;
     bool moves = false;
-    // The body OWNS its reference frames: `frame` is its inertial (non-rotating)
-    // frame and `rot_frame` its rotating frame (NULL for bodies that don't
-    // spin, e.g. the star). They are built alongside the body by load_system()
-    // and deleted here, so there is no separate flat frames array to manage.
-    Frame *frame;
-    Frame *rot_frame;
-    glm::dmat4 transform = glm::dmat4(1.0); // GLM 1.0.0+: default mat ctor is zero
+    Frame *frame; // owner
+    Frame *rot_frame; // owner
+    glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec;
     int dbg_drew_patches;
 
@@ -310,22 +240,8 @@ struct TerrainBody {
         patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6);
         patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7);
         patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5);
-
-        // for(auto&& patch : patches) {
-        //   patch->Subdivide();
-        //   // patch->kids[0]->Subdivide();
-        //   // patch->kids[1]->Subdivide();
-        //   // patch->kids[2]->Subdivide();
-        //   // patch->kids[3]->Subdivide();
-        // }
     }
 
-    // Direction of light propagation from `planet` toward the star, in the
-    // axes of `renderFrame` (the frame the scene is drawn in — the ship's
-    // current frame).  d_root is in root (star) axes; GetOrientRelTo carries
-    // it into renderFrame's axes, so in a rotating frame the light sweeps
-    // across the terrain as the planet spins, in step with the apparent
-    // motion of the sun sphere (both are GetPositionRelTo(ship->frame)).
     static glm::dvec3 SunlightDir(TerrainBody *planet, TerrainBody *sun,
                                   Frame *renderFrame) {
         const glm::dvec3 d_root = sun->frame->root_pos - planet->frame->root_pos;
@@ -344,8 +260,8 @@ struct TerrainBody {
         }
 
         if(planetsWindow) {
+            // TODO move this out maybe?
             ImGui::Begin("Planets");
-            // printf("%p\n", frame->getNonRotFrame());
             ImGui::Text("%s", name.c_str());
             ImGui::Separator();
             ImGui::Text("Distance: %.0f", cam_dist);
@@ -358,14 +274,9 @@ struct TerrainBody {
     }
 
     void Update(const Camera* camera) {
-        // transform = glm::translate(frame->root_pos) * glm::dmat4(frame->orient);
-
         for(auto&& patch : patches) {
             patch->Update(camera, transform);
         }
-        // if(moves == true) {
-        //   transform = glm::rotate(transform, 1/60.0/10.0, glm::dvec3(0,1,0));
-        // }
     }
 
     int CountPatches() {
@@ -380,13 +291,9 @@ struct TerrainBody {
 // Elevation palettes, defined later in the file; needed by load_system().
 COLOUR GetColourMoon(float v, float vmin, float vmax);
 COLOUR GetColourSun(float v, float vmin, float vmax);
-COLOUR GetColourEerbon(float v, float vmin, float vmax);
+COLOUR GetColourEarth(float v, float vmin, float vmax);
 
-/*
-  A loaded star system: the bodies, plus the few roles the rest of the game
-  needs (the star, the home planet the ship starts on, and the home planet's
-  first moon). The bodies own their frames (see TerrainBody::frame / rot_frame).
-*/
+//  A loaded star system
 struct System {
     std::vector<TerrainBody *> bodies;
     TerrainBody *root;      // the star (frame-tree root)
@@ -402,6 +309,7 @@ struct System {
     }
 };
 
+// TODO are these detailed docs needed?
 /*
   load_system() reads a star-system description from a JSON file and builds,
   together, each TerrainBody (terrain mesh + physics constants) and the
@@ -577,7 +485,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
             body->colour_func = GetColourMoon;
         } else { // "planet"
             body->shader = terrainshader;
-            body->colour_func = GetColourEerbon;
+            body->colour_func = GetColourEarth;
         }
 
         // --- inertial (non-rotating) frame ---------------------------------
@@ -764,8 +672,6 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
 }
 
 void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
-    // if(glm::dot(glm::vec3(camera.GetForward()), centroid)
-
     body->dbg_drew_patches++;
 
     if(kids[0] == NULL) {
@@ -797,30 +703,17 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
 }
 
 void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform) {
-    if(depth > max_depth)
-        return;
-
     const glm::dvec3& camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
     const glm::dvec3& centroid_pos = body->GetTerrainHeight(glm::normalize(camera_pos)) * centroid;
     const float dist = glm::length(camera_pos - centroid_pos);
     const float subdiv = 2.0f * body->radius * glm::length(v0 - centroid);
 
-    //body->radius / depth;
-
-    // printf("%p camera: %f, centroid: %f, dist: %f < %f\n",
-    //        this,
-    //        glm::length(camera_pos),
-    //        glm::length(centroid_pos),
-    //        dist,
-    //        subdiv);
-
-    if(dist < subdiv) {
+    if(depth < max_depth and dist < subdiv) {
         if(kids[0] == NULL) {
             Subdivide();
         }
     }
-    else if(// depth >= 3 and
-            dist > subdiv * 2) {
+    else if(dist > subdiv * 2) {
         delete kids[0];
         delete kids[1];
         delete kids[2];
@@ -887,14 +780,11 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
 
 // One ship-control command. The input layer (keyboard, UI, or a future
 // autopilot) emits these; Vehicle::Command() is the only path from control
-// to physics, so rules that apply to all controls (e.g. "no forces while
+// to physics, so rules that apply to all controls (e.g. "no commands while
 // paused") live in one place instead of at every call site.
 enum ShipCmdType {
-    // Settings: no direct physics effect, apply even while paused.
     ThrottleUp,
     ThrottleDown,
-    // Force/torque while held: dropped while the sim is paused,
-    // otherwise they would accumulate in Bullet and dump out on resume.
     Thrust,
     Pitch,    // amount: +1 = W, -1 = S
     Yaw,      // amount: +1 = A, -1 = D
@@ -965,7 +855,7 @@ public:
     }
 
     /* returns true if fuel was consumed*/
-    bool consumeResourceMass(enum class ResourceType type, float amt /* kg */) {
+    bool consumeResourceMass(enum ResourceType type, float amt /* kg */) {
         int i = 0;
         float consp_factor = 60; // since fps = 60 and fuel flow is kg/s
         for(auto&& partResource : partResources) {
@@ -981,7 +871,7 @@ public:
         return false;
     }
 
-    float getFuelMass(const std::vector /* eh */ <enum class ResourceType>& types) {
+    float getFuelMass(const std::vector /* eh */ <enum ResourceType>& types) {
         float fuel = 0;
         for(auto&& type : types) {
             for(auto&& partResource : partResources) {
@@ -1086,25 +976,23 @@ public:
     }
 
     void Draw(const Camera* camera) {
-        // Light direction in this frame's axes (the scene is drawn in the
-        // ship's current frame); recomputed here rather than using the
-        // planet's cached value so the ship is lit in step with the terrain.
+        // Light direction in this frame's axes
         glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(m_parent, sun, frame));
 
         for(auto&& part : parts) {
-            // Per-part terrain shadow (approximate by design: one test point
-            // per part, hard lit/shadow result).
-            const float shadow = ComputeTerrainShadow(m_parent, frame,
-                                                      GetPosition(part), sun);
+            // Per-part terrain shadow
+            const float shadow = ComputeTerrainShadow(m_parent, frame, GetPosition(part), sun);
             part->Draw(camera, sunlightVec, shadow);
         }
     }
 
-    // The single entry point from control to physics. Settings (throttle)
-    // apply even while paused; force/torque commands are dropped when
-    // simActive is false, so nothing accumulates in the rigid bodies to
-    // dump out as a velocity kick on resume.
+    // Single place to control the ship. While paused (simActive == false)
+    // every command is dropped, so nothing accumulates in the rigid bodies
+    // (a force/torque left in Bullet would dump out as a velocity kick on
+    // resume) and settings like throttle stay frozen.
     void Command(ShipCmd cmd, bool simActive) {
+        if(not simActive)
+            return;
         switch(cmd.type) {
             case ThrottleUp:
                 adjustThrottle(+0.01);
@@ -1113,34 +1001,25 @@ public:
                 adjustThrottle(-0.01);
                 break;
             case Thrust:
-                if(simActive) { ApplyThrust(); }
+                ApplyThrust();
                 break;
             case Pitch:
-                if(simActive) {
-                    if(cmd.amount >= 0) { ApplyRotXPlus(); }
-                    else { ApplyRotXMinus(); }
-                }
+                if(cmd.amount >= 0) ApplyRotXPlus(); else ApplyRotXMinus();
                 break;
             case Yaw:
-                if(simActive) {
-                    if(cmd.amount >= 0) { ApplyRotYPlus(); }
-                    else { ApplyRotYMinus(); }
-                }
+                if(cmd.amount >= 0) ApplyRotYPlus(); else ApplyRotYMinus();
                 break;
             case Roll:
-                if(simActive) {
-                    if(cmd.amount >= 0) { ApplyRotZPlus(); }
-                    else { ApplyRotZMinus(); }
-                }
+                if(cmd.amount >= 0) ApplyRotZPlus(); else ApplyRotZMinus();
                 break;
             case KillRot:
-                if(simActive) { applyKillRot(); }
+                applyKillRot();
                 break;
             case Prograde:
-                if(simActive) { RotateToward(GetVel()); }
+                RotateToward(GetVel());
                 break;
             case Retrograde:
-                if(simActive) { RotateToward(-GetVel()); }
+                RotateToward(-GetVel());
                 break;
         }
     }
@@ -1152,8 +1031,6 @@ public:
 private:
     // Control implementation: applies forces/torques to the Bullet bodies
     // directly, so it is reachable only through Command() above.
-    // (Named so none of these collide with the ShipCmdType enumerators,
-    // which the case labels in Command() rely on resolving to the enum.)
     void adjustThrottle(float delta) {
         thruster_util += delta;
         if(thruster_util > 1) { thruster_util = 1; }
@@ -1165,7 +1042,7 @@ private:
     }
 
     float GetMaxThrust() {
-        float exaust_velocity = 40492; /* m/s (Isp ~4049 s; raised 4x for easier orbit insertion) */
+        float exaust_velocity = 40492; /* m/s */
         return GetMaxFuelRate() * exaust_velocity;
     }
 
@@ -1183,7 +1060,7 @@ private:
     }
     void ApplyRotXPlus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelX(reaction_wheel, 2);
+            ApplyTorqueRelX(reaction_wheel, 2); // need to make this physical
         }
     }
     void ApplyRotXMinus() {
@@ -1244,25 +1121,11 @@ public:
         return forient * GetOrient(part);
     }
 
-    // vector3d Body::GetPositionRelTo(const Frame *relTo) const
-    // {
-    // 	vector3d fpos = m_frame->GetPositionRelTo(relTo);
-    // 	matrix3x3d forient = m_frame->GetOrientRelTo(relTo);
-    // 	return forient * GetPosition() + fpos;
-    // }
-
     glm::dvec3 GetPositionRelTo(Body *part, Frame *relTo) {
         glm::dvec3 fpos = frame->GetPositionRelTo(relTo);
         glm::dmat3 forient = frame->GetOrientRelTo(relTo);
         return forient * GetPosition(part) + fpos;
     }
-    // vector3d Body::GetVelocityRelTo(const Frame *relTo) const
-    // {
-    // 	matrix3x3d forient = m_frame->GetOrientRelTo(relTo);
-    // 	vector3d vel = GetVelocity();
-    // 	if (m_frame != relTo) vel -= m_frame->GetStasisVelocity(GetPosition());
-    // 	return forient * vel + m_frame->GetVelocityRelTo(relTo);
-    // }
 
     glm::dvec3 GetVelocityRelTo(Body *part, Frame *relTo) {
         glm::dmat3 forient = frame->GetOrientRelTo(relTo);
@@ -1272,21 +1135,7 @@ public:
         return forient * vel + frame->GetVelocityRelTo(relTo);
     }
 
-    // void Body::SwitchToFrame(Frame *newFrame)
-    // {
-    // 	const vector3d vel = GetVelocityRelTo(newFrame);		// do this first because it uses position
-    // 	const vector3d fpos = m_frame->GetPositionRelTo(newFrame);
-    // 	const matrix3x3d forient = m_frame->GetOrientRelTo(newFrame);
-    // 	SetPosition(forient * GetPosition() + fpos);
-    // 	SetOrient(forient * GetOrient());
-    // 	SetVelocity(vel + newFrame->GetStasisVelocity(GetPosition()));
-    // 	SetFrame(newFrame);
-
-    // 	LuaEvent::Queue("onFrameChanged", this);
-    // }
-
     void moveToFrame(Frame *newFrame) {
-        // void setModelMatrix(Body *b, glm::dmat4 model);
         void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
         glm::dmat3 GetOrient(Body *b);
 
@@ -1309,7 +1158,6 @@ public:
             printf("@@@ %s NEW position: %.0f %.0f %.0f\n", name, newPos.x, newPos.y, newPos.z);
 
             setPosRot(part, newPos, newOrient);
-            // setModelMatrix(part, newModelMatrix);
 
             pos = GetPosition(part);
             // The stored velocity is the frame-coordinate velocity, so a ship's
@@ -1323,22 +1171,13 @@ public:
             printf("@@@ %s NEW velocity: %.0f %.0f %.0f\n", name, newVel.x, newVel.y, newVel.z);
 
             SetVelocity(part, newVel);
-
-
         }
         frame = newFrame;
         m_parent = newFrame->body;
     }
 };
 
-/*
-  Resolve the reference frame that owns a world position: walk down the frame
-  tree from the root, descending into whichever child's sphere of influence
-  contains the point. The deepest such frame is the ship's correct frame.
-  This is the same rule the per-tick SOI switching in the main loop applies,
-  so a ship spawned here is already in the frame the SOI logic expects and is
-  not moved on the first physics tick.
-*/
+// Resolve the reference frame that owns a world position
 static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
     Frame *cur = root;
     while(true) {
@@ -1370,7 +1209,7 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
 struct ScenarioDef {
     const char *name;
     bool on_pad;
-    double alt_frac; // orbit altitude as a fraction of (rot SOI - radius)
+    double alt_frac; // < 1: rot frame, > 1 non-rot frame
     bool polar;
 };
 static const ScenarioDef kScenarios[] = {
@@ -1457,9 +1296,6 @@ public:
 
     void Draw(const Camera* camera, const TerrainBody *current, Frame *renderFrame) {
         if(current == parent) {
-            // The port was spawned in the parent's rotating frame and is only
-            // ever rendered while the ship is in that same frame, so its
-            // (Bullet-world) position reads in the rot frame's coordinates.
             const Frame *posFrame = parent->frame->getRotFrame();
             const float shadow = ComputeTerrainShadow(parent, posFrame,
                                                       GetPosition(body), sun);
@@ -1469,6 +1305,7 @@ public:
     }
 };
 
+// TODO need doc
 glm::vec3 getSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
                          const glm::vec3& v2, const glm::vec3& v3,
                          const float x, const float y)
@@ -1479,6 +1316,7 @@ glm::vec3 getSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
                           (1.0f - x) * y * (v3 - v0));
 }
 
+// TODO need doc
 float noise3d(const glm::vec3& p, int octaves, float persistence) {
     float sum = 0;
     float strength = 1.0;
@@ -1494,14 +1332,6 @@ float noise3d(const glm::vec3& p, int octaves, float persistence) {
 }
 
 #define NOISE_FUNC (((noise3d(sphere_p, 12, 0.60) * 2500)))
-//(((noise3d(sphere_p, 3, 0.5) * 15000)))
-
-// float TerrainBody::GetTerrainHeight(const glm::dvec3& p) {
-//   glm::vec3 sphere_p = glm::normalize(p);
-//   glm::vec3 sphere_coord = radius * glm::normalize(sphere_p);
-//   glm::vec3 noise = sphere_p * NOISE_FUNC;
-//   return glm::length(sphere_coord + noise);
-// }
 
 float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
     const Surface &s = surface;
@@ -1605,7 +1435,7 @@ inline COLOUR GetColourSun(float v, float vmin, float vmax) {
     return { 1.0, 1.0, 0.0 };
 }
 
-inline COLOUR GetColourEerbon(float v, float vmin, float vmax)
+inline COLOUR GetColourEarth(float v, float vmin, float vmax)
 {
     COLOUR c = {1.0,1.0,1.0}; // white
     float dv;
@@ -1640,9 +1470,7 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
     const int size = 25;
 
     PosNorColVertex vertices[size * size];
-    unsigned int indices[size * size * 6] = {0};
-
-    glm::vec2 dummyuv = glm::vec2(0, 0);
+    unsigned int indices[size * size * 6] = {0}; // TODO is this off by one?
 
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
@@ -1695,32 +1523,11 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
 
             glm::vec3 p = sphere_p * height;
 
-            // else if(height < radius + 75) {
-            // 	color = beach;
-            // }
-            // else if(height < radius + 1500) {
-            // 	color = green;
-            // }
-            // else if(height < radius + 2800) {
-            // 	color = brown;
-            // }
-            // else {
-            // 	color = snow;
-            // }
-
             vertices[j+size*i] = PosNorColVertex(p,
                                                  sphere_p,
                                                  color);
         }
     }
-
-    glm::dvec3 centroid = glm::normalize(p1 + p2 + p3 + p4);
-
-    // for (int i = 0; i < size; i++) {
-    //   for (int j = 0; j < size; j++) {
-    //     *vertices[j + size * i].GetNormal() = centroid;
-    //   }
-    // }
 
     for (int i = 1; i < size-1; i++) {
         for (int j = 1; j < size-1; j++) {
@@ -1728,19 +1535,10 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
             glm::vec3 &x2 = vertices[j+1 + i*size].pos;
             glm::vec3 &y1 = vertices[j + (i-1)*size].pos;
             glm::vec3 &y2 = vertices[j + (i+1)*size].pos;
-            // glm::vec3 n = centroid;//glm::normalize(centroid);
             glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
             vertices[j + size * i].normal = -n;
         }
     }
-
-    // for(int i = 4; i < size-4; i++) {
-    //   *vertices[i].GetNormal() = centroid;
-    // }
-
-    // for(int i = (size-2) * (size-1); i < (size-1) * (size-1); i++) {
-    //   *vertices[i].GetNormal() = *vertices[i - size].GetNormal();
-    // }
 
     int i = 0;
     for (int y = 0; y < (size - 1); y++) {
@@ -1754,8 +1552,6 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
             indices[i++] = y * size + x;
         }
     }
-
-    // assert(find(indices.begin(), indices.end(), -1) == indices.end());
 
     grid_mesh->FromData(vertices, size * size, indices, size * size * 6, has_collision);
 
@@ -1810,38 +1606,6 @@ OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel,
 
 int main(int argc, char **argv)
 {
-    /* CLI (parsed with CLI11):
-       ./osp [--system FILE] [--body NAME] [--scenario NAME] [--time-accel N]
-             [--orbit-log] [--orbit-interval S] [--free-cam-pos X Y Z]
-             [--free-cam-fwd X Y Z] [--free-cam-up X Y Z] [--help]
-
-       --system FILE: star-system JSON file to load (default: ksp_system.json).
-                       Use system.json for the Eerbon system.
-       --body NAME: body the ship starts on / orbits (default: the system's
-                       "home" body). Any body in the system, star included.
-       --scenario NAME: starting scenario (default: pad)
-         pad            landed on the spaceport pad (equatorial)
-         pad-polar      landed on the spaceport pad over the north pole
-         rot-orbit      circular orbit, altitude 0.85 * (rot-SOI - radius):
-                        inside the rotating SOI, so the ship starts in the
-                        ROTATING frame
-         inertial-orbit circular orbit, altitude 1.25 * (rot-SOI - radius):
-                        just outside the rotating SOI, so the ship starts in
-                        the INERTIAL frame
-         high-orbit     circular orbit, altitude 5 * (rot-SOI - radius)
-         high-polar     same as high-orbit, but in a polar plane (the plane
-                        containing the body's spin axis)
-
-       --time-accel N: initial time acceleration (0 = paused; runtime is
-                       still changed with the , / . keys)
-       --orbit-log:    print the ship's orbital elements to stdout every
-                       --orbit-interval wall-clock seconds, for measuring
-                       orbital stability
-       --free-cam-pos/fwd/up: start directly in the free (6DOF) camera at this
-                       pose. Coordinates are world (ship-frame) space, i.e. the
-                       ship's centre of mass is the origin. --free-cam-fwd and
-                       --free-cam-up are directions (normalised). Giving any of
-                       the three switches the starting mode to free flight. */
     CLI::App app{"Open Space Program"};
 
     std::string body_name;
@@ -1875,9 +1639,7 @@ int main(int argc, char **argv)
                    "Wall-clock seconds between --orbit-log lines (default: 1)")
         ->check(CLI::PositiveNumber);
 
-    // Start directly in the free (6DOF) camera at an explicit pose. All
-    // coordinates are in the world (ship-frame) coordinate system, i.e. the
-    // same space the camera draws the scene in (ship centre of mass at origin).
+    // it's like a google maps link
     std::vector<double> free_cam_pos;
     app.add_option("--free-cam-pos", free_cam_pos,
                    "Start in the free camera at this world position: X Y Z "
@@ -1914,7 +1676,6 @@ int main(int argc, char **argv)
     check_gl_error();
 
     ImGuiIO& io = ImGui::GetIO();
-    //io.Fonts->AddFontDefault();
     io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", 14.0);
     bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 30.0);
     check_gl_error();
@@ -1938,9 +1699,6 @@ int main(int argc, char **argv)
     Shader *sunshader = new Shader;
     sunshader->registerAttribs({ "position", "normal", "color" });
     sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
-    // The sun is the light source, so it must be self-illuminated: use the
-    // emissive sunShader (gl_FragColor = color0, no lightDirection) rather than
-    // the lit terrainShader, whose light vector is normalize(0) = NaN for the sun.
     sunshader->FromFile("./res/sunShader");
 
     Shader *skyboxshader = new Shader;
@@ -1953,12 +1711,8 @@ int main(int argc, char **argv)
     lineshader->registerUniforms({ "MVP", "color" });
     lineshader->FromFile("./res/lineShader2");
 
-    // Load the star system (bodies + their reference frames) from a JSON file.
-    // Default is the Kerbal system (ksp_system.json); --system picks another,
-    // e.g. system.json for the Eerbon system.
     System sys = load_system(system_file.c_str(), terrainshader, sunshader);
-    TerrainBody *sun   = sys.star;   // the star
-    // The body the ship starts on / orbits: --body, or the system's "home".
+    TerrainBody *sun = sys.star;
     TerrainBody *home;
     if(body_name.empty()) {
         home = sys.home;
@@ -1981,28 +1735,16 @@ int main(int argc, char **argv)
     Vehicle *ship = new Vehicle;
     ship->m_parent = home;
     ship->sun = sun;
-    // The ship starts in the body's rotating (near-body) frame; every body
-    // has one (a zero-spin dummy for bodies that don't rotate, see load_system).
     ship->frame = home->rot_frame;
 
-    // The pad the ship starts on: over the spin axis (+Y) for the polar pad,
-    // the legacy near-equator spot otherwise. Orbit scenarios build the ship
-    // here too, then teleport it into orbit (spawn_vehicle below).
-    const bool pad_polar = (scenario == "pad-polar");
-    const glm::dvec3 pad_dir = pad_polar
-        ? glm::dvec3(0.0, 1.0, 0.0)
-        : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-    // Nose (local +Z, the thrust axis) along the pad radial = the launch
-    // direction; ~identity at the legacy pad, a 90° tilt at the pole.
+    glm::dvec3 pad_dir = glm::dvec3(0.0, 1.0, 0.0);
+    if (scenario != "pad-polar") {
+        pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+    }
     const glm::dmat3 pad_orient = faceAlong(pad_dir);
 
     StaticBuilding *space_port;
     {
-        glm::vec3 grey = glm::vec3(0.55, 0.5, 0.6);
-        glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
-        glm::vec3 red = glm::vec3(0.9, 0.2, 0.1);
-        glm::vec3 blue = glm::vec3(0.1, 0.2, 0.9);
-
         Mesh *space_port_mesh = new Mesh;
         Mesh *capsule_mesh = new Mesh;
         Mesh *wheel_mesh = new Mesh;
@@ -2013,7 +1755,6 @@ int main(int argc, char **argv)
         wheel_mesh->FromFile("./res/reaction_wheel.obj", false);
         engine_mesh->FromFile("./res/engine.obj", false);
 
-        Texture *no_texture = load_texture("./res/no_texture.png");
         Texture *space_port_texture = load_texture("./res/space_port.png");
         Texture *reaction_wheel_texture = load_texture("res/reaction_wheel.png");
         Texture *capsule_texture = load_texture("res/capsule.png");
@@ -2038,7 +1779,6 @@ int main(int argc, char **argv)
         space_port->parent = home;
         space_port->sun = sun;
 
-        // double ship_height = 190000.5;
         double ship_height = 3.5;
 
         // top
@@ -2093,8 +1833,7 @@ int main(int argc, char **argv)
     Texture * normal_plus_indicator_texture = load_texture("res/normal_plus_icon.png");
     Texture * normal_minus_indicator_texture = load_texture("res/normal_minus_icon.png");
 
-    // glm::vec4 billboardcolor = glm::vec4(83/255.0, 238/255.0, 83/255.0, 1.0);
-    glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0);
+    glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0); // TODO should these be different colors?
 
     Billboard *front_indicator =
         mk_billboard(billboardshader, front_indicator_texture, 1.0, 1.0, billboardcolor);
@@ -2112,23 +1851,21 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
 
     /* camera init */
+    const float camFov = M_PI/3.0; // TODO specify FOV in deg?
+    const float camAspect = (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT;
+    const float camZNear = 1.0f;
     // zFar must exceed the farthest visible body. The log-depth shaders
     // (res/*Shader.vs) define the hard far limit as `far = 1e13` m, which
     // covers the real solar system (Pluto at ~5.9e12 m) and KSP-style
     // AU scales (~1.4e10 m). Keep zFar consistent with that.
-    const float camFov = M_PI/3.0;
-    const float camAspect = (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT;
-    const float camZNear = 1.0f;
     const float camZFar = 1e13;
 
     OrbitCamera *orbitCam = new OrbitCamera(GetPosition(ship->controller),
                                             camFov, camAspect, camZNear, camZFar);
-    // Free camera defaults to the orbit camera's initial pose so switching
-    // between modes does not jump; an explicit --free-cam-* pose overrides it.
     glm::dvec3 freeCamPos  = orbitCam->GetPos();
     glm::dvec3 freeCamFwd  = orbitCam->GetForward();
     glm::dvec3 freeCamUp   = orbitCam->up;
-    if(free_cam_pos.size() == 3) {
+    if(free_cam_pos.size() == 3) { // TODO do we need these guards?
         freeCamPos = glm::dvec3(free_cam_pos[0], free_cam_pos[1], free_cam_pos[2]);
     }
     if(free_cam_fwd.size() == 3) {
@@ -2146,7 +1883,6 @@ int main(int argc, char **argv)
     if(use_free_cam) {
         camMode = CAM_FREE;
         camera = freeCam;
-        printf("Camera: free flight (C = orbit, hold RMB = look)\n");
     }
 
     // Bodies the orbit camera can target (the ship is the default). Built from
@@ -2174,14 +1910,11 @@ int main(int argc, char **argv)
     bool redraw = false;
     bool screenshot_requested = false;
     int screenshot_count = 0;
-    bool teleport_beyond_soi_requested = false;
     bool poly_mode = false;
-    // KSP-style mouse: the cursor stays free so the UI is interactive;
-    // holding RMB over 3D moves the camera (see the mouse-event handlers).
     bool rmbCam = false;
     SDL_SetRelativeMouseMode(SDL_FALSE);
 
-    const double dt = 1.0/50.0;
+    const double dt = 1.0/50.0; // TODO explain why 50
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
     int time_accel = initial_time_accel;
@@ -2206,10 +1939,6 @@ int main(int argc, char **argv)
     const Uint32 orbit_log_interval_ms = (Uint32)(orbit_interval * 1000.0);
     Uint32 orbit_log_last_ms = 0;
 
-    /* main loop timing from
-       http://gafferongames.com/game-physics/fix-your-timestep/
-    */
-
     Skybox skybox;
     skybox.init();
 
@@ -2223,7 +1952,6 @@ int main(int argc, char **argv)
                                     r * sin((2 * M_PI) * float(i-1)/float(n)),
                                     0);
             skyinterface.positions.push_back(p);
-            // printf("%.2f %.2f %.2f\n", p.x, p.y, p.z);
         }
         for(int i = 1; i < 128; i++) {
             glm::vec3 p = glm::vec3(r * cos((2 * M_PI) * float(i-1)/float(n)),
@@ -2234,6 +1962,9 @@ int main(int argc, char **argv)
         skylines->InitMesh(skyinterface);
     }
 
+    /* main loop timing from
+       http://gafferongames.com/game-physics/fix-your-timestep/
+    */
     while (running == true) {
         /*
           EVENTS
@@ -2274,31 +2005,23 @@ int main(int argc, char **argv)
                 }
                 if(ev.key.keysym.sym == SDLK_l) {
                     if(cam_speed < 10000000) {
-                        cam_speed *= 10;
+                        cam_speed *= 4;
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_k) {
                     if(cam_speed > 1) {
-                        cam_speed /= 10;
+                        cam_speed /= 4;
                     }
                 }
-                // if(ev.key.keysym.sym == SDLK_g) {
-                //   ship->Detach();
-                // }
                 if(ev.key.keysym.sym == SDLK_c) {
                     // Toggle between the body-orbit camera and the free camera.
                     if(camMode == CAM_ORBIT) {
-                        // orbit -> free: start the free camera from the orbit
-                        // camera's current pose so the view does not jump.
                         freeCam->pos = orbitCam->pos;
                         freeCam->forward = orbitCam->forward;
                         freeCam->up = orbitCam->up;
                         camMode = CAM_FREE;
                         camera = freeCam;
-                        printf("Camera: free flight (C = orbit, hold RMB = look)\n");
                     } else {
-                        // free -> orbit: refocus the orbit camera on the current
-                        // target, keeping a similar distance.
                         glm::dvec3 focus = focusWorldPos(focusBody);
                         orbitCam->Follow(focus);
                         double dist = glm::length(freeCam->pos - focus);
@@ -2327,13 +2050,7 @@ int main(int argc, char **argv)
                 if(ev.key.keysym.sym == SDLK_F12) {
                     screenshot_requested = true;
                 }
-                if(ev.key.keysym.sym == SDLK_t) {
-                    teleport_beyond_soi_requested = true;
-                }
-                if(ev.key.keysym.sym == SDLK_m) {
-                    physics_debug_drawing = not physics_debug_drawing;
-                }
-                if(ev.key.keysym.sym == SDLK_p) {
+                if(ev.key.keysym.sym == SDLK_F11) {
                     if(poly_mode == false) {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                         poly_mode = true;
@@ -2342,7 +2059,8 @@ int main(int argc, char **argv)
                         poly_mode = false;
                     }
                 }
-                if(ev.key.keysym.sym == SDLK_t) {
+                if(ev.key.keysym.sym == SDLK_F10) {
+                    // TODO should really toggle the UI
                     orbitInfoWindow = false;
                     orbitMapWindow = false;
                     shipInfoWindow = false;
@@ -2357,8 +2075,7 @@ int main(int argc, char **argv)
                 }
             }
             if(ev.type == SDL_MOUSEBUTTONDOWN) {
-                // KSP-style: holding RMB over 3D (not over a UI window)
-                // moves the camera.
+                // holding RMB over 3D (not over a UI window) moves the camera.
                 if(ev.button.button == SDL_BUTTON_RIGHT &&
                    !ImGui::GetIO().WantCaptureMouse) {
                     rmbCam = true;
@@ -2406,84 +2123,43 @@ int main(int argc, char **argv)
             const Uint8* key = SDL_GetKeyboardState(NULL);
             if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
 
-            // Camera mode is exclusive with ship control:
-            //   FREE  (exploring):  WASD+QE move the free camera (W/S fwd-back,
-            //                       A/D strafe, Q/E roll, Shift/Ctrl up-down).
-            //   ORBIT (flying):     WASD+QE rotate the ship (W/S pitch, A/D yaw,
-            //                       Q/E roll); I/X/B/N/R/F drive the ship.
-            // The mouse (hold RMB to look, wheel to zoom) works in both modes.
             if (camMode == CAM_FREE) {
-                double base = orbitCam->distance;
-                if (base < 1.0) { base = 1.0; }
-                double freeScale = (double)cam_speed * base;
+                if (key[SDL_SCANCODE_W]) { camera->MoveForward(cam_speed); }
+                else if (key[SDL_SCANCODE_S]) { camera->MoveForward(-cam_speed); }
 
-                if (key[SDL_SCANCODE_W]) { camera->MoveForward(freeScale); }
-                else if (key[SDL_SCANCODE_S]) { camera->MoveForward(-freeScale); }
-
-                if (key[SDL_SCANCODE_A]) { camera->MoveRight(-freeScale); }
-                else if (key[SDL_SCANCODE_D]) { camera->MoveRight(freeScale); }
+                if (key[SDL_SCANCODE_A]) { camera->MoveRight(-cam_speed); }
+                else if (key[SDL_SCANCODE_D]) { camera->MoveRight(cam_speed); }
 
                 if (key[SDL_SCANCODE_Q]) { camera->Roll(-0.05); }
                 else if (key[SDL_SCANCODE_E]) { camera->Roll(0.05); }
 
-                if (key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(freeScale); }
-                else if (key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-freeScale); }
-            } else {
-                // All ship controls go through ShipCmd; Command() applies
-                // the pause rule (force/torque commands are dropped while
-                // time_accel == 0, throttle settings are not).
-                bool active = (time_accel != 0);
-                if (key[SDL_SCANCODE_W]) { ship->Command(ShipCmd(Pitch, +1.0f), active); }
-                else if (key[SDL_SCANCODE_S]) { ship->Command(ShipCmd(Pitch, -1.0f), active); }
-
-                if (key[SDL_SCANCODE_A]) { ship->Command(ShipCmd(Yaw, +1.0f), active); }
-                else if (key[SDL_SCANCODE_D]) { ship->Command(ShipCmd(Yaw, -1.0f), active); }
-
-                if (key[SDL_SCANCODE_Q]) { ship->Command(ShipCmd(Roll, +1.0f), active); }
-                else if (key[SDL_SCANCODE_E]) { ship->Command(ShipCmd(Roll, -1.0f), active); }
-
-                if (key[SDL_SCANCODE_I]) { ship->Command(ShipCmd(Thrust), active); }
-                if (key[SDL_SCANCODE_X]) { ship->Command(ShipCmd(KillRot), active); }
-
-                if (key[SDL_SCANCODE_B]) { ship->Command(ShipCmd(Prograde), active); }
-                if (key[SDL_SCANCODE_N]) { ship->Command(ShipCmd(Retrograde), active); }
-
-                if (key[SDL_SCANCODE_R]) { ship->Command(ShipCmd(ThrottleUp), active); }
-                else if (key[SDL_SCANCODE_F]) { ship->Command(ShipCmd(ThrottleDown), active); }
+                if (key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(cam_speed); }
+                else if (key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-cam_speed); }
             }
 
-            /* DEBUG: teleport the ship beyond the current frame's SOI (radially
-               outward to 2x SOI) and zero its velocity, to force a reference-frame
-               switch on the next physics tick. Triggered by the 't' key event. */
-            if(teleport_beyond_soi_requested == true) {
-                void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
-                void SetVelocity(Body *b, glm::dvec3 vel);
-                glm::dmat3 GetOrient(Body *b);
-                double soi = ship->frame->soi;
-                glm::dvec3 com = ship->get_center_of_mass();
-                glm::dvec3 dir = glm::normalize(com);
-                glm::dvec3 target = dir * (soi * 2.0);
-                glm::dvec3 base = GetPosition(ship->parts[0]);
-                for(auto&& part : ship->parts) {
-                    glm::dvec3 p = GetPosition(part);
-                    glm::dvec3 np = target + (p - base);
-                    setPosRot(part, np, GetOrient(part));
-                    SetVelocity(part, glm::dvec3(0, 0, 0));
-                }
-                /* teleporting is an explicit frame change; the SOI logic will
-                   switch the ship to the correct frame on the next tick. */
-                printf("DEBUG[t]: teleported to r=%.0f in %s (soi=%.0f)\n",
-                       glm::length(target), ship->frame->name.c_str(), soi);
-                teleport_beyond_soi_requested = false;
+            if (camMode == CAM_ORBIT) {
+                bool game_running = (time_accel > 0);
+                // pitch
+                if (key[SDL_SCANCODE_W]) { ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
+                if (key[SDL_SCANCODE_S]) { ship->Command(ShipCmd(Pitch, -1.0f), game_running); }
+                // yaw
+                if (key[SDL_SCANCODE_A]) { ship->Command(ShipCmd(Yaw, +1.0f), game_running); }
+                if (key[SDL_SCANCODE_D]) { ship->Command(ShipCmd(Yaw, -1.0f), game_running); }
+                // roll
+                if (key[SDL_SCANCODE_Q]) { ship->Command(ShipCmd(Roll, +1.0f), game_running); }
+                if (key[SDL_SCANCODE_E]) { ship->Command(ShipCmd(Roll, -1.0f), game_running); }
+
+                if (key[SDL_SCANCODE_I]) { ship->Command(ShipCmd(Thrust), game_running); }
+                if (key[SDL_SCANCODE_X]) { ship->Command(ShipCmd(KillRot), game_running); }
+
+                if (key[SDL_SCANCODE_B]) { ship->Command(ShipCmd(Prograde), game_running); }
+                if (key[SDL_SCANCODE_N]) { ship->Command(ShipCmd(Retrograde), game_running); }
+
+                if (key[SDL_SCANCODE_R]) { ship->Command(ShipCmd(ThrottleUp), game_running); }
+                if (key[SDL_SCANCODE_F]) { ship->Command(ShipCmd(ThrottleDown), game_running); }
             }
 
             void physics_tick(float timeStep);
-            void collisions();
-
-            // // star system body updates
-            // earth->transform = glm::rotate(earth->transform, 0.001,
-            // 				     glm::dvec3(0, 1, 0));
-
 
             // Advance the analytic sim clock by exactly the physics timestep
             // (dt * time_accel), matching physics_tick(dt * time_accel) below.
@@ -2557,11 +2233,8 @@ int main(int argc, char **argv)
                 }
             }
 
-            // Periodic orbital-element printout (--orbit-log), once per
-            // wall-clock interval, for measuring orbital stability. The state
-            // is expressed in the current frame's body INERTIAL (non-rotating)
-            // frame, where the trajectory is a Kepler conic — the same
-            // conversion the orbit-info window does in the render section.
+            // --orbit-log: orbital elements, fit in the body's inertial
+            // frame, where the ship's trajectory is a Kepler conic.
             if(orbit_log) {
                 const Uint32 now_ms = SDL_GetTicks();
                 if(now_ms - orbit_log_last_ms >= orbit_log_interval_ms) {
@@ -2584,13 +2257,11 @@ int main(int argc, char **argv)
                            "inc=%.4f deg T=%.6g s |h|=%.6f m2/s E=%.6f J/kg\n",
                            time, ship->frame->name.c_str(), o.distance, o.speed,
                            o.semi_major, o.ecc, o.periapsis, o.apoapsis,
-                           RAD2DEG(o.inclination), o.period,
+                           glm::degrees(o.inclination), o.period,
                            o.ang_momentum, o.energy);
                     fflush(stdout);
                 }
             }
-
-            // collisions();
 
             accumulator -= dt;
         }
@@ -2616,34 +2287,8 @@ int main(int argc, char **argv)
 
             com = ship->get_center_of_mass();
 
-            // Point the orbit camera at the current focus target (the ship, or
-            // whichever body is selected). The free camera keeps its own pos.
             if(camMode == CAM_ORBIT) {
                 camera->Follow(focusWorldPos(focusBody));
-            }
-
-            for(auto&& planet : planets) {
-                if(planet == ship->m_parent) {
-                    /* this is the planet we're on.
-
-                       This means its position is always 0, 0, 0
-                    */
-
-                    if(ship->frame->isRotFrame()) {
-                        /* we're in its rotational frame */
-                        planet->transform = glm::dmat4(1.0); // identity (GLM 1.0.0+: default ctor is zero)
-                    }
-                    else {
-                        /* we're in its inertial frame */
-                        planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
-                    }
-                }
-                else {
-                    /* other planets */
-                    glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
-                    planet->transform =
-                        glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
-                }
             }
 
             camera->ComputeView();
@@ -2655,7 +2300,26 @@ int main(int argc, char **argv)
             if(world_drawing == true) {
                 space_port->Draw(camera, ship->m_parent, ship->frame);
                 ship->Draw(camera);
+            }
 
+            for(auto&& planet : planets) {
+                if(planet == ship->m_parent) {
+                    //this is the planet we're on. This means its position is always 0, 0, 0
+
+                    if(ship->frame->isRotFrame()) {
+                        // we're in its rotational frame
+                        planet->transform = glm::dmat4(1.0);
+                    }
+                    else {
+                        // we're in its inertial frame
+                        planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
+                    }
+                }
+                else {
+                    // other planets
+                    glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
+                    planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
+                }
             }
 
             for(auto&& planet : planets) {
@@ -2664,6 +2328,7 @@ int main(int argc, char **argv)
                     planet->Draw(camera, sun, ship->frame);
                 }
             }
+
             /*
               end 3d stuff drawn here
             */
@@ -2673,25 +2338,19 @@ int main(int argc, char **argv)
             glm::dvec3 getRelAxis_(Body *body, int n);
             // surf pos??
             const glm::dvec3 pos = com;
-            glm::dvec3 polar_pos = glm::polar(pos);
             /* orbital velocity */
             glm::dvec3 vel = ship->GetVel();
 
             // The orbit is a Kepler conic in the body's INERTIAL (non-rotating)
             // frame — that is the frame the spawn/switching code targets and
-            // the frame in which the ship's trajectory is a conic.  Fit the
-            // conic from the state expressed in that frame, otherwise the
-            // same orbit reads as a different ellipse in each frame (a true
-            // 610/1600 km orbit shows up as ~610/2700 km in the rotating one).
+            // the frame in which the ship's trajectory is a conic.
             glm::dvec3 orbit_pos = pos;
             glm::dvec3 orbit_vel = vel;
             if(ship->frame->isRotFrame() == true) {
                 Frame *inertial = ship->frame->getNonRotFrame();
                 orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
-                orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel
-                          + ship->frame->GetVelocityRelTo(inertial);
-                orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos
-                          + ship->frame->GetPositionRelTo(inertial);
+                orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
+                orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos + ship->frame->GetPositionRelTo(inertial);
             }
 
             // Surface-relative state: the ship's position/velocity in the
@@ -2729,14 +2388,10 @@ int main(int argc, char **argv)
 
             const glm::dvec3 node_vector = glm::cross(glm::dvec3(0, 0, 1), ang_momentum);
 
-            // raan = acos(n.x / norm(n))
-
             double raan = acos(node_vector.x / glm::length(node_vector));
             if(node_vector.y < 0) {
                 raan = 2 * M_PI - raan;
             }
-
-            // arg_pe = acos(dot(n, ev) / (norm(n) * norm(ev)))
 
             double arg_pe = acos( glm::dot(node_vector, eccentricity_vector) /
                                   (glm::length(node_vector) * glm::length(eccentricity_vector)) );
@@ -2754,8 +2409,6 @@ int main(int argc, char **argv)
                 TrueAnomaly = 2 * M_PI - TrueAnomaly;
             }
 
-            // damn wikipedia
-            // double EccentricAnomaly = atan((sqrt(1 - ecc*ecc) * sin(TrueAnomaly)) / (ecc + cos(TrueAnomaly)));
             // http://www.bogan.ca/orbits/kepler/e_anomly.html
             double EccentricAnomaly = acos((((1 - ecc*ecc)*cos(TrueAnomaly)) / (1 + ecc * cos(TrueAnomaly))) + ecc);
             if(TrueAnomaly > M_PI) {
@@ -2766,16 +2419,6 @@ int main(int argc, char **argv)
             const double PeT = sqrt((SMa * SMa * SMa) / (mu)) * MeanAnomaly; // s
             const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (mu)); // s
             const double ApT = T - PeT; // s
-
-            /*  y
-                |
-                |
-                |
-                /-----x
-                /
-                /
-                z
-            */
 
             const glm::dvec3 up = getRelAxis_(ship->controller, 1);
             const glm::dvec3 facing = getRelAxis_(ship->controller, 2);
@@ -2789,8 +2432,6 @@ int main(int argc, char **argv)
             const glm::dvec3 _east = glm::cross(_up, _north);
 
             const double ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
-            const glm::dvec3 surface_tangent = glm::cross(pos, glm::cross(pos, surf_vel)); // hmm
-            // const double hor_speed = glm::length(glm::proj(surf_vel, surface_tangent)); // m/s
             const double hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, _up)); // m/s
 
             const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
@@ -2811,8 +2452,8 @@ int main(int argc, char **argv)
             // ImGui::Text("up: %.2f %.2f %.2f", up.x, up.y, up.z);
             // ImGui::Text("other: %.2f %.2f %.2f", other.x, other.y, other.z);
             // ImGui::Text("Ground hed: %.2f %.2f %.2f", groundHed.x, groundHed.y, groundHed.z);
-            // ImGui::Text("Pitch: %.2f", RAD2DEG(pitch));
-            // ImGui::Text("Heading: %.2f", RAD2DEG(heading));
+            // ImGui::Text("Pitch: %.2f", glm::degrees(pitch));
+            // ImGui::Text("Heading: %.2f", glm::degrees(heading));
             // ImGui::Text("up: %.2f, %.2f, %.2f", up.x, up.y, up.z);
             // ImGui::Text("facing: %.2f, %.2f, %.2f", facing.x, facing.y, facing.z);
 
@@ -2892,13 +2533,6 @@ int main(int argc, char **argv)
             if(poly_mode == true) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
-
-            // for(auto&& frame : frames) {
-            // 	ImGui::Text("root pos: %.0f, %.0f, %.0f",
-            // 		    frame->root_pos.x,
-            // 		    frame->root_pos.y,
-            // 		    frame->root_pos.z);
-            // }
 
             if(topHUDWindows == true) {
                 ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
@@ -2993,15 +2627,15 @@ int main(int argc, char **argv)
                 ImGui::Text("PeA: %.1fm", PeA);
                 ImGui::Text("PeT: %.1f", PeT);
                 ImGui::Text("  T: %.1f", T);
-                ImGui::Text("Inc: %.2f", RAD2DEG(inclination));
+                ImGui::Text("Inc: %.2f", glm::degrees(inclination));
                 ImGui::Text("Ecc: %f ", ecc);
                 ImGui::Text("SMa: %.1fm", SMa);
-                ImGui::Text("LAN: %.2f", RAD2DEG(raan));
-                ImGui::Text("LPe: %.2f", RAD2DEG(arg_pe));
+                ImGui::Text("LAN: %.2f", glm::degrees(raan));
+                ImGui::Text("LPe: %.2f", glm::degrees(arg_pe));
                 double prograde_angle = glm::angle(facing_dir, vel_dir);
                 double retrograde_angle = glm::angle(facing_dir, - vel_dir);
-                ImGui::Text("Angle to Prograde: %.2f", RAD2DEG(prograde_angle));
-                ImGui::Text("Angle to Retrograde: %.2f", RAD2DEG(retrograde_angle));
+                ImGui::Text("Angle to Prograde: %.2f", glm::degrees(prograde_angle));
+                ImGui::Text("Angle to Retrograde: %.2f", glm::degrees(retrograde_angle));
                 ImGui::Text("Energy: %.2f J", e);
                 ImGui::Separator();
                 ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
@@ -3016,11 +2650,11 @@ int main(int argc, char **argv)
                 ImGui::Text("Altitude (ASL): %.1fm", distance - ship->m_parent->radius);
                 ImGui::Text("V speed: %.2fm/s", ver_speed);
                 ImGui::Text("H speed: %.2fm/s", hor_speed2);
-                ImGui::Text("Latitude: %.4f", RAD2DEG(latitude));
-                ImGui::Text("Longitude: %.4f", RAD2DEG(longitude));
-                ImGui::Text("Pitch: %.2f", RAD2DEG(pitch));
-                ImGui::Text("Roll: %.2f", RAD2DEG(roll));
-                ImGui::Text("Heading: %.2f", RAD2DEG(yaw));
+                ImGui::Text("Latitude: %.4f", glm::degrees(latitude));
+                ImGui::Text("Longitude: %.4f", glm::degrees(longitude));
+                ImGui::Text("Pitch: %.2f", glm::degrees(pitch));
+                ImGui::Text("Roll: %.2f", glm::degrees(roll));
+                ImGui::Text("Heading: %.2f", glm::degrees(yaw));
                 ImGui::End();
             }
 
@@ -3150,28 +2784,25 @@ int main(int argc, char **argv)
                 double argY = sqrt(1 - (ecc * ecc)) * sin(EccentricAnomaly);
                 double phi = atan2(argY, argX);
 
-                ImVec2 ship_p = { 200 + p.x + distance / div * cos(phi),
-                                  200 + p.y + distance / div * sin(phi) };
+                ImVec2 ship_p = { float(200 + p.x + distance / div * cos(phi)),
+                                  float(200 + p.y + distance / div * sin(phi)) };
 
-                ImVec2 raan_p = { 200 + p.x + 100 * cos(raan),
-                                  200 + p.y + 100 * sin(raan) };
+                ImVec2 raan_p = { float(200 + p.x + 100 * cos(raan)),
+                                  float(200 + p.y + 100 * sin(raan)) };
 
                 /* incorrect */
-                ImVec2 peri_p = { 200 + p.x + PeA / div * cos(arg_pe - M_PI / 2),
-                                  200 + p.y + PeA / div * sin(arg_pe - M_PI / 2) };
+                ImVec2 peri_p = { float(200 + p.x + PeA / div * cos(arg_pe - M_PI / 2)),
+                                  float(200 + p.y + PeA / div * sin(arg_pe - M_PI / 2)) };
 
-                ImVec2 apo_p = { 200 + p.x + ApA / div * cos(arg_pe + M_PI / 2),
-                                 200 + p.y + ApA / div * sin(arg_pe + M_PI / 2) };
-
-                // auto whut = ;
-                // ImGui::GetWindowDrawList()->AddPolyline(&planet[0], 26, color2, false, 1, true);
+                ImVec2 apo_p = { float(200 + p.x + ApA / div * cos(arg_pe + M_PI / 2)),
+                                 float(200 + p.y + ApA / div * sin(arg_pe + M_PI / 2)) };
 
                 ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1.0);
-                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2( 200 + p.x,
-                                                                    200 + p.y ),
+
+                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(200 + p.x, 200 + p.y),
                                                             ship->m_parent->radius / div,
-                                      // 100 / (div / 6000),
                                                             color2, 26);
+
                 ImGui::GetWindowDrawList()->AddCircleFilled(ship_p, 5, color);
                 ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship_p, color);
 
@@ -3195,6 +2826,7 @@ int main(int argc, char **argv)
 
             if(screenshot_requested == true) {
                 char fname[256];
+                // TODO change format to osp_YYYY_MM_DD_HH_MM_SS.png
                 snprintf(fname, sizeof(fname), "./screenshot_%03d.png", screenshot_count);
                 if(display.SaveScreenshot(fname)) {
                     screenshot_count++;
@@ -3207,9 +2839,6 @@ int main(int argc, char **argv)
         }
     }
 
-    // Bodies own their frames (Frame::name is a std::string now), so deleting
-    // every body releases exactly its inertial + rotating frames. The ship and
-    // space port reference a body via ->m_parent, so delete them first.
     delete space_port;
     delete ship;
 

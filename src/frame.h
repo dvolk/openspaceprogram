@@ -21,20 +21,12 @@ struct Frame {
     /* relative to parent */
     glm::dvec3 pos;
     glm::dvec3 initial_pos;
-    // GLM 1.0.0+: default-constructed matrices are zero, so default these to
-    // the identity explicitly (matches the pre-1.0 glm behaviour these
-    // members relied on).
     glm::dmat3 initial_orient = glm::dmat3(1.0);
     glm::dmat3 orient = glm::dmat3(1.0);
     glm::dvec3 vel;
     double orb_ang_speed;
     double rot_ang_speed;
     // Spin axis in this frame's local (body) frame. (0,1,0) = no axial tilt
-    // (the body spins about the orbital normal — the historical convention).
-    // Overridden from the axial tilt when the system is loaded; drives the
-    // spin, stasis velocity and fictitious forces. Irrelevant for a
-    // non-spinning frame. Defaulted so any Frame created without an explicit
-    // value keeps the old pure-Y behaviour.
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
 
     // For a non-rotating (inertial) frame, `orient` holds the orbital-plane
@@ -76,6 +68,7 @@ struct Frame {
             return this;
         }
     }
+
     // A ship at (pos, vel) in this frame has inertial (root-frame) velocity
     //   root_orient * (vel + GetStasisVelocity(pos)) + root_vel
     // (verified against the frame rotation in UpdateOrbitRails:
@@ -89,7 +82,6 @@ struct Frame {
     // i.e. the OLD frame's stasis term is added, the NEW frame's subtracted.
     // (A ship needing velocity -GetStasisVelocity(pos) to be inertially
     // stationary is a useful mnemonic for the signs.)
-
     glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
         return glm::cross(-rot_ang_speed * spin_axis, pos);
     }

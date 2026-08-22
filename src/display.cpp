@@ -17,15 +17,15 @@ Renderer::Renderer(int width, int height)
     int gl_minor = 3;
     bool gl_core = true;
     m_gl_debug = false;
-    Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE;
+    Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE; // TODO cli args
     char window_title[] = "Open Space Program";
-    m_screen_width = 1920;
+    m_screen_width = 1920; // TODO cli args
     m_screen_height = 1080;
   
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     check_gl_error();
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); // TODO can we have more bits? or float depth?
     check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     check_gl_error();

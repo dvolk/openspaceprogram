@@ -93,10 +93,6 @@ void GLDebugDrawer::init() {
 }
 
 void GLDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {
-    // lineBuffer.push_back(PosColVertex(from.getX(), from.getY(), from.getZ(),
-    // 				    color.getX(), color.getY(), color.getZ()));
-    // lineBuffer.push_back(PosColVertex(to.getX(), to.getY(), to.getZ(),
-    // 				    color.getX(), color.getY(), color.getZ()));
     lineBuffer.push_back(from.getX());
     lineBuffer.push_back(from.getY());
     lineBuffer.push_back(from.getZ());
@@ -121,7 +117,7 @@ void PhysicsEngine::Draw(const Camera * camera) {
 }
 
 PhysicsEngine::PhysicsEngine() {
-    printf("sizeof(btScalar): %d\n", sizeof(btScalar));
+    printf("sizeof(btScalar): %lu\n", sizeof(btScalar));
     assert(sizeof(btScalar) == 8);
 
     collisionConfiguration = new btDefaultCollisionConfiguration();
@@ -281,7 +277,7 @@ void *PhysicsEngine::GlueTogether(Body *parent, Body *child) {
     //     new btPoint2PointConstraint(*btParent, *btChild,
     //                                 btVector3(0,-1,0), btVector3(0,1,0));
 
-    btTransform t1 = btTransform(btQuaternion(1,1,1), // what's this?
+    btTransform t1 = btTransform(btQuaternion(1,1,1), // TODO what's this?
                                  btVector3(0,0,-1));
     btTransform t2 = btTransform(btQuaternion(1,1,1),
                                  btVector3( 0,0,1));
@@ -320,7 +316,7 @@ void ApplyCentralForce(Body *body, glm::dvec3 force) {
 }
 
 void SetMass(Body *body, double newMass) {
-    getRigidBody(body)->setMassProps(newMass, btVector3(1, 1, 1) /* fixme */);
+    getRigidBody(body)->setMassProps(newMass, btVector3(1, 1, 1) /* TODO fixme */);
 }
 
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {
@@ -365,13 +361,6 @@ void SetVelocity(Body *b, glm::dvec3 vel) {
     getRigidBody(b)->setLinearVelocity(btvel);
 }
 
-// void setRotation(Body *b, glm::dmat3 rot) {
-
-// }
-
-// void setPosition(Body *b, glm:;dvec3 pos) {
-// }
-
 void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 {
     btTransform t;
@@ -379,23 +368,13 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 
     t.setOrigin(btVector3(pos.x, pos.y, pos.z));
 
-    // Write the orientation through a quaternion. The old element-wise
-    // setValue() copy transposed the orientation (a glm::dmat3 is
-    // column-major while Bullet's m_el[i] is row i). Routing through a
-    // quaternion is unambiguous and stays consistent with GetOrient, which
-    // reads back the same way.
+    // Write the orientation through a quaternion.
     glm::dquat gq = glm::quat_cast(rot);
     // Bullet's quaternion constructor is (x, y, z, w); GLM components are by name.
     t.setRotation(btQuaternion(gq.x, gq.y, gq.z, gq.w));
 
     getRigidBody(b)->proceedToTransform(t);
 }
-
-// void setModelMatrix(Body *b, glm::dmat4 model) {
-//   btTransform t;
-//   t.setFromOpenGLMatrix(&model[0][0]);
-//   getRigidBody(b)->setCenterOfMassTransform(t);
-// }
 
 glm::dvec3 getCOM(Body *body) {
     btVector3 COM = getRigidBody(body)->getCenterOfMassTransform().getOrigin();
@@ -415,6 +394,7 @@ glm::dvec3 getRelAxis_(Body *body, int n) {
     return glm::dvec3(v.getX(), v.getY(), v.getZ());
 }
 
+// TODO this seems like it would be useful
 // double angleFacing(Body *body, glm::dvec3 dir) {
 //   return getRelAxis(body, 2).angle(btVector3(dir.x, dir.y, dir.z));
 // }

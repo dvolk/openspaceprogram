@@ -18,7 +18,7 @@ struct Body {
 
     double mass;
 
-    glm::dmat4 model_matrix = glm::dmat4(1.0); // GLM 1.0.0+: default mat ctor is zero
+    glm::dmat4 model_matrix = glm::dmat4(1.0);
 
     ~Body() {
         delete model;

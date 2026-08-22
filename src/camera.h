@@ -9,8 +9,6 @@ class Camera {
 public:
     virtual ~Camera() {}
 
-    // GLM 1.0.0+: default-constructed matrices are zero, not identity, so
-    // default to identity explicitly (pre-1.0 glm semantics).
     glm::dmat4 view = glm::dmat4(1.0);
     glm::mat4 projection = glm::mat4(1.0);
     glm::dvec3 pos;
@@ -18,8 +16,6 @@ public:
     glm::dvec3 up;
     float fov, aspect, zNear, zFar;
 
-    // The control methods are virtual so the game can drive either a
-    // FreeCamera or an OrbitCamera through a single base pointer.
     virtual void ComputeView() {}
     virtual void Follow(const glm::dvec3 p) {}
     virtual void MoveForward(double amt) {}
@@ -64,9 +60,8 @@ public:
     void wheel(double amt) override;
 };
 
-// Free-flight camera: a full 6DOF camera. pos/forward/up describe the camera
-// in world (ship-frame) coordinates; the mouse + E/Q rotate it, W/S/A/D and
-// Shift/Ctrl translate it.
+// Free-flight camera: a full 6DOF camera. pos/forward/up describe the
+// camera in world (ship-frame) coordinates.
 class FreeCamera : public Camera {
 public:
     glm::dvec3 right;

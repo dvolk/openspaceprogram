@@ -53,20 +53,13 @@ void Billboard::Draw(const Camera * camera, double angle) {
     glm::dmat4 View = camera->GetView();
     glm::dmat4 _View = glm::dmat4(glm::dmat3(View));
 
-    // const glm::dmat4 & View = camera->GetView();
     glm::dmat4 inv_rot = glm::dmat4(transpose(glm::mat3(View)));
-    // glm::dvec3 pos = glm::dvec3(model[3]);
-    // glm::dvec3 campos = glm::dvec3(View[3]);
     glm::dmat4 model =
         glm::translate(10.0 * glm::normalize(pos)) *
         glm::rotate(angle, pos) *
         inv_rot;
 
     glm::dmat4 ModelView = _View * model;
-    // pos = glm::dvec3(ModelView[3]);
-    // ModelView = ModelView * glm::rotate(angle, pos);
-    // printf("drawing at %.0f, %.0f, %.0f\n", pos.x, pos.y, pos.z);
-    // ModelView = glm::dmat4(glm::transpose(glm::dmat3(ModelView)));
 
     const glm::mat4 & Projection = camera->GetProjection();
     glm::mat4 MVP = Projection * glm::mat4(ModelView);

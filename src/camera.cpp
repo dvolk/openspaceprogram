@@ -38,12 +38,9 @@ OrbitCamera::OrbitCamera(const glm::dvec3& shipPos, float fov, float aspect, flo
     this->pos = focusPoint + glm::dvec3(distance, 0, 0);
     this->forward = focusPoint - pos;
     this->up = glm::normalize(pos);
-    // Finite perspective (not infinitePerspective): reverse-Z + a 32-bit depth
-    // buffer handle the far plane cleanly, and a finite zFar keeps the
-    // projection consistent with Camera::setAspect (used on resize).
     this->projection = glm::perspective(fov, aspect, zNear, zFar);
     this->view = glm::translate(pos);
-    this->orient = glm::dmat3(1.0); // GLM 1.0.0+: default mat ctor is zero, not identity
+    this->orient = glm::dmat3(1.0);
 }
 
 void OrbitCamera::wheel(double amt) {
@@ -55,26 +52,26 @@ void OrbitCamera::ComputeView()
     pos = focusPoint + orient * glm::dvec3(distance, 0, 0);
     forward = glm::normalize(focusPoint - pos);
 
-    // Build the camera basis by hand instead of glm::lookAt. lookAt takes our
-    // up vector (radial = normalize(pos)) and computes
+    // Build the camera basis by hand instead of glm::lookAt. lookAt takes
+    // our up vector (radial = normalize(pos)) and computes
     // xAxis = normalize(cross(up, zAxis)); the instant the camera is pitched
     // to look straight up or down along that radial, cross(up, zAxis) -> 0
     // and normalize(0) -> NaN, so the whole view matrix becomes NaN and the
-    // far-plane sun disc flickers out of view exactly when you point at the
-    // sun. Substituting a safe up only in that degenerate case keeps the
-    // (intended) radial up everywhere else, so the view is identical to
-    // lookAt except that it stays finite when looking along the radial.
+    // sun flickers out of view exactly when you point at it. Substituting a
+    // safe up only in that degenerate case keeps the (intended) radial up
+    // everywhere else, so the view is identical to lookAt except that it
+    // stays finite when looking along the radial.
     const glm::dvec3 zAxis = -forward; // unit view direction toward the target
 
     glm::dvec3 upHint = glm::normalize(pos);
+    // TODO is this supposed to fix the rapid flipping when looking directly up or down? Doesn't seem to work.
     if (glm::abs(glm::dot(upHint, zAxis)) > 0.9999) {
-        // Looking along the radial: any non-parallel world axis works.
         upHint = (std::abs(zAxis.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
     }
 
     const glm::dvec3 xAxis = glm::normalize(glm::cross(upHint, zAxis));
     const glm::dvec3 yAxis = glm::cross(zAxis, xAxis);
-    up = yAxis; // the camera's actual up direction
+    up = yAxis;
 
     glm::dmat4 m;
     m[0] = glm::dvec4(xAxis.x, yAxis.x, zAxis.x, 0.0);
@@ -91,18 +88,12 @@ void OrbitCamera::Follow(const glm::dvec3 p) {
 }
 
 void OrbitCamera::Pitch(double angle) {
-    // 1.  Re-compute current basis from the *current* orient
     glm::dvec3 right = glm::normalize(glm::cross(forward, up));
-
-    // 2.  Rotate around that right axis in WORLD space
     orient = glm::dmat3(glm::rotate(angle, right)) * orient;
 }
 
 void OrbitCamera::RotateY(double angle) {
-    // 1.  World-space up at the focus point is always POS normalised
-    glm::dvec3 worldUp = glm::normalize(pos);   // radial out of planet
-
-    // 2.  Rotate around that up axis in WORLD space
+    glm::dvec3 worldUp = glm::normalize(pos); // radial out of planet
     orient = glm::dmat3(glm::rotate(angle, worldUp)) * orient;
 }
 

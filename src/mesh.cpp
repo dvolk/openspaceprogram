@@ -149,10 +149,6 @@ void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)
 
 void Mesh::InitMesh(const PosTexNorIndColInterface& model, bool copyData)
 {
-    // printf("InitMesh(): copyData: %d\n", copyData);
-    // printf("InitMesh(): model.positions.size(): %d\n", model.positions.size());
-    // printf("InitMesh(): model.indices.size(): %d\n", model.indices.size());
-
     if(copyData == true) {
         num_vertices = model.positions.size();
         vs = new double[num_vertices * 3];
@@ -212,10 +208,6 @@ void Mesh::InitMesh(const PosTexNorIndColInterface& model, bool copyData)
 
 void Mesh::InitMesh(const PosTexNorIndInterface& model, bool copyData)
 {
-    // printf("InitMesh(): copyData: %d\n", copyData);
-    // printf("InitMesh(): model.positions.size(): %d\n", model.positions.size());
-    // printf("InitMesh(): model.indices.size(): %d\n", model.indices.size());
-
     if(copyData == true) {
         num_vertices = model.positions.size();
         vs = new double[num_vertices * 3];
@@ -301,8 +293,6 @@ Mesh::~Mesh()
 void Mesh::Draw()
 {
     glBindVertexArray(m_vertexArrayObject);
-
-    //glDrawElements(GL_TRIANGLES, m_numIndices, GL_UNSIGNED_INT, 0);
 
     glDrawElementsBaseVertex(GL_TRIANGLES, m_numIndices, GL_UNSIGNED_INT, 0, 0);
 
