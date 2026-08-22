@@ -2332,48 +2332,47 @@ int main(int argc, char **argv)
             const Uint8* key = SDL_GetKeyboardState(NULL);
             if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
 
-            if(camMode == CAM_FREE) {
-                // Free flight: E/Q roll, W/S forward/back, A/D strafe,
-                // Shift/Ctrl up/down. Speed scales with the current zoom level
-                // (orbit distance) so it stays usable at system scale.
+            // Camera mode is exclusive with ship control:
+            //   FREE  (exploring):  WASD+QE move the free camera (W/S fwd-back,
+            //                       A/D strafe, Q/E roll, Shift/Ctrl up-down).
+            //   ORBIT (flying):     WASD+QE rotate the ship (W/S pitch, A/D yaw,
+            //                       Q/E roll); I/X/B/N/R/F drive the ship.
+            // The mouse (hold RMB to look, wheel to zoom) works in both modes.
+            if (camMode == CAM_FREE) {
                 double base = orbitCam->distance;
-                if(base < 1.0) { base = 1.0; }
+                if (base < 1.0) { base = 1.0; }
                 double freeScale = (double)cam_speed * base;
 
-                if(key[SDL_SCANCODE_E]) { camera->Roll(0.05); }
-                else if(key[SDL_SCANCODE_Q]) { camera->Roll(-0.05); }
+                if (key[SDL_SCANCODE_W]) { camera->MoveForward(freeScale); }
+                else if (key[SDL_SCANCODE_S]) { camera->MoveForward(-freeScale); }
 
-                if(key[SDL_SCANCODE_W]) { camera->MoveForward(freeScale); }
-                else if(key[SDL_SCANCODE_S]) { camera->MoveForward(-freeScale); }
+                if (key[SDL_SCANCODE_A]) { camera->MoveRight(-freeScale); }
+                else if (key[SDL_SCANCODE_D]) { camera->MoveRight(freeScale); }
 
-                if(key[SDL_SCANCODE_A]) { camera->MoveRight(-freeScale); }
-                else if(key[SDL_SCANCODE_D]) { camera->MoveRight(freeScale); }
+                if (key[SDL_SCANCODE_Q]) { camera->Roll(-0.05); }
+                else if (key[SDL_SCANCODE_E]) { camera->Roll(0.05); }
 
-                if(key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(freeScale); }
-                else if(key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-freeScale); }
+                if (key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(freeScale); }
+                else if (key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-freeScale); }
             } else {
-                // Orbit: E/Q yaw (W/S/A/D are no-ops for the orbit camera).
-                if(key[SDL_SCANCODE_E]) { camera->RotateY(0.05); }
-                else if(key[SDL_SCANCODE_Q]) { camera->RotateY(-0.05); }
+                if (key[SDL_SCANCODE_W]) { ship->ApplyRotXPlus(); }
+                else if (key[SDL_SCANCODE_S]) { ship->ApplyRotXMinus(); }
+
+                if (key[SDL_SCANCODE_A]) { ship->ApplyRotYPlus(); }
+                else if (key[SDL_SCANCODE_D]) { ship->ApplyRotYMinus(); }
+
+                if (key[SDL_SCANCODE_Q]) { ship->ApplyRotZPlus(); }
+                else if (key[SDL_SCANCODE_E]) { ship->ApplyRotZMinus(); }
+
+                if (key[SDL_SCANCODE_I]) { ship->ApplyThrust(); }
+                if (key[SDL_SCANCODE_X]) { ship->KillRot(); }
+
+                if (key[SDL_SCANCODE_B]) { ship->RotateToward(GetVelocity(ship->controller)); }
+                if (key[SDL_SCANCODE_N]) { ship->RotateToward(-GetVelocity(ship->controller)); }
+
+                if (key[SDL_SCANCODE_R]) { ship->ThrottleUp(); }
+                else if (key[SDL_SCANCODE_F]) { ship->ThrottleDown(); }
             }
-
-            if(key[SDL_SCANCODE_I]) { ship->ApplyThrust(); }
-            if(key[SDL_SCANCODE_X]) { ship->KillRot(); }
-
-            if(key[SDL_SCANCODE_L]) { ship->ApplyRotXPlus(); }
-            else if(key[SDL_SCANCODE_J]) { ship->ApplyRotXMinus(); }
-
-            if(key[SDL_SCANCODE_U]) { ship->ApplyRotYPlus(); }
-            else if(key[SDL_SCANCODE_O]) { ship->ApplyRotYMinus(); }
-
-            if(key[SDL_SCANCODE_Y]) { ship->ApplyRotZPlus(); }
-            else if(key[SDL_SCANCODE_H]) { ship->ApplyRotZMinus(); }
-
-            if(key[SDL_SCANCODE_B]) { ship->RotateToward(GetVelocity(ship->controller)); }
-            if(key[SDL_SCANCODE_N]) { ship->RotateToward(-GetVelocity(ship->controller)); }
-
-            if(key[SDL_SCANCODE_R]) { ship->ThrottleUp(); }
-            else if(key[SDL_SCANCODE_F]) { ship->ThrottleDown(); }
 
             /* DEBUG: teleport the ship beyond the current frame's SOI (radially
                outward to 2x SOI) and zero its velocity, to force a reference-frame
@@ -2988,20 +2987,28 @@ int main(int argc, char **argv)
                 ImGui::Text(". - increase time acceleration");
                 ImGui::Text("k - decrease camera speed");
                 ImGui::Text("l - increase camera speed");
-                ImGui::Text("c - switch camera: orbit <-> free flight");
-                ImGui::Text("g - orbit camera: cycle target (ship/sun/planet/moon)");
+                ImGui::Text("c - switch mode: orbit (flying) <-> free (exploring)");
+                ImGui::Text("g - orbit mode: cycle target (ship/sun/planet/moon)");
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
                 ImGui::Text("wheel - zoom (orbit mode)");
-                ImGui::Text("free: w/s fwd-back, a/d strafe, shift/ctrl up-down, e/q roll");
-                ImGui::Text("orbit: e/q yaw");
                 ImGui::Spacing();
-                ImGui::Text("Ship");
+                ImGui::Text("Orbit mode (flying the ship)");
                 ImGui::Separator();
+                ImGui::Text("w/s - pitch up/down");
+                ImGui::Text("a/d - yaw left/right");
+                ImGui::Text("q/e - roll left/right");
                 ImGui::Text("i - fire ship engines");
                 ImGui::Text("x - kill rotation");
-                ImGui::Text("l & j - ship X rotation");
-                ImGui::Text("u & o - ship Y rotation");
-                ImGui::Text("y & h - ship Z rotation");
+                ImGui::Text("b - align prograde");
+                ImGui::Text("n - align retrograde");
+                ImGui::Text("r/f - throttle up/down");
+                ImGui::Spacing();
+                ImGui::Text("Free mode (exploring)");
+                ImGui::Separator();
+                ImGui::Text("w/s - forward/back");
+                ImGui::Text("a/d - strafe");
+                ImGui::Text("q/e - roll");
+                ImGui::Text("shift/ctrl - up/down");
                 ImGui::End();
             }
 
