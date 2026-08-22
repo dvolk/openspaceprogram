@@ -883,9 +883,12 @@ public:
     }
 
     float getDeltaV() {
-        float exaust_vel = 10123; /* m/s */
-        float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }) / 2.0; /* kg */
-        return exaust_vel * log(getMass() / (getMass() - remaining_fuel));
+        // Same exhaust velocity AND the same (full) propellant mass as the
+        // thrust model -- the two must agree, or the VESSEL window's budget
+        // doesn't match what the engine can actually deliver
+        // (reports/transfers2026_08_22 §4.3).
+        float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
+        return GetExhaustVelocity() * log(getMass() / (getMass() - remaining_fuel));
     }
 
     /* TODO should be cached per frame */
@@ -1056,9 +1059,12 @@ private:
         return 0.01; /* kg/[T] fixme T == ?? */
     }
 
+    float GetExhaustVelocity() {
+        return 40492; /* m/s -- one engine model, shared by GetMaxThrust and getDeltaV */
+    }
+
     float GetMaxThrust() {
-        float exaust_velocity = 40492; /* m/s */
-        return GetMaxFuelRate() * exaust_velocity;
+        return GetMaxFuelRate() * GetExhaustVelocity();
     }
 
     /* Called once per physics tick (step = the tick's simulated duration).
