@@ -123,11 +123,16 @@ void Skybox::init(void) {
 }
 
 void Skybox::Draw(const Camera * camera,
-                  Shader * skyboxShader) {
+                  Shader * skyboxShader, const glm::dmat3 &skyRot) {
     glDepthFunc(GL_LEQUAL);
 
     const glm::dmat4 view = camera->GetView();
-    const glm::mat4 _view = glm::mat4(glm::mat3(view)); // clear to rotation
+    // The cubemap is at rest in the root (star/inertial) frame, but the scene
+    // is drawn in the ship's frame, which may be rotating. skyRot is the map
+    // root -> ship frame, so the starfield drifts once per sidereal day while
+    // standing on a spinning planet (identity = inertial world, as before).
+    const glm::dmat3 _rot = glm::dmat3(view) * skyRot; // clear to rotation
+    const glm::mat4 _view = glm::mat4(_rot);
     const glm::mat4 projection = camera->GetProjection();
 
     skyboxShader->Bind();

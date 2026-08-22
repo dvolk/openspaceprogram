@@ -320,16 +320,22 @@ struct TerrainBody {
         // }
     }
 
-    void Draw(const Camera* camera, TerrainBody *sun) {
+    // Direction of light propagation from `planet` toward the star, in the
+    // axes of `renderFrame` (the frame the scene is drawn in — the ship's
+    // current frame).  d_root is in root (star) axes; GetOrientRelTo carries
+    // it into renderFrame's axes, so in a rotating frame the light sweeps
+    // across the terrain as the planet spins, in step with the apparent
+    // motion of the sun sphere (both are GetPositionRelTo(ship->frame)).
+    static glm::dvec3 SunlightDir(TerrainBody *planet, TerrainBody *sun,
+                                  Frame *renderFrame) {
+        const glm::dvec3 d_root = sun->frame->root_pos - planet->frame->root_pos;
+        return -glm::normalize(sun->frame->GetOrientRelTo(renderFrame) * d_root);
+    }
+
+    void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {
         double cam_dist = glm::length(camera->GetPos() - glm::dvec3(transform[3]));
 
-        /*
-          this is slightly wrong?
-        */
-        sunlightVec = -glm::normalize(
-                                      frame->GetOrientRelTo(sun->frame) *
-                                      sun->frame->GetPositionRelTo(frame)
-                                     );
+        sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
         dbg_drew_patches = 0;
         for(auto&& patch : patches) {
@@ -1055,7 +1061,10 @@ public:
     }
 
     void Draw(const Camera* camera) {
-        glm::vec3 sunlightVec = m_parent->sunlightVec; // more or less correct?
+        // Light direction in this frame's axes (the scene is drawn in the
+        // ship's current frame); recomputed here rather than using the
+        // planet's cached value so the ship is lit in step with the terrain.
+        glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(m_parent, sun, frame));
 
         for(auto&& part : parts) {
             // Per-part terrain shadow (approximate by design: one test point
@@ -1372,7 +1381,7 @@ public:
     TerrainBody *sun = nullptr; // the star (light source); set in main
     Body *body;
 
-    void Draw(const Camera* camera, const TerrainBody *current) {
+    void Draw(const Camera* camera, const TerrainBody *current, Frame *renderFrame) {
         if(current == parent) {
             // The port was spawned in the parent's rotating frame and is only
             // ever rendered while the ship is in that same frame, so its
@@ -1380,7 +1389,8 @@ public:
             const Frame *posFrame = parent->frame->getRotFrame();
             const float shadow = ComputeTerrainShadow(parent, posFrame,
                                                       GetPosition(body), sun);
-            body->Draw(camera, parent->sunlightVec, shadow);
+            glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(parent, sun, renderFrame));
+            body->Draw(camera, sunlightVec, shadow);
         }
     }
 };
@@ -2558,7 +2568,7 @@ int main(int argc, char **argv)
             */
 
             if(world_drawing == true) {
-                space_port->Draw(camera, ship->m_parent);
+                space_port->Draw(camera, ship->m_parent, ship->frame);
                 ship->Draw(camera);
 
             }
@@ -2566,7 +2576,7 @@ int main(int argc, char **argv)
             for(auto&& planet : planets) {
                 planet->Update(camera);
                 if(world_drawing == true) {
-                    planet->Draw(camera, sun);
+                    planet->Draw(camera, sun, ship->frame);
                 }
             }
             /*
@@ -2726,7 +2736,7 @@ int main(int argc, char **argv)
             const double longitude = atan2(dir.x, dir.z);
             const double latitude = asin(dir.y);
 
-            skybox.Draw(camera, skyboxshader);
+            skybox.Draw(camera, skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
 
             /* draw engine plume */
             glm::dmat4 View = camera->GetView();
