@@ -51,9 +51,14 @@ void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag);
 void ApplyCentralForce(Body *body, glm::dvec3 force);
 void ApplyCentralForceForward(Body *body, double mag);
 void ApplyTorque(Body *body, glm::dvec3 dir, double mag);
+void ApplyTorque(Body *body, glm::dvec3 torque);
 void ApplyTorqueRelX(Body *body, double mag);
 void ApplyTorqueRelY(Body *body, double mag);
 void ApplyTorqueRelZ(Body *body, double mag);
+/* local axis n (0/1/2) of the body, in world coordinates */
+glm::dvec3 getRelAxis_(Body *body, int n);
+/* the body's local moment-of-inertia diagonal (kg m^2), as Bullet has it */
+glm::dvec3 getInertiaDiag(Body *body);
 
 void SetVelocity(Body *body, glm::dvec3 vel);
 void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);

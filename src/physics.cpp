@@ -335,6 +335,11 @@ void ApplyTorque(Body *body, glm::dvec3 torque) {
     getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
 }
 
+glm::dvec3 getInertiaDiag(Body *body) {
+    const btVector3& i = getRigidBody(body)->getLocalInertia();
+    return glm::dvec3(i.getX(), i.getY(), i.getZ());
+}
+
 glm::dvec3 GetPosition(Body *b) {
     const btVector3& pos = getRigidBody(b)->getCenterOfMassPosition();
     return glm::dvec3(pos.getX(), pos.getY(), pos.getZ());

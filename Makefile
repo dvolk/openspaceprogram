@@ -77,12 +77,22 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
 	    tests/test_spawn.cpp src/frame.cpp -o test_spawn
 	./test_spawn
+	# attitude law (pure C, no Bullet): the per-substep braking law
+	# main.cpp runs, pinned across the authority/warp grid.
+	$(CXX) -O2 -std=c++11 tests/test_attitude.cpp -o test_attitude
+	./test_attitude
 	# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
 	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_thrust
 	./test_thrust
+	# rotation model (physical wheel torque, per-substep law, torque
+	# delivery): same real-Bullet link as test_thrust.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_rotation
+	./test_rotation
 
 .PHONEY: clean
 clean:
@@ -90,7 +100,7 @@ clean:
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_thrust
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

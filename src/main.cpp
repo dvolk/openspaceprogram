@@ -800,6 +800,15 @@ struct ShipCmd {
     ShipCmd(ShipCmdType t, float a = 0.0f) : type(t), amount(a) { }
 };
 
+/* Autopilot slew targets -- mutually exclusive (last one wins). The manual
+   stick is separate from these and composes with them. */
+enum SlewMode {
+    SlewNone = 0,
+    SlewPrograde,    /* align nose with velocity */
+    SlewRetrograde,  /* align nose against velocity */
+    SlewKillRot      /* kill the spin */
+};
+
 class Vehicle {
 public:
     std::vector<Body *> parts;
@@ -820,6 +829,14 @@ public:
 
     float thruster_util = 1.0;
     float thrust_mag = 0.0;   /* N; armed once per tick by ApplyThrust, re-applied per substep */
+
+    /* Rotation is armed once per tick (Command) and executed per SUBSTEP
+       (applyRotationForce, before every stepSimulation) -- like thrust,
+       because Bullet clears the accumulated torque on each stepSimulation.
+       stick: +-1 per commanded body axis (diagonals allowed, e.g. W+A);
+       slew:  the autopilot target (exclusive). */
+    float stick[3] = {0.0f, 0.0f, 0.0f};
+    int slew = SlewNone;
 
     void setRoot(Body *part) {
         parts = { part };
@@ -986,6 +1003,50 @@ public:
         }
     }
 
+    // The armed rotation commands -- like thrust -- are re-applied before
+    // EVERY substep (h = that substep's duration); applied once per tick
+    // they would act only during the first substep, cutting the delivered
+    // authority to 1/n and making it worse at warp.
+    void applyRotationForce(double h) {
+        if(m_reaction_wheels.empty()) { return; }
+        /* Manual stick: the full rated torque along each commanded body
+           axis (each wheel at its rating; diagonals compose). */
+        if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
+            for(auto&& wheel : m_reaction_wheels) {
+                for(int a = 0; a < 3; a++) {
+                    if(stick[a] == 0.0f) { continue; }
+                    ApplyTorque(wheel,
+                               (double)stick[a] * (double)GetWheelTorque() * getRelAxis_(wheel, a));
+                }
+            }
+        }
+        /* Autopilot: one authority-bounded step of the slew/kill-rot law
+           (h = this substep's duration, so the law re-evaluates per
+           substep -- the stable form of the same law). */
+        if(slew == SlewPrograde) {
+            slewToward(GetVel(), h);
+        }
+        else if(slew == SlewRetrograde) {
+            slewToward(-GetVel(), h);
+        }
+        else if(slew == SlewKillRot) {
+            killRotStep(h);
+        }
+    }
+
+    /* the reaction wheel's rated torque (N m) -- the ship's angular
+       authority, for the HUD (like getThrust() for the engines) */
+    float GetWheelTorque() {
+        return 2000; /* N m -- rated torque of one reaction wheel */
+    }
+
+    /* disarm the armed rotation commands (called once per tick, like
+       thrust_mag, so a tick without the keys doesn't keep rotating) */
+    void clearRotCmd() {
+        stick[0] = stick[1] = stick[2] = 0.0f;
+        slew = SlewNone;
+    }
+
     void Draw(const Camera* camera) {
         // Light direction in this frame's axes
         glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(m_parent, sun, frame));
@@ -1017,22 +1078,22 @@ public:
                 ApplyThrust(step);
                 break;
             case Pitch:
-                if(cmd.amount >= 0) ApplyRotXPlus(); else ApplyRotXMinus();
+                stick[0] = (cmd.amount >= 0) ? +1.0f : -1.0f;
                 break;
             case Yaw:
-                if(cmd.amount >= 0) ApplyRotYPlus(); else ApplyRotYMinus();
+                stick[1] = (cmd.amount >= 0) ? +1.0f : -1.0f;
                 break;
             case Roll:
-                if(cmd.amount >= 0) ApplyRotZPlus(); else ApplyRotZMinus();
+                stick[2] = (cmd.amount >= 0) ? +1.0f : -1.0f;
                 break;
             case KillRot:
-                applyKillRot();
+                slew = SlewKillRot;
                 break;
             case Prograde:
-                RotateToward(GetVel());
+                slew = SlewPrograde;
                 break;
             case Retrograde:
-                RotateToward(-GetVel());
+                slew = SlewRetrograde;
                 break;
         }
     }
@@ -1084,58 +1145,98 @@ private:
         }
     }
 
-    void ApplyRotXPlus() {
-        for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelX(reaction_wheel, 2000); // TODO need to make this physical
-        }
-    }
-    void ApplyRotXMinus() {
-        for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelX(reaction_wheel, -2000);
-        }
-    }
-    void ApplyRotYPlus() {
-        for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelY(reaction_wheel, 2000);
-        }
-    }
-    void ApplyRotYMinus() {
-        for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelY(reaction_wheel, -2000);
-        }
-    }
-    void ApplyRotZPlus() {
-        for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelZ(reaction_wheel, 2000);
-        }
-    }
-    void ApplyRotZMinus() {
-        for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelZ(reaction_wheel, -2000);
-        }
-    }
-    void applyKillRot() {
-        const double angvel_treshhold = 0.001;
-        glm::dvec3 ang_vel = GetAngVelocity(m_reaction_wheels.front());
+    // --- physical rotation model (private law implementation) -------------
+    // The reaction wheel is rated at GetWheelTorque() N m -- the most torque
+    // it can apply to the ship -- so the ship's angular authority is
+    // alpha = maxTorque() / I (rad/s^2) with I the ship's total moment of
+    // inertia (kg m^2, from Bullet). Stick, prograde/retrograde slew and
+    // kill-rot all work within that authority, so no command can be more
+    // forceful than a maxed manual stick. (The thrust analogue: T = mdot*ve.)
 
-        if(glm::length(ang_vel) < angvel_treshhold) {
-            return;
-        }
-        else {
-            void ApplyTorque(Body *body, glm::dvec3 torque);
-
-            ApplyTorque(m_reaction_wheels.front(), - glm::normalize(ang_vel) * 1000.0);
-        }
+    double maxTorque() {
+        return (double)m_reaction_wheels.size() * GetWheelTorque();
     }
 
-    void RotateToward(glm::dvec3 dir) {
-        void ApplyTorque(Body *body, glm::dvec3 torque);
-        glm::dvec3 getRelAxis_(Body *body, int n);
+    /* The ship's total moment of inertia about its COM (kg m^2): each
+       part's local inertia (as Bullet has it) in world coordinates, plus
+       the parallel-axis term for its offset from the ship's COM. This is
+       the inertia a torque actually moves -- the denominator of the
+       wheel's authority. */
+    glm::dmat3 getInertia() {
+        const glm::dvec3 com = get_center_of_mass();
+        glm::dmat3 I = glm::dmat3(0.0);
+        for(auto&& part : parts) {
+            const glm::dvec3 d = GetPosition(part) - com;
+            const glm::dmat3 R = GetOrient(part);
+            const glm::dvec3 il = getInertiaDiag(part);
+            /* part's local inertia is diagonal (Bullet stores it that way);
+               build the diagonal matrix explicitly -- GLM has no
+               vec -> diagonal-mat constructor */
+            const glm::dmat3 il_diag(
+                il.x, 0.0, 0.0,
+                0.0, il.y, 0.0,
+                0.0, 0.0, il.z);
+            I += R * il_diag * glm::transpose(R);
+            I += part->mass * (glm::dot(d, d) * glm::dmat3(1.0) - glm::outerProduct(d, d));
+        }
+        return I;
+    }
 
-        glm::dvec3 facing = getRelAxis_(m_reaction_wheels.front(), 2);
-        glm::dvec3 torque = -glm::normalize(glm::cross(dir, facing) / 10.0) * 1000.0;
+    /* Slew the nose (local +Z) toward `dir` within the wheel's authority:
+       the target rate is the braking curve sqrt(2*alpha*E) -- the fastest
+       rate from which the ship can still stop exactly at the target
+       (E = the error angle) -- capped at E/(2h) so no substep can cross
+       the target, and the per-substep rate change is bounded by alpha*h,
+       so the command never exceeds a maxed manual stick. */
+    void slewToward(glm::dvec3 dir, double h) {
+        dir = glm::normalize(dir);
+        if(glm::length2(dir) < 0.5) { return; } /* no velocity to align to */
+        Body *wheel = m_reaction_wheels.front();
+        const glm::dvec3 facing = getRelAxis_(wheel, 2);
+        const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
+        if(E < 1e-9) { return; } /* already aligned */
+        glm::dvec3 axis = glm::cross(facing, dir); /* + turns the nose toward dir */
+        if(glm::length2(axis) < 1e-12) {
+            /* nose ~ opposite dir: any axis perpendicular to facing works */
+            axis = (std::fabs(facing.y) > 0.9) ? glm::dvec3(1, 0, 0) : glm::dvec3(0, 1, 0);
+            axis = glm::normalize(axis - facing * glm::dot(axis, facing));
+        }
+        axis = glm::normalize(axis);
+        const glm::dmat3 I = getInertia();
+        const double Ieff = glm::dot(axis, I * axis); /* kg m^2 about the slew axis */
+        if(Ieff <= 0.0) { return; }
+        const double alpha = maxTorque() / Ieff; /* rad/s^2, wheel-limited */
+        const double A = alpha * h;              /* max |domega| this substep */
+        const double w = glm::dot(GetAngVelocity(wheel), axis);
+        const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
+        double dw = w_des - w;
+        if(dw > A) { dw = A; }
+        if(dw < -A) { dw = -A; }
+        const glm::dvec3 torque = axis * (Ieff * dw / h); /* |torque| <= maxTorque() */
+        for(auto&& rw : m_reaction_wheels) {
+            ApplyTorque(rw, torque / (double)m_reaction_wheels.size());
+        }
+    }
 
-        ApplyTorque(m_reaction_wheels.front(), torque);
+    /* Kill the spin within the wheel's authority: each axis' rate drops by
+       min(|w|, alpha*h) per substep -- monotonic, no sign flip, never more
+       forceful than a maxed manual stick. */
+    void killRotStep(double h) {
+        Body *wheel = m_reaction_wheels.front();
+        const glm::dvec3 w = GetAngVelocity(wheel);
+        if(glm::length(w) < 0.001) { return; } /* at rest: nothing to kill */
+        const glm::dmat3 I = getInertia();
+        glm::dvec3 torque(0.0);
+        for(int i = 0; i < 3; i++) {
+            const double Iii = I[i][i];
+            if(Iii <= 0.0 || w[i] == 0.0) { continue; }
+            const double A = (maxTorque() / Iii) * h; /* max |dw| on this axis */
+            const double dw = -w[i] * std::min(1.0, A / std::fabs(w[i]));
+            torque[i] = Iii * dw / h; /* |torque[i]| <= maxTorque() */
+        }
+        for(auto&& rw : m_reaction_wheels) {
+            ApplyTorque(rw, torque / (double)m_reaction_wheels.size());
+        }
     }
 
 public:
@@ -2146,10 +2247,12 @@ int main(int argc, char **argv)
 
         while (accumulator >= dt) {
             // is this logic? ;_;
-            // Thrust is armed once per tick (if I is held, below) and then
-            // re-applied before every substep; clear it first so a tick
-            // without the key doesn't keep pushing from the last one.
+            // Thrust and rotation are armed once per tick (if the keys are
+            // held, below) and then re-applied before every substep; clear
+            // them first so a tick without the keys doesn't keep pushing or
+            // slewing from the last one.
             ship->thrust_mag = 0.0;
+            ship->clearRotCmd();
 
             const Uint8* key = SDL_GetKeyboardState(NULL);
             if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
@@ -2239,7 +2342,8 @@ int main(int argc, char **argv)
 
                 // Integrate the (time-accelerated) step in substeps,
                 // re-applying gravity + the rotating-frame fictitious forces
-                // + the engine thrust before EACH substep. Two reasons:
+                // + the engine thrust + the armed rotation commands before
+                // EACH substep. Two reasons:
                 //  1. Bullet clears accumulated forces at the end of every
                 //     stepSimulation call, so applying gravity once and then
                 //     stepping multiple substeps would leave the ship
@@ -2261,6 +2365,7 @@ int main(int argc, char **argv)
                 for (int i = 0; i < n; i++) {
                     grav = ship->processGravity();
                     ship->applyThrustForce();
+                    ship->applyRotationForce(h);
                     physics_tick(h);
                 }
             }
@@ -2700,6 +2805,9 @@ int main(int argc, char **argv)
                 ImGui::Text("Thrust: %.2fN", ship->getThrust());
                 ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
                 ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
+                ImGui::Text("Wheel torque: %.0fN m", ship->GetWheelTorque());
+                ImGui::Text("Angular rate: %.2fdeg/s",
+                            glm::degrees(glm::length(GetAngVelocity(ship->controller))));
                 ImGui::End();
             }
             if(shipDetailWindow == true) {
