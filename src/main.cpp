@@ -885,6 +885,31 @@ const char *VesselPartTypeStr(VesselPartType& p) {
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun);
 
+// One ship-control command. The input layer (keyboard, UI, or a future
+// autopilot) emits these; Vehicle::Command() is the only path from control
+// to physics, so rules that apply to all controls (e.g. "no forces while
+// paused") live in one place instead of at every call site.
+enum ShipCmdType {
+    // Settings: no direct physics effect, apply even while paused.
+    ThrottleUp,
+    ThrottleDown,
+    // Force/torque while held: dropped while the sim is paused,
+    // otherwise they would accumulate in Bullet and dump out on resume.
+    Thrust,
+    Pitch,    // amount: +1 = W, -1 = S
+    Yaw,      // amount: +1 = A, -1 = D
+    Roll,     // amount: +1 = Q, -1 = E
+    KillRot,
+    Prograde,    // align nose with velocity
+    Retrograde,  // align nose against velocity
+};
+
+struct ShipCmd {
+    ShipCmdType type;
+    float amount;
+    ShipCmd(ShipCmdType t, float a = 0.0f) : type(t), amount(a) { }
+};
+
 class Vehicle {
 public:
     std::vector<Body *> parts;
@@ -1075,13 +1100,64 @@ public:
         }
     }
 
-    void ThrottleUp() {
-        thruster_util += 0.01;
-        if(thruster_util > 1) thruster_util = 1;
+    // The single entry point from control to physics. Settings (throttle)
+    // apply even while paused; force/torque commands are dropped when
+    // simActive is false, so nothing accumulates in the rigid bodies to
+    // dump out as a velocity kick on resume.
+    void Command(ShipCmd cmd, bool simActive) {
+        switch(cmd.type) {
+            case ThrottleUp:
+                adjustThrottle(+0.01);
+                break;
+            case ThrottleDown:
+                adjustThrottle(-0.01);
+                break;
+            case Thrust:
+                if(simActive) { ApplyThrust(); }
+                break;
+            case Pitch:
+                if(simActive) {
+                    if(cmd.amount >= 0) { ApplyRotXPlus(); }
+                    else { ApplyRotXMinus(); }
+                }
+                break;
+            case Yaw:
+                if(simActive) {
+                    if(cmd.amount >= 0) { ApplyRotYPlus(); }
+                    else { ApplyRotYMinus(); }
+                }
+                break;
+            case Roll:
+                if(simActive) {
+                    if(cmd.amount >= 0) { ApplyRotZPlus(); }
+                    else { ApplyRotZMinus(); }
+                }
+                break;
+            case KillRot:
+                if(simActive) { applyKillRot(); }
+                break;
+            case Prograde:
+                if(simActive) { RotateToward(GetVel()); }
+                break;
+            case Retrograde:
+                if(simActive) { RotateToward(-GetVel()); }
+                break;
+        }
     }
-    void ThrottleDown() {
-        thruster_util -= 0.01;
-        if(thruster_util < 0) thruster_util = 0;
+
+    glm::dvec3 GetVel() {
+        return GetVelocity(controller);
+    }
+
+private:
+    // Control implementation: applies forces/torques to the Bullet bodies
+    // directly, so it is reachable only through Command() above.
+    // (Named so none of these collide with the ShipCmdType enumerators,
+    // which the case labels in Command() rely on resolving to the enum.)
+    void adjustThrottle(float delta) {
+        thruster_util += delta;
+        if(thruster_util > 1) { thruster_util = 1; }
+        if(thruster_util < 0) { thruster_util = 0; }
     }
 
     float GetMaxFuelRate() {
@@ -1135,7 +1211,7 @@ public:
             ApplyTorqueRelZ(reaction_wheel, -2);
         }
     }
-    void KillRot() {
+    void applyKillRot() {
         const double angvel_treshhold = 0.001;
         glm::dvec3 ang_vel = GetAngVelocity(m_reaction_wheels.front());
 
@@ -1149,10 +1225,6 @@ public:
         }
     }
 
-    glm::dvec3 GetVel() {
-        return GetVelocity(controller);
-    }
-
     void RotateToward(glm::dvec3 dir) {
         void ApplyTorque(Body *body, glm::dvec3 torque);
         glm::dvec3 getRelAxis_(Body *body, int n);
@@ -1162,6 +1234,8 @@ public:
 
         ApplyTorque(m_reaction_wheels.front(), torque);
     }
+
+public:
 
     glm::dmat3 GetOrientRelTo(Body *part, Frame *relTo)
     {
@@ -2355,23 +2429,27 @@ int main(int argc, char **argv)
                 if (key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(freeScale); }
                 else if (key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-freeScale); }
             } else {
-                if (key[SDL_SCANCODE_W]) { ship->ApplyRotXPlus(); }
-                else if (key[SDL_SCANCODE_S]) { ship->ApplyRotXMinus(); }
+                // All ship controls go through ShipCmd; Command() applies
+                // the pause rule (force/torque commands are dropped while
+                // time_accel == 0, throttle settings are not).
+                bool active = (time_accel != 0);
+                if (key[SDL_SCANCODE_W]) { ship->Command(ShipCmd(Pitch, +1.0f), active); }
+                else if (key[SDL_SCANCODE_S]) { ship->Command(ShipCmd(Pitch, -1.0f), active); }
 
-                if (key[SDL_SCANCODE_A]) { ship->ApplyRotYPlus(); }
-                else if (key[SDL_SCANCODE_D]) { ship->ApplyRotYMinus(); }
+                if (key[SDL_SCANCODE_A]) { ship->Command(ShipCmd(Yaw, +1.0f), active); }
+                else if (key[SDL_SCANCODE_D]) { ship->Command(ShipCmd(Yaw, -1.0f), active); }
 
-                if (key[SDL_SCANCODE_Q]) { ship->ApplyRotZPlus(); }
-                else if (key[SDL_SCANCODE_E]) { ship->ApplyRotZMinus(); }
+                if (key[SDL_SCANCODE_Q]) { ship->Command(ShipCmd(Roll, +1.0f), active); }
+                else if (key[SDL_SCANCODE_E]) { ship->Command(ShipCmd(Roll, -1.0f), active); }
 
-                if (key[SDL_SCANCODE_I]) { ship->ApplyThrust(); }
-                if (key[SDL_SCANCODE_X]) { ship->KillRot(); }
+                if (key[SDL_SCANCODE_I]) { ship->Command(ShipCmd(Thrust), active); }
+                if (key[SDL_SCANCODE_X]) { ship->Command(ShipCmd(KillRot), active); }
 
-                if (key[SDL_SCANCODE_B]) { ship->RotateToward(GetVelocity(ship->controller)); }
-                if (key[SDL_SCANCODE_N]) { ship->RotateToward(-GetVelocity(ship->controller)); }
+                if (key[SDL_SCANCODE_B]) { ship->Command(ShipCmd(Prograde), active); }
+                if (key[SDL_SCANCODE_N]) { ship->Command(ShipCmd(Retrograde), active); }
 
-                if (key[SDL_SCANCODE_R]) { ship->ThrottleUp(); }
-                else if (key[SDL_SCANCODE_F]) { ship->ThrottleDown(); }
+                if (key[SDL_SCANCODE_R]) { ship->Command(ShipCmd(ThrottleUp), active); }
+                else if (key[SDL_SCANCODE_F]) { ship->Command(ShipCmd(ThrottleDown), active); }
             }
 
             /* DEBUG: teleport the ship beyond the current frame's SOI (radially
