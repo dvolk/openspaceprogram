@@ -837,7 +837,6 @@ public:
     }
 
     void init() {
-        // setVelocity(glm::dvec3(0, 0, 0));
         partResources.resize(parts.size());
         controller = parts.back();
         NeverSleep(controller);
@@ -846,10 +845,10 @@ public:
                 m_reaction_wheels.push_back(parts[i]);
             }
             else if(partTypes[i] == VesselPartType::Engine) {
-                partResources[i].capacity[(int)ResourceType::Hydrogen] = 1.0;
-                partResources[i].capacity[(int)ResourceType::LOX] = 1.0;
-                partResources[i].current[(int)ResourceType::Hydrogen] = 1.0;
-                partResources[i].current[(int)ResourceType::LOX] = 1.0;
+                partResources[i].capacity[(int)ResourceType::Hydrogen] = 1000;
+                partResources[i].capacity[(int)ResourceType::LOX] = 1000;
+                partResources[i].current[(int)ResourceType::Hydrogen] = 1000;
+                partResources[i].current[(int)ResourceType::LOX] = 1000;
                 m_thrusters.push_back(parts[i]);
             }
         }
@@ -883,10 +882,6 @@ public:
     }
 
     float getDeltaV() {
-        // Same exhaust velocity AND the same (full) propellant mass as the
-        // thrust model -- the two must agree, or the VESSEL window's budget
-        // doesn't match what the engine can actually deliver
-        // (reports/transfers2026_08_22 §4.3).
         float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
         return GetExhaustVelocity() * log(getMass() / (getMass() - remaining_fuel));
     }
@@ -1056,7 +1051,8 @@ private:
     }
 
     float GetMaxFuelRate() {
-        return 0.01; /* kg/[T] fixme T == ?? */
+        return 1; /* kg/s PER TANK; the engine burns H2 AND LOX, so the
+                          total exhaust flow is 2x this -- see GetMaxThrust */
     }
 
     float GetExhaustVelocity() {
@@ -1064,7 +1060,9 @@ private:
     }
 
     float GetMaxThrust() {
-        return GetMaxFuelRate() * GetExhaustVelocity();
+        /* T = (total exhaust flow) x ve. Both propellants end up in the
+           plume, so the flow is H2 + LOX = 2 tanks. */
+        return 2 * GetMaxFuelRate() * GetExhaustVelocity();
     }
 
     /* Called once per physics tick (step = the tick's simulated duration).
@@ -1088,32 +1086,32 @@ private:
 
     void ApplyRotXPlus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelX(reaction_wheel, 2); // need to make this physical
+            ApplyTorqueRelX(reaction_wheel, 2000); // TODO need to make this physical
         }
     }
     void ApplyRotXMinus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelX(reaction_wheel, -2);
+            ApplyTorqueRelX(reaction_wheel, -2000);
         }
     }
     void ApplyRotYPlus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelY(reaction_wheel, 2);
+            ApplyTorqueRelY(reaction_wheel, 2000);
         }
     }
     void ApplyRotYMinus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelY(reaction_wheel, -2);
+            ApplyTorqueRelY(reaction_wheel, -2000);
         }
     }
     void ApplyRotZPlus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelZ(reaction_wheel, 2);
+            ApplyTorqueRelZ(reaction_wheel, 2000);
         }
     }
     void ApplyRotZMinus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
-            ApplyTorqueRelZ(reaction_wheel, -2);
+            ApplyTorqueRelZ(reaction_wheel, -2000);
         }
     }
     void applyKillRot() {
@@ -1126,7 +1124,7 @@ private:
         else {
             void ApplyTorque(Body *body, glm::dvec3 torque);
 
-            ApplyTorque(m_reaction_wheels.front(), - glm::normalize(ang_vel));
+            ApplyTorque(m_reaction_wheels.front(), - glm::normalize(ang_vel) * 1000.0);
         }
     }
 
@@ -1135,7 +1133,7 @@ private:
         glm::dvec3 getRelAxis_(Body *body, int n);
 
         glm::dvec3 facing = getRelAxis_(m_reaction_wheels.front(), 2);
-        glm::dvec3 torque = -glm::normalize(glm::cross(dir, facing) / 10.0);
+        glm::dvec3 torque = -glm::normalize(glm::cross(dir, facing) / 10.0) * 1000.0;
 
         ApplyTorque(m_reaction_wheels.front(), torque);
     }
@@ -1810,13 +1808,13 @@ int main(int argc, char **argv)
         double ship_height = 3.5;
 
         // top
-        Body *capsule = create_body(capsule_model, 0, 0, 0, 0.5, true);
+        Body *capsule = create_body(capsule_model, 0, 0, 0, 500, true);
         setPosRot(capsule, start + pad_dir * (ship_height + 7), pad_orient);
         // middle
-        Body *reaction_wheel = create_body(wheel_model, 0, 0, 0, 1.0, true);
+        Body *reaction_wheel = create_body(wheel_model, 0, 0, 0, 1000, true);
         setPosRot(reaction_wheel, start + pad_dir * (ship_height + 5), pad_orient);
         // bottom
-        Body *thruster = create_body(engine_model, 0, 0, 0, 3.0, true);
+        Body *thruster = create_body(engine_model, 0, 0, 0, 3000, true);
         setPosRot(thruster, start + pad_dir * (ship_height + 3), pad_orient);
 
         ship->setRoot(capsule);

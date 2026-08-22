@@ -19,7 +19,7 @@
 //      the nominal kg/s at ANY warp. Previously the per-call amount was divided
 //      by a hardcoded 60 ("since fps = 60") while the logic tick runs at 50 Hz,
 //      so the ship burned 50/60 of the nominal rate -- inconsistent with the
-//      thrust model (404.9 N = 0.01 kg/s x 40492 m/s).
+//      thrust model (809.8 N = 0.02 kg/s x 40492 m/s, both propellants).
 //
 //   3. SetMass inertia (src/physics.cpp) -- tests the REAL function.
 //      setMassProps(mass, I) uses I AS-IS. Previously a fixed btVector3(1,1,1)
@@ -30,8 +30,10 @@
 //      with mass for a fixed shape, and must NOT be the identity.
 //
 // Thrust-model constants: the standard ship (see test_attitude.cpp):
-//   thrust 404.9 N = 0.01 kg/s x 40492 m/s, 2.0 kg propellant (1.0 H2 + 1.0 LOX),
-//   dry mass 4.5 kg, logic tick dt = 1/50 s (src/main.cpp).
+//   thrust 809.8 N = 0.02 kg/s (H2 + LOX) x 40492 m/s,
+//   2.0 kg propellant (1.0 H2 + 1.0 LOX), dry mass 4.5 kg,
+//   logic tick dt = 1/50 s (src/main.cpp). The F/mdot below are harness
+//   constants for the delivery-pattern tests -- any F works there.
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
