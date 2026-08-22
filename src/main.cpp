@@ -2072,7 +2072,7 @@ int main(int argc, char **argv)
     if(use_free_cam) {
         camMode = CAM_FREE;
         camera = freeCam;
-        printf("Camera: free flight (C = orbit, mouse = look)\n");
+        printf("Camera: free flight (C = orbit, hold RMB = look)\n");
     }
 
     // Bodies the orbit camera can target (the ship is the default). Built from
@@ -2102,8 +2102,10 @@ int main(int argc, char **argv)
     int screenshot_count = 0;
     bool teleport_beyond_soi_requested = false;
     bool poly_mode = false;
-    bool capture_pointer = true;
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    // KSP-style mouse: the cursor stays free so the UI is interactive;
+    // holding RMB over 3D moves the camera (see the mouse-event handlers).
+    bool rmbCam = false;
+    SDL_SetRelativeMouseMode(SDL_FALSE);
 
     const double dt = 1.0/50.0;
     double currentTime = 0.001 * (double)(SDL_GetTicks());
@@ -2219,7 +2221,7 @@ int main(int argc, char **argv)
                         freeCam->up = orbitCam->up;
                         camMode = CAM_FREE;
                         camera = freeCam;
-                        printf("Camera: free flight (C = orbit, mouse = look)\n");
+                        printf("Camera: free flight (C = orbit, hold RMB = look)\n");
                     } else {
                         // free -> orbit: refocus the orbit camera on the current
                         // target, keeping a similar distance.
@@ -2266,14 +2268,6 @@ int main(int argc, char **argv)
                         poly_mode = false;
                     }
                 }
-                if(ev.key.keysym.sym == SDLK_v) {
-                    capture_pointer = not capture_pointer;
-                    if(capture_pointer == true) {
-                        SDL_SetRelativeMouseMode(SDL_TRUE);
-                    } else {
-                        SDL_SetRelativeMouseMode(SDL_FALSE);
-                    }
-                }
                 if(ev.key.keysym.sym == SDLK_t) {
                     orbitInfoWindow = false;
                     orbitMapWindow = false;
@@ -2288,14 +2282,28 @@ int main(int argc, char **argv)
                     shipDetailWindow = false;
                 }
             }
+            if(ev.type == SDL_MOUSEBUTTONDOWN) {
+                // KSP-style: holding RMB over 3D (not over a UI window)
+                // moves the camera.
+                if(ev.button.button == SDL_BUTTON_RIGHT &&
+                   !ImGui::GetIO().WantCaptureMouse) {
+                    rmbCam = true;
+                }
+            }
+            if(ev.type == SDL_MOUSEBUTTONUP) {
+                if(ev.button.button == SDL_BUTTON_RIGHT) {
+                    rmbCam = false;
+                }
+            }
             if(ev.type == SDL_MOUSEMOTION) {
-                if(capture_pointer == true) {
+                if(rmbCam && !ImGui::GetIO().WantCaptureMouse) {
                     camera->RotateY(-ev.motion.xrel / 200.0f);
                     camera->Pitch(ev.motion.yrel / 200.0f);
                 }
             }
             if(ev.type == SDL_MOUSEWHEEL) {
-                if(capture_pointer == true) {
+                // Zoom when the wheel is not scrolling a UI window.
+                if(!ImGui::GetIO().WantCaptureMouse) {
                     camera->wheel(ev.wheel.y);
                 }
             }
@@ -2982,11 +2990,10 @@ int main(int argc, char **argv)
                 ImGui::Text("l - increase camera speed");
                 ImGui::Text("c - switch camera: orbit <-> free flight");
                 ImGui::Text("g - orbit camera: cycle target (ship/sun/planet/moon)");
-                ImGui::Text("mouse - look (both modes)");
+                ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
                 ImGui::Text("wheel - zoom (orbit mode)");
                 ImGui::Text("free: w/s fwd-back, a/d strafe, shift/ctrl up-down, e/q roll");
                 ImGui::Text("orbit: e/q yaw");
-                ImGui::Text("v - capture/release mouse pointer");
                 ImGui::Spacing();
                 ImGui::Text("Ship");
                 ImGui::Separator();
