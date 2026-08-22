@@ -316,7 +316,14 @@ void ApplyCentralForce(Body *body, glm::dvec3 force) {
 }
 
 void SetMass(Body *body, double newMass) {
-    getRigidBody(body)->setMassProps(newMass, btVector3(1, 1, 1) /* TODO fixme */);
+    // setMassProps takes the inertia tensor AS-IS, so it must be recomputed
+    // from the collision shape (as RegisterObject does) -- a fixed
+    // btVector3(1,1,1) would silently reset the body's moment of inertia
+    // to the identity on every call.
+    btRigidBody *rb = getRigidBody(body);
+    btVector3 inertia(0, 0, 0);
+    rb->getCollisionShape()->calculateLocalInertia(newMass, inertia);
+    rb->setMassProps(newMass, inertia);
 }
 
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {

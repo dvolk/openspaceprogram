@@ -45,6 +45,7 @@ void removeTerrainCollision(btRigidBody *b);
 void NeverSleep(Body *body);
 
 double GetMass(Body *body);
+void SetMass(Body *body, double newMass);
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force);
 void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag);
 void ApplyCentralForce(Body *body, glm::dvec3 force);

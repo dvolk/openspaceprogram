@@ -819,6 +819,7 @@ public:
     std::vector<void *> constraints;
 
     float thruster_util = 1.0;
+    float thrust_mag = 0.0;   /* N; armed once per tick by ApplyThrust, re-applied per substep */
 
     void setRoot(Body *part) {
         parts = { part };
@@ -854,14 +855,14 @@ public:
         }
     }
 
-    /* returns true if fuel was consumed*/
+    /* returns true if fuel was consumed. amt is the kg consumed THIS tick
+       (the caller scales the kg/s flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */) {
         int i = 0;
-        float consp_factor = 60; // since fps = 60 and fuel flow is kg/s
         for(auto&& partResource : partResources) {
-            if(partResource.current[(int)type] >= amt / consp_factor) {
-                partResource.current[(int)type] -= amt / consp_factor;
-                parts[i]->mass -= amt / consp_factor; /* why does Body have mass at all? */
+            if(partResource.current[(int)type] >= amt) {
+                partResource.current[(int)type] -= amt;
+                parts[i]->mass -= amt; /* why does Body have mass at all? */
                 void SetMass(Body *body, double newMass);
                 SetMass(parts[i], parts[i]->mass);
                 return true;
@@ -975,6 +976,18 @@ public:
         return applyGravity();
     }
 
+    // Bullet clears all accumulated forces on every stepSimulation, so the
+    // thrust -- like gravity -- must be re-applied before EVERY substep.
+    // Applied once per tick it would only act during the first substep's
+    // h seconds of the tick's n*h, cutting the delivered thrust to 1/n
+    // (and n grows with time acceleration, so it got worse at warp).
+    void applyThrustForce() {
+        if(thrust_mag == 0.0f) { return; }
+        for(auto&& thruster : m_thrusters) {
+            ApplyCentralForceForward(thruster, thrust_mag);
+        }
+    }
+
     void Draw(const Camera* camera) {
         // Light direction in this frame's axes
         glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(m_parent, sun, frame));
@@ -990,7 +1003,9 @@ public:
     // every command is dropped, so nothing accumulates in the rigid bodies
     // (a force/torque left in Bullet would dump out as a velocity kick on
     // resume) and settings like throttle stay frozen.
-    void Command(ShipCmd cmd, bool simActive) {
+    /* step = the tick's simulated duration (dt * time_accel); only Thrust
+       uses it (to scale this tick's fuel flow). */
+    void Command(ShipCmd cmd, bool simActive, double step = 0.0) {
         if(not simActive)
             return;
         switch(cmd.type) {
@@ -1001,7 +1016,7 @@ public:
                 adjustThrottle(-0.01);
                 break;
             case Thrust:
-                ApplyThrust();
+                ApplyThrust(step);
                 break;
             case Pitch:
                 if(cmd.amount >= 0) ApplyRotXPlus(); else ApplyRotXMinus();
@@ -1046,18 +1061,25 @@ private:
         return GetMaxFuelRate() * exaust_velocity;
     }
 
-    void ApplyThrust() {
+    /* Called once per physics tick (step = the tick's simulated duration).
+       Consumes the tick's fuel and records the thrust; the force itself is
+       applied by applyThrustForce() before EVERY substep below. */
+    void ApplyThrust(double step) {
+        if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
         float max_fuel_rate = GetMaxFuelRate();
+        const float flow = max_fuel_rate * thruster_util * (float)step; /* kg this tick, per tank */
 
+        thrust_mag = 0.0f;
         for(auto&& thruster : m_thrusters) {
-            if(consumeResourceMass(ResourceType::Hydrogen, max_fuel_rate * thruster_util /* could == 0? */) and
-               consumeResourceMass(ResourceType::LOX,      max_fuel_rate * thruster_util))
+            if(consumeResourceMass(ResourceType::Hydrogen, flow) and
+               consumeResourceMass(ResourceType::LOX,      flow))
                 {
-                    ApplyCentralForceForward(thruster, GetMaxThrust() * thruster_util);
+                    thrust_mag = GetMaxThrust() * thruster_util;
                     m_thrust = 1.0;
                 }
         }
     }
+
     void ApplyRotXPlus() {
         for(auto&& reaction_wheel : m_reaction_wheels) {
             ApplyTorqueRelX(reaction_wheel, 2); // need to make this physical
@@ -2120,6 +2142,11 @@ int main(int argc, char **argv)
 
         while (accumulator >= dt) {
             // is this logic? ;_;
+            // Thrust is armed once per tick (if I is held, below) and then
+            // re-applied before every substep; clear it first so a tick
+            // without the key doesn't keep pushing from the last one.
+            ship->thrust_mag = 0.0;
+
             const Uint8* key = SDL_GetKeyboardState(NULL);
             if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
 
@@ -2149,7 +2176,7 @@ int main(int argc, char **argv)
                 if (key[SDL_SCANCODE_Q]) { ship->Command(ShipCmd(Roll, +1.0f), game_running); }
                 if (key[SDL_SCANCODE_E]) { ship->Command(ShipCmd(Roll, -1.0f), game_running); }
 
-                if (key[SDL_SCANCODE_I]) { ship->Command(ShipCmd(Thrust), game_running); }
+                if (key[SDL_SCANCODE_I]) { ship->Command(ShipCmd(Thrust), game_running, dt * time_accel); }
                 if (key[SDL_SCANCODE_X]) { ship->Command(ShipCmd(KillRot), game_running); }
 
                 if (key[SDL_SCANCODE_B]) { ship->Command(ShipCmd(Prograde), game_running); }
@@ -2208,7 +2235,7 @@ int main(int argc, char **argv)
 
                 // Integrate the (time-accelerated) step in substeps,
                 // re-applying gravity + the rotating-frame fictitious forces
-                // before EACH substep. Two reasons:
+                // + the engine thrust before EACH substep. Two reasons:
                 //  1. Bullet clears accumulated forces at the end of every
                 //     stepSimulation call, so applying gravity once and then
                 //     stepping multiple substeps would leave the ship
@@ -2229,6 +2256,7 @@ int main(int argc, char **argv)
                 const double h = step / n;
                 for (int i = 0; i < n; i++) {
                     grav = ship->processGravity();
+                    ship->applyThrustForce();
                     physics_tick(h);
                 }
             }

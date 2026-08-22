@@ -77,6 +77,12 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
 	    tests/test_spawn.cpp src/frame.cpp -o test_spawn
 	./test_spawn
+	# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
+	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_thrust
+	./test_thrust
 
 .PHONEY: clean
 clean:
@@ -84,7 +90,7 @@ clean:
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_thrust
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).
