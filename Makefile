@@ -102,6 +102,11 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ \
 	    tests/test_fleet.cpp src/fleet.cpp -o test_fleet
 	./test_fleet
+	# home-planet calendar (src/calendar.h, header-only pure math): day/year
+	# from spin/orbit rates, 427-day snapped year, months, epoch year,
+	# tidally-locked + star edge cases. Pinned to the Eerbon JSON rates.
+	$(CXX) -O2 -std=c++11 -I./src tests/test_calendar.cpp -o test_calendar
+	./test_calendar
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
 # setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws
@@ -118,7 +123,7 @@ clean:
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_fleet test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_fleet test_calendar test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

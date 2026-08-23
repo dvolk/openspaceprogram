@@ -35,6 +35,7 @@
 #include "physics.h"
 #include "gldebug.h"
 #include "frame.h"
+#include "calendar.h"
 #include "shipdef.h"
 #include "fleet.h"
 #include <nlohmann/json.hpp>
@@ -211,6 +212,7 @@ struct TerrainBody {
     bool moves = false;
     Frame *frame; // owner
     Frame *rot_frame; // owner
+    Calendar cal; // this body's day/year (from its spin + orbit rates)
     glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec;
     int dbg_drew_patches;
@@ -639,6 +641,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         for(size_t i = 0; i < sys.bodies.size(); i++) {
             if(sys.bodies[i] != sys.root) { sys.home = sys.bodies[i]; break; }
         }
+    }
+
+    // --- calendars ----------------------------------------------------------
+    // Every body gets its own calendar from its spin (day) and orbit (year)
+    // rates, so the HUD can show LOCAL time on whatever body the ship is in.
+    // The year is snapped to a whole number of days (see calendar.h), so all
+    // date boundaries fall on local midnight. Stars get an invalid calendar
+    // (dummy zero-spin frame).
+    const int epoch_year = 4724;  // the year the game starts in
+    for(size_t i = 0; i < sys.bodies.size(); i++) {
+        TerrainBody *b = sys.bodies[i];
+        const double D = (b->rot_frame && b->rot_frame->rot_ang_speed > 0.0)
+                       ? 2.0 * M_PI / b->rot_frame->rot_ang_speed : 0.0;
+        const double Y = (b->frame && b->frame->orb_ang_speed > 0.0)
+                       ? 2.0 * M_PI / b->frame->orb_ang_speed : 0.0;
+        b->cal = Calendar::make(D, Y, epoch_year);
     }
 
     // Recompute the root-relative frame values so positions/velocities/orients
@@ -2992,6 +3010,36 @@ int main(int argc, char **argv)
                 ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
                 ImGui::Checkbox("World draw", &world_drawing);
                 ImGui::Text("Time: %f", time);
+                if(sys.home && sys.home->cal.valid()) {
+                    CalTime ct = sys.home->cal.at(time);
+                    if(ct.has_year) {
+                        ImGui::Text("Clock:  Yr %d  Mo %d  Day %d  %02d:%02d:%02d  (%s time)",
+                                    ct.year, ct.month, ct.day, ct.hh, ct.mm, ct.ss,
+                                    sys.home->name.c_str());
+                    } else {
+                        ImGui::Text("Clock:  Day %d  %02d:%02d:%02d  (%s time)",
+                                    ct.day, ct.hh, ct.mm, ct.ss,
+                                    sys.home->name.c_str());
+                    }
+                }
+                // Local date + time on the body the ship is currently in,
+                // when it's not the home planet (e.g. the Moon's own day).
+                TerrainBody *local_body = (ship && ship->frame)
+                                        ? ship->frame->body : nullptr;
+                if(local_body && local_body != sys.home &&
+                   local_body->cal.valid()) {
+                    CalTime lt = local_body->cal.at(time);
+                    if(lt.has_year) {
+                        ImGui::Text("Local:  %s  Yr %d  Mo %d  Day %d  %02d:%02d:%02d",
+                                    local_body->name.c_str(),
+                                    lt.year, lt.month, lt.day,
+                                    lt.hh, lt.mm, lt.ss);
+                    } else {
+                        ImGui::Text("Local:  %s  Day %d  %02d:%02d:%02d",
+                                    local_body->name.c_str(),
+                                    lt.day, lt.hh, lt.mm, lt.ss);
+                    }
+                }
                 ImGui::Text("Patches: %d", ship->m_parent->CountPatches());
                 ImGui::Text("Cam speed: %d", cam_speed);
                 ImGui::Text("Time Accel: %d", time_accel);
