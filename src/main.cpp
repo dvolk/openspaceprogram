@@ -1928,6 +1928,8 @@ OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel,
 
 int main(int argc, char **argv)
 {
+    const auto prog_start = std::chrono::steady_clock::now();
+
     CLI::App app{"Open Space Program"};
 
     std::string body_name;
@@ -1971,6 +1973,12 @@ int main(int argc, char **argv)
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
                    "Initial time acceleration (0 = paused, default 0)")
+        ->check(CLI::NonNegativeNumber);
+
+    double timeout_seconds = 0.0;
+    app.add_option("--timeout", timeout_seconds,
+                   "Auto-exit the main loop after this many wall-clock "
+                   "seconds (0 = run until closed; default: 0)")
         ->check(CLI::NonNegativeNumber);
 
     bool orbit_log = false;
@@ -2392,10 +2400,31 @@ int main(int argc, char **argv)
                activeIdx + 1, (int)ships.size(), ship->name.c_str());
     };
 
+    // --timeout: wall-clock budget for the whole run (0 = run until closed).
+    const Uint32 loop_start_ms = SDL_GetTicks();
+    const double startup_s =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
+    printf("Main loop starting: startup took %.3f s", startup_s);
+    if(timeout_seconds > 0.0) {
+        printf(" | auto-exit after %.1f s (wall clock)", timeout_seconds);
+    }
+    printf("\n");
+    fflush(stdout);
+
     /* main loop timing from
        http://gafferongames.com/game-physics/fix-your-timestep/
     */
     while (running == true) {
+        // --timeout: auto-exit once the wall-clock budget is spent.
+        if(timeout_seconds > 0.0) {
+            const double elapsed_s = (SDL_GetTicks() - loop_start_ms) * 0.001;
+            if(elapsed_s >= timeout_seconds) {
+                printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
+                fflush(stdout);
+                running = false;
+            }
+        }
+
         /*
           EVENTS
         */
