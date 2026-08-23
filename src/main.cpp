@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <algorithm>
 #include <chrono>
+#include <ctime>
+#include <sys/stat.h>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -3249,8 +3251,13 @@ int main(int argc, char **argv)
 
             if(screenshot_requested == true) {
                 char fname[256];
-                // TODO change format to osp_YYYY_MM_DD_HH_MM_SS.png
-                snprintf(fname, sizeof(fname), "./screenshot_%03d.png", screenshot_count);
+                time_t now = ::time(nullptr);
+                struct tm tm;
+                localtime_r(&now, &tm);
+                char stamp[32];
+                strftime(stamp, sizeof(stamp), "%Y_%m_%d_%H_%M_%S", &tm);
+                snprintf(fname, sizeof(fname), "./tmp/osp_%s.png", stamp);
+                mkdir("./tmp", 0755);
                 if(display.SaveScreenshot(fname)) {
                     screenshot_count++;
                 }

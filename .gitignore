@@ -13,6 +13,7 @@ imgui.ini
 # Local reference material & screenshots
 references/
 screenshot_*.png
+tmp/
 
 # Source data (baked into the tracked ksp_system.json)
 ksp_system.csv
