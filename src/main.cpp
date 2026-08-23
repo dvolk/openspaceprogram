@@ -813,6 +813,7 @@ public:
     glm::dvec3 m_com;
 
     Body *controller;
+    int controllerIndex = -1;   // part index; -1 = last part (set by build_ship)
     std::vector<Body *> m_thrusters;
     std::vector<Body *> m_reaction_wheels;
     std::vector<void *> constraints;
@@ -823,6 +824,7 @@ public:
     std::vector<const PartDef *> partDefs;
     std::vector<double> m_thrusterThrust;  // N at full throttle (T = 2*rate*ve)
     std::vector<double> m_thrusterRate;    // kg/s per tank at full throttle
+    std::vector<glm::dvec2> m_thrusterDims;  // (radius, height) m, parallel to m_thrusters
     std::vector<double> m_wheelTorque;     // N m, rated
     double m_exhaustVel = 0;               // m/s (first engine; delta-v estimate)
     /* the armed per-thruster force for THIS tick (N at current throttle);
@@ -844,8 +846,14 @@ public:
         parts = { part };
     }
 
-    void attachDown(Body *part) {
-        void *constraint = GlueTogether(parts.back(), part);
+    void attachDown(Body *part, const PartDef *def) {
+        /* weld at the part faces: parent bottom (-h/2) to child top (+h/2);
+           generalizes the old hardcoded +-1 m (2 m parts). partDefs is
+           parallel to parts, so the parent's def is the last one pushed. */
+        const PartDef *parent = partDefs.back();
+        void *constraint = GlueTogether(parts.back(), part,
+                                        glm::dvec3(0.0, 0.0, -parent->height / 2.0),
+                                        glm::dvec3(0.0, 0.0,  def->height / 2.0));
         parts.push_back(part);
         constraints.push_back(constraint);
     }
@@ -857,7 +865,10 @@ public:
 
     void init() {
         partResources.resize(parts.size());
-        controller = parts.back();
+        /* the cockpit part; build_ship() sets controllerIndex from the ship
+           def (default -1 = last part, the old behavior) */
+        int ci = controllerIndex < 0 ? (int)parts.size() - 1 : controllerIndex;
+        controller = parts[(size_t)ci];
         NeverSleep(controller);
         if(partDefs.size() != parts.size()) {
             throw std::runtime_error("Vehicle::init: partDefs must be parallel to parts");
@@ -877,6 +888,7 @@ public:
                 m_thrusters.push_back(parts[i]);
                 m_thrusterThrust.push_back(d->fullThrust());
                 m_thrusterRate.push_back(d->fuel_rate);
+                m_thrusterDims.push_back(glm::dvec2(d->radius, d->height));
                 if(m_exhaustVel == 0.0) { m_exhaustVel = d->exhaust_velocity; }
             }
             bool has_capacity = false;
@@ -1418,9 +1430,10 @@ static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         setPosRot(part, base + orient * glm::dvec3(0.0, 0.0, def.parts[i].offset), orient);
 
         if(i == 0) { ship->setRoot(part); }
-        else { ship->attachDown(part); }
+        else { ship->attachDown(part, &pd); }
         ship->partDefs.push_back(&pd);
     }
+    ship->controllerIndex = def.controllerIndex();
     ship->init();
 }
 
@@ -2908,8 +2921,15 @@ int main(int argc, char **argv)
             glm::dmat4 View = camera->GetView();
             glm::mat4 Projection = camera->GetProjection();
             if(ship->m_thrust > 0) {
-                for(auto&& thruster : ship->m_thrusters) {
-                    glm::dmat4 Model = thruster->model_matrix;
+                for(size_t t = 0; t < ship->m_thrusters.size(); t++) {
+                    /* the plume mesh is authored for the base part
+                       (radius 1 m, height 2 m): scale it to this thruster's
+                       size so the tail lands on the engine tail (-h/2) */
+                    const glm::dvec2 &dim = ship->m_thrusterDims[t];
+                    glm::dmat4 Model = ship->m_thrusters[t]->model_matrix
+                        * glm::dmat4(glm::dmat3(dim.x, 0.0, 0.0,
+                                                 0.0, dim.x, 0.0,
+                                                 0.0, 0.0, dim.y / 2.0));
                     glm::mat4 ModelViewFloat = View * Model;
                     engine_plume_model->shader->Bind();
                     engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);

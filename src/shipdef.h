@@ -18,7 +18,9 @@
            "mesh": "engine.obj",          // file in res/
            "texture": "engine.png",       // file in res/
            "mass": 1000,                  // kg
-           "torque": 2000,                // optional, N m -> contributes as a reaction wheel
+           "radius": 5.0,                // optional, m; cross-section (x/y extent 2r), default 1.0
+           "height": 2.0,                // optional, m; stack-axis length (z extent), default 2.0
+           "torque": 2000,               // optional, N m -> contributes as a reaction wheel
            "fuel_rate": 1.0,              // optional, kg/s; with exhaust_velocity -> a thruster
            "exhaust_velocity": 40492,     // optional, m/s; with fuel_rate -> a thruster
            "capacity": { "hydrogen": 1000, "lox": 1000 }  // optional, kg -> a propellant tank
@@ -82,6 +84,15 @@ struct PartDef {
     std::string mesh;     // file in res/
     std::string texture;  // file in res/
     double mass;          // kg
+
+    /* Physical size in metres; the .obj is authored to match (origin
+       centered, +Z = stack axis): radius = cross-section (x/y extent 2r),
+       height = extent along the stack axis (z extent h). Defaults are the
+       legacy 2 m cube, so pre-size parts keep working. The stack weld
+       anchors at the faces (+-h/2); a future radial port sits at r from the
+       axis; a future staging cut lands on a face. */
+    double radius;
+    double height;
 
     double torque;            // N m; > 0 -> contributes as a reaction wheel
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster

@@ -1,0 +1,8 @@
+{
+  "name": "Big",
+  "parts": [
+    { "part": "capsule",       "offset": 14.5 },
+    { "part": "tank_r3h2",     "offset": 12.5 },
+    { "part": "engine_r5h10",  "offset": 6.5  }
+  ]
+}

@@ -24,7 +24,10 @@ public:
                         glm::vec3 rot, bool planet);
     btRigidBody *AddTerrainCollision(Mesh *mesh);
     void RemoveTerrainCollision(btRigidBody *b);
-    void * GlueTogether(Body *parent, Body *child);
+    /* Weld two parts at the given local anchor points (the anchor points
+       must coincide in world space, i.e. they define the relative offset). */
+    void * GlueTogether(Body *parent, Body *child,
+                        glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
     void collisions(void);
     void Draw(const Camera * camera);
     void Detach(void * constraint);
@@ -70,6 +73,9 @@ glm::dvec3 GetAngVelocity(Body *b);
 glm::dvec3 getCOM(Body *body);
 glm::dmat3 GetOrient(Body *body);
 
-void * GlueTogether(Body *parent, Body *child);
+/* Weld two parts; anchors are local points that must coincide in world
+   space (they define the relative offset, e.g. faces at +-h/2). */
+void * GlueTogether(Body *parent, Body *child,
+                    glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
 
 void debug_draw(const Camera * camera);

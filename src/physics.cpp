@@ -9,6 +9,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <iostream>
+#include <cstdlib>
 
 #include "physics.h"
 #include "body.h"
@@ -18,6 +19,21 @@
 #include "gldebug.h"
 
 PhysicsEngine *physics;
+
+/* Convex-hull margin (m), tunable via OSP_HULL_MARGIN.
+   Each part's collision hull is its mesh expanded by this much on every
+   face. Because the ship's parts are welded face-to-face (the visible meshes
+   touch exactly), two adjacent hulls overlap by 2*margin -- the contact
+   solver then fires an impulse to resolve that overlap on EVERY substep.
+   A large margin (the old 0.5 m -> 1.0 m overlap) is fine for chunky parts
+   but destabilizes a thin one (the 0.25 m reaction-wheel disc): the impulse
+   the solver applies to its low moment of inertia tumbles the whole ship.
+   0.1 m (0.2 m overlap) keeps every current part stable, verified headless. */
+static double hull_margin() {
+    const char *e = getenv("OSP_HULL_MARGIN");
+    if(e && e[0]) { return strtod(e, NULL); }
+    return 0.1;
+}
 
 class GLDebugDrawer : public btIDebugDraw {
     int m_debugMode;
@@ -230,7 +246,7 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
         btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                                         3 * sizeof(double));
 
-        hull->setMargin(0.5);
+        hull->setMargin(hull_margin());
 
         shape = hull;
     }
@@ -266,7 +282,8 @@ btRigidBody* getRigidBody(Body *b);
 
 
 
-void *PhysicsEngine::GlueTogether(Body *parent, Body *child) {
+void *PhysicsEngine::GlueTogether(Body *parent, Body *child,
+                                  glm::dvec3 parentAnchor, glm::dvec3 childAnchor) {
     btRigidBody *btParent = getRigidBody(parent);
     btRigidBody *btChild = getRigidBody(child);
 
@@ -275,9 +292,9 @@ void *PhysicsEngine::GlueTogether(Body *parent, Body *child) {
     //                                 btVector3(0,-1,0), btVector3(0,1,0));
 
     btTransform t1 = btTransform(btQuaternion(1,1,1), // TODO what's this?
-                                 btVector3(0,0,-1));
+                                 btVector3(parentAnchor.x, parentAnchor.y, parentAnchor.z));
     btTransform t2 = btTransform(btQuaternion(1,1,1),
-                                 btVector3( 0,0,1));
+                                 btVector3(childAnchor.x, childAnchor.y, childAnchor.z));
 
     btGeneric6DofConstraint *constraint =
         new btGeneric6DofConstraint(*btParent, *btChild, t1, t2, false);
@@ -436,8 +453,9 @@ void ApplyTorque(Body *body, glm::dvec3 dir, double mag) {
     getRigidBody(body)->applyTorque(mag * ndir);
 }
 
-void *GlueTogether(Body *parent, Body *child) {
-    return physics->GlueTogether(parent, child);
+void *GlueTogether(Body *parent, Body *child,
+                   glm::dvec3 parentAnchor, glm::dvec3 childAnchor) {
+    return physics->GlueTogether(parent, child, parentAnchor, childAnchor);
 }
 
 void PhysicsEngine::collisions() {

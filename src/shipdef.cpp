@@ -6,7 +6,8 @@
 #include <nlohmann/json.hpp>
 
 PartDef::PartDef()
-    : mass(0.0), torque(0.0), fuel_rate(0.0), exhaust_velocity(0.0) {
+    : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
+      exhaust_velocity(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -70,6 +71,17 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.mass = pv.value("mass", -1.0);
         if(d.mass <= 0.0) {
             throw std::runtime_error(std::string(ctx) + "\"mass\" must be > 0 (kg)");
+        }
+
+        /* size (metres): the .obj is authored to match; defaults are the
+           legacy 2 m cube so pre-size parts are unchanged */
+        d.radius = pv.value("radius", 1.0);
+        d.height = pv.value("height", 2.0);
+        if(d.radius <= 0.0) {
+            throw std::runtime_error(std::string(ctx) + "\"radius\" must be > 0 (m)");
+        }
+        if(d.height <= 0.0) {
+            throw std::runtime_error(std::string(ctx) + "\"height\" must be > 0 (m)");
         }
 
         /* Behavior is field-driven (see shipdef.h): each optional field is

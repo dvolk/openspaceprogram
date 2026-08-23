@@ -33,7 +33,7 @@ static bool expect_throw(const std::function<void()> &fn) {
 int main() {
     // --- parts catalog ----------------------------------------------------
     PartsCatalog cat = load_parts_catalog("res/parts.json");
-    CHECK(cat.parts.size() == 4);
+    CHECK(cat.parts.size() == 20);
     CHECK(cat.find("nope") == nullptr);
 
     const PartDef *cap = cat.find("capsule");
@@ -41,6 +41,10 @@ int main() {
     const PartDef *eng = cat.find("engine");
     const PartDef *ft  = cat.find("fuel_tank");
     CHECK(cap != nullptr && rw != nullptr && eng != nullptr && ft != nullptr);
+
+    // pre-size parts default to the legacy 2 m cube (radius 1, height 2)
+    CHECK(cap->radius == 1.0 && cap->height == 2.0);
+    CHECK(eng->radius == 1.0 && eng->height == 2.0);
 
     // type is a free-form label; behavior comes from the fields
     CHECK(cap->type == "capsule");
@@ -53,6 +57,9 @@ int main() {
     CHECK(rw->type == "reaction_wheel");
     CHECK(rw->mass == 1000.0);
     CHECK(rw->torque == 2000.0);
+    // the wheel is a thin disc: height = 25% of the radius
+    CHECK(rw->radius == 1.0 && rw->height == 0.25);
+    CHECK(rw->mesh == "reaction_wheel_r1h0.25.obj");
 
     // engine is the pump: thrust params, but no propellant of its own
     CHECK(eng->type == "engine");
@@ -74,6 +81,39 @@ int main() {
     CHECK(ft->capacity[(int)ResourceType::Hydrogen] == 1000.0f);
     CHECK(ft->capacity[(int)ResourceType::LOX] == 1000.0f);
 
+    // sized parts: radius/height are explicit, thrust scales with the size.
+    // capsules/engines keep the original proportions (height = 2 x radius);
+    // tanks cover the full radius x height grid.
+    const PartDef *e5 = cat.find("engine_r5h10");
+    const PartDef *e3 = cat.find("engine_r3h6");
+    const PartDef *t32 = cat.find("tank_r3h2");
+    const PartDef *t33 = cat.find("tank_r3h3");
+    const PartDef *t15 = cat.find("tank_r1h5");
+    const PartDef *t55 = cat.find("tank_r5h5");
+    const PartDef *c32 = cat.find("capsule_r3h6");
+    const PartDef *c52 = cat.find("capsule_r5h10");
+    const PartDef *w3 = cat.find("reaction_wheel_r3h0.75");
+    const PartDef *w5 = cat.find("reaction_wheel_r5h1.25");
+    CHECK(e5 != nullptr && e3 != nullptr && t32 != nullptr && t33 != nullptr
+          && t15 != nullptr && t55 != nullptr && c32 != nullptr && c52 != nullptr
+          && w3 != nullptr && w5 != nullptr);
+    CHECK(e5->radius == 5.0 && e5->height == 10.0);
+    CHECK(e3->radius == 3.0 && e3->height == 6.0);
+    CHECK(e5->fullThrust() == 323936.0);  // 2 * 4.0 * 40492
+    CHECK(e3->fullThrust() == 161968.0);  // 2 * 2.0 * 40492
+    // fuel tanks: the full radius x height grid
+    CHECK(t32->radius == 3.0 && t32->height == 2.0);
+    CHECK(t33->radius == 3.0 && t33->height == 3.0);
+    CHECK(t15->radius == 1.0 && t15->height == 5.0);
+    CHECK(t55->radius == 5.0 && t55->height == 5.0);
+    CHECK(t33->capacity[(int)ResourceType::Hydrogen] == 1000.0f);
+    // capsules: one per radius, height = 2 x radius, small wheel
+    CHECK(c32->radius == 3.0 && c32->height == 6.0 && c32->torque == 200.0);
+    CHECK(c52->radius == 5.0 && c52->height == 10.0 && c52->torque == 200.0);
+    // reaction wheels: height = 25% of the radius
+    CHECK(w3->radius == 3.0 && w3->height == 0.75 && w3->torque == 2000.0);
+    CHECK(w5->radius == 5.0 && w5->height == 1.25 && w5->torque == 2000.0);
+
     // --- ship def -----------------------------------------------------------
     ShipDef def = load_ship_def("res/ships/basic.json", cat);
     CHECK(def.parts.size() == 4);
@@ -82,8 +122,9 @@ int main() {
     CHECK(def.parts[1].def == rw);
     CHECK(def.parts[2].def == ft);   // the fuel tank
     CHECK(def.parts[3].def == eng);
-    CHECK(def.parts[0].offset == 12.5);
-    CHECK(def.parts[1].offset == 10.5);
+    // the disc wheel (h 0.25) sits (2 + 0.25)/2 = 1.125 m from its neighbours
+    CHECK(def.parts[0].offset == 10.75);
+    CHECK(def.parts[1].offset == 9.625);
     CHECK(def.parts[2].offset == 8.5);
     CHECK(def.parts[3].offset == 6.5);
     // no "controller" in the file -> defaults to the last part (the engine)
@@ -126,6 +167,18 @@ int main() {
         CHECK(ex_fuel == 4000.0);
         CHECK(ex_torque == 2200.0); // same capsule + wheel as basic
     }
+
+    // the mixed-size ships: faces touch, so the spacing is (h_top + h_bottom)/2
+    ShipDef big = load_ship_def("res/ships/big.json", cat);
+    CHECK(big.parts.size() == 3);
+    CHECK(big.parts[0].def == cap && big.parts[1].def == t32 && big.parts[2].def == e5);
+    CHECK(big.parts[0].offset == 14.5 && big.parts[1].offset == 12.5 && big.parts[2].offset == 6.5);
+    CHECK(big.controllerIndex() == 2);  // no "controller" -> last part (the engine)
+
+    ShipDef tall = load_ship_def("res/ships/tall.json", cat);
+    CHECK(tall.parts.size() == 3);
+    CHECK(tall.parts[0].def == c32 && tall.parts[1].def == t55 && tall.parts[2].def == e5);
+    CHECK(tall.parts[0].offset == 19.5 && tall.parts[1].offset == 14.0 && tall.parts[2].offset == 6.5);
 
     // --- error paths ---------------------------------------------------------
     CHECK(expect_throw([](){ load_parts_catalog("res/no_such_file.json"); }));
@@ -171,6 +224,26 @@ int main() {
              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
              "\"capacity\": { \"hydrogen\": 0, \"lox\": 0 } } ] }";
         f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // radius/height must be > 0
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        {
+            std::ofstream f(bad);
+            f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+                 "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                 "\"radius\": 0 } ] }";
+        }
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        {
+            std::ofstream f(bad);
+            f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+                 "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                 "\"height\": -1 } ] }";
+        }
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);
     }

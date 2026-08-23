@@ -9,11 +9,53 @@
       "torque": 200
     },
     {
+      "name": "capsule_r3h6",
+      "type": "capsule",
+      "mesh": "capsule_r3h6.obj",
+      "texture": "capsule.png",
+      "mass": 500,
+      "radius": 3.0,
+      "height": 6.0,
+      "torque": 200
+    },
+    {
+      "name": "capsule_r5h10",
+      "type": "capsule",
+      "mesh": "capsule_r5h10.obj",
+      "texture": "capsule.png",
+      "mass": 500,
+      "radius": 5.0,
+      "height": 10.0,
+      "torque": 200
+    },
+    {
       "name": "reaction_wheel",
       "type": "reaction_wheel",
-      "mesh": "reaction_wheel.obj",
+      "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
       "mass": 1000,
+      "radius": 1.0,
+      "height": 0.25,
+      "torque": 2000
+    },
+    {
+      "name": "reaction_wheel_r3h0.75",
+      "type": "reaction_wheel",
+      "mesh": "reaction_wheel_r3h0.75.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 1000,
+      "radius": 3.0,
+      "height": 0.75,
+      "torque": 2000
+    },
+    {
+      "name": "reaction_wheel_r5h1.25",
+      "type": "reaction_wheel",
+      "mesh": "reaction_wheel_r5h1.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 1000,
+      "radius": 5.0,
+      "height": 1.25,
       "torque": 2000
     },
     {
@@ -26,11 +68,133 @@
       "exhaust_velocity": 40492
     },
     {
+      "name": "engine_r3h6",
+      "type": "engine",
+      "mesh": "engine_r3h6.obj",
+      "texture": "engine.png",
+      "mass": 1000,
+      "radius": 3.0,
+      "height": 6.0,
+      "fuel_rate": 2.0,
+      "exhaust_velocity": 40492
+    },
+    {
+      "name": "engine_r5h10",
+      "type": "engine",
+      "mesh": "engine_r5h10.obj",
+      "texture": "engine.png",
+      "mass": 1000,
+      "radius": 5.0,
+      "height": 10.0,
+      "fuel_rate": 4.0,
+      "exhaust_velocity": 40492
+    },
+    {
       "name": "fuel_tank",
       "type": "fuel_tank",
       "mesh": "reaction_wheel.obj",
       "texture": "reaction_wheel.png",
       "mass": 2000,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r3h2",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r3h2.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 3.0,
+      "height": 2.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r1h1",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r1h1.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 1.0,
+      "height": 1.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r1h3",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r1h3.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 1.0,
+      "height": 3.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r1h5",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r1h5.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 1.0,
+      "height": 5.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r3h1",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r3h1.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 3.0,
+      "height": 1.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r3h3",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r3h3.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 3.0,
+      "height": 3.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r3h5",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r3h5.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 3.0,
+      "height": 5.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r5h1",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r5h1.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 5.0,
+      "height": 1.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r5h3",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r5h3.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 5.0,
+      "height": 3.0,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "tank_r5h5",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel_r5h5.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
+      "radius": 5.0,
+      "height": 5.0,
       "capacity": { "hydrogen": 1000, "lox": 1000 }
     }
   ]
