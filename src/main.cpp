@@ -776,6 +776,7 @@ enum SlewMode {
 
 class Vehicle {
 public:
+    std::string name;   // display name (def name, disambiguated in main)
     std::vector<Body *> parts;
     std::vector<ResourceContent> partResources;
     std::vector<VesselPartType> partTypes;
@@ -1044,14 +1045,34 @@ public:
         slew = SlewNone;
     }
 
-    void Draw(const Camera* camera) {
+    /* called when control moves to ANOTHER ship: zero the throttle and
+       clear the armed thrust + rotation commands, so this ship just
+       coasts under its own physics from here on (no residual forces,
+       no fuel flow). Control input reaches only the active ship. */
+    void releaseControl() {
+        thruster_util = 0.0f;
+        clearThrust();
+        clearRotCmd();
+    }
+
+    /* renderFrame: the frame the camera view is built in. Usually this
+       ship's own frame (identity transform); an idle ship that switched
+       SOI while another ship was being controlled lives in a different
+       frame, so transform its parts into the render frame first. */
+    void Draw(const Camera* camera, Frame *renderFrame) {
         // Light direction in this frame's axes
         glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(m_parent, sun, frame));
+
+        glm::dmat4 xform = glm::dmat4(1.0);
+        if(frame != renderFrame) {
+            xform = glm::translate(frame->GetPositionRelTo(renderFrame))
+                  * glm::dmat4(frame->GetOrientRelTo(renderFrame));
+        }
 
         for(auto&& part : parts) {
             // Per-part terrain shadow
             const float shadow = ComputeTerrainShadow(m_parent, frame, GetPosition(part), sun);
-            part->Draw(camera, sunlightVec, shadow);
+            part->Draw(camera, sunlightVec, shadow, xform);
         }
     }
 
@@ -1296,6 +1317,44 @@ public:
         frame = newFrame;
         m_parent = newFrame->body;
     }
+
+    /* Per-tick SOI bookkeeping for THIS ship: if the ship is outside the
+       current frame's SOI, move to the parent frame; else if it has
+       entered a child's SOI, move to the nearest such child. Called once
+       per tick, per ship (the frame tree is shared; each ship tracks its
+       own position in it). */
+    void switchFrames() {
+        const glm::dvec3 com = get_center_of_mass();
+        double ship_r = glm::length(com);
+        if(ship_r > frame->soi + 10000) {
+            // switching to parent SOI if there is one
+            if(frame->parent != NULL) {
+                glm::dvec3 pos = GetPosition(controller);
+                printf("@@@ %s switching frame from %s to parent %s\n",
+                       name.c_str(), frame->name.c_str(),
+                       frame->parent->name.c_str());
+                glm::dvec3 offset = frame->GetPositionRelTo(frame->parent);
+                printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
+                printf("@@@@@ OLD position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
+                moveToFrame(frame->parent);
+                pos = GetPosition(controller);
+                printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
+            }
+        }
+        else {
+            // check if we've entered a child SOI
+            for(auto&& child : frame->children) {
+                double dist = glm::length(GetPositionRelTo(controller, child));
+                if(dist < child->soi - 10000) {
+                    printf("@@@ %s switching frame from %s to child %s, distance: %.0f\n",
+                           name.c_str(), frame->name.c_str(),
+                           child->name.c_str(), dist);
+                    moveToFrame(child);
+                    break;
+                }
+            }
+        }
+    }
 };
 
 /* Instantiate a ship def: one rigid body per part (mesh + texture from the
@@ -1399,7 +1458,12 @@ static glm::dmat3 faceAlong(const glm::dvec3 &dir)
     return glm::dmat3(x, y, z);
 }
 
-static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home, System &sys)
+/* slot_offset (m): lateral separation for ships sharing a scenario --
+   applied along the orbit binormal (perpendicular to both the radius
+   vector and the velocity), so each ship's orbit stays essentially the
+   same shape. 0 for a lone ship (and no-op for pad scenarios). */
+static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
+                          System &sys, double slot_offset = 0.0)
 {
     if(sc.on_pad) { return; } // already on the pad, set up in main
 
@@ -1443,6 +1507,12 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
         const glm::dvec3 vhat = sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
                                          : glm::cross(glm::dvec3(0, 1, 0), rhat);
         velWorld = speed * vhat;
+    }
+
+    if(slot_offset != 0.0) {
+        const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
+        const glm::dvec3 vhat = glm::normalize(velWorld);
+        shipWorldPos += glm::normalize(glm::cross(rhat, vhat)) * slot_offset;
     }
 
     Frame *frame = resolve_frame_by_soi(sys.star->frame, shipWorldPos);
@@ -1821,9 +1891,11 @@ int main(int argc, char **argv)
     app.add_option("--parts", parts_file,
                    "Parts catalog JSON (default: res/parts.json)");
 
-    std::string ship_file = "res/ships/basic.json";
-    app.add_option("--ship", ship_file,
-                   "Ship def JSON to build (default: res/ships/basic.json)");
+    std::vector<std::string> ship_files;
+    app.add_option("--ship", ship_files,
+                   "Ship def JSON to build; repeat the flag to build more "
+                   "ships (they share the body/scenario, each getting its "
+                   "own pad slot / orbit slot). Default: res/ships/basic.json");
 
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
@@ -1940,16 +2012,12 @@ int main(int argc, char **argv)
 
     std::vector<TerrainBody *> planets = sys.bodies;
 
-    /* The ship is built from JSON: the parts catalog (res/parts.json)
-       supplies each part's mass + behavior, the ship def (res/ships/basic.json)
-       supplies the stack order + offsets. */
+    /* The ships are built from JSON: the parts catalog (res/parts.json)
+       supplies each part's mass + behavior, each --ship def supplies the
+       stack order + offsets. Repeating --ship builds more ships on the
+       same body/scenario; they are spaced by pad slot (or orbit slot). */
     PartsCatalog part_catalog = load_parts_catalog(parts_file.c_str());
-    ShipDef ship_def = load_ship_def(ship_file.c_str(), part_catalog);
-
-    Vehicle *ship = new Vehicle;
-    ship->m_parent = home;
-    ship->sun = sun;
-    ship->frame = home->rot_frame;
+    if(ship_files.empty()) { ship_files.push_back("res/ships/basic.json"); }
 
     glm::dvec3 pad_dir = glm::dvec3(0.0, 1.0, 0.0);
     if (scenario != "pad-polar") {
@@ -1957,6 +2025,7 @@ int main(int argc, char **argv)
     }
     const glm::dmat3 pad_orient = faceAlong(pad_dir);
 
+    std::vector<Vehicle *> ships;
     StaticBuilding *space_port;
     {
         Mesh *space_port_mesh = new Mesh;
@@ -1974,20 +2043,46 @@ int main(int argc, char **argv)
         space_port->parent = home;
         space_port->sun = sun;
 
-        /* the ship from its def: parts + stack offsets come from the JSON
-           (res/ships/basic.json), the stack base is the pad top */
-        build_ship(ship, ship_def, partsshader, start, pad_orient);
-        ship->setVelocity(glm::dvec3(0, 0, 0));
+        /* each ship from its def: parts + stack offsets come from the
+           JSON (res/ships/basic.json), the stack base is the pad top, and
+           each extra ship gets a lateral pad slot (pad local X, 20 m
+           apart) so they stand side by side */
+        for(size_t i = 0; i < ship_files.size(); i++) {
+            ShipDef def = load_ship_def(ship_files[i].c_str(), part_catalog);
+
+            Vehicle *v = new Vehicle;
+            v->name = def.name;
+            if(ship_files.size() > 1) { v->name += " #" + std::to_string(i + 1); }
+            v->m_parent = home;
+            v->sun = sun;
+            v->frame = home->rot_frame;
+
+            const glm::dvec3 base = start
+                + pad_orient * glm::dvec3(20.0 * (double)i, 0.0, 0.0);
+            build_ship(v, def, partsshader, base, pad_orient);
+            v->setVelocity(glm::dvec3(0, 0, 0));
+            ships.push_back(v);
+        }
     }
     check_gl_error();
 
     /* Apply the CLI scenario (before the camera is constructed,
-       so the camera focuses on the spawn point). */
+       so the camera focuses on the spawn point). Each ship gets its own
+       orbit slot (1 km apart along the orbit binormal) so they don't
+       spawn on top of each other. */
     const ScenarioDef *sc = &kScenarios[0];
     for(size_t i = 0; i < sizeof(kScenarios) / sizeof(kScenarios[0]); i++) {
         if(kScenarios[i].name == scenario) { sc = &kScenarios[i]; break; }
     }
-    spawn_vehicle(ship, *sc, home, sys);
+    for(size_t i = 0; i < ships.size(); i++) {
+        spawn_vehicle(ships[i], *sc, home, sys, 1000.0 * (double)i);
+    }
+
+    /* the active (player-controlled) ship: Tab / the SHIPS window switch
+       it; the local `ship` below always points at it, so the HUD, camera,
+       input and draw code follow the active ship without special cases. */
+    int activeIdx = 0;
+    Vehicle *ship = ships[0];
 
     Mesh *engine_plume_mesh = new Mesh;
     engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
@@ -2097,6 +2192,7 @@ int main(int argc, char **argv)
     bool orbitInfoWindow = true;
     bool orbitMapWindow = true;
     bool shipInfoWindow = true;
+    bool shipListWindow = (ships.size() > 1);
     bool gameInfoWindow = false;
     bool controlsWindow = false;
     bool autoPilotWindow = false;
@@ -2136,6 +2232,24 @@ int main(int argc, char **argv)
         }
         skylines->InitMesh(skyinterface);
     }
+
+    // Switch the active (controlled) ship. The ship being left is released:
+    // throttle zeroed, armed thrust + rotation commands cleared, so it
+    // coasts under physics only (no residual forces, no fuel flow). The
+    // orbit camera recenters on the ship being taken.
+    auto select_ship = [&](int idx) {
+        if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
+        ships[activeIdx]->releaseControl();
+        activeIdx = idx;
+        ship = ships[activeIdx];
+        focusBody = 0;   // back to the "ship" focus target
+        if(camMode == CAM_ORBIT) {
+            orbitCam->Follow(ship->get_center_of_mass());
+            orbitCam->distance = 50.0;
+        }
+        printf("Active ship %d of %d: %s\n",
+               activeIdx + 1, (int)ships.size(), ship->name.c_str());
+    };
 
     /* main loop timing from
        http://gafferongames.com/game-physics/fix-your-timestep/
@@ -2225,6 +2339,13 @@ int main(int argc, char **argv)
                         printf("In free flight; press C to go to orbit, then G to switch body.\n");
                     }
                 }
+                if(ev.key.keysym.sym == SDLK_TAB) {
+                    // cycle the active ship (ignored for a lone ship;
+                    // auto-repeat would just keep cycling)
+                    if(!ev.key.repeat && ships.size() > 1) {
+                        select_ship((activeIdx + 1) % (int)ships.size());
+                    }
+                }
                 if(ev.key.keysym.sym == SDLK_F12) {
                     screenshot_requested = true;
                 }
@@ -2294,7 +2415,7 @@ int main(int argc, char **argv)
         }
 
         // clear stats and stuff
-        ship->m_thrust = 0.0;
+        for(auto *s : ships) { s->m_thrust = 0.0; }
 
         while (accumulator >= dt) {
             // is this logic? ;_;
@@ -2357,39 +2478,10 @@ int main(int argc, char **argv)
             if(time_accel != 0) {
                 sun->frame->UpdateOrbitRails(time, dt * time_accel);
 
-                com = ship->get_center_of_mass();
-                double ship_r = glm::length(com);
-                if(ship_r > ship->frame->soi + 10000) {
-                    // switching to parent SOI if there is one
-                    if(ship->frame->parent != NULL) {
-                        glm::dvec3 pos = GetPosition(ship->controller);
-                        printf("@@@ switching frame from %s to parent %s\n",
-                               ship->frame->name.c_str(),
-                               ship->frame->parent->name.c_str()
-                              );
-                        glm::dvec3 offset = ship->frame->GetPositionRelTo(ship->frame->parent);
-                        printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
-                        printf("@@@@@ OLD position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
-                        ship->moveToFrame(ship->frame->parent);
-                        pos = GetPosition(ship->controller);
-                        printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
-                    }
-                }
-                else {
-                    // check if we've entered a child SOI
-                    for(auto&& child : ship->frame->children) {
-                        double dist = glm::length(ship->GetPositionRelTo(ship->controller, child));
-                        if(dist < child->soi - 10000) {
-                            printf("@@@ switching frame from %s to child %s, distance: %.0f\n",
-                                   ship->frame->name.c_str(),
-                                   child->name.c_str(),
-                                   dist
-                                  );
-                            ship->moveToFrame(child);
-                            break;
-                        }
-                    }
-                }
+                // per-ship SOI bookkeeping: each ship tracks its own
+                // position in the shared frame tree (an idle ship can
+                // cross a boundary while we fly another one)
+                for(auto *s : ships) { s->switchFrames(); }
 
                 // Integrate the (time-accelerated) step in substeps,
                 // re-applying gravity + the rotating-frame fictitious forces
@@ -2414,9 +2506,16 @@ int main(int argc, char **argv)
                 if (n > 2000) { n = 2000; }
                 const double h = step / n;
                 for (int i = 0; i < n; i++) {
-                    grav = ship->processGravity();
-                    ship->applyThrustForce();
-                    ship->applyRotationForce(h);
+                    // every ship feels its own gravity/thrust/rotation each
+                    // substep (idle ships included); physics_tick then steps
+                    // the shared Bullet world all of them at once. `grav` is
+                    // the HUD value: the active ship's.
+                    for(auto *s : ships) {
+                        const glm::dvec3 g = s->processGravity();
+                        if(s == ship) { grav = g; }
+                        s->applyThrustForce();
+                        s->applyRotationForce(h);
+                    }
                     physics_tick(h);
                 }
             }
@@ -2490,7 +2589,9 @@ int main(int argc, char **argv)
 
             if(world_drawing == true) {
                 space_port->Draw(camera, ship->m_parent, ship->frame);
-                ship->Draw(camera);
+                // render frame = the active ship's frame; idle ships in a
+                // different frame are transformed into it in Vehicle::Draw
+                for(auto *s : ships) { s->Draw(camera, ship->frame); }
             }
 
             for(auto&& planet : planets) {
@@ -2771,6 +2872,7 @@ int main(int argc, char **argv)
             ImGui::Checkbox("Surface Info", &surfaceInfoWindow);
             ImGui::Checkbox("Vessel Info", &shipInfoWindow);
             ImGui::Checkbox("Vessel Parts", &shipDetailWindow);
+            if(ships.size() > 1) { ImGui::Checkbox("Ship List", &shipListWindow); }
             ImGui::Checkbox("Target Info", &targetInfoWindow);
             ImGui::Checkbox("DUMB-ASS", &autoPilotWindow);
             ImGui::Checkbox("Controls Help", &controlsWindow);
@@ -2853,8 +2955,21 @@ int main(int argc, char **argv)
                 ImGui::End();
             }
 
+            if(shipListWindow == true and ships.size() > 1) {
+                ImGui::Begin("SHIPS");
+                for(size_t i = 0; i < ships.size(); i++) {
+                    const bool active = ((int)i == activeIdx);
+                    if(ImGui::Selectable(ships[i]->name.c_str(), active)) {
+                        select_ship((int)i);
+                    }
+                }
+                ImGui::Text("tab - cycle");
+                ImGui::End();
+            }
+
             if(shipInfoWindow == true) {
                 ImGui::Begin("VESSEL");
+                ImGui::Text("Ship: %s", ship->name.c_str());
                 ImGui::Text("Reference frame: %s", ship->frame->name.c_str());
                 ImGui::Text("Reference frame type: %s", ship->frame->isRotFrame() ? "Rotational" : "Inertial");
                 ImGui::Text("Mass: %.3fkg", ship->getMass());
@@ -2899,6 +3014,7 @@ int main(int argc, char **argv)
                 ImGui::Text("l - increase camera speed");
                 ImGui::Text("c - switch mode: orbit (flying) <-> free (exploring)");
                 ImGui::Text("g - orbit mode: cycle target (ship/sun/planet/moon)");
+                if(ships.size() > 1) { ImGui::Text("tab - switch active ship"); }
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
                 ImGui::Text("wheel - zoom (orbit mode)");
                 ImGui::Spacing();
@@ -2935,12 +3051,16 @@ int main(int argc, char **argv)
 
             if(resourcesWindow == true) {
                 ImGui::Begin("RESOURCES");
-                float hydrogen_frac =
-                    ship->partResources[2].current[(int)ResourceType::Hydrogen] /
-                    ship->partResources[2].capacity[(int)ResourceType::Hydrogen];
-                float lox_frac =
-                    ship->partResources[2].current[(int)ResourceType::LOX] /
-                    ship->partResources[2].capacity[(int)ResourceType::LOX];
+                // aggregate across the active ship's parts (any ship layout)
+                float h_cur = 0, h_cap = 0, l_cur = 0, l_cap = 0;
+                for(size_t i = 0; i < ship->partResources.size(); i++) {
+                    h_cur += ship->partResources[i].current[(int)ResourceType::Hydrogen];
+                    h_cap += ship->partResources[i].capacity[(int)ResourceType::Hydrogen];
+                    l_cur += ship->partResources[i].current[(int)ResourceType::LOX];
+                    l_cap += ship->partResources[i].capacity[(int)ResourceType::LOX];
+                }
+                const float hydrogen_frac = (h_cap > 0) ? h_cur / h_cap : 0.0f;
+                const float lox_frac = (l_cap > 0) ? l_cur / l_cap : 0.0f;
 
                 ImGui::ProgressBar(hydrogen_frac, ImVec2(-1, 0), "Hydrogen");
                 ImGui::ProgressBar(lox_frac, ImVec2(-1, 0), "LOX");
@@ -3038,7 +3158,7 @@ int main(int argc, char **argv)
     }
 
     delete space_port;
-    delete ship;
+    for(auto *s : ships) { delete s; }
 
     for(auto&& body : sys.bodies) { delete body; }
 

@@ -30,16 +30,23 @@ struct Body {
         btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);
     }
 
-    void Draw(const Camera* camera, glm::vec3 & sunlightVec, float shadow) {
+    /* xform: extra world transform applied before the camera view
+       (identity by default). A body's rigid-body coordinates live in
+       WHATEVER reference frame it was integrated in; when that is not
+       the frame the camera view is built in (an idle ship that switched
+       SOI while another ship is being controlled), the caller passes the
+       ship-frame -> render-frame transform here. */
+    void Draw(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
+              const glm::dmat4 &xform = glm::dmat4(1.0)) {
         UpdateModelMatrix();
 
         glm::dmat4 View = camera->GetView();
         // make sure View * Model happens with double precision
-        glm::dmat4 ModelView = View * model_matrix;
+        glm::dmat4 ModelView = View * xform * model_matrix;
         glm::mat4 ModelViewFloat = ModelView;
         glm::mat4 Projection = camera->GetProjection();
         glm::mat4 MVP = Projection * ModelViewFloat;
-        glm::mat4 ModelFloat = model_matrix;
+        glm::mat4 ModelFloat = xform * model_matrix;
 
         model->shader->Bind();
         model->shader->setUniform_mat4(0, MVP);
