@@ -14,17 +14,26 @@
      {
        "parts": [
          { "name": "engine",
-           "type": "engine",              // capsule | reaction_wheel | engine
+           "type": "engine",              // free-form label (display only)
            "mesh": "engine.obj",          // file in res/
            "texture": "engine.png",       // file in res/
-           "mass": 3000,                  // kg
-           "torque": 2000,                // reaction_wheel only, N m
-           "fuel_rate": 1.0,              // engine only, kg/s per tank
-           "exhaust_velocity": 40492,     // engine only, m/s
-           "capacity": { "hydrogen": 1000, "lox": 1000 }  // engine only, kg
+           "mass": 1000,                  // kg
+           "torque": 2000,                // optional, N m -> contributes as a reaction wheel
+           "fuel_rate": 1.0,              // optional, kg/s; with exhaust_velocity -> a thruster
+           "exhaust_velocity": 40492,     // optional, m/s; with fuel_rate -> a thruster
+           "capacity": { "hydrogen": 1000, "lox": 1000 }  // optional, kg -> a propellant tank
          }, ...
        ]
      }
+
+   Behavior is driven by the PRESENCE of the optional fields, not by the
+   type label: any part with torque adds to the ship's reaction-wheel
+   authority; any part with fuel_rate + exhaust_velocity is a thruster;
+   any part with capacity is a propellant tank (engines draw from the
+   tanks; a tank's mass is the propellant it holds, so it sheds mass as
+   the engines burn). Fields combine freely -- e.g. a capsule can carry
+   a small reaction wheel, or an engine can carry its own tank -- so new
+   part kinds are added by editing parts.json alone, no source changes.
 
    ship def (a linear stack, root/nose first -- the same chain the ship is
    glued in, see Vehicle::setRoot/attachDown):
@@ -62,28 +71,22 @@ struct ResourceContent {
     }
 };
 
-enum class VesselPartType {
-    Capsule,
-    ReactionWheel,
-    Engine
-};
-
-const char *VesselPartTypeStr(VesselPartType& p);
-
 /* One part TYPE (a catalog entry; ship defs reference it by name).
-   Behavior fields are only meaningful for the matching type: torque for
-   ReactionWheel, fuel_rate/exhaust_velocity/capacity for Engine. */
+   `type` is a free-form display label. Behavior comes from the optional
+   fields below (see the header comment): torque makes it a reaction
+   wheel, fuel_rate + exhaust_velocity make it a thruster, capacity makes
+   it a propellant tank. They combine freely. */
 struct PartDef {
     std::string name;
-    VesselPartType type;
+    std::string type;         // free-form label (display only)
     std::string mesh;     // file in res/
     std::string texture;  // file in res/
     double mass;          // kg
 
-    double torque;            // N m (ReactionWheel)
-    double fuel_rate;         // kg/s per tank at full throttle (Engine)
-    double exhaust_velocity;  // m/s (Engine)
-    std::vector<float> capacity; // kg per ResourceType (Engine)
+    double torque;            // N m; > 0 -> contributes as a reaction wheel
+    double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
+    double exhaust_velocity;  // m/s; with fuel_rate -> thruster
+    std::vector<float> capacity; // kg per ResourceType; > 0 -> propellant tank
 
     PartDef();
 

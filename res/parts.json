@@ -5,7 +5,8 @@
       "type": "capsule",
       "mesh": "capsule.obj",
       "texture": "capsule.png",
-      "mass": 500
+      "mass": 500,
+      "torque": 200
     },
     {
       "name": "reaction_wheel",
@@ -20,9 +21,16 @@
       "type": "engine",
       "mesh": "engine.obj",
       "texture": "engine.png",
-      "mass": 3000,
+      "mass": 1000,
       "fuel_rate": 1.0,
-      "exhaust_velocity": 40492,
+      "exhaust_velocity": 40492
+    },
+    {
+      "name": "fuel_tank",
+      "type": "fuel_tank",
+      "mesh": "reaction_wheel.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2000,
       "capacity": { "hydrogen": 1000, "lox": 1000 }
     }
   ]

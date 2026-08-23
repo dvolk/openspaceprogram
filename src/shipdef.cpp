@@ -1,27 +1,12 @@
 #include "shipdef.h"
 
-#include <cassert>
 #include <fstream>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
 
-const char *VesselPartTypeStr(VesselPartType& p) {
-    switch(p)
-        {
-        case VesselPartType::Capsule:{ return "Capsule"; }
-            break;
-        case VesselPartType::ReactionWheel:{ return "Reaction wheel"; }
-            break;
-        case VesselPartType::Engine:{ return "Engine block"; }
-            break;
-        default:{ assert(false); }
-        }
-}
-
 PartDef::PartDef()
-    : type(VesselPartType::Capsule),
-      mass(0.0), torque(0.0), fuel_rate(0.0), exhaust_velocity(0.0) {
+    : mass(0.0), torque(0.0), fuel_rate(0.0), exhaust_velocity(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -30,14 +15,6 @@ const PartDef *PartsCatalog::find(const std::string &name) const {
         if(parts[i].name == name) { return &parts[i]; }
     }
     return nullptr;
-}
-
-static VesselPartType part_type_from_string(const std::string &s, const char *ctx) {
-    if(s == "capsule") { return VesselPartType::Capsule; }
-    if(s == "reaction_wheel") { return VesselPartType::ReactionWheel; }
-    if(s == "engine") { return VesselPartType::Engine; }
-    throw std::runtime_error(std::string(ctx) + ": unknown part type '" + s
-                             + "' (expected: capsule, reaction_wheel, engine)");
 }
 
 static int resource_index_from_string(const std::string &s, const char *ctx) {
@@ -84,7 +61,7 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(std::string(ctx) + "duplicate part name");
         }
 
-        d.type = part_type_from_string(pv.value("type", std::string("")), ctx);
+        d.type = pv.value("type", std::string(""));   // free-form label (display only)
         d.mesh = pv.value("mesh", std::string(""));
         d.texture = pv.value("texture", std::string(""));
         if(d.mesh.empty() || d.texture.empty()) {
@@ -95,32 +72,42 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(std::string(ctx) + "\"mass\" must be > 0 (kg)");
         }
 
-        switch(d.type) {
-            case VesselPartType::ReactionWheel:
-                d.torque = pv.value("torque", 0.0);
-                if(d.torque <= 0.0) {
-                    throw std::runtime_error(std::string(ctx) + "\"torque\" must be > 0 (N m)");
-                }
-                break;
-            case VesselPartType::Engine:
-                d.fuel_rate = pv.value("fuel_rate", 0.0);
-                d.exhaust_velocity = pv.value("exhaust_velocity", 0.0);
-                if(d.fuel_rate <= 0.0 || d.exhaust_velocity <= 0.0) {
-                    throw std::runtime_error(std::string(ctx)
-                                             + "\"fuel_rate\" and \"exhaust_velocity\" must be > 0");
-                }
-                if(pv.contains("capacity")) {
-                    if(!pv["capacity"].is_object()) {
-                        throw std::runtime_error(std::string(ctx) + "\"capacity\" must be an object");
-                    }
-                    for(auto it = pv["capacity"].begin(); it != pv["capacity"].end(); ++it) {
-                        d.capacity[resource_index_from_string(it.key(), ctx)] =
-                            it.value().get<float>();
-                    }
-                }
-                break;
-            case VesselPartType::Capsule:
-                break;
+        /* Behavior is field-driven (see shipdef.h): each optional field is
+           validated on its own, and they combine freely. A part with none
+           of them is a passive mass (e.g. a bare capsule). */
+        d.torque = pv.value("torque", 0.0);
+        if(d.torque < 0.0) {
+            throw std::runtime_error(std::string(ctx) + "\"torque\" must be >= 0 (N m)");
+        }
+
+        bool has_rate = pv.contains("fuel_rate");
+        bool has_ve = pv.contains("exhaust_velocity");
+        d.fuel_rate = pv.value("fuel_rate", 0.0);
+        d.exhaust_velocity = pv.value("exhaust_velocity", 0.0);
+        if(has_rate != has_ve) {
+            throw std::runtime_error(std::string(ctx)
+                                     + "\"fuel_rate\" and \"exhaust_velocity\" must be given together");
+        }
+        if(has_rate && (d.fuel_rate <= 0.0 || d.exhaust_velocity <= 0.0)) {
+            throw std::runtime_error(std::string(ctx)
+                                     + "\"fuel_rate\" and \"exhaust_velocity\" must be > 0");
+        }
+
+        if(pv.contains("capacity")) {
+            if(!pv["capacity"].is_object() || pv["capacity"].empty()) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"capacity\" must be a non-empty object");
+            }
+            for(auto it = pv["capacity"].begin(); it != pv["capacity"].end(); ++it) {
+                d.capacity[resource_index_from_string(it.key(), ctx)] =
+                    it.value().get<float>();
+            }
+            double cap_total = 0.0;
+            for(size_t r = 0; r < d.capacity.size(); r++) { cap_total += d.capacity[r]; }
+            if(cap_total <= 0.0) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"capacity\" must total > 0 (kg)");
+            }
         }
 
         cat.parts.push_back(d);

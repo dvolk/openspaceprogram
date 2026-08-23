@@ -736,9 +736,9 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform) {
     }
 }
 
-/* ResourceType / ResourceContent / VesselPartType / VesselPartTypeStr live
-   in shipdef.h (the GL-free ship/part data model), shared with the JSON
-   loaders and the headless tests. */
+/* ResourceType / ResourceContent / PartDef live in shipdef.h (the GL-free
+   ship/part data model), shared with the JSON loaders and the headless
+   tests. */
 
 // Per-part terrain shadow factor: 1.0 = lit, <1.0 = the planet's terrain
 // occludes the line to the sun (see ComputeTerrainShadow).
@@ -781,7 +781,6 @@ public:
     std::string name;   // display name (def name, disambiguated in main)
     std::vector<Body *> parts;
     std::vector<ResourceContent> partResources;
-    std::vector<VesselPartType> partTypes;
 
     TerrainBody *m_parent;
     Frame *frame;
@@ -845,19 +844,29 @@ public:
         m_wheelTorque.clear();
         for(size_t i = 0; i < parts.size(); i++) {
             const PartDef *d = partDefs[i];
-            if(d->type == VesselPartType::ReactionWheel) {
+            /* behavior is field-driven (see shipdef.h): a part may carry
+               any combination of these, so the checks are independent */
+            if(d->torque > 0.0) {
                 m_reaction_wheels.push_back(parts[i]);
                 m_wheelTorque.push_back(d->torque);
             }
-            else if(d->type == VesselPartType::Engine) {
-                for(int r = 0; r < (int)ResourceType::Num; r++) {
-                    partResources[i].capacity[r] = d->capacity[r];
-                    partResources[i].current[r] = d->capacity[r];
-                }
+            if(d->fuel_rate > 0.0 && d->exhaust_velocity > 0.0) {
                 m_thrusters.push_back(parts[i]);
                 m_thrusterThrust.push_back(d->fullThrust());
                 m_thrusterRate.push_back(d->fuel_rate);
                 if(m_exhaustVel == 0.0) { m_exhaustVel = d->exhaust_velocity; }
+            }
+            bool has_capacity = false;
+            for(size_t r = 0; r < d->capacity.size(); r++) {
+                if(d->capacity[r] > 0.0f) { has_capacity = true; }
+            }
+            if(has_capacity) {
+                /* propellant reservoir: seed this part's resources so the
+                   thrusters can draw from it (it sheds mass as they burn) */
+                for(int r = 0; r < (int)ResourceType::Num; r++) {
+                    partResources[i].capacity[r] = d->capacity[r];
+                    partResources[i].current[r] = d->capacity[r];
+                }
             }
         }
         m_armedThrust.assign(m_thrusters.size(), 0.0f);
@@ -1027,10 +1036,14 @@ public:
         }
     }
 
-    /* the first reaction wheel's rated torque (N m) -- per-wheel angular
-       authority, for the HUD (like getThrust() for the engines) */
+    /* the largest wheel's rated torque (N m) -- the per-wheel rating for
+       the HUD; the ship's TOTAL wheel authority is maxTorque() (the sum) */
     float GetWheelTorque() {
-        return m_wheelTorque.empty() ? 0.0f : (float)m_wheelTorque[0];
+        double t = 0.0;
+        for(size_t i = 0; i < m_wheelTorque.size(); i++) {
+            if(m_wheelTorque[i] > t) { t = m_wheelTorque[i]; }
+        }
+        return (float)t;
     }
 
     /* disarm the armed thrust (called once per tick, like clearRotCmd,
@@ -1285,8 +1298,7 @@ public:
 
         int i = 0;
         for(auto&& part : parts) {
-            auto type = partTypes[i];
-            const char *name = VesselPartTypeStr(type);
+            const char *name = partDefs[i]->name.c_str();
             i++;
 
             glm::dvec3 oldVel = GetVelocity(part);
@@ -1384,7 +1396,6 @@ static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
 
         if(i == 0) { ship->setRoot(part); }
         else { ship->attachDown(part); }
-        ship->partTypes.push_back(pd.type);
         ship->partDefs.push_back(&pd);
     }
     ship->init();
@@ -3083,7 +3094,7 @@ int main(int argc, char **argv)
                 for(auto&& part : ship->parts) {
                     ImGui::Text("Part #%d", i);
                     ImGui::Separator();
-                    ImGui::Text("Name: %s", VesselPartTypeStr(ship->partTypes[i]));
+                    ImGui::Text("Name: %s", ship->partDefs[i]->name.c_str());
                     ImGui::Text("Mass: %.3fkg", part->mass);
                     ImGui::Text("Hydrogen: %.3fkg/%.3fkg",
                                 ship->partResources[i].current[(int)ResourceType::Hydrogen],
