@@ -1,0 +1,29 @@
+{
+  "parts": [
+    {
+      "name": "capsule",
+      "type": "capsule",
+      "mesh": "capsule.obj",
+      "texture": "capsule.png",
+      "mass": 500
+    },
+    {
+      "name": "reaction_wheel",
+      "type": "reaction_wheel",
+      "mesh": "reaction_wheel.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 1000,
+      "torque": 2000
+    },
+    {
+      "name": "engine",
+      "type": "engine",
+      "mesh": "engine.obj",
+      "texture": "engine.png",
+      "mass": 3000,
+      "fuel_rate": 1.0,
+      "exhaust_velocity": 40492,
+      "capacity": { "hydrogen": 1000, "lox": 1000 }
+    }
+  ]
+}

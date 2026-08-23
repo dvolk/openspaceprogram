@@ -32,6 +32,7 @@
 #include "physics.h"
 #include "gldebug.h"
 #include "frame.h"
+#include "shipdef.h"
 #include <nlohmann/json.hpp>
 #include "billboard.h"
 #include "texture.h"
@@ -733,46 +734,9 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform) {
     }
 }
 
-enum class ResourceType {
-    Hydrogen,
-    LOX,
-    EC,
-    Oxygen,
-    Water,
-    Food,
-    Num
-};
-
-struct ResourceContent {
-    float current[(int)ResourceType::Num];
-    float capacity[(int)ResourceType::Num];
-
-    ResourceContent() {
-        for(int i = 0; i < (int)ResourceType::Num; i++) {
-            current[i] = 0;
-            capacity[i] = 0;
-        }
-    }
-};
-
-enum class VesselPartType {
-    Capsule,
-    ReactionWheel,
-    Engine
-};
-
-const char *VesselPartTypeStr(VesselPartType& p) {
-    switch(p)
-        {
-        case VesselPartType::Capsule:{ return "Capsule"; }
-            break;
-        case VesselPartType::ReactionWheel:{ return "Reaction wheel"; }
-            break;
-        case VesselPartType::Engine:{ return "Engine block"; }
-            break;
-        default:{ assert(false); }
-        }
-}
+/* ResourceType / ResourceContent / VesselPartType / VesselPartTypeStr live
+   in shipdef.h (the GL-free ship/part data model), shared with the JSON
+   loaders and the headless tests. */
 
 // Per-part terrain shadow factor: 1.0 = lit, <1.0 = the planet's terrain
 // occludes the line to the sun (see ComputeTerrainShadow).
@@ -828,8 +792,20 @@ public:
     std::vector<Body *> m_reaction_wheels;
     std::vector<void *> constraints;
 
+    /* Per-part catalog specs (parallel to parts; set by build_ship() before
+       init()). init() copies the behavior values into the per-thruster /
+       per-wheel vectors below, so the catalog may be freed afterwards. */
+    std::vector<const PartDef *> partDefs;
+    std::vector<double> m_thrusterThrust;  // N at full throttle (T = 2*rate*ve)
+    std::vector<double> m_thrusterRate;    // kg/s per tank at full throttle
+    std::vector<double> m_wheelTorque;     // N m, rated
+    double m_exhaustVel = 0;               // m/s (first engine; delta-v estimate)
+    /* the armed per-thruster force for THIS tick (N at current throttle);
+       armed by ApplyThrust, applied per substep, disarmed by clearThrust */
+    std::vector<float> m_armedThrust;
+
     float thruster_util = 1.0;
-    float thrust_mag = 0.0;   /* N; armed once per tick by ApplyThrust, re-applied per substep */
+    float thrust_mag = 0.0;   /* N this tick (sum of m_armedThrust); armed by ApplyThrust, cleared by clearThrust */
 
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
        (applyRotationForce, before every stepSimulation) -- like thrust,
@@ -858,18 +834,30 @@ public:
         partResources.resize(parts.size());
         controller = parts.back();
         NeverSleep(controller);
+        if(partDefs.size() != parts.size()) {
+            throw std::runtime_error("Vehicle::init: partDefs must be parallel to parts");
+        }
+        m_thrusterThrust.clear();
+        m_thrusterRate.clear();
+        m_wheelTorque.clear();
         for(size_t i = 0; i < parts.size(); i++) {
-            if(partTypes[i] == VesselPartType::ReactionWheel) {
+            const PartDef *d = partDefs[i];
+            if(d->type == VesselPartType::ReactionWheel) {
                 m_reaction_wheels.push_back(parts[i]);
+                m_wheelTorque.push_back(d->torque);
             }
-            else if(partTypes[i] == VesselPartType::Engine) {
-                partResources[i].capacity[(int)ResourceType::Hydrogen] = 1000;
-                partResources[i].capacity[(int)ResourceType::LOX] = 1000;
-                partResources[i].current[(int)ResourceType::Hydrogen] = 1000;
-                partResources[i].current[(int)ResourceType::LOX] = 1000;
+            else if(d->type == VesselPartType::Engine) {
+                for(int r = 0; r < (int)ResourceType::Num; r++) {
+                    partResources[i].capacity[r] = d->capacity[r];
+                    partResources[i].current[r] = d->capacity[r];
+                }
                 m_thrusters.push_back(parts[i]);
+                m_thrusterThrust.push_back(d->fullThrust());
+                m_thrusterRate.push_back(d->fuel_rate);
+                if(m_exhaustVel == 0.0) { m_exhaustVel = d->exhaust_velocity; }
             }
         }
+        m_armedThrust.assign(m_thrusters.size(), 0.0f);
     }
 
     /* returns true if fuel was consumed. amt is the kg consumed THIS tick
@@ -901,7 +889,7 @@ public:
 
     float getDeltaV() {
         float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
-        return GetExhaustVelocity() * log(getMass() / (getMass() - remaining_fuel));
+        return (float)m_exhaustVel * log(getMass() / (getMass() - remaining_fuel));
     }
 
     /* TODO should be cached per frame */
@@ -998,9 +986,9 @@ public:
     // h seconds of the tick's n*h, cutting the delivered thrust to 1/n
     // (and n grows with time acceleration, so it got worse at warp).
     void applyThrustForce() {
-        if(thrust_mag == 0.0f) { return; }
-        for(auto&& thruster : m_thrusters) {
-            ApplyCentralForceForward(thruster, thrust_mag);
+        for(size_t i = 0; i < m_thrusters.size(); i++) {
+            if(m_armedThrust[i] == 0.0f) { continue; }
+            ApplyCentralForceForward(m_thrusters[i], (double)m_armedThrust[i]);
         }
     }
 
@@ -1013,11 +1001,12 @@ public:
         /* Manual stick: the full rated torque along each commanded body
            axis (each wheel at its rating; diagonals compose). */
         if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
-            for(auto&& wheel : m_reaction_wheels) {
+            for(size_t wi = 0; wi < m_reaction_wheels.size(); wi++) {
+                Body *wheel = m_reaction_wheels[wi];
                 for(int a = 0; a < 3; a++) {
                     if(stick[a] == 0.0f) { continue; }
                     ApplyTorque(wheel,
-                               (double)stick[a] * (double)GetWheelTorque() * getRelAxis_(wheel, a));
+                               (double)stick[a] * m_wheelTorque[wi] * getRelAxis_(wheel, a));
                 }
             }
         }
@@ -1035,14 +1024,21 @@ public:
         }
     }
 
-    /* the reaction wheel's rated torque (N m) -- the ship's angular
+    /* the first reaction wheel's rated torque (N m) -- per-wheel angular
        authority, for the HUD (like getThrust() for the engines) */
     float GetWheelTorque() {
-        return 2000; /* N m -- rated torque of one reaction wheel */
+        return m_wheelTorque.empty() ? 0.0f : (float)m_wheelTorque[0];
     }
 
-    /* disarm the armed rotation commands (called once per tick, like
-       thrust_mag, so a tick without the keys doesn't keep rotating) */
+    /* disarm the armed thrust (called once per tick, like clearRotCmd,
+       so a tick without the keys doesn't keep firing) */
+    void clearThrust() {
+        thrust_mag = 0.0f;
+        for(size_t i = 0; i < m_armedThrust.size(); i++) { m_armedThrust[i] = 0.0f; }
+    }
+
+    /* disarm the armed rotation commands (called once per tick, so a tick
+       without the keys doesn't keep rotating) */
     void clearRotCmd() {
         stick[0] = stick[1] = stick[2] = 0.0f;
         slew = SlewNone;
@@ -1112,35 +1108,30 @@ private:
         if(thruster_util < 0) { thruster_util = 0; }
     }
 
-    float GetMaxFuelRate() {
-        return 1; /* kg/s PER TANK; the engine burns H2 AND LOX, so the
-                          total exhaust flow is 2x this -- see GetMaxThrust */
-    }
-
-    float GetExhaustVelocity() {
-        return 40492; /* m/s -- one engine model, shared by GetMaxThrust and getDeltaV */
-    }
-
+    /* the ship's full-throttle thrust (N) = the sum of each engine's
+       full thrust (each T = (H2 + LOX flow) x ve = 2 x fuel_rate x ve,
+       both propellants end up in the plume) -- from the part defs */
     float GetMaxThrust() {
-        /* T = (total exhaust flow) x ve. Both propellants end up in the
-           plume, so the flow is H2 + LOX = 2 tanks. */
-        return 2 * GetMaxFuelRate() * GetExhaustVelocity();
+        double t = 0;
+        for(size_t i = 0; i < m_thrusterThrust.size(); i++) { t += m_thrusterThrust[i]; }
+        return (float)t;
     }
 
     /* Called once per physics tick (step = the tick's simulated duration).
-       Consumes the tick's fuel and records the thrust; the force itself is
-       applied by applyThrustForce() before EVERY substep below. */
+       Consumes the tick's fuel and arms the per-thruster thrust; the force
+       itself is applied by applyThrustForce() before EVERY substep below.
+       A thruster that can't consume its flow this tick doesn't thrust. */
     void ApplyThrust(double step) {
         if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
-        float max_fuel_rate = GetMaxFuelRate();
-        const float flow = max_fuel_rate * thruster_util * (float)step; /* kg this tick, per tank */
-
         thrust_mag = 0.0f;
-        for(auto&& thruster : m_thrusters) {
+        for(size_t i = 0; i < m_thrusters.size(); i++) {
+            const float flow =
+                (float)(m_thrusterRate[i] * (double)thruster_util * step); /* kg this tick, per tank */
             if(consumeResourceMass(ResourceType::Hydrogen, flow) and
                consumeResourceMass(ResourceType::LOX,      flow))
                 {
-                    thrust_mag = GetMaxThrust() * thruster_util;
+                    m_armedThrust[i] = (float)(m_thrusterThrust[i] * thruster_util);
+                    thrust_mag += m_armedThrust[i];
                     m_thrust = 1.0;
                 }
         }
@@ -1155,7 +1146,9 @@ private:
     // forceful than a maxed manual stick. (The thrust analogue: T = mdot*ve.)
 
     double maxTorque() {
-        return (double)m_reaction_wheels.size() * GetWheelTorque();
+        double t = 0;
+        for(size_t i = 0; i < m_wheelTorque.size(); i++) { t += m_wheelTorque[i]; }
+        return t;
     }
 
     /* The ship's total moment of inertia about its COM (kg m^2): each
@@ -1304,6 +1297,37 @@ public:
         m_parent = newFrame->body;
     }
 };
+
+/* Instantiate a ship def: one rigid body per part (mesh + texture from the
+   catalog entry), glued in stack order (root/nose first), each `offset` m
+   from the ship base (the pad top) along the stack axis. GL is needed here
+   (shader binding); the JSON parse/validate is GL-free (shipdef.cpp). The
+   catalog must outlive the ship (the partDefs point into it). */
+static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
+                       const glm::dvec3 &base, const glm::dmat3 &orient)
+{
+    printf("Building ship '%s' (%d parts)\n", def.name.c_str(), (int)def.parts.size());
+    for(size_t i = 0; i < def.parts.size(); i++) {
+        const PartDef &pd = *def.parts[i].def;
+
+        Mesh *mesh = new Mesh;
+        mesh->FromFile((std::string("./res/") + pd.mesh).c_str(), false);
+        Texture *tex = load_texture((std::string("./res/") + pd.texture).c_str());
+        Model *model = new Model;
+        model->FromData(mesh, partsshader, tex);
+
+        Body *part = create_body(model, 0, 0, 0, (float)pd.mass, true);
+        /* +Z of `orient` is the stack axis (faceAlong), so (0,0,offset)
+           walks the offset along it from the ship base */
+        setPosRot(part, base + orient * glm::dvec3(0.0, 0.0, def.parts[i].offset), orient);
+
+        if(i == 0) { ship->setRoot(part); }
+        else { ship->attachDown(part); }
+        ship->partTypes.push_back(pd.type);
+        ship->partDefs.push_back(&pd);
+    }
+    ship->init();
+}
 
 // Resolve the reference frame that owns a world position
 static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
@@ -1793,6 +1817,14 @@ int main(int argc, char **argv)
                    "Star-system JSON file to load (default: ksp_system.json; "
                    "try system.json for the Eerbon system)");
 
+    std::string parts_file = "res/parts.json";
+    app.add_option("--parts", parts_file,
+                   "Parts catalog JSON (default: res/parts.json)");
+
+    std::string ship_file = "res/ships/basic.json";
+    app.add_option("--ship", ship_file,
+                   "Ship def JSON to build (default: res/ships/basic.json)");
+
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
                    "Initial time acceleration (0 = paused, default 0)")
@@ -1908,6 +1940,12 @@ int main(int argc, char **argv)
 
     std::vector<TerrainBody *> planets = sys.bodies;
 
+    /* The ship is built from JSON: the parts catalog (res/parts.json)
+       supplies each part's mass + behavior, the ship def (res/ships/basic.json)
+       supplies the stack order + offsets. */
+    PartsCatalog part_catalog = load_parts_catalog(parts_file.c_str());
+    ShipDef ship_def = load_ship_def(ship_file.c_str(), part_catalog);
+
     Vehicle *ship = new Vehicle;
     ship->m_parent = home;
     ship->sun = sun;
@@ -1922,29 +1960,10 @@ int main(int argc, char **argv)
     StaticBuilding *space_port;
     {
         Mesh *space_port_mesh = new Mesh;
-        Mesh *capsule_mesh = new Mesh;
-        Mesh *wheel_mesh = new Mesh;
-        Mesh *engine_mesh = new Mesh;
-
         space_port_mesh->FromFile("./res/space_port.obj", true);
-        capsule_mesh->FromFile("./res/capsule.obj", false);
-        wheel_mesh->FromFile("./res/reaction_wheel.obj", false);
-        engine_mesh->FromFile("./res/engine.obj", false);
-
         Texture *space_port_texture = load_texture("./res/space_port.png");
-        Texture *reaction_wheel_texture = load_texture("res/reaction_wheel.png");
-        Texture *capsule_texture = load_texture("res/capsule.png");
-        Texture *engine_texture = load_texture("res/engine.png");
-
         Model *space_port_model = new Model;
-        Model *capsule_model = new Model;
-        Model *wheel_model = new Model;
-        Model *engine_model = new Model;
-
         space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
-        capsule_model->FromData(capsule_mesh, partsshader, capsule_texture);
-        wheel_model->FromData(wheel_mesh, partsshader, reaction_wheel_texture);
-        engine_model->FromData(engine_mesh, partsshader, engine_texture);
 
         const double ground_alt = home->GetTerrainHeight(pad_dir);
         const glm::dvec3 start = pad_dir * ground_alt;
@@ -1955,29 +1974,9 @@ int main(int argc, char **argv)
         space_port->parent = home;
         space_port->sun = sun;
 
-        double ship_height = 3.5;
-
-        // top
-        Body *capsule = create_body(capsule_model, 0, 0, 0, 500, true);
-        setPosRot(capsule, start + pad_dir * (ship_height + 7), pad_orient);
-        // middle
-        Body *reaction_wheel = create_body(wheel_model, 0, 0, 0, 1000, true);
-        setPosRot(reaction_wheel, start + pad_dir * (ship_height + 5), pad_orient);
-        // bottom
-        Body *thruster = create_body(engine_model, 0, 0, 0, 3000, true);
-        setPosRot(thruster, start + pad_dir * (ship_height + 3), pad_orient);
-
-        ship->setRoot(capsule);
-        ship->attachDown(reaction_wheel);
-        ship->attachDown(thruster);
-
-        ship->partTypes = {
-            VesselPartType::Capsule,
-            VesselPartType::ReactionWheel,
-            VesselPartType::Engine
-        };
-
-        ship->init();
+        /* the ship from its def: parts + stack offsets come from the JSON
+           (res/ships/basic.json), the stack base is the pad top */
+        build_ship(ship, ship_def, partsshader, start, pad_orient);
         ship->setVelocity(glm::dvec3(0, 0, 0));
     }
     check_gl_error();
@@ -2303,7 +2302,7 @@ int main(int argc, char **argv)
             // held, below) and then re-applied before every substep; clear
             // them first so a tick without the keys doesn't keep pushing or
             // slewing from the last one.
-            ship->thrust_mag = 0.0;
+            ship->clearThrust();
             ship->clearRotCmd();
 
             const Uint8* key = SDL_GetKeyboardState(NULL);

@@ -1,0 +1,8 @@
+{
+  "name": "Basic",
+  "parts": [
+    { "part": "capsule",      "offset": 10.5 },
+    { "part": "reaction_wheel", "offset": 8.5 },
+    { "part": "engine",       "offset": 6.5 }
+  ]
+}

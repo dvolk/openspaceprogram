@@ -93,6 +93,11 @@ test:
 	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_rotation
 	./test_rotation
+	# ship/part JSON data model (GL-free: catalog + ship-def parse/validate,
+	# part resolution, aggregates). Runs from the repo root (needs res/).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ \
+	    tests/test_shipload.cpp src/shipdef.cpp -o test_shipload
+	./test_shipload
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
 # setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws
@@ -109,7 +114,7 @@ clean:
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).
