@@ -217,25 +217,22 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     if(debug_mesh == false) {
         Mesh *m = body->model->mesh;
 
-        printf("PhysicsEngine::RegisterObject(): m->num_indices: %d\n", m->num_indices);
         printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
-        assert(m->num_indices > 3);
-        assert(m->num_vertices > 3);
+        assert(m->vs != NULL);
+        assert(m->num_vertices >= 3);
 
-        btTriangleIndexVertexArray *mesh_interface
-            = new btTriangleIndexVertexArray(m->num_indices / 3,
-                                             m->is,
-                                             3*sizeof(int), // grr bytes!
-                                             m->num_vertices,
-                                             m->vs,
-                                             3*sizeof(double));
+        /* Convex hull of the part mesh. Bullet has no collision
+           algorithm for concave-vs-concave pairs (the dispatcher
+           falls through to btEmptyAlgorithm), so dynamic bodies
+           must stay convex. The hull keeps the part's real
+           silhouette (vs the 2 m debug box) and pairs correctly
+           with the triangle-mesh world (terrain / space port). */
+        btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
+                                                        3 * sizeof(double));
 
-        btBvhTriangleMeshShape *mesh_shape
-            = new btBvhTriangleMeshShape(mesh_interface, true, true);
+        hull->setMargin(0.5);
 
-        mesh_shape->setMargin(0.5);
-
-        shape = mesh_shape;
+        shape = hull;
     }
     else {
         shape = debugShape;

@@ -684,7 +684,10 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     this->v2 = v2;
     this->v3 = v3;
     this->centroid = glm::normalize(v0 + v1 + v2 + v3);
-    bool has_collision = depth > max_depth;
+    // Leaf patches (subdivision stops at depth == max_depth) get the
+    // collision mesh; the old `>` was never true since depth never
+    // exceeds max_depth, so terrain collision was silently never added.
+    bool has_collision = depth >= max_depth;
     Mesh *grid_mesh = body->create_grid_mesh(has_collision, v0, v1, v2, v3);
     model->FromData(grid_mesh, shader, NULL);
     if(has_collision == true) {
@@ -1404,12 +1407,12 @@ static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         const PartDef &pd = *def.parts[i].def;
 
         Mesh *mesh = new Mesh;
-        mesh->FromFile((std::string("./res/") + pd.mesh).c_str(), false);
+        mesh->FromFile((std::string("./res/") + pd.mesh).c_str(), true);
         Texture *tex = load_texture((std::string("./res/") + pd.texture).c_str());
         Model *model = new Model;
         model->FromData(mesh, partsshader, tex);
 
-        Body *part = create_body(model, 0, 0, 0, (float)pd.mass, true);
+        Body *part = create_body(model, 0, 0, 0, (float)pd.mass, false);
         /* +Z of `orient` is the stack axis (faceAlong), so (0,0,offset)
            walks the offset along it from the ship base */
         setPosRot(part, base + orient * glm::dvec3(0.0, 0.0, def.parts[i].offset), orient);
@@ -1966,6 +1969,11 @@ int main(int argc, char **argv)
     app.add_option("--orbit-interval", orbit_interval,
                    "Wall-clock seconds between --orbit-log lines (default: 1)")
         ->check(CLI::PositiveNumber);
+
+    bool dbg_log = false;
+    app.add_flag("--dbg-log", dbg_log,
+                 "Periodically print ship position/altitude/velocity "
+                 "(surface-level companion to --orbit-log)");
 
     bool crt_enabled = false;
     app.add_flag("--crt", crt_enabled,
@@ -2666,6 +2674,22 @@ int main(int argc, char **argv)
                            o.semi_major, o.ecc, o.periapsis, o.apoapsis,
                            glm::degrees(o.inclination), o.period,
                            o.ang_momentum, o.energy);
+                    fflush(stdout);
+                }
+            }
+
+            // --dbg-log: ship pos/alt/vel in its own frame
+            if(dbg_log) {
+                const Uint32 now_ms = SDL_GetTicks();
+                if(now_ms - orbit_log_last_ms >= orbit_log_interval_ms) {
+                    glm::dvec3 p = ship->get_center_of_mass();
+                    glm::dvec3 v = ship->GetVel();
+                    double r = glm::length(p);
+                    double alt = r - ship->m_parent->GetTerrainHeight(glm::normalize(p));
+                    printf("[dbg] t=%.1fs pos=[%.1f %.1f %.1f] alt=%.1f m "
+                           "vel=[%.2f %.2f %.2f] |v|=%.2f m/s\n",
+                           time, p.x, p.y, p.z, alt, v.x, v.y, v.z,
+                           glm::length(v));
                     fflush(stdout);
                 }
             }
