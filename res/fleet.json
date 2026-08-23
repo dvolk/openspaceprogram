@@ -1,0 +1,7 @@
+{
+  "ships": [
+    { "ship": "res/ships/basic.json", "name": "Alpha" },
+    { "ship": "res/ships/basic.json", "name": "Bravo", "scenario": "rot-orbit" },
+    { "ship": "res/ships/basic.json", "name": "Charlie", "scenario": "ellipse-peri" }
+  ]
+}

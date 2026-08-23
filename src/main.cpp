@@ -8,6 +8,7 @@
 #include <cmath>
 #include <fstream>
 #include <map>
+#include <set>
 
 #include "SDL2/SDL.h"
 #include "SDL_keycode.h"
@@ -33,6 +34,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
+#include "fleet.h"
 #include <nlohmann/json.hpp>
 #include "billboard.h"
 #include "texture.h"
@@ -1443,6 +1445,19 @@ static const ScenarioDef kScenarios[] = {
     {"ellipse-mid",  false, 0.0,  false,  2, 10e3, 1000e3},
 };
 
+static const ScenarioDef *scenario_by_name(const std::string &name) {
+    for(size_t i = 0; i < sizeof(kScenarios) / sizeof(kScenarios[0]); i++) {
+        if(kScenarios[i].name == name) { return &kScenarios[i]; }
+    }
+    std::string avail;
+    for(size_t i = 0; i < sizeof(kScenarios) / sizeof(kScenarios[0]); i++) {
+        if(i) { avail += ", "; }
+        avail += kScenarios[i].name;
+    }
+    throw std::runtime_error("fleet: unknown scenario '" + name
+                             + "' (available: " + avail + ")");
+}
+
 // Orientation with the nose (local +Z) along `dir`; the roll axis is the
 // coordinate axis most orthogonal to dir (never singular for a unit dir).
 static glm::dmat3 faceAlong(const glm::dvec3 &dir)
@@ -1895,7 +1910,16 @@ int main(int argc, char **argv)
     app.add_option("--ship", ship_files,
                    "Ship def JSON to build; repeat the flag to build more "
                    "ships (they share the body/scenario, each getting its "
-                   "own pad slot / orbit slot). Default: res/ships/basic.json");
+                   "own pad slot / orbit slot). A uniform-fleet shorthand "
+                   "-- --fleet overrides it. Default: res/ships/basic.json");
+
+    std::string fleet_file;
+    app.add_option("--fleet", fleet_file,
+                   "Fleet JSON (default: none; then --ship applies). One "
+                   "entry per ship, each with its own ship def, name, body "
+                   "and scenario; omitted body/scenario fall back to "
+                   "--body/--scenario. Ships sharing a body+scenario get "
+                   "their own pad slot / orbit slot. Try res/fleet.json");
 
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
@@ -2013,20 +2037,32 @@ int main(int argc, char **argv)
     std::vector<TerrainBody *> planets = sys.bodies;
 
     /* The ships are built from JSON: the parts catalog (res/parts.json)
-       supplies each part's mass + behavior, each --ship def supplies the
-       stack order + offsets. Repeating --ship builds more ships on the
-       same body/scenario; they are spaced by pad slot (or orbit slot). */
+       supplies each part's mass + behavior, the ship defs supply the stack
+       order + offsets, and the fleet supplies one entry per ship: its def,
+       name, body and scenario. The fleet comes from --fleet (res/fleet.json)
+       or, when that is not given, from the --ship flags as a uniform fleet
+       (all entries share the --body/--scenario). Omitted entry body/scenario
+       fall back to the CLI values. Ships sharing a (body, scenario) pair are
+       slotted: pad slots 20 m apart along the pad, orbit slots 100 m apart
+       along the orbit binormal. */
     PartsCatalog part_catalog = load_parts_catalog(parts_file.c_str());
-    if(ship_files.empty()) { ship_files.push_back("res/ships/basic.json"); }
-
-    glm::dvec3 pad_dir = glm::dvec3(0.0, 1.0, 0.0);
-    if (scenario != "pad-polar") {
-        pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+    std::vector<FleetEntry> fleet_entries;
+    if(!fleet_file.empty()) {
+        fleet_entries = load_fleet(fleet_file.c_str()).ships;
+    } else {
+        if(ship_files.empty()) { ship_files.push_back("res/ships/basic.json"); }
+        for(size_t i = 0; i < ship_files.size(); i++) {
+            FleetEntry e;
+            e.ship = ship_files[i];
+            fleet_entries.push_back(e);
+        }
     }
-    const glm::dmat3 pad_orient = faceAlong(pad_dir);
 
     std::vector<Vehicle *> ships;
-    StaticBuilding *space_port;
+    std::vector<TerrainBody *> ship_homes;     // per ship: the body it starts on
+    std::vector<const ScenarioDef *> ship_sc;  // per ship: its scenario
+    std::vector<int> ship_slots;               // per ship: slot within its (body, scenario) group
+    std::map<TerrainBody *, StaticBuilding *> space_ports; // one per home body
     {
         Mesh *space_port_mesh = new Mesh;
         space_port_mesh->FromFile("./res/space_port.obj", true);
@@ -2034,48 +2070,101 @@ int main(int argc, char **argv)
         Model *space_port_model = new Model;
         space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
 
-        const double ground_alt = home->GetTerrainHeight(pad_dir);
-        const glm::dvec3 start = pad_dir * ground_alt;
+        std::map<std::pair<TerrainBody *, const ScenarioDef *>, int> slot_count;
+        std::set<std::string> used_names;
 
-        space_port = new StaticBuilding;
-        space_port->body = create_body(space_port_model, 0, 0, 0, 0, false);
-        setPosRot(space_port->body, start + pad_dir * 5.0, pad_orient);
-        space_port->parent = home;
-        space_port->sun = sun;
+        for(size_t i = 0; i < fleet_entries.size(); i++) {
+            const FleetEntry &fe = fleet_entries[i];
+            ShipDef def = load_ship_def(fe.ship.c_str(), part_catalog);
 
-        /* each ship from its def: parts + stack offsets come from the
-           JSON (res/ships/basic.json), the stack base is the pad top, and
-           each extra ship gets a lateral pad slot (pad local X, 20 m
-           apart) so they stand side by side */
-        for(size_t i = 0; i < ship_files.size(); i++) {
-            ShipDef def = load_ship_def(ship_files[i].c_str(), part_catalog);
+            TerrainBody *hb;
+            if(fe.body.empty()) {
+                hb = home; // the CLI --body resolution (or the system home)
+            } else {
+                hb = sys.find(fe.body);
+                if(hb == nullptr) {
+                    std::string avail;
+                    for(size_t k = 0; k < sys.bodies.size(); k++) {
+                        if(k) { avail += ", "; }
+                        avail += sys.bodies[k]->name;
+                    }
+                    throw std::runtime_error("fleet: ship entry " + std::to_string(i)
+                                             + ": unknown body '" + fe.body
+                                             + "' (available: " + avail + ")");
+                }
+            }
+
+            const ScenarioDef *sc =
+                scenario_by_name(fe.scenario.empty() ? scenario : fe.scenario);
+
+            // slot within the (body, scenario) group
+            std::pair<TerrainBody *, const ScenarioDef *> key(hb, sc);
+            int slot = slot_count[key];
+            slot_count[key]++;
+
+            // name: the entry's, else the def's; de-duplicated across the
+            // fleet (first ship keeps the bare name, later ones get #2, #3..)
+            std::string nm = fe.name.empty() ? def.name : fe.name;
+            if(nm.empty()) { nm = "Ship"; }
+            {
+                std::string candidate = nm;
+                int n = 2;
+                while(used_names.count(candidate)) {
+                    candidate = nm + " #" + std::to_string(n);
+                    n++;
+                }
+                used_names.insert(candidate);
+                nm = candidate;
+            }
+
+            // one space port per home body, at its default (tilted) pad
+            if(space_ports.find(hb) == space_ports.end()) {
+                const glm::dvec3 sp_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+                const glm::dmat3 sp_orient = faceAlong(sp_dir);
+                const glm::dvec3 sp_start = sp_dir * (double)hb->GetTerrainHeight(sp_dir);
+                StaticBuilding *sp = new StaticBuilding;
+                sp->body = create_body(space_port_model, 0, 0, 0, 0, false);
+                setPosRot(sp->body, sp_start + sp_dir * 5.0, sp_orient);
+                sp->parent = hb;
+                sp->sun = sun;
+                space_ports[hb] = sp;
+            }
 
             Vehicle *v = new Vehicle;
-            v->name = def.name;
-            if(ship_files.size() > 1) { v->name += " #" + std::to_string(i + 1); }
-            v->m_parent = home;
+            v->name = nm;
+            v->m_parent = hb;
             v->sun = sun;
-            v->frame = home->rot_frame;
+            v->frame = hb->rot_frame;
 
-            const glm::dvec3 base = start
-                + pad_orient * glm::dvec3(20.0 * (double)i, 0.0, 0.0);
+            // stack base: this body's pad top + the ship's lateral pad slot
+            // (pad local X, 20 m apart) so pad ships stand side by side.
+            // For orbit scenarios this is only staging -- spawn_vehicle
+            // repositions the ship along vhat; the part offsets relative to
+            // the ship's own center of mass are what survive.
+            const glm::dvec3 pad_dir = (sc->on_pad && sc->polar)
+                ? glm::dvec3(0.0, 1.0, 0.0)
+                : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+            const glm::dmat3 pad_orient = faceAlong(pad_dir);
+            const glm::dvec3 base = pad_dir * (double)hb->GetTerrainHeight(pad_dir)
+                + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
             build_ship(v, def, partsshader, base, pad_orient);
             v->setVelocity(glm::dvec3(0, 0, 0));
+
             ships.push_back(v);
+            ship_homes.push_back(hb);
+            ship_sc.push_back(sc);
+            ship_slots.push_back(slot);
         }
     }
     check_gl_error();
 
-    /* Apply the CLI scenario (before the camera is constructed,
-       so the camera focuses on the spawn point). Each ship gets its own
-       orbit slot (1 km apart along the orbit binormal) so they don't
-       spawn on top of each other. */
-    const ScenarioDef *sc = &kScenarios[0];
-    for(size_t i = 0; i < sizeof(kScenarios) / sizeof(kScenarios[0]); i++) {
-        if(kScenarios[i].name == scenario) { sc = &kScenarios[i]; break; }
-    }
+    /* Apply each ship's scenario (before the camera is constructed,
+       so the camera focuses on the spawn point). Ships sharing a
+       body+scenario group get their own orbit slot (100 m apart along the
+       orbit binormal) so they don't spawn on top of each other. */
     for(size_t i = 0; i < ships.size(); i++) {
-        spawn_vehicle(ships[i], *sc, home, sys, 1000.0 * (double)i);
+        spawn_vehicle(ships[i], *ship_sc[i], ship_homes[i], sys,
+                      100.0 * (double)ship_slots[i]);
     }
 
     /* the active (player-controlled) ship: Tab / the SHIPS window switch
@@ -2588,7 +2677,11 @@ int main(int argc, char **argv)
             */
 
             if(world_drawing == true) {
-                space_port->Draw(camera, ship->m_parent, ship->frame);
+                // one per home body; StaticBuilding::Draw culls itself when
+                // the active ship is not on that body
+                for(auto &kv : space_ports) {
+                    kv.second->Draw(camera, ship->m_parent, ship->frame);
+                }
                 // render frame = the active ship's frame; idle ships in a
                 // different frame are transformed into it in Vehicle::Draw
                 for(auto *s : ships) { s->Draw(camera, ship->frame); }
@@ -2907,7 +3000,8 @@ int main(int argc, char **argv)
                            camera->up.x, camera->up.y, camera->up.z);
                 }
                 ImGui::Text("Home distance: %f",
-                            glm::length(ship->GetPositionRelTo(ship->controller, home->frame)));
+                            glm::length(ship->GetPositionRelTo(ship->controller,
+                                                                ship_homes[activeIdx]->frame)));
                 ImGui::Text("Pos: %.3fkm", distance / 1000);
                 ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
                 ImGui::Text("Vel: %.3fm/s", speed);
@@ -3157,7 +3251,7 @@ int main(int argc, char **argv)
         }
     }
 
-    delete space_port;
+    for(auto &kv : space_ports) { delete kv.second; }
     for(auto *s : ships) { delete s; }
 
     for(auto&& body : sys.bodies) { delete body; }
