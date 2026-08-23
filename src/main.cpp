@@ -1329,6 +1329,11 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
   r = radius + alt_frac * (rotating-frame SOI - radius), in the equatorial
   plane (local +Z) or the polar plane (local +Y), nose prograde.
 
+  The ellipse-* scenarios place the ship on a 10 km x 1000 km ASL orbit in
+  the equatorial plane, prograde in the same sense as the circular ones
+  (periapsis along world +Z), at periapsis (ell_phase 0), apoapsis (1), or
+  90 deg of true anomaly - halfway by angle between the apsides (2).
+
   As before, the ship's frame is resolved from the innermost SOI containing
   the spawn point (resolve_frame_by_soi), with the stasis-velocity correction
   so a rotating frame still yields the correct inertial orbital velocity.
@@ -1336,16 +1341,22 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
 struct ScenarioDef {
     const char *name;
     bool on_pad;
-    double alt_frac; // < 1: rot frame, > 1 non-rot frame
+    double alt_frac; // circular: fraction of (rot-frame SOI - radius)
     bool polar;
+    int ell_phase;   // -1: circular; 0: at periapsis; 1: at apoapsis; 2: at 90 deg
+    double peri_alt; // ellipse: periapsis altitude above the body radius (m)
+    double apo_alt;  // ellipse: apoapsis altitude above the body radius (m)
 };
 static const ScenarioDef kScenarios[] = {
-    {"pad",            true,  0.0,  false},
-    {"pad-polar",      true,  0.0,  true},
-    {"rot-orbit",      false, 0.85, false},
-    {"inertial-orbit", false, 1.25, false},
-    {"high-orbit",     false, 5.0,  false},
-    {"high-polar",     false, 5.0,  true},
+    {"pad",          true,  0.0,  false, -1, 0.0,     0.0},
+    {"pad-polar",    true,  0.0,  true,  -1, 0.0,     0.0},
+    {"rot-orbit",    false, 0.85, false, -1, 0.0,     0.0},
+    {"inertial-orbit", false, 1.25, false, -1, 0.0,   0.0},
+    {"high-orbit",   false, 5.0,  false, -1, 0.0,     0.0},
+    {"high-polar",   false, 5.0,  true,  -1, 0.0,     0.0},
+    {"ellipse-peri", false, 0.0,  false,  0, 10e3, 1000e3},
+    {"ellipse-apo",  false, 0.0,  false,  1, 10e3, 1000e3},
+    {"ellipse-mid",  false, 0.0,  false,  2, 10e3, 1000e3},
 };
 
 // Orientation with the nose (local +Z) along `dir`; the roll axis is the
@@ -1367,23 +1378,49 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
 {
     if(sc.on_pad) { return; } // already on the pad, set up in main
 
-    // Circular orbit around the home body: radius measured from its frame origin.
-    const double r = home->radius + sc.alt_frac * (home->rot_frame->soi - home->radius);
-    const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
-    const glm::dvec3 shipWorldPos = home->frame->root_pos
-                                  + home->frame->root_orient * (rhat_local * r);
+    const glm::dvec3 center = home->frame->root_pos;
+    glm::dvec3 shipWorldPos, velWorld;
+
+    if(sc.ell_phase >= 0) {
+        // Elliptical orbit in the equatorial plane (world X-Z), prograde in
+        // the same sense as the circular scenarios: periapsis along +Z, so
+        // 90 deg along the travel direction is +X. The apsides are inertial
+        // (root-frame) directions, as orbital elements should be.
+        const double rp = home->radius + sc.peri_alt;
+        const double ra = home->radius + sc.apo_alt;
+        const double p = 2.0 * rp * ra / (rp + ra); // semi-latus rectum a(1-e^2)
+        const double e = (ra - rp) / (ra + rp);
+        const double h = sqrt(home->mu * p);        // specific angular momentum
+        const glm::dvec3 xhat = glm::dvec3(1, 0, 0);
+        const glm::dvec3 zhat = glm::dvec3(0, 0, 1); // periapsis direction
+        if(sc.ell_phase == 0) { // at periapsis
+            shipWorldPos = center + zhat * rp;
+            velWorld = xhat * (h / rp);
+        } else if(sc.ell_phase == 1) { // at apoapsis
+            shipWorldPos = center - zhat * ra;
+            velWorld = -xhat * (h / ra);
+        } else { // 90 deg true anomaly (halfway by angle between the apsides)
+            shipWorldPos = center + xhat * p;
+            velWorld = (xhat * e - zhat) * (h / p);
+        }
+    } else {
+        // Circular orbit around the home body: radius measured from its frame origin.
+        const double r = home->radius + sc.alt_frac * (home->rot_frame->soi - home->radius);
+        const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
+        shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
+
+        // Circular orbital speed (vis-viva with semi-major axis == r).
+        const double speed = sqrt(home->mu / r);
+
+        // Prograde: perpendicular to the radius vector, in the system's sense of
+        // rotation (+y axis); polar orbits go around the spin axis instead.
+        const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
+        const glm::dvec3 vhat = sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
+                                         : glm::cross(glm::dvec3(0, 1, 0), rhat);
+        velWorld = speed * vhat;
+    }
 
     Frame *frame = resolve_frame_by_soi(sys.star->frame, shipWorldPos);
-
-    // Circular orbital speed (vis-viva with semi-major axis == r).
-    const double speed = sqrt(home->mu / r);
-
-    // Prograde: perpendicular to the radius vector, in the system's sense of
-    // rotation (+y axis); polar orbits go around the spin axis instead.
-    const glm::dvec3 rhat = glm::normalize(shipWorldPos - home->frame->root_pos);
-    const glm::dvec3 vhat = sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
-                                     : glm::cross(glm::dvec3(0, 1, 0), rhat);
-    const glm::dvec3 velWorld = speed * vhat;
 
     // Express the spawn position and velocity in the resolved frame's local
     // coordinates: v = R^T * velWorld - stasis(p) (inertial vel =
@@ -1402,7 +1439,7 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
     // that is applied to every part, so the whole ship rigidly aligns its
     // axis with vhat (capsule leading) instead of each part spinning in
     // place.
-    const glm::dmat3 orient = faceAlong(vhat);
+    const glm::dmat3 orient = faceAlong(velWorld);
     const glm::dvec3 com = ship->get_center_of_mass();
     for(auto&& part : ship->parts) {
         const glm::dvec3 p = GetPosition(part);
@@ -1412,7 +1449,8 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
 
     printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
-           shipWorldPos.x, shipWorldPos.y, shipWorldPos.z, r, speed);
+           shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
+           glm::length(shipWorldPos - center), glm::length(velWorld));
 }
 
 class StaticBuilding {
@@ -1742,9 +1780,12 @@ int main(int argc, char **argv)
     std::string scenario = "pad";
     app.add_option("--scenario", scenario,
         "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
-        "high-orbit, high-polar (default: pad)")
+        "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid "
+        "(the ellipse-* scenarios are a 10x1000 km ASL orbit started at "
+        "periapsis, apoapsis, or halfway by angle between them; default: pad)")
         ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
-                               "inertial-orbit", "high-orbit", "high-polar"}));
+                               "inertial-orbit", "high-orbit", "high-polar",
+                               "ellipse-peri", "ellipse-apo", "ellipse-mid"}));
 
     std::string system_file = "ksp_system.json";
     app.add_option("--system", system_file,

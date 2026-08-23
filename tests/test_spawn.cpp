@@ -142,6 +142,10 @@ struct SpawnCase {
     bool polar;           // polar plane (body local +Y) vs equatorial (+Z)
     Frame *bodyFrame;     // frame whose root_pos is the body's world pos
     Frame *expectedFrame;
+    bool ellipse;         // 10x1000 km ASL elliptical case (overrides r/polar)
+    int ell_phase;        // 0: at periapsis; 1: at apoapsis; 2: at 90 deg
+    double rp;            // periapsis distance from body center
+    double ra;            // apoapsis distance from body center
 };
 
 int main() {
@@ -163,6 +167,21 @@ int main() {
                      : bodyRadius + alt_frac * 100000.0;
         c.mu = bodyMu; c.polar = polar; c.bodyFrame = bodyFrame;
         c.expectedFrame = expectedFrame;
+        c.ellipse = false; c.ell_phase = -1; c.rp = 0; c.ra = 0;
+        cases.push_back(c);
+    };
+
+    // Helper: the ellipse-* scenarios (10 km x 1000 km ASL), spawned at
+    // periapsis (0), apoapsis (1), or 90 deg true anomaly (2).
+    auto add_ell = [&](const char *desc, int phase, double bodyRadius, double bodyMu,
+                       Frame *bodyFrame, Frame *expectedFrame) {
+        SpawnCase c;
+        c.desc = desc; c.on_pad = false;
+        c.r = 0; c.mu = bodyMu; c.polar = false; c.bodyFrame = bodyFrame;
+        c.expectedFrame = expectedFrame;
+        c.ellipse = true; c.ell_phase = phase;
+        c.rp = bodyRadius + 10e3;
+        c.ra = bodyRadius + 1000e3;
         cases.push_back(c);
     };
 
@@ -178,6 +197,16 @@ int main() {
     // Same scenarios around the Moon (rot soi = 300 km): 285 km / 325 km.
     add("rot-orbit (Moon)",        false, 0.85, false, moon_radius, moon_mu, moon, moon_rot);
     add("inertial-orbit (Moon)",   false, 1.25, false, moon_radius, moon_mu, moon, moon);
+    // Ellipse scenarios around Eerbon (rot soi = 700 km):
+    //   peri 610 km (inside), apo 7000 km (outside), mid p = 1122 km (outside).
+    add_ell("ellipse-peri (Eerbon)", 0, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
+    add_ell("ellipse-apo (Eerbon)",  1, eerbon_radius, eerbon_mu, eerbon, eerbon);
+    add_ell("ellipse-mid (Eerbon)",  2, eerbon_radius, eerbon_mu, eerbon, eerbon);
+    // Same around the Moon (rot soi = 300 km): peri 210 km, apo 1200 km,
+    // mid p = 357 km (outside).
+    add_ell("ellipse-peri (Moon)", 0, moon_radius, moon_mu, moon, moon_rot);
+    add_ell("ellipse-apo (Moon)",  1, moon_radius, moon_mu, moon, moon);
+    add_ell("ellipse-mid (Moon)",  2, moon_radius, moon_mu, moon, moon);
 
     // faceAlong -- same function as spawn_vehicle (src/main.cpp): nose
     // (local +Z) along dir, roll axis = coordinate axis most orthogonal to dir.
@@ -194,9 +223,38 @@ int main() {
     };
 
     for(SpawnCase &c : cases) {
-        const glm::dvec3 rhat_local = c.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
-        const glm::dvec3 worldPos = c.bodyFrame->root_pos
-                                  + c.bodyFrame->root_orient * (rhat_local * c.r);
+        const glm::dvec3 center = c.bodyFrame->root_pos;
+        glm::dvec3 worldPos, velWorld;
+        if(c.ellipse) {
+            // The exact ellipse branch of spawn_vehicle (main.cpp):
+            // equatorial plane, periapsis along +Z, 90 deg prograde is +X.
+            const double p = 2.0 * c.rp * c.ra / (c.rp + c.ra);
+            const double e = (c.ra - c.rp) / (c.ra + c.rp);
+            const double h = std::sqrt(c.mu * p);
+            const glm::dvec3 xhat(1, 0, 0);
+            const glm::dvec3 zhat(0, 0, 1);
+            if(c.ell_phase == 0) { // at periapsis
+                worldPos = center + zhat * c.rp;
+                velWorld = xhat * (h / c.rp);
+            } else if(c.ell_phase == 1) { // at apoapsis
+                worldPos = center - zhat * c.ra;
+                velWorld = -xhat * (h / c.ra);
+            } else { // 90 deg true anomaly
+                worldPos = center + xhat * p;
+                velWorld = (xhat * e - zhat) * (h / p);
+            }
+        } else {
+            const glm::dvec3 rhat_local = c.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
+            worldPos = center + c.bodyFrame->root_orient * (rhat_local * c.r);
+            // Circular orbital speed (vis-viva with semi-major axis == r).
+            const double speed = std::sqrt(c.mu / c.r);
+            glm::dvec3 rhat = glm::normalize(worldPos - center);
+            glm::dvec3 vhat = c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
+                                      : glm::cross(glm::dvec3(0, 1, 0), rhat);
+            velWorld = speed * vhat;
+        }
+        const double speed = glm::length(velWorld);
+        glm::dvec3 vhat = glm::normalize(velWorld);
         Frame *frame = resolve_frame_by_soi(sun, worldPos);
         char buf[256];
 
@@ -208,13 +266,6 @@ int main() {
                    c.desc, frame->name.c_str(), c.r);
             continue; // pad cases are frame-resolution checks only
         }
-
-        // Position + velocity in the resolved frame (spawn_vehicle formulas).
-        double speed = std::sqrt(c.mu / c.r);
-        glm::dvec3 rhat = glm::normalize(worldPos - c.bodyFrame->root_pos);
-        glm::dvec3 vhat = c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
-                                  : glm::cross(glm::dvec3(0, 1, 0), rhat);
-        glm::dvec3 velWorld = speed * vhat;
         glm::dvec3 target = glm::transpose(frame->root_orient) * (worldPos - frame->root_pos);
         // (matches the fixed spawn_vehicle: stasis of the TARGET frame is
         // subtracted; see the sign note on GetStasisVelocity in frame.h)
