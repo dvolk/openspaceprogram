@@ -94,13 +94,22 @@ test:
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_rotation
 	./test_rotation
 
+# GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
+# setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws
+# must happen inside a real glGenVertexArrays VAO (even an empty one for a
+# vertex-less gl_VertexID quad). Needs an X display:
+#     DISPLAY=:99 make test-gl
+test-gl:
+	$(CXX) -O2 -std=c++11 -I/usr/include/SDL2 tests/test_vertexless.c -lSDL2 -lGLEW -lGL -o test_gl_vao
+	./test_gl_vao
+
 .PHONEY: clean
 clean:
 	$(rm) $(OBJECTS) $(IMGUI_OBJS) $(DEPS)
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

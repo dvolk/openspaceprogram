@@ -80,6 +80,10 @@ void Shader::registerUniforms(std::vector<const char *> names) {
     }
 }
 
+void Shader::setUniform_i(int index, int v) {
+    glUniform1i(m_uniforms[index], v);
+}
+
 void Shader::setUniform_vec1(int index, float v) {
     glUniform1f(m_uniforms[index], v);
 }

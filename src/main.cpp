@@ -36,6 +36,7 @@
 #include "billboard.h"
 #include "texture.h"
 #include "skybox.h"
+#include "postfx.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -1807,6 +1808,10 @@ int main(int argc, char **argv)
                    "Wall-clock seconds between --orbit-log lines (default: 1)")
         ->check(CLI::PositiveNumber);
 
+    bool crt_enabled = false;
+    app.add_flag("--crt", crt_enabled,
+                 "Start with the CRT post-processing shader enabled");
+
     // it's like a google maps link
     std::vector<double> free_cam_pos;
     app.add_option("--free-cam-pos", free_cam_pos,
@@ -1878,6 +1883,9 @@ int main(int argc, char **argv)
     lineshader->registerAttribs({ "position" });
     lineshader->registerUniforms({ "MVP", "color" });
     lineshader->FromFile("./res/lineShader2");
+
+    PostFX *postfx = new PostFX;
+    postfx->Resize(display.get_width(), display.get_height());
 
     System sys = load_system(system_file.c_str(), terrainshader, sunshader);
     TerrainBody *sun = sys.star;
@@ -2149,7 +2157,10 @@ int main(int argc, char **argv)
                 if(ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     display.onResize(ev.window.data1, ev.window.data2);
                     check_gl_error();
-	    
+
+                    postfx->Resize(ev.window.data1, ev.window.data2);
+                    check_gl_error();
+
                     camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
                     check_gl_error();
                 }
@@ -2461,6 +2472,9 @@ int main(int argc, char **argv)
                 check_gl_error();
             }
 
+            if(crt_enabled == true) {
+                postfx->Begin();
+            }
             display.Clear(0, 0, 0, 1);
 
             com = ship->get_center_of_mass();
@@ -2700,6 +2714,10 @@ int main(int argc, char **argv)
                 glDisable(GL_DEPTH_TEST);
                 debug_draw(camera);
                 glEnable(GL_DEPTH_TEST);
+            }
+
+            if(crt_enabled == true) {
+                postfx->End();
             }
 
             /*
@@ -3030,6 +3048,7 @@ int main(int argc, char **argv)
     delete terrainshader;
     delete billboardshader;
     delete skyboxshader;
+    delete postfx;
 
     delete front_indicator;
     delete prograde_indicator;
