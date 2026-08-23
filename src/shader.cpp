@@ -20,7 +20,7 @@ void Shader::FromFile(const std::string& fileName)
         check_gl_error();
     }
 
-    for(int i = 0; i < attribNames.size(); i++) {
+    for(unsigned int i = 0; i < attribNames.size(); i++) {
         glBindAttribLocation(m_program, i, attribNames[i]);
         check_gl_error();
     }
@@ -35,11 +35,11 @@ void Shader::FromFile(const std::string& fileName)
     CheckShaderError(m_program, GL_LINK_STATUS, true, "Invalid shader program");
     check_gl_error();
 
-    for(int i = 0; i < uniformNames.size(); i++) {
+    for(unsigned int i = 0; i < uniformNames.size(); i++) {
         m_uniforms[i] = glGetUniformLocation(m_program, uniformNames[i]);
         check_gl_error();
 
-        if(m_uniforms[i] == -1) {
+        if(m_uniforms[i] == GL_INVALID_INDEX) {
             printf("WARNING: shader %s has no uniform named %s (optimized out by shader compiler?)\n",
                    fileName.c_str(),
                    uniformNames[i]);
@@ -69,13 +69,13 @@ void Shader::Bind()
 }
 
 void Shader::registerAttribs(std::vector<const char *> names) {
-    for(int i = 0; i < names.size(); i++) {
+    for(unsigned int i = 0; i < names.size(); i++) {
         attribNames.push_back(names[i]);
     }
 }
 
 void Shader::registerUniforms(std::vector<const char *> names) {
-    for(int i = 0; i < names.size(); i++) {
+    for(unsigned int i = 0; i < names.size(); i++) {
         uniformNames.push_back(names[i]);
     }
 }

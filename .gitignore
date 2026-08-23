@@ -1,0 +1,18 @@
+# Build artifacts
+obj/
+obj_asan/
+osp
+osp_asan
+
+# Test binaries at repo root (the tests/ sources stay tracked)
+/test_*
+
+# Runtime-generated
+imgui.ini
+
+# Local reference material & screenshots
+references/
+screenshot_*.png
+
+# Source data (baked into the tracked ksp_system.json)
+ksp_system.csv

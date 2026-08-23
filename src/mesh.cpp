@@ -34,7 +34,7 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
     PosTexNorIndInterface model;
     static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
 
-    for(int i = 0; i < aim->mNumVertices; i++) {
+    for(unsigned int i = 0; i < aim->mNumVertices; i++) {
         model.positions.push_back(glm::vec3(aim->mVertices[i].x, aim->mVertices[i].y, aim->mVertices[i].z));
         model.normals.push_back(glm::vec3(aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z));
 
@@ -48,8 +48,8 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
         }
     }
 
-    for(int i = 0; i < aim->mNumFaces; i++) {
-        for(int j = 0; j < aim->mFaces[i].mNumIndices; j++) {
+    for(unsigned int i = 0; i < aim->mNumFaces; i++) {
+        for(unsigned int j = 0; j < aim->mFaces[i].mNumIndices; j++) {
             model.indices.push_back(aim->mFaces[i].mIndices[j]);
         }
     }
