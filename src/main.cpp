@@ -2970,6 +2970,7 @@ int main(int argc, char **argv)
     bool shipDetailWindow = false;
     bool physics_debug_drawing = false;
     bool world_drawing = true;
+    bool draw_starfield = true;
 
     double time = 0;
 
@@ -3669,7 +3670,9 @@ int main(int argc, char **argv)
             const double longitude = atan2(dir.x, dir.z);
             const double latitude = asin(dir.y);
 
-            skybox.Draw(camera, skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
+            if(draw_starfield) {
+                skybox.Draw(camera, skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
+            }
 
             /* draw engine plume */
             glm::dmat4 View = camera->GetView();
@@ -3807,6 +3810,7 @@ int main(int argc, char **argv)
                 ImGui::Begin("Game Debug Info");
                 ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
                 ImGui::Checkbox("World draw", &world_drawing);
+                ImGui::Checkbox("Starfield", &draw_starfield);
                 ImGui::Text("Time: %f", time);
                 if(sys.home && sys.home->cal.valid()) {
                     CalTime ct = sys.home->cal.at(time);
