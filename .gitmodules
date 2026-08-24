@@ -7,6 +7,3 @@
 [submodule "middleware/imgui"]
 	path = middleware/imgui
 	url = https://github.com/ocornut/imgui
-[submodule "middleware/implot"]
-	path = middleware/implot
-	url = https://github.com/epezent/implot
