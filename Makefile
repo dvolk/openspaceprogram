@@ -112,6 +112,11 @@ test:
 	# tidally-locked + star edge cases. Pinned to the Eerbon JSON rates.
 	$(CXX) -O2 -std=c++11 -I./src tests/test_calendar.cpp -o test_calendar
 	./test_calendar
+	# two-body orbital elements + time-to-apsis (src/orbit.h, header-only
+	# pure math): elements, anomaly conversions, the ApT/PeT countdown fix,
+	# hyperbolic/parabolic handling, degenerate-plane guards.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit
+	./test_orbit
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
 # setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws
@@ -128,7 +133,7 @@ clean:
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

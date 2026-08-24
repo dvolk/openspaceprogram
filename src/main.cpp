@@ -38,6 +38,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "calendar.h"
+#include "orbit.h"
 #include "shipdef.h"
 #include "fleet.h"
 #include <nlohmann/json.hpp>
@@ -2272,48 +2273,6 @@ glm::dvec3 projectVecOntoPlane(const glm::dvec3 & vec, const glm::dvec3 & normal
     return vec - glm::dot(vec, normal) * normal;
 }
 
-double wrapAngleToPositive(const double theta) {
-    return theta >= 0.0 ? theta : M_PI * 2 + theta;
-}
-
-// Two-body orbital elements of a (pos, vel) state relative to a central body
-// with gravitational parameter mu. pos/vel must be in the body's INERTIAL
-// (non-rotating) frame, where the trajectory is a Kepler conic. Used by the
-// --orbit-log periodic printout.
-struct OrbitElements {
-    double distance;      // m, radius from focus
-    double speed;         // m/s
-    double semi_major;    // m (negative for hyperbolic trajectories)
-    double ecc;           // eccentricity
-    double periapsis;     // m, radius at periapsis
-    double apoapsis;      // m, radius at apoapsis
-    double inclination;   // rad
-    double period;        // s (-1 for non-elliptic trajectories)
-    double ang_momentum;  // |h|, m^2/s
-    double energy;        // specific orbital energy, J/kg
-};
-
-OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel, double mu) {
-    const double distance = glm::length(pos);
-    const double speed = glm::length(vel);
-    const glm::dvec3 h = glm::cross(pos, vel);
-
-    OrbitElements o;
-    o.distance = distance;
-    o.speed = speed;
-    o.energy = 0.5 * speed * speed - mu / distance;
-    o.semi_major = 1.0 / (2.0 / distance - speed * speed / mu);
-    o.ang_momentum = glm::length(h);
-    o.ecc = glm::length(glm::cross(vel, h) / mu - pos / distance);
-    o.periapsis = (1.0 - o.ecc) * o.semi_major;
-    o.apoapsis = (1.0 + o.ecc) * o.semi_major;
-    o.inclination = o.ang_momentum > 0.0 ? acos(h.z / o.ang_momentum) : 0.0;
-    o.period = (o.semi_major > 0.0)
-        ? 2.0 * M_PI * sqrt(o.semi_major * o.semi_major * o.semi_major / mu)
-        : -1.0;
-    return o;
-}
-
 /* --sim-press: synthetic key input for e2e testing.
    One entry = one key press: down `down_ms` after the main loop starts,
    up `up_ms` after. It feeds two input channels:
@@ -3556,10 +3515,12 @@ int main(int argc, char **argv)
                     OrbitElements o = computeOrbitElements(o_pos, o_vel, mu);
                     printf("[orbitlog] t=%.1fs frame=\"%s\" r=%.6g m v=%.6g m/s "
                            "sma=%.6g m ecc=%.6g peri=%.6g m apo=%.6g m "
-                           "inc=%.4f deg T=%.6g s |h|=%.6f m2/s E=%.6f J/kg\n",
+                           "inc=%.4f deg T=%.6g s ttAp=%.6g s ttPe=%.6g s "
+                           "|h|=%.6f m2/s E=%.6f J/kg\n",
                            time, ship->frame->name.c_str(), o.distance, o.speed,
                            o.semi_major, o.ecc, o.periapsis, o.apoapsis,
                            glm::degrees(o.inclination), o.period,
+                           o.time_to_apo, o.time_to_peri,
                            o.ang_momentum, o.energy);
                     fflush(stdout);
                 }
@@ -3693,59 +3654,12 @@ int main(int argc, char **argv)
                          - rot->GetStasisVelocity(surf_pos);
             }
 
-            const double distance = glm::length(orbit_pos);
-            const double speed = glm::length(orbit_vel);
-            // https://en.wikipedia.org/wiki/Standard_gravitational_parameter
-            // const double G = 6.674e-11;
-            // const double M = moon->mass;
-            // https://en.wikipedia.org/wiki/Characteristic_energy
-            const double e = (0.5 * pow(speed, 2)) - (mu / distance);
-            const double SMa = 1.0 / (-((speed * speed) / (mu)) + (2.0 / distance));
-            const double radial_vel = glm::dot(orbit_pos, orbit_vel) / distance;
-
-            const glm::dvec3 ang_momentum = glm::cross(orbit_pos, orbit_vel);
-            const glm::dvec3 eccentricity_vector = glm::cross(orbit_vel, ang_momentum) / (mu) - orbit_pos/distance;
-
-            const double ecc = glm::length(eccentricity_vector);
-
-            const double ApA = (1 + ecc) * SMa;
-            const double PeA = (1 - ecc) * SMa;
-
-            const double inclination = acos(ang_momentum.z / glm::length(ang_momentum));
-
-            const glm::dvec3 node_vector = glm::cross(glm::dvec3(0, 0, 1), ang_momentum);
-
-            double raan = acos(node_vector.x / glm::length(node_vector));
-            if(node_vector.y < 0) {
-                raan = 2 * M_PI - raan;
-            }
-
-            double arg_pe = acos( glm::dot(node_vector, eccentricity_vector) /
-                                  (glm::length(node_vector) * glm::length(eccentricity_vector)) );
-            if(eccentricity_vector.z < 0) {
-                arg_pe = 2 * M_PI - arg_pe;
-            }
+            const OrbitElements o = computeOrbitElements(orbit_pos, orbit_vel, mu);
+            const double distance = o.distance;
+            const double speed = o.speed;
 
             glm::dvec3 GetAngVelocity_(Body *b);
             const glm::dvec3 ang_vel_ = GetAngVelocity(ship->controller);
-
-            const glm::dvec3 AoA = glm::dvec3();
-
-            double TrueAnomaly = acos(glm::dot(eccentricity_vector, orbit_pos) / (glm::length(eccentricity_vector) * glm::length(orbit_pos)));
-            if(glm::dot(orbit_pos, orbit_vel) < 0) {
-                TrueAnomaly = 2 * M_PI - TrueAnomaly;
-            }
-
-            // http://www.bogan.ca/orbits/kepler/e_anomly.html
-            double EccentricAnomaly = acos((((1 - ecc*ecc)*cos(TrueAnomaly)) / (1 + ecc * cos(TrueAnomaly))) + ecc);
-            if(TrueAnomaly > M_PI) {
-                EccentricAnomaly = 2 * M_PI - EccentricAnomaly;
-            }
-
-            const double MeanAnomaly = EccentricAnomaly - ecc * sin(EccentricAnomaly);
-            const double PeT = sqrt((SMa * SMa * SMa) / (mu)) * MeanAnomaly; // s
-            const double T = 2 * M_PI * sqrt((SMa * SMa * SMa) / (mu)); // s
-            const double ApT = T - PeT; // s
 
             const glm::dvec3 up = getRelAxis_(ship->controller, 1);
             const glm::dvec3 facing = getRelAxis_(ship->controller, 2);
@@ -3889,7 +3803,7 @@ int main(int argc, char **argv)
                 ImGui::PopFont();
                 ImGui::End();
 
-                if(e < 0) {
+                if(o.energy < 0) {
                     ImGui::Begin("Elliptic Orbit Window", NULL, flags);
                     ImGui::PushFont(bigger);
                     ImGui::Text("Elliptic Orbit");
@@ -3995,24 +3909,32 @@ int main(int argc, char **argv)
                 ImGui::Begin("ORBITAL");
                 ImGui::Text("Vel: %.1fm/s", speed);
                 ImGui::Text("Alt: %.1fm", distance);
-                ImGui::Text("ApA: %.1fm", ApA);
-                ImGui::Text("ApT: %.1f", ApT);
-                ImGui::Text("PeA: %.1fm", PeA);
-                ImGui::Text("PeT: %.1f", PeT);
-                ImGui::Text("  T: %.1f", T);
-                ImGui::Text("Inc: %.2f", glm::degrees(inclination));
-                ImGui::Text("Ecc: %f ", ecc);
-                ImGui::Text("SMa: %.1fm", SMa);
-                ImGui::Text("LAN: %.2f", glm::degrees(raan));
-                ImGui::Text("LPe: %.2f", glm::degrees(arg_pe));
+                if(o.ecc < 1.0) {
+                    ImGui::Text("ApA: %.1fm", o.apoapsis);
+                    ImGui::Text("ApT: %.1fs", o.time_to_apo);
+                } else {
+                    ImGui::Text("ApA: escape (no apoapsis)");
+                }
+                ImGui::Text("PeA: %.1fm", o.periapsis);
+                if(o.time_to_peri >= 0.0) {
+                    ImGui::Text("PeT: %.1fs", o.time_to_peri);
+                }
+                if(o.period > 0.0) {
+                    ImGui::Text("  T: %.1fs", o.period);
+                }
+                ImGui::Text("Inc: %.2f", glm::degrees(o.inclination));
+                ImGui::Text("Ecc: %f ", o.ecc);
+                ImGui::Text("SMa: %.1fm", o.semi_major);
+                ImGui::Text("LAN: %.2f", glm::degrees(o.raan));
+                ImGui::Text("LPe: %.2f", glm::degrees(o.arg_periapsis));
                 double prograde_angle = glm::angle(facing_dir, vel_dir);
                 double retrograde_angle = glm::angle(facing_dir, - vel_dir);
                 ImGui::Text("Angle to Prograde: %.2f", glm::degrees(prograde_angle));
                 ImGui::Text("Angle to Retrograde: %.2f", glm::degrees(retrograde_angle));
-                ImGui::Text("Energy: %.2f J", e);
+                ImGui::Text("Energy: %.2f J", o.energy);
                 ImGui::Separator();
                 ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
-                ImGui::Text("Radial velocity: %.2f", radial_vel);
+                ImGui::Text("Radial velocity: %.2f", o.radial_vel);
                 ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
                 ImGui::End();
             }
@@ -4152,67 +4074,68 @@ int main(int argc, char **argv)
             }
 
             if(orbitMapWindow == true) {
-                ImVec2 pts[26];
-                // ImVec2 planet[26];
-                // ImGui::Text("%.1f %.1f", center.x, center.y);
-                int i = 0;
-                ImU32 color = ImGui::GetColorU32(ImVec4(255,255,255,255));
-                ImU32 color2 = ImGui::GetColorU32(ImVec4(255,0,0,255));
                 ImGui::Begin("Orbital map");
-                const ImVec2 p = ImGui::GetCursorScreenPos();
-                double E = 0;
-                static float div = 6000.0;
-                for(i = 0; i < 26; i++) {
-                    double r = SMa * (1 - ecc * cos(E));
-                    // ImGui::Text("%.0f", r);
-                    double argX = cos(E) - ecc;
-                    double argY = sqrt(1 - (ecc * ecc)) * sin(E);
+                if(o.ecc >= 1.0) {
+                    ImGui::Text("Escape trajectory (Ecc %f): no closed orbit to map.", o.ecc);
+                } else {
+                    ImVec2 pts[26];
+                    // ImVec2 planet[26];
+                    // ImGui::Text("%.1f %.1f", center.x, center.y);
+                    int i = 0;
+                    ImU32 color = ImGui::GetColorU32(ImVec4(255,255,255,255));
+                    ImU32 color2 = ImGui::GetColorU32(ImVec4(255,0,0,255));
+                    const ImVec2 p = ImGui::GetCursorScreenPos();
+                    double E = 0;
+                    static float div = 6000.0;
+                    for(i = 0; i < 26; i++) {
+                        double r = o.semi_major * (1 - o.ecc * cos(E));
+                        // ImGui::Text("%.0f", r);
+                        double argX = cos(E) - o.ecc;
+                        double argY = sqrt(1 - (o.ecc * o.ecc)) * sin(E);
+                        double phi = atan2(argY, argX);
+                        pts[i].x = 200 + p.x + (r / div * cos(phi));
+                        pts[i].y = 200 + p.y + (r / div * sin(phi));
+                        // planet[i].x = 200 + p.x + (600000 / div * cos(phi));
+                        // planet[i].y = 200 + p.y + (600000 / div * sin(phi));
+                        E += 2 * M_PI / 25;
+                    }
+
+                    double argX = cos(o.ecc_anomaly) - o.ecc;
+                    double argY = sqrt(1 - (o.ecc * o.ecc)) * sin(o.ecc_anomaly);
                     double phi = atan2(argY, argX);
-                    pts[i].x = 200 + p.x + (r / div * cos(phi));
-                    pts[i].y = 200 + p.y + (r / div * sin(phi));
-                    // planet[i].x = 200 + p.x + (600000 / div * cos(phi));
-                    // planet[i].y = 200 + p.y + (600000 / div * sin(phi));
-                    // double t = sqrt((SMa * SMa * SMa / (G * M))) * (E - ecc * sin(E));
-                    // ImGui::Text("E=%.2f r=%.0f, phi=%.1f, t=%.1f", E, r, (phi + (E > M_PI ? 0 : 2 * M_PI)) * (180/M_PI), t);
-                    E += 2 * M_PI / 25;
+
+                    ImVec2 ship_p = { float(200 + p.x + distance / div * cos(phi)),
+                                      float(200 + p.y + distance / div * sin(phi)) };
+
+                    ImVec2 raan_p = { float(200 + p.x + 100 * cos(o.raan)),
+                                      float(200 + p.y + 100 * sin(o.raan)) };
+
+                    /* incorrect */
+                    ImVec2 peri_p = { float(200 + p.x + o.periapsis / div * cos(o.arg_periapsis - M_PI / 2)),
+                                      float(200 + p.y + o.periapsis / div * sin(o.arg_periapsis - M_PI / 2)) };
+
+                    ImVec2 apo_p = { float(200 + p.x + o.apoapsis / div * cos(o.arg_periapsis + M_PI / 2)),
+                                     float(200 + p.y + o.apoapsis / div * sin(o.arg_periapsis + M_PI / 2)) };
+
+                    ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1.0);
+
+                    ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(200 + p.x, 200 + p.y),
+                                                                ship->m_parent->radius / div,
+                                                                color2, 26);
+
+                    ImGui::GetWindowDrawList()->AddCircleFilled(ship_p, 5, color);
+                    ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship_p, color);
+
+                    // ImGui::GetWindowDrawList()->AddCircle(ImVec2(200 + p.x, 200 + p.y), 3 * 600000 / div, color2);
+                    // ImGui::GetWindowDrawList()->AddCircleFilled(raan_p, 5, color);
+                    // ImGui::GetWindowDrawList()->AddCircleFilled(peri_p, 5, color);
+                    // ImGui::GetWindowDrawList()->AddCircleFilled(apo_p, 5, color);
+                    // ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
+
+                    ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
+                    ImGui::Text("True anomaly: %.2f", o.true_anomaly);
+                    ImGui::Text("Eccentric anomaly: %.2f", o.ecc_anomaly);
                 }
-
-                double argX = cos(EccentricAnomaly) - ecc;
-                double argY = sqrt(1 - (ecc * ecc)) * sin(EccentricAnomaly);
-                double phi = atan2(argY, argX);
-
-                ImVec2 ship_p = { float(200 + p.x + distance / div * cos(phi)),
-                                  float(200 + p.y + distance / div * sin(phi)) };
-
-                ImVec2 raan_p = { float(200 + p.x + 100 * cos(raan)),
-                                  float(200 + p.y + 100 * sin(raan)) };
-
-                /* incorrect */
-                ImVec2 peri_p = { float(200 + p.x + PeA / div * cos(arg_pe - M_PI / 2)),
-                                  float(200 + p.y + PeA / div * sin(arg_pe - M_PI / 2)) };
-
-                ImVec2 apo_p = { float(200 + p.x + ApA / div * cos(arg_pe + M_PI / 2)),
-                                 float(200 + p.y + ApA / div * sin(arg_pe + M_PI / 2)) };
-
-                ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1.0);
-
-                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(200 + p.x, 200 + p.y),
-                                                            ship->m_parent->radius / div,
-                                                            color2, 26);
-
-                ImGui::GetWindowDrawList()->AddCircleFilled(ship_p, 5, color);
-                ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship_p, color);
-
-                // ImGui::GetWindowDrawList()->AddCircle(ImVec2(200 + p.x, 200 + p.y), 3 * 600000 / div, color2);
-                // ImGui::GetWindowDrawList()->AddCircleFilled(raan_p, 5, color);
-                // ImGui::GetWindowDrawList()->AddCircleFilled(peri_p, 5, color);
-                // ImGui::GetWindowDrawList()->AddCircleFilled(apo_p, 5, color);
-                // ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
-
-
-                ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
-                ImGui::Text("True anomaly: %.2f", TrueAnomaly);
-                ImGui::Text("Eccentric anomaly: %.2f", EccentricAnomaly);
 
                 ImGui::End();
             }
