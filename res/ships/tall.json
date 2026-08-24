@@ -1,8 +1,0 @@
-{
-  "name": "Tall",
-  "parts": [
-    { "part": "capsule_r3h6" },
-    { "part": "tank_r5h5" },
-    { "part": "engine_r5h10" }
-  ]
-}

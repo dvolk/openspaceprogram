@@ -1,0 +1,9 @@
+{
+  "name": "racer",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1" },
+    { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },
+    { "part": "fuel_tank", "id": "fuel_tank_1", "parent": "reaction_wheel_1" },
+    { "part": "engine", "id": "engine_1", "parent": "fuel_tank_1" }
+  ]
+}

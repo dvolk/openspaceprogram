@@ -1,0 +1,13 @@
+{
+  "name": "tanker",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1" },
+    { "part": "tank_r3h3", "id": "tank_r3h3_1", "parent": "capsule_1" },
+    { "part": "engine", "id": "engine_1", "parent": "tank_r3h3_1" },
+    { "part": "tank_r3h3", "id": "tank_r3h3_2", "attach": "side", "parent": "tank_r3h3_1", "angle": 0   },
+    { "part": "tank_r3h3", "id": "tank_r3h3_3", "attach": "side", "parent": "tank_r3h3_1", "angle": 90  },
+    { "part": "tank_r3h3", "id": "tank_r3h3_4", "attach": "side", "parent": "tank_r3h3_1", "angle": 180 },
+    { "part": "tank_r3h3", "id": "tank_r3h3_5", "attach": "side", "parent": "tank_r3h3_1", "angle": 270 }
+  ]
+}

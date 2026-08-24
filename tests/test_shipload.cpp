@@ -205,8 +205,8 @@ int main() {
     CHECK(tall.parts.size() == 3);
     CHECK(tall.parts[0].def == c32 && tall.parts[2].def == e5);
 
-    // the booster: a side + radial ship around a tall core. The pods are
-    // small (tank_r1h1) and the core is tall (tank_r5h5) so no two
+    // the booster: two side pods on opposite sides of a tall core. The pods
+    // are small (tank_r1h1) and the core is tall (tank_r5h5) so no two
     // non-welded parts touch -- a valid ship the hull-margin can't destabilize.
     ShipDef bo = load_ship_def("res/ships/booster.json", cat);
     CHECK(bo.parts.size() == 5);
@@ -217,11 +217,11 @@ int main() {
         CHECK(side.attach == AttachMode::Side);
         CHECK(side.parent == 1);             // tank_r5h5_1
         CHECK(near(side.angle, 0.0));
-        const ShipPart &rad = bo.parts[4];   // tank_r1h1, radial at 180 deg
-        CHECK(rad.def == t11);
-        CHECK(rad.attach == AttachMode::Radial);
-        CHECK(rad.parent == 1);              // tank_r5h5_1
-        CHECK(near(rad.angle, 180.0));
+        const ShipPart &opp = bo.parts[4];   // tank_r1h1, other side at 180 deg
+        CHECK(opp.def == t11);
+        CHECK(opp.attach == AttachMode::Side);
+        CHECK(opp.parent == 1);              // tank_r5h5_1
+        CHECK(near(opp.angle, 180.0));
     }
 
     // --- attachPose geometry ---------------------------------------------

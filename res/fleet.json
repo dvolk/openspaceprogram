@@ -1,11 +1,8 @@
 {
   "ships": [
-    { "ship": "res/ships/basic.json", "name": "Alpha" },
-    { "ship": "res/ships/basic.json", "name": "Bravo", "scenario": "rot-orbit" },
-    { "ship": "res/ships/basic.json", "name": "Charlie", "scenario": "ellipse-peri" },
-    { "ship": "res/ships/big.json", "name": "Delta", "scenario": "pad" },
-    { "ship": "res/ships/tall.json", "name": "Echo", "scenario": "pad" },
-    { "ship": "res/ships/booster.json", "name": "Foxtrot", "scenario": "pad" },
-    { "ship": "res/ships/booster.json", "name": "Golf", "scenario": "rot-orbit" }
+    { "ship": "res/ships/racer.json", "name": "racer", "scenario": "pad" },
+    { "ship": "res/ships/tanker.json", "name": "tanker", "scenario": "pad" },
+    { "ship": "res/ships/laythe_explorer.json", "name": "laythe explorer", "scenario": "inertial-orbit" },
+    { "ship": "res/ships/transporter.json", "name": "transporter", "scenario": "high-orbit" }
   ]
 }

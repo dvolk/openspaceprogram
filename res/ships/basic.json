@@ -1,9 +1,0 @@
-{
-  "name": "Basic",
-  "parts": [
-    { "part": "capsule" },
-    { "part": "reaction_wheel" },
-    { "part": "fuel_tank" },
-    { "part": "engine" }
-  ]
-}

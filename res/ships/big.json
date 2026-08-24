@@ -1,8 +1,0 @@
-{
-  "name": "Big",
-  "parts": [
-    { "part": "capsule" },
-    { "part": "tank_r3h2" },
-    { "part": "engine_r5h10" }
-  ]
-}
