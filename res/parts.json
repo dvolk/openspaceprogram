@@ -196,6 +196,33 @@
       "radius": 5.0,
       "height": 5.0,
       "capacity": { "hydrogen": 1000, "lox": 1000 }
+    },
+    {
+      "name": "nose_cap",
+      "type": "nose_cap",
+      "mesh": "nose_cap.obj",
+      "texture": "nose_cap.png",
+      "mass": 200,
+      "radius": 1.0,
+      "height": 0.5
+    },
+    {
+      "name": "nose_cap_r3h1.5",
+      "type": "nose_cap",
+      "mesh": "nose_cap_r3h1.5.obj",
+      "texture": "nose_cap.png",
+      "mass": 200,
+      "radius": 3.0,
+      "height": 1.5
+    },
+    {
+      "name": "nose_cap_r5h2.5",
+      "type": "nose_cap",
+      "mesh": "nose_cap_r5h2.5.obj",
+      "texture": "nose_cap.png",
+      "mass": 200,
+      "radius": 5.0,
+      "height": 2.5
     }
   ]
 }
