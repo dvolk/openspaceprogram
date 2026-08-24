@@ -1,0 +1,12 @@
+{
+  "name": "stager",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule",        "id": "capsule_1",    "stage": 2 },
+    { "part": "reaction_wheel", "id": "wheel_1",      "parent": "capsule_1",    "stage": 2 },
+    { "part": "fuel_tank",      "id": "tank_upper",   "parent": "wheel_1",      "stage": 2 },
+    { "part": "engine",         "id": "engine_upper", "parent": "tank_upper",   "stage": 2 },
+    { "part": "fuel_tank",      "id": "tank_boost",   "parent": "engine_upper", "stage": 1 },
+    { "part": "engine",         "id": "engine_boost", "parent": "tank_boost",   "stage": 1 }
+  ]
+}

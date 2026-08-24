@@ -51,12 +51,17 @@ public:
                         glm::vec3 rot, bool planet);
     btRigidBody *AddTerrainCollision(Mesh *mesh);
     void RemoveTerrainCollision(btRigidBody *b);
+    /* Remove a body's rigid body from the dynamics world (call BEFORE
+       deleting the Body). The collision shape / model are the Body's to
+       free; this only unregisters it so the world holds no dangling ptr. */
+    void RemoveBody(Body *body);
     /* Weld two parts at the given local anchor points (the anchor points
        must coincide in world space, i.e. they define the relative offset). */
     void * GlueTogether(Body *parent, Body *child,
                         glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
     void collisions(void);
     void Draw(const Camera * camera);
+    /* Remove a constraint from the world AND delete it (no dangling ref). */
     void Detach(void * constraint);
     /* Spin diagnostics: the contact state between two ship parts after
        the last solve (per point: world position, normal, penetration,
@@ -78,6 +83,8 @@ private:
 btRigidBody *addTerrainCollision(Mesh *m);
 void removeTerrainCollision(btRigidBody *b);
 void NeverSleep(Body *body);
+/* Unregister a body's rigid body from the world (call before `delete body`). */
+void RemoveBody(Body *body);
 
 double GetMass(Body *body);
 void SetMass(Body *body, double newMass);
@@ -109,6 +116,8 @@ glm::dmat3 GetOrient(Body *body);
    space (they define the relative offset, e.g. faces at +-h/2). */
 void * GlueTogether(Body *parent, Body *child,
                     glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
+/* Remove a weld (constraint) from the world and delete it. */
+void Detach(void *constraint);
 /* Spin diagnostics for a two-part ship (see ContactPairInfo). */
 ContactPairInfo contact_report(Body *a, Body *b);
 

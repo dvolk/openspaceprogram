@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -189,6 +190,36 @@ struct AttachPose {
 AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       const PartDef &parentDef, const PartDef &childDef,
                       AttachMode mode, double angleDeg, double offset);
+
+/* Result of a stage split (see computeStageSplit): which parts stay vs. go,
+   which constraints must be removed, and the survivors' links remapped into
+   the compressed index space. GL/Bullet-free. */
+struct StageSplit {
+    std::vector<size_t> keptParts;      // surviving part indices (ascending)
+    std::vector<size_t> droppedParts;   // part indices to delete (ascending)
+    std::vector<long> newIndexOf;       // size nParts; newIndexOf[old] = new
+                                        // index of a kept part, -1 if dropped
+    std::vector<size_t> cutConstraints; // constraint indices to remove
+    std::vector<std::pair<size_t,size_t>> keptLinks;
+                                        // surviving links (both ends kept),
+                                        // remapped, in original constraint order
+};
+
+/* Pure stage-split bookkeeping (unit-testable headless). Given nParts, the
+   (a,b) part-index link of each constraint (parallel to the constraints),
+   and drop[i] = "part i is being dropped", returns:
+     keptParts / droppedParts : the two complementary index sets
+     cutConstraints           : every constraint with AT LEAST ONE dropped
+                               end (both "cut" links and the drop-set's
+                               internal links -- any constraint touching a
+                               deleted body must be removed from the world)
+     keptLinks                : the constraints whose BOTH ends are kept, with
+                               their endpoints remapped to the compressed
+                               (kept-only) index space
+   Precondition: every link endpoint is a valid part index [0, nParts). */
+StageSplit computeStageSplit(size_t nParts,
+                             const std::vector<std::pair<size_t,size_t>> &links,
+                             const std::vector<bool> &drop);
 
 struct PartsCatalog {
     std::vector<PartDef> parts;

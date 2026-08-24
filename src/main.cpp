@@ -825,9 +825,13 @@ public:
        init()). init() copies the behavior values into the per-thruster /
        per-wheel vectors below, so the catalog may be freed afterwards. */
     std::vector<const PartDef *> partDefs;
+    /* per-part stage number (parallel to parts; set by build_ship from the
+       ship def). 1 = single stage. Drives engine/fuel gating + separation. */
+    std::vector<int> partStages;
     std::vector<double> m_thrusterThrust;  // N at full throttle (T = 2*rate*ve)
     std::vector<double> m_thrusterRate;    // kg/s per tank at full throttle
     std::vector<glm::dvec2> m_thrusterDims;  // (radius, height) m, parallel to m_thrusters
+    std::vector<int> m_thrusterStage;     // stage of each thruster (parallel to m_thrusters)
     std::vector<double> m_wheelTorque;     // N m, rated
     double m_exhaustVel = 0;               // m/s (first engine; delta-v estimate)
     /* the armed per-thruster force for THIS tick (N at current throttle);
@@ -900,11 +904,6 @@ public:
                glm::dvec3(-def->radius, 0.0, 0.0));
     }
 
-    void Detach() {
-        void Detach(void *constraint);
-        Detach(constraints.back());
-    }
-
     void init() {
         partResources.resize(parts.size());
         /* the cockpit part; build_ship() sets controllerIndex from the ship
@@ -915,9 +914,42 @@ public:
         if(partDefs.size() != parts.size()) {
             throw std::runtime_error("Vehicle::init: partDefs must be parallel to parts");
         }
+        if(partStages.size() != parts.size()) {
+            throw std::runtime_error("Vehicle::init: partStages must be parallel to parts");
+        }
+        /* propellant reservoirs: seed each tank part's resources so the
+           thrusters can draw from them (they shed mass as they burn). Only
+           done at construction -- separateStage() must NOT re-seed, so this
+           stays here and out of rebuildBehavior(). */
+        for(size_t i = 0; i < parts.size(); i++) {
+            const PartDef *d = partDefs[i];
+            bool has_capacity = false;
+            for(size_t r = 0; r < d->capacity.size(); r++) {
+                if(d->capacity[r] > 0.0f) { has_capacity = true; }
+            }
+            if(has_capacity) {
+                for(int r = 0; r < (int)ResourceType::Num; r++) {
+                    partResources[i].capacity[r] = d->capacity[r];
+                    partResources[i].current[r] = d->capacity[r];
+                }
+            }
+        }
+        rebuildBehavior();
+    }
+
+    /* (Re)build the per-thruster / per-wheel behavior vectors from partDefs.
+       Safe to call again after separateStage() has shrunk the part set: it
+       touches ONLY the m_* vectors -- never partResources (fuel is never
+       re-seeded) and never the parts/constraints themselves. */
+    void rebuildBehavior() {
+        m_thrusters.clear();
+        m_reaction_wheels.clear();
         m_thrusterThrust.clear();
         m_thrusterRate.clear();
+        m_thrusterDims.clear();
+        m_thrusterStage.clear();
         m_wheelTorque.clear();
+        m_exhaustVel = 0;
         for(size_t i = 0; i < parts.size(); i++) {
             const PartDef *d = partDefs[i];
             /* behavior is field-driven (see shipdef.h): a part may carry
@@ -931,37 +963,30 @@ public:
                 m_thrusterThrust.push_back(d->fullThrust());
                 m_thrusterRate.push_back(d->fuel_rate);
                 m_thrusterDims.push_back(glm::dvec2(d->radius, d->height));
+                m_thrusterStage.push_back(partStages[i]);
                 if(m_exhaustVel == 0.0) { m_exhaustVel = d->exhaust_velocity; }
             }
-            bool has_capacity = false;
-            for(size_t r = 0; r < d->capacity.size(); r++) {
-                if(d->capacity[r] > 0.0f) { has_capacity = true; }
-            }
-            if(has_capacity) {
-                /* propellant reservoir: seed this part's resources so the
-                   thrusters can draw from it (it sheds mass as they burn) */
-                for(int r = 0; r < (int)ResourceType::Num; r++) {
-                    partResources[i].capacity[r] = d->capacity[r];
-                    partResources[i].current[r] = d->capacity[r];
-                }
-            }
         }
+        /* no thrust may be armed across a rebuild (a split just happened) */
         m_armedThrust.assign(m_thrusters.size(), 0.0f);
     }
 
-    /* returns true if fuel was consumed. amt is the kg consumed THIS tick
-       (the caller scales the kg/s flow by the tick's simulated time). */
+    /* Draw `amt` kg of `type` from a tank on the ACTIVE stage only (stages
+       are self-contained: a stage burns its own propellant, so the booster's
+       engines never drain the upper stage's tanks). Returns true if fuel was
+       consumed. amt is the kg consumed THIS tick (the caller scales the kg/s
+       flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */) {
-        int i = 0;
-        for(auto&& partResource : partResources) {
-            if(partResource.current[(int)type] >= amt) {
-                partResource.current[(int)type] -= amt;
+        const int as = activeStage();
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(partStages[i] != as) { continue; }
+            if(partResources[i].current[(int)type] >= amt) {
+                partResources[i].current[(int)type] -= amt;
                 parts[i]->mass -= amt; /* why does Body have mass at all? */
                 void SetMass(Body *body, double newMass);
                 SetMass(parts[i], parts[i]->mass);
                 return true;
             }
-            i++;
         }
         return false;
     }
@@ -990,24 +1015,48 @@ public:
         return r;
     }
 
+    /* The active (currently live) stage: the lowest stage number still on
+       the ship. Stages are dropped low-to-high, so this is what fires and
+       what separateStage() detaches next. */
+    int activeStage() {
+        if(partStages.empty()) { return 1; }
+        int s = partStages[0];
+        for(size_t i = 1; i < partStages.size(); i++) {
+            if(partStages[i] < s) { s = partStages[i]; }
+        }
+        return s;
+    }
+
+    /* Total number of distinct stage numbers on the ship (for the "N / M"
+       HUD readout). */
+    int numStages() {
+        bool present[64] = { false };
+        int n = 0;
+        for(size_t i = 0; i < partStages.size(); i++) {
+            int s = partStages[i];
+            if(s >= 0 && s < 64 && !present[s]) { present[s] = true; n++; }
+        }
+        return n;
+    }
+
     float getThrust() {
-        return GetMaxThrust() * thruster_util;
+        return GetActiveThrust() * thruster_util;
     }
 
     // current Thrust-to-weight ratio
     float getTWR() {
-        return (thruster_util * GetMaxThrust()) / (getMass() * m_parent->g);
+        return (thruster_util * GetActiveThrust()) / (getMass() * m_parent->g);
     }
 
     // full throttle TWR
     float getFullThrustTWR() {
-        return GetMaxThrust() / (getMass() * m_parent->g);
+        return GetActiveThrust() / (getMass() * m_parent->g);
     }
 
     // empty TWR
     float getMaxTWR() {
         float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
-        return GetMaxThrust() / ((getMass() - remaining_fuel) * m_parent->g);
+        return GetActiveThrust() / ((getMass() - remaining_fuel) * m_parent->g);
     }
 
     void setVelocity(glm::dvec3 vel) {
@@ -1147,6 +1196,79 @@ public:
         clearRotCmd();
     }
 
+    /* Separate `stage`: cut the welds joining it to the rest of the ship,
+       remove its parts from the Bullet world and from this ship's part
+       set, and delete them. The surviving parts keep their relative
+       geometry (their internal welds are untouched). Refuses to drop the
+       whole ship. Returns the number of parts dropped (0 = no-op). Call at
+       a tick boundary, not mid-substep. */
+    int separateStage(int stage) {
+        const size_t n = parts.size();
+        if(n < 2) { return 0; }   // single-part ship: nothing to separate
+
+        /* drop set = every part on this stage */
+        std::vector<bool> drop(n, false);
+        size_t dropped = 0;
+        for(size_t i = 0; i < n; i++) {
+            if(partStages[i] == stage) { drop[i] = true; dropped++; }
+        }
+        if(dropped == 0) { return 0; }   // nothing on this stage
+        if(dropped == n) { return 0; }   // can't drop the whole ship
+
+        /* the controller part's OLD index (to remap, or replace if dropped) */
+        const int oldCi = controllerIndex < 0 ? (int)n - 1 : controllerIndex;
+
+        StageSplit split = computeStageSplit(n, constraintLinks, drop);
+
+        /* 1) Remove every constraint touching a dropped part (the stage
+           interface AND the dropped set's internal welds). */
+        for(size_t c : split.cutConstraints) {
+            Detach(constraints[c]);   // out of the world + deleted
+        }
+        /* 2) Unregister + delete the dropped parts' bodies. */
+        for(size_t i : split.droppedParts) {
+            RemoveBody(parts[i]);     // unregister from the world
+            delete parts[i];          // frees model + rigid body
+        }
+        /* 3) Rebuild the part-set vectors from the kept parts. */
+        std::vector<Body *>          keepParts;
+        std::vector<const PartDef *> keepDefs;
+        std::vector<ResourceContent> keepRes;
+        std::vector<int>             keepStages;
+        for(size_t i : split.keptParts) {
+            keepParts.push_back(parts[i]);
+            keepDefs.push_back(partDefs[i]);
+            keepRes.push_back(partResources[i]);
+            keepStages.push_back(partStages[i]);
+        }
+        parts.swap(keepParts);
+        partDefs.swap(keepDefs);
+        partResources.swap(keepRes);
+        partStages.swap(keepStages);
+        /* 4) Keep only the surviving constraints; their links are already
+           remapped into the new (kept-only) index space. */
+        std::vector<bool> isCut(constraints.size(), false);
+        for(size_t c : split.cutConstraints) { isCut[c] = true; }
+        std::vector<void *> keepCons;
+        for(size_t c = 0; c < constraints.size(); c++) {
+            if(!isCut[c]) { keepCons.push_back(constraints[c]); }
+        }
+        constraints.swap(keepCons);
+        constraintLinks = split.keptLinks;
+        /* 5) Remap the controller (or, if it was itself dropped, fall back
+           to the first surviving part). */
+        if(split.newIndexOf[(size_t)oldCi] >= 0) {
+            controllerIndex = (int)split.newIndexOf[(size_t)oldCi];
+        } else {
+            controllerIndex = 0;
+        }
+        controller = parts[(size_t)controllerIndex];
+        NeverSleep(controller);
+        /* 6) Rebuild the thruster/wheel vectors (also disarms any thrust). */
+        rebuildBehavior();
+        return (int)dropped;
+    }
+
     /* renderFrame: the frame the camera view is built in. Usually this
        ship's own frame (identity transform); an idle ship that switched
        SOI while another ship was being controlled lives in a different
@@ -1221,23 +1343,33 @@ private:
         if(thruster_util < 0) { thruster_util = 0; }
     }
 
-    /* the ship's full-throttle thrust (N) = the sum of each engine's
-       full thrust (each T = (H2 + LOX flow) x ve = 2 x fuel_rate x ve,
-       both propellants end up in the plume) -- from the part defs */
-    float GetMaxThrust() {
+    /* the ship's full-throttle thrust RIGHT NOW (N) = the sum of the ACTIVE
+       stage's engines' full thrust (each T = (H2 + LOX flow) x ve = 2 x
+       fuel_rate x ve, both propellants end up in the plume). Only the active
+       stage fires, so this is the usable thrust; for a single-stage ship it
+       equals the grand total. */
+    float GetActiveThrust() {
+        const int as = activeStage();
         double t = 0;
-        for(size_t i = 0; i < m_thrusterThrust.size(); i++) { t += m_thrusterThrust[i]; }
+        for(size_t i = 0; i < m_thrusterThrust.size(); i++) {
+            if(m_thrusterStage[i] == as) { t += m_thrusterThrust[i]; }
+        }
         return (float)t;
     }
 
     /* Called once per physics tick (step = the tick's simulated duration).
        Consumes the tick's fuel and arms the per-thruster thrust; the force
        itself is applied by applyThrustForce() before EVERY substep below.
-       A thruster that can't consume its flow this tick doesn't thrust. */
+       A thruster that can't consume its flow this tick doesn't thrust. Only
+       the ACTIVE stage's thrusters fire (and they draw the active stage's
+       tanks -- see consumeResourceMass), so a non-active engine is skipped
+       before any fuel is spent. */
     void ApplyThrust(double step) {
         if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
         thrust_mag = 0.0f;
+        const int as = activeStage();
         for(size_t i = 0; i < m_thrusters.size(); i++) {
+            if(m_thrusterStage[i] != as) { continue; } /* not the live stage */
             const float flow =
                 (float)(m_thrusterRate[i] * (double)thruster_util * step); /* kg this tick, per tank */
             if(consumeResourceMass(ResourceType::Hydrogen, flow) and
@@ -1514,6 +1646,7 @@ static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
             ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i]);
         }
         ship->partDefs.push_back(&pd);
+        ship->partStages.push_back(def.parts[i].stage);
     }
     ship->controllerIndex = def.controllerIndex();
     ship->init();
@@ -2131,6 +2264,12 @@ int main(int argc, char **argv)
                    "Auto-exit the main loop after this many wall-clock "
                    "seconds (0 = run until closed; default: 0)")
         ->check(CLI::NonNegativeNumber);
+
+    bool selftest_stage = false;
+    app.add_flag("--selftest-stage", selftest_stage,
+                 "Exercise the staging path on the first multi-stage ship "
+                 "(drop the active stage, then refuse the last stage), "
+                 "then exit after a few physics ticks");
 
     bool orbit_log = false;
     app.add_flag("--orbit-log", orbit_log,
@@ -2750,6 +2889,35 @@ int main(int argc, char **argv)
                activeIdx + 1, (int)ships.size(), ship->name.c_str());
     };
 
+    /* --selftest-stage: exercise the staging path on the first multi-stage
+       ship (drop the active stage, then try again -- the last stage must be
+       refused), printing before/after state. Runs before the loop; the
+       loop then takes a few physics ticks to prove the world is stable with
+       the weld cut and the dropped bodies gone, and exits. */
+    int selftest_ticks = 0;
+    if(selftest_stage) {
+        Vehicle *stager = 0;
+        for(size_t i = 0; i < ships.size(); i++) {
+            if(ships[i]->numStages() >= 2) { stager = ships[i]; break; }
+        }
+        if(!stager) {
+            printf("selftest-stage: no multi-stage ship in the fleet\n");
+            running = false;
+        } else {
+            printf("== selftest-stage: %s ==\n", stager->name.c_str());
+            printf("before: parts=%zu mass=%.1f kg stage=%d/%d TWR=%.2f\n",
+                   stager->parts.size(), stager->getMass(),
+                   stager->activeStage(), stager->numStages(), stager->getTWR());
+            const int dropped = stager->separateStage(stager->activeStage());
+            printf("drop 1: dropped=%d parts=%zu mass=%.1f kg stage=%d/%d TWR=%.2f\n",
+                   dropped, stager->parts.size(), stager->getMass(),
+                   stager->activeStage(), stager->numStages(), stager->getTWR());
+            const int dropped2 = stager->separateStage(stager->activeStage());
+            printf("drop 2: dropped=%d (expect 0: last stage stays)\n", dropped2);
+            selftest_ticks = 30;
+        }
+    }
+
     // --timeout: wall-clock budget for the whole run (0 = run until closed).
     const Uint32 loop_start_ms = SDL_GetTicks();
     const double startup_s =
@@ -2770,6 +2938,16 @@ int main(int argc, char **argv)
             const double elapsed_s = (SDL_GetTicks() - loop_start_ms) * 0.001;
             if(elapsed_s >= timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
+                fflush(stdout);
+                running = false;
+            }
+        }
+
+        // --selftest-stage: a few post-separation physics ticks, then exit.
+        if(selftest_ticks > 0) {
+            selftest_ticks--;
+            if(selftest_ticks == 0) {
+                printf("selftest-stage: 30 ticks after separation, no crash; OK\n");
                 fflush(stdout);
                 running = false;
             }
@@ -2864,6 +3042,21 @@ int main(int argc, char **argv)
                     // auto-repeat would just keep cycling)
                     if(!ev.key.repeat && ships.size() > 1) {
                         select_ship((activeIdx + 1) % (int)ships.size());
+                    }
+                }
+                if(ev.key.keysym.sym == SDLK_SPACE) {
+                    // separate the active stage (one-shot; auto-repeat would
+                    // keep dropping stages). Only while flying a ship with
+                    // time running (a paused separation would leave the
+                    // survivors frozen mid-air).
+                    if(!ev.key.repeat && camMode == CAM_ORBIT && time_accel > 0) {
+                        int dropped = ship->separateStage(ship->activeStage());
+                        if(dropped > 0) {
+                            printf("Stage: dropped %d part(s); now on stage %d of %d\n",
+                                   dropped, ship->activeStage(), ship->numStages());
+                        } else {
+                            printf("Stage: nothing left to separate\n");
+                        }
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_F12) {
@@ -3559,6 +3752,8 @@ int main(int argc, char **argv)
             if(shipInfoWindow == true) {
                 ImGui::Begin("VESSEL");
                 ImGui::Text("Ship: %s", ship->name.c_str());
+                ImGui::Text("Stage: %d / %d  (SPACE to drop)",
+                            ship->activeStage(), ship->numStages());
                 ImGui::Text("Reference frame: %s", ship->frame->name.c_str());
                 ImGui::Text("Reference frame type: %s", ship->frame->isRotFrame() ? "Rotational" : "Inertial");
                 ImGui::Text("Mass: %.3fkg", ship->getMass());
@@ -3576,7 +3771,7 @@ int main(int argc, char **argv)
                 ImGui::Begin("SHIP PARTS");
                 int i = 0;
                 for(auto&& part : ship->parts) {
-                    ImGui::Text("Part #%d", i);
+                    ImGui::Text("Part #%d  (stage %d)", i, ship->partStages[i]);
                     ImGui::Separator();
                     ImGui::Text("Name: %s", ship->partDefs[i]->name.c_str());
                     ImGui::Text("Mass: %.3fkg", part->mass);
@@ -3617,6 +3812,7 @@ int main(int argc, char **argv)
                 ImGui::Text("b - align prograde");
                 ImGui::Text("n - align retrograde");
                 ImGui::Text("r/f - throttle up/down");
+                ImGui::Text("SPACE - separate the active stage");
                 ImGui::Spacing();
                 ImGui::Text("Free mode (exploring)");
                 ImGui::Separator();

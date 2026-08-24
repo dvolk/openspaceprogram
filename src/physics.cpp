@@ -335,7 +335,19 @@ void Detach(void *constraint) {
 }
 
 void PhysicsEngine::Detach(void *constraint) {
-    dynamicsWorld->removeConstraint((btTypedConstraint *)constraint);
+    btTypedConstraint *c = (btTypedConstraint *)constraint;
+    dynamicsWorld->removeConstraint(c);
+    /* btTypedConstraint has a virtual dtor, so deleting through the base
+       pointer frees the concrete (6DOF) constraint. */
+    delete c;
+}
+
+void PhysicsEngine::RemoveBody(Body *body) {
+    dynamicsWorld->removeRigidBody(body->btBody);
+}
+
+void RemoveBody(Body *body) {
+    physics->RemoveBody(body);
 }
 
 void RegisterPhysicsBody(Body *body,

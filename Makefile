@@ -98,6 +98,11 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
 	    tests/test_shipload.cpp src/shipdef.cpp -o test_shipload
 	./test_shipload
+	# stage-split bookkeeping (GL-free: which parts/constraints survive vs.
+	# drop, and the survivors' links remapped into the compressed indices).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
+	    tests/test_stage.cpp src/shipdef.cpp -o test_stage
+	./test_stage
 	# fleet JSON (GL-free: entry parse + defaults + error paths).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
 	    tests/test_fleet.cpp src/fleet.cpp -o test_fleet
@@ -123,7 +128,7 @@ clean:
 
 .PHONEY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_fleet test_calendar test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

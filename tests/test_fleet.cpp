@@ -37,7 +37,7 @@ static void write_file(const char *path, const std::string &content) {
 int main() {
     // --- the shipped sample -------------------------------------------------
     Fleet f = load_fleet("res/fleet.json");
-    CHECK(f.ships.size() == 4);
+    CHECK(f.ships.size() == 5);
 
     CHECK(f.ships[0].ship == "res/ships/racer.json");
     CHECK(f.ships[0].name == "racer");
@@ -49,15 +49,20 @@ int main() {
     CHECK(f.ships[1].body.empty());
     CHECK(f.ships[1].scenario == "pad");
 
-    CHECK(f.ships[2].ship == "res/ships/laythe_explorer.json");
-    CHECK(f.ships[2].name == "laythe explorer");
+    CHECK(f.ships[2].ship == "res/ships/stager.json");
+    CHECK(f.ships[2].name == "stager");
     CHECK(f.ships[2].body.empty());
-    CHECK(f.ships[2].scenario == "inertial-orbit");
+    CHECK(f.ships[2].scenario == "pad");
 
-    CHECK(f.ships[3].ship == "res/ships/transporter.json");
-    CHECK(f.ships[3].name == "transporter");
+    CHECK(f.ships[3].ship == "res/ships/laythe_explorer.json");
+    CHECK(f.ships[3].name == "laythe explorer");
     CHECK(f.ships[3].body.empty());
-    CHECK(f.ships[3].scenario == "high-orbit");
+    CHECK(f.ships[3].scenario == "inertial-orbit");
+
+    CHECK(f.ships[4].ship == "res/ships/transporter.json");
+    CHECK(f.ships[4].name == "transporter");
+    CHECK(f.ships[4].body.empty());
+    CHECK(f.ships[4].scenario == "high-orbit");
 
     // --- defaults -----------------------------------------------------------
     {

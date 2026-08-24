@@ -332,3 +332,42 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
     }
     return p;
 }
+
+StageSplit computeStageSplit(size_t nParts,
+                             const std::vector<std::pair<size_t,size_t>> &links,
+                             const std::vector<bool> &drop)
+{
+    if(drop.size() != nParts) {
+        throw std::runtime_error("computeStageSplit: drop.size() != nParts");
+    }
+    StageSplit r;
+    r.newIndexOf.assign(nParts, -1);
+
+    /* partition the parts and build the old->new index map for the keepers */
+    size_t next = 0;
+    for(size_t i = 0; i < nParts; i++) {
+        if(drop[i]) {
+            r.droppedParts.push_back(i);
+        } else {
+            r.keptParts.push_back(i);
+            r.newIndexOf[i] = (long)next++;
+        }
+    }
+
+    /* classify each constraint: any dropped end -> remove; both kept -> keep
+       (remapped). The two cases are exhaustive and disjoint. */
+    for(size_t c = 0; c < links.size(); c++) {
+        const size_t a = links[c].first;
+        const size_t b = links[c].second;
+        if(a >= nParts || b >= nParts) {
+            throw std::runtime_error("computeStageSplit: link endpoint out of range");
+        }
+        if(drop[a] || drop[b]) {
+            r.cutConstraints.push_back(c);
+        } else {
+            r.keptLinks.push_back(std::make_pair((size_t)r.newIndexOf[a],
+                                                 (size_t)r.newIndexOf[b]));
+        }
+    }
+    return r;
+}
