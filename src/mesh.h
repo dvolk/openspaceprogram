@@ -71,7 +71,9 @@ public:
 
     void AssImpFromFile(const std::string& fileName, bool copyData);
     void FromFile(const std::string& fileName, bool copyData);
-    void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData);
+    // numInnerIndices: when nonzero, the first numInnerIndices indices are
+    // the terrain and the tail is a skirt; DrawSkirt() renders the tail.
+    void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices = 0);
 
     void InitMesh(const PosInterface& model);
     void InitMesh(const PosNorIndColInterface& model, bool copyData);
@@ -81,6 +83,9 @@ public:
     void Draw();
     // draw lines initialized by PosInterface
     void Draw(GLenum mode);
+    // draw the skirt index tail (see FromData); drawn after Draw() so the
+    // skirt depth-tests against the terrain in front of it
+    void DrawSkirt();
 
     // for bullet physics
     double *vs;
@@ -94,6 +99,7 @@ private:
     GLuint *m_vertexArrayBuffers;
     GLuint m_vertexArrayObject;
     unsigned int m_numIndices;
+    unsigned int m_numInnerIndices = 0;
 };
 
 #endif

@@ -25,7 +25,11 @@ Renderer::Renderer(int width, int height)
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     check_gl_error();
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); // TODO can we have more bits? or float depth?
+    // 32-bit float depth was tried (see git history): on this stack window
+    // creation fails with DEPTH 32 + STENCIL 8, and it wouldn't have helped
+    // anyway -- the log-z values come from a float32 varying, and the
+    // skirt hiding uses the stencil, not depth precision.
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     check_gl_error();
@@ -121,7 +125,7 @@ void Renderer::Clear(float r, float g, float b, float a)
     check_gl_error();
     glClearColor(r, g, b, a);
     check_gl_error();
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     check_gl_error();
 }
 

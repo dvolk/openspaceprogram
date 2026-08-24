@@ -84,7 +84,9 @@ struct GeoPatch {
     ~GeoPatch();
 
     void Subdivide(void);
-    void Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec);
+    // skirt_pass=false draws the terrain (stamping stencil), true draws
+    // only the skirt ring where the stencil says no terrain was drawn
+    void Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec, bool skirt_pass);
     void Update(const Camera* camera, const glm::dmat4& transform);
 
     int CountChildren() {
@@ -227,7 +229,7 @@ struct TerrainBody {
 
     COLOUR (*colour_func)(float v, float vmin, float vmax);
 
-    Mesh *create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
+    Mesh *create_grid_mesh(bool has_collision, bool has_skirt, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
     float GetTerrainHeight(const glm::vec3& p);
     float GetTerrainHeightUnscaled(const glm::vec3& p);
     float ScaleHeightNoise(float noise);
@@ -263,11 +265,27 @@ struct TerrainBody {
 
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
+        // two passes with a stencil mask: pass 1 draws the terrain and
+        // stamps stencil=1; pass 2 draws the skirts only where stencil==0,
+        // i.e. where no terrain fragment was drawn (the cracks between
+        // patches at different subdivision depths, and the limb). Hiding
+        // the skirt under the neighbouring surface this way needs no depth
+        // comparison, which the float32 view transform can't resolve at
+        // range (its rounding is of the same order as the skirt depth
+        // margin, which z-fights).
         dbg_drew_patches = 0;
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         for(auto&& patch : patches) {
-            // patch isn't subdivided
-            patch->Draw(camera, transform, sunlightVec);
+            patch->Draw(camera, transform, sunlightVec, false);
         }
+        glStencilFunc(GL_EQUAL, 0, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        for(auto&& patch : patches) {
+            patch->Draw(camera, transform, sunlightVec, true);
+        }
+        glDisable(GL_STENCIL_TEST);
 
         if(planetsWindow) {
             // TODO move this out maybe?
@@ -690,7 +708,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     // collision mesh; the old `>` was never true since depth never
     // exceeds max_depth, so terrain collision was silently never added.
     bool has_collision = depth >= max_depth;
-    Mesh *grid_mesh = body->create_grid_mesh(has_collision, v0, v1, v2, v3);
+    Mesh *grid_mesh = body->create_grid_mesh(has_collision, depth > 1, v0, v1, v2, v3);
     model->FromData(grid_mesh, shader, NULL);
     if(has_collision == true) {
         collision = addTerrainCollision(grid_mesh);
@@ -700,7 +718,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     }
 }
 
-void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec) {
+void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec, bool skirt_pass) {
     body->dbg_drew_patches++;
 
     if(kids[0] == NULL) {
@@ -721,13 +739,20 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
         model->shader->setUniform_vec3(2, sunlightVec);
         model->shader->setUniform_vec4(3, color);
 
-        model->mesh->Draw();
+        if(skirt_pass == false) {
+            model->mesh->Draw();
+        } else {
+            // the stencil (set up in TerrainBody::Draw) only passes where
+            // no terrain fragment was drawn, so the skirt shows in the
+            // cracks/limb and can never z-fight the surface
+            model->mesh->DrawSkirt();
+        }
     }
     else {
-        kids[0]->Draw(camera, transform, sunlightVec);
-        kids[1]->Draw(camera, transform, sunlightVec);
-        kids[2]->Draw(camera, transform, sunlightVec);
-        kids[3]->Draw(camera, transform, sunlightVec);
+        kids[0]->Draw(camera, transform, sunlightVec, skirt_pass);
+        kids[1]->Draw(camera, transform, sunlightVec, skirt_pass);
+        kids[2]->Draw(camera, transform, sunlightVec, skirt_pass);
+        kids[3]->Draw(camera, transform, sunlightVec, skirt_pass);
     }
 }
 
@@ -2056,16 +2081,41 @@ inline COLOUR GetColourEarth(float v, float vmin, float vmax)
     return(c);
 }
 
-Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
+Mesh *TerrainBody::create_grid_mesh(bool has_collision, bool has_skirt, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
     Mesh *grid_mesh = new Mesh;
     const int size = 25;
+    // The terrain grid is size x size; with a skirt it's (size+2)^2, one
+    // extra ring of "skirt" vertices around it to hide the cracks that
+    // open between neighbouring patches at different subdivision depths
+    // (their edge polylines sample the heightfield at different points).
+    // Each skirt vertex sits one grid cell OUTSIDE the patch boundary,
+    // dropped to the patch's lowest terrain radius nudged in by 5e-6
+    // (above float precision at any body size, below every point on all
+    // four edges). Normals/colors are copied from the adjacent edge
+    // vertex so the skirt shades identically to the terrain seam.
+    // Technique from Pioneer's GeoPatch; with backface culling on, the
+    // skirt only rasterises at the limb, exactly where the cracks show.
+    // Root patches (depth 1) get no skirt: at the ranges they're visible
+    // the float view-transform noise in fragment depth exceeds the tiny
+    // skirt depth margin (zipper artefacts), gaps can't open between the
+    // six equal-depth roots, and a root-vs-child T-junction is masked by
+    // the child's skirt flaring across the seam.
+    const int off = has_skirt ? 1 : 0;
+    const int edge = size + 2 * off;
+    const float frac = 1.0f / (size - 1);
+    const float skirt_scale = 0.999995f;
 
-    PosNorColVertex vertices[size * size];
-    unsigned int indices[size * size * 6] = {0}; // TODO is this off by one?
+    // sized for the skirted grid (edge == size+2); the skirtless root
+    // patches just use the first edge*edge of them
+    PosNorColVertex vertices[(size + 2) * (size + 2)];
+    unsigned int indices[6 * (size + 1) * (size + 1)];
 
+    float min_height = surface.bands ? radius : HUGE_VALF;
+
+    // inner grid at grid coords [off..off+size-1]^2
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
-            glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i/(float)(size-1), j/(float)(size-1));
+            glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i*frac, j*frac);
 
             if (surface.bands) {
                 // gas giant: smooth sphere, color by latitude band
@@ -2075,7 +2125,7 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
                 color = float(0.5) * color + glm::vec3(brightness,
                                                        brightness,
                                                        brightness);
-                vertices[j + size * i] = PosNorColVertex(sphere_p * radius,
+                vertices[(j + off) + edge * (i + off)] = PosNorColVertex(sphere_p * radius,
                                                          sphere_p,
                                                          color);
                 continue;
@@ -2112,39 +2162,108 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, glm::vec3 p1, glm::vec3 
             // add back scaling
             height = radius + ScaleHeightNoise(height - radius);
 
+            min_height = std::min(min_height, height);
+
             glm::vec3 p = sphere_p * height;
 
-            vertices[j+size*i] = PosNorColVertex(p,
+            vertices[(j + off) + edge * (i + off)] = PosNorColVertex(p,
                                                  sphere_p,
                                                  color);
         }
     }
 
-    for (int i = 1; i < size-1; i++) {
-        for (int j = 1; j < size-1; j++) {
-            glm::vec3 &x1 = vertices[j-1 + i*size].pos;
-            glm::vec3 &x2 = vertices[j+1 + i*size].pos;
-            glm::vec3 &y1 = vertices[j + (i-1)*size].pos;
-            glm::vec3 &y2 = vertices[j + (i+1)*size].pos;
-            glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
-            vertices[j + size * i].normal = -n;
+    // normals: finite differences over the whole inner grid, edge ring
+    // included. Stencils that reach past the patch sample the true
+    // heightfield one cell outside (it's analytic and shared, so neighbour
+    // patches compute matching seam normals and no line shows at the
+    // border). The skirt copies the edge normals; its dropped-down
+    // vertices never enter a stencil.
+    auto terrain_pos = [&](float u, float v) {
+        glm::vec3 d = getSpherePoint(p1, p2, p3, p4, u, v);
+        if (surface.bands) {
+            return d * radius;
         }
+        float hgt = GetTerrainHeightUnscaled(d);
+        hgt = radius + ScaleHeightNoise(hgt - radius);
+        return d * hgt;
+    };
+    for (int i = off; i < off + size; i++) {
+        for (int j = off; j < off + size; j++) {
+            // x along j, y along i: same axes as the old interior-only
+            // pass, the cross product sign matters for lighting
+            glm::vec3 x1 = (j - 1 >= off) ? vertices[(j-1) + i*edge].pos
+                                          : terrain_pos((i - off) * frac, (j - 1 - off) * frac);
+            glm::vec3 x2 = (j + 1 < off + size) ? vertices[(j+1) + i*edge].pos
+                                                : terrain_pos((i - off) * frac, (j + 1 - off) * frac);
+            glm::vec3 y1 = (i - 1 >= off) ? vertices[j + (i-1)*edge].pos
+                                          : terrain_pos((i - 1 - off) * frac, (j - off) * frac);
+            glm::vec3 y2 = (i + 1 < off + size) ? vertices[j + (i+1)*edge].pos
+                                                : terrain_pos((i + 1 - off) * frac, (j - off) * frac);
+            glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
+            vertices[j + edge * i].normal = -n;
+        }
+    }
+
+    // skirt ring: flare one cell past the boundary, down to the patch's
+    // lowest radius; copies normal/color from the adjacent edge vertex
+    // (after the normal pass above, so it gets the final normals)
+    if (has_skirt) {
+        const float skirt_r = min_height * skirt_scale;
+        auto skirt_vertex = [&](int i, int j, float u, float v, int si, int sj) {
+            glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, u, v);
+            const PosNorColVertex &src = vertices[sj + edge * si];
+            vertices[j + edge * i] = PosNorColVertex(sphere_p * skirt_r,
+                                                     src.normal,
+                                                     src.color);
+        };
+        for (int j = off; j < off + size; j++) {
+            skirt_vertex(off - 1, j, -frac, (j - off)*frac, off, j);
+            skirt_vertex(off + size, j, 1.0f + frac, (j - off)*frac, off + size - 1, j);
+        }
+        for (int i = off; i < off + size; i++) {
+            skirt_vertex(i, off - 1, (i - off)*frac, -frac, i, off);
+            skirt_vertex(i, off + size, (i - off)*frac, 1.0f + frac, i, off + size - 1);
+        }
+        // corners: duplicate the neighbouring skirt vertex
+        vertices[(off - 1) + edge * (off - 1)] = vertices[off + edge * (off - 1)];
+        vertices[(off + size) + edge * (off - 1)] = vertices[(off + size - 1) + edge * (off - 1)];
+        vertices[(off - 1) + edge * (off + size)] = vertices[off + edge * (off + size)];
+        vertices[(off + size) + edge * (off + size)] = vertices[(off + size - 1) + edge * (off + size)];
     }
 
     int i = 0;
-    for (int y = 0; y < (size - 1); y++) {
-        for (int x = 0; x < (size - 1); x++) {
-            indices[i++] = (y + 1) * size + x + 1;
-            indices[i++] = y * size + x + 1;
-            indices[i++] = y * size + x;
+    // inner terrain quads first, then the skirt-ring quads: DrawSkirt()
+    // renders only the tail, after the terrain has written depth
+    for (int y = off; y < off + size - 1; y++) {
+        for (int x = off; x < off + size - 1; x++) {
+            indices[i++] = (y + 1) * edge + x + 1;
+            indices[i++] = y * edge + x + 1;
+            indices[i++] = y * edge + x;
 
-            indices[i++] = (y + 1) * size + x;
-            indices[i++] = (y + 1) * size + x + 1;
-            indices[i++] = y * size + x;
+            indices[i++] = (y + 1) * edge + x;
+            indices[i++] = (y + 1) * edge + x + 1;
+            indices[i++] = y * edge + x;
+        }
+    }
+    const int num_inner = has_skirt ? i : 0;
+    if (has_skirt) {
+        for (int y = 0; y < edge - 1; y++) {
+            for (int x = 0; x < edge - 1; x++) {
+                if (x >= off && x < off + size - 1 && y >= off && y < off + size - 1) {
+                    continue;
+                }
+                indices[i++] = (y + 1) * edge + x + 1;
+                indices[i++] = y * edge + x + 1;
+                indices[i++] = y * edge + x;
+
+                indices[i++] = (y + 1) * edge + x;
+                indices[i++] = (y + 1) * edge + x + 1;
+                indices[i++] = y * edge + x;
+            }
         }
     }
 
-    grid_mesh->FromData(vertices, size * size, indices, size * size * 6, has_collision);
+    grid_mesh->FromData(vertices, edge * edge, indices, i, has_collision, num_inner);
 
     return grid_mesh;
 }

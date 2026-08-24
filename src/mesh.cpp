@@ -260,8 +260,10 @@ void Mesh::InitMesh(const PosTexNorIndInterface& model, bool copyData)
     glBindVertexArray(0);
 }
 
-void Mesh::FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData)
+void Mesh::FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices)
 {
+    m_numInnerIndices = numInnerIndices;
+
     PosNorIndColInterface model;
 
     for(unsigned int i = 0; i < numVertices; i++) {
@@ -294,7 +296,10 @@ void Mesh::Draw()
 {
     glBindVertexArray(m_vertexArrayObject);
 
-    glDrawElementsBaseVertex(GL_TRIANGLES, m_numIndices, GL_UNSIGNED_INT, 0, 0);
+    // when the mesh carries a skirt split, Draw() renders only the terrain;
+    // the tail is rendered by DrawSkirt() after the terrain's depth is in
+    unsigned int count = (m_numInnerIndices != 0) ? m_numInnerIndices : m_numIndices;
+    glDrawElementsBaseVertex(GL_TRIANGLES, count, GL_UNSIGNED_INT, 0, 0);
 
     glBindVertexArray(0);
 }
@@ -303,6 +308,20 @@ void Mesh::Draw(GLenum mode) {
     glBindVertexArray(m_vertexArrayObject);
 
     glDrawArrays(mode, 0, num_vertices);
+
+    glBindVertexArray(0);
+}
+
+void Mesh::DrawSkirt()
+{
+    if(m_numInnerIndices == 0 || m_numInnerIndices >= m_numIndices) {
+        return;
+    }
+
+    glBindVertexArray(m_vertexArrayObject);
+
+    glDrawElementsBaseVertex(GL_TRIANGLES, m_numIndices - m_numInnerIndices, GL_UNSIGNED_INT,
+                             (void*)(sizeof(unsigned int) * m_numInnerIndices), 0);
 
     glBindVertexArray(0);
 }
