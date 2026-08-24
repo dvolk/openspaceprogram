@@ -2,8 +2,10 @@
 
 #include <stdio.h>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <ctime>
+#include <cstdlib>
 #include <sys/stat.h>
 #include <vector>
 #include <string>
@@ -2193,6 +2195,69 @@ OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel,
     return o;
 }
 
+/* --sim-press: synthetic key input for e2e testing.
+   One entry = one key press: down `down_ms` after the main loop starts,
+   up `up_ms` after. It feeds two input channels:
+   - one-shot actions (SPACE, TAB, G, C, ...) fire from the synthetic
+     SDL_KEYDOWN event SDL_PushEvent()ed into the queue by the loop;
+   - held commands (WASDQE, I, X, B, N, R, F, ESC) read
+     SDL_GetKeyboardState(), which SDL_PushEvent does NOT update (verified
+     on this system's SDL 2.32), so the loop additionally ORs in each
+     entry's down_sent..up_sent window (see isDown below).
+   Keys are given by SDL key name (SPACE, A, F11, ...) or decimal SDL
+   keycode (32, 105, 1073741911). */
+struct SimKeyPress {
+    Uint32 down_ms;
+    Uint32 up_ms;
+    SDL_Keycode key;
+    SDL_Scancode sc;
+    bool down_sent;
+    bool up_sent;
+};
+
+static SDL_Keycode sim_parse_key(const std::string &s) {
+    // decimal SDL keycode, e.g. 32 = SPACE
+    if(!s.empty()) {
+        char *end = nullptr;
+        const unsigned long v = strtoul(s.c_str(), &end, 10);
+        if(end != s.c_str() && *end == '\0') {
+            return (SDL_Keycode)v;
+        }
+    }
+    // This SDL header defines no uppercase letter aliases (SDLK_a..z only).
+    static const std::map<std::string, SDL_Keycode> names = {
+        {"A", SDLK_a}, {"B", SDLK_b}, {"C", SDLK_c}, {"D", SDLK_d},
+        {"E", SDLK_e}, {"F", SDLK_f}, {"G", SDLK_g}, {"H", SDLK_h},
+        {"I", SDLK_i}, {"J", SDLK_j}, {"K", SDLK_k}, {"L", SDLK_l},
+        {"M", SDLK_m}, {"N", SDLK_n}, {"O", SDLK_o}, {"P", SDLK_p},
+        {"Q", SDLK_q}, {"R", SDLK_r}, {"S", SDLK_s}, {"T", SDLK_t},
+        {"U", SDLK_u}, {"V", SDLK_v}, {"W", SDLK_w}, {"X", SDLK_x},
+        {"Y", SDLK_y}, {"Z", SDLK_z},
+        {"SPACE", SDLK_SPACE}, {"TAB", SDLK_TAB},
+        {"RETURN", SDLK_RETURN}, {"ENTER", SDLK_RETURN},
+        {"ESCAPE", SDLK_ESCAPE},
+        {"PERIOD", SDLK_PERIOD}, {"COMMA", SDLK_COMMA},
+        {"LSHIFT", SDLK_LSHIFT}, {"RSHIFT", SDLK_RSHIFT},
+        {"LCTRL", SDLK_LCTRL}, {"RCTRL", SDLK_RCTRL},
+        {"LEFT", SDLK_LEFT}, {"RIGHT", SDLK_RIGHT},
+        {"UP", SDLK_UP}, {"DOWN", SDLK_DOWN},
+        {"F1", SDLK_F1}, {"F2", SDLK_F2}, {"F3", SDLK_F3}, {"F4", SDLK_F4},
+        {"F5", SDLK_F5}, {"F6", SDLK_F6}, {"F7", SDLK_F7}, {"F8", SDLK_F8},
+        {"F9", SDLK_F9}, {"F10", SDLK_F10}, {"F11", SDLK_F11},
+        {"F12", SDLK_F12},
+    };
+    std::string up;
+    up.reserve(s.size());
+    for(size_t i = 0; i < s.size(); i++) {
+        up.push_back((char)toupper((unsigned char)s[i]));
+    }
+    std::map<std::string, SDL_Keycode>::const_iterator it = names.find(up);
+    if(it != names.end()) {
+        return it->second;
+    }
+    return 0; // unknown
+}
+
 int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
@@ -2265,6 +2330,17 @@ int main(int argc, char **argv)
                    "seconds (0 = run until closed; default: 0)")
         ->check(CLI::NonNegativeNumber);
 
+    std::vector<std::string> sim_press;
+    app.add_option("--sim-press", sim_press,
+                   "Synthetic keypresses for e2e testing: a flat list of "
+                   "START_MS,DURATION_MS,KEY triples (e.g. 500,200,SPACE, "
+                   "1500,100,I; spaces also separate values). KEY is an SDL "
+                   "key name (A..Z, SPACE, TAB, F1-F12, ...) or a decimal "
+                   "SDL keycode. The key is pressed START_MS after the main "
+                   "loop starts and held for DURATION_MS. Repeat the flag "
+                   "to append more triples.")
+        ->delimiter(',');
+
     bool selftest_stage = false;
     app.add_flag("--selftest-stage", selftest_stage,
                  "Exercise the staging path on the first multi-stage ship "
@@ -2320,12 +2396,65 @@ int main(int argc, char **argv)
         return app.exit(e);
     }
 
+    /* --sim-press: fold the flat START_MS,DURATION_MS,KEY list into press
+       entries. */
+    std::vector<SimKeyPress> sim_presses;
+    if(!sim_press.empty()) {
+        if(sim_press.size() % 3 != 0) {
+            printf("error: --sim-press expects START_MS,DURATION_MS,KEY "
+                   "triples; got %zu value(s)\n", sim_press.size());
+            return 1;
+        }
+        for(size_t i = 0; i < sim_press.size(); i += 3) {
+            char *end = nullptr;
+            const unsigned long t = strtoul(sim_press[i].c_str(), &end, 10);
+            if(end == sim_press[i].c_str() || *end != '\0') {
+                printf("error: --sim-press start time '%s' is not an "
+                       "integer ms\n", sim_press[i].c_str());
+                return 1;
+            }
+            const unsigned long d =
+                strtoul(sim_press[i + 1].c_str(), &end, 10);
+            if(end == sim_press[i + 1].c_str() || *end != '\0') {
+                printf("error: --sim-press duration '%s' is not an "
+                       "integer ms\n", sim_press[i + 1].c_str());
+                return 1;
+            }
+            const SDL_Keycode k = sim_parse_key(sim_press[i + 2]);
+            if(k == 0) {
+                printf("error: --sim-press key '%s' is not a known SDL "
+                       "keycode or name\n", sim_press[i + 2].c_str());
+                return 1;
+            }
+            SimKeyPress p;
+            p.down_ms = (Uint32)t;
+            p.up_ms = (Uint32)t + (Uint32)d;
+            p.key = k;
+            p.sc = SDL_SCANCODE_UNKNOWN; // resolved after SDL_Init (see below)
+            p.down_sent = false;
+            p.up_sent = false;
+            sim_presses.push_back(p);
+        }
+    }
+
     // Any of the --free-cam-* options opts in to starting in free-cam mode.
     const bool use_free_cam = !free_cam_pos.empty() || !free_cam_fwd.empty()
                             || !free_cam_up.empty();
 
     Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     check_gl_error();
+    const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
+    /* --sim-press: resolve keycodes to scancodes now that SDL is initialized
+       (SDL_GetScancodeFromKey needs SDL_Init; the CLI parse ran before the
+       Renderer above created the video subsystem). */
+    for(auto &p : sim_presses) {
+        p.sc = SDL_GetScancodeFromKey(p.key);
+        if(p.sc == SDL_SCANCODE_UNKNOWN) {
+            printf("warning: --sim-press key %d has no scancode in the "
+                   "current keyboard layout: one-shot actions fire, held "
+                   "commands for it do not\n", (int)p.key);
+        }
+    }
     ImGuiContext* ctx1 = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx1);
     ImGui_ImplSDL2_InitForOpenGL(display.get_display(), SDL_GL_GetCurrentContext());
@@ -2956,6 +3085,34 @@ int main(int argc, char **argv)
         /*
           EVENTS
         */
+        /* --sim-press: emit the synthetic key events that fell due this
+           frame, in down-then-up order per press. They are polled below in
+           the same frame, so one-shot actions fire in the frame the press
+           is due. */
+        if(!sim_presses.empty()) {
+            const Uint32 now = SDL_GetTicks() - loop_start_ms;
+            auto push_key = [&](SDL_EventType type, const SimKeyPress &p) {
+                SDL_Event kev = {0};
+                kev.type = type;
+                kev.key.windowID = sim_win_id;
+                kev.key.state = (type == SDL_KEYDOWN) ? SDL_PRESSED : SDL_RELEASED;
+                kev.key.repeat = 0;
+                kev.key.keysym.sym = p.key;
+                kev.key.keysym.scancode = p.sc;
+                SDL_PushEvent(&kev);
+            };
+            for(auto &p : sim_presses) {
+                if(!p.down_sent && now >= p.down_ms) {
+                    push_key(SDL_KEYDOWN, p);
+                    p.down_sent = true;
+                }
+                if(p.down_sent && !p.up_sent && now >= p.up_ms) {
+                    push_key(SDL_KEYUP, p);
+                    p.up_sent = true;
+                }
+            }
+        }
+
         SDL_Event ev;
 
         while (SDL_PollEvent(&ev)) {
@@ -3140,42 +3297,56 @@ int main(int argc, char **argv)
             ship->clearRotCmd();
 
             const Uint8* key = SDL_GetKeyboardState(NULL);
-            if(key[SDL_SCANCODE_ESCAPE]) { running = false; }
+            /* --sim-press: a synthetic key is "down" from its down time to
+               its up time. SDL_PushEvent does not update the state array
+               above (verified on this SDL), so held commands OR in each
+               entry's window instead. */
+            auto isDown = [&](SDL_Scancode sc) -> bool {
+                if(key[sc]) { return true; }
+                for(size_t i = 0; i < sim_presses.size(); i++) {
+                    if(sim_presses[i].sc == sc && sim_presses[i].down_sent
+                       && !sim_presses[i].up_sent) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if(isDown(SDL_SCANCODE_ESCAPE)) { running = false; }
 
             if (camMode == CAM_FREE) {
-                if (key[SDL_SCANCODE_W]) { camera->MoveForward(cam_speed); }
-                else if (key[SDL_SCANCODE_S]) { camera->MoveForward(-cam_speed); }
+                if (isDown(SDL_SCANCODE_W)) { camera->MoveForward(cam_speed); }
+                else if (isDown(SDL_SCANCODE_S)) { camera->MoveForward(-cam_speed); }
 
-                if (key[SDL_SCANCODE_A]) { camera->MoveRight(-cam_speed); }
-                else if (key[SDL_SCANCODE_D]) { camera->MoveRight(cam_speed); }
+                if (isDown(SDL_SCANCODE_A)) { camera->MoveRight(-cam_speed); }
+                else if (isDown(SDL_SCANCODE_D)) { camera->MoveRight(cam_speed); }
 
-                if (key[SDL_SCANCODE_Q]) { camera->Roll(-0.05); }
-                else if (key[SDL_SCANCODE_E]) { camera->Roll(0.05); }
+                if (isDown(SDL_SCANCODE_Q)) { camera->Roll(-0.05); }
+                else if (isDown(SDL_SCANCODE_E)) { camera->Roll(0.05); }
 
-                if (key[SDL_SCANCODE_LSHIFT] || key[SDL_SCANCODE_RSHIFT]) { camera->MoveUp(cam_speed); }
-                else if (key[SDL_SCANCODE_LCTRL] || key[SDL_SCANCODE_RCTRL]) { camera->MoveUp(-cam_speed); }
+                if (isDown(SDL_SCANCODE_LSHIFT) || isDown(SDL_SCANCODE_RSHIFT)) { camera->MoveUp(cam_speed); }
+                else if (isDown(SDL_SCANCODE_LCTRL) || isDown(SDL_SCANCODE_RCTRL)) { camera->MoveUp(-cam_speed); }
             }
 
             if (camMode == CAM_ORBIT) {
                 bool game_running = (time_accel > 0);
                 // pitch
-                if (key[SDL_SCANCODE_W]) { ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
-                if (key[SDL_SCANCODE_S]) { ship->Command(ShipCmd(Pitch, -1.0f), game_running); }
+                if (isDown(SDL_SCANCODE_W)) { ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
+                if (isDown(SDL_SCANCODE_S)) { ship->Command(ShipCmd(Pitch, -1.0f), game_running); }
                 // yaw
-                if (key[SDL_SCANCODE_A]) { ship->Command(ShipCmd(Yaw, +1.0f), game_running); }
-                if (key[SDL_SCANCODE_D]) { ship->Command(ShipCmd(Yaw, -1.0f), game_running); }
+                if (isDown(SDL_SCANCODE_A)) { ship->Command(ShipCmd(Yaw, +1.0f), game_running); }
+                if (isDown(SDL_SCANCODE_D)) { ship->Command(ShipCmd(Yaw, -1.0f), game_running); }
                 // roll
-                if (key[SDL_SCANCODE_Q]) { ship->Command(ShipCmd(Roll, +1.0f), game_running); }
-                if (key[SDL_SCANCODE_E]) { ship->Command(ShipCmd(Roll, -1.0f), game_running); }
+                if (isDown(SDL_SCANCODE_Q)) { ship->Command(ShipCmd(Roll, +1.0f), game_running); }
+                if (isDown(SDL_SCANCODE_E)) { ship->Command(ShipCmd(Roll, -1.0f), game_running); }
 
-                if (key[SDL_SCANCODE_I]) { ship->Command(ShipCmd(Thrust), game_running, dt * time_accel); }
-                if (key[SDL_SCANCODE_X]) { ship->Command(ShipCmd(KillRot), game_running); }
+                if (isDown(SDL_SCANCODE_I)) { ship->Command(ShipCmd(Thrust), game_running, dt * time_accel); }
+                if (isDown(SDL_SCANCODE_X)) { ship->Command(ShipCmd(KillRot), game_running); }
 
-                if (key[SDL_SCANCODE_B]) { ship->Command(ShipCmd(Prograde), game_running); }
-                if (key[SDL_SCANCODE_N]) { ship->Command(ShipCmd(Retrograde), game_running); }
+                if (isDown(SDL_SCANCODE_B)) { ship->Command(ShipCmd(Prograde), game_running); }
+                if (isDown(SDL_SCANCODE_N)) { ship->Command(ShipCmd(Retrograde), game_running); }
 
-                if (key[SDL_SCANCODE_R]) { ship->Command(ShipCmd(ThrottleUp), game_running); }
-                if (key[SDL_SCANCODE_F]) { ship->Command(ShipCmd(ThrottleDown), game_running); }
+                if (isDown(SDL_SCANCODE_R)) { ship->Command(ShipCmd(ThrottleUp), game_running); }
+                if (isDown(SDL_SCANCODE_F)) { ship->Command(ShipCmd(ThrottleDown), game_running); }
             }
 
             void physics_tick(float timeStep);
