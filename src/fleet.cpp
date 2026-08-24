@@ -32,7 +32,7 @@ Fleet load_fleet(const char *path) {
         }
 
         FleetEntry e;
-        e.ship = ev.value("ship", std::string("res/ships/basic.json"));
+        e.ship = ev.value("ship", std::string("res/ships/racer.json"));
         if(e.ship.empty()) {
             throw std::runtime_error(std::string("fleet: ship entry ") + std::to_string(i)
                                      + " of " + path + ": \"ship\" must be a non-empty path");

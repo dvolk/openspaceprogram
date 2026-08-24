@@ -37,36 +37,27 @@ static void write_file(const char *path, const std::string &content) {
 int main() {
     // --- the shipped sample -------------------------------------------------
     Fleet f = load_fleet("res/fleet.json");
-    CHECK(f.ships.size() == 7);
+    CHECK(f.ships.size() == 4);
 
-    CHECK(f.ships[0].ship == "res/ships/basic.json");
-    CHECK(f.ships[0].name == "Alpha");
+    CHECK(f.ships[0].ship == "res/ships/racer.json");
+    CHECK(f.ships[0].name == "racer");
     CHECK(f.ships[0].body.empty());
-    CHECK(f.ships[0].scenario.empty());
+    CHECK(f.ships[0].scenario == "pad");
 
-    CHECK(f.ships[1].name == "Bravo");
-    CHECK(f.ships[1].scenario == "rot-orbit");
+    CHECK(f.ships[1].ship == "res/ships/tanker.json");
+    CHECK(f.ships[1].name == "tanker");
+    CHECK(f.ships[1].body.empty());
+    CHECK(f.ships[1].scenario == "pad");
 
-    CHECK(f.ships[2].name == "Charlie");
-    CHECK(f.ships[2].scenario == "ellipse-peri");
+    CHECK(f.ships[2].ship == "res/ships/laythe_explorer.json");
+    CHECK(f.ships[2].name == "laythe explorer");
+    CHECK(f.ships[2].body.empty());
+    CHECK(f.ships[2].scenario == "inertial-orbit");
 
-    // the mixed-size test ships (part sizes, 2026-08-23)
-    CHECK(f.ships[3].ship == "res/ships/big.json");
-    CHECK(f.ships[3].name == "Delta");
-    CHECK(f.ships[3].scenario == "pad");
-
-    CHECK(f.ships[4].ship == "res/ships/tall.json");
-    CHECK(f.ships[4].name == "Echo");
-    CHECK(f.ships[4].scenario == "pad");
-
-    // the radial/side booster ships (2026-08-24)
-    CHECK(f.ships[5].ship == "res/ships/booster.json");
-    CHECK(f.ships[5].name == "Foxtrot");
-    CHECK(f.ships[5].scenario == "pad");
-
-    CHECK(f.ships[6].ship == "res/ships/booster.json");
-    CHECK(f.ships[6].name == "Golf");
-    CHECK(f.ships[6].scenario == "rot-orbit");
+    CHECK(f.ships[3].ship == "res/ships/transporter.json");
+    CHECK(f.ships[3].name == "transporter");
+    CHECK(f.ships[3].body.empty());
+    CHECK(f.ships[3].scenario == "high-orbit");
 
     // --- defaults -----------------------------------------------------------
     {
@@ -74,7 +65,7 @@ int main() {
         write_file(p, "{ \"ships\": [ { \"name\": \"Solo\" } ] }");
         Fleet g = load_fleet(p);
         CHECK(g.ships.size() == 1);
-        CHECK(g.ships[0].ship == "res/ships/basic.json");
+        CHECK(g.ships[0].ship == "res/ships/racer.json");
         CHECK(g.ships[0].name == "Solo");
         CHECK(g.ships[0].body.empty());
         CHECK(g.ships[0].scenario.empty());

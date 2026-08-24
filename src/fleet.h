@@ -12,7 +12,7 @@
    fleet file (see res/fleet.json):
      {
        "ships": [
-         { "ship": "res/ships/basic.json",   // ship def; default: res/ships/basic.json
+         { "ship": "res/ships/racer.json",   // ship def; default: res/ships/racer.json
            "name": "Alpha",                 // optional; default: the def's name
            "body": "Eerbon",               // optional; default: --body / the system home
            "scenario": "rot-orbit" },      // optional; default: --scenario / pad

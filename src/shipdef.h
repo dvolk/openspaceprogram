@@ -10,7 +10,7 @@
    path can be unit-tested headless; only the build step (main.cpp's
    build_ship) needs GL, for shader binding.
 
-   JSON files (see res/parts.json and res/ships/basic.json):
+   JSON files (see res/parts.json and res/ships/racer.json):
 
    parts catalog:
      {

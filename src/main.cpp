@@ -2094,7 +2094,7 @@ int main(int argc, char **argv)
                    "Ship def JSON to build; repeat the flag to build more "
                    "ships (they share the body/scenario, each getting its "
                    "own pad slot / orbit slot). A uniform-fleet shorthand "
-                   "-- --fleet overrides it. Default: res/ships/basic.json");
+                   "-- --fleet overrides it. Default: res/ships/racer.json");
 
     std::string fleet_file;
     app.add_option("--fleet", fleet_file,
@@ -2267,7 +2267,7 @@ int main(int argc, char **argv)
     if(!fleet_file.empty()) {
         fleet_entries = load_fleet(fleet_file.c_str()).ships;
     } else {
-        if(ship_files.empty()) { ship_files.push_back("res/ships/basic.json"); }
+        if(ship_files.empty()) { ship_files.push_back("res/ships/racer.json"); }
         for(size_t i = 0; i < ship_files.size(); i++) {
             FleetEntry e;
             e.ship = ship_files[i];

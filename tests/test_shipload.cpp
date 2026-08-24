@@ -60,7 +60,7 @@ static glm::dmat3 testOrient() {
 int main() {
     // --- parts catalog ----------------------------------------------------
     PartsCatalog cat = load_parts_catalog("res/parts.json");
-    CHECK(cat.parts.size() == 20);
+    CHECK(cat.parts.size() == 23);
     CHECK(cat.find("nope") == nullptr);
 
     const PartDef *cap = cat.find("capsule");
@@ -127,10 +127,33 @@ int main() {
     CHECK(t32->capacity[(int)ResourceType::Hydrogen] == 1000.0f);
     CHECK(c32->radius == 3.0 && c32->height == 6.0 && c32->torque == 200.0);
 
+    // nose caps: a simple pointy cone on a tank's top face, one per tank
+    // radius; height = radius / 2; passive (no behavior fields at all)
+    const PartDef *nc1 = cat.find("nose_cap");
+    const PartDef *nc3 = cat.find("nose_cap_r3h1.5");
+    const PartDef *nc5 = cat.find("nose_cap_r5h2.5");
+    CHECK(nc1 != nullptr && nc3 != nullptr && nc5 != nullptr);
+    CHECK(nc1->radius == 1.0 && nc1->height == 0.5);
+    CHECK(nc3->radius == 3.0 && nc3->height == 1.5);
+    CHECK(nc5->radius == 5.0 && nc5->height == 2.5);
+    for(const PartDef *nc : { nc1, nc3, nc5 }) {
+        CHECK(near(nc->height, nc->radius / 2.0));
+        CHECK(nc->mass == 200.0);
+        CHECK(nc->type == "nose_cap");
+        CHECK(nc->torque == 0.0);
+        CHECK(nc->fuel_rate == 0.0 && nc->exhaust_velocity == 0.0);
+        for(size_t r = 0; r < nc->capacity.size(); r++) {
+            CHECK(nc->capacity[r] == 0.0f);
+        }
+    }
+    CHECK(nc5->mesh == "nose_cap_r5h2.5.obj");
+    CHECK(nc5->texture == "nose_cap.png");
+
     // --- ship def: the parent-relative tree schema ------------------------
-    // basic: a bare linear stack (no parents/attach given -> default chain,
-    // all "down"). Geometry is now derived, so there are no offsets to check.
-    ShipDef def = load_ship_def("res/ships/basic.json", cat);
+    // racer: a bare linear stack (no attach given -> default chain, all
+    // "down"). Geometry is now derived, so there are no offsets to check.
+    ShipDef def = load_ship_def("res/ships/racer.json", cat);
+    CHECK(def.name == "racer");
     CHECK(def.parts.size() == 4);
     CHECK(def.parts[0].part == "capsule");
     CHECK(def.parts[0].def == cap);
@@ -169,8 +192,9 @@ int main() {
     CHECK(near(torque, 2200.0));  // capsule 200 (small wheel) + reaction_wheel 2000
     CHECK(near(fuel, 2000.0));
 
-    // the explorer: same as basic but with two fuel tanks (double the fuel)
-    ShipDef ex = load_ship_def("res/ships/explorer.json", cat);
+    // the transporter: same as racer but with two fuel tanks (double the fuel)
+    ShipDef ex = load_ship_def("res/ships/transporter.json", cat);
+    CHECK(ex.name == "transporter");
     CHECK(ex.parts.size() == 5);
     {
         int tanks = 0;
@@ -195,34 +219,133 @@ int main() {
         CHECK(ex.parts[3].id == "fuel_tank_2");
     }
 
-    // the mixed-size ships: faces touch, geometry derived from the sizes
-    ShipDef big = load_ship_def("res/ships/big.json", cat);
+    // mixed-size ships (self-contained defs; faces touch, geometry derived
+    // from the sizes)
+    const char *mix = "/tmp/test_shipload_mix.json";
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"big\", "
+             "\"parts\": [ { \"part\": \"capsule\" }, "
+             " { \"part\": \"tank_r3h2\" }, { \"part\": \"engine_r5h10\" } ] }";
+        f.close();
+    }
+    ShipDef big = load_ship_def(mix, cat);
     CHECK(big.parts.size() == 3);
     CHECK(big.parts[0].def == cap && big.parts[1].def == t32 && big.parts[2].def == e5);
     CHECK(big.controllerIndex() == 2);  // no "controller" -> last part (the engine)
+    std::remove(mix);
 
-    ShipDef tall = load_ship_def("res/ships/tall.json", cat);
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"tall\", "
+             "\"parts\": [ { \"part\": \"capsule_r3h6\" }, "
+             " { \"part\": \"tank_r3h2\" }, { \"part\": \"engine_r5h10\" } ] }";
+        f.close();
+    }
+    ShipDef tall = load_ship_def(mix, cat);
     CHECK(tall.parts.size() == 3);
     CHECK(tall.parts[0].def == c32 && tall.parts[2].def == e5);
+    std::remove(mix);
 
     // the booster: two side pods on opposite sides of a tall core. The pods
     // are small (tank_r1h1) and the core is tall (tank_r5h5) so no two
     // non-welded parts touch -- a valid ship the hull-margin can't destabilize.
-    ShipDef bo = load_ship_def("res/ships/booster.json", cat);
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"booster\", \"controller\": \"capsule_1\", "
+             "\"parts\": [ { \"part\": \"capsule\", \"id\": \"capsule_1\" }, "
+             " { \"part\": \"tank_r5h5\", \"id\": \"core\" }, "
+             " { \"part\": \"engine\", \"id\": \"eng\" }, "
+             " { \"part\": \"tank_r1h1\", \"id\": \"p1\", \"attach\": \"side\", "
+             "   \"parent\": \"core\", \"angle\": 0 }, "
+             " { \"part\": \"tank_r1h1\", \"id\": \"p2\", \"attach\": \"side\", "
+             "   \"parent\": \"core\", \"angle\": 180 } ] }";
+        f.close();
+    }
+    ShipDef bo = load_ship_def(mix, cat);
     CHECK(bo.parts.size() == 5);
     CHECK(bo.controllerIndex() == 0);   // "controller": "capsule_1"
     {
         const ShipPart &side = bo.parts[3];   // tank_r1h1, side of the tall tank
         CHECK(side.def == t11);
         CHECK(side.attach == AttachMode::Side);
-        CHECK(side.parent == 1);             // tank_r5h5_1
+        CHECK(side.parent == 1);             // the tank_r5h5 core
         CHECK(near(side.angle, 0.0));
         const ShipPart &opp = bo.parts[4];   // tank_r1h1, other side at 180 deg
         CHECK(opp.def == t11);
         CHECK(opp.attach == AttachMode::Side);
-        CHECK(opp.parent == 1);              // tank_r5h5_1
+        CHECK(opp.parent == 1);              // the tank_r5h5 core
         CHECK(near(opp.angle, 180.0));
     }
+    std::remove(mix);
+
+    // tanker (shipped def): core tank + engine below, four side pods
+    // (tank_r3h3) around the core at 0/90/180/270
+    const PartDef *t33 = cat.find("tank_r3h3");
+    CHECK(t33 != nullptr);
+    ShipDef tk = load_ship_def("res/ships/tanker.json", cat);
+    CHECK(tk.name == "tanker");
+    CHECK(tk.parts.size() == 7);
+    CHECK(tk.controllerIndex() == 0);   // "controller": "capsule_1"
+    CHECK(tk.parts[0].def == cap && tk.parts[1].def == t33 && tk.parts[2].def == eng);
+    {
+        const double podAngles[4] = { 0.0, 90.0, 180.0, 270.0 };
+        for(int i = 0; i < 4; i++) {
+            const ShipPart &pod = tk.parts[3 + (size_t)i];
+            CHECK(pod.def == t33);
+            CHECK(pod.attach == AttachMode::Side);
+            CHECK(pod.parent == 1);
+            CHECK(near(pod.angle, podAngles[i]));
+        }
+    }
+
+    // laythe_explorer (shipped def): the same shape as the tanker, but the
+    // pods are small (tank_r1h1)
+    ShipDef lx = load_ship_def("res/ships/laythe_explorer.json", cat);
+    CHECK(lx.name == "laythe_explorer");
+    CHECK(lx.parts.size() == 7);
+    CHECK(lx.controllerIndex() == 0);
+    CHECK(lx.parts[1].def == t11 && lx.parts[2].def == eng);
+    {
+        const double podAngles[4] = { 0.0, 90.0, 180.0, 270.0 };
+        for(int i = 0; i < 4; i++) {
+            const ShipPart &pod = lx.parts[3 + (size_t)i];
+            CHECK(pod.def == t11);
+            CHECK(pod.attach == AttachMode::Side);
+            CHECK(pod.parent == 1);
+            CHECK(near(pod.angle, podAngles[i]));
+        }
+    }
+
+    // nose cap: "up" on the tank's top face -- the cap's base face sits on
+    // the tank's top face, the apex points up along the shared axis
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"capped\", "
+             "\"parts\": [ { \"part\": \"tank_r3h3\", \"id\": \"tank\" }, "
+             " { \"part\": \"nose_cap_r3h1.5\", \"id\": \"cap\", "
+             "   \"attach\": \"up\", \"parent\": \"tank\" } ] }";
+        f.close();
+    }
+    ShipDef cd = load_ship_def(mix, cat);
+    CHECK(cd.parts.size() == 2);
+    CHECK(cd.parts[1].def == nc3);
+    CHECK(cd.parts[1].attach == AttachMode::Up);
+    CHECK(cd.parts[1].parent == 0);
+    {
+        AttachPose p = attachPose(glm::dvec3(0.0), glm::dmat3(1.0), *t33, *nc3,
+                                  AttachMode::Up, 0.0, 0.0);
+        CHECK(near(p.childPos.z, (3.0 + 1.5) / 2.0));
+        CHECK(near((p.childRot * glm::dvec3(0.0, 0.0, 1.0)).z, 1.0));
+        // the cap's base face (local -h/2) rests on the tank's top face (+1.5)
+        CHECK(near(p.childPos.z + (p.childRot * glm::dvec3(0.0, 0.0, -0.75)).z, 1.5));
+        // the apex lands at tank top + cap height
+        CHECK(near(p.childPos.z + (p.childRot * glm::dvec3(0.0, 0.0, 0.75)).z, 3.0));
+        const glm::dvec3 wp = p.parentAnchor;
+        const glm::dvec3 wc = p.childPos + p.childRot * p.childAnchor;
+        CHECK(glm::length(wp - wc) < 1e-9);
+    }
+    std::remove(mix);
 
     // --- attachPose geometry ---------------------------------------------
     // All cases: parent at the origin, identity orientation, unless noted.
