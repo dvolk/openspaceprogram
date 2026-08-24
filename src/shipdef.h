@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <glm/glm.hpp>
+
 /* Ship/part data model: the JSON-backed description of what a ship is made
    of. This file is GL-free (no rendering, no Bullet) so the parse/validate
    path can be unit-tested headless; only the build step (main.cpp's
@@ -37,18 +39,46 @@
    a small reaction wheel, or an engine can carry its own tank -- so new
    part kinds are added by editing parts.json alone, no source changes.
 
-   ship def (a linear stack, root/nose first -- the same chain the ship is
-   glued in, see Vehicle::setRoot/attachDown):
+   ship def (a tree of parts, in CONSTRUCTION order -- every parent must be
+   defined before the parts attached to it; part 0 is the root, see
+   Vehicle::setRoot/attach):
      {
-       "name": "Basic",
-       "controller": 2,                  // part index; omitted = last part
+       "name": "Booster",
+       "controller": "capsule_1",        // part id; omitted = last part
        "parts": [
-         { "part": "capsule",      "offset": 10.5 },
-         { "part": "reaction_wheel", "offset": 8.5 },
-         { "part": "engine",       "offset": 6.5 }
+         { "part": "capsule" },
+         { "part": "reaction_wheel" },
+         { "part": "fuel_tank" },
+         { "part": "engine" },
+         { "part": "tank_r3h2", "attach": "radial", "parent": "fuel_tank_1" },
+         { "part": "engine_r5h10", "attach": "down", "parent": "tank_r3h2_1" }
        ]
      }
-   `offset` is metres from the ship base (the pad top) along the stack axis.
+   Per-part fields (all optional unless noted):
+     part     catalog name (required)
+     id       instance id; omitted -> auto "<catalog name>_<n>" (n = 1, 2, ..
+              per catalog name). Must be unique within the ship.
+     parent   id of the part to weld to; must already be defined (this is
+              what makes cycles impossible). Omitted -> the previous part,
+              so a plain linear stack is a bare part list.
+     attach   "down" (default)  face-to-face on the parent's -Z face
+              "up"              face-to-face on the parent's +Z face (stack
+                                outward from a radially attached part, or a
+                                nose part above the root)
+              "radial"          child axis perpendicular, child's base face
+                                on the parent's side (like a KSP booster)
+              "side"            child axis parallel, side by side
+     angle    degrees around the parent's stack axis (0 = parent +X);
+              rotates the radial/side direction (and, for down, the child
+              about the shared axis)
+     offset   metres of GAP along the attach axis, beyond the touching
+              faces (default 0); the weld anchors sit at the gap, so the
+              solver holds it (see attachPose)
+     stage    positive int, default 1. RESERVED for staging (separable
+              stages); parsed + validated, no runtime effect yet.
+   The absolute pad-relative offsets of the old schema are gone: the geometry
+   is fully determined by the part sizes + attach mode, and build_ship
+   places the ship's lowest point on the pad top.
 */
 
 enum class ResourceType {
@@ -88,9 +118,9 @@ struct PartDef {
     /* Physical size in metres; the .obj is authored to match (origin
        centered, +Z = stack axis): radius = cross-section (x/y extent 2r),
        height = extent along the stack axis (z extent h). Defaults are the
-       legacy 2 m cube, so pre-size parts keep working. The stack weld
-       anchors at the faces (+-h/2); a future radial port sits at r from the
-       axis; a future staging cut lands on a face. */
+       legacy 2 m cube, so pre-size parts keep working. attachPose welds
+       stack faces at +-h/2 and radial/side ports at r from the axis; a
+       future staging cut lands on a face. */
     double radius;
     double height;
 
@@ -106,11 +136,29 @@ struct PartDef {
     double fullThrust() const { return 2.0 * fuel_rate * exhaust_velocity; }
 };
 
-/* One part INSTANCE in a ship def, in stack order (index 0 = root/nose). */
+/* How a part is welded to its parent (see the header schema comment).
+   Down/Up are the two stack faces (child axis parallel to the parent's);
+   Radial/Side attach to the parent's side. */
+enum class AttachMode {
+    Down,    // face-to-face on the parent's -Z face (a plain stack)
+    Up,      // face-to-face on the parent's +Z face (stacking OUTWARD from a
+             // radially attached part, or a nose part above the root)
+    Radial,  // child axis perpendicular; child's base face on the parent's side
+    Side     // parallel axes, side by side
+};
+
+/* One part INSTANCE in a ship def, in construction order (index 0 = root).
+   `parent` is resolved to an index at load time; it must point at an
+   earlier part (that rule is what keeps the parts a tree). */
 struct ShipPart {
     std::string part;      // catalog name
+    std::string id;        // instance id (explicit, or auto "<name>_<n>")
     const PartDef *def;    // resolved at load time (points into the catalog)
-    double offset;         // m from the ship base along the stack axis
+    int parent;            // part index of the weld parent; -1 = root (part 0)
+    AttachMode attach;     // how it is welded to the parent (root: unused)
+    double angle;          // degrees around the parent's stack axis (0 = parent +X)
+    double offset;         // m of gap along the attach axis, beyond touching faces
+    int stage;             // reserved for staging; 1 = single stage
 };
 
 struct ShipDef {
@@ -123,6 +171,24 @@ struct ShipDef {
         return controller;
     }
 };
+
+/* The resolved pose + weld anchors for one attachment (GL-free math; the
+   same function the future VAB snap uses). All inputs/outputs are in the
+   SAME world frame (parent given in world coords).
+
+   The anchor points COINCIDE in world space at the returned child pose --
+   required, because the 6DOF weld (this Bullet 2.x) enforces zero relative
+   linear offset: anchors apart by the gap, not at the surfaces. */
+struct AttachPose {
+    glm::dvec3 childPos;
+    glm::dmat3  childRot;
+    glm::dvec3 parentAnchor;   // local to the parent
+    glm::dvec3 childAnchor;    // local to the child
+};
+
+AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                      const PartDef &parentDef, const PartDef &childDef,
+                      AttachMode mode, double angleDeg, double offset);
 
 struct PartsCatalog {
     std::vector<PartDef> parts;

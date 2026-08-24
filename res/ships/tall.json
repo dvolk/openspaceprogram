@@ -1,8 +1,8 @@
 {
   "name": "Tall",
   "parts": [
-    { "part": "capsule_r3h6", "offset": 19.5 },
-    { "part": "tank_r5h5",    "offset": 14.0 },
-    { "part": "engine_r5h10", "offset": 6.5  }
+    { "part": "capsule_r3h6" },
+    { "part": "tank_r5h5" },
+    { "part": "engine_r5h10" }
   ]
 }

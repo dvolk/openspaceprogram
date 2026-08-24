@@ -1,6 +1,8 @@
 #include "shipdef.h"
 
+#include <cmath>
 #include <fstream>
+#include <map>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
@@ -147,18 +149,16 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
     ShipDef def;
     def.name = doc.value("name", std::string(""));
     def.controller = -1;
-    if(doc.contains("controller")) {
-        def.controller = doc["controller"].get<int>();
-    }
 
     const nlohmann::json &arr = doc["parts"];
+    std::map<std::string, size_t> idToIndex;   // instance id -> part index (defined so far)
+    std::map<std::string, int> autoCount;      // catalog name -> auto-id counter
     for(size_t i = 0; i < arr.size(); i++) {
         const nlohmann::json &pv = arr[i];
 
         ShipPart sp;
         sp.def = nullptr;
         sp.part = pv.value("part", std::string(""));
-        sp.offset = pv.value("offset", -1.0);
         if(sp.part.empty()) {
             throw std::runtime_error(std::string("ship: part entry ") + std::to_string(i)
                                      + " of " + path + ": missing \"part\"");
@@ -173,16 +173,162 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
             throw std::runtime_error(std::string("ship: unknown part '") + sp.part
                                      + "' in " + path + " (catalog has: " + avail + ")");
         }
+
+        /* instance id: explicit, or auto "<catalog name>_<n>" (n per catalog
+           name, starting at 1). Must be unique within the ship. */
+        sp.id = pv.value("id", std::string(""));
+        if(sp.id.empty()) {
+            int &n = autoCount[sp.part];
+            n++;
+            sp.id = sp.part + "_" + std::to_string(n);
+        }
+        if(idToIndex.count(sp.id)) {
+            throw std::runtime_error(std::string("ship: duplicate part id '") + sp.id
+                                     + "' in " + path);
+        }
+
+        /* weld parent, by id: it must already be defined (construction
+           order -- the one rule that catches dangling refs AND cycles).
+           Default: the previous part, so a linear stack is a bare list. */
+        sp.parent = (i > 0) ? (int)(i - 1) : -1;
+        if(pv.contains("parent")) {
+            if(!pv["parent"].is_string()) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": \"parent\" must be a part id (string)");
+            }
+            std::string pid = pv["parent"].get<std::string>();
+            std::map<std::string, size_t>::iterator it = idToIndex.find(pid);
+            if(it == idToIndex.end()) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": parent '" + pid + "' is not defined before it");
+            }
+            sp.parent = (int)it->second;
+        }
+
+        sp.attach = AttachMode::Down;
+        if(pv.contains("attach")) {
+            if(!pv["attach"].is_string()) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": \"attach\" must be a string");
+            }
+            std::string m = pv["attach"].get<std::string>();
+            if(m == "down") { sp.attach = AttachMode::Down; }
+            else if(m == "up") { sp.attach = AttachMode::Up; }
+            else if(m == "radial") { sp.attach = AttachMode::Radial; }
+            else if(m == "side") { sp.attach = AttachMode::Side; }
+            else {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": \"attach\" must be 'down', 'up', 'radial', or 'side' (got '"
+                                         + m + "')");
+            }
+        }
+
+        sp.angle = pv.value("angle", 0.0);
+        if(!std::isfinite(sp.angle)) {
+            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                     + ": \"angle\" must be a finite number of degrees");
+        }
+
+        sp.offset = pv.value("offset", 0.0);
         if(sp.offset < 0.0) {
-            throw std::runtime_error(std::string("ship: part '") + sp.part + "' in " + path
+            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
                                      + ": \"offset\" must be >= 0 (m)");
         }
+
+        /* stage: reserved for staging (separable stages); no runtime effect
+           yet -- parsed and validated so the schema is settled. */
+        sp.stage = pv.value("stage", 1);
+        if(sp.stage < 1) {
+            throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                     + ": \"stage\" must be >= 1");
+        }
+
+        idToIndex[sp.id] = i;
         def.parts.push_back(sp);
     }
 
-    if(def.controller >= (int)def.parts.size()) {
-        throw std::runtime_error(std::string("ship: controller index ") + std::to_string(def.controller)
-                                 + " in " + path + " out of range (parts: " + std::to_string(def.parts.size()) + ")");
+    /* controller: a part id (resolved now that all ids are known) */
+    if(doc.contains("controller")) {
+        if(!doc["controller"].is_string()) {
+            throw std::runtime_error(std::string("ship: \"controller\" in ") + path
+                                     + " must be a part id (string)");
+        }
+        std::string cid = doc["controller"].get<std::string>();
+        std::map<std::string, size_t>::iterator it = idToIndex.find(cid);
+        if(it == idToIndex.end()) {
+            throw std::runtime_error(std::string("ship: controller id '") + cid + "' in " + path
+                                     + " is not a part of the ship");
+        }
+        def.controller = (int)it->second;
     }
     return def;
+}
+
+AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                      const PartDef &parentDef, const PartDef &childDef,
+                      AttachMode mode, double angleDeg, double offset)
+{
+    const double rP = parentDef.radius, hP = parentDef.height;
+    const double rC = childDef.radius,  hC = childDef.height;
+
+    /* Rz(angle): maps parent-local +X to `dir`. Angle 0 = parent +X, so a
+       radial/side part at angle a sits on the parent's side at clock
+       position a (90 deg = parent +Y). */
+    const double a = glm::radians(angleDeg);
+    const double c = cos(a), s = sin(a);
+    const glm::dmat3 rz(glm::dvec3(c, s, 0.0),
+                        glm::dvec3(-s, c, 0.0),
+                        glm::dvec3(0.0, 0.0, 1.0));
+    const glm::dvec3 dir = glm::dvec3(c, s, 0.0);
+
+    /* child +Z -> parent +X (the --radial-test rotZtoX): columns are the
+       images of X, Y, Z. */
+    const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
+                             glm::dvec3(0.0, 1.0, 0.0),
+                             glm::dvec3(1.0, 0.0, 0.0));
+
+    AttachPose p;
+    if(mode == AttachMode::Down) {
+        /* face-to-face on the parent's -Z face, shared axis */
+        p.childPos  = parentPos - parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
+        p.childRot  = parentRot * rz;
+        p.parentAnchor = glm::dvec3(0.0, 0.0, -(hP / 2.0 + offset));
+        p.childAnchor  = glm::dvec3(0.0, 0.0,  hC / 2.0);
+    }
+    else if(mode == AttachMode::Up) {
+        /* face-to-face on the parent's +Z face, shared axis: stacking
+           OUTWARD from a radially attached part (its +Z points away from
+           the ship), or a nose part above the root. The child's base face
+           (-hC/2) meets the parent's top face (+hP/2). */
+        p.childPos  = parentPos + parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
+        p.childRot  = parentRot * rz;
+        p.parentAnchor = glm::dvec3(0.0, 0.0,  hP / 2.0 + offset);
+        p.childAnchor  = glm::dvec3(0.0, 0.0, -hC / 2.0);
+    }
+    else if(mode == AttachMode::Radial) {
+        /* child axis perpendicular: its base face (-hC/2) on the parent's
+           side at radius rP, in the `dir` clock position */
+        p.childPos  = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
+        p.childRot  = parentRot * rz * rotZtoX;
+        p.parentAnchor = dir * (rP + offset);
+        p.childAnchor  = glm::dvec3(0.0, 0.0, -hC / 2.0);
+    }
+    else { // Side
+        /* parallel axes, side by side: surfaces meet at rP + rC in `dir` */
+        p.childPos  = parentPos + parentRot * (dir * (rP + rC + offset));
+        p.childRot  = parentRot * rz;
+        p.parentAnchor = dir * (rP + offset);
+        p.childAnchor  = glm::dvec3(-rC, 0.0, 0.0);
+    }
+
+    /* invariant (enforced by the 6DOF weld): the anchors coincide in world
+       space. The parent anchor sits at the gap edge (surface + offset), so
+       the gap is what the solver holds. */
+    const glm::dvec3 wp = parentPos + parentRot * p.parentAnchor;
+    const glm::dvec3 wc = p.childPos + p.childRot * p.childAnchor;
+    if(glm::length(wp - wc) > 1e-9) {
+        throw std::runtime_error("attachPose: anchors do not coincide "
+                                 "(internal geometry error)");
+    }
+    return p;
 }

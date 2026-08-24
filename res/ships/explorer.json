@@ -1,10 +1,10 @@
 {
   "name": "Explorer",
   "parts": [
-    { "part": "capsule",      "offset": 12.75 },
-    { "part": "reaction_wheel", "offset": 11.625 },
-    { "part": "fuel_tank",    "offset": 10.5 },
-    { "part": "fuel_tank",    "offset": 8.5 },
-    { "part": "engine",       "offset": 6.5 }
+    { "part": "capsule" },
+    { "part": "reaction_wheel" },
+    { "part": "fuel_tank" },
+    { "part": "fuel_tank" },
+    { "part": "engine" }
   ]
 }

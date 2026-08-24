@@ -95,11 +95,11 @@ test:
 	./test_rotation
 	# ship/part JSON data model (GL-free: catalog + ship-def parse/validate,
 	# part resolution, aggregates). Runs from the repo root (needs res/).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
 	    tests/test_shipload.cpp src/shipdef.cpp -o test_shipload
 	./test_shipload
 	# fleet JSON (GL-free: entry parse + defaults + error paths).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
 	    tests/test_fleet.cpp src/fleet.cpp -o test_fleet
 	./test_fleet
 	# home-planet calendar (src/calendar.h, header-only pure math): day/year

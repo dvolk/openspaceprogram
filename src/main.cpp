@@ -817,6 +817,9 @@ public:
     std::vector<Body *> m_thrusters;
     std::vector<Body *> m_reaction_wheels;
     std::vector<void *> constraints;
+    /* which parts each constraint joins: (parentIdx, childIdx) into
+       `parts`, parallel to `constraints`. Staging splits on these links. */
+    std::vector<std::pair<size_t, size_t>> constraintLinks;
 
     /* Per-part catalog specs (parallel to parts; set by build_ship() before
        init()). init() copies the behavior values into the per-thruster /
@@ -846,16 +849,55 @@ public:
         parts = { part };
     }
 
+    /* Weld `part` to the part at `parentIdx` at the given LOCAL anchor
+       points (which must coincide in world space -- the 6DOF weld enforces
+       zero relative linear offset). Records the link for staging. The
+       caller has already setPosRot-ed the child to the matching pose. */
+    void attach(Body *part, size_t parentIdx,
+                const glm::dvec3 &parentAnchor, const glm::dvec3 &childAnchor) {
+        void *constraint = GlueTogether(parts[parentIdx], part,
+                                        parentAnchor, childAnchor);
+        parts.push_back(part);
+        constraints.push_back(constraint);
+        constraintLinks.push_back(std::make_pair(parentIdx, parts.size() - 1));
+    }
+
     void attachDown(Body *part, const PartDef *def) {
         /* weld at the part faces: parent bottom (-h/2) to child top (+h/2);
            generalizes the old hardcoded +-1 m (2 m parts). partDefs is
            parallel to parts, so the parent's def is the last one pushed. */
         const PartDef *parent = partDefs.back();
-        void *constraint = GlueTogether(parts.back(), part,
-                                        glm::dvec3(0.0, 0.0, -parent->height / 2.0),
-                                        glm::dvec3(0.0, 0.0,  def->height / 2.0));
-        parts.push_back(part);
-        constraints.push_back(constraint);
+        attach(part, parts.size() - 1,
+               glm::dvec3(0.0, 0.0, -parent->height / 2.0),
+               glm::dvec3(0.0, 0.0,  def->height / 2.0));
+    }
+
+    void attachRadial(Body *part, const PartDef *def) {
+        /* weld the part to the parent's SIDE: the part's local +Z axis is
+           rotated to the parent's local +X (call site), so the part's
+           bottom face (local -h/2) touches the parent's side at +radius.
+           The anchors coincide in world space at the tangent point
+           (parent local (r,0,0) == part local (0,0,-h/2)).
+           Same partDefs convention as attachDown. */
+        const PartDef *parent = partDefs.back();
+        attach(part, parts.size() - 1,
+               glm::dvec3(parent->radius, 0.0, 0.0),
+               glm::dvec3(0.0, 0.0, -def->height / 2.0));
+    }
+
+    void attachSide(Body *part, const PartDef *def) {
+        /* weld the part to the parent's SIDE with PARALLEL axes: the part
+           keeps the parent's local +Z axis (no rotation at the call site),
+           sits along the parent's local +X, and its cylindrical surface
+           touches the parent's at +radius. The anchors coincide in world
+           space at the tangent point (parent local (r,0,0) == part local
+           (-r,0,0)). Unlike attachRadial the child is NOT rotated, so this
+           is the "side by side, parallel axes" case.
+           Same partDefs convention as attachDown. */
+        const PartDef *parent = partDefs.back();
+        attach(part, parts.size() - 1,
+               glm::dvec3(parent->radius, 0.0, 0.0),
+               glm::dvec3(-def->radius, 0.0, 0.0));
     }
 
     void Detach() {
@@ -1407,15 +1449,53 @@ public:
 };
 
 /* Instantiate a ship def: one rigid body per part (mesh + texture from the
-   catalog entry), glued in stack order (root/nose first), each `offset` m
-   from the ship base (the pad top) along the stack axis. GL is needed here
-   (shader binding); the JSON parse/validate is GL-free (shipdef.cpp). The
-   catalog must outlive the ship (the partDefs point into it). */
+   catalog entry), welded parent-first in the def's construction order.
+   GL is needed here (shader binding); the JSON parse/validate and the
+   attach geometry (attachPose) are GL-free (shipdef.cpp). The catalog must
+   outlive the ship (the partDefs point into it). */
 static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                        const glm::dvec3 &base, const glm::dmat3 &orient)
 {
     printf("Building ship '%s' (%d parts)\n", def.name.c_str(), (int)def.parts.size());
-    for(size_t i = 0; i < def.parts.size(); i++) {
+    const size_t n = def.parts.size();
+
+    /* 1) relative poses in a canonical frame: the root at the origin, +Z =
+       the stack axis, each child welded to its (earlier) parent by the
+       shared attachPose geometry (shipdef.cpp). */
+    std::vector<glm::dvec3> pos(n);
+    std::vector<glm::dmat3> rot(n);
+    std::vector<glm::dvec3> pAnchor(n), cAnchor(n);
+    pos[0] = glm::dvec3(0.0);
+    rot[0] = glm::dmat3(1.0);
+    for(size_t i = 1; i < n; i++) {
+        const ShipPart &sp = def.parts[i];
+        AttachPose ap = attachPose(pos[(size_t)sp.parent], rot[(size_t)sp.parent],
+                                   *def.parts[(size_t)sp.parent].def, *sp.def,
+                                   sp.attach, sp.angle, sp.offset);
+        pos[i] = ap.childPos;
+        rot[i] = ap.childRot;
+        pAnchor[i] = ap.parentAnchor;
+        cAnchor[i] = ap.childAnchor;
+    }
+
+    /* 2) the ship's lowest point along the stack axis: an axis-aligned part
+       (down/side) spans h/2 about its center, a radial part spans its
+       radius (its cross-section lies across the stack axis). */
+    double lowest = 1e30;
+    for(size_t i = 0; i < n; i++) {
+        const ShipPart &sp = def.parts[i];
+        double extent = (i > 0 && sp.attach == AttachMode::Radial)
+                       ? sp.def->radius : sp.def->height / 2.0;
+        lowest = std::min(lowest, pos[i].z - extent);
+    }
+
+    /* 3) place it on the pad: the lowest point at the pad top, lifted by
+       the collision margins (terrain 0.5 + hull 0.1) so the inflated
+       shapes just touch instead of popping apart on the first solve. For
+       orbit scenarios this is only staging -- spawn_vehicle repositions. */
+    const glm::dvec3 shift = glm::dvec3(0.0, 0.0, -lowest + 0.6);
+
+    for(size_t i = 0; i < n; i++) {
         const PartDef &pd = *def.parts[i].def;
 
         Mesh *mesh = new Mesh;
@@ -1425,12 +1505,14 @@ static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         model->FromData(mesh, partsshader, tex);
 
         Body *part = create_body(model, 0, 0, 0, (float)pd.mass, false);
-        /* +Z of `orient` is the stack axis (faceAlong), so (0,0,offset)
-           walks the offset along it from the ship base */
-        setPosRot(part, base + orient * glm::dvec3(0.0, 0.0, def.parts[i].offset), orient);
+        setPosRot(part, base + orient * (pos[i] + shift), orient * rot[i]);
 
-        if(i == 0) { ship->setRoot(part); }
-        else { ship->attachDown(part, &pd); }
+        if(i == 0) {
+            ship->setRoot(part);
+        } else {
+            const ShipPart &sp = def.parts[i];
+            ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i]);
+        }
         ship->partDefs.push_back(&pd);
     }
     ship->controllerIndex = def.controllerIndex();
@@ -1591,16 +1673,19 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
         ship->moveToFrame(frame);
     }
 
-    // Nose (local +Z) along prograde. The parts are currently stacked along
-    // their build axis (pad_dir); rotate the offsets by the same `orient`
-    // that is applied to every part, so the whole ship rigidly aligns its
-    // axis with vhat (capsule leading) instead of each part spinning in
-    // place.
+    // Nose (local +Z) along prograde: rigidly re-orient the whole ship.
+    // Part 0 (the root) takes `orient`; every other part gets the same
+    // world rotation (Rrel) about the ship's COM, so its RELATIVE geometry
+    // survives -- a stacked part stays stacked, a radial part keeps its
+    // perpendicular axis. (The old loop applied `orient` to every part,
+    // which silently straightened a radial part into the stack axis.)
     const glm::dmat3 orient = faceAlong(velWorld);
-    const glm::dvec3 com = ship->get_center_of_mass();
+    const glm::dvec3 com0 = ship->get_center_of_mass();
+    const glm::dmat3 Rrel = orient * glm::transpose(GetOrient(ship->parts[0]));
     for(auto&& part : ship->parts) {
         const glm::dvec3 p = GetPosition(part);
-        setPosRot(part, target + orient * (p - com), orient);
+        const glm::dmat3 R0 = GetOrient(part);
+        setPosRot(part, target + Rrel * (p - com0), Rrel * R0);
         SetVelocity(part, vel);
     }
 
@@ -1608,6 +1693,55 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
            glm::length(shipWorldPos - center), glm::length(velWorld));
+}
+
+/* --radial-test spin diagnostics (two-part ship): the per-part angular
+   velocities (if they differ, the weld is not holding a rigid body), the
+   INTERNAL contact torque between the two parts -- the only way a passive
+   welded pair can spin itself -- and the tidal (differential gravity)
+   torque, which is the one legitimate external torque and should be
+   negligible at ship scale. */
+static void spin_log(Vehicle *ship, double time) {
+    if(ship->parts.size() < 2) { return; }
+
+    const glm::dvec3 com = ship->get_center_of_mass();
+    printf("[spin] t=%.2fs ship=%s com=[%.0f %.0f %.0f] parts=%zu\n",
+           time, ship->name.c_str(), com.x, com.y, com.z, ship->parts.size());
+    for(size_t i = 0; i < ship->parts.size(); i++) {
+        const glm::dvec3 w = GetAngVelocity(ship->parts[i]);
+        const glm::dvec3 p = GetPosition(ship->parts[i]);
+        printf("[spin]   %-14s pos=[%.1f %.1f %.1f] w=[%.3e %.3e %.3e] |w|=%.3e\n",
+               ship->partDefs[i]->name.c_str(),
+               p.x, p.y, p.z, w.x, w.y, w.z, glm::length(w));
+    }
+
+    for(size_t i = 0; i < ship->parts.size(); i++) {
+        for(size_t j = i + 1; j < ship->parts.size(); j++) {
+            const ContactPairInfo cp = contact_report(ship->parts[i], ship->parts[j]);
+            printf("[spin]   contact %-8s-%-8s: manifs=%d (other=%d) pts=%zu |F|=%.3e |T|=%.3e maxImp=%.3e\n",
+                   ship->partDefs[i]->name.c_str(), ship->partDefs[j]->name.c_str(),
+                   cp.manifolds, cp.otherManifolds, cp.points.size(),
+                   glm::length(cp.netForce), glm::length(cp.netTorque), cp.maxImpulse);
+            for(size_t k = 0; k < cp.points.size(); k++) {
+                const ContactPointInfo &p = cp.points[k];
+                printf("[spin]     pt%zu pos=[%.1f %.1f %.1f] pen=%.4f imp=[%.3e %.3e %.3e] |imp|=%.3e\n",
+                       k, p.pos.x, p.pos.y, p.pos.z, p.pen,
+                       p.impulse.x, p.impulse.y, p.impulse.z, glm::length(p.impulse));
+            }
+        }
+    }
+
+    const double G = 6.674e-11;
+    const double M = ship->m_parent->mass;
+    glm::dvec3 tau(0, 0, 0);
+    for(size_t i = 0; i < ship->parts.size(); i++) {
+        const glm::dvec3 p = GetPosition(ship->parts[i]);
+        const double r = glm::length(p);
+        const glm::dvec3 F = -G * M * ship->parts[i]->mass * p / (r * r * r);
+        tau += glm::cross(p - com, F);
+    }
+    printf("[spin]   tidal gravity torque |tau|=%.3e\n", glm::length(tau));
+    fflush(stdout);
 }
 
 class StaticBuilding {
@@ -1970,6 +2104,23 @@ int main(int argc, char **argv)
                    "--body/--scenario. Ships sharing a body+scenario get "
                    "their own pad slot / orbit slot. Try res/fleet.json");
 
+    /* Spin-instrumentation mode: build a test ship (no JSON ship def)
+       and log its spin + the internal contact torque each tick.
+       radial     = part B welded to part A's side, axes PERPENDICULAR
+       parallel   = part B welded to part A's side, axes PARALLEL
+                    (side by side, off-axis anchor)
+       stacked    = part B welded on A's axis (known-good baseline)
+       stacks     = two 2-part stacks side by side, 2nd stack PERPENDICULAR
+       parstacks  = two 2-part stacks side by side, ALL axes PARALLEL
+       All parts are passive tanks (no wheels/thrusters), so any spin
+       is self-inflicted. */
+    std::string radial_test;
+    app.add_option("--radial-test", radial_test,
+                   "Build the spin-test ship(s) instead of a fleet: "
+                   "radial | parallel | stacked | stacks | parstacks")
+        ->check(CLI::IsMember({"radial", "parallel", "stacked", "stacks",
+                               "parstacks"}));
+
     int initial_time_accel = 0;
     app.add_option("-t,--time-accel", initial_time_accel,
                    "Initial time acceleration (0 = paused, default 0)")
@@ -1995,6 +2146,12 @@ int main(int argc, char **argv)
     app.add_flag("--dbg-log", dbg_log,
                  "Periodically print ship position/altitude/velocity "
                  "(surface-level companion to --orbit-log)");
+
+    bool spin_log_enabled = false;
+    app.add_flag("--spin-log", spin_log_enabled,
+                 "Periodically print the ship's spin diagnostics (per-part "
+                 "angular velocities, inter-part contact impulses, tidal "
+                 "torque) to stdout; also implied by --radial-test");
 
     bool crt_enabled = false;
     app.add_flag("--crt", crt_enabled,
@@ -2130,6 +2287,198 @@ int main(int argc, char **argv)
         Model *space_port_model = new Model;
         space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
 
+        if(!radial_test.empty()) {
+            /* --radial-test: minimal test ships built straight from the
+               catalog (no JSON ship def). Passive tanks only -- no
+               wheels, no thrusters -- so any spin is self-inflicted by
+               the physics:
+               - "radial":  tank_r5h5 + a tank_r3h2 welded to its side
+               - "stacked": the same pair welded along the axis (baseline)
+               - "stacks":  two 2-part stacks welded side by side:
+                            [tank_r5h5 + tank_r3h2] beside
+                            [tank_r5h5 + tank_r3h2], the second stack's
+                            root welded radially to the first stack's
+                            root (the in-game way to build it).
+               Stacked welds use attachDown's convention: the child sits
+               on the parent's -Z side, anchors (0,0,-hP/2) /
+               (0,0,+hC/2) coinciding in world space. */
+            const PartDef *defBig = part_catalog.find("tank_r5h5");
+            const PartDef *defSml = part_catalog.find("tank_r3h2");
+            if(defBig == nullptr || defSml == nullptr) {
+                throw std::runtime_error("--radial-test: tank_r5h5 / "
+                                         "tank_r3h2 missing from the parts catalog");
+            }
+
+            /* honor an explicit --scenario, otherwise orbit (no pad
+               contact, no terrain noise in the spin measurement) */
+            const bool scenario_given = app.get_option("--scenario") != nullptr
+                && app.get_option("--scenario")->count() > 0;
+            const ScenarioDef *sc = scenario_by_name(
+                scenario_given ? scenario : "rot-orbit");
+
+            Vehicle *v = new Vehicle;
+            v->m_parent = home;
+            v->sun = sun;
+            v->frame = home->rot_frame;
+
+            const glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+            const glm::dmat3 pad_orient = faceAlong(pad_dir);
+            /* Start 50 m above the surface so a --scenario pad ship drops
+               onto the ground (the lowest part would otherwise start
+               embedded in the terrain). For orbit scenarios this is only
+               staging -- spawn_vehicle repositions the ship. */
+            const glm::dvec3 base = pad_dir
+                * ((double)home->GetTerrainHeight(pad_dir) + 50.0);
+            /* radial weld: child's local +Z (its axis) -> parent's
+               local +X. Columns = images of X, Y, Z. */
+            const glm::dmat3 rotZtoX(glm::dvec3(0, 0, -1),
+                                     glm::dvec3(0, 1, 0),
+                                     glm::dvec3(1, 0, 0));
+
+            auto makeBody = [&](const PartDef *def) -> Body * {
+                Mesh *mesh = new Mesh;
+                mesh->FromFile((std::string("./res/") + def->mesh).c_str(), true);
+                Model *model = new Model;
+                model->FromData(mesh, partsshader,
+                                load_texture((std::string("./res/") + def->texture).c_str()));
+                return create_body(model, 0, 0, 0, (float)def->mass, false);
+            };
+
+            if(radial_test == "stacks") {
+                /* Two 2-part stacks, side by side. Pad normal = local +Z,
+                   radial dir = local +X:
+                     stack 1: A1 (tank_r5h5, root) + A2 (tank_r3h2)
+                              attached below A1, axis Z
+                     stack 2: B1 (tank_r5h5) welded to A1's +X side
+                              (axis X) + B2 (tank_r3h2) attached beyond
+                              B1 along B1's axis
+                   Layout (local): A1 (0,0,0)  A2 (0,0,-3.5)
+                                   B1 (7.5,0,0) B2 (11,0,0)
+                   Welds (anchors coincide in world space):
+                     A1-A2 stacked:  A1 (0,0,-2.5)   == A2 (0,0,+1)
+                     A1-B1 radial:   A1 (5,0,0)      == B1 (0,0,-2.5)
+                     B1-B2 stacked:  B1 (0,0,+2.5)   == B2 (0,0,-1) */
+                v->name = "stacks4";
+                Body *a1 = makeBody(defBig);
+                Body *a2 = makeBody(defSml);
+                Body *b1 = makeBody(defBig);
+                Body *b2 = makeBody(defSml);
+                setPosRot(a1, base, pad_orient);
+                setPosRot(a2,
+                          base - pad_orient * glm::dvec3(0.0, 0.0,
+                                                         defBig->height / 2.0 + defSml->height / 2.0),
+                          pad_orient);
+                setPosRot(b1,
+                          base + pad_orient * glm::dvec3(defBig->radius + defBig->height / 2.0, 0.0, 0.0),
+                          pad_orient * rotZtoX);
+                setPosRot(b2,
+                          base + pad_orient * glm::dvec3(defBig->radius + defBig->height + defSml->height / 2.0, 0.0, 0.0),
+                          pad_orient * rotZtoX);
+
+                v->setRoot(a1);
+                v->partDefs.push_back(defBig);
+                v->partDefs.push_back(defSml);
+                v->partDefs.push_back(defBig);
+                v->partDefs.push_back(defSml);
+                v->constraints.push_back(GlueTogether(a1, a2,
+                                                      glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
+                                                      glm::dvec3(0.0, 0.0,  defSml->height / 2.0)));
+                v->constraints.push_back(GlueTogether(a1, b1,
+                                                      glm::dvec3(defBig->radius, 0.0, 0.0),
+                                                      glm::dvec3(0.0, 0.0, -defBig->height / 2.0)));
+                v->constraints.push_back(GlueTogether(b1, b2,
+                                                      glm::dvec3(0.0, 0.0,  defBig->height / 2.0),
+                                                      glm::dvec3(0.0, 0.0, -defSml->height / 2.0)));
+                v->parts.push_back(a2);
+                v->parts.push_back(b1);
+                v->parts.push_back(b2);
+            }
+            else if(radial_test == "parstacks") {
+                /* Two 2-part stacks side by side with ALL axes PARALLEL
+                   (pad normal = local +Z) -- the variant of 'stacks' where
+                   the second stack is NOT rotated, so both stacks' axes
+                   point the same way:
+                     stack 1: A1 (tank_r5h5, root) + A2 (tank_r3h2) below A1
+                     stack 2: B1 (tank_r5h5) welded to A1's +X side
+                              + B2 (tank_r3h2) below B1
+                   Layout (local): A1 (0,0,0)    A2 (0,0,-3.5)
+                                   B1 (10,0,0)   B2 (10,0,-3.5)
+                   Welds (anchors coincide in world space):
+                     A1-A2 stacked:  A1 (0,0,-2.5)  == A2 (0,0,+1)
+                     B1-B2 stacked:  B1 (0,0,-2.5)  == B2 (0,0,+1)
+                     A1-B1 lateral:  A1 (5,0,0)     == B1 (-5,0,0) */
+                v->name = "parstacks4";
+                Body *a1 = makeBody(defBig);
+                Body *a2 = makeBody(defSml);
+                Body *b1 = makeBody(defBig);
+                Body *b2 = makeBody(defSml);
+                const double dz = defBig->height / 2.0 + defSml->height / 2.0;
+                setPosRot(a1, base, pad_orient);
+                setPosRot(a2, base - pad_orient * glm::dvec3(0.0, 0.0, dz), pad_orient);
+                setPosRot(b1, base + pad_orient * glm::dvec3(defBig->radius + defBig->radius, 0.0, 0.0), pad_orient);
+                setPosRot(b2, base + pad_orient * glm::dvec3(defBig->radius + defBig->radius, 0.0, -dz), pad_orient);
+
+                v->setRoot(a1);
+                v->partDefs.push_back(defBig);
+                v->partDefs.push_back(defSml);
+                v->partDefs.push_back(defBig);
+                v->partDefs.push_back(defSml);
+                v->constraints.push_back(GlueTogether(a1, a2,
+                                                      glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
+                                                      glm::dvec3(0.0, 0.0,  defSml->height / 2.0)));
+                v->constraints.push_back(GlueTogether(a1, b1,
+                                                      glm::dvec3(defBig->radius, 0.0, 0.0),
+                                                      glm::dvec3(-defBig->radius, 0.0, 0.0)));
+                v->constraints.push_back(GlueTogether(b1, b2,
+                                                      glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
+                                                      glm::dvec3(0.0, 0.0,  defSml->height / 2.0)));
+                v->parts.push_back(a2);
+                v->parts.push_back(b1);
+                v->parts.push_back(b2);
+            }
+            else {
+                v->name = (radial_test == "radial") ? "radial2"
+                           : (radial_test == "parallel") ? "parallel2" : "stack2";
+                Body *a = makeBody(defBig);
+                setPosRot(a, base, pad_orient);
+                Body *b = makeBody(defSml);
+                v->setRoot(a);
+                v->partDefs.push_back(defBig);
+                if(radial_test == "radial") {
+                    /* B's bottom face (-hB/2) touches A's side at +rA */
+                    setPosRot(b, base + pad_orient * glm::dvec3(defBig->radius + defSml->height / 2.0, 0.0, 0.0),
+                              pad_orient * rotZtoX);
+                    v->attachRadial(b, defSml);
+                }
+                else if(radial_test == "parallel") {
+                    /* B's side touches A's side at +rA; both axes stay on
+                       the pad normal (parallel). B at +X by rA + rB so the
+                       cylindrical surfaces meet; anchor world point (rA,0,0)
+                       on A == (-rB,0,0) on B. */
+                    setPosRot(b, base + pad_orient * glm::dvec3(defBig->radius + defSml->radius, 0.0, 0.0),
+                              pad_orient);
+                    v->attachSide(b, defSml);
+                }
+                else {
+                    /* attachDown welds the child on the parent's -Z side:
+                       anchor coincidence needs B at base - (hA/2+hB/2)
+                       along the pad normal */
+                    setPosRot(b, base - pad_orient * glm::dvec3(0.0, 0.0, defBig->height / 2.0 + defSml->height / 2.0),
+                              pad_orient);
+                    v->attachDown(b, defSml);
+                }
+                v->partDefs.push_back(defSml);
+            }
+            v->controllerIndex = 0;
+            v->init();
+            v->setVelocity(glm::dvec3(0, 0, 0));
+
+            ships.push_back(v);
+            ship_homes.push_back(home);
+            ship_sc.push_back(sc);
+            ship_slots.push_back(0);
+        }
+        else {
         std::map<std::pair<TerrainBody *, const ScenarioDef *>, int> slot_count;
         std::set<std::string> used_names;
 
@@ -2214,6 +2563,7 @@ int main(int argc, char **argv)
             ship_homes.push_back(hb);
             ship_sc.push_back(sc);
             ship_slots.push_back(slot);
+        }
         }
     }
     check_gl_error();
@@ -2687,6 +3037,17 @@ int main(int argc, char **argv)
                         s->applyRotationForce(h);
                     }
                     physics_tick(h);
+                }
+
+                /* --spin-log (or --radial-test): spin diagnostics, once per
+                   0.5 s of sim time (after the last substep's solve, so the
+                   reported impulses are that solve's). */
+                if(spin_log_enabled || !radial_test.empty()) {
+                    static double last_spin_log = -1e30;
+                    if(time - last_spin_log >= 0.5) {
+                        last_spin_log = time;
+                        spin_log(ship, time);
+                    }
                 }
             }
 

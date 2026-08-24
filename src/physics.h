@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <vector>
 
 class Mesh;
 class Body;
@@ -13,6 +14,32 @@ class btRigidBody;
 
 class GLDebugDrawer;
 class Camera;
+
+/* One contact point from the last solver pass (spin diagnostics). */
+struct ContactPointInfo {
+    glm::dvec3 pos;      // world
+    glm::dvec3 normal;   // world (Bullet's normalOnB convention)
+    double pen;          // m, > 0 = overlapping
+    glm::dvec3 impulse;  // N s applied at this point in the last solve
+};
+
+/* The contact state of a two-body pair after the last solve.
+   netTorque is the internal torque the pair as a whole receives from
+   these contacts: (comB - comA) x sum(impulses) -- nonzero only when the
+   impulses are not all parallel to the COM offset (friction / off-axis
+   normals). That is the torque that spins a welded ship. The sign
+   follows Bullet's body ordering; the magnitude is the quantity of
+   interest. */
+struct ContactPairInfo {
+    int manifolds = 0;
+    int otherManifolds = 0;   /* manifolds in the world NOT involving this
+                                 pair -- sanity check that the matcher is
+                                 seeing the dispatcher's manifold list */
+    std::vector<ContactPointInfo> points;
+    glm::dvec3 netForce = glm::dvec3(0, 0, 0);   // N s
+    glm::dvec3 netTorque = glm::dvec3(0, 0, 0);  // N m s
+    double maxImpulse = 0.0;                      // N s
+};
 
 class PhysicsEngine {
 public:
@@ -31,6 +58,11 @@ public:
     void collisions(void);
     void Draw(const Camera * camera);
     void Detach(void * constraint);
+    /* Spin diagnostics: the contact state between two ship parts after
+       the last solve (per point: world position, normal, penetration,
+       applied impulse), plus the pair's net internal torque -- the only
+       way the welded pair can spin itself. */
+    ContactPairInfo reportContactPair(Body *a, Body *b);
 
 private:
     btDefaultCollisionConfiguration *collisionConfiguration;
@@ -77,5 +109,7 @@ glm::dmat3 GetOrient(Body *body);
    space (they define the relative offset, e.g. faces at +-h/2). */
 void * GlueTogether(Body *parent, Body *child,
                     glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
+/* Spin diagnostics for a two-part ship (see ContactPairInfo). */
+ContactPairInfo contact_report(Body *a, Body *b);
 
 void debug_draw(const Camera * camera);

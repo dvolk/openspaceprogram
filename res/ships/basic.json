@@ -1,9 +1,9 @@
 {
   "name": "Basic",
   "parts": [
-    { "part": "capsule",      "offset": 10.75 },
-    { "part": "reaction_wheel", "offset": 9.625 },
-    { "part": "fuel_tank",    "offset": 8.5 },
-    { "part": "engine",       "offset": 6.5 }
+    { "part": "capsule" },
+    { "part": "reaction_wheel" },
+    { "part": "fuel_tank" },
+    { "part": "engine" }
   ]
 }

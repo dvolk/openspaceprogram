@@ -291,9 +291,32 @@ void *PhysicsEngine::GlueTogether(Body *parent, Body *child,
     //     new btPoint2PointConstraint(*btParent, *btChild,
     //                                 btVector3(0,-1,0), btVector3(0,1,0));
 
-    btTransform t1 = btTransform(btQuaternion(1,1,1), // TODO what's this?
+    /* The 6DOF constraint locks the CURRENT relative Euler angle to the
+       angular limits (0,0,0 here), i.e. it drives the relative ORIENTATION
+       toward the identity. That preserves the parts' actual relative pose
+       only if the two constraint frames already share a world rotation --
+       which is true iff frameA_world and frameB_world use the SAME
+       rotation. So build both frames as (identity rotation, anchor):
+       the anchors coincide in world space by construction (the callers
+       choose local anchors that land on the same world point), and the
+       identity-vs-identity relative rotation is satisfied from the first
+       solve for ANY relative part orientation (stacked or radial).
+
+       The old code used one arbitrary quaternion (1,1,1) for both frames;
+       the relative rotation it implied was the parts' actual relative
+       rotation CONJUGATED by that quaternion, which equals the identity
+       only when the parts share a world orientation (the stacked case).
+       A radially attached part (perpendicular axes) started ~90 deg off,
+       and the solver's first pass kicked it toward parallel at tens of
+       rad/s -- the radial spin bug. */
+    btQuaternion qA, qB;
+    btParent->getCenterOfMassTransform().getBasis().getRotation(qA);
+    btChild->getCenterOfMassTransform().getBasis().getRotation(qB);
+    qA = qA.inverse(); /* local rotation so the world frame rotation is I */
+    qB = qB.inverse();
+    btTransform t1 = btTransform(qA,
                                  btVector3(parentAnchor.x, parentAnchor.y, parentAnchor.z));
-    btTransform t2 = btTransform(btQuaternion(1,1,1),
+    btTransform t2 = btTransform(qB,
                                  btVector3(childAnchor.x, childAnchor.y, childAnchor.z));
 
     btGeneric6DofConstraint *constraint =
@@ -456,6 +479,72 @@ void ApplyTorque(Body *body, glm::dvec3 dir, double mag) {
 void *GlueTogether(Body *parent, Body *child,
                    glm::dvec3 parentAnchor, glm::dvec3 childAnchor) {
     return physics->GlueTogether(parent, child, parentAnchor, childAnchor);
+}
+
+ContactPairInfo PhysicsEngine::reportContactPair(Body *a, Body *b) {
+    btRigidBody *btA = getRigidBody(a);
+    btRigidBody *btB = getRigidBody(b);
+    ContactPairInfo out;
+
+    int numManifolds = dynamicsWorld->getDispatcher()->getNumManifolds();
+    for(int i = 0; i < numManifolds; i++) {
+        btPersistentManifold *cm =
+            dynamicsWorld->getDispatcher()->getManifoldByIndexInternal(i);
+        /* pointer identity vs the two ship parts (no downcast needed) */
+        const btCollisionObject *ob0 = cm->getBody0();
+        const btCollisionObject *ob1 = cm->getBody1();
+        const btCollisionObject *ca = (const btCollisionObject *)getRigidBody(a);
+        const btCollisionObject *cb = (const btCollisionObject *)getRigidBody(b);
+        if((ob0 != ca && ob0 != cb) || (ob1 != ca && ob1 != cb)) {
+            out.otherManifolds++;
+            continue;
+        }
+        if(ob0 == ob1) { continue; }
+
+        out.manifolds++;
+        cm->refreshContactPoints(ob0->getWorldTransform(), ob1->getWorldTransform());
+        for(int j = 0; j < cm->getNumContacts(); j++) {
+            btManifoldPoint &pt = cm->getContactPoint(j);
+            ContactPointInfo ci;
+            const btVector3 p = pt.getPositionWorldOnA();
+            ci.pos = glm::dvec3(p.getX(), p.getY(), p.getZ());
+            /* Bullet 2.x manifold point: scalar normal impulse + two
+               lateral (friction) impulses along stored world directions. */
+            const glm::dvec3 n(pt.m_normalWorldOnB.getX(),
+                               pt.m_normalWorldOnB.getY(),
+                               pt.m_normalWorldOnB.getZ());
+            ci.normal = n;
+            ci.pen = -pt.getDistance(); /* sign to be read off the data */
+            const glm::dvec3 d1(pt.m_lateralFrictionDir1.getX(),
+                                pt.m_lateralFrictionDir1.getY(),
+                                pt.m_lateralFrictionDir1.getZ());
+            const glm::dvec3 d2(pt.m_lateralFrictionDir2.getX(),
+                                pt.m_lateralFrictionDir2.getY(),
+                                pt.m_lateralFrictionDir2.getZ());
+            ci.impulse = pt.m_appliedImpulse * n
+                       + pt.m_appliedImpulseLateral1 * d1
+                       + pt.m_appliedImpulseLateral2 * d2;
+            out.points.push_back(ci);
+            out.maxImpulse = std::max(out.maxImpulse, glm::length(ci.impulse));
+        }
+    }
+
+    out.netForce = glm::dvec3(0, 0, 0);
+    for(size_t j = 0; j < out.points.size(); j++) {
+        out.netForce += out.points[j].impulse;
+    }
+    /* internal torque on the pair: the impulses are equal-and-opposite at
+       the same world point, so only (comB - comA) x F_net survives. The
+       sign follows Bullet's body ordering (which body is "a"); the
+       magnitude is what spins the ship. */
+    const glm::dvec3 comA = GetPosition(a);
+    const glm::dvec3 comB = GetPosition(b);
+    out.netTorque = glm::cross(comB - comA, out.netForce);
+    return out;
+}
+
+ContactPairInfo contact_report(Body *a, Body *b) {
+    return physics->reportContactPair(a, b);
 }
 
 void PhysicsEngine::collisions() {
