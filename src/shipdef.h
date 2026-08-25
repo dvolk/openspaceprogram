@@ -20,13 +20,13 @@
            "type": "engine",              // free-form label (display only)
            "mesh": "engine.obj",          // file in res/
            "texture": "engine.png",       // file in res/
-           "mass": 1000,                  // kg
-           "radius": 5.0,                // optional, m; cross-section (x/y extent 2r), default 1.0
-           "height": 2.0,                // optional, m; stack-axis length (z extent), default 2.0
-           "torque": 2000,               // optional, N m -> contributes as a reaction wheel
-           "fuel_rate": 1.0,              // optional, kg/s; with exhaust_velocity -> a thruster
-           "exhaust_velocity": 40492,     // optional, m/s; with fuel_rate -> a thruster
-           "capacity": { "hydrogen": 1000, "lox": 1000 }  // optional, kg -> a propellant tank
+           "mass": 12500,                 // kg (dry mass of the part)
+           "radius": 5.0,                 // optional, m; cross-section (x/y extent 2r), default 1.0
+           "height": 2.0,                 // optional, m; stack-axis length (z extent), default 2.0
+           "torque": 5000,                // optional, N m -> contributes as a reaction wheel
+           "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
+           "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
+           "capacity": { "hydrogen": 26100, "lox": 26100 }  // optional, kg -> a propellant tank
          }, ...
        ]
      }
@@ -35,10 +35,11 @@
    type label: any part with torque adds to the ship's reaction-wheel
    authority; any part with fuel_rate + exhaust_velocity is a thruster;
    any part with capacity is a propellant tank (engines draw from the
-   tanks; a tank's mass is the propellant it holds, so it sheds mass as
-   the engines burn). Fields combine freely -- e.g. a capsule can carry
-   a small reaction wheel, or an engine can carry its own tank -- so new
-   part kinds are added by editing parts.json alone, no source changes.
+   tanks; a tank's mass INCLUDES the propellant it holds, so it sheds
+   mass as the engines burn -- the residual is its dry/structural mass).
+   Fields combine freely -- e.g. a capsule can carry a small reaction
+   wheel, or an engine can carry its own tank -- so new part kinds are
+   added by editing parts.json alone, no source changes.
 
    ship def (a tree of parts, in CONSTRUCTION order -- every parent must be
    defined before the parts attached to it; part 0 is the root, see

@@ -5,7 +5,9 @@
       "type": "capsule",
       "mesh": "capsule.obj",
       "texture": "capsule.png",
-      "mass": 500,
+      "mass": 1149.82,
+      "radius": 1.0,
+      "height": 2.0,
       "torque": 200
     },
     {
@@ -13,27 +15,27 @@
       "type": "capsule",
       "mesh": "capsule_r3h6.obj",
       "texture": "capsule.png",
-      "mass": 500,
+      "mass": 31045.22,
       "radius": 3.0,
       "height": 6.0,
-      "torque": 200
+      "torque": 600
     },
     {
       "name": "capsule_r5h10",
       "type": "capsule",
       "mesh": "capsule_r5h10.obj",
       "texture": "capsule.png",
-      "mass": 500,
+      "mass": 143727.86,
       "radius": 5.0,
       "height": 10.0,
-      "torque": 200
+      "torque": 1000
     },
     {
       "name": "reaction_wheel",
       "type": "reaction_wheel",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
-      "mass": 1000,
+      "mass": 100.53,
       "radius": 1.0,
       "height": 0.25,
       "torque": 2000
@@ -43,175 +45,221 @@
       "type": "reaction_wheel",
       "mesh": "reaction_wheel_r3h0.75.obj",
       "texture": "reaction_wheel.png",
-      "mass": 1000,
+      "mass": 2714.34,
       "radius": 3.0,
       "height": 0.75,
-      "torque": 2000
+      "torque": 6000
     },
     {
       "name": "reaction_wheel_r5h1.25",
       "type": "reaction_wheel",
       "mesh": "reaction_wheel_r5h1.25.obj",
       "texture": "reaction_wheel.png",
-      "mass": 1000,
+      "mass": 12566.37,
       "radius": 5.0,
       "height": 1.25,
-      "torque": 2000
+      "torque": 10000
     },
     {
       "name": "engine",
       "type": "engine",
       "mesh": "engine.obj",
       "texture": "engine.png",
-      "mass": 1000,
-      "fuel_rate": 1.0,
-      "exhaust_velocity": 40492
+      "mass": 500,
+      "radius": 1.0,
+      "height": 2.0,
+      "fuel_rate": 5.68,
+      "exhaust_velocity": 4400.0
     },
     {
       "name": "engine_r3h6",
       "type": "engine",
       "mesh": "engine_r3h6.obj",
       "texture": "engine.png",
-      "mass": 1000,
+      "mass": 4500,
       "radius": 3.0,
       "height": 6.0,
-      "fuel_rate": 2.0,
-      "exhaust_velocity": 40492
+      "fuel_rate": 51.14,
+      "exhaust_velocity": 4400.0
     },
     {
       "name": "engine_r5h10",
       "type": "engine",
       "mesh": "engine_r5h10.obj",
       "texture": "engine.png",
-      "mass": 1000,
+      "mass": 12500,
       "radius": 5.0,
       "height": 10.0,
-      "fuel_rate": 4.0,
-      "exhaust_velocity": 40492
+      "fuel_rate": 142.05,
+      "exhaust_velocity": 4400.0
     },
     {
       "name": "fuel_tank",
       "type": "fuel_tank",
       "mesh": "fuel_tank.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
-    },
-    {
-      "name": "tank_r3h2",
-      "type": "fuel_tank",
-      "mesh": "tank_r3h2.obj",
-      "texture": "fuel_tank.png",
-      "mass": 2000,
-      "radius": 3.0,
+      "mass": 919.23,
+      "radius": 1.0,
       "height": 2.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 417.83,
+        "lox": 417.83
+      }
     },
     {
       "name": "tank_r1h1",
       "type": "fuel_tank",
       "mesh": "tank_r1h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 459.62,
       "radius": 1.0,
       "height": 1.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 208.92,
+        "lox": 208.92
+      }
     },
     {
       "name": "tank_r1h3",
       "type": "fuel_tank",
       "mesh": "tank_r1h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 1378.85,
       "radius": 1.0,
       "height": 3.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 626.75,
+        "lox": 626.75
+      }
     },
     {
       "name": "tank_r1h5",
       "type": "fuel_tank",
       "mesh": "tank_r1h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 2298.08,
       "radius": 1.0,
       "height": 5.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 1044.58,
+        "lox": 1044.58
+      }
     },
     {
       "name": "tank_r3h1",
       "type": "fuel_tank",
       "mesh": "tank_r3h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 4136.54,
       "radius": 3.0,
       "height": 1.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 1880.24,
+        "lox": 1880.24
+      }
+    },
+    {
+      "name": "tank_r3h2",
+      "type": "fuel_tank",
+      "mesh": "tank_r3h2.obj",
+      "texture": "fuel_tank.png",
+      "mass": 8273.07,
+      "radius": 3.0,
+      "height": 2.0,
+      "capacity": {
+        "hydrogen": 3760.49,
+        "lox": 3760.49
+      }
     },
     {
       "name": "tank_r3h3",
       "type": "fuel_tank",
       "mesh": "tank_r3h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 12409.61,
       "radius": 3.0,
       "height": 3.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 5640.73,
+        "lox": 5640.73
+      }
     },
     {
       "name": "tank_r3h5",
       "type": "fuel_tank",
       "mesh": "tank_r3h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 20682.68,
       "radius": 3.0,
       "height": 5.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 9401.22,
+        "lox": 9401.22
+      }
     },
     {
       "name": "tank_r5h1",
       "type": "fuel_tank",
       "mesh": "tank_r5h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 11490.38,
       "radius": 5.0,
       "height": 1.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 5222.9,
+        "lox": 5222.9
+      }
     },
     {
       "name": "tank_r5h3",
       "type": "fuel_tank",
       "mesh": "tank_r5h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 34471.13,
       "radius": 5.0,
       "height": 3.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 15668.69,
+        "lox": 15668.69
+      }
     },
     {
       "name": "tank_r5h5",
       "type": "fuel_tank",
       "mesh": "tank_r5h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 2000,
+      "mass": 57451.88,
       "radius": 5.0,
       "height": 5.0,
-      "capacity": { "hydrogen": 1000, "lox": 1000 }
+      "capacity": {
+        "hydrogen": 26114.49,
+        "lox": 26114.49
+      }
     },
     {
       "name": "adapter_r1to3",
       "type": "adapter",
       "mesh": "adapter_r1to3.obj",
       "texture": "adapter.png",
-      "mass": 200,
+      "mass": 304.34,
       "radius": 3.0,
       "height": 1.5
+    },
+    {
+      "name": "adapter_r1to5",
+      "type": "adapter",
+      "mesh": "adapter_r1to5.obj",
+      "texture": "adapter.png",
+      "mass": 1209.56,
+      "radius": 5.0,
+      "height": 2.5
     },
     {
       "name": "adapter_r3to1",
       "type": "adapter",
       "mesh": "adapter_r3to1.obj",
       "texture": "adapter.png",
-      "mass": 200,
+      "mass": 304.34,
       "radius": 3.0,
       "height": 1.5
     },
@@ -220,25 +268,7 @@
       "type": "adapter",
       "mesh": "adapter_r3to5.obj",
       "texture": "adapter.png",
-      "mass": 200,
-      "radius": 5.0,
-      "height": 2.5
-    },
-    {
-      "name": "adapter_r5to3",
-      "type": "adapter",
-      "mesh": "adapter_r5to3.obj",
-      "texture": "adapter.png",
-      "mass": 200,
-      "radius": 5.0,
-      "height": 2.5
-    },
-    {
-      "name": "adapter_r1to5",
-      "type": "adapter",
-      "mesh": "adapter_r1to5.obj",
-      "texture": "adapter.png",
-      "mass": 200,
+      "mass": 1911.89,
       "radius": 5.0,
       "height": 2.5
     },
@@ -247,7 +277,16 @@
       "type": "adapter",
       "mesh": "adapter_r5to1.obj",
       "texture": "adapter.png",
-      "mass": 200,
+      "mass": 1209.56,
+      "radius": 5.0,
+      "height": 2.5
+    },
+    {
+      "name": "adapter_r5to3",
+      "type": "adapter",
+      "mesh": "adapter_r5to3.obj",
+      "texture": "adapter.png",
+      "mass": 1911.89,
       "radius": 5.0,
       "height": 2.5
     },
@@ -256,7 +295,7 @@
       "type": "nose_cap",
       "mesh": "nose_cap.obj",
       "texture": "nose_cap.png",
-      "mass": 200,
+      "mass": 99.89,
       "radius": 1.0,
       "height": 0.5
     },
@@ -265,7 +304,7 @@
       "type": "nose_cap",
       "mesh": "nose_cap_r3h1.5.obj",
       "texture": "nose_cap.png",
-      "mass": 200,
+      "mass": 2696.93,
       "radius": 3.0,
       "height": 1.5
     },
@@ -274,7 +313,7 @@
       "type": "nose_cap",
       "mesh": "nose_cap_r5h2.5.obj",
       "texture": "nose_cap.png",
-      "mass": 200,
+      "mass": 12485.78,
       "radius": 5.0,
       "height": 2.5
     }
