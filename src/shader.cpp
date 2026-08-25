@@ -32,10 +32,21 @@ void Shader::FromFile(const std::string& fileName)
 
     glValidateProgram(m_program);
     check_gl_error();
-    CheckShaderError(m_program, GL_LINK_STATUS, true, "Invalid shader program");
+    CheckShaderError(m_program, GL_VALIDATE_STATUS, true, "Invalid shader program");
     check_gl_error();
 
-    for(unsigned int i = 0; i < uniformNames.size(); i++) {
+    // m_uniforms is otherwise indeterminate (Shader is plain `new`ed);
+    // setUniform_* must never hand a garbage location to glUniform*.
+    for(unsigned int i = 0; i < MAX_NUM_UNIFORMS; i++) {
+        m_uniforms[i] = GL_INVALID_INDEX;
+    }
+    if(uniformNames.size() > MAX_NUM_UNIFORMS) {
+        std::cerr << "ERROR: shader " << fileName << " registered "
+                  << uniformNames.size() << " uniforms but MAX_NUM_UNIFORMS is "
+                  << MAX_NUM_UNIFORMS << "; the extra names are dropped "
+                  "(bump MAX_NUM_UNIFORMS in shader.h)" << std::endl;
+    }
+    for(unsigned int i = 0; i < uniformNames.size() && i < MAX_NUM_UNIFORMS; i++) {
         m_uniforms[i] = glGetUniformLocation(m_program, uniformNames[i]);
         check_gl_error();
 
@@ -80,27 +91,48 @@ void Shader::registerUniforms(std::vector<const char *> names) {
     }
 }
 
+// A registered-but-optimized-out uniform has location GL_INVALID_INDEX;
+// writing it would raise GL_INVALID_OPERATION on every call (the terrain and
+// sun draw paths used to do this per patch pass), so no-op instead.
 void Shader::setUniform_i(int index, int v) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
     glUniform1i(m_uniforms[index], v);
 }
 
 void Shader::setUniform_vec1(int index, float v) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
     glUniform1f(m_uniforms[index], v);
 }
 
 void Shader::setUniform_vec2(int index, const glm::vec2 & v2) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
     glUniform2f(m_uniforms[index], v2.x, v2.y);
 }
 
 void Shader::setUniform_vec3(int index, const glm::vec3 & v3) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
     glUniform3f(m_uniforms[index], v3.x, v3.y, v3.z);
 }
 
 void Shader::setUniform_vec4(int index, const glm::vec4 & v4) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
     glUniform4f(m_uniforms[index], v4.x, v4.y, v4.z, v4.w);
 }
 
 void Shader::setUniform_mat4(int index, const glm::mat4 & m4) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
     glUniformMatrix4fv(m_uniforms[index], 1, GL_FALSE, &m4[0][0]);
 }
 
