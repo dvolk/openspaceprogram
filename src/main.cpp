@@ -3236,6 +3236,12 @@ int main(int argc, char **argv)
                 }
                 v->partDefs.push_back(defSml);
             }
+            /* These hand-built ships bypass build_ship(), which is the only
+               place partStages (the per-part stage index, kept parallel to
+               parts) gets set -- so seed it here. All parts are passive
+               single-stage tanks, so the value is a placeholder; init()
+               only requires the vector to be parallel to parts. */
+            v->partStages.assign(v->parts.size(), 1);
             v->controllerIndex = 0;
             v->init();
             v->setVelocity(glm::dvec3(0, 0, 0));
