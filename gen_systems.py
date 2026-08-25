@@ -42,6 +42,11 @@ eerbon = {
             "seed": 0,
             "has_sea": True,
             "power_scaler": 3,
+            # N2/O2 rim (see reports/atmosphere2026_08_25)
+            "surface": {
+                "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
+                               "power": 4.0, "intensity": 0.7},
+            },
             "moves": False,
             "inertial": {
                 "soi": 84159286,
@@ -158,6 +163,9 @@ SURFACES = {
                     [0.45, [0.45, 0.55, 0.20]],
                     [0.8, [0.55, 0.45, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
+        # N2/O2 rim (see reports/atmosphere2026_08_25)
+        "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
+                       "power": 4.0, "intensity": 0.7},
     },
     "Mun": {
         "amplitude": 1500,
@@ -196,6 +204,9 @@ SURFACES = {
         "palette": [[0.0, [0.25, 0.55, 0.25]],
                     [0.7, [0.50, 0.60, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
+        # N2/O2 rim (see reports/atmosphere2026_08_25)
+        "atmosphere": {"color": [0.30, 0.55, 0.90], "thickness": 12000,
+                       "power": 4.0, "intensity": 0.7},
     },
     "Vall": {
         "amplitude": 2000,

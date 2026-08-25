@@ -258,7 +258,17 @@
               1.0
             ]
           ]
-        ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.3,
+            0.5,
+            1.0
+          ],
+          "thickness": 15000,
+          "power": 4.0,
+          "intensity": 0.7
+        }
       },
       "moves": false,
       "inertial": {
@@ -613,7 +623,17 @@
               1.0
             ]
           ]
-        ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.3,
+            0.55,
+            0.9
+          ],
+          "thickness": 12000,
+          "power": 4.0,
+          "intensity": 0.7
+        }
       },
       "moves": false,
       "inertial": {

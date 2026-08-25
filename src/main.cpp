@@ -154,6 +154,17 @@ struct PaletteStop {
     glm::vec3 color;
 };
 
+// Per-body atmosphere appearance (optional "surface.atmosphere" block).
+// v1 is a single Fresnel limb-glow shell drawn over the terrain; see
+// reports/atmosphere2026_08_25/atmosphere.md for the design + roadmap.
+struct AtmosphereParams {
+    bool enabled = false;
+    glm::vec3 color = glm::vec3(0.3f, 0.5f, 1.0f);  // rim tint (N2/O2 blue)
+    float thickness = 0.0f;   // [m] shell radius above radius + max_height
+    float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
+    float intensity = 1.0f;   // overall alpha scale
+};
+
 // Per-body terrain + color parameters (the optional "surface" JSON block).
 // Defaults reproduce the legacy hardcoded behavior.
 struct Surface {
@@ -170,6 +181,7 @@ struct Surface {
     glm::vec3 seed_offset = glm::vec3(0.0f);
     bool bands = false;          // gas giant: smooth sphere, latitude bands
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
+    AtmosphereParams atmosphere; // optional rim; enabled => body has air
 
     COLOUR PaletteColor(float t) const {
         const std::vector<PaletteStop> &s = palette;
@@ -207,6 +219,8 @@ struct Surface {
 struct TerrainBody {
     GeoPatch *patches[6];
     Shader *shader;
+    Model *atmosphere = nullptr; // Fresnel rim shell (built on demand)
+    float atm_radius = 0.0f;     // shell radius [m]; 0 = no atmosphere
     float radius;
     double mu;
     double g; // [m/s^2]
@@ -225,6 +239,7 @@ struct TerrainBody {
 
     ~TerrainBody() {
         for(int i = 0; i < 6; i++) { delete patches[i]; }
+        delete atmosphere;
         delete frame;
         delete rot_frame;
     }
@@ -232,6 +247,7 @@ struct TerrainBody {
     COLOUR (*colour_func)(float v, float vmin, float vmax);
 
     Mesh *create_grid_mesh(bool has_collision, bool has_skirt, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
+    Mesh *create_atmosphere_mesh(float radius); // defined below with the other mesh builders
     float GetTerrainHeight(const glm::vec3& p);
     float GetTerrainHeightUnscaled(const glm::vec3& p);
     float ScaleHeightNoise(float noise);
@@ -254,6 +270,60 @@ struct TerrainBody {
         patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6);
         patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7);
         patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5);
+    }
+
+    // Build the atmosphere rim shell on demand. It sits just above the
+    // highest terrain so no peak pokes through: base radius + scaled relief
+    // + the data thickness. See reports/atmosphere2026_08_25 for the model.
+    void BuildAtmosphere(Shader *atmosphereshader) {
+        if(atmosphere != nullptr || !surface.atmosphere.enabled) return;
+        float shell_radius = radius + surface.max_height
+                             + surface.atmosphere.thickness;
+        if(shell_radius <= radius) shell_radius = radius * 1.02f;
+        Mesh *m = create_atmosphere_mesh(shell_radius);
+        atmosphere = new Model;
+        atmosphere->FromData(m, atmosphereshader, NULL);
+        atm_radius = shell_radius;
+    }
+
+    void DrawAtmosphere(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
+        if(atmosphere == nullptr) return;
+
+        // The shell's inner surface is back-face-culled once the camera is
+        // inside it, so it's invisible from the surface anyway; skip the draw
+        // call explicitly rather than issue a fully-culled one (a proper
+        // interior sky-dome is the §8.5 enhancement).
+        const glm::dvec3 center = glm::dvec3(transform[3]);
+        if(glm::length(camera->GetPos() - center) < (double)atm_radius) return;
+
+        const glm::dmat4 &View = camera->GetView();
+        glm::dmat4 ModelView = View * transform;   // double, then truncate
+        glm::mat4 ModelViewFloat = ModelView;
+        const glm::mat4 &Projection = camera->GetProjection();
+        const glm::mat4 &Model = transform;
+
+        atmosphere->shader->Bind();
+        atmosphere->shader->setUniform_mat4(0, Projection * ModelViewFloat);
+        atmosphere->shader->setUniform_mat4(1, Model);            // world normal/pos
+        atmosphere->shader->setUniform_vec3(2, glm::vec3(camera->GetPos()));
+        atmosphere->shader->setUniform_vec3(3, surface.atmosphere.color);
+        atmosphere->shader->setUniform_vec1(4, surface.atmosphere.intensity);
+        atmosphere->shader->setUniform_vec1(5, surface.atmosphere.power);
+        // Direction light travels (sun -> planet); the same value the terrain
+        // lights with, so the rim brightens on the day side and fades on the
+        // night side instead of glowing uniformly ("neon night-side" artifact).
+        atmosphere->shader->setUniform_vec3(6,
+            glm::vec3(SunlightDir(this, sun, renderFrame)));
+
+        // Transparent: blend over whatever is behind (terrain haze / starfield
+        // ring), keep depth test so closer opaque things still occlude us, but
+        // don't write depth so we don't cull the plumes/HUD or each other.
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(false);
+        atmosphere->mesh->Draw();
+        glDepthMask(true);
+        glDisable(GL_BLEND);
     }
 
     static glm::dvec3 SunlightDir(TerrainBody *planet, TerrainBody *sun,
@@ -493,6 +563,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
             s.bands = sv.value("bands", false);
             if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
                 s.band_count = std::max(1, sv["band_count"].get<int>());
+            }
+            if(sv.contains("atmosphere") && sv["atmosphere"].is_object()) {
+                const nlohmann::json &av = sv["atmosphere"];
+                s.atmosphere.enabled = true;
+                if(av.contains("color") && av["color"].is_array()
+                   && av["color"].size() >= 3) {
+                    const nlohmann::json &c = av["color"];
+                    s.atmosphere.color = glm::vec3(c[0].get<float>(),
+                                                   c[1].get<float>(),
+                                                   c[2].get<float>());
+                }
+                // thickness omitted => a visible rim at ~2% of the radius
+                s.atmosphere.thickness =
+                    av.value("thickness", (float)(body->radius * 0.02));
+                s.atmosphere.power = av.value("power", 3.0f);
+                s.atmosphere.intensity = av.value("intensity", 1.0f);
             }
         }
         // Scaled relief a full-amplitude peak ends up at, after
@@ -2513,6 +2599,40 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, bool has_skirt, glm::vec
     return grid_mesh;
 }
 
+// Smooth UV sphere for the atmosphere rim. No noise: it must be a clean
+// shell just above the terrain. Winding is outward = front (CCW seen from
+// outside) so back-face culling keeps the near hemisphere the camera sees.
+Mesh *TerrainBody::create_atmosphere_mesh(float radius) {
+    Mesh *mesh = new Mesh;
+    const int lat = 32, lon = 32;
+    std::vector<PosNorColVertex> verts;
+    verts.reserve((lat + 1) * (lon + 1));
+    for(int i = 0; i <= lat; i++) {
+        float theta = (float)i / lat * M_PI;              // 0..pi (pole->pole)
+        for(int j = 0; j <= lon; j++) {
+            float phi = (float)j / lon * 2.0f * M_PI;     // 0..2pi
+            glm::vec3 dir = glm::vec3(
+                std::sin(theta) * std::cos(phi),
+                std::cos(theta),
+                std::sin(theta) * std::sin(phi));
+            verts.push_back(PosNorColVertex(dir * radius, dir, glm::vec3(1,1,1)));
+        }
+    }
+    std::vector<unsigned int> idx;
+    idx.reserve(lat * lon * 6);
+    for(int i = 0; i < lat; i++) {
+        for(int j = 0; j < lon; j++) {
+            unsigned int first  = i * (lon + 1) + j;
+            unsigned int second = (i + 1) * (lon + 1) + j;
+            idx.push_back(first);  idx.push_back(first + 1);  idx.push_back(second);
+            idx.push_back(second); idx.push_back(first + 1);  idx.push_back(second + 1);
+        }
+    }
+    mesh->FromData(verts.data(), (unsigned int)verts.size(),
+                   idx.data(), (unsigned int)idx.size(), true);
+    return mesh;
+}
+
 glm::dvec3 projectVecOntoPlane(const glm::dvec3 & vec, const glm::dvec3 & normal) {
     return vec - glm::dot(vec, normal) * normal;
 }
@@ -2988,6 +3108,14 @@ int main(int argc, char **argv)
     sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
     sunshader->FromFile("./res/sunShader");
 
+    // Atmosphere rim shell (Fresnel limb glow). See reports/atmosphere2026_08_25.
+    Shader *atmosphereshader = new Shader;
+    atmosphereshader->registerAttribs({ "position", "normal" });
+    atmosphereshader->registerUniforms({ "MVP", "Normal", "cameraPos",
+                                         "color", "intensity", "power",
+                                         "lightDirection" });
+    atmosphereshader->FromFile("./res/atmosphereShader");
+
     Shader *skyboxshader = new Shader;
     skyboxshader->registerAttribs({ "position" });
     skyboxshader->registerUniforms({ "projectionview" });
@@ -3021,6 +3149,12 @@ int main(int argc, char **argv)
     }
 
     std::vector<TerrainBody *> planets = sys.bodies;
+
+    // Build the atmosphere rim shells now that the bodies + shader exist.
+    // Bodies without an atmosphere are no-ops (no mesh, no draw cost).
+    for(auto&& b : planets) {
+        b->BuildAtmosphere(atmosphereshader);
+    }
 
     /* The ships are built from JSON: the parts catalog (res/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
@@ -4402,6 +4536,17 @@ int main(int argc, char **argv)
                 skybox.Draw(camera, skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
             }
 
+            // Atmosphere rims: transparent Fresnel shells, drawn after the
+            // skybox (the starfield is the background) so the rim ring blends
+            // over it and the horizon haze blends over the already-drawn
+            // terrain. Depth-write off; no-ops for bodies without an
+            // atmosphere. See reports/atmosphere2026_08_25.
+            if(world_drawing == true) {
+                for(auto&& planet : planets) {
+                    planet->DrawAtmosphere(camera, sun, ship->frame);
+                }
+            }
+
             /* draw engine plume */
             glm::dmat4 View = camera->GetView();
             glm::mat4 Projection = camera->GetProjection();
@@ -4901,6 +5046,7 @@ int main(int argc, char **argv)
     delete partsshader;
     delete sunshader;
     delete terrainshader;
+    delete atmosphereshader;
     delete billboardshader;
     delete skyboxshader;
     delete postfx;
