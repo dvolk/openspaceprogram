@@ -858,9 +858,15 @@ public:
        parked out of the Bullet world and the rigid cluster's pose is
        re-derived from the conic every tick (attitude frozen inertially,
        like a torque-free body). Exact at any time accel, zero solver
-       cost. While on rails ship->frame is the SOI body's INERTIAL frame
-       node (where the trajectory is a conic). */
+       cost. While coasting, ship->frame is the SOI body's INERTIAL frame
+       node (where the trajectory is a conic). A grounded ship instead
+       FREEZES: same parking, but the pose stays static in the rotating
+       surface frame (railFrozen) -- that is what enables rails warp with
+       pad ships aboard. */
     bool onRails = false;
+    bool railFrozen = false;    // grounded park: no conic, pose fixed in the
+                                // (rotating) frame -- the planet's spin is
+                                // carried by the render-frame transform
     glm::dvec3 rail_pos;      // m, cluster COM in ship->frame coords
     glm::dvec3 rail_vel;      // m/s, inertial, ship->frame coords
     glm::dmat3 rail_orient = glm::dmat3(1.0); // cluster axes -> frame axes
@@ -1643,13 +1649,41 @@ public:
         }
     }
 
-    /* Park this ship out of the physics world and coast it analytically
-       on its conic. Refuses (returns false) and changes nothing if the
-       ship is not safely in free fall: a periapsis inside the terrain
-       band means the ship is surface-supported, and a conic would sink
-       it through the ground. */
+    /* Rails classification: a FLYING ship (periapsis clear of the terrain
+       band) coasts on its conic; a GROUNDED one (periapsis inside the
+       band) can only freeze in its rotating surface frame. Anything else
+       -- e.g. a suborbital descent -- is not rail-eligible. */
+    bool canRail() {
+        if(onRails) { return true; }
+        Frame *inertial = frame->getNonRotFrame();
+        glm::dvec3 p = get_center_of_mass();
+        glm::dvec3 v(0.0);
+        double mtot = 0.0;
+        for(auto&& part : parts) {
+            v += GetVelocity(part) * part->mass;
+            mtot += part->mass;
+        }
+        v /= mtot;
+        if(frame != inertial) {
+            v += frame->GetStasisVelocity(p);
+            v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
+            p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
+        }
+        const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
+        if(el.periapsis <= inertial->body->radius + 3000.0) {
+            return frame->isRotFrame();   // grounded: freeze needs the surface frame
+        }
+        return true;
+    }
+
+    /* Park this ship out of the physics world and coast it analytically.
+       Refuses (returns false) and changes nothing if the ship is not
+       rail-eligible (see canRail). Flying ships follow their conic in the
+       body's inertial node; grounded ships freeze in the rotating surface
+       frame. */
     bool goOnRails() {
         if(onRails) { return true; }
+        if(!canRail()) { return false; }
 
         /* COM state in the body's inertial frame node, where the
            trajectory is a Kepler conic (same transform the HUD uses).
@@ -1667,6 +1701,7 @@ public:
             mtot += part->mass;
         }
         v /= mtot;
+        const glm::dvec3 vel_frame = v;   // pre-transform, old frame coords
         if(frame != inertial) {
             v += frame->GetStasisVelocity(p);
             v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
@@ -1674,12 +1709,7 @@ public:
         }
 
         const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
-        /* 3 km clears the loudest terrain noise in the system data
-           (amplitude 2.5 km), and the conic's shape never changes while
-           the ship coasts unperturbed, so it stays clear. */
-        if(el.periapsis <= inertial->body->radius + 3000.0) {
-            return false;
-        }
+        const bool grounded = el.periapsis <= inertial->body->radius + 3000.0;
 
         /* the cluster pose at park time, relative to its COM (cluster
            axes == old frame axes; rail_orient carries them into the
@@ -1690,10 +1720,22 @@ public:
             rail_rel_pos[i] = GetPosition(parts[i]) - com_frame;
             rail_rel_rot[i] = GetOrient(parts[i]);
         }
-        rail_pos = p;
-        rail_vel = v;
-        rail_orient = oldFrame->GetOrientRelTo(inertial);
-        frame = inertial;   // on rails, ship->frame == its inertial node
+
+        if(grounded) {
+            /* freeze: the pose is static in the rotating surface frame
+               (its transforms already are), so the rail state just holds
+               it; the planet's spin carries it via the render transform. */
+            rail_pos = com_frame;
+            rail_vel = vel_frame;
+            rail_orient = glm::dmat3(1.0);
+            railFrozen = true;
+        } else {
+            rail_pos = p;
+            rail_vel = v;
+            rail_orient = oldFrame->GetOrientRelTo(inertial);
+            frame = inertial;   // on rails, ship->frame == its inertial node
+            railFrozen = false;
+        }
 
         /* out of the world: welds first (they reference the bodies) */
         for(size_t c = 0; c < constraints.size(); c++) {
@@ -1703,10 +1745,15 @@ public:
         for(auto&& part : parts) { RemoveBody(part); }
 
         onRails = true;
-        writeRailPose();
-        printf("@@@ %s parked on rails around %s: sma=%.6g m ecc=%.4f\n",
-               name.c_str(), inertial->body->name.c_str(),
-               el.semi_major, el.ecc);
+        if(!railFrozen) { writeRailPose(); }
+        if(grounded) {
+            printf("@@@ %s frozen on rails (grounded around %s)\n",
+                   name.c_str(), frame->body->name.c_str());
+        } else {
+            printf("@@@ %s parked on rails around %s: sma=%.6g m ecc=%.4f\n",
+                   name.c_str(), inertial->body->name.c_str(),
+                   el.semi_major, el.ecc);
+        }
         return true;
     }
 
@@ -1731,15 +1778,17 @@ public:
         }
         NeverSleep(controller);
         onRails = false;
+        railFrozen = false;
         printf("@@@ %s left the rails around %s\n",
                name.c_str(), frame->body->name.c_str());
     }
 
     /* Per-tick rail advance: propagate the conic by the tick's simulated
        duration (exact for any step size), check SOI boundaries, refresh
-       the parked transforms. */
+       the parked transforms. A frozen (grounded) ship has nothing to
+       propagate: its pose is static in the rotating frame. */
     void railsTick(const double step) {
-        if(!onRails) { return; }
+        if(!onRails || railFrozen) { return; }
         propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
                         rail_pos, rail_vel);
         railsSwitchFrames();
@@ -3119,10 +3168,10 @@ int main(int argc, char **argv)
     int activeIdx = 0;
     Vehicle *ship = ships[0];
 
-    /* Idle ships that are safely in free fall coast analytically ("on
-       rails"): exact two-body propagation at any time accel, zero solver
-       cost. Pad ships refuse (their osculating orbit intersects the
-       terrain band) and stay in the physics world. */
+    /* Idle ships park on rails: flying ones coast on their conic, pad
+       ships freeze in the surface frame (their pose rides the planet's
+       spin via the render transform). Ships that are neither in free
+       fall nor grounded refuse and stay in the physics world. */
     for(size_t i = 0; i < ships.size(); i++) {
         if((int)i != activeIdx) { ships[i]->goOnRails(); }
     }
@@ -3228,9 +3277,36 @@ int main(int argc, char **argv)
     SDL_SetRelativeMouseMode(SDL_FALSE);
 
     const double dt = 1.0/50.0; // TODO explain why 50
+
+    /* Rails warp: at this accel and above nobody is integrated -- every
+       ship coasts on rails (or sits frozen on the ground) and the Bullet
+       world is not stepped at all, so the cost per tick is O(ships).
+       Below it the active ship is always in the physics world. */
+    const int kRailsWarp = 10000;
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
     int time_accel = initial_time_accel;
+
+    /* Starting the game directly in rails warp: the active ship parks
+       too (works on the pad -- that is the frozen mode), unless some
+       ship is not rail-eligible, in which case clamp to physics warp. */
+    if(time_accel >= kRailsWarp) {
+        bool all_eligible = true;
+        for(auto *s : ships) {
+            if(!s->canRail()) {
+                printf("Rails warp refused at start: '%s' is neither in free "
+                       "fall nor grounded; clamping time accel to 1000\n",
+                       s->name.c_str());
+                all_eligible = false;
+                break;
+            }
+        }
+        if(all_eligible) {
+            for(auto *s : ships) { s->goOnRails(); }
+        } else {
+            time_accel = 1000;
+        }
+    }
     int cam_speed = 1;
     bool orbitInfoWindow = true;
     bool orbitMapWindow = true;
@@ -3278,17 +3354,19 @@ int main(int argc, char **argv)
     }
 
     // Switch the active (controlled) ship. The ship being left is released:
-    // throttle zeroed, armed thrust + rotation commands cleared, so it
-    // coasts under physics only (no residual forces, no fuel flow). The
-    // orbit camera recenters on the ship being taken.
+    // throttle zeroed, armed thrust + rotation commands cleared, and it
+    // parks on rails (coasting or frozen) if it can. The ship being taken
+    // re-enters physics. Taking control during rails warp drops the warp
+    // to 1000 -- the active ship is now being integrated. The orbit
+    // camera recenters on the ship being taken.
     auto select_ship = [&](int idx) {
         if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
         ships[activeIdx]->releaseControl();
-        // the ship being left coasts on rails if it is in free fall
         ships[activeIdx]->goOnRails();
         activeIdx = idx;
-        ships[activeIdx]->leaveRails();   // the ship being taken re-enters physics
+        ships[activeIdx]->leaveRails();
         ship = ships[activeIdx];
+        if(time_accel >= kRailsWarp) { time_accel = 1000; }
         focusBody = 0;   // back to the "ship" focus target
         if(camMode == CAM_ORBIT) {
             orbitCam->Follow(ship->get_center_of_mass());
@@ -3296,6 +3374,22 @@ int main(int argc, char **argv)
         }
         printf("Active ship %d of %d: %s\n",
                activeIdx + 1, (int)ships.size(), ship->name.c_str());
+    };
+
+    /* Enter rails warp: park every ship (flying ones coast on their
+       conic, grounded ones freeze on the ground). Refuses -- and keeps
+       the current accel -- if any ship is not rail-eligible, e.g. a
+       suborbital descent in progress. */
+    auto enter_rails_warp = [&]() -> bool {
+        for(auto *s : ships) {
+            if(!s->canRail()) {
+                printf("Rails warp refused: '%s' is neither in free fall nor "
+                       "grounded (warp stays %d)\n", s->name.c_str(), time_accel);
+                return false;
+            }
+        }
+        for(auto *s : ships) { s->goOnRails(); }
+        return true;
     };
 
     /* --selftest-stage: exercise the staging path on the first multi-stage
@@ -3313,6 +3407,7 @@ int main(int argc, char **argv)
             printf("selftest-stage: no multi-stage ship in the fleet\n");
             running = false;
         } else {
+            stager->leaveRails();   // idle pad ships park frozen; staging needs physics
             printf("== selftest-stage: %s ==\n", stager->name.c_str());
             printf("before: parts=%zu mass=%.1f kg stage=%d/%d TWR=%.2f\n",
                    stager->parts.size(), stager->getMass(),
@@ -3340,10 +3435,11 @@ int main(int argc, char **argv)
             printf("selftest-rails: forcing time accel to 100 (was paused)\n");
         }
         for(size_t i = 0; i < ships.size(); i++) {
-            if(ships[i]->onRails) { rails_test_idx = (int)i; break; }
+            // a COASTING ship (frozen pad ships have no conic to conserve)
+            if(ships[i]->onRails && !ships[i]->railFrozen) { rails_test_idx = (int)i; break; }
         }
         if(rails_test_idx < 0) {
-            printf("selftest-rails: no ship on rails in the fleet\n");
+            printf("selftest-rails: no coasting ship on rails in the fleet\n");
             running = false;
         } else {
             Vehicle *r = ships[rails_test_idx];
@@ -3486,11 +3582,26 @@ int main(int argc, char **argv)
                         if(time_accel == 0) {
                             time_accel = 1;
                         }
+                    } else if(time_accel < 100000) {
+                        // 1000 -> 10000 -> 100000: rails warp. Every ship
+                        // coasts (or freezes on the ground) and the physics
+                        // world stops stepping; refuses if any ship is not
+                        // rail-eligible.
+                        if(enter_rails_warp()) {
+                            time_accel *= 10;
+                        }
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_COMMA) {
                     if(time_accel > 1) {
+                        const bool leaving_rails_warp =
+                            (time_accel >= kRailsWarp) && (time_accel / 10 < kRailsWarp);
                         time_accel /= 10;
+                        if(leaving_rails_warp) {
+                            // dropped out of rails warp: the active ship
+                            // re-enters physics (idle ships stay parked)
+                            ship->leaveRails();
+                        }
                     }
                     else if(time_accel == 1) {
                         time_accel = 0;
@@ -3553,6 +3664,12 @@ int main(int argc, char **argv)
                     // time running (a paused separation would leave the
                     // survivors frozen mid-air).
                     if(!ev.key.repeat && camMode == CAM_ORBIT && time_accel > 0) {
+                        // staging needs the parts in the physics world:
+                        // wake a ship parked on rails first
+                        if(ship->onRails) {
+                            ship->leaveRails();
+                            if(time_accel >= kRailsWarp) { time_accel = 1; }
+                        }
                         int dropped = ship->separateStage(ship->activeStage());
                         if(dropped > 0) {
                             printf("Stage: dropped %d part(s); now on stage %d of %d\n",
@@ -3675,6 +3792,22 @@ int main(int argc, char **argv)
 
             if (camMode == CAM_ORBIT) {
                 bool game_running = (time_accel > 0);
+                /* touching the controls wakes a ship parked on rails: it
+                   re-enters physics and rails warp drops to 1x (you cannot
+                   maneuver on rails). */
+                if(ship->onRails && time_accel >= kRailsWarp) {
+                    if(isDown(SDL_SCANCODE_W) || isDown(SDL_SCANCODE_S) ||
+                       isDown(SDL_SCANCODE_A) || isDown(SDL_SCANCODE_D) ||
+                       isDown(SDL_SCANCODE_Q) || isDown(SDL_SCANCODE_E) ||
+                       isDown(SDL_SCANCODE_I) || isDown(SDL_SCANCODE_X) ||
+                       isDown(SDL_SCANCODE_B) || isDown(SDL_SCANCODE_N) ||
+                       isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F)) {
+                        ship->leaveRails();
+                        time_accel = 1;
+                        printf("Control input: '%s' left the rails, warp -> 1\n",
+                               ship->name.c_str());
+                    }
+                }
                 // pitch
                 if (isDown(SDL_SCANCODE_W)) { ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
                 if (isDown(SDL_SCANCODE_S)) { ship->Command(ShipCmd(Pitch, -1.0f), game_running); }
@@ -3707,6 +3840,14 @@ int main(int argc, char **argv)
 
             if(time_accel != 0) {
                 sun->frame->UpdateOrbitRails(time, dt * time_accel);
+
+                if(time_accel >= kRailsWarp) {
+                    /* Rails warp: every ship coasts analytically (or sits
+                       frozen on the ground) and the Bullet world is not
+                       stepped at all -- O(ships) per tick instead of a
+                       substep count that explodes with the accel. */
+                    for(auto *s : ships) { s->railsTick(dt * time_accel); }
+                } else {
 
                 // per-ship SOI bookkeeping: each ship tracks its own
                 // position in the shared frame tree (an idle ship can
@@ -3756,6 +3897,8 @@ int main(int argc, char **argv)
                     }
                     physics_tick(h);
                 }
+
+                } // end physics-warp branch (time_accel < kRailsWarp)
 
                 /* --spin-log (or --radial-test): spin diagnostics, once per
                    0.5 s of sim time (after the last substep's solve, so the
@@ -4152,7 +4295,8 @@ int main(int argc, char **argv)
                 }
                 ImGui::Text("Patches: %d", ship->m_parent->CountPatches());
                 ImGui::Text("Cam speed: %d", cam_speed);
-                ImGui::Text("Time Accel: %d", time_accel);
+                ImGui::Text("Time Accel: %d%s", time_accel,
+                            time_accel >= kRailsWarp ? " (rails)" : "");
                 ImGui::Text("Camera altitude: %0.f",
                             glm::length(camera->GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera->GetPos())));
                 ImGui::Text("Camera ASL: %0.f", glm::length(camera->GetPos()) - ship->m_parent->radius);
