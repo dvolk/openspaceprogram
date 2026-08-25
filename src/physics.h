@@ -108,6 +108,7 @@ glm::dvec3 getRelAxis_(Body *body, int n);
 glm::dvec3 getInertiaDiag(Body *body);
 
 void SetVelocity(Body *body, glm::dvec3 vel);
+void SetAngVelocity(Body *body, glm::dvec3 vel);
 void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);
 void setGravity(Body *body, double acc);
 

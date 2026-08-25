@@ -1640,12 +1640,17 @@ public:
     /* Write the rail state into the parked part transforms (once per
        tick). Draw, get_center_of_mass and everything else that reads
        Bullet transforms then sees the railed ship's current pose even
-       though its bodies are not in the world. */
+       though its bodies are not in the world. The velocities are kept in
+       sync too -- the cluster is rigid and torque-free, so every part
+       shares the rail velocity with zero spin, and readers like
+       --orbit-log and the HUD fit their elements to consistent data. */
     void writeRailPose() {
         for(size_t i = 0; i < parts.size(); i++) {
             setPosRot(parts[i],
                       rail_pos + rail_orient * rail_rel_pos[i],
                       rail_orient * rail_rel_rot[i]);
+            SetVelocity(parts[i], rail_vel);
+            SetAngVelocity(parts[i], glm::dvec3(0.0));
         }
     }
 
@@ -1758,14 +1763,13 @@ public:
     }
 
     /* Re-enter physics from rails: rebuild the Bullet state from the rail
-       state and hand the cluster back to the integrator. The bodies'
-       transforms already track the rail state (writeRailPose), so this is
-       just re-register, re-weld, set the velocity. */
+       state and hand the cluster back to the integrator. Pose and velocity
+       already track the rail state (writeRailPose), so this is just
+       re-register and re-weld. */
     void leaveRails() {
         if(!onRails) { return; }
         writeRailPose();
         for(auto&& part : parts) {
-            SetVelocity(part, rail_vel);
             AddPhysicsBody(part);
         }
         /* GlueTogether locks the CURRENT relative pose, which is exactly

@@ -430,6 +430,11 @@ void SetVelocity(Body *b, glm::dvec3 vel) {
     getRigidBody(b)->setLinearVelocity(btvel);
 }
 
+void SetAngVelocity(Body *b, glm::dvec3 vel) {
+    btVector3 btvel = btVector3(vel.x, vel.y, vel.z);
+    getRigidBody(b)->setAngularVelocity(btvel);
+}
+
 void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 {
     btTransform t;
