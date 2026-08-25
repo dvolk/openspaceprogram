@@ -3854,6 +3854,8 @@ int main(int argc, char **argv)
                         // rail-eligible.
                         if(enter_rails_warp()) {
                             time_accel *= 10;
+                            printf("Rails warp: time accel %d (ships on rails)\n",
+                                   time_accel);
                         }
                     }
                 }
@@ -3866,6 +3868,7 @@ int main(int argc, char **argv)
                             // dropped out of rails warp: the active ship
                             // re-enters physics (idle ships stay parked)
                             ship->leaveRails();
+                            printf("Rails warp: exited, time accel %d\n", time_accel);
                         }
                     }
                     else if(time_accel == 1) {

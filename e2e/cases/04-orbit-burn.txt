@@ -1,0 +1,13 @@
+# Orbit burn: in a circular orbit, ramp throttle (R) and fire (I). A non-zero
+# burn changes specific orbital energy E (a constant between burns), so assert
+# |ΔE| is significant. Deliberately direction-independent -- the spawn attitude
+# isn't prograde, so a prograde/retrograde assertion would be flaky.
+NAME orbit-burn
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 100
+ARGS --timeout 12 --orbit-log --orbit-interval 0.5
+ARGS --sim-press 500,500,R
+ARGS --sim-press 1500,3000,I
+EXPECT [orbitlog]
+CHECK len(orbit) >= 2 and abs(last(orbit)["E"] - first(orbit)["E"]) > 1e5
+FORBID GL_
+FORBID error:

@@ -1,0 +1,8 @@
+# Minimal launch: the game starts, reaches the main loop, and exits cleanly
+# on --timeout. Catches GL-context / init crashes and any `error:` on boot.
+# No input, no ship flags -- pure "does it run at all".
+NAME smoke
+ARGS --timeout 5
+EXPECT Main loop starting
+FORBID GL_
+FORBID error:

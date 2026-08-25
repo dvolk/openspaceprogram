@@ -1,0 +1,8 @@
+# Ship switch: load the 5-ship fleet; the active ship starts as #1 (racer)
+# and one TAB advances to #2 (tanker). Verifies the fleet + TAB command path.
+NAME ship-switch
+ARGS --fleet res/fleet.json --time-accel 1 --timeout 8
+ARGS --sim-press 1500,50,TAB
+EXPECT Active ship 2 of 5
+FORBID GL_
+FORBID error:

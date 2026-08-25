@@ -1,0 +1,13 @@
+# Spin regression: the two-tank "stacks" radial-test ship coasts in orbit
+# with --spin-log printing per-part angular velocity + contact forces. Guards
+# against a physics regression that NaNs the spin/contact math or crashes the
+# hand-built radial-test ship construction (it bypasses build_ship()).
+# FORBID nan: the %.3e NaN token; verified absent from healthy output.
+# (Not FORBID ing bare "inf" -- it would false-positive on words like "info".)
+NAME spin-regression
+ARGS --radial-test stacks --time-accel 100 --timeout 15 --spin-log
+EXPECT Main loop starting
+EXPECT [spin]
+FORBID GL_
+FORBID error:
+FORBID nan

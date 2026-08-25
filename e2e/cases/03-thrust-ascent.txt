@@ -1,0 +1,13 @@
+# Thrust ascent: on Moho (racer TWR ~2.3, the only body where the racer can
+# lift off), ramp throttle (R) then fire (I). The ship must gain altitude.
+# Direction-independent: only checks the altitude rose, not the trajectory.
+# Kerbin is too heavy for every current ship (all TWR < 1), hence Moho.
+NAME thrust-ascent
+ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
+ARGS --timeout 10 --dbg-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 3000,2000,I
+EXPECT [dbg]
+CHECK len(dbg) >= 2 and last(dbg)["alt"] - first(dbg)["alt"] > 10
+FORBID GL_
+FORBID error:
