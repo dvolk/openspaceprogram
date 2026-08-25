@@ -3,10 +3,18 @@
 
 struct SDL_Window;
 
+enum class WindowMode
+{
+    Windowed,    // decorated window at width x height
+    Borderless,  // no decorations, stays on the desktop
+    Fullscreen   // borderless fullscreen at the display's native mode
+};
+
 class Renderer
 {
 public:
-    Renderer(int width, int height, bool gl_debug = false);
+    Renderer(int width, int height,
+             WindowMode mode = WindowMode::Windowed, bool gl_debug = false);
 
     void Clear(float r, float g, float b, float a);
     void SwapBuffers();

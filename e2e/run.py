@@ -27,6 +27,7 @@ CHECK namespace (parsed from the game's stdout):
   dbg     list of dicts, one per [dbg] line: t, pos (3-tuple), alt,
           vel (3-tuple), v
   first / last                 first() / last() of a list
+  re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
 
 Stdlib only. Run from anywhere; the repo root is derived from this file.
@@ -193,6 +194,7 @@ def run_case(case):
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int,
+        "re": re,
     }
     for expr in case["check"]:
         try:

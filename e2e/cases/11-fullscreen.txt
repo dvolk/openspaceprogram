@@ -1,0 +1,11 @@
+# --fullscreen: borderless fullscreen. The size is the display mode, which
+# varies (Xvfb's default here is 1280x1040, a real monitor is whatever it
+# is), so assert the mode and a sane size with a regex instead of a literal.
+NAME fullscreen
+ARGS --fullscreen --timeout 4
+EXPECT Main loop starting
+CHECK re.search(r"window: [1-9]\d{2,4}x[1-9]\d{2,4} \(fullscreen\)", out)
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program

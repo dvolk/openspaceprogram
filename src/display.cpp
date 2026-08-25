@@ -11,16 +11,23 @@
 
 using namespace std;
 
-Renderer::Renderer(int width, int height, bool gl_debug)
+Renderer::Renderer(int width, int height, WindowMode mode, bool gl_debug)
 {
     int gl_major = 4;
     int gl_minor = 5;
     bool gl_core = true;
     m_gl_debug = gl_debug;
-    Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE; // TODO cli args
+    Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE;
+    if (mode == WindowMode::Borderless) {
+        window_flags |= SDL_WINDOW_BORDERLESS;
+    } else if (mode == WindowMode::Fullscreen) {
+        // Borderless fullscreen, not exclusive: no display mode change, so
+        // leaving fullscreen doesn't reconfigure the monitor.
+        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    }
     char window_title[] = "Open Space Program";
-    m_screen_width = 1920; // TODO cli args
-    m_screen_height = 1080;
+    m_screen_width = width;
+    m_screen_height = height;
   
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -60,7 +67,12 @@ Renderer::Renderer(int width, int height, bool gl_debug)
     SDL_GetCurrentDisplayMode(0, &current);
     check_gl_error();
 
-    m_window = SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, window_flags);
+    auto create_window = [&]() -> SDL_Window * {
+        return SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED,
+                                SDL_WINDOWPOS_CENTERED, m_screen_width,
+                                m_screen_height, window_flags);
+    };
+    m_window = create_window();
     check_gl_error();
     if(m_window == NULL) {
         // e.g. Xvfb/llvmpipe: no multisample GLX visual (same family of
@@ -69,7 +81,7 @@ Renderer::Renderer(int width, int height, bool gl_debug)
         printf("MSAA window creation failed (%s); retrying without MSAA\n", SDL_GetError());
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-        m_window = SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, window_flags);
+        m_window = create_window();
         check_gl_error();
     }
     assert(m_window);
@@ -95,7 +107,23 @@ Renderer::Renderer(int width, int height, bool gl_debug)
         SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &granted);
         printf("MSAA: %d sample(s)\n", granted);
     }
-    
+
+    // Trust the drawable size the compositor actually gave us: the WM may
+    // have clamped a windowed size to the work area, and fullscreen uses the
+    // display mode regardless of the requested size. Everything downstream
+    // (viewport, camera aspect, screenshots) reads m_screen_width/height.
+    int w = 0, h = 0;
+    SDL_GL_GetDrawableSize(m_window, &w, &h); // void in SDL2
+    if (w > 0 && h > 0) {
+        m_screen_width = w;
+        m_screen_height = h;
+    }
+    glViewport(0, 0, m_screen_width, m_screen_height);
+    check_gl_error();
+    static const char *mode_names[] = {"windowed", "borderless", "fullscreen"};
+    printf("window: %dx%d (%s)\n", m_screen_width, m_screen_height,
+           mode_names[static_cast<size_t>(mode)]);
+
     glEnable(GL_DEPTH_TEST);
     check_gl_error();
     glDepthFunc(GL_LESS);

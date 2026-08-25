@@ -1,0 +1,10 @@
+# --width/--height: the requested windowed size must be what the Renderer
+# reports (drawable size query + viewport), and the boot must stay clean.
+NAME resolution
+ARGS --width 640 --height 480 --timeout 4
+EXPECT Main loop starting
+EXPECT window: 640x480 (windowed)
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program

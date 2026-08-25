@@ -61,8 +61,6 @@
 ImFont *bigger;
 bool planetsWindow = false;
 
-static const int DISPLAY_WIDTH = 1920; // should be cli args
-static const int DISPLAY_HEIGHT = 1080;
 static const int FPS = 60; // TODO use FPS from display?
 
 struct TerrainBody;
@@ -2932,6 +2930,24 @@ int main(int argc, char **argv)
                  "Enable the OpenGL debug output callback (GL_DEBUG_* "
                  "messages print as they occur)");
 
+    int screen_width = 1920;
+    app.add_option("--width", screen_width,
+                   "Window width in pixels (ignored with --fullscreen)")
+        ->check(CLI::PositiveNumber);
+    int screen_height = 1080;
+    app.add_option("--height", screen_height,
+                   "Window height in pixels (ignored with --fullscreen)")
+        ->check(CLI::PositiveNumber);
+    bool fullscreen = false;
+    auto fs_opt = app.add_flag("--fullscreen", fullscreen,
+                               "Start in borderless fullscreen at the "
+                               "display's native resolution");
+    bool borderless = false;
+    auto bl_opt = app.add_flag("--borderless", borderless,
+                               "Start as a borderless window (no title bar) "
+                               "at --width/--height");
+    fs_opt->excludes(bl_opt);
+
     // it's like a google maps link
     std::vector<double> free_cam_pos;
     app.add_option("--free-cam-pos", free_cam_pos,
@@ -3064,7 +3080,11 @@ int main(int argc, char **argv)
     const bool use_free_cam = !free_cam_pos.empty() || !free_cam_fwd.empty()
                             || !free_cam_up.empty();
 
-    Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT, gl_debug);
+    const WindowMode window_mode =
+        fullscreen ? WindowMode::Fullscreen
+        : borderless ? WindowMode::Borderless
+                     : WindowMode::Windowed;
+    Renderer display(screen_width, screen_height, window_mode, gl_debug);
     check_gl_error();
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: resolve keycodes to scancodes now that SDL is initialized
@@ -3556,7 +3576,9 @@ int main(int argc, char **argv)
 
     /* camera init */
     const float camFov = M_PI/3.0; // TODO specify FOV in deg?
-    const float camAspect = (float)DISPLAY_WIDTH / (float)DISPLAY_HEIGHT;
+    // The drawable size the Renderer actually got (the WM may have clamped
+    // it, or fullscreen may have used the display mode).
+    const float camAspect = (float)display.get_width() / (float)display.get_height();
     const float camZNear = 1.0f;
     // zFar must exceed the farthest visible body. The log-depth shaders
     // (res/*Shader.vs) define the hard far limit as `far = 1e13` m, which
