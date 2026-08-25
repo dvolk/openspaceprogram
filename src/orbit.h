@@ -136,3 +136,82 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     }
     return o;
 }
+
+/* Stumpff functions C(z) and S(z): the power series near z = 0 (the
+   parabolic limit), trig/hyperbolic closed forms away from it. */
+inline double stumpffC(const double z) {
+    if(z > 1e-6) { return (1.0 - cos(sqrt(z))) / z; }
+    if(z < -1e-6) { return (cosh(sqrt(-z)) - 1.0) / (-z); }
+    return 1.0 / 2.0 - z / 24.0 + z * z / 720.0;
+}
+
+inline double stumpffS(const double z) {
+    if(z > 1e-6) { const double s = sqrt(z); return (s - sin(s)) / (s * s * s); }
+    if(z < -1e-6) { const double s = sqrt(-z); return (sinh(s) - s) / (s * s * s); }
+    return 1.0 / 6.0 - z / 120.0 + z * z / 5040.0;
+}
+
+/* Propagate a two-body state (pos0, vel0) by dt seconds under mu, on any
+   conic (elliptic or hyperbolic), via universal variables + f and g
+   functions (Bate, Mueller & White). Exact up to the Newton tolerance --
+   unlike numerical integration the conic's elements are conserved for any
+   dt, which is what lets idle ships coast "on rails" at arbitrary time
+   acceleration. dt may be negative (propagate backwards).
+
+   pos0/vel0 are taken BY VALUE so in-place calls
+   (propagateKepler(p, v, mu, dt, p, v)) are safe: the vel update must
+   read the ORIGINAL pos0, not the freshly overwritten pos. */
+inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
+                            const double mu, double dt,
+                            glm::dvec3 &pos, glm::dvec3 &vel) {
+    if(dt == 0.0) { pos = pos0; vel = vel0; return; }
+
+    const double r0 = glm::length(pos0);
+    const double v0_2 = glm::dot(vel0, vel0);
+    const double vr0 = glm::dot(pos0, vel0) / r0;   // radial speed, + = receding
+    const double alpha = 2.0 / r0 - v0_2 / mu;      // 1/a; negative on hyperbolic
+
+    /* Elliptic: fold whole periods out of dt so the Newton solve only ever
+       spans one revolution (at high time accel dt can be thousands of
+       periods, and the iteration stalls on the multi-revolution equation). */
+    if(alpha > 0.0) {
+        const double a = 1.0 / alpha;
+        const double T = 2.0 * M_PI * sqrt(a * a * a / mu);
+        dt = fmod(dt, T);
+        if(dt == 0.0) { pos = pos0; vel = vel0; return; }
+    }
+
+    /* Newton iteration on the universal Kepler equation
+         sqrt(mu) dt = (r0 vr0 / sqrt(mu)) chi^2 C(z)
+                     + (1 - alpha r0) chi^3 S(z) + r0 chi,   z = alpha chi^2
+       The derivative simplifies to r0 + (1 - alpha r0) chi^2 C(z)
+       + (r0 vr0 / sqrt(mu)) chi (1 - z S(z)). */
+    const double sqrt_mu = sqrt(mu);
+    const double target = sqrt_mu * dt;
+    double chi = target / r0;               // small-dt limit: RHS ~ r0 chi
+    for(int iter = 0; iter < 30; iter++) {
+        const double z = alpha * chi * chi;
+        const double C = stumpffC(z);
+        const double S = stumpffS(z);
+        const double chi2 = chi * chi;
+        const double F = (r0 * vr0 / sqrt_mu) * chi2 * C
+                       + (1.0 - alpha * r0) * chi2 * chi * S
+                       + r0 * chi - target;
+        const double dF = r0 + (1.0 - alpha * r0) * chi2 * C
+                        + (r0 * vr0 / sqrt_mu) * chi * (1.0 - z * S);
+        const double step = F / dF;
+        chi -= step;
+        if(fabs(step) < 1e-10 * r0) { break; }
+    }
+
+    /* f and g functions at chi; r from the propagated position. */
+    const double z = alpha * chi * chi;
+    const double chi2 = chi * chi;
+    const double f = 1.0 - (chi2 / r0) * stumpffC(z);
+    const double g = dt - (chi2 * chi / sqrt_mu) * stumpffS(z);
+    pos = f * pos0 + g * vel0;
+    const double r = glm::length(pos);
+    const double fdot = (sqrt_mu / (r * r0)) * chi * (z * stumpffS(z) - 1.0);
+    const double gdot = 1.0 - (chi2 / r) * stumpffC(z);
+    vel = fdot * pos0 + gdot * vel0;
+}

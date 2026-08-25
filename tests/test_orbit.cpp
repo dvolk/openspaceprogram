@@ -270,6 +270,121 @@ int main() {
         CHECK(o.time_to_apo == -1.0);
     }
 
+    // --- propagateKepler: circular quarter/whole period ----------------------
+    {
+        const double rc = 1.0e6;
+        const double vc = sqrt(MU / rc);
+        const double T = TWOPI * sqrt(rc * rc * rc / MU);
+        const glm::dvec3 p0(rc, 0, 0), v0(0, vc, 0);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, T / 4.0, p, v);
+        CHECK_NEAR(p.x, 0.0, 1e-6 * rc);
+        CHECK_NEAR(p.y, rc, 1e-6 * rc);                 // 90 deg along +Y
+        CHECK_NEAR(v.x, -vc, 1e-9 * vc);
+        CHECK_NEAR(v.y, 0.0, 1e-9 * vc);
+        propagateKepler(p0, v0, MU, T, p, v);
+        CHECK_NEAR(glm::length(p - p0), 0.0, 1e-6 * rc); // full period: back
+        CHECK_NEAR(glm::length(v - v0), 0.0, 1e-9 * vc);
+    }
+
+    // --- propagateKepler: ellipse periapsis -> apoapsis in T/2 ---------------
+    {
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const double va = sqrt(MU * (2.0 / ra - 1.0 / a));
+        const double T = TWOPI * sqrt(a * a * a / MU);
+        const glm::dvec3 p0(rp, 0, 0), v0(0, vp, 0);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, T / 2.0, p, v);
+        CHECK_NEAR(p.x, -ra, 1e-6 * ra);
+        CHECK_NEAR(p.y, 0.0, 1e-6 * ra);
+        CHECK_NEAR(v.x, 0.0, 1e-9 * va);
+        CHECK_NEAR(v.y, -va, 1e-9 * va);
+        // whole-period folding: 10.25 periods == 0.25 periods
+        glm::dvec3 p2, v2;
+        propagateKepler(p0, v0, MU, 0.25 * T, p, v);
+        propagateKepler(p0, v0, MU, 10.25 * T, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p), 0.0, 1e-6 * ra);
+        CHECK_NEAR(glm::length(v2 - v), 0.0, 1e-9 * va);
+    }
+
+    // --- propagateKepler vs computeOrbitElements: apsis arrival --------------
+    {
+        const double a = 2.5e6, e = 0.6;
+        glm::dvec3 p0, v0;
+        conic_state(a, e, 1.1, p0, v0);   // arbitrary point on the ellipse
+        OrbitElements o = computeOrbitElements(p0, v0, MU);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, o.time_to_apo, p, v);
+        CHECK_NEAR(glm::length(p), o.apoapsis, 1e-7 * o.apoapsis);
+        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * o.apoapsis * o.speed); // r_dot = 0
+        propagateKepler(p0, v0, MU, o.time_to_peri, p, v);
+        CHECK_NEAR(glm::length(p), o.periapsis, 1e-7 * o.periapsis);
+        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * o.periapsis * o.speed);
+    }
+
+    // --- propagateKepler: conservation + reversibility -----------------------
+    {
+        const double a = 2.5e6, e = 0.6;
+        glm::dvec3 p0, v0;
+        conic_state(a, e, 2.2, p0, v0);
+        OrbitElements o0 = computeOrbitElements(p0, v0, MU);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, 12345.678, p, v);
+        OrbitElements o1 = computeOrbitElements(p, v, MU);
+        CHECK_NEAR(o1.semi_major, o0.semi_major, 1e-9 * o0.semi_major);
+        CHECK_NEAR(o1.ecc, o0.ecc, 1e-9);
+        CHECK_NEAR(o1.ang_momentum, o0.ang_momentum, 1e-9 * o0.ang_momentum);
+        CHECK_NEAR(o1.energy, o0.energy, 1e-9 * fabs(o0.energy));
+        // and back
+        glm::dvec3 p2, v2;
+        propagateKepler(p, v, MU, -12345.678, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-7 * a);
+        CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-7 * glm::length(v0));
+    }
+
+    // --- propagateKepler: hyperbolic inbound -> periapsis passage ------------
+    {
+        const double e = 2.0, rp = 1.0e6;
+        const double a = rp / (1.0 - e);
+        glm::dvec3 p0, v0;
+        conic_state(a, e, -0.9, p0, v0);  // inbound
+        OrbitElements o = computeOrbitElements(p0, v0, MU);
+        CHECK(o.time_to_peri > 0.0);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, o.time_to_peri, p, v);
+        CHECK_NEAR(glm::length(p), rp, 1e-7 * rp);
+        CHECK_NEAR(glm::dot(p, v), 0.0, 1e-5 * rp * glm::length(v));
+        // conservation across an arbitrary hyperbolic step
+        propagateKepler(p0, v0, MU, 500.0, p, v);
+        OrbitElements o1 = computeOrbitElements(p, v, MU);
+        CHECK_NEAR(o1.energy, o.energy, 1e-9 * o.energy);
+        CHECK_NEAR(o1.ang_momentum, o.ang_momentum, 1e-9 * o.ang_momentum);
+        // reversibility
+        glm::dvec3 p2, v2;
+        propagateKepler(p, v, MU, -500.0, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-7 * glm::length(p0));
+    }
+
+    // --- propagateKepler: in-place call (rails uses p,v as both in & out) ---
+    {
+        const double a = 2.5e6, e = 0.6;
+        glm::dvec3 pa, va, pb, vb;
+        conic_state(a, e, 0.7, pa, va);
+        pb = pa; vb = va;
+        // 30 sequential in-place steps must equal one distinct-var step
+        for(int i = 0; i < 30; i++) {
+            propagateKepler(pa, va, MU, 2.0, pa, va);
+        }
+        propagateKepler(pb, vb, MU, 60.0, pb, vb);
+        CHECK_NEAR(glm::length(pa - pb), 0.0, 1e-7 * a);
+        CHECK_NEAR(glm::length(va - vb), 0.0, 1e-7 * glm::length(vb));
+        OrbitElements o1 = computeOrbitElements(pa, va, MU);
+        CHECK_NEAR(o1.semi_major, a, 1e-9 * a);
+        CHECK_NEAR(o1.ecc, e, 1e-9);
+    }
+
     if(failures == 0) {
         printf("test_orbit: all checks passed\n");
         return 0;

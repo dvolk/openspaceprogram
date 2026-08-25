@@ -55,6 +55,9 @@ public:
        deleting the Body). The collision shape / model are the Body's to
        free; this only unregisters it so the world holds no dangling ptr. */
     void RemoveBody(Body *body);
+    /* Re-add a parked body's EXISTING rigid body to the world (the inverse
+       of RemoveBody; the rails handoff parks and restores ship parts). */
+    void AddBody(Body *body);
     /* Weld two parts at the given local anchor points (the anchor points
        must coincide in world space, i.e. they define the relative offset). */
     void * GlueTogether(Body *parent, Body *child,
@@ -85,6 +88,8 @@ void removeTerrainCollision(btRigidBody *b);
 void NeverSleep(Body *body);
 /* Unregister a body's rigid body from the world (call before `delete body`). */
 void RemoveBody(Body *body);
+/* Re-add a parked body's rigid body to the world (inverse of RemoveBody). */
+void AddPhysicsBody(Body *body);
 
 double GetMass(Body *body);
 void SetMass(Body *body, double newMass);

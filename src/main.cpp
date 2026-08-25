@@ -848,6 +848,24 @@ public:
     /* which parts each constraint joins: (parentIdx, childIdx) into
        `parts`, parallel to `constraints`. Staging splits on these links. */
     std::vector<std::pair<size_t, size_t>> constraintLinks;
+    /* the weld's LOCAL anchor points (parentAnchor, childAnchor), parallel
+       to `constraints`. The rails handoff detaches every weld and re-glues
+       from these when the ship re-enters physics. */
+    std::vector<std::pair<glm::dvec3, glm::dvec3>> constraintAnchors;
+
+    /* Rails: an idle ship in free fall coasts analytically on its two-body
+       conic instead of being integrated: its welds and rigid bodies are
+       parked out of the Bullet world and the rigid cluster's pose is
+       re-derived from the conic every tick (attitude frozen inertially,
+       like a torque-free body). Exact at any time accel, zero solver
+       cost. While on rails ship->frame is the SOI body's INERTIAL frame
+       node (where the trajectory is a conic). */
+    bool onRails = false;
+    glm::dvec3 rail_pos;      // m, cluster COM in ship->frame coords
+    glm::dvec3 rail_vel;      // m/s, inertial, ship->frame coords
+    glm::dmat3 rail_orient = glm::dmat3(1.0); // cluster axes -> frame axes
+    std::vector<glm::dvec3> rail_rel_pos;     // parked part pose, cluster axes
+    std::vector<glm::dmat3> rail_rel_rot;
 
     /* Per-part catalog specs (parallel to parts; set by build_ship() before
        init()). init() copies the behavior values into the per-thruster /
@@ -892,6 +910,7 @@ public:
         parts.push_back(part);
         constraints.push_back(constraint);
         constraintLinks.push_back(std::make_pair(parentIdx, parts.size() - 1));
+        constraintAnchors.push_back(std::make_pair(parentAnchor, childAnchor));
     }
 
     void attachDown(Body *part, const PartDef *def) {
@@ -1278,10 +1297,15 @@ public:
         std::vector<bool> isCut(constraints.size(), false);
         for(size_t c : split.cutConstraints) { isCut[c] = true; }
         std::vector<void *> keepCons;
+        std::vector<std::pair<glm::dvec3, glm::dvec3>> keepAnchors;
         for(size_t c = 0; c < constraints.size(); c++) {
-            if(!isCut[c]) { keepCons.push_back(constraints[c]); }
+            if(!isCut[c]) {
+                keepCons.push_back(constraints[c]);
+                keepAnchors.push_back(constraintAnchors[c]);
+            }
         }
         constraints.swap(keepCons);
+        constraintAnchors.swap(keepAnchors);
         constraintLinks = split.keptLinks;
         /* 5) Remap the controller (or, if it was itself dropped, fall back
            to the first surviving part). */
@@ -1605,6 +1629,164 @@ public:
                 }
             }
         }
+    }
+
+    /* Write the rail state into the parked part transforms (once per
+       tick). Draw, get_center_of_mass and everything else that reads
+       Bullet transforms then sees the railed ship's current pose even
+       though its bodies are not in the world. */
+    void writeRailPose() {
+        for(size_t i = 0; i < parts.size(); i++) {
+            setPosRot(parts[i],
+                      rail_pos + rail_orient * rail_rel_pos[i],
+                      rail_orient * rail_rel_rot[i]);
+        }
+    }
+
+    /* Park this ship out of the physics world and coast it analytically
+       on its conic. Refuses (returns false) and changes nothing if the
+       ship is not safely in free fall: a periapsis inside the terrain
+       band means the ship is surface-supported, and a conic would sink
+       it through the ground. */
+    bool goOnRails() {
+        if(onRails) { return true; }
+
+        /* COM state in the body's inertial frame node, where the
+           trajectory is a Kepler conic (same transform the HUD uses).
+           Cluster velocity = mass-weighted mean of the part velocities
+           (the rigid cluster coasts as one body; residual spin is
+           discarded with the attitude). */
+        Frame *oldFrame = frame;
+        Frame *inertial = frame->getNonRotFrame();
+        glm::dvec3 p = get_center_of_mass();
+        const glm::dvec3 com_frame = p;   // pre-transform, old frame coords
+        glm::dvec3 v(0.0);
+        double mtot = 0.0;
+        for(auto&& part : parts) {
+            v += GetVelocity(part) * part->mass;
+            mtot += part->mass;
+        }
+        v /= mtot;
+        if(frame != inertial) {
+            v += frame->GetStasisVelocity(p);
+            v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
+            p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
+        }
+
+        const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
+        /* 3 km clears the loudest terrain noise in the system data
+           (amplitude 2.5 km), and the conic's shape never changes while
+           the ship coasts unperturbed, so it stays clear. */
+        if(el.periapsis <= inertial->body->radius + 3000.0) {
+            return false;
+        }
+
+        /* the cluster pose at park time, relative to its COM (cluster
+           axes == old frame axes; rail_orient carries them into the
+           inertial node and then holds inertially) */
+        rail_rel_pos.resize(parts.size());
+        rail_rel_rot.resize(parts.size());
+        for(size_t i = 0; i < parts.size(); i++) {
+            rail_rel_pos[i] = GetPosition(parts[i]) - com_frame;
+            rail_rel_rot[i] = GetOrient(parts[i]);
+        }
+        rail_pos = p;
+        rail_vel = v;
+        rail_orient = oldFrame->GetOrientRelTo(inertial);
+        frame = inertial;   // on rails, ship->frame == its inertial node
+
+        /* out of the world: welds first (they reference the bodies) */
+        for(size_t c = 0; c < constraints.size(); c++) {
+            Detach(constraints[c]);
+        }
+        constraints.clear();
+        for(auto&& part : parts) { RemoveBody(part); }
+
+        onRails = true;
+        writeRailPose();
+        printf("@@@ %s parked on rails around %s: sma=%.6g m ecc=%.4f\n",
+               name.c_str(), inertial->body->name.c_str(),
+               el.semi_major, el.ecc);
+        return true;
+    }
+
+    /* Re-enter physics from rails: rebuild the Bullet state from the rail
+       state and hand the cluster back to the integrator. The bodies'
+       transforms already track the rail state (writeRailPose), so this is
+       just re-register, re-weld, set the velocity. */
+    void leaveRails() {
+        if(!onRails) { return; }
+        writeRailPose();
+        for(auto&& part : parts) {
+            SetVelocity(part, rail_vel);
+            AddPhysicsBody(part);
+        }
+        /* GlueTogether locks the CURRENT relative pose, which is exactly
+           the parked geometry, so the stored anchors reproduce the welds. */
+        for(size_t c = 0; c < constraintLinks.size(); c++) {
+            constraints.push_back(GlueTogether(parts[constraintLinks[c].first],
+                                               parts[constraintLinks[c].second],
+                                               constraintAnchors[c].first,
+                                               constraintAnchors[c].second));
+        }
+        NeverSleep(controller);
+        onRails = false;
+        printf("@@@ %s left the rails around %s\n",
+               name.c_str(), frame->body->name.c_str());
+    }
+
+    /* Per-tick rail advance: propagate the conic by the tick's simulated
+       duration (exact for any step size), check SOI boundaries, refresh
+       the parked transforms. */
+    void railsTick(const double step) {
+        if(!onRails) { return; }
+        propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
+                        rail_pos, rail_vel);
+        railsSwitchFrames();
+        writeRailPose();
+    }
+
+    /* SOI bookkeeping for a railed ship (the switchFrames() analog): the
+       rail conic is only valid around frame->body while the ship stays in
+       that SOI. The rotating child frame is the same body -- never a
+       switch candidate; physics ships drop into it after the handoff. */
+    void railsSwitchFrames() {
+        const double r = glm::length(rail_pos);
+        if(r > frame->soi + 10000) {
+            if(frame->parent != NULL) {
+                printf("@@@ %s rails switching frame from %s to parent %s\n",
+                       name.c_str(), frame->name.c_str(),
+                       frame->parent->name.c_str());
+                moveToRailFrame(frame->parent);
+            }
+        } else {
+            for(auto&& child : frame->children) {
+                if(child->body == frame->body) { continue; }
+                // ship position in the child's coordinates (the same
+                // transform GetPositionRelTo(part, child) applies)
+                const glm::dvec3 rel = frame->GetOrientRelTo(child) * rail_pos
+                                     + frame->GetPositionRelTo(child);
+                const double dist = glm::length(rel);
+                if(dist < child->soi - 10000) {
+                    printf("@@@ %s rails switching frame from %s to child %s, distance: %.0f\n",
+                           name.c_str(), frame->name.c_str(),
+                           child->name.c_str(), dist);
+                    moveToRailFrame(child);
+                    break;
+                }
+            }
+        }
+    }
+
+    /* Re-anchor the rail state on another frame (moveToFrame's math for
+       the analytic state; the new frame is inertial, so no stasis). */
+    void moveToRailFrame(Frame *newFrame) {
+        const glm::dmat3 O = frame->GetOrientRelTo(newFrame);
+        rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
+        rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
+        rail_orient = O * rail_orient;
+        frame = newFrame;
+        m_parent = newFrame->body;
     }
 };
 
@@ -2425,6 +2607,13 @@ int main(int argc, char **argv)
                  "(drop the active stage, then refuse the last stage), "
                  "then exit after a few physics ticks");
 
+    bool selftest_rails = false;
+    app.add_flag("--selftest-rails", selftest_rails,
+                 "Exercise the idle-ship rails path: coast the first "
+                 "railed ship 30 ticks (conic must be conserved), hand "
+                 "control to it (rails -> physics handoff), then exit "
+                 "after 60 physics ticks");
+
     bool orbit_log = false;
     app.add_flag("--orbit-log", orbit_log,
                  "Periodically print the ship's orbital elements to stdout "
@@ -2929,6 +3118,14 @@ int main(int argc, char **argv)
     int activeIdx = 0;
     Vehicle *ship = ships[0];
 
+    /* Idle ships that are safely in free fall coast analytically ("on
+       rails"): exact two-body propagation at any time accel, zero solver
+       cost. Pad ships refuse (their osculating orbit intersects the
+       terrain band) and stay in the physics world. */
+    for(size_t i = 0; i < ships.size(); i++) {
+        if((int)i != activeIdx) { ships[i]->goOnRails(); }
+    }
+
     Mesh *engine_plume_mesh = new Mesh;
     engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
     Texture *engine_plume_texture = load_texture("res/engine_plume.png");
@@ -3086,7 +3283,10 @@ int main(int argc, char **argv)
     auto select_ship = [&](int idx) {
         if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
         ships[activeIdx]->releaseControl();
+        // the ship being left coasts on rails if it is in free fall
+        ships[activeIdx]->goOnRails();
         activeIdx = idx;
+        ships[activeIdx]->leaveRails();   // the ship being taken re-enters physics
         ship = ships[activeIdx];
         focusBody = 0;   // back to the "ship" focus target
         if(camMode == CAM_ORBIT) {
@@ -3126,6 +3326,37 @@ int main(int argc, char **argv)
         }
     }
 
+    /* --selftest-rails: coast the first railed ship 30 ticks and check its
+       conic is conserved, then select it (rails -> physics handoff,
+       checking COM continuity) and run 60 physics ticks to prove the
+       world is stable with the re-added bodies. */
+    int rails_test_ticks = 0;
+    int rails_test_idx = -1;
+    OrbitElements rails_test_e0;
+    if(selftest_rails) {
+        if(time_accel == 0) {
+            time_accel = 100;
+            printf("selftest-rails: forcing time accel to 100 (was paused)\n");
+        }
+        for(size_t i = 0; i < ships.size(); i++) {
+            if(ships[i]->onRails) { rails_test_idx = (int)i; break; }
+        }
+        if(rails_test_idx < 0) {
+            printf("selftest-rails: no ship on rails in the fleet\n");
+            running = false;
+        } else {
+            Vehicle *r = ships[rails_test_idx];
+            rails_test_e0 = computeOrbitElements(r->rail_pos, r->rail_vel,
+                                                 r->frame->body->mu);
+            printf("== selftest-rails: %s ==\n", r->name.c_str());
+            printf("rail t0: sma=%.9g m ecc=%.9g peri=%.9g m apo=%.9g m T=%.9g s\n",
+                   rails_test_e0.semi_major, rails_test_e0.ecc,
+                   rails_test_e0.periapsis, rails_test_e0.apoapsis,
+                   rails_test_e0.period);
+            rails_test_ticks = 90;
+        }
+    }
+
     // --timeout: wall-clock budget for the whole run (0 = run until closed).
     const Uint32 loop_start_ms = SDL_GetTicks();
     const double startup_s =
@@ -3156,6 +3387,41 @@ int main(int argc, char **argv)
             selftest_ticks--;
             if(selftest_ticks == 0) {
                 printf("selftest-stage: 30 ticks after separation, no crash; OK\n");
+                fflush(stdout);
+                running = false;
+            }
+        }
+
+        // --selftest-rails: 30 ticks on rails (verify), handoff, 60 physics
+        // ticks (stability), exit.
+        if(rails_test_ticks > 0) {
+            rails_test_ticks--;
+            if(rails_test_ticks == 60) {
+                Vehicle *r = ships[rails_test_idx];
+                const OrbitElements e1 = computeOrbitElements(r->rail_pos, r->rail_vel,
+                                                              r->frame->body->mu);
+                printf("rail t30: sma=%.9g m ecc=%.9g peri=%.9g m apo=%.9g m\n",
+                       e1.semi_major, e1.ecc, e1.periapsis, e1.apoapsis);
+                double drift = 0.0;
+                drift = std::max(drift, fabs(e1.semi_major - rails_test_e0.semi_major)
+                                        / fabs(rails_test_e0.semi_major));
+                drift = std::max(drift, fabs(e1.ecc - rails_test_e0.ecc));
+                drift = std::max(drift, fabs(e1.periapsis - rails_test_e0.periapsis)
+                                        / fabs(rails_test_e0.periapsis));
+                drift = std::max(drift, fabs(e1.apoapsis - rails_test_e0.apoapsis)
+                                        / fabs(rails_test_e0.apoapsis));
+                drift = std::max(drift, fabs(e1.ang_momentum - rails_test_e0.ang_momentum)
+                                        / fabs(rails_test_e0.ang_momentum));
+                printf("rail drift after 30 coast ticks: %.3e %s\n", drift,
+                       drift < 1e-9 ? "(conserved OK)" : "(DRIFT!)");
+                const glm::dvec3 rail_com = r->rail_pos;
+                select_ship(rails_test_idx);   // rails -> physics handoff
+                const double jump = glm::length(r->get_center_of_mass() - rail_com);
+                printf("handoff continuity: |com - rail_com| = %.6f m\n", jump);
+                fflush(stdout);
+            }
+            if(rails_test_ticks == 0) {
+                printf("selftest-rails: 60 ticks after handoff, no crash; OK\n");
                 fflush(stdout);
                 running = false;
             }
@@ -3443,8 +3709,13 @@ int main(int argc, char **argv)
 
                 // per-ship SOI bookkeeping: each ship tracks its own
                 // position in the shared frame tree (an idle ship can
-                // cross a boundary while we fly another one)
-                for(auto *s : ships) { s->switchFrames(); }
+                // cross a boundary while we fly another one). Railed
+                // ships advance their analytic conic here instead --
+                // exact for any step size, at any time accel.
+                for(auto *s : ships) {
+                    if(s->onRails) { s->railsTick(dt * time_accel); }
+                    else { s->switchFrames(); }
+                }
 
                 // Integrate the (time-accelerated) step in substeps,
                 // re-applying gravity + the rotating-frame fictitious forces
@@ -3469,11 +3740,14 @@ int main(int argc, char **argv)
                 if (n > 2000) { n = 2000; }
                 const double h = step / n;
                 for (int i = 0; i < n; i++) {
-                    // every ship feels its own gravity/thrust/rotation each
-                    // substep (idle ships included); physics_tick then steps
-                    // the shared Bullet world all of them at once. `grav` is
-                    // the HUD value: the active ship's.
+                    // every NON-RAILED ship feels its own gravity/thrust/
+                    // rotation each substep; physics_tick then steps the
+                    // shared Bullet world all of them at once. Railed ships
+                    // have no bodies in the world -- their conic already
+                    // advanced this tick in railsTick. `grav` is the HUD
+                    // value: the active ship's.
                     for(auto *s : ships) {
+                        if(s->onRails) { continue; }
                         const glm::dvec3 g = s->processGravity();
                         if(s == ship) { grav = g; }
                         s->applyThrustForce();

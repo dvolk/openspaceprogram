@@ -350,6 +350,14 @@ void RemoveBody(Body *body) {
     physics->RemoveBody(body);
 }
 
+void PhysicsEngine::AddBody(Body *body) {
+    dynamicsWorld->addRigidBody(body->btBody);
+}
+
+void AddPhysicsBody(Body *body) {
+    physics->AddBody(body);
+}
+
 void RegisterPhysicsBody(Body *body,
                          glm::vec3 pos, glm::vec3 rot, bool planet) {
     physics->RegisterObject(body, pos, rot, planet);
