@@ -60,7 +60,7 @@ static glm::dmat3 testOrient() {
 int main() {
     // --- parts catalog ----------------------------------------------------
     PartsCatalog cat = load_parts_catalog("res/parts.json");
-    CHECK(cat.parts.size() == 23);
+    CHECK(cat.parts.size() == 29);
     CHECK(cat.find("nope") == nullptr);
 
     const PartDef *cap = cat.find("capsule");
@@ -101,8 +101,8 @@ int main() {
     // fuel tank is the reservoir: holds the propellant, no thrust params
     CHECK(ft->type == "fuel_tank");
     CHECK(ft->mass == 2000.0);
-    CHECK(ft->mesh == "reaction_wheel.obj");   // looks the same as the reaction wheel
-    CHECK(ft->texture == "reaction_wheel.png");
+    CHECK(ft->mesh == "fuel_tank.obj");
+    CHECK(ft->texture == "fuel_tank.png");
     CHECK(ft->torque == 0.0);
     CHECK(ft->fuel_rate == 0.0 && ft->exhaust_velocity == 0.0);
     CHECK(ft->capacity[(int)ResourceType::Hydrogen] == 1000.0f);
