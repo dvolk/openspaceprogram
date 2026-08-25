@@ -40,7 +40,6 @@ Texture *load_texture(const char *filename) {
 
     glGenTextures(1, &ret->id);
     glBindTexture(GL_TEXTURE_2D, ret->id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     float aniso = max_anisotropy();
     if (aniso > 0.0f) {
@@ -52,7 +51,7 @@ Texture *load_texture(const char *filename) {
         }
     }
     glTexImage2D(GL_TEXTURE_2D, // target
-                 0,  // level, 0 = base, no minimap,
+                 0,  // level, 0 = base; the mip chain is generated below
                  GL_RGBA, // internalformat
                  glSurface->w,  // width
                  glSurface->h,  // height
@@ -61,6 +60,11 @@ Texture *load_texture(const char *filename) {
                  GL_UNSIGNED_BYTE, // type
                  glSurface->pixels);
     SDL_FreeSurface(glSurface);
-  
+
+    // Mipmap chain + trilinear minify: without a chain the anisotropy ratio
+    // above has nothing to interpolate between, and minified parts shimmer.
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
     return ret;
 }
