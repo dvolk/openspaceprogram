@@ -181,6 +181,9 @@ SURFACES = {
         "palette": [[0.0, [0.55, 0.22, 0.08]],
                     [0.6, [0.70, 0.35, 0.15]],
                     [1.0, [0.85, 0.60, 0.40]]],
+        # thin dusty CO2 haze (see reports/atmosphere2026_08_25)
+        "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
+                       "power": 4.0, "intensity": 0.55},
     },
     "Ike": {
         "amplitude": 1000,
@@ -197,6 +200,10 @@ SURFACES = {
         "band_count": 9,
         "palette": [[0.0, [0.30, 0.42, 0.45]],
                     [1.0, [0.80, 0.87, 0.83]]],
+        # gas giant: the "atmosphere" is the whole body, so a broad, soft
+        # pale rim (see reports/atmosphere2026_08_25)
+        "atmosphere": {"color": [0.75, 0.85, 0.85], "thickness": 90000,
+                       "power": 3.0, "intensity": 0.6},
     },
     "Laythe": {
         "amplitude": 3000,
