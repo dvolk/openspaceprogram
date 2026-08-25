@@ -147,11 +147,11 @@ test-gl:
 	$(CXX) -O2 -std=c++11 -I/usr/include/SDL2 tests/test_vertexless.c -lSDL2 -lGLEW -lGL -o test_gl_vao
 	./test_gl_vao
 
-.PHONEY: clean
+.PHONY: clean
 clean:
 	$(rm) $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(DEPS)
 
-.PHONEY: remove
+.PHONY: remove
 remove: clean
 	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_gl_vao
 

@@ -1081,14 +1081,15 @@ public:
         return s;
     }
 
-    /* Total number of distinct stage numbers on the ship (for the "N / M"
-       HUD readout). */
+    /* Total number of stages on the ship (the highest stage number --
+       stages are labelled 1..N from the booster up, so the max label IS the
+       total). Deliberately the max, not the count of *remaining* stages, so
+       the "stage X of N" readout stays stable after the active stage is
+       dropped (a remaining-count would read e.g. "stage 2 of 1"). */
     int numStages() {
-        bool present[64] = { false };
         int n = 0;
         for(size_t i = 0; i < partStages.size(); i++) {
-            int s = partStages[i];
-            if(s >= 0 && s < 64 && !present[s]) { present[s] = true; n++; }
+            if(partStages[i] > n) { n = partStages[i]; }
         }
         return n;
     }
