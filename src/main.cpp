@@ -2950,8 +2950,11 @@ int main(int argc, char **argv)
     auto ex_opt = app.add_flag("--exclusive", exclusive,
                                "Exclusive fullscreen: change the display "
                                "mode to --width/--height (low latency, the "
-                               "only way to go non-native on X11); the "
-                               "display reverts on exit");
+                               "only way to go non-native on X11). Note: "
+                               "SDL 2.32's X11 driver never restores the "
+                               "previous mode on exit (X11_QuitModes is a "
+                               "no-op), so restore it yourself with xrandr "
+                               "if it matters");
     fs_opt->excludes(bl_opt);
     fs_opt->excludes(ex_opt);
     bl_opt->excludes(ex_opt);
@@ -2961,6 +2964,13 @@ int main(int argc, char **argv)
                    "UI font size in pixels (the big HUD readout font is "
                    "twice this; default 14)")
         ->check(CLI::PositiveNumber);
+
+    int frame_cap = 60;
+    app.add_option("--frame-cap", frame_cap,
+                   "Max render frames per second (0 = uncapped; default 60). "
+                   "Without a cap the loop busy-spins between vsyncs, "
+                   "idling a CPU core at 100% even while paused")
+        ->check(CLI::NonNegativeNumber);
 
     // it's like a google maps link
     std::vector<double> free_cam_pos;
@@ -3849,10 +3859,21 @@ int main(int argc, char **argv)
     printf("\n");
     fflush(stdout);
 
+    // --frame-cap: budget per loop iteration (0 = uncapped). Physics stays
+    // at its fixed 50 Hz off the wall clock regardless of this.
+    const int cap_ms = (frame_cap > 0) ? (int)(1000.0 / (double)frame_cap) : 0;
+    if (cap_ms > 0) {
+        printf("frame cap: %d fps\n", frame_cap);
+    } else {
+        printf("frame cap: off (uncapped)\n");
+    }
+
     /* main loop timing from
        http://gafferongames.com/game-physics/fix-your-timestep/
     */
     while (running == true) {
+        const Uint32 iter_start_ms = SDL_GetTicks();
+
         // --timeout: auto-exit once the wall-clock budget is spent.
         if(timeout_seconds > 0.0) {
             const double elapsed_s = (SDL_GetTicks() - loop_start_ms) * 0.001;
@@ -5079,6 +5100,16 @@ int main(int argc, char **argv)
 
             display.SwapBuffers();
             check_gl_error();
+        }
+
+        // --frame-cap: burn the rest of the frame budget. Without this the
+        // iteration spins at full speed whenever the swap isn't vsync-gated
+        // (paused VAB, headless, vsync off) -- 100% of a core doing nothing.
+        if (cap_ms > 0) {
+            const Uint32 used_ms = SDL_GetTicks() - iter_start_ms;
+            if (used_ms < (Uint32)cap_ms) {
+                SDL_Delay(cap_ms - used_ms);
+            }
         }
     }
 

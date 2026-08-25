@@ -1,0 +1,7 @@
+# --frame-cap: the render loop sleeps out the frame budget instead of
+# busy-spinning between vsyncs (100% of a core while paused/headless).
+NAME frame-cap
+ARGS --frame-cap 30 --timeout 4
+EXPECT Main loop starting
+EXPECT frame cap: 30 fps
+FORBID error:
