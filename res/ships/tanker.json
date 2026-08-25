@@ -1,6 +1,7 @@
 {
   "name": "tanker",
   "controller": "capsule_1",
+  "hull_margin": 0,
   "parts": [
     { "part": "capsule", "id": "capsule_1" },
     { "part": "tank_r3h3", "id": "tank_r3h3_1", "parent": "capsule_1" },
