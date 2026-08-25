@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """E2E battery: launch ./osp under Xvfb and check the result.
 
+Usage:
+  python3 e2e/run.py            run all cases
+  python3 e2e/run.py orbit      run only cases matching "orbit"
+  python3 e2e/run.py smoke 02   run cases matching "smoke" or "02"
+
 Each test is a case file in e2e/cases/*.txt with these keys (one per line,
 `#` starts a comment):
 
@@ -202,10 +207,55 @@ def run_case(case):
     return passed, diag
 
 
+def select_cases(case_files, selectors):
+    """Filter case_files down to those matching any selector.
+
+    A selector matches a case if it is a (case-insensitive) substring of the
+    case NAME or of the filename without its .txt extension -- so `smoke`,
+    `01-smoke` and `orbit` (-> orbit-burn) all work. No selectors = all cases.
+    """
+    if not selectors:
+        return case_files
+    sel = [s.lower() for s in selectors]
+    out = []
+    for path in case_files:
+        base = os.path.splitext(os.path.basename(path))[0].lower()
+        try:
+            name = parse_cases(path)["name"].lower()
+        except ValueError:
+            name = ""
+        if any(s in name or s in base for s in sel):
+            out.append(path)
+    return out
+
+
+def available_names(case_files):
+    names = []
+    for path in case_files:
+        try:
+            names.append(parse_cases(path)["name"])
+        except ValueError:
+            names.append(os.path.basename(path))
+    return names
+
+
 def main():
-    case_files = sorted(glob.glob(os.path.join(CASES_DIR, "*.txt")))
-    if not case_files:
+    argv = sys.argv[1:]
+    if "--help" in argv or "-h" in argv:
+        print(__doc__)
+        print("usage: run.py [CASE ...]   (run all cases when none given)")
+        return 0
+    selectors = argv
+
+    all_files = sorted(glob.glob(os.path.join(CASES_DIR, "*.txt")))
+    if not all_files:
         print("no case files found in %s" % CASES_DIR)
+        return 1
+
+    case_files = select_cases(all_files, selectors)
+    if not case_files:
+        print("no case matches %r" % (selectors,))
+        print("available: %s" % ", ".join(available_names(all_files)))
         return 1
 
     results = []
