@@ -9,7 +9,7 @@
 - Look for opportunities to simplify.
 - Flag any code that looks odd.
 - Don't use memory: the projects moves quickly and it's usually faster to re-derive than to wrestle with outdated or incorrect notes.
-- Keep commit titles under 80 chars and use commit body to elaborate.
+- Keep commit titles under 80 chars and use commit body to elaborate. Give yourself credit.
 - Don't push to github.
 - Use cli options like --timeout 30s. --help to see all.
 - Game starts with time accel set to 0, use --time-accel 1 to unpause (also available: 10, 100, 1000).
