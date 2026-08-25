@@ -198,6 +198,60 @@
       "capacity": { "hydrogen": 1000, "lox": 1000 }
     },
     {
+      "name": "adapter_r1to3",
+      "type": "adapter",
+      "mesh": "adapter_r1to3.obj",
+      "texture": "adapter.png",
+      "mass": 200,
+      "radius": 3.0,
+      "height": 1.5
+    },
+    {
+      "name": "adapter_r3to1",
+      "type": "adapter",
+      "mesh": "adapter_r3to1.obj",
+      "texture": "adapter.png",
+      "mass": 200,
+      "radius": 3.0,
+      "height": 1.5
+    },
+    {
+      "name": "adapter_r3to5",
+      "type": "adapter",
+      "mesh": "adapter_r3to5.obj",
+      "texture": "adapter.png",
+      "mass": 200,
+      "radius": 5.0,
+      "height": 2.5
+    },
+    {
+      "name": "adapter_r5to3",
+      "type": "adapter",
+      "mesh": "adapter_r5to3.obj",
+      "texture": "adapter.png",
+      "mass": 200,
+      "radius": 5.0,
+      "height": 2.5
+    },
+    {
+      "name": "adapter_r1to5",
+      "type": "adapter",
+      "mesh": "adapter_r1to5.obj",
+      "texture": "adapter.png",
+      "mass": 200,
+      "radius": 5.0,
+      "height": 2.5
+    },
+    {
+      "name": "adapter_r5to1",
+      "type": "adapter",
+      "mesh": "adapter_r5to1.obj",
+      "texture": "adapter.png",
+      "mass": 200,
+      "radius": 5.0,
+      "height": 2.5
+    },
+    {
       "name": "nose_cap",
       "type": "nose_cap",
       "mesh": "nose_cap.obj",
