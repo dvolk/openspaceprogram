@@ -1900,6 +1900,7 @@ static void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         Texture *tex = load_texture((std::string("./res/") + pd.texture).c_str());
         Model *model = new Model;
         model->FromData(mesh, partsshader, tex);
+        model->hull_margin = resolveHullMargin(def.hull_margin, pd.hull_margin);
 
         Body *part = create_body(model, 0, 0, 0, (float)pd.mass, false);
         setPosRot(part, base + orient * (pos[i] + shift), orient * rot[i]);
@@ -3109,6 +3110,7 @@ int main(int argc, char **argv)
                 Model *model = new Model;
                 model->FromData(mesh, partsshader,
                                 load_texture((std::string("./res/") + def->texture).c_str()));
+                model->hull_margin = def->hull_margin;
                 return create_body(model, 0, 0, 0, (float)def->mass, false);
             };
 

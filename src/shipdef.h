@@ -26,7 +26,8 @@
            "torque": 5000,                // optional, N m -> contributes as a reaction wheel
            "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
-           "capacity": { "hydrogen": 26100, "lox": 26100 }  // optional, kg -> a propellant tank
+           "capacity": { "hydrogen": 26100, "lox": 26100 }, // optional, kg -> a propellant tank
+           "hull_margin": 0.0             // optional, m; collision convex-hull margin
          }, ...
        ]
      }
@@ -47,6 +48,8 @@
      {
        "name": "Booster",
        "controller": "capsule_1",        // part id; omitted = last part
+       "hull_margin": 0.0,               // optional, m; collision convex-hull margin
+                                        // for EVERY part of this ship (see below)
        "parts": [
          { "part": "capsule" },
          { "part": "reaction_wheel" },
@@ -131,6 +134,12 @@ struct PartDef {
     double exhaust_velocity;  // m/s; with fuel_rate -> thruster
     std::vector<float> capacity; // kg per ResourceType; > 0 -> propellant tank
 
+    /* Collision convex-hull margin (m), the catalog default for this
+       part. -1 = not set -> the physics engine's default applies
+       (OSP_HULL_MARGIN / 0.1). A ship def's hull_margin (see ShipDef)
+       overrides this when set (see resolveHullMargin). */
+    double hull_margin;
+
     PartDef();
 
     /* full thrust of one engine: T = (H2 + LOX flow) x ve -- both
@@ -167,6 +176,13 @@ struct ShipDef {
     std::string name;
     std::vector<ShipPart> parts;
     int controller;        // part index; -1 = default (last part)
+
+    /* Collision convex-hull margin (m) for EVERY part of this ship;
+       -1 = not set -> fall back to the part catalog value, then the
+       physics default. Ship-level (not part-level) because the welded-
+       hull overlap problem depends on the SHIP'S layout: the same part
+       is stable in one arrangement and not in another. */
+    double hull_margin;
 
     int controllerIndex() const {
         if(controller < 0) { return (int)parts.size() - 1; }
@@ -205,6 +221,13 @@ struct StageSplit {
                                         // surviving links (both ends kept),
                                         // remapped, in original constraint order
 };
+
+/* Collision hull margin (m) resolution: the ship def value wins over the
+   part catalog value; either may be unset (-1), in which case the other
+   applies; both unset -> -1, and the physics engine applies its own
+   default (OSP_HULL_MARGIN / 0.1). Pure, so the precedence is
+   unit-testable headless. */
+double resolveHullMargin(double shipMargin, double partMargin);
 
 /* Pure stage-split bookkeeping (unit-testable headless). Given nParts, the
    (a,b) part-index link of each constraint (parallel to the constraints),

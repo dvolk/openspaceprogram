@@ -113,6 +113,23 @@ int main() {
     CHECK(ft->mass > ft->capacity[(int)ResourceType::Hydrogen]
                        + ft->capacity[(int)ResourceType::LOX]);
 
+    // hull margin: no catalog part sets one -> -1 (physics falls back to
+    // its default); the field itself still parses
+    CHECK(cap->hull_margin == -1.0);
+    CHECK(eng->hull_margin == -1.0);
+    CHECK(rw->hull_margin == -1.0);
+    {
+        const char *hm = "/tmp/test_shipload_hullmargin.json";
+        std::ofstream f(hm);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"hull_margin\": 0.0 } ] }";
+        f.close();
+        PartsCatalog hmcat = load_parts_catalog(hm);
+        CHECK(hmcat.find("x")->hull_margin == 0.0);
+        std::remove(hm);
+    }
+
     // sized parts: radius/height are explicit, thrust scales with the size.
     const PartDef *e5 = cat.find("engine_r5h10");
     const PartDef *e3 = cat.find("engine_r3h6");
@@ -529,6 +546,16 @@ int main() {
         std::remove(bad);
     }
 
+    // a negative ship hull margin must be rejected
+    {
+        const char *bad = "/tmp/test_shipload_badship.json";
+        std::ofstream f(bad);
+        f << "{ \"hull_margin\": -1, \"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+
     // a valid ship: explicit ids, an angle, a spacer, a stage
     {
         const char *ok = "/tmp/test_shipload_ok.json";
@@ -558,6 +585,35 @@ int main() {
         }
         std::remove(ok);
     }
+
+    // ship-level hull margin: applies to the ship's whole layout (the
+    // welded-hull overlap problem is layout-dependent, so it lives here,
+    // not on the parts); unset -> -1
+    {
+        const char *hm = "/tmp/test_shipload_shipmargin.json";
+        std::ofstream f(hm);
+        f << "{ \"name\": \"T\", \"hull_margin\": 0, "
+             "\"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        ShipDef hmdef = load_ship_def(hm, cat);
+        CHECK(hmdef.hull_margin == 0.0);
+        std::remove(hm);
+    }
+    {
+        const char *hm = "/tmp/test_shipload_shipmargin.json";
+        std::ofstream f(hm);
+        f << "{ \"name\": \"T\", \"parts\": [ { \"part\": \"capsule\" } ] }";
+        f.close();
+        ShipDef hmdef = load_ship_def(hm, cat);
+        CHECK(hmdef.hull_margin == -1.0);
+        std::remove(hm);
+    }
+    // precedence: ship def > catalog; either unset -> the other; both
+    // unset -> -1 (the physics engine applies its own default)
+    CHECK(resolveHullMargin(0.0, -1.0) == 0.0);
+    CHECK(resolveHullMargin(-1.0, 0.0) == 0.0);
+    CHECK(resolveHullMargin(0.25, 0.0) == 0.25);
+    CHECK(resolveHullMargin(-1.0, -1.0) == -1.0);
 
     // thruster fields must be given together (fuel_rate without exhaust_velocity)
     {
@@ -599,6 +655,18 @@ int main() {
                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
                  "\"height\": -1 } ] }";
         }
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // hull margin must be >= 0
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"hull_margin\": -0.5 } ] }";
+        f.close();
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);
     }

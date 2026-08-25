@@ -9,7 +9,7 @@
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
-      exhaust_velocity(0.0) {
+      exhaust_velocity(0.0), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -124,6 +124,16 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
+        /* hull margin (m); omitted -> -1, the physics engine then falls
+           back to OSP_HULL_MARGIN / 0.1 */
+        if(pv.contains("hull_margin")) {
+            d.hull_margin = pv["hull_margin"].get<double>();
+            if(d.hull_margin < 0.0) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"hull_margin\" must be >= 0 (m)");
+            }
+        }
+
         cat.parts.push_back(d);
     }
     return cat;
@@ -149,6 +159,14 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
     ShipDef def;
     def.name = doc.value("name", std::string(""));
     def.controller = -1;
+    def.hull_margin = -1.0;
+    if(doc.contains("hull_margin")) {
+        def.hull_margin = doc["hull_margin"].get<double>();
+        if(def.hull_margin < 0.0) {
+            throw std::runtime_error(std::string("ship: \"hull_margin\" in ") + path
+                                     + " must be >= 0 (m)");
+        }
+    }
 
     const nlohmann::json &arr = doc["parts"];
     std::map<std::string, size_t> idToIndex;   // instance id -> part index (defined so far)
@@ -331,6 +349,12 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                                  "(internal geometry error)");
     }
     return p;
+}
+
+double resolveHullMargin(double shipMargin, double partMargin) {
+    if(shipMargin >= 0.0) { return shipMargin; }
+    if(partMargin >= 0.0) { return partMargin; }
+    return -1.0;
 }
 
 StageSplit computeStageSplit(size_t nParts,

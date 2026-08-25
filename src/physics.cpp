@@ -20,15 +20,20 @@
 
 PhysicsEngine *physics;
 
-/* Convex-hull margin (m), tunable via OSP_HULL_MARGIN.
-   Each part's collision hull is its mesh expanded by this much on every
-   face. Because the ship's parts are welded face-to-face (the visible meshes
-   touch exactly), two adjacent hulls overlap by 2*margin -- the contact
-   solver then fires an impulse to resolve that overlap on EVERY substep.
-   A large margin (the old 0.5 m -> 1.0 m overlap) is fine for chunky parts
-   but destabilizes a thin one (the 0.25 m reaction-wheel disc): the impulse
-   the solver applies to its low moment of inertia tumbles the whole ship.
-   0.1 m (0.2 m overlap) keeps every current part stable, verified headless. */
+/* Convex-hull margin (m), the DEFAULT when a part doesn't set one.
+   Tunable via OSP_HULL_MARGIN. Each part's collision hull is its mesh
+   expanded by this much on every face. Because the ship's parts are welded
+   face-to-face (the visible meshes touch exactly), two adjacent hulls
+   overlap by 2*margin -- the contact solver then fires an impulse to
+   resolve that overlap on EVERY substep. A large margin (the old
+   0.5 m -> 1.0 m overlap) is fine for chunky parts but destabilizes a thin
+   one (the 0.25 m reaction-wheel disc): the impulse the solver applies to
+   its low moment of inertia tumbles the whole ship. 0.1 m (0.2 m overlap)
+   keeps every current part stable, verified headless. Overrides: a ship
+   def's "hull_margin" (the ship JSON in res/ships/) wins, then a catalog
+   entry's (res/parts.json); the welded-hull overlap problem is
+   layout-dependent, so the ship level is the one ships that need
+   exact-surface hulls use. */
 static double hull_margin() {
     const char *e = getenv("OSP_HULL_MARGIN");
     if(e && e[0]) { return strtod(e, NULL); }
@@ -246,7 +251,11 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
         btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                                         3 * sizeof(double));
 
-        hull->setMargin(hull_margin());
+        /* the model carries the part's resolved margin (ship def > catalog,
+           see resolveHullMargin); -1 when neither sets one */
+        const double margin = (body->model->hull_margin >= 0.0)
+                            ? body->model->hull_margin : hull_margin();
+        hull->setMargin(margin);
 
         shape = hull;
     }
