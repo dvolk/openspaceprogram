@@ -14,7 +14,7 @@ using namespace std;
 Renderer::Renderer(int width, int height)
 {
     int gl_major = 4;
-    int gl_minor = 3;
+    int gl_minor = 5;
     bool gl_core = true;
     m_gl_debug = false;
     Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE; // TODO cli args
@@ -67,7 +67,7 @@ Renderer::Renderer(int width, int height)
         {
             cerr << "Error: glewInit: " << glewGetErrorString(glew_status) << endl;
         }
-    if (GLEW_VERSION_4_3 == false)
+    if (GLEW_VERSION_4_5 == false)
         {
             cerr << "Error: your graphic card does not support OpenGL " << gl_major << "." << gl_minor << endl;
         }

@@ -1,6 +1,6 @@
-#version 330
+#version 450
 
-attribute vec3 pos;
+in vec3 pos;
 
 uniform mat4 VP;
 

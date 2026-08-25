@@ -1,8 +1,10 @@
-#version 120
+#version 450
 
-varying vec3 normal0;
-varying vec4 color0;
-varying float logz;
+in vec3 normal0;
+in vec4 color0;
+in float logz;
+
+out vec4 fragColor;
 
 //uniform sampler2D sampler;
 uniform vec3 lightDirection;
@@ -10,6 +12,6 @@ uniform vec4 color;
 
 void main()
 {
-    gl_FragColor = color0 * clamp(dot(-lightDirection, normal0), 0.05, 1.0);
+    fragColor = color0 * clamp(dot(-lightDirection, normal0), 0.05, 1.0);
     gl_FragDepth = logz;
 }

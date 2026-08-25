@@ -1,8 +1,10 @@
-#version 120
+#version 450
 
-varying vec3 worldPos0;
-varying vec3 worldNormal0;
-varying float logz;
+in vec3 worldPos0;
+in vec3 worldNormal0;
+in float logz;
+
+out vec4 fragColor;
 
 uniform vec3 cameraPos;
 uniform vec3 color;
@@ -39,6 +41,6 @@ void main()
 
     float a = pow(rim, power) * intensity * max(sunFace, backlit);
 
-    gl_FragColor = vec4(color, a);
+    fragColor = vec4(color, a);
     gl_FragDepth = logz;   // must match the vertex shader / terrain log-depth
 }

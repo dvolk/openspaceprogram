@@ -1,12 +1,12 @@
-#version 120
+#version 450
 
-attribute vec3 position;
-attribute vec2 uv;
-attribute vec3 normal;
+in vec3 position;
+in vec2 uv;
+in vec3 normal;
 
-varying vec3 normal0;
-varying vec2 uv0;
-varying float logz;
+out vec3 normal0;
+out vec2 uv0;
+out float logz;
 
 uniform mat4 MVP;
 uniform mat4 Normal;

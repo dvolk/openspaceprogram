@@ -1,8 +1,8 @@
-#version 120
+#version 450
 
-attribute vec2 position;
-attribute vec2 uv;
-varying vec2 texcoord0;
+in vec2 position;
+in vec2 uv;
+out vec2 texcoord0;
 
 void main()
 {

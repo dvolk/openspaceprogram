@@ -1,11 +1,11 @@
-#version 120
+#version 450
 
-attribute vec3 position;
-attribute vec3 normal;
+in vec3 position;
+in vec3 normal;
 
-varying vec3 worldPos0;
-varying vec3 worldNormal0;
-varying float logz;
+out vec3 worldPos0;
+out vec3 worldNormal0;
+out float logz;
 
 uniform mat4 MVP;
 uniform mat4 Normal;   // actually the Model matrix (same convention as terrain)

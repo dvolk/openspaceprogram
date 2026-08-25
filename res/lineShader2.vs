@@ -1,11 +1,11 @@
-#version 120
+#version 450
 
-attribute vec3 position;
+in vec3 position;
 
 uniform mat4 MVP;
 uniform vec4 color;
 
-varying vec4 color0;
+out vec4 color0;
 
 void main()
 {

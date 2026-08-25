@@ -1,6 +1,8 @@
-#version 120
+#version 450
 
-varying vec2 texcoord0;
+in vec2 texcoord0;
+
+out vec4 fragColor;
 
 uniform sampler2D scene;
 uniform vec2 resolution;
@@ -26,9 +28,9 @@ void main()
     // strength so edges get a red/blue fringe. distort() works in centered
     // coords, so map back to [0,1] texture space before sampling.
     vec3 col;
-    col.r = texture2D(scene, distort(c, 0.080) + 0.5).r;
-    col.g = texture2D(scene, distort(c, 0.100) + 0.5).g;
-    col.b = texture2D(scene, distort(c, 0.120) + 0.5).b;
+    col.r = texture(scene, distort(c, 0.080) + 0.5).r;
+    col.g = texture(scene, distort(c, 0.100) + 0.5).g;
+    col.b = texture(scene, distort(c, 0.120) + 0.5).b;
 
     // Where the distorted sample (centered coords) falls outside
     // [-0.5, 0.5] (the corners), fade to black like the rounded panel of
@@ -48,5 +50,5 @@ void main()
     // Slow, subtle flicker.
     float flicker = 0.985 + 0.015 * sin(time * 2.1) * sin(time * 5.3);
 
-    gl_FragColor = vec4(col * scan * vig * panel * flicker, 1.0);
+    fragColor = vec4(col * scan * vig * panel * flicker, 1.0);
 }

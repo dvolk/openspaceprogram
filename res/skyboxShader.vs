@@ -1,7 +1,7 @@
-#version 120
+#version 450
 
-attribute vec3 position;
-varying vec3 texcoord0;
+in vec3 position;
+out vec3 texcoord0;
 
 uniform mat4 projectionview;
 
