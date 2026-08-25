@@ -54,6 +54,7 @@
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/imgui/backends/imgui_impl_sdl2.h"
 #include "../middleware/imgui/backends/imgui_impl_opengl3.h"
+#include "../middleware/implot/implot.h"
 
 #include <CLI11/CLI11.hpp>
 
@@ -2514,6 +2515,44 @@ glm::dvec3 projectVecOntoPlane(const glm::dvec3 & vec, const glm::dvec3 & normal
     return vec - glm::dot(vec, normal) * normal;
 }
 
+// Circular buffer of (sim time, value) samples for the telemetry plots.
+// Fixed size and preallocated, so sampling in the render loop never
+// allocates; once full, push() overwrites the oldest sample.
+struct TimeSeries {
+    enum { N = 8192 };
+    double t[N];
+    double v[N];
+    double st_t[N];  // staging copies, filled oldest-first by stage()
+    double st_v[N];
+    int head = 0;    // next write slot
+    int count = 0;   // samples stored (capped at N)
+    void push(double tt, double vv) {
+        const int last = (head - 1 + N) % N;
+        if(count > 0 && t[last] == tt) {
+            // sim time didn't advance (paused): refresh the last sample
+            v[last] = vv;
+            return;
+        }
+        t[head] = tt;
+        v[head] = vv;
+        head = (head + 1) % N;
+        if(count < N) { count++; }
+    }
+    // Copies the samples oldest-first into the staging buffers (a wrapped
+    // ring is not contiguous) and returns their count.
+    int stage() {
+        const int start = (head - count + N) % N;
+        for(int i = 0; i < count; i++) {
+            const int idx = (start + i) % N;
+            st_t[i] = t[idx];
+            st_v[i] = v[idx];
+        }
+        return count;
+    }
+    const double *t_arr() const { return st_t; }
+    const double *v_arr() const { return st_v; }
+};
+
 /* --sim-press: synthetic key input for e2e testing.
    One entry = one key press: down `down_ms` after the main loop starts,
    up `up_ms` after. It feeds two input channels:
@@ -2783,6 +2822,9 @@ int main(int argc, char **argv)
     }
     ImGuiContext* ctx1 = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx1);
+    // ImPlot keeps its own state per imgui context (v1.0 requires an
+    // explicit context; it is bound to the current one at creation).
+    ImPlot::CreateContext();
     ImGui_ImplSDL2_InitForOpenGL(display.get_display(), SDL_GL_GetCurrentContext());
     ImGui_ImplOpenGL3_Init("#version 430");
     check_gl_error();
@@ -3329,11 +3371,16 @@ int main(int argc, char **argv)
     bool targetInfoWindow = false;
     bool topHUDWindows = false;
     bool shipDetailWindow = false;
+    bool telemetryWindow = false;
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
 
     double time = 0;
+
+    // Telemetry plots (active ship, sampled once per rendered frame).
+    TimeSeries energy_series;
+    TimeSeries angmom_series;
 
     // --orbit-log: print at most once per wall-clock interval
     const Uint32 orbit_log_interval_ms = (Uint32)(orbit_interval * 1000.0);
@@ -3713,6 +3760,7 @@ int main(int argc, char **argv)
                     targetInfoWindow = false;
                     topHUDWindows = false;
                     shipDetailWindow = false;
+                    telemetryWindow = false;
                 }
             }
             if(ev.type == SDL_MOUSEBUTTONDOWN) {
@@ -4085,6 +4133,11 @@ int main(int argc, char **argv)
             const double distance = o.distance;
             const double speed = o.speed;
 
+            // Telemetry: e and |h| are the two conserved 2-body constants,
+            // so a drifting plot = integrator drift; steps = burns/staging.
+            energy_series.push(time, o.energy);
+            angmom_series.push(time, o.ang_momentum);
+
             glm::dvec3 GetAngVelocity_(Body *b);
             const glm::dvec3 ang_vel_ = GetAngVelocity(ship->controller);
 
@@ -4262,6 +4315,7 @@ int main(int argc, char **argv)
             ImGui::Checkbox("DUMB-ASS", &autoPilotWindow);
             ImGui::Checkbox("Controls Help", &controlsWindow);
             ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
+            ImGui::Checkbox("Telemetry", &telemetryWindow);
             ImGui::Checkbox("Top HUD", &topHUDWindows);
             ImGui::Checkbox("Planets", &planetsWindow);
             ImGui::End();
@@ -4364,6 +4418,38 @@ int main(int argc, char **argv)
                 ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
                 ImGui::Text("Radial velocity: %.2f", o.radial_vel);
                 ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
+                ImGui::End();
+            }
+
+            if(telemetryWindow == true) {
+                // Explicit initial size: on its first frame the window
+                // auto-fits its (empty) body and then keeps that tiny size,
+                // which clips the ~300px-tall plots out of existence.
+                // FirstUseEver only applies when no size is saved yet, so a
+                // user-chosen resize still sticks.
+                ImGui::SetNextWindowSize(ImVec2(460, 680), ImGuiCond_FirstUseEver);
+                ImGui::Begin("TELEMETRY");
+                // Two separate plots: e (~1e5) and |h| (~1e11) differ by
+                // ~6 orders of magnitude, so sharing one axis would flatten
+                // e to a line and hide the drift we're looking for.
+                if(energy_series.count > 1) {
+                    const int n = energy_series.stage();
+                    ImPlot::SetNextAxesToFit();  // live auto-fit, both axes
+                    if(ImPlot::BeginPlot("specific orbital energy (J/kg)")) {
+                        ImPlot::SetupAxis(ImAxis_X1, "t (s)");
+                        ImPlot::PlotLine("e", energy_series.t_arr(), energy_series.v_arr(), n);
+                        ImPlot::EndPlot();
+                    }
+                }
+                if(angmom_series.count > 1) {
+                    const int n = angmom_series.stage();
+                    ImPlot::SetNextAxesToFit();  // live auto-fit, both axes
+                    if(ImPlot::BeginPlot("angular momentum (m^2/s)")) {
+                        ImPlot::SetupAxis(ImAxis_X1, "t (s)");
+                        ImPlot::PlotLine("|h|", angmom_series.t_arr(), angmom_series.v_arr(), n);
+                        ImPlot::EndPlot();
+                    }
+                }
                 ImGui::End();
             }
 
