@@ -249,8 +249,9 @@ int main() {
             // Circular orbital speed (vis-viva with semi-major axis == r).
             const double speed = std::sqrt(c.mu / c.r);
             glm::dvec3 rhat = glm::normalize(worldPos - center);
-            glm::dvec3 vhat = c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
-                                      : glm::cross(glm::dvec3(0, 1, 0), rhat);
+            glm::dvec3 vhat = glm::normalize(
+                c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
+                        : glm::cross(glm::dvec3(0, 1, 0), rhat));
             velWorld = speed * vhat;
         }
         const double speed = glm::length(velWorld);
@@ -317,6 +318,60 @@ int main() {
 
         printf("  %s: frame='%s'  r=%.0f m  |v|=%.1f m/s  OK\n",
                c.desc, frame->name.c_str(), ship_r, speed);
+    }
+
+    // -----------------------------------------------------------------
+    // Circular spawn around an INCLINED body (the Eeloo regression):
+    // the body's orbital tilt leans the spawn radius away from the
+    // reference axis, so the raw cross(Y, rhat) direction is short by
+    // cos(incl). vhat must be normalized or the ship arrives below
+    // circular speed, at the apoapsis of an e = sin^2(incl) ellipse.
+    {
+        Frame *incl = new Frame;
+        incl->name = "inclined";
+        incl->parent = sun;
+        incl->rotating = false;
+        incl->body = NULL;
+        incl->pos = glm::dvec3(0, 0, -5e9);
+        incl->vel = glm::dvec3(0);
+        incl->orb_ang_speed = 0;
+        incl->rot_ang_speed = 0;
+        incl->soi = 1e8;
+        incl->root_pos = glm::dvec3(0);
+        incl->root_vel = glm::dvec3(0);
+        incl->root_orient = glm::dmat3(1.0);
+        const double ii = 30.0 * M_PI / 180.0;
+        incl->orient = glm::dmat3(glm::dvec3(1, 0, 0),
+                                  glm::dvec3(0, std::cos(ii), std::sin(ii)),
+                                  glm::dvec3(0, -std::sin(ii), std::cos(ii)));
+        sun->children.push_back(incl);
+        sun->UpdateOrbitRails(0.0, 1.0 / 60.0);
+
+        const double mu = 1e12, r = 1e6;
+        const glm::dvec3 center = incl->root_pos;
+        const glm::dvec3 worldPos =
+            center + incl->root_orient * (glm::dvec3(0, 0, 1) * r);
+        const double circ_speed = std::sqrt(mu / r);
+        const glm::dvec3 rhat = glm::normalize(worldPos - center);
+        // the fixed spawn_vehicle formula (normalized vhat)
+        const glm::dvec3 vhat =
+            glm::normalize(glm::cross(glm::dvec3(0, 1, 0), rhat));
+        const glm::dvec3 velWorld = circ_speed * vhat;
+
+        char buf[160];
+        snprintf(buf, sizeof buf,
+                 "inclined circular spawn: |v| == sqrt(mu/r) (%.9g vs %.9g)",
+                 glm::length(velWorld), circ_speed);
+        CHECK_TRUE(std::fabs(glm::length(velWorld) - circ_speed) < 1e-9 * circ_speed, buf);
+
+        // the spawned state's eccentricity in the body's inertial axes
+        const glm::dvec3 p = glm::transpose(incl->root_orient) * (worldPos - incl->root_pos);
+        const glm::dvec3 v = glm::transpose(incl->root_orient) * velWorld;
+        const glm::dvec3 h = glm::cross(p, v);
+        const glm::dvec3 ev = glm::cross(v, h) / mu - p / glm::length(p);
+        snprintf(buf, sizeof buf,
+                 "inclined circular spawn: ecc == 0 (got %.3e)", glm::length(ev));
+        CHECK_TRUE(glm::length(ev) < 1e-12, buf);
     }
 
     // -----------------------------------------------------------------

@@ -2039,9 +2039,14 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
 
         // Prograde: perpendicular to the radius vector, in the system's sense of
         // rotation (+y axis); polar orbits go around the spin axis instead.
+        // Normalize: with an inclined body orbit rhat is not orthogonal to
+        // the reference axis, and the raw cross product is short by
+        // cos(incl) -- the spawn would arrive below circular speed, at the
+        // apoapsis of an e = sin^2(incl) ellipse.
         const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
-        const glm::dvec3 vhat = sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
-                                         : glm::cross(glm::dvec3(0, 1, 0), rhat);
+        const glm::dvec3 vhat = glm::normalize(
+            sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
+                     : glm::cross(glm::dvec3(0, 1, 0), rhat));
         velWorld = speed * vhat;
     }
 
