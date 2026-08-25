@@ -11,12 +11,12 @@
 
 using namespace std;
 
-Renderer::Renderer(int width, int height)
+Renderer::Renderer(int width, int height, bool gl_debug)
 {
     int gl_major = 4;
     int gl_minor = 5;
     bool gl_core = true;
-    m_gl_debug = false;
+    m_gl_debug = gl_debug;
     Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE; // TODO cli args
     char window_title[] = "Open Space Program";
     m_screen_width = 1920; // TODO cli args
@@ -24,6 +24,14 @@ Renderer::Renderer(int width, int height)
   
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    check_gl_error();
+    // 4x MSAA for geometry edges, when the stack has a multisample GLX
+    // visual (window creation falls back below if it doesn't). Note the
+    // --crt path renders into a non-multisampled FBO, so only the default
+    // path's 3D gets the window's MSAA.
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    check_gl_error();
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
     check_gl_error();
     // 32-bit float depth was tried (see git history): on this stack window
     // creation fails with DEPTH 32 + STENCIL 8, and it wouldn't have helped
@@ -54,6 +62,16 @@ Renderer::Renderer(int width, int height)
 
     m_window = SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, window_flags);
     check_gl_error();
+    if(m_window == NULL) {
+        // e.g. Xvfb/llvmpipe: no multisample GLX visual (same family of
+        // quirk as the DEPTH 32 + STENCIL 8 failure above). Retry without
+        // MSAA so headless stacks still work.
+        printf("MSAA window creation failed (%s); retrying without MSAA\n", SDL_GetError());
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+        m_window = SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, window_flags);
+        check_gl_error();
+    }
     assert(m_window);
 
     SDL_GLContext glcontext = SDL_GL_CreateContext(m_window);
@@ -71,6 +89,12 @@ Renderer::Renderer(int width, int height)
         {
             cerr << "Error: your graphic card does not support OpenGL " << gl_major << "." << gl_minor << endl;
         }
+
+    {
+        int granted = 0;
+        SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &granted);
+        printf("MSAA: %d sample(s)\n", granted);
+    }
     
     glEnable(GL_DEPTH_TEST);
     check_gl_error();
@@ -82,11 +106,6 @@ Renderer::Renderer(int width, int height)
     check_gl_error();
     glCullFace(GL_BACK);
     check_gl_error();
-
-    GLenum res = glewInit();
-    if(res != GLEW_OK) {
-        std::cerr << "Glew failed to initialize!" << std::endl;
-    }
 
     if(m_gl_debug == true)
         {

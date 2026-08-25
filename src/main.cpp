@@ -2927,6 +2927,11 @@ int main(int argc, char **argv)
     app.add_flag("--crt", crt_enabled,
                  "Start with the CRT post-processing shader enabled");
 
+    bool gl_debug = false;
+    app.add_flag("--gl-debug", gl_debug,
+                 "Enable the OpenGL debug output callback (GL_DEBUG_* "
+                 "messages print as they occur)");
+
     // it's like a google maps link
     std::vector<double> free_cam_pos;
     app.add_option("--free-cam-pos", free_cam_pos,
@@ -3059,7 +3064,7 @@ int main(int argc, char **argv)
     const bool use_free_cam = !free_cam_pos.empty() || !free_cam_fwd.empty()
                             || !free_cam_up.empty();
 
-    Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    Renderer display(DISPLAY_WIDTH, DISPLAY_HEIGHT, gl_debug);
     check_gl_error();
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: resolve keycodes to scancodes now that SDL is initialized

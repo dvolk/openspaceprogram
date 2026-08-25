@@ -6,7 +6,7 @@ struct SDL_Window;
 class Renderer
 {
 public:
-    Renderer(int width, int height);
+    Renderer(int width, int height, bool gl_debug = false);
 
     void Clear(float r, float g, float b, float a);
     void SwapBuffers();
