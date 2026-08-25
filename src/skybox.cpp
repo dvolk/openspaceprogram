@@ -1,6 +1,8 @@
 #include "skybox.h"
 
 #include <SDL_image.h>
+#include <map>
+#include <string>
 #include <vector>
 #include <GL/glew.h>
 
@@ -21,12 +23,21 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
     GLuint textureID;
     glGenTextures(1, &textureID);
 
+    // Faces may repeat (all six are the same starfield today), so decode
+    // each distinct file once and upload the shared surface per face.
+    std::map<std::string, SDL_Surface*> decoded;
+    for(const GLchar* path : faces) {
+        if(decoded.find(path) == decoded.end()) {
+            decoded[std::string(path)] = IMG_Load(path);
+        }
+    }
+
     int width,height;
     unsigned char* image_data;
 
     glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
     for(GLuint i = 0; i < faces.size(); i++) {
-        SDL_Surface *image = IMG_Load(faces[i]);
+        SDL_Surface *image = decoded[std::string(faces[i])];
         width = image->w;
         height = image->h;
         image_data = (unsigned char *)image->pixels;
@@ -40,8 +51,9 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
                      GL_RGB,
                      GL_UNSIGNED_BYTE,
                      image_data);
-
-        SDL_FreeSurface(image);
+    }
+    for(auto& kv : decoded) {
+        SDL_FreeSurface(kv.second);
     }
 
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

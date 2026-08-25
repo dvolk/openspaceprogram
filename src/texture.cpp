@@ -35,6 +35,7 @@ Texture *load_texture(const char *filename) {
     glGenTextures(1, &ret->id);
     glBindTexture(GL_TEXTURE_2D, ret->id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, // target
                  0,  // level, 0 = base, no minimap,
                  GL_RGBA, // internalformat
