@@ -8,6 +8,12 @@ Texture::~Texture() {
     glDeleteTextures(1, &id);
 }
 
+float max_anisotropy() {
+    float max_aniso = 0.0f;
+    glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &max_aniso);
+    return max_aniso;
+}
+
 Texture *load_texture(const char *filename) {
     Texture * ret = new Texture;
   
@@ -36,6 +42,15 @@ Texture *load_texture(const char *filename) {
     glBindTexture(GL_TEXTURE_2D, ret->id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    float aniso = max_anisotropy();
+    if (aniso > 0.0f) {
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, aniso);
+        static bool aniso_printed = false;
+        if (!aniso_printed) {
+            printf("texture anisotropic filtering: %g (driver max)\n", aniso);
+            aniso_printed = true;
+        }
+    }
     glTexImage2D(GL_TEXTURE_2D, // target
                  0,  // level, 0 = base, no minimap,
                  GL_RGBA, // internalformat
