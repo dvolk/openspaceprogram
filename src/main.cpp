@@ -3046,7 +3046,7 @@ int main(int argc, char **argv)
     std::vector<TerrainBody *> ship_homes;     // per ship: the body it starts on
     std::vector<const ScenarioDef *> ship_sc;  // per ship: its scenario
     std::vector<int> ship_slots;               // per ship: slot within its (body, scenario) group
-    std::map<TerrainBody *, StaticBuilding *> space_ports; // one per home body
+    std::map<std::pair<TerrainBody *, bool>, StaticBuilding *> space_ports; // one per (body, pad site)
     {
         Mesh *space_port_mesh = new Mesh;
         space_port_mesh->FromFile("./res/space_port.obj", true);
@@ -3293,18 +3293,32 @@ int main(int argc, char **argv)
                 nm = candidate;
             }
 
-            // one space port per home body, at its default (tilted) pad
-            if(space_ports.find(hb) == space_ports.end()) {
-                const glm::dvec3 sp_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-                const glm::dmat3 sp_orient = faceAlong(sp_dir);
-                const glm::dvec3 sp_start = sp_dir * (double)hb->GetTerrainHeight(sp_dir);
+            // the pad top is this far above the terrain surface (space_port.obj
+            // spans local z in [-10, 0], placed at dir * (terrain + pad_height))
+            const double pad_height = 5.0;
+
+            // pad site for this ship: the default tilted equatorial site, or
+            // the body's pole for pad-polar. A space port is built per
+            // (body, site): the default site always (so orbit views still show
+            // the launch pad), the polar one when a pad-polar ship stands on it.
+            const bool pad_polar = sc->on_pad && sc->polar;
+            const glm::dvec3 pad_dir = pad_polar
+                ? glm::dvec3(0.0, 1.0, 0.0)
+                : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+            const glm::dmat3 pad_orient = faceAlong(pad_dir);
+            auto place_pad = [&](bool polar, const glm::dvec3 &dir) {
+                const std::pair<TerrainBody *, bool> key(hb, polar);
+                if(space_ports.find(key) != space_ports.end()) { return; }
+                const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
                 StaticBuilding *sp = new StaticBuilding;
                 sp->body = create_body(space_port_model, 0, 0, 0, 0, false);
-                setPosRot(sp->body, sp_start + sp_dir * 5.0, sp_orient);
+                setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
                 sp->parent = hb;
                 sp->sun = sun;
-                space_ports[hb] = sp;
-            }
+                space_ports[key] = sp;
+            };
+            place_pad(false, glm::normalize(glm::dvec3(0.005, 0.005, 1.0))); // default site
+            if(pad_polar) { place_pad(true, pad_dir); }                      // polar site
 
             Vehicle *v = new Vehicle;
             v->name = nm;
@@ -3317,11 +3331,7 @@ int main(int argc, char **argv)
             // For orbit scenarios this is only staging -- spawn_vehicle
             // repositions the ship along vhat; the part offsets relative to
             // the ship's own center of mass are what survive.
-            const glm::dvec3 pad_dir = (sc->on_pad && sc->polar)
-                ? glm::dvec3(0.0, 1.0, 0.0)
-                : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-            const glm::dmat3 pad_orient = faceAlong(pad_dir);
-            const glm::dvec3 base = pad_dir * (double)hb->GetTerrainHeight(pad_dir)
+            const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
                 + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
             build_ship(v, def, partsshader, base, pad_orient);
             v->setVelocity(glm::dvec3(0, 0, 0));
