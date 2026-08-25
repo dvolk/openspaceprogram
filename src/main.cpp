@@ -2573,6 +2573,29 @@ struct SimKeyPress {
     bool up_sent;
 };
 
+/* --sim-mouse: synthetic mouse input for e2e testing.
+   One entry = one mouse action: it starts `time_ms` after the main loop
+   starts. Semantics by (button, duration):
+   - button != 0 && duration > 0  -> a DRAG: press the button, then move
+     the cursor to (x,y); release at time_ms + duration. Used to orbit the
+     camera (RMB) -- the look code reads the motion delta, and the button
+     must be down before the motion event.
+   - button != 0 && duration == 0 -> a CLICK: move the cursor to (x,y),
+     then press + release in place (same frame). Used to click UI buttons.
+   - button == 0                  -> a MOVE: just reposition the cursor.
+   (x,y) are absolute window pixels; the emitted MOUSEMOTION carries the
+   delta from the previous simulated position, which is what the camera
+   consumes (yaw = -dx/200 rad, pitch = +dy/200 rad; 200px ~= 1 rad). */
+struct SimMouseAction {
+    Uint32 time_ms;   // when the action starts (after the loop starts)
+    Uint32 up_ms;     // time_ms + duration; the button release time
+    int x;            // target position, window pixels
+    int y;
+    Uint8 button;     // SDL button code (1=LEFT,2=MIDDLE,3=RIGHT); 0 = move only
+    bool started;     // start events (button-down + motion) already emitted
+    bool released;    // button-up already emitted
+};
+
 static SDL_Keycode sim_parse_key(const std::string &s) {
     // decimal SDL keycode, e.g. 32 = SPACE
     if(!s.empty()) {
@@ -2614,6 +2637,34 @@ static SDL_Keycode sim_parse_key(const std::string &s) {
         return it->second;
     }
     return 0; // unknown
+}
+
+static int sim_parse_button(const std::string &s) {
+    // decimal SDL button code (1 = LEFT, 2 = MIDDLE, 3 = RIGHT; 0 = none),
+    // or a name for readability.
+    if(!s.empty()) {
+        char *end = nullptr;
+        const unsigned long v = strtoul(s.c_str(), &end, 10);
+        if(end != s.c_str() && *end == '\0') {
+            return (int)v;
+        }
+    }
+    std::string up;
+    up.reserve(s.size());
+    for(size_t i = 0; i < s.size(); i++) {
+        up.push_back((char)toupper((unsigned char)s[i]));
+    }
+    static const std::map<std::string, int> names = {
+        {"L", 1}, {"LEFT", 1}, {"LMB", 1},
+        {"M", 2}, {"MIDDLE", 2}, {"MMB", 2},
+        {"R", 3}, {"RIGHT", 3}, {"RMB", 3},
+        {"NONE", 0},
+    };
+    std::map<std::string, int>::const_iterator it = names.find(up);
+    if(it != names.end()) {
+        return it->second;
+    }
+    return -1; // unknown
 }
 
 int main(int argc, char **argv)
@@ -2697,6 +2748,23 @@ int main(int argc, char **argv)
                    "SDL keycode. The key is pressed START_MS after the main "
                    "loop starts and held for DURATION_MS. Repeat the flag "
                    "to append more triples.")
+        ->delimiter(',');
+
+    std::vector<std::string> sim_mouse;
+    app.add_option("--sim-mouse", sim_mouse,
+                   "Synthetic mouse input for e2e testing: a flat list of "
+                   "TIME_MS,DURATION_MS,X,Y,BTN quintuples (e.g. "
+                   "500,0,400,300,1 = click LMB at (400,300) after 500ms; "
+                   "500,600,900,500,RMB = RMB-drag to (900,500) over 600ms "
+                   "to orbit the camera; spaces also separate values). X,Y "
+                   "are absolute window pixels (the cursor moves there; the "
+                   "delta from the previous position drives the camera look: "
+                   "yaw = -dx/200 rad, pitch = +dy/200 rad, 200px ~= 1 rad). "
+                   "BTN is an SDL button code (1=LEFT, 2=MIDDLE, 3=RIGHT) or "
+                   "name (L/LEFT/LMB, M/MIDDLE/MMB, R/RIGHT/RMB); 0/NONE = "
+                   "move only. DURATION_MS>0 with a button = a drag (held); "
+                   "0 = a quick click. Repeat the flag to append more "
+                   "quintuples.")
         ->delimiter(',');
 
     bool selftest_stage = false;
@@ -2799,6 +2867,69 @@ int main(int argc, char **argv)
             p.down_sent = false;
             p.up_sent = false;
             sim_presses.push_back(p);
+        }
+    }
+
+    /* --sim-mouse: fold the flat TIME_MS,DURATION_MS,X,Y,BTN list into
+       actions. X,Y are signed (the cursor can move up/left from where it
+       was), so they parse as strtol, unlike the unsigned times above. */
+    std::vector<SimMouseAction> sim_mouse_actions;
+    // Simulated cursor position (window pixels); each action's motion
+    // carries the delta from here, which is what the camera look consumes.
+    int sim_mouse_x = 0, sim_mouse_y = 0;
+    if(!sim_mouse.empty()) {
+        if(sim_mouse.size() % 5 != 0) {
+            printf("error: --sim-mouse expects TIME_MS,DURATION_MS,X,Y,BTN "
+                   "quintuples; got %zu value(s)\n", sim_mouse.size());
+            return 1;
+        }
+        for(size_t i = 0; i < sim_mouse.size(); i += 5) {
+            char *end = nullptr;
+            unsigned long v;
+            v = strtoul(sim_mouse[i].c_str(), &end, 10);
+            if(end == sim_mouse[i].c_str() || *end != '\0') {
+                printf("error: --sim-mouse time '%s' is not an "
+                       "integer ms\n", sim_mouse[i].c_str());
+                return 1;
+            }
+            const unsigned long t = v;
+            v = strtoul(sim_mouse[i + 1].c_str(), &end, 10);
+            if(end == sim_mouse[i + 1].c_str() || *end != '\0') {
+                printf("error: --sim-mouse duration '%s' is not an "
+                       "integer ms\n", sim_mouse[i + 1].c_str());
+                return 1;
+            }
+            const unsigned long d = v;
+            v = (unsigned long)strtol(sim_mouse[i + 2].c_str(), &end, 10);
+            if(end == sim_mouse[i + 2].c_str() || *end != '\0') {
+                printf("error: --sim-mouse X '%s' is not an "
+                       "integer pixel\n", sim_mouse[i + 2].c_str());
+                return 1;
+            }
+            const int x = (int)v;
+            v = (unsigned long)strtol(sim_mouse[i + 3].c_str(), &end, 10);
+            if(end == sim_mouse[i + 3].c_str() || *end != '\0') {
+                printf("error: --sim-mouse Y '%s' is not an "
+                       "integer pixel\n", sim_mouse[i + 3].c_str());
+                return 1;
+            }
+            const int y = (int)v;
+            const int b = sim_parse_button(sim_mouse[i + 4]);
+            if(b < 0) {
+                printf("error: --sim-mouse button '%s' is not a known SDL "
+                       "button code or name (0=none, 1=LEFT, 2=MIDDLE, "
+                       "3=RIGHT)\n", sim_mouse[i + 4].c_str());
+                return 1;
+            }
+            SimMouseAction a;
+            a.time_ms = (Uint32)t;
+            a.up_ms = (Uint32)t + (Uint32)d;
+            a.x = x;
+            a.y = y;
+            a.button = (Uint8)b;
+            a.started = false;
+            a.released = false;
+            sim_mouse_actions.push_back(a);
         }
     }
 
@@ -3607,6 +3738,68 @@ int main(int argc, char **argv)
                 if(p.down_sent && !p.up_sent && now >= p.up_ms) {
                     push_key(SDL_KEYUP, p);
                     p.up_sent = true;
+                }
+            }
+        }
+
+        /* --sim-mouse: emit the synthetic mouse events that fell due this
+           frame, in the order each gesture needs. A drag (button + held)
+           presses the button BEFORE moving so the camera-look handler
+           (gated on rmbCam) sees the button down first; a click moves the
+           cursor into place then presses + releases in place; BTN==0 just
+           repositions. The motion carries the delta from the previous
+           simulated position (sim_mouse_x/y), which the camera consumes. */
+        if(!sim_mouse_actions.empty()) {
+            const Uint32 now = SDL_GetTicks() - loop_start_ms;
+            auto push_motion = [&](int x, int y) {
+                SDL_Event mev = {0};
+                mev.type = SDL_MOUSEMOTION;
+                mev.motion.windowID = sim_win_id;
+                mev.motion.which = 0;
+                mev.motion.x = x;
+                mev.motion.y = y;
+                mev.motion.xrel = x - sim_mouse_x;
+                mev.motion.yrel = y - sim_mouse_y;
+                mev.motion.state = 0;
+                SDL_PushEvent(&mev);
+                sim_mouse_x = x;
+                sim_mouse_y = y;
+            };
+            auto push_btn = [&](SDL_EventType type, int button, int x, int y) {
+                SDL_Event bev = {0};
+                bev.type = type;
+                bev.button.windowID = sim_win_id;
+                bev.button.which = 0;
+                bev.button.button = (Uint8)button;
+                bev.button.state = (type == SDL_MOUSEBUTTONDOWN) ? SDL_PRESSED
+                                                                 : SDL_RELEASED;
+                bev.button.x = x;
+                bev.button.y = y;
+                SDL_PushEvent(&bev);
+            };
+            for(auto &a : sim_mouse_actions) {
+                if(!a.started && now >= a.time_ms) {
+                    if(a.button != 0 && a.up_ms > a.time_ms) {
+                        // drag: press, then move (release comes at up_ms)
+                        push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
+                        push_motion(a.x, a.y);
+                    } else if(a.button != 0) {
+                        // click: move into place, press, release (same frame)
+                        push_motion(a.x, a.y);
+                        push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
+                        push_btn(SDL_MOUSEBUTTONUP, a.button, a.x, a.y);
+                        a.released = true;
+                    } else {
+                        // move only (no button)
+                        push_motion(a.x, a.y);
+                    }
+                    a.started = true;
+                }
+                // release a held button at up_ms
+                if(a.button != 0 && a.started && !a.released
+                   && now >= a.up_ms) {
+                    push_btn(SDL_MOUSEBUTTONUP, a.button, a.x, a.y);
+                    a.released = true;
                 }
             }
         }

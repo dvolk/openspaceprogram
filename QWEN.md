@@ -1,0 +1,23 @@
+- Project is kerbal space program-like game.
+- Libraries: SDL2, bullet3, glm, imgui, assimp, CLI11, nlohmann/json.hpp.
+- Using simple C++
+- Performance is very important as we might scale up the game a lot later.
+- Feel free to comment on bits of code that took a lot of investigation, but don't compare it to how it used to be.
+- Source code in ./src/
+- Textures/meshes/shaders/parts/ships/etc in ./res/
+- Very early development, don't worry about breaking changes.
+- Look for opportunities to simplify.
+- Flag any code that looks odd.
+- Don't use memory: the projects moves quickly and it's usually faster to re-derive than to wrestle with outdated or incorrect notes.
+- Don't push to github.
+- Use cli options like --timeout 30s. --help to see all.
+- Game starts with time accel set to 0, use --time-accel 1 to unpause (also available: 10, 100, 1000).
+- Avoid making tests too specific as it's in very early development.
+- If unsure if something is working, first thing to do is add some debug prints and run the game.
+- there's a cli flag to send keys to the game: --sim-press START_MS,DURATION_MS,KEY triples. DURATION_MS=0 for single kp, eg --sim-press 1000,1000,I,2000,0,SPACE to thrust for 1s then stage after 1s. Use this to test the game.
+- there's a cli flag to send mouse input: --sim-mouse TIME_MS,DURATION_MS,X,Y,BTN quintuples. X,Y are window pixels (BTN 0=move only, 1=LMB click, 2=MMB, 3=RMB; names L/R/M work too). DURATION_MS=0 = quick click, >0 with a button = drag. To orbit the camera, move over the 3D view first (BTN 0) then RMB-drag: the camera look = the motion delta (yaw=-dx/200 rad, pitch=+dy/200 rad; 200px~=1 rad). eg --sim-mouse 500,0,900,500,0,600,500,1100,600,RMB
+- Save ALL temporary files in ./tmp/
+- ./middleware/ contains CLI11, bullet3, glm, imgui, nlohmann vendored in.
+- ./references/ contains pioneer and orbiter source code as they're related space sim games.
+- Written reports in ./reports/<subject>_YYYY_MM_DD are immutable snapshots of how the project was. avoid reading and never edit after writing.
+- For visual confirmation ask me to check, unless I specifically ask you to iterate with screenshots as this bloats context.
