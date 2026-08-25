@@ -2179,9 +2179,10 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
 
     if(sun == nullptr) { return 1.0f; }
 
-    // Work in the root (star) frame: root_pos/root_orient are both expressed
-    // in root axes, so the composition below is unambiguous (and sidesteps
-    // the GetPositionRelTo vec*mat path).
+    // Work in universe (root) axes: the ray to the sun and the planet
+    // center are both absolute there, and root_orient carries the full
+    // chain (orbital tilts of the ancestors, axial tilt + spin of the
+    // body) for the conversion into the body-fixed frame below.
     const glm::dvec3 pos = posFrame->root_orient * posInFrame + posFrame->root_pos;
     const glm::dvec3 sunPos = sun->frame->root_pos;
     const glm::dvec3 dir = glm::normalize(sunPos - pos);
