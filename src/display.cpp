@@ -24,6 +24,12 @@ Renderer::Renderer(int width, int height, WindowMode mode, bool gl_debug)
         // Borderless fullscreen, not exclusive: no display mode change, so
         // leaving fullscreen doesn't reconfigure the monitor.
         window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    } else if (mode == WindowMode::Exclusive) {
+        // Exclusive fullscreen: ask the display for width x height (on X11
+        // that's a CRTC mode change -- the only way to get a non-native
+        // resolution); SDL falls back to covering the current mode if the
+        // panel has no matching mode.
+        window_flags |= SDL_WINDOW_FULLSCREEN;
     }
     char window_title[] = "Open Space Program";
     m_screen_width = width;
@@ -120,7 +126,8 @@ Renderer::Renderer(int width, int height, WindowMode mode, bool gl_debug)
     }
     glViewport(0, 0, m_screen_width, m_screen_height);
     check_gl_error();
-    static const char *mode_names[] = {"windowed", "borderless", "fullscreen"};
+    static const char *mode_names[] = {"windowed", "borderless",
+                                       "fullscreen", "exclusive"};
     printf("window: %dx%d (%s)\n", m_screen_width, m_screen_height,
            mode_names[static_cast<size_t>(mode)]);
 

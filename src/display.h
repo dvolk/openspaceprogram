@@ -7,7 +7,8 @@ enum class WindowMode
 {
     Windowed,    // decorated window at width x height
     Borderless,  // no decorations, stays on the desktop
-    Fullscreen   // borderless fullscreen at the display's native mode
+    Fullscreen,  // borderless fullscreen at the display's native mode
+    Exclusive    // exclusive fullscreen: display mode change to width x height
 };
 
 class Renderer

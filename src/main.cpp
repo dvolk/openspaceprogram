@@ -61,8 +61,6 @@
 ImFont *bigger;
 bool planetsWindow = false;
 
-static const int FPS = 60; // TODO use FPS from display?
-
 struct TerrainBody;
 
 struct GeoPatch {
@@ -2932,11 +2930,13 @@ int main(int argc, char **argv)
 
     int screen_width = 1920;
     app.add_option("--width", screen_width,
-                   "Window width in pixels (ignored with --fullscreen)")
+                   "Window width in pixels (used with --borderless and "
+                   "--exclusive; ignored with --fullscreen)")
         ->check(CLI::PositiveNumber);
     int screen_height = 1080;
     app.add_option("--height", screen_height,
-                   "Window height in pixels (ignored with --fullscreen)")
+                   "Window height in pixels (used with --borderless and "
+                   "--exclusive; ignored with --fullscreen)")
         ->check(CLI::PositiveNumber);
     bool fullscreen = false;
     auto fs_opt = app.add_flag("--fullscreen", fullscreen,
@@ -2946,7 +2946,21 @@ int main(int argc, char **argv)
     auto bl_opt = app.add_flag("--borderless", borderless,
                                "Start as a borderless window (no title bar) "
                                "at --width/--height");
+    bool exclusive = false;
+    auto ex_opt = app.add_flag("--exclusive", exclusive,
+                               "Exclusive fullscreen: change the display "
+                               "mode to --width/--height (low latency, the "
+                               "only way to go non-native on X11); the "
+                               "display reverts on exit");
     fs_opt->excludes(bl_opt);
+    fs_opt->excludes(ex_opt);
+    bl_opt->excludes(ex_opt);
+
+    float font_size = 14.0f;
+    app.add_option("--font-size", font_size,
+                   "UI font size in pixels (the big HUD readout font is "
+                   "twice this; default 14)")
+        ->check(CLI::PositiveNumber);
 
     // it's like a google maps link
     std::vector<double> free_cam_pos;
@@ -3081,7 +3095,8 @@ int main(int argc, char **argv)
                             || !free_cam_up.empty();
 
     const WindowMode window_mode =
-        fullscreen ? WindowMode::Fullscreen
+        exclusive  ? WindowMode::Exclusive
+        : fullscreen ? WindowMode::Fullscreen
         : borderless ? WindowMode::Borderless
                      : WindowMode::Windowed;
     Renderer display(screen_width, screen_height, window_mode, gl_debug);
@@ -3108,8 +3123,8 @@ int main(int argc, char **argv)
     check_gl_error();
 
     ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", 14.0);
-    bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 30.0);
+    io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", font_size);
+    bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 2.0f * font_size);
     check_gl_error();
 
     // start bullet; see physics.cpp

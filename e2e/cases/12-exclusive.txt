@@ -1,0 +1,12 @@
+# --exclusive: exclusive fullscreen at the requested resolution (display
+# mode change on X11). Xvfb's panel may not have a 640x480 mode, in which
+# case SDL covers the current one -- assert the mode word + a sane size,
+# not a specific size.
+NAME exclusive
+ARGS --exclusive --width 640 --height 480 --timeout 4
+EXPECT Main loop starting
+CHECK re.search(r"window: [1-9]\d{2,4}x[1-9]\d{2,4} \(exclusive\)", out)
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program
