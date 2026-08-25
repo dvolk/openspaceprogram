@@ -7,24 +7,19 @@
 glm::dvec3 Frame::GetVelocityRelTo(Frame *relTo)
 {
     if (this == relTo) return glm::dvec3(0, 0, 0);
-    glm::dvec3 diff = root_vel - relTo->root_vel;
-    if(relTo->isRotFrame()) {
-        return diff * relTo->root_orient;
-    }
-    else {
-        return diff;
-    }
+    /* root_vel lives in UNIVERSE axes; the result must be in relTo's OWN
+       axes, so rotate by relTo->root_orient^-1 (glm's v*M is M^T*v). This
+       applies whether relTo spins (root_orient carries the spin) or is
+       inertial (root_orient carries the ancestors' accumulated orbital
+       tilts -- identity only while every ancestor orbit is uninclined). */
+    return (root_vel - relTo->root_vel) * relTo->root_orient;
 }
 
 glm::dvec3 Frame::GetPositionRelTo(Frame *relTo)
 {
-    glm::dvec3 diff = root_pos - relTo->root_pos;
-    if(relTo->isRotFrame()) {
-        return diff * relTo->root_orient;
-    }
-    else {
-        return diff;
-    }
+    /* Universe-axis difference expressed in relTo's own axes -- see
+       GetVelocityRelTo for why the rotation is unconditional. */
+    return (root_pos - relTo->root_pos) * relTo->root_orient;
 }
 
 glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)

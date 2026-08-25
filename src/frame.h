@@ -46,6 +46,13 @@ struct Frame {
     void UpdateRootRelative(double time, double timestep);
     void UpdateOrbitRails(double time, double timestep);
 
+    /* Origin state of THIS frame expressed in relTo's OWN local axes.
+       The root_* quantities live in universe axes, so the difference is
+       rotated back by relTo->root_orient -- for a rotating relTo that is
+       its spin, for an inertial relTo the accumulated orbital tilts of
+       its ancestors. Invariant for every frame pair:
+         relTo->root_orient * A->GetPositionRelTo(relTo) + relTo->root_pos
+           == A->root_pos    (and likewise for root_vel). */
     glm::dvec3 GetVelocityRelTo(Frame *relTo);
     glm::dvec3 GetPositionRelTo(Frame *relTo);
     glm::dmat3 GetOrientRelTo(Frame *relTo);

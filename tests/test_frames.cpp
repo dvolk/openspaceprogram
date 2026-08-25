@@ -186,6 +186,27 @@ int main() {
     CHECK_TRUE(dvec_close(moon->GetPositionRelTo(sun), glm::dvec3(-12e6, 0, -1e8), 1.0),
                "moon rel sun == (-12e6,0,-1e8)");
 
+    printf("== rel-to round trips across the whole tree ==\n");
+    // For EVERY frame pair: relTo->root_orient * A->Get*RelTo(relTo) lands
+    // back on A's universe-axis origin state. Pins the contract that the
+    // result is expressed in relTo's OWN axes (the inertial-target case
+    // used to return universe axes, which is only right while all of
+    // relTo's ancestor orbits are uninclined).
+    {
+        Frame *frames[] = { sun, eerbon, eerbon_rot, moon, moon_rot };
+        for (size_t a = 0; a < 5; a++) {
+            for (size_t b = 0; b < 5; b++) {
+                Frame *A = frames[a], *B = frames[b];
+                glm::dvec3 pback = B->root_orient * A->GetPositionRelTo(B) + B->root_pos;
+                CHECK_TRUE(dvec_close(pback, A->root_pos, 1.0),
+                           "pos round trip: B.orient*(A rel B) + B.pos == A.pos");
+                glm::dvec3 vback = B->root_orient * A->GetVelocityRelTo(B) + B->root_vel;
+                CHECK_TRUE(dvec_close(vback, A->root_vel, 1e-9),
+                           "vel round trip: B.orient*(A rel B) + B.vel == A.vel");
+            }
+        }
+    }
+
     printf("== orient transitivity: O(A,B)*O(B,C) == O(A,C) ==\n");
     {
         glm::dmat3 lhs = eerbon_rot->GetOrientRelTo(sun);
@@ -320,6 +341,81 @@ int main() {
         glm::dvec3 expected(0.0, 1.0e8 * s, -1.0e8 * c);
         CHECK_TRUE(dvec_close(child->root_pos, expected, 1.0),
                    "orb-incl: tilted root_pos == (0, r sin i, -r cos i)");
+        delete child;
+        delete parent;
+    }
+
+    printf("== rel-to an INCLINED inertial frame ==\n");
+    // The regression this pins: expressing another frame's origin state
+    // relative to an inertial frame whose root_orient != I (inclined
+    // ancestors) must rotate the universe-axis difference into that
+    // frame's own axes -- the old code returned the raw universe delta,
+    // which teleports ships on SOI switches to inclined bodies (Minmus,
+    // Gilly, Bop, ...).
+    {
+        Frame *parent = new Frame;
+        parent->parent = NULL;
+        parent->rotating = false;
+        parent->pos = glm::dvec3(0);
+        parent->vel = glm::dvec3(0);
+        parent->orient = glm::dmat3(1.0);
+        parent->root_pos = glm::dvec3(0);
+        parent->root_vel = glm::dvec3(0);
+        parent->root_orient = glm::dmat3(1.0);
+
+        Frame *child = new Frame;      // inclined orbit -> root_orient != I
+        child->parent = parent;
+        child->rotating = false;
+        child->body = NULL;
+        child->pos = glm::dvec3(0, 0, -1.0e8);
+        child->vel = glm::dvec3(30, 0, 0);
+        const double i = 30.0 * M_PI / 180.0;
+        const double c = std::cos(i), s = std::sin(i);
+        child->orient = glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
+                                   glm::dvec3(0.0,  c,  s),
+                                   glm::dvec3(0.0, -s,  c));
+        child->root_pos = glm::dvec3(0);
+        child->root_vel = glm::dvec3(0);
+        child->root_orient = glm::dmat3(1.0);
+        parent->children.push_back(child);
+
+        Frame *gc = new Frame;         // moon of the inclined body
+        child->children.push_back(gc);
+        gc->parent = child;
+        gc->rotating = false;
+        gc->body = NULL;
+        // off the tilt axis (X): the universe delta then differs from the
+        // child-local coordinates, which is what the check below pins
+        gc->pos = glm::dvec3(0, 5.0e6, 0);
+        gc->vel = glm::dvec3(0, 0, 120);
+        gc->orient = glm::dmat3(1.0);
+        gc->root_pos = glm::dvec3(0);
+        gc->root_vel = glm::dvec3(0);
+        gc->root_orient = glm::dmat3(1.0);
+
+        parent->UpdateOrbitRails(0.0, 0.0);
+
+        // child's root_orient is the tilt itself (parent is the root)
+        CHECK_TRUE(mat_close(child->root_orient, child->orient, 1e-12),
+                   "incl-relTo: child.root_orient == the tilt");
+        // rel child: gc's own local pos/vel (its relative orient is I)
+        CHECK_TRUE(dvec_close(gc->GetPositionRelTo(child), gc->pos, 1.0),
+                   "incl-relTo: gc pos rel child == gc.pos (child-local axes)");
+        CHECK_TRUE(dvec_close(gc->GetVelocityRelTo(child), gc->vel, 1e-9),
+                   "incl-relTo: gc vel rel child == gc.vel (child-local axes)");
+        CHECK_TRUE(dvec_close(child->GetPositionRelTo(gc), -gc->pos, 1.0),
+                   "incl-relTo: child pos rel gc == -gc.pos");
+        // NOT the raw universe delta (what the old code returned)
+        CHECK_TRUE(!dvec_close(gc->GetPositionRelTo(child),
+                               gc->root_pos - child->root_pos, 1.0),
+                   "incl-relTo: result != universe-axis delta");
+        // universe round trip
+        glm::dvec3 back = child->root_orient * gc->GetPositionRelTo(child) + child->root_pos;
+        CHECK_TRUE(dvec_close(back, gc->root_pos, 1.0), "incl-relTo: pos round trip");
+        glm::dvec3 vback = child->root_orient * gc->GetVelocityRelTo(child) + child->root_vel;
+        CHECK_TRUE(dvec_close(vback, gc->root_vel, 1e-9), "incl-relTo: vel round trip");
+
+        delete gc;
         delete child;
         delete parent;
     }
