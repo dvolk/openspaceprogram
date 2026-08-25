@@ -53,7 +53,7 @@
 //      detecting oscillation (guard against a vacuous test).
 //   3. KillRot's bounded law decays the spin monotonically (no sign flip).
 //   4. getDeltaV is the thrust-model-consistent budget: ve*ln((dry+fuel)/dry)
-//      (14,890 m/s for the standard ship at spawn, 0 at empty, monotonic,
+//      (~1652 m/s for the standard ship at spawn, 0 at empty, monotonic,
 //      and >= the delivered Δv lower bound from reports/).
 //
 // Build & run (from repo root) -- also part of `make test` (pure C, no
@@ -275,36 +275,34 @@ int main() {
 
     printf("== getDeltaV: thrust-model-consistent budget ==\n");
     {
-        // Standard ship after the x1000 mass scaling (cd346e0):
-        // 4500 kg dry (capsule 500 + wheel 1000 + engine 3000),
-        // 2000 kg propellant (1000 H + 1000 LOX), ve = 40492 m/s,
-        // flow 1 kg/s per tank, thrust T = 2 x 1 kg/s x ve = 80984 N.
+        // Standard ship (racer: capsule + wheel + fuel_tank + engine):
+        // ~1834 kg dry, 836 kg propellant (418 H + 418 LOX), ve = 4400 m/s,
+        // flow 5.68 kg/s per propellant, thrust T = (2 x 5.68) x 4400 = 49984 N.
         // (The budget formula is scale-invariant in the mass ratio.)
-        const double ve = 40492.0, dry = 4500.0, fuel = 2000.0;
+        const double ve = 4400.0, dry = 1833.92, fuel = 835.66;
+        const double flow = 2.0 * 5.68;  // H2 + LOX, 5.68 kg/s each
         double dv_full = getDeltaV_formula(ve, dry, fuel);
         double dv_empty = getDeltaV_formula(ve, dry, 0.0);
-        double dv_half = getDeltaV_formula(ve, dry, 1000.0);
+        double dv_half = getDeltaV_formula(ve, dry, fuel / 2.0);
 
         char buf[192];
-        snprintf(buf, sizeof buf, "dv(full) = %.1f m/s ~= 14890 (was 23800 with the old bug)", dv_full);
-        CHECK_TRUE(std::fabs(dv_full - 14890.0) < 100.0, buf);
+        snprintf(buf, sizeof buf, "dv(full) = %.1f m/s ~= 1652", dv_full);
+        CHECK_TRUE(std::fabs(dv_full - 1652.0) < 5.0, buf);
 
         CHECK_TRUE(dv_empty == 0.0, "dv(empty) == 0");
         CHECK_TRUE(dv_half < dv_full, "dv is monotonic in fuel");
 
         // The displayed budget must EQUAL the Δv the engine can deliver.
-        // Thrust counts both propellants (T = (H2+LOX flow) x ve = 80984 N)
-        // against the total flow (2 kg/s), so delivered Δv =
-        // (T/flow) x ln(m_wet/m_dry) -- the same formula as the budget.
-        // Bullet's per-tick mass update leaves a ~1-tick margin
-        // (reports/transfers2026_08_22 §4.3).
-        const double thrust = 2.0 * 1.0 * ve; /* N:   (H2 + LOX) flow x ve */
-        const double flow   = 2.0 * 1.0;      /* kg/s: both tanks          */
+        // Thrust counts both propellants (T = (H2+LOX flow) x ve) against
+        // the total flow, so delivered Δv = (T/flow) x ln(m_wet/m_dry)
+        // -- the same formula as the budget. Bullet's per-tick mass update
+        // leaves a ~1-tick margin (reports/transfers2026_08_22 §4.3).
+        const double thrust = flow * ve;  /* N: total (H2+LOX) flow x ve */
         const double delivered = (thrust / flow) * log((dry + fuel) / dry);
         snprintf(buf, sizeof buf,
                  "budget %.1f == deliverable Δv %.1f (thrust counts both propellants)",
                  dv_full, delivered);
-        CHECK_TRUE(std::fabs(dv_full - delivered) < 100.0, buf);
+        CHECK_TRUE(std::fabs(dv_full - delivered) < 5.0, buf);
     }
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);

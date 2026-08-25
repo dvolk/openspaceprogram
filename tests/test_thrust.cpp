@@ -19,7 +19,7 @@
 //      the nominal kg/s at ANY warp. Previously the per-call amount was divided
 //      by a hardcoded 60 ("since fps = 60") while the logic tick runs at 50 Hz,
 //      so the ship burned 50/60 of the nominal rate -- inconsistent with the
-//      thrust model (809.8 N = 0.02 kg/s x 40492 m/s, both propellants).
+//      thrust model (49984 N = 11.36 kg/s x 4400 m/s, both propellants).
 //
 //   3. SetMass inertia (src/physics.cpp) -- tests the REAL function.
 //      setMassProps(mass, I) uses I AS-IS. Previously a fixed btVector3(1,1,1)
@@ -30,8 +30,8 @@
 //      with mass for a fixed shape, and must NOT be the identity.
 //
 // Thrust-model constants: the standard ship (see test_attitude.cpp):
-//   thrust 809.8 N = 0.02 kg/s (H2 + LOX) x 40492 m/s,
-//   2.0 kg propellant (1.0 H2 + 1.0 LOX), dry mass 4.5 kg,
+//   thrust 49984 N = 11.36 kg/s (H2 + LOX, 5.68 each) x 4400 m/s,
+//   835.66 kg propellant (417.83 H2 + 417.83 LOX), dry mass 1833.92 kg,
 //   logic tick dt = 1/50 s (src/main.cpp). The F/mdot below are harness
 //   constants for the delivery-pattern tests -- any F works there.
 //
@@ -192,9 +192,9 @@ static double delivered_velocity(double F, double m, double time_accel,
 static void test_substep_delivery() {
     printf("== Thrust delivery: force re-applied per substep ==\n");
 
-    // Standard-ship numbers (test_attitude.cpp): 404.9 N on 4.5 kg dry.
-    const double F = 404.92;
-    const double m = 4.5;
+    // Standard-ship numbers (test_attitude.cpp): 49984 N on 1833.92 kg dry.
+    const double F = 49984.0;
+    const double m = 1833.92;
 
     struct Case {
         double ta;      // time acceleration
