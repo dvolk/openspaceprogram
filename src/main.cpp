@@ -3527,13 +3527,15 @@ int main(int argc, char **argv)
     billboardshader->registerUniforms({ "MVP", "color_uniform" });
     billboardshader->FromFile("./res/billboardshader");
 
-    Texture * front_indicator_texture = load_texture("res/front_crosshair.png");
-    Texture * prograde_indicator_texture = load_texture("res/prograde_icon.png");
-    Texture * retrograde_indicator_texture = load_texture("res/retrograde_icon.png");
-    Texture * radial_in_indicator_texture = load_texture("res/radial_in_icon.png");
-    Texture * radial_out_indicator_texture = load_texture("res/radial_out_icon.png");
-    Texture * normal_plus_indicator_texture = load_texture("res/normal_plus_icon.png");
-    Texture * normal_minus_indicator_texture = load_texture("res/normal_minus_icon.png");
+    // Billboard icons opt out of mip chains: their alpha cutouts bleed
+    // into the neighbouring level when minified.
+    Texture * front_indicator_texture = load_texture("res/front_crosshair.png", false);
+    Texture * prograde_indicator_texture = load_texture("res/prograde_icon.png", false);
+    Texture * retrograde_indicator_texture = load_texture("res/retrograde_icon.png", false);
+    Texture * radial_in_indicator_texture = load_texture("res/radial_in_icon.png", false);
+    Texture * radial_out_indicator_texture = load_texture("res/radial_out_icon.png", false);
+    Texture * normal_plus_indicator_texture = load_texture("res/normal_plus_icon.png", false);
+    Texture * normal_minus_indicator_texture = load_texture("res/normal_minus_icon.png", false);
 
     glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0); // TODO should these be different colors?
 

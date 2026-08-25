@@ -6,7 +6,9 @@ struct Texture {
     unsigned int id; /* really GLuint */
 };
 
-Texture * load_texture(const char *filename);
+/* mipmap=false keeps a single level (no alpha-edge bleed from mip chains);
+   use it for the flat billboard icons. */
+Texture * load_texture(const char *filename, bool mipmap = true);
 
 /* Highest anisotropic filtering ratio the driver supports (0 = unsupported);
    set GL_TEXTURE_MAX_ANISOTROPY to this value on minifying textures. */

@@ -14,7 +14,7 @@ float max_anisotropy() {
     return max_aniso;
 }
 
-Texture *load_texture(const char *filename) {
+Texture *load_texture(const char *filename, bool mipmap) {
     Texture * ret = new Texture;
   
     SDL_Surface* res_texture = IMG_Load(filename);
@@ -61,10 +61,15 @@ Texture *load_texture(const char *filename) {
                  glSurface->pixels);
     SDL_FreeSurface(glSurface);
 
-    // Mipmap chain + trilinear minify: without a chain the anisotropy ratio
-    // above has nothing to interpolate between, and minified parts shimmer.
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    if (mipmap) {
+        // Mipmap chain + trilinear minify: without a chain the anisotropy
+        // ratio above has nothing to interpolate between, and minified parts
+        // shimmer.
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
 
     return ret;
 }
