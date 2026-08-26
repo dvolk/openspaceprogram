@@ -1,5 +1,5 @@
 - Project is kerbal space program-like game.
-- Libraries: SDL2, bullet3, glm, imgui, assimp, CLI11, nlohmann/json.hpp.
+- Libraries: SDL2, bullet3, glm, imgui, implot, assimp, CLI11, nlohmann/json.hpp.
 - Using simple C++
 - Performance is very important as we might scale up the game a lot later.
 - Feel free to comment on bits of code that took a lot of investigation, but don't compare it to how it used to be.
@@ -10,6 +10,7 @@
 - Flag any code that looks odd.
 - Don't use memory: the projects moves quickly and it's usually faster to re-derive than to wrestle with outdated or incorrect notes.
 - Keep commit titles under 80 chars and use commit body to elaborate. Give yourself credit.
+- make clean, make test, make e2e before committing please.
 - Don't push to github.
 - Use cli options like --timeout 30s. --help to see all.
 - Game starts with time accel set to 0, use --time-accel 1 to unpause (also available: 10, 100, 1000).
