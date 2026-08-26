@@ -4253,7 +4253,8 @@ int main(int argc, char **argv)
                         poly_mode = false;
                     }
                 }
-                if(ev.key.keysym.sym == SDLK_F10) {
+                if(ev.key.keysym.sym == SDLK_F10 ||
+                   ev.key.keysym.sym == SDLK_ESCAPE) {
                     // Toggle the main menu; its "Toggle windows" button
                     // does the old F10 window show/hide.
                     ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
@@ -4293,7 +4294,6 @@ int main(int argc, char **argv)
         currentTime = newTime;
         accumulator += frameTime;
 
-        glm::dvec3 grav;
         glm::dvec3 com;
 
         if(accumulator > 10 * dt) {
@@ -4327,7 +4327,6 @@ int main(int argc, char **argv)
                 }
                 return false;
             };
-            if(isDown(SDL_SCANCODE_ESCAPE)) { running = false; }
 
             if (camMode == CAM_FREE) {
                 if (isDown(SDL_SCANCODE_W)) { camera->MoveForward(cam_speed); }
@@ -4439,12 +4438,10 @@ int main(int argc, char **argv)
                     // rotation each substep; physics_tick then steps the
                     // shared Bullet world all of them at once. Railed ships
                     // have no bodies in the world -- their conic already
-                    // advanced this tick in railsTick. `grav` is the HUD
-                    // value: the active ship's.
+                    // advanced this tick in railsTick.
                     for(auto *s : ships) {
                         if(s->onRails) { continue; }
-                        const glm::dvec3 g = s->processGravity();
-                        if(s == ship) { grav = g; }
+                        s->processGravity();
                         s->applyThrustForce();
                         s->applyRotationForce(h);
                     }
@@ -4637,9 +4634,6 @@ int main(int argc, char **argv)
             energy_series.push(time, o.energy);
             angmom_series.push(time, o.ang_momentum);
 
-            glm::dvec3 GetAngVelocity_(Body *b);
-            const glm::dvec3 ang_vel_ = GetAngVelocity(ship->controller);
-
             const glm::dvec3 up = getRelAxis_(ship->controller, 1);
             const glm::dvec3 facing = getRelAxis_(ship->controller, 2);
             const glm::dvec3 other = getRelAxis_(ship->controller, 0);
@@ -4807,9 +4801,9 @@ int main(int argc, char **argv)
                 ImGui::PopFont();
             });
 
-            /* Main menu: the window list (single source of truth: the
-               ui_windows table), the Top-HUD group switch, and the reset. */
-            ui::Window("Open Space Program", o_menu, [&] {
+            /* Window list (single source of truth: the ui_windows table)
+               plus the Top-HUD group switch. */
+            ui::Window("Windows", o_menu, [&] {
                 ImGui::Spacing();
                 for(auto &w : ui_windows) {
                     bool open = ui::IsOpen(w.name);
@@ -4822,12 +4816,6 @@ int main(int argc, char **argv)
                     for(auto *h : hud_windows) {
                         ui::SetOpen(h, hud);
                     }
-                }
-                if(ImGui::Button("Reset GUI")) {
-                    // Full reset: default window set + layout re-applied
-                    // against the current viewport (recovers windows that
-                    // wandered off screen after a window resize).
-                    ui::ResetGui();
                 }
             });
 
@@ -4897,6 +4885,8 @@ int main(int argc, char **argv)
                 ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
             });
 
+            // Labels are abbreviated to <= 3 chars and right-padded to the
+            // same width so the values start at a tidy column.
             ui::Window("ORBITAL", o_orbit, [&] {
                 ImGui::Text("Vel: %.1fm/s", speed);
                 ImGui::Text("Alt: %.1fm", distance);
@@ -4914,19 +4904,15 @@ int main(int argc, char **argv)
                     ImGui::Text("  T: %.1fs", o.period);
                 }
                 ImGui::Text("Inc: %.2f", glm::degrees(o.inclination));
-                ImGui::Text("Ecc: %f ", o.ecc);
+                ImGui::Text("Ecc: %f", o.ecc);
                 ImGui::Text("SMa: %.1fm", o.semi_major);
                 ImGui::Text("LAN: %.2f", glm::degrees(o.raan));
                 ImGui::Text("LPe: %.2f", glm::degrees(o.arg_periapsis));
                 double prograde_angle = glm::angle(facing_dir, vel_dir);
                 double retrograde_angle = glm::angle(facing_dir, - vel_dir);
-                ImGui::Text("Angle to Prograde: %.2f", glm::degrees(prograde_angle));
-                ImGui::Text("Angle to Retrograde: %.2f", glm::degrees(retrograde_angle));
-                ImGui::Text("Energy: %.2f J", o.energy);
-                ImGui::Separator();
-                ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
-                ImGui::Text("Radial velocity: %.2f", o.radial_vel);
-                ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
+                ImGui::Text("Prg: %.2f", glm::degrees(prograde_angle));
+                ImGui::Text("Rtg: %.2f", glm::degrees(retrograde_angle));
+                ImGui::Text("Eng: %.2f J", o.energy);
             });
 
             // Initial size comes from o_telemetry.initial_size (the plots
@@ -4955,16 +4941,17 @@ int main(int argc, char **argv)
                 }
             });
 
+            // Labels right-padded to 3 chars, same as ORBITAL.
             ui::Window("SURFACE", o_surface, [&] {
-                ImGui::Text("Altitude (True): %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
-                ImGui::Text("Altitude (ASL): %.1fm", distance - ship->m_parent->radius);
-                ImGui::Text("V speed: %.2fm/s", ver_speed);
-                ImGui::Text("H speed: %.2fm/s", hor_speed2);
-                ImGui::Text("Latitude: %.4f", glm::degrees(latitude));
-                ImGui::Text("Longitude: %.4f", glm::degrees(longitude));
-                ImGui::Text("Pitch: %.2f", glm::degrees(pitch));
-                ImGui::Text("Roll: %.2f", glm::degrees(roll));
-                ImGui::Text("Heading: %.2f", glm::degrees(yaw));
+                ImGui::Text("Alt: %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
+                ImGui::Text("ASL: %.1fm", distance - ship->m_parent->radius);
+                ImGui::Text(" Vs: %.2fm/s", ver_speed);
+                ImGui::Text(" Hs: %.2fm/s", hor_speed2);
+                ImGui::Text("Lat: %.4f", glm::degrees(latitude));
+                ImGui::Text("Lon: %.4f", glm::degrees(longitude));
+                ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
+                ImGui::Text("  R: %.2f", glm::degrees(roll));
+                ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
             });
 
             if(ships.size() > 1) {
