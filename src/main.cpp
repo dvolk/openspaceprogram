@@ -3771,13 +3771,18 @@ int main(int argc, char **argv)
     ui::Options o_telemetry = info_opts(ui::Slot::MiddleLeft);
     o_telemetry.default_open = false;
     o_telemetry.initial_size = ImVec2(460.0f, 680.0f);
+    ui::Options o_settings = info_opts(ui::Slot::BottomCenter);
+    o_settings.default_open = false;
+    // Placeholder for future target readouts.
+    ui::Options o_target = info_opts(ui::Slot::Center);
+    o_target.default_open = false;
     ui::Options o_hud;
     o_hud.fixed = true;
     o_hud.closable = false;
-    o_hud.default_open = false;
+    o_hud.default_open = true;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
     o_hud.has_bg = true;
-    o_hud.bg_color = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+    o_hud.bg_color = ImVec4(0.133f, 0.133f, 0.133f, 1.0f); // #222
     o_hud.slot = ui::Slot::TopCenter;
     ui::Options o_mainmenu = info_opts(ui::Slot::Center);
     o_mainmenu.fixed = true;
@@ -3800,11 +3805,23 @@ int main(int argc, char **argv)
         add_ui_window("SHIPS", "Ship List", o_ships);
     }
     add_ui_window("Autopilot", "DUMB-ASS", o_autopilot);
-    add_ui_window("Controls help", "Controls Help", o_controls);
+    // Controls and Settings are main-menu only, so they're deliberately
+    // NOT in this list (and thus not affected by the TAB toggle).
     add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
     add_ui_window("TELEMETRY", "Telemetry", o_telemetry);
-    const char *const hud_windows[3] = { "HUD Altitude", "HUD Orbit", "HUD Speed" };
-    bool ui_visible = true; // F10 toggle: is the UI shown?
+    add_ui_window("Target", "Target", o_target);
+    const char *const hud_windows[1] = { "HUD" };
+    bool ui_visible = true; // TAB toggle: is the UI shown?
+    // Shared by the TAB keybind and the main menu's "Toggle windows" button.
+    auto toggle_windows = [&]() {
+        ui_visible = !ui_visible;
+        for(auto &w : ui_windows) {
+            ui::SetOpen(w.name, ui_visible && w.opts.default_open);
+        }
+        for(auto *h : hud_windows) {
+            ui::SetOpen(h, ui_visible && o_hud.default_open);
+        }
+    };
 
     double time = 0;
 
@@ -4214,10 +4231,10 @@ int main(int argc, char **argv)
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_TAB) {
-                    // cycle the active ship (ignored for a lone ship;
-                    // auto-repeat would just keep cycling)
-                    if(!ev.key.repeat && ships.size() > 1) {
-                        select_ship((activeIdx + 1) % (int)ships.size());
+                    // toggle the info windows (one-shot; auto-repeat would
+                    // just keep flipping)
+                    if(!ev.key.repeat) {
+                        toggle_windows();
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_SPACE) {
@@ -4253,10 +4270,13 @@ int main(int argc, char **argv)
                         poly_mode = false;
                     }
                 }
-                if(ev.key.keysym.sym == SDLK_F10 ||
-                   ev.key.keysym.sym == SDLK_ESCAPE) {
-                    // Toggle the main menu; its "Toggle windows" button
-                    // does the old F10 window show/hide.
+                if(ev.key.keysym.sym == SDLK_F10) {
+                    // Reset the window layout to defaults (same as the
+                    // main menu's "Reset windows" button).
+                    ui::ResetGui();
+                }
+                if(ev.key.keysym.sym == SDLK_ESCAPE) {
+                    // Toggle the main menu.
                     ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
                 }
             }
@@ -4777,28 +4797,43 @@ int main(int argc, char **argv)
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            /* HUD trio: fixed windows (no move, no resize, re-placed every
-               frame so they track the viewport). "HUD Orbit" sits below
-               "HUD Altitude". */
-            ui::Window("HUD Altitude", o_hud, [&] {
+            /* Top bar: one fixed window (no move, no resize, re-placed every
+               frame so it tracks the viewport). Row 1: speed + altitude
+               (big font) — orbital (ASL + orbital speed) when in the
+               inertial frame or above 30km ASL, else surface (terrain
+               altitude + ground speed) in the rotating frame.
+               Row 2: Kerbin clock (regular font, centered). */
+            ui::Window("HUD", o_hud, [&] {
+                const double asl = distance - ship->m_parent->radius;
+                const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
+                const bool surface_mode = ship->frame->isRotFrame() && asl < 30000.0;
+                const double alt = surface_mode ? agl : asl;
+                const double spd = surface_mode ? glm::length(surf_vel) : speed;
                 ImGui::PushFont(bigger);
-                int terrain_height = (int)(distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
-                ImGui::Text("%08dm", terrain_height);
+                ImGui::Text("%06dm/s   %08dm", (int)spd, (int)alt);
                 ImGui::PopFont();
-            });
-            {
-                ui::Options ohud = o_hud;
-                ohud.below = "HUD Altitude";
-                ui::Window("HUD Orbit", ohud, [&] {
-                    ImGui::PushFont(bigger);
-                    ImGui::Text(o.energy < 0 ? "Elliptic Orbit" : "Hyperbolic Orbit");
-                    ImGui::PopFont();
-                });
-            }
-            ui::Window("HUD Speed", o_hud, [&] {
-                ImGui::PushFont(bigger);
-                ImGui::Text("%06dm/s", (int)speed);
-                ImGui::PopFont();
+                if(sys.home && sys.home->cal.valid()) {
+                    CalTime ct = sys.home->cal.at(time);
+                    char line[64];
+                    if(ct.has_year) {
+                        // CalTime only exposes month + day-of-month, so the
+                        // day-of-year is day + the days in the earlier months.
+                        int doy = ct.day;
+                        for(int m = 0; m < ct.month - 1; m++) {
+                            doy += sys.home->cal.month_days[m];
+                        }
+                        snprintf(line, sizeof(line),
+                                 "Year %04d   Day %d/%d   %02d:%02d:%02d",
+                                 ct.year, doy, sys.home->cal.days_per_year,
+                                 ct.hh, ct.mm, ct.ss);
+                    } else {
+                        snprintf(line, sizeof(line),
+                                 "Day %d   %02d:%02d:%02d",
+                                 ct.day, ct.hh, ct.mm, ct.ss);
+                    }
+                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line).x) * 0.5f);
+                    ImGui::TextUnformatted(line);
+                }
             });
 
             /* Window list (single source of truth: the ui_windows table)
@@ -4819,11 +4854,20 @@ int main(int argc, char **argv)
                 }
             });
 
-            ui::Window("Game Debug Info", o_debug, [&] {
+            // Settings: the render/physics debug toggles (moved out of
+            // Game Debug Info, which is now read-only diagnostics).
+            ui::Window("Settings", o_settings, [&] {
                 ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
                 ImGui::Checkbox("World draw", &world_drawing);
                 ImGui::Checkbox("Starfield", &draw_starfield);
                 ImGui::Checkbox("Reference circles", &draw_skylines);
+            });
+
+            // Placeholder for future target readouts.
+            ui::Window("Target", o_target, [] {
+            });
+
+            ui::Window("Game Debug Info", o_debug, [&] {
                 ImGui::Text("Time: %f", time);
                 if(sys.home && sys.home->cal.valid()) {
                     CalTime ct = sys.home->cal.at(time);
@@ -4962,7 +5006,7 @@ int main(int argc, char **argv)
                         select_ship((int)i);
                     }
                 }
-                ImGui::Text("tab - cycle");
+                ImGui::Text("click - select");
                 });
             }
 
@@ -5000,7 +5044,7 @@ int main(int argc, char **argv)
                 }
             });
 
-            ui::Window("Controls help", o_controls, [&] {
+            ui::Window("Controls", o_controls, [&] {
                 ImGui::Text("Game");
                 ImGui::Separator();
                 ImGui::Text("p - toggle wireframe mode");
@@ -5010,7 +5054,9 @@ int main(int argc, char **argv)
                 ImGui::Text("l - increase camera speed");
                 ImGui::Text("c - switch mode: orbit (flying) <-> free (exploring)");
                 ImGui::Text("g - orbit mode: cycle target (ship/sun/planet/moon)");
-                if(ships.size() > 1) { ImGui::Text("tab - switch active ship"); }
+                ImGui::Text("tab - toggle windows");
+                ImGui::Text("f10 - reset windows");
+                ImGui::Text("esc - main menu");
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
                 ImGui::Text("wheel - zoom (orbit mode)");
                 ImGui::Spacing();
@@ -5128,26 +5174,28 @@ int main(int argc, char **argv)
                 }
             });
 
-            // Main menu: F10 toggle. Fixed, so it stays centered and
+            // Main menu: Esc toggles it. Fixed, so it stays centered and
             // tracks viewport resizes. Drawn last so it sits on top.
             // Buttons have an explicit width: -1 (full width) inside an
             // auto-resizing window collapses the window to a sliver.
             ui::Window("Main Menu", o_mainmenu, [&] {
-                if(ImGui::Button("Toggle windows", ImVec2(160.0f, 0.0f))) {
-                    ui_visible = !ui_visible;
-                    for(auto &w : ui_windows) {
-                        ui::SetOpen(w.name, ui_visible && w.opts.default_open);
-                    }
-                    for(auto *h : hud_windows) {
-                        ui::SetOpen(h, false);
-                    }
+                ImGui::PushFont(bigger);
+                if(ImGui::Button("Toggle windows", ImVec2(240.0f, 0.0f))) {
+                    toggle_windows();
                 }
-                if(ImGui::Button("Reset windows", ImVec2(160.0f, 0.0f))) {
+                if(ImGui::Button("Reset windows", ImVec2(240.0f, 0.0f))) {
                     ui::ResetGui();
                 }
-                if(ImGui::Button("Quit game", ImVec2(160.0f, 0.0f))) {
+                if(ImGui::Button("Settings", ImVec2(240.0f, 0.0f))) {
+                    ui::SetOpen("Settings", true);
+                }
+                if(ImGui::Button("Controls", ImVec2(240.0f, 0.0f))) {
+                    ui::SetOpen("Controls", true);
+                }
+                if(ImGui::Button("Quit game", ImVec2(240.0f, 0.0f))) {
                     running = false;
                 }
+                ImGui::PopFont();
             });
 
             ImGui::Render();
