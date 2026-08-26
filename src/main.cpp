@@ -4237,6 +4237,14 @@ int main(int argc, char **argv)
                         toggle_windows();
                     }
                 }
+                if(ev.key.keysym.sym == SDLK_F6) {
+                    // advance to the next ship in the fleet, wrapping around
+                    // (one-shot; auto-repeat would keep cycling). No-op with a
+                    // single ship: the next index is the current one.
+                    if(!ev.key.repeat && ships.size() > 1) {
+                        select_ship((activeIdx + 1) % (int)ships.size());
+                    }
+                }
                 if(ev.key.keysym.sym == SDLK_SPACE) {
                     // separate the active stage (one-shot; auto-repeat would
                     // keep dropping stages). Only while flying a ship with
@@ -5055,6 +5063,7 @@ int main(int argc, char **argv)
                 ImGui::Text("c - switch mode: orbit (flying) <-> free (exploring)");
                 ImGui::Text("g - orbit mode: cycle target (ship/sun/planet/moon)");
                 ImGui::Text("tab - toggle windows");
+                ImGui::Text("f6 - next ship (fleet)");
                 ImGui::Text("f10 - reset windows");
                 ImGui::Text("esc - main menu");
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
