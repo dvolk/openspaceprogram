@@ -14,6 +14,13 @@ CXXFLAGS=-O2 -MMD -MP $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unuse
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL -lassimp
 
+# Default to all cores: a plain `make` runs parallel (verified: MAKEFLAGS
+# set in-file takes effect, and a command-line -jN still overrides it).
+# $(shell ...) -- not $(nproc) -- because make 4.4 does not run the shell
+# for an undefined variable; it would expand to empty, leaving a bare
+# -j, which means *unlimited* jobs.
+MAKEFLAGS += -j$(shell nproc)
+
 # imgui submodule (pinned to a tagged release), built like everything else
 # (the build rules are near the bottom, after the main target)
 IMGUI_DIR=./middleware/imgui
@@ -149,7 +156,7 @@ test-gl:
 
 .PHONY: clean
 clean:
-	$(rm) $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(DEPS)
+	$(rm) $(OBJECTS) $(OBJECTS:.o=.d)
 
 .PHONY: remove
 remove: clean
