@@ -3141,6 +3141,9 @@ int main(int argc, char **argv)
     check_gl_error();
 
     ImGuiIO& io = ImGui::GetIO();
+    // No imgui.ini: window layout must not survive between runs or clobber
+    // the layout the code sets up each frame.
+    io.IniFilename = nullptr;
     io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", font_size);
     bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 2.0f * font_size);
     check_gl_error();
