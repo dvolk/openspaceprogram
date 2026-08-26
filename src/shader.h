@@ -14,6 +14,9 @@ class Shader
 {
 public:
     void FromFile(const std::string& fileName);
+    // Same, but explicit vertex/fragment paths (for effects that share
+    // one vertex shader with several fragment shaders).
+    void FromFile(const std::string& vertexFile, const std::string& fragmentFile);
 
     void Bind();
 
@@ -27,6 +30,12 @@ public:
     void setUniform_vec4(int index, const glm::vec4 & v4);
     void setUniform_mat4(int index, const glm::mat4 & m4);
 
+    // Name-based variants: no-op if the uniform isn't in this program
+    // (each shader only registers the uniforms it uses).
+    void setUniform_i(const std::string& name, int v);
+    void setUniform_vec1(const std::string& name, float v);
+    void setUniform_vec2(const std::string& name, const glm::vec2 & v2);
+
     GLuint m_program;
     virtual ~Shader();
 protected:
@@ -36,6 +45,7 @@ private:
 
     void CheckShaderError(GLuint shader, GLuint flag, bool isProgram, const std::string& errorMessage);
     GLuint CreateShader(const std::string& text, unsigned int type);
+    int uniformIndex(const std::string& name);
 
     GLuint m_shaders[NUM_SHADERS];
     GLuint m_uniforms[MAX_NUM_UNIFORMS];

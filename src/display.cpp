@@ -40,8 +40,8 @@ Renderer::Renderer(int width, int height, WindowMode mode, bool gl_debug)
     check_gl_error();
     // 4x MSAA for geometry edges, when the stack has a multisample GLX
     // visual (window creation falls back below if it doesn't). Note the
-    // --crt path renders into a non-multisampled FBO, so only the default
-    // path's 3D gets the window's MSAA.
+    // --postfx path renders into a non-multisampled FBO, so only the
+    // default path's 3D gets the window's MSAA.
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);

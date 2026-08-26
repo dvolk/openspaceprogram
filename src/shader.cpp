@@ -1,19 +1,25 @@
 #include <iostream>
 #include <fstream>
+#include <cstring>
 #include "shader.h"
 #include "gldebug.h"
 #include "camera.h"
 
 void Shader::FromFile(const std::string& fileName)
 {
+    FromFile(fileName + ".vs", fileName + ".fs");
+}
+
+void Shader::FromFile(const std::string& vertexFile, const std::string& fragmentFile)
+{
     m_program = glCreateProgram();
     check_gl_error();
-    m_shaders[0] = CreateShader(LoadShader(fileName + ".vs"), GL_VERTEX_SHADER);
+    m_shaders[0] = CreateShader(LoadShader(vertexFile), GL_VERTEX_SHADER);
     check_gl_error();
-    m_shaders[1] = CreateShader(LoadShader(fileName + ".fs"), GL_FRAGMENT_SHADER);
+    m_shaders[1] = CreateShader(LoadShader(fragmentFile), GL_FRAGMENT_SHADER);
     check_gl_error();
 
-    printf("Shader m_program: %d, vertex shader file %s\n", m_program, fileName.c_str());
+    printf("Shader m_program: %d, vertex shader file %s\n", m_program, vertexFile.c_str());
 
     for(unsigned int i = 0; i < NUM_SHADERS; i++) {
         glAttachShader(m_program, m_shaders[i]);
@@ -41,7 +47,7 @@ void Shader::FromFile(const std::string& fileName)
         m_uniforms[i] = GL_INVALID_INDEX;
     }
     if(uniformNames.size() > MAX_NUM_UNIFORMS) {
-        std::cerr << "ERROR: shader " << fileName << " registered "
+        std::cerr << "ERROR: shader " << vertexFile << " registered "
                   << uniformNames.size() << " uniforms but MAX_NUM_UNIFORMS is "
                   << MAX_NUM_UNIFORMS << "; the extra names are dropped "
                   "(bump MAX_NUM_UNIFORMS in shader.h)" << std::endl;
@@ -52,7 +58,7 @@ void Shader::FromFile(const std::string& fileName)
 
         if(m_uniforms[i] == GL_INVALID_INDEX) {
             printf("WARNING: shader %s has no uniform named %s (optimized out by shader compiler?)\n",
-                   fileName.c_str(),
+                   vertexFile.c_str(),
                    uniformNames[i]);
         }
     }
@@ -134,6 +140,30 @@ void Shader::setUniform_mat4(int index, const glm::mat4 & m4) {
         return;
     }
     glUniformMatrix4fv(m_uniforms[index], 1, GL_FALSE, &m4[0][0]);
+}
+
+int Shader::uniformIndex(const std::string& name) {
+    for(size_t i = 0; i < uniformNames.size(); i++) {
+        if(strcmp(uniformNames[i], name.c_str()) == 0) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+void Shader::setUniform_i(const std::string& name, int v) {
+    int i = uniformIndex(name);
+    if(i >= 0) setUniform_i(i, v);
+}
+
+void Shader::setUniform_vec1(const std::string& name, float v) {
+    int i = uniformIndex(name);
+    if(i >= 0) setUniform_vec1(i, v);
+}
+
+void Shader::setUniform_vec2(const std::string& name, const glm::vec2 & v2) {
+    int i = uniformIndex(name);
+    if(i >= 0) setUniform_vec2(i, v2);
 }
 
 std::string LoadShader(const std::string& fileName)

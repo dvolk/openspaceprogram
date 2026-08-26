@@ -2919,9 +2919,13 @@ int main(int argc, char **argv)
                  "angular velocities, inter-part contact impulses, tidal "
                  "torque) to stdout; also implied by --radial-test");
 
-    bool crt_enabled = false;
-    app.add_flag("--crt", crt_enabled,
-                 "Start with the CRT post-processing shader enabled");
+    std::vector<std::string> postfx_spec;
+    app.add_option("--postfx", postfx_spec,
+                   "Post-processing effect, in the order given; repeatable "
+                   "and/or comma-separated (e.g. --postfx cas,grain). "
+                   "Available: crt (retro tube look), grain (animated film "
+                   "grain), cas (adaptive-contrast sharpening, 'sharpen' "
+                   "also accepted). Omit for direct output (default)");
 
     bool gl_debug = false;
     app.add_flag("--gl-debug", gl_debug,
@@ -3177,6 +3181,43 @@ int main(int argc, char **argv)
     lineshader->FromFile("./res/lineShader2");
 
     PostFX *postfx = new PostFX;
+    // Each --postfx value may itself be comma-separated, so both
+    // --postfx crt,grain and --postfx crt --postfx grain work.
+    std::vector<std::string> fx_names;
+    for(const std::string &spec : postfx_spec) {
+        size_t start = 0;
+        while(start <= spec.size()) {
+            size_t comma = spec.find(',', start);
+            std::string name = spec.substr(start, comma == std::string::npos
+                                           ? std::string::npos
+                                           : comma - start);
+            size_t b = name.find_first_not_of(" \t");
+            size_t e = name.find_last_not_of(" \t");
+            name = (b == std::string::npos) ? "" : name.substr(b, e - b + 1);
+            if(!name.empty()) {
+                if(!postfx->AddEffect(name)) {
+                    printf("error: unknown --postfx effect '%s' (available: ",
+                           name.c_str());
+                    const std::vector<std::string> &avail = PostFX::Available();
+                    for(size_t i = 0; i < avail.size(); i++) {
+                        printf("%s%s", i ? ", " : "", avail[i].c_str());
+                    }
+                    printf(")\n");
+                    return 1;
+                }
+                fx_names.push_back(name);
+            }
+            if(comma == std::string::npos) break;
+            start = comma + 1;
+        }
+    }
+    if(!fx_names.empty()) {
+        printf("postfx: %s", fx_names[0].c_str());
+        for(size_t i = 1; i < fx_names.size(); i++) {
+            printf(" -> %s", fx_names[i].c_str());
+        }
+        printf("\n");
+    }
     postfx->Resize(display.get_width(), display.get_height());
 
     System sys = load_system(system_file.c_str(), terrainshader, sunshader);
@@ -4451,9 +4492,7 @@ int main(int argc, char **argv)
                 check_gl_error();
             }
 
-            if(crt_enabled == true) {
-                postfx->Begin();
-            }
+            postfx->Begin();  // no-op unless --postfx effects are active
             display.Clear(0, 0, 0, 1);
 
             com = ship->get_center_of_mass();
@@ -4679,9 +4718,7 @@ int main(int argc, char **argv)
                 glEnable(GL_DEPTH_TEST);
             }
 
-            if(crt_enabled == true) {
-                postfx->End();
-            }
+            postfx->End();  // no-op unless --postfx effects are active
 
             /*
               ImGui stuff below

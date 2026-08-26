@@ -1,0 +1,11 @@
+# Post-processing chain: all three effects stacked.
+# The passes must run without GL errors (the --gl-debug callback prints
+# them) and the chain must log in the requested order.
+NAME postfx-stack
+ARGS --postfx crt,grain,cas --gl-debug --timeout 5
+EXPECT postfx: crt -> grain -> cas
+EXPECT Main loop starting
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program
