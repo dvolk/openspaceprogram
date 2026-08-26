@@ -46,6 +46,7 @@
 #include "texture.h"
 #include "skybox.h"
 #include "postfx.h"
+#include "ui.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -59,7 +60,6 @@
 #include <CLI11/CLI11.hpp>
 
 ImFont *bigger;
-bool planetsWindow = false;
 
 struct TerrainBody;
 
@@ -231,7 +231,6 @@ struct TerrainBody {
     Calendar cal; // this body's day/year (from its spin + orbit rates)
     glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec;
-    int dbg_drew_patches;
 
     ~TerrainBody() {
         for(int i = 0; i < 6; i++) { delete patches[i]; }
@@ -332,8 +331,6 @@ struct TerrainBody {
     }
 
     void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {
-        double cam_dist = glm::length(camera->GetPos() - glm::dvec3(transform[3]));
-
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
         // two passes with a stencil mask: pass 1 draws the terrain and
@@ -344,7 +341,6 @@ struct TerrainBody {
         // comparison, which the float32 view transform can't resolve at
         // range (its rounding is of the same order as the skirt depth
         // margin, which z-fights).
-        dbg_drew_patches = 0;
         glEnable(GL_STENCIL_TEST);
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
@@ -357,19 +353,6 @@ struct TerrainBody {
             patch->Draw(camera, transform, sunlightVec, true);
         }
         glDisable(GL_STENCIL_TEST);
-
-        if(planetsWindow) {
-            // TODO move this out maybe?
-            ImGui::Begin("Planets");
-            ImGui::Text("%s", name.c_str());
-            ImGui::Separator();
-            ImGui::Text("Distance: %.0f", cam_dist);
-            ImGui::Text("Rotational angle: %f", frame->getRotFrame()->ang);
-            ImGui::Text("Orbital angle: %f", frame->getNonRotFrame()->orb_ang);
-            ImGui::Text("Patches drawn: %d", dbg_drew_patches);
-            ImGui::Spacing();
-            ImGui::End();
-        }
     }
 
     void Update(const Camera* camera) {
@@ -806,8 +789,6 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
 }
 
 void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec, bool skirt_pass) {
-    body->dbg_drew_patches++;
-
     if(kids[0] == NULL) {
         // patch isn't subdivided
         glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
@@ -3745,23 +3726,85 @@ int main(int argc, char **argv)
         }
     }
     int cam_speed = 1;
-    bool orbitInfoWindow = true;
-    bool orbitMapWindow = true;
-    bool shipInfoWindow = true;
-    bool shipListWindow = (ships.size() > 1);
-    bool gameInfoWindow = false;
-    bool controlsWindow = false;
-    bool autoPilotWindow = false;
-    bool surfaceInfoWindow = true;
-    bool resourcesWindow = true;
-    bool targetInfoWindow = false;
-    bool topHUDWindows = false;
-    bool shipDetailWindow = false;
-    bool telemetryWindow = false;
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
     bool draw_skylines = false;
+
+    /* UI windows (src/ui.h): one options block per window, plus a table the
+       main-menu checkboxes, the F10 toggle and a UI reset all share. The
+       main menu itself and the HUD trio (one "Top HUD" checkbox) are
+       handled separately. Slots/offsets: left column stacks under the
+       menu, right column under ORBITAL, the rest spread over the edges so
+       the center stays clear for the 3D view. */
+    const ImVec4 info_bg = ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
+    auto info_opts = [info_bg](ui::Slot slot) {
+        ui::Options o;
+        o.slot = slot;
+        o.has_bg = true;
+        o.bg_color = info_bg;
+        return o;
+    };
+    // Layout: top left ORBITAL + SURFACE, top right RESOURCES,
+    // middle right the menu, bottom right VESSEL, bottom left Orbital map.
+    ui::Options o_orbit     = info_opts(ui::Slot::TopLeft);
+    ui::Options o_surface   = info_opts(ui::Slot::TopLeft);
+    o_surface.right_of = "ORBITAL";
+    ui::Options o_resources = info_opts(ui::Slot::TopRight);
+    o_resources.width_ratio = 1.5f; // bars have no width of their own
+    ui::Options o_menu      = info_opts(ui::Slot::MiddleRight);
+    o_menu.closable = false;
+    ui::Options o_vessel    = info_opts(ui::Slot::BottomRight);
+    ui::Options o_parts     = info_opts(ui::Slot::BottomRight);
+    o_parts.below = "VESSEL";
+    o_parts.default_open = false;
+    ui::Options o_map       = info_opts(ui::Slot::BottomLeft);
+    o_map.initial_size = ImVec2(480.0f, 480.0f); // orbit drawn at (200,200)
+    // The rest stay out of the way of the above (all closed by default).
+    ui::Options o_ships     = info_opts(ui::Slot::TopCenter);
+    ui::Options o_autopilot = info_opts(ui::Slot::Center);
+    o_autopilot.default_open = false;
+    ui::Options o_controls  = info_opts(ui::Slot::BottomCenter);
+    o_controls.default_open = false;
+    ui::Options o_debug     = info_opts(ui::Slot::TopCenter);
+    o_debug.default_open = false;
+    ui::Options o_telemetry = info_opts(ui::Slot::MiddleLeft);
+    o_telemetry.default_open = false;
+    o_telemetry.initial_size = ImVec2(460.0f, 680.0f);
+    ui::Options o_hud;
+    o_hud.fixed = true;
+    o_hud.closable = false;
+    o_hud.default_open = false;
+    o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
+    o_hud.has_bg = true;
+    o_hud.bg_color = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+    o_hud.slot = ui::Slot::TopCenter;
+    ui::Options o_mainmenu = info_opts(ui::Slot::Center);
+    o_mainmenu.fixed = true;
+    o_mainmenu.closable = false;
+    o_mainmenu.default_open = false;
+
+    struct UiWin { const char *name, *label; ui::Options opts; };
+    std::vector<UiWin> ui_windows;
+    auto add_ui_window = [&](const char *name, const char *label,
+                             const ui::Options &o) {
+        ui_windows.push_back(UiWin{name, label, o});
+    };
+    add_ui_window("RESOURCES", "Resources", o_resources);
+    add_ui_window("ORBITAL", "Orbit Info", o_orbit);
+    add_ui_window("Orbital map", "Orbit Map", o_map);
+    add_ui_window("SURFACE", "Surface Info", o_surface);
+    add_ui_window("VESSEL", "Vessel Info", o_vessel);
+    add_ui_window("SHIP PARTS", "Vessel Parts", o_parts);
+    if(ships.size() > 1) {
+        add_ui_window("SHIPS", "Ship List", o_ships);
+    }
+    add_ui_window("Autopilot", "DUMB-ASS", o_autopilot);
+    add_ui_window("Controls help", "Controls Help", o_controls);
+    add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
+    add_ui_window("TELEMETRY", "Telemetry", o_telemetry);
+    const char *const hud_windows[3] = { "HUD Altitude", "HUD Orbit", "HUD Speed" };
+    bool ui_visible = true; // F10 toggle: is the UI shown?
 
     double time = 0;
 
@@ -4211,19 +4254,9 @@ int main(int argc, char **argv)
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_F10) {
-                    // TODO should really toggle the UI
-                    orbitInfoWindow = false;
-                    orbitMapWindow = false;
-                    shipInfoWindow = false;
-                    gameInfoWindow = false;
-                    controlsWindow = false;
-                    autoPilotWindow = false;
-                    surfaceInfoWindow = false;
-                    resourcesWindow = false;
-                    targetInfoWindow = false;
-                    topHUDWindows = false;
-                    shipDetailWindow = false;
-                    telemetryWindow = false;
+                    // Toggle the main menu; its "Toggle windows" button
+                    // does the old F10 window show/hide.
+                    ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
                 }
             }
             if(ev.type == SDL_MOUSEBUTTONDOWN) {
@@ -4750,60 +4783,55 @@ int main(int argc, char **argv)
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            if(topHUDWindows == true) {
-                ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
-                ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5, 0.5, 0.5, 1.0));
-                ImGui::Begin("Top Middle Window", NULL, flags);
+            /* HUD trio: fixed windows (no move, no resize, re-placed every
+               frame so they track the viewport). "HUD Orbit" sits below
+               "HUD Altitude". */
+            ui::Window("HUD Altitude", o_hud, [&] {
                 ImGui::PushFont(bigger);
                 int terrain_height = (int)(distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
                 ImGui::Text("%08dm", terrain_height);
                 ImGui::PopFont();
-                ImGui::End();
-                ImGui::Begin("Bottom Middle Window", NULL, flags);
+            });
+            {
+                ui::Options ohud = o_hud;
+                ohud.below = "HUD Altitude";
+                ui::Window("HUD Orbit", ohud, [&] {
+                    ImGui::PushFont(bigger);
+                    ImGui::Text(o.energy < 0 ? "Elliptic Orbit" : "Hyperbolic Orbit");
+                    ImGui::PopFont();
+                });
+            }
+            ui::Window("HUD Speed", o_hud, [&] {
                 ImGui::PushFont(bigger);
                 ImGui::Text("%06dm/s", (int)speed);
                 ImGui::PopFont();
-                ImGui::End();
+            });
 
-                if(o.energy < 0) {
-                    ImGui::Begin("Elliptic Orbit Window", NULL, flags);
-                    ImGui::PushFont(bigger);
-                    ImGui::Text("Elliptic Orbit");
-                    ImGui::PopFont();
-                    ImGui::End();
+            /* Main menu: the window list (single source of truth: the
+               ui_windows table), the Top-HUD group switch, and the reset. */
+            ui::Window("Open Space Program", o_menu, [&] {
+                ImGui::Spacing();
+                for(auto &w : ui_windows) {
+                    bool open = ui::IsOpen(w.name);
+                    if(ImGui::Checkbox(w.label, &open)) {
+                        ui::SetOpen(w.name, open);
+                    }
                 }
-                else {
-                    ImGui::Begin("Hyperbolic Orbit Window", NULL, flags);
-                    ImGui::PushFont(bigger);
-                    ImGui::Text("Hyperbolic Orbit");
-                    ImGui::PopFont();
-                    ImGui::End();
+                bool hud = ui::IsOpen(hud_windows[0]);
+                if(ImGui::Checkbox("Top HUD", &hud)) {
+                    for(auto *h : hud_windows) {
+                        ui::SetOpen(h, hud);
+                    }
                 }
-                ImGui::PopStyleColor();
-            }
+                if(ImGui::Button("Reset GUI")) {
+                    // Full reset: default window set + layout re-applied
+                    // against the current viewport (recovers windows that
+                    // wandered off screen after a window resize).
+                    ui::ResetGui();
+                }
+            });
 
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15, 0.15, 0.15, 1.0));
-
-            ImGui::Begin("Open Space Program");
-            ImGui::Spacing();
-            ImGui::Checkbox("Resources", &resourcesWindow);
-            ImGui::Checkbox("Orbit Info", &orbitInfoWindow);
-            ImGui::Checkbox("Orbit Map", &orbitMapWindow);
-            ImGui::Checkbox("Surface Info", &surfaceInfoWindow);
-            ImGui::Checkbox("Vessel Info", &shipInfoWindow);
-            ImGui::Checkbox("Vessel Parts", &shipDetailWindow);
-            if(ships.size() > 1) { ImGui::Checkbox("Ship List", &shipListWindow); }
-            ImGui::Checkbox("Target Info", &targetInfoWindow);
-            ImGui::Checkbox("DUMB-ASS", &autoPilotWindow);
-            ImGui::Checkbox("Controls Help", &controlsWindow);
-            ImGui::Checkbox("Game Debug Info", &gameInfoWindow);
-            ImGui::Checkbox("Telemetry", &telemetryWindow);
-            ImGui::Checkbox("Top HUD", &topHUDWindows);
-            ImGui::Checkbox("Planets", &planetsWindow);
-            ImGui::End();
-
-            if(gameInfoWindow == true) {
-                ImGui::Begin("Game Debug Info");
+            ui::Window("Game Debug Info", o_debug, [&] {
                 ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
                 ImGui::Checkbox("World draw", &world_drawing);
                 ImGui::Checkbox("Starfield", &draw_starfield);
@@ -4867,11 +4895,9 @@ int main(int argc, char **argv)
                 ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
                 ImGui::Text("Vel: %.3fm/s", speed);
                 ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
-                ImGui::End();
-            }
+            });
 
-            if(orbitInfoWindow == true) {
-                ImGui::Begin("ORBITAL");
+            ui::Window("ORBITAL", o_orbit, [&] {
                 ImGui::Text("Vel: %.1fm/s", speed);
                 ImGui::Text("Alt: %.1fm", distance);
                 if(o.ecc < 1.0) {
@@ -4901,17 +4927,11 @@ int main(int argc, char **argv)
                 ImGui::Text("Gravity (%.2f): %0.f %0.f %0.f", glm::length(grav), grav.x, grav.y, grav.z);
                 ImGui::Text("Radial velocity: %.2f", o.radial_vel);
                 ImGui::Text("Ang Vel: %.2f %.2f %.2f", ang_vel_.x, ang_vel_.y, ang_vel_.z);
-                ImGui::End();
-            }
+            });
 
-            if(telemetryWindow == true) {
-                // Explicit initial size: on its first frame the window
-                // auto-fits its (empty) body and then keeps that tiny size,
-                // which clips the ~300px-tall plots out of existence.
-                // FirstUseEver only applies when no size is saved yet, so a
-                // user-chosen resize still sticks.
-                ImGui::SetNextWindowSize(ImVec2(460, 680), ImGuiCond_FirstUseEver);
-                ImGui::Begin("TELEMETRY");
+            // Initial size comes from o_telemetry.initial_size (the plots
+            // need real estate; content-fit would clip them).
+            ui::Window("TELEMETRY", o_telemetry, [&] {
                 // Two separate plots: e (~1e5) and |h| (~1e11) differ by
                 // ~6 orders of magnitude, so sharing one axis would flatten
                 // e to a line and hide the drift we're looking for.
@@ -4933,11 +4953,9 @@ int main(int argc, char **argv)
                         ImPlot::EndPlot();
                     }
                 }
-                ImGui::End();
-            }
+            });
 
-            if(surfaceInfoWindow == true) {
-                ImGui::Begin("SURFACE");
+            ui::Window("SURFACE", o_surface, [&] {
                 ImGui::Text("Altitude (True): %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
                 ImGui::Text("Altitude (ASL): %.1fm", distance - ship->m_parent->radius);
                 ImGui::Text("V speed: %.2fm/s", ver_speed);
@@ -4947,11 +4965,10 @@ int main(int argc, char **argv)
                 ImGui::Text("Pitch: %.2f", glm::degrees(pitch));
                 ImGui::Text("Roll: %.2f", glm::degrees(roll));
                 ImGui::Text("Heading: %.2f", glm::degrees(yaw));
-                ImGui::End();
-            }
+            });
 
-            if(shipListWindow == true and ships.size() > 1) {
-                ImGui::Begin("SHIPS");
+            if(ships.size() > 1) {
+                ui::Window("SHIPS", o_ships, [&] {
                 for(size_t i = 0; i < ships.size(); i++) {
                     const bool active = ((int)i == activeIdx);
                     if(ImGui::Selectable(ships[i]->name.c_str(), active)) {
@@ -4959,11 +4976,10 @@ int main(int argc, char **argv)
                     }
                 }
                 ImGui::Text("tab - cycle");
-                ImGui::End();
+                });
             }
 
-            if(shipInfoWindow == true) {
-                ImGui::Begin("VESSEL");
+            ui::Window("VESSEL", o_vessel, [&] {
                 ImGui::Text("Ship: %s", ship->name.c_str());
                 ImGui::Text("Stage: %d / %d  (SPACE to drop)",
                             ship->activeStage(), ship->numStages());
@@ -4978,10 +4994,8 @@ int main(int argc, char **argv)
                 ImGui::Text("Wheel torque: %.0fN m", ship->GetWheelTorque());
                 ImGui::Text("Angular rate: %.2fdeg/s",
                             glm::degrees(glm::length(GetAngVelocity(ship->controller))));
-                ImGui::End();
-            }
-            if(shipDetailWindow == true) {
-                ImGui::Begin("SHIP PARTS");
+            });
+            ui::Window("SHIP PARTS", o_parts, [&] {
                 int i = 0;
                 for(auto&& part : ship->parts) {
                     ImGui::Text("Part #%d  (stage %d)", i, ship->partStages[i]);
@@ -4997,11 +5011,9 @@ int main(int argc, char **argv)
                     ImGui::Spacing();
                     i++;
                 }
-                ImGui::End();
-            }
+            });
 
-            if(controlsWindow == true) {
-                ImGui::Begin("Controls help");
+            ui::Window("Controls help", o_controls, [&] {
                 ImGui::Text("Game");
                 ImGui::Separator();
                 ImGui::Text("p - toggle wireframe mode");
@@ -5033,22 +5045,18 @@ int main(int argc, char **argv)
                 ImGui::Text("a/d - strafe");
                 ImGui::Text("q/e - roll");
                 ImGui::Text("shift/ctrl - up/down");
-                ImGui::End();
-            }
+            });
 
-            if(autoPilotWindow == true) {
-                ImGui::Begin("Autopilot");
+            ui::Window("Autopilot", o_autopilot, [&] {
                 ImGui::Button("Prograde");
                 ImGui::Button("Retrograde");
                 ImGui::Button("Radial-in");
                 ImGui::Button("Radial-out");
                 ImGui::Button("Normal");
                 ImGui::Button("Anti-normal");
-                ImGui::End();
-            }
+            });
 
-            if(resourcesWindow == true) {
-                ImGui::Begin("RESOURCES");
+            ui::Window("RESOURCES", o_resources, [&] {
                 // aggregate across the active ship's parts (any ship layout)
                 float h_cur = 0, h_cap = 0, l_cur = 0, l_cap = 0;
                 for(size_t i = 0; i < ship->partResources.size(); i++) {
@@ -5067,11 +5075,9 @@ int main(int argc, char **argv)
                 ImGui::ProgressBar(0.75, ImVec2(-1, 0), "Oxygen");
                 ImGui::ProgressBar(0.83, ImVec2(-1, 0), "Water");
                 ImGui::ProgressBar(0.94, ImVec2(-1, 0), "Food");
-                ImGui::End();
-            }
+            });
 
-            if(orbitMapWindow == true) {
-                ImGui::Begin("Orbital map");
+            ui::Window("Orbital map", o_map, [&] {
                 if(o.ecc >= 1.0) {
                     ImGui::Text("Escape trajectory (Ecc %f): no closed orbit to map.", o.ecc);
                 } else {
@@ -5133,11 +5139,30 @@ int main(int argc, char **argv)
                     ImGui::Text("True anomaly: %.2f", o.true_anomaly);
                     ImGui::Text("Eccentric anomaly: %.2f", o.ecc_anomaly);
                 }
+            });
 
-                ImGui::End();
-            }
+            // Main menu: F10 toggle. Fixed, so it stays centered and
+            // tracks viewport resizes. Drawn last so it sits on top.
+            // Buttons have an explicit width: -1 (full width) inside an
+            // auto-resizing window collapses the window to a sliver.
+            ui::Window("Main Menu", o_mainmenu, [&] {
+                if(ImGui::Button("Toggle windows", ImVec2(160.0f, 0.0f))) {
+                    ui_visible = !ui_visible;
+                    for(auto &w : ui_windows) {
+                        ui::SetOpen(w.name, ui_visible && w.opts.default_open);
+                    }
+                    for(auto *h : hud_windows) {
+                        ui::SetOpen(h, false);
+                    }
+                }
+                if(ImGui::Button("Reset windows", ImVec2(160.0f, 0.0f))) {
+                    ui::ResetGui();
+                }
+                if(ImGui::Button("Quit game", ImVec2(160.0f, 0.0f))) {
+                    running = false;
+                }
+            });
 
-            ImGui::PopStyleColor();
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
