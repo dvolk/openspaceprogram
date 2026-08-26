@@ -3754,6 +3754,7 @@ int main(int argc, char **argv)
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
+    bool draw_skylines = false;
 
     double time = 0;
 
@@ -3768,24 +3769,24 @@ int main(int argc, char **argv)
     Skybox skybox;
     skybox.init();
 
-    Mesh *skylines = new Mesh;
+    // Two reference circles in the render frame's local axes. Each is its
+    // own mesh so it can be drawn a distinct colour: the XZ plane (y=0, the
+    // "flat" orbital/equatorial reference) and the XY plane (z=0, the
+    // "vertical" meridian reference).
+    Mesh *skyline_xz = new Mesh;
+    Mesh *skyline_xy = new Mesh;
     {
-        PosInterface skyinterface;
         float r = 1000;
         int n = 128;
+        PosInterface xzinterface;
+        PosInterface xyinterface;
         for(int i = 1; i < 128; i++) {
-            glm::vec3 p = glm::vec3(r * cos((2 * M_PI) * float(i-1)/float(n)),
-                                    r * sin((2 * M_PI) * float(i-1)/float(n)),
-                                    0);
-            skyinterface.positions.push_back(p);
+            const double a = (2 * M_PI) * float(i-1)/float(n);
+            xzinterface.positions.push_back(glm::vec3(r * cos(a), 0, r * sin(a)));  // y=0 -> XZ plane
+            xyinterface.positions.push_back(glm::vec3(r * cos(a), r * sin(a), 0));  // z=0 -> XY plane
         }
-        for(int i = 1; i < 128; i++) {
-            glm::vec3 p = glm::vec3(r * cos((2 * M_PI) * float(i-1)/float(n)),
-                                    0,
-                                    r * sin((2 * M_PI) * float(i-1)/float(n)));
-            skyinterface.positions.push_back(p);
-        }
-        skylines->InitMesh(skyinterface);
+        skyline_xz->InitMesh(xzinterface);
+        skyline_xy->InitMesh(xyinterface);
     }
 
     // Switch the active (controlled) ship. The ship being left is released:
@@ -4703,11 +4704,17 @@ int main(int argc, char **argv)
             // horizon_indicator->pos = groundHed;
             // horizon_indicator->Draw(camera, M_PI);
 
-            glLineWidth(4);
-            lineshader->Bind();
-            lineshader->setUniform_mat4(0, glm::dmat4(camera->GetProjection()) * glm::dmat4(glm::dmat3(camera->GetView())));
-            lineshader->setUniform_vec4(1, glm::vec4(1, 1, 0, 0.5));
-            skylines->Draw(GL_LINE_LOOP);
+            if(draw_skylines) {
+                glLineWidth(4);
+                lineshader->Bind();
+                lineshader->setUniform_mat4(0, glm::dmat4(camera->GetProjection()) * glm::dmat4(glm::dmat3(camera->GetView())));
+                // XZ plane (flat / orbital-equatorial reference): green
+                lineshader->setUniform_vec4(1, glm::vec4(0, 1, 0, 0.5));
+                skyline_xz->Draw(GL_LINE_LOOP);
+                // XY plane (vertical / meridian reference): magenta
+                lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
+                skyline_xy->Draw(GL_LINE_LOOP);
+            }
 
             glDisable(GL_BLEND);
             glEnable(GL_DEPTH_TEST);
@@ -4787,6 +4794,7 @@ int main(int argc, char **argv)
                 ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
                 ImGui::Checkbox("World draw", &world_drawing);
                 ImGui::Checkbox("Starfield", &draw_starfield);
+                ImGui::Checkbox("Reference circles", &draw_skylines);
                 ImGui::Text("Time: %f", time);
                 if(sys.home && sys.home->cal.valid()) {
                     CalTime ct = sys.home->cal.at(time);
