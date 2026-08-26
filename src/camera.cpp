@@ -73,13 +73,18 @@ void OrbitCamera::ComputeView()
     const glm::dvec3 yAxis = glm::cross(zAxis, xAxis);
     up = yAxis;
 
+    // View translation in the render frame (origin = renderOrigin): the
+    // planet centre sits at -renderOrigin there, so the radial upHint above
+    // (world normalize(pos)) is exactly normalize(cam - (-renderOrigin)).
+    const glm::dvec3 cam = pos - renderOrigin;
+
     glm::dmat4 m;
     m[0] = glm::dvec4(xAxis.x, yAxis.x, zAxis.x, 0.0);
     m[1] = glm::dvec4(xAxis.y, yAxis.y, zAxis.y, 0.0);
     m[2] = glm::dvec4(xAxis.z, yAxis.z, zAxis.z, 0.0);
-    m[3] = glm::dvec4(-glm::dot(xAxis, pos),
-                       -glm::dot(yAxis, pos),
-                       -glm::dot(zAxis, pos), 1.0);
+    m[3] = glm::dvec4(-glm::dot(xAxis, cam),
+                       -glm::dot(yAxis, cam),
+                       -glm::dot(zAxis, cam), 1.0);
     view = m;
 }
 
@@ -129,13 +134,17 @@ void FreeCamera::ComputeView() {
     up = yAxis;    // keep the stored basis orthonormal
     right = xAxis;
 
+    // Render-frame (renderOrigin-relative) camera position; see the
+    // OrbitCamera note -- keeps the translation column small.
+    const glm::dvec3 cam = pos - renderOrigin;
+
     glm::dmat4 m;
     m[0] = glm::dvec4(xAxis.x, yAxis.x, zAxis.x, 0.0);
     m[1] = glm::dvec4(xAxis.y, yAxis.y, zAxis.y, 0.0);
     m[2] = glm::dvec4(xAxis.z, yAxis.z, zAxis.z, 0.0);
-    m[3] = glm::dvec4(-glm::dot(xAxis, pos),
-                       -glm::dot(yAxis, pos),
-                       -glm::dot(zAxis, pos), 1.0);
+    m[3] = glm::dvec4(-glm::dot(xAxis, cam),
+                       -glm::dot(yAxis, cam),
+                       -glm::dot(zAxis, cam), 1.0);
     view = m;
 }
 

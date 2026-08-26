@@ -293,7 +293,10 @@ struct TerrainBody {
         if(glm::length(camera->GetPos() - center) < (double)atm_radius) return;
 
         const glm::dmat4 &View = camera->GetView();
-        glm::dmat4 ModelView = View * transform;   // double, then truncate
+        // double, then truncate (shifted into the render frame like the view;
+        // the Normal/cameraPos uniforms below stay in world coordinates, a
+        // consistent pair for the V = worldPos - cameraPos shader math)
+        glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin()) * transform;
         glm::mat4 ModelViewFloat = ModelView;
         const glm::mat4 &Projection = camera->GetProjection();
         const glm::mat4 &Model = transform;
@@ -812,7 +815,8 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
 
         const glm::dmat4 & View = camera->GetView();
         // make sure View * Model happens with double precision
-        glm::dmat4 ModelView = View * transform;
+        // (transform shifted into the render frame: the view is built there)
+        glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin()) * transform;
         glm::mat4 ModelViewFloat = ModelView;
         const glm::mat4 & Projection = camera->GetProjection();
         glm::mat4 MVP = Projection * ModelViewFloat;
@@ -4502,6 +4506,11 @@ int main(int argc, char **argv)
                 camera->Follow(focusWorldPos(focusBody));
             }
 
+            // Render frame origin = the active ship's COM (both are in
+            // ship->frame, the render frame). The view is built there and
+            // the Draw sites shift geometry by -renderOrigin, so the
+            // float32 cast works on ship-relative numbers.
+            camera->renderOrigin = com;
             camera->ComputeView();
 
             /*
@@ -4665,7 +4674,8 @@ int main(int argc, char **argv)
                         * glm::dmat4(glm::dmat3(dim.x, 0.0, 0.0,
                                                  0.0, dim.x, 0.0,
                                                  0.0, 0.0, dim.y / 2.0));
-                    glm::mat4 ModelViewFloat = View * Model;
+                    // shifted into the render frame, like the view
+                    glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
                     engine_plume_model->shader->Bind();
                     engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
                     engine_plume_model->shader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)

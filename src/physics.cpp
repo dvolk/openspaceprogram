@@ -72,12 +72,15 @@ void GLDebugDrawer::Draw(const Camera * camera)
 {
     const glm::mat4 view = camera->GetView();
     const glm::mat4 projection = camera->GetProjection();
+    // the line vertices are world coordinates; the view is built in the
+    // render frame, so shift them into it
+    const glm::mat4 renderShift = glm::translate(-camera->GetRenderOrigin());
 
     int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
     check_gl_error();
     lineshader->Bind();
     check_gl_error();
-    lineshader->setUniform_mat4(0, projection * view);
+    lineshader->setUniform_mat4(0, projection * view * renderShift);
     check_gl_error();
     glBindVertexArray(m_vao);
     check_gl_error();

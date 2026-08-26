@@ -16,6 +16,15 @@ public:
     glm::dvec3 up;
     float fov, aspect, zNear, zFar;
 
+    // Origin of the render frame, in world coordinates (e.g. the active
+    // ship's COM). ComputeView() builds the view in this frame, so its
+    // translation column stays small; geometry drawn against it must be
+    // shifted by -renderOrigin to match (see the Draw sites). The whole
+    // scene moves rigidly, so the image is unchanged -- the point is that
+    // the float32 MVP cast then quantizes ship-relative numbers (metres)
+    // instead of planet-centre ones (~1e7, ~0.5 m per quantum).
+    glm::dvec3 renderOrigin = glm::dvec3(0.0);
+
     virtual void ComputeView() {}
     virtual void Follow(const glm::dvec3 p) {}
     virtual void MoveForward(double amt) {}
@@ -28,6 +37,7 @@ public:
 
     void setAspect(float _aspect);
     const glm::dvec3& GetPos() const;
+    const glm::dvec3& GetRenderOrigin() const { return renderOrigin; }
     const glm::dvec3& GetForward() const;
     glm::mat4 GetProjection() const;
     glm::dmat4 GetView() const;

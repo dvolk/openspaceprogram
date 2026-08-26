@@ -41,12 +41,15 @@ struct Body {
         UpdateModelMatrix();
 
         glm::dmat4 View = camera->GetView();
+        // The view is built in the render frame (origin = renderOrigin),
+        // so shift the geometry into that frame before the float32 cast.
+        const glm::dmat4 xf = glm::translate(-camera->GetRenderOrigin()) * xform;
         // make sure View * Model happens with double precision
-        glm::dmat4 ModelView = View * xform * model_matrix;
+        glm::dmat4 ModelView = View * xf * model_matrix;
         glm::mat4 ModelViewFloat = ModelView;
         glm::mat4 Projection = camera->GetProjection();
         glm::mat4 MVP = Projection * ModelViewFloat;
-        glm::mat4 ModelFloat = xform * model_matrix;
+        glm::mat4 ModelFloat = xf * model_matrix;
 
         model->shader->Bind();
         model->shader->setUniform_mat4(0, MVP);
