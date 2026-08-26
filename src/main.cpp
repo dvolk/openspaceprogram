@@ -2948,6 +2948,12 @@ int main(int argc, char **argv)
     fs_opt->excludes(ex_opt);
     bl_opt->excludes(ex_opt);
 
+    std::string font_path = "./res/DejaVuSansMono.ttf";
+    app.add_option("--font", font_path,
+                   "TTF font file for all UI text; the normal and big faces "
+                   "are the same font (the big one at twice --font-size; "
+                   "default ./res/DejaVuSansMono.ttf)");
+
     float font_size = 14.0f;
     app.add_option("--font-size", font_size,
                    "UI font size in pixels (the big HUD readout font is "
@@ -3125,8 +3131,10 @@ int main(int argc, char **argv)
     // No imgui.ini: window layout must not survive between runs or clobber
     // the layout the code sets up each frame.
     io.IniFilename = nullptr;
-    io.Fonts->AddFontFromFileTTF("./res/DejaVuSansMono.ttf", font_size);
-    bigger = io.Fonts->AddFontFromFileTTF("./res/DroidSans.ttf", 2.0f * font_size);
+    // Normal and big faces are the same font (the big one at 2x size), so
+    // the whole UI is one typeface; --font picks which.
+    io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size);
+    bigger = io.Fonts->AddFontFromFileTTF(font_path.c_str(), 2.0f * font_size);
     check_gl_error();
 
     // start bullet; see physics.cpp
