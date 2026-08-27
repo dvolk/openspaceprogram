@@ -5,11 +5,56 @@
 import math
 
 TWOPI = 2.0 * math.pi
+G = 6.674e-11
 
 def spd(period):
     if not period:
         return 0.0
     return TWOPI / period
+
+def true_anomaly_from_mean(M, e):
+    """True anomaly nu at mean anomaly M: Newton-solve Kepler's equation
+    M = E - e sin E for the eccentric anomaly E, then convert. For e -> 0
+    this is exactly nu = M."""
+    M = M % TWOPI
+    E = M if e < 0.8 else math.pi
+    for _ in range(30):
+        step = (E - e * math.sin(E) - M) / (1.0 - e * math.cos(E))
+        E -= step
+        if abs(step) < 1e-13:
+            break
+    cosE, sinE = math.cos(E), math.sin(E)
+    cosnu = (cosE - e) / (1.0 - e * cosE)
+    sinnu = (math.sqrt(1.0 - e * e) * sinE) / (1.0 - e * cosE)
+    return math.atan2(sinnu, cosnu) % TWOPI
+
+def load_wiki_orbits(csv_path):
+    """Per-body orbital elements from ksp_wiki_bodies.csv (the individual
+    KSP wiki pages): eccentricity, inclination, argument of periapsis (w),
+    longitude of the ascending node (raan), mean anomaly at epoch (M) and
+    the orbital period. Used to place each body at its real KSP starting
+    position instead of the old shared-axis layout."""
+    import csv
+    out = {}
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            def num(key):
+                v = (row.get(key) or "").strip()
+                if v in ("", "nan", "inf", "-inf"):
+                    return None
+                return float(v)
+            out[row["name"]] = {
+                "e": num("eccentricity"),
+                "i": math.radians(num("inclination_deg") or 0.0),
+                "omega": math.radians(num("arg_periapsis_deg") or 0.0),
+                "raan": math.radians(num("long_asc_node_deg") or 0.0),
+                "M": num("mean_anomaly_rad"),
+                "period": num("orbital_period_s"),
+            }
+    return out
+
+WIKI_ORBITS = load_wiki_orbits(
+    "/home/ubuntu/openspaceprogram/ksp_wiki_bodies.csv")
 
 # ---------------------------------------------------------------------------
 # Eerbon system (single home planet + one moon) - values taken verbatim from
@@ -283,45 +328,70 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
     if typ == "star":
         b["inertial"] = {"soi": soi, "pos": [0, 0, 0], "orb_ang_speed": 0.0}
     else:
-        # Starting point on the orbit: planets at -Z, moons at -X (the
-        # Eerbon convention); phase_deg rotates that point about the orbit
-        # normal, e.g. Eden at 60 deg ahead of Kerbin (the L4 trojan slot).
-        if phase_deg:
-            th = math.radians(phase_deg)
-            if typ == "planet":
-                pos = [-sma * math.sin(th), 0.0, -sma * math.cos(th)]
-            else:
-                pos = [-sma * math.cos(th), 0.0, -sma * math.sin(th)]
-            pos = [int(round(p)) for p in pos]
-        elif typ == "planet":
-            pos = [0, 0, -sma]
+        wiki = WIKI_ORBITS.get(name)
+        if wiki and wiki.get("period") and orbits in MASS:
+            # KSP body: start at its real epoch position, from the orbital
+            # elements on its individual wiki page (eccentricity, inclination,
+            # argument of periapsis w, longitude of the ascending node raan,
+            # mean anomaly at 0s UT) instead of the old shared-axis layout.
+            # load_system derives a from orb_ang_speed via Kepler's third law,
+            # so the JSON only needs w + the angles. arg_peri and true_anomaly0
+            # are emitted even for circular orbits (e=0): they set the starting
+            # angle on the circle (w + M), which is what the wiki encodes.
+            e = wiki["e"] or 0.0
+            i = wiki["i"] or 0.0
+            omega = wiki["omega"] or 0.0
+            raan = wiki["raan"] or 0.0
+            M = wiki["M"] or 0.0
+            w = TWOPI / wiki["period"]
+            nu = true_anomaly_from_mean(M, e)
+            inertial = {
+                "soi": soi,
+                "orb_ang_speed": w,
+                "arg_peri": omega,
+                "true_anomaly0": nu,
+            }
+            if i:
+                inertial["orb_incl"] = i
+            if raan:
+                inertial["lon_asc_node"] = raan
+            if e:
+                inertial["ecc"] = e
+            b["inertial"] = inertial
         else:
-            pos = [-sma, 0, 0]
-        inertial = {
-            "soi": soi,
-            "pos": pos,
-            "orb_ang_speed": spd(orb_s),
-        }
-        # Orbital inclination (KSP wiki Inc. values) — tilt of the orbital
-        # plane about the parent's +X (line of nodes); 0 = coplanar (omitted).
-        if inc_deg:
-            inertial["orb_incl"] = math.radians(inc_deg)
-        # Eccentric orbit (CSV Ecc. column), fitted to start exactly at the
-        # (circular) pos: see the note on the K table above.
-        if ecc:
-            # Same a as load_system: Kepler's third law with the parent's
-            # (rounded) mass. r(nu0) = |pos| -> cos(nu0) = (a(1-e^2)/|pos|-1)/e;
-            # take the outbound branch (vr > 0).
-            G = 6.674e-11
-            a = (G * MASS[orbits] / spd(orb_s) ** 2) ** (1.0 / 3.0)
-            r0 = math.hypot(pos[0], pos[2])
-            cos_nu0 = (a * (1.0 - ecc * ecc) / r0 - 1.0) / ecc
-            nu0 = math.acos(max(-1.0, min(1.0, cos_nu0)))
-            pos_angle = math.atan2(pos[2], pos[0])  # +X toward +Z
-            inertial["ecc"] = ecc
-            inertial["arg_peri"] = pos_angle - nu0
-            inertial["true_anomaly0"] = nu0
-        b["inertial"] = inertial
+            # Non-wiki body (Eden): a game-added body, not on the KSP wiki.
+            # It is Kerbin's L4 trojan -- phase_deg ahead of Kerbin in the
+            # orbit direction, on the same circle. Kerbin now sits at its
+            # wiki epoch longitude, so anchor Eden to THAT: "ahead" is the
+            # orbit direction (decreasing in-plane angle), i.e. Kerbin's
+            # epoch longitude minus phase_deg. Any other non-wiki body keeps
+            # the old shared-axis layout (planets -Z, moons -X).
+            kb = WIKI_ORBITS.get("Kerbin")
+            if phase_deg and kb and kb.get("period"):
+                kb_lon = (kb["raan"] or 0.0) + (kb["omega"] or 0.0) \
+                    + true_anomaly_from_mean(kb["M"] or 0.0, kb["e"] or 0.0)
+                th = kb_lon - math.radians(phase_deg)
+                pos = [sma * math.cos(th), 0.0, sma * math.sin(th)]
+                pos = [int(round(p)) for p in pos]
+            elif phase_deg:
+                th = math.radians(phase_deg)
+                if typ == "planet":
+                    pos = [-sma * math.sin(th), 0.0, -sma * math.cos(th)]
+                else:
+                    pos = [-sma * math.cos(th), 0.0, -sma * math.sin(th)]
+                pos = [int(round(p)) for p in pos]
+            elif typ == "planet":
+                pos = [0, 0, -sma]
+            else:
+                pos = [-sma, 0, 0]
+            inertial = {
+                "soi": soi,
+                "pos": pos,
+                "orb_ang_speed": spd(orb_s),
+            }
+            if inc_deg:
+                inertial["orb_incl"] = math.radians(inc_deg)
+            b["inertial"] = inertial
         # Every planet / moon spins; near-body SOI = radius + 100 km.
         rotating = {
             "soi": radius + 100000,

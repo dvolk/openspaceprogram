@@ -434,9 +434,11 @@ struct System {
                                              // odd => bright band at equator
           },
           "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s,
-                        "orb_incl": rad,       // optional; tilt of the orbital
-                                               // plane about the parent's +X
-                                               // (line of nodes); 0 = coplanar
+                        "orb_incl": rad,       // optional; inclination of the
+                                               // orbital plane; 0 = coplanar
+                        "lon_asc_node": rad,   // optional; longitude of the
+                                               // ascending node from the
+                                               // parent's +X; 0 = node at +X
                         "ecc": 0..1,           // optional; eccentricity,
                                                // default 0 (circular)
                         "arg_peri": rad,       // optional; in-plane angle of
@@ -622,16 +624,20 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                                     pos[2].get<double>());
             }
             f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
-            // Optional orbital inclination (radians): tilt the orbital plane
-            // about the parent's X axis (line of nodes along parent +X). orient
-            // then maps the local orbital plane (where pos lives) into the
-            // parent frame; identity when absent / zero.
+            // Optional orbital plane orientation (radians): inclination i
+            // tilts the orbital plane, and lon_asc_node (raan) rotates the
+            // line of nodes from the parent's +X out to its longitude.
+            // orient = R_Y(-raan) * R_X(i) maps the local orbital plane
+            // (where pos lives) into the parent frame; identity when both are
+            // zero, and it reduces to the old X-tilt when raan is absent.
             const double orb_incl = in.value("orb_incl", 0.0);
-            if(orb_incl != 0.0) {
-                const double c = std::cos(orb_incl), s = std::sin(orb_incl);
-                f->orient = glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
-                                       glm::dvec3(0.0,  c,  s),
-                                       glm::dvec3(0.0, -s,  c));
+            const double lon_asc_node = in.value("lon_asc_node", 0.0);
+            if(orb_incl != 0.0 || lon_asc_node != 0.0) {
+                const double ci = std::cos(orb_incl), si = std::sin(orb_incl);
+                const double co = std::cos(lon_asc_node), so = std::sin(lon_asc_node);
+                f->orient = glm::dmat3(glm::dvec3(co, 0.0, so),
+                                       glm::dvec3(-so * si, ci, co * si),
+                                       glm::dvec3(-so * ci, -si, co * ci));
             }
         }
         body->frame = f;
