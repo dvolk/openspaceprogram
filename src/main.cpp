@@ -226,7 +226,6 @@ struct TerrainBody {
     std::string name;
     double seed = 0;   // noise-domain offset; 0 = legacy pattern
     Surface surface;
-    bool moves = false;
     Frame *frame; // owner
     Frame *rot_frame; // owner
     Calendar cal; // this body's day/year (from its spin + orbit rates)
@@ -434,11 +433,17 @@ struct System {
             "band_count":  int,              // stripes pole to pole (9);
                                              // odd => bright band at equator
           },
-          "moves":   bool,
           "inertial": { "soi": m, "pos": [x,y,z], "orb_ang_speed": rad/s,
-                        "orb_incl": rad },   // optional; tilt of the orbital
-                                             // plane about the parent's +X
-                                             // (line of nodes); 0 = coplanar
+                        "orb_incl": rad,       // optional; tilt of the orbital
+                                               // plane about the parent's +X
+                                               // (line of nodes); 0 = coplanar
+                        "ecc": 0..1,           // optional; eccentricity,
+                                               // default 0 (circular)
+                        "arg_peri": rad,       // optional; in-plane angle of
+                                               // periapsis from +X, default 0
+                        "true_anomaly0": rad },// optional; anomaly at epoch,
+                                               // default: the in-plane angle
+                                               // of pos (orbit starts there)
           "rotating": { "soi": m, "rot_ang_speed": rad/s,
                         "axial_tilt": rad }  // optional; lean of the spin axis
                                              // from the orbital normal toward
@@ -500,7 +505,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         body->g            = bv.value("g", 9.81);
         body->mu           = G * mass;
         body->seed         = bv.value("seed", 0.0);
-        body->moves        = bv.value("moves", false);
 
         // Legacy flat fields act as defaults for the surface parameters.
         Surface &s = body->surface;
@@ -596,7 +600,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         f->rotating = false;
         f->has_rot_frame = false;
         f->pos = glm::dvec3(0, 0, 0);
-        f->initial_pos = f->pos;
         // GLM 1.0.0+: default-constructed matrices are zero, not identity.
         f->initial_orient = glm::dmat3(1.0);
         f->orient = glm::dmat3(1.0);
@@ -617,7 +620,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                 f->pos = glm::dvec3(pos[0].get<double>(),
                                     pos[1].get<double>(),
                                     pos[2].get<double>());
-                f->initial_pos = f->pos;
             }
             f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
             // Optional orbital inclination (radians): tilt the orbital plane
@@ -649,7 +651,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         rf->rotating = true;
         rf->has_rot_frame = false;
         rf->pos = glm::dvec3(0, 0, 0);
-        rf->initial_pos = glm::dvec3(0, 0, 0);
         rf->initial_orient = glm::dmat3(1.0);
         rf->orient = glm::dmat3(1.0);
         rf->vel = glm::dvec3(0);
@@ -704,6 +705,33 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
             }
             body->frame->parent = parent->frame;
             parent->frame->children.push_back(body->frame);
+
+            // Epoch orbital state for the Kepler rail. a comes from the
+            // (existing) mean angular rate via Kepler's third law, so the
+            // period and calendar are unchanged; e, arg_peri and the epoch
+            // true anomaly are optional and default to the circular orbit
+            // through the given pos (nu0 = its in-plane angle).
+            Frame *f = body->frame;
+            if(f->orb_ang_speed != 0.0) {
+                const nlohmann::json &in =
+                    bv.value("inertial", nlohmann::json::object());
+                const double mu = parent->mu;
+                const double w = f->orb_ang_speed;
+                const double a = cbrt(mu / (w * w));
+                const double e = in.value("ecc", 0.0);
+                const double arg_peri = in.value("arg_peri", 0.0);
+                const double nu0 = in.contains("true_anomaly0")
+                    ? in["true_anomaly0"].get<double>()
+                    : atan2(f->pos.z, f->pos.x) - arg_peri;
+                if(!railStateFromElements(a, e, arg_peri, nu0, mu,
+                                          f->orbit_pos0, f->orbit_vel0)) {
+                    throw std::runtime_error("system: bad orbital elements "
+                                             "for '" + body->name + "'");
+                }
+                f->parent_mu = mu;
+                f->pos = f->orbit_pos0;
+                f->vel = f->orbit_vel0;
+            }
         }
     }
 
@@ -752,7 +780,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
 
     // Recompute the root-relative frame values so positions/velocities/orients
     // are consistent before the first render.
-    sys.root->frame->UpdateOrbitRails(0.0, 1.0 / 60.0);
+    sys.root->frame->UpdateOrbitRails(0.0);
 
     printf("Loaded system '%s': %zu bodies (home=%s, moon=%s)\n",
            path, sys.bodies.size(),
@@ -2134,11 +2162,16 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
     Frame *frame = resolve_frame_by_soi(sys.star->frame, shipWorldPos);
 
     // Express the spawn position and velocity in the resolved frame's local
-    // coordinates: v = R^T * velWorld - stasis(p) (inertial vel =
-    // R*(v + stasis(p)) + V, with V == body velocity since the frame origin
-    // sits on the body).
+    // coordinates. The invariant (see frame.h) is
+    //   R * (vel + stasis(p)) + root_vel == root-frame velocity,
+    // so  vel = R^T * (velRoot - root_vel) - stasis(p). velWorld above is the
+    // ship's velocity RELATIVE to home, in root-frame axes; the true
+    // root-frame velocity is that plus home's own root velocity (nonzero now
+    // that home orbits on a Kepler rail). When the resolved frame IS home's,
+    // the two root velocities cancel and this reduces to the old R^T*velWorld.
     const glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
-    const glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
+    const glm::dvec3 vel = glm::transpose(frame->root_orient)
+                          * (velWorld + home->frame->root_vel - frame->root_vel)
                           - frame->GetStasisVelocity(target);
 
     if(frame != ship->frame) {
@@ -4491,7 +4524,7 @@ int main(int argc, char **argv)
             time += dt * time_accel;
 
             if(time_accel != 0) {
-                sun->frame->UpdateOrbitRails(time, dt * time_accel);
+                sun->frame->UpdateOrbitRails(time);
 
                 if(time_accel >= kRailsWarp) {
                     /* Rails warp: every ship coasts analytically (or sits
@@ -4882,14 +4915,11 @@ int main(int argc, char **argv)
                     if(t.body) {
                         Frame *tf = t.body->frame;
                         r2 = tf->GetPositionRelTo(inertial);
-                        // The body's position rotates about the parent's
-                        // local Y at orb_ang_speed (UpdateOrbitRails), and
-                        // the orbital-plane tilt (orient) is applied OUTSIDE
-                        // that rotation, so the velocity in the parent frame
-                        // is orient * (omega x orient^-1 * r).
-                        const glm::dmat3 O = tf->orient;
-                        v2 = O * glm::cross(glm::dvec3(0.0, tf->orb_ang_speed, 0.0),
-                                            glm::transpose(O) * r2);
+                        // The body's orbital velocity in the parent frame,
+                        // straight from the frame tree (nonzero now that the
+                        // rails are Kepler orbits; for the current circular
+                        // data this equals the old omega x r construction).
+                        v2 = tf->GetVelocityRelTo(inertial);
                         mu_target = t.body->mu;
                         r_cap = t.body->radius + 100e3; // 100 km capture orbit
                         if(tf->orb_ang_speed > 0.0) {

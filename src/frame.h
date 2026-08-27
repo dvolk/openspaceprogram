@@ -20,11 +20,19 @@ struct Frame {
 
     /* relative to parent */
     glm::dvec3 pos;
-    glm::dvec3 initial_pos;
+    glm::dvec3 vel;
     glm::dmat3 initial_orient = glm::dmat3(1.0);
     glm::dmat3 orient = glm::dmat3(1.0);
-    glm::dvec3 vel;
+    /* Epoch (t = 0) orbital state relative to the parent, in the local
+       orbital plane (XZ, prograde +Y x r_hat -- the body-rail convention;
+       see railStateFromElements). UpdateOrbitRails derives pos/vel from
+       it with propagateKepler. Zero for a non-orbiting frame, where
+       `pos` is its fixed offset instead. */
+    glm::dvec3 orbit_pos0;
+    glm::dvec3 orbit_vel0;
     double orb_ang_speed;
+    double parent_mu; // gravitational parameter of the body orbited (0 =
+                      // non-orbiting); the rail propagates under this
     double rot_ang_speed;
     // Spin axis in this frame's local (body) frame. (0,1,0) = no axial tilt
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
@@ -41,10 +49,9 @@ struct Frame {
     glm::dmat3 root_orient = glm::dmat3(1.0);
 
     double ang;
-    double orb_ang;
 
-    void UpdateRootRelative(double time, double timestep);
-    void UpdateOrbitRails(double time, double timestep);
+    void UpdateRootRelative();
+    void UpdateOrbitRails(double time);
 
     /* Origin state of THIS frame expressed in relTo's OWN local axes.
        The root_* quantities live in universe axes, so the difference is

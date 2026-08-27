@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "frame.h"
+#include "orbit.h"
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -54,6 +55,14 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
         cur = best;
     }
 }
+
+// Body radii [m] and mu [m^3/s^2] from the body setup in main.cpp.
+static const double sun_radius = 261600000.0;
+static const double sun_mu = 1.1723328e18;
+static const double eerbon_radius = 600000.0;
+static const double eerbon_mu = 3.5316000e12;
+static const double moon_radius = 200000.0;
+static const double moon_mu = 6.5138398e10;
 
 // Real tree / SOIs / body data from setup_frames() + body setup in main.cpp.
 static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_rot,
@@ -118,6 +127,26 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     moon_rot->orb_ang_speed = 0;
     moon_rot->soi = 300000.0;
 
+    // Kepler-rail epoch states (as load_system now sets them): circular
+    // orbits through the given pos, under the parent's mu. The bodies are
+    // then MOVING, which is what the spawn formula must now handle.
+    {
+        const double a = glm::length(eerbon->pos);
+        const double nu0 = atan2(eerbon->pos.z, eerbon->pos.x);
+        railStateFromElements(a, 0.0, 0.0, nu0, sun_mu,
+                              eerbon->orbit_pos0, eerbon->orbit_vel0);
+        eerbon->pos = eerbon->orbit_pos0;
+        eerbon->vel = eerbon->orbit_vel0;
+        eerbon->parent_mu = sun_mu;
+        const double b = glm::length(moon->pos);
+        const double nu1 = atan2(moon->pos.z, moon->pos.x);
+        railStateFromElements(b, 0.0, 0.0, nu1, eerbon_mu,
+                              moon->orbit_pos0, moon->orbit_vel0);
+        moon->pos = moon->orbit_pos0;
+        moon->vel = moon->orbit_vel0;
+        moon->parent_mu = eerbon_mu;
+    }
+
     out_sun = sun;
     out_eerbon = eerbon;
     out_eerbon_rot = eerbon_rot;
@@ -125,14 +154,6 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     out_moon_rot = moon_rot;
     return sun;
 }
-
-// Body radii [m] and mu [m^3/s^2] from the body setup in main.cpp.
-static const double sun_radius = 261600000.0;
-static const double sun_mu = 1.1723328e18;
-static const double eerbon_radius = 600000.0;
-static const double eerbon_mu = 3.5316000e12;
-static const double moon_radius = 200000.0;
-static const double moon_mu = 6.5138398e10;
 
 struct SpawnCase {
     const char *desc;
@@ -152,7 +173,7 @@ int main() {
     Frame *sun, *eerbon, *eerbon_rot, *moon, *moon_rot;
     Frame *root = make_tree(sun, eerbon, eerbon_rot, moon, moon_rot);
     // Settle the root-relative values (as main does before spawn_vehicle).
-    root->UpdateOrbitRails(0.0, 1.0 / 60.0);
+    root->UpdateOrbitRails(0.0);
 
     // Build the spawn cases (scenarios) exactly as spawn_vehicle computes them.
     std::vector<SpawnCase> cases;
@@ -268,20 +289,26 @@ int main() {
             continue; // pad cases are frame-resolution checks only
         }
         glm::dvec3 target = glm::transpose(frame->root_orient) * (worldPos - frame->root_pos);
-        // (matches the fixed spawn_vehicle: stasis of the TARGET frame is
-        // subtracted; see the sign note on GetStasisVelocity in frame.h)
-        glm::dvec3 vel = glm::transpose(frame->root_orient) * velWorld
+        // (matches the fixed spawn_vehicle: velWorld is the ship's velocity
+        // RELATIVE to the home body in root-frame axes, so the true
+        // root-frame velocity is velWorld + home.root_vel; the frame
+        // conversion then subtracts the resolved frame's root_vel and the
+        // stasis of the target frame -- see GetStasisVelocity in frame.h)
+        glm::dvec3 vel = glm::transpose(frame->root_orient)
+                        * (velWorld + c.bodyFrame->root_vel - frame->root_vel)
                         - frame->GetStasisVelocity(target);
 
         // (a) Stasis round-trip: reconstruct the INERTIAL velocity with the
         //     frame-dynamics relation  v_root = R*(v + stasis(p)) + V
         //     (verified against the rotate(-ang) frame motion; see frame.h).
-        //     It must equal the body's velocity plus the intended relative
-        //     orbital velocity. (Comparing against velWorld alone would be
-        //     circular; the V term is what ties it to real inertial motion.)
+        //     It must equal the home body's velocity plus the intended
+        //     relative orbital velocity. (Comparing against velWorld alone
+        //     would be circular; the V term is what ties it to real inertial
+        //     motion, and it is nonzero now that bodies orbit on Kepler
+        //     rails.)
         glm::dvec3 implied = frame->root_orient * (vel + frame->GetStasisVelocity(target))
                            + frame->root_vel;
-        glm::dvec3 intended = frame->root_vel + velWorld;
+        glm::dvec3 intended = c.bodyFrame->root_vel + velWorld;
         snprintf(buf, sizeof buf, "%s: implied inertial vel == body vel + orbital vel", c.desc);
         CHECK_TRUE(glm::length(implied - intended) < 1e-6 * speed, buf);
 
@@ -345,7 +372,7 @@ int main() {
                                   glm::dvec3(0, std::cos(ii), std::sin(ii)),
                                   glm::dvec3(0, -std::sin(ii), std::cos(ii)));
         sun->children.push_back(incl);
-        sun->UpdateOrbitRails(0.0, 1.0 / 60.0);
+        sun->UpdateOrbitRails(0.0);
 
         const double mu = 1e12, r = 1e6;
         const glm::dvec3 center = incl->root_pos;
@@ -490,7 +517,7 @@ int main() {
         }
 
         // Bring the rotating-frame end state back to inertial coordinates.
-        sun->UpdateOrbitRails(T, 1.0);
+        sun->UpdateOrbitRails(T);
         glm::dmat3 R = N->GetOrientRelTo(F);
         glm::dvec3 p2_I = R * p2;
         glm::dvec3 v2_I = R * (v2 + N->GetStasisVelocity(p2)) + N->GetVelocityRelTo(F);

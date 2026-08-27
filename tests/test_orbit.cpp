@@ -344,6 +344,31 @@ int main() {
         CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-7 * glm::length(v0));
     }
 
+    // --- propagateKepler: inbound state, long dt (fallback + bracket) -------
+    // Inbound (vr < 0) pushes the universal-Kepler root PAST the small-dt
+    // bracket end (target/r0): F(target/r0) < 0 there, so the bisection
+    // fallback must expand the bracket outward. Long dt also keeps the
+    // Newton initial guess near a zero of C(z), where it oscillates.
+    {
+        const double a = 2.5e6, e = 0.6;
+        glm::dvec3 p0, v0;
+        conic_state(a, e, 4.0, p0, v0);   // nu = 4 rad: inbound (sin nu < 0)
+        OrbitElements o0 = computeOrbitElements(p0, v0, MU);
+        CHECK(o0.radial_vel < 0.0);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, 0.4 * o0.period, p, v);
+        OrbitElements o1 = computeOrbitElements(p, v, MU);
+        CHECK_NEAR(o1.semi_major, a, 1e-9 * a);
+        CHECK_NEAR(o1.ecc, e, 1e-9);
+        CHECK_NEAR(o1.energy, o0.energy, 1e-9 * fabs(o0.energy));
+        CHECK_NEAR(o1.ang_momentum, o0.ang_momentum, 1e-9 * o0.ang_momentum);
+        // and back (negative dt: the bracket expands on the negative side)
+        glm::dvec3 p2, v2;
+        propagateKepler(p, v, MU, -0.4 * o0.period, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-7 * a);
+        CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-9 * glm::length(v0));
+    }
+
     // --- propagateKepler: hyperbolic inbound -> periapsis passage ------------
     {
         const double e = 2.0, rp = 1.0e6;
@@ -383,6 +408,82 @@ int main() {
         OrbitElements o1 = computeOrbitElements(pa, va, MU);
         CHECK_NEAR(o1.semi_major, a, 1e-9 * a);
         CHECK_NEAR(o1.ecc, e, 1e-9);
+    }
+
+    // --- railStateFromElements: epoch state in the body-rail convention ------
+    // (XZ plane, +Y normal, prograde = +Y x r_hat: at +X the velocity is -Z,
+    //  at -Z it is -X -- the direction the old R_Y rotation rails produced.)
+    {
+        const double a = 1.0e8;
+        const double vc = sqrt(MU / a);
+        glm::dvec3 p, v;
+
+        // circular, periapsis reference at +X
+        CHECK(railStateFromElements(a, 0.0, 0.0, 0.0, MU, p, v));
+        CHECK_NEAR(glm::length(p), a, 1e-9 * a);
+        CHECK_NEAR(p.x, a, 1e-9 * a);
+        CHECK_NEAR(p.y, 0.0, 1e-12);
+        CHECK_NEAR(p.z, 0.0, 1e-9 * a);
+        CHECK_NEAR(v.x, 0.0, 1e-12);
+        CHECK_NEAR(v.y, 0.0, 1e-12);
+        CHECK_NEAR(v.z, -vc, 1e-12 * vc);
+
+        // circular, quarter phase: position at +Z, prograde +X
+        CHECK(railStateFromElements(a, 0.0, 0.0, 0.5 * M_PI, MU, p, v));
+        CHECK_NEAR(p.x, 0.0, 1e-9 * a);
+        CHECK_NEAR(p.z, a, 1e-9 * a);
+        CHECK_NEAR(v.x, vc, 1e-12 * vc);
+        CHECK_NEAR(v.z, 0.0, 1e-12 * vc);
+
+        // circular energy + angular momentum
+        {
+            const double E = 0.5 * glm::dot(v, v) - MU / a;
+            CHECK_NEAR(E, -MU / (2.0 * a), 1e-12 * MU / a);
+            CHECK_NEAR(glm::length(glm::cross(p, v)), a * vc, 1e-10 * a * vc);
+        }
+
+        // elliptic at periapsis: r = a(1-e), v = vis-viva, transverse
+        const double e = 0.5, rp = a * (1.0 - e), ra = a * (1.0 + e);
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const double va = sqrt(MU * (2.0 / ra - 1.0 / a));
+        CHECK(railStateFromElements(a, e, 0.0, 0.0, MU, p, v));
+        CHECK_NEAR(glm::length(p), rp, 1e-9 * rp);
+        CHECK_NEAR(p.x, rp, 1e-9 * rp);
+        CHECK_NEAR(glm::length(v), vp, 1e-12 * vp);
+        CHECK_NEAR(v.z, -vp, 1e-12 * vp);
+
+        // elliptic at apoapsis: r = a(1+e), prograde flips to +Z
+        CHECK(railStateFromElements(a, e, 0.0, M_PI, MU, p, v));
+        CHECK_NEAR(glm::length(p), ra, 1e-9 * ra);
+        CHECK_NEAR(p.x, -ra, 1e-9 * ra);
+        CHECK_NEAR(v.z, va, 1e-12 * va);
+
+        // argument of periapsis rotates the ellipse in-plane
+        CHECK(railStateFromElements(a, e, 0.5 * M_PI, 0.0, MU, p, v));
+        CHECK_NEAR(p.x, 0.0, 1e-9 * rp);
+        CHECK_NEAR(p.z, rp, 1e-9 * rp);
+        CHECK_NEAR(v.x, vp, 1e-12 * vp);
+        CHECK_NEAR(v.z, 0.0, 1e-12 * vp);
+
+        // propagate periapsis -> apoapsis is exactly half a period, and the
+        // state must land on the apoapsis solution above (elements preserved)
+        const double T = 2.0 * M_PI * sqrt(a * a * a / MU);
+        glm::dvec3 p0, v0;
+        CHECK(railStateFromElements(a, e, 0.0, 0.0, MU, p0, v0));
+        propagateKepler(p0, v0, MU, 0.5 * T, p, v);
+        CHECK_NEAR(glm::length(p), ra, 1e-8 * ra);
+        CHECK_NEAR(p.x, -ra, 1e-8 * ra);
+        CHECK_NEAR(v.z, va, 1e-9 * va);
+        OrbitElements o1 = computeOrbitElements(p, v, MU);
+        CHECK_NEAR(o1.semi_major, a, 1e-9 * a);
+        CHECK_NEAR(o1.ecc, e, 1e-9);
+
+        // guards
+        CHECK(!railStateFromElements(-a, 0.0, 0.0, 0.0, MU, p, v));
+        CHECK(!railStateFromElements(0.0, 0.0, 0.0, 0.0, MU, p, v));
+        CHECK(!railStateFromElements(a, -0.1, 0.0, 0.0, MU, p, v));
+        CHECK(!railStateFromElements(a, 1.0, 0.0, 0.0, MU, p, v));
+        CHECK(!railStateFromElements(a, 0.0, 0.0, 0.0, 0.0, p, v));
     }
 
     if(failures == 0) {

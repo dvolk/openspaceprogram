@@ -16,6 +16,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "frame.h"
+#include "orbit.h"
 #include <glm/gtx/transform.hpp>
 
 static int g_failures = 0;
@@ -146,7 +147,7 @@ static Frame *make_tree() {
 int main() {
     Frame *sun = make_tree();
     // Recompute all root-relative values (parents before children, recursively).
-    sun->UpdateOrbitRails(0.0, 0.0);
+    sun->UpdateOrbitRails(0.0);
 
     // Grab the frames by walking the tree.
     Frame *eerbon = sun->children[0];
@@ -337,12 +338,129 @@ int main() {
         child->root_pos = glm::dvec3(0);
         parent->children.push_back(child);
 
-        parent->UpdateOrbitRails(0.0, 0.0);
+        parent->UpdateOrbitRails(0.0);
         glm::dvec3 expected(0.0, 1.0e8 * s, -1.0e8 * c);
         CHECK_TRUE(dvec_close(child->root_pos, expected, 1.0),
                    "orb-incl: tilted root_pos == (0, r sin i, -r cos i)");
         delete child;
         delete parent;
+    }
+
+    printf("== Keplerian orbit rail ==\n");
+    // UpdateOrbitRails propagates the epoch state on the true Kepler conic
+    // under the parent's mu (propagateKepler) instead of rotating it, and
+    // the body's orbital velocity composes into root_vel. Pins the circular
+    // quarter-period motion, the full-period round trip, and the elliptic
+    // periapsis -> apoapsis half-period swap.
+    {
+        const double mu = 1.0e12;
+        Frame *root = new Frame;
+        root->parent = NULL;
+        root->rotating = false;
+        root->body = NULL;
+        root->pos = glm::dvec3(0);
+        root->orient = glm::dmat3(1.0);
+        root->root_pos = glm::dvec3(0);
+        root->root_vel = glm::dvec3(0);
+        root->root_orient = glm::dmat3(1.0);
+
+        const double r = 1.0e8;
+        const double vc = sqrt(mu / r);
+        Frame *c = new Frame;
+        c->parent = root;
+        c->rotating = false;
+        c->body = NULL;
+        c->orb_ang_speed = 1.0;   // nonzero => the rail is active
+        c->parent_mu = mu;
+        // epoch on +Z: prograde (+Y x r_hat) there is +X
+        railStateFromElements(r, 0.0, 0.0, M_PI / 2.0, mu,
+                              c->orbit_pos0, c->orbit_vel0);
+        c->pos = c->orbit_pos0;
+        c->vel = c->orbit_vel0;
+        c->orient = glm::dmat3(1.0);
+        c->root_pos = glm::dvec3(0);
+        c->root_vel = glm::dvec3(0);
+        c->root_orient = glm::dmat3(1.0);
+        root->children.push_back(c);
+
+        CHECK_TRUE(dvec_close(c->orbit_vel0, glm::dvec3(vc, 0, 0), 1e-9 * vc),
+                   "rail: circular epoch vel at +Z == +X * sqrt(mu/r)");
+
+        const double T = 2.0 * M_PI * sqrt(r * r * r / mu);
+        root->UpdateOrbitRails(T / 4.0);
+        // a quarter period sweeps 90 deg prograde (+Z -> +X)
+        CHECK_TRUE(dvec_close(c->pos, glm::dvec3(r, 0, 0), 1e-3),
+                   "rail: circular quarter-period position");
+        CHECK_TRUE(dvec_close(c->vel, glm::dvec3(0, 0, -vc), 1e-9 * vc),
+                   "rail: circular quarter-period velocity (prograde)");
+        // orbital velocity composes into root_vel (root parent)
+        CHECK_TRUE(dvec_close(c->root_vel, c->vel, 1e-9 * vc),
+                   "rail: root_vel == orbital vel (root parent)");
+        CHECK_TRUE(dvec_close(c->GetVelocityRelTo(root), c->vel, 1e-9 * vc),
+                   "rail: vel rel root == orbital vel");
+
+        root->UpdateOrbitRails(T);
+        CHECK_TRUE(dvec_close(c->pos, c->orbit_pos0, 1e-3),
+                   "rail: full period returns to epoch position");
+        CHECK_TRUE(dvec_close(c->vel, c->orbit_vel0, 1e-9 * vc),
+                   "rail: full period returns to epoch velocity");
+        delete c;
+        delete root;
+    }
+    {
+        const double mu = 1.0e12;
+        const double a = 1.0e8, e = 0.5;
+        const double rp = a * (1.0 - e), ra = a * (1.0 + e);
+        const double vp = sqrt(mu * (2.0 / rp - 1.0 / a));
+        const double va = sqrt(mu * (2.0 / ra - 1.0 / a));
+        const double T = 2.0 * M_PI * sqrt(a * a * a / mu);
+        const double E0 = vp * vp / 2.0 - mu / rp;   // = -mu/(2a)
+
+        Frame *root = new Frame;
+        root->parent = NULL;
+        root->rotating = false;
+        root->body = NULL;
+        root->pos = glm::dvec3(0);
+        root->orient = glm::dmat3(1.0);
+        root->root_pos = glm::dvec3(0);
+        root->root_vel = glm::dvec3(0);
+        root->root_orient = glm::dmat3(1.0);
+
+        Frame *c = new Frame;
+        c->parent = root;
+        c->rotating = false;
+        c->body = NULL;
+        c->orb_ang_speed = 1.0;
+        c->parent_mu = mu;
+        // epoch at periapsis on +Z (arg_peri = pi/2, nu = 0): prograde +X
+        railStateFromElements(a, e, M_PI / 2.0, 0.0, mu,
+                              c->orbit_pos0, c->orbit_vel0);
+        c->pos = c->orbit_pos0;
+        c->vel = c->orbit_vel0;
+        c->orient = glm::dmat3(1.0);
+        c->root_pos = glm::dvec3(0);
+        c->root_vel = glm::dvec3(0);
+        c->root_orient = glm::dmat3(1.0);
+        root->children.push_back(c);
+
+        CHECK_TRUE(dvec_close(c->orbit_pos0, glm::dvec3(0, 0, rp), 1e-3),
+                   "rail: elliptic epoch at periapsis radius on +Z");
+        CHECK_TRUE(dvec_close(c->orbit_vel0, glm::dvec3(vp, 0, 0), 1e-9 * vp),
+                   "rail: elliptic epoch vel == +X * vis-viva at periapsis");
+
+        root->UpdateOrbitRails(T / 2.0);
+        // half a period later: apoapsis on -Z, prograde there is -X
+        CHECK_TRUE(dvec_close(c->pos, glm::dvec3(0, 0, -ra), 1e-3),
+                   "rail: elliptic T/2 position == apoapsis on -Z");
+        CHECK_TRUE(dvec_close(c->vel, glm::dvec3(-va, 0, 0), 1e-9 * va),
+                   "rail: elliptic T/2 velocity (prograde at apoapsis)");
+        const double r1 = glm::length(c->pos), v1 = glm::length(c->vel);
+        CHECK_NEAR(v1 * v1 / 2.0 - mu / r1, E0, 1e-6 * fabs(E0),
+                   "rail: elliptic T/2 energy conserved");
+        CHECK_TRUE(dvec_close(c->GetVelocityRelTo(root), c->vel, 1e-9 * va),
+                   "rail: elliptic vel rel root == orbital vel");
+        delete c;
+        delete root;
     }
 
     printf("== rel-to an INCLINED inertial frame ==\n");
@@ -393,7 +511,7 @@ int main() {
         gc->root_vel = glm::dvec3(0);
         gc->root_orient = glm::dmat3(1.0);
 
-        parent->UpdateOrbitRails(0.0, 0.0);
+        parent->UpdateOrbitRails(0.0);
 
         // child's root_orient is the tilt itself (parent is the root)
         CHECK_TRUE(mat_close(child->root_orient, child->orient, 1e-12),
@@ -436,11 +554,11 @@ int main() {
         // orient is the rotation we want, without the 1e8 root_pos offset
         // (which would swamp a central difference of O(1) quantities in
         // double precision).
-        sun->UpdateOrbitRails(t0 - h, h);
+        sun->UpdateOrbitRails(t0 - h);
         glm::dvec3 X1 = N->orient * p;
-        sun->UpdateOrbitRails(t0 + h, h);
+        sun->UpdateOrbitRails(t0 + h);
         glm::dvec3 X2 = N->orient * p;
-        sun->UpdateOrbitRails(t0, h);
+        sun->UpdateOrbitRails(t0);
 
         glm::dvec3 drift = (X2 - X1) / (2.0 * h);
         glm::dvec3 expect = N->orient * N->GetStasisVelocity(p);

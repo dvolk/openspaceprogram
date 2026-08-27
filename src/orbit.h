@@ -185,23 +185,62 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
          sqrt(mu) dt = (r0 vr0 / sqrt(mu)) chi^2 C(z)
                      + (1 - alpha r0) chi^3 S(z) + r0 chi,   z = alpha chi^2
        The derivative simplifies to r0 + (1 - alpha r0) chi^2 C(z)
-       + (r0 vr0 / sqrt(mu)) chi (1 - z S(z)). */
+       + (r0 vr0 / sqrt(mu)) chi (1 - z S(z)).
+
+       Monotonicity (used by the fallback below): for any physical state
+       k2 = 1 - alpha r0 = r0 v0^2/mu - 1 >= 1 (ellipse: r0 <= a;
+       hyperbolic: > 2), and S(z), C(z), 1 - z S(z) are all > 0 for both
+       z signs -- so F is strictly increasing in chi, F(0) = -target, and
+       F -> +inf as chi -> +inf: a unique root, and bisection works on
+       any bracket with F(lo) < 0 < F(hi). The natural start point
+       chi = target/r0 (the small-dt limit) brackets from OUTSIDE when the
+       state is inbound (vr0 < 0): the negative k1 term can drive
+       F(target/r0) below 0, pushing the root past it -- so the fallback
+       expands the outer end until the sign flips (F -> +/-inf makes this
+       terminate; 100 doublings is far more than any physical case needs).
+       Newton loses the root when the initial guess sits near a zero of
+       C(z) (z ~ (2*pi)^2 -- e.g. half a period from an eccentric
+       periapsis): dF flattens to r0, the step overshoots the root by a
+       wide margin, and the iteration oscillates. Hence the fallback. */
     const double sqrt_mu = sqrt(mu);
     const double target = sqrt_mu * dt;
+    const double k1 = r0 * vr0 / sqrt_mu;   // 0 at an apsis
+    const double k2 = 1.0 - alpha * r0;     // >= 1 for any bound state
+    auto F = [alpha, r0, k1, k2, target](double chi) {
+        const double z = alpha * chi * chi;
+        return k1 * chi * chi * stumpffC(z)
+             + k2 * chi * chi * chi * stumpffS(z)
+             + r0 * chi - target;
+    };
+    auto dF = [alpha, r0, k1, k2](double chi) {
+        const double z = alpha * chi * chi;
+        return r0 + k2 * chi * chi * stumpffC(z)
+             + k1 * chi * (1.0 - z * stumpffS(z));
+    };
+
     double chi = target / r0;               // small-dt limit: RHS ~ r0 chi
     for(int iter = 0; iter < 30; iter++) {
-        const double z = alpha * chi * chi;
-        const double C = stumpffC(z);
-        const double S = stumpffS(z);
-        const double chi2 = chi * chi;
-        const double F = (r0 * vr0 / sqrt_mu) * chi2 * C
-                       + (1.0 - alpha * r0) * chi2 * chi * S
-                       + r0 * chi - target;
-        const double dF = r0 + (1.0 - alpha * r0) * chi2 * C
-                        + (r0 * vr0 / sqrt_mu) * chi * (1.0 - z * S);
-        const double step = F / dF;
+        const double step = F(chi) / dF(chi);
         chi -= step;
         if(fabs(step) < 1e-10 * r0) { break; }
+    }
+    if(fabs(F(chi)) > 1e-6 * target) {      // Newton missed (see above)
+        // F(0) = -target already has the right sign for the 0 end; the
+        // other end starts at target/r0 and expands outward until the
+        // signs straddle the root (F -> +/-inf guarantees termination).
+        double lo, hi;
+        if(target > 0.0) {
+            lo = 0.0; hi = target / r0;
+            for(int i = 0; i < 100 && F(hi) < 0.0; i++) { hi *= 2.0; }
+        } else {
+            hi = 0.0; lo = target / r0;
+            for(int i = 0; i < 100 && F(lo) > 0.0; i++) { lo *= 2.0; }
+        }
+        for(int i = 0; i < 70; i++) {       // 2^-70 << double epsilon
+            const double mid = 0.5 * (lo + hi);
+            if(F(mid) < 0.0) { lo = mid; } else { hi = mid; }
+        }
+        chi = 0.5 * (lo + hi);
     }
 
     /* f and g functions at chi; r from the propagated position. */
@@ -214,4 +253,39 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double fdot = (sqrt_mu / (r * r0)) * chi * (z * stumpffS(z) - 1.0);
     const double gdot = 1.0 - (chi2 / r) * stumpffC(z);
     vel = fdot * pos0 + gdot * vel0;
+}
+
+/* Epoch state (pos, vel) of a two-body orbit from its elements, in the
+   BODY-RAIL convention: orbital plane = XZ (normal +Y), in-plane angle
+   measured from +X toward +Z, prograde = +Y x r_hat (at +X the velocity
+   is -Z -- the direction the old R_Y rotation rails produced, and the
+   "prograde" the spawn code uses). Plane tilt is NOT applied here; the
+   frame's orient (a tilt about the parent's +X) carries it out.
+
+   a            semi-major axis (m); a > 0 (elliptic -- bodies don't escape)
+   e            eccentricity, 0 <= e < 1
+   arg_peri     in-plane angle of periapsis from +X (rad); 0 = along +X
+   true_anomaly true anomaly at the epoch (rad), measured from periapsis
+   mu           gravitational parameter of the body orbited
+   Returns false on bad input (pos/vel then left unmodified). */
+inline bool railStateFromElements(double a, double e,
+                                  double arg_peri, double true_anomaly,
+                                  double mu,
+                                  glm::dvec3 &pos, glm::dvec3 &vel) {
+    if(!(a > 0.0) || !(mu > 0.0) || !(e >= 0.0 && e < 1.0)) { return false; }
+
+    const double p = a * (1.0 - e * e);             // semi-latus rectum
+    const double r = p / (1.0 + e * cos(true_anomaly));
+    const double phi = arg_peri + true_anomaly;     // in-plane position angle
+    const glm::dvec3 rhat(cos(phi), 0.0, sin(phi));
+    pos = r * rhat;
+
+    // Radial + transverse split. vt = sqrt(mu(2/r - 1/a)) reduces to
+    // s*sqrt(1 + 2 e cos(nu) + e^2) with s = sqrt(mu/p) (check:
+    // 2/r - 1/a = (1 + 2 e cos(nu) + e^2)/p).
+    const double s = sqrt(mu / p);
+    const double vr = s * e * sin(true_anomaly);
+    const double vt = s * sqrt(1.0 + 2.0 * e * cos(true_anomaly) + e * e);
+    vel = vr * rhat + vt * glm::cross(glm::dvec3(0.0, 1.0, 0.0), rhat);
+    return true;
 }

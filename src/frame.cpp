@@ -1,4 +1,5 @@
 #include "frame.h"
+#include "orbit.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
 
@@ -28,7 +29,7 @@ glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)
     return glm::transpose(relTo->root_orient) * root_orient;
 }
 
-void Frame::UpdateRootRelative(double time, double timestep) { // TODO unused params
+void Frame::UpdateRootRelative() {
     if(parent == NULL) {
         return;
     }
@@ -38,11 +39,17 @@ void Frame::UpdateRootRelative(double time, double timestep) { // TODO unused pa
     root_orient = parent->root_orient * orient;
 }
 
-void Frame::UpdateOrbitRails(double time, double timestep) {
-    if(parent != NULL and body != NULL and not rotating) {
-        // translate body in orbit
+void Frame::UpdateOrbitRails(double time) {
+    if(parent != NULL and not rotating) {
+        // translate body in orbit: propagate the epoch state on the true
+        // Kepler conic under the parent's mu (for the current circular
+        // data this is the old uniform R_Y rotation, but eccentric orbits
+        // now sweep correctly too). Absolute sim time -- like the spin
+        // angle, this must NOT scale with the current timestep, or the
+        // frame (and everything in it) snaps when time accel changes.
         if(orb_ang_speed != 0) {
-            pos = glm::dmat3(glm::rotate(orb_ang_speed * timestep, glm::dvec3(0, 1, 0))) * pos;
+            propagateKepler(orbit_pos0, orbit_vel0, parent_mu,
+                            time, pos, vel);
         }
     }
 
@@ -56,9 +63,9 @@ void Frame::UpdateOrbitRails(double time, double timestep) {
         }
     }
 
-    UpdateRootRelative(time, timestep);
+    UpdateRootRelative();
 
     for(Frame *child : children) {
-        child->UpdateOrbitRails(time, timestep);
+        child->UpdateOrbitRails(time);
     }
 }
