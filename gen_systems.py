@@ -97,6 +97,9 @@ eerbon = {
 # Position convention (matches the Eerbon data):
 #   planets -> [0, 0, -sma]
 #   moons   -> [-sma, 0, 0]
+# phase_deg (optional, last column): rotate that starting point about the
+#   orbit normal; 0 = the defaults above. Eden = 60: Kerbin's L4 slot,
+#   60 deg ahead on the same circle.
 # inc_deg: orbital inclination from the CSV Inc. column (KSP wiki values),
 #   emitted as inertial.orb_incl in radians; 0 = coplanar (field omitted).
 # tilt_deg: axial tilt from the CSV Axial tilt column, emitted as
@@ -107,7 +110,7 @@ eerbon = {
 # Eerbon data follows (Eerbon 600km+100km=700km, Moon 200km+100km=300km).
 # ---------------------------------------------------------------------------
 K = [
-    # name,     type,    orbits,  sma_m,        mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, soi_m,        has_sea, seed, ps
+    # name,     type,    orbits,  sma_m,        mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, soi_m,        has_sea, seed, ps [, phase_deg]
     ("Kerbol", "star",   None,    0,            1.757e28, 17.131, 261600000, 0.0,     None,       432000,    7.25,     1e16,         False, 0.1, 1),
     ("Moho",   "planet", "Kerbol", 5263138300,  2.526e21, 2.698,  250000,   7.0,     2215754.2,  1210000,   0.03,     9646660,      False, 1,   3),
     ("Eve",    "planet", "Kerbol", 9832684540,  1.224e23, 16.677, 700000,   2.1,     5657995.1,  80500,     2.64,     85109360,     False, 2,   3),
@@ -115,6 +118,10 @@ K = [
     ("Kerbin", "planet", "Kerbol", 13599840260, 5.292e22, 9.81,   600000,   0.0,     9203544.6,  21549,     23.44,    84159290,     True,  1,   3),
     ("Mun",    "moon",   "Kerbin", 12000000,    9.760e20, 1.628,  200000,   0.0,     138984.4,   138984,    6.68,     2429560,      False, 5,   1),
     ("Minmus", "moon",   "Kerbin", 47000000,    2.646e19, 0.491,  60000,    6.0,     1077310.5,  40400,     12.0,     2247430,      False, 6,   1),
+    # Eden: Kerbin's L4 trojan, 60 deg ahead on the same circle. Its orbital
+    # period is Kerbin's exactly -- anything else and it drifts off L4.
+    # Day = 21549.425 s: Eerbon's day, ported verbatim with the rest of it.
+    ("Eden",   "planet", "Kerbol", 13599840260, 8.4035e22, 11.446, 700000,   0.0,     9203544.6,  21549.425, 5.0,      98185838,     True,  0,   3,  60),
     ("Duna",   "planet", "Kerbol", 20726155260, 4.515e21, 2.943,  320000,   0.06,    17315400.1, 65518,     25.19,    47921950,     False, 7,   3),
     ("Ike",    "moon",   "Duna",   3200000,     2.782e20, 1.099,  130000,   0.2,     65517.9,    65518,     1.76,     1049600,      False, 8,   1),
     ("Dres",   "planet", "Kerbol", 40839348200, 3.219e20, 1.128,  138000,   5.0,     47893063.1, 34800,     4.0,      32832840,     False, 9,   3),
@@ -150,6 +157,9 @@ SURFACES = {
         "palette": [[0.0, [0.45, 0.08, 0.20]],
                     [0.5, [0.65, 0.15, 0.30]],
                     [1.0, [0.80, 0.40, 0.45]]],
+        # thick toxic SO2 haze (see reports/atmosphere2026_08_25)
+        "atmosphere": {"color": [0.80, 0.85, 0.35], "thickness": 25000,
+                       "power": 4.0, "intensity": 0.75},
     },
     "Gilly": {
         "amplitude": 400,
@@ -176,6 +186,12 @@ SURFACES = {
         "amplitude": 2000,
         "palette": [[0.0, [0.28, 0.48, 0.55]],
                     [1.0, [0.70, 0.90, 0.90]]],
+    },
+    "Eden": {
+        # thicker green-tinted N2/O2 rim than Kerbin's
+        # (see reports/atmosphere2026_08_25)
+        "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
+                       "power": 4.0, "intensity": 0.7},
     },
     "Duna": {
         "palette": [[0.0, [0.55, 0.22, 0.08]],
@@ -242,7 +258,7 @@ SURFACES = {
 }
 
 
-def ksp_body(name, typ, orbits, sma, mass, g, radius, inc_deg, orb_s, rot_s, tilt_deg, soi, has_sea, seed, ps):
+def ksp_body(name, typ, orbits, sma, mass, g, radius, inc_deg, orb_s, rot_s, tilt_deg, soi, has_sea, seed, ps, phase_deg=0):
     b = {
         "name": name,
         "type": typ,
@@ -262,7 +278,17 @@ def ksp_body(name, typ, orbits, sma, mass, g, radius, inc_deg, orb_s, rot_s, til
     if typ == "star":
         b["inertial"] = {"soi": soi, "pos": [0, 0, 0], "orb_ang_speed": 0.0}
     else:
-        if typ == "planet":
+        # Starting point on the orbit: planets at -Z, moons at -X (the
+        # Eerbon convention); phase_deg rotates that point about the orbit
+        # normal, e.g. Eden at 60 deg ahead of Kerbin (the L4 trojan slot).
+        if phase_deg:
+            th = math.radians(phase_deg)
+            if typ == "planet":
+                pos = [-sma * math.sin(th), 0.0, -sma * math.cos(th)]
+            else:
+                pos = [-sma * math.cos(th), 0.0, -sma * math.sin(th)]
+            pos = [int(round(p)) for p in pos]
+        elif typ == "planet":
             pos = [0, 0, -sma]
         else:
             pos = [-sma, 0, 0]
