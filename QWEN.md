@@ -12,7 +12,7 @@
 - Keep commit titles under 80 chars and use commit body to elaborate. Give yourself credit.
 - make clean, make test, make e2e before committing please.
 - Don't push to github.
-- Use cli options like --timeout 30s. --help to see all.
+- Use cli options like --timeout 30 (plain seconds, no unit suffix). --help to see all.
 - Game starts with time accel set to 0, use --time-accel 1 to unpause (also available: 10, 100, 1000).
 - Avoid making tests too specific as it's in very early development.
 - If unsure if something is working, first thing to do is add some debug prints and run the game.
