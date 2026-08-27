@@ -59,9 +59,25 @@ struct OrbitSampleCache {
         }
         pts.clear();
         pts.reserve(N);
+        // Even grid in ECCENTRIC ANOMALY, not uniform in time. Uniform-in-time
+        // (period * i / N) spaces points by how fast the ship is: they cluster
+        // where it is slow (near apoapsis) and starve periapsis, so an
+        // eccentric ellipse draws lopsided (a sparse spike at periapsis).
+        // Stepping by equal eccentric-anomaly increments instead gives an even
+        // ellipse. Point i lands at eccentric anomaly E_i = 2 pi i / N no
+        // matter the start state's phase: mean anomaly M = E - e sin E fixes
+        // the propagation time (dt = (M_i - M0) / n), and the propagator
+        // carries any start state on the same ellipse to that same point. So
+        // the N points are a fixed even grid on the ellipse -- identical for
+        // every ship on it, and always including the exact periapsis (E = 0)
+        // and apoapsis (E = pi) when N is even.
+        const double n_mean = 2.0 * M_PI / o.period;   // mean motion, rad/s
         for(int i = 0; i < N; i++) {
+            const double E = 2.0 * M_PI * i / N;
+            const double M = E - o.ecc * std::sin(E);
+            const double dt = (M - o.mean_anomaly) / n_mean;
             glm::dvec3 p, v;
-            propagateKepler(pos, vel, mu, o.period * i / N, p, v);
+            propagateKepler(pos, vel, mu, dt, p, v);
             pts.push_back(p);
         }
         a = o.semi_major; e = o.ecc; inc = o.inclination;

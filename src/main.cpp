@@ -5538,6 +5538,9 @@ int main(int argc, char **argv)
                 // Children's orbits: a muted tone readable on both light and
                 // dark backgrounds (their labels use the contrasting ink).
                 ImU32 col_child = ImGui::GetColorU32(ImVec4(0.35f, 0.5f, 0.65f, 1.0f));
+                // Transfer conic (P3): a bright green, distinct from the body
+                // (red), apsides (blue), children (slate), and ship orbit (ink).
+                ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.3f, 0.85f, 0.45f, 1.0f));
                 ImDrawList *dl = ImGui::GetWindowDrawList();
                 const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
 
@@ -5572,6 +5575,35 @@ int main(int argc, char **argv)
                 if(o.ecc > 1e-3) {
                     if(o.time_to_peri > 0.0) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
                     if(o.time_to_apo  > 0.0) { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
+                }
+
+                // P3: the transfer conic to the selected target (planner has a
+                // valid solution). It is a Kepler orbit under the focus's mu,
+                // starting at the ship (r1 = orbit_pos) with velocity
+                // sol.v_departure and propagated over sol.tof -- the same
+                // frame as the rest of the map, so it projects through the
+                // same plane. The arc's end is the arrival / intercept point
+                // (where the ship meets the target at t + tof); the departure
+                // point is the ship dot already drawn above.
+                if(xfer.valid) {
+                    const TransferSolution &sol = xfer.sol;
+                    std::vector<glm::dvec3> xfer_pts;
+                    xfer_pts.reserve(N + 1);
+                    for(int i = 0; i <= N; i++) {
+                        glm::dvec3 p, v;
+                        propagateKepler(orbit_pos, sol.v_departure, mu,
+                                        sol.tof * i / N, p, v);
+                        xfer_pts.push_back(p);
+                    }
+                    map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
+                    const glm::dvec3 &arrival = xfer_pts.back();
+                    map.drawDot(dl, arrival, 4.0f, col_xfer);
+                    char xfer_label[96];
+                    snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
+                             xferTargets[xfer_target].name, sol.total_dv);
+                    const ImVec2 apx = map.px(arrival);
+                    dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
+                                xfer_label);
                 }
 
                 // Reserve the map region so the controls land below it.

@@ -61,19 +61,22 @@ struct OrbitMap {
         return ImVec2(float(q.x), float(q.y));
     }
 
-    // A closed orbit from sampled 3D points (focus's inertial frame).
+    // A path from sampled 3D points (focus's inertial frame). closed=true for
+    // a full orbit; false for an open arc (the transfer conic, departure to
+    // arrival).
     void drawOrbit(ImDrawList *dl, const std::vector<glm::dvec3> &pts,
-                   ImU32 col, float thickness = 1.0f) const {
+                   ImU32 col, float thickness = 1.0f, bool closed = true) const {
         std::vector<ImVec2> sp;
         sp.reserve(pts.size());
         for(const glm::dvec3 &p : pts) { sp.push_back(px(p)); }
-        if(sp.size() >= 3) {
+        if(sp.size() >= 2) {
             // imgui 1.92.8+ signature: (points, count, col, thickness, flags)
             // -- 'closed' is no longer a bool param, it is the ImDrawFlags_Closed
             // flag (the old (.., bool closed, float thickness) order now trips
             // the "Did you swap thickness and flags?" assert).
-            dl->AddPolyline(sp.data(), (int)sp.size(), col, thickness,
-                            ImDrawFlags_Closed);
+            const ImDrawFlags flags =
+                closed ? ImDrawFlags_Closed : ImDrawFlags_None;
+            dl->AddPolyline(sp.data(), (int)sp.size(), col, thickness, flags);
         }
     }
 

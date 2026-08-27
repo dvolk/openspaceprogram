@@ -119,6 +119,47 @@ int main() {
               "gate: off-rails points still on the circle");
     }
 
+    // 7. EVEN sampling: two states on the SAME ellipse (different phase) must
+    // yield the same point set. This is the fix for the lopsided eccentric
+    // outline -- the grid is a fixed even set in eccentric anomaly, NOT
+    // time-measured-from-the-start-state (which would offset the grid by the
+    // ship's phase and starve periapsis). The orbit is equatorial, so
+    // in-plane angle -> radius is one-to-one: equal angle sets == equal
+    // point sets.
+    {
+        const double a = 7.0e6, e = 0.6;
+        const double rp = a * (1.0 - e);
+        const double vp = std::sqrt(mu * (1.0 + e) / rp);   // periapsis speed
+        const glm::dvec3 p1(rp, 0.0, 0.0), v1(0.0, vp, 0.0);  // periapsis, equatorial
+        const double period = 2.0 * M_PI * std::sqrt(a * a * a / mu);
+        glm::dvec3 p2, v2;
+        propagateKepler(p1, v1, mu, 0.25 * period, p2, v2);  // same ellipse, +90 deg
+
+        OrbitSampleCache c1, c2;   // separate instances -> no storage aliasing
+        std::vector<glm::dvec3> s1 = c1.sample(p1, v1, mu, N);   // copies (see test 3)
+        std::vector<glm::dvec3> s2 = c2.sample(p2, v2, mu, N);
+        check(s1.size() == (size_t)N && s2.size() == (size_t)N, "even: N points each");
+
+        // Set comparison via nearest-neighbour distance, in Cartesian coords.
+        // (A sorted-angle comparison trips on the 0 / 2pi wrap: the periapsis
+        // point reads as angle 0 for one phase and 2pi for the other.) Every
+        // point of one sampling must have a near-identical partner in the
+        // other; the grid spacing (~5e5 m here) is >> the tolerance, so the
+        // nearest neighbour is unambiguous.
+        bool same = (s1.size() == s2.size());
+        if(same) {
+            for(const glm::dvec3 &p : s1) {
+                double best = 1e300;
+                for(const glm::dvec3 &q : s2) {
+                    const double d = glm::length(p - q);
+                    if(d < best) { best = d; }
+                }
+                if(best > 1e-3 * rp) { same = false; break; }   // 0.1% of periapsis radius
+            }
+        }
+        check(same, "even: same ellipse, two phases -> same point set");
+    }
+
     if(g_failures == 0) {
         std::printf("test_orbitsample: all checks passed\n");
         return 0;
