@@ -140,6 +140,11 @@ test:
 	# math): Hohmann analytic reference, round-trip, hyperbolic leg.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_transfer.cpp -o test_transfer
 	./test_transfer
+	# orbital map projection (src/orbitmap.h, pure-math part): project() drops
+	# the map normal (+Y) and scales XZ by meters-per-pixel. Header-only, so
+	# the imgui include is headers-only (no imgui/Bullet/GL link needed).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/imgui/ tests/test_orbitmap.cpp -o test_orbitmap
+	./test_orbitmap
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on
@@ -164,7 +169,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_transfer test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_transfer test_orbitmap test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

@@ -39,6 +39,7 @@
 #include "frame.h"
 #include "calendar.h"
 #include "orbit.h"
+#include "orbitmap.h"
 #include "transfer.h"
 #include "shipdef.h"
 #include "fleet.h"
@@ -3905,6 +3906,10 @@ int main(int argc, char **argv)
 
     double time = 0;
 
+    // Orbital map: meters per pixel (the "Scale" slider). Persistent UI
+    // state, like the transfer planner's below.
+    float map_scale = 6000.0f;
+
     // Transfer planner (TRANSFER window + the blue burn-direction icon).
     // Targets: child bodies of the ship's current body (parent->child
     // transfers, with a capture burn) + other ships in the same body
@@ -5457,65 +5462,69 @@ int main(int argc, char **argv)
             ui::Window("Orbital map", o_map, [&] {
                 if(o.ecc >= 1.0) {
                     ImGui::Text("Escape trajectory (Ecc %f): no closed orbit to map.", o.ecc);
-                } else {
-                    ImVec2 pts[26];
-                    // ImVec2 planet[26];
-                    // ImGui::Text("%.1f %.1f", center.x, center.y);
-                    int i = 0;
-                    ImU32 color = ImGui::GetColorU32(ImVec4(255,255,255,255));
-                    ImU32 color2 = ImGui::GetColorU32(ImVec4(255,0,0,255));
-                    const ImVec2 p = ImGui::GetCursorScreenPos();
-                    double E = 0;
-                    static float div = 6000.0;
-                    for(i = 0; i < 26; i++) {
-                        double r = o.semi_major * (1 - o.ecc * cos(E));
-                        // ImGui::Text("%.0f", r);
-                        double argX = cos(E) - o.ecc;
-                        double argY = sqrt(1 - (o.ecc * o.ecc)) * sin(E);
-                        double phi = atan2(argY, argX);
-                        pts[i].x = 200 + p.x + (r / div * cos(phi));
-                        pts[i].y = 200 + p.y + (r / div * sin(phi));
-                        // planet[i].x = 200 + p.x + (600000 / div * cos(phi));
-                        // planet[i].y = 200 + p.y + (600000 / div * sin(phi));
-                        E += 2 * M_PI / 25;
-                    }
-
-                    double argX = cos(o.ecc_anomaly) - o.ecc;
-                    double argY = sqrt(1 - (o.ecc * o.ecc)) * sin(o.ecc_anomaly);
-                    double phi = atan2(argY, argX);
-
-                    ImVec2 ship_p = { float(200 + p.x + distance / div * cos(phi)),
-                                      float(200 + p.y + distance / div * sin(phi)) };
-
-                    ImVec2 raan_p = { float(200 + p.x + 100 * cos(o.raan)),
-                                      float(200 + p.y + 100 * sin(o.raan)) };
-
-                    /* incorrect */
-                    ImVec2 peri_p = { float(200 + p.x + o.periapsis / div * cos(o.arg_periapsis - M_PI / 2)),
-                                      float(200 + p.y + o.periapsis / div * sin(o.arg_periapsis - M_PI / 2)) };
-
-                    ImVec2 apo_p = { float(200 + p.x + o.apoapsis / div * cos(o.arg_periapsis + M_PI / 2)),
-                                     float(200 + p.y + o.apoapsis / div * sin(o.arg_periapsis + M_PI / 2)) };
-
-                    ImGui::GetWindowDrawList()->AddPolyline(&pts[0], 26, color, false, 1.0);
-
-                    ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(200 + p.x, 200 + p.y),
-                                                                ship->m_parent->radius / div,
-                                                                color2, 26);
-
-                    ImGui::GetWindowDrawList()->AddCircleFilled(ship_p, 5, color);
-                    ImGui::GetWindowDrawList()->AddLine(ImVec2(200 + p.x, 200 + p.y), ship_p, color);
-
-                    // ImGui::GetWindowDrawList()->AddCircle(ImVec2(200 + p.x, 200 + p.y), 3 * 600000 / div, color2);
-                    // ImGui::GetWindowDrawList()->AddCircleFilled(raan_p, 5, color);
-                    // ImGui::GetWindowDrawList()->AddCircleFilled(peri_p, 5, color);
-                    // ImGui::GetWindowDrawList()->AddCircleFilled(apo_p, 5, color);
-                    // ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + 10,p.y + 10), color);
-
-                    ImGui::SliderFloat("Scale", &div, 5000, 100000, "");
-                    ImGui::Text("True anomaly: %.2f", o.true_anomaly);
-                    ImGui::Text("Eccentric anomaly: %.2f", o.ecc_anomaly);
+                    return;
                 }
+
+                // Top-down view of the ship's orbit in the parent's inertial
+                // frame. The ellipse is sampled by propagating the ship's state
+                // over one full period (exact Kepler, so the orbit's true 3D
+                // orientation shows through the projection), and periapsis /
+                // apoapsis are the ACTUAL points on the orbit (propagated to
+                // o.time_to_peri / o.time_to_apo) -- not re-derived from elements.
+                const int N = 64;
+                const double T = o.period;
+                std::vector<glm::dvec3> orbit_pts;
+                orbit_pts.reserve(N);
+                if(T > 0.0) {
+                    for(int i = 0; i < N; i++) {
+                        glm::dvec3 p, v;
+                        propagateKepler(orbit_pos, orbit_vel, mu, T * i / N, p, v);
+                        orbit_pts.push_back(p);
+                    }
+                }
+                glm::dvec3 peri_p, apo_p, tmp;
+                if(o.time_to_peri > 0.0) {
+                    propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
+                }
+                if(o.time_to_apo > 0.0) {
+                    propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
+                }
+
+                // The map is a kMapSize square at the top of the window, focus
+                // (the parent body) at its center; the controls go below it.
+                const float kMapSize = 400.0f;
+                const ImVec2 p0 = ImGui::GetCursorScreenPos();
+                OrbitMap map;
+                map.cx = p0.x + kMapSize * 0.5;
+                map.cy = p0.y + kMapSize * 0.5;
+                map.scale = map_scale;
+
+                // Orbit / ship / radial line: near-black or near-white chosen
+                // to contrast with the current style's window background, so it
+                // stays visible in both the light and dark themes.
+                ImU32 col_orbit = contrastingColor(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
+                ImU32 col_body  = ImGui::GetColorU32(ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+                ImU32 col_apsis = ImGui::GetColorU32(ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
+
+                map.drawOrbit(dl, orbit_pts, col_orbit, 1.0f);
+                map.drawBody(dl, ship->m_parent->radius, col_body);
+                dl->AddLine(focus_px, map.px(orbit_pos), col_orbit, 1.0f);
+                map.drawDot(dl, orbit_pos, 5.0f, col_orbit);
+                // Apside markers are only meaningful for a non-circular orbit.
+                if(o.ecc > 1e-3) {
+                    if(o.time_to_peri > 0.0) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
+                    if(o.time_to_apo  > 0.0) { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
+                }
+
+                // Reserve the map region so the controls land below it.
+                ImGui::Dummy(ImVec2(kMapSize, kMapSize));
+                ImGui::SliderFloat("Scale (m/px)", &map_scale, 5000.0f, 100000.0f, "%.0f");
+                ImGui::Text("nu %.2f   E %.2f   inc %.2f deg",
+                            o.true_anomaly, o.ecc_anomaly,
+                            o.inclination * 180.0 / M_PI);
+                ImGui::Text("Blue markers: periapsis / apoapsis");
             });
 
             // Main menu: Esc toggles it. Fixed, so it stays centered and
