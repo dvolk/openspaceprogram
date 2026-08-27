@@ -458,6 +458,20 @@ int main() {
         CHECK_NEAR(p.x, -ra, 1e-9 * ra);
         CHECK_NEAR(v.z, va, 1e-12 * va);
 
+        // elliptic MID-ORBIT (nu = pi/2): maximal radial component, the case
+        // the apsis pins can't catch. r = p (semi-latus rectum); the state
+        // must satisfy vis-viva, i.e. |v| = sqrt(MU(2/r - 1/a)) -- NOT the
+        // total speed stacked onto the radial component.
+        const double pl = a * (1.0 - e * e);          // semi-latus rectum
+        const double sm = sqrt(MU / pl);              // sqrt(mu/p)
+        CHECK(railStateFromElements(a, e, 0.0, 0.5 * M_PI, MU, p, v));
+        CHECK_NEAR(glm::length(p), pl, 1e-9 * pl);
+        CHECK_NEAR(p.z, pl, 1e-9 * pl);
+        CHECK_NEAR(v.x, sm, 1e-12 * sm);              // transverse = h/r = sm
+        CHECK_NEAR(v.z, sm * e, 1e-12 * sm);          // radial = sm * e * sin(nu)
+        const double vm = sqrt(MU * (2.0 / pl - 1.0 / a));
+        CHECK_NEAR(glm::length(v), vm, 1e-12 * vm);   // vis-viva
+
         // argument of periapsis rotates the ellipse in-plane
         CHECK(railStateFromElements(a, e, 0.5 * M_PI, 0.0, MU, p, v));
         CHECK_NEAR(p.x, 0.0, 1e-9 * rp);

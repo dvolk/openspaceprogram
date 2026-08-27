@@ -280,12 +280,13 @@ inline bool railStateFromElements(double a, double e,
     const glm::dvec3 rhat(cos(phi), 0.0, sin(phi));
     pos = r * rhat;
 
-    // Radial + transverse split. vt = sqrt(mu(2/r - 1/a)) reduces to
-    // s*sqrt(1 + 2 e cos(nu) + e^2) with s = sqrt(mu/p) (check:
-    // 2/r - 1/a = (1 + 2 e cos(nu) + e^2)/p).
+    // Radial + transverse split. The TRANSVERSE component is h/r with
+    // h = sqrt(mu*p): vt = sqrt(mu/p) * (1 + e cos(nu)). (The total speed is
+    // the larger sqrt(mu(2/r - 1/a)) = sqrt(mu/p) * sqrt(1 + 2 e cos(nu) + e^2);
+    // using that for vt over-counts whenever the radial part is nonzero.)
     const double s = sqrt(mu / p);
     const double vr = s * e * sin(true_anomaly);
-    const double vt = s * sqrt(1.0 + 2.0 * e * cos(true_anomaly) + e * e);
+    const double vt = s * (1.0 + e * cos(true_anomaly));
     vel = vr * rhat + vt * glm::cross(glm::dvec3(0.0, 1.0, 0.0), rhat);
     return true;
 }
