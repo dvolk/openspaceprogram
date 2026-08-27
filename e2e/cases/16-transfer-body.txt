@@ -1,0 +1,18 @@
+# Transfer planner, parent->child: from a Kerbin orbit (rot-orbit, 85% of
+# the SOI), target the Mun. The min-dv solution must be valid, internally
+# consistent (total = dep + cap, burn magnitude = dv_dep), and in the sane
+# range for a Kerbin->Mun-class transfer (~1 km/s class, cf. KSP).
+NAME transfer-body
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --timeout 12 --xfer-log --orbit-interval 0.5
+ARGS --transfer-target Mun
+EXPECT [xferlog]
+CHECK len(xfer) >= 2
+CHECK last(xfer)["dv_dep"] > 100 and last(xfer)["dv_dep"] < 5000
+CHECK last(xfer)["dv_cap"] > 0
+CHECK abs(last(xfer)["total"] - last(xfer)["dv_dep"] - last(xfer)["dv_cap"]) < 1e-3 * last(xfer)["total"]
+CHECK last(xfer)["tof"] > 0
+CHECK last(xfer)["r_cap"] > 200000
+CHECK abs((last(xfer)["burn"][0]**2 + last(xfer)["burn"][1]**2 + last(xfer)["burn"][2]**2)**0.5 - last(xfer)["dv_dep"]) < 0.01 * last(xfer)["dv_dep"]
+FORBID GL_
+FORBID error:

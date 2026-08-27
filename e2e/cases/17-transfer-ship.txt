@@ -1,0 +1,19 @@
+# Transfer planner, ship intercept: fleet loaded, F6 x3 -> active ship is
+# the "laythe explorer" (inertial orbit); target the "transporter" (high
+# orbit), same body. Ships are intercept-only: dv_cap must be exactly 0 and
+# the solution must be a valid conic between the two ships' states.
+NAME transfer-ship
+ARGS --fleet res/fleet.json --time-accel 1 --timeout 12
+ARGS --xfer-log --orbit-interval 0.5 --transfer-target transporter
+ARGS --sim-press 1500,50,F6
+ARGS --sim-press 2500,50,F6
+ARGS --sim-press 3500,50,F6
+EXPECT [xferlog]
+CHECK len(xfer) >= 2
+CHECK last(xfer)["target"] == "transporter"
+CHECK last(xfer)["dv_dep"] > 0 and last(xfer)["dv_dep"] < 20000
+CHECK last(xfer)["dv_cap"] == 0
+CHECK last(xfer)["total"] == last(xfer)["dv_dep"]
+CHECK last(xfer)["tof"] > 0
+FORBID GL_
+FORBID error:

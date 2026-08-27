@@ -39,6 +39,7 @@
 #include "frame.h"
 #include "calendar.h"
 #include "orbit.h"
+#include "transfer.h"
 #include "shipdef.h"
 #include "fleet.h"
 #include <nlohmann/json.hpp>
@@ -2770,6 +2771,19 @@ static int sim_parse_button(const std::string &s) {
     return -1; // unknown
 }
 
+// "1d 04:03:02" or "04:03:02" — ToF / orbit-period readouts.
+static std::string fmt_time(double s) {
+    if(s < 0.0) s = 0.0;
+    const int d = (int)(s / 86400.0);
+    const int h = (int)(s / 3600.0) % 24;
+    const int m = (int)(s / 60.0) % 60;
+    const int sec = (int)s % 60;
+    char buf[32];
+    if(d > 0) { snprintf(buf, sizeof buf, "%dd %02d:%02d:%02d", d, h, m, sec); }
+    else     { snprintf(buf, sizeof buf, "%02d:%02d:%02d", h, m, sec); }
+    return buf;
+}
+
 int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
@@ -2897,6 +2911,16 @@ int main(int argc, char **argv)
     app.add_flag("--dbg-log", dbg_log,
                  "Periodically print ship position/altitude/velocity "
                  "(surface-level companion to --orbit-log)");
+
+    bool xfer_log = false;
+    app.add_flag("--xfer-log", xfer_log,
+                 "Periodically print the transfer planner's solution to "
+                 "stdout (needs a target; --transfer-target selects one)");
+
+    std::string transfer_target;
+    app.add_option("--transfer-target", transfer_target,
+                   "Transfer planner target: a child body of the ship's "
+                   "current body, or another ship in the same body");
 
     bool spin_log_enabled = false;
     app.add_flag("--spin-log", spin_log_enabled,
@@ -3641,6 +3665,11 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, normal_plus_indicator_texture, 1.0, 1.0, billboardcolor);
     Billboard *normal_minus_indicator =
         mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
+    // Transfer burn direction (TRANSFER window): the prograde icon in
+    // KSP blue, pointing where the departure burn should point.
+    Billboard *burn_indicator =
+        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0,
+                     glm::vec4(0.2f, 0.45f, 1.0f, 1.0f));
 
     /* camera init */
     const float camFov = (float)glm::radians(camFovDeg);
@@ -3787,9 +3816,9 @@ int main(int argc, char **argv)
     o_telemetry.initial_size = ImVec2(460.0f, 680.0f);
     ui::Options o_settings = info_opts(ui::Slot::BottomCenter);
     o_settings.default_open = false;
-    // Placeholder for future target readouts.
-    ui::Options o_target = info_opts(ui::Slot::Center);
-    o_target.default_open = false;
+    // Transfer planner: target selection + dv readouts.
+    ui::Options o_transfer = info_opts(ui::Slot::Center);
+    o_transfer.default_open = false;
     ui::Options o_hud;
     o_hud.fixed = true;
     o_hud.closable = false;
@@ -3821,7 +3850,7 @@ int main(int argc, char **argv)
     // NOT in this list (and thus not affected by the TAB toggle).
     add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
     add_ui_window("TELEMETRY", "Telemetry", o_telemetry);
-    add_ui_window("Target", "Target", o_target);
+    add_ui_window("TRANSFER", "Transfer", o_transfer);
     const char *const hud_windows[1] = { "HUD" };
     bool ui_visible = true; // TAB toggle: is the UI shown?
     // Shared by the TAB keybind and the main menu's "Toggle windows" button.
@@ -3837,6 +3866,32 @@ int main(int argc, char **argv)
 
     double time = 0;
 
+    // Transfer planner (TRANSFER window + the blue burn-direction icon).
+    // Targets: child bodies of the ship's current body (parent->child
+    // transfers, with a capture burn) + other ships in the same body
+    // (intercept only). The list is rebuilt every frame; the solution is
+    // recomputed only on input change or every 30 frames (the plan changes
+    // slowly relative to the ToF scale, and the sweep is the cost center).
+    struct XferTarget {
+        const char *name;
+        TerrainBody *body;   // body target (capture available)
+        Vehicle *ship;       // ship target (intercept only)
+    };
+    std::vector<XferTarget> xferTargets;
+    int xfer_target = -1;
+    bool xfer_auto = true;                    // auto min-dv ToF vs pinned
+    float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
+    struct {
+        int target = -2;        // target index at last compute
+        bool auto_tof = true;
+        double tof_log = -1.0;
+        int frame = 0;          // per-frame counter while a target is set
+        int solved_frame = -1000000; // xfer.frame at last recompute
+        bool valid = false;
+        TransferSolution sol;
+        glm::dvec3 burn_dir = glm::dvec3(0.0); // render-frame burn direction
+    } xfer;
+
     // Telemetry plots (active ship, sampled once per rendered frame).
     TimeSeries energy_series;
     TimeSeries angmom_series;
@@ -3848,6 +3903,7 @@ int main(int argc, char **argv)
        share the "last fired" time, or the earlier block in the loop always
        wins and the other never fires (and one alone spews every tick). */
     Uint32 dbg_log_last_ms = 0;
+    Uint32 xfer_log_last_ms = 0;
 
     Skybox skybox;
     skybox.init();
@@ -4769,6 +4825,148 @@ int main(int argc, char **argv)
             }
             /* end draw engine plume */
 
+            /* Transfer planner: rebuild the target list, then recompute
+               the solution on input change or every 30 frames. */
+            xferTargets.clear();
+            {
+                TerrainBody *pb = ship->frame->body;
+                for(auto *b : planets) {
+                    if(b->frame && b->frame->parent == pb->frame) {
+                        xferTargets.push_back({b->name.c_str(), b, nullptr});
+                    }
+                }
+                for(auto *s : ships) {
+                    if(s != ship && s->frame && s->frame->body == pb) {
+                        xferTargets.push_back({s->name.c_str(), nullptr, s});
+                    }
+                }
+                // --transfer-target: explicit selection (e2e / scripting);
+                // wins over the window's combo on every rebuild.
+                if(!transfer_target.empty()) {
+                    for(int i = 0; i < (int)xferTargets.size(); i++) {
+                        if(xferTargets[i].name == transfer_target) {
+                            xfer_target = i;
+                        }
+                    }
+                }
+            }
+            if(xfer_target >= (int)xferTargets.size()) { xfer_target = -1; }
+
+            if(xfer_target < 0) {
+                xfer.valid = false;
+                xfer.burn_dir = glm::dvec3(0.0);
+            } else {
+                xfer.frame++;
+                const bool dirty = xfer.target != xfer_target
+                    || xfer.auto_tof != xfer_auto
+                    || std::fabs(xfer.tof_log - xfer_tof_log) > 1e-12
+                    || xfer.frame - xfer.solved_frame >= 30;
+                if(dirty) {
+                    // Ship state in the parent's INERTIAL frame — the frame
+                    // the transfer conic lives in (same idiom as the ORBITAL
+                    // readout above).
+                    Frame *sf = ship->frame;
+                    Frame *inertial = sf->getNonRotFrame();
+                    const glm::dvec3 r1 = sf->GetOrientRelTo(inertial) * com
+                                         + sf->GetPositionRelTo(inertial);
+                    const glm::dvec3 v1 = sf->GetOrientRelTo(inertial)
+                                         * (vel + sf->GetStasisVelocity(com))
+                                         + sf->GetVelocityRelTo(inertial);
+                    const double mu_parent = inertial->body->mu;
+
+                    // Target state in the same frame.
+                    const XferTarget &t = xferTargets[xfer_target];
+                    glm::dvec3 r2, v2;
+                    double mu_target = 0.0, r_cap = 0.0;
+                    double tof_max = 3.0 * 86400.0;
+                    if(t.body) {
+                        Frame *tf = t.body->frame;
+                        r2 = tf->GetPositionRelTo(inertial);
+                        // The body's position rotates about the parent's
+                        // local Y at orb_ang_speed (UpdateOrbitRails), and
+                        // the orbital-plane tilt (orient) is applied OUTSIDE
+                        // that rotation, so the velocity in the parent frame
+                        // is orient * (omega x orient^-1 * r).
+                        const glm::dmat3 O = tf->orient;
+                        v2 = O * glm::cross(glm::dvec3(0.0, tf->orb_ang_speed, 0.0),
+                                            glm::transpose(O) * r2);
+                        mu_target = t.body->mu;
+                        r_cap = t.body->radius + 100e3; // 100 km capture orbit
+                        if(tf->orb_ang_speed > 0.0) {
+                            // 3 full target periods covers the min-dv point
+                            // (near the Hohmann ToF) with margin on both sides.
+                            tof_max = 3.0 * (2.0 * M_PI / tf->orb_ang_speed);
+                        }
+                    } else {
+                        // Ship in the same body: transform its state over to
+                        // our inertial frame (stasis of the non-rotating
+                        // frame is zero).
+                        Frame *tsf = t.ship->frame;
+                        const glm::dvec3 tcom = t.ship->get_center_of_mass();
+                        const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
+                        r2 = O * tcom + tsf->GetPositionRelTo(inertial);
+                        v2 = O * (t.ship->GetVel() + tsf->GetStasisVelocity(tcom))
+                            + tsf->GetVelocityRelTo(inertial);
+                    }
+
+                    const bool capture = (t.body != nullptr);
+                    TransferSolution sol;
+                    if(xfer_auto) {
+                        sol = planTransfer(r1, v1, r2, v2, mu_parent,
+                                           mu_target, r_cap,
+                                           60.0, tof_max, 150, capture);
+                    } else {
+                        const double tof = std::pow(10.0, xfer_tof_log);
+                        sol = planTransfer(r1, v1, r2, v2, mu_parent,
+                                           mu_target, r_cap,
+                                           tof, tof, 1, capture);
+                    }
+
+                    xfer.sol = sol;
+                    xfer.valid = sol.valid;
+                    if(sol.valid) {
+                        // Burn direction at the ship, in the render frame
+                        // (ship->frame). A dv delta carries no stasis term:
+                        // the same stasis applies before and after the burn
+                        // at the same position, so it cancels in the
+                        // difference.
+                        const glm::dmat3 O = sf->GetOrientRelTo(inertial);
+                        xfer.burn_dir = glm::transpose(O) * (sol.v_departure - v1);
+                    } else {
+                        xfer.burn_dir = glm::dvec3(0.0);
+                    }
+                    xfer.target = xfer_target;
+                    xfer.auto_tof = xfer_auto;
+                    xfer.tof_log = xfer_tof_log;
+                    xfer.solved_frame = xfer.frame;
+                }
+            }
+
+            // --xfer-log: the planner's current solution (render pass, since
+            // that is where the computation lives).
+            if(xfer_log && xfer_target >= 0) {
+                const Uint32 now_ms = SDL_GetTicks();
+                if(now_ms - xfer_log_last_ms >= orbit_log_interval_ms) {
+                    xfer_log_last_ms = now_ms;
+                    const char *tn = xferTargets[xfer_target].name;
+                    if(xfer.valid) {
+                        printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "
+                               "dv_cap=%.6g m/s total=%.6g m/s tof=%.6g s "
+                               "v_inf=%.6g m/s r_cap=%.6g m "
+                               "burn=[%.4f %.4f %.4f]\n",
+                               time, tn, xfer.sol.dv_departure,
+                               xfer.sol.dv_capture, xfer.sol.total_dv,
+                               xfer.sol.tof, xfer.sol.v_inf, xfer.sol.r_cap,
+                               xfer.burn_dir.x, xfer.burn_dir.y,
+                               xfer.burn_dir.z);
+                    } else {
+                        printf("[xferlog] t=%.1fs target=\"%s\" no-solution\n",
+                               time, tn);
+                    }
+                    fflush(stdout);
+                }
+            }
+
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -4786,6 +4984,12 @@ int main(int argc, char **argv)
             normal_plus_indicator->Draw(camera, M_PI);
             normal_minus_indicator->pos = -glm::cross(pos, vel);
             normal_minus_indicator->Draw(camera, M_PI);
+            // Transfer burn direction (TRANSFER window target selected):
+            // KSP-blue prograde icon pointing where the departure burn goes.
+            if(xfer.valid && glm::length(xfer.burn_dir) > 0.0) {
+                burn_indicator->pos = xfer.burn_dir;
+                burn_indicator->Draw(camera, M_PI);
+            }
             // horizon_indicator->pos = groundHed;
             // horizon_indicator->Draw(camera, M_PI);
 
@@ -4902,8 +5106,67 @@ int main(int argc, char **argv)
                 }
             });
 
-            // Placeholder for future target readouts.
-            ui::Window("Target", o_target, [] {
+            // Transfer planner: parent->child body transfers (with capture)
+            // and same-body ship intercepts. The solution is computed in the
+            // render pass (xfer), so this window is pure readout + inputs.
+            ui::Window("TRANSFER", o_transfer, [&] {
+                if(xferTargets.empty()) {
+                    ImGui::Text("No transfer targets: no child bodies or ships here.");
+                    return;
+                }
+                const char *cur = (xfer_target >= 0)
+                                 ? xferTargets[xfer_target].name : "none";
+                if(ImGui::BeginCombo("Target", cur)) {
+                    for(int i = 0; i < (int)xferTargets.size(); i++) {
+                        if(ImGui::Selectable(xferTargets[i].name,
+                                             i == xfer_target)) {
+                            xfer_target = i;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                if(xfer_target < 0) {
+                    ImGui::Text("Select a target body or ship.");
+                    return;
+                }
+                const bool isShip = xferTargets[xfer_target].ship != nullptr;
+                if(isShip) {
+                    ImGui::TextDisabled("ship target: intercept only, no capture burn");
+                }
+                ImGui::Checkbox("Auto ToF (min dv)", &xfer_auto);
+                if(!xfer_auto) {
+                    ImGui::SliderFloat("log10(ToF s)", &xfer_tof_log,
+                                       1.8, 7.5, "%.2f");
+                    ImGui::Text("ToF: %s",
+                                fmt_time(std::pow(10.0, xfer_tof_log)).c_str());
+                }
+                if(!xfer.valid) {
+                    ImGui::Text("No transfer solution for this target / ToF.");
+                    return;
+                }
+                const TransferSolution &sol = xfer.sol;
+                ImGui::Text("dv depart:  %08.1f m/s", sol.dv_departure);
+                if(!isShip) {
+                    ImGui::Text("dv capture: %08.1f m/s @ %.0f km",
+                                sol.dv_capture, sol.r_cap / 1000.0);
+                    if(sol.capture_orbit_period > 0.0) {
+                        ImGui::Text("capture P:  %s",
+                                    fmt_time(sol.capture_orbit_period).c_str());
+                    }
+                }
+                ImGui::Text("total dv:   %08.1f m/s", sol.total_dv);
+                ImGui::Text("ToF:        %s", fmt_time(sol.tof).c_str());
+                ImGui::Text("v_inf:      %08.1f m/s", sol.v_inf);
+                if(sol.transfer_semi_major > 0.0) {
+                    ImGui::Text("transfer:   ellipse  a=%.6g m  e=%.3f",
+                                sol.transfer_semi_major, sol.transfer_ecc);
+                } else if(sol.transfer_semi_major < 0.0) {
+                    ImGui::Text("transfer:   hyperbolic  a=%.6g m  e=%.3f",
+                                sol.transfer_semi_major, sol.transfer_ecc);
+                } else {
+                    ImGui::Text("transfer:   parabolic  e=%.3f",
+                                sol.transfer_ecc);
+                }
             });
 
             ui::Window("Game Debug Info", o_debug, [&] {

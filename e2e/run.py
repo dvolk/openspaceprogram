@@ -55,6 +55,12 @@ DBG_RE = re.compile(
     r"\[dbg\]\s+t=([\d.]+)s\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"alt=([-\d.]+) m\s+vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+\|v\|=([-\d.]+) m/s"
 )
+XFER_RE = re.compile(
+    r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
+    r"dv_dep=([-\d.e+]+) m/s\s+dv_cap=([-\d.e+]+) m/s\s+total=([-\d.e+]+) m/s\s+"
+    r"tof=([-\d.e+]+) s\s+v_inf=([-\d.e+]+) m/s\s+r_cap=([-\d.e+]+) m\s+"
+    r"burn=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]"
+)
 
 
 def parse_cases(path):
@@ -124,6 +130,21 @@ def parse_dbg(out):
     return rows
 
 
+def parse_xfer(out):
+    rows = []
+    for m in XFER_RE.finditer(out):
+        (t, target, dv_dep, dv_cap, total, tof, v_inf, r_cap,
+         bx, by, bz) = m.groups()
+        rows.append({
+            "t": float(t), "target": target,
+            "dv_dep": float(dv_dep), "dv_cap": float(dv_cap),
+            "total": float(total), "tof": float(tof),
+            "v_inf": float(v_inf), "r_cap": float(r_cap),
+            "burn": (float(bx), float(by), float(bz)),
+        })
+    return rows
+
+
 def first(seq):
     return seq[0]
 
@@ -189,8 +210,9 @@ def run_case(case):
     # 3) CHECK
     orbit = parse_orbit(out)
     dbg = parse_dbg(out)
+    xfer = parse_xfer(out)
     ns = {
-        "out": out, "orbit": orbit, "dbg": dbg,
+        "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int,
