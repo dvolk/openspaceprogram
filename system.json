@@ -10,7 +10,6 @@
       "seed": 0,
       "has_sea": false,
       "power_scaler": 1,
-      "moves": false,
       "inertial": {
         "soi": 1e+16,
         "pos": [
@@ -43,7 +42,6 @@
           "intensity": 0.7
         }
       },
-      "moves": false,
       "inertial": {
         "soi": 84159286,
         "pos": [
@@ -69,7 +67,6 @@
       "seed": 0,
       "has_sea": false,
       "power_scaler": 1,
-      "moves": true,
       "inertial": {
         "soi": 2429559.1,
         "pos": [
