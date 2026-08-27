@@ -36,6 +36,7 @@ public:
     virtual void wheel(double amt) {}
 
     void setAspect(float _aspect);
+    void setFov(float _fov);
     const glm::dvec3& GetPos() const;
     const glm::dvec3& GetRenderOrigin() const { return renderOrigin; }
     const glm::dvec3& GetForward() const;

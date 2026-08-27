@@ -2967,6 +2967,12 @@ int main(int argc, char **argv)
                    "idling a CPU core at 100% even while paused")
         ->check(CLI::NonNegativeNumber);
 
+    float camFovDeg = 60.0f;
+    app.add_option("--fov", camFovDeg,
+                   "Camera vertical field of view in degrees (default 60; "
+                   "adjustable in the Settings window)")
+        ->check(CLI::Range(10.0f, 120.0f));
+
     // it's like a google maps link
     std::vector<double> free_cam_pos;
     app.add_option("--free-cam-pos", free_cam_pos,
@@ -3637,7 +3643,7 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
 
     /* camera init */
-    const float camFov = M_PI/3.0; // TODO specify FOV in deg?
+    const float camFov = (float)glm::radians(camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped
     // it, or fullscreen may have used the display mode).
     const float camAspect = (float)display.get_width() / (float)display.get_height();
@@ -4882,6 +4888,11 @@ int main(int argc, char **argv)
                 ImGui::Checkbox("World draw", &world_drawing);
                 ImGui::Checkbox("Starfield", &draw_starfield);
                 ImGui::Checkbox("Reference circles", &draw_skylines);
+                if(ImGui::SliderFloat("FOV", &camFovDeg, 10.0f, 120.0f, "%.0f°")) {
+                    const float f = (float)glm::radians(camFovDeg);
+                    orbitCam->setFov(f);
+                    freeCam->setFov(f);
+                }
             });
 
             // Placeholder for future target readouts.
@@ -4936,10 +4947,12 @@ int main(int argc, char **argv)
                     printf("Camera pose:\n");
                     printf("--free-cam-pos %.9g %.9g %.9g "
                            "--free-cam-fwd %.9g %.9g %.9g "
-                           "--free-cam-up %.9g %.9g %.9g\n",
+                           "--free-cam-up %.9g %.9g %.9g "
+                           "--fov %.0f\n",
                            camera->pos.x, camera->pos.y, camera->pos.z,
                            camera->forward.x, camera->forward.y, camera->forward.z,
-                           camera->up.x, camera->up.y, camera->up.z);
+                           camera->up.x, camera->up.y, camera->up.z,
+                           camFovDeg);
                 }
                 ImGui::Text("Home distance: %f",
                             glm::length(ship->GetPositionRelTo(ship->controller,

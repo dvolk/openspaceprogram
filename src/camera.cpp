@@ -6,6 +6,11 @@ void Camera::setAspect(float _aspect) {
     this->projection = glm::perspective(fov, _aspect, zNear, zFar);
 }
 
+void Camera::setFov(float _fov) {
+    this->fov = _fov;
+    this->projection = glm::perspective(fov, aspect, zNear, zFar);
+}
+
 const glm::dvec3& Camera::GetPos() const {
     return pos;
 }
