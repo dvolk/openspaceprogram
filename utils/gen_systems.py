@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-# Generate system.json (Eerbon) and ksp_system.json (Kerbal) for the
+# Generate old_system.json (Eerbon) and ksp_system.json (Kerbal) for the
 # refactored load_system() JSON format. Angular speeds are derived from the
 # CSV orbital / rotational periods: speed = 2*pi / period.
+#
+# Lives in utils/; the body data (ksp_bodies.csv) sits next to it, and the
+# generated JSONs are written to the repo root (where the game loads them).
 import math
+import os
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
+
+HERE = os.path.dirname(os.path.abspath(__file__))   # utils/
+ROOT = os.path.dirname(HERE)                          # repo root
 
 def spd(period):
     if not period:
@@ -29,7 +36,7 @@ def true_anomaly_from_mean(M, e):
     return math.atan2(sinnu, cosnu) % TWOPI
 
 def load_wiki_orbits(csv_path):
-    """Per-body orbital elements from ksp_wiki_bodies.csv (the individual
+    """Per-body orbital elements from ksp_bodies.csv (the individual
     KSP wiki pages): eccentricity, inclination, argument of periapsis (w),
     longitude of the ascending node (raan), mean anomaly at epoch (M) and
     the orbital period. Used to place each body at its real KSP starting
@@ -53,8 +60,7 @@ def load_wiki_orbits(csv_path):
             }
     return out
 
-WIKI_ORBITS = load_wiki_orbits(
-    "/home/ubuntu/openspaceprogram/ksp_wiki_bodies.csv")
+WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 
 # ---------------------------------------------------------------------------
 # Eerbon system (single home planet + one moon) - values taken verbatim from
@@ -423,5 +429,5 @@ def emit(obj, path):
         f.write("\n")
     print("wrote", path)
 
-emit(eerbon, "/home/ubuntu/openspaceprogram/system.json")
-emit(ksp, "/home/ubuntu/openspaceprogram/ksp_system.json")
+emit(eerbon, os.path.join(ROOT, "old_system.json"))
+emit(ksp, os.path.join(ROOT, "ksp_system.json"))

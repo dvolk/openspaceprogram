@@ -405,7 +405,7 @@ struct System {
       one with zero spin and soi = radius + 100 km;
     * the parent/child frame tree the per-tick SOI logic walks.
 
-  JSON layout (see system.json and ksp_system.json):
+  JSON layout (see old_system.json and ksp_system.json):
     {
       "home": "<name of the planet the ship starts on>",
       "bodies": [
@@ -2846,7 +2846,7 @@ int main(int argc, char **argv)
     std::string system_file = "ksp_system.json";
     app.add_option("--system", system_file,
                    "Star-system JSON file to load (default: ksp_system.json; "
-                   "try system.json for the Eerbon system)");
+                   "try old_system.json for the Eerbon system)");
 
     std::string parts_file = "res/parts.json";
     app.add_option("--parts", parts_file,

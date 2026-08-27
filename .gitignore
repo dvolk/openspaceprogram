@@ -10,6 +10,9 @@ osp_asan
 # Runtime-generated
 imgui.ini
 
+# Python bytecode (from the utils/ scripts)
+__pycache__/
+
 # Local reference material & screenshots
 references/
 screenshot_*.png

@@ -17,11 +17,12 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
 
-Run from the repo root (it resolves res/ relative to this file):
+Resolves res/ and parts.json relative to the repo root (the parent of
+utils/, where this script lives), so it can be run from anywhere:
 
-    python3 gen_parts.py              # rewrite res/parts.json
-    python3 gen_parts.py --dry-run    # print the table, write nothing
-    python3 gen_parts.py --out X.json
+    python3 utils/gen_parts.py              # rewrite res/parts.json
+    python3 utils/gen_parts.py --dry-run    # print the table, write nothing
+    python3 utils/gen_parts.py --out X.json
 """
 
 import argparse
@@ -31,7 +32,9 @@ import os
 
 import trimesh
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+# This script lives in utils/; res/ and parts.json are in the repo root
+# (the parent of utils/), so resolve paths relative to the parent dir.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # --- physical constants (SI) ------------------------------------------------
 EXHAUST_VELOCITY = 4400.0        # m/s, H2/LOX vacuum (Isp = 4400/9.81 ~ 449 s)

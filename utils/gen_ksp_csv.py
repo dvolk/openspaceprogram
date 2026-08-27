@@ -15,7 +15,9 @@
 # "Axial tilt" is NOT on the individual pages, so we merge that one column
 # back in from the old ksp_system.csv to keep the new file a true superset.
 #
-# Output: ksp_wiki_bodies.csv (ksp_system.csv is left untouched).
+# Output: ksp_bodies.csv (ksp_system.csv is left untouched). Both live in
+# utils/ next to this script (paths resolved via __file__, run from anywhere).
+import os
 import re
 import time
 import warnings
@@ -24,14 +26,16 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+HERE = os.path.dirname(os.path.abspath(__file__))   # utils/
+
 WIKI = "https://wiki.kerbalspaceprogram.com/wiki/{name}"
 BODIES = [
     "Kerbol", "Moho", "Eve", "Gilly", "Kerbin", "Mun", "Minmus",
     "Duna", "Ike", "Dres", "Jool", "Laythe", "Vall", "Tylo",
     "Bop", "Pol", "Eeloo",
 ]
-OLD_CSV = "ksp_system.csv"
-OUT_CSV = "ksp_wiki_bodies.csv"
+OLD_CSV = os.path.join(HERE, "ksp_system.csv")
+OUT_CSV = os.path.join(HERE, "ksp_bodies.csv")
 
 # ---------------------------------------------------------------------------
 # value normalisation
