@@ -3744,6 +3744,9 @@ int main(int argc, char **argv)
     bool world_drawing = true;
     bool draw_starfield = true;
     bool draw_skylines = false;
+    // 0=dark 1=light 2=classic (classic = imgui's default palette)
+    int ui_style = 2;
+    float window_rounding = 0.0f; // imgui default
 
     /* UI windows (src/ui.h): one options block per window, plus a table the
        main-menu checkboxes, the F10 toggle and a UI reset all share. The
@@ -3751,12 +3754,9 @@ int main(int argc, char **argv)
        handled separately. Slots/offsets: left column stacks under the
        menu, right column under ORBITAL, the rest spread over the edges so
        the center stays clear for the 3D view. */
-    const ImVec4 info_bg = ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
-    auto info_opts = [info_bg](ui::Slot slot) {
+    auto info_opts = [](ui::Slot slot) {
         ui::Options o;
         o.slot = slot;
-        o.has_bg = true;
-        o.bg_color = info_bg;
         return o;
     };
     // Layout: top left ORBITAL + SURFACE, top right RESOURCES,
@@ -3795,8 +3795,6 @@ int main(int argc, char **argv)
     o_hud.closable = false;
     o_hud.default_open = true;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
-    o_hud.has_bg = true;
-    o_hud.bg_color = ImVec4(0.133f, 0.133f, 0.133f, 1.0f); // #222
     o_hud.slot = ui::Slot::TopCenter;
     ui::Options o_mainmenu = info_opts(ui::Slot::Center);
     o_mainmenu.fixed = true;
@@ -4888,6 +4886,15 @@ int main(int argc, char **argv)
                 ImGui::Checkbox("World draw", &world_drawing);
                 ImGui::Checkbox("Starfield", &draw_starfield);
                 ImGui::Checkbox("Reference circles", &draw_skylines);
+                if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
+                    if(ui_style == 0) ImGui::StyleColorsDark();
+                    else if(ui_style == 1) ImGui::StyleColorsLight();
+                    else ImGui::StyleColorsClassic();
+                }
+                if(ImGui::SliderFloat("Window rounding", &window_rounding,
+                                     0.0f, 50.0f, "%.0f")) {
+                    ImGui::GetStyle().WindowRounding = window_rounding;
+                }
                 if(ImGui::SliderFloat("FOV", &camFovDeg, 10.0f, 120.0f, "%.0f°")) {
                     const float f = (float)glm::radians(camFovDeg);
                     orbitCam->setFov(f);

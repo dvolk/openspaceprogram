@@ -73,9 +73,6 @@ struct Options {
     bool closable = true;    // show the X close button
     bool default_open = true; // open state a reset restores
 
-    bool has_bg = false;     // use bg_color for the window background
-    ImVec4 bg_color = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-
     ImGuiWindowFlags flags = 0; // extra raw imgui flags (e.g. NoTitleBar)
 };
 
@@ -324,17 +321,11 @@ bool Window(const char* name, const Options& o, Body&& body) {
                 static_cast<std::size_t>(o.width_ratio * 1000.0f)));
     }
 
-    if (o.has_bg)
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, o.bg_color);
-
     bool* p_open = o.closable ? &st.open : nullptr;
     const bool visible = ImGui::Begin(name, p_open, flags);
     if (visible)
         body();
     ImGui::End();
-
-    if (o.has_bg)
-        ImGui::PopStyleColor();
 
     m.cache_rect(name);
     return visible;
