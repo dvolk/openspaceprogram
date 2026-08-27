@@ -26,11 +26,34 @@
 struct OrbitMap {
     double cx = 200.0, cy = 200.0;  // screen position of the focus
     double scale = 6000.0;          // meters per pixel
+    // Map plane in the focus's inertial frame: a unit normal n and an
+    // orthonormal in-plane basis (e1, e2). The default is the equatorial
+    // plane (n = +Y, e1 = +X, e2 = +Z) -- the body-rail reference plane.
+    glm::dvec3 n  = glm::dvec3(0.0, 1.0, 0.0);
+    glm::dvec3 e1 = glm::dvec3(1.0, 0.0, 0.0);
+    glm::dvec3 e2 = glm::dvec3(0.0, 0.0, 1.0);
 
-    // 3D point in the focus's inertial frame -> 2D map coordinates.
-    // (cx, cy) + (p.x, p.z) / scale; p.y (the map normal) is dropped.
+    // Choose the map plane by its normal (focus's inertial frame). A stable
+    // orthonormal in-plane basis is derived; the near-polar normal keeps the
+    // canonical X/Z basis so the equatorial view is byte-identical to the old
+    // p.x/p.z projection.
+    void setPlane(const glm::dvec3 &normal) {
+        n = glm::normalize(normal);
+        if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
+            e1 = glm::dvec3(1.0, 0.0, 0.0);
+            e2 = glm::dvec3(0.0, 0.0, 1.0);
+        } else {
+            e1 = glm::normalize(glm::cross(glm::dvec3(0.0, 1.0, 0.0), n));
+            e2 = glm::cross(n, e1);
+        }
+    }
+
+    // 3D point in the focus's inertial frame -> 2D map coordinates:
+    // (cx, cy) + (dot(p,e1), dot(p,e2)) / scale. The component along n is
+    // dropped -- what makes an orbit inclined to the plane look squashed.
     glm::dvec2 project(const glm::dvec3 &p) const {
-        return glm::dvec2(cx + p.x / scale, cy + p.z / scale);
+        return glm::dvec2(cx + glm::dot(p, e1) / scale,
+                          cy + glm::dot(p, e2) / scale);
     }
 
     ImVec2 px(const glm::dvec3 &p) const {

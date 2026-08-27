@@ -136,6 +136,12 @@ test:
 	# hyperbolic/parabolic handling, degenerate-plane guards.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit
 	./test_orbit
+	# orbit-sampling cache (src/orbitsample.h, header-only pure math): the
+	# map's per-orbit points, cached on the elements so coasting orbits are
+	# propagated once. Circular/eccentric radii, cache hit + invalidation,
+	# hyperbolic -> empty.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbitsample.cpp -o test_orbitsample
+	./test_orbitsample
 	# Lambert solver + min-dv planner (src/transfer.h, header-only pure
 	# math): Hohmann analytic reference, round-trip, hyperbolic leg.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_transfer.cpp -o test_transfer
@@ -169,7 +175,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_transfer test_orbitmap test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

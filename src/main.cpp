@@ -40,6 +40,7 @@
 #include "calendar.h"
 #include "orbit.h"
 #include "orbitmap.h"
+#include "orbitsample.h"
 #include "transfer.h"
 #include "shipdef.h"
 #include "fleet.h"
@@ -3906,9 +3907,18 @@ int main(int argc, char **argv)
 
     double time = 0;
 
-    // Orbital map: meters per pixel (the "Scale" slider). Persistent UI
-    // state, like the transfer planner's below.
+    // Orbital map: meters per pixel (the "Scale" slider) + the chosen map
+    // plane (0 = equatorial, 1 = ecliptic, 2 = orbital). Persistent UI state,
+    // like the transfer planner's below.
     float map_scale = 6000.0f;
+    int map_plane = 0;
+    // Cached orbit samplings, one entry per orbiting object (keyed on its
+    // pointer -- the ship for the ship's orbit, a body for a child's; a given
+    // ship always has exactly one entry, overwritten on each sample). Reuse
+    // is only trusted while the orbiting object is on a fixed Keplerian conic:
+    // the ship passes its onRails flag, terrain bodies are always on theirs.
+    // See OrbitSampleCache.
+    std::map<const void *, OrbitSampleCache> orbit_caches;
 
     // Transfer planner (TRANSFER window + the blue burn-direction icon).
     // Targets: child bodies of the ship's current body (parent->child
@@ -5465,29 +5475,48 @@ int main(int argc, char **argv)
                     return;
                 }
 
-                // Top-down view of the ship's orbit in the parent's inertial
-                // frame. The ellipse is sampled by propagating the ship's state
-                // over one full period (exact Kepler, so the orbit's true 3D
-                // orientation shows through the projection), and periapsis /
-                // apoapsis are the ACTUAL points on the orbit (propagated to
-                // o.time_to_peri / o.time_to_apo) -- not re-derived from elements.
+                // Top-down view of the ship's orbit in the focus's inertial
+                // frame. The ellipse is the ship's state propagated over one
+                // full period (exact Kepler, so the orbit's true 3D orientation
+                // shows through the projection); periapsis / apoapsis are the
+                // ACTUAL points on the orbit (propagated to o.time_to_peri /
+                // o.time_to_apo) -- not re-derived from elements.
+                //
+                // The 64 orbit points are sampled through a per-ship cache,
+                // but only trusted while the ship is on rails (coasting on its
+                // Keplerian conic). Off rails -- Bullet-integrated, or right
+                // after a burn / staging / SOI switch / crash (all of which
+                // clear onRails) -- the orbit is moving, so re-sample every
+                // frame. See OrbitSampleCache.
                 const int N = 64;
-                const double T = o.period;
-                std::vector<glm::dvec3> orbit_pts;
-                orbit_pts.reserve(N);
-                if(T > 0.0) {
-                    for(int i = 0; i < N; i++) {
-                        glm::dvec3 p, v;
-                        propagateKepler(orbit_pos, orbit_vel, mu, T * i / N, p, v);
-                        orbit_pts.push_back(p);
-                    }
-                }
+                const std::vector<glm::dvec3> &orbit_pts =
+                    orbit_caches[(const void *)ship].sample(
+                        orbit_pos, orbit_vel, mu, N, ship->onRails);
                 glm::dvec3 peri_p, apo_p, tmp;
                 if(o.time_to_peri > 0.0) {
                     propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
                 }
                 if(o.time_to_apo > 0.0) {
                     propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
+                }
+
+                // The focus body (the ship's parent) and the map plane.
+                // The plane is a normal in the focus's inertial frame;
+                // OrbitMap derives an in-plane basis from it. All three
+                // candidates live in that frame:
+                //   equatorial = the focus's reference plane (normal +Y);
+                //   ecliptic   = the system reference plane (root XZ) expressed
+                //                in the focus's frame;
+                //   orbital    = the ship's own orbital plane (h = r x v).
+                TerrainBody *focus = ship->m_parent;
+                glm::dvec3 plane_n(0.0, 1.0, 0.0);
+                if(map_plane == 1) {
+                    plane_n = glm::transpose(focus->frame->root_orient) *
+                              glm::dvec3(0.0, 1.0, 0.0);
+                } else if(map_plane == 2) {
+                    const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
+                    const double hl = glm::length(h);
+                    if(hl > 1e-9) { plane_n = h / hl; }
                 }
 
                 // The map is a kMapSize square at the top of the window, focus
@@ -5498,6 +5527,7 @@ int main(int argc, char **argv)
                 map.cx = p0.x + kMapSize * 0.5;
                 map.cy = p0.y + kMapSize * 0.5;
                 map.scale = map_scale;
+                map.setPlane(plane_n);
 
                 // Orbit / ship / radial line: near-black or near-white chosen
                 // to contrast with the current style's window background, so it
@@ -5505,8 +5535,34 @@ int main(int argc, char **argv)
                 ImU32 col_orbit = contrastingColor(ImGui::GetStyle().Colors[ImGuiCol_WindowBg]);
                 ImU32 col_body  = ImGui::GetColorU32(ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
                 ImU32 col_apsis = ImGui::GetColorU32(ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
+                // Children's orbits: a muted tone readable on both light and
+                // dark backgrounds (their labels use the contrasting ink).
+                ImU32 col_child = ImGui::GetColorU32(ImVec4(0.35f, 0.5f, 0.65f, 1.0f));
                 ImDrawList *dl = ImGui::GetWindowDrawList();
                 const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
+
+                // The orbits of the bodies orbiting the focus (the ship's
+                // parent) -- moons around a planet, planets around the star --
+                // in the same view/scale/plane. Each child's state is taken in
+                // the focus's inertial frame; its ellipse is sampled through
+                // the same cache as the ship's orbit (a child never burns, so
+                // its points are propagated once). Drawn first, so the ship's
+                // orbit sits on top.
+                for(auto *b : planets) {
+                    if(!(b->frame && b->frame->parent == focus->frame)) continue;
+                    const double mu_c = b->frame->parent_mu;
+                    if(mu_c <= 0.0) continue;
+                    const glm::dvec3 cpos = b->frame->GetPositionRelTo(focus->frame);
+                    const glm::dvec3 cvel = b->frame->GetVelocityRelTo(focus->frame);
+                    const std::vector<glm::dvec3> &cpts =
+                        orbit_caches[(const void *)b].sample(cpos, cvel, mu_c, N);
+                    if(cpts.empty()) continue;
+                    map.drawOrbit(dl, cpts, col_child, 1.0f);
+                    map.drawDot(dl, cpos, 3.0f, col_child);
+                    const ImVec2 cpx = map.px(cpos);
+                    dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - 12.0f), col_orbit,
+                                b->name.c_str());
+                }
 
                 map.drawOrbit(dl, orbit_pts, col_orbit, 1.0f);
                 map.drawBody(dl, ship->m_parent->radius, col_body);
@@ -5520,7 +5576,22 @@ int main(int argc, char **argv)
 
                 // Reserve the map region so the controls land below it.
                 ImGui::Dummy(ImVec2(kMapSize, kMapSize));
-                ImGui::SliderFloat("Scale (m/px)", &map_scale, 5000.0f, 100000.0f, "%.0f");
+                // Which plane to project onto (see the plane_n selection above).
+                // "Orbital" aligns the view with the ship's orbit, so a polar
+                // orbit reads as a full ellipse instead of collapsing to a line.
+                static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital" };
+                ImGui::Combo("Map plane", &map_plane, kPlanes, 3);
+                // The map spans ~8 orders of magnitude (a ~70 km low orbit up
+                // to a ~90,000 Mm interplanetary orbit), so the scale is edited
+                // on a log10 axis -- a linear slider couldn't reach the moons.
+                {
+                    float log_scale = log10f(map_scale);
+                    if(ImGui::SliderFloat("Scale", &log_scale, 3.0f, 9.5f, "%.1f")) {
+                        map_scale = powf(10.0f, log_scale);
+                    }
+                    ImGui::SameLine();
+                    ImGui::Text("%.0f m/px", (double)map_scale);
+                }
                 ImGui::Text("nu %.2f   E %.2f   inc %.2f deg",
                             o.true_anomaly, o.ecc_anomaly,
                             o.inclination * 180.0 / M_PI);
