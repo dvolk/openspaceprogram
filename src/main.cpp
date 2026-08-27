@@ -3840,6 +3840,10 @@ int main(int argc, char **argv)
     // --orbit-log: print at most once per wall-clock interval
     const Uint32 orbit_log_interval_ms = (Uint32)(orbit_interval * 1000.0);
     Uint32 orbit_log_last_ms = 0;
+    /* Separate timestamp: the two logs share --orbit-interval but must not
+       share the "last fired" time, or the earlier block in the loop always
+       wins and the other never fires (and one alone spews every tick). */
+    Uint32 dbg_log_last_ms = 0;
 
     Skybox skybox;
     skybox.init();
@@ -4533,7 +4537,8 @@ int main(int argc, char **argv)
             // --dbg-log: ship pos/alt/vel in its own frame
             if(dbg_log) {
                 const Uint32 now_ms = SDL_GetTicks();
-                if(now_ms - orbit_log_last_ms >= orbit_log_interval_ms) {
+                if(now_ms - dbg_log_last_ms >= orbit_log_interval_ms) {
+                    dbg_log_last_ms = now_ms;
                     glm::dvec3 p = ship->get_center_of_mass();
                     glm::dvec3 v = ship->GetVel();
                     double r = glm::length(p);
@@ -4950,19 +4955,22 @@ int main(int argc, char **argv)
             ui::Window("ORBITAL", o_orbit, [&] {
                 ImGui::Text("Vel: %.1fm/s", speed);
                 ImGui::Text("Alt: %.1fm", distance);
-                if(o.ecc < 1.0) {
-                    ImGui::Text("ApA: %.1fm", o.apoapsis);
-                    ImGui::Text("ApT: %.1fs", o.time_to_apo);
-                } else {
-                    ImGui::Text("ApA: escape (no apoapsis)");
-                }
+                /* Every line below is always present; "-" = the quantity
+                   does not exist for this orbit class. Escape trajectories
+                   have no apoapsis and no period; a near-circular orbit
+                   (apsides within 10 km) has no apsis line, so the
+                   countdowns to one are numerically meaningless. */
+                const bool circular = o.ecc < 1.0
+                                    && (o.apoapsis - o.periapsis) < 10e3;
+                if(o.ecc < 1.0) { ImGui::Text("ApA: %.1fm", o.apoapsis); }
+                else { ImGui::Text("ApA: -"); }
+                if(o.ecc < 1.0 && !circular) { ImGui::Text("ApT: %.1fs", o.time_to_apo); }
+                else { ImGui::Text("ApT: -"); }
                 ImGui::Text("PeA: %.1fm", o.periapsis);
-                if(o.time_to_peri >= 0.0) {
-                    ImGui::Text("PeT: %.1fs", o.time_to_peri);
-                }
-                if(o.period > 0.0) {
-                    ImGui::Text("  T: %.1fs", o.period);
-                }
+                if(!circular && o.time_to_peri >= 0.0) { ImGui::Text("PeT: %.1fs", o.time_to_peri); }
+                else { ImGui::Text("PeT: -"); }
+                if(o.period > 0.0) { ImGui::Text("  T: %.1fs", o.period); }
+                else { ImGui::Text("  T: -"); }
                 ImGui::Text("Inc: %.2f", glm::degrees(o.inclination));
                 ImGui::Text("Ecc: %f", o.ecc);
                 ImGui::Text("SMa: %.1fm", o.semi_major);
