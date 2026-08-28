@@ -292,3 +292,14 @@ struct TerrainBody {
         return ret;
     }
 };
+
+// Elevation palette samplers, one per body type (assigned to
+// TerrainBody::colour_func by load_system()).
+COLOUR GetColourMoon(float v, float vmin, float vmax);
+COLOUR GetColourSun(float v, float vmin, float vmax);
+COLOUR GetColourEarth(float v, float vmin, float vmax);
+
+// Per-part terrain shadow factor: 1.0 = lit, <1.0 = the planet's terrain
+// occludes the line to the sun.
+float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
+                           const glm::dvec3 &posInFrame, TerrainBody *sun);
