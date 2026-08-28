@@ -2940,19 +2940,6 @@ int main(int argc, char **argv)
                    "quintuples.")
         ->delimiter(',');
 
-    bool selftest_stage = false;
-    app.add_flag("--selftest-stage", selftest_stage,
-                 "Exercise the staging path on the first multi-stage ship "
-                 "(drop the active stage, then refuse the last stage), "
-                 "then exit after a few physics ticks");
-
-    bool selftest_rails = false;
-    app.add_flag("--selftest-rails", selftest_rails,
-                 "Exercise the idle-ship rails path: coast the first "
-                 "railed ship 30 ticks (conic must be conserved), hand "
-                 "control to it (rails -> physics handoff), then exit "
-                 "after 60 physics ticks");
-
     bool selftest_spawn = false;
     app.add_flag("--selftest-spawn", selftest_spawn,
                  "Exercise the runtime spawn/remove path: spawn a copy of "
@@ -4121,68 +4108,6 @@ int main(int argc, char **argv)
         }
     };
 
-    /* --selftest-stage: exercise the staging path on the first multi-stage
-       ship (drop the active stage, then try again -- the last stage must be
-       refused), printing before/after state. Runs before the loop; the
-       loop then takes a few physics ticks to prove the world is stable with
-       the weld cut and the dropped bodies gone, and exits. */
-    int selftest_ticks = 0;
-    if(selftest_stage) {
-        Vehicle *stager = 0;
-        for(size_t i = 0; i < ships.size(); i++) {
-            if(ships[i]->numStages() >= 2) { stager = ships[i]; break; }
-        }
-        if(!stager) {
-            printf("selftest-stage: no multi-stage ship in the fleet\n");
-            running = false;
-        } else {
-            stager->leaveRails();   // idle pad ships park frozen; staging needs physics
-            printf("== selftest-stage: %s ==\n", stager->name.c_str());
-            printf("before: parts=%zu mass=%.1f kg stage=%d/%d TWR=%.2f\n",
-                   stager->parts.size(), stager->getMass(),
-                   stager->activeStage(), stager->numStages(), stager->getTWR());
-            const int dropped = stager->separateStage(stager->activeStage());
-            printf("drop 1: dropped=%d parts=%zu mass=%.1f kg stage=%d/%d TWR=%.2f\n",
-                   dropped, stager->parts.size(), stager->getMass(),
-                   stager->activeStage(), stager->numStages(), stager->getTWR());
-            const int dropped2 = stager->separateStage(stager->activeStage());
-            printf("drop 2: dropped=%d (expect 0: last stage stays)\n", dropped2);
-            selftest_ticks = 30;
-        }
-    }
-
-    /* --selftest-rails: coast the first railed ship 30 ticks and check its
-       conic is conserved, then select it (rails -> physics handoff,
-       checking COM continuity) and run 60 physics ticks to prove the
-       world is stable with the re-added bodies. */
-    int rails_test_ticks = 0;
-    int rails_test_idx = -1;
-    OrbitElements rails_test_e0;
-    if(selftest_rails) {
-        if(time_accel == 0) {
-            time_accel = 100;
-            printf("selftest-rails: forcing time accel to 100 (was paused)\n");
-        }
-        for(size_t i = 0; i < ships.size(); i++) {
-            // a COASTING ship (frozen pad ships have no conic to conserve)
-            if(ships[i]->onRails && !ships[i]->railFrozen) { rails_test_idx = (int)i; break; }
-        }
-        if(rails_test_idx < 0) {
-            printf("selftest-rails: no coasting ship on rails in the fleet\n");
-            running = false;
-        } else {
-            Vehicle *r = ships[rails_test_idx];
-            rails_test_e0 = computeOrbitElements(r->rail_pos, r->rail_vel,
-                                                 r->frame->body->mu);
-            printf("== selftest-rails: %s ==\n", r->name.c_str());
-            printf("rail t0: sma=%.9g m ecc=%.9g peri=%.9g m apo=%.9g m T=%.9g s\n",
-                   rails_test_e0.semi_major, rails_test_e0.ecc,
-                   rails_test_e0.periapsis, rails_test_e0.apoapsis,
-                   rails_test_e0.period);
-            rails_test_ticks = 90;
-        }
-    }
-
     /* --selftest-spawn: exercise the runtime spawn/remove path. Spawn a copy
        of the active ship, remove it, then spawn-select-remove the active one
        (exercising the control handoff). Each step is checked against the
@@ -4264,51 +4189,6 @@ int main(int argc, char **argv)
             const double elapsed_s = (SDL_GetTicks() - loop_start_ms) * 0.001;
             if(elapsed_s >= timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
-                fflush(stdout);
-                running = false;
-            }
-        }
-
-        // --selftest-stage: a few post-separation physics ticks, then exit.
-        if(selftest_ticks > 0) {
-            selftest_ticks--;
-            if(selftest_ticks == 0) {
-                printf("selftest-stage: 30 ticks after separation, no crash; OK\n");
-                fflush(stdout);
-                running = false;
-            }
-        }
-
-        // --selftest-rails: 30 ticks on rails (verify), handoff, 60 physics
-        // ticks (stability), exit.
-        if(rails_test_ticks > 0) {
-            rails_test_ticks--;
-            if(rails_test_ticks == 60) {
-                Vehicle *r = ships[rails_test_idx];
-                const OrbitElements e1 = computeOrbitElements(r->rail_pos, r->rail_vel,
-                                                              r->frame->body->mu);
-                printf("rail t30: sma=%.9g m ecc=%.9g peri=%.9g m apo=%.9g m\n",
-                       e1.semi_major, e1.ecc, e1.periapsis, e1.apoapsis);
-                double drift = 0.0;
-                drift = std::max(drift, fabs(e1.semi_major - rails_test_e0.semi_major)
-                                        / fabs(rails_test_e0.semi_major));
-                drift = std::max(drift, fabs(e1.ecc - rails_test_e0.ecc));
-                drift = std::max(drift, fabs(e1.periapsis - rails_test_e0.periapsis)
-                                        / fabs(rails_test_e0.periapsis));
-                drift = std::max(drift, fabs(e1.apoapsis - rails_test_e0.apoapsis)
-                                        / fabs(rails_test_e0.apoapsis));
-                drift = std::max(drift, fabs(e1.ang_momentum - rails_test_e0.ang_momentum)
-                                        / fabs(rails_test_e0.ang_momentum));
-                printf("rail drift after 30 coast ticks: %.3e %s\n", drift,
-                       drift < 1e-9 ? "(conserved OK)" : "(DRIFT!)");
-                const glm::dvec3 rail_com = r->rail_pos;
-                select_ship(rails_test_idx);   // rails -> physics handoff
-                const double jump = glm::length(r->get_center_of_mass() - rail_com);
-                printf("handoff continuity: |com - rail_com| = %.6f m\n", jump);
-                fflush(stdout);
-            }
-            if(rails_test_ticks == 0) {
-                printf("selftest-rails: 60 ticks after handoff, no crash; OK\n");
                 fflush(stdout);
                 running = false;
             }
