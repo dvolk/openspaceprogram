@@ -4496,8 +4496,8 @@ int main(int argc, char **argv)
                 if (isDown(SDL_SCANCODE_A)) { camera->MoveRight(-cam_speed); }
                 else if (isDown(SDL_SCANCODE_D)) { camera->MoveRight(cam_speed); }
 
-                if (isDown(SDL_SCANCODE_Q)) { camera->Roll(-0.05); }
-                else if (isDown(SDL_SCANCODE_E)) { camera->Roll(0.05); }
+                if (isDown(SDL_SCANCODE_E)) { camera->Roll(-0.05); }
+                else if (isDown(SDL_SCANCODE_Q)) { camera->Roll(0.05); }
 
                 if (isDown(SDL_SCANCODE_LSHIFT) || isDown(SDL_SCANCODE_RSHIFT)) { camera->MoveUp(cam_speed); }
                 else if (isDown(SDL_SCANCODE_LCTRL) || isDown(SDL_SCANCODE_RCTRL)) { camera->MoveUp(-cam_speed); }
