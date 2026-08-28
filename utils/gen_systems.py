@@ -429,5 +429,5 @@ def emit(obj, path):
         f.write("\n")
     print("wrote", path)
 
-emit(eerbon, os.path.join(ROOT, "old_system.json"))
-emit(ksp, os.path.join(ROOT, "ksp_system.json"))
+emit(eerbon, os.path.join(ROOT, "res", "old_system.json"))
+emit(ksp, os.path.join(ROOT, "res", "ksp_system.json"))
