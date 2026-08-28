@@ -382,7 +382,6 @@ struct System {
     std::vector<TerrainBody *> bodies;
     TerrainBody *root;      // the star (frame-tree root)
     TerrainBody *home;      // the planet the ship starts on
-    TerrainBody *star;      // == root
     TerrainBody *moon;      // home's first moon, or NULL
 
     TerrainBody *find(const std::string &name) {
@@ -489,7 +488,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
     System sys;
     sys.root = nullptr;
     sys.home = nullptr;
-    sys.star = nullptr;
     sys.moon = nullptr;
 
     // --- pass 1: create every body and its frames --------------------------
@@ -746,7 +744,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
     if(sys.root == nullptr) {
         throw std::runtime_error("system: no root (star) body found");
     }
-    sys.star = sys.root;
 
     // --- resolve the home planet and its first moon ------------------------
     if(!home_name.empty()) {
@@ -2185,7 +2182,7 @@ static void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *hom
         shipWorldPos += glm::normalize(glm::cross(rhat, vhat)) * slot_offset;
     }
 
-    Frame *frame = resolve_frame_by_soi(sys.star->frame, shipWorldPos);
+    Frame *frame = resolve_frame_by_soi(sys.root->frame, shipWorldPos);
 
     // Express the spawn position and velocity in the resolved frame's local
     // coordinates. The invariant (see frame.h) is
@@ -3313,7 +3310,7 @@ int main(int argc, char **argv)
     postfx->Resize(display.get_width(), display.get_height());
 
     System sys = load_system(system_file.c_str(), terrainshader, sunshader);
-    TerrainBody *sun = sys.star;
+    TerrainBody *sun = sys.root;
     TerrainBody *home;
     if(body_name.empty()) {
         home = sys.home;
