@@ -3953,10 +3953,12 @@ int main(int argc, char **argv)
     // Optional overlays, toggleable from the map's controls.
     bool map_show_soi = true;   // spheres-of-influence rings
     bool map_show_vel = true;   // the ship's velocity (prograde) arrow
-    // Right-clicking the map window toggles the control widgets (plane,
-    // scale, checkboxes, legend) off -- bare map, still pan/zoom-able --
-    // and back on.
-    bool map_show_widgets = true;
+    // Right-clicking the map window cycles its chrome: 0 = full window with
+    // the control widgets (plane, scale, checkboxes, legend), 1 = window
+    // with only the bare map, 2 = no window chrome at all (title bar,
+    // border and background hidden -- the map just floats over the 3D view).
+    // Modes 1 and 2 keep pan/zoom working.
+    int map_mode = 0;
     // Cached orbit samplings, one entry per orbiting object (keyed on its
     // pointer -- the ship for the ship's orbit, a body for a child's; a given
     // ship always has exactly one entry, overwritten on each sample). Reuse
@@ -5609,7 +5611,7 @@ int main(int argc, char **argv)
                 ImGui::Text("f10 - reset windows");
                 ImGui::Text("esc - main menu");
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
-                ImGui::Text("RMB (orbital map) - toggle its controls (bare map)");
+                ImGui::Text("RMB (orbital map) - cycle window -> bare map -> no window");
                 ImGui::Text("wheel - zoom (orbit mode)");
                 ImGui::Spacing();
                 ImGui::Text("Orbit mode (flying the ship)");
@@ -5662,14 +5664,24 @@ int main(int argc, char **argv)
                 ImGui::ProgressBar(0.94, ImVec2(-1, 0), "Food");
             });
 
+            // Mode 2 strips the window chrome entirely (see map_mode): the
+            // window is invisible but still hit-tested, so the map below
+            // keeps pan/zoom and the right-click cycle.
+            if(map_mode == 2) {
+                o_map.flags |= ImGuiWindowFlags_NoDecoration |
+                               ImGuiWindowFlags_NoBackground;
+            } else {
+                o_map.flags = 0;
+            }
             ui::Window("Orbital map", o_map, [&] {
-                // Right-click anywhere in the window toggles the controls
-                // below off/on (bare map). Over the map this is safe: imgui
-                // owns the mouse here, so the RMB camera orbit (gated on
-                // !WantCaptureMouse) never fires.
+                // Right-click anywhere in the window cycles the chrome:
+                // full window -> bare map -> no window -> full window.
+                // Over the map this is safe: imgui owns the mouse here, so
+                // the RMB camera orbit (gated on !WantCaptureMouse) never
+                // fires.
                 if(ImGui::IsWindowHovered() &&
                    ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                    map_show_widgets = !map_show_widgets;
+                    map_mode = (map_mode + 1) % 3;
                 }
                 const float kMapSize = 360.0f;   // the map square (layout below)
                 // The ship's trajectory around the focus: a closed ellipse
@@ -5953,8 +5965,9 @@ int main(int argc, char **argv)
 
                 // (The invisible map-nav button above already reserved the map
                 // square, so the controls land below it.)
-                // Bare-map mode (right-click toggled): draw only the map.
-                if(!map_show_widgets) {
+                // Bare-map (mode 1) and chrome-less (mode 2) draws only the
+                // map -- the controls below are skipped in both.
+                if(map_mode != 0) {
                     return;
                 }
                 // Which plane to project onto (see the plane_n selection above).
