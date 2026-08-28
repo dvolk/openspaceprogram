@@ -53,6 +53,7 @@ $(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS)
 	$(LINKER) $@ $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(OBJECTS) $(LFLAGS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 ./obj/imgui/imgui.o: $(IMGUI_DIR)/imgui.cpp
