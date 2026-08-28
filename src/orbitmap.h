@@ -17,6 +17,8 @@
 // and later phases (child orbits, the transfer conic) just project more 3D
 // points through the same helpers.
 
+#include <cmath>
+
 #include <glm/glm.hpp>
 
 #include <vector>
@@ -90,6 +92,39 @@ struct OrbitMap {
     void drawBody(ImDrawList *dl, double radius_m, ImU32 col) const {
         dl->AddCircleFilled(ImVec2(float(cx), float(cy)),
                             float(radius_m / scale), col);
+    }
+
+    // A stroked circle of world radius (meters) centered on a 3D position --
+    // a body's sphere of influence. A sphere projects to a circle of the same
+    // radius in any plane, so the map plane is irrelevant here.
+    void drawRing(ImDrawList *dl, const glm::dvec3 &center, double radius_m,
+                  ImU32 col, float thickness = 1.0f) const {
+        dl->AddCircle(px(center), float(radius_m / scale), col, 0, thickness);
+    }
+
+    // A direction arrow: from a 3D origin, along a 3D direction, of a fixed
+    // pixel length -- a velocity / prograde vector. The direction is
+    // projected onto the map plane (the out-of-plane component is dropped)
+    // and normalized, so the arrow length is the pixel length, not a world
+    // scale; a small arrowhead caps the tip. Nothing is drawn if the
+    // direction is purely out of plane (its projection vanishes).
+    void drawArrow(ImDrawList *dl, const glm::dvec3 &origin,
+                   const glm::dvec3 &dir, float len_px, ImU32 col,
+                   float thickness = 1.5f) const {
+        const glm::dvec3 dp = dir - glm::dot(dir, n) * n;
+        const double dl_len = glm::length(dp);
+        if(dl_len < 1e-9) { return; }
+        const glm::dvec2 d2(glm::dot(dp, e1) / dl_len,
+                            glm::dot(dp, e2) / dl_len);
+        const ImVec2 from = px(origin);
+        const ImVec2 to(from.x + d2.x * len_px, from.y + d2.y * len_px);
+        dl->AddLine(from, to, col, thickness);
+        const float ah = 6.0f;                       // arrowhead size (px)
+        const float a  = atan2f(d2.y, d2.x);
+        dl->AddLine(to, ImVec2(to.x - ah * cosf(a + 0.5f),
+                               to.y - ah * sinf(a + 0.5f)), col, thickness);
+        dl->AddLine(to, ImVec2(to.x - ah * cosf(a - 0.5f),
+                               to.y - ah * sinf(a - 0.5f)), col, thickness);
     }
 };
 
