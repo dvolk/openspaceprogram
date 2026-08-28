@@ -17,7 +17,10 @@
 #include <utility>
 #include <vector>
 
+// length2 (used by the inline methods) is a gtx function.
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
+#include <glm/gtx/norm.hpp>
 
 // body.h must come before physics.h: body.h sets the bullet
 // double-precision define and includes the complete bullet types, and
@@ -1095,3 +1098,52 @@ public:
         m_parent = newFrame->body;
     }
 };
+
+// Forward declaration (system.h defines it); spawn_vehicle resolves the
+// home body's SOI through the system's frame tree.
+struct System;
+
+/* Instantiate a ship def: one rigid body per part (mesh + texture from
+   the catalog entry), welded parent-first in the def's construction
+   order. GL is needed here (shader binding); the catalog must outlive
+   the ship (the partDefs point into it). */
+void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
+                const glm::dvec3 &base, const glm::dmat3 &orient);
+
+/* Starting scenario (chosen at the CLI on startup, see main). The pad
+   scenarios are already set up in main (the ship is built on the pad);
+   the orbit scenarios place the ship in a circular orbit around the
+   home body at r = radius + alt_frac * (rotating-frame SOI - radius),
+   in the equatorial plane (local +Z) or the polar plane (local +Y),
+   nose prograde. The ellipse-* scenarios place the ship on a 10 km x
+   1000 km ASL orbit in the equatorial plane, prograde, at periapsis
+   (ell_phase 0), apoapsis (1), or 90 deg of true anomaly (2). */
+struct ScenarioDef {
+    const char *name;
+    bool on_pad;
+    double alt_frac; // circular: fraction of (rot-frame SOI - radius)
+    bool polar;
+    int ell_phase;   // -1: circular; 0: at periapsis; 1: at apoapsis; 2: at 90 deg
+    double peri_alt; // ellipse: periapsis altitude above the body radius (m)
+    double apo_alt;  // ellipse: apoapsis altitude above the body radius (m)
+};
+
+/* Look up a scenario by name; throws listing the available names if
+   unknown. */
+const ScenarioDef *scenario_by_name(const std::string &name);
+
+// Orientation with the nose (local +Z) along `dir`; the roll axis is the
+// coordinate axis most orthogonal to dir (never singular for a unit dir).
+glm::dmat3 faceAlong(const glm::dvec3 &dir);
+
+/* slot_offset (m): lateral separation for ships sharing a scenario --
+   applied along the orbit binormal (perpendicular to both the radius
+   vector and the velocity), so each ship's orbit stays essentially the
+   same shape. 0 for a lone ship (and no-op for pad scenarios). */
+void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
+                   System &sys, double slot_offset = 0.0);
+
+/* --radial-test spin diagnostics (two-part ship): per-part angular
+   velocities, the INTERNAL contact torque between the two parts, and the
+   (tidal) torque. */
+void spin_log(Vehicle *ship, double time);

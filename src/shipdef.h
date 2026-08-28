@@ -8,7 +8,7 @@
 
 /* Ship/part data model: the JSON-backed description of what a ship is made
    of. This file is GL-free (no rendering, no Bullet) so the parse/validate
-   path can be unit-tested headless; only the build step (main.cpp's
+   path can be unit-tested headless; only the build step (vehicle.cpp's
    build_ship) needs GL, for shader binding.
 
    JSON files (see res/parts.json and res/ships/racer.json):
