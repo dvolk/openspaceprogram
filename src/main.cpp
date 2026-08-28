@@ -3919,6 +3919,10 @@ int main(int argc, char **argv)
     // Optional overlays, toggleable from the map's controls.
     bool map_show_soi = true;   // spheres-of-influence rings
     bool map_show_vel = true;   // the ship's velocity (prograde) arrow
+    // Right-clicking the map window toggles the control widgets (plane,
+    // scale, checkboxes, legend) off -- bare map, still pan/zoom-able --
+    // and back on.
+    bool map_show_widgets = true;
     // Cached orbit samplings, one entry per orbiting object (keyed on its
     // pointer -- the ship for the ship's orbit, a body for a child's; a given
     // ship always has exactly one entry, overwritten on each sample). Reuse
@@ -5424,6 +5428,7 @@ int main(int argc, char **argv)
                 ImGui::Text("f10 - reset windows");
                 ImGui::Text("esc - main menu");
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
+                ImGui::Text("RMB (orbital map) - toggle its controls (bare map)");
                 ImGui::Text("wheel - zoom (orbit mode)");
                 ImGui::Spacing();
                 ImGui::Text("Orbit mode (flying the ship)");
@@ -5477,6 +5482,14 @@ int main(int argc, char **argv)
             });
 
             ui::Window("Orbital map", o_map, [&] {
+                // Right-click anywhere in the window toggles the controls
+                // below off/on (bare map). Over the map this is safe: imgui
+                // owns the mouse here, so the RMB camera orbit (gated on
+                // !WantCaptureMouse) never fires.
+                if(ImGui::IsWindowHovered() &&
+                   ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                    map_show_widgets = !map_show_widgets;
+                }
                 const float kMapSize = 360.0f;   // the map square (layout below)
                 // The ship's trajectory around the focus: a closed ellipse
                 // (a coasting Kepler orbit) or, when the ship is escaping or
@@ -5759,6 +5772,10 @@ int main(int argc, char **argv)
 
                 // (The invisible map-nav button above already reserved the map
                 // square, so the controls land below it.)
+                // Bare-map mode (right-click toggled): draw only the map.
+                if(!map_show_widgets) {
+                    return;
+                }
                 // Which plane to project onto (see the plane_n selection above).
                 // "Orbital" aligns the view with the ship's orbit, so a polar
                 // orbit reads as a full ellipse instead of collapsing to a line.
