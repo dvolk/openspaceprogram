@@ -935,6 +935,8 @@ enum SlewMode {
 class Vehicle {
 public:
     std::string name;   // display name (def name, disambiguated in main)
+    std::string defPath; // the ship def file it was built from ("" = test ship);
+                         // lets a runtime spawn duplicate this ship's design
     std::vector<Body *> parts;
     std::vector<ResourceContent> partResources;
 
@@ -1269,7 +1271,23 @@ public:
 
 public:
     Vehicle() { }
+    /* Tear the ship down in a safe order: welds first (they reference the
+       bodies), then unregister each body from the world, then delete the
+       bodies (which free their model + rigid body). goOnRails() already did
+       the first two steps and cleared `constraints`, so for a railed ship
+       only the deletes remain. The onRails guard is LOAD-BEARING: Bullet's
+       removeCollisionObject is not idempotent -- it reads the object's
+       world-array index (which remove never resets to -1), so a second
+       remove on an absent body can evict the WRONG collision object. The
+       old body of this dtor (bare `delete part`) also deleted each rigid
+       body while it was still registered in the world -- UB that only got
+       away with it because the process exits right after. */
     virtual ~Vehicle() {
+        if(!onRails) {
+            for(auto&& c : constraints) { Detach(c); }
+            constraints.clear();
+            for(auto&& part : parts) { RemoveBody(part); }
+        }
         for(auto&& part : parts) { delete part; }
     }
 
@@ -2938,6 +2956,13 @@ int main(int argc, char **argv)
                  "control to it (rails -> physics handoff), then exit "
                  "after 60 physics ticks");
 
+    bool selftest_spawn = false;
+    app.add_flag("--selftest-spawn", selftest_spawn,
+                 "Exercise the runtime spawn/remove path: spawn a copy of "
+                 "the active ship, remove it, then spawn-select-remove the "
+                 "active one (handoff), checking bookkeeping each step, and "
+                 "exit after a few physics ticks");
+
     bool orbit_log = false;
     app.add_flag("--orbit-log", orbit_log,
                  "Periodically print the ship's orbital elements to stdout "
@@ -3341,13 +3366,95 @@ int main(int argc, char **argv)
     std::vector<const ScenarioDef *> ship_sc;  // per ship: its scenario
     std::vector<int> ship_slots;               // per ship: slot within its (body, scenario) group
     std::map<std::pair<TerrainBody *, bool>, StaticBuilding *> space_ports; // one per (body, pad site)
-    {
-        Mesh *space_port_mesh = new Mesh;
-        space_port_mesh->FromFile("./res/space_port.obj", true);
-        Texture *space_port_texture = load_texture("./res/space_port.png");
-        Model *space_port_model = new Model;
-        space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
 
+    // The space-port model is shared by every pad (one per body+site), so it
+    // lives in main() scope: both the startup fleet loop and the runtime
+    // spawn need it to build a pad on demand.
+    Mesh *space_port_mesh = new Mesh;
+    space_port_mesh->FromFile("./res/space_port.obj", true);
+    Texture *space_port_texture = load_texture("./res/space_port.png");
+    Model *space_port_model = new Model;
+    space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
+
+    /* Spawn one ship into the fleet: load its def, slot it (next free slot
+       for its body+scenario), de-dup its name, make sure the pad exists,
+       build it on the pad, and push it into the fleet vectors. Returns the
+       new ship's index. The scenario reposition (orbit ships) is left to the
+       caller's spawn_vehicle pass, so startup keeps a single spawn loop.
+       Shared by the startup fleet loop and the runtime spawn. */
+    auto place_ship = [&](const std::string &shipDefPath, const std::string &wantName,
+                          TerrainBody *hb, const ScenarioDef *sc) -> int {
+        ShipDef def = load_ship_def(shipDefPath.c_str(), part_catalog);
+
+        // slot = how many ships already sit on this (body, scenario)
+        int slot = 0;
+        for(size_t i = 0; i < ships.size(); i++) {
+            if(ship_homes[i] == hb && ship_sc[i] == sc) { slot++; }
+        }
+
+        // name: the caller's, else the def's; de-duplicated across the fleet
+        // (first ship keeps the bare name, later ones get #2, #3 ..)
+        std::string nm = wantName.empty() ? def.name : wantName;
+        if(nm.empty()) { nm = "Ship"; }
+        {
+            std::string candidate = nm;
+            int n = 2;
+            while(true) {
+                bool taken = false;
+                for(size_t i = 0; i < ships.size(); i++) {
+                    if(ships[i]->name == candidate) { taken = true; break; }
+                }
+                if(!taken) { break; }
+                candidate = nm + " #" + std::to_string(n);
+                n++;
+            }
+            nm = candidate;
+        }
+
+        // the pad top is this far above the terrain surface (space_port.obj
+        // spans local z in [-10, 0], placed at dir * (terrain + pad_height))
+        const double pad_height = 5.0;
+        const bool pad_polar = sc->on_pad && sc->polar;
+        const glm::dvec3 pad_dir = pad_polar
+            ? glm::dvec3(0.0, 1.0, 0.0)
+            : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+        const glm::dmat3 pad_orient = faceAlong(pad_dir);
+        auto place_pad = [&](bool polar, const glm::dvec3 &dir) {
+            const std::pair<TerrainBody *, bool> key(hb, polar);
+            if(space_ports.find(key) != space_ports.end()) { return; }
+            const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
+            StaticBuilding *sp = new StaticBuilding;
+            sp->body = create_body(space_port_model, 0, 0, 0, 0, false);
+            setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
+            sp->parent = hb;
+            sp->sun = sun;
+            space_ports[key] = sp;
+        };
+        place_pad(false, glm::normalize(glm::dvec3(0.005, 0.005, 1.0))); // default site
+        if(pad_polar) { place_pad(true, pad_dir); }                      // polar site
+
+        Vehicle *v = new Vehicle;
+        v->name = nm;
+        v->defPath = shipDefPath;
+        v->m_parent = hb;
+        v->sun = sun;
+        v->frame = hb->rot_frame;
+        // lateral pad slot (pad local X, 20 m apart) so pad ships stand side
+        // by side; for orbit scenarios this is only staging -- spawn_vehicle
+        // repositions along the orbit binormal and the part offsets relative
+        // to the ship's own COM are what survive.
+        const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
+            + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
+        build_ship(v, def, partsshader, base, pad_orient);
+        v->setVelocity(glm::dvec3(0, 0, 0));
+        ships.push_back(v);
+        ship_homes.push_back(hb);
+        ship_sc.push_back(sc);
+        ship_slots.push_back(slot);
+        return (int)ships.size() - 1;
+    };
+
+    {
         if(!radial_test.empty()) {
             /* --radial-test: minimal test ships built straight from the
                catalog (no JSON ship def). Passive tanks only -- no
@@ -3547,13 +3654,8 @@ int main(int argc, char **argv)
             ship_slots.push_back(0);
         }
         else {
-        std::map<std::pair<TerrainBody *, const ScenarioDef *>, int> slot_count;
-        std::set<std::string> used_names;
-
         for(size_t i = 0; i < fleet_entries.size(); i++) {
             const FleetEntry &fe = fleet_entries[i];
-            ShipDef def = load_ship_def(fe.ship.c_str(), part_catalog);
-
             TerrainBody *hb;
             if(fe.body.empty()) {
                 hb = home; // the CLI --body resolution (or the system home)
@@ -3570,77 +3672,9 @@ int main(int argc, char **argv)
                                              + "' (available: " + avail + ")");
                 }
             }
-
             const ScenarioDef *sc =
                 scenario_by_name(fe.scenario.empty() ? scenario : fe.scenario);
-
-            // slot within the (body, scenario) group
-            std::pair<TerrainBody *, const ScenarioDef *> key(hb, sc);
-            int slot = slot_count[key];
-            slot_count[key]++;
-
-            // name: the entry's, else the def's; de-duplicated across the
-            // fleet (first ship keeps the bare name, later ones get #2, #3..)
-            std::string nm = fe.name.empty() ? def.name : fe.name;
-            if(nm.empty()) { nm = "Ship"; }
-            {
-                std::string candidate = nm;
-                int n = 2;
-                while(used_names.count(candidate)) {
-                    candidate = nm + " #" + std::to_string(n);
-                    n++;
-                }
-                used_names.insert(candidate);
-                nm = candidate;
-            }
-
-            // the pad top is this far above the terrain surface (space_port.obj
-            // spans local z in [-10, 0], placed at dir * (terrain + pad_height))
-            const double pad_height = 5.0;
-
-            // pad site for this ship: the default tilted equatorial site, or
-            // the body's pole for pad-polar. A space port is built per
-            // (body, site): the default site always (so orbit views still show
-            // the launch pad), the polar one when a pad-polar ship stands on it.
-            const bool pad_polar = sc->on_pad && sc->polar;
-            const glm::dvec3 pad_dir = pad_polar
-                ? glm::dvec3(0.0, 1.0, 0.0)
-                : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-            const glm::dmat3 pad_orient = faceAlong(pad_dir);
-            auto place_pad = [&](bool polar, const glm::dvec3 &dir) {
-                const std::pair<TerrainBody *, bool> key(hb, polar);
-                if(space_ports.find(key) != space_ports.end()) { return; }
-                const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
-                StaticBuilding *sp = new StaticBuilding;
-                sp->body = create_body(space_port_model, 0, 0, 0, 0, false);
-                setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
-                sp->parent = hb;
-                sp->sun = sun;
-                space_ports[key] = sp;
-            };
-            place_pad(false, glm::normalize(glm::dvec3(0.005, 0.005, 1.0))); // default site
-            if(pad_polar) { place_pad(true, pad_dir); }                      // polar site
-
-            Vehicle *v = new Vehicle;
-            v->name = nm;
-            v->m_parent = hb;
-            v->sun = sun;
-            v->frame = hb->rot_frame;
-
-            // stack base: this body's pad top + the ship's lateral pad slot
-            // (pad local X, 20 m apart) so pad ships stand side by side.
-            // For orbit scenarios this is only staging -- spawn_vehicle
-            // repositions the ship along vhat; the part offsets relative to
-            // the ship's own center of mass are what survive.
-            const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
-                + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
-            build_ship(v, def, partsshader, base, pad_orient);
-            v->setVelocity(glm::dvec3(0, 0, 0));
-
-            ships.push_back(v);
-            ship_homes.push_back(hb);
-            ship_sc.push_back(sc);
-            ship_slots.push_back(slot);
+            place_ship(fe.ship, fe.name, hb, sc);
         }
         }
     }
@@ -4032,6 +4066,62 @@ int main(int argc, char **argv)
         return true;
     };
 
+    /* Runtime spawn: build a new ship exactly like the startup fleet loop
+       (place_ship -> spawn_vehicle -> park on rails). Appended at the end,
+       so it is never the active one. Returns the new ship's index. */
+    auto spawn_ship = [&](const std::string &defPath, const std::string &wantName,
+                          TerrainBody *hb, const ScenarioDef *sc) -> int {
+        int idx = place_ship(defPath, wantName, hb, sc);
+        spawn_vehicle(ships[idx], *ship_sc[idx], ship_homes[idx], sys,
+                      100.0 * (double)ship_slots[idx]);
+        ships[idx]->goOnRails();
+        printf("Spawned '%s' (ship %d of %d)\n",
+               ships[idx]->name.c_str(), idx + 1, (int)ships.size());
+        return idx;
+    };
+
+    /* Runtime removal: delete a ship and its bookkeeping. The Vehicle dtor
+       detaches the welds and unregisters the bodies (skipped when the ship
+       is already parked on rails), so this is safe in any state. Refuses to
+       remove the last ship. If the removed ship was active, control hands
+       off to the next ship in the list (or the last one). */
+    auto remove_ship = [&](int idx) {
+        if(idx < 0 || idx >= (int)ships.size()) { return; }
+        if(ships.size() <= 1) {
+            printf("Refusing to remove the last ship\n");
+            return;
+        }
+        Vehicle *v = ships[idx];
+        const bool wasActive = (idx == activeIdx);
+        const std::string removedName = v->name;
+        if(wasActive) { v->releaseControl(); }
+
+        ships.erase(ships.begin() + idx);
+        ship_homes.erase(ship_homes.begin() + idx);
+        ship_sc.erase(ship_sc.begin() + idx);
+        ship_slots.erase(ship_slots.begin() + idx);
+        delete v;   // dtor detaches welds + unregisters the bodies
+
+        if(wasActive) {
+            activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;
+            ships[activeIdx]->leaveRails();
+            ship = ships[activeIdx];
+            if(time_accel >= kRailsWarp) { time_accel = 1000; }
+            focusBody = 0;
+            if(camMode == CAM_ORBIT) {
+                orbitCam->Follow(ship->get_center_of_mass());
+                orbitCam->distance = 50.0;
+            }
+            printf("Removed '%s'; active ship %d of %d: %s\n",
+                   removedName.c_str(), activeIdx + 1, (int)ships.size(),
+                   ship->name.c_str());
+        } else {
+            if(idx < activeIdx) { activeIdx--; }
+            printf("Removed '%s' (active unchanged: %s)\n",
+                   removedName.c_str(), ship->name.c_str());
+        }
+    };
+
     /* --selftest-stage: exercise the staging path on the first multi-stage
        ship (drop the active stage, then try again -- the last stage must be
        refused), printing before/after state. Runs before the loop; the
@@ -4091,6 +4181,56 @@ int main(int argc, char **argv)
                    rails_test_e0.periapsis, rails_test_e0.apoapsis,
                    rails_test_e0.period);
             rails_test_ticks = 90;
+        }
+    }
+
+    /* --selftest-spawn: exercise the runtime spawn/remove path. Spawn a copy
+       of the active ship, remove it, then spawn-select-remove the active one
+       (exercising the control handoff). Each step is checked against the
+       expected fleet size + active index. Runs before the loop; the loop
+       then takes a few physics ticks to prove the world is stable and exits. */
+    int spawn_test_ticks = 0;
+    if(selftest_spawn) {
+        if(ship->defPath.empty()) {
+            printf("selftest-spawn: SKIP (active ship has no def: test ship)\n");
+            running = false;
+        } else {
+            const size_t base = ships.size();
+            const int origActive = activeIdx;
+            bool ok = true;
+            printf("== selftest-spawn: %zu ships at start, active %d (%s) ==\n",
+                   base, origActive, ship->name.c_str());
+
+            // 1) spawn a copy of the active ship -> appended at the end;
+            //    the active ship must be untouched
+            int sp = spawn_ship(ship->defPath, "", ship_homes[activeIdx], ship_sc[activeIdx]);
+            printf("spawn 1: new idx=%d size=%zu activeIdx=%d\n",
+                   sp, ships.size(), activeIdx);
+            if(ships.size() != base + 1 || sp != (int)base || activeIdx != origActive) { ok = false; }
+
+            // 2) remove the ship we just spawned -> size back to base,
+            //    active unchanged
+            remove_ship(sp);
+            printf("remove 1: size=%zu activeIdx=%d\n", ships.size(), activeIdx);
+            if(ships.size() != base || activeIdx != origActive) { ok = false; }
+
+            // 3) spawn again, select it, remove it (the active one) -> the
+            //    control must hand off and the size return to base
+            int sp2 = spawn_ship(ship->defPath, "", ship_homes[activeIdx], ship_sc[activeIdx]);
+            select_ship(sp2);
+            printf("spawn 2 + select: activeIdx=%d size=%zu\n", activeIdx, ships.size());
+            if(activeIdx != sp2) { ok = false; }
+            remove_ship(activeIdx);
+            printf("remove 2 (active): activeIdx=%d size=%zu\n", activeIdx, ships.size());
+            if(ships.size() != base) { ok = false; }
+
+            if(ok) {
+                printf("selftest-spawn: all checks passed; running 30 ticks for stability\n");
+                spawn_test_ticks = 30;
+            } else {
+                printf("selftest-spawn: FAIL (bookkeeping mismatch)\n");
+                running = false;
+            }
         }
     }
 
@@ -4170,6 +4310,16 @@ int main(int argc, char **argv)
             }
             if(rails_test_ticks == 0) {
                 printf("selftest-rails: 60 ticks after handoff, no crash; OK\n");
+                fflush(stdout);
+                running = false;
+            }
+        }
+
+        // --selftest-spawn: a few post spawn/remove physics ticks, then exit.
+        if(spawn_test_ticks > 0) {
+            spawn_test_ticks--;
+            if(spawn_test_ticks == 0) {
+                printf("selftest-spawn: 30 ticks after spawn/remove, no crash; OK\n");
                 fflush(stdout);
                 running = false;
             }
@@ -5367,17 +5517,47 @@ int main(int argc, char **argv)
                 ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
             });
 
-            if(ships.size() > 1) {
-                ui::Window("SHIPS", o_ships, [&] {
-                for(size_t i = 0; i < ships.size(); i++) {
-                    const bool active = ((int)i == activeIdx);
-                    if(ImGui::Selectable(ships[i]->name.c_str(), active)) {
-                        select_ship((int)i);
-                    }
+            ui::Window("SHIPS", o_ships, [&] {
+            // Buttons (natural width) + SameLine, the same pattern as the
+            // map controls: a full-width Selectable in this auto-resize window
+            // would swallow the line and push the "x" off it (or collapse the
+            // window), so each name is its own sized button. The active ship
+            // is highlighted with a pushed color.
+            for(size_t i = 0; i < ships.size(); i++) {
+                const bool active = ((int)i == activeIdx);
+                ImGui::PushID((int)i);
+                if(active) {
+                    ImGui::PushStyleColor(ImGuiCol_Button,
+                                         ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                         ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                         ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
                 }
-                ImGui::Text("click - select");
-                });
+                if(ImGui::Button(ships[i]->name.c_str())) {
+                    select_ship((int)i);
+                }
+                if(active) {
+                    ImGui::PopStyleColor(3);
+                }
+                ImGui::SameLine();
+                if(ImGui::SmallButton("x")) {
+                    remove_ship((int)i);
+                    i = ships.size();   // the list shrank; stop iterating
+                }
+                ImGui::PopID();
             }
+            ImGui::Separator();
+            if(ImGui::Button("Spawn a copy of the active ship")) {
+                if(!ship->defPath.empty()) {
+                    spawn_ship(ship->defPath, "", ship_homes[activeIdx],
+                               ship_sc[activeIdx]);
+                } else {
+                    printf("Spawn: active ship has no def (test ship)\n");
+                }
+            }
+            ImGui::Text("click name - select    x - remove");
+            });
 
             ui::Window("VESSEL", o_vessel, [&] {
                 ImGui::Text("Ship: %s", ship->name.c_str());
@@ -5425,6 +5605,7 @@ int main(int argc, char **argv)
                 ImGui::Text("g - orbit mode: cycle target (ship/sun/planet/moon)");
                 ImGui::Text("tab - toggle windows");
                 ImGui::Text("f6 - next ship (fleet)");
+                ImGui::Text("SHIPS window - select a ship, spawn a copy, remove one (x)");
                 ImGui::Text("f10 - reset windows");
                 ImGui::Text("esc - main menu");
                 ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
