@@ -87,3 +87,59 @@ struct OrbitSampleCache {
         return pts;
     }
 };
+
+// Sample an OPEN (hyperbolic or parabolic) two-body trajectory as a finite
+// arc, evenly spaced in TRUE ANOMALY, truncated where the radius would
+// exceed r_cap. The arc is symmetric about periapsis (nu in [-nu_cap,
+// +nu_cap]), so it shows both the leg the ship came in on and the leg it is
+// flying out on. Points are in the SAME frame as `pos` (the focus's inertial
+// frame). Returns an empty vector for a closed orbit (ecc < 1) or a
+// degenerate state (no angular momentum).
+//
+// An open trajectory has no period, so there is nothing to cache the way
+// OrbitSampleCache does for a coasting ellipse; the caller re-samples
+// whenever the state changes. It is cheap (N trig evaluations, no Kepler
+// solve), so per-frame re-sampling is fine even off rails.
+//
+// r_cap should be at least the ship's current radius so the ship itself lies
+// on the arc; a view-extent value makes the curve run to the edge of the map.
+inline std::vector<glm::dvec3> sampleOpenTrajectory(const glm::dvec3 &pos,
+                                                     const glm::dvec3 &vel,
+                                                     double mu, int N,
+                                                     double r_cap) {
+    std::vector<glm::dvec3> pts;
+    if(!(mu > 0.0) || N < 2 || !(r_cap > 0.0)) { return pts; }
+    const double r0 = glm::length(pos);
+    if(r0 < 1e-9) { return pts; }
+    const glm::dvec3 h = glm::cross(pos, vel);
+    const double h_len = glm::length(h);
+    if(h_len < 1e-9) { return pts; }   // radial: no conic
+    const OrbitElements o = computeOrbitElements(pos, vel, mu);
+    if(!(o.ecc >= 1.0)) { return pts; }  // closed orbit, not an open arc
+    const double e = o.ecc;
+    const double p = h_len * h_len / mu;   // semi-latus rectum, always > 0
+    // Truncate where r(nu) = p / (1 + e cos nu) reaches r_cap:
+    //   cos nu = (p / r_cap - 1) / e.
+    // For e > 1 this bound is > -1 (a finite arc); as r_cap -> inf it
+    // approaches the asymptote angle acos(-1 / e). The clamp guards the
+    // e ~ 1 (parabolic) edge where the bound can dip to -1.
+    const double nu_cap = std::acos(glm::clamp((p / r_cap - 1.0) / e, -1.0, 1.0));
+    // Orientation basis in pos's frame: rhat_p toward periapsis (along the
+    // eccentricity vector), thathat 90 deg ahead in the direction of motion.
+    // A point at true anomaly nu is then r(nu) (cos nu rhat_p + sin nu thathat)
+    // -- the same decomposition the ship's current position satisfies, so the
+    // arc passes through the ship.
+    const glm::dvec3 hhat = h / h_len;
+    const glm::dvec3 evec = glm::cross(vel, h) / mu - pos / r0;
+    const double e_len = glm::length(evec);
+    if(e_len < 1e-9) { return pts; }
+    const glm::dvec3 rhat_p = evec / e_len;
+    const glm::dvec3 thathat = glm::cross(hhat, rhat_p);
+    pts.reserve(N);
+    for(int i = 0; i < N; i++) {
+        const double nu = -nu_cap + (2.0 * nu_cap) * (double)i / (N - 1);
+        const double r = p / (1.0 + e * std::cos(nu));
+        pts.push_back(r * (std::cos(nu) * rhat_p + std::sin(nu) * thathat));
+    }
+    return pts;
+}

@@ -5477,34 +5477,68 @@ int main(int argc, char **argv)
             });
 
             ui::Window("Orbital map", o_map, [&] {
-                if(o.ecc >= 1.0) {
-                    ImGui::Text("Escape trajectory (Ecc %f): no closed orbit to map.", o.ecc);
-                    return;
+                const float kMapSize = 360.0f;   // the map square (layout below)
+                // The ship's trajectory around the focus: a closed ellipse
+                // (a coasting Kepler orbit) or, when the ship is escaping or
+                // flying by (ecc >= 1 -- e.g. right after switching SOI to a
+                // body you are approaching), an open hyperbolic/parabolic arc.
+                // Both draw the same way (a projected polyline); only the
+                // sampling differs. Top-down view in the focus's inertial
+                // frame, so the trajectory's true 3D orientation shows through
+                // the projection.
+                const int N = 64;
+                const bool closed = (o.ecc < 1.0);
+                std::vector<glm::dvec3> traj_pts;
+                if(closed) {
+                    // Sampled through a per-ship cache, trusted only while the
+                    // ship is on rails (coasting on its Keplerian conic). Off
+                    // rails -- Bullet-integrated, or right after a burn /
+                    // staging / SOI switch / crash (all of which clear onRails)
+                    // -- the orbit is moving, so re-sample every frame. See
+                    // OrbitSampleCache.
+                    traj_pts = orbit_caches[(const void *)ship].sample(
+                        orbit_pos, orbit_vel, mu, N, ship->onRails);
+                } else {
+                    // Open trajectory: an arc around periapsis, truncated where
+                    // it would run off to infinity. r_cap is the current view
+                    // extent (the map square's width in world units) so the
+                    // curve reaches the edge of the view, but never smaller
+                    // than a few periapsis radii or the ship's current radius
+                    // (so the ship itself lies on the arc).
+                    const double r_cap = std::max<double>(
+                        kMapSize * (double)map_scale,
+                        std::max(4.0 * o.periapsis, o.distance));
+                    traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
                 }
 
-                // Top-down view of the ship's orbit in the focus's inertial
-                // frame. The ellipse is the ship's state propagated over one
-                // full period (exact Kepler, so the orbit's true 3D orientation
-                // shows through the projection); periapsis / apoapsis are the
-                // ACTUAL points on the orbit (propagated to o.time_to_peri /
-                // o.time_to_apo) -- not re-derived from elements.
-                //
-                // The 64 orbit points are sampled through a per-ship cache,
-                // but only trusted while the ship is on rails (coasting on its
-                // Keplerian conic). Off rails -- Bullet-integrated, or right
-                // after a burn / staging / SOI switch / crash (all of which
-                // clear onRails) -- the orbit is moving, so re-sample every
-                // frame. See OrbitSampleCache.
-                const int N = 64;
-                const std::vector<glm::dvec3> &orbit_pts =
-                    orbit_caches[(const void *)ship].sample(
-                        orbit_pos, orbit_vel, mu, N, ship->onRails);
+                // Periapsis (both cases) and apoapsis (closed only). A closed
+                // orbit propagates to each apsis (exact); an open arc has no
+                // apoapsis, and its periapsis point is radius o.periapsis
+                // along the eccentricity vector (which points to periapsis) --
+                // no propagation needed.
                 glm::dvec3 peri_p, apo_p, tmp;
-                if(o.time_to_peri > 0.0) {
-                    propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
-                }
-                if(o.time_to_apo > 0.0) {
-                    propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
+                bool have_peri = false, have_apo = false;
+                if(closed) {
+                    if(o.time_to_peri > 0.0) {
+                        propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
+                        have_peri = true;
+                    }
+                    if(o.time_to_apo > 0.0) {
+                        propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
+                        have_apo = true;
+                    }
+                } else {
+                    const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
+                    const double hl = glm::length(h);
+                    if(hl > 1e-9) {
+                        const glm::dvec3 evec =
+                            glm::cross(orbit_vel, h)/mu - orbit_pos/o.distance;
+                        const double el = glm::length(evec);
+                        if(el > 1e-9) {
+                            peri_p = (o.periapsis / el) * evec;
+                            have_peri = true;
+                        }
+                    }
                 }
 
                 // The focus body (the ship's parent) and the map plane.
@@ -5528,8 +5562,8 @@ int main(int argc, char **argv)
 
                 // The map is a kMapSize square at the top of the window; the
                 // focus (parent body) sits at its center plus the pan offset;
-                // the controls go below.
-                const float kMapSize = 360.0f;
+                // the controls go below. (kMapSize is defined at the top of
+                // the block, where the open-trajectory radius cap uses it.)
                 const ImVec2 p0 = ImGui::GetCursorScreenPos();
                 const float center_x = p0.x + kMapSize * 0.5f;
                 const float center_y = p0.y + kMapSize * 0.5f;
@@ -5640,7 +5674,9 @@ int main(int argc, char **argv)
                 // gravitational regime the ship is inside.
                 draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi);
 
-                map.drawOrbit(dl, orbit_pts, col_ship, 1.0f);
+                // closed=true for the ellipse (it is a closed loop); false for
+                // the open arc (a chord would otherwise close it).
+                map.drawOrbit(dl, traj_pts, col_ship, 1.0f, closed);
                 map.drawBody(dl, ship->m_parent->radius, col_body);
                 // The ship: a bright dot (you are here) with a green ring, on
                 // the line from the focus.
@@ -5652,10 +5688,11 @@ int main(int argc, char **argv)
                 if(map_show_vel) {
                     map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
                 }
-                // Apside markers are only meaningful for a non-circular orbit.
+                // Apside markers are only meaningful for a non-circular orbit;
+                // an open arc has periapsis but no apoapsis.
                 if(o.ecc > 1e-3) {
-                    if(o.time_to_peri > 0.0) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
-                    if(o.time_to_apo  > 0.0) { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
+                    if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
+                    if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
                 }
 
                 // Every other ship in this body: its orbit (when closed) plus

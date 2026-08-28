@@ -160,6 +160,49 @@ int main() {
         check(same, "even: same ellipse, two phases -> same point set");
     }
 
+    // 8. Open (hyperbolic) trajectory: a finite arc around periapsis,
+    // truncated at r_cap. The periapsis is the arc's minimum radius, the
+    // endpoints sit at r_cap, every point lies in the orbital plane, and the
+    // arc is symmetric about the periapsis direction.
+    {
+        const double e = 1.5, rp = 7.0e6;
+        const double v_p = std::sqrt(mu * (1.0 + e) / rp);  // speed at periapsis
+        const glm::dvec3 pos(rp, 0.0, 0.0), vel(0.0, v_p, 0.0); // periapsis, equatorial
+        const double r_cap = 10.0 * rp;
+        std::vector<glm::dvec3> pts = sampleOpenTrajectory(pos, vel, mu, N, r_cap);
+        check(pts.size() == (size_t)N, "open: N points");
+        double mn, mx; orbitRadius(pts, mn, mx);
+        check(mn >= rp * (1.0 - 1e-9), "open: min radius >= periapsis");
+        check(mn < rp * 1.01, "open: min radius ~= periapsis");
+        check(mx <= r_cap * (1.0 + 1e-9), "open: max radius <= r_cap");
+        check(mx > r_cap * 0.99, "open: max radius ~= r_cap (truncated)");
+        bool in_plane = true;
+        for(const glm::dvec3 &q : pts) {
+            if(std::fabs(q.z) > 1e-6 * rp) { in_plane = false; break; }
+        }
+        check(in_plane, "open: points lie in the orbital plane");
+        // Symmetric about the periapsis direction (+X): each point (x, y) has
+        // a partner (x, -y). (The grid nu_i = -nu_{N-1-i} guarantees this.)
+        bool symmetric = true;
+        for(const glm::dvec3 &q : pts) {
+            double best = 1e300;
+            for(const glm::dvec3 &w : pts) {
+                const double d = glm::length(glm::dvec3(w.x, -w.y, 0.0) - q);
+                if(d < best) { best = d; }
+            }
+            if(best > 1e-3 * rp) { symmetric = false; break; }
+        }
+        check(symmetric, "open: arc symmetric about periapsis direction");
+    }
+
+    // 9. The open-trajectory sampler returns nothing for a CLOSED orbit.
+    {
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        std::vector<glm::dvec3> pts = sampleOpenTrajectory(
+            glm::dvec3(r, 0, 0), glm::dvec3(0, v, 0), mu, N, 10.0 * r);
+        check(pts.empty(), "open: closed orbit -> empty");
+    }
+
     if(g_failures == 0) {
         std::printf("test_orbitsample: all checks passed\n");
         return 0;
