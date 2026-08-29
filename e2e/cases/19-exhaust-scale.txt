@@ -1,0 +1,15 @@
+# Exhaust-velocity test scale: with --exhaust-scale 2 the thrust (and
+# delta-v) doubles, so the altitude gained in a fixed burn is MORE than
+# double the unscaled baseline (TWR > 1 => (2a-g)/(a-g) > 2). The
+# scale-1 baseline gains ~155 m in this run; scale 2 gains ~380 m, so a
+# 250 m floor is only reachable when the scale is actually applied.
+NAME exhaust-scale
+ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
+ARGS --timeout 10 --dbg-log
+ARGS --exhaust-scale 2
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 3000,2000,I
+EXPECT [dbg]
+CHECK last(dbg)["alt"] - first(dbg)["alt"] > 250
+FORBID GL_
+FORBID error:

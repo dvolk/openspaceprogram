@@ -68,6 +68,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Initial time acceleration (0 = paused, default 0)")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_option("--exhaust-scale", args.exhaust_scale,
+                   "Scale the engines' exhaust velocity: thrust and delta-v "
+                   "scale by it, the fuel burn does not (0.5-5.0, default 1; "
+                   "adjustable in the Settings window)")
+        ->check(CLI::Range(0.5f, 5.0f));
+
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "
                    "seconds (0 = run until closed; default: 0)")

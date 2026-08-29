@@ -130,6 +130,9 @@ public:
     std::vector<float> m_armedThrust;
 
     float thruster_util = 1.0;
+    double exhaust_scale = 1.0;  // test knob (Settings / --exhaust-scale):
+                                 // scales ve, so thrust and delta-v scale with
+                                 // it (the fuel burn does not); synced per tick
     float thrust_mag = 0.0;   /* N this tick (sum of m_armedThrust); armed by ApplyThrust, cleared by clearThrust */
 
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
@@ -295,7 +298,8 @@ public:
 
     float getDeltaV() {
         float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
-        return (float)m_exhaustVel * log(getMass() / (getMass() - remaining_fuel));
+        return (float)(m_exhaustVel * exhaust_scale)
+             * log(getMass() / (getMass() - remaining_fuel));
     }
 
     /* TODO should be cached per frame */
@@ -659,16 +663,17 @@ private:
 
     /* the ship's full-throttle thrust RIGHT NOW (N) = the sum of the ACTIVE
        stage's engines' full thrust (each T = (H2 + LOX flow) x ve = 2 x
-       fuel_rate x ve, both propellants end up in the plume). Only the active
-       stage fires, so this is the usable thrust; for a single-stage ship it
-       equals the grand total. */
+       fuel_rate x ve, both propellants end up in the plume), scaled by
+       exhaust_scale (the test knob). Only the active stage fires, so this
+       is the usable thrust; for a single-stage ship it equals the grand
+       total. */
     float GetActiveThrust() {
         const int as = activeStage();
         double t = 0;
         for(size_t i = 0; i < m_thrusterThrust.size(); i++) {
             if(m_thrusterStage[i] == as) { t += m_thrusterThrust[i]; }
         }
-        return (float)t;
+        return (float)(t * exhaust_scale);
     }
 
     /* Called once per physics tick (step = the tick's simulated duration).
@@ -689,7 +694,8 @@ private:
             if(consumeResourceMass(ResourceType::Hydrogen, flow) and
                consumeResourceMass(ResourceType::LOX,      flow))
                 {
-                    m_armedThrust[i] = (float)(m_thrusterThrust[i] * thruster_util);
+                    m_armedThrust[i] =
+                        (float)(m_thrusterThrust[i] * thruster_util * exhaust_scale);
                     thrust_mag += m_armedThrust[i];
                     m_thrust = 1.0;
                 }

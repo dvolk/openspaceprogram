@@ -199,6 +199,11 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 args.terrain_px = terrain_px_table[terrain_level];
             }
         }
+        // Test knob: scales the exhaust velocity of every engine (thrust
+        // and delta-v scale by it, the fuel burn does not). Synced to the
+        // ships each tick; takes effect within one physics step.
+        ImGui::SliderFloat("Exhaust scale (test)", &args.exhaust_scale,
+                           0.5f, 5.0f, "%.2fx");
         ImGui::Spacing();
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
             ui::SetOpen("Settings", false);

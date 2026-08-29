@@ -23,6 +23,7 @@ struct GameArgs {
     std::string radial_test;
     int initial_time_accel = 0;
     double timeout_seconds = 0.0;
+    float exhaust_scale = 1.0f;  // test knob: scales ve (thrust + delta-v)
 
     std::vector<SimKeyPress> sim_presses;
     std::vector<SimMouseAction> sim_mouse_actions;

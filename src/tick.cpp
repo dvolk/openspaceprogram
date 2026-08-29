@@ -24,8 +24,12 @@ void tick(Game &g) {
         g.accumulator = 10 * g.dt;
     }
 
-    // clear stats and stuff
-    for(auto *s : g.ships) { s->m_thrust = 0.0; }
+    // clear stats and stuff; sync the exhaust-velocity test scale
+    // (--exhaust-scale / the Settings slider) onto every ship.
+    for(auto *s : g.ships) {
+        s->m_thrust = 0.0;
+        s->exhaust_scale = g.args.exhaust_scale;
+    }
 
     while (g.accumulator >= g.dt) {
         // is this logic? ;_;
