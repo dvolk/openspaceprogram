@@ -57,6 +57,7 @@
 #include "radialtest.h"
 #include "ships.h"
 #include "game.h"
+#include "events.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -660,7 +661,9 @@ int main(int argc, char **argv)
     }
 
     // --timeout: wall-clock budget for the whole run (0 = run until closed).
-    const Uint32 loop_start_ms = SDL_GetTicks();
+    // Stamped on the game: the sim-event emitter (events.cpp) and the
+    // timeout check below both measure "ms since the loop started" from it.
+    game.loop_start_ms = SDL_GetTicks();
     const double startup_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
     printf("Main loop starting: startup took %.3f s", startup_s);
@@ -687,7 +690,7 @@ int main(int argc, char **argv)
 
         // --timeout: auto-exit once the wall-clock budget is spent.
         if(args.timeout_seconds > 0.0) {
-            const double elapsed_s = (SDL_GetTicks() - loop_start_ms) * 0.001;
+            const double elapsed_s = (SDL_GetTicks() - game.loop_start_ms) * 0.001;
             if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
@@ -708,279 +711,12 @@ int main(int argc, char **argv)
         /*
           EVENTS
         */
-        /* --sim-press: emit the synthetic key events that fell due this
-           frame, in down-then-up order per press. They are polled below in
-           the same frame, so one-shot actions fire in the frame the press
-           is due. */
-        if(!args.sim_presses.empty()) {
-            const Uint32 now = SDL_GetTicks() - loop_start_ms;
-            auto push_key = [&](SDL_EventType type, const SimKeyPress &p) {
-                SDL_Event kev = {0};
-                kev.type = type;
-                kev.key.windowID = sim_win_id;
-                kev.key.state = (type == SDL_KEYDOWN) ? SDL_PRESSED : SDL_RELEASED;
-                kev.key.repeat = 0;
-                kev.key.keysym.sym = p.key;
-                kev.key.keysym.scancode = p.sc;
-                SDL_PushEvent(&kev);
-            };
-            for(auto &p : args.sim_presses) {
-                if(!p.down_sent && now >= p.down_ms) {
-                    push_key(SDL_KEYDOWN, p);
-                    p.down_sent = true;
-                }
-                if(p.down_sent && !p.up_sent && now >= p.up_ms) {
-                    push_key(SDL_KEYUP, p);
-                    p.up_sent = true;
-                }
-            }
-        }
-
-        /* --sim-mouse: emit the synthetic mouse events that fell due this
-           frame, in the order each gesture needs. A drag (button + held)
-           presses the button BEFORE moving so the camera-look handler
-           (gated on rmbCam) sees the button down first; a click moves the
-           cursor into place then presses + releases in place; BTN==0 just
-           repositions. The motion carries the delta from the previous
-           simulated position (args.sim_mouse_x/y), which the camera consumes. */
-        if(!args.sim_mouse_actions.empty()) {
-            const Uint32 now = SDL_GetTicks() - loop_start_ms;
-            auto push_motion = [&](int x, int y) {
-                SDL_Event mev = {0};
-                mev.type = SDL_MOUSEMOTION;
-                mev.motion.windowID = sim_win_id;
-                mev.motion.which = 0;
-                mev.motion.x = x;
-                mev.motion.y = y;
-                mev.motion.xrel = x - args.sim_mouse_x;
-                mev.motion.yrel = y - args.sim_mouse_y;
-                mev.motion.state = 0;
-                SDL_PushEvent(&mev);
-                args.sim_mouse_x = x;
-                args.sim_mouse_y = y;
-            };
-            auto push_btn = [&](SDL_EventType type, int button, int x, int y) {
-                SDL_Event bev = {0};
-                bev.type = type;
-                bev.button.windowID = sim_win_id;
-                bev.button.which = 0;
-                bev.button.button = (Uint8)button;
-                bev.button.state = (type == SDL_MOUSEBUTTONDOWN) ? SDL_PRESSED
-                                                                 : SDL_RELEASED;
-                bev.button.x = x;
-                bev.button.y = y;
-                SDL_PushEvent(&bev);
-            };
-            for(auto &a : args.sim_mouse_actions) {
-                if(!a.started && now >= a.time_ms) {
-                    if(a.button != 0 && a.up_ms > a.time_ms) {
-                        // drag: press, then move (release comes at up_ms)
-                        push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
-                        push_motion(a.x, a.y);
-                    } else if(a.button != 0) {
-                        // click: move into place, press, release (same frame)
-                        push_motion(a.x, a.y);
-                        push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
-                        push_btn(SDL_MOUSEBUTTONUP, a.button, a.x, a.y);
-                        a.released = true;
-                    } else {
-                        // move only (no button)
-                        push_motion(a.x, a.y);
-                    }
-                    a.started = true;
-                }
-                // release a held button at up_ms
-                if(a.button != 0 && a.started && !a.released
-                   && now >= a.up_ms) {
-                    push_btn(SDL_MOUSEBUTTONUP, a.button, a.x, a.y);
-                    a.released = true;
-                }
-            }
-        }
-
-        SDL_Event ev;
-
-        while (SDL_PollEvent(&ev)) {
-            ImGui_ImplSDL2_ProcessEvent(&ev);
-            if (ev.type == SDL_QUIT) {
-                running = false;
-            }
-
-            if (ev.type == SDL_WINDOWEVENT) {
-                if(ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    display.onResize(ev.window.data1, ev.window.data2);
-                    check_gl_error();
-
-                    postfx->Resize(ev.window.data1, ev.window.data2);
-                    check_gl_error();
-
-                    camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
-                    check_gl_error();
-                }
-            }
-            if(ev.type == SDL_KEYDOWN) {
-                if(ev.key.keysym.sym == SDLK_PERIOD) {
-                    if(time_accel < 1000) {
-                        time_accel *= 10;
-                        if(time_accel == 0) {
-                            time_accel = 1;
-                        }
-                    } else if(time_accel < 100000) {
-                        // 1000 -> 10000 -> 100000: rails warp. Every ship
-                        // coasts (or freezes on the ground) and the physics
-                        // world stops stepping; refuses if any ship is not
-                        // rail-eligible.
-                        if(game.enter_rails_warp()) {
-                            time_accel *= 10;
-                            printf("Rails warp: time accel %d (ships on rails)\n",
-                                   time_accel);
-                        }
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_COMMA) {
-                    if(time_accel > 1) {
-                        const bool leaving_rails_warp =
-                            (time_accel >= kRailsWarp) && (time_accel / 10 < kRailsWarp);
-                        time_accel /= 10;
-                        if(leaving_rails_warp) {
-                            // dropped out of rails warp: the active ship
-                            // re-enters physics (idle ships stay parked)
-                            ship->leaveRails();
-                            printf("Rails warp: exited, time accel %d\n", time_accel);
-                        }
-                    }
-                    else if(time_accel == 1) {
-                        time_accel = 0;
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_l) {
-                    if(cam_speed < 10000000) {
-                        cam_speed *= 4;
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_k) {
-                    if(cam_speed > 1) {
-                        cam_speed /= 4;
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_c) {
-                    // Toggle between the body-orbit camera and the free camera.
-                    if(camMode == CAM_ORBIT) {
-                        freeCam->pos = orbitCam->pos;
-                        freeCam->forward = orbitCam->forward;
-                        freeCam->up = orbitCam->up;
-                        camMode = CAM_FREE;
-                        camera = freeCam;
-                    } else {
-                        glm::dvec3 focus = game.focusWorldPos(focusBody);
-                        orbitCam->Follow(focus);
-                        double dist = glm::length(freeCam->pos - focus);
-                        if(dist < 10.0) { dist = 10.0; }
-                        orbitCam->distance = dist;
-                        camMode = CAM_ORBIT;
-                        camera = orbitCam;
-                        printf("Camera: orbiting %s (G = switch body, C = free)\n",
-                               game.focusTargets[focusBody].name);
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_g) {
-                    // Cycle the orbit camera's target body.
-                    if(camMode == CAM_ORBIT) {
-                        focusBody = (focusBody + 1) % game.numFocusTargets;
-                        orbitCam->Follow(game.focusWorldPos(focusBody));
-                        double d = (game.focusTargets[focusBody].body == nullptr)
-                            ? 50.0
-                            : (double)game.focusTargets[focusBody].body->radius * 3.0;
-                        orbitCam->distance = d;
-                        printf("Orbit camera targeting %s\n",
-                               game.focusTargets[focusBody].name);
-                    } else {
-                        printf("In free flight; press C to go to orbit, then G to switch body.\n");
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_TAB) {
-                    // toggle the info windows (one-shot; auto-repeat would
-                    // just keep flipping)
-                    if(!ev.key.repeat) {
-                        game.toggle_windows();
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_F6) {
-                    // advance to the next ship in the fleet, wrapping around
-                    // (one-shot; auto-repeat would keep cycling). No-op with a
-                    // single ship: the next index is the current one.
-                    if(!ev.key.repeat && ships.size() > 1) {
-                        game.select_ship((activeIdx + 1) % (int)ships.size());
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_SPACE) {
-                    // separate the active stage (one-shot; auto-repeat would
-                    // keep dropping stages). Only while flying a ship with
-                    // time running (a paused separation would leave the
-                    // survivors frozen mid-air).
-                    if(!ev.key.repeat && camMode == CAM_ORBIT && time_accel > 0) {
-                        // staging needs the parts in the physics world:
-                        // wake a ship parked on rails first
-                        if(ship->onRails) {
-                            ship->leaveRails();
-                            if(time_accel >= kRailsWarp) { time_accel = 1; }
-                        }
-                        int dropped = ship->separateStage(ship->activeStage());
-                        if(dropped > 0) {
-                            printf("Stage: dropped %d part(s); now on stage %d of %d\n",
-                                   dropped, ship->activeStage(), ship->numStages());
-                        } else {
-                            printf("Stage: nothing left to separate\n");
-                        }
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_F12) {
-                    screenshot_requested = true;
-                }
-                if(ev.key.keysym.sym == SDLK_F11) {
-                    if(poly_mode == false) {
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                        poly_mode = true;
-                    } else {
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                        poly_mode = false;
-                    }
-                }
-                if(ev.key.keysym.sym == SDLK_F10) {
-                    // Reset the window layout to defaults (same as the
-                    // main menu's "Reset windows" button).
-                    ui::ResetGui();
-                }
-                if(ev.key.keysym.sym == SDLK_ESCAPE) {
-                    // Toggle the main menu.
-                    ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
-                }
-            }
-            if(ev.type == SDL_MOUSEBUTTONDOWN) {
-                // holding RMB over 3D (not over a UI window) moves the camera.
-                if(ev.button.button == SDL_BUTTON_RIGHT &&
-                   !ImGui::GetIO().WantCaptureMouse) {
-                    rmbCam = true;
-                }
-            }
-            if(ev.type == SDL_MOUSEBUTTONUP) {
-                if(ev.button.button == SDL_BUTTON_RIGHT) {
-                    rmbCam = false;
-                }
-            }
-            if(ev.type == SDL_MOUSEMOTION) {
-                if(rmbCam && !ImGui::GetIO().WantCaptureMouse) {
-                    camera->RotateY(-ev.motion.xrel / 200.0f);
-                    camera->Pitch(ev.motion.yrel / 200.0f);
-                }
-            }
-            if(ev.type == SDL_MOUSEWHEEL) {
-                // Zoom when the wheel is not scrolling a UI window.
-                if(!ImGui::GetIO().WantCaptureMouse) {
-                    camera->wheel(ev.wheel.y);
-                }
-            }
-        }
+        // Emit the synthetic (sim) input that fell due this frame, then
+        // drain the SDL queue and dispatch it (quit, resize, keybinds, the
+        // RMB camera-look and the wheel). Both live in events.cpp and drive
+        // state through the game.
+        emit_sim_events(game);
+        poll_events(game);
 
         /*
           LOGIC
