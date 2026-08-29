@@ -374,12 +374,12 @@
       }
     },
     {
-      "name": "Eden",
+      "name": "Shay",
       "type": "planet",
       "orbits": "Kerbol",
-      "radius": 700000,
-      "mass": 8.4035e+22,
-      "g": 11.446,
+      "radius": 550000,
+      "mass": 4.0762e+22,
+      "g": 8.9933,
       "seed": 0,
       "has_sea": true,
       "power_scaler": 3,
@@ -396,7 +396,7 @@
         }
       },
       "inertial": {
-        "soi": 98185838,
+        "soi": 77146016,
         "pos": [
           -6781153547,
           0,
@@ -405,7 +405,7 @@
         "orb_ang_speed": 6.826918953790463e-07
       },
       "rotating": {
-        "soi": 800000,
+        "soi": 650000,
         "rot_ang_speed": 0.0002915709030370688,
         "axial_tilt": 0.08726646259971647
       }

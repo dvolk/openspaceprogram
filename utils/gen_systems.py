@@ -146,7 +146,7 @@ eerbon = {
 #   planets -> [0, 0, -sma]
 #   moons   -> [-sma, 0, 0]
 # phase_deg (optional, last column): rotate that starting point about the
-#   orbit normal; 0 = the defaults above. Eden = 60: Kerbin's L4 slot,
+#   orbit normal; 0 = the defaults above. Shay = 60: Kerbin's L4 slot,
 #   60 deg ahead on the same circle.
 # inc_deg: orbital inclination from the CSV Inc. column (KSP wiki values),
 #   emitted as inertial.orb_incl in radians; 0 = coplanar (field omitted).
@@ -175,10 +175,12 @@ K = [
     ("Kerbin", "planet", "Kerbol", 13599840260, 0.0,    5.292e22, 9.81,   600000,   0.0,     9203544.6,  21549,     23.44,    84159290,     True,  1,   3),
     ("Mun",    "moon",   "Kerbin", 12000000,    0.0,    9.760e20, 1.628,  200000,   0.0,     138984.4,   138984,    6.68,     2429560,      False, 5,   1),
     ("Minmus", "moon",   "Kerbin", 47000000,    0.0,    2.646e19, 0.491,  60000,    6.0,     1077310.5,  40400,     12.0,     2247430,      False, 6,   1),
-    # Eden: Kerbin's L4 trojan, 60 deg ahead on the same circle. Its orbital
+    # Shay: Kerbin's L4 trojan, 60 deg ahead on the same circle. Its orbital
     # period is Kerbin's exactly -- anything else and it drifts off L4.
     # Day = 21549.425 s: Eerbon's day, ported verbatim with the rest of it.
-    ("Eden",   "planet", "Kerbol", 13599840260, 0.0,    8.4035e22, 11.446, 700000,   0.0,     9203544.6,  21549.425, 5.0,      98185838,     True,  0,   3,  60),
+    # r = 550 km at the old density: mass ~ R^3, g ~ R, and the SOI
+    # (Kerbin's SOI x (M/M_kerbin)^(1/3)) ~ R at the same orbit.
+    ("Shay",   "planet", "Kerbol", 13599840260, 0.0,    4.0762e22, 8.9933, 550000,   0.0,     9203544.6,  21549.425, 5.0,      77146016,     True,  0,   3,  60),
     ("Duna",   "planet", "Kerbol", 20726155260, 0.05,   4.515e21, 2.943,  320000,   0.06,    17315400.1, 65518,     25.19,    47921950,     False, 7,   3),
     ("Ike",    "moon",   "Duna",   3200000,     0.03,   2.782e20, 1.099,  130000,   0.2,     65517.9,    65518,     1.76,     1049600,      False, 8,   1),
     ("Dres",   "planet", "Kerbol", 40839348200, 0.15,   3.219e20, 1.128,  138000,   5.0,     47893063.1, 34800,     4.0,      32832840,     False, 9,   3),
@@ -244,7 +246,7 @@ SURFACES = {
         "palette": [[0.0, [0.28, 0.48, 0.55]],
                     [1.0, [0.70, 0.90, 0.90]]],
     },
-    "Eden": {
+    "Shay": {
         # thicker green-tinted N2/O2 rim than Kerbin's
         # (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
@@ -365,10 +367,10 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
                 inertial["ecc"] = e
             b["inertial"] = inertial
         else:
-            # Non-wiki body (Eden): a game-added body, not on the KSP wiki.
+            # Non-wiki body (Shay): a game-added body, not on the KSP wiki.
             # It is Kerbin's L4 trojan -- phase_deg ahead of Kerbin in the
             # orbit direction, on the same circle. Kerbin now sits at its
-            # wiki epoch longitude, so anchor Eden to THAT: "ahead" is the
+            # wiki epoch longitude, so anchor Shay to THAT: "ahead" is the
             # orbit direction (decreasing in-plane angle), i.e. Kerbin's
             # epoch longitude minus phase_deg. Any other non-wiki body keeps
             # the old shared-axis layout (planets -Z, moons -X).
