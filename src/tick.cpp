@@ -113,6 +113,11 @@ void tick(Game &g) {
         g.time += g.dt * g.time_accel;
 
         if(g.time_accel != 0) {
+            // The active ship's SOI owner before this tick's frame
+            // bookkeeping (checked after the branch, below): crossing into
+            // a different body's SOI drops warp to 1x.
+            TerrainBody *soiOwner = g.ship->m_parent;
+
             g.sun->frame->UpdateOrbitRails(g.time);
 
             if(g.time_accel >= kRailsWarp) {
@@ -171,6 +176,17 @@ void tick(Game &g) {
             }
 
             } // end physics-warp branch (g.time_accel < kRailsWarp)
+
+            /* SOI handoff: the active ship crossed into a different body's
+               SOI (or back out to the parent's) -- drop warp to 1x so the
+               encounter is playable instead of warped straight through.
+               A pause (0) is the player's call and stays put. */
+            if(soiOwner != g.ship->m_parent && g.time_accel > 1) {
+                printf("SOI switch: '%s' now around %s (was %s), warp -> 1\n",
+                       g.ship->name.c_str(), g.ship->m_parent->name.c_str(),
+                       soiOwner->name.c_str());
+                g.time_accel = 1;
+            }
 
             /* --spin-log (or --radial-test): spin diagnostics, once per
                0.5 s of sim time (after the last substep's solve, so the

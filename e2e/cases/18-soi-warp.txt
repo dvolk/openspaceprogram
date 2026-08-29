@@ -1,0 +1,20 @@
+# SOI handoff warp drop: the ship starts inside the Moon's SOI (a rot-orbit
+# around the Moon in the Eerbon system) and a prograde burn pushes it out.
+# Crossing the Moon's SOI boundary hands the ship to Eerbon's SOI and the
+# warp must drop from 100 to 1. The earlier SAME-BODY hop (Moon rotational
+# -> Moon inertial, ~310 km out) must NOT trigger the drop -- if it did,
+# the warp would already be 1 at the Eerbon crossing, the full EXPECT line
+# would never print, and this case fails. Catches a regression in the
+# tick's SOI-switch warp policy.
+# The crossing lands at ~30 s of wall time at 100x, so the timeout is set
+# 4x above that to survive a heavily loaded / throttled CI machine (the
+# case is CPU-bound, and a fast-but-starved run is the failure mode).
+NAME soi-warp
+ARGS --system res/old_system.json --body Moon --scenario rot-orbit --ship res/ships/racer.json
+ARGS --time-accel 100
+ARGS --timeout 120
+ARGS --sim-press 1000,5000,I
+LIMIT 200
+EXPECT SOI switch: 'racer' now around Eerbon (was Moon), warp -> 1
+FORBID GL_
+FORBID error:
