@@ -139,58 +139,53 @@ eerbon = {
 }
 
 # ---------------------------------------------------------------------------
-# Kerbal system (ksp_system.csv). Fields:
+# Kerbal system. Fields:
 #   name, type, orbits, sma_m, ecc, mass_kg, g, radius_m, inc_deg,
-#   orb_period_s, rot_period_s, soi_m, has_sea, seed, power_scaler
-# Position convention (matches the Eerbon data):
-#   planets -> [0, 0, -sma]
-#   moons   -> [-sma, 0, 0]
-# phase_deg (optional, last column): rotate that starting point about the
-#   orbit normal; 0 = the defaults above. Shay = 60: Kerbin's L4 slot,
-#   60 deg ahead on the same circle.
-# inc_deg: orbital inclination from the CSV Inc. column (KSP wiki values),
-#   emitted as inertial.orb_incl in radians; 0 = coplanar (field omitted).
-# ecc: eccentricity from the CSV Ecc. column. Emitted together with
-#   arg_peri / true_anomaly0 fitted so the body starts EXACTLY where it did
-#   before (radius = |pos|, same direction): r(nu0) = |pos| gives
-#   cos(nu0) = (a(1-e^2)/|pos| - 1)/e (outbound branch), periapsis at
-#   arg_peri = pos_angle - nu0. The dynamically consistent a (Kepler's third
-#   law with the parent's rounded mass) differs from the CSV sma by < 0.01%,
-#   so the fit uses a, and the speed at the start is the old circular speed
-#   up to the same < 0.01%; the velocity direction tilts (outbound).
-#   Nothing jumps on load. 0 = circular (fields omitted).
-# tilt_deg: axial tilt from the CSV Axial tilt column, emitted as
-#   rotating.axial_tilt in radians; 0 = pole on the orbit normal (omitted).
-#   Values follow the real-solar-system equivalents (Sun 7.25, Earth 23.44,
-#   Pluto 122.5, ...); bodies without a real analog get plausible small values.
+#   orb_period_s, rot_period_s, tilt_deg, soi_m, has_sea, seed,
+#   power_scaler [, phase_deg]
+# KSP bodies (any body in ksp_bodies.csv) leave sma_m / ecc / inc_deg /
+#   orb_period_s as None: the CSV is the source of truth for their orbital
+#   elements, and ksp_body reads e/i/raan/omega/M/period from it. Only
+#   non-KSP bodies (Shay) fill those columns in; ecc is unused there too
+#   (they are circular).
+# phase_deg (optional, last column): a non-KSP body's starting point, in
+#   degrees ahead of its wiki parent along the orbit; 0 = the shared-axis
+#   default (matches the Eerbon data: planets [0,0,-sma], moons [-sma,0,0]).
+#   Shay = 60: Kerbin's L4 slot, 60 deg ahead on the same circle.
+# tilt_deg: axial tilt, emitted as rotating.axial_tilt in radians;
+#   0 = pole on the orbit normal (field omitted). Values follow the
+#   real-solar-system equivalents (Sun 7.25, Earth 23.44, Pluto 122.5, ...);
+#   bodies without a real analog get plausible small values.
+# soi_m: inertial SOI (m).
 # Rotating-frame SOI (near-body boundary) = radius + 100 km, the same rule the
 # Eerbon data follows (Eerbon 600km+100km=700km, Moon 200km+100km=300km).
 # ---------------------------------------------------------------------------
 K = [
     # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, soi_m,        has_sea, seed, ps [, phase_deg]
-    ("Kerbol", "star",   None,    0,            0.0,    1.757e28, 17.131, 261600000, 0.0,     None,       432000,    7.25,     1e16,         False, 0.1, 1),
-    ("Moho",   "planet", "Kerbol", 5263138300,  0.2,    2.526e21, 2.698,  250000,   7.0,     2215754.2,  1210000,   0.03,     9646660,      False, 1,   3),
-    ("Eve",    "planet", "Kerbol", 9832684540,  0.01,   1.224e23, 16.677, 700000,   2.1,     5657995.1,  80500,     2.64,     85109360,     False, 2,   3),
-    ("Gilly",  "moon",   "Eve",    31500000,    0.55,   1.242e17, 0.049,  13000,    12.0,    388587.4,   28255,     1.2,      126120,       False, 3,   1),
-    ("Kerbin", "planet", "Kerbol", 13599840260, 0.0,    5.292e22, 9.81,   600000,   0.0,     9203544.6,  21549,     23.44,    84159290,     True,  1,   3),
-    ("Mun",    "moon",   "Kerbin", 12000000,    0.0,    9.760e20, 1.628,  200000,   0.0,     138984.4,   138984,    6.68,     2429560,      False, 5,   1),
-    ("Minmus", "moon",   "Kerbin", 47000000,    0.0,    2.646e19, 0.491,  60000,    6.0,     1077310.5,  40400,     12.0,     2247430,      False, 6,   1),
+    # KSP bodies: sma_m/ecc/inc_deg/orb_s are None -- see ksp_bodies.csv.
+    ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     1e16,         False, 0.1, 1),
+    ("Moho",   "planet", "Kerbol", None,        None,   2.526e21, 2.698,  250000,   None,    None,       1210000,   0.03,     9646660,      False, 1,   3),
+    ("Eve",    "planet", "Kerbol", None,        None,   1.224e23, 16.677, 700000,   None,    None,       80500,     2.64,     85109360,     False, 2,   3),
+    ("Gilly",  "moon",   "Eve",    None,        None,   1.242e17, 0.049,  13000,    None,    None,       28255,     1.2,      126120,       False, 3,   1),
+    ("Kerbin", "planet", "Kerbol", None,        None,   5.292e22, 9.81,   600000,   None,    None,       21549,     23.44,    84159290,     True,  1,   3),
+    ("Mun",    "moon",   "Kerbin", None,        None,   9.760e20, 1.628,  200000,   None,    None,       138984,    6.68,     2429560,      False, 5,   1),
+    ("Minmus", "moon",   "Kerbin", None,        None,   2.646e19, 0.491,  60000,    None,    None,       40400,     12.0,     2247430,      False, 6,   1),
     # Shay: Kerbin's L4 trojan, 60 deg ahead on the same circle. Its orbital
     # period is Kerbin's exactly -- anything else and it drifts off L4.
     # Day = 21549.425 s: Eerbon's day, ported verbatim with the rest of it.
     # r = 550 km at the old density: mass ~ R^3, g ~ R, and the SOI
     # (Kerbin's SOI x (M/M_kerbin)^(1/3)) ~ R at the same orbit.
     ("Shay",   "planet", "Kerbol", 13599840260, 0.0,    4.0762e22, 8.9933, 550000,   0.0,     9203544.6,  21549.425, 5.0,      77146016,     True,  0,   3,  60),
-    ("Duna",   "planet", "Kerbol", 20726155260, 0.05,   4.515e21, 2.943,  320000,   0.06,    17315400.1, 65518,     25.19,    47921950,     False, 7,   3),
-    ("Ike",    "moon",   "Duna",   3200000,     0.03,   2.782e20, 1.099,  130000,   0.2,     65517.9,    65518,     1.76,     1049600,      False, 8,   1),
-    ("Dres",   "planet", "Kerbol", 40839348200, 0.15,   3.219e20, 1.128,  138000,   5.0,     47893063.1, 34800,     4.0,      32832840,     False, 9,   3),
-    ("Jool",   "planet", "Kerbol", 68773560320, 0.05,   4.233e24, 7.848,  6000000,  1.304,   104661432.1,36000,     3.13,     2455985190,   False, 10,  3),
-    ("Laythe", "moon",   "Jool",   27184000,    0.0,    2.940e22, 7.848,  500000,   0.0,     52980.9,    52981,     0.5,      3723650,      True,  11,  3),
-    ("Vall",   "moon",   "Jool",   43152000,    0.0,    3.109e21, 2.305,  300000,   0.0,     105962.1,   105962,    2.0,      2406400,      False, 12,  1),
-    ("Tylo",   "moon",   "Jool",   68500000,    0.0,    4.233e22, 7.848,  600000,   0.025,   211926.4,   211926,    0.2,      10856520,     False, 13,  3),
-    ("Bop",    "moon",   "Jool",   128500000,   0.23,   3.726e19, 0.589,  65000,    15.0,    544507.4,   544507,    25.0,     1221060,      False, 14,  1),
-    ("Pol",    "moon",   "Jool",   179890000,   0.17,   1.081e19, 0.373,  44000,    4.25,    901902.6,   901903,    10.0,     1042140,      False, 15,  1),
-    ("Eeloo",  "planet", "Kerbol", 90118820000, 0.26,   1.115e21, 1.687,  210000,   6.15,    156992048.4,19460,     122.5,    119082940,    False, 16,  3),
+    ("Duna",   "planet", "Kerbol", None,        None,   4.515e21, 2.943,  320000,   None,    None,       65518,     25.19,    47921950,     False, 7,   3),
+    ("Ike",    "moon",   "Duna",   None,        None,   2.782e20, 1.099,  130000,   None,    None,       65518,     1.76,     1049600,      False, 8,   1),
+    ("Dres",   "planet", "Kerbol", None,        None,   3.219e20, 1.128,  138000,   None,    None,       34800,     4.0,      32832840,     False, 9,   3),
+    ("Jool",   "planet", "Kerbol", None,        None,   4.233e24, 7.848,  6000000,  None,    None,       36000,     3.13,     2455985190,   False, 10,  3),
+    ("Laythe", "moon",   "Jool",   None,        None,   2.940e22, 7.848,  500000,   None,    None,       52981,     0.5,      3723650,      True,  11,  3),
+    ("Vall",   "moon",   "Jool",   None,        None,   3.109e21, 2.305,  300000,   None,    None,       105962,    2.0,      2406400,      False, 12,  1),
+    ("Tylo",   "moon",   "Jool",   None,        None,   4.233e22, 7.848,  600000,   None,    None,       211926,    0.2,      10856520,     False, 13,  3),
+    ("Bop",    "moon",   "Jool",   None,        None,   3.726e19, 0.589,  65000,    None,    None,       544507,    25.0,     1221060,      False, 14,  1),
+    ("Pol",    "moon",   "Jool",   None,        None,   1.081e19, 0.373,  44000,    None,    None,       901903,    10.0,     1042140,      False, 15,  1),
+    ("Eeloo",  "planet", "Kerbol", None,        None,   1.115e21, 1.687,  210000,   None,    None,       19460,     122.5,    119082940,    False, 16,  3),
 ]
 
 # ---------------------------------------------------------------------------
