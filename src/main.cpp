@@ -56,6 +56,7 @@
 #include "vehicle.h"
 #include "radialtest.h"
 #include "ships.h"
+#include "game.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -238,6 +239,31 @@ int main(int argc, char **argv)
        along the orbit binormal. */
     Ships ships(args.parts_file, partsshader, sun);
 
+    // The running game: borrows the subsystems above and owns the runtime
+    // state (camera, clock, active ship, input/UI flags, the orbit-camera
+    // focus targets, the UI window registry) plus the control transitions
+    // (select/remove a ship, enter rails warp, toggle the windows -- see
+    // game.cpp). The event dispatch (events.cpp) and the loop below drive
+    // it through this, so the state has a single home.
+    Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
+
+    // The runtime state lives in `game`. These local references keep the
+    // loop body reading exactly as before; they alias game's members, so
+    // the writes here and the control transitions in game.cpp hit the same
+    // storage. (redraw / screenshot_count / dt / currentTime / accumulator
+    // are pure loop bookkeeping and stay local.)
+    Vehicle *&ship = game.ship;
+    int &activeIdx = game.activeIdx;
+    Camera *&camera = game.camera;
+    int &camMode = game.camMode;
+    int &time_accel = game.time_accel;
+    int &cam_speed = game.cam_speed;
+    bool &rmbCam = game.rmbCam;
+    bool &poly_mode = game.poly_mode;
+    bool &screenshot_requested = game.screenshot_requested;
+    bool &running = game.running;
+    int &focusBody = game.focusBody;
+
     std::vector<FleetEntry> fleet_entries;
     if(!args.fleet_file.empty()) {
         fleet_entries = load_fleet(args.fleet_file.c_str()).ships;
@@ -267,10 +293,10 @@ int main(int argc, char **argv)
     ships.apply_scenarios(sys);
 
     /* the active (player-controlled) ship: Tab / the SHIPS window switch
-       it; the local `ship` below always points at it, so the HUD, camera,
-       input and draw code follow the active ship without special cases. */
-    int activeIdx = 0;
-    Vehicle *ship = ships[0];
+       it; game.ship always points at it (activeIdx starts at 0, the first
+       ship), so the HUD, camera, input and draw code follow the active
+       ship without special cases. */
+    ship = ships[0];
 
     /* Idle ships park on rails: flying ones coast on their conic, pad
        ships freeze in the surface frame (their pose rides the planet's
@@ -351,10 +377,10 @@ int main(int argc, char **argv)
     }
     FreeCamera *freeCam = new FreeCamera(freeCamPos, freeCamFwd, freeCamUp,
                                          camFov, camAspect, camZNear, camZFar);
-    Camera *camera = orbitCam;   // active camera
-
-    enum CameraMode { CAM_ORBIT, CAM_FREE };
-    CameraMode camMode = CAM_ORBIT;
+    game.orbitCam = orbitCam;
+    game.freeCam = freeCam;
+    camera = orbitCam;   // active camera
+    camMode = CAM_ORBIT;
     if(args.use_free_cam) {
         camMode = CAM_FREE;
         camera = freeCam;
@@ -362,43 +388,24 @@ int main(int argc, char **argv)
 
     // Bodies the orbit camera can target (the ship is the default). Built from
     // the loaded system: the ship, then every body in the system (in file
-    // order), so G cycles through all of them.
-    struct FocusTarget { const char *name; TerrainBody *body; };
-    std::vector<FocusTarget> focusTargets;
-    focusTargets.push_back({ "ship", nullptr });
+    // order), so G cycles through all of them. game.focusWorldPos() resolves
+    // one to a ship-frame position.
+    game.focusTargets.push_back({ "ship", nullptr });
     for (TerrainBody *b : sys.bodies) {
-        focusTargets.push_back({ b->name.c_str(), b });
+        game.focusTargets.push_back({ b->name.c_str(), b });
     }
-    const int numFocusTargets = (int)focusTargets.size();
-    int focusBody = 0;   // index into focusTargets
+    game.numFocusTargets = (int)game.focusTargets.size();
 
-    // World (ship-frame) position of a focus target, to point the orbit
-    // camera at it each frame.
-    auto focusWorldPos = [&](int i) -> glm::dvec3 {
-        if (focusTargets[i].body == nullptr) {
-            return ship->get_center_of_mass();
-        }
-        return focusTargets[i].body->frame->GetPositionRelTo(ship->frame);
-    };
-
-    bool running = true;
     bool redraw = false;
-    bool screenshot_requested = false;
     int screenshot_count = 0;
-    bool poly_mode = false;
-    bool rmbCam = false;
     SDL_SetRelativeMouseMode(SDL_FALSE);
 
     const double dt = 1.0/50.0; // TODO explain why 50
 
-    /* Rails warp: at this accel and above nobody is integrated -- every
-       ship coasts on rails (or sits frozen on the ground) and the Bullet
-       world is not stepped at all, so the cost per tick is O(ships).
-       Below it the active ship is always in the physics world. */
-    const int kRailsWarp = 10000;
+    // kRailsWarp is defined in game.h (the rails-warp threshold).
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
-    int time_accel = args.initial_time_accel;
+    time_accel = args.initial_time_accel;
 
     /* Starting the game directly in rails warp: the active ship parks
        too (works on the pad -- that is the frozen mode), unless some
@@ -420,7 +427,7 @@ int main(int argc, char **argv)
             time_accel = 1000;
         }
     }
-    int cam_speed = 1;
+    cam_speed = 1;
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
@@ -471,22 +478,21 @@ int main(int argc, char **argv)
     // Transfer planner: target selection + dv readouts.
     ui::Options o_transfer = info_opts(ui::Slot::Center);
     o_transfer.default_open = false;
-    ui::Options o_hud;
-    o_hud.fixed = true;
-    o_hud.closable = false;
-    o_hud.default_open = true;
-    o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
-    o_hud.slot = ui::Slot::TopCenter;
+    game.o_hud.fixed = true;
+    game.o_hud.closable = false;
+    game.o_hud.default_open = true;
+    game.o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
+    game.o_hud.slot = ui::Slot::TopCenter;
     ui::Options o_mainmenu = info_opts(ui::Slot::Center);
     o_mainmenu.fixed = true;
     o_mainmenu.closable = false;
     o_mainmenu.default_open = false;
 
-    struct UiWin { const char *name, *label; ui::Options opts; };
-    std::vector<UiWin> ui_windows;
+    // The registry lives on the game (game.ui_windows): the TAB toggle and
+    // the main-menu "Toggle windows" read it there.
     auto add_ui_window = [&](const char *name, const char *label,
                              const ui::Options &o) {
-        ui_windows.push_back(UiWin{name, label, o});
+        game.ui_windows.push_back(Game::UiWin{name, label, o});
     };
     add_ui_window("RESOURCES", "Resources", o_resources);
     add_ui_window("ORBITAL", "Orbit Info", o_orbit);
@@ -503,18 +509,9 @@ int main(int argc, char **argv)
     add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
     add_ui_window("TELEMETRY", "Telemetry", o_telemetry);
     add_ui_window("TRANSFER", "Transfer", o_transfer);
-    const char *const hud_windows[1] = { "HUD" };
-    bool ui_visible = true; // TAB toggle: is the UI shown?
-    // Shared by the TAB keybind and the main menu's "Toggle windows" button.
-    auto toggle_windows = [&]() {
-        ui_visible = !ui_visible;
-        for(auto &w : ui_windows) {
-            ui::SetOpen(w.name, ui_visible && w.opts.default_open);
-        }
-        for(auto *h : hud_windows) {
-            ui::SetOpen(h, ui_visible && o_hud.default_open);
-        }
-    };
+    // The TAB toggle + the main-menu "Toggle windows" button call
+    // game.toggle_windows() (game.cpp), which flips game.ui_visible and
+    // re-opens every registry window (plus the HUD) from their defaults.
 
     double time = 0;
 
@@ -606,86 +603,9 @@ int main(int argc, char **argv)
         skyline_xy->InitMesh(xyinterface);
     }
 
-    // Switch the active (controlled) ship. The ship being left is released:
-    // throttle zeroed, armed thrust + rotation commands cleared, and it
-    // parks on rails (coasting or frozen) if it can. The ship being taken
-    // re-enters physics. Taking control during rails warp drops the warp
-    // to 1000 -- the active ship is now being integrated. The orbit
-    // camera recenters on the ship being taken.
-    auto select_ship = [&](int idx) {
-        if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
-        ships[activeIdx]->releaseControl();
-        ships[activeIdx]->goOnRails();
-        activeIdx = idx;
-        ships[activeIdx]->leaveRails();
-        ship = ships[activeIdx];
-        if(time_accel >= kRailsWarp) { time_accel = 1000; }
-        focusBody = 0;   // back to the "ship" focus target
-        if(camMode == CAM_ORBIT) {
-            orbitCam->Follow(ship->get_center_of_mass());
-            orbitCam->distance = 50.0;
-        }
-        printf("Active ship %d of %d: %s\n",
-               activeIdx + 1, (int)ships.size(), ship->name.c_str());
-    };
-
-    /* Enter rails warp: park every ship (flying ones coast on their
-       conic, grounded ones freeze on the ground). Refuses -- and keeps
-       the current accel -- if any ship is not rail-eligible, e.g. a
-       suborbital descent in progress. */
-    auto enter_rails_warp = [&]() -> bool {
-        for(auto *s : ships) {
-            if(!s->canRail()) {
-                printf("Rails warp refused: '%s' is neither in free fall nor "
-                       "grounded (warp stays %d)\n", s->name.c_str(), time_accel);
-                return false;
-            }
-        }
-        for(auto *s : ships) { s->goOnRails(); }
-        return true;
-    };
-
     /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
        scenario + park on rails; appended at the end so it is never the
        active one. Called as ships.spawn_ship(def, name, home, sc, sys). */
-
-    /* Runtime removal: delete a ship and its bookkeeping. The Vehicle dtor
-       detaches the welds and unregisters the bodies (skipped when the ship
-       is already parked on rails), so this is safe in any state. Refuses to
-       remove the last ship. If the removed ship was active, control hands
-       off to the next ship in the list (or the last one). */
-    auto remove_ship = [&](int idx) {
-        if(idx < 0 || idx >= (int)ships.size()) { return; }
-        if(ships.size() <= 1) {
-            printf("Refusing to remove the last ship\n");
-            return;
-        }
-        Vehicle *v = ships[idx];
-        const bool wasActive = (idx == activeIdx);
-        const std::string removedName = v->name;
-        if(wasActive) { v->releaseControl(); }
-
-        ships.erase_ship((size_t)idx);   // erase the 4 fleet vectors + delete v
-
-        if(wasActive) {
-            activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;
-            ships[activeIdx]->leaveRails();
-            ship = ships[activeIdx];
-            if(time_accel >= kRailsWarp) { time_accel = 1000; }
-            focusBody = 0;
-            if(camMode == CAM_ORBIT) {
-                orbitCam->Follow(ship->get_center_of_mass());
-                orbitCam->distance = 50.0;
-            }
-            printf("Removed '%s'; active ship %d of %d: %s\n",
-                   removedName.c_str(), activeIdx + 1, (int)ships.size(),
-                   ship->name.c_str());
-        } else {
-            if(idx < activeIdx) { activeIdx--; }
-            printf("Removed '%s' (active unchanged: %s)\n",
-                   removedName.c_str(), ship->name.c_str());
-        }
-    };
 
     /* --selftest-spawn: exercise the runtime spawn/remove path. Spawn a copy
        of the active ship, remove it, then spawn-select-remove the active one
@@ -714,7 +634,7 @@ int main(int argc, char **argv)
 
             // 2) remove the ship we just spawned -> size back to base,
             //    active unchanged
-            remove_ship(sp);
+            game.remove_ship(sp);
             printf("remove 1: size=%zu activeIdx=%d\n", ships.size(), activeIdx);
             if(ships.size() != base || activeIdx != origActive) { ok = false; }
 
@@ -722,10 +642,10 @@ int main(int argc, char **argv)
             //    control must hand off and the size return to base
             int sp2 = ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
                                        ships.scenarioOf(activeIdx), sys);
-            select_ship(sp2);
+            game.select_ship(sp2);
             printf("spawn 2 + select: activeIdx=%d size=%zu\n", activeIdx, ships.size());
             if(activeIdx != sp2) { ok = false; }
-            remove_ship(activeIdx);
+            game.remove_ship(activeIdx);
             printf("remove 2 (active): activeIdx=%d size=%zu\n", activeIdx, ships.size());
             if(ships.size() != base) { ok = false; }
 
@@ -910,7 +830,7 @@ int main(int argc, char **argv)
                         // coasts (or freezes on the ground) and the physics
                         // world stops stepping; refuses if any ship is not
                         // rail-eligible.
-                        if(enter_rails_warp()) {
+                        if(game.enter_rails_warp()) {
                             time_accel *= 10;
                             printf("Rails warp: time accel %d (ships on rails)\n",
                                    time_accel);
@@ -952,7 +872,7 @@ int main(int argc, char **argv)
                         camMode = CAM_FREE;
                         camera = freeCam;
                     } else {
-                        glm::dvec3 focus = focusWorldPos(focusBody);
+                        glm::dvec3 focus = game.focusWorldPos(focusBody);
                         orbitCam->Follow(focus);
                         double dist = glm::length(freeCam->pos - focus);
                         if(dist < 10.0) { dist = 10.0; }
@@ -960,19 +880,20 @@ int main(int argc, char **argv)
                         camMode = CAM_ORBIT;
                         camera = orbitCam;
                         printf("Camera: orbiting %s (G = switch body, C = free)\n",
-                               focusTargets[focusBody].name);
+                               game.focusTargets[focusBody].name);
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_g) {
                     // Cycle the orbit camera's target body.
                     if(camMode == CAM_ORBIT) {
-                        focusBody = (focusBody + 1) % numFocusTargets;
-                        orbitCam->Follow(focusWorldPos(focusBody));
-                        double d = (focusTargets[focusBody].body == nullptr)
+                        focusBody = (focusBody + 1) % game.numFocusTargets;
+                        orbitCam->Follow(game.focusWorldPos(focusBody));
+                        double d = (game.focusTargets[focusBody].body == nullptr)
                             ? 50.0
-                            : (double)focusTargets[focusBody].body->radius * 3.0;
+                            : (double)game.focusTargets[focusBody].body->radius * 3.0;
                         orbitCam->distance = d;
-                        printf("Orbit camera targeting %s\n", focusTargets[focusBody].name);
+                        printf("Orbit camera targeting %s\n",
+                               game.focusTargets[focusBody].name);
                     } else {
                         printf("In free flight; press C to go to orbit, then G to switch body.\n");
                     }
@@ -981,7 +902,7 @@ int main(int argc, char **argv)
                     // toggle the info windows (one-shot; auto-repeat would
                     // just keep flipping)
                     if(!ev.key.repeat) {
-                        toggle_windows();
+                        game.toggle_windows();
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_F6) {
@@ -989,7 +910,7 @@ int main(int argc, char **argv)
                     // (one-shot; auto-repeat would keep cycling). No-op with a
                     // single ship: the next index is the current one.
                     if(!ev.key.repeat && ships.size() > 1) {
-                        select_ship((activeIdx + 1) % (int)ships.size());
+                        game.select_ship((activeIdx + 1) % (int)ships.size());
                     }
                 }
                 if(ev.key.keysym.sym == SDLK_SPACE) {
@@ -1312,7 +1233,7 @@ int main(int argc, char **argv)
             com = ship->get_center_of_mass();
 
             if(camMode == CAM_ORBIT) {
-                camera->Follow(focusWorldPos(focusBody));
+                camera->Follow(game.focusWorldPos(focusBody));
             }
 
             // Render frame origin = the active ship's COM (both are in
@@ -1704,7 +1625,7 @@ int main(int argc, char **argv)
                inertial frame or above 30km ASL, else surface (terrain
                altitude + ground speed) in the rotating frame.
                Row 2: Kerbin clock (regular font, centered). */
-            ui::Window("HUD", o_hud, [&] {
+            ui::Window("HUD", game.o_hud, [&] {
                 const double asl = distance - ship->m_parent->radius;
                 const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
                 const bool surface_mode = ship->frame->isRotFrame() && asl < 30000.0;
@@ -1737,21 +1658,19 @@ int main(int argc, char **argv)
                 }
             });
 
-            /* Window list (single source of truth: the ui_windows table)
-               plus the Top-HUD group switch. */
+            /* Window list (single source of truth: the game.ui_windows
+               table) plus the Top-HUD group switch. */
             ui::Window("Windows", o_menu, [&] {
                 ImGui::Spacing();
-                for(auto &w : ui_windows) {
+                for(auto &w : game.ui_windows) {
                     bool open = ui::IsOpen(w.name);
                     if(ImGui::Checkbox(w.label, &open)) {
                         ui::SetOpen(w.name, open);
                     }
                 }
-                bool hud = ui::IsOpen(hud_windows[0]);
+                bool hud = ui::IsOpen("HUD");
                 if(ImGui::Checkbox("Top HUD", &hud)) {
-                    for(auto *h : hud_windows) {
-                        ui::SetOpen(h, hud);
-                    }
+                    ui::SetOpen("HUD", hud);
                 }
             });
 
@@ -1995,14 +1914,14 @@ int main(int argc, char **argv)
                                          ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
                 }
                 if(ImGui::Button(ships[i]->name.c_str())) {
-                    select_ship((int)i);
+                    game.select_ship((int)i);
                 }
                 if(active) {
                     ImGui::PopStyleColor(3);
                 }
                 ImGui::SameLine();
                 if(ImGui::SmallButton("x")) {
-                    remove_ship((int)i);
+                    game.remove_ship((int)i);
                     i = ships.size();   // the list shrank; stop iterating
                 }
                 ImGui::PopID();
@@ -2490,7 +2409,7 @@ int main(int argc, char **argv)
             ui::Window("Main Menu", o_mainmenu, [&] {
                 ImGui::PushFont(bigger);
                 if(ImGui::Button("Toggle windows", ImVec2(240.0f, 0.0f))) {
-                    toggle_windows();
+                    game.toggle_windows();
                 }
                 if(ImGui::Button("Reset windows", ImVec2(240.0f, 0.0f))) {
                     ui::ResetGui();
