@@ -133,7 +133,6 @@ public:
     double exhaust_scale = 1.0;  // test knob (Settings / --exhaust-scale):
                                  // scales ve, so thrust and delta-v scale with
                                  // it (the fuel burn does not); synced per tick
-    float thrust_mag = 0.0;   /* N this tick (sum of m_armedThrust); armed by ApplyThrust, cleared by clearThrust */
 
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
        (applyRotationForce, before every stepSimulation) -- like thrust,
@@ -488,7 +487,6 @@ public:
     /* disarm the armed thrust (called once per tick, like clearRotCmd,
        so a tick without the keys doesn't keep firing) */
     void clearThrust() {
-        thrust_mag = 0.0f;
         for(size_t i = 0; i < m_armedThrust.size(); i++) { m_armedThrust[i] = 0.0f; }
     }
 
@@ -685,7 +683,6 @@ private:
        before any fuel is spent. */
     void ApplyThrust(double step) {
         if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
-        thrust_mag = 0.0f;
         const int as = activeStage();
         for(size_t i = 0; i < m_thrusters.size(); i++) {
             if(m_thrusterStage[i] != as) { continue; } /* not the live stage */
@@ -696,7 +693,6 @@ private:
                 {
                     m_armedThrust[i] =
                         (float)(m_thrusterThrust[i] * thruster_util * exhaust_scale);
-                    thrust_mag += m_armedThrust[i];
                     m_thrust = 1.0;
                 }
         }
