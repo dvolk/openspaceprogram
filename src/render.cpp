@@ -116,7 +116,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
     }
 
     for(auto&& planet : planets) {
-        planet->Update(camera);
+        planet->Update(camera, g.args.terrain_px);
         if(g.world_drawing == true) {
             planet->Draw(camera, sun, ship->frame);
         }

@@ -121,18 +121,30 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
     }
 }
 
-void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform) {
-    const glm::dvec3& camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
-    const glm::dvec3& centroid_pos = body->GetTerrainHeight(glm::normalize(camera_pos)) * centroid;
-    const float dist = glm::length(camera_pos - centroid_pos);
-    const float subdiv = 2.0f * body->radius * glm::length(v0 - centroid);
+void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px) {
+    const glm::dvec3 camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
+    // Distance to this patch's OWN surface point: the height is sampled
+    // at the patch direction (an earlier version sampled it at the camera
+    // direction, which mis-measured the distance on slopes).
+    const glm::dvec3 centroid_pos = (double)body->GetTerrainHeight(centroid) * (glm::dvec3)centroid;
+    const double dist = glm::length(camera_pos - centroid_pos);
 
-    if(depth < max_depth and dist < subdiv) {
+    // Projected patch width in screen pixels (small-angle; exact in the
+    // small-patch regime that matters here). A patch subdivides while it
+    // projects wider than max_patch_px and collapses below half of that --
+    // the hysteresis band keeps the LOD from flapping near the boundary.
+    // The budget is in px (not metres or degrees) so it follows FOV,
+    // zoom, and window size/resolution automatically.
+    const double width_m = (double)body->radius * glm::length(v0 - v3);
+    const double fov_h = 2.0 * std::atan(std::tan(camera->fov * 0.5) * (double)camera->aspect);
+    const double px_width = (width_m / dist) * ((double)camera->viewport_h / fov_h);
+
+    if(depth < max_depth and px_width > (double)max_patch_px) {
         if(kids[0] == NULL) {
             Subdivide();
         }
     }
-    else if(dist > subdiv * 2) {
+    else if(px_width < (double)max_patch_px * 0.5) {
         delete kids[0];
         delete kids[1];
         delete kids[2];
@@ -144,10 +156,10 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform) {
     }
 
     if(kids[0] != NULL) {
-        kids[0]->Update(camera, transform);
-        kids[1]->Update(camera, transform);
-        kids[2]->Update(camera, transform);
-        kids[3]->Update(camera, transform);
+        kids[0]->Update(camera, transform, max_patch_px);
+        kids[1]->Update(camera, transform, max_patch_px);
+        kids[2]->Update(camera, transform, max_patch_px);
+        kids[3]->Update(camera, transform, max_patch_px);
     }
 }
 

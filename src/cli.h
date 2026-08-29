@@ -48,6 +48,10 @@ struct GameArgs {
     float font_size = 14.0f;
     int frame_cap = 60;
     float camFovDeg = 60.0f;
+    // terrain LOD: a patch subdivides while it projects wider than this
+    // [px]. 1024 = coarsest (default; fastest startup, the e2e env
+    // renders in software), 256 = visual sweet spot, 32 = finest.
+    int terrain_px = 1024;
 
     std::vector<double> free_cam_pos;
     std::vector<double> free_cam_fwd;

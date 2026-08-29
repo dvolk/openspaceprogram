@@ -123,7 +123,9 @@ struct GeoPatch {
     // skirt_pass=false draws the terrain (stamping stencil), true draws
     // only the skirt ring where the stencil says no terrain was drawn
     void Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec, bool skirt_pass);
-    void Update(const Camera* camera, const glm::dmat4& transform);
+    // max_patch_px: subdivide while the patch projects wider than this
+    // [screen px]; collapse below half (the hysteresis band)
+    void Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px);
 
     int CountChildren() {
         int ret = 1;
@@ -278,9 +280,9 @@ struct TerrainBody {
         glDisable(GL_STENCIL_TEST);
     }
 
-    void Update(const Camera* camera) {
+    void Update(const Camera* camera, int max_patch_px) {
         for(auto&& patch : patches) {
-            patch->Update(camera, transform);
+            patch->Update(camera, transform, max_patch_px);
         }
     }
 

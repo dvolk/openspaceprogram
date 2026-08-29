@@ -193,6 +193,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "adjustable in the Settings window)")
         ->check(CLI::Range(10.0f, 120.0f));
 
+    app.add_option("--terrain-px", args.terrain_px,
+                   "Terrain LOD: a patch subdivides while it projects "
+                   "wider than this [screen px] (1024 = coarsest, default; "
+                   "256 = good balance; 32 = finest, ~1px per mesh edge; "
+                   "adjustable in the Settings window)")
+        ->check(CLI::Range(32, 1024));
+
     // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,
                    "Start in the free camera at this world position: X Y Z "

@@ -127,6 +127,10 @@ void poll_events(Game &g) {
                 check_gl_error();
 
                 g.camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
+                // both cameras: the terrain LOD reads the active one, and
+                // either can become active
+                g.orbitCam->setViewport(ev.window.data1, ev.window.data2);
+                g.freeCam->setViewport(ev.window.data1, ev.window.data2);
                 check_gl_error();
             }
         }

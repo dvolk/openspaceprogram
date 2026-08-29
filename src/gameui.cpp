@@ -179,6 +179,26 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             orbitCam->setFov(f);
             freeCam->setFov(f);
         }
+        // Terrain LOD: a patch subdivides while it projects wider than
+        // args.terrain_px (read live by GeoPatch::Update). The slider is
+        // a 6-step detail level, right = finer: 1024px is the coarsest
+        // and fastest to generate (the default), 256px the visual sweet
+        // spot, 32px ~= 1px per mesh edge (slowest on software GL).
+        {
+            const int terrain_px_table[] = { 1024, 512, 256, 128, 64, 32 };
+            const int nlevels = 6;
+            int terrain_level = 0, best = -1;
+            for (int i = 0; i < nlevels; i++) {
+                const int d = std::abs(args.terrain_px - terrain_px_table[i]);
+                if (best < 0 || d < best) { best = d; terrain_level = i; }
+            }
+            char terrain_label[48];
+            snprintf(terrain_label, sizeof(terrain_label),
+                     "Terrain detail (%d px)", terrain_px_table[terrain_level]);
+            if(ImGui::SliderInt(terrain_label, &terrain_level, 0, nlevels - 1)) {
+                args.terrain_px = terrain_px_table[terrain_level];
+            }
+        }
         ImGui::Spacing();
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
             ui::SetOpen("Settings", false);

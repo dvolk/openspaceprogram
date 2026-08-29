@@ -15,6 +15,8 @@ public:
     glm::dvec3 forward;
     glm::dvec3 up;
     float fov, aspect, zNear, zFar;
+    int viewport_w = 1;   // window size [px]; setViewport() on create/resize
+    int viewport_h = 1;   // used for screen-space terrain LOD (GeoPatch::Update)
 
     // Origin of the render frame, in world coordinates (e.g. the active
     // ship's COM). ComputeView() builds the view in this frame, so its
@@ -36,6 +38,7 @@ public:
     virtual void wheel(double amt) {}
 
     void setAspect(float _aspect);
+    void setViewport(int w, int h);
     void setFov(float _fov);
     const glm::dvec3& GetPos() const;
     const glm::dvec3& GetRenderOrigin() const { return renderOrigin; }

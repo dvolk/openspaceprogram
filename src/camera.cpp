@@ -6,6 +6,11 @@ void Camera::setAspect(float _aspect) {
     this->projection = glm::perspective(fov, _aspect, zNear, zFar);
 }
 
+void Camera::setViewport(int w, int h) {
+    this->viewport_w = w;
+    this->viewport_h = h;
+}
+
 void Camera::setFov(float _fov) {
     this->fov = _fov;
     this->projection = glm::perspective(fov, aspect, zNear, zFar);

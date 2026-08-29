@@ -373,6 +373,10 @@ int main(int argc, char **argv)
     }
     FreeCamera *freeCam = new FreeCamera(freeCamPos, freeCamFwd, freeCamUp,
                                          camFov, camAspect, camZNear, camZFar);
+    // both cameras: the terrain LOD (screen-px budget) reads the active
+    // one, and either can become active
+    orbitCam->setViewport(display.get_width(), display.get_height());
+    freeCam->setViewport(display.get_width(), display.get_height());
     game.orbitCam = orbitCam;
     game.freeCam = freeCam;
     camera = orbitCam;   // active camera
