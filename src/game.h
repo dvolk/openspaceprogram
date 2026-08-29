@@ -21,12 +21,23 @@
 #include "camera.h"   // Camera, OrbitCamera, FreeCamera
 #include "cli.h"      // GameArgs
 #include "display.h"  // Renderer
+#include "orbit.h"    // OrbitElements (the ShipView state)
 #include "postfx.h"   // PostFX
 #include "ships.h"    // Ships
+#include "siminput.h" // TimeSeries (the ShipView telemetry)
 #include "system.h"   // System
 #include "terrain.h"  // TerrainBody
 #include "ui.h"       // ui::Options
 #include "vehicle.h"  // Vehicle
+
+// Render resources (render.cpp draws with them; main owns their lifetime).
+// Forward-declared so Game can hold them by pointer without pulling their
+// headers into every includer.
+struct Billboard;
+struct Mesh;
+struct Model;
+struct Shader;
+struct Skybox;
 
 // Rails warp threshold: at this accel (and above) nobody is integrated --
 // every ship coasts on rails (or sits frozen on the ground) and the Bullet
@@ -37,6 +48,45 @@ static const int kRailsWarp = 10000;
 
 // The active camera (was a local `enum CameraMode` in main).
 enum CameraMode { CAM_ORBIT, CAM_FREE };
+
+// The active ship's per-frame state in the render frame (ship->frame):
+// computed once per drawn frame by the 3D pass (render.cpp) and read by
+// the UI readouts (HUD / ORBITAL / SURFACE / TELEMETRY / the map) and the
+// TRANSFER planner. Was the local cluster in main's render section (com /
+// vel / o / the orbit + surface state / the attitude and lat-lon scalars /
+// the telemetry series).
+struct ShipView {
+    // render-frame (ship->frame) state
+    glm::dvec3 pos;      // the ship's COM
+    glm::dvec3 vel;
+    // the surface frame (the body's rotating frame, when the ship is on one)
+    glm::dvec3 surf_pos;
+    glm::dvec3 surf_vel;
+    // the orbit conic, in the ship's non-rotating (inertial) frame
+    glm::dvec3 orbit_pos;
+    glm::dvec3 orbit_vel;
+    OrbitElements o;
+    double distance = 0;  // |orbit_pos|
+    double speed = 0;     // |orbit_vel|
+    double mu = 0;        // the parent body's mu (the conic's)
+    // attitude readouts (render frame)
+    glm::dvec3 up;
+    glm::dvec3 facing;
+    glm::dvec3 other;
+    glm::dvec3 facing_dir;
+    glm::dvec3 vel_dir;
+    // surface + orientation scalars (the SURFACE window)
+    double ver_speed = 0;
+    double hor_speed2 = 0;
+    double latitude = 0;
+    double longitude = 0;
+    double heading = 0;
+    double pitch = 0;
+    double roll = 0;
+    // telemetry (sampled once per drawn frame)
+    TimeSeries energy_series;
+    TimeSeries angmom_series;
+};
 
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
@@ -84,6 +134,33 @@ struct Game {
     bool screenshot_requested = false;
     int activeIdx = 0;             // the player-controlled ship
     Vehicle *ship = nullptr;       // always ships[activeIdx]
+
+    // --- render resources (render.cpp draws with them) ---------------------
+    // main creates + deletes them (the teardown at the end of main); they
+    // are handed over here once they exist.
+    Skybox *skybox = nullptr;
+    Shader *skyboxshader = nullptr;
+    Shader *lineshader = nullptr;
+    Model *engine_plume_model = nullptr;
+    Mesh *skyline_xz = nullptr;
+    Mesh *skyline_xy = nullptr;
+    Billboard *front_indicator = nullptr;
+    Billboard *prograde_indicator = nullptr;
+    Billboard *retrograde_indicator = nullptr;
+    Billboard *radial_in_indicator = nullptr;
+    Billboard *radial_out_indicator = nullptr;
+    Billboard *normal_plus_indicator = nullptr;
+    Billboard *normal_minus_indicator = nullptr;
+    Billboard *burn_indicator = nullptr;
+
+    // --- the draw toggles (the Settings window writes, render.cpp reads) --
+    bool physics_debug_drawing = false;
+    bool world_drawing = true;
+    bool draw_starfield = true;
+    bool draw_skylines = false;
+
+    // --- the active ship's per-frame state (render.cpp writes it) ----------
+    ShipView view;
 
     // --- orbit camera focus targets (the ship + every body; G cycles) ------
     struct FocusTarget { const char *name; TerrainBody *body; };

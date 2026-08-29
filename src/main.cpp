@@ -60,6 +60,7 @@
 #include "game.h"
 #include "events.h"
 #include "tick.h"
+#include "render.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -78,10 +79,6 @@ ImFont *bigger;
 /* ResourceType / ResourceContent / PartDef live in shipdef.h (the GL-free
    ship/part data model), shared with the JSON loaders and the headless
    tests. */
-
-glm::dvec3 projectVecOntoPlane(const glm::dvec3 & vec, const glm::dvec3 & normal) {
-    return vec - glm::dot(vec, normal) * normal;
-}
 
 int main(int argc, char **argv)
 {
@@ -426,10 +423,11 @@ int main(int argc, char **argv)
         }
     }
     cam_speed = 1;
-    bool physics_debug_drawing = false;
-    bool world_drawing = true;
-    bool draw_starfield = true;
-    bool draw_skylines = false;
+    // The Settings window toggles the 3D pass's draw gates (render.cpp).
+    bool &physics_debug_drawing = game.physics_debug_drawing;
+    bool &world_drawing = game.world_drawing;
+    bool &draw_starfield = game.draw_starfield;
+    bool &draw_skylines = game.draw_skylines;
     // 0=dark 1=light 2=classic (classic = imgui's default palette)
     int ui_style = 2;
     float window_rounding = 0.0f; // imgui default
@@ -549,10 +547,6 @@ int main(int argc, char **argv)
     float &xfer_tof_log = xferPlanner.xfer_tof_log;
     auto &xfer = xferPlanner.xfer;
 
-    // Telemetry plots (active ship, sampled once per rendered frame).
-    TimeSeries energy_series;
-    TimeSeries angmom_series;
-
     Skybox skybox;
     skybox.init();
 
@@ -575,6 +569,46 @@ int main(int argc, char **argv)
         skyline_xz->InitMesh(xzinterface);
         skyline_xy->InitMesh(xyinterface);
     }
+
+    // Hand the render resources to the game (render.cpp draws with them;
+    // main still owns their lifetime, the teardown below).
+    game.skybox = &skybox;
+    game.skyboxshader = skyboxshader;
+    game.lineshader = lineshader;
+    game.engine_plume_model = engine_plume_model;
+    game.skyline_xz = skyline_xz;
+    game.skyline_xy = skyline_xy;
+    game.front_indicator = front_indicator;
+    game.prograde_indicator = prograde_indicator;
+    game.retrograde_indicator = retrograde_indicator;
+    game.radial_in_indicator = radial_in_indicator;
+    game.radial_out_indicator = radial_out_indicator;
+    game.normal_plus_indicator = normal_plus_indicator;
+    game.normal_minus_indicator = normal_minus_indicator;
+    game.burn_indicator = burn_indicator;
+
+    // The 3D pass (render.cpp) emits the active ship's per-frame state
+    // into game.view; the UI readouts below name the old locals.
+    glm::dvec3 &pos = game.view.pos;
+    glm::dvec3 &vel = game.view.vel;
+    OrbitElements &o = game.view.o;
+    double &distance = game.view.distance;
+    double &speed = game.view.speed;
+    double &mu = game.view.mu;
+    glm::dvec3 &surf_vel = game.view.surf_vel;
+    glm::dvec3 &facing_dir = game.view.facing_dir;
+    glm::dvec3 &vel_dir = game.view.vel_dir;
+    glm::dvec3 &orbit_pos = game.view.orbit_pos;
+    glm::dvec3 &orbit_vel = game.view.orbit_vel;
+    TimeSeries &energy_series = game.view.energy_series;
+    TimeSeries &angmom_series = game.view.angmom_series;
+    double &ver_speed = game.view.ver_speed;
+    double &hor_speed2 = game.view.hor_speed2;
+    double &latitude = game.view.latitude;
+    double &longitude = game.view.longitude;
+    double &pitch = game.view.pitch;
+    double &roll = game.view.roll;
+    double &yaw = game.view.heading;
 
     /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
        scenario + park on rails; appended at the end so it is never the
@@ -701,9 +735,6 @@ int main(int argc, char **argv)
         /*
           RENDERING
         */
-        // Render scratch: the active ship's COM in the render frame.
-        glm::dvec3 com;
-
         if(game.redraw == true) {
             check_gl_error();
             ImGui_ImplOpenGL3_NewFrame();
@@ -719,251 +750,9 @@ int main(int argc, char **argv)
             postfx->Begin();  // no-op unless --postfx effects are active
             display.Clear(0, 0, 0, 1);
 
-            com = ship->get_center_of_mass();
-
-            if(camMode == CAM_ORBIT) {
-                camera->Follow(game.focusWorldPos(focusBody));
-            }
-
-            // Render frame origin = the active ship's COM (both are in
-            // ship->frame, the render frame). The view is built there and
-            // the Draw sites shift geometry by -renderOrigin, so the
-            // float32 cast works on ship-relative numbers.
-            camera->renderOrigin = com;
-            camera->ComputeView();
-
-            /*
-              standard 3d stuff drawn here
-            */
-
-            if(world_drawing == true) {
-                // one per home body; StaticBuilding::Draw culls itself when
-                // the active ship is not on that body
-                for(auto &kv : ships.pads()) {
-                    kv.second->Draw(camera, ship->m_parent, ship->frame);
-                }
-                // render frame = the active ship's frame; idle ships in a
-                // different frame are transformed into it in Vehicle::Draw
-                for(auto *s : ships) { s->Draw(camera, ship->frame); }
-            }
-
-            for(auto&& planet : planets) {
-                if(planet == ship->m_parent) {
-                    //this is the planet we're on. This means its position is always 0, 0, 0
-
-                    if(ship->frame->isRotFrame()) {
-                        // we're in its rotational frame
-                        planet->transform = glm::dmat4(1.0);
-                    }
-                    else {
-                        // we're in its inertial frame
-                        planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
-                    }
-                }
-                else {
-                    // other planets
-                    glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
-                    planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
-                }
-            }
-
-            for(auto&& planet : planets) {
-                planet->Update(camera);
-                if(world_drawing == true) {
-                    planet->Draw(camera, sun, ship->frame);
-                }
-            }
-
-            /*
-              end 3d stuff drawn here
-            */
-
-            const double mu = ship->m_parent->mu;
-
-            glm::dvec3 getRelAxis_(Body *body, int n);
-            // surf pos??
-            const glm::dvec3 pos = com;
-            /* orbital velocity */
-            glm::dvec3 vel = ship->GetVel();
-
-            // The orbit is a Kepler conic in the body's INERTIAL (non-rotating)
-            // frame — that is the frame the spawn/switching code targets and
-            // the frame in which the ship's trajectory is a conic.
-            glm::dvec3 orbit_pos = pos;
-            glm::dvec3 orbit_vel = vel;
-            if(ship->frame->isRotFrame() == true) {
-                Frame *inertial = ship->frame->getNonRotFrame();
-                orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
-                orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
-                orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos + ship->frame->GetPositionRelTo(inertial);
-            }
-
-            // Surface-relative state: the ship's position/velocity in the
-            // ROTATING frame (i.e. relative to the ground).
-            glm::dvec3 surf_pos = pos;
-            glm::dvec3 surf_vel = vel;
-
-            if(ship->frame->isRotFrame() == false and
-               ship->frame->hasRotFrame() == true) {
-                Frame *rot = ship->frame->getRotFrame();
-                surf_pos = ship->frame->GetOrientRelTo(rot) * pos;
-                surf_vel = ship->frame->GetOrientRelTo(rot) * vel
-                         - rot->GetStasisVelocity(surf_pos);
-            }
-
-            const OrbitElements o = computeOrbitElements(orbit_pos, orbit_vel, mu);
-            const double distance = o.distance;
-            const double speed = o.speed;
-
-            // Telemetry: e and |h| are the two conserved 2-body constants,
-            // so a drifting plot = integrator drift; steps = burns/staging.
-            energy_series.push(time, o.energy);
-            angmom_series.push(time, o.ang_momentum);
-
-            const glm::dvec3 up = getRelAxis_(ship->controller, 1);
-            const glm::dvec3 facing = getRelAxis_(ship->controller, 2);
-            const glm::dvec3 other = getRelAxis_(ship->controller, 0);
-
-            const glm::dvec3 facing_dir = glm::normalize(facing);
-            const glm::dvec3 vel_dir = glm::normalize(vel);
-
-            const glm::dvec3 _up = glm::normalize(pos);
-            const glm::dvec3 _north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), _up));
-            const glm::dvec3 _east = glm::cross(_up, _north);
-
-            const double ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
-            const double hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, _up)); // m/s
-
-            const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
-
-            const double hedNorth = glm::dot(groundHed, _north);
-            const double hedEast = glm::dot(groundHed, _east);
-            const double heading = wrapAngleToPositive(atan2(hedEast, hedNorth));
-
-            const double yaw = heading;
-            const double pitch = asin(glm::dot(_up, facing));
-            const double roll =
-                glm::orientedAngle(glm::normalize(projectVecOntoPlane(-pos, glm::normalize(facing))),
-                                   glm::normalize(-up),
-                                   glm::normalize(facing));
-
-            // ImGui::Text("pos: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
-            // ImGui::Text("facing: %.2f %.2f %.2f", facing.x, facing.y, facing.z);
-            // ImGui::Text("up: %.2f %.2f %.2f", up.x, up.y, up.z);
-            // ImGui::Text("other: %.2f %.2f %.2f", other.x, other.y, other.z);
-            // ImGui::Text("Ground hed: %.2f %.2f %.2f", groundHed.x, groundHed.y, groundHed.z);
-            // ImGui::Text("Pitch: %.2f", glm::degrees(pitch));
-            // ImGui::Text("Heading: %.2f", glm::degrees(heading));
-            // ImGui::Text("up: %.2f, %.2f, %.2f", up.x, up.y, up.z);
-            // ImGui::Text("facing: %.2f, %.2f, %.2f", facing.x, facing.y, facing.z);
-
-            const glm::dvec3 dir = glm::normalize(surf_pos);
-
-            const double longitude = atan2(dir.x, dir.z);
-            const double latitude = asin(dir.y);
-
-            if(draw_starfield) {
-                skybox.Draw(camera, skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
-            }
-
-            // Atmosphere rims: transparent Fresnel shells, drawn after the
-            // skybox (the starfield is the background) so the rim ring blends
-            // over it and the horizon haze blends over the already-drawn
-            // terrain. Depth-write off; no-ops for bodies without an
-            // atmosphere. See reports/atmosphere2026_08_25.
-            if(world_drawing == true) {
-                for(auto&& planet : planets) {
-                    planet->DrawAtmosphere(camera, sun, ship->frame);
-                }
-            }
-
-            /* draw engine plume */
-            glm::dmat4 View = camera->GetView();
-            glm::mat4 Projection = camera->GetProjection();
-            if(ship->m_thrust > 0) {
-                for(size_t t = 0; t < ship->m_thrusters.size(); t++) {
-                    /* the plume mesh is authored for the base part
-                       (radius 1 m, height 2 m): scale it to this thruster's
-                       size so the tail lands on the engine tail (-h/2) */
-                    const glm::dvec2 &dim = ship->m_thrusterDims[t];
-                    glm::dmat4 Model = ship->m_thrusters[t]->model_matrix
-                        * glm::dmat4(glm::dmat3(dim.x, 0.0, 0.0,
-                                                 0.0, dim.x, 0.0,
-                                                 0.0, 0.0, dim.y / 2.0));
-                    // shifted into the render frame, like the view
-                    glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
-                    engine_plume_model->shader->Bind();
-                    engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
-                    engine_plume_model->shader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
-                    engine_plume_model->shader->setUniform_vec3(2, glm::vec3(1, 1, 1));
-
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, engine_plume_model->texture->id);
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_ONE, GL_ONE);
-                    glDisable(GL_CULL_FACE);
-                    engine_plume_model->mesh->Draw();
-                    glEnable(GL_CULL_FACE);
-                    glDisable(GL_BLEND);
-                    glBindTexture(GL_TEXTURE_2D, 0);
-                }
-            }
-            /* end draw engine plume */
-
-            /* Transfer planner: rebuild the target list, recompute the
-               solution on input change or every 30 frames, and fire the
-               --xfer-log (transferplanner.cpp). com / vel are this
-               render pass's ship COM / velocity. */
-            xferPlanner.update(com, vel);
-
-            glDisable(GL_DEPTH_TEST);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            front_indicator->pos = facing;
-            front_indicator->Draw(camera, M_PI /* <- ?? */ + roll);
-            prograde_indicator->pos = vel;
-            prograde_indicator->Draw(camera, M_PI);
-            retrograde_indicator->pos = - vel;
-            retrograde_indicator->Draw(camera, M_PI);
-            radial_in_indicator->pos = - pos;
-            radial_in_indicator->Draw(camera, M_PI);
-            radial_out_indicator->pos = pos;
-            radial_out_indicator->Draw(camera, M_PI);
-            normal_plus_indicator->pos = glm::cross(pos, vel);
-            normal_plus_indicator->Draw(camera, M_PI);
-            normal_minus_indicator->pos = -glm::cross(pos, vel);
-            normal_minus_indicator->Draw(camera, M_PI);
-            // Transfer burn direction (TRANSFER window target selected):
-            // KSP-blue prograde icon pointing where the departure burn goes.
-            if(xfer.valid && glm::length(xfer.burn_dir) > 0.0) {
-                burn_indicator->pos = xfer.burn_dir;
-                burn_indicator->Draw(camera, M_PI);
-            }
-            // horizon_indicator->pos = groundHed;
-            // horizon_indicator->Draw(camera, M_PI);
-
-            if(draw_skylines) {
-                glLineWidth(4);
-                lineshader->Bind();
-                lineshader->setUniform_mat4(0, glm::dmat4(camera->GetProjection()) * glm::dmat4(glm::dmat3(camera->GetView())));
-                // XZ plane (flat / orbital-equatorial reference): green
-                lineshader->setUniform_vec4(1, glm::vec4(0, 1, 0, 0.5));
-                skyline_xz->Draw(GL_LINE_LOOP);
-                // XY plane (vertical / meridian reference): magenta
-                lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
-                skyline_xy->Draw(GL_LINE_LOOP);
-            }
-
-            glDisable(GL_BLEND);
-            glEnable(GL_DEPTH_TEST);
-
-            if(physics_debug_drawing == true) {
-                glDisable(GL_DEPTH_TEST);
-                debug_draw(camera);
-                glEnable(GL_DEPTH_TEST);
-            }
-
-            postfx->End();  // no-op unless --postfx effects are active
+            // The 3D pass (render.cpp): the world, the active ship's
+            // per-frame state (game.view) and the overlays.
+            draw3d(game, xferPlanner);
 
             /*
               ImGui stuff below

@@ -49,6 +49,12 @@ inline double wrapAngleToPositive(const double theta) {
     return theta >= 0.0 ? theta : M_PI * 2 + theta;
 }
 
+// Project a vector onto the plane through the origin with the given
+// (unit or not) normal: v - (v.n) n.
+inline glm::dvec3 projectVecOntoPlane(const glm::dvec3 &vec, const glm::dvec3 &normal) {
+    return vec - glm::dot(vec, normal) * normal;
+}
+
 inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec3 &vel, double mu) {
     const double distance = glm::length(pos);
     const double speed = glm::length(vel);
