@@ -157,9 +157,13 @@ test:
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on
 # $(TARGET). Runs headless via xvfb-run; on a machine with a real display it
 # uses that instead. Stdlib Python only.
+# Cases run in parallel (run.py --jobs, default 2); override with JOBS,
+# e.g. `make e2e JOBS=4` or `make e2e JOBS=1` for serial.
+JOBS ?=
+E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
 .PHONY: e2e
 e2e: $(TARGET)
-	python3 e2e/run.py
+	python3 e2e/run.py $(E2E_JOBS)
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
 # setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws

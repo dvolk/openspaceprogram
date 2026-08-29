@@ -5,6 +5,8 @@ Usage:
   python3 e2e/run.py            run all cases
   python3 e2e/run.py orbit      run only cases matching "orbit"
   python3 e2e/run.py smoke 02   run cases matching "smoke" or "02"
+  python3 e2e/run.py --jobs 4   run up to 4 cases in parallel
+                                (default: 2; --jobs 1 = serial)
 
 Each test is a case file in e2e/cases/*.txt with these keys (one per line,
 `#` starts a comment):
@@ -33,16 +35,19 @@ Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
 Stdlib only. Run from anywhere; the repo root is derived from this file.
 """
 
+import argparse
 import glob
 import os
 import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
 DEFAULT_LIMIT = 120.0
+DEFAULT_JOBS = 2
 
 ORBIT_RE = re.compile(
     r"\[orbitlog\]\s+t=([\d.]+)s\s+frame=\"([^\"]*)\"\s+r=([-\d.e+]+) m\s+"
@@ -263,13 +268,34 @@ def available_names(case_files):
     return names
 
 
+def run_one(path):
+    """Parse and run one case; return (name, passed, diag). Never raises."""
+    try:
+        case = parse_cases(path)
+    except ValueError as e:
+        return os.path.basename(path), False, ["bad case file: %s" % e]
+    try:
+        passed, diag = run_case(case)
+    except Exception as e:
+        return case["name"], False, ["runner error: %r" % e]
+    return case["name"], passed, diag
+
+
 def main():
-    argv = sys.argv[1:]
-    if "--help" in argv or "-h" in argv:
-        print(__doc__)
-        print("usage: run.py [CASE ...]   (run all cases when none given)")
-        return 0
-    selectors = argv
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("selectors", nargs="*",
+                        help="case name/filename substring(s) to run; "
+                             "default: all cases")
+    parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+                        help="max cases to run in parallel (1 = serial; "
+                             "default: 2)")
+    args = parser.parse_args()
+    if args.jobs < 1:
+        parser.error("--jobs must be >= 1")
+    selectors = args.selectors
 
     all_files = sorted(glob.glob(os.path.join(CASES_DIR, "*.txt")))
     if not all_files:
@@ -282,15 +308,15 @@ def main():
         print("available: %s" % ", ".join(available_names(all_files)))
         return 1
 
-    results = []
-    for path in case_files:
-        try:
-            case = parse_cases(path)
-        except ValueError as e:
-            results.append((os.path.basename(path), False, ["bad case file: %s" % e]))
-            continue
-        passed, diag = run_case(case)
-        results.append((case["name"], passed, diag))
+    # Cases are independent: each gets its own Xvfb display (xvfb-run -a
+    # retries on a taken display) and captures its own stdout, so they can
+    # run concurrently. map() preserves input order, so the summary prints
+    # in case-file order regardless of which case finishes first.
+    if args.jobs == 1:
+        results = [run_one(p) for p in case_files]
+    else:
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            results = list(pool.map(run_one, case_files))
 
     width = max(len(n) for n, _, _ in results)
     fails = 0
