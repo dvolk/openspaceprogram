@@ -59,12 +59,13 @@
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post processing flags
 
+#include "cli.h"
+
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/imgui/backends/imgui_impl_sdl2.h"
 #include "../middleware/imgui/backends/imgui_impl_opengl3.h"
 #include "../middleware/implot/implot.h"
 
-#include <CLI11/CLI11.hpp>
 
 ImFont *bigger;
 
@@ -97,353 +98,18 @@ int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
 
-    CLI::App app{"Open Space Program"};
+    GameArgs args;
+    int exit_code = 1;
+    if(!parse_cli(argc, argv, args, &exit_code)) { return exit_code; }
 
-    std::string body_name;
-    app.add_option("--body", body_name,
-        "Body the ship starts on / orbits (default: the system's home body)");
-
-    std::string scenario = "pad";
-    app.add_option("--scenario", scenario,
-        "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
-        "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid "
-        "(the ellipse-* scenarios are a 10x1000 km ASL orbit started at "
-        "periapsis, apoapsis, or halfway by angle between them; default: pad)")
-        ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
-                               "inertial-orbit", "high-orbit", "high-polar",
-                               "ellipse-peri", "ellipse-apo", "ellipse-mid"}));
-
-    std::string system_file = "res/ksp_system.json";
-    app.add_option("--system", system_file,
-                   "Star-system JSON file to load (default: res/ksp_system.json; "
-                   "try res/old_system.json for the Eerbon system)");
-
-    std::string parts_file = "res/parts.json";
-    app.add_option("--parts", parts_file,
-                   "Parts catalog JSON (default: res/parts.json)");
-
-    std::vector<std::string> ship_files;
-    app.add_option("--ship", ship_files,
-                   "Ship def JSON to build; repeat the flag to build more "
-                   "ships (they share the body/scenario, each getting its "
-                   "own pad slot / orbit slot). A uniform-fleet shorthand "
-                   "-- --fleet overrides it. Default: res/ships/racer.json");
-
-    std::string fleet_file;
-    app.add_option("--fleet", fleet_file,
-                   "Fleet JSON (default: none; then --ship applies). One "
-                   "entry per ship, each with its own ship def, name, body "
-                   "and scenario; omitted body/scenario fall back to "
-                   "--body/--scenario. Ships sharing a body+scenario get "
-                   "their own pad slot / orbit slot. Try res/fleet.json");
-
-    /* Spin-instrumentation mode: build a test ship (no JSON ship def)
-       and log its spin + the internal contact torque each tick.
-       radial     = part B welded to part A's side, axes PERPENDICULAR
-       parallel   = part B welded to part A's side, axes PARALLEL
-                    (side by side, off-axis anchor)
-       stacked    = part B welded on A's axis (known-good baseline)
-       stacks     = two 2-part stacks side by side, 2nd stack PERPENDICULAR
-       parstacks  = two 2-part stacks side by side, ALL axes PARALLEL
-       All parts are passive tanks (no wheels/thrusters), so any spin
-       is self-inflicted. */
-    std::string radial_test;
-    app.add_option("--radial-test", radial_test,
-                   "Build the spin-test ship(s) instead of a fleet: "
-                   "radial | parallel | stacked | stacks | parstacks")
-        ->check(CLI::IsMember({"radial", "parallel", "stacked", "stacks",
-                               "parstacks"}));
-
-    int initial_time_accel = 0;
-    app.add_option("-t,--time-accel", initial_time_accel,
-                   "Initial time acceleration (0 = paused, default 0)")
-        ->check(CLI::NonNegativeNumber);
-
-    double timeout_seconds = 0.0;
-    app.add_option("--timeout", timeout_seconds,
-                   "Auto-exit the main loop after this many wall-clock "
-                   "seconds (0 = run until closed; default: 0)")
-        ->check(CLI::NonNegativeNumber);
-
-    std::vector<std::string> sim_press;
-    app.add_option("--sim-press", sim_press,
-                   "Synthetic keypresses for e2e testing: a flat list of "
-                   "START_MS,DURATION_MS,KEY triples (e.g. 500,200,SPACE, "
-                   "1500,100,I; spaces also separate values). KEY is an SDL "
-                   "key name (A..Z, SPACE, TAB, F1-F12, ...) or a decimal "
-                   "SDL keycode. The key is pressed START_MS after the main "
-                   "loop starts and held for DURATION_MS. Repeat the flag "
-                   "to append more triples.")
-        ->delimiter(',');
-
-    std::vector<std::string> sim_mouse;
-    app.add_option("--sim-mouse", sim_mouse,
-                   "Synthetic mouse input for e2e testing: a flat list of "
-                   "TIME_MS,DURATION_MS,X,Y,BTN quintuples (e.g. "
-                   "500,0,400,300,1 = click LMB at (400,300) after 500ms; "
-                   "500,600,900,500,RMB = RMB-drag to (900,500) over 600ms "
-                   "to orbit the camera; spaces also separate values). X,Y "
-                   "are absolute window pixels (the cursor moves there; the "
-                   "delta from the previous position drives the camera look: "
-                   "yaw = -dx/200 rad, pitch = +dy/200 rad, 200px ~= 1 rad). "
-                   "BTN is an SDL button code (1=LEFT, 2=MIDDLE, 3=RIGHT) or "
-                   "name (L/LEFT/LMB, M/MIDDLE/MMB, R/RIGHT/RMB); 0/NONE = "
-                   "move only. DURATION_MS>0 with a button = a drag (held); "
-                   "0 = a quick click. Repeat the flag to append more "
-                   "quintuples.")
-        ->delimiter(',');
-
-    bool selftest_spawn = false;
-    app.add_flag("--selftest-spawn", selftest_spawn,
-                 "Exercise the runtime spawn/remove path: spawn a copy of "
-                 "the active ship, remove it, then spawn-select-remove the "
-                 "active one (handoff), checking bookkeeping each step, and "
-                 "exit after a few physics ticks");
-
-    bool orbit_log = false;
-    app.add_flag("--orbit-log", orbit_log,
-                 "Periodically print the ship's orbital elements to stdout "
-                 "(for measuring orbital stability)");
-
-    double orbit_interval = 1.0;
-    app.add_option("--orbit-interval", orbit_interval,
-                   "Wall-clock seconds between --orbit-log lines (default: 1)")
-        ->check(CLI::PositiveNumber);
-
-    bool dbg_log = false;
-    app.add_flag("--dbg-log", dbg_log,
-                 "Periodically print ship position/altitude/velocity "
-                 "(surface-level companion to --orbit-log)");
-
-    bool xfer_log = false;
-    app.add_flag("--xfer-log", xfer_log,
-                 "Periodically print the transfer planner's solution to "
-                 "stdout (needs a target; --transfer-target selects one)");
-
-    std::string transfer_target;
-    app.add_option("--transfer-target", transfer_target,
-                   "Transfer planner target: a child body of the ship's "
-                   "current body, or another ship in the same body");
-
-    bool spin_log_enabled = false;
-    app.add_flag("--spin-log", spin_log_enabled,
-                 "Periodically print the ship's spin diagnostics (per-part "
-                 "angular velocities, inter-part contact impulses, tidal "
-                 "torque) to stdout; also implied by --radial-test");
-
-    std::vector<std::string> postfx_spec;
-    app.add_option("--postfx", postfx_spec,
-                   "Post-processing effect, in the order given; repeatable "
-                   "and/or comma-separated (e.g. --postfx cas,grain). "
-                   "Available: crt (retro tube look), grain (animated film "
-                   "grain), cas (adaptive-contrast sharpening, 'sharpen' "
-                   "also accepted). Omit for direct output (default)");
-
-    bool gl_debug = false;
-    app.add_flag("--gl-debug", gl_debug,
-                 "Enable the OpenGL debug output callback (GL_DEBUG_* "
-                 "messages print as they occur)");
-
-    int screen_width = 1920;
-    app.add_option("--width", screen_width,
-                   "Window width in pixels (used with --borderless and "
-                   "--exclusive; ignored with --fullscreen)")
-        ->check(CLI::PositiveNumber);
-    int screen_height = 1080;
-    app.add_option("--height", screen_height,
-                   "Window height in pixels (used with --borderless and "
-                   "--exclusive; ignored with --fullscreen)")
-        ->check(CLI::PositiveNumber);
-    bool fullscreen = false;
-    auto fs_opt = app.add_flag("--fullscreen", fullscreen,
-                               "Start in borderless fullscreen at the "
-                               "display's native resolution");
-    bool borderless = false;
-    auto bl_opt = app.add_flag("--borderless", borderless,
-                               "Start as a borderless window (no title bar) "
-                               "at --width/--height");
-    bool exclusive = false;
-    auto ex_opt = app.add_flag("--exclusive", exclusive,
-                               "Exclusive fullscreen: change the display "
-                               "mode to --width/--height (low latency, the "
-                               "only way to go non-native on X11). Note: "
-                               "SDL 2.32's X11 driver never restores the "
-                               "previous mode on exit (X11_QuitModes is a "
-                               "no-op), so restore it yourself with xrandr "
-                               "if it matters");
-    fs_opt->excludes(bl_opt);
-    fs_opt->excludes(ex_opt);
-    bl_opt->excludes(ex_opt);
-
-    std::string font_path = "./res/DejaVuSansMono.ttf";
-    app.add_option("--font", font_path,
-                   "TTF font file for all UI text; the normal and big faces "
-                   "are the same font (the big one at twice --font-size; "
-                   "default ./res/DejaVuSansMono.ttf)");
-
-    float font_size = 14.0f;
-    app.add_option("--font-size", font_size,
-                   "UI font size in pixels (the big HUD readout font is "
-                   "twice this; default 14)")
-        ->check(CLI::PositiveNumber);
-
-    int frame_cap = 60;
-    app.add_option("--frame-cap", frame_cap,
-                   "Max render frames per second (0 = uncapped; default 60). "
-                   "Without a cap the loop busy-spins between vsyncs, "
-                   "idling a CPU core at 100% even while paused")
-        ->check(CLI::NonNegativeNumber);
-
-    float camFovDeg = 60.0f;
-    app.add_option("--fov", camFovDeg,
-                   "Camera vertical field of view in degrees (default 60; "
-                   "adjustable in the Settings window)")
-        ->check(CLI::Range(10.0f, 120.0f));
-
-    // it's like a google maps link
-    std::vector<double> free_cam_pos;
-    app.add_option("--free-cam-pos", free_cam_pos,
-                   "Start in the free camera at this world position: X Y Z "
-                   "(ship-frame coordinates)")
-        ->expected(3);
-
-    std::vector<double> free_cam_fwd;
-    app.add_option("--free-cam-fwd", free_cam_fwd,
-                   "Initial free camera forward direction: X Y Z "
-                   "(normalised)")
-        ->expected(3);
-
-    std::vector<double> free_cam_up;
-    app.add_option("--free-cam-up", free_cam_up,
-                   "Initial free camera up direction: X Y Z (default: 0 1 0)")
-        ->expected(3);
-
-    try {
-        CLI11_PARSE(app, argc, argv);
-    } catch(const CLI::ParseError &e) {
-        return app.exit(e);
-    }
-
-    /* --sim-press: fold the flat START_MS,DURATION_MS,KEY list into press
-       entries. */
-    std::vector<SimKeyPress> sim_presses;
-    if(!sim_press.empty()) {
-        if(sim_press.size() % 3 != 0) {
-            printf("error: --sim-press expects START_MS,DURATION_MS,KEY "
-                   "triples; got %zu value(s)\n", sim_press.size());
-            return 1;
-        }
-        for(size_t i = 0; i < sim_press.size(); i += 3) {
-            char *end = nullptr;
-            const unsigned long t = strtoul(sim_press[i].c_str(), &end, 10);
-            if(end == sim_press[i].c_str() || *end != '\0') {
-                printf("error: --sim-press start time '%s' is not an "
-                       "integer ms\n", sim_press[i].c_str());
-                return 1;
-            }
-            const unsigned long d =
-                strtoul(sim_press[i + 1].c_str(), &end, 10);
-            if(end == sim_press[i + 1].c_str() || *end != '\0') {
-                printf("error: --sim-press duration '%s' is not an "
-                       "integer ms\n", sim_press[i + 1].c_str());
-                return 1;
-            }
-            const SDL_Keycode k = sim_parse_key(sim_press[i + 2]);
-            if(k == 0) {
-                printf("error: --sim-press key '%s' is not a known SDL "
-                       "keycode or name\n", sim_press[i + 2].c_str());
-                return 1;
-            }
-            SimKeyPress p;
-            p.down_ms = (Uint32)t;
-            p.up_ms = (Uint32)t + (Uint32)d;
-            p.key = k;
-            p.sc = SDL_SCANCODE_UNKNOWN; // resolved after SDL_Init (see below)
-            p.down_sent = false;
-            p.up_sent = false;
-            sim_presses.push_back(p);
-        }
-    }
-
-    /* --sim-mouse: fold the flat TIME_MS,DURATION_MS,X,Y,BTN list into
-       actions. X,Y are signed (the cursor can move up/left from where it
-       was), so they parse as strtol, unlike the unsigned times above. */
-    std::vector<SimMouseAction> sim_mouse_actions;
-    // Simulated cursor position (window pixels); each action's motion
-    // carries the delta from here, which is what the camera look consumes.
-    int sim_mouse_x = 0, sim_mouse_y = 0;
-    if(!sim_mouse.empty()) {
-        if(sim_mouse.size() % 5 != 0) {
-            printf("error: --sim-mouse expects TIME_MS,DURATION_MS,X,Y,BTN "
-                   "quintuples; got %zu value(s)\n", sim_mouse.size());
-            return 1;
-        }
-        for(size_t i = 0; i < sim_mouse.size(); i += 5) {
-            char *end = nullptr;
-            unsigned long v;
-            v = strtoul(sim_mouse[i].c_str(), &end, 10);
-            if(end == sim_mouse[i].c_str() || *end != '\0') {
-                printf("error: --sim-mouse time '%s' is not an "
-                       "integer ms\n", sim_mouse[i].c_str());
-                return 1;
-            }
-            const unsigned long t = v;
-            v = strtoul(sim_mouse[i + 1].c_str(), &end, 10);
-            if(end == sim_mouse[i + 1].c_str() || *end != '\0') {
-                printf("error: --sim-mouse duration '%s' is not an "
-                       "integer ms\n", sim_mouse[i + 1].c_str());
-                return 1;
-            }
-            const unsigned long d = v;
-            v = (unsigned long)strtol(sim_mouse[i + 2].c_str(), &end, 10);
-            if(end == sim_mouse[i + 2].c_str() || *end != '\0') {
-                printf("error: --sim-mouse X '%s' is not an "
-                       "integer pixel\n", sim_mouse[i + 2].c_str());
-                return 1;
-            }
-            const int x = (int)v;
-            v = (unsigned long)strtol(sim_mouse[i + 3].c_str(), &end, 10);
-            if(end == sim_mouse[i + 3].c_str() || *end != '\0') {
-                printf("error: --sim-mouse Y '%s' is not an "
-                       "integer pixel\n", sim_mouse[i + 3].c_str());
-                return 1;
-            }
-            const int y = (int)v;
-            const int b = sim_parse_button(sim_mouse[i + 4]);
-            if(b < 0) {
-                printf("error: --sim-mouse button '%s' is not a known SDL "
-                       "button code or name (0=none, 1=LEFT, 2=MIDDLE, "
-                       "3=RIGHT)\n", sim_mouse[i + 4].c_str());
-                return 1;
-            }
-            SimMouseAction a;
-            a.time_ms = (Uint32)t;
-            a.up_ms = (Uint32)t + (Uint32)d;
-            a.x = x;
-            a.y = y;
-            a.button = (Uint8)b;
-            a.started = false;
-            a.released = false;
-            sim_mouse_actions.push_back(a);
-        }
-    }
-
-    // Any of the --free-cam-* options opts in to starting in free-cam mode.
-    const bool use_free_cam = !free_cam_pos.empty() || !free_cam_fwd.empty()
-                            || !free_cam_up.empty();
-
-    const WindowMode window_mode =
-        exclusive  ? WindowMode::Exclusive
-        : fullscreen ? WindowMode::Fullscreen
-        : borderless ? WindowMode::Borderless
-                     : WindowMode::Windowed;
-    Renderer display(screen_width, screen_height, window_mode, gl_debug);
+    Renderer display(args.screen_width, args.screen_height, args.window_mode,
+                     args.gl_debug);
     check_gl_error();
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: resolve keycodes to scancodes now that SDL is initialized
        (SDL_GetScancodeFromKey needs SDL_Init; the CLI parse ran before the
        Renderer above created the video subsystem). */
-    for(auto &p : sim_presses) {
+    for(auto &p : args.sim_presses) {
         p.sc = SDL_GetScancodeFromKey(p.key);
         if(p.sc == SDL_SCANCODE_UNKNOWN) {
             printf("warning: --sim-press key %d has no scancode in the "
@@ -466,8 +132,8 @@ int main(int argc, char **argv)
     io.IniFilename = nullptr;
     // Normal and big faces are the same font (the big one at 2x size), so
     // the whole UI is one typeface; --font picks which.
-    io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_size);
-    bigger = io.Fonts->AddFontFromFileTTF(font_path.c_str(), 2.0f * font_size);
+    io.Fonts->AddFontFromFileTTF(args.font_path.c_str(), args.font_size);
+    bigger = io.Fonts->AddFontFromFileTTF(args.font_path.c_str(), 2.0f * args.font_size);
     check_gl_error();
 
     // start bullet; see physics.cpp
@@ -513,7 +179,7 @@ int main(int argc, char **argv)
     // Each --postfx value may itself be comma-separated, so both
     // --postfx crt,grain and --postfx crt --postfx grain work.
     std::vector<std::string> fx_names;
-    for(const std::string &spec : postfx_spec) {
+    for(const std::string &spec : args.postfx_spec) {
         size_t start = 0;
         while(start <= spec.size()) {
             size_t comma = spec.find(',', start);
@@ -549,13 +215,13 @@ int main(int argc, char **argv)
     }
     postfx->Resize(display.get_width(), display.get_height());
 
-    System sys = load_system(system_file.c_str(), terrainshader, sunshader);
+    System sys = load_system(args.system_file.c_str(), terrainshader, sunshader);
     TerrainBody *sun = sys.root;
     TerrainBody *home;
-    if(body_name.empty()) {
+    if(args.body_name.empty()) {
         home = sys.home;
     } else {
-        home = sys.find(body_name);
+        home = sys.find(args.body_name);
         if(home == nullptr) {
             std::string avail;
             for(size_t i = 0; i < sys.bodies.size(); i++) {
@@ -563,7 +229,7 @@ int main(int argc, char **argv)
                 avail += sys.bodies[i]->name;
             }
             printf("error: unknown body '%s' (available: %s)\n",
-                   body_name.c_str(), avail.c_str());
+                   args.body_name.c_str(), avail.c_str());
             return 1;
         }
     }
@@ -585,15 +251,15 @@ int main(int argc, char **argv)
        fall back to the CLI values. Ships sharing a (body, scenario) pair are
        slotted: pad slots 20 m apart along the pad, orbit slots 100 m apart
        along the orbit binormal. */
-    PartsCatalog part_catalog = load_parts_catalog(parts_file.c_str());
+    PartsCatalog part_catalog = load_parts_catalog(args.parts_file.c_str());
     std::vector<FleetEntry> fleet_entries;
-    if(!fleet_file.empty()) {
-        fleet_entries = load_fleet(fleet_file.c_str()).ships;
+    if(!args.fleet_file.empty()) {
+        fleet_entries = load_fleet(args.fleet_file.c_str()).ships;
     } else {
-        if(ship_files.empty()) { ship_files.push_back("res/ships/racer.json"); }
-        for(size_t i = 0; i < ship_files.size(); i++) {
+        if(args.ship_files.empty()) { args.ship_files.push_back("res/ships/racer.json"); }
+        for(size_t i = 0; i < args.ship_files.size(); i++) {
             FleetEntry e;
-            e.ship = ship_files[i];
+            e.ship = args.ship_files[i];
             fleet_entries.push_back(e);
         }
     }
@@ -692,7 +358,7 @@ int main(int argc, char **argv)
     };
 
     {
-        if(!radial_test.empty()) {
+        if(!args.radial_test.empty()) {
             /* --radial-test: minimal test ships built straight from the
                catalog (no JSON ship def). Passive tanks only -- no
                wheels, no thrusters -- so any spin is self-inflicted by
@@ -716,10 +382,8 @@ int main(int argc, char **argv)
 
             /* honor an explicit --scenario, otherwise orbit (no pad
                contact, no terrain noise in the spin measurement) */
-            const bool scenario_given = app.get_option("--scenario") != nullptr
-                && app.get_option("--scenario")->count() > 0;
             const ScenarioDef *sc = scenario_by_name(
-                scenario_given ? scenario : "rot-orbit");
+                args.scenario_given ? args.scenario : "rot-orbit");
 
             Vehicle *v = new Vehicle;
             v->m_parent = home;
@@ -750,7 +414,7 @@ int main(int argc, char **argv)
                 return create_body(model, 0, 0, 0, (float)def->mass, false);
             };
 
-            if(radial_test == "stacks") {
+            if(args.radial_test == "stacks") {
                 /* Two 2-part stacks, side by side. Pad normal = local +Z,
                    radial dir = local +X:
                      stack 1: A1 (tank_r5h5, root) + A2 (tank_r3h2)
@@ -799,7 +463,7 @@ int main(int argc, char **argv)
                 v->parts.push_back(b1);
                 v->parts.push_back(b2);
             }
-            else if(radial_test == "parstacks") {
+            else if(args.radial_test == "parstacks") {
                 /* Two 2-part stacks side by side with ALL axes PARALLEL
                    (pad normal = local +Z) -- the variant of 'stacks' where
                    the second stack is NOT rotated, so both stacks' axes
@@ -843,20 +507,20 @@ int main(int argc, char **argv)
                 v->parts.push_back(b2);
             }
             else {
-                v->name = (radial_test == "radial") ? "radial2"
-                           : (radial_test == "parallel") ? "parallel2" : "stack2";
+                v->name = (args.radial_test == "radial") ? "radial2"
+                           : (args.radial_test == "parallel") ? "parallel2" : "stack2";
                 Body *a = makeBody(defBig);
                 setPosRot(a, base, pad_orient);
                 Body *b = makeBody(defSml);
                 v->setRoot(a);
                 v->partDefs.push_back(defBig);
-                if(radial_test == "radial") {
+                if(args.radial_test == "radial") {
                     /* B's bottom face (-hB/2) touches A's side at +rA */
                     setPosRot(b, base + pad_orient * glm::dvec3(defBig->radius + defSml->height / 2.0, 0.0, 0.0),
                               pad_orient * rotZtoX);
                     v->attachRadial(b, defSml);
                 }
-                else if(radial_test == "parallel") {
+                else if(args.radial_test == "parallel") {
                     /* B's side touches A's side at +rA; both axes stay on
                        the pad normal (parallel). B at +X by rA + rB so the
                        cylindrical surfaces meet; anchor world point (rA,0,0)
@@ -910,7 +574,7 @@ int main(int argc, char **argv)
                 }
             }
             const ScenarioDef *sc =
-                scenario_by_name(fe.scenario.empty() ? scenario : fe.scenario);
+                scenario_by_name(fe.scenario.empty() ? args.scenario : fe.scenario);
             place_ship(fe.ship, fe.name, hb, sc);
         }
         }
@@ -984,7 +648,7 @@ int main(int argc, char **argv)
                      glm::vec4(0.2f, 0.45f, 1.0f, 1.0f));
 
     /* camera init */
-    const float camFov = (float)glm::radians(camFovDeg);
+    const float camFov = (float)glm::radians(args.camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped
     // it, or fullscreen may have used the display mode).
     const float camAspect = (float)display.get_width() / (float)display.get_height();
@@ -1000,14 +664,14 @@ int main(int argc, char **argv)
     glm::dvec3 freeCamPos  = orbitCam->GetPos();
     glm::dvec3 freeCamFwd  = orbitCam->GetForward();
     glm::dvec3 freeCamUp   = orbitCam->up;
-    if(free_cam_pos.size() == 3) { // TODO do we need these guards?
-        freeCamPos = glm::dvec3(free_cam_pos[0], free_cam_pos[1], free_cam_pos[2]);
+    if(args.free_cam_pos.size() == 3) { // TODO do we need these guards?
+        freeCamPos = glm::dvec3(args.free_cam_pos[0], args.free_cam_pos[1], args.free_cam_pos[2]);
     }
-    if(free_cam_fwd.size() == 3) {
-        freeCamFwd = glm::dvec3(free_cam_fwd[0], free_cam_fwd[1], free_cam_fwd[2]);
+    if(args.free_cam_fwd.size() == 3) {
+        freeCamFwd = glm::dvec3(args.free_cam_fwd[0], args.free_cam_fwd[1], args.free_cam_fwd[2]);
     }
-    if(free_cam_up.size() == 3) {
-        freeCamUp = glm::dvec3(free_cam_up[0], free_cam_up[1], free_cam_up[2]);
+    if(args.free_cam_up.size() == 3) {
+        freeCamUp = glm::dvec3(args.free_cam_up[0], args.free_cam_up[1], args.free_cam_up[2]);
     }
     FreeCamera *freeCam = new FreeCamera(freeCamPos, freeCamFwd, freeCamUp,
                                          camFov, camAspect, camZNear, camZFar);
@@ -1015,7 +679,7 @@ int main(int argc, char **argv)
 
     enum CameraMode { CAM_ORBIT, CAM_FREE };
     CameraMode camMode = CAM_ORBIT;
-    if(use_free_cam) {
+    if(args.use_free_cam) {
         camMode = CAM_FREE;
         camera = freeCam;
     }
@@ -1058,7 +722,7 @@ int main(int argc, char **argv)
     const int kRailsWarp = 10000;
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
-    int time_accel = initial_time_accel;
+    int time_accel = args.initial_time_accel;
 
     /* Starting the game directly in rails warp: the active ship parks
        too (works on the pad -- that is the frozen mode), unless some
@@ -1235,7 +899,7 @@ int main(int argc, char **argv)
     TimeSeries angmom_series;
 
     // --orbit-log: print at most once per wall-clock interval
-    const Uint32 orbit_log_interval_ms = (Uint32)(orbit_interval * 1000.0);
+    const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
     Uint32 orbit_log_last_ms = 0;
     /* Separate timestamp: the two logs share --orbit-interval but must not
        share the "last fired" time, or the earlier block in the loop always
@@ -1367,7 +1031,7 @@ int main(int argc, char **argv)
        expected fleet size + active index. Runs before the loop; the loop
        then takes a few physics ticks to prove the world is stable and exits. */
     int spawn_test_ticks = 0;
-    if(selftest_spawn) {
+    if(args.selftest_spawn) {
         if(ship->defPath.empty()) {
             printf("selftest-spawn: SKIP (active ship has no def: test ship)\n");
             running = false;
@@ -1416,17 +1080,17 @@ int main(int argc, char **argv)
     const double startup_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
     printf("Main loop starting: startup took %.3f s", startup_s);
-    if(timeout_seconds > 0.0) {
-        printf(" | auto-exit after %.1f s (wall clock)", timeout_seconds);
+    if(args.timeout_seconds > 0.0) {
+        printf(" | auto-exit after %.1f s (wall clock)", args.timeout_seconds);
     }
     printf("\n");
     fflush(stdout);
 
     // --frame-cap: budget per loop iteration (0 = uncapped). Physics stays
     // at its fixed 50 Hz off the wall clock regardless of this.
-    const int cap_ms = (frame_cap > 0) ? (int)(1000.0 / (double)frame_cap) : 0;
+    const int cap_ms = (args.frame_cap > 0) ? (int)(1000.0 / (double)args.frame_cap) : 0;
     if (cap_ms > 0) {
-        printf("frame cap: %d fps\n", frame_cap);
+        printf("frame cap: %d fps\n", args.frame_cap);
     } else {
         printf("frame cap: off (uncapped)\n");
     }
@@ -1438,9 +1102,9 @@ int main(int argc, char **argv)
         const Uint32 iter_start_ms = SDL_GetTicks();
 
         // --timeout: auto-exit once the wall-clock budget is spent.
-        if(timeout_seconds > 0.0) {
+        if(args.timeout_seconds > 0.0) {
             const double elapsed_s = (SDL_GetTicks() - loop_start_ms) * 0.001;
-            if(elapsed_s >= timeout_seconds) {
+            if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
                 running = false;
@@ -1464,7 +1128,7 @@ int main(int argc, char **argv)
            frame, in down-then-up order per press. They are polled below in
            the same frame, so one-shot actions fire in the frame the press
            is due. */
-        if(!sim_presses.empty()) {
+        if(!args.sim_presses.empty()) {
             const Uint32 now = SDL_GetTicks() - loop_start_ms;
             auto push_key = [&](SDL_EventType type, const SimKeyPress &p) {
                 SDL_Event kev = {0};
@@ -1476,7 +1140,7 @@ int main(int argc, char **argv)
                 kev.key.keysym.scancode = p.sc;
                 SDL_PushEvent(&kev);
             };
-            for(auto &p : sim_presses) {
+            for(auto &p : args.sim_presses) {
                 if(!p.down_sent && now >= p.down_ms) {
                     push_key(SDL_KEYDOWN, p);
                     p.down_sent = true;
@@ -1494,8 +1158,8 @@ int main(int argc, char **argv)
            (gated on rmbCam) sees the button down first; a click moves the
            cursor into place then presses + releases in place; BTN==0 just
            repositions. The motion carries the delta from the previous
-           simulated position (sim_mouse_x/y), which the camera consumes. */
-        if(!sim_mouse_actions.empty()) {
+           simulated position (args.sim_mouse_x/y), which the camera consumes. */
+        if(!args.sim_mouse_actions.empty()) {
             const Uint32 now = SDL_GetTicks() - loop_start_ms;
             auto push_motion = [&](int x, int y) {
                 SDL_Event mev = {0};
@@ -1504,12 +1168,12 @@ int main(int argc, char **argv)
                 mev.motion.which = 0;
                 mev.motion.x = x;
                 mev.motion.y = y;
-                mev.motion.xrel = x - sim_mouse_x;
-                mev.motion.yrel = y - sim_mouse_y;
+                mev.motion.xrel = x - args.sim_mouse_x;
+                mev.motion.yrel = y - args.sim_mouse_y;
                 mev.motion.state = 0;
                 SDL_PushEvent(&mev);
-                sim_mouse_x = x;
-                sim_mouse_y = y;
+                args.sim_mouse_x = x;
+                args.sim_mouse_y = y;
             };
             auto push_btn = [&](SDL_EventType type, int button, int x, int y) {
                 SDL_Event bev = {0};
@@ -1523,7 +1187,7 @@ int main(int argc, char **argv)
                 bev.button.y = y;
                 SDL_PushEvent(&bev);
             };
-            for(auto &a : sim_mouse_actions) {
+            for(auto &a : args.sim_mouse_actions) {
                 if(!a.started && now >= a.time_ms) {
                     if(a.button != 0 && a.up_ms > a.time_ms) {
                         // drag: press, then move (release comes at up_ms)
@@ -1766,9 +1430,9 @@ int main(int argc, char **argv)
                entry's window instead. */
             auto isDown = [&](SDL_Scancode sc) -> bool {
                 if(key[sc]) { return true; }
-                for(size_t i = 0; i < sim_presses.size(); i++) {
-                    if(sim_presses[i].sc == sc && sim_presses[i].down_sent
-                       && !sim_presses[i].up_sent) {
+                for(size_t i = 0; i < args.sim_presses.size(); i++) {
+                    if(args.sim_presses[i].sc == sc && args.sim_presses[i].down_sent
+                       && !args.sim_presses[i].up_sent) {
                         return true;
                     }
                 }
@@ -1900,7 +1564,7 @@ int main(int argc, char **argv)
                 /* --spin-log (or --radial-test): spin diagnostics, once per
                    0.5 s of sim time (after the last substep's solve, so the
                    reported impulses are that solve's). */
-                if(spin_log_enabled || !radial_test.empty()) {
+                if(args.spin_log_enabled || !args.radial_test.empty()) {
                     static double last_spin_log = -1e30;
                     if(time - last_spin_log >= 0.5) {
                         last_spin_log = time;
@@ -1911,7 +1575,7 @@ int main(int argc, char **argv)
 
             // --orbit-log: orbital elements, fit in the body's inertial
             // frame, where the ship's trajectory is a Kepler conic.
-            if(orbit_log) {
+            if(args.orbit_log) {
                 const Uint32 now_ms = SDL_GetTicks();
                 if(now_ms - orbit_log_last_ms >= orbit_log_interval_ms) {
                     orbit_log_last_ms = now_ms;
@@ -1942,7 +1606,7 @@ int main(int argc, char **argv)
             }
 
             // --dbg-log: ship pos/alt/vel in its own frame
-            if(dbg_log) {
+            if(args.dbg_log) {
                 const Uint32 now_ms = SDL_GetTicks();
                 if(now_ms - dbg_log_last_ms >= orbit_log_interval_ms) {
                     dbg_log_last_ms = now_ms;
@@ -2189,9 +1853,9 @@ int main(int argc, char **argv)
                 }
                 // --transfer-target: explicit selection (e2e / scripting);
                 // wins over the window's combo on every rebuild.
-                if(!transfer_target.empty()) {
+                if(!args.transfer_target.empty()) {
                     for(int i = 0; i < (int)xferTargets.size(); i++) {
-                        if(xferTargets[i].name == transfer_target) {
+                        if(xferTargets[i].name == args.transfer_target) {
                             xfer_target = i;
                         }
                     }
@@ -2288,7 +1952,7 @@ int main(int argc, char **argv)
 
             // --xfer-log: the planner's current solution (render pass, since
             // that is where the computation lives).
-            if(xfer_log && xfer_target >= 0) {
+            if(args.xfer_log && xfer_target >= 0) {
                 const Uint32 now_ms = SDL_GetTicks();
                 if(now_ms - xfer_log_last_ms >= orbit_log_interval_ms) {
                     xfer_log_last_ms = now_ms;
@@ -2443,8 +2107,8 @@ int main(int argc, char **argv)
                                      0.0f, 50.0f, "%.0f")) {
                     ImGui::GetStyle().WindowRounding = window_rounding;
                 }
-                if(ImGui::SliderFloat("FOV", &camFovDeg, 10.0f, 120.0f, "%.0f°")) {
-                    const float f = (float)glm::radians(camFovDeg);
+                if(ImGui::SliderFloat("FOV", &args.camFovDeg, 10.0f, 120.0f, "%.0f°")) {
+                    const float f = (float)glm::radians(args.camFovDeg);
                     orbitCam->setFov(f);
                     freeCam->setFov(f);
                 }
@@ -2566,7 +2230,7 @@ int main(int argc, char **argv)
                            camera->pos.x, camera->pos.y, camera->pos.z,
                            camera->forward.x, camera->forward.y, camera->forward.z,
                            camera->up.x, camera->up.y, camera->up.z,
-                           camFovDeg);
+                           args.camFovDeg);
                 }
                 ImGui::Text("Home distance: %f",
                             glm::length(ship->GetPositionRelTo(ship->controller,
