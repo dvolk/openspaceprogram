@@ -265,24 +265,36 @@ public:
         m_armedThrust.assign(m_thrusters.size(), 0.0f);
     }
 
-    /* Draw `amt` kg of `type` from a tank on the ACTIVE stage only (stages
-       are self-contained: a stage burns its own propellant, so the booster's
-       engines never drain the upper stage's tanks). Returns true if fuel was
-       consumed. amt is the kg consumed THIS tick (the caller scales the kg/s
-       flow by the tick's simulated time). */
+    /* Draw `amt` kg of `type` from the ACTIVE stage's tanks, pro-rata
+       across every tank that still holds it (stages are self-contained: a
+       stage burns its own propellant, so the booster's engines never drain
+       the upper stage's tanks). Pro-rata, NOT first-tank-first: draining
+       one tank to empty before its siblings shifts the ship's mass
+       distribution and torques it under thrust (the radial-tank spin);
+       shares proportional to each tank's contents keep a symmetric cluster
+       draining together, and empty the tanks simultaneously. Returns true
+       if the stage's total covers amt (else the thruster doesn't fire
+       this tick). amt is the kg consumed THIS tick (the caller scales the
+       kg/s flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */) {
         const int as = activeStage();
+        float total = 0;
         for(size_t i = 0; i < parts.size(); i++) {
             if(partStages[i] != as) { continue; }
-            if(partResources[i].current[(int)type] >= amt) {
-                partResources[i].current[(int)type] -= amt;
-                parts[i]->mass -= amt; /* why does Body have mass at all? */
-                void SetMass(Body *body, double newMass);
-                SetMass(parts[i], parts[i]->mass);
-                return true;
-            }
+            total += partResources[i].current[(int)type];
         }
-        return false;
+        if(total < amt) { return false; }
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(partStages[i] != as) { continue; }
+            const float have = partResources[i].current[(int)type];
+            if(have <= 0.0f) { continue; }
+            float take = amt * have / total; /* pro-rata share */
+            if(take > have) { take = have; } /* float rounding */
+            partResources[i].current[(int)type] = have - take;
+            parts[i]->mass -= (double)take; /* why does Body have mass at all? */
+            SetMass(parts[i], parts[i]->mass);
+        }
+        return true;
     }
 
     float getFuelMass(const std::vector /* eh */ <enum ResourceType>& types) {

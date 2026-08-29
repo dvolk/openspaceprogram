@@ -107,6 +107,14 @@ test:
 	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_thrust
 	./test_thrust
+	# fuel drain (the real Vehicle::consumeResourceMass from src/vehicle.h
+	# + the real SetMass): pro-rata across the active stage's tanks (not
+	# first-tank-first), stage gating, no stranded fuel, no partial drain.
+	# Same real-Bullet link as test_thrust (no GL context needed).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_fuel.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_fuel
+	./test_fuel
 	# rotation model (physical wheel torque, per-substep law, torque
 	# delivery): same real-Bullet link as test_thrust.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
@@ -180,7 +188,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).
