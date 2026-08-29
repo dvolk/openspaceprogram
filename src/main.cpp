@@ -55,6 +55,7 @@
 #include "system.h"
 #include "vehicle.h"
 #include "radialtest.h"
+#include "ships.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -73,23 +74,6 @@ ImFont *bigger;
 /* ResourceType / ResourceContent / PartDef live in shipdef.h (the GL-free
    ship/part data model), shared with the JSON loaders and the headless
    tests. */
-
-class StaticBuilding {
-public:
-    TerrainBody *parent;
-    TerrainBody *sun = nullptr; // the star (light source); set in main
-    Body *body;
-
-    void Draw(const Camera* camera, const TerrainBody *current, Frame *renderFrame) {
-        if(current == parent) {
-            const Frame *posFrame = parent->frame->getRotFrame();
-            const float shadow = ComputeTerrainShadow(parent, posFrame,
-                                                      GetPosition(body), sun);
-            glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(parent, sun, renderFrame));
-            body->Draw(camera, sunlightVec, shadow);
-        }
-    }
-};
 
 glm::dvec3 projectVecOntoPlane(const glm::dvec3 & vec, const glm::dvec3 & normal) {
     return vec - glm::dot(vec, normal) * normal;
@@ -252,7 +236,8 @@ int main(int argc, char **argv)
        fall back to the CLI values. Ships sharing a (body, scenario) pair are
        slotted: pad slots 20 m apart along the pad, orbit slots 100 m apart
        along the orbit binormal. */
-    PartsCatalog part_catalog = load_parts_catalog(args.parts_file.c_str());
+    Ships ships(args.parts_file, partsshader, sun);
+
     std::vector<FleetEntry> fleet_entries;
     if(!args.fleet_file.empty()) {
         fleet_entries = load_fleet(args.fleet_file.c_str()).ships;
@@ -265,133 +250,13 @@ int main(int argc, char **argv)
         }
     }
 
-    std::vector<Vehicle *> ships;
-    std::vector<TerrainBody *> ship_homes;     // per ship: the body it starts on
-    std::vector<const ScenarioDef *> ship_sc;  // per ship: its scenario
-    std::vector<int> ship_slots;               // per ship: slot within its (body, scenario) group
-    std::map<std::pair<TerrainBody *, bool>, StaticBuilding *> space_ports; // one per (body, pad site)
-
-    // The space-port model is shared by every pad (one per body+site), so it
-    // lives in main() scope: both the startup fleet loop and the runtime
-    // spawn need it to build a pad on demand.
-    Mesh *space_port_mesh = new Mesh;
-    space_port_mesh->FromFile("./res/space_port.obj", true);
-    Texture *space_port_texture = load_texture("./res/space_port.png");
-    Model *space_port_model = new Model;
-    space_port_model->FromData(space_port_mesh, partsshader, space_port_texture);
-
-    /* Spawn one ship into the fleet: load its def, slot it (next free slot
-       for its body+scenario), de-dup its name, make sure the pad exists,
-       build it on the pad, and push it into the fleet vectors. Returns the
-       new ship's index. The scenario reposition (orbit ships) is left to the
-       caller's spawn_vehicle pass, so startup keeps a single spawn loop.
-       Shared by the startup fleet loop and the runtime spawn. */
-    auto place_ship = [&](const std::string &shipDefPath, const std::string &wantName,
-                          TerrainBody *hb, const ScenarioDef *sc) -> int {
-        ShipDef def = load_ship_def(shipDefPath.c_str(), part_catalog);
-
-        // slot = how many ships already sit on this (body, scenario)
-        int slot = 0;
-        for(size_t i = 0; i < ships.size(); i++) {
-            if(ship_homes[i] == hb && ship_sc[i] == sc) { slot++; }
-        }
-
-        // name: the caller's, else the def's; de-duplicated across the fleet
-        // (first ship keeps the bare name, later ones get #2, #3 ..)
-        std::string nm = wantName.empty() ? def.name : wantName;
-        if(nm.empty()) { nm = "Ship"; }
-        {
-            std::string candidate = nm;
-            int n = 2;
-            while(true) {
-                bool taken = false;
-                for(size_t i = 0; i < ships.size(); i++) {
-                    if(ships[i]->name == candidate) { taken = true; break; }
-                }
-                if(!taken) { break; }
-                candidate = nm + " #" + std::to_string(n);
-                n++;
-            }
-            nm = candidate;
-        }
-
-        // the pad top is this far above the terrain surface (space_port.obj
-        // spans local z in [-10, 0], placed at dir * (terrain + pad_height))
-        const double pad_height = 5.0;
-        const bool pad_polar = sc->on_pad && sc->polar;
-        const glm::dvec3 pad_dir = pad_polar
-            ? glm::dvec3(0.0, 1.0, 0.0)
-            : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-        const glm::dmat3 pad_orient = faceAlong(pad_dir);
-        auto place_pad = [&](bool polar, const glm::dvec3 &dir) {
-            const std::pair<TerrainBody *, bool> key(hb, polar);
-            if(space_ports.find(key) != space_ports.end()) { return; }
-            const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
-            StaticBuilding *sp = new StaticBuilding;
-            sp->body = create_body(space_port_model, 0, 0, 0, 0, false);
-            setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
-            sp->parent = hb;
-            sp->sun = sun;
-            space_ports[key] = sp;
-        };
-        place_pad(false, glm::normalize(glm::dvec3(0.005, 0.005, 1.0))); // default site
-        if(pad_polar) { place_pad(true, pad_dir); }                      // polar site
-
-        Vehicle *v = new Vehicle;
-        v->name = nm;
-        v->defPath = shipDefPath;
-        v->m_parent = hb;
-        v->sun = sun;
-        v->frame = hb->rot_frame;
-        // lateral pad slot (pad local X, 20 m apart) so pad ships stand side
-        // by side; for orbit scenarios this is only staging -- spawn_vehicle
-        // repositions along the orbit binormal and the part offsets relative
-        // to the ship's own COM are what survive.
-        const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
-            + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
-        build_ship(v, def, partsshader, base, pad_orient);
-        v->setVelocity(glm::dvec3(0, 0, 0));
-        ships.push_back(v);
-        ship_homes.push_back(hb);
-        ship_sc.push_back(sc);
-        ship_slots.push_back(slot);
-        return (int)ships.size() - 1;
-    };
-
-    {
-        if(!args.radial_test.empty()) {
-            RadialTestShip rts = build_radial_test_ship(
-                args.radial_test, args.scenario_given, args.scenario,
-                part_catalog, home, sun, partsshader);
-            ships.push_back(rts.v);
-            ship_homes.push_back(home);
-            ship_sc.push_back(rts.sc);
-            ship_slots.push_back(rts.slot);
-        }
-        else {
-        for(size_t i = 0; i < fleet_entries.size(); i++) {
-            const FleetEntry &fe = fleet_entries[i];
-            TerrainBody *hb;
-            if(fe.body.empty()) {
-                hb = home; // the CLI --body resolution (or the system home)
-            } else {
-                hb = sys.find(fe.body);
-                if(hb == nullptr) {
-                    std::string avail;
-                    for(size_t k = 0; k < sys.bodies.size(); k++) {
-                        if(k) { avail += ", "; }
-                        avail += sys.bodies[k]->name;
-                    }
-                    throw std::runtime_error("fleet: ship entry " + std::to_string(i)
-                                             + ": unknown body '" + fe.body
-                                             + "' (available: " + avail + ")");
-                }
-            }
-            const ScenarioDef *sc =
-                scenario_by_name(fe.scenario.empty() ? args.scenario : fe.scenario);
-            place_ship(fe.ship, fe.name, hb, sc);
-        }
-        }
+    if(!args.radial_test.empty()) {
+        RadialTestShip rts = build_radial_test_ship(
+            args.radial_test, args.scenario_given, args.scenario,
+            ships.catalog(), home, sun, partsshader);
+        ships.add_ship(rts.v, home, rts.sc, rts.slot);
+    } else {
+        ships.build_fleet(fleet_entries, sys, home, args.scenario);
     }
     check_gl_error();
 
@@ -399,10 +264,7 @@ int main(int argc, char **argv)
        so the camera focuses on the spawn point). Ships sharing a
        body+scenario group get their own orbit slot (100 m apart along the
        orbit binormal) so they don't spawn on top of each other. */
-    for(size_t i = 0; i < ships.size(); i++) {
-        spawn_vehicle(ships[i], *ship_sc[i], ship_homes[i], sys,
-                      100.0 * (double)ship_slots[i]);
-    }
+    ships.apply_scenarios(sys);
 
     /* the active (player-controlled) ship: Tab / the SHIPS window switch
        it; the local `ship` below always points at it, so the HUD, camera,
@@ -783,19 +645,9 @@ int main(int argc, char **argv)
         return true;
     };
 
-    /* Runtime spawn: build a new ship exactly like the startup fleet loop
-       (place_ship -> spawn_vehicle -> park on rails). Appended at the end,
-       so it is never the active one. Returns the new ship's index. */
-    auto spawn_ship = [&](const std::string &defPath, const std::string &wantName,
-                          TerrainBody *hb, const ScenarioDef *sc) -> int {
-        int idx = place_ship(defPath, wantName, hb, sc);
-        spawn_vehicle(ships[idx], *ship_sc[idx], ship_homes[idx], sys,
-                      100.0 * (double)ship_slots[idx]);
-        ships[idx]->goOnRails();
-        printf("Spawned '%s' (ship %d of %d)\n",
-               ships[idx]->name.c_str(), idx + 1, (int)ships.size());
-        return idx;
-    };
+    /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
+       scenario + park on rails; appended at the end so it is never the
+       active one. Called as ships.spawn_ship(def, name, home, sc, sys). */
 
     /* Runtime removal: delete a ship and its bookkeeping. The Vehicle dtor
        detaches the welds and unregisters the bodies (skipped when the ship
@@ -813,11 +665,7 @@ int main(int argc, char **argv)
         const std::string removedName = v->name;
         if(wasActive) { v->releaseControl(); }
 
-        ships.erase(ships.begin() + idx);
-        ship_homes.erase(ship_homes.begin() + idx);
-        ship_sc.erase(ship_sc.begin() + idx);
-        ship_slots.erase(ship_slots.begin() + idx);
-        delete v;   // dtor detaches welds + unregisters the bodies
+        ships.erase_ship((size_t)idx);   // erase the 4 fleet vectors + delete v
 
         if(wasActive) {
             activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;
@@ -858,7 +706,8 @@ int main(int argc, char **argv)
 
             // 1) spawn a copy of the active ship -> appended at the end;
             //    the active ship must be untouched
-            int sp = spawn_ship(ship->defPath, "", ship_homes[activeIdx], ship_sc[activeIdx]);
+            int sp = ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
+                                      ships.scenarioOf(activeIdx), sys);
             printf("spawn 1: new idx=%d size=%zu activeIdx=%d\n",
                    sp, ships.size(), activeIdx);
             if(ships.size() != base + 1 || sp != (int)base || activeIdx != origActive) { ok = false; }
@@ -871,7 +720,8 @@ int main(int argc, char **argv)
 
             // 3) spawn again, select it, remove it (the active one) -> the
             //    control must hand off and the size return to base
-            int sp2 = spawn_ship(ship->defPath, "", ship_homes[activeIdx], ship_sc[activeIdx]);
+            int sp2 = ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
+                                       ships.scenarioOf(activeIdx), sys);
             select_ship(sp2);
             printf("spawn 2 + select: activeIdx=%d size=%zu\n", activeIdx, ships.size());
             if(activeIdx != sp2) { ok = false; }
@@ -1479,7 +1329,7 @@ int main(int argc, char **argv)
             if(world_drawing == true) {
                 // one per home body; StaticBuilding::Draw culls itself when
                 // the active ship is not on that body
-                for(auto &kv : space_ports) {
+                for(auto &kv : ships.pads()) {
                     kv.second->Draw(camera, ship->m_parent, ship->frame);
                 }
                 // render frame = the active ship's frame; idle ships in a
@@ -2048,7 +1898,7 @@ int main(int argc, char **argv)
                 }
                 ImGui::Text("Home distance: %f",
                             glm::length(ship->GetPositionRelTo(ship->controller,
-                                                                ship_homes[activeIdx]->frame)));
+                                                                ships.homeOf(activeIdx)->frame)));
                 ImGui::Text("Pos: %.3fkm", distance / 1000);
                 ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
                 ImGui::Text("Vel: %.3fm/s", speed);
@@ -2160,8 +2010,8 @@ int main(int argc, char **argv)
             ImGui::Separator();
             if(ImGui::Button("Spawn a copy of the active ship")) {
                 if(!ship->defPath.empty()) {
-                    spawn_ship(ship->defPath, "", ship_homes[activeIdx],
-                               ship_sc[activeIdx]);
+                    ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
+                                     ships.scenarioOf(activeIdx), sys);
                 } else {
                     printf("Spawn: active ship has no def (test ship)\n");
                 }
@@ -2690,8 +2540,7 @@ int main(int argc, char **argv)
         }
     }
 
-    for(auto &kv : space_ports) { delete kv.second; }
-    for(auto *s : ships) { delete s; }
+    ships.clear();   // ships + space pads (BEFORE the System bodies/shaders they reference)
 
     for(auto&& body : sys.bodies) { delete body; }
 
