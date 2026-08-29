@@ -15,6 +15,86 @@ glm::dvec3 Game::focusWorldPos(int i) const {
     return focusTargets[i].body->frame->GetPositionRelTo(ship->frame);
 }
 
+/* Build the per-window UI options + the window registry. This was a block
+   in main(): one options block per window (src/ui.h) plus the table the
+   main-menu checkboxes, the F10 toggle and a UI reset all share. The main
+   menu itself and the HUD (one "Top HUD" checkbox) are handled
+   separately. Slots/offsets: left column stacks under the menu, right
+   column under ORBITAL, the rest spread over the edges so the center
+   stays clear for the 3D view. */
+void Game::setup_ui_windows() {
+    auto info_opts = [](ui::Slot slot) {
+        ui::Options o;
+        o.slot = slot;
+        return o;
+    };
+    // Layout: top left ORBITAL + SURFACE, top right RESOURCES,
+    // middle right the menu, bottom right VESSEL, bottom left Orbital map.
+    o_orbit     = info_opts(ui::Slot::TopLeft);
+    o_surface   = info_opts(ui::Slot::TopLeft);
+    o_surface.right_of = "ORBITAL";
+    o_resources = info_opts(ui::Slot::TopRight);
+    o_resources.width_ratio = 1.5f; // bars have no width of their own
+    o_menu      = info_opts(ui::Slot::MiddleRight);
+    o_menu.closable = false;
+    o_vessel    = info_opts(ui::Slot::BottomRight);
+    o_parts     = info_opts(ui::Slot::BottomRight);
+    o_parts.below = "VESSEL";
+    o_parts.default_open = false;
+    o_map       = info_opts(ui::Slot::BottomLeft);
+    o_map.initial_size = ImVec2(480.0f, 480.0f); // orbit drawn at (200,200)
+    // The rest stay out of the way of the above (all closed by default).
+    o_ships     = info_opts(ui::Slot::TopCenter);
+    o_autopilot = info_opts(ui::Slot::Center);
+    o_autopilot.default_open = false;
+    o_controls  = info_opts(ui::Slot::BottomCenter);
+    o_controls.default_open = false;
+    o_debug     = info_opts(ui::Slot::TopCenter);
+    o_debug.default_open = false;
+    o_telemetry = info_opts(ui::Slot::MiddleLeft);
+    o_telemetry.default_open = false;
+    o_telemetry.initial_size = ImVec2(460.0f, 680.0f);
+    o_settings  = info_opts(ui::Slot::BottomCenter);
+    o_settings.default_open = false;
+    // Transfer planner: target selection + dv readouts.
+    o_transfer = info_opts(ui::Slot::Center);
+    o_transfer.default_open = false;
+    o_hud.fixed = true;
+    o_hud.closable = false;
+    o_hud.default_open = true;
+    o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
+    o_hud.slot = ui::Slot::TopCenter;
+    o_mainmenu = info_opts(ui::Slot::Center);
+    o_mainmenu.fixed = true;
+    o_mainmenu.closable = false;
+    o_mainmenu.default_open = false;
+
+    // The registry (ui_windows): the TAB toggle and the main-menu
+    // "Toggle windows" read it.
+    auto add_ui_window = [&](const char *name, const char *label,
+                             const ui::Options &o) {
+        ui_windows.push_back(UiWin{name, label, o});
+    };
+    add_ui_window("RESOURCES", "Resources", o_resources);
+    add_ui_window("ORBITAL", "Orbit Info", o_orbit);
+    add_ui_window("Orbital map", "Orbit Map", o_map);
+    add_ui_window("SURFACE", "Surface Info", o_surface);
+    add_ui_window("VESSEL", "Vessel Info", o_vessel);
+    add_ui_window("SHIP PARTS", "Vessel Parts", o_parts);
+    if(ships.size() > 1) {
+        add_ui_window("SHIPS", "Ship List", o_ships);
+    }
+    add_ui_window("Autopilot", "DUMB-ASS", o_autopilot);
+    // Controls and Settings are main-menu only, so they're deliberately
+    // NOT in this list (and thus not affected by the TAB toggle).
+    add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
+    add_ui_window("TELEMETRY", "Telemetry", o_telemetry);
+    add_ui_window("TRANSFER", "Transfer", o_transfer);
+    // The TAB toggle + the main-menu "Toggle windows" button call
+    // toggle_windows(), which flips ui_visible and re-opens every registry
+    // window (plus the HUD) from their defaults.
+}
+
 void Game::toggle_windows() {
     ui_visible = !ui_visible;
     for(auto &w : ui_windows) {

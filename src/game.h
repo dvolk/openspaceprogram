@@ -174,10 +174,39 @@ struct Game {
     ui::Options o_hud;
     bool ui_visible = true;
 
+    // --- UI window options (gameui.cpp draws with them) ---------------------
+    // The per-window layout blocks (slot, the right_of / below chain, size,
+    // default-open state), set up once by setup_ui_windows(); the registry
+    // above copies the ones the TAB toggle controls.
+    ui::Options o_orbit;
+    ui::Options o_surface;
+    ui::Options o_resources;
+    ui::Options o_menu;
+    ui::Options o_vessel;
+    ui::Options o_parts;
+    ui::Options o_map;
+    ui::Options o_ships;
+    ui::Options o_autopilot;
+    ui::Options o_controls;
+    ui::Options o_debug;
+    ui::Options o_telemetry;
+    ui::Options o_settings;
+    ui::Options o_transfer;
+    ui::Options o_mainmenu;
+
+    // The big face (2x the UI font), created by main at ImGui init.
+    ImFont *bigger = nullptr;
+
+    // The Settings window state (gameui.cpp writes it, imgui applies it).
+    int ui_style = 2;              // 0=dark 1=light 2=classic (imgui default)
+    float window_rounding = 0.0f;  // imgui default
+
     // --- control transitions (events + the SHIPS window + selftest) --------
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;
+    // Build the per-window UI options + the window registry (game.cpp).
+    void setup_ui_windows();
     // TAB: toggle the info windows (the main menu's "Toggle windows" too).
     void toggle_windows();
     // Take control of a ship (release + park the current one, recenter the
