@@ -197,9 +197,12 @@ struct Game {
     // The big face (2x the UI font), created by main at ImGui init.
     ImFont *bigger = nullptr;
 
-    // The Settings window state (gameui.cpp writes it, imgui applies it).
-    int ui_style = 2;              // 0=dark 1=light 2=classic (imgui default)
+    // The Settings window state (gameui.cpp writes it; apply_ui_style()
+    // rebuilds the imgui style from it).
+    int ui_style = 0;              // 0=dark (imgui default) 1=light 2=classic
     float window_rounding = 0.0f;  // imgui default
+    float ui_alpha = 1.0f;         // global imgui alpha (window transparency)
+    float ui_scale = 1.0f;         // DPI scale: fonts + style sizes
 
     // --- Orbital map state (gameui.cpp draws with them) ---------------------
     // Orbital map: meters per pixel (the "Scale" slider) + the chosen map
@@ -228,6 +231,9 @@ struct Game {
     void setup_ui_windows();
     // TAB: toggle the info windows (the main menu's "Toggle windows" too).
     void toggle_windows();
+    // Rebuild the imgui style from the Settings state (theme, DPI scale,
+    // rounding, transparency).
+    void apply_ui_style();
     // Take control of a ship (release + park the current one, recenter the
     // orbit camera, drop rails warp).
     void select_ship(int idx);

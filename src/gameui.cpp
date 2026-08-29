@@ -43,6 +43,12 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     double &time = g.time;
     int &ui_style = g.ui_style;
     float &window_rounding = g.window_rounding;
+    float &ui_alpha = g.ui_alpha;
+    float &ui_scale = g.ui_scale;
+    // The DPI slider edits this; "Apply DPI" commits it to ui_scale.
+    // (1.0f matches the default ui_scale; only the Apply button changes
+    // ui_scale, so they can't drift apart after that.)
+    static float dpi_pending = 1.0f;
     // The Settings window writes these; the 3D pass (render.cpp) reads.
     bool &physics_debug_drawing = g.physics_debug_drawing;
     bool &world_drawing = g.world_drawing;
@@ -139,18 +145,43 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Checkbox("Starfield", &draw_starfield);
         ImGui::Checkbox("Reference circles", &draw_skylines);
         if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
-            if(ui_style == 0) ImGui::StyleColorsDark();
-            else if(ui_style == 1) ImGui::StyleColorsLight();
-            else ImGui::StyleColorsClassic();
+            g.apply_ui_style();
         }
         if(ImGui::SliderFloat("Window rounding", &window_rounding,
                              0.0f, 50.0f, "%.0f")) {
-            ImGui::GetStyle().WindowRounding = window_rounding;
+            g.apply_ui_style();
         }
+        if(ImGui::SliderFloat("Window transparency", &ui_alpha,
+                             0.2f, 1.0f, "%.2f")) {
+            g.apply_ui_style();
+        }
+        // The slider only edits the pending value; the Apply button
+        // commits it. (Applying live while dragging would move this
+        // window out from under the cursor, so the drag would land on
+        // the wrong value.)
+        ImGui::SliderFloat("DPI scale", &dpi_pending, 0.5f, 3.0f, "%.2fx");
+        ImGui::BeginDisabled(dpi_pending == ui_scale);
+        if(ImGui::Button("Apply DPI")) {
+            ui_scale = dpi_pending;
+            g.apply_ui_style();
+            // TODO(dpi): the windows don't re-fit / re-place at the new
+            // scale (fonts + padding scale, sizes stay put). A relayout
+            // attempt DID re-fit them, but with STALE text metrics: the
+            // first re-layout after a FontScaleDpi change sizes windows
+            // with the PREVIOUS size's font advances (2x overflows, 1x
+            // leaves slack); a second re-layout (F10 / "Reset windows")
+            // fits correctly. Suspect the imgui 1.92 per-size font bakes
+            // (ImFont::GetFontBaked / ImFontBaked::IndexAdvanceX).
+        }
+        ImGui::EndDisabled();
         if(ImGui::SliderFloat("FOV", &args.camFovDeg, 10.0f, 120.0f, "%.0f°")) {
             const float f = (float)glm::radians(args.camFovDeg);
             orbitCam->setFov(f);
             freeCam->setFov(f);
+        }
+        ImGui::Spacing();
+        if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
+            ui::SetOpen("Settings", false);
         }
     });
 
@@ -466,6 +497,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("a/d - strafe");
         ImGui::Text("q/e - roll");
         ImGui::Text("shift/ctrl - up/down");
+        ImGui::Spacing();
+        if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
+            ui::SetOpen("Controls", false);
+        }
     });
 
     ui::Window("Autopilot", g.o_autopilot, [&] {
@@ -906,11 +941,13 @@ void drawMainMenu(Game &g) {
         if(ImGui::Button("Reset windows", ImVec2(240.0f, 0.0f))) {
             ui::ResetGui();
         }
+        // Toggles (not just open): these two are not in the TAB list, so
+        // the menu is another way to close them (besides their X / Back).
         if(ImGui::Button("Settings", ImVec2(240.0f, 0.0f))) {
-            ui::SetOpen("Settings", true);
+            ui::SetOpen("Settings", !ui::IsOpen("Settings"));
         }
         if(ImGui::Button("Controls", ImVec2(240.0f, 0.0f))) {
-            ui::SetOpen("Controls", true);
+            ui::SetOpen("Controls", !ui::IsOpen("Controls"));
         }
         if(ImGui::Button("Quit game", ImVec2(240.0f, 0.0f))) {
             running = false;

@@ -36,7 +36,6 @@ void Game::setup_ui_windows() {
     o_resources = info_opts(ui::Slot::TopRight);
     o_resources.width_ratio = 1.5f; // bars have no width of their own
     o_menu      = info_opts(ui::Slot::MiddleRight);
-    o_menu.closable = false;
     o_vessel    = info_opts(ui::Slot::BottomRight);
     o_parts     = info_opts(ui::Slot::BottomRight);
     o_parts.below = "VESSEL";
@@ -49,6 +48,7 @@ void Game::setup_ui_windows() {
     o_autopilot.default_open = false;
     o_controls  = info_opts(ui::Slot::BottomCenter);
     o_controls.default_open = false;
+    o_controls.closable = true;  // X close button (menu window)
     o_debug     = info_opts(ui::Slot::TopCenter);
     o_debug.default_open = false;
     o_telemetry = info_opts(ui::Slot::MiddleLeft);
@@ -56,17 +56,16 @@ void Game::setup_ui_windows() {
     o_telemetry.initial_size = ImVec2(460.0f, 680.0f);
     o_settings  = info_opts(ui::Slot::BottomCenter);
     o_settings.default_open = false;
+    o_settings.closable = true;  // X close button (menu window)
     // Transfer planner: target selection + dv readouts.
     o_transfer = info_opts(ui::Slot::Center);
     o_transfer.default_open = false;
     o_hud.fixed = true;
-    o_hud.closable = false;
     o_hud.default_open = true;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
     o_hud.slot = ui::Slot::TopCenter;
     o_mainmenu = info_opts(ui::Slot::Center);
     o_mainmenu.fixed = true;
-    o_mainmenu.closable = false;
     o_mainmenu.default_open = false;
 
     // The registry (ui_windows): the TAB toggle and the main-menu
@@ -81,9 +80,9 @@ void Game::setup_ui_windows() {
     add_ui_window("SURFACE", "Surface Info", o_surface);
     add_ui_window("VESSEL", "Vessel Info", o_vessel);
     add_ui_window("SHIP PARTS", "Vessel Parts", o_parts);
-    if(ships.size() > 1) {
-        add_ui_window("SHIPS", "Ship List", o_ships);
-    }
+    // Registered regardless of fleet size: the window (ship list + spawn)
+    // is always drawn, so it always needs the toggle + checkbox.
+    add_ui_window("SHIPS", "Ship List", o_ships);
     add_ui_window("Autopilot", "DUMB-ASS", o_autopilot);
     // Controls and Settings are main-menu only, so they're deliberately
     // NOT in this list (and thus not affected by the TAB toggle).
@@ -101,6 +100,28 @@ void Game::toggle_windows() {
         ui::SetOpen(w.name, ui_visible && w.opts.default_open);
     }
     ui::SetOpen("HUD", ui_visible && o_hud.default_open);
+}
+
+/* Rebuild the imgui style from the Settings window state. A fresh
+   ImGuiStyle every time: ScaleAllSizes() is lossy (it rounds every value
+   to an integer), so it must scale the unscaled defaults, not the
+   previous scale. The fresh default is already dark, so only light and
+   classic need their colors applied. FontScaleDpi scales the fonts too;
+   imgui 1.92+ sizes fonts dynamically, so no atlas rebuild is needed.
+   The themes ship semi-transparent window surfaces (WindowBg alpha
+   0.94/0.85), so make those solid -- otherwise the 3D scene still
+   seethroughs at full transparency and the slider can't reach opaque. */
+void Game::apply_ui_style() {
+    ImGuiStyle style;
+    if(ui_style == 1) { ImGui::StyleColorsLight(&style); }
+    else if(ui_style == 2) { ImGui::StyleColorsClassic(&style); }
+    style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    style.Colors[ImGuiCol_PopupBg].w = 1.0f;
+    style.ScaleAllSizes(ui_scale);
+    style.FontScaleDpi = ui_scale;
+    style.WindowRounding = window_rounding;
+    style.Alpha = ui_alpha;
+    ImGui::GetStyle() = style;
 }
 
 /* Switch the active (controlled) ship. The ship being left is released:

@@ -241,6 +241,7 @@ int main(int argc, char **argv)
     // it through this, so the state has a single home.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
+    game.apply_ui_style();  // the Settings defaults (dark theme, scale 1.0)
 
     // The runtime state lives in `game`. These local references keep the
     // loop body reading exactly as before; they alias game's members, so

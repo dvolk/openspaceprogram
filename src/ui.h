@@ -70,7 +70,7 @@ struct Options {
     float width_ratio = -1.0f;
 
     bool fixed = false;      // no move, no resize; re-placed every frame
-    bool closable = true;    // show the X close button
+    bool closable = false;   // show the X close button (the menu windows)
     bool default_open = true; // open state a reset restores
 
     ImGuiWindowFlags flags = 0; // extra raw imgui flags (e.g. NoTitleBar)
@@ -321,6 +321,9 @@ bool Window(const char* name, const Options& o, Body&& body) {
                 static_cast<std::size_t>(o.width_ratio * 1000.0f)));
     }
 
+    // Most windows have no X close button (they're toggled from the
+    // Windows list, the main menu and the TAB key); the menu-like windows
+    // (Settings, Controls) are closable.
     bool* p_open = o.closable ? &st.open : nullptr;
     const bool visible = ImGui::Begin(name, p_open, flags);
     if (visible)
