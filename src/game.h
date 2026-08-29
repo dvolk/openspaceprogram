@@ -5,10 +5,11 @@
 // rails warp, toggle the windows).
 //
 // main() creates the subsystems, builds the Game once they exist, and then
-// drives everything through it: the event dispatch (events.cpp) and the
-// logic/render sections of the main loop read and write the state here, so
-// there is a single source of truth for it. Game owns none of the
-// subsystems (main still creates and deletes them); it only borrows them.
+// drives everything through it: the event dispatch (events.cpp), the logic
+// tick (tick.cpp) and the render section of the main loop read and write
+// the state here, so there is a single source of truth for it. Game owns
+// none of the subsystems (main still creates and deletes them); it only
+// borrows them.
 // The small runtime state (clock, selection, flags, focus, UI registry)
 // is owned by Game.
 #pragma once
@@ -58,6 +59,23 @@ struct Game {
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 0;
+    double time = 0;   // the analytic sim clock (s), advanced by the tick
+
+    // --- the fixed-timestep loop (tick.cpp) ---------------------------------
+    // The loop adds the measured frame time to the accumulator each frame
+    // and burns off whole physics steps (dt) from it.
+    double currentTime = 0.001 * (double)(SDL_GetTicks());
+    double accumulator = 0.0;
+    const double dt = 1.0/50.0;   // TODO explain why 50
+    bool redraw = false;         // a frame of logic ran: RENDER should draw
+
+    // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) ---
+    const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
+    Uint32 orbit_log_last_ms = 0;
+    /* Separate timestamp: the two logs share --orbit-interval but must not
+       share the "last fired" time, or the earlier block in the loop always
+       wins and the other never fires (and one alone spews every tick). */
+    Uint32 dbg_log_last_ms = 0;
 
     // --- input / selection state -------------------------------------------
     bool running = true;

@@ -128,3 +128,8 @@ void Detach(void *constraint);
 ContactPairInfo contact_report(Body *a, Body *b);
 
 void debug_draw(const Camera * camera);
+
+/* Step the global physics world one substep. The caller (the logic tick,
+   tick.cpp) re-applies the forces before EVERY call -- stepSimulation
+   clears accumulated forces on exit (see PhysicsEngine::tick). */
+void physics_tick(float timeStep);
