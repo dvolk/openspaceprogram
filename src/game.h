@@ -201,6 +201,25 @@ struct Game {
     int ui_style = 2;              // 0=dark 1=light 2=classic (imgui default)
     float window_rounding = 0.0f;  // imgui default
 
+    // --- Orbital map state (gameui.cpp draws with them) ---------------------
+    // Orbital map: meters per pixel (the "Scale" slider) + the chosen map
+    // plane (0 = equatorial, 1 = ecliptic, 2 = orbital).
+    float map_scale = 6000.0f;
+    int map_plane = 0;
+    // Pan offset from the window center, in pixels (P4 navigation): the focus
+    // no longer has to sit dead-center. Wheel zooms to the cursor, a left
+    // drag pans, and "Reset view" zeros this (and the scale).
+    ImVec2 map_pan = ImVec2(0.0f, 0.0f);
+    // Optional overlays, toggleable from the map's controls.
+    bool map_show_soi = true;   // spheres-of-influence rings
+    bool map_show_vel = true;   // the ship's velocity (prograde) arrow
+    // Right-clicking the map window cycles its chrome: 0 = full window with
+    // the control widgets (plane, scale, checkboxes, legend), 1 = window
+    // with only the bare map, 2 = no window chrome at all (title bar,
+    // border and background hidden -- the map just floats over the 3D view).
+    // Modes 1 and 2 keep pan/zoom working.
+    int map_mode = 0;
+
     // --- control transitions (events + the SHIPS window + selftest) --------
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.

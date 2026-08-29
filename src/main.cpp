@@ -37,11 +37,6 @@
 #include "physics.h"
 #include "gldebug.h"
 #include "frame.h"
-#include "calendar.h"
-#include "orbit.h"
-#include "orbitmap.h"
-#include "orbitsample.h"
-#include "transfer.h"
 #include "transferplanner.h"
 #include "shipdef.h"
 #include "fleet.h"
@@ -221,11 +216,9 @@ int main(int argc, char **argv)
         }
     }
 
-    std::vector<TerrainBody *> planets = sys.bodies;
-
     // Build the atmosphere rim shells now that the bodies + shader exist.
     // Bodies without an atmosphere are no-ops (no mesh, no draw cost).
-    for(auto&& b : planets) {
+    for(auto&& b : sys.bodies) {
         b->BuildAtmosphere(atmosphereshader);
     }
 
@@ -431,43 +424,12 @@ int main(int argc, char **argv)
     // live on the game; the UI pass (gameui.cpp) draws with them.
     game.setup_ui_windows();
 
-    // Orbital map: meters per pixel (the "Scale" slider) + the chosen map
-    // plane (0 = equatorial, 1 = ecliptic, 2 = orbital). Persistent UI state,
-    // like the transfer planner's below.
-    float map_scale = 6000.0f;
-    int map_plane = 0;
-    // Pan offset from the window center, in pixels (P4 navigation): the focus
-    // no longer has to sit dead-center. Wheel zooms to the cursor, a left
-    // drag pans, and "Reset view" zeros this (and the scale).
-    ImVec2 map_pan = ImVec2(0.0f, 0.0f);
-    // Optional overlays, toggleable from the map's controls.
-    bool map_show_soi = true;   // spheres-of-influence rings
-    bool map_show_vel = true;   // the ship's velocity (prograde) arrow
-    // Right-clicking the map window cycles its chrome: 0 = full window with
-    // the control widgets (plane, scale, checkboxes, legend), 1 = window
-    // with only the bare map, 2 = no window chrome at all (title bar,
-    // border and background hidden -- the map just floats over the 3D view).
-    // Modes 1 and 2 keep pan/zoom working.
-    int map_mode = 0;
-    // Cached orbit samplings, one entry per orbiting object (keyed on its
-    // pointer -- the ship for the ship's orbit, a body for a child's; a given
-    // ship always has exactly one entry, overwritten on each sample). Reuse
-    // is only trusted while the orbiting object is on a fixed Keplerian conic:
-    // the ship passes its onRails flag, terrain bodies are always on theirs.
-    // See OrbitSampleCache.
-    std::map<const void *, OrbitSampleCache> orbit_caches;
-
-    // Transfer planner (TRANSFER window + the blue burn-direction icon):
-    // the state (targets, selection, solver cache) and the per-frame
-    // rebuild / solve / --xfer-log live in the TransferPlanner
-    // (transferplanner.cpp). main talks to it through these aliases, so
-    // the TRANSFER window and the orbital map read exactly as before.
+    // Transfer planner (the TRANSFER window + the map's transfer conic +
+    // the blue burn-direction icon): the state (targets, selection, solver
+    // cache) and the per-frame rebuild / solve / --xfer-log live in the
+    // TransferPlanner (transferplanner.cpp). The UI pass (gameui.cpp)
+    // reads it through its own aliases.
     TransferPlanner xferPlanner(game);
-    std::vector<TransferPlanner::XferTarget> &xferTargets = xferPlanner.xferTargets;
-    int &xfer_target = xferPlanner.xfer_target;
-    bool &xfer_auto = xferPlanner.xfer_auto;
-    float &xfer_tof_log = xferPlanner.xfer_tof_log;
-    auto &xfer = xferPlanner.xfer;
 
     Skybox skybox;
     skybox.init();
@@ -508,14 +470,6 @@ int main(int argc, char **argv)
     game.normal_plus_indicator = normal_plus_indicator;
     game.normal_minus_indicator = normal_minus_indicator;
     game.burn_indicator = burn_indicator;
-
-    // The 3D pass (render.cpp) emits the active ship's per-frame state
-    // into game.view; the orbital map (still here -- the last UI
-    // extraction) names the few locals it reads.
-    OrbitElements &o = game.view.o;
-    double &mu = game.view.mu;
-    glm::dvec3 &orbit_pos = game.view.orbit_pos;
-    glm::dvec3 &orbit_vel = game.view.orbit_vel;
 
     /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
        scenario + park on rails; appended at the end so it is never the
@@ -674,366 +628,10 @@ int main(int argc, char **argv)
             // The readout windows (HUD .. RESOURCES) live in gameui.cpp.
             drawUIReadouts(game, xferPlanner);
 
-            // Mode 2 strips the window chrome entirely (see map_mode): the
-            // window is invisible but still hit-tested, so the map below
-            // keeps pan/zoom and the right-click cycle.
-            if(map_mode == 2) {
-                game.o_map.flags |= ImGuiWindowFlags_NoDecoration |
-                                    ImGuiWindowFlags_NoBackground;
-            } else {
-                game.o_map.flags = 0;
-            }
-            ui::Window("Orbital map", game.o_map, [&] {
-                // Right-click anywhere in the window cycles the chrome:
-                // full window -> bare map -> no window -> full window.
-                // Over the map this is safe: imgui owns the mouse here, so
-                // the RMB camera orbit (gated on !WantCaptureMouse) never
-                // fires.
-                if(ImGui::IsWindowHovered() &&
-                   ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                    map_mode = (map_mode + 1) % 3;
-                }
-                const float kMapSize = 360.0f;   // the map square (layout below)
-                // The ship's trajectory around the focus: a closed ellipse
-                // (a coasting Kepler orbit) or, when the ship is escaping or
-                // flying by (ecc >= 1 -- e.g. right after switching SOI to a
-                // body you are approaching), an open hyperbolic/parabolic arc.
-                // Both draw the same way (a projected polyline); only the
-                // sampling differs. Top-down view in the focus's inertial
-                // frame, so the trajectory's true 3D orientation shows through
-                // the projection.
-                const int N = 64;
-                const bool closed = (o.ecc < 1.0);
-                std::vector<glm::dvec3> traj_pts;
-                if(closed) {
-                    // Sampled through a per-ship cache, trusted only while the
-                    // ship is on rails (coasting on its Keplerian conic). Off
-                    // rails -- Bullet-integrated, or right after a burn /
-                    // staging / SOI switch / crash (all of which clear onRails)
-                    // -- the orbit is moving, so re-sample every frame. See
-                    // OrbitSampleCache.
-                    traj_pts = orbit_caches[(const void *)ship].sample(
-                        orbit_pos, orbit_vel, mu, N, ship->onRails);
-                } else {
-                    // Open trajectory: an arc around periapsis, truncated where
-                    // it would run off to infinity. r_cap is the current view
-                    // extent (the map square's width in world units) so the
-                    // curve reaches the edge of the view, but never smaller
-                    // than a few periapsis radii or the ship's current radius
-                    // (so the ship itself lies on the arc).
-                    const double r_cap = std::max<double>(
-                        kMapSize * (double)map_scale,
-                        std::max(4.0 * o.periapsis, o.distance));
-                    traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
-                }
-
-                // Periapsis (both cases) and apoapsis (closed only). A closed
-                // orbit propagates to each apsis (exact); an open arc has no
-                // apoapsis, and its periapsis point is radius o.periapsis
-                // along the eccentricity vector (which points to periapsis) --
-                // no propagation needed.
-                glm::dvec3 peri_p, apo_p, tmp;
-                bool have_peri = false, have_apo = false;
-                if(closed) {
-                    if(o.time_to_peri > 0.0) {
-                        propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
-                        have_peri = true;
-                    }
-                    if(o.time_to_apo > 0.0) {
-                        propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
-                        have_apo = true;
-                    }
-                } else {
-                    const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
-                    const double hl = glm::length(h);
-                    if(hl > 1e-9) {
-                        const glm::dvec3 evec =
-                            glm::cross(orbit_vel, h)/mu - orbit_pos/o.distance;
-                        const double el = glm::length(evec);
-                        if(el > 1e-9) {
-                            peri_p = (o.periapsis / el) * evec;
-                            have_peri = true;
-                        }
-                    }
-                }
-
-                // The focus body (the ship's parent) and the map plane.
-                // The plane is a normal in the focus's inertial frame;
-                // OrbitMap derives an in-plane basis from it. All three
-                // candidates live in that frame:
-                //   equatorial = the focus's reference plane (normal +Y);
-                //   ecliptic   = the system reference plane (root XZ) expressed
-                //                in the focus's frame;
-                //   orbital    = the ship's own orbital plane (h = r x v).
-                TerrainBody *focus = ship->m_parent;
-                glm::dvec3 plane_n(0.0, 1.0, 0.0);
-                if(map_plane == 1) {
-                    plane_n = glm::transpose(focus->frame->root_orient) *
-                              glm::dvec3(0.0, 1.0, 0.0);
-                } else if(map_plane == 2) {
-                    const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
-                    const double hl = glm::length(h);
-                    if(hl > 1e-9) { plane_n = h / hl; }
-                }
-
-                // The map is a kMapSize square at the top of the window; the
-                // focus (parent body) sits at its center plus the pan offset;
-                // the controls go below. (kMapSize is defined at the top of
-                // the block, where the open-trajectory radius cap uses it.)
-                const ImVec2 p0 = ImGui::GetCursorScreenPos();
-                const float center_x = p0.x + kMapSize * 0.5f;
-                const float center_y = p0.y + kMapSize * 0.5f;
-
-                // Reserve the map square with an invisible button. It captures
-                // the mouse, so a left-drag over the map pans the map instead
-                // of moving the window (imgui otherwise treats a drag on the
-                // window background as a window move). Wheel-zoom and drag-pan
-                // both apply only while the mouse is over this square.
-                ImGui::InvisibleButton("##mapnav", ImVec2(kMapSize, kMapSize));
-                const bool over_map = ImGui::IsItemHovered();
-                const ImGuiIO &g_io = ImGui::GetIO();
-                if(over_map && g_io.MouseWheel != 0.0f) {
-                    // Wheel zooms to the cursor (the world point under the
-                    // mouse stays put). Reversed per preference: wheel UP zooms
-                    // IN (scale = meters/pixel goes down), wheel OUT zooms out.
-                    const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
-                    const float old_scale = map_scale;
-                    float new_scale = old_scale * factor;
-                    // Clamp to the same range the Scale slider spans (10^3..10^9.5).
-                    const float min_scale = 1000.0f;
-                    const float max_scale = powf(10.0f, 9.5f);
-                    if(new_scale < min_scale) { new_scale = min_scale; }
-                    if(new_scale > max_scale) { new_scale = max_scale; }
-                    const ImVec2 mouse = ImGui::GetMousePos();
-                    const float u = mouse.x - (center_x + map_pan.x);
-                    const float v = mouse.y - (center_y + map_pan.y);
-                    map_pan.x = (mouse.x - u * old_scale / new_scale) - center_x;
-                    map_pan.y = (mouse.y - v * old_scale / new_scale) - center_y;
-                    map_scale = new_scale;
-                }
-                if(ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-                    map_pan.x += g_io.MouseDelta.x;
-                    map_pan.y += g_io.MouseDelta.y;
-                }
-
-                OrbitMap map;
-                map.cx = center_x + map_pan.x;
-                map.cy = center_y + map_pan.y;
-                map.scale = map_scale;
-                map.setPlane(plane_n);
-
-                // KSP-inspired palette (P4): your orbit is green, the transfer
-                // is blue, other bodies are gray. The focus body, ship dot and
-                // labels use a near-black/white ink that contrasts with the
-                // current style's window background, so they stay readable in
-                // both the light and dark themes. The selected transfer target
-                // is highlighted brighter than the other children.
-                const ImVec4 bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-                const ImU32 ink       = contrastingColor(bg);
-                const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
-                const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
-                const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
-                const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
-                const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
-                const ImU32 col_body  = ink;
-                const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
-                const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
-                ImDrawList *dl = ImGui::GetWindowDrawList();
-                const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
-
-                // The body selected in the TRANSFER window (a child of the
-                // focus), highlighted on the map; nullptr for a ship target or
-                // no selection.
-                TerrainBody *sel_body = nullptr;
-                if(xfer_target >= 0 && xfer_target < (int)xferTargets.size() &&
-                   xferTargets[xfer_target].body) {
-                    sel_body = xferTargets[xfer_target].body;
-                }
-
-                // A body's sphere-of-influence ring, faint. Skipped when
-                // sub-pixel or far off-view (a huge circle is both useless and
-                // expensive to tessellate).
-                auto draw_soi = [&](const glm::dvec3 &center, double soi_m) {
-                    if(!map_show_soi || soi_m <= 0.0) { return; }
-                    const float r_px = (float)(soi_m / map_scale);
-                    if(r_px < 1.0f || r_px > 4000.0f) { return; }
-                    map.drawRing(dl, center, soi_m, soi_col, 1.0f);
-                };
-
-                // The orbits of the bodies orbiting the focus (the ship's
-                // parent) -- moons around a planet, planets around the star --
-                // in the same view/scale/plane. Each child's state is taken in
-                // the focus's inertial frame; its ellipse is sampled through
-                // the same cache as the ship's orbit (a child never burns, so
-                // its points are propagated once). Drawn first, so the ship's
-                // orbit sits on top.
-                for(auto *b : planets) {
-                    if(!(b->frame && b->frame->parent == focus->frame)) continue;
-                    const double mu_c = b->frame->parent_mu;
-                    if(mu_c <= 0.0) continue;
-                    const glm::dvec3 cpos = b->frame->GetPositionRelTo(focus->frame);
-                    const glm::dvec3 cvel = b->frame->GetVelocityRelTo(focus->frame);
-                    const std::vector<glm::dvec3> &cpts =
-                        orbit_caches[(const void *)b].sample(cpos, cvel, mu_c, N);
-                    if(cpts.empty()) continue;
-                    const bool selected = (b == sel_body);
-                    const ImU32 ccol = selected ? col_sel : col_child;
-                    map.drawOrbit(dl, cpts, ccol, selected ? 2.0f : 1.0f);
-                    const ImVec2 cpx = map.px(cpos);
-                    dl->AddCircleFilled(cpx, selected ? 5.0f : 3.0f, ccol);
-                    if(selected) { dl->AddCircle(cpx, 8.0f, ccol, 0, 1.0f); }
-                    dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - 12.0f), ink,
-                                b->name.c_str());
-                    draw_soi(cpos, b->frame->soi);
-                }
-                // The focus body's own SOI -- the boundary of the current
-                // gravitational regime the ship is inside.
-                draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi);
-
-                // closed=true for the ellipse (it is a closed loop); false for
-                // the open arc (a chord would otherwise close it).
-                map.drawOrbit(dl, traj_pts, col_ship, 1.0f, closed);
-                map.drawBody(dl, ship->m_parent->radius, col_body);
-                // The ship: a bright dot (you are here) with a green ring, on
-                // the line from the focus.
-                const ImVec2 ship_px = map.px(orbit_pos);
-                dl->AddLine(focus_px, ship_px, ink, 1.0f);
-                dl->AddCircleFilled(ship_px, 5.0f, ink);
-                dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
-                // Prograde (velocity) arrow, along the ship's velocity.
-                if(map_show_vel) {
-                    map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
-                }
-                // Apside markers are only meaningful for a non-circular orbit;
-                // an open arc has periapsis but no apoapsis.
-                if(o.ecc > 1e-3) {
-                    if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
-                    if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
-                }
-
-                // Every other ship in this body: its orbit (when closed) plus
-                // a dot + label at its current position, so the whole traffic
-                // pattern shows, not just you and the target. The player's own
-                // ship is already drawn above in green (skipped here). Ships
-                // on an escape trajectory (ecc >= 1) have no closed orbit to
-                // draw -- sample() returns empty -- so only their position
-                // marker shows.
-                {
-                    Frame *inertial = ship->frame->getNonRotFrame();
-                    for(auto *s : ships) {
-                        if(s == ship || !s->frame || s->frame->body != focus) {
-                            continue;
-                        }
-                        Frame *tsf = s->frame;
-                        const glm::dvec3 tcom = s->get_center_of_mass();
-                        const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
-                        const glm::dvec3 r2 = O * tcom + tsf->GetPositionRelTo(inertial);
-                        const glm::dvec3 v2 = O * (s->GetVel()
-                                                  + tsf->GetStasisVelocity(tcom))
-                                            + tsf->GetVelocityRelTo(inertial);
-                        const std::vector<glm::dvec3> &tpts =
-                            orbit_caches[(const void *)s].sample(
-                                r2, v2, mu, N, s->onRails);
-                        if(!tpts.empty()) {
-                            map.drawOrbit(dl, tpts, col_vessel, 1.0f);
-                        }
-                        const ImVec2 tpx = map.px(r2);
-                        dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                        dl->AddText(ImVec2(tpx.x + 4.0f, tpx.y - 11.0f),
-                                    col_vessel, s->name.c_str());
-                    }
-                }
-
-                // P3: the transfer conic to the selected target (planner has a
-                // valid solution). It is a Kepler orbit under the focus's mu,
-                // starting at the ship (r1 = orbit_pos) with velocity
-                // sol.v_departure and propagated over sol.tof -- the same
-                // frame as the rest of the map, so it projects through the
-                // same plane. The arc's end is the arrival / intercept point
-                // (where the ship meets the target at t + tof); the departure
-                // point is the ship dot already drawn above.
-                if(xfer.valid) {
-                    const TransferSolution &sol = xfer.sol;
-                    std::vector<glm::dvec3> xfer_pts;
-                    xfer_pts.reserve(N + 1);
-                    for(int i = 0; i <= N; i++) {
-                        glm::dvec3 p, v;
-                        propagateKepler(orbit_pos, sol.v_departure, mu,
-                                        sol.tof * i / N, p, v);
-                        xfer_pts.push_back(p);
-                    }
-                    map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
-                    const glm::dvec3 &arrival = xfer_pts.back();
-                    map.drawDot(dl, arrival, 4.0f, col_xfer);
-                    char xfer_label[96];
-                    snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
-                             xferTargets[xfer_target].name, sol.total_dv);
-                    const ImVec2 apx = map.px(arrival);
-                    dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
-                                xfer_label);
-                }
-
-                // (The invisible map-nav button above already reserved the map
-                // square, so the controls land below it.)
-                // Bare-map (mode 1) and chrome-less (mode 2) draws only the
-                // map -- the controls below are skipped in both.
-                if(map_mode != 0) {
-                    return;
-                }
-                // Which plane to project onto (see the plane_n selection above).
-                // "Orbital" aligns the view with the ship's orbit, so a polar
-                // orbit reads as a full ellipse instead of collapsing to a line.
-                static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital" };
-                ImGui::Combo("Map plane", &map_plane, kPlanes, 3);
-                // The map spans ~8 orders of magnitude (a ~70 km low orbit up
-                // to a ~90,000 Mm interplanetary orbit), so the scale is edited
-                // on a log10 axis -- a linear slider couldn't reach the moons.
-                // Wheel-zoom / drag-pan (above) edit the same values; this is
-                // the coarse control, and "Reset view" restores the default.
-                {
-                    float log_scale = log10f(map_scale);
-                    if(ImGui::SliderFloat("Scale", &log_scale, 3.0f, 9.5f, "%.1f")) {
-                        map_scale = powf(10.0f, log_scale);
-                    }
-                    ImGui::SameLine();
-                    ImGui::Text("%.0f m/px", (double)map_scale);
-                    ImGui::SameLine();
-                    if(ImGui::Button("Reset view")) {
-                        map_pan = ImVec2(0.0f, 0.0f);
-                        map_scale = 6000.0f;
-                    }
-                }
-                ImGui::Checkbox("SOI rings", &map_show_soi);
-                ImGui::SameLine();
-                ImGui::Checkbox("Velocity", &map_show_vel);
-                ImGui::Text("nu %.2f   E %.2f   inc %.2f deg",
-                            o.true_anomaly, o.ecc_anomaly,
-                            o.inclination * 180.0 / M_PI);
-                // Legend: a compact color key (one line).
-                ImGui::Spacing();
-                auto legend = [&](const char *label, ImU32 col, bool dot) {
-                    const ImVec2 p = ImGui::GetCursorScreenPos();
-                    const float s = 10.0f;
-                    if(dot) {
-                        dl->AddCircleFilled(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col);
-                    } else {
-                        dl->AddRectFilled(ImVec2(p.x, p.y + 3.0f),
-                                         ImVec2(p.x + s, p.y + 13.0f), col);
-                    }
-                    ImGui::Dummy(ImVec2(s, 16.0f));
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted(label);
-                };
-                legend("your orbit", col_ship, false);
-                ImGui::SameLine();
-                legend("other ships", col_vessel, false);
-                ImGui::SameLine();
-                legend("transfer", col_xfer, false);
-                ImGui::SameLine();
-                legend("other bodies", col_child, false);
-                ImGui::SameLine();
-                legend("apsides", col_apsis, true);
-            });
+            // The orbital map (gameui.cpp): the transfer conic and
+            // the target highlight come from the planner. Drawn after
+            // the readouts, before the main menu.
+            drawUIMap(game, xferPlanner);
 
             // The main menu (gameui.cpp): drawn last so it sits on top.
             drawMainMenu(game);
