@@ -112,21 +112,26 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
   (periapsis along world +Z), at periapsis (ell_phase 0), apoapsis (1), or
   90 deg of true anomaly - halfway by angle between the apsides (2).
 
+  The escape scenario places the ship at the rot-orbit radius with
+  esc_frac x the local escape velocity, prograde -- periapsis of a
+  hyperbola, so it coasts out of the body's SOI on its own.
+
   As before, the ship's frame is resolved from the innermost SOI containing
   the spawn point (resolve_frame_by_soi), with the stasis-velocity correction
   so a rotating frame still yields the correct inertial orbital velocity.
   ScenarioDef lives in vehicle.h.
 */
 static const ScenarioDef kScenarios[] = {
-    {"pad",          true,  0.0,  false, -1, 0.0,     0.0},
-    {"pad-polar",    true,  0.0,  true,  -1, 0.0,     0.0},
-    {"rot-orbit",    false, 0.85, false, -1, 0.0,     0.0},
-    {"inertial-orbit", false, 1.25, false, -1, 0.0,   0.0},
-    {"high-orbit",   false, 5.0,  false, -1, 0.0,     0.0},
-    {"high-polar",   false, 5.0,  true,  -1, 0.0,     0.0},
-    {"ellipse-peri", false, 0.0,  false,  0, 10e3, 1000e3},
-    {"ellipse-apo",  false, 0.0,  false,  1, 10e3, 1000e3},
-    {"ellipse-mid",  false, 0.0,  false,  2, 10e3, 1000e3},
+    {"pad",          true,  0.0,  false, -1, 0.0,     0.0, 0.0},
+    {"pad-polar",    true,  0.0,  true,  -1, 0.0,     0.0, 0.0},
+    {"rot-orbit",    false, 0.85, false, -1, 0.0,     0.0, 0.0},
+    {"inertial-orbit", false, 1.25, false, -1, 0.0,   0.0, 0.0},
+    {"high-orbit",   false, 5.0,  false, -1, 0.0,     0.0, 0.0},
+    {"high-polar",   false, 5.0,  true,  -1, 0.0,     0.0, 0.0},
+    {"ellipse-peri", false, 0.0,  false,  0, 10e3, 1000e3, 0.0},
+    {"ellipse-apo",  false, 0.0,  false,  1, 10e3, 1000e3, 0.0},
+    {"ellipse-mid",  false, 0.0,  false,  2, 10e3, 1000e3, 0.0},
+    {"escape",       false, 0.85, false, -1, 0.0,     0.0, 2.0},
 };
 
 const ScenarioDef *scenario_by_name(const std::string &name) {
@@ -197,8 +202,13 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
         shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 
-        // Circular orbital speed (vis-viva with semi-major axis == r).
-        const double speed = sqrt(home->mu / r);
+        // Circular orbital speed (vis-viva with semi-major axis == r); the
+        // escape scenario reuses the radius but leaves at esc_frac x the
+        // local escape velocity, so the ship is on a hyperbola (periapsis
+        // at r) and coasts out of the body's SOI on its own.
+        const double speed = sc.esc_frac > 0.0
+                           ? sc.esc_frac * sqrt(2.0 * home->mu / r)
+                           : sqrt(home->mu / r);
 
         // Prograde: perpendicular to the radius vector, in the system's sense of
         // rotation (+y axis); polar orbits go around the spin axis instead.

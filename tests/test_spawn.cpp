@@ -167,6 +167,7 @@ struct SpawnCase {
     int ell_phase;        // 0: at periapsis; 1: at apoapsis; 2: at 90 deg
     double rp;            // periapsis distance from body center
     double ra;            // apoapsis distance from body center
+    double esc;           // escape: launch speed in local escape velocities (0 = off)
 };
 
 int main() {
@@ -188,7 +189,20 @@ int main() {
                      : bodyRadius + alt_frac * 100000.0;
         c.mu = bodyMu; c.polar = polar; c.bodyFrame = bodyFrame;
         c.expectedFrame = expectedFrame;
-        c.ellipse = false; c.ell_phase = -1; c.rp = 0; c.ra = 0;
+        c.ellipse = false; c.ell_phase = -1; c.rp = 0; c.ra = 0; c.esc = 0.0;
+        cases.push_back(c);
+    };
+
+    // Helper: escape scenario (rot-orbit radius, esc x local escape velocity,
+    // prograde -- periapsis of a hyperbola).
+    auto add_esc = [&](const char *desc, double esc, double bodyRadius, double bodyMu,
+                       Frame *bodyFrame, Frame *expectedFrame) {
+        SpawnCase c;
+        c.desc = desc; c.on_pad = false;
+        c.r = bodyRadius + 0.85 * 100000.0;
+        c.mu = bodyMu; c.polar = false; c.bodyFrame = bodyFrame;
+        c.expectedFrame = expectedFrame;
+        c.ellipse = false; c.ell_phase = -1; c.rp = 0; c.ra = 0; c.esc = esc;
         cases.push_back(c);
     };
 
@@ -202,7 +216,7 @@ int main() {
         c.expectedFrame = expectedFrame;
         c.ellipse = true; c.ell_phase = phase;
         c.rp = bodyRadius + 10e3;
-        c.ra = bodyRadius + 1000e3;
+        c.ra = bodyRadius + 1000e3; c.esc = 0.0;
         cases.push_back(c);
     };
 
@@ -218,6 +232,10 @@ int main() {
     // Same scenarios around the Moon (rot soi = 300 km): 285 km / 325 km.
     add("rot-orbit (Moon)",        false, 0.85, false, moon_radius, moon_mu, moon, moon_rot);
     add("inertial-orbit (Moon)",   false, 1.25, false, moon_radius, moon_mu, moon, moon);
+    // Escape scenario (rot-orbit radius, 2x local escape velocity, prograde):
+    // frame resolution as rot-orbit; the ship leaves on a hyperbola.
+    add_esc("escape (Eerbon)", 2.0, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
+    add_esc("escape (Moon)",   2.0, moon_radius,   moon_mu,   moon,   moon_rot);
     // Ellipse scenarios around Eerbon (rot soi = 700 km):
     //   peri 610 km (inside), apo 7000 km (outside), mid p = 1122 km (outside).
     add_ell("ellipse-peri (Eerbon)", 0, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
@@ -267,8 +285,10 @@ int main() {
         } else {
             const glm::dvec3 rhat_local = c.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
             worldPos = center + c.bodyFrame->root_orient * (rhat_local * c.r);
-            // Circular orbital speed (vis-viva with semi-major axis == r).
-            const double speed = std::sqrt(c.mu / c.r);
+            // Circular orbital speed (vis-viva with semi-major axis == r);
+            // the escape scenario leaves at esc x local escape velocity.
+            const double speed = c.esc > 0.0 ? c.esc * std::sqrt(2.0 * c.mu / c.r)
+                                             : std::sqrt(c.mu / c.r);
             glm::dvec3 rhat = glm::normalize(worldPos - center);
             glm::dvec3 vhat = glm::normalize(
                 c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)

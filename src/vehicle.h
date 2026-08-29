@@ -1117,7 +1117,10 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
    in the equatorial plane (local +Z) or the polar plane (local +Y),
    nose prograde. The ellipse-* scenarios place the ship on a 10 km x
    1000 km ASL orbit in the equatorial plane, prograde, at periapsis
-   (ell_phase 0), apoapsis (1), or 90 deg of true anomaly (2). */
+   (ell_phase 0), apoapsis (1), or 90 deg of true anomaly (2). The escape
+   scenario places the ship at the circular-orbit radius with esc_frac x
+   the local escape velocity, prograde -- a hyperbolic trajectory that
+   coasts out of the body's SOI on its own (no thrusting). */
 struct ScenarioDef {
     const char *name;
     bool on_pad;
@@ -1126,6 +1129,7 @@ struct ScenarioDef {
     int ell_phase;   // -1: circular; 0: at periapsis; 1: at apoapsis; 2: at 90 deg
     double peri_alt; // ellipse: periapsis altitude above the body radius (m)
     double apo_alt;  // ellipse: apoapsis altitude above the body radius (m)
+    double esc_frac; // escape: launch speed in local escape velocities (0 = not escape)
 };
 
 /* Look up a scenario by name; throws listing the available names if

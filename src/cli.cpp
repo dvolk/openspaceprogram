@@ -18,12 +18,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--scenario", args.scenario,
         "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
-        "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid "
-        "(the ellipse-* scenarios are a 10x1000 km ASL orbit started at "
-        "periapsis, apoapsis, or halfway by angle between them; default: pad)")
+        "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid, "
+        "escape (the ellipse-* scenarios are a 10x1000 km ASL orbit started "
+        "at periapsis, apoapsis, or halfway by angle between them; escape "
+        "is 2x escape velocity at the rot-orbit radius, coasting out of "
+        "the body's SOI on its own; default: pad)")
         ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
                                "inertial-orbit", "high-orbit", "high-polar",
-                               "ellipse-peri", "ellipse-apo", "ellipse-mid"}));
+                               "ellipse-peri", "ellipse-apo", "ellipse-mid",
+                               "escape"}));
 
     app.add_option("--system", args.system_file,
                    "Star-system JSON file to load (default: res/ksp_system.json; "
