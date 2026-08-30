@@ -92,7 +92,6 @@ void tick(Game &g) {
                    isDown(SDL_SCANCODE_A) || isDown(SDL_SCANCODE_D) ||
                    isDown(SDL_SCANCODE_Q) || isDown(SDL_SCANCODE_E) ||
                    isDown(SDL_SCANCODE_I) || isDown(SDL_SCANCODE_X) ||
-                   isDown(SDL_SCANCODE_B) || isDown(SDL_SCANCODE_N) ||
                    isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F)) {
                     g.ship->leaveRails();
                     if(g.time_accel >= kRailsWarp) {
@@ -102,6 +101,21 @@ void tick(Game &g) {
                     printf("Control input: '%s' left the rails, warp -> %d\n",
                            g.ship->name.c_str(), g.time_accel);
                 }
+            }
+            /* The Autopilot window's engaged mode (set by its toggle
+               buttons): apply it after clearRotCmd (above) so the ship
+               keeps slewing toward the target and holding, waking a railed
+               ship just like a control key. The X kill-rot key below
+               overrides it while held. */
+            if(game_running && g.ship->slewRequest != SlewNone) {
+                if(g.ship->onRails) {
+                    g.ship->leaveRails();
+                    if(g.time_accel >= kRailsWarp) {
+                        g.time_accel = 1;
+                        g.toast("Control input: left the rails, warp 1x");
+                    }
+                }
+                g.ship->slew = g.ship->slewRequest;
             }
             // pitch: W/S swing the nose to the screen top/bottom
             if (isDown(SDL_SCANCODE_W)) { g.ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
@@ -115,9 +129,6 @@ void tick(Game &g) {
 
             if (isDown(SDL_SCANCODE_I)) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
             if (isDown(SDL_SCANCODE_X)) { g.ship->Command(ShipCmd(KillRot), game_running); }
-
-            if (isDown(SDL_SCANCODE_B)) { g.ship->Command(ShipCmd(Prograde), game_running); }
-            if (isDown(SDL_SCANCODE_N)) { g.ship->Command(ShipCmd(Retrograde), game_running); }
 
             if (isDown(SDL_SCANCODE_R)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
             if (isDown(SDL_SCANCODE_F)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }

@@ -63,6 +63,10 @@ enum SlewMode {
     SlewNone = 0,
     SlewPrograde,    /* align nose with velocity */
     SlewRetrograde,  /* align nose against velocity */
+    SlewRadialOut,   /* align nose away from the SOI body (radius vector) */
+    SlewRadialIn,    /* align nose toward the SOI body */
+    SlewNormal,      /* align nose with the orbital-plane normal (r x v) */
+    SlewAntiNormal,  /* align nose against it */
     SlewKillRot      /* kill the spin */
 };
 
@@ -152,6 +156,12 @@ public:
     glm::dmat3 controlBasis = glm::dmat3(1.0);
     int controlScheme = 0;   // 0 = screen-aligned, 1 = heading-aligned
     int slew = SlewNone;
+    /* The autopilot mode the Autopilot window has engaged (its toggle
+       buttons). Persistent across ticks, unlike `slew` (cleared each tick):
+       the logic tick re-applies it after clearRotCmd(), so the ship keeps
+       slewing toward the target and holding until the mode is toggled off. */
+    SlewMode slewRequest = SlewNone;
+    void setSlewRequest(SlewMode m) { slewRequest = m; }
 
     void setRoot(Body *part) {
         parts = { part };
@@ -502,15 +512,14 @@ public:
         }
         /* Autopilot: one authority-bounded step of the slew/kill-rot law
            (h = this substep's duration, so the law re-evaluates per
-           substep -- the stable form of the same law). */
-        if(slew == SlewPrograde) {
-            slewToward(GetVel(), h);
-        }
-        else if(slew == SlewRetrograde) {
-            slewToward(-GetVel(), h);
-        }
-        else if(slew == SlewKillRot) {
+           substep -- the stable form of the same law). Every directional
+           mode slews the nose toward its target direction (slewTargetDir);
+           kill-rot damps the spin directly instead of chasing a direction. */
+        if(slew == SlewKillRot) {
             killRotStep(h);
+        }
+        else if(slew != SlewNone) {
+            slewToward(slewTargetDir(), h);
         }
     }
 
@@ -534,8 +543,17 @@ public:
             fflush(stdout);
             return;
         }
-        glm::dvec3 target = (slew == SlewPrograde) ? GetVel() : -GetVel();
-        const char *mode = (slew == SlewPrograde) ? "prograde" : "retrograde";
+        glm::dvec3 target = slewTargetDir();
+        const char *mode;
+        switch(slew) {
+            case SlewPrograde:   mode = "prograde"; break;
+            case SlewRetrograde: mode = "retrograde"; break;
+            case SlewRadialOut:  mode = "radial-out"; break;
+            case SlewRadialIn:   mode = "radial-in"; break;
+            case SlewNormal:     mode = "normal"; break;
+            case SlewAntiNormal: mode = "anti-normal"; break;
+            default:             mode = "slew"; break;
+        }
         if(glm::length2(target) < 0.5) { target = glm::dvec3(0.0); }
         target = glm::normalize(target);
         const double E = glm::acos(glm::clamp(glm::dot(facing, target), -1.0, 1.0));
@@ -846,6 +864,27 @@ private:
         return I;
     }
 
+    /* The target direction (in the ship's frame) for the current directional
+       slew mode. Radial / normal reference the SOI body: its center is the
+       frame origin, so `pos` is the radius vector and `vel` the velocity --
+       radial is the radius vector, normal the orbital angular-momentum
+       direction r x v. The same convention as the navball indicators in
+       render.cpp. KillRot / None return zero (slewToward refuses a
+       zero-length direction). */
+    glm::dvec3 slewTargetDir() {
+        const glm::dvec3 pos = get_center_of_mass();
+        const glm::dvec3 vel = GetVel();
+        switch(slew) {
+            case SlewPrograde:   return  vel;
+            case SlewRetrograde: return -vel;
+            case SlewRadialOut:  return  pos;
+            case SlewRadialIn:   return -pos;
+            case SlewNormal:     return  glm::cross(pos, vel);
+            case SlewAntiNormal: return -glm::cross(pos, vel);
+            default:             return glm::dvec3(0.0);
+        }
+    }
+
     /* Slew the nose (local +Z) toward `dir` within the wheel's authority:
        the target rate is the braking curve sqrt(2*alpha*E) -- the fastest
        rate from which the ship can still stop exactly at the target
@@ -853,8 +892,8 @@ private:
        the target, and the per-substep rate change is bounded by alpha*h,
        so the command never exceeds a maxed manual stick. */
     void slewToward(glm::dvec3 dir, double h) {
+        if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
         dir = glm::normalize(dir);
-        if(glm::length2(dir) < 0.5) { return; } /* no velocity to align to */
         Body *wheel = m_reaction_wheels.front();
         const glm::dvec3 facing = getRelAxis_(wheel, 2);
         const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));

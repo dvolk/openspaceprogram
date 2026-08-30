@@ -522,8 +522,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("pitch/yaw axes: Settings -> Controls");
         ImGui::Text("i - fire ship engines");
         ImGui::Text("x - kill rotation");
-        ImGui::Text("b - align prograde");
-        ImGui::Text("n - align retrograde");
+        ImGui::Text("Autopilot window - pro/retrograde + radial / normal slew");
         ImGui::Text("r/f - throttle up/down");
         ImGui::Text("SPACE - separate the active stage");
         ImGui::Spacing();
@@ -540,12 +539,36 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Autopilot", g.o_autopilot, [&] {
-        ImGui::Button("Prograde");
-        ImGui::Button("Retrograde");
-        ImGui::Button("Radial-in");
-        ImGui::Button("Radial-out");
-        ImGui::Button("Normal");
-        ImGui::Button("Anti-normal");
+        if(ship == nullptr) { return; }
+        // Toggle the autopilot: click a mode to engage it -- the nose slews
+        // toward the target and holds there -- and click it again to release.
+        // The modes are mutually exclusive, like a navball; the engaged one
+        // is highlighted (the same blue as the active ship in Ship List).
+        auto toggle = [&](SlewMode m, const char *label) {
+            const bool engaged = (ship->slewRequest == m);
+            if(engaged) {
+                ImGui::PushStyleColor(ImGuiCol_Button,
+                                     ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                     ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                     ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
+            }
+            if(ImGui::Button(label)) {
+                ship->setSlewRequest(engaged ? SlewNone : m);
+            }
+            if(engaged) {
+                ImGui::PopStyleColor(3);
+            }
+        };
+        toggle(SlewPrograde, "Prograde");
+        toggle(SlewRetrograde, "Retrograde");
+        toggle(SlewRadialOut, "Radial-out");
+        toggle(SlewRadialIn, "Radial-in");
+        toggle(SlewNormal, "Normal");
+        toggle(SlewAntiNormal, "Anti-normal");
+        ImGui::Spacing();
+        toggle(SlewKillRot, "Kill rotation");
     });
 
     ui::Window("Resources", g.o_resources, [&] {
