@@ -41,6 +41,7 @@ struct GameArgs {
     bool xfer_log = false;
     std::string transfer_target;
     bool spin_log_enabled = false;
+    bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
 
     std::vector<std::string> postfx_spec;
     bool gl_debug = false;

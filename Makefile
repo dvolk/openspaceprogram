@@ -119,6 +119,12 @@ test:
 	# main.cpp runs, pinned across the authority/warp grid.
 	$(CXX) -O2 -std=c++11 tests/test_attitude.cpp -o test_attitude
 	./test_attitude
+	# slew law in 3 DOF (pure C++, no Bullet/GL): the full-transverse law
+	# damps the "third-axis" spin the old slew-axis-only law left undamped
+	# (the prograde wobble), across spin magnitudes and warps; pins the
+	# non-vacuous guard (the old law must wobble) + the authority bound.
+	$(CXX) -O2 -std=c++11 tests/test_slew3d.cpp -o test_slew3d
+	./test_slew3d
 	# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
 	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
@@ -210,7 +216,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_orbitcam test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_orbitcam test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

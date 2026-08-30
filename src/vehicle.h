@@ -514,6 +514,58 @@ public:
         }
     }
 
+    /* Autopilot diagnostic (throttled; called from the tick when
+       --slew-log is set). Prints the slew error angle, the ship's angular
+       velocity DECOMPOSED into the slew axis / nose-roll / the third axis
+       (so an uncontrolled spin shows up as nonzero roll/third even while
+       the slew-axis rate is being driven to zero), and the braking-curve
+       rate the law wants right now. This is the instrument for hunting the
+       prograde wobble: watch E and w_slew for a sustained oscillation, and
+       roll/third for a residual spin the law is not killing. */
+    void slew_log(double time) {
+        if(slew == SlewNone || m_reaction_wheels.empty()) { return; }
+        Body *wheel = m_reaction_wheels.front();
+        const glm::dvec3 facing = getRelAxis_(wheel, 2);
+        if(slew == SlewKillRot) {
+            const glm::dvec3 w = GetAngVelocity(wheel);
+            printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
+                   "w=[%+.4f %+.4f %+.4f]\n",
+                   time, glm::length(w), w.x, w.y, w.z);
+            fflush(stdout);
+            return;
+        }
+        glm::dvec3 target = (slew == SlewPrograde) ? GetVel() : -GetVel();
+        const char *mode = (slew == SlewPrograde) ? "prograde" : "retrograde";
+        if(glm::length2(target) < 0.5) { target = glm::dvec3(0.0); }
+        target = glm::normalize(target);
+        const double E = glm::acos(glm::clamp(glm::dot(facing, target), -1.0, 1.0));
+        glm::dvec3 axis = glm::cross(facing, target);
+        if(glm::length2(axis) < 1e-12) {
+            axis = (std::fabs(facing.y) > 0.9) ? glm::dvec3(1, 0, 0) : glm::dvec3(0, 1, 0);
+            axis = glm::normalize(axis - facing * glm::dot(axis, facing));
+        }
+        axis = glm::normalize(axis);
+        const glm::dvec3 rollAxis  = glm::normalize(facing);
+        const glm::dvec3 thirdAxis = glm::cross(axis, rollAxis);
+        const glm::dvec3 w = GetAngVelocity(wheel);
+        const double w_slew  = glm::dot(w, axis);
+        const double w_roll  = glm::dot(w, rollAxis);
+        const double w_third = glm::dot(w, thirdAxis);
+        const glm::dmat3 I = getInertia();
+        const double Ieff = glm::dot(axis, I * axis);
+        const double alpha = (Ieff > 0.0) ? maxTorque() / Ieff : 0.0;
+        const double w_des = (alpha > 0.0) ? std::sqrt(2.0 * alpha * E) : 0.0;
+        printf("[slew] t=%.3f mode=%s E=%.4f rad (%.2f deg) "
+               "w_slew=%+.4f w_roll=%+.4f w_third=%+.4f |w|=%.4f "
+               "alpha=%.3f Ieff=%.0f w_des=%+.4f "
+               "nose=[%+.3f %+.3f %+.3f] target=[%+.3f %+.3f %+.3f]\n",
+               time, mode, E, glm::degrees(E),
+               w_slew, w_roll, w_third, glm::length(w),
+               alpha, Ieff, w_des,
+               facing.x, facing.y, facing.z, target.x, target.y, target.z);
+        fflush(stdout);
+    }
+
     /* the largest wheel's rated torque (N m) -- the per-wheel rating for
        the HUD; the ship's TOTAL wheel authority is maxTorque() (the sum) */
     float GetWheelTorque() {
@@ -818,13 +870,25 @@ private:
         const double Ieff = glm::dot(axis, I * axis); /* kg m^2 about the slew axis */
         if(Ieff <= 0.0) { return; }
         const double alpha = maxTorque() / Ieff; /* rad/s^2, wheel-limited */
-        const double A = alpha * h;              /* max |domega| this substep */
-        const double w = glm::dot(GetAngVelocity(wheel), axis);
         const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
-        double dw = w_des - w;
-        if(dw > A) { dw = A; }
-        if(dw < -A) { dw = -A; }
-        const glm::dvec3 torque = axis * (Ieff * dw / h); /* |torque| <= maxTorque() */
+        /* Drive the FULL transverse angular velocity (the part perpendicular
+           to the nose) toward the braking-curve rate about the slew axis.
+           The old torque was along the slew axis ONLY, so the perpendicular
+           "third-axis" spin was never damped: any residual spin about it at
+           engagement persisted (and grew via gyroscopic coupling), and as the
+           slew axis rotated that undamped spin coupled into the nose -- the
+           sustained wobble around the prograde/retrograde target. Killing it
+           is the fix. Roll about the nose is intentionally left free. */
+        const glm::dvec3 w_now = GetAngVelocity(wheel);
+        const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
+        glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
+        glm::dvec3 torque = I * dW / h;
+        /* Authority bound: the wheel pushes at most maxTorque() N m, so scale
+           the correction down if it would exceed that. Only active while a
+           third-axis spin is present; with none, dW is along the slew axis
+           and |torque| == maxTorque exactly as before. */
+        const double tq = glm::length(torque);
+        if(tq > maxTorque()) { torque *= maxTorque() / tq; }
         for(auto&& rw : m_reaction_wheels) {
             ApplyTorque(rw, torque / (double)m_reaction_wheels.size());
         }

@@ -219,6 +219,17 @@ void tick(Game &g) {
                     spin_log(g.ship, g.time);
                 }
             }
+
+            /* --slew-log: autopilot (prograde/retrograde/kill-rot) state,
+               once per 0.1 s of sim time -- fine enough to resolve the
+               slew's ~1 s timescale and any oscillation around the target. */
+            if(g.args.slew_log_enabled) {
+                static double last_slew_log = -1e30;
+                if(g.time - last_slew_log >= 0.1) {
+                    last_slew_log = g.time;
+                    g.ship->slew_log(g.time);
+                }
+            }
         }
 
         // --orbit-log: orbital elements, fit in the body's inertial

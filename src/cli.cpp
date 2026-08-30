@@ -153,6 +153,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "angular velocities, inter-part contact impulses, tidal "
                  "torque) to stdout; also implied by --radial-test");
 
+    app.add_flag("--slew-log", args.slew_log_enabled,
+                 "Periodically print the prograde/retrograde autopilot "
+                 "state (slew error angle, angular velocity split into the "
+                 "slew/roll/third axes, braking-curve rate) to stdout; "
+                 "the instrument for hunting the prograde wobble");
+
     app.add_option("--postfx", args.postfx_spec,
                    "Post-processing effect, in the order given; repeatable "
                    "and/or comma-separated (e.g. --postfx cas,grain). "
