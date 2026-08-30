@@ -3,7 +3,7 @@
 # |ΔE| is significant. Deliberately direction-independent -- the spawn attitude
 # isn't prograde, so a prograde/retrograde assertion would be flaky.
 NAME orbit-burn
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 100
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 10
 ARGS --timeout 12 --orbit-log --orbit-interval 0.5
 ARGS --sim-press 500,500,R
 ARGS --sim-press 1500,3000,I

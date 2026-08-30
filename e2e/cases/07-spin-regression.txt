@@ -5,7 +5,7 @@
 # FORBID nan: the %.3e NaN token; verified absent from healthy output.
 # (Not FORBID ing bare "inf" -- it would false-positive on words like "info".)
 NAME spin-regression
-ARGS --radial-test stacks --time-accel 100 --timeout 15 --spin-log
+ARGS --radial-test stacks --time-accel 10 --timeout 15 --spin-log
 EXPECT Main loop starting
 EXPECT [spin]
 FORBID GL_

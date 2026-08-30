@@ -72,10 +72,12 @@ void tick(Game &g) {
 
         if (g.camMode == CAM_ORBIT) {
             bool game_running = (g.time_accel > 0);
-            /* touching the controls wakes a ship parked on rails: it
-               re-enters physics and rails warp drops to 1x (you cannot
-               maneuver on rails). */
-            if(g.ship->onRails && g.time_accel >= kRailsWarp) {
+            /* touching the controls wakes a railed active ship: it
+               re-enters physics (you cannot maneuver on rails). A rails
+               warp (accel > 10) drops to 1x on the way out; a ship railed
+               at a low warp (an SOI handoff drops the warp to 1 while the
+               ship keeps its conic) just wakes in place. */
+            if(g.ship->onRails && g.time_accel > 0) {
                 if(isDown(SDL_SCANCODE_W) || isDown(SDL_SCANCODE_S) ||
                    isDown(SDL_SCANCODE_A) || isDown(SDL_SCANCODE_D) ||
                    isDown(SDL_SCANCODE_Q) || isDown(SDL_SCANCODE_E) ||
@@ -83,9 +85,9 @@ void tick(Game &g) {
                    isDown(SDL_SCANCODE_B) || isDown(SDL_SCANCODE_N) ||
                    isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F)) {
                     g.ship->leaveRails();
-                    g.time_accel = 1;
-                    printf("Control input: '%s' left the rails, warp -> 1\n",
-                           g.ship->name.c_str());
+                    if(g.time_accel >= kRailsWarp) { g.time_accel = 1; }
+                    printf("Control input: '%s' left the rails, warp -> %d\n",
+                           g.ship->name.c_str(), g.time_accel);
                 }
             }
             // pitch

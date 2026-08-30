@@ -39,12 +39,13 @@ struct Model;
 struct Shader;
 struct Skybox;
 
-// Rails warp threshold: at this accel (and above) nobody is integrated --
-// every ship coasts on rails (or sits frozen on the ground) and the Bullet
-// world is not stepped, so a tick costs O(ships). Below it the active ship
-// is in the physics world. Shared by the event dispatch, the logic tick
-// and the startup clamp (was a local const in main).
-static const int kRailsWarp = 10000;
+// Rails warp threshold: at accel > 10 nobody is integrated -- every ship
+// coasts on rails (or sits frozen on the ground) and the Bullet world is
+// not stepped, so a tick costs O(ships). At 10 and below the active ship
+// is in the physics world. 11 == "the first accel above 10" for the
+// power-of-10 warps (1, 10, 100, ...). Shared by the event dispatch, the
+// logic tick and the startup clamp (was a local const in main).
+static const int kRailsWarp = 11;
 
 // The active camera (was a local `enum CameraMode` in main).
 enum CameraMode { CAM_ORBIT, CAM_FREE };

@@ -136,20 +136,18 @@ void poll_events(Game &g) {
         }
         if(ev.type == SDL_KEYDOWN) {
             if(ev.key.keysym.sym == SDLK_PERIOD) {
-                if(g.time_accel < 1000) {
-                    g.time_accel *= 10;
-                    if(g.time_accel == 0) {
-                        g.time_accel = 1;
-                    }
-                } else if(g.time_accel < 100000) {
-                    // 1000 -> 10000 -> 100000: rails warp. Every ship
-                    // coasts (or freezes on the ground) and the physics
-                    // world stops stepping; refuses if any ship is not
-                    // rail-eligible.
-                    if(g.enter_rails_warp()) {
-                        g.time_accel *= 10;
+                // Warp up one step (10x), capped at 100000 (ladder top).
+                // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
+                // requires every ship to be rail-eligible: the active ship
+                // coasts (or freezes on the ground) and the physics world
+                // stops stepping; if any ship is not eligible the step is
+                // refused and the current warp stays.
+                const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
+                if(next <= 100000 && (next < kRailsWarp || g.enter_rails_warp())) {
+                    g.time_accel = next;
+                    if(next >= kRailsWarp) {
                         printf("Rails warp: time accel %d (ships on rails)\n",
-                               g.time_accel);
+                               next);
                     }
                 }
             }

@@ -402,15 +402,16 @@ int main(int argc, char **argv)
     // kRailsWarp is defined in game.h (the rails-warp threshold).
     time_accel = args.initial_time_accel;
 
-    /* Starting the game directly in rails warp: the active ship parks
-       too (works on the pad -- that is the frozen mode), unless some
-       ship is not rail-eligible, in which case clamp to physics warp. */
+    /* Starting the game directly in rails warp (accel > 10): the active
+       ship parks too (works on the pad -- that is the frozen mode),
+       unless some ship is not rail-eligible, in which case clamp to the
+       top physics warp (10). */
     if(time_accel >= kRailsWarp) {
         bool all_eligible = true;
         for(auto *s : ships) {
             if(!s->canRail()) {
                 printf("Rails warp refused at start: '%s' is neither in free "
-                       "fall nor grounded; clamping time accel to 1000\n",
+                       "fall nor grounded; clamping time accel to 10\n",
                        s->name.c_str());
                 all_eligible = false;
                 break;
@@ -419,7 +420,7 @@ int main(int argc, char **argv)
         if(all_eligible) {
             for(auto *s : ships) { s->goOnRails(); }
         } else {
-            time_accel = 1000;
+            time_accel = 10;
         }
     }
     cam_speed = 1;

@@ -1,13 +1,13 @@
-# Rails warp: from time-accel 1000, one PERIOD enters rails warp (->10000,
-# ships coast) and one COMMA exits (->1000, physics resumes). Both the entry
+# Rails warp: from time-accel 10, one PERIOD enters rails warp (->100,
+# ships coast) and one COMMA exits (->10, physics resumes). Both the entry
 # and exit print lines must appear. Catches a regression in the warp
 # enter/leave state machine.
 NAME rails-warp
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1000
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 10
 ARGS --timeout 10
 ARGS --sim-press 1500,50,PERIOD
 ARGS --sim-press 2500,50,COMMA
-EXPECT Rails warp: time accel 10000
+EXPECT Rails warp: time accel 100
 EXPECT Rails warp: exited
 FORBID GL_
 FORBID error:

@@ -127,9 +127,9 @@ void Game::apply_ui_style() {
 /* Switch the active (controlled) ship. The ship being left is released:
    throttle zeroed, armed thrust + rotation commands cleared, and it parks
    on rails (coasting or frozen) if it can. The ship being taken re-enters
-   physics. Taking control during rails warp drops the warp to 1000 -- the
-   active ship is now being integrated. The orbit camera recenters on the
-   ship being taken. */
+   physics. Taking control during rails warp drops the warp to 10 (the top
+   physics warp -- anything above is a rails warp) so the active ship is
+   integrated. The orbit camera recenters on the ship being taken. */
 void Game::select_ship(int idx) {
     if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
     ships[activeIdx]->releaseControl();
@@ -137,7 +137,7 @@ void Game::select_ship(int idx) {
     activeIdx = idx;
     ships[activeIdx]->leaveRails();
     ship = ships[activeIdx];
-    if(time_accel >= kRailsWarp) { time_accel = 1000; }
+    if(time_accel >= kRailsWarp) { time_accel = 10; }
     focusBody = 0;   // back to the "ship" focus target
     if(camMode == CAM_ORBIT) {
         orbitCam->Follow(ship->get_center_of_mass());
@@ -185,7 +185,7 @@ void Game::remove_ship(int idx) {
         activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;
         ships[activeIdx]->leaveRails();
         ship = ships[activeIdx];
-        if(time_accel >= kRailsWarp) { time_accel = 1000; }
+        if(time_accel >= kRailsWarp) { time_accel = 10; }
         focusBody = 0;
         if(camMode == CAM_ORBIT) {
             orbitCam->Follow(ship->get_center_of_mass());
