@@ -238,6 +238,11 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
 
     if(sun == nullptr) { return 1.0f; }
 
+    // The SOI body IS the star (ship in the sun's own SOI): the star is the
+    // light source, so its own terrain can't shadow the ship. Without this the
+    // "line to the sun" ray re-crosses the star's body and reads as shadow.
+    if(planet == sun) { return 1.0f; }
+
     // Work in universe (root) axes: the ray to the sun and the planet
     // center are both absolute there, and root_orient carries the full
     // chain (orbital tilts of the ancestors, axial tilt + spin of the

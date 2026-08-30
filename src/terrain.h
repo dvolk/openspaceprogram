@@ -249,10 +249,23 @@ struct TerrainBody {
         glDisable(GL_BLEND);
     }
 
+    // Direction light travels (sun -> object) in renderFrame's axes, where
+    // `object_root` is the lit object's position in universe (root) coords.
+    // Computing it from the object's actual position -- rather than the SOI
+    // body's center -- is what keeps this defined when the SOI body IS the
+    // star: sun->center collapses to a zero vector and normalize(0) = NaN,
+    // which turned the ship's fragments NaN and rendered it black.
+    static glm::dvec3 LightDirFrom(const glm::dvec3 &object_root,
+                                   TerrainBody *sun, Frame *renderFrame) {
+        const glm::dvec3 d = object_root - sun->frame->root_pos; // sun -> object
+        if(glm::length(d) < 1e-9) { return glm::dvec3(0, 1, 0); }
+        return glm::normalize(d) * renderFrame->root_orient;
+    }
+
+    // The lit object is the SOI body's own center (terrain / atmosphere).
     static glm::dvec3 SunlightDir(TerrainBody *planet, TerrainBody *sun,
                                   Frame *renderFrame) {
-        const glm::dvec3 d_root = sun->frame->root_pos - planet->frame->root_pos;
-        return -glm::normalize(sun->frame->GetOrientRelTo(renderFrame) * d_root);
+        return LightDirFrom(planet->frame->root_pos, sun, renderFrame);
     }
 
     void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {

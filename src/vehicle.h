@@ -608,8 +608,15 @@ public:
        SOI while another ship was being controlled lives in a different
        frame, so transform its parts into the render frame first. */
     void Draw(const Camera* camera, Frame *renderFrame) {
-        // Light direction in this frame's axes
-        glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(m_parent, sun, frame));
+        // Light direction at the ship (sun -> ship COM), in the render frame's
+        // axes where the part normals end up after the xform below. Using the
+        // ship's own position -- not the SOI body's center as SunlightDir does
+        // -- is what keeps it defined in the Kerbol SOI, where the SOI center
+        // IS the star and sun->center is a zero vector (normalize -> NaN).
+        const glm::dvec3 com_root =
+            frame->root_orient * get_center_of_mass() + frame->root_pos;
+        glm::vec3 sunlightVec =
+            glm::vec3(TerrainBody::LightDirFrom(com_root, sun, renderFrame));
 
         glm::dmat4 xform = glm::dmat4(1.0);
         if(frame != renderFrame) {

@@ -44,7 +44,12 @@ public:
             const Frame *posFrame = parent->frame->getRotFrame();
             const float shadow = ComputeTerrainShadow(parent, posFrame,
                                                       GetPosition(body), sun);
-            glm::vec3 sunlightVec = glm::vec3(TerrainBody::SunlightDir(parent, sun, renderFrame));
+            // Light direction at the pad (sun -> pad); stays defined if the
+            // pad's body were ever the star (SunlightDir would be a zero vector).
+            const glm::dvec3 pad_root =
+                posFrame->root_orient * GetPosition(body) + posFrame->root_pos;
+            glm::vec3 sunlightVec =
+                glm::vec3(TerrainBody::LightDirFrom(pad_root, sun, renderFrame));
             body->Draw(camera, sunlightVec, shadow);
         }
     }
