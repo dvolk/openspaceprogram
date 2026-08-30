@@ -54,9 +54,6 @@ public:
     glm::dmat3 orient = glm::dmat3(1.0);
     glm::dmat3 ref = glm::dmat3(1.0);
     double distance = 10.0;
-    // Set by the caller while focused on a grounded ship: keeps the camera
-    // above the local horizon (Pioneer clamps its landed external view too).
-    bool clamp_above_horizon = false;
 
     // Free-mode state. Here pos is PRIMARY (Move* edits it) and right is the
     // derived basis axis (recomputed every ComputeView()).

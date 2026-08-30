@@ -54,40 +54,6 @@ Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear,
 
 void Camera::ComputeView() {
     if (mode == CAM_ORBIT) {
-        if (clamp_above_horizon) {
-            // Keep the camera above the local horizon (the body's radial --
-            // the body centre is the origin of the render frame): pitch it
-            // up to 5 degrees if it has dropped below. The pitch is a
-            // rotation d around the camera right (the orient basis Ŷ),
-            // which moves the offset (basis X̂) to
-            //   off' = off*cos(d) - up_cam*sin(d)
-            // so the elevation condition is A*cos(d) - B*sin(d) = sin(5deg)
-            // with A = off.lup, B = up_cam.lup; solve the two candidate
-            // roots and take the smaller motion.
-            const glm::dmat3 R = ref * orient;
-            const glm::dvec3 offw = R * glm::dvec3(1, 0, 0);
-            const glm::dvec3 upw = R * glm::dvec3(0, 0, 1);
-            const glm::dvec3 lup = glm::normalize(focusPoint);
-            const double A = glm::dot(offw, lup);
-            const double B = glm::dot(upw, lup);
-            const double cMin = std::sin(glm::radians(5.0));
-            if (A < cMin) {
-                const double M = std::sqrt(A * A + B * B);
-                const double phi = std::atan2(B, A);
-                double d;
-                if (M < cMin) {
-                    d = -phi;   // no exact root; best effort (degenerate)
-                } else {
-                    const double a = std::acos(cMin / M);
-                    const double d1 = a - phi;
-                    const double d2 = -a - phi;
-                    d = (std::abs(d1) <= std::abs(d2)) ? d1 : d2;
-                }
-                orient = glm::transpose(ref)
-                       * glm::dmat3(glm::rotate(d, R * glm::dvec3(0, 1, 0)))
-                       * ref * orient;
-            }
-        }
         pos = focusPoint + ref * (orient * glm::dvec3(1, 0, 0)) * distance;
         forward = glm::normalize(focusPoint - pos);
         buildView(-forward, ref * (orient * glm::dvec3(0, 0, 1)), pos - renderOrigin);
@@ -180,38 +146,10 @@ void Camera::MoveUp(double amt) {
 
 void Camera::Pitch(double angle) {
     if (mode == CAM_ORBIT) {
-        if (clamp_above_horizon) {
-            // Landed: stop the camera at the horizon instead of letting
-            // it keep rotating under the ship (that would flip its up
-            // and show the ship upside down). The pitch by `angle`
-            // (around the camera right) sends the offset's elevation
-            // from sin = A to A*cos(angle) - B*sin(angle) with
-            // A = off.lup, B = up_cam.lup; if that drops below sin(5deg)
-            // take the closest root that keeps it there (absorb the rest).
-            const glm::dmat3 R = ref * orient;
-            const glm::dvec3 offw = R * glm::dvec3(1, 0, 0);
-            const glm::dvec3 upw = R * glm::dvec3(0, 0, 1);
-            const glm::dvec3 lup = glm::normalize(focusPoint);
-            const double A = glm::dot(offw, lup);
-            const double B = glm::dot(upw, lup);
-            const double cMin = std::sin(glm::radians(5.0));
-            if (A * std::cos(angle) - B * std::sin(angle) < cMin) {
-                const double M = std::sqrt(A * A + B * B);
-                if (M < cMin) {
-                    angle = 0.0;   // no root; absorb entirely
-                } else {
-                    const double phi = std::atan2(B, A);
-                    const double a = std::acos(cMin / M);
-                    const double d1 = a - phi;
-                    const double d2 = -a - phi;
-                    angle = (std::abs(d1) <= std::abs(d2)) ? d1 : d2;
-                }
-            }
-        }
         // Pitch around the camera right (the orient basis Ŷ): the camera
         // swings over the top / under the bottom of the focus. Up (the
         // orient basis ẑ) turns with it, so it stays continuous through
-        // the top -- no horizon roll.
+        // the top -- no horizon roll, no pole singularity.
         orient = glm::dmat3(glm::rotate(angle, orient * glm::dvec3(0, 1, 0))) * orient;
     } else {
         // Rotate the view direction and up around the right axis.
@@ -223,10 +161,8 @@ void Camera::Pitch(double angle) {
 
 void Camera::RotateY(double angle) {
     if (mode == CAM_ORBIT) {
-        // Yaw around the camera up (the orient basis ẑ): a turntable
-        // around the camera's own vertical, which chases the ship's
-        // attitude in flight (ref * ẑ) and is the world vertical on the
-        // pad.
+        // Yaw around the camera up (the orient basis ẑ) -- the camera's
+        // own vertical, which chases the ship's attitude (ref * ẑ).
         orient = glm::dmat3(glm::rotate(angle, orient * glm::dvec3(0, 0, 1))) * orient;
     } else {
         // Yaw: rotate the view direction and right around the up axis.

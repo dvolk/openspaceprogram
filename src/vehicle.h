@@ -946,13 +946,6 @@ public:
         return el.periapsis <= inertial->body->radius + 3000.0;
     }
 
-    /* Sitting on the ground: in the rotating surface frame with the
-       osculating orbit inside the terrain band. The orbit camera uses this
-       to stay above the local horizon while focused on a landed ship. */
-    bool isGrounded() {
-        return frame->isRotFrame() && inTerrainBand();
-    }
-
     /* Rails classification: a FLYING ship (periapsis clear of the terrain
        band) coasts on its conic; a GROUNDED one (periapsis inside the
        band) can only freeze in its rotating surface frame. Anything else

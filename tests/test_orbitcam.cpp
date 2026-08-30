@@ -81,33 +81,6 @@ int main() {
     printf("after a 360deg yaw loop: offset returned within %.2g (0 = exact)\n", yaw_err);
     if (yaw_err > 1e-9) { bad = true; }
 
-    // Landed clamp (Pioneer's landed external view): focused on a ship on
-    // the surface (body centre at the origin, local up = normalize(focus)),
-    // the camera must never end up below the local horizon -- pitching
-    // down is absorbed at 5 degrees, not wrapped under the ship (which
-    // flipped the old camera to an upside-down view).
-    Camera pad(glm::dvec3(0, 0, 1000), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
-    const glm::dvec3 padFocus(0, 0, 1000);
-    pad.distance = 100.0;
-    pad.clamp_above_horizon = true;
-    pad.ComputeView();
-    const glm::dvec3 lup(0, 0, 1);
-    double sin_el = glm::dot(glm::normalize(pad.pos - padFocus), lup);
-    printf("spawn with clamp on: elevation sin = %.4f (min %.4f)\n",
-           sin_el, std::sin(5.0 * M_PI / 180.0));
-    if (sin_el < std::sin(5.0 * M_PI / 180.0) - 1e-9) { bad = true; }
-    for (int i = 0; i < 200; i++) {          // a long hard down-drag
-        pad.Pitch(1.0);
-        pad.ComputeView();
-        if (isbadm(pad.view)) { bad = true; }
-    }
-    sin_el = glm::dot(glm::normalize(pad.pos - padFocus), lup);
-    const double up_ok = glm::dot(pad.up, lup) > 0.5;
-    printf("after 200 down-pitches: elevation sin = %.4f, up above horizon = %s\n",
-           sin_el, up_ok ? "yes" : "NO (flipped)");
-    if (sin_el < std::sin(5.0 * M_PI / 180.0) - 1e-9) { bad = true; }
-    if (!up_ok) { bad = true; }
-
     // Wheel zoom is proportional and clamped: it can never cross the focus
     // (old: distance -= amt*sqrt(distance), unclamped -> flip through).
     for (int i = 0; i < 400; i++) { cam.wheel(1.0); }

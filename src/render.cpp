@@ -80,13 +80,11 @@ void draw3d(Game &g, TransferPlanner &planner) {
             camera->ref = glm::dmat3(getRelAxis_(ship->controller, 0),
                                      getRelAxis_(ship->controller, 1),
                                      getRelAxis_(ship->controller, 2));
-            camera->clamp_above_horizon = ship->isGrounded();
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
             camera->ref = (b == ship->m_parent && ship->frame->isRotFrame())
                 ? glm::dmat3(1.0)
                 : glm::dmat3(b->frame->getRotFrame()->orient);
-            camera->clamp_above_horizon = false;
         }
     }
 
