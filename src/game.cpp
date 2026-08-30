@@ -163,9 +163,9 @@ void Game::select_ship(int idx) {
         toast("Active ship: %s, warp 10x", ship->name.c_str());
     }
     focusBody = 0;   // back to the "ship" focus target
-    if(camMode == CAM_ORBIT) {
-        orbitCam->Follow(ship->get_center_of_mass());
-        orbitCam->distance = 50.0;
+    if(camera->mode == CAM_ORBIT) {
+        camera->Follow(ship->get_center_of_mass());
+        camera->distance = 50.0;
     }
     printf("Active ship %d of %d: %s\n",
            activeIdx + 1, (int)ships.size(), ship->name.c_str());
@@ -216,9 +216,9 @@ void Game::remove_ship(int idx) {
             toast("Active ship: %s, warp 10x", ship->name.c_str());
         }
         focusBody = 0;
-        if(camMode == CAM_ORBIT) {
-            orbitCam->Follow(ship->get_center_of_mass());
-            orbitCam->distance = 50.0;
+        if(camera->mode == CAM_ORBIT) {
+            camera->Follow(ship->get_center_of_mass());
+            camera->distance = 50.0;
         }
         printf("Removed '%s'; active ship %d of %d: %s\n",
                removedName.c_str(), activeIdx + 1, (int)ships.size(),

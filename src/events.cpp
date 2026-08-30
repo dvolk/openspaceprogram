@@ -127,10 +127,8 @@ void poll_events(Game &g) {
                 check_gl_error();
 
                 g.camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
-                // both cameras: the terrain LOD reads the active one, and
-                // either can become active
-                g.orbitCam->setViewport(ev.window.data1, ev.window.data2);
-                g.freeCam->setViewport(ev.window.data1, ev.window.data2);
+                // the terrain LOD (screen-px budget) reads the live one
+                g.camera->setViewport(ev.window.data1, ev.window.data2);
                 check_gl_error();
             }
         }
@@ -186,34 +184,24 @@ void poll_events(Game &g) {
                 }
             }
             if(ev.key.keysym.sym == SDLK_c) {
-                // Toggle between the body-orbit camera and the free camera.
-                if(g.camMode == CAM_ORBIT) {
-                    g.freeCam->pos = g.orbitCam->pos;
-                    g.freeCam->forward = g.orbitCam->forward;
-                    g.freeCam->up = g.orbitCam->up;
-                    g.camMode = CAM_FREE;
-                    g.camera = g.freeCam;
+                // Toggle between the body-orbit camera and free flight.
+                if(g.camera->mode == CAM_ORBIT) {
+                    g.camera->toFree();
                 } else {
-                    glm::dvec3 focus = g.focusWorldPos(g.focusBody);
-                    g.orbitCam->Follow(focus);
-                    double dist = glm::length(g.freeCam->pos - focus);
-                    if(dist < 10.0) { dist = 10.0; }
-                    g.orbitCam->distance = dist;
-                    g.camMode = CAM_ORBIT;
-                    g.camera = g.orbitCam;
+                    g.camera->toOrbit(g.focusWorldPos(g.focusBody));
                     printf("Camera: orbiting %s (G = switch body, C = free)\n",
                            g.focusTargets[g.focusBody].name);
                 }
             }
             if(ev.key.keysym.sym == SDLK_g) {
                 // Cycle the orbit camera's target body.
-                if(g.camMode == CAM_ORBIT) {
+                if(g.camera->mode == CAM_ORBIT) {
                     g.focusBody = (g.focusBody + 1) % g.numFocusTargets;
-                    g.orbitCam->Follow(g.focusWorldPos(g.focusBody));
+                    g.camera->Follow(g.focusWorldPos(g.focusBody));
                     double d = (g.focusTargets[g.focusBody].body == nullptr)
                         ? 50.0
                         : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
-                    g.orbitCam->distance = d;
+                    g.camera->distance = d;
                     printf("Orbit camera targeting %s\n",
                            g.focusTargets[g.focusBody].name);
                 } else {
@@ -240,7 +228,7 @@ void poll_events(Game &g) {
                 // keep dropping stages). Only while flying a ship with
                 // time running (a paused separation would leave the
                 // survivors frozen mid-air).
-                if(!ev.key.repeat && g.camMode == CAM_ORBIT && g.time_accel > 0) {
+                if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0) {
                     // staging needs the parts in the physics world:
                     // wake a ship parked on rails first
                     if(g.ship->onRails) {

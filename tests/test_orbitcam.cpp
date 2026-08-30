@@ -22,7 +22,7 @@ static bool isbadm(glm::dmat4 m) {
 
 // Faithfully drive the camera with its own Pitch() (incremental), accumulating
 // a total pitch of `totalDeg` degrees.
-static void pitchCam(OrbitCamera& cam, double totalDeg) {
+static void pitchCam(Camera& cam, double totalDeg) {
     cam.orient = glm::dmat3(1.0);
     cam.ComputeView();   // refresh forward/up from the clean identity orient
     const int steps = 400;
@@ -38,7 +38,7 @@ int main() {
     printf("Pitch from 0deg toward the pole. A sudden ~90deg ROLL of the up\n");
     printf("vector is the reported 'weird' behavior.\n\n");
 
-    OrbitCamera cam(glm::dvec3(0, 0, 0), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
+    Camera cam(glm::dvec3(0, 0, 0), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
     cam.distance = 1000.0;
 
     for (int deg = 0; deg <= 100; deg += 10) {

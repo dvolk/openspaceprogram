@@ -36,8 +36,6 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     System &sys = g.sys;
     GameArgs &args = g.args;
     Camera *camera = g.camera;
-    OrbitCamera *orbitCam = g.orbitCam;
-    FreeCamera *freeCam = g.freeCam;
     int &activeIdx = g.activeIdx;
     int &time_accel = g.time_accel;
     int &cam_speed = g.cam_speed;
@@ -177,8 +175,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::EndDisabled();
         if(ImGui::SliderFloat("FOV", &args.camFovDeg, 10.0f, 120.0f, "%.0f°")) {
             const float f = (float)glm::radians(args.camFovDeg);
-            orbitCam->setFov(f);
-            freeCam->setFov(f);
+            camera->setFov(f);
         }
         // Terrain LOD: a patch subdivides while it projects wider than
         // args.terrain_px (read live by GeoPatch::Update). The slider is

@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "camera.h"   // Camera, OrbitCamera, FreeCamera
+#include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
 #include "display.h"  // Renderer
 #include "orbit.h"    // OrbitElements (the ShipView state)
@@ -57,9 +57,6 @@ struct ToastMsg {
     std::string text;
     double born;   // wall-clock seconds (SDL_GetTicks() * 0.001)
 };
-
-// The active camera (was a local `enum CameraMode` in main).
-enum CameraMode { CAM_ORBIT, CAM_FREE };
 
 // The active ship's per-frame state in the render frame (ship->frame):
 // computed once per drawn frame by the 3D pass (render.cpp) and read by
@@ -113,10 +110,7 @@ struct Game {
     Uint32 loop_start_ms = 0;   // set once the main loop is about to start
 
     // --- cameras -----------------------------------------------------------
-    OrbitCamera *orbitCam = nullptr;
-    FreeCamera *freeCam = nullptr;
-    Camera *camera = nullptr;   // the active one
-    int camMode = CAM_ORBIT;
+    Camera *camera = nullptr;   // one object: orbit + free, `camera->mode` picks
     int cam_speed = 1;
 
     // --- the clock ----------------------------------------------------------

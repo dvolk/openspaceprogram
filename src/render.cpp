@@ -69,7 +69,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
     TimeSeries &angmom_series = view.angmom_series;
 
     const glm::dvec3 com = ship->get_center_of_mass();
-    if(g.camMode == CAM_ORBIT) {
+    if(g.camera->mode == CAM_ORBIT) {
         camera->Follow(g.focusWorldPos(g.focusBody));
     }
 

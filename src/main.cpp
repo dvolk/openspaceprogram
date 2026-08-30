@@ -249,8 +249,6 @@ int main(int argc, char **argv)
     // storage. (screenshot_count is pure loop bookkeeping and stays local.)
     Vehicle *&ship = game.ship;
     int &activeIdx = game.activeIdx;
-    Camera *&camera = game.camera;
-    int &camMode = game.camMode;
     int &time_accel = game.time_accel;
     int &cam_speed = game.cam_speed;
     bool &rmbCam = game.rmbCam;
@@ -357,33 +355,29 @@ int main(int argc, char **argv)
     // AU scales (~1.4e10 m). Keep zFar consistent with that.
     const float camZFar = 1e13;
 
-    OrbitCamera *orbitCam = new OrbitCamera(GetPosition(ship->controller),
-                                            camFov, camAspect, camZNear, camZFar);
-    glm::dvec3 freeCamPos  = orbitCam->GetPos();
-    glm::dvec3 freeCamFwd  = orbitCam->GetForward();
-    glm::dvec3 freeCamUp   = orbitCam->up;
-    if(args.free_cam_pos.size() == 3) { // TODO do we need these guards?
-        freeCamPos = glm::dvec3(args.free_cam_pos[0], args.free_cam_pos[1], args.free_cam_pos[2]);
-    }
-    if(args.free_cam_fwd.size() == 3) {
-        freeCamFwd = glm::dvec3(args.free_cam_fwd[0], args.free_cam_fwd[1], args.free_cam_fwd[2]);
-    }
-    if(args.free_cam_up.size() == 3) {
-        freeCamUp = glm::dvec3(args.free_cam_up[0], args.free_cam_up[1], args.free_cam_up[2]);
-    }
-    FreeCamera *freeCam = new FreeCamera(freeCamPos, freeCamFwd, freeCamUp,
-                                         camFov, camAspect, camZNear, camZFar);
-    // both cameras: the terrain LOD (screen-px budget) reads the active
-    // one, and either can become active
-    orbitCam->setViewport(display.get_width(), display.get_height());
-    freeCam->setViewport(display.get_width(), display.get_height());
-    game.orbitCam = orbitCam;
-    game.freeCam = freeCam;
-    camera = orbitCam;   // active camera
-    camMode = CAM_ORBIT;
+    // One camera, two modes (orbit + free): starts in Orbit mode focused on
+    // the ship; --free-cam-* / use_free_cam drops it into free flight at the
+    // (possibly overridden) pose. The terrain LOD reads the live one.
+    Camera *cam = new Camera(GetPosition(ship->controller),
+                             camFov, camAspect, camZNear, camZFar);
+    cam->setViewport(display.get_width(), display.get_height());
+    game.camera = cam;
     if(args.use_free_cam) {
-        camMode = CAM_FREE;
-        camera = freeCam;
+        // Default free pose = the orbit camera's current view, overridable
+        // per-axis via --free-cam-pos / --free-cam-fwd / --free-cam-up.
+        glm::dvec3 p = cam->GetPos();
+        glm::dvec3 f = cam->GetForward();
+        glm::dvec3 u = cam->up;
+        if(args.free_cam_pos.size() == 3) {
+            p = glm::dvec3(args.free_cam_pos[0], args.free_cam_pos[1], args.free_cam_pos[2]);
+        }
+        if(args.free_cam_fwd.size() == 3) {
+            f = glm::dvec3(args.free_cam_fwd[0], args.free_cam_fwd[1], args.free_cam_fwd[2]);
+        }
+        if(args.free_cam_up.size() == 3) {
+            u = glm::dvec3(args.free_cam_up[0], args.free_cam_up[1], args.free_cam_up[2]);
+        }
+        cam->setFreePose(p, f, u);
     }
 
     // Bodies the orbit camera can target (the ship is the default). Built from

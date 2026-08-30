@@ -56,7 +56,7 @@ void tick(Game &g) {
             return false;
         };
 
-        if (g.camMode == CAM_FREE) {
+        if (g.camera->mode == CAM_FREE) {
             if (isDown(SDL_SCANCODE_W)) { g.camera->MoveForward(g.cam_speed); }
             else if (isDown(SDL_SCANCODE_S)) { g.camera->MoveForward(-g.cam_speed); }
 
@@ -70,7 +70,7 @@ void tick(Game &g) {
             else if (isDown(SDL_SCANCODE_LCTRL) || isDown(SDL_SCANCODE_RCTRL)) { g.camera->MoveUp(-g.cam_speed); }
         }
 
-        if (g.camMode == CAM_ORBIT) {
+        if (g.camera->mode == CAM_ORBIT) {
             bool game_running = (g.time_accel > 0);
             /* touching the controls wakes a railed active ship: it
                re-enters physics (you cannot maneuver on rails). A rails
