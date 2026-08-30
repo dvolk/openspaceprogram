@@ -23,3 +23,6 @@ tmp/
 
 # Source data (baked into the tracked ksp_system.json)
 ksp_system.csv
+
+# bear -- make
+compile_commands.json
