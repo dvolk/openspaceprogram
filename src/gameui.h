@@ -23,3 +23,10 @@ void drawUIMap(Game &g, TransferPlanner &planner);
 
 // Draw the fixed main menu (Esc toggles it). Drawn last so it sits on top.
 void drawMainMenu(Game &g);
+
+// Draw the one-shot on-screen messages (g.toast): the last kToastVisible
+// that are still alive, stacked and centered on the screen. A bare
+// foreground-draw-list overlay (no imgui window): the messages are
+// non-interactive and must float above everything, so main draws this
+// after drawMainMenu.
+void drawToasts(Game &g);

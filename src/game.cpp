@@ -5,6 +5,7 @@
 // (Game), so they live with the state.
 #include "game.h"
 
+#include <cstdarg>
 #include <cstdio>
 #include <string>
 
@@ -124,6 +125,26 @@ void Game::apply_ui_style() {
     ImGui::GetStyle() = style;
 }
 
+/* Push a one-shot on-screen message. The queue is bounded: expired
+   entries are dropped lazily here (a push is the only place the queue
+   grows), and anything beyond the cap falls off the front. */
+void Game::toast(const char *fmt, ...) {
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    const double now = SDL_GetTicks() * 0.001;
+    while(!toasts.empty() && now - toasts.front().born >= kToastLife) {
+        toasts.erase(toasts.begin());
+    }
+    toasts.push_back(ToastMsg{buf, now});
+    if(toasts.size() > (size_t)kToastVisible * 2) {
+        toasts.erase(toasts.begin());
+    }
+}
+
 /* Switch the active (controlled) ship. The ship being left is released:
    throttle zeroed, armed thrust + rotation commands cleared, and it parks
    on rails (coasting or frozen) if it can. The ship being taken re-enters
@@ -137,7 +158,10 @@ void Game::select_ship(int idx) {
     activeIdx = idx;
     ships[activeIdx]->leaveRails();
     ship = ships[activeIdx];
-    if(time_accel >= kRailsWarp) { time_accel = 10; }
+    if(time_accel >= kRailsWarp) {
+        time_accel = 10;
+        toast("Active ship: %s, warp 10x", ship->name.c_str());
+    }
     focusBody = 0;   // back to the "ship" focus target
     if(camMode == CAM_ORBIT) {
         orbitCam->Follow(ship->get_center_of_mass());
@@ -156,6 +180,8 @@ bool Game::enter_rails_warp() {
         if(!s->canRail()) {
             printf("Rails warp refused: '%s' is neither in free fall nor "
                    "grounded (warp stays %d)\n", s->name.c_str(), time_accel);
+            toast("Rails warp refused: '%s' is not in free fall",
+                  s->name.c_str());
             return false;
         }
     }
@@ -185,7 +211,10 @@ void Game::remove_ship(int idx) {
         activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;
         ships[activeIdx]->leaveRails();
         ship = ships[activeIdx];
-        if(time_accel >= kRailsWarp) { time_accel = 10; }
+        if(time_accel >= kRailsWarp) {
+            time_accel = 10;
+            toast("Active ship: %s, warp 10x", ship->name.c_str());
+        }
         focusBody = 0;
         if(camMode == CAM_ORBIT) {
             orbitCam->Follow(ship->get_center_of_mass());

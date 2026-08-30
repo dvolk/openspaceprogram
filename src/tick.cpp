@@ -85,7 +85,10 @@ void tick(Game &g) {
                    isDown(SDL_SCANCODE_B) || isDown(SDL_SCANCODE_N) ||
                    isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F)) {
                     g.ship->leaveRails();
-                    if(g.time_accel >= kRailsWarp) { g.time_accel = 1; }
+                    if(g.time_accel >= kRailsWarp) {
+                        g.time_accel = 1;
+                        g.toast("Control input: left the rails, warp 1x");
+                    }
                     printf("Control input: '%s' left the rails, warp -> %d\n",
                            g.ship->name.c_str(), g.time_accel);
                 }
@@ -192,6 +195,8 @@ void tick(Game &g) {
                        g.ship->name.c_str(), g.ship->m_parent->name.c_str(),
                        soiOwner->name.c_str());
                 g.time_accel = 1;
+                g.toast("SOI: now around %s, warp 1x",
+                        g.ship->m_parent->name.c_str());
             }
 
             /* --spin-log (or --radial-test): spin diagnostics, once per

@@ -10,6 +10,7 @@
 // main in that order, keeping the original window order / z-order.
 #include "gameui.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -949,6 +950,47 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         ImGui::SameLine();
         legend("apsides", col_apsis, true);
     });
+}
+
+void drawToasts(Game &g) {
+    const double now = SDL_GetTicks() * 0.001;
+    std::vector<const ToastMsg *> live;
+    for(const ToastMsg &t : g.toasts) {
+        if(now - t.born < kToastLife) { live.push_back(&t); }
+    }
+    if(live.empty()) { return; }
+    if(live.size() > (size_t)kToastVisible) {
+        live.erase(live.begin(), live.end() - kToastVisible);
+    }
+
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    const float cx = vp->WorkPos.x + vp->WorkSize.x * 0.5f;
+    const float cy = vp->WorkPos.y + vp->WorkSize.y * 0.5f;
+
+    ImGui::PushFont(g.bigger);
+    const float line_h = ImGui::GetTextLineHeight();
+    const float step = line_h * 1.3f;   // line height + a breath of spacing
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    const float shadow = g.ui_scale;   // DPI-aware shadow offset
+    const int n = (int)live.size();
+    for(int i = 0; i < n; i++) {
+        const ToastMsg &t = *live[i];
+        const double age = now - t.born;
+        // Fade in over 0.25 s, fade out over the last 0.6 s of the life.
+        const double a = std::min(1.0, std::min(age / 0.25,
+                                                (kToastLife - age) / 0.6));
+        const ImVec2 ts = ImGui::CalcTextSize(t.text.c_str());
+        // The DISPLAYED block is centered (one line = exactly center);
+        // oldest on top, newest at the bottom.
+        const float x = cx - ts.x * 0.5f;
+        const float y = cy + (i - (n - 1) / 2.0f) * step - ts.y * 0.5f;
+        // A soft shadow pass so the text reads over bright terrain too.
+        dl->AddText(ImVec2(x + shadow, y + shadow),
+                    IM_COL32(0, 0, 0, (int)(180.0 * a)), t.text.c_str());
+        dl->AddText(ImVec2(x, y),
+                    IM_COL32(255, 255, 255, (int)(255.0 * a)), t.text.c_str());
+    }
+    ImGui::PopFont();
 }
 
 void drawMainMenu(Game &g) {

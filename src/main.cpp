@@ -642,6 +642,10 @@ int main(int argc, char **argv)
             // The main menu (gameui.cpp): drawn last so it sits on top.
             drawMainMenu(game);
 
+            // One-shot messages (g.toast): above everything, including the
+            // menu (drawToasts, gameui.cpp).
+            drawToasts(game);
+
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

@@ -143,11 +143,17 @@ void poll_events(Game &g) {
                 // stops stepping; if any ship is not eligible the step is
                 // refused and the current warp stays.
                 const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
-                if(next <= 100000 && (next < kRailsWarp || g.enter_rails_warp())) {
+                if(next > 100000) {
+                    g.toast("Max warp reached");
+                } else if(next < kRailsWarp || g.enter_rails_warp()) {
+                    // enter_rails_warp toasted the refusal reason itself.
                     g.time_accel = next;
                     if(next >= kRailsWarp) {
                         printf("Rails warp: time accel %d (ships on rails)\n",
                                next);
+                        g.toast("Time accel: %dx (rails)", next);
+                    } else {
+                        g.toast("Time accel: %dx", next);
                     }
                 }
             }
@@ -162,9 +168,11 @@ void poll_events(Game &g) {
                         g.ship->leaveRails();
                         printf("Rails warp: exited, time accel %d\n", g.time_accel);
                     }
+                    g.toast("Time accel: %dx", g.time_accel);
                 }
                 else if(g.time_accel == 1) {
                     g.time_accel = 0;
+                    g.toast("Time accel: paused");
                 }
             }
             if(ev.key.keysym.sym == SDLK_l) {
@@ -237,7 +245,10 @@ void poll_events(Game &g) {
                     // wake a ship parked on rails first
                     if(g.ship->onRails) {
                         g.ship->leaveRails();
-                        if(g.time_accel >= kRailsWarp) { g.time_accel = 1; }
+                        if(g.time_accel >= kRailsWarp) {
+                            g.time_accel = 1;
+                            g.toast("Staging: left the rails, warp 1x");
+                        }
                     }
                     int dropped = g.ship->separateStage(g.ship->activeStage());
                     if(dropped > 0) {

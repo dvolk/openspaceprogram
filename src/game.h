@@ -16,6 +16,7 @@
 
 #include <SDL2/SDL.h>   // Uint32
 
+#include <string>
 #include <vector>
 
 #include "camera.h"   // Camera, OrbitCamera, FreeCamera
@@ -46,6 +47,16 @@ struct Skybox;
 // power-of-10 warps (1, 10, 100, ...). Shared by the event dispatch, the
 // logic tick and the startup clamp (was a local const in main).
 static const int kRailsWarp = 11;
+
+// One-shot on-screen messages (g.toast), drawn centered by gameui.cpp.
+// Wall-clock lifetimes: sim time is paused or warped, so a UI message must
+// not live or die with the sim clock.
+static const double kToastLife = 3.0;   // seconds a toast stays up
+static const int kToastVisible = 3;    // the last N toasts shown (stacked)
+struct ToastMsg {
+    std::string text;
+    double born;   // wall-clock seconds (SDL_GetTicks() * 0.001)
+};
 
 // The active camera (was a local `enum CameraMode` in main).
 enum CameraMode { CAM_ORBIT, CAM_FREE };
@@ -111,6 +122,9 @@ struct Game {
     // --- the clock ----------------------------------------------------------
     int time_accel = 0;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
+
+    // --- one-shot on-screen messages (gameui.cpp draws the last N) ----------
+    std::vector<ToastMsg> toasts;
 
     // --- the fixed-timestep loop (tick.cpp) ---------------------------------
     // The loop adds the measured frame time to the accumulator each frame
@@ -244,6 +258,9 @@ struct Game {
     // Remove a ship + its bookkeeping (refuses the last one; hands control
     // off if the active one is removed).
     void remove_ship(int idx);
+    // Push a one-shot on-screen message (printf-style), shown for
+    // kToastLife wall-clock seconds (the last kToastVisible stack).
+    void toast(const char *fmt, ...);
 
     Game(Renderer &display, PostFX *postfx, Ships &ships, System &sys,
          TerrainBody *sun, TerrainBody *home, GameArgs &args,
