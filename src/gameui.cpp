@@ -16,6 +16,7 @@
 #include <map>
 
 #include "calendar.h"    // CalTime (the HUD + Game Debug Info clocks)
+#include "version.h"     // VERSION (the main menu)
 #include "physics.h"     // GetAngVelocity (the VESSEL window)
 #include "siminput.h"    // fmt_time (the TRANSFER window)
 #include "orbitsample.h" // OrbitSampleCache + open-arc sampling (the map)
@@ -995,27 +996,58 @@ void drawMainMenu(Game &g) {
 
     // Main menu: Esc toggles it. Fixed, so it stays centered and
     // tracks viewport resizes. Drawn last so it sits on top.
-    // Buttons have an explicit width: -1 (full width) inside an
-    // auto-resizing window collapses the window to a sliver.
+    //
+    // Every item is a fixed-width button: the window is
+    // AlwaysAutoResize, and imgui measures its size from the PREVIOUS
+    // frame's content, so a Text item placed by hand (centered against
+    // the window width) feeds back into the measurement and the fit
+    // converges over several frames on first open. A button's width is
+    // explicit and imgui centers its label (ButtonTextAlign), so the
+    // layout is settled from the first visible frame.
     ui::Window("Main Menu", g.o_mainmenu, [&] {
+        // One width for the whole column: the widest label (the title,
+        // in the bigger font, plus its frame padding so the clipped
+        // label fits). Every button fills the content width, so the
+        // centered labels read as a centered menu.
         ImGui::PushFont(g.bigger);
-        if(ImGui::Button("Toggle windows", ImVec2(240.0f, 0.0f))) {
+        const float bw = ImMax(240.0f,
+                               ImGui::CalcTextSize("Open Space Program").x
+                               + ImGui::GetStyle().FramePadding.x * 2.0f);
+        ImGui::PopFont();
+        // A button with alpha-0 colors: reads as plain text (no hover
+        // highlight either) but keeps the button's stable layout.
+        const ImVec4 invisible = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+        auto text_button = [&](const char *label) {
+            ImGui::PushStyleColor(ImGuiCol_Button, invisible);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, invisible);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, invisible);
+            ImGui::Button(label, ImVec2(bw, 0.0f));
+            ImGui::PopStyleColor(3);
+        };
+        ImGui::PushFont(g.bigger);
+        text_button("Open Space Program");
+        if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
+            ui::SetOpen("Main Menu", false);
+        }
+        if(ImGui::Button("Toggle windows", ImVec2(bw, 0.0f))) {
             g.toggle_windows();
         }
-        if(ImGui::Button("Reset windows", ImVec2(240.0f, 0.0f))) {
+        if(ImGui::Button("Reset windows", ImVec2(bw, 0.0f))) {
             ui::ResetGui();
         }
         // Toggles (not just open): these two are not in the TAB list, so
         // the menu is another way to close them (besides their X / Back).
-        if(ImGui::Button("Settings", ImVec2(240.0f, 0.0f))) {
+        if(ImGui::Button("Settings", ImVec2(bw, 0.0f))) {
             ui::SetOpen("Settings", !ui::IsOpen("Settings"));
         }
-        if(ImGui::Button("Controls", ImVec2(240.0f, 0.0f))) {
+        if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
             ui::SetOpen("Controls", !ui::IsOpen("Controls"));
         }
-        if(ImGui::Button("Quit game", ImVec2(240.0f, 0.0f))) {
+        if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;
         }
         ImGui::PopFont();
+        // The build's git version (src/version.h, `make version`).
+        text_button(VERSION);
     });
 }
