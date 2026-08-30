@@ -41,9 +41,11 @@ enum ShipCmdType {
     ThrottleUp,
     ThrottleDown,
     Thrust,
-    Pitch,    // amount: +1 = W, -1 = S
-    Yaw,      // amount: +1 = A, -1 = D
-    Roll,     // amount: +1 = Q, -1 = E
+    // Camera-relative (KSP style, screen-aligned): the stick follows the
+    // screen, not the ship's body axes.
+    Pitch,    // W/S: nose to the screen top/bottom (about the camera right)
+    Yaw,      // A/D: nose to the screen left/right (about the camera up)
+    Roll,     // Q/E: about the line of sight
     KillRot,
     Prograde,    // align nose with velocity
     Retrograde,  // align nose against velocity
@@ -137,9 +139,13 @@ public:
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
        (applyRotationForce, before every stepSimulation) -- like thrust,
        because Bullet clears the accumulated torque on each stepSimulation.
-       stick: +-1 per commanded body axis (diagonals allowed, e.g. W+A);
-       slew:  the autopilot target (exclusive). */
+       stick: the manual command in the CAMERA frame -- x = Q/E (roll about
+       the line of sight), y = W/S (pitch, nose screen up/down), z = A/D
+       (yaw, nose screen left/right); +-1 per axis, diagonals allowed
+       (e.g. W+A); controlBasis maps that frame to world (setControlBasis);
+       slew: the autopilot target (exclusive). */
     float stick[3] = {0.0f, 0.0f, 0.0f};
+    glm::dmat3 controlBasis = glm::dmat3(1.0);
     int slew = SlewNone;
 
     void setRoot(Body *part) {
@@ -460,16 +466,16 @@ public:
     // authority to 1/n and making it worse at warp.
     void applyRotationForce(double h) {
         if(m_reaction_wheels.empty()) { return; }
-        /* Manual stick: the full rated torque along each commanded body
-           axis (each wheel at its rating; diagonals compose). */
+        /* Manual stick: the command is in the CAMERA frame (KSP style:
+           the nose follows the screen, not the ship's body axes). Each
+           wheel gets its rated torque along the combined axis; diagonals
+           (W+A) compose as a vector sum, same authority as before. */
         if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
+            const glm::dvec3 worldAxis =
+                controlBasis * glm::dvec3(stick[0], stick[1], stick[2]);
             for(size_t wi = 0; wi < m_reaction_wheels.size(); wi++) {
-                Body *wheel = m_reaction_wheels[wi];
-                for(int a = 0; a < 3; a++) {
-                    if(stick[a] == 0.0f) { continue; }
-                    ApplyTorque(wheel,
-                               (double)stick[a] * m_wheelTorque[wi] * getRelAxis_(wheel, a));
-                }
+                ApplyTorque(m_reaction_wheels[wi],
+                            (double)m_wheelTorque[wi] * worldAxis);
             }
         }
         /* Autopilot: one authority-bounded step of the slew/kill-rot law
@@ -618,6 +624,12 @@ public:
         }
     }
 
+    /* The world matrix of the camera frame the manual stick is given in:
+       columns (x, y, z) = (line of sight focus->camera, screen right,
+       screen up). The logic tick sets it every tick from the live camera
+       (ref * orient); identity before the first render. */
+    void setControlBasis(glm::dmat3 C) { controlBasis = C; }
+
     // Single place to control the ship. While paused (simActive == false)
     // every command is dropped, so nothing accumulates in the rigid bodies
     // (a force/torque left in Bullet would dump out as a velocity kick on
@@ -637,14 +649,15 @@ public:
             case Thrust:
                 ApplyThrust(step);
                 break;
+            // Stick components in the camera frame (see the `stick` member).
             case Pitch:
-                stick[0] = (cmd.amount >= 0) ? +1.0f : -1.0f;
-                break;
-            case Yaw:
                 stick[1] = (cmd.amount >= 0) ? +1.0f : -1.0f;
                 break;
-            case Roll:
+            case Yaw:
                 stick[2] = (cmd.amount >= 0) ? +1.0f : -1.0f;
+                break;
+            case Roll:
+                stick[0] = (cmd.amount >= 0) ? +1.0f : -1.0f;
                 break;
             case KillRot:
                 slew = SlewKillRot;

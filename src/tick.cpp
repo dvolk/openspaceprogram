@@ -39,6 +39,13 @@ void tick(Game &g) {
         // slewing from the last one.
         g.ship->clearThrust();
         g.ship->clearRotCmd();
+        /* The manual stick is camera-relative (KSP style: the nose
+           follows the screen). ref is the orientation the camera chases
+           (the ship's attitude when focused on it, set in the render
+           pass) and orient the user's trackball, so ref * orient is the
+           world matrix of the screen basis (x = line of sight, y =
+           screen right, z = screen up) the stick is given in. */
+        g.ship->setControlBasis(g.camera->ref * g.camera->orient);
 
         const Uint8* key = SDL_GetKeyboardState(NULL);
         /* --sim-press: a synthetic key is "down" from its down time to
@@ -93,13 +100,13 @@ void tick(Game &g) {
                            g.ship->name.c_str(), g.time_accel);
                 }
             }
-            // pitch
+            // pitch: W/S swing the nose to the screen top/bottom
             if (isDown(SDL_SCANCODE_W)) { g.ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
             if (isDown(SDL_SCANCODE_S)) { g.ship->Command(ShipCmd(Pitch, -1.0f), game_running); }
-            // yaw
+            // yaw: A/D swing the nose to the screen left/right
             if (isDown(SDL_SCANCODE_A)) { g.ship->Command(ShipCmd(Yaw, +1.0f), game_running); }
             if (isDown(SDL_SCANCODE_D)) { g.ship->Command(ShipCmd(Yaw, -1.0f), game_running); }
-            // roll
+            // roll: Q/E about the line of sight
             if (isDown(SDL_SCANCODE_Q)) { g.ship->Command(ShipCmd(Roll, +1.0f), game_running); }
             if (isDown(SDL_SCANCODE_E)) { g.ship->Command(ShipCmd(Roll, -1.0f), game_running); }
 
