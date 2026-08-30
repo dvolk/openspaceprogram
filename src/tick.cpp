@@ -46,6 +46,9 @@ void tick(Game &g) {
            world matrix of the screen basis (x = line of sight, y =
            screen right, z = screen up) the stick is given in. */
         g.ship->setControlBasis(g.camera->ref * g.camera->orient);
+        /* Which axes the pitch/yaw stick uses (screen vs. ship) is a
+           player setting; roll is always about the nose either way. */
+        g.ship->setControlScheme(g.args.control_scheme);
 
         const Uint8* key = SDL_GetKeyboardState(NULL);
         /* --sim-press: a synthetic key is "down" from its down time to
@@ -106,7 +109,7 @@ void tick(Game &g) {
             // yaw: A/D swing the nose to the screen left/right
             if (isDown(SDL_SCANCODE_A)) { g.ship->Command(ShipCmd(Yaw, +1.0f), game_running); }
             if (isDown(SDL_SCANCODE_D)) { g.ship->Command(ShipCmd(Yaw, -1.0f), game_running); }
-            // roll: Q/E about the line of sight
+            // roll: Q/E about the ship's nose
             if (isDown(SDL_SCANCODE_Q)) { g.ship->Command(ShipCmd(Roll, +1.0f), game_running); }
             if (isDown(SDL_SCANCODE_E)) { g.ship->Command(ShipCmd(Roll, -1.0f), game_running); }
 

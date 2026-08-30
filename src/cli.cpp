@@ -74,6 +74,21 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "adjustable in the Settings window)")
         ->check(CLI::Range(0.5f, 5.0f));
 
+    app.add_option("--controls", args.control_scheme,
+                   "Control scheme: screen (pitch/yaw follow the screen, "
+                   "roll about the nose) or heading (all axes follow the "
+                   "ship) (default: screen; adjustable in the Settings "
+                   "window)")
+        // Rewrite the named value in place so CLI11 parses it to the int
+        // target (0 = screen, 1 = heading); anything else is an error.
+        ->transform(CLI::Validator(
+            [](std::string &s) -> std::string {
+                if (s == "screen")  { s = "0"; return std::string{}; }
+                if (s == "heading") { s = "1"; return std::string{}; }
+                return std::string("expected 'screen' or 'heading'");
+            },
+            "screen|heading"));
+
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "
                    "seconds (0 = run until closed; default: 0)")
