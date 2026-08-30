@@ -34,12 +34,29 @@ public:
     // instead of planet-centre ones (~1e7, ~0.5 m per quantum).
     glm::dvec3 renderOrigin = glm::dvec3(0.0);
 
-    // Orbit-mode state. pos is DERIVED from these in ComputeView(); the live
-    // values are focusPoint (what it looks at), orient (where on the sphere
-    // of radius `distance` it sits) and distance (how far out).
+    // Orbit-mode state: a trackball (orient) + distance around the focus.
+    // The camera sits at
+    //   pos = focus + ref * (orient * (1,0,0)) * distance
+    // and looks at the focus with up = ref * (orient * (0,0,1)):
+    //  - `ref` is the orientation the camera chases (the caller sets it
+    //    every frame: the ship's attitude when focused on the ship, so the
+    //    camera turns with the ship -- KSP's chase / Pioneer's sidereal
+    //    style -- and the body's rotating frame when focused on a body, so
+    //    the camera rides its spin).
+    //  - `orient` is the user's accumulated orbit: mouse yaw around the
+    //    camera up (the orient basis ẑ), pitch around the camera right
+    //    (the orient basis Ŷ) -- RotateY / Pitch below.
+    // Up is a fixed camera basis vector (not a radial hint), so it stays
+    // continuous as the view passes over the top: the old radial up
+    // snapped ~90 degrees there (the "weird" horizon roll) and the lookAt
+    // basis NaN'd at the pole.
     glm::dvec3 focusPoint;
-    glm::dmat3 orient = glm::dmat3(1.0); // GLM 1.0.0+: default mat ctor is zero
+    glm::dmat3 orient = glm::dmat3(1.0);
+    glm::dmat3 ref = glm::dmat3(1.0);
     double distance = 10.0;
+    // Set by the caller while focused on a grounded ship: keeps the camera
+    // above the local horizon (Pioneer clamps its landed external view too).
+    bool clamp_above_horizon = false;
 
     // Free-mode state. Here pos is PRIMARY (Move* edits it) and right is the
     // derived basis axis (recomputed every ComputeView()).
@@ -51,10 +68,11 @@ public:
 
     void ComputeView();
 
-    // Mode transitions (the C key). Both preserve the current on-screen
-    // view: toFree keeps pos/forward/up as-is (they already hold the live
-    // orbit values); toOrbit keeps the camera's current position and
-    // re-derives focus + distance from it.
+    // Mode transitions (the C key). toFree keeps pos/forward/up as-is
+    // (they already hold the live orbit values); toOrbit keeps the
+    // orbit's orient as-is and re-derives the distance from the camera's
+    // current position, so returning to orbit lands on the same spot on
+    // the sphere of radius `distance` around the (new) focus.
     void toFree();
     void toOrbit(const glm::dvec3& focus);
 
@@ -63,8 +81,10 @@ public:
     void MoveRight(double amt);
     void MoveUp(double amt);
 
-    // Orbit: point at a new focus / change how far out it is (no-op in Free).
+    // Orbit: point at a new focus (no-op in Free).
     void Follow(const glm::dvec3& p);
+    // Orbit zoom: distance scales with the wheel (clamped, so it can never
+    // cross the focus) (no-op in Free).
     void wheel(double amt);
 
     // Look controls, valid in both modes.
@@ -90,7 +110,7 @@ public:
 private:
     // Shared view-matrix construction -- the NaN-safe basis that was
     // copy-pasted across the two old subclasses. zAxis is the unit view
-    // direction (-forward), upHint the intended up (radial for Orbit, the
+    // direction (-forward), upHint the intended up (exact for Orbit, the
     // stored up for Free), and cam the camera position already in the
     // render frame (pos - renderOrigin).
     void buildView(const glm::dvec3& zAxis, const glm::dvec3& upHint, const glm::dvec3& cam);

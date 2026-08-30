@@ -160,6 +160,10 @@ test:
 	# the imgui include is headers-only (no imgui/Bullet/GL link needed).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/imgui/ tests/test_orbitmap.cpp -o test_orbitmap
 	./test_orbitmap
+	# orbit camera (src/camera.cpp, pure math): pitching past the pole must
+	# keep the up vector continuous (no sudden roll) and the view NaN-free.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp src/camera.cpp -o test_orbitcam
+	./test_orbitcam
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on
@@ -188,7 +192,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_orbitcam test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

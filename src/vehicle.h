@@ -924,12 +924,10 @@ public:
         }
     }
 
-    /* Rails classification: a FLYING ship (periapsis clear of the terrain
-       band) coasts on its conic; a GROUNDED one (periapsis inside the
-       band) can only freeze in its rotating surface frame. Anything else
-       -- e.g. a suborbital descent -- is not rail-eligible. */
-    bool canRail() {
-        if(onRails) { return true; }
+    /* The COM's osculating orbit dips into the terrain band (periapsis
+       within 3 km of the surface): sitting on / skimming the ground rather
+       than coasting clear of it. */
+    bool inTerrainBand() {
         Frame *inertial = frame->getNonRotFrame();
         glm::dvec3 p = get_center_of_mass();
         glm::dvec3 v(0.0);
@@ -945,7 +943,23 @@ public:
             p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
         }
         const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
-        if(el.periapsis <= inertial->body->radius + 3000.0) {
+        return el.periapsis <= inertial->body->radius + 3000.0;
+    }
+
+    /* Sitting on the ground: in the rotating surface frame with the
+       osculating orbit inside the terrain band. The orbit camera uses this
+       to stay above the local horizon while focused on a landed ship. */
+    bool isGrounded() {
+        return frame->isRotFrame() && inTerrainBand();
+    }
+
+    /* Rails classification: a FLYING ship (periapsis clear of the terrain
+       band) coasts on its conic; a GROUNDED one (periapsis inside the
+       band) can only freeze in its rotating surface frame. Anything else
+       -- e.g. a suborbital descent -- is not rail-eligible. */
+    bool canRail() {
+        if(onRails) { return true; }
+        if(inTerrainBand()) {
             return frame->isRotFrame();   // grounded: freeze needs the surface frame
         }
         return true;

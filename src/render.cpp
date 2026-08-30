@@ -71,6 +71,23 @@ void draw3d(Game &g, TransferPlanner &planner) {
     const glm::dvec3 com = ship->get_center_of_mass();
     if(g.camera->mode == CAM_ORBIT) {
         camera->Follow(g.focusWorldPos(g.focusBody));
+        // The orientation the orbit offset lives in: the ship's attitude
+        // when focused on the ship (the camera chases its turns, KSP /
+        // Pioneer style), the body's rotating frame when focused on a body
+        // (the camera rides the spin) -- same convention as the body
+        // transforms below.
+        if(g.focusTargets[g.focusBody].body == nullptr) {
+            camera->ref = glm::dmat3(getRelAxis_(ship->controller, 0),
+                                     getRelAxis_(ship->controller, 1),
+                                     getRelAxis_(ship->controller, 2));
+            camera->clamp_above_horizon = ship->isGrounded();
+        } else {
+            TerrainBody *b = g.focusTargets[g.focusBody].body;
+            camera->ref = (b == ship->m_parent && ship->frame->isRotFrame())
+                ? glm::dmat3(1.0)
+                : glm::dmat3(b->frame->getRotFrame()->orient);
+            camera->clamp_above_horizon = false;
+        }
     }
 
     // Render frame origin = the active ship's COM (both are in
