@@ -179,6 +179,11 @@ test:
 	# math): Hohmann analytic reference, round-trip, hyperbolic leg.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_transfer.cpp -o test_transfer
 	./test_transfer
+	# porkchop 2-D sweep (src/transfer.h, header-only pure math): pinned to
+	# planTransfer (t_dep = 0 row) + the Hohmann analytic min + the no-
+	# solution (all-NaN) path + grid bookkeeping.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_porkchop.cpp -o test_porkchop
+	./test_porkchop
 	# orbital map projection (src/orbitmap.h, pure-math part): project() drops
 	# the map normal (+Y) and scales XZ by meters-per-pixel. Header-only, so
 	# the imgui include is headers-only (no imgui/Bullet/GL link needed).
@@ -216,7 +221,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_orbitmap test_orbitcam test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

@@ -26,6 +26,8 @@
 
 #include <cmath>
 #include <algorithm>
+#include <limits>
+#include <vector>
 
 struct TransferSolution {
     double dv_departure = 0.0;   // m/s, burn at the ship's position
@@ -224,4 +226,106 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
         }
     }
     return best;
+}
+
+// =========================================================================
+// Porkchop plot: the transfer cost swept over a 2-D grid of
+// (departure delay, time of flight) -- the launch-window map. x = how long
+// until you leave, y = how long the trip takes, value = total dv.
+//
+// Each cell is the SAME two-body transfer as one planTransfer sample, but
+// with the departure in the FUTURE (t_dep seconds from now):
+//
+//   ship   at departure : propagateKepler(r1, v1,  t_dep)
+//   target at arrival   : propagateKepler(r2, v2,  t_dep + tof)
+//   transfer conic      : solveLambert(ship_dep, target_arr, tof)
+//   total dv            : |v_dep - v_ship_dep| + capture(|v_arr - v_tgt|)
+//
+// At t_dep = 0 (n_dep = 1) a cell is bit-for-bit one planTransfer sample
+// (ship at (r1, v1) now, target propagated by tof) -- the cross-check test
+// pins the two to each other on that row.
+//
+// The states (r1, v1) and (r2, v2) are at t = 0 (now) in the PARENT's
+// inertial frame -- the same frame convention as planTransfer.
+//
+// Storage is laid out for a direct ImPlot PlotHeatmap call (rows = ToF =
+// y axis, cols = departure delay = x axis):
+//   total_dv[j_tof * n_dep + i_dep]
+// A cell with no Lambert solution (outside the physical domain) is NaN and
+// is skipped by the argmin scan.
+
+struct PorkchopResult {
+    int n_dep = 0;     // cols: departure-delay samples (x axis)
+    int n_tof = 0;     // rows: ToF samples (y axis)
+    double t_dep_lo = 0.0, t_dep_hi = 0.0;   // s, departure delay from now
+    double tof_lo = 0.0, tof_hi = 0.0;       // s
+    std::vector<double> total_dv;            // n_tof * n_dep, ToF-major
+    int i_min = -1;      // departure index at the min (-1 = no valid cell)
+    int j_min = -1;      // ToF index at the min
+    double dv_min = 0.0;  // m/s, min total dv over the valid cells
+    double t_dep_min = 0.0; // s, departure delay at the min
+    double tof_min = 0.0;   // s, ToF at the min
+    bool valid = false;    // true if at least one cell solved
+};
+
+inline PorkchopResult porkchopGrid(const glm::dvec3 &r1, const glm::dvec3 &v1,
+                                   const glm::dvec3 &r2_0, const glm::dvec3 &v2_0,
+                                   double mu_parent,
+                                   double mu_target, double r_cap,
+                                   double t_dep_lo, double t_dep_hi,
+                                   double tof_lo, double tof_hi,
+                                   int n_dep, int n_tof,
+                                   bool capture = true) {
+    PorkchopResult res;
+    res.n_dep = (n_dep < 1) ? 1 : n_dep;
+    res.n_tof = (n_tof < 1) ? 1 : n_tof;
+    if(t_dep_hi < t_dep_lo) { std::swap(t_dep_hi, t_dep_lo); }
+    if(tof_hi < tof_lo) { std::swap(tof_hi, tof_lo); }
+    res.t_dep_lo = t_dep_lo; res.t_dep_hi = t_dep_hi;
+    res.tof_lo = tof_lo; res.tof_hi = tof_hi;
+
+    const double step_dep = (res.n_dep > 1) ? (t_dep_hi - t_dep_lo) / (res.n_dep - 1) : 0.0;
+    const double step_tof = (res.n_tof > 1) ? (tof_hi - tof_lo) / (res.n_tof - 1) : 0.0;
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    res.total_dv.assign((size_t)res.n_tof * res.n_dep, nan);
+
+    double best = std::numeric_limits<double>::infinity();
+    int bi = -1, bj = -1;
+
+    for(int i = 0; i < res.n_dep; i++) {
+        // The ship state at departure depends only on t_dep, so it is
+        // propagated once per row (the target depends on t_dep + tof and is
+        // propagated per cell, exactly as planTransfer does per sample).
+        const double t_dep = t_dep_lo + ((res.n_dep > 1) ? step_dep * i : 0.0);
+        glm::dvec3 r1d, v1d;
+        propagateKepler(r1, v1, mu_parent, t_dep, r1d, v1d);
+        for(int j = 0; j < res.n_tof; j++) {
+            const double tof = tof_lo + ((res.n_tof > 1) ? step_tof * j : 0.0);
+            glm::dvec3 r2a, v2a;
+            propagateKepler(r2_0, v2_0, mu_parent, t_dep + tof, r2a, v2a);
+            glm::dvec3 vt1, vt2;
+            if(!solveLambert(r1d, r2a, mu_parent, tof, vt1, vt2)) { continue; }
+
+            const double dv_dep = glm::length(vt1 - v1d);
+            const double v_inf = glm::length(vt2 - v2a);
+            double dv_cap = 0.0;
+            if(capture && mu_target > 0.0 && r_cap > 0.0) {
+                const double vc = std::sqrt(mu_target / r_cap);
+                dv_cap = vc * (std::sqrt(2.0 + v_inf * v_inf * r_cap / mu_target) - 1.0);
+            }
+            const double total = dv_dep + dv_cap;
+            res.total_dv[(size_t)j * res.n_dep + i] = total;
+            if(total < best) { best = total; bi = i; bj = j; }
+        }
+    }
+
+    if(bi >= 0) {
+        res.valid = true;
+        res.i_min = bi; res.j_min = bj;
+        res.dv_min = best;
+        res.t_dep_min = t_dep_lo + ((res.n_dep > 1) ? step_dep * bi : 0.0);
+        res.tof_min = tof_lo + ((res.n_tof > 1) ? step_tof * bj : 0.0);
+    }
+    return res;
 }
