@@ -223,7 +223,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // Transfer planner: parent->child body transfers (with capture)
     // and same-body ship intercepts. The solution is computed in the
     // render pass (xfer), so this window is pure readout + inputs.
-    ui::Window("TRANSFER", g.o_transfer, [&] {
+    ui::Window("Transfer", g.o_transfer, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
             return;
@@ -349,7 +349,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
     // Labels are abbreviated to <= 3 chars and right-padded to the
     // same width so the values start at a tidy column.
-    ui::Window("ORBITAL", g.o_orbit, [&] {
+    ui::Window("Orbital", g.o_orbit, [&] {
         ImGui::Text("Vel: %.1fm/s", speed);
         ImGui::Text("Alt: %.1fm", distance);
         /* Every line below is always present; "-" = the quantity
@@ -382,7 +382,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
     // Initial size comes from o_telemetry.initial_size (the plots
     // need real estate; content-fit would clip them).
-    ui::Window("TELEMETRY", g.o_telemetry, [&] {
+    ui::Window("Telemetry", g.o_telemetry, [&] {
         // Two separate plots: e (~1e5) and |h| (~1e11) differ by
         // ~6 orders of magnitude, so sharing one axis would flatten
         // e to a line and hide the drift we're looking for.
@@ -407,7 +407,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     // Labels right-padded to 3 chars, same as ORBITAL.
-    ui::Window("SURFACE", g.o_surface, [&] {
+    ui::Window("Surface", g.o_surface, [&] {
         ImGui::Text("Alt: %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
         ImGui::Text("ASL: %.1fm", distance - ship->m_parent->radius);
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
@@ -419,7 +419,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
     });
 
-    ui::Window("SHIPS", g.o_ships, [&] {
+    ui::Window("Ship List", g.o_ships, [&] {
     // Buttons (natural width) + SameLine, the same pattern as the
     // map controls: a full-width Selectable in this auto-resize window
     // would swallow the line and push the "x" off it (or collapse the
@@ -461,7 +461,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     ImGui::Text("click name - select    x - remove");
     });
 
-    ui::Window("VESSEL", g.o_vessel, [&] {
+    ui::Window("Vessel Info", g.o_vessel, [&] {
         ImGui::Text("Ship: %s", ship->name.c_str());
         ImGui::Text("Stage: %d / %d  (SPACE to drop)",
                     ship->activeStage(), ship->numStages());
@@ -477,7 +477,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(GetAngVelocity(ship->controller))));
     });
-    ui::Window("SHIP PARTS", g.o_parts, [&] {
+    ui::Window("Ship Parts", g.o_parts, [&] {
         int i = 0;
         for(auto&& part : ship->parts) {
             ImGui::Text("Part #%d  (stage %d)", i, ship->partStages[i]);
@@ -548,7 +548,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Button("Anti-normal");
     });
 
-    ui::Window("RESOURCES", g.o_resources, [&] {
+    ui::Window("Resources", g.o_resources, [&] {
         // aggregate across the active ship's parts (any ship layout)
         float h_cur = 0, h_cap = 0, l_cur = 0, l_cap = 0;
         for(size_t i = 0; i < ship->partResources.size(); i++) {
@@ -609,7 +609,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
     } else {
         g.o_map.flags = 0;
     }
-    ui::Window("Orbital map", g.o_map, [&] {
+    ui::Window("Orbital Map", g.o_map, [&] {
         // Right-click anywhere in the window cycles the chrome:
         // full window -> bare map -> no window -> full window.
         // Over the map this is safe: imgui owns the mouse here, so
