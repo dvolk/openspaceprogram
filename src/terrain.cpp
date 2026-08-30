@@ -521,7 +521,7 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, bool has_skirt, glm::vec
 // outside) so back-face culling keeps the near hemisphere the camera sees.
 Mesh *TerrainBody::create_atmosphere_mesh(float radius) {
     Mesh *mesh = new Mesh;
-    const int lat = 32, lon = 32;
+    const int lat = 128, lon = 128;
     std::vector<PosNorColVertex> verts;
     verts.reserve((lat + 1) * (lon + 1));
     for(int i = 0; i <= lat; i++) {
