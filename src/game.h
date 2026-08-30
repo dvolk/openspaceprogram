@@ -141,6 +141,7 @@ struct Game {
     bool rmbCam = false;            // RMB held over 3D: camera look
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
+    bool porkchop_compute_requested = false;  // P: one-shot compute the plot
     int activeIdx = 0;             // the player-controlled ship
     Vehicle *ship = nullptr;       // always ships[activeIdx]
 

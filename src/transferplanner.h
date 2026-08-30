@@ -36,6 +36,11 @@ public:
        what the readouts use. */
     void update(const glm::dvec3 &com, const glm::dvec3 &vel);
 
+    /* On-demand (the P key / the window's button): build the porkchop
+       plot for the current target from the ship's current state and cache
+       it in pc until the next call. No-op when there is no target. */
+    void porkchopCompute();
+
     std::vector<XferTarget> xferTargets;
     int xfer_target = -1;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
@@ -53,6 +58,11 @@ public:
     // --xfer-log: its own "last fired" timestamp (it shares the game's
     // orbit_log_interval_ms, like the orbit/dbg logs).
     Uint32 xfer_log_last_ms = 0;
+
+    /* Porkchop plot (on-demand): the last porkchopCompute() result, for the
+       window to render. The grid size is g.args.porkchop_n (the size knob;
+       a Settings-window hook later). */
+    PorkchopResult pc;   // valid when pc.valid
 
 private:
     Game &g;

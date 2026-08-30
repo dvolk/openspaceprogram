@@ -148,6 +148,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Transfer planner target: a child body of the ship's "
                    "current body, or another ship in the same body");
 
+    app.add_flag("--porkchop-log", args.porkchop_log,
+                 "Print the porkchop plot's best cell (min dv, its departure "
+                 "delay + time of flight) to stdout whenever the plot is "
+                 "computed (P key or the window's button)");
+    app.add_option("--porkchop-n", args.porkchop_n,
+                   "Porkchop plot grid size (porkchop-n x porkchop-n); the "
+                   "size knob, a Settings-window hook later (default 40, "
+                   "~15 ms at 40 x 40)");
+
     app.add_flag("--spin-log", args.spin_log_enabled,
                  "Periodically print the ship's spin diagnostics (per-part "
                  "angular velocities, inter-part contact impulses, tidal "

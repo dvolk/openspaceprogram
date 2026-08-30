@@ -250,6 +250,14 @@ void poll_events(Game &g) {
             if(ev.key.keysym.sym == SDLK_F12) {
                 g.screenshot_requested = true;
             }
+            if(ev.key.keysym.sym == SDLK_p) {
+                // Compute the porkchop plot for the current transfer target
+                // (one-shot; auto-repeat would just recompute it). The render
+                // pass consumes the flag and runs the (expensive) grid.
+                if(!ev.key.repeat) {
+                    g.porkchop_compute_requested = true;
+                }
+            }
             if(ev.key.keysym.sym == SDLK_F11) {
                 if(g.poly_mode == false) {
                     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);

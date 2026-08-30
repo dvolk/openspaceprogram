@@ -277,6 +277,14 @@ void draw3d(Game &g, TransferPlanner &planner) {
        render pass's ship COM / velocity. */
     planner.update(com, vel);
 
+    // P key: compute the porkchop plot (the one-shot flag is set in
+    // poll_events; it runs here, where the planner + this pass's ship
+    // snapshot both exist).
+    if(g.porkchop_compute_requested) {
+        planner.porkchopCompute();
+        g.porkchop_compute_requested = false;
+    }
+
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

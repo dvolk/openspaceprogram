@@ -13,6 +13,67 @@
 #include <cmath>
 #include <cstdio>
 
+namespace {
+/* The frame-independent transforms update() and porkchopCompute() both
+   need: the ship's state and the target's state, lifted from their own
+   (possibly rotating) frames into the parent's INERTIAL frame -- the frame
+   the transfer conic lives in (the same idiom as the ORBITAL readout). */
+struct InertialShip {
+    Frame *inertial = nullptr;
+    glm::dvec3 r = glm::dvec3(0.0), v = glm::dvec3(0.0);
+    double mu_parent = 0.0;
+};
+InertialShip shipInertial(Game &g, const glm::dvec3 &com, const glm::dvec3 &vel) {
+    Frame *sf = g.ship->frame;
+    Frame *inertial = sf->getNonRotFrame();
+    InertialShip s;
+    s.inertial = inertial;
+    s.r = sf->GetOrientRelTo(inertial) * com + sf->GetPositionRelTo(inertial);
+    s.v = sf->GetOrientRelTo(inertial) * (vel + sf->GetStasisVelocity(com))
+        + sf->GetVelocityRelTo(inertial);
+    s.mu_parent = inertial->body->mu;
+    return s;
+}
+
+struct InertialTarget {
+    glm::dvec3 r = glm::dvec3(0.0), v = glm::dvec3(0.0);
+    double mu = 0.0;
+    double r_cap = 0.0;
+    double tof_max = 3.0 * 86400.0;
+    bool capture = false;
+};
+InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
+                              Frame *inertial) {
+    InertialTarget d;
+    if(t.body) {
+        Frame *tf = t.body->frame;
+        d.r = tf->GetPositionRelTo(inertial);
+        // The body's orbital velocity in the parent frame, straight from the
+        // frame tree (nonzero now that the rails are Kepler orbits; for the
+        // current circular data this equals the old omega x r construction).
+        d.v = tf->GetVelocityRelTo(inertial);
+        d.mu = t.body->mu;
+        d.r_cap = t.body->radius + 100e3; // 100 km capture orbit
+        if(tf->orb_ang_speed > 0.0) {
+            // 3 full target periods covers the min-dv point (near the
+            // Hohmann ToF) with margin on both sides.
+            d.tof_max = 3.0 * (2.0 * M_PI / tf->orb_ang_speed);
+        }
+        d.capture = true;
+    } else {
+        // Ship in the same body: transform its state over to our inertial
+        // frame (stasis of the non-rotating frame is zero).
+        Frame *tsf = t.ship->frame;
+        const glm::dvec3 tcom = t.ship->get_center_of_mass();
+        const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
+        d.r = O * tcom + tsf->GetPositionRelTo(inertial);
+        d.v = O * (t.ship->GetVel() + tsf->GetStasisVelocity(tcom))
+            + tsf->GetVelocityRelTo(inertial);
+    }
+    return d;
+}
+} // namespace
+
 void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     /* Rebuild the target list, then recompute the solution on input
        change or every 30 frames. */
@@ -51,61 +112,21 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             || std::fabs(xfer.tof_log - xfer_tof_log) > 1e-12
             || xfer.frame - xfer.solved_frame >= 30;
         if(dirty) {
-            // Ship state in the parent's INERTIAL frame — the frame
-            // the transfer conic lives in (same idiom as the ORBITAL
-            // readout).
-            Frame *sf = g.ship->frame;
-            Frame *inertial = sf->getNonRotFrame();
-            const glm::dvec3 r1 = sf->GetOrientRelTo(inertial) * com
-                                 + sf->GetPositionRelTo(inertial);
-            const glm::dvec3 v1 = sf->GetOrientRelTo(inertial)
-                                 * (vel + sf->GetStasisVelocity(com))
-                                 + sf->GetVelocityRelTo(inertial);
-            const double mu_parent = inertial->body->mu;
-
-            // Target state in the same frame.
+            // Ship + target state in the parent's INERTIAL frame (the
+            // shared transform helpers above).
+            const InertialShip s1 = shipInertial(g, com, vel);
             const XferTarget &t = xferTargets[xfer_target];
-            glm::dvec3 r2, v2;
-            double mu_target = 0.0, r_cap = 0.0;
-            double tof_max = 3.0 * 86400.0;
-            if(t.body) {
-                Frame *tf = t.body->frame;
-                r2 = tf->GetPositionRelTo(inertial);
-                // The body's orbital velocity in the parent frame,
-                // straight from the frame tree (nonzero now that the
-                // rails are Kepler orbits; for the current circular
-                // data this equals the old omega x r construction).
-                v2 = tf->GetVelocityRelTo(inertial);
-                mu_target = t.body->mu;
-                r_cap = t.body->radius + 100e3; // 100 km capture orbit
-                if(tf->orb_ang_speed > 0.0) {
-                    // 3 full target periods covers the min-dv point
-                    // (near the Hohmann ToF) with margin on both sides.
-                    tof_max = 3.0 * (2.0 * M_PI / tf->orb_ang_speed);
-                }
-            } else {
-                // Ship in the same body: transform its state over to
-                // our inertial frame (stasis of the non-rotating
-                // frame is zero).
-                Frame *tsf = t.ship->frame;
-                const glm::dvec3 tcom = t.ship->get_center_of_mass();
-                const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
-                r2 = O * tcom + tsf->GetPositionRelTo(inertial);
-                v2 = O * (t.ship->GetVel() + tsf->GetStasisVelocity(tcom))
-                    + tsf->GetVelocityRelTo(inertial);
-            }
+            const InertialTarget d = targetInertial(t, s1.inertial);
 
-            const bool capture = (t.body != nullptr);
             TransferSolution sol;
             if(xfer_auto) {
-                sol = planTransfer(r1, v1, r2, v2, mu_parent,
-                                   mu_target, r_cap,
-                                   60.0, tof_max, 150, capture);
+                sol = planTransfer(s1.r, s1.v, d.r, d.v, s1.mu_parent,
+                                   d.mu, d.r_cap, 60.0, d.tof_max, 150,
+                                   d.capture);
             } else {
                 const double tof = std::pow(10.0, xfer_tof_log);
-                sol = planTransfer(r1, v1, r2, v2, mu_parent,
-                                   mu_target, r_cap,
-                                   tof, tof, 1, capture);
+                sol = planTransfer(s1.r, s1.v, d.r, d.v, s1.mu_parent,
+                                   d.mu, d.r_cap, tof, tof, 1, d.capture);
             }
 
             xfer.sol = sol;
@@ -116,8 +137,8 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 // the same stasis applies before and after the burn
                 // at the same position, so it cancels in the
                 // difference.
-                const glm::dmat3 O = sf->GetOrientRelTo(inertial);
-                xfer.burn_dir = glm::transpose(O) * (sol.v_departure - v1);
+                const glm::dmat3 O = g.ship->frame->GetOrientRelTo(s1.inertial);
+                xfer.burn_dir = glm::transpose(O) * (sol.v_departure - s1.v);
             } else {
                 xfer.burn_dir = glm::dvec3(0.0);
             }
@@ -151,5 +172,41 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             }
             fflush(stdout);
         }
+    }
+}
+
+void TransferPlanner::porkchopCompute() {
+    pc.valid = false;
+    if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
+    const XferTarget &t = xferTargets[xfer_target];
+
+    // The ship's + the target's state at t = 0 (now) in the parent's
+    // INERTIAL frame (the shared transform helpers). The ship's state is
+    // this render pass's snapshot (g.view), so the grid matches what the
+    // readouts show.
+    const InertialShip s1 = shipInertial(g, g.view.pos, g.view.vel);
+    const InertialTarget d = targetInertial(t, s1.inertial);
+
+    // Windows: one full target orbit of departure delay (covers every
+    // relative phase) and the same ToF span update() sweeps (60 s .. 3
+    // target periods). Resolved from d.tof_max = 3 target periods.
+    const double t_dep_lo = 0.0, t_dep_hi = d.tof_max / 3.0;
+    const double tof_lo = 60.0, tof_hi = d.tof_max;
+
+    pc = porkchopGrid(s1.r, s1.v, d.r, d.v, s1.mu_parent, d.mu, d.r_cap,
+                      t_dep_lo, t_dep_hi, tof_lo, tof_hi, g.args.porkchop_n,
+                      g.args.porkchop_n, d.capture);
+
+    if(g.args.porkchop_log) {
+        if(pc.valid) {
+            printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
+                   "t_dep_min=%.6g s tof_min=%.6g s\n",
+                   g.time, t.name, pc.n_dep, pc.n_tof, pc.dv_min,
+                   pc.t_dep_min, pc.tof_min);
+        } else {
+            printf("[porkchop] t=%.1fs target=\"%s\" no-solution\n",
+                   g.time, t.name);
+        }
+        fflush(stdout);
     }
 }
