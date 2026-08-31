@@ -69,6 +69,18 @@ public:
     bool   pcCustomDep = false;
     float  pcDepLo = 0.0f;
     float  pcDepHi = 0.0f;
+    // Sim time (s) the last porkchop grid was swept (porkchopCompute). The
+    // best cell's t_dep_min is a DELAY relative to that moment, so an
+    // absolute departure time = pc_computed_at + pc.t_dep_min.
+    double pc_computed_at = 0.0;
+    // A porkchop "Send best" applied to this target: xfer_t_dep is the
+    // absolute departure time to count down to (and the ToF is pinned to
+    // the best cell's). At t_dep the live "depart now" solution IS the best
+    // cell, so that is when you burn. xfer_plan_target is the target index
+    // it was sent for; if the target changes, the countdown is dropped.
+    bool   xfer_from_porkchop = false;
+    double xfer_t_dep = 0.0;   // s (sim clock)
+    int    xfer_plan_target = -1;
 
 private:
     Game &g;

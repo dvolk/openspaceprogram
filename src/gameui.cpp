@@ -55,6 +55,28 @@ unsigned int ramp_color(float t) {
 }
 } // namespace
 
+// Format a sim-clock time (s) on the home body's calendar, the same
+// "Year ... Day d/N ... HH:MM:SS" the top bar (HUD) shows, so a planned
+// departure time (a porkchop "Send best") can be read off against it.
+// Empty when there is no home calendar or t < 0.
+static std::string fmt_cal_time(const Calendar &cal, double t) {
+    if(!cal.valid() || t < 0.0) { return std::string(); }
+    const CalTime ct = cal.at(t);
+    char line[64];
+    if(ct.has_year) {
+        // CalTime only exposes month + day-of-month, so the day-of-year is
+        // day + the days in the earlier months.
+        int doy = ct.day;
+        for(int m = 0; m < ct.month - 1; m++) { doy += cal.month_days[m]; }
+        snprintf(line, sizeof(line), "Year %04d   Day %d/%d   %02d:%02d:%02d",
+                 ct.year, doy, cal.days_per_year, ct.hh, ct.mm, ct.ss);
+    } else {
+        snprintf(line, sizeof(line), "Day %d   %02d:%02d:%02d",
+                 ct.day, ct.hh, ct.mm, ct.ss);
+    }
+    return line;
+}
+
 void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // The window bodies are verbatim from main's ImGui pass; their locals
     // are Game members (aliased so the bodies read the same).
@@ -124,27 +146,13 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::PushFont(g.bigger);
         ImGui::Text("%06dm/s   %08dm", (int)spd, (int)alt);
         ImGui::PopFont();
-        if(sys.home && sys.home->cal.valid()) {
-            CalTime ct = sys.home->cal.at(time);
-            char line[64];
-            if(ct.has_year) {
-                // CalTime only exposes month + day-of-month, so the
-                // day-of-year is day + the days in the earlier months.
-                int doy = ct.day;
-                for(int m = 0; m < ct.month - 1; m++) {
-                    doy += sys.home->cal.month_days[m];
-                }
-                snprintf(line, sizeof(line),
-                         "Year %04d   Day %d/%d   %02d:%02d:%02d",
-                         ct.year, doy, sys.home->cal.days_per_year,
-                         ct.hh, ct.mm, ct.ss);
-            } else {
-                snprintf(line, sizeof(line),
-                         "Day %d   %02d:%02d:%02d",
-                         ct.day, ct.hh, ct.mm, ct.ss);
+        if(sys.home) {
+            const std::string line = fmt_cal_time(sys.home->cal, time);
+            if(!line.empty()) {
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth()
+                    - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
+                ImGui::TextUnformatted(line.c_str());
             }
-            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line).x) * 0.5f);
-            ImGui::TextUnformatted(line);
         }
     });
 
@@ -274,6 +282,30 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         if(isShip) {
             ImGui::TextDisabled("ship target: intercept only, no capture burn");
         }
+        // A porkchop "Send best" plan: count down to the departure instant.
+        // At zero the live "depart now" solution below IS the best cell, so
+        // that is when you burn. The departure time is shown on the home
+        // calendar to match the top bar.
+        if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0) {
+            ImGui::Separator();
+            const double tleft = planner.xfer_t_dep - time;
+            if(tleft > 0.0) {
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f),
+                                   "departure in: %s",
+                                   fmt_time(tleft).c_str());
+            } else {
+                ImGui::TextColored(ImVec4(0.45f, 1.0f, 0.45f, 1.0f),
+                                   "DEPARTURE NOW -- burn");
+            }
+            if(sys.home) {
+                const std::string dt = fmt_cal_time(sys.home->cal,
+                                                    planner.xfer_t_dep);
+                if(!dt.empty()) {
+                    ImGui::Text("departure:    %s", dt.c_str());
+                }
+            }
+            ImGui::Separator();
+        }
         ImGui::Checkbox("Auto ToF (min dv)", &xfer_auto);
         if(!xfer_auto) {
             ImGui::SliderFloat("log10(ToF s)", &xfer_tof_log,
@@ -368,13 +400,17 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("min dv:      %08.1f m/s", pc.dv_min);
         ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min).c_str());
         ImGui::Text("time of flt: %s", fmt_time(pc.tof_min).c_str());
-        // Apply the best cell's ToF to the Transfer planner (manual ToF mode)
-        // and open the Transfer window so the resulting solution is visible.
-        // The departure delay is not transferable (the planner solves from
-        // now); the readout above is the timing to act on.
+        // Apply the best cell to the Transfer planner: pin the ToF (manual
+        // mode) and record the ABSOLUTE departure time (compute moment + the
+        // best cell's delay). The Transfer window then counts down to it, and
+        // at that instant the live "depart now" solution IS the best cell
+        // (Kepler propagation composes), so you burn then.
         if(ImGui::Button("Send best to Transfer")) {
             planner.xfer_auto = false;
             planner.xfer_tof_log = (float)std::log10(pc.tof_min);
+            planner.xfer_t_dep = planner.pc_computed_at + pc.t_dep_min;
+            planner.xfer_plan_target = xfer_target;
+            planner.xfer_from_porkchop = true;
             ui::SetOpen("Transfer", true);
         }
 

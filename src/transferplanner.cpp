@@ -102,6 +102,13 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     }
     if(xfer_target >= (int)xferTargets.size()) { xfer_target = -1; }
 
+    // A "Send best" plan is for the target it was sent for. Drop it if the
+    // target changed so a stale countdown doesn't linger on the new target.
+    if(xfer_from_porkchop && xfer_plan_target != xfer_target) {
+        xfer_from_porkchop = false;
+        xfer_t_dep = 0.0;
+    }
+
     if(xfer_target < 0) {
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
@@ -203,6 +210,7 @@ void TransferPlanner::porkchopCompute() {
     pc = porkchopGrid(s1.r, s1.v, d.r, d.v, s1.mu_parent, d.mu, d.r_cap,
                       t_dep_lo, t_dep_hi, tof_lo, tof_hi, g.args.porkchop_n,
                       g.args.porkchop_n, d.capture);
+    pc_computed_at = g.time;   // for "Send best": delay -> absolute departure
 
     if(g.args.porkchop_log) {
         if(pc.valid) {
