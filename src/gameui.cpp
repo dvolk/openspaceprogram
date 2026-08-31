@@ -257,17 +257,6 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
             g.apply_ui_style();
         }
-        // Control scheme: how the pitch/yaw stick maps to world axes.
-        // Screen-aligned: W/S/A/D move the nose toward the screen
-        // top/bottom/left/right (KSP style); heading-aligned: the
-        // axes follow the ship itself (pitch about the ship's right
-        // wing, yaw about its belly). Roll (Q/E) is about the nose
-        // in both. Read live by Vehicle::applyRotationForce each tick.
-        if(ImGui::Combo("Controls", &args.control_scheme,
-                        "Screen-aligned\0Heading-aligned\0")) {
-            g.toast("Controls: %s",
-                    args.control_scheme ? "heading-aligned" : "screen-aligned");
-        }
         if(ImGui::SliderFloat("Window rounding", &window_rounding,
                              0.0f, 50.0f, "%.0f")) {
             g.apply_ui_style();

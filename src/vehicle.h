@@ -41,11 +41,11 @@ enum ShipCmdType {
     ThrottleUp,
     ThrottleDown,
     Thrust,
-    // Camera-relative (KSP style, screen-aligned): the stick follows the
-    // screen, not the ship's body axes.
-    Pitch,    // W/S: nose to the screen top/bottom (about the camera right)
-    Yaw,      // A/D: nose to the screen left/right (about the camera up)
-    Roll,     // Q/E: about the line of sight
+    // Ship-relative (standard aviation mapping): each key drives the
+    // ship's own body axis -- see applyRotationForce for the exact map.
+    Pitch,    // W/S: about the ship's right axis
+    Yaw,      // A/D: about the ship's up axis
+    Roll,     // Q/E: about the ship's nose
     KillRot,
     Prograde,    // align nose with velocity
     Retrograde,  // align nose against velocity
@@ -145,16 +145,10 @@ public:
        because Bullet clears the accumulated torque on each stepSimulation.
        stick: the manual command -- x = Q/E (roll about the ship's nose),
        y = W/S (pitch), z = A/D (yaw); +-1 per axis, diagonals allowed
-       (e.g. W+A). The axis each component maps to depends on controlScheme
-       (setControlScheme): screen-aligned (0) drives pitch/yaw about the
-       screen axes (controlBasis) and roll about the nose; heading-aligned
-       (1) drives all three about the ship's own axes. See
-       applyRotationForce for the exact mapping. controlBasis maps the
-       screen basis to world (setControlBasis); slew: the autopilot target
+       (e.g. W+A). Each component drives the ship's own body axis -- see
+       applyRotationForce for the exact mapping. slew: the autopilot target
        (exclusive). */
     float stick[3] = {0.0f, 0.0f, 0.0f};
-    glm::dmat3 controlBasis = glm::dmat3(1.0);
-    int controlScheme = 0;   // 0 = screen-aligned, 1 = heading-aligned
     int slew = SlewNone;
     /* The autopilot mode the Autopilot window has engaged (its toggle
        buttons). Persistent across ticks, unlike `slew` (cleared each tick):
@@ -481,28 +475,20 @@ public:
     // authority to 1/n and making it worse at warp.
     void applyRotationForce(double h) {
         if(m_reaction_wheels.empty()) { return; }
-        /* Manual stick: each component maps to an axis chosen by the
-           control scheme. Roll (stick[0]) is ALWAYS about the ship's nose
-           (local +Z) -- rolling about the camera line of sight made the
-           ship tumble whenever the camera sat off the nose axis (the
-           default side view). Pitch (stick[1]) and yaw (stick[2]) follow
-           the scheme: screen-aligned (0) uses the screen basis
-           (controlBasis columns 1 and 2), heading-aligned (1) the ship's
-           own axes (pitch about local X, yaw about local Y). Signs are
-           chosen so W = nose up, A = nose left, D = nose right. Each wheel
-           gets its rated torque along the combined axis; diagonals (W+A)
-           compose as a vector sum, same authority as before. */
+        /* Manual stick: standard aviation mapping, body-relative.
+           Pitch (W/S) about the ship's right axis, yaw (A/D) about its
+           up axis, roll (Q/E) about the nose. The camera tracks the
+           ship's attitude, so these read consistently on screen
+           regardless of the ship's world orientation. Each wheel gets
+           its rated torque along the combined axis; diagonals (W+A)
+           compose as a vector sum. */
         if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
             Body *rw0 = m_reaction_wheels.front();
-            const glm::dvec3 nose = getRelAxis_(rw0, 2);  // local +Z
-            const glm::dvec3 pitchAxis = (controlScheme == 1)
-                ? (-getRelAxis_(rw0, 0))                      // heading: -right
-                : (controlBasis * glm::dvec3(0.0, 1.0, 0.0)); // screen right
-            const glm::dvec3 yawAxis = (controlScheme == 1)
-                ? (-getRelAxis_(rw0, 1))                      // heading: -up
-                : (controlBasis * glm::dvec3(0.0, 0.0, 1.0)); // screen up
+            const glm::dvec3 pitchAxis = -getRelAxis_(rw0, 0);  // right (W/S)
+            const glm::dvec3 yawAxis   = -getRelAxis_(rw0, 1);  // up    (A/D)
+            const glm::dvec3 rollAxis  =  getRelAxis_(rw0, 2);  // nose  (Q/E)
             const glm::dvec3 worldAxis =
-                (double)stick[0] * nose
+                (double)stick[0] * rollAxis
                 + (double)stick[1] * pitchAxis
                 + (double)stick[2] * yawAxis;
             for(size_t wi = 0; wi < m_reaction_wheels.size(); wi++) {
@@ -722,15 +708,6 @@ public:
             part->Draw(camera, sunlightVec, shadow, xform);
         }
     }
-
-    /* The world matrix of the camera frame the manual stick is given in:
-       columns (x, y, z) = (line of sight focus->camera, screen right,
-       screen up). The logic tick sets it every tick from the live camera
-       (ref * orient); identity before the first render. */
-    void setControlBasis(glm::dmat3 C) { controlBasis = C; }
-    // The control scheme (0 = screen-aligned, 1 = heading-aligned); the
-    // tick pushes the live setting in each tick.
-    void setControlScheme(int s) { controlScheme = s; }
 
     // Single place to control the ship. While paused (simActive == false)
     // every command is dropped, so nothing accumulates in the rigid bodies

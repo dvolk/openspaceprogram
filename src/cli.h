@@ -24,10 +24,6 @@ struct GameArgs {
     int initial_time_accel = 0;
     double timeout_seconds = 0.0;
     float exhaust_scale = 1.0f;  // test knob: scales ve (thrust + delta-v)
-    // Control scheme (also a Settings-window option): 0 = screen-aligned
-    // (pitch/yaw follow the screen, roll about the nose), 1 = heading-
-    // aligned (all axes follow the ship). See Vehicle::applyRotationForce.
-    int control_scheme = 0;
 
     std::vector<SimKeyPress> sim_presses;
     std::vector<SimMouseAction> sim_mouse_actions;

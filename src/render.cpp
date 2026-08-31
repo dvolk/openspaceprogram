@@ -289,7 +289,10 @@ void draw3d(Game &g, TransferPlanner &planner) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     g.front_indicator->pos = facing;
-    g.front_indicator->Draw(camera, M_PI /* <- ?? */ + roll);
+    // Fixed-orientation nose marker: the orbit camera already tracks the
+    // ship's roll (up = the nose), so the billboard is roll-invariant and
+    // no explicit roll term is needed to keep it aligned with the ship.
+    g.front_indicator->Draw(camera, M_PI);
     g.prograde_indicator->pos = vel;
     g.prograde_indicator->Draw(camera, M_PI);
     g.retrograde_indicator->pos = - vel;
