@@ -107,6 +107,23 @@ void emit_sim_events(Game &g) {
             }
         }
     }
+
+    /* --sim-mode: the scripted display-mode changes that fell due this
+       frame (the same Renderer::setWindowMode path the Settings
+       dropdowns use; the SIZE_CHANGED event in poll_events finishes the
+       resize). */
+    if(!g.args.sim_mode_changes.empty()) {
+        const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
+        for(auto &m : g.args.sim_mode_changes) {
+            if(!m.done && now >= m.at_ms) {
+                m.done = true;
+                g.args.window_mode = m.mode;
+                g.args.screen_width = m.width;
+                g.args.screen_height = m.height;
+                g.display.setWindowMode(m.mode, m.width, m.height);
+            }
+        }
+    }
 }
 
 void poll_events(Game &g) {

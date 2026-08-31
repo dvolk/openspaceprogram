@@ -4,6 +4,7 @@
 // parse error, malformed sim input).
 #include "cli.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 
@@ -120,6 +121,20 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "move only. DURATION_MS>0 with a button = a drag (held); "
                    "0 = a quick click. Repeat the flag to append more "
                    "quintuples.")
+        ->delimiter(',');
+
+    std::vector<std::string> sim_mode;
+    app.add_option("--sim-mode", sim_mode,
+                   "Synthetic display-mode change for e2e testing: a flat "
+                   "list of TIME_MS,MODE,WIDTH,HEIGHT quadruples (e.g. "
+                   "2000,borderless,1024,768,5000,exclusive,640,480; "
+                   "spaces also separate values). MODE is "
+                   "windowed|borderless|fullscreen|exclusive; WIDTH / "
+                   "HEIGHT of 0 keep the launch --width/--height (native "
+                   "fullscreen ignores both). Each change is applied "
+                   "TIME_MS after the main loop starts, through the same "
+                   "Renderer::setWindowMode path the Settings dropdowns "
+                   "use. Repeat the flag to append more quadruples.")
         ->delimiter(',');
 
     app.add_flag("--selftest-spawn", args.selftest_spawn,
@@ -369,6 +384,68 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             a.started = false;
             a.released = false;
             args.sim_mouse_actions.push_back(a);
+        }
+    }
+
+    /* --sim-mode: fold the flat TIME_MS,MODE,WIDTH,HEIGHT list into
+       changes. WIDTH / HEIGHT of 0 keep the launch --width/--height. */
+    if(!sim_mode.empty()) {
+        if(sim_mode.size() % 4 != 0) {
+            printf("error: --sim-mode expects TIME_MS,MODE,WIDTH,HEIGHT "
+                   "quadruples; got %zu value(s)\n", sim_mode.size());
+            *exit_code = 1;
+            return false;
+        }
+        auto parse_mode = [](const std::string &s, WindowMode &out) -> bool {
+            std::string t;
+            for(char c : s) { t += (char)std::tolower((unsigned char)c); }
+            if(t == "windowed" || t == "window") { out = WindowMode::Windowed; return true; }
+            if(t == "borderless") { out = WindowMode::Borderless; return true; }
+            if(t == "fullscreen") { out = WindowMode::Fullscreen; return true; }
+            if(t == "exclusive") { out = WindowMode::Exclusive; return true; }
+            return false;
+        };
+        for(size_t i = 0; i < sim_mode.size(); i += 4) {
+            char *end = nullptr;
+            const unsigned long t =
+                strtoul(sim_mode[i].c_str(), &end, 10);
+            if(end == sim_mode[i].c_str() || *end != '\0') {
+                printf("error: --sim-mode time '%s' is not an "
+                       "integer ms\n", sim_mode[i].c_str());
+                *exit_code = 1;
+                return false;
+            }
+            WindowMode mode;
+            if(!parse_mode(sim_mode[i + 1], mode)) {
+                printf("error: --sim-mode mode '%s' is not one of "
+                       "windowed, borderless, fullscreen, exclusive\n",
+                       sim_mode[i + 1].c_str());
+                *exit_code = 1;
+                return false;
+            }
+            const unsigned long w =
+                strtoul(sim_mode[i + 2].c_str(), &end, 10);
+            if(end == sim_mode[i + 2].c_str() || *end != '\0') {
+                printf("error: --sim-mode width '%s' is not an "
+                       "integer pixel\n", sim_mode[i + 2].c_str());
+                *exit_code = 1;
+                return false;
+            }
+            const unsigned long h =
+                strtoul(sim_mode[i + 3].c_str(), &end, 10);
+            if(end == sim_mode[i + 3].c_str() || *end != '\0') {
+                printf("error: --sim-mode height '%s' is not an "
+                       "integer pixel\n", sim_mode[i + 3].c_str());
+                *exit_code = 1;
+                return false;
+            }
+            SimModeChange m;
+            m.at_ms = (Uint32)t;
+            m.mode = mode;
+            m.width = (w == 0) ? args.screen_width : (int)w;
+            m.height = (h == 0) ? args.screen_height : (int)h;
+            m.done = false;
+            args.sim_mode_changes.push_back(m);
         }
     }
 

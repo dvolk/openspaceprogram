@@ -14,6 +14,8 @@
 
 #include <string>
 
+#include "display.h"   // WindowMode (the --sim-mode entry)
+
 // Circular buffer of (sim time, value) samples for the telemetry plots.
 // Fixed size and preallocated, so sampling in the render loop never
 // allocates; once full, push() overwrites the oldest sample.
@@ -93,6 +95,18 @@ struct SimMouseAction {
     Uint8 button;     // SDL button code (1=LEFT,2=MIDDLE,3=RIGHT); 0 = move only
     bool started;     // start events (button-down + motion) already emitted
     bool released;    // button-up already emitted
+};
+
+/* --sim-mode: a scripted runtime display-mode change for e2e testing
+   (the same Renderer::setWindowMode path the Settings dropdowns use).
+   One entry = one change at `at_ms` after the main loop starts, to
+   `mode` at `width` x `height` (native "fullscreen" ignores the size). */
+struct SimModeChange {
+    Uint32 at_ms;     // when the change applies (after the loop starts)
+    WindowMode mode;
+    int width;
+    int height;
+    bool done;        // already applied
 };
 
 // Unknown key: returns 0.

@@ -33,6 +33,7 @@ struct GameArgs {
     std::vector<SimMouseAction> sim_mouse_actions;
     int sim_mouse_x = 0;   // simulated cursor (window pixels); each motion
     int sim_mouse_y = 0;   // carries the delta from here for the camera look
+    std::vector<SimModeChange> sim_mode_changes;   // --sim-mode
 
     bool selftest_spawn = false;
     bool orbit_log = false;

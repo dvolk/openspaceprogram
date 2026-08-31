@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <assert.h>
 #include <cstring>
 
@@ -174,6 +175,82 @@ void Renderer::onResize(int width, int height) {
     check_gl_error();
 
 }
+
+void Renderer::setWindowMode(WindowMode mode, int width, int height) {
+    if(mode == WindowMode::Windowed || mode == WindowMode::Borderless) {
+        // Leave fullscreen first (X11: restore the previous display mode),
+        // then the decorations, then the window size.
+        SDL_SetWindowFullscreen(m_window, 0);
+        SDL_SetWindowBordered(m_window,
+                              (mode == WindowMode::Windowed) ? SDL_TRUE
+                                                             : SDL_FALSE);
+        SDL_SetWindowSize(m_window, width, height);
+    } else if(mode == WindowMode::Fullscreen) {
+        SDL_SetWindowBordered(m_window, SDL_FALSE);
+        // Borderless fullscreen at the display's native mode; `width` /
+        // `height` carry over to the next sized-mode switch.
+        SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    } else { // WindowMode::Exclusive
+        // Exclusive: ask for `width` x `height` as the display mode. Set
+        // the size first -- SDL uses the window size as the requested
+        // mode -- then flip (on X11 the CRTC mode change; the GL context
+        // survives it). A panel without a matching mode gets the current
+        // one (the constructor's note).
+        SDL_SetWindowSize(m_window, width, height);
+        SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN);
+    }
+    check_gl_error();
+    // Trust the drawable the compositor actually gave: the WM may clamp
+    // a windowed size, exclusive may have fallen back. The SIZE_CHANGED
+    // event (events.cpp) finishes the resize (postfx, the camera aspect).
+    int w = 0, h = 0;
+    SDL_GL_GetDrawableSize(m_window, &w, &h); // void in SDL2
+    if(w > 0 && h > 0) {
+        m_screen_width = w;
+        m_screen_height = h;
+    }
+    glViewport(0, 0, m_screen_width, m_screen_height);
+    check_gl_error();
+    static const char *mode_names[] = {"windowed", "borderless",
+                                       "fullscreen", "exclusive"};
+    printf("display mode: %dx%d (%s)\n", m_screen_width, m_screen_height,
+           mode_names[static_cast<size_t>(mode)]);
+    check_gl_error();
+}
+
+std::vector<Resolution> Renderer::displayModes() {
+    std::vector<Resolution> out;
+    const int n = SDL_GetNumDisplayModes(0);
+    for(int i = 0; i < n; i++) {
+        SDL_DisplayMode dm;
+        if(SDL_GetDisplayMode(0, i, &dm) == 0
+           && dm.w > 0 && dm.h > 0) {
+            out.push_back(Resolution{dm.w, dm.h});
+        }
+    }
+    // Some stacks keep the current mode out of the list (or report an
+    // empty one); the dropdown must always offer what the display is
+    // actually running.
+    SDL_DisplayMode cur;
+    if(SDL_GetCurrentDisplayMode(0, &cur) == 0
+       && cur.w > 0 && cur.h > 0) {
+        bool have = false;
+        for(size_t i = 0; i < out.size(); i++) {
+            if(out[i].width == cur.w && out[i].height == cur.h) {
+                have = true;
+                break;
+            }
+        }
+        if(!have) { out.push_back(Resolution{cur.w, cur.h}); }
+    }
+    std::sort(out.begin(), out.end(),
+              [](const Resolution &a, const Resolution &b) {
+                  if(a.width != b.width) { return a.width < b.width; }
+                  return a.height < b.height;
+              });
+    return out;
+}
+
 void Renderer::Clear(float r, float g, float b, float a)
 {
     check_gl_error();

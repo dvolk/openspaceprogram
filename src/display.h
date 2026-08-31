@@ -1,6 +1,8 @@
 #ifndef DISPLAY_INCLUDED_H
 #define DISPLAY_INCLUDED_H
 
+#include <vector>
+
 struct SDL_Window;
 
 enum class WindowMode
@@ -9,6 +11,13 @@ enum class WindowMode
     Borderless,  // no decorations, stays on the desktop
     Fullscreen,  // borderless fullscreen at the display's native mode
     Exclusive    // exclusive fullscreen: display mode change to width x height
+};
+
+// One supported display resolution (a "display mode" entry; the Settings
+// dropdown's list item).
+struct Resolution {
+    int width;
+    int height;
 };
 
 class Renderer
@@ -21,6 +30,17 @@ public:
     void SwapBuffers();
     void onResize(int width, int height);
     bool SaveScreenshot(const char *filename);
+    // Reconfigure the live window to `mode` at `width` x `height` (the
+    // Settings dropdowns and --sim-mode go through this): decorations,
+    // desktop fullscreen, the display-mode change. Fullscreen runs at the
+    // display's native mode, so `width`/`height` are ignored there. The
+    // SIZE_CHANGED event (events.cpp) finishes the resize: the viewport
+    // (onResize), postfx, the camera aspect.
+    void setWindowMode(WindowMode mode, int width, int height);
+    // The display's (display 0's) supported resolutions, sorted by width
+    // then height, with the current mode guaranteed to be in the list
+    // (some stacks keep it out of the reported modes).
+    std::vector<Resolution> displayModes();
 
     SDL_Window *get_display() { return m_window; }
     int get_width() { return m_screen_width; }

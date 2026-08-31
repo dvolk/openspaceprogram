@@ -1,0 +1,18 @@
+# Runtime display-mode change (the Settings dropdowns' code path, driven
+# by --sim-mode): windowed -> borderless -> exclusive -> windowed. The
+# reported size varies (Xvfb's panel may not have the requested mode, in
+# which case SDL covers the current one -- see 12-exclusive), so assert
+# the mode word + a sane size with a regex, like 12-exclusive does.
+NAME display-mode-cycle
+ARGS --width 1024 --height 768 --timeout 10
+ARGS --sim-mode 2000,borderless,1024,768
+ARGS --sim-mode 4000,exclusive,1024,768
+ARGS --sim-mode 6000,windowed,1024,768
+EXPECT Main loop starting
+CHECK re.search(r"display mode: [1-9]\d{2,4}x[1-9]\d{2,4} \(borderless\)", out)
+CHECK re.search(r"display mode: [1-9]\d{2,4}x[1-9]\d{2,4} \(exclusive\)", out)
+CHECK re.search(r"display mode: [1-9]\d{2,4}x[1-9]\d{2,4} \(windowed\)", out)
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program

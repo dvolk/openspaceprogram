@@ -11,6 +11,7 @@
 #include "gameui.h"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -175,6 +176,63 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // Settings: the render/physics debug toggles (moved out of
     // Game Debug Info, which is now read-only diagnostics).
     ui::Window("Settings", g.o_settings, [&] {
+        // Display: the window mode + the resolution it runs at. Both
+        // apply immediately (Renderer::setWindowMode; the SIZE_CHANGED
+        // event in events.cpp finishes the resize: the viewport, postfx,
+        // the camera aspect). "fullscreen" runs at the display's native
+        // mode, so the resolution is off there (it applies to the other
+        // three modes).
+        {
+            static const char *const mode_names[] =
+                {"windowed", "borderless", "fullscreen", "exclusive"};
+            int wm = (int)args.window_mode;
+            if(ImGui::Combo("Window mode", &wm,
+                            "windowed\0borderless\0fullscreen\0exclusive\0")) {
+                args.window_mode = static_cast<WindowMode>(wm);
+                g.display.setWindowMode(args.window_mode,
+                                        args.screen_width, args.screen_height);
+                g.toast("Window mode: %s", mode_names[wm]);
+            }
+            // Resolution: the display's supported modes (+ the current
+            // one). The selection is the nearest WxH to the current size
+            // (the WM may have clamped it out of the list).
+            const std::vector<Resolution> modes = g.display.displayModes();
+            if(!modes.empty()) {
+                int sel = 0, best = INT_MAX;
+                for(size_t i = 0; i < modes.size(); i++) {
+                    const int d = std::abs(modes[i].width - args.screen_width)
+                                + std::abs(modes[i].height - args.screen_height);
+                    if(d < best) { best = d; sel = (int)i; }
+                }
+                std::string items;
+                char buf[32];
+                for(size_t i = 0; i < modes.size(); i++) {
+                    snprintf(buf, sizeof(buf), "%dx%d",
+                             modes[i].width, modes[i].height);
+                    items += buf;
+                    items += '\0';
+                }
+                items += '\0';
+                const bool native_fs =
+                    (args.window_mode == WindowMode::Fullscreen);
+                ImGui::BeginDisabled(native_fs);
+                if(ImGui::Combo("Display mode", &sel, items.c_str())) {
+                    args.screen_width = modes[sel].width;
+                    args.screen_height = modes[sel].height;
+                    if(!native_fs) {
+                        g.display.setWindowMode(args.window_mode,
+                                                args.screen_width,
+                                                args.screen_height);
+                    }
+                }
+                ImGui::EndDisabled();
+            }
+            if(args.window_mode == WindowMode::Fullscreen) {
+                ImGui::TextDisabled("(fullscreen: the display's native "
+                                    "resolution)");
+            }
+            ImGui::Separator();
+        }
         ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
         ImGui::Checkbox("World draw", &world_drawing);
         ImGui::Checkbox("Starfield", &draw_starfield);
