@@ -48,15 +48,32 @@ Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear,
     this->distance = 10;
     this->pos = focusPoint + glm::dvec3(distance, 0, 0);
     this->forward = glm::normalize(focusPoint - pos);
-    this->up = glm::normalize(pos);
+    this->up = glm::dvec3(0, 0, 1);   // ref up (ref is identity at spawn)
     this->view = glm::translate(pos);
+}
+
+glm::dvec3 Camera::orbitOffset() const {
+    const double cp = std::cos(orbitPitch), sp = std::sin(orbitPitch);
+    const double cy = std::cos(orbitYaw),   sy = std::sin(orbitYaw);
+    return glm::dvec3(cp * cy, cp * sy, -sp);
 }
 
 void Camera::ComputeView() {
     if (mode == CAM_ORBIT) {
-        pos = focusPoint + ref * (orient * glm::dvec3(1, 0, 0)) * distance;
+        pos = focusPoint + ref * orbitOffset() * distance;
         forward = glm::normalize(focusPoint - pos);
-        buildView(-forward, ref * (orient * glm::dvec3(0, 0, 1)), pos - renderOrigin);
+        // Up = the ref up (the ship's up) projected off the view direction,
+        // so the screen-up is a pure function of the camera position -- not
+        // of the yaw/pitch path taken to get there (no trackball holonomy).
+        // It vanishes at the pole (view along the ref up); Pitch() clamps
+        // away from it, but guard against a degenerate projection anyway.
+        const glm::dvec3 refUp = ref * glm::dvec3(0, 0, 1);
+        glm::dvec3 up = refUp - forward * glm::dot(refUp, forward);
+        if (glm::dot(up, up) < 1e-12) {
+            up = (std::abs(forward.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
+            up = up - forward * glm::dot(up, forward);
+        }
+        buildView(-forward, up, pos - renderOrigin);
         return;
     }
     // Free: pos is primary; up is the stored free-camera up.
@@ -108,10 +125,10 @@ void Camera::toOrbit(const glm::dvec3& focus) {
     double dist = glm::length(pos - focus);
     if (dist < 10.0) { dist = 10.0; }
     distance = dist;
-    // orient is left as-is (stale from the last orbit session) -- the
-    // orbit camera's orient persists across a free detour, so returning
-    // to orbit lands on that same spot on the sphere of radius `distance`
-    // around the new focus.
+    // The turntable angles are left as-is (stale from the last orbit
+    // session) -- they persist across a free detour, so returning to orbit
+    // lands on that same spot on the sphere of radius `distance` around the
+    // new focus.
     mode = CAM_ORBIT;
 }
 
@@ -146,11 +163,14 @@ void Camera::MoveUp(double amt) {
 
 void Camera::Pitch(double angle) {
     if (mode == CAM_ORBIT) {
-        // Pitch around the camera right (the orient basis Ŷ): the camera
-        // swings over the top / under the bottom of the focus. Up (the
-        // orient basis ẑ) turns with it, so it stays continuous through
-        // the top -- no horizon roll, no pole singularity.
-        orient = glm::dmat3(glm::rotate(angle, orient * glm::dvec3(0, 1, 0))) * orient;
+        // Pitch the turntable: move the camera toward/away from the ref up.
+        // Clamped just short of the pole (view along the ref up), where the
+        // projected-up vanishes -- the turntable's one, well-defined
+        // singularity, in exchange for a path-independent (holonomy-free) up.
+        orbitPitch += angle;
+        const double lim = 1.52;   // rad (~87 deg), just short of the pole
+        if (orbitPitch > lim) { orbitPitch = lim; }
+        if (orbitPitch < -lim) { orbitPitch = -lim; }
     } else {
         // Rotate the view direction and up around the right axis.
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, right));
@@ -161,9 +181,9 @@ void Camera::Pitch(double angle) {
 
 void Camera::RotateY(double angle) {
     if (mode == CAM_ORBIT) {
-        // Yaw around the camera up (the orient basis ẑ) -- the camera's
-        // own vertical, which chases the ship's attitude (ref * ẑ).
-        orient = glm::dmat3(glm::rotate(angle, orient * glm::dvec3(0, 0, 1))) * orient;
+        // Yaw the turntable around the ref up (the ship's up), which chases
+        // the ship's attitude every frame.
+        orbitYaw += angle;
     } else {
         // Yaw: rotate the view direction and right around the up axis.
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, up));

@@ -34,26 +34,32 @@ public:
     // instead of planet-centre ones (~1e7, ~0.5 m per quantum).
     glm::dvec3 renderOrigin = glm::dvec3(0.0);
 
-    // Orbit-mode state: a trackball (orient) + distance around the focus.
-    // The camera sits at
-    //   pos = focus + ref * (orient * (1,0,0)) * distance
-    // and looks at the focus with up = ref * (orient * (0,0,1)):
+    // Orbit-mode state: a turntable (two angles) + distance around the
+    // focus. The camera sits at
+    //   pos = focus + ref * offset(yaw, pitch) * distance
+    // where offset() is a unit direction in the ref frame, and looks at the
+    // focus with up = the ref up (ref * ẑ) projected off the view direction:
     //  - `ref` is the orientation the camera chases (the caller sets it
     //    every frame: the ship's attitude when focused on the ship, so the
     //    camera turns with the ship -- KSP's chase / Pioneer's sidereal
     //    style -- and the body's rotating frame when focused on a body, so
     //    the camera rides its spin).
-    //  - `orient` is the user's accumulated orbit: mouse yaw around the
-    //    camera up (the orient basis ẑ), pitch around the camera right
-    //    (the orient basis Ŷ) -- RotateY / Pitch below.
-    // Up is a fixed camera basis vector (not a radial hint), so it stays
-    // continuous as the view passes over the top: the old radial up
-    // snapped ~90 degrees there (the "weird" horizon roll) and the lookAt
-    // basis NaN'd at the pole.
+    //  - `orbitYaw` / `orbitPitch` are the user's orbit as angles in the ref
+    //    frame: yaw around the ref up (from the ref x̂ toward the ref ŷ),
+    //    pitch toward the ref -ẑ (mouse-down = camera down), so the public
+    //    RotateY()/Pitch() keep their old mouse feel.
+    // Up is the ref up projected perpendicular to the view, so the screen-up
+    // is a pure function of WHERE the camera is -- not of the path taken to
+    // get there. That kills the old trackball holonomy: orbiting around a
+    // loop and returning to the same spot used to leave the view rolled by
+    // the loop's enclosed solid angle. The cost is the standard orbit-camera
+    // pole (looking straight down the ref up, where the projected up
+    // vanishes), so Pitch() clamps just short of it.
     glm::dvec3 focusPoint;
-    glm::dmat3 orient = glm::dmat3(1.0);
     glm::dmat3 ref = glm::dmat3(1.0);
     double distance = 10.0;
+    double orbitYaw = 0.0;     // ref-frame azimuth, rad (0 = ref x̂)
+    double orbitPitch = 0.0;   // ref-frame elevation, rad (clamped near pole)
 
     // Free-mode state. Here pos is PRIMARY (Move* edits it) and right is the
     // derived basis axis (recomputed every ComputeView()).
@@ -105,6 +111,10 @@ public:
     void setFreePose(const glm::dvec3& p, const glm::dvec3& fwd, const glm::dvec3& up);
 
 private:
+    // Unit focus->camera offset in the ref frame, from the turntable angles.
+    // Pitch positive toward ref -ẑ so Pitch()/RotateY() keep their old feel.
+    glm::dvec3 orbitOffset() const;
+
     // Shared view-matrix construction -- the NaN-safe basis that was
     // copy-pasted across the two old subclasses. zAxis is the unit view
     // direction (-forward), upHint the intended up (exact for Orbit, the
