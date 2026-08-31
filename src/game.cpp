@@ -63,6 +63,13 @@ void Game::setup_ui_windows() {
     // Transfer planner: target selection + dv readouts.
     o_transfer = info_opts(ui::Slot::Center);
     o_transfer.default_open = false;
+    // Porkchop plot: the 2-D launch-window heatmap (on-demand compute).
+    // fixed: the heatmap appears only after a Compute (the first layout is
+    // the short "no window yet" state), so the one-shot auto-fit would size
+    // the window to the stub and clip the image. fixed re-fits every frame.
+    o_porkchop = info_opts(ui::Slot::Center);
+    o_porkchop.fixed = true;
+    o_porkchop.default_open = false;
     o_hud.fixed = true;
     o_hud.default_open = false;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
@@ -92,6 +99,7 @@ void Game::setup_ui_windows() {
     add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
     add_ui_window("Telemetry", "Telemetry", o_telemetry);
     add_ui_window("Transfer", "Transfer", o_transfer);
+    add_ui_window("Porkchop", "Porkchop", o_porkchop);
     // The TAB toggle + the main-menu "Toggle windows" button call
     // toggle_windows(), which flips ui_visible and re-opens every registry
     // window (plus the HUD) from their defaults.

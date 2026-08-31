@@ -10,6 +10,13 @@ struct Texture {
    use it for the flat billboard icons. */
 Texture * load_texture(const char *filename, bool mipmap = true);
 
+/* CPU-generated RGBA8 texture (the porkchop heatmap; a surface map later):
+   rgba is w*h pixels of [R,G,B,A], row 0 = bottom (GL convention).
+   NEAREST filtering + CLAMP_TO_EDGE (crisp cells, no wrap bleed). */
+Texture * make_texture_r8(int w, int h, const unsigned char *rgba);
+/* Re-upload new pixels to an existing make_texture_r8 texture (same w/h). */
+void upload_texture_r8(Texture *tex, int w, int h, const unsigned char *rgba);
+
 /* Highest anisotropic filtering ratio the driver supports (0 = unsupported);
    set GL_TEXTURE_MAX_ANISOTROPY to this value on minifying textures. */
 float max_anisotropy();

@@ -73,3 +73,23 @@ Texture *load_texture(const char *filename, bool mipmap) {
 
     return ret;
 }
+
+Texture *make_texture_r8(int w, int h, const unsigned char *rgba) {
+    Texture *ret = new Texture;
+    glGenTextures(1, &ret->id);
+    glBindTexture(GL_TEXTURE_2D, ret->id);
+    // NEAREST: a heatmap is discrete cells; LINEAR would smear them into a
+    // fake smooth gradient when the image is upscaled.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    return ret;
+}
+
+void upload_texture_r8(Texture *tex, int w, int h, const unsigned char *rgba) {
+    glBindTexture(GL_TEXTURE_2D, tex->id);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+}

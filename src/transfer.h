@@ -263,6 +263,10 @@ struct PorkchopResult {
     int i_min = -1;      // departure index at the min (-1 = no valid cell)
     int j_min = -1;      // ToF index at the min
     double dv_min = 0.0;  // m/s, min total dv over the valid cells
+    double dv_hi = 0.0;   // m/s, robust max (95th percentile) for the color
+                          // scale: the unphysical fast-transfer spike (a
+                          // narrow ridge at the shortest ToFs) is excluded
+                          // so it doesn't stretch the scale.
     double t_dep_min = 0.0; // s, departure delay at the min
     double tof_min = 0.0;   // s, ToF at the min
     bool valid = false;    // true if at least one cell solved
@@ -326,6 +330,25 @@ inline PorkchopResult porkchopGrid(const glm::dvec3 &r1, const glm::dvec3 &v1,
         res.dv_min = best;
         res.t_dep_min = t_dep_lo + ((res.n_dep > 1) ? step_dep * bi : 0.0);
         res.tof_min = tof_lo + ((res.n_tof > 1) ? step_tof * bj : 0.0);
+
+        // Robust max for the color scale: the 95th percentile of the valid
+        // cells. The dv surface has a narrow spike at the shortest ToFs
+        // (unphysical "fast slingshot" conics, up to hundreds of km/s,
+        // < 1% of cells); the absolute max would stretch the scale and
+        // compress the whole launch window into a sliver. A fine grid
+        // samples the spike, a coarse one misses it -- hence "sometimes
+        // good, sometimes purple".
+        std::vector<double> valid;
+        valid.reserve(res.total_dv.size());
+        for(const double v : res.total_dv) {
+            if(!std::isnan(v)) { valid.push_back(v); }
+        }
+        if(!valid.empty()) {
+            const size_t idx = std::min(valid.size() - 1,
+                                        (size_t)(0.95 * valid.size()));
+            std::nth_element(valid.begin(), valid.begin() + idx, valid.end());
+            res.dv_hi = valid[idx];
+        }
     }
     return res;
 }

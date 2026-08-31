@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <vector>
 
 #include "calendar.h"    // CalTime (the HUD + Game Debug Info clocks)
 #include "version.h"     // VERSION (the main menu)
@@ -21,6 +22,7 @@
 #include "siminput.h"    // fmt_time (the TRANSFER window)
 #include "orbitsample.h" // OrbitSampleCache + open-arc sampling (the map)
 #include "orbitmap.h"    // OrbitMap + contrastingColor (the map)
+#include "texture.h"     // make_texture_r8 (the Porkchop heatmap)
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/implot/implot.h"   // the TELEMETRY plots
@@ -28,6 +30,30 @@
 // GLM's gtx extensions (glm::angle in ORBITAL) hard-error without this.
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/vector_angle.hpp>
+
+namespace {
+/* Viridis (matplotlib's default scientific colormap), 11 anchor stops
+   linearly interpolated: perceptually uniform, colorblind-safe, reads as
+   a smooth "cold -> hot" dv scale. t in [0,1] -> 0xAARRGGBB. */
+const unsigned char kViridis[11][3] = {
+    { 68,   1,  84}, { 72,  40, 120}, { 62,  74, 137}, { 49, 104, 142},
+    { 38, 130, 142}, { 33, 145, 140}, { 31, 160, 136}, { 53, 183, 121},
+    {110, 206,  88}, {181, 222,  43}, {253, 231,  37}};
+unsigned int ramp_color(float t) {
+    if(t < 0.0f) { t = 0.0f; }
+    if(t > 1.0f) { t = 1.0f; }
+    const float f = t * 10.0f;
+    const int i = f < 10.0f ? (int)f : 9;
+    const float u = f - (float)i;
+    const unsigned char r =
+        (unsigned char)(kViridis[i][0] * (1.0f - u) + kViridis[i + 1][0] * u);
+    const unsigned char g =
+        (unsigned char)(kViridis[i][1] * (1.0f - u) + kViridis[i + 1][1] * u);
+    const unsigned char b =
+        (unsigned char)(kViridis[i][2] * (1.0f - u) + kViridis[i + 1][2] * u);
+    return 0xff000000u | (unsigned int)b << 16 | (unsigned int)g << 8 | r;
+}
+} // namespace
 
 void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // The window bodies are verbatim from main's ImGui pass; their locals
@@ -81,6 +107,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     bool &xfer_auto = planner.xfer_auto;
     float &xfer_tof_log = planner.xfer_tof_log;
     auto &xfer = planner.xfer;
+    auto &pc = planner.pc;   // the porkchop grid (Porkchop window)
 
     /* Top bar: one fixed window (no move, no resize, re-placed every
        frame so it tracks the viewport). Row 1: speed + altitude
@@ -281,6 +308,124 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             ImGui::Text("transfer:   parabolic  e=%.3f",
                         sol.transfer_ecc);
         }
+    });
+
+    /* Porkchop plot: the 2-D launch-window map (total dv over departure
+       delay x time of flight). The grid is computed on demand -- the button
+       or the P key -- and cached until the next compute (the MechJeb model),
+       so the window is cheap to leave open. */
+    ui::Window("Porkchop", g.o_porkchop, [&] {
+        if(xferTargets.empty()) {
+            ImGui::Text("No transfer targets: no child bodies or ships here.");
+            return;
+        }
+        if(xfer_target < 0) {
+            ImGui::Text("Select a target body or ship (Transfer window).");
+            return;
+        }
+        const char *tn = xferTargets[xfer_target].name;
+
+        // On-demand compute (same trigger as the P key). The grid is cached
+        // in pc until the next compute, so this is a one-shot button, not a
+        // per-frame re-sweep.
+        if(ImGui::Button("Compute  (P)")) {
+            planner.porkchopCompute();
+        }
+        ImGui::SameLine();
+        ImGui::Text("target: %s", tn);
+        ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n)",
+                            g.args.porkchop_n, g.args.porkchop_n);
+
+        if(!pc.valid) {
+            ImGui::Text("No launch window in the swept range for this target.");
+            ImGui::TextDisabled("Press Compute (or P) to sweep the grid.");
+            return;
+        }
+
+        // The best cell (argmin over the valid cells).
+        ImGui::Text("min dv:      %08.1f m/s", pc.dv_min);
+        ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min).c_str());
+        ImGui::Text("time of flt: %s", fmt_time(pc.tof_min).c_str());
+
+        // The heatmap: total dv over (departure delay x, time of flight y).
+        // Storage is ToF-major (rows = ToF, cols = departure). Drawn as a
+        // texture (not ImPlot::PlotHeatmap): that one indexes its color
+        // LUT with the raw cell value, so the no-solution (NaN) cells in
+        // any launch-window map read out of bounds and assert. NaN cells
+        // are a distinct gray here.
+        // Color scale: [dv_min, dv_hi]. dv_hi is the robust max (95th
+        // percentile) from the grid -- the absolute max is deliberately
+        // excluded, because the dv surface has a narrow unphysical spike at
+        // the shortest ToFs (hundreds of km/s, < 1% of cells) that would
+        // stretch the scale and compress the whole launch window to purple.
+        double lo = pc.dv_min;
+        double hi = (pc.dv_hi > lo) ? pc.dv_hi : lo;
+        const int w = pc.n_dep, h = pc.n_tof;
+        std::vector<unsigned char> px((size_t)w * h * 4);
+        for(int j = 0; j < h; j++) {
+            for(int i = 0; i < w; i++) {
+                const double dv = pc.total_dv[(size_t)j * w + i];
+                unsigned char *p = &px[((size_t)j * w + i) * 4];
+                if(std::isnan(dv)) {
+                    p[0] = p[1] = p[2] = 80;   // gray = no solution
+                } else {
+                    const float t = (float)((dv - lo) / (hi - lo));
+                    const unsigned int c = ramp_color(t);
+                    p[0] = (unsigned char)(c & 0xff);
+                    p[1] = (unsigned char)((c >> 8) & 0xff);
+                    p[2] = (unsigned char)((c >> 16) & 0xff);
+                }
+                p[3] = 255;
+            }
+        }
+        // One texture, re-uploaded on each compute (and when --porkchop-n
+        // changes the size). 40 x 40 x 4 B is trivial.
+        static Texture *pc_tex = nullptr;
+        static int tex_w = 0, tex_h = 0;
+        if(!pc_tex || tex_w != w || tex_h != h) {
+            if(pc_tex) { delete pc_tex; }
+            pc_tex = make_texture_r8(w, h, px.data());
+            tex_w = w;
+            tex_h = h;
+        } else {
+            upload_texture_r8(pc_tex, w, h, px.data());
+        }
+        // The color bar: a 1 x 64 viridis strip, lo at the bottom.
+        static Texture *bar_tex = nullptr;
+        if(!bar_tex) {
+            unsigned char bar[64 * 4];
+            for(int i = 0; i < 64; i++) {
+                const unsigned int c = ramp_color((float)i / 63.0f);
+                bar[i * 4 + 0] = (unsigned char)(c & 0xff);
+                bar[i * 4 + 1] = (unsigned char)((c >> 8) & 0xff);
+                bar[i * 4 + 2] = (unsigned char)((c >> 16) & 0xff);
+                bar[i * 4 + 3] = 255;
+            }
+            bar_tex = make_texture_r8(1, 64, bar);
+        }
+        // Fixed display size (the window auto-fits around it). The grid
+        // resolution (pc_n) only changes how many cells map onto this size.
+        const float img_sz = 420.0f;
+        ImGui::Image((ImTextureID)(std::intptr_t)pc_tex->id,
+                     ImVec2(img_sz, img_sz), ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::SameLine();
+        // Colorbar: hi (max dv) at the top, lo (min dv) at the bottom, with
+        // the value labels at each end (aligned to the bar, not the heatmap).
+        ImGui::BeginGroup();
+            ImGui::Text("%.0f", hi);
+            ImGui::Image((ImTextureID)(std::intptr_t)bar_tex->id,
+                         ImVec2(16.0f,
+                                std::max(20.0f, img_sz -
+                                         ImGui::GetTextLineHeight() * 2.0f)),
+                         ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Text("%.0f", lo);
+        ImGui::EndGroup();
+        ImGui::TextDisabled("x: departure delay  %.0f .. %.0f s (min %s)",
+                            pc.t_dep_lo, pc.t_dep_hi,
+                            fmt_time(pc.t_dep_min).c_str());
+        ImGui::TextDisabled("y: time of flight   %.0f .. %.0f s (min %s)",
+                            pc.tof_lo, pc.tof_hi, fmt_time(pc.tof_min).c_str());
+        ImGui::TextDisabled("bar: dv in m/s (top = max)   gray: no solution");
     });
 
     ui::Window("Game Debug Info", g.o_debug, [&] {
