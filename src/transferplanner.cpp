@@ -103,10 +103,10 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     if(xfer_target >= (int)xferTargets.size()) { xfer_target = -1; }
 
     // A "Send best" plan is for the target it was sent for. Drop it if the
-    // target changed so a stale countdown doesn't linger on the new target.
+    // target changed so a stale countdown doesn't linger on the new target
+    // (and restore the ToF mode the user had before sending).
     if(xfer_from_porkchop && xfer_plan_target != xfer_target) {
-        xfer_from_porkchop = false;
-        xfer_t_dep = 0.0;
+        clearPorkchopPlan();
     }
 
     if(xfer_target < 0) {
@@ -180,6 +180,15 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             fflush(stdout);
         }
     }
+}
+
+void TransferPlanner::clearPorkchopPlan() {
+    if(!xfer_from_porkchop) { return; }
+    xfer_from_porkchop = false;
+    xfer_t_dep = 0.0;
+    xfer_plan_target = -1;
+    xfer_auto = xfer_prev_auto;
+    xfer_tof_log = xfer_prev_tof_log;
 }
 
 void TransferPlanner::porkchopCompute() {

@@ -284,15 +284,16 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
         // A porkchop "Send best" plan: count down to the departure instant.
         // At zero the live "depart now" solution below IS the best cell, so
-        // that is when you burn. The departure time is shown on the home
-        // calendar to match the top bar.
+        // that is when you burn. The countdown is plain seconds; the
+        // departure time itself is on the home calendar (matching the top
+        // bar). "Clear plan" drops the plan and restores the ToF mode the
+        // user had before sending.
         if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0) {
             ImGui::Separator();
             const double tleft = planner.xfer_t_dep - time;
             if(tleft > 0.0) {
                 ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f),
-                                   "departure in: %s",
-                                   fmt_time(tleft).c_str());
+                                   "departure in: %.0f s", tleft);
             } else {
                 ImGui::TextColored(ImVec4(0.45f, 1.0f, 0.45f, 1.0f),
                                    "DEPARTURE NOW -- burn");
@@ -303,6 +304,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 if(!dt.empty()) {
                     ImGui::Text("departure:    %s", dt.c_str());
                 }
+            }
+            if(ImGui::Button("Clear plan")) {
+                planner.clearPorkchopPlan();
             }
             ImGui::Separator();
         }
@@ -406,6 +410,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // at that instant the live "depart now" solution IS the best cell
         // (Kepler propagation composes), so you burn then.
         if(ImGui::Button("Send best to Transfer")) {
+            // Remember the user's ToF mode so "Clear plan" restores it.
+            planner.xfer_prev_auto = planner.xfer_auto;
+            planner.xfer_prev_tof_log = planner.xfer_tof_log;
             planner.xfer_auto = false;
             planner.xfer_tof_log = (float)std::log10(pc.tof_min);
             planner.xfer_t_dep = planner.pc_computed_at + pc.t_dep_min;

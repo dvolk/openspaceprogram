@@ -41,6 +41,11 @@ public:
        it in pc until the next call. No-op when there is no target. */
     void porkchopCompute();
 
+    /* Drop a "Send best" plan (the Transfer window's "Clear plan" button,
+       or a target change): clear the countdown and restore the ToF mode
+       the user had before sending. No-op when no plan is active. */
+    void clearPorkchopPlan();
+
     std::vector<XferTarget> xferTargets;
     int xfer_target = -1;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
@@ -81,6 +86,10 @@ public:
     bool   xfer_from_porkchop = false;
     double xfer_t_dep = 0.0;   // s (sim clock)
     int    xfer_plan_target = -1;
+    // The ToF mode the user had before "Send best" pinned the ToF --
+    // clearPorkchopPlan() (Clear button / target change) restores it.
+    bool   xfer_prev_auto = true;
+    float  xfer_prev_tof_log = (float)std::log10(3600.0);
 
 private:
     Game &g;
