@@ -346,6 +346,15 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("min dv:      %08.1f m/s", pc.dv_min);
         ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min).c_str());
         ImGui::Text("time of flt: %s", fmt_time(pc.tof_min).c_str());
+        // Apply the best cell's ToF to the Transfer planner (manual ToF mode)
+        // and open the Transfer window so the resulting solution is visible.
+        // The departure delay is not transferable (the planner solves from
+        // now); the readout above is the timing to act on.
+        if(ImGui::Button("Send best to Transfer")) {
+            planner.xfer_auto = false;
+            planner.xfer_tof_log = (float)std::log10(pc.tof_min);
+            ui::SetOpen("Transfer", true);
+        }
 
         // The heatmap: total dv over (departure delay x, time of flight y).
         // Storage is ToF-major (rows = ToF, cols = departure). Drawn as a

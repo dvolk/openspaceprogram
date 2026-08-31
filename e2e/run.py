@@ -66,6 +66,11 @@ XFER_RE = re.compile(
     r"tof=([-\d.e+]+) s\s+v_inf=([-\d.e+]+) m/s\s+r_cap=([-\d.e+]+) m\s+"
     r"burn=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]"
 )
+PORKCHOP_RE = re.compile(
+    r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
+    r"(\d+)x(\d+)\s+dv_min=([-\d.e+]+) m/s\s+dv_hi=([-\d.e+]+) m/s\s+"
+    r"t_dep_min=([-\d.e+]+) s\s+tof_min=([-\d.e+]+) s"
+)
 
 
 def parse_cases(path):
@@ -150,6 +155,19 @@ def parse_xfer(out):
     return rows
 
 
+def parse_porkchop(out):
+    rows = []
+    for m in PORKCHOP_RE.finditer(out):
+        (t, target, n_dep, n_tof, dv_min, dv_hi, t_dep_min, tof_min) = m.groups()
+        rows.append({
+            "t": float(t), "target": target,
+            "n_dep": int(n_dep), "n_tof": int(n_tof),
+            "dv_min": float(dv_min), "dv_hi": float(dv_hi),
+            "t_dep_min": float(t_dep_min), "tof_min": float(tof_min),
+        })
+    return rows
+
+
 def first(seq):
     return seq[0]
 
@@ -216,8 +234,10 @@ def run_case(case):
     orbit = parse_orbit(out)
     dbg = parse_dbg(out)
     xfer = parse_xfer(out)
+    porkchop = parse_porkchop(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
+        "porkchop": porkchop,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int,

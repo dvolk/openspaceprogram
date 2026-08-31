@@ -200,9 +200,9 @@ void TransferPlanner::porkchopCompute() {
     if(g.args.porkchop_log) {
         if(pc.valid) {
             printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
-                   "t_dep_min=%.6g s tof_min=%.6g s\n",
+                   "dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s\n",
                    g.time, t.name, pc.n_dep, pc.n_tof, pc.dv_min,
-                   pc.t_dep_min, pc.tof_min);
+                   pc.dv_hi, pc.t_dep_min, pc.tof_min);
         } else {
             printf("[porkchop] t=%.1fs target=\"%s\" no-solution\n",
                    g.time, t.name);

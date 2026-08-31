@@ -1,0 +1,20 @@
+# Porkchop plot: the 2-D launch-window map for a Kerbin->Mun transfer.
+# Compute on demand (P key), then check the result is valid and in the sane
+# range for a Kerbin->Mun-class transfer (~1 km/s class, cf. KSP). Also check
+# the robust color-scale max (dv_hi) is a multiple of the min dv, not the
+# unphysical fast-transfer spike (which would be ~hundreds of x the min dv).
+NAME porkchop
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --timeout 15 --porkchop-log --porkchop-n 40 --orbit-interval 0.5
+ARGS --transfer-target Mun
+ARGS --sim-press 3000,0,P
+EXPECT [porkchop]
+CHECK len(porkchop) >= 1
+CHECK last(porkchop)["n_dep"] == 40 and last(porkchop)["n_tof"] == 40
+CHECK last(porkchop)["dv_min"] > 100 and last(porkchop)["dv_min"] < 5000
+CHECK last(porkchop)["dv_hi"] > last(porkchop)["dv_min"]
+CHECK last(porkchop)["dv_hi"] < 100 * last(porkchop)["dv_min"]
+CHECK last(porkchop)["t_dep_min"] >= 0
+CHECK last(porkchop)["tof_min"] > 0
+FORBID GL_
+FORBID error:

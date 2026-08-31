@@ -64,11 +64,12 @@ void Game::setup_ui_windows() {
     o_transfer = info_opts(ui::Slot::Center);
     o_transfer.default_open = false;
     // Porkchop plot: the 2-D launch-window heatmap (on-demand compute).
-    // fixed: the heatmap appears only after a Compute (the first layout is
-    // the short "no window yet" state), so the one-shot auto-fit would size
-    // the window to the stub and clip the image. fixed re-fits every frame.
+    // initial_size fits the full content (420px heatmap + colorbar + the
+    // readouts + captions) so the image isn't clipped; the window stays
+    // user-movable/resizable (a refit-on-content-change would let it auto-
+    // fit the short pre-compute state too -- noted for later).
     o_porkchop = info_opts(ui::Slot::Center);
-    o_porkchop.fixed = true;
+    o_porkchop.initial_size = ImVec2(520.0f, 660.0f);
     o_porkchop.default_open = false;
     o_hud.fixed = true;
     o_hud.default_open = false;
