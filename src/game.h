@@ -169,6 +169,17 @@ struct Game {
     bool draw_starfield = true;
     bool draw_skylines = false;
 
+    // --- control-axis flips (the Settings window writes, tick.cpp reads) --
+    // Each inverts one manual attitude axis away from the default. The
+    // default baseline (see tick.cpp) already bakes in the preferred
+    // orientation -- viewed from the front the ship's left/right are
+    // mirrored, so yaw and roll are pre-flipped to respond in your screen
+    // direction (pitch is not mirrored). All false = the default; set one
+    // to invert that axis (Settings -> Controls).
+    bool flip_pitch = false;
+    bool flip_yaw = false;
+    bool flip_roll = false;
+
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;
 

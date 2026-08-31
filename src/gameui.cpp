@@ -103,6 +103,11 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     bool &world_drawing = g.world_drawing;
     bool &draw_starfield = g.draw_starfield;
     bool &draw_skylines = g.draw_skylines;
+    // The Settings window writes these; tick.cpp reads (inverts a manual
+    // attitude axis away from the baked-in default).
+    bool &flip_pitch = g.flip_pitch;
+    bool &flip_yaw = g.flip_yaw;
+    bool &flip_roll = g.flip_roll;
 
     // The per-frame state the 3D pass computed (render.cpp).
     ShipView &view = g.view;
@@ -313,6 +318,16 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // ships each tick; takes effect within one physics step.
         ImGui::SliderFloat("Exhaust scale (test)", &args.exhaust_scale,
                            0.5f, 5.0f, "%.2fx");
+        // Controls: invert a manual attitude axis away from the default.
+        // The default baseline already bakes in the preferred orientation
+        // (viewed from the front, yaw + roll are pre-flipped to respond in
+        // your screen direction; pitch is not mirrored), so all three are
+        // off by default. tick.cpp applies the sign each tick.
+        ImGui::Separator();
+        ImGui::Text("Controls (W/S pitch, A/D yaw, Q/E roll)");
+        ImGui::Checkbox("Flip pitch (W/S)", &flip_pitch);
+        ImGui::Checkbox("Flip yaw (A/D)", &flip_yaw);
+        ImGui::Checkbox("Flip roll (Q/E)", &flip_roll);
         ImGui::Spacing();
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
             ui::SetOpen("Settings", false);
@@ -821,7 +836,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("w/s - pitch up/down");
         ImGui::Text("a/d - yaw left/right");
         ImGui::Text("q/e - roll left/right (about the nose)");
-        ImGui::Text("pitch/yaw axes: Settings -> Controls");
+        ImGui::Text("flip pitch/yaw/roll: Settings -> Controls");
         ImGui::Text("i - fire ship engines");
         ImGui::Text("x - kill rotation");
         ImGui::Text("Autopilot window - pro/retrograde + radial / normal slew");

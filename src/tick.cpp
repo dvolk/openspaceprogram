@@ -107,15 +107,24 @@ void tick(Game &g) {
                 }
                 g.ship->slew = g.ship->slewRequest;
             }
+            // Control-axis flips. The baseline amounts below already bake in
+            // the default orientation: viewed from the front the ship's
+            // left/right are mirrored, so yaw and roll are pre-flipped to
+            // respond in your screen direction (pitch is not mirrored, so it
+            // is not). Each flip_* setting (Settings -> Controls) inverts its
+            // axis away from that default.
+            const float f_pitch = g.flip_pitch ? -1.0f : 1.0f;
+            const float f_yaw   = g.flip_yaw   ? -1.0f : 1.0f;
+            const float f_roll  = g.flip_roll  ? -1.0f : 1.0f;
             // pitch: W/S about the ship's right axis
-            if (isDown(SDL_SCANCODE_W)) { g.ship->Command(ShipCmd(Pitch, +1.0f), game_running); }
-            if (isDown(SDL_SCANCODE_S)) { g.ship->Command(ShipCmd(Pitch, -1.0f), game_running); }
-            // yaw: A/D about the ship's up axis
-            if (isDown(SDL_SCANCODE_A)) { g.ship->Command(ShipCmd(Yaw, +1.0f), game_running); }
-            if (isDown(SDL_SCANCODE_D)) { g.ship->Command(ShipCmd(Yaw, -1.0f), game_running); }
-            // roll: Q/E about the ship's nose
-            if (isDown(SDL_SCANCODE_Q)) { g.ship->Command(ShipCmd(Roll, +1.0f), game_running); }
-            if (isDown(SDL_SCANCODE_E)) { g.ship->Command(ShipCmd(Roll, -1.0f), game_running); }
+            if (isDown(SDL_SCANCODE_W)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * +1.0f), game_running); }
+            if (isDown(SDL_SCANCODE_S)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * -1.0f), game_running); }
+            // yaw: A/D about the ship's up axis (baseline pre-flipped)
+            if (isDown(SDL_SCANCODE_A)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * -1.0f), game_running); }
+            if (isDown(SDL_SCANCODE_D)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * +1.0f), game_running); }
+            // roll: Q/E about the ship's nose (baseline pre-flipped)
+            if (isDown(SDL_SCANCODE_Q)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
+            if (isDown(SDL_SCANCODE_E)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
 
             if (isDown(SDL_SCANCODE_I)) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
             if (isDown(SDL_SCANCODE_X)) { g.ship->Command(ShipCmd(KillRot), game_running); }
