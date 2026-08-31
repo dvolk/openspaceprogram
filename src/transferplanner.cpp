@@ -187,10 +187,17 @@ void TransferPlanner::porkchopCompute() {
     const InertialShip s1 = shipInertial(g, g.view.pos, g.view.vel);
     const InertialTarget d = targetInertial(t, s1.inertial);
 
-    // Windows: one full target orbit of departure delay (covers every
-    // relative phase) and the same ToF span update() sweeps (60 s .. 3
-    // target periods). Resolved from d.tof_max = 3 target periods.
-    const double t_dep_lo = 0.0, t_dep_hi = d.tof_max / 3.0;
+    // Windows. The departure-delay (x) range is the auto one -- 0 .. one
+    // full target orbit, which covers every relative phase -- unless the
+    // window's "Departure range" checkbox is on, in which case the slider
+    // values (pcDepLo .. pcDepHi, seconds) are used. The ToF (y) span is
+    // the same one update() sweeps (60 s .. 3 target periods).
+    double t_dep_lo, t_dep_hi;
+    if(pcCustomDep) {
+        t_dep_lo = pcDepLo; t_dep_hi = pcDepHi;
+    } else {
+        t_dep_lo = 0.0; t_dep_hi = d.tof_max / 3.0;
+    }
     const double tof_lo = 60.0, tof_hi = d.tof_max;
 
     pc = porkchopGrid(s1.r, s1.v, d.r, d.v, s1.mu_parent, d.mu, d.r_cap,

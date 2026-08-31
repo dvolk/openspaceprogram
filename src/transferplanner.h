@@ -63,6 +63,12 @@ public:
        window to render. The grid size is g.args.porkchop_n (the size knob;
        a Settings-window hook later). */
     PorkchopResult pc;   // valid when pc.valid
+    // Departure-delay (x-axis) range, in s. When pcCustomDep is off the
+    // sweep uses the auto range (0 .. one target period); when on it uses
+    // these slider values (see the Porkchop window's checkbox).
+    bool   pcCustomDep = false;
+    float  pcDepLo = 0.0f;
+    float  pcDepHi = 0.0f;
 
 private:
     Game &g;

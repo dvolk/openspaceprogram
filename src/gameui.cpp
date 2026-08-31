@@ -336,6 +336,28 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n)",
                             g.args.porkchop_n, g.args.porkchop_n);
 
+        // Departure-delay (x) range. Off = the auto range (0 .. one target
+        // period, covers every relative phase). On = the two sliders below,
+        // in seconds; press Compute (or P) to re-sweep the grid over them.
+        const float kDepSliderMax = 604800.0f; // 7 days
+        if(ImGui::Checkbox("Departure range", &planner.pcCustomDep)
+           && planner.pcCustomDep) {
+            // Just enabled: seed from the last sweep's range (or 0 .. 1 day
+            // if there isn't one yet).
+            planner.pcDepLo = pc.valid ? (float)pc.t_dep_lo : 0.0f;
+            planner.pcDepHi = pc.valid
+                ? (pc.t_dep_hi < kDepSliderMax ? (float)pc.t_dep_hi
+                                               : kDepSliderMax)
+                : 86400.0f;
+        }
+        if(planner.pcCustomDep) {
+            ImGui::SliderFloat("start", &planner.pcDepLo, 0.0f, kDepSliderMax,
+                               "%.0f s");
+            ImGui::SliderFloat("end", &planner.pcDepHi, 0.0f, kDepSliderMax,
+                               "%.0f s");
+            ImGui::TextDisabled("(press Compute / P to re-sweep)");
+        }
+
         if(!pc.valid) {
             ImGui::Text("No launch window in the swept range for this target.");
             ImGui::TextDisabled("Press Compute (or P) to sweep the grid.");
