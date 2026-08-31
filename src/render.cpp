@@ -77,9 +77,20 @@ void draw3d(Game &g, TransferPlanner &planner) {
         // (the camera rides the spin) -- same convention as the body
         // transforms below.
         if(g.focusTargets[g.focusBody].body == nullptr) {
-            camera->ref = glm::dmat3(getRelAxis_(ship->controller, 0),
-                                     getRelAxis_(ship->controller, 1),
-                                     getRelAxis_(ship->controller, 2));
+            // The orbit camera builds its basis from ref as
+            //   back (offset) = ref * x̂   (column 0)
+            //   up   (screen) = ref * ẑ   (column 2)
+            //   right          = ref * ŷ   (column 1)
+            // i.e. it expects ref laid out as [back, right, up]. But the
+            // ship's attitude matrix is [right, up, nose] (axis 0/1/2).
+            // Feed the columns in the camera's order so its up is the
+            // ship's UP, not its nose. With the nose as the up basis the
+            // screen plane is the ship's right/up plane, so pitch (nose
+            // along the up axis) read as left/right and yaw (nose along
+            // the right axis) as up/down -- the two looked swapped.
+            camera->ref = glm::dmat3(getRelAxis_(ship->controller, 2),   // back = nose
+                                     getRelAxis_(ship->controller, 0),   // right
+                                     getRelAxis_(ship->controller, 1));  // up
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
             camera->ref = (b == ship->m_parent && ship->frame->isRotFrame())
