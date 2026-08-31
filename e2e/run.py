@@ -28,6 +28,9 @@ CHECK namespace (parsed from the game's stdout):
           (apo == -1 on a hyperbolic/escape trajectory)
   dbg     list of dicts, one per [dbg] line: t, pos (3-tuple), alt,
           vel (3-tuple), v
+  att     list of dicts, one per [attlog] line: t, nose (3-tuple),
+          w (3-tuple), wnorm (|w|), wroll (the nose-axis component of w),
+          awroll (abs of wroll)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -70,6 +73,12 @@ PORKCHOP_RE = re.compile(
     r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
     r"(\d+)x(\d+)\s+dv_min=([-\d.e+]+) m/s\s+dv_hi=([-\d.e+]+) m/s\s+"
     r"t_dep_min=([-\d.e+]+) s\s+tof_min=([-\d.e+]+) s"
+)
+ATT_RE = re.compile(
+    r"\[attlog\]\s+t=([\d.]+)s\s+"
+    r"nose=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
+    r"w=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
+    r"\|w\|=([-\d.]+) rad/s"
 )
 
 
@@ -168,6 +177,29 @@ def parse_porkchop(out):
     return rows
 
 
+def parse_att(out):
+    rows = []
+    for m in ATT_RE.finditer(out):
+        (t, nx, ny, nz, wx, wy, wz, wnorm) = m.groups()
+        nose = (float(nx), float(ny), float(nz))
+        w = (float(wx), float(wy), float(wz))
+        wroll = w[0]*nose[0] + w[1]*nose[1] + w[2]*nose[2]
+        rows.append({
+            "t": float(t), "nose": nose, "w": w,
+            "wnorm": float(wnorm),
+            # The nose-axis (roll) component of the angular velocity: ~0
+            # during a pure pitch (spin is perpendicular to the nose), grows
+            # once a roll is added -- the coupling the attitude-physics case
+            # asserts on. awroll is pre-computed (abs) so a CHECK can use it
+            # inside a generator without a free var in the body (an eval
+            # gotcha: free vars in a generator body resolve against globals,
+            # and the CHECK namespace is passed as locals).
+            "wroll": wroll,
+            "awroll": abs(wroll),
+        })
+    return rows
+
+
 def first(seq):
     return seq[0]
 
@@ -235,9 +267,10 @@ def run_case(case):
     dbg = parse_dbg(out)
     xfer = parse_xfer(out)
     porkchop = parse_porkchop(out)
+    att = parse_att(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
-        "porkchop": porkchop,
+        "porkchop": porkchop, "att": att,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int,

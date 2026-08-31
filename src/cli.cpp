@@ -168,6 +168,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "slew/roll/third axes, braking-curve rate) to stdout; "
                  "the instrument for hunting the prograde wobble");
 
+    app.add_flag("--att-log", args.att_log,
+                 "Periodically print the ship's nose direction and the "
+                 "hull's angular velocity (world coords) to stdout; the "
+                 "instrument for the attitude-physics e2e test");
+
     app.add_option("--postfx", args.postfx_spec,
                    "Post-processing effect, in the order given; repeatable "
                    "and/or comma-separated (e.g. --postfx cas,grain). "

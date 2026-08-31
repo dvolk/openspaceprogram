@@ -1,0 +1,55 @@
+# Attitude physics: the ship is a real rigid body with inertia, NOT a
+# decoupled arcade gimbal. Confirmed two ways from the --att-log nose +
+# angular-velocity signal:
+#
+#   1. INERTIA / COASTING -- pitch (S) for 3 s, release, coast 2 s. A real
+#      dynamics model keeps its spin once the key is let go (the ship
+#      "coasts"); a decoupled arcade model (attitude set directly from the
+#      key, no inertia) would stop the instant it is released. Assert the
+#      angular velocity during the coast is still a large fraction of the
+#      peak (retained, not dropped to ~0).
+#
+#   2. COUPLING / SINGLE ANGULAR VELOCITY -- while coasting in pitch, add a
+#      roll (E). A rigid body has ONE angular velocity: the roll torque
+#      couples into the existing spin and changes its direction (it is not
+#      an independent world-axis rotation frozen to the original pitch
+#      axis). Assert the nose-axis (roll) component of the angular
+#      velocity -- ~0 during a pure pitch, since the pitch spin is
+#      perpendicular to the nose -- grows once the roll is added.
+#
+# Timeline (--time-accel 1, so 1 wall s == 1 sim s; --sim-press ms are from
+# main-loop start):
+#   1.0-4.0 s  S held      (pitch, spin up)
+#   4.0-6.0 s  coast       (S released)      <- INERTIA window: 4.5-5.5 s
+#   6.0-9.0 s  E held      (roll added)      <- COUPLING window: 7.0-8.0 s
+#   9.0-12 s   coast
+#
+# The phase windows sit in the MIDDLE of each phase (away from the
+# transitions), so a small offset between the --sim-press clock and the
+# --att-log clock cannot bleed one phase into another.
+
+NAME attitude-physics
+ARGS --ship res/ships/racer.json --scenario inertial-orbit --time-accel 1
+ARGS --att-log --orbit-interval 0.3
+ARGS --sim-press 1000,3000,S
+ARGS --sim-press 6000,3000,E
+ARGS --timeout 12
+LIMIT 40
+EXPECT [attlog]
+# Enough samples across the run (12 s at 0.3 s cadence is ~40).
+CHECK len(att) >= 10
+# 1a. The pitch input actually spun the ship up (|w| is meaningful).
+CHECK max(a["wnorm"] for a in att) > 0.02
+# 1b. INERTIA: after the pitch key is released (4.0 s), the ship kept a
+#     large fraction of the spin it had just before release (it coasts; a
+#     gimbal model would be ~0 here). Compared against the pre-release spin
+#     (t 2.5-4.0 s), NOT the overall peak -- the roll phase later drives |w|
+#     well above the coast value, so the peak is the wrong reference.
+CHECK max(a["wnorm"] for a in att if 4.5 < a["t"] < 5.5) > 0.5 * max(a["wnorm"] for a in att if 2.5 < a["t"] < 4.0)
+# 2. COUPLING: the nose-axis (roll) component of the spin, ~0 during the
+#    pure-pitch coast (the pitch spin is perpendicular to the nose), grows
+#    once the roll is added (t 6-9 s) -- a single angular velocity, not
+#    independent world-axis rotations. awroll is pre-computed abs(wroll).
+CHECK max(a["awroll"] for a in att if 7.0 < a["t"] < 8.0) > max(a["awroll"] for a in att if 4.5 < a["t"] < 5.5) + 0.03
+# Finiteness: no NaN (x == x is false for NaN) and no Inf in the spin.
+CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e6 for a in att)

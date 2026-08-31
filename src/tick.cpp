@@ -291,6 +291,15 @@ void tick(Game &g) {
             }
         }
 
+        // --att-log: the ship's nose + angular velocity (attitude-physics e2e)
+        if(g.args.att_log) {
+            const Uint32 now_ms = SDL_GetTicks();
+            if(now_ms - g.att_log_last_ms >= g.orbit_log_interval_ms) {
+                g.att_log_last_ms = now_ms;
+                g.ship->att_log(g.time);
+            }
+        }
+
         g.accumulator -= g.dt;
     }
 

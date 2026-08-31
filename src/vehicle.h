@@ -570,6 +570,30 @@ public:
         fflush(stdout);
     }
 
+    /* --att-log: the ship's nose (local +Z of the hull, world coords) and
+       the hull's angular velocity (world coords), for the attitude-physics
+       e2e test. The angular velocity must come from a HULL part, not the
+       reaction wheel: the wheel spins relative to the hull, so its own
+       GetAngVelocity is the wheel's spin, not the ship's. Every hull part
+       shares the ship's rigid-body angular velocity, so any one works. */
+    void att_log(double time) {
+        if(parts.empty()) { return; }
+        Body *hull = nullptr;
+        for(Body *p : parts) {
+            bool wheel = false;
+            for(Body *w : m_reaction_wheels) { if(w == p) { wheel = true; break; } }
+            if(!wheel) { hull = p; break; }
+        }
+        if(!hull) { hull = parts[0]; }
+        const glm::dvec3 nose = getRelAxis_(hull, 2);
+        const glm::dvec3 w = GetAngVelocity(hull);
+        printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
+               "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s\n",
+               time, nose.x, nose.y, nose.z,
+               w.x, w.y, w.z, glm::length(w));
+        fflush(stdout);
+    }
+
     /* the largest wheel's rated torque (N m) -- the per-wheel rating for
        the HUD; the ship's TOTAL wheel authority is maxTorque() (the sum) */
     float GetWheelTorque() {
