@@ -225,7 +225,18 @@ std::vector<Resolution> Renderer::displayModes() {
         SDL_DisplayMode dm;
         if(SDL_GetDisplayMode(0, i, &dm) == 0
            && dm.w > 0 && dm.h > 0) {
-            out.push_back(Resolution{dm.w, dm.h});
+            const Resolution r{dm.w, dm.h, (int)dm.refresh_rate};
+            // The driver may list the same (w,h,refresh) more than once
+            // (different pixel formats); one entry is enough.
+            bool have = false;
+            for(size_t j = 0; j < out.size(); j++) {
+                if(out[j].width == r.width && out[j].height == r.height
+                   && out[j].refresh == r.refresh) {
+                    have = true;
+                    break;
+                }
+            }
+            if(!have) { out.push_back(r); }
         }
     }
     // Some stacks keep the current mode out of the list (or report an
@@ -235,20 +246,41 @@ std::vector<Resolution> Renderer::displayModes() {
     if(SDL_GetCurrentDisplayMode(0, &cur) == 0
        && cur.w > 0 && cur.h > 0) {
         bool have = false;
+        int same_wh_refresh = 0;
         for(size_t i = 0; i < out.size(); i++) {
             if(out[i].width == cur.w && out[i].height == cur.h) {
-                have = true;
-                break;
+                if(out[i].refresh == (int)cur.refresh_rate) {
+                    have = true;
+                    break;
+                }
+                same_wh_refresh = out[i].refresh;
             }
         }
-        if(!have) { out.push_back(Resolution{cur.w, cur.h}); }
+        if(!have) {
+            // Some stacks report the current mode's refresh as 0 even
+            // when the list carries one; don't add a duplicate-looking
+            // entry (w x h with no Hz next to w x h @ 60Hz).
+            out.push_back(Resolution{cur.w, cur.h,
+                                     (int)cur.refresh_rate
+                                     ? (int)cur.refresh_rate
+                                     : same_wh_refresh});
+        }
     }
     std::sort(out.begin(), out.end(),
               [](const Resolution &a, const Resolution &b) {
                   if(a.width != b.width) { return a.width < b.width; }
-                  return a.height < b.height;
+                  if(a.height != b.height) { return a.height < b.height; }
+                  return a.refresh < b.refresh;
               });
     return out;
+}
+
+int Renderer::currentRefresh() {
+    SDL_DisplayMode cur;
+    if(SDL_GetCurrentDisplayMode(0, &cur) == 0) {
+        return (int)cur.refresh_rate;
+    }
+    return 0;
 }
 
 void Renderer::Clear(float r, float g, float b, float a)

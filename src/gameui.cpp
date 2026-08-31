@@ -193,22 +193,39 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                                         args.screen_width, args.screen_height);
                 g.toast("Window mode: %s", mode_names[wm]);
             }
-            // Resolution: the display's supported modes (+ the current
-            // one). The selection is the nearest WxH to the current size
-            // (the WM may have clamped it out of the list).
+            // Resolution: the display's supported modes -- one entry per
+            // width x height x refresh rate -- (+ the current one). The
+            // selection is an exact WxH match (among those, the refresh
+            // closest to the display's current one), falling back to the
+            // nearest WxH (the WM may have clamped it out of the list).
             const std::vector<Resolution> modes = g.display.displayModes();
             if(!modes.empty()) {
-                int sel = 0, best = INT_MAX;
+                const int cur_refresh = g.display.currentRefresh();
+                int sel_exact = -1, best_exact = INT_MAX;
+                int sel_any = 0, best_any = INT_MAX;
                 for(size_t i = 0; i < modes.size(); i++) {
-                    const int d = std::abs(modes[i].width - args.screen_width)
-                                + std::abs(modes[i].height - args.screen_height);
-                    if(d < best) { best = d; sel = (int)i; }
+                    const int size_d =
+                        std::abs(modes[i].width - args.screen_width)
+                        + std::abs(modes[i].height - args.screen_height);
+                    if(size_d == 0) {
+                        const int rr =
+                            std::abs(modes[i].refresh - cur_refresh);
+                        if(rr < best_exact) { best_exact = rr; sel_exact = (int)i; }
+                    } else if(size_d < best_any) {
+                        best_any = size_d;
+                        sel_any = (int)i;
+                    }
                 }
+                int sel = (sel_exact >= 0) ? sel_exact : sel_any;
                 std::string items;
-                char buf[32];
+                char buf[48];
                 for(size_t i = 0; i < modes.size(); i++) {
-                    snprintf(buf, sizeof(buf), "%dx%d",
-                             modes[i].width, modes[i].height);
+                    // Same WxH at several refresh rates: the Hz is what
+                    // tells the entries apart (0 = unknown, omit it).
+                    snprintf(buf, sizeof(buf),
+                             modes[i].refresh > 0 ? "%dx%d @ %dHz" : "%dx%d",
+                             modes[i].width, modes[i].height,
+                             modes[i].refresh);
                     items += buf;
                     items += '\0';
                 }

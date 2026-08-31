@@ -14,10 +14,13 @@ enum class WindowMode
 };
 
 // One supported display resolution (a "display mode" entry; the Settings
-// dropdown's list item).
+// dropdown's list item). The same width x height appears once per refresh
+// rate; the refresh is informational -- this SDL has no
+// SDL_SetWindowMode, so exclusive matches on width/height only.
 struct Resolution {
     int width;
     int height;
+    int refresh;   // Hz; 0 = unknown (omitted from the label)
 };
 
 class Renderer
@@ -37,10 +40,14 @@ public:
     // SIZE_CHANGED event (events.cpp) finishes the resize: the viewport
     // (onResize), postfx, the camera aspect.
     void setWindowMode(WindowMode mode, int width, int height);
-    // The display's (display 0's) supported resolutions, sorted by width
-    // then height, with the current mode guaranteed to be in the list
-    // (some stacks keep it out of the reported modes).
+    // The display's (display 0's) supported resolutions -- one entry per
+    // width x height x refresh rate -- sorted by width, height, refresh,
+    // with the current mode guaranteed to be in the list (some stacks
+    // keep it out of the reported modes).
     std::vector<Resolution> displayModes();
+    // The refresh rate (Hz) the display is currently running at; 0 if
+    // unknown.
+    int currentRefresh();
 
     SDL_Window *get_display() { return m_window; }
     int get_width() { return m_screen_width; }
