@@ -372,25 +372,44 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n)",
                             g.args.porkchop_n, g.args.porkchop_n);
 
-        // Departure-delay (x) range. Off = the auto range (0 .. one target
-        // period, covers every relative phase). On = the two sliders below,
-        // in seconds; press Compute (or P) to re-sweep the grid over them.
-        const float kDepSliderMax = 604800.0f; // 7 days
+        // Axis ranges. Off = the auto range (departure: 0 .. one target
+        // period, covers every relative phase; ToF: 60 s .. three target
+        // periods). On = the two sliders, in seconds; press Compute (or P)
+        // to re-sweep the grid over them.
+        const float kRangeSliderMax = 604800.0f; // 7 days
         if(ImGui::Checkbox("Departure range", &planner.pcCustomDep)
            && planner.pcCustomDep) {
             // Just enabled: seed from the last sweep's range (or 0 .. 1 day
             // if there isn't one yet).
             planner.pcDepLo = pc.valid ? (float)pc.t_dep_lo : 0.0f;
             planner.pcDepHi = pc.valid
-                ? (pc.t_dep_hi < kDepSliderMax ? (float)pc.t_dep_hi
-                                               : kDepSliderMax)
+                ? (pc.t_dep_hi < kRangeSliderMax ? (float)pc.t_dep_hi
+                                                 : kRangeSliderMax)
                 : 86400.0f;
         }
         if(planner.pcCustomDep) {
-            ImGui::SliderFloat("start", &planner.pcDepLo, 0.0f, kDepSliderMax,
-                               "%.0f s");
-            ImGui::SliderFloat("end", &planner.pcDepHi, 0.0f, kDepSliderMax,
-                               "%.0f s");
+            ImGui::SliderFloat("start (dep)", &planner.pcDepLo, 0.0f,
+                               kRangeSliderMax, "%.0f s");
+            ImGui::SliderFloat("end (dep)", &planner.pcDepHi, 0.0f,
+                               kRangeSliderMax, "%.0f s");
+        }
+        if(ImGui::Checkbox("ToF range", &planner.pcCustomTof)
+           && planner.pcCustomTof) {
+            // Just enabled: seed from the last sweep's range (or 60 s ..
+            // 1 day if there isn't one yet).
+            planner.pcTofLo = pc.valid ? (float)pc.tof_lo : 60.0f;
+            planner.pcTofHi = pc.valid
+                ? (pc.tof_hi < kRangeSliderMax ? (float)pc.tof_hi
+                                               : kRangeSliderMax)
+                : 86400.0f;
+        }
+        if(planner.pcCustomTof) {
+            ImGui::SliderFloat("start (ToF)", &planner.pcTofLo, 60.0f,
+                               kRangeSliderMax, "%.0f s");
+            ImGui::SliderFloat("end (ToF)", &planner.pcTofHi, 60.0f,
+                               kRangeSliderMax, "%.0f s");
+        }
+        if(planner.pcCustomDep || planner.pcCustomTof) {
             ImGui::TextDisabled("(press Compute / P to re-sweep)");
         }
 

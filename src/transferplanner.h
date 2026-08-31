@@ -74,6 +74,12 @@ public:
     bool   pcCustomDep = false;
     float  pcDepLo = 0.0f;
     float  pcDepHi = 0.0f;
+    // Time-of-flight (y-axis) range, in s. When pcCustomTof is off the
+    // sweep uses the auto range (60 s .. three target periods); when on it
+    // uses these slider values (see the Porkchop window's checkbox).
+    bool   pcCustomTof = false;
+    float  pcTofLo = 60.0f;
+    float  pcTofHi = 0.0f;
     // Sim time (s) the last porkchop grid was swept (porkchopCompute). The
     // best cell's t_dep_min is a DELAY relative to that moment, so an
     // absolute departure time = pc_computed_at + pc.t_dep_min.
