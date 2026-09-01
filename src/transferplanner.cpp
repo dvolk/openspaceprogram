@@ -12,6 +12,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <functional>   // std::function (the job's main-thread continuation)
+#include <memory>       // shared_ptr (the cross-thread result handoff)
 
 namespace {
 /* The frame-independent transforms update() and porkchopCompute() both
@@ -101,6 +103,14 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         }
     }
     if(xfer_target >= (int)xferTargets.size()) { xfer_target = -1; }
+
+    // A porkchop grid is only valid for the target it was swept for: drop it
+    // on a target change so the old target's launch window never shows under
+    // the new target's label (the "Send best" plan is dropped just below, for
+    // the same reason). Idempotent once pc is cleared.
+    if(pc.valid && pc_target != xfer_target) {
+        pc.valid = false;
+    }
 
     // A "Send best" plan is for the target it was sent for. Drop it if the
     // target changed so a stale countdown doesn't linger on the new target
@@ -192,14 +202,15 @@ void TransferPlanner::clearPorkchopPlan() {
 }
 
 void TransferPlanner::porkchopCompute() {
-    pc.valid = false;
     if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
     const XferTarget &t = xferTargets[xfer_target];
 
     // The ship's + the target's state at t = 0 (now) in the parent's
     // INERTIAL frame (the shared transform helpers). The ship's state is
     // this render pass's snapshot (g.view), so the grid matches what the
-    // readouts show.
+    // readouts show. This snapshot step is the ONLY part that reads game
+    // state; the grid sweep itself is pure, so it runs on the background
+    // worker (g.jobs) and the frame stays responsive (see job.h).
     const InertialShip s1 = shipInertial(g, g.view.pos, g.view.vel);
     const InertialTarget d = targetInertial(t, s1.inertial);
 
@@ -221,21 +232,63 @@ void TransferPlanner::porkchopCompute() {
         tof_lo = 60.0; tof_hi = d.tof_max;
     }
 
-    pc = porkchopGrid(s1.r, s1.v, d.r, d.v, s1.mu_parent, d.mu, d.r_cap,
-                      t_dep_lo, t_dep_hi, tof_lo, tof_hi, g.args.porkchop_n,
-                      g.args.porkchop_n, d.capture);
-    pc_computed_at = g.time;   // for "Send best": delay -> absolute departure
+    // Snapshot everything the worker needs (pure values, no game refs) so
+    // the off-thread body stays safe to run. The old grid (pc) stays on
+    // screen while this runs; it is replaced when the job lands.
+    const glm::dvec3 r1 = s1.r, v1 = s1.v, r2 = d.r, v2 = d.v;
+    const double mu_p = s1.mu_parent, mu_t = d.mu, r_cap = d.r_cap;
+    const int n = g.args.porkchop_n;
+    const bool capture = d.capture;
+    const bool log = g.args.porkchop_log;
+    const std::string tname = t.name;
+    const double t_now = g.time;
+    const int target_idx = xfer_target;   // the grid is for this target
 
-    if(g.args.porkchop_log) {
-        if(pc.valid) {
-            printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
-                   "dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s\n",
-                   g.time, t.name, pc.n_dep, pc.n_tof, pc.dv_min,
-                   pc.dv_hi, pc.t_dep_min, pc.tof_min);
-        } else {
-            printf("[porkchop] t=%.1fs target=\"%s\" no-solution\n",
-                   g.time, t.name);
+    pc_in_flight++;   // the window's "sweeping..." state (main thread)
+    g.jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
+                                  t_dep_lo,t_dep_hi,tof_lo,tof_hi,
+                                  n,capture,log,tname,t_now,target_idx,this]()
+                -> std::function<void()> {
+        // Worker thread: PURE. Sweep the grid (porkchopGrid is header-only
+        // math) and fire the log; no game state, GL or imgui is touched
+        // here. The result is handed to the main thread through the returned
+        // continuation; a shared_ptr lets it outlive this body (a C++11-safe
+        // way to move a large result across the thread handoff -- lambda
+        // capture initializers are C++14).
+        std::shared_ptr<PorkchopResult> res =
+            std::make_shared<PorkchopResult>(porkchopGrid(
+                r1,v1,r2,v2,mu_p,mu_t,r_cap,
+                t_dep_lo,t_dep_hi,tof_lo,tof_hi,
+                n,n,capture));
+        if(log) {
+            if(res->valid) {
+                printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
+                       "dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s\n",
+                       t_now, tname.c_str(), res->n_dep, res->n_tof,
+                       res->dv_min, res->dv_hi, res->t_dep_min, res->tof_min);
+            } else {
+                printf("[porkchop] t=%.1fs target=\"%s\" no-solution\n",
+                       t_now, tname.c_str());
+            }
+            fflush(stdout);
         }
-        fflush(stdout);
-    }
+        // Main-thread continuation (JobRunner::poll): publish the result +
+        // clear the "sweeping" state. Runs on the main thread, so writing
+        // the planner's state is safe. pc_computed_at = t_now so a "Send
+        // best" departure = t_now + the best cell's delay.
+        return [this, res, t_now, tname, target_idx]() {
+            // Only publish if the target is still the one this grid was
+            // swept for: a target switch mid-flight would otherwise leave a
+            // grid for the OLD target showing under the new target's label.
+            const bool still_target = (xfer_target >= 0
+                && xfer_target < (int)xferTargets.size()
+                && xferTargets[xfer_target].name == tname);
+            if(still_target) {
+                pc = std::move(*res);
+                pc_computed_at = t_now;
+                pc_target = target_idx;   // remember whose grid this is
+            }
+            if(pc_in_flight > 0) { pc_in_flight--; }
+        };
+    });
 }

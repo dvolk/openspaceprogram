@@ -450,16 +450,30 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
         const char *tn = xferTargets[xfer_target].name;
 
-        // On-demand compute (same trigger as the P key). The grid is cached
-        // in pc until the next compute, so this is a one-shot button, not a
-        // per-frame re-sweep.
+        // On-demand compute (same trigger as the P key). The grid sweep
+        // runs on the background worker (g.jobs), so this is a one-shot
+        // button, not a per-frame re-sweep, and it never stalls the frame.
+        // While a sweep is in flight the button is disabled and the last
+        // grid stays on screen (the new one replaces it when the job lands).
+        const bool pc_busy = planner.pc_in_flight > 0;
+        if(pc_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Button("Compute  (P)")) {
             planner.porkchopCompute();
         }
+        if(pc_busy) { ImGui::EndDisabled(); }
         ImGui::SameLine();
         ImGui::Text("target: %s", tn);
+        if(pc_busy) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                               "   sweeping ...");
+        }
         ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n)",
                             g.args.porkchop_n, g.args.porkchop_n);
+        if(pc_busy) {
+            ImGui::TextDisabled("(the last grid stays shown until the new one "
+                                "lands)");
+        }
 
         // Axis ranges. Off = the auto range (departure: 0 .. one target
         // period, covers every relative phase; ToF: 60 s .. three target
@@ -503,8 +517,16 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
 
         if(!pc.valid) {
-            ImGui::Text("No launch window in the swept range for this target.");
-            ImGui::TextDisabled("Press Compute (or P) to sweep the grid.");
+            if(pc_busy) {
+                // A sweep is in flight (the grid isn't on screen yet): show
+                // the working state instead of the "no window" message.
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                                   "Sweeping the grid ...");
+                ImGui::TextDisabled("The result appears here when it lands.");
+            } else {
+                ImGui::Text("No launch window in the swept range for this target.");
+                ImGui::TextDisabled("Press Compute (or P) to sweep the grid.");
+            }
             return;
         }
 
@@ -516,7 +538,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // mode) and record the ABSOLUTE departure time (compute moment + the
         // best cell's delay). The Transfer window then counts down to it, and
         // at that instant the live "depart now" solution IS the best cell
-        // (Kepler propagation composes), so you burn then.
+        // (Kepler propagation composes), so you burn then. Disabled while a
+        // new sweep is in flight: pc would still be the PREVIOUS grid, and a
+        // plan from it is stale (wait for the sweep to land).
+        if(pc_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Button("Send best to Transfer")) {
             // Remember the user's ToF mode so "Clear plan" restores it.
             planner.xfer_prev_auto = planner.xfer_auto;
@@ -528,6 +553,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             planner.xfer_from_porkchop = true;
             ui::SetOpen("Transfer", true);
         }
+        if(pc_busy) { ImGui::EndDisabled(); }
 
         // The heatmap: total dv over (departure delay x, time of flight y).
         // Storage is ToF-major (rows = ToF, cols = departure). Drawn as a

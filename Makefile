@@ -196,6 +196,12 @@ test:
 	# asin(y) render.cpp uses), the shade range, the antimeridian wrap.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_surfmap.cpp -o test_surfmap
 	./test_surfmap
+	# background job runner (src/job.cpp): the worker/main-thread handoff --
+	# the body runs off the calling thread, the returned continuation runs on
+	# the poll() thread, jobs land in posted order, a throwing body does not
+	# kill the worker, busy()/poll() report the state + the running label.
+	$(CXX) -O2 -std=c++11 -I./src tests/test_jobs.cpp src/job.cpp -o test_jobs
+	./test_jobs
 	# orbital map projection (src/orbitmap.h, pure-math part): project() drops
 	# the map normal (+Y) and scales XZ by meters-per-pixel. Header-only, so
 	# the imgui include is headers-only (no imgui/Bullet/GL link needed).
@@ -233,7 +239,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_surfmap test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_surfmap test_jobs test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

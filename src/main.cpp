@@ -593,6 +593,14 @@ int main(int argc, char **argv)
         // game's clock and marks the frame for a redraw.
         tick(game);
 
+        // Background jobs (the porkchop grid now; the surface map + terrain
+        // gen later): run the finished jobs' main-thread continuations, which
+        // publish their results into game state. Once per frame, BEFORE the UI
+        // reads the state those continuations wrote. (Per-job "working on it"
+        // state lives in the window that owns the job, e.g. the Porkchop's
+        // "sweeping ..." -- not a global HUD line.)
+        game.jobs.poll();
+
         /*
           RENDERING
         */

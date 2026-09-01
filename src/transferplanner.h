@@ -38,7 +38,10 @@ public:
 
     /* On-demand (the P key / the window's button): build the porkchop
        plot for the current target from the ship's current state and cache
-       it in pc until the next call. No-op when there is no target. */
+       it in pc until the next call. No-op when there is no target.
+       The grid sweep itself runs on the background worker (g.jobs); this
+       only snapshots the inputs and posts the job, so it never blocks the
+       frame. pc is replaced when the job lands (see pc_in_flight). */
     void porkchopCompute();
 
     /* Drop a "Send best" plan (the Transfer window's "Clear plan" button,
@@ -66,8 +69,16 @@ public:
 
     /* Porkchop plot (on-demand): the last porkchopCompute() result, for the
        window to render. The grid size is g.args.porkchop_n (the size knob;
-       a Settings-window hook later). */
+       a Settings-window hook later). pc_in_flight counts the grid jobs
+       posted but not yet landed, so the window can show "sweeping" and
+       keep the Compute button disabled until the new grid replaces pc.
+       pc_target is the target index the current grid was swept for: a grid
+       is only valid for its own target, so a target change invalidates pc
+       (update() drops it) rather than showing the old target's window under
+       the new target's label. */
     PorkchopResult pc;   // valid when pc.valid
+    int pc_target = -1;  // target index the current pc grid was swept for
+    int pc_in_flight = 0;
     // Departure-delay (x-axis) range, in s. When pcCustomDep is off the
     // sweep uses the auto range (0 .. one target period); when on it uses
     // these slider values (see the Porkchop window's checkbox).

@@ -22,6 +22,7 @@
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
 #include "display.h"  // Renderer
+#include "job.h"      // JobRunner (background jobs: the porkchop grid, ...)
 #include "orbit.h"    // OrbitElements (the ShipView state)
 #include "postfx.h"   // PostFX
 #include "ships.h"    // Ships
@@ -127,6 +128,16 @@ struct Game {
     double accumulator = 0.0;
     const double dt = 1.0/50.0;   // TODO explain why 50
     bool redraw = false;         // a frame of logic ran: RENDER should draw
+
+    // --- background jobs (job.h) --------------------------------------------
+    // Long computations run off the main thread so the frame stays
+    // responsive: the porkchop grid now, and the surface map + terrain gen
+    // later (the same pattern). The main loop calls jobs.poll() once per
+    // frame, which runs the finished jobs' main-thread continuations (which
+    // publish the result into game state). Each job's own window shows its
+    // "working on it" state (e.g. the Porkchop's "sweeping ..."), so there
+    // is no global job label here.
+    JobRunner jobs;
 
     // --- the wall-clock log gates (--orbit-interval; tick.cpp + xfer-log) ---
     const Uint32 orbit_log_interval_ms = (Uint32)(args.orbit_interval * 1000.0);
