@@ -197,8 +197,9 @@ int main() {
         CHECK(near(def.parts[i].offset, 0.0));
         CHECK(def.parts[i].stage == 1);
     }
-    // no "controller" in the file -> defaults to the last part (the engine)
-    CHECK(def.controllerIndex() == 3);
+    // no "controller" in the file -> defaults to the first reaction wheel
+    // (the capsule carries a small one)
+    CHECK(def.controllerIndex() == 0);
 
     // the aggregates the Vehicle derives from the same data (field-driven,
     // mirroring Vehicle::init)
@@ -258,7 +259,30 @@ int main() {
     ShipDef big = load_ship_def(mix, cat);
     CHECK(big.parts.size() == 3);
     CHECK(big.parts[0].def == cap && big.parts[1].def == t32 && big.parts[2].def == e5);
-    CHECK(big.controllerIndex() == 2);  // no "controller" -> last part (the engine)
+    CHECK(big.controllerIndex() == 0);  // no "controller" -> first reaction wheel (capsule)
+    std::remove(mix);
+
+    // no controller + side tanks: the default must be the first reaction
+    // wheel, NOT the last part. The old default (last part) made the
+    // camera basis ride on a side tank whose local frame is rotated about
+    // the nose by its attach angle, so the stick controls read swapped
+    // (4 tanks, 270 deg) or mixed (3 tanks, 240 deg) on screen.
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"side\", "
+             "\"parts\": [ { \"part\": \"capsule\" }, "
+             " { \"part\": \"fuel_tank\" }, { \"part\": \"engine\" }, "
+             " { \"part\": \"tank_r1h3\", \"attach\": \"side\", "
+             "   \"parent\": \"engine_1\", \"angle\": 240 }, "
+             " { \"part\": \"tank_r1h3\", \"attach\": \"side\", "
+             "   \"parent\": \"engine_1\", \"angle\": 120 }, "
+             " { \"part\": \"tank_r1h3\", \"attach\": \"side\", "
+             "   \"parent\": \"engine_1\", \"angle\": 0 } ] }";
+        f.close();
+    }
+    ShipDef side = load_ship_def(mix, cat);
+    CHECK(side.parts.size() == 6);
+    CHECK(side.controllerIndex() == 0);   // first wheel, not the last tank
     std::remove(mix);
 
     {

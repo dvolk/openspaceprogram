@@ -47,7 +47,7 @@
    Vehicle::setRoot/attach):
      {
        "name": "Booster",
-       "controller": "capsule_1",        // part id; omitted = last part
+       "controller": "capsule_1",        // part id; omitted = first reaction wheel
        "hull_margin": 0.0,               // optional, m; collision convex-hull margin
                                         // for EVERY part of this ship (see below)
        "parts": [
@@ -175,7 +175,7 @@ struct ShipPart {
 struct ShipDef {
     std::string name;
     std::vector<ShipPart> parts;
-    int controller;        // part index; -1 = default (last part)
+    int controller;        // part index; -1 = default (first reaction wheel)
 
     /* Collision convex-hull margin (m) for EVERY part of this ship;
        -1 = not set -> fall back to the part catalog value, then the
@@ -185,8 +185,20 @@ struct ShipDef {
     double hull_margin;
 
     int controllerIndex() const {
-        if(controller < 0) { return (int)parts.size() - 1; }
-        return controller;
+        if(controller >= 0) { return controller; }
+        /* default: the first part with reaction-wheel authority -- the
+           SAME part Vehicle::applyRotationForce() uses for the stick
+           frame, so the camera basis (built from the controller's local
+           axes) and the controls agree by default. The old default (the
+           LAST part) was a footgun for ships ending in a radial/side
+           attachment: that tank's local frame is rotated about the nose
+           by its attach angle, so the screen axes landed between the
+           ship's right/up and the stick commands read as swapped or
+           mixed. A ship with no wheel at all falls back to the root. */
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(parts[i].def && parts[i].def->torque > 0.0) { return (int)i; }
+        }
+        return 0;
     }
 };
 

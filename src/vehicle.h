@@ -86,7 +86,7 @@ public:
     glm::dvec3 m_com;
 
     Body *controller;
-    int controllerIndex = -1;   // part index; -1 = last part (set by build_ship)
+    int controllerIndex = -1;   // part index; -1 = unresolved (build_ship sets it)
     std::vector<Body *> m_thrusters;
     std::vector<Body *> m_reaction_wheels;
     std::vector<void *> constraints;
@@ -216,8 +216,9 @@ public:
     void init() {
         partResources.resize(parts.size());
         /* the cockpit part; build_ship() sets controllerIndex from the ship
-           def (default -1 = last part, the old behavior) */
-        int ci = controllerIndex < 0 ? (int)parts.size() - 1 : controllerIndex;
+           def (default: first reaction wheel, else the root). The < 0
+           branch is defensive -- build_ship always resolves it first. */
+        int ci = controllerIndex < 0 ? 0 : controllerIndex;
         controller = parts[(size_t)ci];
         NeverSleep(controller);
         if(partDefs.size() != parts.size()) {
@@ -646,8 +647,9 @@ public:
         if(dropped == 0) { return 0; }   // nothing on this stage
         if(dropped == n) { return 0; }   // can't drop the whole ship
 
-        /* the controller part's OLD index (to remap, or replace if dropped) */
-        const int oldCi = controllerIndex < 0 ? (int)n - 1 : controllerIndex;
+        /* the controller part's OLD index (to remap, or replace if dropped);
+           build_ship resolved the default, so < 0 is defensive only */
+        const int oldCi = controllerIndex < 0 ? 0 : controllerIndex;
 
         StageSplit split = computeStageSplit(n, constraintLinks, drop);
 
