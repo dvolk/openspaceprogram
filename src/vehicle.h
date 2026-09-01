@@ -707,10 +707,18 @@ public:
         return (int)dropped;
     }
 
-    /* renderFrame: the frame the camera view is built in. Usually this
-       ship's own frame (identity transform); an idle ship that switched
+    /* This ship's part frame -> renderFrame. Usually the identity
+       (renderFrame is this ship's own frame); an idle ship that switched
        SOI while another ship was being controlled lives in a different
-       frame, so transform its parts into the render frame first. */
+       frame, so transform its parts into the render frame first. Draw
+       uses it to bring the parts into the view; picking (src/pick.cpp)
+       inverts it to bring the ray into the parts' frame. */
+    glm::dmat4 renderXform(Frame *renderFrame) const {
+        if(frame == renderFrame) { return glm::dmat4(1.0); }
+        return glm::translate(frame->GetPositionRelTo(renderFrame))
+             * glm::dmat4(frame->GetOrientRelTo(renderFrame));
+    }
+
     void Draw(const Camera* camera, Frame *renderFrame) {
         // Light direction at the ship (sun -> ship COM), in the render frame's
         // axes where the part normals end up after the xform below. Using the
@@ -722,11 +730,7 @@ public:
         glm::vec3 sunlightVec =
             glm::vec3(TerrainBody::LightDirFrom(com_root, sun, renderFrame));
 
-        glm::dmat4 xform = glm::dmat4(1.0);
-        if(frame != renderFrame) {
-            xform = glm::translate(frame->GetPositionRelTo(renderFrame))
-                  * glm::dmat4(frame->GetOrientRelTo(renderFrame));
-        }
+        const glm::dmat4 xform = renderXform(renderFrame);
 
         for(auto&& part : parts) {
             // Per-part terrain shadow

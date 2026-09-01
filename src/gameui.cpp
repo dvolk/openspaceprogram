@@ -1168,6 +1168,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("f10 - reset windows");
         ImGui::Text("esc - main menu");
         ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
+        ImGui::Text("RMB click over 3D - pick a part (opens its window)");
         ImGui::Text("RMB (orbital map) - cycle window -> bare map -> no window");
         ImGui::Text("wheel - zoom (orbit mode)");
         ImGui::Spacing();
@@ -1248,6 +1249,80 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::ProgressBar(0.83, ImVec2(-1, 0), "Water");
         ImGui::ProgressBar(0.94, ImVec2(-1, 0), "Food");
     });
+}
+
+/* The open part windows: one plain imgui window per part the player
+   right-clicked in the 3D view (g.part_sels, opened by pickAt). Plain
+   Begin/End -- these are user-placed popups, NOT slot-layout windows,
+   and several may be open at once (e.g. two tanks for a fuel transfer).
+   Closing the window (X) drops the entry; staging that drops the part
+   makes it stale (the entry is dropped, not re-pointed -- the index now
+   names a different part). */
+void drawPartWindows(Game &g) {
+    for(int i = (int)g.part_sels.size() - 1; i >= 0; i--) {
+        const size_t idx = (size_t)i;
+        PartSel &sel = g.part_sels[idx];
+        Vehicle *ship = sel.ship;
+        if(sel.part >= ship->parts.size()) {
+            g.part_sels.erase(g.part_sels.begin() + idx);
+            continue;
+        }
+        const size_t part = sel.part;
+        const PartDef *def = ship->partDefs[part];
+        const Body *partBody = ship->parts[part];
+
+        char name[160];
+        snprintf(name, sizeof(name), "Part: %s #%zu",
+                 ship->name.c_str(), part);
+        if(!sel.placed) {
+            // Cascade the popups so several open ones don't fully
+            // overlap; after that the user places them freely.
+            const ImGuiViewport *vp = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(
+                ImVec2(vp->WorkPos.x + 8.0f + 28.0f * (float)idx,
+                       vp->WorkPos.y + 8.0f + 28.0f * (float)idx),
+                ImGuiCond_Appearing);
+            sel.placed = true;
+        }
+        bool open = true;
+        if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::Text("Ship: %s", ship->name.c_str());
+            ImGui::Text("Part #%zu  (stage %d)", part,
+                        ship->partStages[part]);
+            ImGui::Separator();
+            ImGui::Text("Name: %s", def->name.c_str());
+            if(!def->type.empty()) {
+                ImGui::Text("Type: %s", def->type.c_str());
+            }
+            ImGui::Text("Mass: %.3fkg", partBody->mass);
+            ImGui::Text("Size: %.1fm dia x %.1fm",
+                        def->radius * 2.0, def->height);
+            if(def->torque > 0.0) {
+                ImGui::Text("Torque: %.0fN m (reaction wheel)", def->torque);
+            }
+            if(def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0) {
+                ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
+                            def->fullThrust(), def->fuel_rate,
+                            def->exhaust_velocity);
+            }
+            static const char *resNames[(int)ResourceType::Num] = {
+                "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food"
+            };
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                if(def->capacity[(size_t)r] <= 0.0f) { continue; }
+                ImGui::Text("%s: %.1fkg/%.1fkg", resNames[r],
+                            ship->partResources[part].current[r],
+                            ship->partResources[part].capacity[r]);
+            }
+            ImGui::Separator();
+            ImGui::Text("Picked at: (%.0f, %.0f, %.0f)",
+                        sel.point.x, sel.point.y, sel.point.z);
+        }
+        ImGui::End();
+        if(!open) {
+            g.part_sels.erase(g.part_sels.begin() + idx);
+        }
+    }
 }
 
 // The orbital map: right-clicking the window cycles its chrome (full

@@ -17,6 +17,13 @@
 // solution is computed in the 3D pass).
 void drawUIReadouts(Game &g, TransferPlanner &planner);
 
+// Draw the open part windows: one plain imgui window per g.part_sels
+// entry (the parts the player right-clicked in the 3D view). Not part of
+// the slot layout -- they are user-placed popups, several may be open at
+// once. Closing a window (X) or staging/removing its part drops the
+// entry.
+void drawPartWindows(Game &g);
+
 // Draw the orbital map window for g. planner feeds it (the transfer
 // conic + the selected target's highlight).
 void drawUIMap(Game &g, TransferPlanner &planner);

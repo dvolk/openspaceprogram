@@ -5,9 +5,12 @@
 // (Game), so they live with the state.
 #include "game.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <string>
+
+#include "pick.h"   // pickShipPart (pickAt)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
     if (focusTargets[i].body == nullptr) {
@@ -166,6 +169,45 @@ void Game::toast(const char *fmt, ...) {
     }
 }
 
+/* Part windows: open (or focus) the window for a picked part. Picking
+   the same part again just re-focuses the existing window -- the player
+   wants ONE window per part (several parts can be open at once). */
+void Game::openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point) {
+    for(auto &sel : part_sels) {
+        if(sel.ship == ship && sel.part == part) { return; }
+    }
+    PartSel sel;
+    sel.ship = ship;
+    sel.part = part;
+    sel.t = time;
+    sel.point = point;
+    part_sels.push_back(sel);
+}
+
+void Game::dropPartWindowsFor(Vehicle *ship) {
+    part_sels.erase(std::remove_if(part_sels.begin(), part_sels.end(),
+                   [ship](const PartSel &p) { return p.ship == ship; }),
+                   part_sels.end());
+}
+
+/* The RMB-click entry point: pick the part under the cursor, open its
+   window, and log it. The [pick] line doubles as the e2e assertion. */
+void pickAt(Game &g, int px, int py) {
+    Vehicle *ship = nullptr;
+    size_t part = 0;
+    PickBodyHit hit;
+    if(pickShipPart(g, px, py, ship, part, hit)) {
+        g.openPartWindow(ship, part, hit.point);
+        printf("[pick] t=%.1f ship=%s part=%zu (%s)\n",
+               g.time, ship->name.c_str(), part,
+               ship->partDefs[part]->name.c_str());
+        fflush(stdout);
+    } else {
+        printf("[pick] t=%.1f miss px=%d py=%d\n", g.time, px, py);
+        fflush(stdout);
+    }
+}
+
 /* Switch the active (controlled) ship. The ship being left is released:
    throttle zeroed, armed thrust + rotation commands cleared, and it parks
    on rails (coasting or frozen) if it can. The ship being taken re-enters
@@ -226,6 +268,7 @@ void Game::remove_ship(int idx) {
     const std::string removedName = v->name;
     if(wasActive) { v->releaseControl(); }
 
+    dropPartWindowsFor(v);           // its part windows would dangle
     ships.erase_ship((size_t)idx);   // erase the 4 fleet vectors + delete v
 
     if(wasActive) {

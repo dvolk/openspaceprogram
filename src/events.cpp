@@ -8,6 +8,7 @@
 #include "events.h"
 
 #include <cstdio>
+#include <cstdlib>   // std::abs (the RMB click-vs-drag motion total)
 
 #include <GL/glew.h>   // glPolygonMode (F11 wireframe) + GL constants
 
@@ -305,15 +306,30 @@ void poll_events(Game &g) {
             if(ev.button.button == SDL_BUTTON_RIGHT &&
                !ImGui::GetIO().WantCaptureMouse) {
                 g.rmbCam = true;
+                g.rmbDownX = ev.button.x;
+                g.rmbDownY = ev.button.y;
+                g.rmbDownMs = SDL_GetTicks();
+                g.rmbMoved = 0;
             }
         }
         if(ev.type == SDL_MOUSEBUTTONUP) {
             if(ev.button.button == SDL_BUTTON_RIGHT) {
                 g.rmbCam = false;
+                // A short, still RMB press over the 3D view is a CLICK
+                // (pick the part under the cursor); a moved one was the
+                // camera drag. The camera already got its (sub-threshold)
+                // look for a jittery click -- at 6 px that is <1 deg.
+                if(!ImGui::GetIO().WantCaptureMouse
+                   && g.rmbMoved < kPickClickPx
+                   && SDL_GetTicks() - g.rmbDownMs < kPickClickMs) {
+                    pickAt(g, ev.button.x, ev.button.y);
+                }
             }
         }
         if(ev.type == SDL_MOUSEMOTION) {
             if(g.rmbCam && !ImGui::GetIO().WantCaptureMouse) {
+                g.rmbMoved += std::abs(ev.motion.xrel)
+                            + std::abs(ev.motion.yrel);
                 g.camera->RotateY(-ev.motion.xrel / 200.0f);
                 g.camera->Pitch(ev.motion.yrel / 200.0f);
             }

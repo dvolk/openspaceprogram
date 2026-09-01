@@ -1,0 +1,14 @@
+# Part picking: an RMB click over the ship (the screen center faces the
+# ship's controller part, 10 m out) opens its window -- the [pick] line
+# carries the ship + part name, not a miss. The cursor is moved there
+# first (BTN 0, zero motion) so the click passes the 6 px / 400 ms gate.
+# RMB *drag* is still the camera (08-mouse-orbit pins that).
+NAME part-pick
+ARGS --scenario pad --ship res/ships/racer.json --time-accel 0 --timeout 15
+ARGS --sim-mouse 1000,0,960,540,0
+ARGS --sim-mouse 1200,0,960,540,RMB
+EXPECT Main loop starting
+EXPECT ship=
+FORBID miss px=
+FORBID GL_
+FORBID error:

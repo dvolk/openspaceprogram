@@ -54,9 +54,28 @@ static const int kRailsWarp = 11;
 // not live or die with the sim clock.
 static const double kToastLife = 3.0;   // seconds a toast stays up
 static const int kToastVisible = 3;    // the last N toasts shown (stacked)
+
+// RMB click (pick a part) vs RMB drag (camera look): a press that moves
+// less than this much and lasts under this long is a click (events.cpp).
+static const int kPickClickPx = 6;     // total cursor motion, px
+static const int kPickClickMs = 400;   // press duration, ms
+
 struct ToastMsg {
     std::string text;
     double born;   // wall-clock seconds (SDL_GetTicks() * 0.001)
+};
+
+// One open part window: a part the player right-clicked in the 3D view.
+// Each entry is a plain imgui window (gameui.cpp draws one per entry,
+// closable -- several can be open at once, e.g. two tanks for a fuel
+// transfer). Closing the window drops the entry; removing the ship drops
+// its entries (dropPartWindowsFor, or they dangle).
+struct PartSel {
+    Vehicle *ship = nullptr;
+    size_t part = 0;    // index into ship->parts
+    double t = 0;       // sim seconds at selection
+    glm::dvec3 point;   // hit point, ship frame
+    bool placed = false;  // first window placement done
 };
 
 // The active ship's per-frame state in the render frame (ship->frame):
@@ -153,12 +172,24 @@ struct Game {
     // --- input / selection state -------------------------------------------
     bool running = true;
     bool rmbCam = false;            // RMB held over 3D: camera look
+    // The in-progress RMB gesture (events.cpp): down position + time and
+    // the motion accumulated while held. At release, a press with less
+    // than kPickClickPx of motion under kPickClickMs is a CLICK (it
+    // picks a part, pickAt); otherwise it was the camera drag.
+    int rmbDownX = 0, rmbDownY = 0;
+    Uint32 rmbDownMs = 0;
+    int rmbMoved = 0;               // |xrel| + |yrel| while held
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
     bool porkchop_compute_requested = false;  // P: one-shot compute the plot
     bool surfmap_compute_requested = false;   // M: one-shot compute the map
     int activeIdx = 0;             // the player-controlled ship
     Vehicle *ship = nullptr;       // always ships[activeIdx]
+
+    // --- part windows (pickAt opens one per right-clicked part) -----------
+    // Drawn by gameui.cpp (drawPartWindows); one plain imgui window per
+    // entry, so several can be open at once.
+    std::vector<PartSel> part_sels;
 
     // --- render resources (render.cpp draws with them) ---------------------
     // main creates + deletes them (the teardown at the end of main); they
@@ -304,6 +335,12 @@ struct Game {
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);
+    // Open (or focus) the part window for (ship, part) -- picking the
+    // same part again does not open a second one (pickAt).
+    void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point);
+    // Drop every part window of a ship (remove_ship); its entries would
+    // dangle the moment the Vehicle is deleted.
+    void dropPartWindowsFor(Vehicle *ship);
 
     Game(Renderer &display, PostFX *postfx, Ships &ships, System &sys,
          TerrainBody *sun, TerrainBody *home, GameArgs &args,
@@ -311,3 +348,9 @@ struct Game {
         : display(display), postfx(postfx), ships(ships), sys(sys),
           sun(sun), home(home), args(args), sim_win_id(sim_win_id) {}
 };
+
+// RMB-click entry point (events.cpp calls it when a short, still RMB
+// press lands over the 3D view): pick the part under (px,py), open its
+// window, and log the outcome (the [pick] line is what the e2e cases
+// assert). Misses log a miss and leave the existing windows alone.
+void pickAt(Game &g, int px, int py);

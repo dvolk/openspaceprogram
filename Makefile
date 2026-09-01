@@ -217,6 +217,15 @@ test:
 	# keep the up vector continuous (no sudden roll) and the view NaN-free.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp src/camera.cpp -o test_orbitcam
 	./test_orbitcam
+	# picking (src/pick.cpp): pixel->ray round-trip through the camera's
+	# own view/projection (a point on the ray projects back to the pixel),
+	# then the real Bullet convex-cast hull ray-test (hit point/distance,
+	# a miss, translated + rotated bodies). pick.cpp includes game.h (the
+	# fleet), so the imgui include dir is needed for ui.h.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_pick.cpp src/pick.cpp src/camera.cpp src/frame.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_pick
+	./test_pick
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on
@@ -245,7 +254,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_surfmap test_terrain test_jobs test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

@@ -642,6 +642,10 @@ int main(int argc, char **argv)
             // the readouts, before the main menu.
             drawUIMap(game, xferPlanner);
 
+            // The open part windows (gameui.cpp): one per part the
+            // player right-clicked in the 3D view.
+            drawPartWindows(game);
+
             // The main menu (gameui.cpp): drawn last so it sits on top.
             drawMainMenu(game);
 
