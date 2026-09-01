@@ -172,11 +172,13 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
     });
 
-    /* Window list (single source of truth: the ui_windows table) plus the
-       Top-HUD group switch. */
+    /* Window list (single source of truth: the ui_windows table; entries
+       with in_windows_list=false, e.g. the Porkchop, are toggled from
+       their parent window instead) plus the Top-HUD group switch. */
     ui::Window("Windows", g.o_menu, [&] {
         ImGui::Spacing();
         for(auto &w : g.ui_windows) {
+            if(!w.in_windows_list) { continue; }
             bool open = ui::IsOpen(w.name);
             if(ImGui::Checkbox(w.label, &open)) {
                 ui::SetOpen(w.name, open);
@@ -362,6 +364,13 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 }
             }
             ImGui::EndCombo();
+        }
+        // The Porkchop window (the launch-window heatmap) hangs off this
+        // window rather than the Windows list: pick a target, then open
+        // the plot for it.
+        bool pc_open = ui::IsOpen("Porkchop");
+        if(ImGui::Checkbox("Porkchop", &pc_open)) {
+            ui::SetOpen("Porkchop", pc_open);
         }
         if(xfer_target < 0) {
             ImGui::Text("Select a target body or ship.");
@@ -1833,8 +1842,8 @@ void drawMainMenu(Game &g) {
         if(ImGui::Button("Reset windows", ImVec2(bw, 0.0f))) {
             ui::ResetGui();
         }
-        // Toggles (not just open): these two are not in the TAB list, so
-        // the menu is another way to close them (besides their X / Back).
+        // Toggles (not just open): a quick way to open or close these
+        // (besides their X / Back).
         if(ImGui::Button("Settings", ImVec2(bw, 0.0f))) {
             ui::SetOpen("Settings", !ui::IsOpen("Settings"));
         }

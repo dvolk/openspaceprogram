@@ -94,7 +94,14 @@ void Game::setup_ui_windows() {
     // "Toggle windows" read it.
     auto add_ui_window = [&](const char *name, const char *label,
                              const ui::Options &o) {
-        ui_windows.push_back(UiWin{name, label, o});
+        ui_windows.push_back(UiWin{name, label, o, true});
+    };
+    // In the registry (the TAB toggle covers it) but out of the Windows
+    // list: it's toggled from its own context (the Transfer window, the
+    // main menu) instead.
+    auto add_ui_window_hidden = [&](const char *name, const char *label,
+                                    const ui::Options &o) {
+        ui_windows.push_back(UiWin{name, label, o, false});
     };
     add_ui_window("Resources", "Resources", o_resources);
     add_ui_window("Orbital", "Orbit Info", o_orbit);
@@ -108,12 +115,15 @@ void Game::setup_ui_windows() {
     // is always drawn, so it always needs the toggle + checkbox.
     add_ui_window("Ship List", "Ship List", o_ships);
     add_ui_window("Autopilot", "Autopilot", o_autopilot);
-    // Controls and Settings are main-menu only, so they're deliberately
-    // NOT in this list (and thus not affected by the TAB toggle).
     add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
     add_ui_window("Telemetry", "Telemetry", o_telemetry);
     add_ui_window("Transfer", "Transfer", o_transfer);
-    add_ui_window("Porkchop", "Porkchop", o_porkchop);
+    // Porkchop: toggled from the Transfer window (pick a target, then
+    // open the plot for it).
+    add_ui_window_hidden("Porkchop", "Porkchop", o_porkchop);
+    // Settings and Controls: main-menu only.
+    add_ui_window_hidden("Settings", "Settings", o_settings);
+    add_ui_window_hidden("Controls", "Controls", o_controls);
     // The TAB toggle + the main-menu "Toggle windows" button call
     // toggle_windows(), which flips ui_visible and re-opens every registry
     // window (plus the HUD) from their defaults.

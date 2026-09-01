@@ -236,7 +236,14 @@ struct Game {
     int numFocusTargets = 0;
 
     // --- UI window registry (the TAB toggle + the main-menu button) --------
-    struct UiWin { const char *name; const char *label; ui::Options opts; };
+    struct UiWin {
+        const char *name;
+        const char *label;
+        ui::Options opts;
+        // false: out of the Windows list (toggled from its own context).
+        // No default: C++11 aggregate (no in-class initializers allowed).
+        bool in_windows_list;
+    };
     std::vector<UiWin> ui_windows;
     ui::Options o_hud;
     bool ui_visible = true;
