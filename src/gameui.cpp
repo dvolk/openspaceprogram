@@ -821,9 +821,15 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // ring, the same mark as the Orbital Map. The direction from the
         // mapped body's center is always a valid (lon, lat), so it always
         // lands in the rect (even when the ship is on another body).
+        // The ship's COM (in its own frame) rigidly transformed into the
+        // mapped body's rotating frame -- NOT ship->frame's origin: two
+        // frames of the same body share an origin, so the origin offset
+        // is 0 and the dot would vanish exactly on the ship's own body.
         if(ship && ship->frame) {
             Frame *rot = sm_body->frame->getRotFrame();
-            const glm::dvec3 sp = ship->frame->GetPositionRelTo(rot);
+            const glm::dvec3 com = ship->get_center_of_mass();
+            const glm::dvec3 sp = ship->frame->GetOrientRelTo(rot) * com
+                                + ship->frame->GetPositionRelTo(rot);
             const double sl = glm::length(sp);
             if(sl > 1e-9) {
                 double lon, lat;
