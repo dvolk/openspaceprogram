@@ -131,8 +131,8 @@ struct Game {
 
     // --- background jobs (job.h) --------------------------------------------
     // Long computations run off the main thread so the frame stays
-    // responsive: the porkchop grid now, and the surface map + terrain gen
-    // later (the same pattern). The main loop calls jobs.poll() once per
+    // responsive: the porkchop grid and the surface map now, and terrain
+    // gen later (the same pattern). The main loop calls jobs.poll() once per
     // frame, which runs the finished jobs' main-thread continuations (which
     // publish the result into game state). Each job's own window shows its
     // "working on it" state (e.g. the Porkchop's "sweeping ..."), so there
@@ -274,6 +274,11 @@ struct Game {
     double surfmap_computed_at = -1.0;  // sim seconds of the last compute
     bool surfmap_valid = false;
     int surfmap_rev = 0;
+    // Sweep jobs posted but not yet landed (surfmapCompute posts one; the
+    // main-thread continuation lands it): the window shows "mapping ..."
+    // and keeps its buttons disabled until the new map replaces the old
+    // one (the same pc_in_flight pattern as the Porkchop grid).
+    int surfmap_in_flight = 0;
 
     // --- control transitions (events + the SHIPS window + selftest) --------
     // World (ship-frame) position of a focus target, to point the orbit

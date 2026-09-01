@@ -640,8 +640,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
        map (north up, lon 0 at the left edge), the ship's position +
        orbit overlaid, and -- optionally -- the terminator (day/night)
        baked in. The pixel buffer is computed on demand -- the button or
-       the M key -- and cached until the next compute (the same pattern
-       as the Porkchop), so the window is cheap to leave open. */
+       the M key -- on the background worker, and cached until the next
+       compute (the same pattern as the Porkchop), so the window is
+       cheap to leave open and a sweep never stalls the frame. */
     ui::Window("Surface Map", g.o_surfmap, [&] {
         // Body to map: item 0 = "active ship's body" (surfmap_body =
         // nullptr, so the map follows the ship's SOI); the rest are
@@ -671,24 +672,53 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
 
         // Auto-compute when there is no map yet, or it was computed for a
-        // different body (the combo pick / the ship's SOI changed).
-        if(!g.surfmap_valid || g.surfmap_body_name != sm_body->name) {
+        // different body (the combo pick / the ship's SOI changed). Not
+        // while a sweep is in flight: the last one lands for the body it
+        // was posted for, and this frame re-requests if it is still stale.
+        if(g.surfmap_in_flight == 0 &&
+           (!g.surfmap_valid || g.surfmap_body_name != sm_body->name)) {
             surfmapCompute(g);
         }
 
+        // The sweep runs on the background worker (g.jobs), like the
+        // Porkchop grid: while one is in flight the buttons wait and the
+        // last map stays on screen (the new one replaces it when it lands).
+        // Read AFTER the auto-compute above so a just-posted job (first
+        // open / a body switch) already shows the "mapping ..." state.
+        const bool sm_busy = g.surfmap_in_flight > 0;
+
+        if(sm_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Button("Refresh  (M)")) {
             surfmapCompute(g);
         }
+        if(sm_busy) { ImGui::EndDisabled(); }
+        if(sm_busy) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                               "   mapping ...");
+        }
         bool shade = g.surfmap_shade;
+        if(sm_busy) { ImGui::BeginDisabled(); }
         if(ImGui::Checkbox("Sun shading", &shade)) {
             g.surfmap_shade = shade;
             surfmapCompute(g);   // re-bake with the new terminator
         }
+        if(sm_busy) { ImGui::EndDisabled(); }
         ImGui::TextDisabled("map %dx%d   (size: --surfmap-n)",
                             g.surfmap_w, g.surfmap_h);
+        if(sm_busy) {
+            ImGui::TextDisabled("(the last map stays shown until the new one "
+                                "lands)");
+        }
 
         if(!g.surfmap_valid || g.surfmap_px.empty()) {
-            ImGui::Text("No map yet: press Refresh (or M).");
+            if(sm_busy) {
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                                   "Mapping the surface ...");
+                ImGui::TextDisabled("The map appears here when it lands.");
+            } else {
+                ImGui::Text("No map yet: press Refresh (or M).");
+            }
             return;
         }
 

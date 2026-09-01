@@ -1,6 +1,6 @@
 // job.h -- a single-worker background job runner for the main loop.
 //
-// Long computations (the porkchop grid; the surface map and terrain gen
+// Long computations (the porkchop grid and the surface map; terrain gen
 // later) run on one worker thread instead of stalling the frame. The main
 // loop calls JobRunner::poll() once per frame; poll() runs the finished
 // jobs' MAIN-THREAD continuations (which publish the result into game state
@@ -63,6 +63,9 @@ public:
     bool busy() const;
 
     // Block until every posted job has finished (clean shutdown).
+    // Idempotent: the destructor joins too, so callers that join first
+    // (main.cpp does, before freeing the state a job body may hold) are
+    // safe.
     void join();
 
 private:

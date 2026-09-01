@@ -593,10 +593,11 @@ int main(int argc, char **argv)
         // game's clock and marks the frame for a redraw.
         tick(game);
 
-        // Background jobs (the porkchop grid now; the surface map + terrain
-        // gen later): run the finished jobs' main-thread continuations, which
-        // publish their results into game state. Once per frame, BEFORE the UI
-        // reads the state those continuations wrote. (Per-job "working on it"
+        // Background jobs (the porkchop grid and the surface map now;
+        // terrain gen later): run the finished jobs' main-thread
+        // continuations, which publish their results into game state.
+        // Once per frame, BEFORE the UI reads the state those
+        // continuations wrote. (Per-job "working on it"
         // state lives in the window that owns the job, e.g. the Porkchop's
         // "sweeping ..." -- not a global HUD line.)
         game.jobs.poll();
@@ -682,6 +683,12 @@ int main(int argc, char **argv)
     }
 
     ships.clear();   // ships + space pads (BEFORE the System bodies/shaders they reference)
+
+    // Drain the background worker BEFORE the bodies it may still hold
+    // (the Surface Map job captures a TerrainBody* and samples its
+    // surface off-thread): game's destructor would join the worker only
+    // on the way out of main, AFTER the deletes below.
+    game.jobs.join();
 
     for(auto&& body : sys.bodies) { delete body; }
 

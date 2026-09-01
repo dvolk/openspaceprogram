@@ -135,7 +135,24 @@ int main() {
     }
 
     // =========================================================================
-    // 5. poll() reports the running job's label while busy and "" when idle.
+    // 5. join() is idempotent: a job posted before join() still lands, and
+    //    a second join() (the destructor does one too -- a double
+    //    std::thread::join() would be UB) is a no-op.
+    // =========================================================================
+    {
+        JobRunner jr;
+        int done = 0;
+        jr.post("drain", [&]() -> std::function<void()> {
+            return [&]() { done = 1; };
+        });
+        jr.join();
+        jr.poll();   // apply the drained job's continuation
+        jr.join();   // the dtor joins again on scope exit
+        CHECK(done == 1);
+    }
+
+    // =========================================================================
+    // 6. poll() reports the running job's label while busy and "" when idle.
     //    The body blocks on `release` so it is GUARANTEED in flight when the
     //    test polls (no race on observing the label).
     // =========================================================================

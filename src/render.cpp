@@ -297,7 +297,9 @@ void draw3d(Game &g, TransferPlanner &planner) {
         g.porkchop_compute_requested = false;
     }
 
-    // M key: compute the surface map (one-shot, same pattern as P).
+    // M key: request the surface map (one-shot, same pattern as P). The
+    // sweep runs on the background worker; the last map stays on screen
+    // until the job lands.
     if(g.surfmap_compute_requested) {
         surfmapCompute(g);
         g.surfmap_compute_requested = false;

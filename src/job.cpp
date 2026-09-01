@@ -73,6 +73,7 @@ bool JobRunner::busy() const {
 void JobRunner::join() {
     {
         std::lock_guard<std::mutex> lk(mu_);
+        if(stop_) { return; }   // already joined (idempotent; the dtor joins)
         stop_ = true;
     }
     cv_.notify_one();

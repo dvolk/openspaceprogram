@@ -68,8 +68,11 @@ inline bool surfmapWraps(double lon_prev, double lon_cur) {
     return std::fabs(lon_prev - lon_cur) > M_PI;
 }
 
-// Build the surface map's pixel buffer for g (fills g.surfmap_* state).
-// g (Game) is forward-declared so this header stays light; the
-// implementation (surfmap.cpp) does the TerrainBody sampling.
+// Request the surface map for g: snapshot the inputs on the calling
+// (main) thread, post the sweep to the background worker (g.jobs), and
+// let the main-thread continuation fill g.surfmap_* state when it lands
+// (surfmap_in_flight counts the job, like the Porkchop grid's). g (Game)
+// is forward-declared so this header stays light; the implementation
+// (surfmap.cpp) does the TerrainBody sampling.
 struct Game;
 void surfmapCompute(Game &g);
