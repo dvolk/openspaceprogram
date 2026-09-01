@@ -40,6 +40,10 @@ struct GameArgs {
     int porkchop_n = 40;        // --porkchop-n: the plot grid (porkchop_n x
                                 // porkchop_n); the size knob (a Settings-
                                 // window hook later). 40 x 40 is ~15 ms.
+
+    bool surfmap_log = false;    // --surfmap-log: the map's albedo/shaded means
+    int surfmap_n = 256;        // --surfmap-n: the map width (h = n/2)
+    bool surfmap_noshade = false; // --surfmap-noshade: skip the terminator
     std::string transfer_target;
     bool spin_log_enabled = false;
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state

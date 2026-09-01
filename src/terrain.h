@@ -168,9 +168,14 @@ struct TerrainBody {
 
     Mesh *create_grid_mesh(bool has_collision, bool has_skirt, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
     Mesh *create_atmosphere_mesh(float radius); // defined below with the other mesh builders
-    float GetTerrainHeight(const glm::vec3& p);
-    float GetTerrainHeightUnscaled(const glm::vec3& p);
-    float ScaleHeightNoise(float noise);
+    float GetTerrainHeight(const glm::vec3& p) const;
+    float GetTerrainHeightUnscaled(const glm::vec3& p) const;
+    float ScaleHeightNoise(float noise) const;
+    // The surface color at a unit direction in the body's rotating frame:
+    // the exact per-vertex color create_grid_mesh bakes into the terrain
+    // (noise, palette / band, sea, contrast), so the 2-D surface map
+    // (surfmap.cpp) matches the rendered surface pixel for pixel.
+    glm::vec3 SurfaceColor(const glm::vec3& p) const;
 
     void Create(float radius, float mass) {
         this->radius = radius;

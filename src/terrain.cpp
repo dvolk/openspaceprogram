@@ -191,7 +191,7 @@ float noise3d(const glm::vec3& p, int octaves, float persistence) {
 
 #define NOISE_FUNC (((noise3d(sphere_p, 12, 0.60) * 2500)))
 
-float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
+float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) const {
     const Surface &s = surface;
     if(s.bands) {
         return radius;   // gas giant: smooth sphere
@@ -206,7 +206,7 @@ float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) {
     return radius + ScaleHeightNoise(noise);
 }
 
-float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) {
+float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) const {
     const Surface &s = surface;
     float noise = noise3d(sphere_p * s.frequency + s.seed_offset,
                           s.octaves, s.persistence) * s.amplitude;
@@ -218,7 +218,7 @@ float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) {
     return radius + noise;
 }
 
-float TerrainBody::ScaleHeightNoise(float noise) {
+float TerrainBody::ScaleHeightNoise(float noise) const {
     constexpr float ref_height = 3000.0; // guess
 
     // rescale noise by altitude (sign-safe for fractional powers)
@@ -226,6 +226,49 @@ float TerrainBody::ScaleHeightNoise(float noise) {
     float n = sign * noise;
     n *= pow(n / ref_height, surface.power);
     return sign * n;
+}
+
+glm::vec3 TerrainBody::SurfaceColor(const glm::vec3& p) const {
+    const Surface &s = surface;
+    if(s.bands) {
+        // gas giant: smooth sphere, color by latitude band
+        COLOUR cb = s.BandColor(p);
+        glm::vec3 color = glm::vec3(cb.r, cb.g, cb.b);
+        float brightness = (cb.r + cb.g + cb.b) / 6;
+        // lower contrast, increase brightness
+        color = float(0.5) * color + glm::vec3(brightness,
+                                               brightness,
+                                               brightness);
+        return color;
+    }
+
+    // set the color based on unscaled noise for better gradient
+    float height = GetTerrainHeightUnscaled(p);
+
+    // add some color noise
+    float color_noise = noise3d(p * radius + s.seed_offset, 1, 0.60) * 100;
+    float h = height + ((color_noise / 2) - color_noise);
+
+    COLOUR c;
+    if(s.palette.empty()) {
+        // no palette in the JSON: fall back to the type-based default
+        c = (*colour_func)(h, radius - 1, radius + 3000);
+    } else {
+        float t = (h - (radius + s.sea_level)) / s.max_height;
+        c = s.PaletteColor(t);
+    }
+
+    glm::vec3 color = glm::vec3(c.r, c.g, c.b);
+    float brightness = (c.r + c.g + c.b) / 6;
+    // lower contrast, increase brightness
+    color = float(0.5) * color + glm::vec3(brightness,
+                                           brightness,
+                                           brightness);
+
+    if(s.has_sea && height <= radius + s.sea_level) {
+        color = s.sea_color;
+    }
+    return color;
 }
 
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
@@ -365,47 +408,21 @@ Mesh *TerrainBody::create_grid_mesh(bool has_collision, bool has_skirt, glm::vec
         for (int j = 0; j < size; j++) {
             glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i*frac, j*frac);
 
+            // The vertex color (noise, palette / band, sea, contrast):
+            // shared with the 2-D surface map (SurfaceColor) so the map
+            // matches the rendered surface.
+            const glm::vec3 color = SurfaceColor(sphere_p);
+
             if (surface.bands) {
-                // gas giant: smooth sphere, color by latitude band
-                COLOUR cb = surface.BandColor(sphere_p);
-                glm::vec3 color = glm::vec3(cb.r, cb.g, cb.b);
-                float brightness = (cb.r + cb.g + cb.b) / 6;
-                color = float(0.5) * color + glm::vec3(brightness,
-                                                       brightness,
-                                                       brightness);
+                // gas giant: smooth sphere
                 vertices[(j + off) + edge * (i + off)] = PosNorColVertex(sphere_p * radius,
                                                          sphere_p,
                                                          color);
                 continue;
             }
 
-            float height = GetTerrainHeightUnscaled(sphere_p);
-
-            // add some color noise
-            float color_noise = noise3d(sphere_p * radius + surface.seed_offset, 1, 0.60) * 100;
-            float h = height + ((color_noise / 2) - color_noise);
-
-            COLOUR c;
-            if(surface.palette.empty()) {
-                // no palette in the JSON: fall back to the type-based default
-                c = (*colour_func)(h, radius - 1, radius + 3000);
-            } else {
-                float t = (h - (radius + surface.sea_level)) / surface.max_height;
-                c = surface.PaletteColor(t);
-            }
-
             // set the color based on unscaled noise for better gradient
-            glm::vec3 color = glm::vec3(c.r, c.g, c.b);
-            float brightness = (c.r + c.g + c.b) / 6;
-
-            // lower contrast, increase brightness
-            color = float(0.5) * color + glm::vec3(brightness,
-                                                   brightness,
-                                                   brightness);
-
-            if(surface.has_sea && height <= radius + surface.sea_level) {
-                color = surface.sea_color;
-            }
+            float height = GetTerrainHeightUnscaled(sphere_p);
 
             // add back scaling
             height = radius + ScaleHeightNoise(height - radius);

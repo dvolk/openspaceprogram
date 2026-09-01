@@ -144,6 +144,7 @@ struct Game {
     bool poly_mode = false;         // F11 wireframe
     bool screenshot_requested = false;
     bool porkchop_compute_requested = false;  // P: one-shot compute the plot
+    bool surfmap_compute_requested = false;   // M: one-shot compute the map
     int activeIdx = 0;             // the player-controlled ship
     Vehicle *ship = nullptr;       // always ships[activeIdx]
 
@@ -216,6 +217,7 @@ struct Game {
     ui::Options o_settings;
     ui::Options o_transfer;
     ui::Options o_porkchop;
+    ui::Options o_surfmap;
     ui::Options o_mainmenu;
 
     // The big face (2x the UI font), created by main at ImGui init.
@@ -246,6 +248,21 @@ struct Game {
     // border and background hidden -- the map just floats over the 3D view).
     // Modes 1 and 2 keep pan/zoom working.
     int map_mode = 0;
+
+    // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
+    // The mapped body: the combo pick; null = the active ship's parent
+    // (the body the ship is orbiting / landed on), else the system home.
+    TerrainBody *surfmap_body = nullptr;
+    bool surfmap_shade = true;    // bake the terminator (the "Sun shading" box)
+    // The last computed map (surfmapCompute publishes it atomically; the
+    // window re-uploads the texture on surfmap_rev changes).
+    std::vector<unsigned char> surfmap_px;  // RGBA8, w*h
+    int surfmap_w = 0;
+    int surfmap_h = 0;
+    std::string surfmap_body_name;
+    double surfmap_computed_at = -1.0;  // sim seconds of the last compute
+    bool surfmap_valid = false;
+    int surfmap_rev = 0;
 
     // --- control transitions (events + the SHIPS window + selftest) --------
     // World (ship-frame) position of a focus target, to point the orbit

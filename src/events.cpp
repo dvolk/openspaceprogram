@@ -275,6 +275,12 @@ void poll_events(Game &g) {
                     g.porkchop_compute_requested = true;
                 }
             }
+            if(ev.key.keysym.sym == SDLK_m) {
+                // Compute the surface map (one-shot, same pattern as P).
+                if(!ev.key.repeat) {
+                    g.surfmap_compute_requested = true;
+                }
+            }
             if(ev.key.keysym.sym == SDLK_F11) {
                 if(g.poly_mode == false) {
                     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);

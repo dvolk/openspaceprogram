@@ -74,14 +74,17 @@ Texture *load_texture(const char *filename, bool mipmap) {
     return ret;
 }
 
-Texture *make_texture_r8(int w, int h, const unsigned char *rgba) {
+Texture *make_texture_r8(int w, int h, const unsigned char *rgba,
+                         bool linear) {
     Texture *ret = new Texture;
     glGenTextures(1, &ret->id);
     glBindTexture(GL_TEXTURE_2D, ret->id);
     // NEAREST: a heatmap is discrete cells; LINEAR would smear them into a
-    // fake smooth gradient when the image is upscaled.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // fake smooth gradient when the image is upscaled. linear=true is for
+    // smooth content (the surface map) where the opposite is wanted.
+    const GLint filt = linear ? GL_LINEAR : GL_NEAREST;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0,

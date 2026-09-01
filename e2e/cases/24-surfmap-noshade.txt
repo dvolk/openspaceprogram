@@ -1,0 +1,16 @@
+# Surface Map with the terminator OFF (--surfmap-noshade): the stored
+# pixels are the raw albedo, so the shaded means equal the albedo means
+# exactly (the shade factor is 1.0, and 1.0 * x == x, so the two sums are
+# bit-identical) and the log reports shade=off.
+NAME surfmap-noshade
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --timeout 15 --surfmap-log --surfmap-n 128 --surfmap-noshade
+ARGS --sim-press 3000,0,M
+EXPECT [surfmap]
+CHECK len(surfmap) >= 1
+CHECK last(surfmap)["body"] == "Kerbin"
+CHECK last(surfmap)["w"] == 128 and last(surfmap)["h"] == 64
+CHECK last(surfmap)["shade"] == "off"
+CHECK all(s == a for s, a in zip(last(surfmap)["shaded"], last(surfmap)["albedo"]))
+FORBID GL_
+FORBID error:

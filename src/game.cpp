@@ -71,6 +71,14 @@ void Game::setup_ui_windows() {
     o_porkchop = info_opts(ui::Slot::Center);
     o_porkchop.initial_size = ImVec2(520.0f, 660.0f);
     o_porkchop.default_open = false;
+    // Surface Map: the body's 2-D surface (equirectangular) with the ship's
+    // position + orbit overlaid and (optionally) the terminator baked in.
+    // 256 x 128 default map + the combo + readouts fits in 520 x 430.
+    o_surfmap = info_opts(ui::Slot::Center);
+    o_surfmap.initial_size = ImVec2(520.0f, 430.0f);
+    o_surfmap.default_open = false;
+    // --surfmap-noshade (CLI) mirrors the window's "Sun shading" box.
+    surfmap_shade = !args.surfmap_noshade;
     o_hud.fixed = true;
     o_hud.default_open = false;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
@@ -101,6 +109,7 @@ void Game::setup_ui_windows() {
     add_ui_window("Telemetry", "Telemetry", o_telemetry);
     add_ui_window("Transfer", "Transfer", o_transfer);
     add_ui_window("Porkchop", "Porkchop", o_porkchop);
+    add_ui_window("Surface Map", "Surface Map", o_surfmap);
     // The TAB toggle + the main-menu "Toggle windows" button call
     // toggle_windows(), which flips ui_visible and re-opens every registry
     // window (plus the HUD) from their defaults.

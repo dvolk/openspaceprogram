@@ -1,0 +1,21 @@
+# Surface Map: the body's surface as a 2-D equirectangular map, computed
+# on demand (M key). The ship starts orbiting Kerbin (rot-orbit), so the
+# default body is Kerbin. Check the map is built at the requested size,
+# the albedo means are in [0,1], and the terminator is actually baked in:
+# the stored (shaded) means are <= the albedo means per channel, and
+# strictly lower on at least one (a planet orbiting a star is never
+# fully lit -- half the map is night).
+NAME surfmap
+ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --timeout 15 --surfmap-log --surfmap-n 128
+ARGS --sim-press 3000,0,M
+EXPECT [surfmap]
+CHECK len(surfmap) >= 1
+CHECK last(surfmap)["body"] == "Kerbin"
+CHECK last(surfmap)["w"] == 128 and last(surfmap)["h"] == 64
+CHECK last(surfmap)["shade"] == "on"
+CHECK all(0.0 <= c <= 1.0 for c in last(surfmap)["albedo"])
+CHECK all(s <= a + 1e-9 for s, a in zip(last(surfmap)["shaded"], last(surfmap)["albedo"]))
+CHECK any(s < a for s, a in zip(last(surfmap)["shaded"], last(surfmap)["albedo"]))
+FORBID GL_
+FORBID error:

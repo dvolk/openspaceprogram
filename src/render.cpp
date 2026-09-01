@@ -22,6 +22,7 @@
 #include "physics.h"     // getRelAxis_ / debug_draw
 #include "shader.h"      // Shader::Bind / setUniform_*
 #include "skybox.h"      // Skybox::Draw
+#include "surfmap.h"     // surfmapCompute (the M key's surface map)
 #include "texture.h"     // the plume texture's id
 
 // GLM's gtx extensions (the attitude math) hard-error without this.
@@ -294,6 +295,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
     if(g.porkchop_compute_requested) {
         planner.porkchopCompute();
         g.porkchop_compute_requested = false;
+    }
+
+    // M key: compute the surface map (one-shot, same pattern as P).
+    if(g.surfmap_compute_requested) {
+        surfmapCompute(g);
+        g.surfmap_compute_requested = false;
     }
 
     glDisable(GL_DEPTH_TEST);

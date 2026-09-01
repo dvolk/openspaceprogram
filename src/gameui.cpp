@@ -23,7 +23,8 @@
 #include "siminput.h"    // fmt_time (the TRANSFER window)
 #include "orbitsample.h" // OrbitSampleCache + open-arc sampling (the map)
 #include "orbitmap.h"    // OrbitMap + contrastingColor (the map)
-#include "texture.h"     // make_texture_r8 (the Porkchop heatmap)
+#include "surfmap.h"     // the lon/lat <-> pixel math + surfmapCompute
+#include "texture.h"     // make_texture_r8 (the Porkchop heatmap + Surface Map)
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/implot/implot.h"   // the TELEMETRY plots
@@ -55,6 +56,15 @@ unsigned int ramp_color(float t) {
     return 0xff000000u | (unsigned int)b << 16 | (unsigned int)g << 8 | r;
 }
 } // namespace
+
+// Cached orbit samplings, one entry per orbiting object (keyed on its
+// pointer -- the ship for the ship's orbit, a body for a child's; a given
+// ship always has exactly one entry, overwritten on each sample). Reuse
+// is only trusted while the orbiting object is on a fixed Keplerian conic:
+// the ship passes its onRails flag, terrain bodies are always on theirs.
+// See OrbitSampleCache. File scope so the Orbital Map and the Surface Map
+// share one cache (the same orbit sampled once, drawn on both).
+static std::map<const void *, OrbitSampleCache> orbit_caches;
 
 // Format a sim-clock time (s) on the home body's calendar, the same
 // "Year ... Day d/N ... HH:MM:SS" the top bar (HUD) shows, so a planned
@@ -600,6 +610,252 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::TextDisabled("bar: dv in m/s (top = max)   gray: no solution");
     });
 
+    /* Surface Map: the chosen body's surface as an equirectangular 2-D
+       map (north up, lon 0 at the left edge), the ship's position +
+       orbit overlaid, and -- optionally -- the terminator (day/night)
+       baked in. The pixel buffer is computed on demand -- the button or
+       the M key -- and cached until the next compute (the same pattern
+       as the Porkchop), so the window is cheap to leave open. */
+    ui::Window("Surface Map", g.o_surfmap, [&] {
+        // Body to map: item 0 = "active ship's body" (surfmap_body =
+        // nullptr, so the map follows the ship's SOI); the rest are
+        // sys.bodies in order (the star maps itself, fully lit).
+        std::vector<std::string> sm_names;
+        sm_names.push_back(ship && ship->m_parent
+                              ? "active ship's body (" + ship->m_parent->name + ")"
+                              : "active ship's body");
+        int sm_sel = 0;
+        for(auto *b : sys.bodies) {
+            sm_names.push_back(b->name);
+            if(g.surfmap_body == b) { sm_sel = (int)sm_names.size() - 1; }
+        }
+        std::vector<const char *> sm_items;
+        for(auto &n : sm_names) { sm_items.push_back(n.c_str()); }
+        ImGui::Combo("Body", &sm_sel, sm_items.data(), (int)sm_items.size());
+        g.surfmap_body = (sm_sel > 0 && sm_sel <= (int)sys.bodies.size())
+            ? sys.bodies[sm_sel - 1]
+            : nullptr;
+
+        TerrainBody *sm_body = g.surfmap_body
+            ? g.surfmap_body
+            : (ship && ship->m_parent ? ship->m_parent : sys.home);
+        if(sm_body == nullptr) {
+            ImGui::Text("No body to map (no ship, no system bodies).");
+            return;
+        }
+
+        // Auto-compute when there is no map yet, or it was computed for a
+        // different body (the combo pick / the ship's SOI changed).
+        if(!g.surfmap_valid || g.surfmap_body_name != sm_body->name) {
+            surfmapCompute(g);
+        }
+
+        if(ImGui::Button("Refresh  (M)")) {
+            surfmapCompute(g);
+        }
+        bool shade = g.surfmap_shade;
+        if(ImGui::Checkbox("Sun shading", &shade)) {
+            g.surfmap_shade = shade;
+            surfmapCompute(g);   // re-bake with the new terminator
+        }
+        ImGui::TextDisabled("map %dx%d   (size: --surfmap-n)",
+                            g.surfmap_w, g.surfmap_h);
+
+        if(!g.surfmap_valid || g.surfmap_px.empty()) {
+            ImGui::Text("No map yet: press Refresh (or M).");
+            return;
+        }
+
+        // One texture, re-uploaded when the map is recomputed (or the
+        // size changes). LINEAR filtering: a smooth map upscaled over the
+        // window (unlike the Porkchop's discrete heatmap cells).
+        static Texture *sm_tex = nullptr;
+        static int sm_tex_w = 0, sm_tex_h = 0, sm_tex_rev = -1;
+        if(g.surfmap_rev != sm_tex_rev) {
+            if(!sm_tex || sm_tex_w != g.surfmap_w || sm_tex_h != g.surfmap_h) {
+                if(sm_tex) { delete sm_tex; }
+                sm_tex = make_texture_r8(g.surfmap_w, g.surfmap_h,
+                                        g.surfmap_px.data(), /*linear=*/true);
+                sm_tex_w = g.surfmap_w;
+                sm_tex_h = g.surfmap_h;
+            } else {
+                upload_texture_r8(sm_tex, g.surfmap_w, g.surfmap_h,
+                                  g.surfmap_px.data());
+            }
+            sm_tex_rev = g.surfmap_rev;
+        }
+
+        // Fixed display size (2:1); the map resolution only sets how many
+        // texels land on this area. The buffer's row 0 is the north pole,
+        // and GL row 0 is uv (0,0) = the drawn rect's top-left, so the
+        // default (0,0)-(1,1) uv draws it unflipped (the Porkchop heatmap
+        // flips, its row 0 being the axis minimum).
+        const float sm_img_w = 480.0f;
+        const float sm_img_h = 240.0f;
+        const ImVec2 sm_p0 = ImGui::GetCursorScreenPos();
+        ImGui::Image((ImTextureID)(std::intptr_t)sm_tex->id,
+                     ImVec2(sm_img_w, sm_img_h));
+
+        // The overlay (graticule, orbit, apsides, ship dot) on the map
+        // rect. (lon, lat) -> pixels: lon 0..2pi left -> right, lat +pi/2
+        // (north, buffer row 0) top -> -pi/2 bottom.
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        const ImVec4 sm_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        const ImU32 sm_ink = contrastingColor(sm_bg);
+        const ImU32 sm_ship =
+            ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
+        auto map_px = [&](double lon, double lat) {
+            const double u = lon / (2.0 * M_PI) * (double)sm_img_w;
+            const double v = (M_PI * 0.5 - lat) / M_PI * (double)sm_img_h;
+            return ImVec2(sm_p0.x + (float)u, sm_p0.y + (float)v);
+        };
+
+        // Graticule: lat -60..60 every 30 (equator brighter), lon every
+        // 45 -- faint, under the orbit line.
+        const ImU32 grat_faint =
+            ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.12f));
+        const ImU32 grat_eq =
+            ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.25f));
+        for(int deg = -60; deg <= 60; deg += 30) {
+            const ImVec2 a = map_px(0.0, (double)deg * M_PI / 180.0);
+            const ImVec2 b = map_px(2.0 * M_PI, (double)deg * M_PI / 180.0);
+            dl->AddLine(a, b, deg == 0 ? grat_eq : grat_faint, 1.0f);
+        }
+        for(int deg = 0; deg < 360; deg += 45) {
+            const double lon = (double)deg * M_PI / 180.0;
+            const ImVec2 a = map_px(lon, M_PI * 0.5);
+            const ImVec2 b = map_px(lon, -M_PI * 0.5);
+            dl->AddLine(a, b, grat_faint, 1.0f);
+        }
+
+        // The ship's orbit around the mapped body -- only when the ship is
+        // orbiting it (a conic about a different body has no meaning here;
+        // the caption below notes it).
+        if(ship && sm_body == ship->m_parent && g.view.mu > 0.0) {
+            const double &mu = g.view.mu;
+            const glm::dvec3 &orbit_pos = g.view.orbit_pos;
+            const glm::dvec3 &orbit_vel = g.view.orbit_vel;
+            const int N = 128;
+            const bool closed = (o.ecc < 1.0);
+            std::vector<glm::dvec3> pts;
+            if(closed) {
+                // Per-ship cache (shared with the Orbital Map), trusted
+                // only while the ship coasts on its Keplerian conic.
+                pts = orbit_caches[(const void *)ship].sample(
+                    orbit_pos, orbit_vel, mu, N, ship->onRails);
+            } else {
+                // Open arc: the map spans the whole body, so cap the arc
+                // a couple of ship radii beyond the current radius.
+                const double r_cap =
+                    std::max(4.0 * o.periapsis, o.distance) * 2.0;
+                pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N,
+                                           r_cap);
+            }
+            if(!pts.empty()) {
+                // inertial (the parent's non-rotating frame, where the
+                // conic lives) -> the mapped body's rotating frame (where
+                // the map's pixel directions live).
+                Frame *inertial = ship->frame->getNonRotFrame();
+                Frame *rot = sm_body->frame->getRotFrame();
+                const glm::dmat3 O = inertial->GetOrientRelTo(rot);
+                const glm::dvec3 P = inertial->GetPositionRelTo(rot);
+                // Point -> (lon, lat, pixel). out = false if degenerate.
+                auto to_px = [&](const glm::dvec3 &p, ImVec2 &px) -> bool {
+                    const glm::dvec3 pr = O * (p - P);
+                    const double l = glm::length(pr);
+                    if(l < 1e-9) { return false; }
+                    double lon, lat;
+                    surfmapLonLat(pr / l, lon, lat);
+                    px = map_px(lon, lat);
+                    return true;
+                };
+                // The polyline, broken at the antimeridian (the map's
+                // left and right edges are the SAME meridian; surfmapWraps
+                // detects the >half-turn jump between consecutive lons).
+                double prev_lon = -1.0e300;
+                std::vector<ImVec2> seg;
+                for(size_t i = 0; i < pts.size(); i++) {
+                    const glm::dvec3 pr = O * (pts[i] - P);
+                    const double l = glm::length(pr);
+                    if(l < 1e-9) { continue; }
+                    double lon, lat;
+                    surfmapLonLat(pr / l, lon, lat);
+                    if(prev_lon > -1.0e299 && surfmapWraps(prev_lon, lon)) {
+                        if(seg.size() >= 2) {
+                            dl->AddPolyline(seg.data(), (int)seg.size(),
+                                            sm_ship, 1.0f);
+                        }
+                        seg.clear();
+                    }
+                    seg.push_back(map_px(lon, lat));
+                    prev_lon = lon;
+                }
+                if(seg.size() >= 2) {
+                    dl->AddPolyline(seg.data(), (int)seg.size(),
+                                    sm_ship, 1.0f);
+                }
+                // Apsides (closed orbit, non-circular): propagate to each
+                // (exact, same as the Orbital Map) and drop a dot.
+                if(closed && o.ecc > 1e-3) {
+                    glm::dvec3 ap_p, tmp;
+                    ImVec2 apx;
+                    if(o.time_to_peri > 0.0) {
+                        propagateKepler(orbit_pos, orbit_vel, mu,
+                                       o.time_to_peri, ap_p, tmp);
+                        if(to_px(ap_p, apx)) {
+                            dl->AddCircleFilled(apx, 4.0f, sm_ship);
+                        }
+                    }
+                    if(o.time_to_apo > 0.0) {
+                        propagateKepler(orbit_pos, orbit_vel, mu,
+                                       o.time_to_apo, ap_p, tmp);
+                        if(to_px(ap_p, apx)) {
+                            dl->AddCircleFilled(apx, 4.0f, sm_ship);
+                        }
+                    }
+                }
+            }
+        }
+
+        // The ship's position: a bright dot (you are here) with a green
+        // ring, the same mark as the Orbital Map. The direction from the
+        // mapped body's center is always a valid (lon, lat), so it always
+        // lands in the rect (even when the ship is on another body).
+        if(ship && ship->frame) {
+            Frame *rot = sm_body->frame->getRotFrame();
+            const glm::dvec3 sp = ship->frame->GetPositionRelTo(rot);
+            const double sl = glm::length(sp);
+            if(sl > 1e-9) {
+                double lon, lat;
+                surfmapLonLat(sp / sl, lon, lat);
+                const ImVec2 p = map_px(lon, lat);
+                // A dot within ~10 px of one edge gets a twin on the
+                // other (so it isn't cut in half at the antimeridian).
+                const bool near_left  = (p.x - sm_p0.x) < 10.0f;
+                const bool near_right = (sm_p0.x + sm_img_w - p.x) < 10.0f;
+                dl->AddCircleFilled(p, 5.0f, sm_ink);
+                dl->AddCircle(p, 8.0f, sm_ship, 0, 1.5f);
+                if(near_left || near_right) {
+                    const ImVec2 p2(near_left ? p.x + sm_img_w : p.x - sm_img_w,
+                                    p.y);
+                    dl->AddCircleFilled(p2, 5.0f, sm_ink);
+                    dl->AddCircle(p2, 8.0f, sm_ship, 0, 1.5f);
+                }
+            }
+        }
+
+        if(ship && ship->m_parent && sm_body != ship->m_parent) {
+            ImGui::TextDisabled("ship is in %s's SOI -- its orbit (about "
+                                "%s) is not shown on %s's map",
+                                ship->m_parent->name.c_str(),
+                                ship->m_parent->name.c_str(),
+                                sm_body->name.c_str());
+        }
+        ImGui::TextDisabled("equirectangular: lon 0 at the left edge, "
+                            "north up   computed at t=%.1fs",
+                            g.surfmap_computed_at);
+    });
+
     ui::Window("Game Debug Info", g.o_debug, [&] {
         ImGui::Text("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
@@ -815,7 +1071,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     ui::Window("Controls", g.o_controls, [&] {
         ImGui::Text("Game");
         ImGui::Separator();
-        ImGui::Text("p - toggle wireframe mode");
+        ImGui::Text("p - compute porkchop plot (Porkchop window)");
+        ImGui::Text("m - refresh surface map (Surface Map window)");
+        ImGui::Text("f11 - toggle wireframe mode");
         ImGui::Text(", - decrease time acceleration");
         ImGui::Text(". - increase time acceleration");
         ImGui::Text("k - decrease camera speed");
@@ -932,13 +1190,8 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
     auto &xfer = planner.xfer;
-    // Cached orbit samplings, one entry per orbiting object (keyed on its
-    // pointer -- the ship for the ship's orbit, a body for a child's; a given
-    // ship always has exactly one entry, overwritten on each sample). Reuse
-    // is only trusted while the orbiting object is on a fixed Keplerian conic:
-    // the ship passes its onRails flag, terrain bodies are always on theirs.
-    // See OrbitSampleCache.
-    static std::map<const void *, OrbitSampleCache> orbit_caches;
+    // (orbit_caches, the per-orbit sampling cache, is file-scope --
+    // shared with the Surface Map's orbit overlay.)
 
     // Mode 2 strips the window chrome entirely (see map_mode): the
     // window is invisible but still hit-tested, so the map below

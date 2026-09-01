@@ -74,6 +74,11 @@ PORKCHOP_RE = re.compile(
     r"(\d+)x(\d+)\s+dv_min=([-\d.e+]+) m/s\s+dv_hi=([-\d.e+]+) m/s\s+"
     r"t_dep_min=([-\d.e+]+) s\s+tof_min=([-\d.e+]+) s"
 )
+SURFMAP_RE = re.compile(
+    r"\[surfmap\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+"
+    r"(\d+)x(\d+)\s+albedo=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+"
+    r"shaded=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+shade=(on|off)"
+)
 ATT_RE = re.compile(
     r"\[attlog\]\s+t=([\d.]+)s\s+"
     r"nose=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
@@ -177,6 +182,20 @@ def parse_porkchop(out):
     return rows
 
 
+def parse_surfmap(out):
+    rows = []
+    for m in SURFMAP_RE.finditer(out):
+        (t, body, w, h, ar, ag, ab, sr, sg, sb, shade) = m.groups()
+        rows.append({
+            "t": float(t), "body": body,
+            "w": int(w), "h": int(h),
+            "albedo": (float(ar), float(ag), float(ab)),
+            "shaded": (float(sr), float(sg), float(sb)),
+            "shade": shade,
+        })
+    return rows
+
+
 def parse_att(out):
     rows = []
     for m in ATT_RE.finditer(out):
@@ -267,13 +286,14 @@ def run_case(case):
     dbg = parse_dbg(out)
     xfer = parse_xfer(out)
     porkchop = parse_porkchop(out)
+    surfmap = parse_surfmap(out)
     att = parse_att(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
-        "porkchop": porkchop, "att": att,
+        "porkchop": porkchop, "surfmap": surfmap, "att": att,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
-        "max": max, "min": min, "float": float, "int": int,
+        "max": max, "min": min, "float": float, "int": int, "zip": zip,
         "re": re,
     }
     for expr in case["check"]:

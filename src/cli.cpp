@@ -157,6 +157,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "size knob, a Settings-window hook later (default 40, "
                    "~15 ms at 40 x 40)");
 
+    app.add_flag("--surfmap-log", args.surfmap_log,
+                 "Print the surface map's albedo + shaded RGB means to stdout "
+                 "whenever the map is computed (M key or the window's button)");
+    app.add_option("--surfmap-n", args.surfmap_n,
+                   "Surface map width in pixels (height = surfmap-n / 2); "
+                   "default 256 (a 256 x 128 sweep is tens of ms)");
+    app.add_flag("--surfmap-noshade", args.surfmap_noshade,
+                 "Skip the terminator (day/night shading) when computing the "
+                 "surface map (the window's 'Sun shading' box does the same "
+                 "at runtime)");
+
     app.add_flag("--spin-log", args.spin_log_enabled,
                  "Periodically print the ship's spin diagnostics (per-part "
                  "angular velocities, inter-part contact impulses, tidal "
