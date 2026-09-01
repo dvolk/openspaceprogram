@@ -260,7 +260,7 @@ void Mesh::InitMesh(const PosTexNorIndInterface& model, bool copyData)
     glBindVertexArray(0);
 }
 
-void Mesh::FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices)
+void Mesh::FromData(const PosNorColVertex* vertices, unsigned int numVertices, const unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices)
 {
     m_numInnerIndices = numInnerIndices;
 

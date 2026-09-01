@@ -75,7 +75,7 @@ void surfmapCompute(Game &g) {
     // palette, the radius) is set once in load_system and never written
     // after, and the bodies outlive every job (main.cpp joins g.jobs
     // before freeing them), so the off-thread READ is safe -- the same
-    // const data create_grid_mesh baked into the mesh.
+    // const data buildGridGeom (terragen.h) baked into the mesh.
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
     const double t_now = g.time;

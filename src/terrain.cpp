@@ -2,9 +2,10 @@
 // terrain free helpers (see terrain.h for the class/data declarations).
 #include "terrain.h"
 
-#include <glm/gtc/noise.hpp>
-
+#include <array>
 #include <cstdio>
+#include <memory>
+#include <vector>
 
 // GeoPatch holds a btRigidBody* and `delete`s it in ~GeoPatch, so the
 // complete bullet type is needed here. Defined double-precision to match
@@ -17,6 +18,7 @@
 
 
 GeoPatch::~GeoPatch() {
+    body->alive.erase(this);
     delete kids[0];
     delete kids[1];
     delete kids[2];
@@ -29,35 +31,75 @@ GeoPatch::~GeoPatch() {
     delete model;
 }
 
-void GeoPatch::Subdivide(void) {
-    // TOOO need debug levels?
-    // printf("%p subdiving (%d)!\n", this, depth);
+// The four children's corner quads: the edge midpoints (v01, v12, v23,
+// v30) + the shared center cn.
+static void subdivideCorners(const glm::vec3 &v0, const glm::vec3 &v1,
+                             const glm::vec3 &v2, const glm::vec3 &v3,
+                             glm::vec3 quad[4][4]) {
     const glm::vec3 v01 = glm::normalize(v0+v1);
     const glm::vec3 v12 = glm::normalize(v1+v2);
     const glm::vec3 v23 = glm::normalize(v2+v3);
     const glm::vec3 v30 = glm::normalize(v3+v0);
-    const glm::vec3 cn  = glm::normalize(centroid);
+    const glm::vec3 cn  = glm::normalize(v0+v1+v2+v3);
 
-    const glm::vec3 vecs[4][4] = {
-        {v0,  v01,   cn,  v30},
-        {v01,  v1,  v12,   cn},
-        {cn,  v12,   v2,  v23},
-        {v30,  cn,  v23,   v3}
-    };
-
-    for (int quadrant = 0; quadrant < 4; quadrant++) {
-        kids[quadrant]
-            = new GeoPatch(body,
-                           model->shader,
-                           depth + 1,
-                           vecs[quadrant][0],
-                           vecs[quadrant][1],
-                           vecs[quadrant][2],
-                           vecs[quadrant][3]);
-    }
+    quad[0][0] = v0;  quad[0][1] = v01; quad[0][2] = cn;  quad[0][3] = v30;
+    quad[1][0] = v01; quad[1][1] = v1;  quad[1][2] = v12; quad[1][3] = cn;
+    quad[2][0] = cn;  quad[2][1] = v12; quad[2][2] = v2;  quad[2][3] = v23;
+    quad[3][0] = v30; quad[3][1] = cn;  quad[3][2] = v23; quad[3][3] = v3;
 }
 
-GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3) {
+void GeoPatch::requestSubdivide(JobRunner &jobs) {
+    subdivide_in_flight = true;
+    TerrainBody *body = this->body;
+    Shader *shader = body->shader;
+    // Value snapshot of the terrain math (the worker never reads the
+    // main-thread-owned body), like the porkchop grid snapshots its
+    // state (see job.h).
+    const TerrainParams tp = body->params();
+    const glm::vec3 v0 = this->v0, v1 = this->v1, v2 = this->v2, v3 = this->v3;
+    const int child_depth = depth + 1;
+    GeoPatch *parent = this;
+
+    jobs.post("Terrain", [body, shader, tp, v0, v1, v2, v3, child_depth, parent]()
+              -> std::function<void()> {
+        // Worker thread: pure math (terragen.h). No game state, GL or
+        // imgui here. The result is handed to the main thread through
+        // the returned continuation; the shared_ptr lets it outlive this
+        // body (a C++11-safe handoff, like the surfmap's pixel buffer).
+        glm::vec3 quad[4][4];
+        subdivideCorners(v0, v1, v2, v3, quad);
+        std::shared_ptr<std::array<GridGeom, 4> > geoms =
+            std::make_shared<std::array<GridGeom, 4> >();
+        for(int q = 0; q < 4; q++) {
+            // has_skirt: children are always depth >= 2.
+            geoms->at(q) = buildGridGeom(tp, true, quad[q][0], quad[q][1],
+                                         quad[q][2], quad[q][3]);
+        }
+        // Main-thread continuation (JobRunner::poll): attach the children
+        // (GL upload + collision) -- or discard the grids.
+        return [body, shader, child_depth, geoms, parent]() {
+            // The parent may be gone (a grandparent's collapse freed the
+            // subtree while the job was in flight) or no longer want
+            // children (a zoom-out cleared the flag on the collapse path)
+            // -- in either case drop the built grids.
+            if(!body->patchAlive(parent) || !parent->subdivide_in_flight) {
+                return;
+            }
+            glm::vec3 quad[4][4];
+            subdivideCorners(parent->v0, parent->v1, parent->v2,
+                             parent->v3, quad);
+            for(int q = 0; q < 4; q++) {
+                parent->kids[q] = new GeoPatch(body, shader, child_depth,
+                                               quad[q][0], quad[q][1],
+                                               quad[q][2], quad[q][3],
+                                               geoms->at(q));
+            }
+            parent->subdivide_in_flight = false;
+        };
+    });
+}
+
+GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, const GridGeom &geom) {
     model = new Model;
     kids[0] = NULL;
     kids[1] = NULL;
@@ -74,7 +116,17 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     // collision mesh; the old `>` was never true since depth never
     // exceeds max_depth, so terrain collision was silently never added.
     bool has_collision = depth >= max_depth;
-    Mesh *grid_mesh = body->create_grid_mesh(has_collision, depth > 1, v0, v1, v2, v3);
+    // GridGeom (pure math, terragen.h) -> Mesh (GL upload): main thread
+    // only, called from here (the startup path and the job continuation).
+    std::vector<PosNorColVertex> pv(geom.verts.size());
+    for(size_t i = 0; i < pv.size(); i++) {
+        pv[i] = PosNorColVertex(geom.verts[i].pos, geom.verts[i].normal,
+                                geom.verts[i].color);
+    }
+    Mesh *grid_mesh = new Mesh;
+    grid_mesh->FromData(pv.data(), (unsigned int)pv.size(),
+                        geom.indices.data(), (unsigned int)geom.indices.size(),
+                        has_collision, geom.num_inner);
     model->FromData(grid_mesh, shader, NULL);
     if(has_collision == true) {
         collision = addTerrainCollision(grid_mesh);
@@ -82,6 +134,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     } else {
         collision = NULL;
     }
+    body->alive.insert(this);
 }
 
 void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec, bool skirt_pass) {
@@ -121,7 +174,7 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
     }
 }
 
-void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px) {
+void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px, JobRunner &jobs) {
     const glm::dvec3 camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
     // Distance to this patch's OWN surface point: the height is sampled
     // at the patch direction (an earlier version sampled it at the camera
@@ -139,10 +192,12 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max
     const double fov_h = 2.0 * std::atan(std::tan(camera->fov * 0.5) * (double)camera->aspect);
     const double px_width = (width_m / dist) * ((double)camera->viewport_h / fov_h);
 
-    if(depth < max_depth and px_width > (double)max_patch_px) {
-        if(kids[0] == NULL) {
-            Subdivide();
-        }
+    // Subdivision is async: request it, keep drawing this (coarser) patch
+    // until the continuation attaches the children. While a job is in
+    // flight the flag suppresses re-posting; the continuation clears it.
+    if(depth < max_depth and px_width > (double)max_patch_px and
+       kids[0] == NULL and !subdivide_in_flight) {
+        requestSubdivide(jobs);
     }
     else if(px_width < (double)max_patch_px * 0.5) {
         delete kids[0];
@@ -153,122 +208,19 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max
         kids[1] = NULL;
         kids[2] = NULL;
         kids[3] = NULL;
+        // A job may still be in flight (its grids are about to land for a
+        // patch that no longer wants children): the flag check in the
+        // continuation makes it discard them. (If the worker THREW, no
+        // continuation ever runs and this is what also clears the flag.)
+        subdivide_in_flight = false;
     }
 
     if(kids[0] != NULL) {
-        kids[0]->Update(camera, transform, max_patch_px);
-        kids[1]->Update(camera, transform, max_patch_px);
-        kids[2]->Update(camera, transform, max_patch_px);
-        kids[3]->Update(camera, transform, max_patch_px);
+        kids[0]->Update(camera, transform, max_patch_px, jobs);
+        kids[1]->Update(camera, transform, max_patch_px, jobs);
+        kids[2]->Update(camera, transform, max_patch_px, jobs);
+        kids[3]->Update(camera, transform, max_patch_px, jobs);
     }
-}
-
-// TODO need doc
-glm::vec3 getSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
-                         const glm::vec3& v2, const glm::vec3& v3,
-                         const float x, const float y)
-{
-    return glm::normalize(v0 +
-                          x * (1.0f - y) * (v1 - v0) +
-                          x * y * (v2 - v0) +
-                          (1.0f - x) * y * (v3 - v0));
-}
-
-// TODO need doc
-float noise3d(const glm::vec3& p, int octaves, float persistence) {
-    float sum = 0;
-    float strength = 1.0;
-    float scale = 2.0;
-
-    for(int i = 0; i < octaves; i++) {
-        sum += strength * glm::simplex(p * scale);
-        scale *= 2.0;
-        strength *= persistence;
-    }
-
-    return sum;
-}
-
-#define NOISE_FUNC (((noise3d(sphere_p, 12, 0.60) * 2500)))
-
-float TerrainBody::GetTerrainHeight(const glm::vec3& sphere_p) const {
-    const Surface &s = surface;
-    if(s.bands) {
-        return radius;   // gas giant: smooth sphere
-    }
-    float noise = noise3d(sphere_p * s.frequency + s.seed_offset,
-                          s.octaves, s.persistence) * s.amplitude;
-
-    if(s.has_sea && noise < s.sea_level) {
-        noise = s.sea_level;
-    }
-
-    return radius + ScaleHeightNoise(noise);
-}
-
-float TerrainBody::GetTerrainHeightUnscaled(const glm::vec3& sphere_p) const {
-    const Surface &s = surface;
-    float noise = noise3d(sphere_p * s.frequency + s.seed_offset,
-                          s.octaves, s.persistence) * s.amplitude;
-
-    if(s.has_sea && noise < s.sea_level) {
-        noise = s.sea_level;
-    }
-
-    return radius + noise;
-}
-
-float TerrainBody::ScaleHeightNoise(float noise) const {
-    constexpr float ref_height = 3000.0; // guess
-
-    // rescale noise by altitude (sign-safe for fractional powers)
-    float sign = noise < 0 ? -1.0f : 1.0f;
-    float n = sign * noise;
-    n *= pow(n / ref_height, surface.power);
-    return sign * n;
-}
-
-glm::vec3 TerrainBody::SurfaceColor(const glm::vec3& p) const {
-    const Surface &s = surface;
-    if(s.bands) {
-        // gas giant: smooth sphere, color by latitude band
-        COLOUR cb = s.BandColor(p);
-        glm::vec3 color = glm::vec3(cb.r, cb.g, cb.b);
-        float brightness = (cb.r + cb.g + cb.b) / 6;
-        // lower contrast, increase brightness
-        color = float(0.5) * color + glm::vec3(brightness,
-                                               brightness,
-                                               brightness);
-        return color;
-    }
-
-    // set the color based on unscaled noise for better gradient
-    float height = GetTerrainHeightUnscaled(p);
-
-    // add some color noise
-    float color_noise = noise3d(p * radius + s.seed_offset, 1, 0.60) * 100;
-    float h = height + ((color_noise / 2) - color_noise);
-
-    COLOUR c;
-    if(s.palette.empty()) {
-        // no palette in the JSON: fall back to the type-based default
-        c = (*colour_func)(h, radius - 1, radius + 3000);
-    } else {
-        float t = (h - (radius + s.sea_level)) / s.max_height;
-        c = s.PaletteColor(t);
-    }
-
-    glm::vec3 color = glm::vec3(c.r, c.g, c.b);
-    float brightness = (c.r + c.g + c.b) / 6;
-    // lower contrast, increase brightness
-    color = float(0.5) * color + glm::vec3(brightness,
-                                           brightness,
-                                           brightness);
-
-    if(s.has_sea && height <= radius + s.sea_level) {
-        color = s.sea_color;
-    }
-    return color;
 }
 
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
@@ -334,204 +286,9 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
     return 1.0f;
 }
 
-COLOUR GetColourMoon(float v, float vmin, float vmax) {
-    return { 0.5, 0.5, 0.5 };
-}
-
-COLOUR GetColourSun(float v, float vmin, float vmax) {
-    return { 1.0, 1.0, 0.0 };
-}
-
-COLOUR GetColourEarth(float v, float vmin, float vmax)
-{
-    COLOUR c = {1.0,1.0,1.0}; // white
-    float dv;
-
-    if (v < vmin)
-        v = vmin;
-    if (v > vmax)
-        v = vmax;
-    dv = vmax - vmin;
-
-    const int factor = 3;
-
-    if (v < (vmin + 0.25 * dv)) {
-        c.r = 0;
-        c.g = factor * (v - vmin) / dv;
-    } else if (v < (vmin + 0.5 * dv)) {
-        c.r = 0;
-        c.b = 1 + factor * (vmin + 0.25 * dv - v) / dv;
-    } else if (v < (vmin + 0.75 * dv)) {
-        c.r = factor * (v - vmin - 0.5 * dv) / dv;
-        c.b = 0;
-    } else {
-        c.g = 1 + 2 * (vmin + 0.75 * dv - v) / dv;
-        c.b = 0;
-    }
-
-    return(c);
-}
-
-Mesh *TerrainBody::create_grid_mesh(bool has_collision, bool has_skirt, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4) {
-    Mesh *grid_mesh = new Mesh;
-    const int size = 25;
-    // The terrain grid is size x size; with a skirt it's (size+2)^2, one
-    // extra ring of "skirt" vertices around it to hide the cracks that
-    // open between neighbouring patches at different subdivision depths
-    // (their edge polylines sample the heightfield at different points).
-    // Each skirt vertex sits one grid cell OUTSIDE the patch boundary,
-    // dropped to the patch's lowest terrain radius nudged in by 5e-6
-    // (above float precision at any body size, below every point on all
-    // four edges). Normals/colors are copied from the adjacent edge
-    // vertex so the skirt shades identically to the terrain seam.
-    // Technique from Pioneer's GeoPatch; with backface culling on, the
-    // skirt only rasterises at the limb, exactly where the cracks show.
-    // Root patches (depth 1) get no skirt: at the ranges they're visible
-    // the float view-transform noise in fragment depth exceeds the tiny
-    // skirt depth margin (zipper artefacts), gaps can't open between the
-    // six equal-depth roots, and a root-vs-child T-junction is masked by
-    // the child's skirt flaring across the seam.
-    const int off = has_skirt ? 1 : 0;
-    const int edge = size + 2 * off;
-    const float frac = 1.0f / (size - 1);
-    const float skirt_scale = 0.999995f;
-
-    // sized for the skirted grid (edge == size+2); the skirtless root
-    // patches just use the first edge*edge of them
-    PosNorColVertex vertices[(size + 2) * (size + 2)];
-    unsigned int indices[6 * (size + 1) * (size + 1)];
-
-    float min_height = surface.bands ? radius : HUGE_VALF;
-
-    // inner grid at grid coords [off..off+size-1]^2
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
-            glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, i*frac, j*frac);
-
-            // The vertex color (noise, palette / band, sea, contrast):
-            // shared with the 2-D surface map (SurfaceColor) so the map
-            // matches the rendered surface.
-            const glm::vec3 color = SurfaceColor(sphere_p);
-
-            if (surface.bands) {
-                // gas giant: smooth sphere
-                vertices[(j + off) + edge * (i + off)] = PosNorColVertex(sphere_p * radius,
-                                                         sphere_p,
-                                                         color);
-                continue;
-            }
-
-            // set the color based on unscaled noise for better gradient
-            float height = GetTerrainHeightUnscaled(sphere_p);
-
-            // add back scaling
-            height = radius + ScaleHeightNoise(height - radius);
-
-            min_height = std::min(min_height, height);
-
-            glm::vec3 p = sphere_p * height;
-
-            vertices[(j + off) + edge * (i + off)] = PosNorColVertex(p,
-                                                 sphere_p,
-                                                 color);
-        }
-    }
-
-    // normals: finite differences over the whole inner grid, edge ring
-    // included. Stencils that reach past the patch sample the true
-    // heightfield one cell outside (it's analytic and shared, so neighbour
-    // patches compute matching seam normals and no line shows at the
-    // border). The skirt copies the edge normals; its dropped-down
-    // vertices never enter a stencil.
-    auto terrain_pos = [&](float u, float v) {
-        glm::vec3 d = getSpherePoint(p1, p2, p3, p4, u, v);
-        if (surface.bands) {
-            return d * radius;
-        }
-        float hgt = GetTerrainHeightUnscaled(d);
-        hgt = radius + ScaleHeightNoise(hgt - radius);
-        return d * hgt;
-    };
-    for (int i = off; i < off + size; i++) {
-        for (int j = off; j < off + size; j++) {
-            // x along j, y along i: same axes as the old interior-only
-            // pass, the cross product sign matters for lighting
-            glm::vec3 x1 = (j - 1 >= off) ? vertices[(j-1) + i*edge].pos
-                                          : terrain_pos((i - off) * frac, (j - 1 - off) * frac);
-            glm::vec3 x2 = (j + 1 < off + size) ? vertices[(j+1) + i*edge].pos
-                                                : terrain_pos((i - off) * frac, (j + 1 - off) * frac);
-            glm::vec3 y1 = (i - 1 >= off) ? vertices[j + (i-1)*edge].pos
-                                          : terrain_pos((i - 1 - off) * frac, (j - off) * frac);
-            glm::vec3 y2 = (i + 1 < off + size) ? vertices[j + (i+1)*edge].pos
-                                                : terrain_pos((i + 1 - off) * frac, (j - off) * frac);
-            glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
-            vertices[j + edge * i].normal = -n;
-        }
-    }
-
-    // skirt ring: flare one cell past the boundary, down to the patch's
-    // lowest radius; copies normal/color from the adjacent edge vertex
-    // (after the normal pass above, so it gets the final normals)
-    if (has_skirt) {
-        const float skirt_r = min_height * skirt_scale;
-        auto skirt_vertex = [&](int i, int j, float u, float v, int si, int sj) {
-            glm::vec3 sphere_p = getSpherePoint(p1, p2, p3, p4, u, v);
-            const PosNorColVertex &src = vertices[sj + edge * si];
-            vertices[j + edge * i] = PosNorColVertex(sphere_p * skirt_r,
-                                                     src.normal,
-                                                     src.color);
-        };
-        for (int j = off; j < off + size; j++) {
-            skirt_vertex(off - 1, j, -frac, (j - off)*frac, off, j);
-            skirt_vertex(off + size, j, 1.0f + frac, (j - off)*frac, off + size - 1, j);
-        }
-        for (int i = off; i < off + size; i++) {
-            skirt_vertex(i, off - 1, (i - off)*frac, -frac, i, off);
-            skirt_vertex(i, off + size, (i - off)*frac, 1.0f + frac, i, off + size - 1);
-        }
-        // corners: duplicate the neighbouring skirt vertex
-        vertices[(off - 1) + edge * (off - 1)] = vertices[off + edge * (off - 1)];
-        vertices[(off + size) + edge * (off - 1)] = vertices[(off + size - 1) + edge * (off - 1)];
-        vertices[(off - 1) + edge * (off + size)] = vertices[off + edge * (off + size)];
-        vertices[(off + size) + edge * (off + size)] = vertices[(off + size - 1) + edge * (off + size)];
-    }
-
-    int i = 0;
-    // inner terrain quads first, then the skirt-ring quads: DrawSkirt()
-    // renders only the tail, after the terrain has written depth
-    for (int y = off; y < off + size - 1; y++) {
-        for (int x = off; x < off + size - 1; x++) {
-            indices[i++] = (y + 1) * edge + x + 1;
-            indices[i++] = y * edge + x + 1;
-            indices[i++] = y * edge + x;
-
-            indices[i++] = (y + 1) * edge + x;
-            indices[i++] = (y + 1) * edge + x + 1;
-            indices[i++] = y * edge + x;
-        }
-    }
-    const int num_inner = has_skirt ? i : 0;
-    if (has_skirt) {
-        for (int y = 0; y < edge - 1; y++) {
-            for (int x = 0; x < edge - 1; x++) {
-                if (x >= off && x < off + size - 1 && y >= off && y < off + size - 1) {
-                    continue;
-                }
-                indices[i++] = (y + 1) * edge + x + 1;
-                indices[i++] = y * edge + x + 1;
-                indices[i++] = y * edge + x;
-
-                indices[i++] = (y + 1) * edge + x;
-                indices[i++] = (y + 1) * edge + x + 1;
-                indices[i++] = y * edge + x;
-            }
-        }
-    }
-
-    grid_mesh->FromData(vertices, edge * edge, indices, i, has_collision, num_inner);
-
-    return grid_mesh;
-}
+// (The pure terrain math -- noise, height/color functions, the color
+// palettes, and the grid builder that used to be create_grid_mesh -- now
+// lives in terragen.h.)
 
 // Smooth UV sphere for the atmosphere rim. No noise: it must be a clean
 // shell just above the terrain. Winding is outward = front (CCW seen from

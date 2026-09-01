@@ -1,113 +1,41 @@
 // terrain.h -- terrain data + geometry types.
 //
-//   COLOUR             rgb triplet (legacy name).
-//   PaletteStop        one stop on a body's land-color ramp.
-//   AtmosphereParams   per-body Fresnel limb-glow rim.
-//   Surface            per-body terrain + color params (the "surface" JSON
-//                      block); holds the palette + atmosphere.
 //   GeoPatch           one subdividable spherical patch (terrain LOD node).
-//   TerrainBody        a celestial body's terrain: 6 root patches, color
-//                      ramp, atmosphere shell, height/shadow queries.
+//   TerrainBody        a celestial body's terrain: 6 root patches,
+//                      atmosphere shell, height/shadow queries.
+//
+// The pure terrain math (per-body params, the height/color functions, the
+// grid builder) lives in terragen.h (glm only, so tests can pin it
+// without GL/Bullet). The GeoPatch ctor consumes its GridGeom on the main
+// thread, and the async subdivision job snapshots a TerrainParams for the
+// worker -- the same pure-work/publish split as the porkchop grid and the
+// surface map (job.h).
 
 #pragma once
 
-#include <cmath>
+#include <set>
 #include <string>
-#include <vector>
 
 #include <glm/glm.hpp>
 
+#include "terragen.h"
 #include "model.h"
 #include "mesh.h"
 #include "shader.h"
 #include "camera.h"
 #include "frame.h"
 #include "calendar.h"
+#include "job.h"
 
 class btRigidBody;
-
-typedef struct {
-    float r, g, b;
-} COLOUR;
-
-// One stop on a body's land-color ramp: elevation fraction t in [0,1]
-// (0 = sea level / lowest land, 1 = highest relief) and the color there.
-struct PaletteStop {
-    float t;
-    glm::vec3 color;
-};
-
-// Per-body atmosphere appearance (optional "surface.atmosphere" block).
-// v1 is a single Fresnel limb-glow shell drawn over the terrain; see
-// reports/atmosphere2026_08_25/atmosphere.md for the design + roadmap.
-struct AtmosphereParams {
-    bool enabled = false;
-    glm::vec3 color = glm::vec3(0.3f, 0.5f, 1.0f);  // rim tint (N2/O2 blue)
-    float thickness = 0.0f;   // [m] shell radius above radius + max_height
-    float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
-    float intensity = 1.0f;   // overall alpha scale
-};
-
-// Per-body terrain + color parameters (the optional "surface" JSON block).
-// Defaults reproduce the legacy hardcoded behavior.
-struct Surface {
-    float amplitude = 2500.0f;   // [m] peak noise height
-    int octaves = 12;            // simplex octaves
-    float persistence = 0.6f;    // octave falloff
-    float frequency = 1.0f;      // noise-domain scale
-    int power = 3;               // height-distribution exponent
-    bool has_sea = false;
-    float sea_level = 0.0f;      // [m] above base radius
-    glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
-    std::vector<PaletteStop> palette;  // empty => type-based default palette
-    float max_height = 1.0f;     // [m] scaled relief above sea level (computed)
-    glm::vec3 seed_offset = glm::vec3(0.0f);
-    bool bands = false;          // gas giant: smooth sphere, latitude bands
-    int band_count = 9;          // stripes pole to pole (odd => bright equator)
-    AtmosphereParams atmosphere; // optional rim; enabled => body has air
-
-    COLOUR PaletteColor(float t) const {
-        const std::vector<PaletteStop> &s = palette;
-        if (s.empty()) {
-            return { 1.0f, 1.0f, 1.0f };
-        }
-        if (t <= s.front().t) {
-            return { s.front().color.x, s.front().color.y, s.front().color.z };
-        }
-        if (t >= s.back().t) {
-            return { s.back().color.x, s.back().color.y, s.back().color.z };
-        }
-        for (size_t i = 1; i < s.size(); i++) {
-            if (t <= s[i].t) {
-                float f = (t - s[i-1].t) / (s[i].t - s[i-1].t);
-                glm::vec3 c = glm::mix(s[i-1].color, s[i].color, f);
-                return { c.x, c.y, c.z };
-            }
-        }
-        return { 1.0f, 1.0f, 1.0f };
-    }
-
-    // Gas-giant color at unit direction p: latitude runs through a triangle
-    // wave so each stripe is dark at its edges, light at its center, sampled
-    // through the palette (first stop = dark, last = light).
-    COLOUR BandColor(const glm::vec3& p) const {
-        float y = glm::clamp(p.y, -1.0f, 1.0f);
-        float u = 0.5f + 0.5f * y;           // 0 = south pole, 1 = north
-        float x = u * (float)band_count;
-        float v = 1.0f - std::fabs(2.0f * (x - std::floor(x)) - 1.0f);
-        return PaletteColor(v);
-    }
-};
 
 struct TerrainBody;
 
 struct GeoPatch {
     TerrainBody *body;
     Model *model;
-    GeoPatch *parent_geopatch;
     btRigidBody *collision;
     static const int max_depth = 14;
-    int quadrant;
 
     GeoPatch *kids[4];
 
@@ -116,16 +44,30 @@ struct GeoPatch {
 
     int depth;
 
-    GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3);
+    // A requestSubdivide job is in flight: the worker is building the four
+    // children's grids and the main-thread continuation will attach them
+    // (or discard them if the collapse path cleared the flag first).
+    bool subdivide_in_flight = false;
+
+    GeoPatch(TerrainBody *body, Shader *shader, int depth,
+             glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3,
+             const GridGeom &geom);
     ~GeoPatch();
 
-    void Subdivide(void);
     // skirt_pass=false draws the terrain (stamping stencil), true draws
     // only the skirt ring where the stencil says no terrain was drawn
     void Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec, bool skirt_pass);
     // max_patch_px: subdivide while the patch projects wider than this
-    // [screen px]; collapse below half (the hysteresis band)
-    void Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px);
+    // [screen px]; collapse below half (the hysteresis band). Subdivision
+    // is async (requestSubdivide): the parent keeps drawing until its
+    // children land, so there is never a hole.
+    void Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px, JobRunner &jobs);
+
+    // Post the async subdivision job (main thread). The worker builds the
+    // four children's GridGeoms (pure math, terragen.h); the main-thread
+    // continuation does the GL upload + Bullet collision and attaches the
+    // children.
+    void requestSubdivide(JobRunner &jobs);
 
     int CountChildren() {
         int ret = 1;
@@ -157,6 +99,24 @@ struct TerrainBody {
     glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec;
 
+    // Main-thread-only liveness registry (the GeoPatch ctor inserts, the
+    // dtor erases): an in-flight terrain job's continuation uses it to
+    // check its target patch still exists before touching it -- a
+    // grandparent's collapse can free the whole subtree while the job is
+    // still building the grids.
+    std::set<GeoPatch*> alive;
+    bool patchAlive(GeoPatch *p) const { return alive.count(p) > 0; }
+
+    // The body's terrain math as a value snapshot for the worker thread
+    // (the same const data the mesh bakes; set once in load_system).
+    TerrainParams params() const {
+        TerrainParams t;
+        t.surface = surface;
+        t.radius = radius;
+        t.colour_func = colour_func;
+        return t;
+    }
+
     ~TerrainBody() {
         for(int i = 0; i < 6; i++) { delete patches[i]; }
         delete atmosphere;
@@ -166,16 +126,27 @@ struct TerrainBody {
 
     COLOUR (*colour_func)(float v, float vmin, float vmax);
 
-    Mesh *create_grid_mesh(bool has_collision, bool has_skirt, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec3 p4);
-    Mesh *create_atmosphere_mesh(float radius); // defined below with the other mesh builders
-    float GetTerrainHeight(const glm::vec3& p) const;
-    float GetTerrainHeightUnscaled(const glm::vec3& p) const;
-    float ScaleHeightNoise(float noise) const;
+    // Thin delegates to the pure functions (terragen.h).
+    float GetTerrainHeight(const glm::vec3& p) const {
+        return terrainHeight(p, params());
+    }
+    float GetTerrainHeightUnscaled(const glm::vec3& p) const {
+        return terrainHeightUnscaled(p, params());
+    }
+    float ScaleHeightNoise(float noise) const {
+        return terrainScaleHeightNoise(noise, params());
+    }
     // The surface color at a unit direction in the body's rotating frame:
-    // the exact per-vertex color create_grid_mesh bakes into the terrain
-    // (noise, palette / band, sea, contrast), so the 2-D surface map
-    // (surfmap.cpp) matches the rendered surface pixel for pixel.
-    glm::vec3 SurfaceColor(const glm::vec3& p) const;
+    // the exact per-vertex color the grid bakes (noise, palette / band,
+    // sea, contrast), so the 2-D surface map (surfmap.cpp) matches the
+    // rendered surface pixel for pixel.
+    glm::vec3 SurfaceColor(const glm::vec3& p) const {
+        return terrainSurfaceColor(p, params());
+    }
+
+    // The atmosphere rim shell (defined in terrain.cpp with the other
+    // mesh builders).
+    Mesh *create_atmosphere_mesh(float radius);
 
     void Create(float radius, float mass) {
         this->radius = radius;
@@ -189,12 +160,16 @@ struct TerrainBody {
         const glm::vec3 p7 = glm::normalize(glm::vec3(-1,-1,-1));
         const glm::vec3 p8 = glm::normalize(glm::vec3( 1,-1,-1));
 
-        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4);
-        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8);
-        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5);
-        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6);
-        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7);
-        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5);
+        // The six root patches (depth 1) build synchronously at load time:
+        // before the main loop starts there is nothing else to draw, so
+        // blocking here is fine. Child patches are async (GeoPatch::
+        // requestSubdivide).
+        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, buildGridGeom(params(), false, p1, p2, p3, p4));
+        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, buildGridGeom(params(), false, p4, p3, p7, p8));
+        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, buildGridGeom(params(), false, p1, p4, p8, p5));
+        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, buildGridGeom(params(), false, p2, p1, p5, p6));
+        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, buildGridGeom(params(), false, p3, p2, p6, p7));
+        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, buildGridGeom(params(), false, p8, p7, p6, p5));
     }
 
     // Build the atmosphere rim shell on demand. It sits just above the
@@ -298,9 +273,9 @@ struct TerrainBody {
         glDisable(GL_STENCIL_TEST);
     }
 
-    void Update(const Camera* camera, int max_patch_px) {
+    void Update(const Camera* camera, int max_patch_px, JobRunner &jobs) {
         for(auto&& patch : patches) {
-            patch->Update(camera, transform, max_patch_px);
+            patch->Update(camera, transform, max_patch_px, jobs);
         }
     }
 
@@ -312,12 +287,6 @@ struct TerrainBody {
         return ret;
     }
 };
-
-// Elevation palette samplers, one per body type (assigned to
-// TerrainBody::colour_func by load_system()).
-COLOUR GetColourMoon(float v, float vmin, float vmax);
-COLOUR GetColourSun(float v, float vmin, float vmax);
-COLOUR GetColourEarth(float v, float vmin, float vmax);
 
 // Per-part terrain shadow factor: 1.0 = lit, <1.0 = the planet's terrain
 // occludes the line to the sun.

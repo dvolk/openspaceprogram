@@ -73,7 +73,7 @@ public:
     void FromFile(const std::string& fileName, bool copyData);
     // numInnerIndices: when nonzero, the first numInnerIndices indices are
     // the terrain and the tail is a skirt; DrawSkirt() renders the tail.
-    void FromData(PosNorColVertex* vertices, unsigned int numVertices, unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices = 0);
+    void FromData(const PosNorColVertex* vertices, unsigned int numVertices, const unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices = 0);
 
     void InitMesh(const PosInterface& model);
     void InitMesh(const PosNorIndColInterface& model, bool copyData);

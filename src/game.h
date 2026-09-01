@@ -131,11 +131,12 @@ struct Game {
 
     // --- background jobs (job.h) --------------------------------------------
     // Long computations run off the main thread so the frame stays
-    // responsive: the porkchop grid and the surface map now, and terrain
-    // gen later (the same pattern). The main loop calls jobs.poll() once per
-    // frame, which runs the finished jobs' main-thread continuations (which
-    // publish the result into game state). Each job's own window shows its
-    // "working on it" state (e.g. the Porkchop's "sweeping ..."), so there
+    // responsive: the porkchop grid, the surface map, and terrain patch
+    // subdivision (GeoPatch::requestSubdivide). The main loop calls
+    // jobs.poll() once per frame, which runs the finished jobs'
+    // main-thread continuations (which publish the result into game
+    // state). Each job's own window shows its "working on it" state
+    // (e.g. the Porkchop's "sweeping ..."), so there
     // is no global job label here.
     JobRunner jobs;
 

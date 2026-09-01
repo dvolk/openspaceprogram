@@ -143,7 +143,10 @@ void draw3d(Game &g, TransferPlanner &planner) {
     }
 
     for(auto&& planet : planets) {
-        planet->Update(camera, g.args.terrain_px);
+        // The terrain LOD may post async subdivision jobs (g.jobs); their
+        // continuations run in the main loop's jobs.poll() BEFORE this
+        // pass draws, so new children are attached before the render.
+        planet->Update(camera, g.args.terrain_px, g.jobs);
         if(g.world_drawing == true) {
             planet->Draw(camera, sun, ship->frame);
         }

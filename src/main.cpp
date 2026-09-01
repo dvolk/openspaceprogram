@@ -593,8 +593,8 @@ int main(int argc, char **argv)
         // game's clock and marks the frame for a redraw.
         tick(game);
 
-        // Background jobs (the porkchop grid and the surface map now;
-        // terrain gen later): run the finished jobs' main-thread
+        // Background jobs (the porkchop grid, the surface map, and
+        // terrain patch subdivision): run the finished jobs' main-thread
         // continuations, which publish their results into game state.
         // Once per frame, BEFORE the UI reads the state those
         // continuations wrote. (Per-job "working on it"
