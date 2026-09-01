@@ -6,7 +6,8 @@
 //
 // The map is EQUIRECTANGULAR over the body's ROTATING frame -- the frame
 // the terrain height + color functions (TerrainBody::SurfaceColor,
-// GetTerrainHeight) live in:
+// GetTerrainHeight) live in, and the frame the HUD's lon/lat (render.cpp
+// surf_pos) and the ship's dot (sub-satellite point) use:
 //
 //   column i (0..w-1):  lon = 2 pi i / w, measured from +Z toward +X
 //       (the game's own convention: render.cpp does

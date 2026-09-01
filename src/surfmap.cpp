@@ -2,13 +2,16 @@
 // math is surfmap.h, pure and tested; this part needs the game: the
 // body's terrain colors, the sun's position, the sim clock).
 //
-// One pixel per (lon, lat) of the equirectangular grid: the body's
-// analytic surface color at that direction (TerrainBody::SurfaceColor,
-// the SAME function the terrain mesh bakes, so the map matches the
-// rendered surface), optionally multiplied by the terminator at the
-// compute instant (the sun's direction in the body's rotating frame).
-// The sweep is one-shot (M key / the window's button), like the porkchop
-// grid: a 256 x 128 map is ~33k simplex samples, tens of ms.
+// One pixel per (lon, lat) of the equirectangular grid over the body's
+// ROTATING frame (the surface's own frame): the body's analytic surface
+// color at that direction (TerrainBody::SurfaceColor, the SAME function
+// the terrain mesh bakes, so the map matches the rendered surface),
+// optionally multiplied by the terminator at the compute instant (the
+// sun's direction in the body's rotating frame). The map is the surface,
+// fixed; gameui.cpp draws the ship's dot (sub-satellite point) and orbit
+// (ground track) on it in this same frame. The sweep is one-shot (M key
+// / the window's button), like the porkchop grid: a 256 x 128 map is ~33k
+// simplex samples, tens of ms.
 
 #include "surfmap.h"
 
@@ -24,7 +27,8 @@ namespace {
 // map's pixel directions live in). False when there is no terminator --
 // the mapped body IS the star (it maps itself, fully lit) or the system
 // has no sun -- in which case the caller skips the shading.
-bool sunDirRot(const TerrainBody *body, const TerrainBody *sun, glm::dvec3 &dir) {
+bool sunDirRot(const TerrainBody *body, const TerrainBody *sun,
+               glm::dvec3 &dir) {
     if(sun == nullptr || body == sun) {
         return false;
     }

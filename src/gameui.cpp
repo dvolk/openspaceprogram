@@ -752,16 +752,23 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                                            r_cap);
             }
             if(!pts.empty()) {
-                // inertial (the parent's non-rotating frame, where the
-                // conic lives) -> the mapped body's rotating frame (where
-                // the map's pixel directions live).
+                // The points live in the ship's non-rotating frame (the
+                // mapped body's inertial frame, sm_body == m_parent above);
+                // the map's pixel directions live in the body's ROTATING
+                // frame (the surface's own frame). Rigid-transform each
+                // point into that frame -- the orbit's GROUND TRACK over
+                // the surface. An orbit inclined to the spin axis (Kerbin's
+                // is tilted ~23 deg) precesses as the planet spins; that
+                // sweep is the ship's true path over the rotating surface,
+                // which is what a surface map for landing shows.
                 Frame *inertial = ship->frame->getNonRotFrame();
                 Frame *rot = sm_body->frame->getRotFrame();
                 const glm::dmat3 O = inertial->GetOrientRelTo(rot);
                 const glm::dvec3 P = inertial->GetPositionRelTo(rot);
-                // Point -> (lon, lat, pixel). out = false if degenerate.
+                // Point (inertial frame) -> (lon, lat, pixel). out = false
+                // if degenerate.
                 auto to_px = [&](const glm::dvec3 &p, ImVec2 &px) -> bool {
-                    const glm::dvec3 pr = O * (p - P);
+                    const glm::dvec3 pr = O * p + P;
                     const double l = glm::length(pr);
                     if(l < 1e-9) { return false; }
                     double lon, lat;
@@ -775,7 +782,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 double prev_lon = -1.0e300;
                 std::vector<ImVec2> seg;
                 for(size_t i = 0; i < pts.size(); i++) {
-                    const glm::dvec3 pr = O * (pts[i] - P);
+                    const glm::dvec3 pr = O * pts[i] + P;
                     const double l = glm::length(pr);
                     if(l < 1e-9) { continue; }
                     double lon, lat;
@@ -818,14 +825,18 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
 
         // The ship's position: a bright dot (you are here) with a green
-        // ring, the same mark as the Orbital Map. The direction from the
-        // mapped body's center is always a valid (lon, lat), so it always
-        // lands in the rect (even when the ship is on another body).
-        // The ship's COM (in its own frame) rigidly transformed into the
-        // mapped body's rotating frame -- NOT ship->frame's origin: two
-        // frames of the same body share an origin, so the origin offset
-        // is 0 and the dot would vanish exactly on the ship's own body.
-        if(ship && ship->frame) {
+        // ring, the same mark as the Orbital Map. Only on the ship's own
+        // body -- on another body the ship is far away, and a dot at its
+        // bearing would read as a surface position it isn't (the caption
+        // below notes the SOI). The dot is the SUB-SATELLITE point: the
+        // ship's COM rigidly transformed into the body's ROTATING frame
+        // (the surface's frame) -- the same (lon, lat) the HUD reports
+        // from render.cpp's surf_pos, so it stays glued to "what surface
+        // I'm over" as the planet spins, right on the ground track. NOT
+        // ship->frame's origin: two frames of the same body share an
+        // origin, so the origin offset is 0 and the dot would vanish
+        // exactly on the ship's own body.
+        if(ship && sm_body == ship->m_parent) {
             Frame *rot = sm_body->frame->getRotFrame();
             const glm::dvec3 com = ship->get_center_of_mass();
             const glm::dvec3 sp = ship->frame->GetOrientRelTo(rot) * com
@@ -835,10 +846,18 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 double lon, lat;
                 surfmapLonLat(sp / sl, lon, lat);
                 const ImVec2 p = map_px(lon, lat);
-                // A dot within ~10 px of one edge gets a twin on the
-                // other (so it isn't cut in half at the antimeridian).
-                const bool near_left  = (p.x - sm_p0.x) < 10.0f;
-                const bool near_right = (sm_p0.x + sm_img_w - p.x) < 10.0f;
+                // A dot crossing the antimeridian (within the ring
+                // radius of an edge) gets a twin on the other, so the two
+                // halves complement instead of both dots showing in full.
+                // Clip to the map image so neither spills into the window
+                // margin: what's visible is exactly the part of one circle
+                // inside the map, split across the two edges.
+                const bool near_left  = (p.x - sm_p0.x) < 8.0f;
+                const bool near_right = (sm_p0.x + sm_img_w - p.x) < 8.0f;
+                dl->PushClipRect(sm_p0,
+                                 ImVec2(sm_p0.x + sm_img_w,
+                                        sm_p0.y + sm_img_h),
+                                 true);
                 dl->AddCircleFilled(p, 5.0f, sm_ink);
                 dl->AddCircle(p, 8.0f, sm_ship, 0, 1.5f);
                 if(near_left || near_right) {
@@ -847,6 +866,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                     dl->AddCircleFilled(p2, 5.0f, sm_ink);
                     dl->AddCircle(p2, 8.0f, sm_ship, 0, 1.5f);
                 }
+                dl->PopClipRect();
             }
         }
 

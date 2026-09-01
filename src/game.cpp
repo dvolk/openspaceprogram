@@ -97,6 +97,8 @@ void Game::setup_ui_windows() {
     add_ui_window("Orbital", "Orbit Info", o_orbit);
     add_ui_window("Orbital Map", "Orbit Map", o_map);
     add_ui_window("Surface", "Surface Info", o_surface);
+    // Surface Map sits under Surface Info, mirroring Orbit Info -> Orbit Map.
+    add_ui_window("Surface Map", "Surface Map", o_surfmap);
     add_ui_window("Vessel Info", "Vessel Info", o_vessel);
     add_ui_window("Ship Parts", "Vessel Parts", o_parts);
     // Registered regardless of fleet size: the window (ship list + spawn)
@@ -109,7 +111,6 @@ void Game::setup_ui_windows() {
     add_ui_window("Telemetry", "Telemetry", o_telemetry);
     add_ui_window("Transfer", "Transfer", o_transfer);
     add_ui_window("Porkchop", "Porkchop", o_porkchop);
-    add_ui_window("Surface Map", "Surface Map", o_surfmap);
     // The TAB toggle + the main-menu "Toggle windows" button call
     // toggle_windows(), which flips ui_visible and re-opens every registry
     // window (plus the HUD) from their defaults.
