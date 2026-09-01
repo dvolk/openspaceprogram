@@ -1126,31 +1126,67 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
             map.drawRing(dl, center, soi_m, soi_col, 1.0f);
         };
     
-        // The orbits of the bodies orbiting the focus (the ship's
-        // parent) -- moons around a planet, planets around the star --
-        // in the same view/scale/plane. Each child's state is taken in
-        // the focus's inertial frame; its ellipse is sampled through
-        // the same cache as the ship's orbit (a child never burns, so
-        // its points are propagated once). Drawn first, so the ship's
-        // orbit sits on top.
+        // Every body's orbit (around its own parent) -- planets around the
+        // star, moons around their planets -- projected into the focus's
+        // frame, not just the focus's children. Each body's ellipse is
+        // sampled in its PARENT's inertial frame (where the Kepler conic is
+        // defined and its elements are constant while coasting -- the cache
+        // is keyed on them, so a coasting body propagates once) and then
+        // rotated/translated into the focus's frame at draw time (the parent
+        // moves relative to the focus, so that transform is per-frame). The
+        // star (no parent) and orbits whose parent SoI is under 10 px are
+        // skipped (LOD -- their moons would be an unresolvable smudge).
+        // Drawn before the ship's orbit, so the ship sits on top.
         for(auto *b : planets) {
-            if(!(b->frame && b->frame->parent == focus->frame)) continue;
-            const double mu_c = b->frame->parent_mu;
-            if(mu_c <= 0.0) continue;
-            const glm::dvec3 cpos = b->frame->GetPositionRelTo(focus->frame);
-            const glm::dvec3 cvel = b->frame->GetVelocityRelTo(focus->frame);
-            const std::vector<glm::dvec3> &cpts =
-                orbit_caches[(const void *)b].sample(cpos, cvel, mu_c, N);
-            if(cpts.empty()) continue;
+            Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
+            const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
+            if(!parent || mu_c <= 0.0) continue;                // star / non-orbiting
+            if(parent->soi / (double)map_scale < 10.0) continue; // LOD: orbit < 10 px
+            const glm::dvec3 cpos_p = b->frame->GetPositionRelTo(parent); // parent's frame
+            const glm::dvec3 cvel_p = b->frame->GetVelocityRelTo(parent);
+            const std::vector<glm::dvec3> &cpts_p =
+                orbit_caches[(const void *)b].sample(cpos_p, cvel_p, mu_c, N);
+            if(cpts_p.empty()) continue;
+            const glm::dmat3 O = parent->GetOrientRelTo(focus->frame); // parent -> focus
+            const glm::dvec3 P = parent->GetPositionRelTo(focus->frame);
+            const glm::dvec3 cpos_f = b->frame->GetPositionRelTo(focus->frame); // body, focus frame
+            // Draw the orbit starting and ending at the body so the line passes
+            // exactly through its marker. The equal-mean-anomaly samples don't
+            // include the body's position, so the chord near it otherwise visibly
+            // misses the marker when zoomed in. The body lies on the orbit between
+            // two consecutive samples: find the nearest sample (k) and its CLOSER
+            // neighbour (k-1 or k+1) -- those two bracket the body -- then walk the
+            // samples from that bracket all the way around to k and prepend the
+            // body, so both chords touching the body are the short bracketing ones.
+            // (Walking forward from k unconditionally ends at the wrong neighbour
+            // when the body sits just past k, so the closing chord skips a sample
+            // and jumps across the orbit -- a faint out-of-order line that appears
+            // and disappears as the body crosses sample boundaries.)
+            const size_t n = cpts_p.size();
+            size_t k = 0;
+            double best_d = 1e300;
+            for(size_t i = 0; i < n; i++) {
+                const double d = glm::length(O * cpts_p[i] + P - cpos_f);
+                if(d < best_d) { best_d = d; k = i; }
+            }
+            const double d_km1 = glm::length(O * cpts_p[(k + n - 1) % n] + P - cpos_f);
+            const double d_kp1 = glm::length(O * cpts_p[(k + 1) % n] + P - cpos_f);
+            const size_t start = (d_kp1 < d_km1) ? (k + 1) % n : k;
+            std::vector<glm::dvec3> cpts;
+            cpts.reserve(n + 1);
+            cpts.push_back(cpos_f);
+            for(size_t j = 0; j < n; j++) {
+                cpts.push_back(O * cpts_p[(start + j) % n] + P);
+            }
             const bool selected = (b == sel_body);
             const ImU32 ccol = selected ? col_sel : col_child;
             map.drawOrbit(dl, cpts, ccol, selected ? 2.0f : 1.0f);
-            const ImVec2 cpx = map.px(cpos);
+            const ImVec2 cpx = map.px(cpos_f);
             dl->AddCircleFilled(cpx, selected ? 5.0f : 3.0f, ccol);
             if(selected) { dl->AddCircle(cpx, 8.0f, ccol, 0, 1.0f); }
             dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - 12.0f), ink,
                         b->name.c_str());
-            draw_soi(cpos, b->frame->soi);
+            draw_soi(cpos_f, b->frame->soi);
         }
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime the ship is inside.
