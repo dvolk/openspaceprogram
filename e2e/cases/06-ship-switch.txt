@@ -1,8 +1,8 @@
-# Ship switch: load the 5-ship fleet; the active ship starts as #1 (racer)
+# Ship switch: load the 7-ship fleet; the active ship starts as #1 (racer)
 # and one F6 advances to #2 (tanker). Verifies the fleet + F6 command path.
 NAME ship-switch
 ARGS --fleet res/fleet.json --time-accel 1 --timeout 8
 ARGS --sim-press 1500,50,F6
-EXPECT Active ship 2 of 5
+EXPECT Active ship 2 of 7
 FORBID GL_
 FORBID error:

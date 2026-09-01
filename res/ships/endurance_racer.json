@@ -1,0 +1,14 @@
+{
+  "name": "endurance_racer",
+  "controller": "capsule_1",
+  "hull_margin": 0,
+  "parts": [
+    { "part": "capsule", "id": "capsule_1" },
+    { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },
+    { "part": "fuel_tank", "id": "fuel_tank_1", "parent": "reaction_wheel_1" },
+    { "part": "engine", "id": "engine_1", "parent": "fuel_tank_1" },
+    { "part": "tank_r1h3", "id": "tank_r1h2_2", "attach": "side", "parent": "engine_1", "angle": 0, "stage": 1 },
+    { "part": "tank_r1h3", "id": "tank_r1h2_3", "attach": "side", "parent": "engine_1", "angle": 120, "stage": 1 },
+    { "part": "tank_r1h3", "id": "tank_r1h2_4", "attach": "side", "parent": "engine_1", "angle": 240, "stage": 1 }
+  ]
+}

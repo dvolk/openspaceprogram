@@ -37,7 +37,7 @@ static void write_file(const char *path, const std::string &content) {
 int main() {
     // --- the shipped sample -------------------------------------------------
     Fleet f = load_fleet("res/fleet.json");
-    CHECK(f.ships.size() == 5);
+    CHECK(f.ships.size() == 7);
 
     CHECK(f.ships[0].ship == "res/ships/racer.json");
     CHECK(f.ships[0].name == "racer");
@@ -63,6 +63,16 @@ int main() {
     CHECK(f.ships[4].name == "transporter");
     CHECK(f.ships[4].body.empty());
     CHECK(f.ships[4].scenario == "high-orbit");
+
+    CHECK(f.ships[5].ship == "res/ships/endurance_racer.json");
+    CHECK(f.ships[5].name == "endurance racer");
+    CHECK(f.ships[5].body.empty());
+    CHECK(f.ships[5].scenario == "pad");
+
+    CHECK(f.ships[6].ship == "res/ships/ranger.json");
+    CHECK(f.ships[6].name == "ranger");
+    CHECK(f.ships[6].body.empty());
+    CHECK(f.ships[6].scenario == "pad");
 
     // --- defaults -----------------------------------------------------------
     {
