@@ -1242,28 +1242,24 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Resources", g.o_resources, [&] {
-        // aggregate across the active ship's parts (any ship layout)
-        float h_cur = 0, h_cap = 0, l_cur = 0, l_cap = 0;
-        float z_cur = 0, z_cap = 0;
-        for(size_t i = 0; i < ship->partResources.size(); i++) {
-            h_cur += ship->partResources[i].current[(int)ResourceType::Hydrogen];
-            h_cap += ship->partResources[i].capacity[(int)ResourceType::Hydrogen];
-            l_cur += ship->partResources[i].current[(int)ResourceType::LOX];
-            l_cap += ship->partResources[i].capacity[(int)ResourceType::LOX];
-            z_cur += ship->partResources[i].current[(int)ResourceType::Hydrazine];
-            z_cap += ship->partResources[i].capacity[(int)ResourceType::Hydrazine];
-        }
-        const float hydrogen_frac = (h_cap > 0) ? h_cur / h_cap : 0.0f;
-        const float lox_frac = (l_cap > 0) ? l_cur / l_cap : 0.0f;
-        const float hydrazine_frac = (z_cap > 0) ? z_cur / z_cap : 0.0f;
+        // aggregate across the active ship's parts (any ship layout); a
+        // resource no tank carries (cap 0) reads as empty (0)
+        auto frac = [&](ResourceType r) {
+            float cur = 0, cap = 0;
+            for(size_t i = 0; i < ship->partResources.size(); i++) {
+                cur += ship->partResources[i].current[(int)r];
+                cap += ship->partResources[i].capacity[(int)r];
+            }
+            return (cap > 0) ? cur / cap : 0.0f;
+        };
 
-        ImGui::ProgressBar(hydrogen_frac, ImVec2(-1, 0), "Hydrogen");
-        ImGui::ProgressBar(lox_frac, ImVec2(-1, 0), "LOX");
-        ImGui::ProgressBar(hydrazine_frac, ImVec2(-1, 0), "Hydrazine");
-        ImGui::ProgressBar(0.45, ImVec2(-1, 0), "Electric charge");
-        ImGui::ProgressBar(0.75, ImVec2(-1, 0), "Oxygen");
-        ImGui::ProgressBar(0.83, ImVec2(-1, 0), "Water");
-        ImGui::ProgressBar(0.94, ImVec2(-1, 0), "Food");
+        ImGui::ProgressBar(frac(ResourceType::Hydrogen), ImVec2(-1, 0), "Hydrogen");
+        ImGui::ProgressBar(frac(ResourceType::LOX), ImVec2(-1, 0), "LOX");
+        ImGui::ProgressBar(frac(ResourceType::Hydrazine), ImVec2(-1, 0), "Hydrazine");
+        ImGui::ProgressBar(frac(ResourceType::EC), ImVec2(-1, 0), "Electric charge");
+        ImGui::ProgressBar(frac(ResourceType::Oxygen), ImVec2(-1, 0), "Oxygen");
+        ImGui::ProgressBar(frac(ResourceType::Water), ImVec2(-1, 0), "Water");
+        ImGui::ProgressBar(frac(ResourceType::Food), ImVec2(-1, 0), "Food");
     });
 }
 
