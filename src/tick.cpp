@@ -84,7 +84,9 @@ void tick(Game &g) {
                    isDown(SDL_SCANCODE_Q) || isDown(SDL_SCANCODE_E) ||
                    isDown(SDL_SCANCODE_I) || isDown(SDL_SCANCODE_X) ||
                    isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F) ||
-                   (g.ship->isEva() && isDown(SDL_SCANCODE_SPACE))) {
+                   (g.ship->isEva() && (isDown(SDL_SCANCODE_SPACE) ||
+                    isDown(SDL_SCANCODE_LSHIFT) ||
+                    isDown(SDL_SCANCODE_LCTRL)))) {
                     g.ship->leaveRails();
                     if(g.time_accel >= kRailsWarp) {
                         g.time_accel = 1;

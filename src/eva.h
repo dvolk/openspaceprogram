@@ -12,8 +12,9 @@
 // upright (camera-relative WASD projected onto the tangent plane, the
 // steering force applied at the feet so it translates instead of
 // toppling; space = jump), in free fall it flies RCS-style relative to
-// the camera (W/S along the view direction, A/D strafe, the speed cap
-// limiting the velocity RCS adds -- not the orbital speed), QE yaw
+// the camera (W/S along the view direction, A/D strafe, LShift/LCtrl
+// up/down, the speed cap limiting the velocity RCS adds -- not the
+// orbital speed), QE yaw
 // about the view axis, attitude slewed upright on screen facing the
 // camera. The pure geometry lives in evamath.h (headless-testable).
 //

@@ -76,6 +76,8 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
         if(isDown(SDL_SCANCODE_S)) { t -= fwd; }
         if(isDown(SDL_SCANCODE_D)) { t += sright; }
         if(isDown(SDL_SCANCODE_A)) { t -= sright; }
+        if(isDown(SDL_SCANCODE_LSHIFT)) { t += up; }
+        if(isDown(SDL_SCANCODE_LCTRL)) { t -= up; }
         const glm::dvec3 newDir = (glm::length2(t) > 1e-9)
             ? glm::normalize(t) : glm::dvec3(0.0);
         // The speed cap limits the velocity RCS ADDS, not the total (the
