@@ -43,9 +43,8 @@ public:
        sun:         the star (caller-owned; light source for ships + pads). */
     Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun);
     /* The ships + pads are owned by the bodies (terrain.h) and die with
-       them; this only frees the shared resources (the space-port model).
-       main() deletes the bodies after the last use, so the order is safe. */
-    ~Ships();
+       them; the part shader + star are borrowed. Nothing to free here. */
+    ~Ships() = default;
 
     Ships(const Ships &) = delete;
     Ships &operator=(const Ships &) = delete;
@@ -107,6 +106,4 @@ private:
     PartsCatalog part_catalog;
     Shader *partsshader;   // caller-owned
     TerrainBody *sun;      // caller-owned
-
-    Model *space_port_model; // shared by every pad; its own mesh+texture
 };

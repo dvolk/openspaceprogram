@@ -307,10 +307,10 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
 // same (body, pad site). Drawn like terrain (culls itself when the active
 // ship is not on the pad's body); the light source is the star.
 //
-// Owned by its body (TerrainBody::pads). The rigid Body is deliberately
-// NOT deleted (there is no dtor): every pad shares one space-port model
-// (Ships owns it) and ~Body would delete it -- the same intentional leak
-// the old fleet teardown had (the process exits right after).
+// Owned by its body (TerrainBody::pads). Each pad owns its own model
+// (like a ship part), so ~TerrainBody can free the rigid Body (it
+// unregisters from the Bullet world first, then ~Body frees the model +
+// rigid body) -- nothing to leak.
 // Draw is defined in terrain.cpp (it needs the complete Body type).
 class StaticBuilding {
 public:

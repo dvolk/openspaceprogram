@@ -24,10 +24,15 @@ TerrainBody::~TerrainBody() {
     // also unregisters their bodies from the still-live Bullet world).
     for(auto *s : ships) { delete s; }
     ships.clear();
-    // The pads next. Their rigid Body is deliberately not deleted (it
-    // shares the space-port model with the other pads -- see the class in
-    // terrain.h); the StaticBuilding itself is freed here.
-    for(auto *p : pads) { delete p; }
+    // The pads next. Each owns its own model (like a ship part), so the
+    // rigid Body is freed here: unregister it from the Bullet world first
+    // (the world would otherwise hold a dangling btBody), then ~Body frees
+    // its model + rigid body; the StaticBuilding struct is freed last.
+    for(auto *p : pads) {
+        RemoveBody(p->body);
+        delete p->body;
+        delete p;
+    }
     pads.clear();
     for(int i = 0; i < 6; i++) { delete patches[i]; }
     delete atmosphere;

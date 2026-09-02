@@ -2,9 +2,9 @@
 //
 // The ships themselves are owned by the bodies they sit in
 // (TerrainBody::ships) or, when aboard, by their ship (Vehicle::crew);
-// this file only builds them and places them there. The space-port model
-// is shared by every pad (one per body+site), so it is built once in the
-// Ships ctor and reused on demand.
+// this file only builds them and places them there. Each space pad gets
+// its own model (like a ship part), so a pad is torn down with its body --
+// no shared-model lifetime to manage.
 #include "ships.h"
 
 #include <cstdio>
@@ -34,23 +34,8 @@ std::vector<Vehicle *> collectVehicles(System &sys) {
 Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun)
     : part_catalog(load_parts_catalog(parts_file.c_str())),
       partsshader(partsshader),
-      sun(sun),
-      space_port_model(nullptr)
+      sun(sun)
 {
-    // The space-port model is shared by every pad, so it is built once here
-    // and reused on demand. Its mesh + texture are owned by the model
-    // (FromData); the shader is borrowed (shared with the ships).
-    Mesh *m = new Mesh;
-    m->FromFile("./res/space_port.obj", true);
-    Texture *t = load_texture("./res/space_port.png");
-    space_port_model = new Model;
-    space_port_model->FromData(m, partsshader, t);
-}
-
-Ships::~Ships() {
-    // The ships + pads are owned by the bodies (terrain.h), torn down with
-    // them (main deletes the bodies after the last ship use).
-    delete space_port_model;
 }
 
 void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double pad_height)
@@ -59,8 +44,17 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
         if(p->parent == hb && p->polar == polar) { return; }
     }
     const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
+    // Each pad owns its own model (a ship part would be built the same
+    // way): unique mesh + texture, the part shader shared. That means the
+    // pad's Body can be deleted freely in ~TerrainBody -- ~Body frees its
+    // own model + rigid body -- with nothing left to leak.
+    Mesh *m = new Mesh;
+    m->FromFile("./res/space_port.obj", true);
+    Texture *t = load_texture("./res/space_port.png");
+    Model *model = new Model;
+    model->FromData(m, partsshader, t);
     StaticBuilding *sp = new StaticBuilding;
-    sp->body = create_body(space_port_model, 0, 0, 0, 0, false);
+    sp->body = create_body(model, 0, 0, 0, 0, false);
     setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
     sp->parent = hb;
     sp->sun = sun;
