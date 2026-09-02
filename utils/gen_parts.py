@@ -50,6 +50,7 @@ MASS_DENSITY = {
     "reaction_wheel": 128.0,     # flywheel
     "adapter":        15.0,      # thin coupler ring, mostly air
     "nose_cap":       192.0,     # thin fairing
+    "kerbal":         160.0,     # one crew member (mesh by gen_kerbal.py)
 }
 
 # attitude authority (N m), scales with radius (leverage of the wheel/arm)
@@ -87,6 +88,7 @@ PARTS = [
     ("nose_cap",       "nose_cap",       "nose_cap.obj",                 "nose_cap.png"),
     ("nose_cap_r3h1.5","nose_cap",       "nose_cap_r3h1.5.obj",          "nose_cap.png"),
     ("nose_cap_r5h2.5","nose_cap",       "nose_cap_r5h2.5.obj",          "nose_cap.png"),
+    ("kerbal",         "kerbal",         "kerbal.obj",                   "kerbal.png"),
 ]
 
 

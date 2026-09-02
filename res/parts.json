@@ -316,6 +316,15 @@
       "mass": 12485.78,
       "radius": 5.0,
       "height": 2.5
+    },
+    {
+      "name": "kerbal",
+      "type": "kerbal",
+      "mesh": "kerbal.obj",
+      "texture": "kerbal.png",
+      "mass": 87.05,
+      "radius": 0.348,
+      "height": 1.7
     }
   ]
 }

@@ -196,6 +196,11 @@ test:
 	# asin(y) render.cpp uses), the shade range, the antimeridian wrap.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_surfmap.cpp -o test_surfmap
 	./test_surfmap
+	# EVA control-law geometry (src/evamath.h, header-only pure math): the
+	# Rodrigues rotation + axis-angle round-trip (incl. the 180-deg
+	# fallback), the camera/upright target bases, the screen-axis helpers.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_eva.cpp -o test_eva
+	./test_eva
 	# terrain core (src/terragen.h, header-only pure math): the height
 	# function (sea floor + altitude rescale), the surface color (sea,
 	# palette, gas-giant bands), and the grid builder (vertex/index

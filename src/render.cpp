@@ -78,6 +78,15 @@ void draw3d(Game &g, TransferPlanner &planner) {
         // (the camera rides the spin) -- same convention as the body
         // transforms below.
         if(g.focusTargets[g.focusBody].body == nullptr) {
+            if(ship->isEva()) {
+                // The kerbal slews to face the camera (src/eva.cpp), so
+                // chasing its attitude would be a feedback loop. Orbit in
+                // the surface frame instead: up = local vertical, the
+                // mouse orbits around the kerbal.
+                camera->ref = (ship->frame->isRotFrame())
+                    ? glm::dmat3(1.0)
+                    : glm::dmat3(ship->frame->getRotFrame()->orient);
+            } else {
             // The orbit camera builds its basis from ref as
             //   back (offset) = ref * x̂   (column 0)
             //   up   (screen) = ref * ẑ   (column 2)
@@ -92,6 +101,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
             camera->ref = glm::dmat3(getRelAxis_(ship->controller, 2),   // back = nose
                                      getRelAxis_(ship->controller, 0),   // right
                                      getRelAxis_(ship->controller, 1));  // up
+            }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
             camera->ref = (b == ship->m_parent && ship->frame->isRotFrame())

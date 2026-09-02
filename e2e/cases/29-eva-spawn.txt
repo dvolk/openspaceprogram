@@ -1,0 +1,10 @@
+# EVA spawn/switch: V from a pad ship spawns the kerbal beside it and
+# hands control over; the kerbal then walks (W) on the same pad floor.
+NAME eva-spawn
+ARGS --ship res/ships/racer.json --time-accel 1 --timeout 9 --eva-log --orbit-interval 0.3 --sim-press 1000,0,V,2500,2000,W --frame-cap 30
+EXPECT Spawned kerbal 'kerbal' beside 'racer'
+EXPECT Active ship 2 of 2: kerbal
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 5
+CHECK max((e["vel"][0]**2 + e["vel"][1]**2 + e["vel"][2]**2)**0.5 for e in eva) > 1.5

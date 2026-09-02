@@ -247,6 +247,12 @@ public:
         rebuildBehavior();
     }
 
+    /* True of the EVA kerbal (src/eva.h): control input, the camera and
+       the event dispatch branch on this. Everything else is inherited --
+       a kerbal is a one-part ship as far as frames, rails, gravity, the
+       fleet and the HUD are concerned. */
+    virtual bool isEva() const { return false; }
+
     /* (Re)build the per-thruster / per-wheel behavior vectors from partDefs.
        Safe to call again after separateStage() has shrunk the part set: it
        touches ONLY the m_* vectors -- never partResources (fuel is never
@@ -468,6 +474,14 @@ public:
             if(m_armedThrust[i] == 0.0f) { continue; }
             ApplyCentralForceForward(m_thrusters[i], (double)m_armedThrust[i]);
         }
+    }
+
+    /* The armed control forces, re-applied before EVERY substep (Bullet
+       clears forces per stepSimulation). Ships deliver thrust + rotation;
+       the EVA kerbal overrides with its walking/RCS laws (src/eva.h). */
+    virtual void applyControlForces(double h) {
+        applyThrustForce();
+        applyRotationForce(h);
     }
 
     // The armed rotation commands -- like thrust -- are re-applied before
@@ -784,9 +798,11 @@ public:
         return GetVelocity(controller);
     }
 
-private:
+protected:
     // Control implementation: applies forces/torques to the Bullet bodies
     // directly, so it is reachable only through Command() above.
+    // (protected, not private: the EVA kerbal (src/eva.h) reuses the
+    // rotation-model helpers below for its own attitude law.)
     void adjustThrottle(float delta) {
         thruster_util += delta;
         if(thruster_util > 1) { thruster_util = 1; }

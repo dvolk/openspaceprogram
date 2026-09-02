@@ -60,7 +60,7 @@ static glm::dmat3 testOrient() {
 int main() {
     // --- parts catalog ----------------------------------------------------
     PartsCatalog cat = load_parts_catalog("res/parts.json");
-    CHECK(cat.parts.size() == 29);
+    CHECK(cat.parts.size() == 30);
     CHECK(cat.find("nope") == nullptr);
 
     const PartDef *cap = cat.find("capsule");
@@ -68,6 +68,14 @@ int main() {
     const PartDef *eng = cat.find("engine");
     const PartDef *ft  = cat.find("fuel_tank");
     CHECK(cap != nullptr && rw != nullptr && eng != nullptr && ft != nullptr);
+
+    // the EVA kerbal placeholder (gen_kerbal.py): a crew-mass part with no
+    // ship behaviors (no wheel, thruster or tank)
+    const PartDef *kb = cat.find("kerbal");
+    CHECK(kb != nullptr);
+    CHECK(kb->type == "kerbal");
+    CHECK(kb->mass > 50.0 && kb->mass < 150.0);
+    CHECK(kb->torque == 0.0 && kb->fuel_rate == 0.0);
 
     // pre-size parts default to the legacy 2 m cube (radius 1, height 2)
     CHECK(cap->radius == 1.0 && cap->height == 2.0);

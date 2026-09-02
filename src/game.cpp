@@ -238,10 +238,34 @@ void Game::select_ship(int idx) {
     focusBody = 0;   // back to the "ship" focus target
     if(camera->mode == CAM_ORBIT) {
         camera->Follow(ship->get_center_of_mass());
-        camera->distance = 50.0;
+        // a kerbal is 1.7 m tall; 50 m would lose it
+        camera->distance = ship->isEva() ? 10.0 : 50.0;
     }
     printf("Active ship %d of %d: %s\n",
            activeIdx + 1, (int)ships.size(), ship->name.c_str());
+}
+
+/* V: toggle EVA. From a ship: spawn the kerbal beside it (once; later
+   presses re-select the existing one) and take control. From the kerbal:
+   hand control back to the ship the player came from. Both directions go
+   through select_ship, so the old controller parks on rails and the new
+   one re-enters physics. */
+void Game::toggle_eva() {
+    if(ship->isEva()) {
+        if(lastShipIdx >= 0 && lastShipIdx < (int)ships.size()
+           && !ships[lastShipIdx]->isEva()) {
+            select_ship(lastShipIdx);
+        } else {
+            toast("EVA: no ship to return to");
+        }
+        return;
+    }
+    if(kerbalIdx < 0) {
+        kerbalIdx = ships.spawn_kerbal_near(ship);
+    }
+    lastShipIdx = activeIdx;
+    select_ship(kerbalIdx);
+    toast("EVA: %s", ships[kerbalIdx]->name.c_str());
 }
 
 /* Enter rails warp: park every ship (flying ones coast on their conic,
@@ -280,6 +304,12 @@ void Game::remove_ship(int idx) {
 
     dropPartWindowsFor(v);           // its part windows would dangle
     ships.erase_ship((size_t)idx);   // erase the 4 fleet vectors + delete v
+
+    // keep the EVA indices in range (the fleet shifted under them)
+    if(kerbalIdx == idx) { kerbalIdx = -1; }
+    else if(kerbalIdx > idx) { kerbalIdx--; }
+    if(lastShipIdx == idx) { lastShipIdx = -1; }
+    else if(lastShipIdx > idx) { lastShipIdx--; }
 
     if(wasActive) {
         activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;

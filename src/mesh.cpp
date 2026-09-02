@@ -29,14 +29,26 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 
     printf("scene meshes: %d\n", scene->HasMeshes());
 
+    if(scene->mNumMeshes == 0) {
+        printf("Error: no meshes in %s\n", pFile.c_str());
+        return;
+    }
+
     aiMesh *aim = scene->mMeshes[0];
+
+    if(!aim->HasNormals()) {
+        // a normal-less mesh used to segfault below; render flat instead
+        printf("warning: %s has no vertex normals\n", pFile.c_str());
+    }
 
     PosTexNorIndInterface model;
     static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
 
     for(unsigned int i = 0; i < aim->mNumVertices; i++) {
         model.positions.push_back(glm::vec3(aim->mVertices[i].x, aim->mVertices[i].y, aim->mVertices[i].z));
-        model.normals.push_back(glm::vec3(aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z));
+        model.normals.push_back(aim->HasNormals()
+            ? glm::vec3(aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z)
+            : glm::vec3(0.0f));
 
         if(aim->GetNumUVChannels() > 0) {
             glm::vec2 uv = glm::vec2(aim->mTextureCoords[0][i].x,

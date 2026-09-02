@@ -342,6 +342,22 @@ void *PhysicsEngine::GlueTogether(Body *parent, Body *child,
     return (void *)constraint;
 }
 
+struct AnyContactCallback : public btCollisionWorld::ContactResultCallback {
+    bool any = false;
+    btScalar addSingleResult(btManifoldPoint &,
+                             const btCollisionObjectWrapper *, int, int,
+                             const btCollisionObjectWrapper *, int, int) {
+        any = true;
+        return btScalar(0);
+    }
+};
+
+bool PhysicsEngine::BodyInContact(Body *body) {
+    AnyContactCallback cb;
+    dynamicsWorld->contactTest(body->btBody, cb);
+    return cb.any;
+}
+
 void Detach(void *constraint) {
     physics->Detach(constraint);
 }
@@ -516,6 +532,10 @@ void ApplyTorque(Body *body, glm::dvec3 dir, double mag) {
 void *GlueTogether(Body *parent, Body *child,
                    glm::dvec3 parentAnchor, glm::dvec3 childAnchor) {
     return physics->GlueTogether(parent, child, parentAnchor, childAnchor);
+}
+
+bool BodyInContact(Body *body) {
+    return physics->BodyInContact(body);
 }
 
 ContactPairInfo PhysicsEngine::reportContactPair(Body *a, Body *b) {

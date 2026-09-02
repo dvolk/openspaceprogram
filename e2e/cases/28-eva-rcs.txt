@@ -1,0 +1,13 @@
+# EVA space mode: a kerbal on an inertial orbit flies RCS -- holding W
+# translates along the camera forward at the RCS acceleration (the x
+# velocity changes far more than orbital curvature alone), in space mode
+# the whole run. The burn also changes the osculating orbit's energy.
+NAME eva-rcs
+ARGS --ship res/ships/kerbal.json --scenario inertial-orbit --time-accel 1 --timeout 8 --eva-log --orbit-log --orbit-interval 0.5 --sim-press 2000,2000,W --frame-cap 30
+EXPECT Building ship 'kerbal' (1 parts)
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 5
+CHECK all(e["mode"] == "space" for e in eva)
+CHECK abs(last(eva)["vel"][0] - first(eva)["vel"][0]) > 2.0
+CHECK abs(last(orbit)["E"] - first(orbit)["E"]) > 100.0

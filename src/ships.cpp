@@ -11,6 +11,7 @@
 #include <stdexcept>
 
 #include "body.h"     // create_body
+#include "eva.h"      // Kerbal (spawn_kerbal_near)
 #include "mesh.h"     // Mesh
 #include "model.h"    // Model
 #include "physics.h"  // setPosRot
@@ -74,23 +75,9 @@ int Ships::place_ship(const std::string &shipDefPath, const std::string &wantNam
     }
 
     // name: the caller's, else the def's; de-duplicated across the fleet
-    // (first ship keeps the bare name, later ones get #2, #3 ..)
     std::string nm = wantName.empty() ? def.name : wantName;
     if(nm.empty()) { nm = "Ship"; }
-    {
-        std::string candidate = nm;
-        int n = 2;
-        while(true) {
-            bool taken = false;
-            for(size_t i = 0; i < ships.size(); i++) {
-                if(ships[i]->name == candidate) { taken = true; break; }
-            }
-            if(!taken) { break; }
-            candidate = nm + " #" + std::to_string(n);
-            n++;
-        }
-        nm = candidate;
-    }
+    nm = dedupName(nm);
 
     // the pad top is this far above the terrain surface (space_port.obj
     // spans local z in [-10, 0], placed at dir * (terrain + pad_height))
@@ -103,7 +90,11 @@ int Ships::place_ship(const std::string &shipDefPath, const std::string &wantNam
     place_pad(hb, false, glm::normalize(glm::dvec3(0.005, 0.005, 1.0)), pad_height); // default site
     if(pad_polar) { place_pad(hb, true, pad_dir, pad_height); }                      // polar site
 
-    Vehicle *v = new Vehicle;
+    /* the kerbal def (root part type "kerbal") builds the EVA subclass
+       (src/eva.h); every other def builds a plain ship */
+    const bool is_kerbal = !def.parts.empty()
+        && def.parts[0].def->type == "kerbal";
+    Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
     v->name = nm;
     v->defPath = shipDefPath;
     v->m_parent = hb;
@@ -134,6 +125,86 @@ int Ships::spawn_ship(const std::string &defPath, const std::string &wantName,
     printf("Spawned '%s' (ship %d of %d)\n",
            ships[idx]->name.c_str(), idx + 1, (int)ships.size());
     return idx;
+}
+
+std::string Ships::dedupName(const std::string &nm)
+{
+    std::string candidate = nm;
+    int n = 2;
+    while(true) {
+        bool taken = false;
+        for(size_t i = 0; i < ships.size(); i++) {
+            if(ships[i]->name == candidate) { taken = true; break; }
+        }
+        if(!taken) { return candidate; }
+        candidate = nm + " #" + std::to_string(n);
+        n++;
+    }
+}
+
+int Ships::spawn_kerbal_near(Vehicle *near)
+{
+    // `near`'s fleet record: the kerbal inherits its home body + scenario
+    size_t ni = 0;
+    while(ni < ships.size() && ships[ni] != near) { ni++; }
+    TerrainBody *hb = (ni < ships.size()) ? ship_homes[ni] : nullptr;
+    const ScenarioDef *sc = (ni < ships.size()) ? ship_sc[ni] : nullptr;
+
+    ShipDef def = load_ship_def("./res/ships/kerbal.json", part_catalog);
+
+    Kerbal *k = new Kerbal;
+    k->name = dedupName("kerbal");
+    k->defPath = "./res/ships/kerbal.json";
+    k->m_parent = near->m_parent;
+    k->sun = sun;
+    k->frame = near->frame;
+
+    const glm::dvec3 com = near->get_center_of_mass();
+    const glm::dvec3 upDir = glm::normalize(com);
+    // the coordinate axis most orthogonal to the radial = the spawn offset
+    const glm::dvec3 refs[3] = { {1, 0, 0}, {0, 1, 0}, {0, 0, 1} };
+    int best = 0;
+    for(int i = 1; i < 3; i++) {
+        if(fabs(glm::dot(refs[i], upDir)) < fabs(glm::dot(refs[best], upDir))) { best = i; }
+    }
+    const glm::dvec3 tangent =
+        glm::normalize(refs[best] - glm::dot(refs[best], upDir) * upDir);
+
+    glm::dvec3 base;
+    if(near->frame->isRotFrame()) {
+        /* a surface spawn: stand on the SAME FLOOR as the ship beside it.
+           The floor radius is the ship's lowest part point along the
+           radial (the pad top for pad ships, the terrain + margins
+           otherwise); never below the analytic terrain. */
+        double lowest = 0.0;   // relative to the ship COM, downward
+        for(size_t i = 0; i < near->parts.size(); i++) {
+            const double z = glm::dot(GetPosition(near->parts[i]) - com, upDir);
+            lowest = std::min(lowest, z - near->partDefs[i]->height / 2.0);
+        }
+        const double floorR = std::max(glm::length(com) + lowest,
+            (double)near->m_parent->GetTerrainHeight(glm::vec3(upDir)));
+        base = upDir * floorR + tangent * 5.0;
+    } else {
+        // free fall: co-moving beside the ship
+        base = com + tangent * 5.0;
+    }
+    /* standing: the cucumber's long axis (nose, column 2) = radial,
+       face (column 1) = the offset direction. (Attitude torque cannot
+       stand a body up through its ground contact, so the spawn pose
+       must already be upright.) */
+    const glm::dvec3 right = glm::cross(tangent, upDir);
+    const glm::dmat3 orient = glm::dmat3(right, tangent, upDir);
+    build_ship(k, def, partsshader, base, orient);
+    if(near->frame->isRotFrame()) { k->setVelocity(glm::dvec3(0.0)); }
+    else { k->setVelocity(near->GetVel()); }
+
+    ships.push_back(k);
+    ship_homes.push_back(hb);
+    ship_sc.push_back(sc);
+    ship_slots.push_back(0);
+    printf("Spawned kerbal '%s' beside '%s' (ship %d of %d)\n",
+           k->name.c_str(), near->name.c_str(), (int)ships.size(), (int)ships.size());
+    return (int)ships.size() - 1;
 }
 
 void Ships::apply_scenarios(System &sys)

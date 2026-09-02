@@ -113,6 +113,12 @@ public:
     int spawn_ship(const std::string &defPath, const std::string &wantName,
                    TerrainBody *hb, const ScenarioDef *sc, System &sys);
 
+    // Runtime EVA spawn (the V key): one kerbal (src/eva.h) beside
+    // `near` -- on the analytic terrain below when `near` sits in a
+    // surface frame, co-moving beside it in free fall. Appended at the
+    // end; returns the new fleet index.
+    int spawn_kerbal_near(Vehicle *near);
+
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys);
 
@@ -136,6 +142,10 @@ public:
 private:
     // Ensure the (body, pad-site) pad exists; build it on demand.
     void place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double pad_height);
+
+    // De-duplicate a name across the fleet (first keeps the bare name,
+    // later ones get #2, #3 ..).
+    std::string dedupName(const std::string &nm);
 
     std::vector<Vehicle *> ships;
     std::vector<TerrainBody *> ship_homes;     // per ship: the body it starts on

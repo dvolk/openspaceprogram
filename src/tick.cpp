@@ -11,6 +11,7 @@
 #include <cstdio>
 
 #include "SDL2/SDL_scancode.h"   // SDL_SCANCODE_* (the command keys)
+#include "eva.h"                 // evaArmCommands (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "physics.h"             // physics_tick()
 
@@ -82,7 +83,8 @@ void tick(Game &g) {
                    isDown(SDL_SCANCODE_A) || isDown(SDL_SCANCODE_D) ||
                    isDown(SDL_SCANCODE_Q) || isDown(SDL_SCANCODE_E) ||
                    isDown(SDL_SCANCODE_I) || isDown(SDL_SCANCODE_X) ||
-                   isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F)) {
+                   isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F) ||
+                   (g.ship->isEva() && isDown(SDL_SCANCODE_SPACE))) {
                     g.ship->leaveRails();
                     if(g.time_accel >= kRailsWarp) {
                         g.time_accel = 1;
@@ -92,6 +94,12 @@ void tick(Game &g) {
                            g.ship->name.c_str(), g.time_accel);
                 }
             }
+            if(g.ship->isEva()) {
+                /* EVA: arm the kerbal's walking/RCS controls for this tick
+                   (src/eva.cpp). Like the ship's Command path, nothing is
+                   armed while paused. */
+                if(game_running) { evaArmCommands(g, isDown); }
+            } else {
             /* The Autopilot window's engaged mode (set by its toggle
                buttons): apply it after clearRotCmd (above) so the ship
                keeps slewing toward the target and holding, waking a railed
@@ -131,6 +139,7 @@ void tick(Game &g) {
 
             if (isDown(SDL_SCANCODE_R)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
             if (isDown(SDL_SCANCODE_F)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }
+            }
         }
 
         // Advance the analytic sim clock by exactly the physics timestep
@@ -190,16 +199,16 @@ void tick(Game &g) {
             if (n > 2000) { n = 2000; }
             const double h = step / n;
             for (int i = 0; i < n; i++) {
-                // every NON-RAILED ship feels its own gravity/thrust/
-                // rotation each substep; physics_tick then steps the
-                // shared Bullet world all of them at once. Railed ships
-                // have no bodies in the world -- their conic already
-                // advanced this tick in railsTick.
+                // every NON-RAILED ship feels its own gravity + armed
+                // control forces each substep (ships: thrust + rotation;
+                // the EVA kerbal: walking/RCS -- see applyControlForces);
+                // physics_tick then steps the shared Bullet world all of
+                // them at once. Railed ships have no bodies in the world
+                // -- their conic already advanced this tick in railsTick.
                 for(auto *s : g.ships) {
                     if(s->onRails) { continue; }
                     s->processGravity();
-                    s->applyThrustForce();
-                    s->applyRotationForce(h);
+                    s->applyControlForces(h);
                 }
                 physics_tick(h);
             }
@@ -297,6 +306,24 @@ void tick(Game &g) {
             if(now_ms - g.att_log_last_ms >= g.orbit_log_interval_ms) {
                 g.att_log_last_ms = now_ms;
                 g.ship->att_log(g.time);
+            }
+        }
+
+        // --eva-log: the kerbal's mode + state (the EVA e2e assertions)
+        if(g.args.eva_log && g.ship->isEva()) {
+            const Uint32 now_ms = SDL_GetTicks();
+            if(now_ms - g.eva_log_last_ms >= g.orbit_log_interval_ms) {
+                g.eva_log_last_ms = now_ms;
+                Kerbal *k = static_cast<Kerbal *>(g.ship);
+                const glm::dvec3 p = k->get_center_of_mass();
+                const glm::dvec3 v = k->GetVel();
+                printf("[evalog] t=%.1fs mode=%s grounded=%d "
+                       "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] alt=%.2f m\n",
+                       g.time, (k->mode == EVA_GROUND) ? "ground" : "space",
+                       (int)k->grounded, p.x, p.y, p.z, v.x, v.y, v.z,
+                       glm::length(p) - (double)k->m_parent->GetTerrainHeight(
+                           glm::vec3(glm::normalize(p))));
+                fflush(stdout);
             }
         }
 

@@ -1,0 +1,16 @@
+# EVA ground mode: a kerbal fleet entry stands on the pad (pad scenario);
+# holding W walks it camera-relative over the pad at the walk speed, and
+# releasing settles it back to a stand. The grounded check is the pad
+# contact (the analytic terrain is 5 m below the pad top).
+NAME eva-walk
+ARGS --ship res/ships/kerbal.json --scenario pad --time-accel 1 --timeout 9 --eva-log --orbit-interval 0.2 --sim-press 1500,2500,W --frame-cap 30
+EXPECT Building ship 'kerbal' (1 parts)
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 10
+CHECK all(e["mode"] == "ground" for e in eva if e["t"] > 1.0)
+CHECK max((e["vel"][0]**2 + e["vel"][1]**2 + e["vel"][2]**2)**0.5 for e in eva) > 1.5
+CHECK abs(last(eva)["vel"][0]) < 0.5 and abs(last(eva)["vel"][1]) < 0.5
+# net displacement > 3 m (the walk direction is camera-relative, so it may
+# land on any axis; the largest coordinate of a 3 m vector is >= 3/sqrt(3))
+CHECK abs(last(eva)["pos"][0] - first(eva)["pos"][0]) > 1.5 or abs(last(eva)["pos"][1] - first(eva)["pos"][1]) > 1.5 or abs(last(eva)["pos"][2] - first(eva)["pos"][2]) > 1.5

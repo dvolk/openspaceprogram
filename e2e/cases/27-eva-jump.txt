@@ -1,0 +1,12 @@
+# EVA jump: space (a KEYDOWN edge via --sim-press) kicks the standing
+# kerbal up off the pad -- it leaves the ground (mode=space) and lands
+# again (mode=ground), with the altitude peak above the standing band.
+NAME eva-jump
+ARGS --ship res/ships/kerbal.json --scenario pad --time-accel 1 --timeout 8 --eva-log --orbit-interval 0.1 --sim-press 1500,0,SPACE --frame-cap 30
+EXPECT Building ship 'kerbal' (1 parts)
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 20
+CHECK any(e["mode"] == "space" for e in eva if e["t"] > 1.5)
+CHECK all(e["mode"] == "ground" for e in eva if e["t"] > 4.0)
+CHECK max(e["alt"] for e in eva) > 6.15

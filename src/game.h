@@ -168,6 +168,8 @@ struct Game {
     Uint32 dbg_log_last_ms = 0;
     /* Same gate, independent clock (the --att-log cadence is --orbit-interval). */
     Uint32 att_log_last_ms = 0;
+    /* Same gate, independent clock (--eva-log: the kerbal's mode/pos/vel). */
+    Uint32 eva_log_last_ms = 0;
 
     // --- input / selection state -------------------------------------------
     bool running = true;
@@ -185,6 +187,11 @@ struct Game {
     bool surfmap_compute_requested = false;   // M: one-shot compute the map
     int activeIdx = 0;             // the player-controlled ship
     Vehicle *ship = nullptr;       // always ships[activeIdx]
+    // EVA (src/eva.h): the fleet index of the spawned kerbal (-1 = not
+    // spawned yet; V spawns it beside the active ship), and the ship the
+    // player controlled before toggling out (V toggles back to it).
+    int kerbalIdx = -1;
+    int lastShipIdx = -1;
 
     // --- part windows (pickAt opens one per right-clicked part) -----------
     // Drawn by gameui.cpp (drawPartWindows); one plain imgui window per
@@ -320,6 +327,10 @@ struct Game {
     int surfmap_in_flight = 0;
 
     // --- control transitions (events + the SHIPS window + selftest) --------
+    // V: toggle EVA (src/eva.h) -- from a ship, spawn the kerbal beside it
+    // (once) and take control; from the kerbal, hand control back to the
+    // last ship.
+    void toggle_eva();
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;

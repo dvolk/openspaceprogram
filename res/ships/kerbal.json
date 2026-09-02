@@ -1,0 +1,6 @@
+{
+  "name": "kerbal",
+  "parts": [
+    { "part": "kerbal" }
+  ]
+}

@@ -62,6 +62,9 @@ public:
        must coincide in world space, i.e. they define the relative offset). */
     void * GlueTogether(Body *parent, Body *child,
                         glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
+    /* True when the body has any contact point in the current world state
+       (terrain, pads, ships -- whatever it touches). */
+    bool BodyInContact(Body *body);
     void collisions(void);
     void Draw(const Camera * camera);
     /* Remove a constraint from the world AND delete it (no dangling ref). */
@@ -122,6 +125,9 @@ glm::dmat3 GetOrient(Body *body);
    space (they define the relative offset, e.g. faces at +-h/2). */
 void * GlueTogether(Body *parent, Body *child,
                     glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
+/* True when the body touches anything in the current world state (the
+   EVA grounded check; see PhysicsEngine::BodyInContact). */
+bool BodyInContact(Body *body);
 /* Remove a weld (constraint) from the world and delete it. */
 void Detach(void *constraint);
 /* Spin diagnostics for a two-part ship (see ContactPairInfo). */

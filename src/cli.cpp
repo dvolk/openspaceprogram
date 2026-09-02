@@ -184,6 +184,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "hull's angular velocity (world coords) to stdout; the "
                  "instrument for the attitude-physics e2e test");
 
+    app.add_flag("--eva-log", args.eva_log,
+                 "Periodically print the EVA kerbal's mode (ground/space), "
+                 "grounded state, position and velocity to stdout; the "
+                 "instrument for the EVA e2e tests");
+
     app.add_option("--postfx", args.postfx_spec,
                    "Post-processing effect, in the order given; repeatable "
                    "and/or comma-separated (e.g. --postfx cas,grain). "

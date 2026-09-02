@@ -31,6 +31,9 @@ CHECK namespace (parsed from the game's stdout):
   att     list of dicts, one per [attlog] line: t, nose (3-tuple),
           w (3-tuple), wnorm (|w|), wroll (the nose-axis component of w),
           awroll (abs of wroll)
+  eva     list of dicts, one per [evalog] line: t, mode ("ground"/"space"),
+          grounded (0/1), pos (3-tuple), vel (3-tuple), alt (m above the
+          analytic terrain)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -84,6 +87,11 @@ ATT_RE = re.compile(
     r"nose=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"w=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"\|w\|=([-\d.]+) rad/s"
+)
+EVA_RE = re.compile(
+    r"\[evalog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+grounded=(\d)\s+"
+    r"pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
+    r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
 )
 
 
@@ -219,6 +227,19 @@ def parse_att(out):
     return rows
 
 
+def parse_eva(out):
+    rows = []
+    for m in EVA_RE.finditer(out):
+        (t, mode, grounded, px, py, pz, vx, vy, vz, alt) = m.groups()
+        rows.append({
+            "t": float(t), "mode": mode, "grounded": int(grounded),
+            "pos": (float(px), float(py), float(pz)),
+            "vel": (float(vx), float(vy), float(vz)),
+            "alt": float(alt),
+        })
+    return rows
+
+
 def first(seq):
     return seq[0]
 
@@ -288,9 +309,10 @@ def run_case(case):
     porkchop = parse_porkchop(out)
     surfmap = parse_surfmap(out)
     att = parse_att(out)
+    eva = parse_eva(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
-        "porkchop": porkchop, "surfmap": surfmap, "att": att,
+        "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

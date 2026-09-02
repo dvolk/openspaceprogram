@@ -12,6 +12,7 @@
 
 #include <GL/glew.h>   // glPolygonMode (F11 wireframe) + GL constants
 
+#include "eva.h"        // Kerbal (the space-key jump edge)
 #include "siminput.h"   // SimKeyPress, SimMouseAction
 #include "gldebug.h"    // check_gl_error()
 
@@ -241,12 +242,27 @@ void poll_events(Game &g) {
                     g.select_ship((g.activeIdx + 1) % (int)g.ships.size());
                 }
             }
+            if(ev.key.keysym.sym == SDLK_v) {
+                // toggle EVA: spawn/re-select the kerbal, or hand control
+                // back to the ship (game.cpp). One-shot.
+                if(!ev.key.repeat) {
+                    g.toggle_eva();
+                }
+            }
             if(ev.key.keysym.sym == SDLK_SPACE) {
+                // EVA: space is the jump key -- the KEYDOWN edge arms it
+                // (evaArmCommands consumes the request on the next tick;
+                // an event edge, because a quick tap can end before any
+                // tick polls the key state).
+                if(!ev.key.repeat && g.ship->isEva()) {
+                    static_cast<Kerbal *>(g.ship)->jumpPressed = true;
+                }
                 // separate the active stage (one-shot; auto-repeat would
                 // keep dropping stages). Only while flying a ship with
                 // time running (a paused separation would leave the
                 // survivors frozen mid-air).
-                if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0) {
+                if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+                   && !g.ship->isEva()) {
                     // staging needs the parts in the physics world:
                     // wake a ship parked on rails first
                     if(g.ship->onRails) {

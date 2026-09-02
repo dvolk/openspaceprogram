@@ -41,6 +41,7 @@ struct GameArgs {
                                 // porkchop_n); the size knob (a Settings-
                                 // window hook later). 40 x 40 is ~15 ms.
 
+    bool eva_log = false;        // --eva-log: the kerbal's mode + pos/vel
     bool surfmap_log = false;    // --surfmap-log: the map's albedo/shaded means
     int surfmap_n = 256;        // --surfmap-n: the map width (h = n/2)
     bool surfmap_noshade = false; // --surfmap-noshade: skip the terminator
