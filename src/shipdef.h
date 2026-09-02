@@ -93,6 +93,7 @@ enum class ResourceType {
     Oxygen,
     Water,
     Food,
+    Hydrazine,   // monopropellant (the EVA kerbal's RCS suit)
     Num
 };
 

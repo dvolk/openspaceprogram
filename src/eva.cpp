@@ -15,9 +15,14 @@
 static const double kWalkSpeed   = 2.5;     // m/s
 static const double kWalkAccel   = 10.0;    // m/s^2 toward walkSpeed (damping)
 static const double kJumpSpeed   = 2.5;     // m/s radial kick
-static const double kRcsAccel    = 2.0;     // m/s^2 translation; no speed cap,
-                                            // KSP-style -- fuel will be the
-                                            // limiter once resources land
+/* RCS translation (monopropellant, KSP-style): a FIXED thrust in newtons,
+   like the ship's engines (fullThrust = flow * ve) -- NOT a fixed
+   acceleration. So the accel rises a little as the suit burns propellant
+   (F is constant, m falls), which is the physical behavior. No speed cap;
+   the propellant is the limiter. */
+static const double kRcsIsp      = 220.0;   // s, monopropellant efficiency
+static const double kRcsForce    = 194.1;   // N; ~2.0 m/s^2 at the 97.05 kg wet suit
+static const double kRcsFlow     = 0.090;   // kg/s = kRcsForce / (kRcsIsp * 9.81); ~111 s burn for 10 kg
 static const double kEvaTorque   = 100.0;   // N m attitude authority (space)
 static const double kGroundTorque = 300.0;  // N m attitude authority (ground)
 static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
@@ -135,10 +140,16 @@ void Kerbal::applyEva(double h) {
             ? walkDir : getRelAxis_(b, 1);
         slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);
     } else {
-        // RCS translation along the camera axes: a fixed acceleration
-        // for as long as the key is held (no speed cap -- KSP-style).
+        // RCS translation along the camera axes: a fixed thrust (N) for as
+        // long as the key is held AND the suit can draw this substep's flow
+        // of hydrazine (no speed cap -- KSP-style). Consume-then-arm, the
+        // same as the ship's engines (vehicle.h ApplyThrust): a substep
+        // whose draw the pool can't cover doesn't thrust.
         if(glm::length2(rcsDir) > 0.0) {
-            ApplyCentralForce(b, b->mass * kRcsAccel * rcsDir);
+            const float flow = (float)(kRcsFlow * h);
+            if(consumeResourceMass(ResourceType::Hydrazine, flow)) {
+                ApplyCentralForce(b, kRcsForce * rcsDir);
+            }
         }
         /* Upright on screen, facing the camera direction, plus the
            accumulated QE yaw about the view axis. */

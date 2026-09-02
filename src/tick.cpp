@@ -320,11 +320,13 @@ void tick(Game &g) {
                 const glm::dvec3 p = k->get_center_of_mass();
                 const glm::dvec3 v = k->GetVel();
                 printf("[evalog] t=%.1fs mode=%s grounded=%d "
-                       "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] alt=%.2f m\n",
+                       "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] alt=%.2f m "
+                       "mass=%.3fkg\n",
                        g.time, (k->mode == EVA_GROUND) ? "ground" : "space",
                        (int)k->grounded, p.x, p.y, p.z, v.x, v.y, v.z,
                        glm::length(p) - (double)k->m_parent->GetTerrainHeight(
-                           glm::vec3(glm::normalize(p))));
+                           glm::vec3(glm::normalize(p))),
+                       k->getMass());
                 fflush(stdout);
             }
         }

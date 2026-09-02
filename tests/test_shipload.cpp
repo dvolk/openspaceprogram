@@ -69,13 +69,18 @@ int main() {
     const PartDef *ft  = cat.find("fuel_tank");
     CHECK(cap != nullptr && rw != nullptr && eng != nullptr && ft != nullptr);
 
-    // the EVA kerbal placeholder (gen_kerbal.py): a crew-mass part with no
-    // ship behaviors (no wheel, thruster or tank)
+    // the EVA kerbal (gen_kerbal.py): a crew-mass part with no ship
+    // behaviors (no wheel or thruster) but a small hydrazine tank for its
+    // RCS suit -- the mass INCLUDES that propellant (a spent suit keeps
+    // its dry structure, like the tanks above).
     const PartDef *kb = cat.find("kerbal");
     CHECK(kb != nullptr);
     CHECK(kb->type == "kerbal");
     CHECK(kb->mass > 50.0 && kb->mass < 150.0);
     CHECK(kb->torque == 0.0 && kb->fuel_rate == 0.0);
+    CHECK(kb->capacity[(int)ResourceType::Hydrazine] > 0.0f); // the suit's RCS propellant
+    CHECK(kb->capacity[(int)ResourceType::Hydrazine] < 100.0f); // a suit load, not a tank
+    CHECK(kb->mass > kb->capacity[(int)ResourceType::Hydrazine]); // mass includes the fuel
 
     // pre-size parts default to the legacy 2 m cube (radius 1, height 2)
     CHECK(cap->radius == 1.0 && cap->height == 2.0);

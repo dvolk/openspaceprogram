@@ -1154,6 +1154,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             ImGui::Text("LOX: %.3fkg/%.3fkg",
                         ship->partResources[i].current[(int)ResourceType::LOX],
                         ship->partResources[i].capacity[(int)ResourceType::LOX]);
+            ImGui::Text("Hydrazine: %.3fkg/%.3fkg",
+                        ship->partResources[i].current[(int)ResourceType::Hydrazine],
+                        ship->partResources[i].capacity[(int)ResourceType::Hydrazine]);
             ImGui::Spacing();
             i++;
         }
@@ -1241,18 +1244,22 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     ui::Window("Resources", g.o_resources, [&] {
         // aggregate across the active ship's parts (any ship layout)
         float h_cur = 0, h_cap = 0, l_cur = 0, l_cap = 0;
+        float z_cur = 0, z_cap = 0;
         for(size_t i = 0; i < ship->partResources.size(); i++) {
             h_cur += ship->partResources[i].current[(int)ResourceType::Hydrogen];
             h_cap += ship->partResources[i].capacity[(int)ResourceType::Hydrogen];
             l_cur += ship->partResources[i].current[(int)ResourceType::LOX];
             l_cap += ship->partResources[i].capacity[(int)ResourceType::LOX];
+            z_cur += ship->partResources[i].current[(int)ResourceType::Hydrazine];
+            z_cap += ship->partResources[i].capacity[(int)ResourceType::Hydrazine];
         }
         const float hydrogen_frac = (h_cap > 0) ? h_cur / h_cap : 0.0f;
         const float lox_frac = (l_cap > 0) ? l_cur / l_cap : 0.0f;
+        const float hydrazine_frac = (z_cap > 0) ? z_cur / z_cap : 0.0f;
 
         ImGui::ProgressBar(hydrogen_frac, ImVec2(-1, 0), "Hydrogen");
         ImGui::ProgressBar(lox_frac, ImVec2(-1, 0), "LOX");
-        ImGui::ProgressBar(0.13, ImVec2(-1, 0), "Hydrazine");
+        ImGui::ProgressBar(hydrazine_frac, ImVec2(-1, 0), "Hydrazine");
         ImGui::ProgressBar(0.45, ImVec2(-1, 0), "Electric charge");
         ImGui::ProgressBar(0.75, ImVec2(-1, 0), "Oxygen");
         ImGui::ProgressBar(0.83, ImVec2(-1, 0), "Water");
@@ -1315,7 +1322,7 @@ void drawPartWindows(Game &g) {
                             def->exhaust_velocity);
             }
             static const char *resNames[(int)ResourceType::Num] = {
-                "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food"
+                "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food", "Hydrazine"
             };
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0f) { continue; }

@@ -33,7 +33,7 @@ CHECK namespace (parsed from the game's stdout):
           awroll (abs of wroll)
   eva     list of dicts, one per [evalog] line: t, mode ("ground"/"space"),
           grounded (0/1), pos (3-tuple), vel (3-tuple), alt (m above the
-          analytic terrain)
+          analytic terrain), mass (kg; None if the binary predates the field)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -92,6 +92,7 @@ EVA_RE = re.compile(
     r"\[evalog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+grounded=(\d)\s+"
     r"pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
+    r"(?:\s+mass=([-\d.]+)kg)?"
 )
 
 
@@ -230,12 +231,13 @@ def parse_att(out):
 def parse_eva(out):
     rows = []
     for m in EVA_RE.finditer(out):
-        (t, mode, grounded, px, py, pz, vx, vy, vz, alt) = m.groups()
+        (t, mode, grounded, px, py, pz, vx, vy, vz, alt, mass) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "grounded": int(grounded),
             "pos": (float(px), float(py), float(pz)),
             "vel": (float(vx), float(vy), float(vz)),
             "alt": float(alt),
+            "mass": float(mass) if mass is not None else None,
         })
     return rows
 

@@ -322,9 +322,12 @@
       "type": "kerbal",
       "mesh": "kerbal.obj",
       "texture": "kerbal.png",
-      "mass": 87.05,
+      "mass": 97.05,
       "radius": 0.348,
-      "height": 1.7
+      "height": 1.7,
+      "capacity": {
+        "hydrazine": 10.0
+      }
     }
   ]
 }

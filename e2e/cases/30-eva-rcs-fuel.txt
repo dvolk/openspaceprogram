@@ -1,0 +1,20 @@
+# EVA RCS fuel: a kerbal on an inertial orbit holds W until its hydrazine
+# runs out. RCS is a fixed thrust gated on the suit's propellant
+# (consume-then-arm, like the ship's engines), so the burn both changes the
+# velocity AND sheds the fuel mass -- and STOPS when the 10 kg is spent.
+#
+# The run is at 10x so the ~111 s of sim-time burnout lands at ~11 s of
+# wall time; W is held 1 s..15 s (wall), past the burnout, so the tail of
+# the hold is key-down-but-empty (no thrust). The mass must fall from the
+# wet ~97 kg to the dry ~87 kg (the hydrazine is gone), and the velocity
+# must have changed (the RCS actually thrust).
+NAME eva-rcs-fuel
+ARGS --ship res/ships/kerbal.json --scenario inertial-orbit --time-accel 10 --timeout 18 --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30
+EXPECT Building ship 'kerbal' (1 parts)
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 5
+CHECK all(e["mode"] == "space" for e in eva)
+CHECK first(eva)["mass"] > 95.0
+CHECK last(eva)["mass"] < 88.0
+CHECK max(abs(last(eva)["vel"][0]-first(eva)["vel"][0]), abs(last(eva)["vel"][1]-first(eva)["vel"][1]), abs(last(eva)["vel"][2]-first(eva)["vel"][2])) > 10.0

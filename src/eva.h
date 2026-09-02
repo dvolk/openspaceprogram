@@ -13,9 +13,10 @@
 // steering force applied at the feet so it translates instead of
 // toppling; space = jump), in free fall it flies RCS-style relative to
 // the camera (W/S along the view direction, A/D strafe, LShift/LCtrl
-// up/down; a fixed acceleration with no speed cap, KSP-style), QE yaw
-// about the view axis, attitude slewed upright on screen facing the
-// camera. The pure geometry lives in evamath.h (headless-testable).
+// up/down; a fixed thrust with no speed cap, KSP-style, limited by the
+// suit's hydrazine), QE yaw about the view axis, attitude slewed
+// upright on screen facing the camera. The pure geometry lives in
+// evamath.h (headless-testable).
 //
 // Grounded is two-layered: Bullet contact (works on the pad too) OR the
 // analytic terrain height within the standing band. Terrain collision
