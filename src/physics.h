@@ -112,6 +112,9 @@ glm::dvec3 getInertiaDiag(Body *body);
 
 void SetVelocity(Body *body, glm::dvec3 vel);
 void SetAngVelocity(Body *body, glm::dvec3 vel);
+void SetFriction(Body *body, double f);
+/* Teleports pose AND zeroes both velocities (proceedToTransform) --
+   right for rails handoffs, a trap for live bodies. */
 void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);
 void setGravity(Body *body, double acc);
 

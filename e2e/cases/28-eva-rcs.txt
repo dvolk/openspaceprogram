@@ -2,6 +2,8 @@
 # translates along the camera forward at the RCS acceleration (the x
 # velocity changes far more than orbital curvature alone), in space mode
 # the whole run. The burn also changes the osculating orbit's energy.
+# (The speed cap limits the velocity RCS adds, not the orbital speed;
+# a regression there shows up as dead keys -- see src/eva.cpp.)
 NAME eva-rcs
 ARGS --ship res/ships/kerbal.json --scenario inertial-orbit --time-accel 1 --timeout 8 --eva-log --orbit-log --orbit-interval 0.5 --sim-press 2000,2000,W --frame-cap 30
 EXPECT Building ship 'kerbal' (1 parts)

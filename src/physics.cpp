@@ -412,8 +412,10 @@ void SetMass(Body *body, double newMass) {
 }
 
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {
-    getRigidBody(body)->applyForce(btVector3(rel.x, rel.y, rel.z),
-                                   btVector3(force.x, force.y, force.z));
+    // Bullet's signature is applyForce(force, rel_pos); the old body had
+    // them swapped (never called, so it went unnoticed).
+    getRigidBody(body)->applyForce(btVector3(force.x, force.y, force.z),
+                                   btVector3(rel.x, rel.y, rel.z));
 }
 
 void ApplyTorque(Body *body, glm::dvec3 torque) {
@@ -463,6 +465,10 @@ void SetAngVelocity(Body *b, glm::dvec3 vel) {
     getRigidBody(b)->setAngularVelocity(btvel);
 }
 
+void SetFriction(Body *b, double f) {
+    getRigidBody(b)->setFriction((btScalar)f);
+}
+
 void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 {
     btTransform t;
@@ -475,6 +481,9 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
     // Bullet's quaternion constructor is (x, y, z, w); GLM components are by name.
     t.setRotation(btQuaternion(gq.x, gq.y, gq.z, gq.w));
 
+    // proceedToTransform zeroes both velocities -- right for rails
+    // handoffs, a trap for live bodies (it killed the kerbal's walk when
+    // used to overwrite its standing attitude per substep).
     getRigidBody(b)->proceedToTransform(t);
 }
 

@@ -107,6 +107,12 @@ int Ships::place_ship(const std::string &shipDefPath, const std::string &wantNam
     const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
         + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
     build_ship(v, def, partsshader, base, pad_orient);
+    if(is_kerbal) {
+        // frictionless feet: the walk steering is a force applied at the
+        // COM, and foot friction would pair with it into a tipping couple
+        // that rolls the standing capsule over (see src/eva.cpp).
+        SetFriction(v->controller, 0.0);
+    }
     v->setVelocity(glm::dvec3(0, 0, 0));
     ships.push_back(v);
     ship_homes.push_back(hb);
@@ -195,6 +201,7 @@ int Ships::spawn_kerbal_near(Vehicle *near)
     const glm::dvec3 right = glm::cross(tangent, upDir);
     const glm::dmat3 orient = glm::dmat3(right, tangent, upDir);
     build_ship(k, def, partsshader, base, orient);
+    SetFriction(k->controller, 0.0);   // frictionless feet (see place_ship)
     if(near->frame->isRotFrame()) { k->setVelocity(glm::dvec3(0.0)); }
     else { k->setVelocity(near->GetVel()); }
 

@@ -9,10 +9,13 @@
 // design notes in reports/eva2026_09_02/): it rides the fleet list, F6
 // cycling, the rails, the SOI bookkeeping and the readouts unchanged.
 // What's kerbal-specific is the control law: on a surface it walks
-// (camera-relative WASD projected onto the tangent plane, space = jump),
-// in free fall it flies RCS-style (camera-relative WASD translation, QE
-// yaw about the view axis, attitude slewed to face the camera). The pure
-// geometry the laws use lives in evamath.h (headless-testable).
+// upright (camera-relative WASD projected onto the tangent plane, the
+// steering force applied at the feet so it translates instead of
+// toppling; space = jump), in free fall it flies RCS-style relative to
+// the camera (W/S along the view direction, A/D strafe, the speed cap
+// limiting the velocity RCS adds -- not the orbital speed), QE yaw
+// about the view axis, attitude slewed upright on screen facing the
+// camera. The pure geometry lives in evamath.h (headless-testable).
 //
 // Grounded is two-layered: Bullet contact (works on the pad too) OR the
 // analytic terrain height within the standing band. Terrain collision
@@ -41,6 +44,8 @@ struct Kerbal : Vehicle {
     bool jumpRequested = false;  // armed this tick; the first substep fires it
     glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // RCS translation dir, unit or 0
+    glm::dvec3 rcsBaseVel = glm::dvec3(0.0); // velocity at rcsDir engagement;
+                                             // the speed cap limits v - this
     double viewYaw = 0.0;        // QE yaw about the view axis, rad (accumulated)
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
 
@@ -66,9 +71,11 @@ struct Kerbal : Vehicle {
 private:
     /* Authority-bounded PD slew of the capsule toward `target` (the same
        law style as the ship's slewToward/killRotStep: drive the angular
-       velocity toward the correction, torque capped at the EVA authority,
-       so no substep is more forceful than a maxed command). */
-    void slewTo(const glm::dmat3 &target, double h);
+       velocity toward the braking-curve rate, torque capped at
+       `authority`, so no substep is more forceful than a maxed command).
+       The ground gets more authority than space: it also has to win
+       against foot friction to yaw into the walk direction. */
+    void slewTo(const glm::dmat3 &target, double h, double authority);
 };
 
 /* Arm the active kerbal's controls for this tick from the keys, the

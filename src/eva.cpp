@@ -17,7 +17,8 @@ static const double kWalkAccel   = 10.0;    // m/s^2 toward walkSpeed (damping)
 static const double kJumpSpeed   = 2.5;     // m/s radial kick
 static const double kRcsAccel    = 2.0;     // m/s^2 translation
 static const double kRcsMaxSpeed = 3.0;     // m/s soft cap (along the input)
-static const double kEvaTorque   = 100.0;   // N m attitude authority
+static const double kEvaTorque   = 100.0;   // N m attitude authority (space)
+static const double kGroundTorque = 300.0;  // N m attitude authority (ground)
 static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
 static const double kYawRate     = 1.5;     // rad/s QE yaw about the view axis
 static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
@@ -75,8 +76,15 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
         if(isDown(SDL_SCANCODE_S)) { t -= fwd; }
         if(isDown(SDL_SCANCODE_D)) { t += sright; }
         if(isDown(SDL_SCANCODE_A)) { t -= sright; }
-        k->rcsDir = (glm::length2(t) > 1e-9) ? glm::normalize(t)
-                                             : glm::dvec3(0.0);
+        const glm::dvec3 newDir = (glm::length2(t) > 1e-9)
+            ? glm::normalize(t) : glm::dvec3(0.0);
+        // The speed cap limits the velocity RCS ADDS, not the total (the
+        // orbital speed dwarfs it): snapshot the base whenever the input
+        // direction changes so every fresh direction gets its budget.
+        if(glm::length2(newDir) > 0.0 && newDir != k->rcsDir) {
+            k->rcsBaseVel = k->GetVel();
+        }
+        k->rcsDir = newDir;
         k->walkDir = glm::dvec3(0.0);
         double yaw = 0.0;
         if(isDown(SDL_SCANCODE_Q)) { yaw += 1.0; }
@@ -121,28 +129,35 @@ void Kerbal::applyEva(double h) {
         if(alen > amax) { a *= amax / alen; }
         ApplyCentralForce(b, b->mass * a);
 
-        /* Stand along the local vertical, facing the walk direction
-           (last heading while standing still). */
+        /* Stay upright, yawed toward the walk direction. The kerbal's
+           feet are frictionless (ships.cpp), so the steering force at
+           the COM has no friction to pair into a tipping couple with
+           -- with ordinary friction the standing capsule log-rolls,
+           and overwriting the pose / angular velocity instead stalls
+           the translation (the contact solver fights the overwrite). */
         const glm::dvec3 faceHint = (glm::length2(walkDir) > 0.0)
             ? walkDir : getRelAxis_(b, 1);
-        slewTo(evaStandTarget(radial, faceHint), h);
+        slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);
     } else {
-        /* RCS translation along the camera axes, soft-capped along the
-           input direction. */
+        /* RCS translation along the camera axes, soft-capped on the
+           velocity added since the input direction was engaged (capping
+           the total would block every key with a positive projection on
+           the orbital velocity). */
         if(glm::length2(rcsDir) > 0.0) {
             const glm::dvec3 v = GetVelocity(b);
-            if(glm::dot(rcsDir, v) < kRcsMaxSpeed) {
+            if(glm::dot(rcsDir, v - rcsBaseVel) < kRcsMaxSpeed) {
                 ApplyCentralForce(b, b->mass * kRcsAccel * rcsDir);
             }
         }
         /* Upright on screen, facing the camera direction, plus the
            accumulated QE yaw about the view axis. */
         const glm::dvec3 fwd = camBasis[2];
-        slewTo(rotAbout(fwd, viewYaw) * evaSpaceTarget(camBasis), h);
+        slewTo(rotAbout(fwd, viewYaw) * evaSpaceTarget(camBasis), h,
+               kEvaTorque);
     }
 }
 
-void Kerbal::slewTo(const glm::dmat3 &target, double h) {
+void Kerbal::slewTo(const glm::dmat3 &target, double h, double authority) {
     Body *b = controller;
     const glm::dmat3 R = GetOrient(b);
     glm::dvec3 axis;
@@ -156,16 +171,16 @@ void Kerbal::slewTo(const glm::dmat3 &target, double h) {
         tq = -(I * w) / h;
     } else {
         // braking curve (the ship's slew law): the fastest rate from
-        // which the EVA authority can still stop exactly on target,
-        // capped so no substep crosses it. A plain linear rate law
-        // overshoots and oscillates under the torque cap.
+        // which the authority can still stop exactly on target, capped
+        // so no substep crosses it. A plain linear rate law overshoots
+        // and oscillates under the torque cap.
         const double Ieff = glm::dot(axis, I * axis);
-        const double alpha = (Ieff > 0.0) ? kEvaTorque / Ieff : 0.0;
+        const double alpha = (Ieff > 0.0) ? authority / Ieff : 0.0;
         const double w_des = glm::min(glm::min(std::sqrt(2.0 * alpha * ang),
                                                ang / (2.0 * h)), kMaxRate);
         tq = I * (axis * w_des - w) / h;
     }
     const double m = glm::length(tq);
-    if(m > kEvaTorque) { tq *= kEvaTorque / m; }
+    if(m > authority) { tq *= authority / m; }
     ApplyTorque(b, tq);
 }
