@@ -22,6 +22,7 @@ struct GameArgs {
 
     std::string radial_test;
     int initial_time_accel = 0;
+    double start_time = 0.0;   // --start-time: the sim clock's t0 (s)
     double timeout_seconds = 0.0;
     float exhaust_scale = 1.0f;  // test knob: scales ve (thrust + delta-v)
 

@@ -243,6 +243,18 @@ int main(int argc, char **argv)
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
     game.apply_ui_style();  // the Settings defaults (dark theme, scale 1.0)
 
+    // --start-time: start the analytic clock (and every body's orbit and
+    // spin, which are functions of it) at a later instant. Must happen
+    // before the fleet spawns -- the orbit scenarios read the home body's
+    // frame state -- and the tick only re-propagates frames while
+    // unpaused, so a paused start has to be propagated here or the first
+    // frame renders the t=0 system.
+    game.time = args.start_time;
+    sun->frame->UpdateOrbitRails(args.start_time);
+    if(args.start_time > 0.0) {
+        printf("Starting at sim time t = %.0f s\n", args.start_time);
+    }
+
     // The runtime state lives in `game`. These local references keep the
     // loop body reading exactly as before; they alias game's members, so
     // the writes here and the control transitions in game.cpp hit the same

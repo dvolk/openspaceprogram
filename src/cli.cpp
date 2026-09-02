@@ -69,6 +69,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Initial time acceleration (0 = paused, default 0)")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_option("--start-time", args.start_time,
+                   "Initial sim time in seconds: start the clock (and every "
+                   "body's orbit and spin, which are functions of it) at a "
+                   "later instant, e.g. to put a pad in daylight or line up "
+                   "a transfer window (default 0)")
+        ->check(CLI::NonNegativeNumber);
+
     app.add_option("--exhaust-scale", args.exhaust_scale,
                    "Scale the engines' exhaust velocity: thrust and delta-v "
                    "scale by it, the fuel burn does not (0.5-5.0, default 1; "
