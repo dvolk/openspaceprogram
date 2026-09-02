@@ -239,13 +239,23 @@ void poll_events(Game &g) {
                 // around (one-shot; auto-repeat would keep cycling). Crew
                 // characters aboard a capsule are skipped: they are not
                 // controllable (EVA them from the capsule window first).
-                if(!ev.key.repeat && g.ships.size() > 1) {
-                    const int n = (int)g.ships.size();
-                    for(int step = 1; step < n; step++) {
-                        const int idx = (g.activeIdx + step) % n;
-                        if(g.ships[idx]->isCrewAboard()) { continue; }
-                        g.select_ship(idx);
-                        break;
+                if(!ev.key.repeat) {
+                    std::vector<Vehicle *> all = collectVehicles(g.sys);
+                    if(all.size() > 1) {
+                        // the active ship's position in the canonical order
+                        int cur = -1;
+                        for(size_t i = 0; i < all.size(); i++) {
+                            if(all[i] == g.ship) { cur = (int)i; break; }
+                        }
+                        if(cur >= 0) {
+                            const int n = (int)all.size();
+                            for(int step = 1; step < n; step++) {
+                                Vehicle *v = all[(cur + step) % n];
+                                if(v->isCrewAboard()) { continue; }
+                                g.select_ship(v);
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -288,7 +298,7 @@ void poll_events(Game &g) {
                         if(g.ship->partStages[i] != g.ship->activeStage()) { continue; }
                         if(g.ship->partDefs[i] == nullptr ||
                            g.ship->partDefs[i]->crew_capacity <= 0) { continue; }
-                        if(!partCrew(g.ships, g.ship, i).empty()) {
+                        if(!partCrew(g.ship, i).empty()) {
                             crewOnStage = true;
                         }
                     }

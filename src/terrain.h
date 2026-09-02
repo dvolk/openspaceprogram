@@ -30,6 +30,9 @@
 class btRigidBody;
 
 struct TerrainBody;
+class Vehicle;          // a ship (vehicle.h); a body owns its ship list
+struct Body;            // a rigid body (body.h); StaticBuilding's physics body
+class StaticBuilding;   // a space pad (defined at the end of this file)
 
 struct GeoPatch {
     TerrainBody *body;
@@ -117,12 +120,19 @@ struct TerrainBody {
         return t;
     }
 
-    ~TerrainBody() {
-        for(int i = 0; i < 6; i++) { delete patches[i]; }
-        delete atmosphere;
-        delete frame;
-        delete rot_frame;
-    }
+    // Defined in terrain.cpp (it also deletes the ships + space pads below,
+    // which needs the complete Vehicle / StaticBuilding types).
+    ~TerrainBody();
+
+    // The ships currently in this body's SOI (vehicle.h). While a ship is
+    // here, its Vehicle::m_parent is this body; a SoI crossing moves it
+    // between bodies' lists (Vehicle::moveToFrame) instead of copying
+    // anything. Aboard characters are NOT here -- they live on their ship
+    // (Vehicle::crew); a free EVA character IS a ship in this list.
+    std::vector<Vehicle *> ships;
+    // The space pads on this body (one per pad site). Drawn by render.cpp;
+    // StaticBuilding::Draw culls itself when the active ship is off-body.
+    std::vector<StaticBuilding *> pads;
 
     COLOUR (*colour_func)(float v, float vmin, float vmax);
 
@@ -292,3 +302,22 @@ struct TerrainBody {
 // occludes the line to the sun.
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun);
+
+// A space pad -- a static building shared by every ship standing on the
+// same (body, pad site). Drawn like terrain (culls itself when the active
+// ship is not on the pad's body); the light source is the star.
+//
+// Owned by its body (TerrainBody::pads). The rigid Body is deliberately
+// NOT deleted (there is no dtor): every pad shares one space-port model
+// (Ships owns it) and ~Body would delete it -- the same intentional leak
+// the old fleet teardown had (the process exits right after).
+// Draw is defined in terrain.cpp (it needs the complete Body type).
+class StaticBuilding {
+public:
+    TerrainBody *parent;
+    TerrainBody *sun = nullptr; // the star (light source)
+    Body *body;
+    bool polar = false; // the pad site (default vs polar) -- the de-dup key
+
+    void Draw(const Camera* camera, const TerrainBody *current, Frame *renderFrame);
+};

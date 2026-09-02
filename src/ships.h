@@ -1,18 +1,16 @@
-// ships.h -- the runtime fleet: every ship in play, the per-ship
-// bookkeeping (home body, starting scenario, slot within its (body,
-// scenario) group), the space pads the pad ships stand on, and the
-// operations that place / spawn / remove them (see ships.cpp).
+// ships.h -- ship construction and placement (the Ships builder).
 //
-// What stays in main() is the active-ship selection (which ship the player
-// controls), the camera and the rails-warp state -- those are sim/UI state,
-// not fleet data. Ships exposes the fleet data and the pure fleet
-// operations; main() layers the active-ship handoff on top (its
-// select_ship / remove_ship lambdas).
+// Ownership of the ships themselves is NOT here: each ship lives in the
+// ships list of the body of its SoI (TerrainBody::ships, terrain.h), and
+// a character aboard a ship lives on that ship (Vehicle::crew, eva.h).
+// This class holds only the shared resources every built ship references
+// (the parts catalog, the shared space-port model, the part shader, the
+// star) plus the operations that build ships/crew and place them into the
+// world. The active-ship selection (game.h) and the tick (tick.cpp) walk
+// the bodies' lists, not this class.
 #pragma once
 
-#include <map>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "body.h"     // Body, create_body
@@ -23,151 +21,92 @@
 #include "shader.h"   // Shader
 #include "shipdef.h"  // PartsCatalog
 #include "texture.h"  // Texture
-#include "terrain.h"  // TerrainBody, ComputeTerrainShadow
+#include "terrain.h"  // TerrainBody, StaticBuilding
 #include "vehicle.h"  // Vehicle, ScenarioDef
 
 #include "fleet.h"    // FleetEntry (the startup fleet's entries)
 
 struct System;  // only used by reference in the signatures below
+struct Kerbal;  // the crew characters (eva.h); spawn_crew_kerbal returns one
 
-/* A space pad -- a static building shared by every ship standing on the same
-   (body, pad site). Drawn like terrain (culls itself when the active ship is
-   not on the pad's body); the light source is the star. */
-class StaticBuilding {
-public:
-    TerrainBody *parent;
-    TerrainBody *sun = nullptr; // the star (light source)
-    Body *body;
+/* The canonical ship order across the system: bodies in file order, then
+   each body's ships in order, with each ship's crew right after it. This
+   is the single order selection (F6 / "N of M"), the Ship List window,
+   the tick snapshot and the name de-duplication all walk, so "ship N of
+   M" means the same thing everywhere. */
+std::vector<Vehicle *> collectVehicles(System &sys);
 
-    void Draw(const Camera* camera, const TerrainBody *current, Frame *renderFrame) {
-        if(current == parent) {
-            const Frame *posFrame = parent->frame->getRotFrame();
-            const float shadow = ComputeTerrainShadow(parent, posFrame,
-                                                      GetPosition(body), sun);
-            // Light direction at the pad (sun -> pad); stays defined if the
-            // pad's body were ever the star (SunlightDir would be a zero vector).
-            const glm::dvec3 pad_root =
-                posFrame->root_orient * GetPosition(body) + posFrame->root_pos;
-            glm::vec3 sunlightVec =
-                glm::vec3(TerrainBody::LightDirFrom(pad_root, sun, renderFrame));
-            body->Draw(camera, sunlightVec, shadow);
-        }
-    }
-};
-
-/* The runtime fleet. Owns the ships, the space pads, the shared pad model
-   and the parts catalog it builds ships from. Non-copyable (raw ownership).
-
-   Lifetime contract: the ships and pads are torn down by clear() -- which
-   the destructor also runs -- and main() calls clear() at the point the old
-   inline cleanup ran (BEFORE the System bodies and shaders are deleted), so
-   the ships never outlive the bodies/shader they reference. */
 class Ships {
 public:
     /* parts_file:  the parts catalog to build ships from (owned, loaded here).
        partsshader: the part shader (caller-owned; must outlive us).
        sun:         the star (caller-owned; light source for ships + pads). */
     Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun);
+    /* The ships + pads are owned by the bodies (terrain.h) and die with
+       them; this only frees the shared resources (the space-port model).
+       main() deletes the bodies after the last use, so the order is safe. */
     ~Ships();
 
     Ships(const Ships &) = delete;
     Ships &operator=(const Ships &) = delete;
 
-    // --- fleet access ----------------------------------------------------
-    size_t size() const { return ships.size(); }
-    bool empty() const { return ships.empty(); }
-    Vehicle *at(size_t i) const { return ships[i]; }
-    Vehicle *operator[](size_t i) { return ships[i]; }
-    Vehicle *operator[](size_t i) const { return ships[i]; }
-
-    // range-for support: for(auto *s : ships) in the tick / draw loops
-    std::vector<Vehicle *>::iterator begin() { return ships.begin(); }
-    std::vector<Vehicle *>::iterator end() { return ships.end(); }
-    std::vector<Vehicle *>::const_iterator begin() const { return ships.begin(); }
-    std::vector<Vehicle *>::const_iterator end() const { return ships.end(); }
-
-    // per-ship bookkeeping (parallel to ships[])
-    TerrainBody *homeOf(size_t i) const { return ship_homes[i]; }
-    const ScenarioDef *scenarioOf(size_t i) const { return ship_sc[i]; }
-    int slotOf(size_t i) const { return ship_slots[i]; }
-
-    // the space pads (one per (body, pad site)); the render loop draws them
-    const std::map<std::pair<TerrainBody *, bool>, StaticBuilding *> &pads() const {
-        return space_ports;
-    }
-
     // the parts catalog (for out-of-band ship builders, e.g. the radial test)
     const PartsCatalog &catalog() const { return part_catalog; }
 
-    // --- fleet operations ------------------------------------------------
-    // Place one ship on a body/scenario: load its def, slot it (next free
-    // slot for the body+scenario), de-dup its name, make sure the pad exists,
-    // build it on the pad. Returns the new ship's index. Does NOT apply the
-    // scenario -- spawn_vehicle is the caller's job, so startup keeps a
-    // single spawn pass.
-    int place_ship(const std::string &shipDefPath, const std::string &wantName,
-                   TerrainBody *hb, const ScenarioDef *sc);
+    // --- placement (the ships land in the body's list, not here) ---------
+    // Build one ship from defPath and place it on body hb: slot it (next
+    // free for the (body, scenario) group), de-dup its name, make sure the
+    // pad exists, build it on the pad. Does NOT apply the scenario --
+    // spawn_vehicle is the caller's job, so startup keeps a single spawn
+    // pass (apply_scenarios).
+    Vehicle *place_ship(const std::string &shipDefPath, const std::string &wantName,
+                        TerrainBody *hb, const ScenarioDef *sc, System &sys);
 
-    // Runtime spawn: place + apply the scenario + park on rails. Appended at
-    // the end, so it is never the active one. Returns the new ship's index.
-    int spawn_ship(const std::string &defPath, const std::string &wantName,
-                   TerrainBody *hb, const ScenarioDef *sc, System &sys);
-
-    // Runtime EVA spawn (the V key): one kerbal (src/eva.h) beside
-    // `near` -- on the analytic terrain below when `near` sits in a
-    // surface frame, co-moving beside it in free fall. Appended at the
-    // end; returns the new fleet index.
-    int spawn_kerbal_near(Vehicle *near);
+    // Runtime spawn: place + apply the scenario + park on rails. Appended
+    // at the end of the body's list, so it is never the active one.
+    Vehicle *spawn_ship(const std::string &defPath, const std::string &wantName,
+                        TerrainBody *hb, const ScenarioDef *sc, System &sys);
 
     // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts
-    // (partDefs[i]->crew_capacity > 0) -- parked inside (out of the physics
-    // world, the railFrozen convention), its mass folded into the capsule
-    // part (the ship is heavier with crew aboard), aboard state set. Called
-    // from build_fleet after each ship is placed; copies spawned at runtime
-    // (spawn_ship) deliberately do NOT get crew.
-    void spawn_crew(Vehicle *ship);
+    // (partDefs[i]->crew_capacity > 0) -- parked inside (out of the
+    // physics world, the railFrozen convention), its mass folded into the
+    // capsule part (the ship is heavier with crew aboard), aboard state
+    // set, and stored on the ship (Vehicle::crew). Called from build_fleet
+    // after each ship is placed; runtime copies (spawn_ship) deliberately
+    // do NOT get crew.
+    void spawn_crew(Vehicle *ship, System &sys);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys);
 
-    // Remove a ship + its bookkeeping (the Vehicle dtor detaches the welds).
-    // A raw bookkeeping op: no "last ship" guard -- the caller decides.
-    void erase_ship(size_t idx);
-
     // Register a ship built out-of-band (the --radial-test ship).
     void add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int slot);
 
-    // Build the startup fleet from the resolved entries: resolve each entry's
-    // body (name -> System body, or the home body) + scenario (name -> table),
-    // then place the ship. Throws std::runtime_error naming the entry + body
-    // on an unknown body.
-    void build_fleet(const std::vector<FleetEntry> &entries, System &sys,
-                     TerrainBody *home, const std::string &default_scenario);
-
-    // Tear down the ships + space pads. Idempotent; the destructor runs it.
-    void clear();
+    // Build the startup fleet from the resolved entries: resolve each
+    // entry's body (name -> System body, or the home body) + scenario
+    // (name -> table), then place the ship + its startup crew. Returns the
+    // first ship built (the natural active one) or nullptr for an empty
+    // fleet. Throws std::runtime_error naming the entry + body on an
+    // unknown body.
+    Vehicle *build_fleet(const std::vector<FleetEntry> &entries, System &sys,
+                         TerrainBody *home, const std::string &default_scenario);
 
 private:
-    // Ensure the (body, pad-site) pad exists; build it on demand.
+    // Ensure the (body, pad-site) pad exists; build it on demand (the
+    // body's pads list, terrain.h).
     void place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double pad_height);
 
     // One crew kerbal aboard (ship, part); the spawn_crew loop calls it per
-    // capsule. Returns the new fleet index.
-    int spawn_crew_kerbal(Vehicle *ship, size_t part);
+    // capsule. Returns the kerbal (nullptr if the part is no capsule).
+    Kerbal *spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys);
 
-    // De-duplicate a name across the fleet (first keeps the bare name,
-    // later ones get #2, #3 ..).
-    std::string dedupName(const std::string &nm);
-
-    std::vector<Vehicle *> ships;
-    std::vector<TerrainBody *> ship_homes;     // per ship: the body it starts on
-    std::vector<const ScenarioDef *> ship_sc;  // per ship: its scenario
-    std::vector<int> ship_slots;               // per ship: slot in its (body, scenario) group
-    std::map<std::pair<TerrainBody *, bool>, StaticBuilding *> space_ports; // one per (body, pad site)
+    // De-duplicate a name across all the ships + crew (first keeps the
+    // bare name, later ones get #2, #3 ..).
+    std::string dedupName(System &sys, const std::string &nm);
 
     PartsCatalog part_catalog;
     Shader *partsshader;   // caller-owned
     TerrainBody *sun;      // caller-owned
 
-    Model *space_port_model; // shared by every pad; caller's shader, its own mesh+texture
+    Model *space_port_model; // shared by every pad; its own mesh+texture
 };

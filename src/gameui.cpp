@@ -96,7 +96,6 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     System &sys = g.sys;
     GameArgs &args = g.args;
     Camera *camera = g.camera;
-    int &activeIdx = g.activeIdx;
     int &time_accel = g.time_accel;
     int &cam_speed = g.cam_speed;
     double &time = g.time;
@@ -1004,7 +1003,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
         ImGui::Text("Home distance: %f",
                     glm::length(ship->GetPositionRelTo(ship->controller,
-                                                        ships.homeOf(activeIdx)->frame)));
+                                                        ship->home->frame)));
         ImGui::Text("Pos: %.3fkm", distance / 1000);
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
         ImGui::Text("Vel: %.3fm/s", speed);
@@ -1089,14 +1088,17 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // would swallow the line and push the "x" off it (or collapse the
     // window), so each name is its own sized button. The active ship
     // is highlighted with a pushed color.
-    for(size_t i = 0; i < ships.size(); i++) {
-        const bool active = ((int)i == activeIdx);
-        ImGui::PushID((int)i);
-        if(ships[i]->isCrewAboard()) {
+    std::vector<Vehicle *> all = collectVehicles(sys);
+    bool removed = false;
+    for(size_t i = 0; i < all.size() && !removed; i++) {
+        Vehicle *v = all[i];
+        const bool active = (v == ship);
+        ImGui::PushID((void*)v);
+        if(v->isCrewAboard()) {
             // a crew character aboard a capsule: it is in the fleet but not
             // a controllable ship (no select/remove -- it lives in its
             // capsule; EVA it from the capsule window to make it free)
-            ImGui::Text("%s (aboard)", ships[i]->name.c_str());
+            ImGui::Text("%s (aboard)", v->name.c_str());
         } else {
             if(active) {
                 ImGui::PushStyleColor(ImGuiCol_Button,
@@ -1106,16 +1108,16 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive,
                                      ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
             }
-            if(ImGui::Button(ships[i]->name.c_str())) {
-                g.select_ship((int)i);
+            if(ImGui::Button(v->name.c_str())) {
+                g.select_ship(v);
             }
             if(active) {
                 ImGui::PopStyleColor(3);
             }
             ImGui::SameLine();
             if(ImGui::SmallButton("x")) {
-                g.remove_ship((int)i);
-                i = ships.size();   // the list shrank; stop iterating
+                g.remove_ship(v);
+                removed = true;   // the ship was deleted; stop iterating
             }
         }
         ImGui::PopID();
@@ -1123,8 +1125,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     ImGui::Separator();
     if(ImGui::Button("Spawn a copy of the active ship")) {
         if(!ship->defPath.empty()) {
-            ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
-                             ships.scenarioOf(activeIdx), sys);
+            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys);
         } else {
             printf("Spawn: active ship has no def (test ship)\n");
         }
@@ -1340,21 +1341,21 @@ void drawPartWindows(Game &g) {
             // kerbal's mass onto/off the capsule and park/restore its body.
             if(def->crew_capacity > 0) {
                 ImGui::Separator();
-                std::vector<Kerbal *> aboard = partCrew(g.ships, ship, part);
+                std::vector<Kerbal *> aboard = partCrew(ship, part);
                 ImGui::Text("Crew: %d / %d", (int)aboard.size(), def->crew_capacity);
                 for(size_t ci = 0; ci < aboard.size(); ci++) {
                     Kerbal *k = aboard[ci];
                     ImGui::PushID(k);
                     ImGui::Text("  %s", k->name.c_str());
                     if(ImGui::SmallButton("EVA")) {
-                        g.kerbalEVA(shipIndex(g.ships, k));
+                        g.kerbalEVA(k);
                     }
                     ImGui::PopID();
                 }
                 // free kerbals in boarding range: a Board button each
                 const glm::dvec3 capCom = GetPosition(ship->parts[part]);
                 bool anyInRange = false;
-                for(Kerbal *k : freeKerbals(g.ships)) {
+                for(Kerbal *k : freeKerbals(g.sys)) {
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
                     if(dist > 10.0) { continue; }
@@ -1364,7 +1365,7 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
                                 full ? "  (capsule full)" : "");
                     if(ImGui::SmallButton("Board")) {
-                        g.kerbalBoard(shipIndex(g.ships, k), ship, part);
+                        g.kerbalBoard(k, ship, part);
                     }
                     ImGui::PopID();
                 }
@@ -1390,7 +1391,6 @@ void drawPartWindows(Game &g) {
 // and the controls below it edit the map state on the game.
 void drawUIMap(Game &g, TransferPlanner &planner) {
     Vehicle *ship = g.ship;
-    Ships &ships = g.ships;
     OrbitElements &o = g.view.o;
     double &mu = g.view.mu;
     glm::dvec3 &orbit_pos = g.view.orbit_pos;
@@ -1690,7 +1690,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         // marker shows.
         {
             Frame *inertial = ship->frame->getNonRotFrame();
-            for(auto *s : ships) {
+            for(auto *s : focus->ships) {
                 if(s == ship || !s->frame || s->frame->body != focus) {
                     continue;
                 }

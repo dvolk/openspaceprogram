@@ -100,8 +100,8 @@ bool pickShipPart(Game &g, int px, int py,
     size_t bestPart = 0;
     PickBodyHit bestHit;
 
-    for(size_t si = 0; si < g.ships.size(); si++) {
-        Vehicle *s = g.ships[si];
+    for(auto *b : g.sys.bodies) {
+    for(auto *s : b->ships) {
         // The ship's part frame -> render frame (the same transform
         // Vehicle::Draw uses); the ray must live in the ship's frame,
         // where its bodies' transforms live.
@@ -121,6 +121,7 @@ bool pickShipPart(Game &g, int px, int py,
                 bestHit = h;
             }
         }
+    }
     }
     if(bestShip == nullptr) { return false; }
 

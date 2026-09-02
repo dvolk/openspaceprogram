@@ -122,7 +122,8 @@ struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
     Renderer &display;
     PostFX *postfx;
-    Ships &ships;
+    Ships &ships;   // the ship builder (ships.h); the ships themselves live
+                    // in the bodies' lists (TerrainBody::ships)
     System &sys;
     TerrainBody *sun;
     TerrainBody *home;
@@ -186,16 +187,19 @@ struct Game {
     bool screenshot_requested = false;
     bool porkchop_compute_requested = false;  // P: one-shot compute the plot
     bool surfmap_compute_requested = false;   // M: one-shot compute the map
-    int activeIdx = 0;             // the player-controlled ship
-    Vehicle *ship = nullptr;       // always ships[activeIdx]
+    // The player-controlled ship (a pointer: the ships live in the bodies'
+    // lists -- TerrainBody::ships -- so an index into a flat fleet is no
+    // longer a thing).
+    Vehicle *ship = nullptr;
     // Crew (src/eva.h, the transitions in game.cpp): kerbals start ABOARD
-    // the starting ships' capsules (ships::spawn_crew). V EVA's one out of
-    // the active ship (kerbalEVA) and hands control to it; the part window
-    // boards a nearby free kerbal back in (kerbalBoard). kerbalIdx is the
-    // kerbal the player most recently EVA'd (for the V toggle-back);
-    // lastShipIdx is the ship they came from.
-    int kerbalIdx = -1;
-    int lastShipIdx = -1;
+    // the starting ships' capsules (ships::spawn_crew, on Vehicle::crew).
+    // V EVA's one out of the active ship (kerbalEVA) and hands control to
+    // it; the part window boards a nearby free kerbal back in
+    // (kerbalBoard). `kerbal` is the kerbal the player most recently
+    // EVA'd (for the V toggle-back); `lastShip` is the ship they came
+    // from.
+    Kerbal *kerbal = nullptr;
+    Vehicle *lastShip = nullptr;
 
     // --- part windows (pickAt opens one per right-clicked part) -----------
     // Drawn by gameui.cpp (drawPartWindows); one plain imgui window per
@@ -335,14 +339,16 @@ struct Game {
     // and take control; from the kerbal, hand control back to the last ship.
     void toggle_eva();
     // Crew transitions (the capsule part window buttons + the V key):
-    //   kerbalEVA    take the kerbal at `idx` out of its capsule -- move its
-    //                mass off the capsule, un-park its body beside the
-    //                capsule, and hand the player control of it.
-    //   kerbalBoard  put a free kerbal (at `idx`) into the capsule
-    //                (ship, part) -- move its mass onto the capsule, park its
-    //                body inside, set its aboard state. Refuses a full capsule.
-    void kerbalEVA(int idx);
-    void kerbalBoard(int idx, Vehicle *ship, size_t part);
+    //   kerbalEVA    take `k` out of its capsule -- move its mass off the
+    //                capsule, un-park its body beside the capsule (it joins
+    //                the ship's SoI body's ship list), and hand the player
+    //                control of it.
+    //   kerbalBoard  put a free kerbal `k` into the capsule (ship, part) --
+    //                move its mass onto the capsule, park its body inside,
+    //                set its aboard state (it moves to ship->crew). Refuses
+    //                a full capsule.
+    void kerbalEVA(Kerbal *k);
+    void kerbalBoard(Kerbal *k, Vehicle *ship, size_t part);
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;
@@ -353,15 +359,15 @@ struct Game {
     // Rebuild the imgui style from the Settings state (theme, DPI scale,
     // rounding, transparency).
     void apply_ui_style();
-    // Take control of a ship (release + park the current one, recenter the
+    // Take control of `v` (release + park the current one, recenter the
     // orbit camera, drop rails warp).
-    void select_ship(int idx);
+    void select_ship(Vehicle *v);
     // Enter rails warp (park every ship); false + keeps the accel if any
     // ship is not rail-eligible.
     bool enter_rails_warp();
     // Remove a ship + its bookkeeping (refuses the last one; hands control
     // off if the active one is removed).
-    void remove_ship(int idx);
+    void remove_ship(Vehicle *v);
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);
@@ -385,14 +391,12 @@ struct Game {
 // assert). Misses log a miss and leave the existing windows alone.
 void pickAt(Game &g, int px, int py);
 
-// Crew queries (defined in game.cpp). The fleet is tiny, so these just
-// iterate it and filter on Kerbal::aboard -- the aboard state lives on the
-// kerbal, so there is no per-ship occupant list to keep in sync.
+// Crew queries (defined in game.cpp). The aboard crew live on their ship
+// (Vehicle::crew), so these read it directly; the free kerbals are the
+// isEva ships in the bodies' lists.
 //   shipCrew    every kerbal aboard `ship` (any capsule)
 //   partCrew    the kerbals sitting in the specific capsule (ship, part)
 //   freeKerbals every kerbal not aboard any ship (on EVA)
-std::vector<Kerbal *> shipCrew(Ships &fleet, Vehicle *ship);
-std::vector<Kerbal *> partCrew(Ships &fleet, Vehicle *ship, size_t part);
-std::vector<Kerbal *> freeKerbals(Ships &fleet);
-// The fleet index of `v` (-1 if not found); the transitions take indices.
-int shipIndex(Ships &fleet, Vehicle *v);
+std::vector<Kerbal *> shipCrew(Vehicle *ship);
+std::vector<Kerbal *> partCrew(Vehicle *ship, size_t part);
+std::vector<Kerbal *> freeKerbals(System &sys);

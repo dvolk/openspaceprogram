@@ -260,7 +260,6 @@ int main(int argc, char **argv)
     // the writes here and the control transitions in game.cpp hit the same
     // storage. (screenshot_count is pure loop bookkeeping and stays local.)
     Vehicle *&ship = game.ship;
-    int &activeIdx = game.activeIdx;
     int &time_accel = game.time_accel;
     int &cam_speed = game.cam_speed;
     bool &rmbCam = game.rmbCam;
@@ -282,13 +281,15 @@ int main(int argc, char **argv)
         }
     }
 
+    Vehicle *first = nullptr;
     if(!args.radial_test.empty()) {
         RadialTestShip rts = build_radial_test_ship(
             args.radial_test, args.scenario_given, args.scenario,
             ships.catalog(), home, sun, partsshader);
         ships.add_ship(rts.v, home, rts.sc, rts.slot);
+        first = rts.v;
     } else {
-        ships.build_fleet(fleet_entries, sys, home, args.scenario);
+        first = ships.build_fleet(fleet_entries, sys, home, args.scenario);
     }
     check_gl_error();
 
@@ -298,18 +299,20 @@ int main(int argc, char **argv)
        orbit binormal) so they don't spawn on top of each other. */
     ships.apply_scenarios(sys);
 
-    /* the active (player-controlled) ship: Tab / the SHIPS window switch
-       it; game.ship always points at it (activeIdx starts at 0, the first
-       ship), so the HUD, camera, input and draw code follow the active
-       ship without special cases. */
-    ship = ships[0];
+    /* the active (player-controlled) ship: the first one built; Tab / the
+       SHIPS window switch it. game.ship always points at it, so the HUD,
+       camera, input and draw code follow the active ship without special
+       cases. */
+    ship = first;
 
     /* Idle ships park on rails: flying ones coast on their conic, pad
        ships freeze in the surface frame (their pose rides the planet's
        spin via the render transform). Ships that are neither in free
        fall nor grounded refuse and stay in the physics world. */
-    for(size_t i = 0; i < ships.size(); i++) {
-        if((int)i != activeIdx) { ships[i]->goOnRails(); }
+    for(auto *b : sys.bodies) {
+        for(auto *s : b->ships) {
+            if(s != ship) { s->goOnRails(); }
+        }
     }
 
     Mesh *engine_plume_mesh = new Mesh;
@@ -414,7 +417,7 @@ int main(int argc, char **argv)
        top physics warp (10). */
     if(time_accel >= kRailsWarp) {
         bool all_eligible = true;
-        for(auto *s : ships) {
+        for(auto *s : collectVehicles(sys)) {
             if(!s->canRail()) {
                 printf("Rails warp refused at start: '%s' is neither in free "
                        "fall nor grounded; clamping time accel to 10\n",
@@ -424,7 +427,7 @@ int main(int argc, char **argv)
             }
         }
         if(all_eligible) {
-            for(auto *s : ships) { s->goOnRails(); }
+            for(auto *s : collectVehicles(sys)) { s->goOnRails(); }
         } else {
             time_accel = 10;
         }
@@ -498,36 +501,39 @@ int main(int argc, char **argv)
             printf("selftest-spawn: SKIP (active ship has no def: test ship)\n");
             running = false;
         } else {
-            const size_t base = ships.size();
-            const int origActive = activeIdx;
+            const size_t base = collectVehicles(sys).size();
+            Vehicle *origShip = ship;
             bool ok = true;
-            printf("== selftest-spawn: %zu ships at start, active %d (%s) ==\n",
-                   base, origActive, ship->name.c_str());
+            printf("== selftest-spawn: %zu ships at start, active: %s ==\n",
+                   base, ship->name.c_str());
 
             // 1) spawn a copy of the active ship -> appended at the end;
             //    the active ship must be untouched
-            int sp = ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
-                                      ships.scenarioOf(activeIdx), sys);
-            printf("spawn 1: new idx=%d size=%zu activeIdx=%d\n",
-                   sp, ships.size(), activeIdx);
-            if(ships.size() != base + 1 || sp != (int)base || activeIdx != origActive) { ok = false; }
+            Vehicle *sp = ships.spawn_ship(ship->defPath, "", ship->home,
+                                           ship->scenario, sys);
+            printf("spawn 1: size=%zu active=%s\n",
+                   collectVehicles(sys).size(), ship->name.c_str());
+            if(collectVehicles(sys).size() != base + 1 || ship != origShip) { ok = false; }
 
             // 2) remove the ship we just spawned -> size back to base,
             //    active unchanged
             game.remove_ship(sp);
-            printf("remove 1: size=%zu activeIdx=%d\n", ships.size(), activeIdx);
-            if(ships.size() != base || activeIdx != origActive) { ok = false; }
+            printf("remove 1: size=%zu active=%s\n",
+                   collectVehicles(sys).size(), ship->name.c_str());
+            if(collectVehicles(sys).size() != base || ship != origShip) { ok = false; }
 
             // 3) spawn again, select it, remove it (the active one) -> the
             //    control must hand off and the size return to base
-            int sp2 = ships.spawn_ship(ship->defPath, "", ships.homeOf(activeIdx),
-                                       ships.scenarioOf(activeIdx), sys);
+            Vehicle *sp2 = ships.spawn_ship(ship->defPath, "", ship->home,
+                                            ship->scenario, sys);
             game.select_ship(sp2);
-            printf("spawn 2 + select: activeIdx=%d size=%zu\n", activeIdx, ships.size());
-            if(activeIdx != sp2) { ok = false; }
-            game.remove_ship(activeIdx);
-            printf("remove 2 (active): activeIdx=%d size=%zu\n", activeIdx, ships.size());
-            if(ships.size() != base) { ok = false; }
+            printf("spawn 2 + select: active=%s size=%zu\n",
+                   ship->name.c_str(), collectVehicles(sys).size());
+            if(ship != sp2) { ok = false; }
+            game.remove_ship(sp2);
+            printf("remove 2 (active): active=%s size=%zu\n",
+                   ship->name.c_str(), collectVehicles(sys).size());
+            if(collectVehicles(sys).size() != base) { ok = false; }
 
             if(ok) {
                 printf("selftest-spawn: all checks passed; running 30 ticks for stability\n");
@@ -698,7 +704,9 @@ int main(int argc, char **argv)
         }
     }
 
-    ships.clear();   // ships + space pads (BEFORE the System bodies/shaders they reference)
+    // The ships + space pads are owned by the bodies (TerrainBody::ships /
+    // ::pads), so they are freed when the bodies are deleted below -- no
+    // separate ships.clear() here (the bodies would dangle).
 
     // Drain the background worker BEFORE the bodies it may still hold
     // (the Surface Map job captures a TerrainBody* and samples its

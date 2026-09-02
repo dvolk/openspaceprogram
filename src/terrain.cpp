@@ -16,6 +16,42 @@
 #include <bullet/btBulletDynamicsCommon.h>
 #include "physics.h"
 
+#include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes the
+                       // ships this body owns)
+
+TerrainBody::~TerrainBody() {
+    // The ships in my SOI first (they reference my frame; the Vehicle dtor
+    // also unregisters their bodies from the still-live Bullet world).
+    for(auto *s : ships) { delete s; }
+    ships.clear();
+    // The pads next. Their rigid Body is deliberately not deleted (it
+    // shares the space-port model with the other pads -- see the class in
+    // terrain.h); the StaticBuilding itself is freed here.
+    for(auto *p : pads) { delete p; }
+    pads.clear();
+    for(int i = 0; i < 6; i++) { delete patches[i]; }
+    delete atmosphere;
+    delete frame;
+    delete rot_frame;
+}
+
+/* A space pad (terrain.h): drawn like terrain, culled when the active
+   ship is not on the pad's body; the light source is the star. */
+void StaticBuilding::Draw(const Camera *camera, const TerrainBody *current,
+                          Frame *renderFrame) {
+    if(current == parent) {
+        const Frame *posFrame = parent->frame->getRotFrame();
+        const float shadow = ComputeTerrainShadow(parent, posFrame,
+                                                  GetPosition(body), sun);
+        // Light direction at the pad (sun -> pad); stays defined if the
+        // pad's body were ever the star (SunlightDir would be a zero vector).
+        const glm::dvec3 pad_root =
+            posFrame->root_orient * GetPosition(body) + posFrame->root_pos;
+        glm::vec3 sunlightVec =
+            glm::vec3(TerrainBody::LightDirFrom(pad_root, sun, renderFrame));
+        body->Draw(camera, sunlightVec, shadow);
+    }
+}
 
 GeoPatch::~GeoPatch() {
     body->alive.erase(this);

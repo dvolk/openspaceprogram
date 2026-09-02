@@ -87,8 +87,11 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 xferTargets.push_back({b->name.c_str(), b, nullptr});
             }
         }
-        for(auto *s : g.ships) {
-            if(s != g.ship && s->frame && s->frame->body == pb) {
+        // transfer targets: the other ships in the same SoI body (the
+        // body's own ship list -- free ships + EVA characters, not the
+        // aboard crew, who live on their ship)
+        for(auto *s : pb->ships) {
+            if(s != g.ship) {
                 xferTargets.push_back({s->name.c_str(), nullptr, s});
             }
         }

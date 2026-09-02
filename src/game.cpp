@@ -228,22 +228,21 @@ void pickAt(Game &g, int px, int py) {
    physics. Taking control during rails warp drops the warp to 10 (the top
    physics warp -- anything above is a rails warp) so the active ship is
    integrated. The orbit camera recenters on the ship being taken. */
-void Game::select_ship(int idx) {
-    if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
+void Game::select_ship(Vehicle *v) {
+    if(v == nullptr || v == ship) { return; }
     // An EVA character aboard a ship is not directly controllable: it is
     // parked inside a capsule (out of physics) with its mass folded into that
     // part, so un-parking it here would double-count its mass. EVA it from
     // the capsule part window (or the V key) first.
-    if(ships[idx]->isCrewAboard()) {
+    if(v->isCrewAboard()) {
         toast("%s is aboard -- EVA it from its capsule first",
-              ships[idx]->name.c_str());
+              v->name.c_str());
         return;
     }
-    ships[activeIdx]->releaseControl();
-    ships[activeIdx]->goOnRails();
-    activeIdx = idx;
-    ships[activeIdx]->leaveRails();
-    ship = ships[activeIdx];
+    ship->releaseControl();
+    ship->goOnRails();
+    v->leaveRails();
+    ship = v;
     if(time_accel >= kRailsWarp) {
         time_accel = 10;
         toast("Active ship: %s, warp 10x", ship->name.c_str());
@@ -254,46 +253,43 @@ void Game::select_ship(int idx) {
         // a kerbal is 1.7 m tall; 50 m would lose it
         camera->distance = ship->isEva() ? 10.0 : 50.0;
     }
-    printf("Active ship %d of %d: %s\n",
-           activeIdx + 1, (int)ships.size(), ship->name.c_str());
+    // "N of M" in the canonical order (collectVehicles, ships.h) -- the
+    // same order F6 and the Ship List window walk. N = v's position, M = the
+    // whole fleet (ships + aboard crew).
+    int n = 0, i = 0;
+    for(auto *x : collectVehicles(sys)) {
+        n++;
+        if(x == v) { i = n; }
+    }
+    printf("Active ship %d of %d: %s\n", i, n, ship->name.c_str());
 }
 
 /* --- crew (characters aboard ships; decls at the bottom of game.h). The
-   aboard state lives on the kerbal (Kerbal::aboard), so the queries just
-   filter the (tiny) fleet; the transitions move the kerbal's mass onto/off
-   the capsule part and park/restore its body (parked = out of the physics
-   world, the same railFrozen convention as a grounded railed ship). */
+   aboard crew live on their ship (Vehicle::crew), so the queries read it
+   directly; the free kerbals are the isEva ships in the bodies' lists.
+   The transitions move the kerbal's mass onto/off the capsule part and
+   park/restore its body (parked = out of the physics world, the same
+   railFrozen convention as a grounded railed ship), and move it between
+   ship->crew and its SoI body's ship list. */
 
-int shipIndex(Ships &fleet, Vehicle *v) {
-    for(size_t i = 0; i < fleet.size(); i++) {
-        if(fleet[i] == v) { return (int)i; }
-    }
-    return -1;
+std::vector<Kerbal *> shipCrew(Vehicle *ship) {
+    std::vector<Kerbal *> out;
+    for(auto *k : ship->crew) { out.push_back(static_cast<Kerbal *>(k)); }
+    return out;
 }
 
-std::vector<Kerbal *> shipCrew(Ships &fleet, Vehicle *ship) {
+std::vector<Kerbal *> partCrew(Vehicle *ship, size_t part) {
     std::vector<Kerbal *> out;
-    for(auto *s : fleet) {
-        if(!s->isEva()) { continue; }
-        Kerbal *k = static_cast<Kerbal *>(s);
-        if(k->aboard == ship) { out.push_back(k); }
+    for(auto *k : ship->crew) {
+        Kerbal *kb = static_cast<Kerbal *>(k);
+        if(kb->aboardPart == part) { out.push_back(kb); }
     }
     return out;
 }
 
-std::vector<Kerbal *> partCrew(Ships &fleet, Vehicle *ship, size_t part) {
+std::vector<Kerbal *> freeKerbals(System &sys) {
     std::vector<Kerbal *> out;
-    for(auto *s : fleet) {
-        if(!s->isEva()) { continue; }
-        Kerbal *k = static_cast<Kerbal *>(s);
-        if(k->aboard == ship && k->aboardPart == part) { out.push_back(k); }
-    }
-    return out;
-}
-
-std::vector<Kerbal *> freeKerbals(Ships &fleet) {
-    std::vector<Kerbal *> out;
-    for(auto *s : fleet) {
+    for(auto *s : collectVehicles(sys)) {
         if(!s->isEva()) { continue; }
         Kerbal *k = static_cast<Kerbal *>(s);
         if(k->aboard == nullptr) { out.push_back(k); }
@@ -301,15 +297,15 @@ std::vector<Kerbal *> freeKerbals(Ships &fleet) {
     return out;
 }
 
-/* Take the kerbal at `idx` out of its capsule: move its mass off the
-   capsule (the ship gets lighter), place it standing / hovering just beside
-   the capsule (the same placement law as Ships::spawn_kerbal_near, but
-   relative to the capsule part), restore its body to the physics world, and
-   hand the player control of it. The capsule part keeps the rest of the
-   ship; the kerbal is now a live body the player can fly / walk. */
-void Game::kerbalEVA(int idx) {
-    if(idx < 0 || idx >= (int)ships.size()) { return; }
-    Kerbal *k = static_cast<Kerbal *>(ships[idx]);
+/* Take `k` out of its capsule: move its mass off the capsule (the ship
+   gets lighter), place it standing / hovering just beside the capsule
+   (relative to the capsule part), restore its body to the physics world,
+   and hand the player control of it. The kerbal moves from ship->crew to
+   the ship's SoI body's ship list (its frame follows the ship's, so its
+   pose -- set in the ship's frame -- is integrated in the right frame).
+   The capsule part keeps the rest of the ship; the kerbal is now a live
+   body the player can fly / walk. */
+void Game::kerbalEVA(Kerbal *k) {
     if(!k->isAboard()) {
         toast("EVA: %s is not aboard a ship", k->name.c_str());
         return;
@@ -351,28 +347,39 @@ void Game::kerbalEVA(int idx) {
         SetVelocity(kb, GetVelocity(cap));   // co-moving beside the ship
     }
 
+    /* the kerbal now lives beside the ship: same SoI body (its ship list)
+       and same frame as the ship. While aboard its frame was set once at
+       build time and the pose was bookkeeping; the ship may have moved on
+       (or changed SoI) since, so both follow the ship now. */
+    k->frame = ship->frame;
+    k->m_parent = ship->m_parent;
+    for(auto it = ship->crew.begin(); it != ship->crew.end(); it++) {
+        if(*it == k) { ship->crew.erase(it); break; }
+    }
+    if(ship->m_parent != nullptr) { ship->m_parent->ships.push_back(k); }
+    k->aboard = nullptr;
+
     /* back into the physics world (it was parked while aboard) */
     AddPhysicsBody(kb);
     k->onRails = false;
     k->railFrozen = false;
-    k->aboard = nullptr;
 
-    kerbalIdx = idx;
-    lastShipIdx = activeIdx;
-    select_ship(idx);
+    kerbal = k;
+    lastShip = ship;
+    select_ship(k);
     toast("EVA: %s", k->name.c_str());
     printf("[crew] t=%.1f EVA: '%s' out of '%s' part %zu\n",
            time, k->name.c_str(), ship->name.c_str(), part);
 }
 
-/* Put a free kerbal (at `idx`) into the capsule (ship, part): move its mass
+/* Put a free kerbal `k` into the capsule (ship, part): move its mass
    onto the capsule (the ship gets heavier), park its body inside at the
-   capsule's COM (out of the physics world), and set its aboard state.
-   Refuses a full capsule or a non-capsule part. If the player was
-   controlling the kerbal, hand control to the ship it entered. */
-void Game::kerbalBoard(int idx, Vehicle *ship, size_t part) {
-    if(idx < 0 || idx >= (int)ships.size()) { return; }
-    Kerbal *k = static_cast<Kerbal *>(ships[idx]);
+   capsule's COM (out of the physics world), and set its aboard state --
+   it moves from its SoI body's ship list to ship->crew (frame/m_parent
+   follow the ship, so the parked pose is consistent). Refuses a full
+   capsule or a non-capsule part. If the player was controlling the kerbal,
+   hand control to the ship it entered. */
+void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     if(k->isAboard()) {
         toast("Board: %s is already aboard", k->name.c_str());
         return;
@@ -383,7 +390,7 @@ void Game::kerbalBoard(int idx, Vehicle *ship, size_t part) {
         toast("Board: part %zu is not a capsule", part);
         return;
     }
-    if((int)partCrew(ships, ship, part).size() >= capDef->crew_capacity) {
+    if((int)partCrew(ship, part).size() >= capDef->crew_capacity) {
         toast("Board: capsule full (%d)", capDef->crew_capacity);
         return;
     }
@@ -400,20 +407,29 @@ void Game::kerbalBoard(int idx, Vehicle *ship, size_t part) {
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
+    // Leave its body's ship list (it was a free kerbal there), then follow
+    // the ship's SoI + frame for the parked state.
+    if(k->m_parent != nullptr) {
+        for(auto it = k->m_parent->ships.begin();
+            it != k->m_parent->ships.end(); it++) {
+            if(*it == k) { k->m_parent->ships.erase(it); break; }
+        }
+    }
+    k->frame = ship->frame;
+    k->m_parent = ship->m_parent;
     k->aboard = ship;
     k->aboardPart = part;
+    ship->crew.push_back(k);
+    if(kerbal == k) { kerbal = nullptr; }
     toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
     printf("[crew] t=%.1f Board: '%s' into '%s' part %zu\n",
            time, k->name.c_str(), ship->name.c_str(), part);
 
     /* the player was controlling the kerbal that just boarded: hand control
        to the ship it entered (it is no longer controllable). */
-    if(activeIdx == idx) {
-        const int sidx = shipIndex(ships, ship);
-        if(sidx >= 0) {
-            lastShipIdx = sidx;
-            select_ship(sidx);
-        }
+    if(this->ship == k) {
+        lastShip = ship;
+        select_ship(ship);
     }
 }
 
@@ -425,21 +441,20 @@ void Game::kerbalBoard(int idx, Vehicle *ship, size_t part) {
    one re-enters physics. */
 void Game::toggle_eva() {
     if(ship->isEva()) {
-        if(lastShipIdx >= 0 && lastShipIdx < (int)ships.size()
-           && !ships[lastShipIdx]->isEva()) {
-            select_ship(lastShipIdx);
+        if(lastShip != nullptr && !lastShip->isEva()) {
+            select_ship(lastShip);
         } else {
             toast("EVA: no ship to return to");
         }
         return;
     }
     // controlling a regular ship: EVA its first aboard kerbal
-    std::vector<Kerbal *> crew = shipCrew(ships, ship);
+    std::vector<Kerbal *> crew = shipCrew(ship);
     if(crew.empty()) {
         toast("EVA: no crew aboard %s", ship->name.c_str());
         return;
     }
-    kerbalEVA(shipIndex(ships, crew.front()));
+    kerbalEVA(crew.front());
 }
 
 /* Enter rails warp: park every ship (flying ones coast on their conic,
@@ -447,7 +462,8 @@ void Game::toggle_eva() {
    accel -- if any ship is not rail-eligible, e.g. a suborbital descent in
    progress. */
 bool Game::enter_rails_warp() {
-    for(auto *s : ships) {
+    std::vector<Vehicle *> all = collectVehicles(sys);
+    for(auto *s : all) {
         if(!s->canRail()) {
             printf("Rails warp refused: '%s' is neither in free fall nor "
                    "grounded (warp stays %d)\n", s->name.c_str(), time_accel);
@@ -456,7 +472,7 @@ bool Game::enter_rails_warp() {
             return false;
         }
     }
-    for(auto *s : ships) { s->goOnRails(); }
+    for(auto *s : all) { s->goOnRails(); }
     return true;
 }
 
@@ -464,10 +480,11 @@ bool Game::enter_rails_warp() {
    and unregisters the bodies (skipped when the ship is already parked on
    rails), so this is safe in any state. Refuses to remove the last ship.
    If the removed ship was active, control hands off to the next ship in
-   the list (or the last one). */
-void Game::remove_ship(int idx) {
-    if(idx < 0 || idx >= (int)ships.size()) { return; }
-    if(ships.size() <= 1) {
+   the canonical order (or the last one). */
+void Game::remove_ship(Vehicle *v) {
+    if(v == nullptr) { return; }
+    std::vector<Vehicle *> all = collectVehicles(sys);
+    if(all.size() <= 1) {
         printf("Refusing to remove the last ship\n");
         return;
     }
@@ -475,43 +492,73 @@ void Game::remove_ship(int idx) {
     // folded into a capsule part) can't be removed cleanly: deleting it would
     // dangle their `aboard` pointer or leak the folded mass. EVA the crew
     // out first.
-    if(ships[idx]->isCrewAboard() || !shipCrew(ships, ships[idx]).empty()) {
-        toast("Cannot remove %s -- EVA its crew out first",
-              ships[idx]->name.c_str());
+    if(v->isCrewAboard() || !shipCrew(v).empty()) {
+        toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
         return;
     }
-    Vehicle *v = ships[idx];
-    const bool wasActive = (idx == activeIdx);
+    const bool wasActive = (v == ship);
     const std::string removedName = v->name;
     if(wasActive) { v->releaseControl(); }
 
-    dropPartWindowsFor(v);           // its part windows would dangle
-    ships.erase_ship((size_t)idx);   // erase the 4 fleet vectors + delete v
+    dropPartWindowsFor(v);   // its part windows would dangle
 
-    // keep the EVA indices in range (the fleet shifted under them)
-    if(kerbalIdx == idx) { kerbalIdx = -1; }
-    else if(kerbalIdx > idx) { kerbalIdx--; }
-    if(lastShipIdx == idx) { lastShipIdx = -1; }
-    else if(lastShipIdx > idx) { lastShipIdx--; }
+    // It is not aboard (guarded above), so it is in its SoI body's ship
+    // list: take it out, then delete (the Vehicle dtor detaches the welds
+    // + unregisters the bodies + deletes its crew).
+    if(v->m_parent != nullptr) {
+        for(auto it = v->m_parent->ships.begin();
+            it != v->m_parent->ships.end(); it++) {
+            if(*it == v) { v->m_parent->ships.erase(it); break; }
+        }
+    }
+    delete v;
+
+    // drop any selection references that dangled off the removed ship
+    if(kerbal == v) { kerbal = nullptr; }
+    if(lastShip == v) { lastShip = nullptr; }
 
     if(wasActive) {
-        activeIdx = (idx >= (int)ships.size()) ? (int)ships.size() - 1 : idx;
-        ships[activeIdx]->leaveRails();
-        ship = ships[activeIdx];
-        if(time_accel >= kRailsWarp) {
-            time_accel = 10;
-            toast("Active ship: %s, warp 10x", ship->name.c_str());
+        // hand off to the next ship in the canonical order (or the last
+        // one if v was last); the aboard crew are not controllable
+        Vehicle *next = nullptr;
+        bool seen = false;
+        for(size_t i = 0; i < all.size(); i++) {
+            Vehicle *x = all[i];
+            if(x->isCrewAboard()) { continue; }
+            if(x == v) { seen = true; continue; }
+            if(seen) { next = x; break; }
         }
-        focusBody = 0;
-        if(camera->mode == CAM_ORBIT) {
-            camera->Follow(ship->get_center_of_mass());
-            camera->distance = 50.0;
+        if(next == nullptr) {
+            for(size_t i = all.size(); i-- > 0; ) {
+                if(all[i] == v || all[i]->isCrewAboard()) { continue; }
+                next = all[i];
+                break;
+            }
         }
-        printf("Removed '%s'; active ship %d of %d: %s\n",
-               removedName.c_str(), activeIdx + 1, (int)ships.size(),
-               ship->name.c_str());
+        if(next != nullptr) {
+            next->leaveRails();
+            ship = next;
+            if(time_accel >= kRailsWarp) {
+                time_accel = 10;
+                toast("Active ship: %s, warp 10x", ship->name.c_str());
+            }
+            focusBody = 0;
+            if(camera->mode == CAM_ORBIT) {
+                camera->Follow(ship->get_center_of_mass());
+                camera->distance = 50.0;
+            }
+            // N/M in the remaining fleet (the canonical order minus v):
+            // N = next's position, M = the whole remaining fleet.
+            int n = 0, i = 0;
+            for(size_t j = 0; j < all.size(); j++) {
+                if(all[j] == v) { continue; }
+                n++;
+                if(all[j] == next) { i = n; }
+            }
+            printf("Removed '%s'; active ship %d of %d: %s\n",
+                   removedName.c_str(), i, n, ship->name.c_str());
+        }
     } else {
-        if(idx < activeIdx) { activeIdx--; }
         printf("Removed '%s' (active unchanged: %s)\n",
                removedName.c_str(), ship->name.c_str());
     }

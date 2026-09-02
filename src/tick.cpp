@@ -25,9 +25,17 @@ void tick(Game &g) {
         g.accumulator = 10 * g.dt;
     }
 
+    // The canonical ship list this tick walks: bodies in file order, each
+    // body's ships, each ship's crew right after it (collectVehicles).
+    // Snapshotted once up front so a ship that crosses a SoI boundary mid-tick
+    // (switchFrames moves it between bodies' lists) is still updated exactly
+    // once -- the pointers stay valid across the move, and substeps never
+    // move ships.
+    std::vector<Vehicle *> all = collectVehicles(g.sys);
+
     // clear stats and stuff; sync the exhaust-velocity test scale
     // (--exhaust-scale / the Settings slider) onto every ship.
-    for(auto *s : g.ships) {
+    for(auto *s : all) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
     }
@@ -165,7 +173,7 @@ void tick(Game &g) {
                    frozen on the ground) and the Bullet world is not
                    stepped at all -- O(ships) per tick instead of a
                    substep count that explodes with the accel. */
-                for(auto *s : g.ships) { s->railsTick(g.dt * g.time_accel); }
+                for(auto *s : all) { s->railsTick(g.dt * g.time_accel); }
             } else {
 
             // per-ship SOI bookkeeping: each ship tracks its own
@@ -173,7 +181,7 @@ void tick(Game &g) {
             // cross a boundary while we fly another one). Railed
             // ships advance their analytic conic here instead --
             // exact for any step size, at any time accel.
-            for(auto *s : g.ships) {
+            for(auto *s : all) {
                 if(s->onRails) { s->railsTick(g.dt * g.time_accel); }
                 else { s->switchFrames(); }
             }
@@ -207,7 +215,7 @@ void tick(Game &g) {
                 // physics_tick then steps the shared Bullet world all of
                 // them at once. Railed ships have no bodies in the world
                 // -- their conic already advanced this tick in railsTick.
-                for(auto *s : g.ships) {
+                for(auto *s : all) {
                     if(s->onRails) { continue; }
                     s->processGravity();
                     s->applyControlForces(h);

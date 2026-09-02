@@ -34,7 +34,6 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // The pass body is verbatim from main's render section; its globals
     // are Game members (aliased so the body reads the same).
     Vehicle *ship = g.ship;
-    Ships &ships = g.ships;
     const std::vector<TerrainBody *> &planets = g.sys.bodies;
     TerrainBody *sun = g.sun;
     Camera *camera = g.camera;
@@ -124,16 +123,19 @@ void draw3d(Game &g, TransferPlanner &planner) {
     if(g.world_drawing == true) {
         // one per home body; StaticBuilding::Draw culls itself when
         // the active ship is not on that body
-        for(auto &kv : ships.pads()) {
-            kv.second->Draw(camera, ship->m_parent, ship->frame);
+        for(auto *b : planets) {
+            for(auto *p : b->pads) {
+                p->Draw(camera, ship->m_parent, ship->frame);
+            }
         }
         // render frame = the active ship's frame; idle ships in a
-        // different frame are transformed into it in Vehicle::Draw. An
-        // EVA character aboard a ship is skipped -- it is parked inside a
-        // capsule (out of the physics world), not a visible body.
-        for(auto *s : ships) {
-            if(s->isCrewAboard()) { continue; }
-            s->Draw(camera, ship->frame);
+        // different frame are transformed into it in Vehicle::Draw. The
+        // body lists hold the free ships + EVA characters (the aboard
+        // crew live on their ship, not here), so no aboard-skip is needed.
+        for(auto *b : planets) {
+            for(auto *s : b->ships) {
+                s->Draw(camera, ship->frame);
+            }
         }
     }
 

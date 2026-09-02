@@ -70,6 +70,8 @@ enum SlewMode {
     SlewKillRot      /* kill the spin */
 };
 
+struct ScenarioDef;  // the starting-scenario table (end of this file)
+
 class Vehicle {
 public:
     std::string name;   // display name (def name, disambiguated in main)
@@ -80,6 +82,18 @@ public:
 
     TerrainBody *m_parent;
     Frame *frame;
+    // Ownership bookkeeping: a ship lives in the ships list of its SOI
+    // body (terrain.h) -- that is m_parent, which changes on a SoI
+    // crossing (moveToFrame moves the ship between the lists). `home` is
+    // the body the ship was built on (fixed), `scenario` its starting
+    // scenario and `slot` its pad/orbit slot within the (home, scenario)
+    // group. `crew` are the characters aboard THIS ship (their capsule
+    // slot is Kerbal::aboardPart, eva.h); they are in no body's list
+    // while aboard.
+    TerrainBody *home = nullptr;
+    const ScenarioDef *scenario = nullptr;
+    int slot = 0;
+    std::vector<Vehicle *> crew;
     TerrainBody *sun = nullptr; // the star (light source); set in main
     float m_thrust;
 
@@ -458,6 +472,10 @@ public:
        body while it was still registered in the world -- UB that only got
        away with it because the process exits right after. */
     virtual ~Vehicle() {
+        // The crew aboard (Kerbals, eva.h) are owned by this ship: delete
+        // them before their parts would outlive their `aboard` target.
+        for(auto&& k : crew) { delete k; }
+        crew.clear();
         if(!onRails) {
             for(auto&& c : constraints) { Detach(c); }
             constraints.clear();
@@ -1042,6 +1060,17 @@ public:
 
             SetVelocity(part, newVel);
         }
+        // The ship lives in the ships list of its SOI body (terrain.h):
+        // crossing to another body's SoI is a list move, done here so the
+        // body lists always agree with m_parent. (Rare -- this runs once
+        // per crossing, not per tick.)
+        if(m_parent != nullptr && m_parent != newFrame->body) {
+            for(auto it = m_parent->ships.begin();
+                it != m_parent->ships.end(); it++) {
+                if(*it == this) { m_parent->ships.erase(it); break; }
+            }
+            newFrame->body->ships.push_back(this);
+        }
         frame = newFrame;
         m_parent = newFrame->body;
     }
@@ -1292,6 +1321,14 @@ public:
         rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
         rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
         rail_orient = O * rail_orient;
+        // Same list move as moveToFrame (the ship follows its SoI body).
+        if(m_parent != nullptr && m_parent != newFrame->body) {
+            for(auto it = m_parent->ships.begin();
+                it != m_parent->ships.end(); it++) {
+                if(*it == this) { m_parent->ships.erase(it); break; }
+            }
+            newFrame->body->ships.push_back(this);
+        }
         frame = newFrame;
         m_parent = newFrame->body;
     }
