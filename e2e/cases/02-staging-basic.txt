@@ -1,11 +1,13 @@
-# Staging: on the pad, two SPACE presses should drop the stager's parts and
-# then report nothing left. Verifies the stage-separation path end to end.
+# Staging: on the pad, the first SPACE drops the stager's boosters; the
+# second targets the capsule stage, which carries the crew -- the crew is
+# locked to the vessel, so staging it is refused (EVA them first). Verifies
+# the stage-separation path end to end + the crew lock.
 # Anchors are the exact strings the staging handler prints.
 NAME staging-basic
 ARGS --scenario pad --ship res/ships/stager.json --time-accel 1 --timeout 12
 ARGS --sim-press 2000,100,SPACE
 ARGS --sim-press 6000,100,SPACE
 EXPECT Stage: dropped
-EXPECT nothing left to separate
+EXPECT Stage: refused -- crew aboard the capsule
 FORBID GL_
 FORBID error:

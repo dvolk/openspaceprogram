@@ -235,11 +235,18 @@ void poll_events(Game &g) {
                 }
             }
             if(ev.key.keysym.sym == SDLK_F6) {
-                // advance to the next ship in the fleet, wrapping around
-                // (one-shot; auto-repeat would keep cycling). No-op with a
-                // single ship: the next index is the current one.
+                // advance to the next selectable ship in the fleet, wrapping
+                // around (one-shot; auto-repeat would keep cycling). Crew
+                // characters aboard a capsule are skipped: they are not
+                // controllable (EVA them from the capsule window first).
                 if(!ev.key.repeat && g.ships.size() > 1) {
-                    g.select_ship((g.activeIdx + 1) % (int)g.ships.size());
+                    const int n = (int)g.ships.size();
+                    for(int step = 1; step < n; step++) {
+                        const int idx = (g.activeIdx + step) % n;
+                        if(g.ships[idx]->isCrewAboard()) { continue; }
+                        g.select_ship(idx);
+                        break;
+                    }
                 }
             }
             if(ev.key.keysym.sym == SDLK_v) {
@@ -272,12 +279,32 @@ void poll_events(Game &g) {
                             g.toast("Staging: left the rails, warp 1x");
                         }
                     }
-                    int dropped = g.ship->separateStage(g.ship->activeStage());
-                    if(dropped > 0) {
-                        printf("Stage: dropped %d part(s); now on stage %d of %d\n",
-                               dropped, g.ship->activeStage(), g.ship->numStages());
+                    // Refuse to drop a stage that still carries a crewed
+                    // capsule (the crew's `aboard` state would dangle); EVA
+                    // the crew out first. Per-part metadata lives in the
+                    // partDefs / partStages vectors parallel to parts.
+                    bool crewOnStage = false;
+                    for(size_t i = 0; i < g.ship->parts.size(); i++) {
+                        if(g.ship->partStages[i] != g.ship->activeStage()) { continue; }
+                        if(g.ship->partDefs[i] == nullptr ||
+                           g.ship->partDefs[i]->crew_capacity <= 0) { continue; }
+                        if(!partCrew(g.ships, g.ship, i).empty()) {
+                            crewOnStage = true;
+                        }
+                    }
+                    if(crewOnStage) {
+                        // the crew is locked to the vessel: staging the
+                        // capsule would strand them (their `aboard` dangles)
+                        printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");
+                        g.toast("Cannot stage -- EVA the capsule's crew out first");
                     } else {
-                        printf("Stage: nothing left to separate\n");
+                        int dropped = g.ship->separateStage(g.ship->activeStage());
+                        if(dropped > 0) {
+                            printf("Stage: dropped %d part(s); now on stage %d of %d\n",
+                                   dropped, g.ship->activeStage(), g.ship->numStages());
+                        } else {
+                            printf("Stage: nothing left to separate\n");
+                        }
                     }
                 }
             }

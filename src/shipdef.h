@@ -27,6 +27,7 @@
            "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
            "capacity": { "hydrogen": 26100, "lox": 26100 }, // optional, kg -> a propellant tank
+           "crew_capacity": 3,             // optional, int; > 0 -> a capsule (holds that many EVA characters)
            "hull_margin": 0.0             // optional, m; collision convex-hull margin
          }, ...
        ]
@@ -134,6 +135,13 @@ struct PartDef {
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
     double exhaust_velocity;  // m/s; with fuel_rate -> thruster
     std::vector<float> capacity; // kg per ResourceType; > 0 -> propellant tank
+
+    /* Crew capacity: how many EVA characters (src/eva.h) this part can hold
+       aboard. > 0 -> a capsule (a character can EVA out of it and board it,
+       see the crew transitions in game.cpp); 0 -> not a capsule. The
+       occupant's mass is added to / removed from this part's mass as they
+       board / leave (the "capsule weight changes with crew" rule). */
+    int crew_capacity;
 
     /* Collision convex-hull margin (m), the catalog default for this
        part. -1 = not set -> the physics engine's default applies

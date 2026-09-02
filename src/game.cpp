@@ -7,10 +7,14 @@
 
 #include <algorithm>
 #include <cstdarg>
+#include <cmath>
 #include <cstdio>
 #include <string>
 
-#include "pick.h"   // pickShipPart (pickAt)
+#include "eva.h"      // Kerbal (the crew characters)
+#include "physics.h"  // SetMass, AddPhysicsBody, RemoveBody, setPosRot, GetPosition
+#include "pick.h"     // pickShipPart (pickAt)
+#include "shipdef.h"  // PartDef (crew_capacity)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
     if (focusTargets[i].body == nullptr) {
@@ -226,6 +230,15 @@ void pickAt(Game &g, int px, int py) {
    integrated. The orbit camera recenters on the ship being taken. */
 void Game::select_ship(int idx) {
     if(idx < 0 || idx >= (int)ships.size() || idx == activeIdx) { return; }
+    // An EVA character aboard a ship is not directly controllable: it is
+    // parked inside a capsule (out of physics) with its mass folded into that
+    // part, so un-parking it here would double-count its mass. EVA it from
+    // the capsule part window (or the V key) first.
+    if(ships[idx]->isCrewAboard()) {
+        toast("%s is aboard -- EVA it from its capsule first",
+              ships[idx]->name.c_str());
+        return;
+    }
     ships[activeIdx]->releaseControl();
     ships[activeIdx]->goOnRails();
     activeIdx = idx;
@@ -245,9 +258,169 @@ void Game::select_ship(int idx) {
            activeIdx + 1, (int)ships.size(), ship->name.c_str());
 }
 
-/* V: toggle EVA. From a ship: spawn the kerbal beside it (once; later
-   presses re-select the existing one) and take control. From the kerbal:
-   hand control back to the ship the player came from. Both directions go
+/* --- crew (characters aboard ships; decls at the bottom of game.h). The
+   aboard state lives on the kerbal (Kerbal::aboard), so the queries just
+   filter the (tiny) fleet; the transitions move the kerbal's mass onto/off
+   the capsule part and park/restore its body (parked = out of the physics
+   world, the same railFrozen convention as a grounded railed ship). */
+
+int shipIndex(Ships &fleet, Vehicle *v) {
+    for(size_t i = 0; i < fleet.size(); i++) {
+        if(fleet[i] == v) { return (int)i; }
+    }
+    return -1;
+}
+
+std::vector<Kerbal *> shipCrew(Ships &fleet, Vehicle *ship) {
+    std::vector<Kerbal *> out;
+    for(auto *s : fleet) {
+        if(!s->isEva()) { continue; }
+        Kerbal *k = static_cast<Kerbal *>(s);
+        if(k->aboard == ship) { out.push_back(k); }
+    }
+    return out;
+}
+
+std::vector<Kerbal *> partCrew(Ships &fleet, Vehicle *ship, size_t part) {
+    std::vector<Kerbal *> out;
+    for(auto *s : fleet) {
+        if(!s->isEva()) { continue; }
+        Kerbal *k = static_cast<Kerbal *>(s);
+        if(k->aboard == ship && k->aboardPart == part) { out.push_back(k); }
+    }
+    return out;
+}
+
+std::vector<Kerbal *> freeKerbals(Ships &fleet) {
+    std::vector<Kerbal *> out;
+    for(auto *s : fleet) {
+        if(!s->isEva()) { continue; }
+        Kerbal *k = static_cast<Kerbal *>(s);
+        if(k->aboard == nullptr) { out.push_back(k); }
+    }
+    return out;
+}
+
+/* Take the kerbal at `idx` out of its capsule: move its mass off the
+   capsule (the ship gets lighter), place it standing / hovering just beside
+   the capsule (the same placement law as Ships::spawn_kerbal_near, but
+   relative to the capsule part), restore its body to the physics world, and
+   hand the player control of it. The capsule part keeps the rest of the
+   ship; the kerbal is now a live body the player can fly / walk. */
+void Game::kerbalEVA(int idx) {
+    if(idx < 0 || idx >= (int)ships.size()) { return; }
+    Kerbal *k = static_cast<Kerbal *>(ships[idx]);
+    if(!k->isAboard()) {
+        toast("EVA: %s is not aboard a ship", k->name.c_str());
+        return;
+    }
+    Vehicle *ship = k->aboard;
+    const size_t part = k->aboardPart;
+    if(part >= ship->parts.size()) { return; }
+    const PartDef *capDef = ship->partDefs[part];
+    Body *cap = ship->parts[part];
+    Body *kb = k->parts[0];
+    const double kerbalMass = k->parts[0]->mass;
+
+    /* move the crew mass off the capsule (the ship gets lighter) */
+    cap->mass -= kerbalMass;
+    SetMass(cap, cap->mass);
+
+    /* the standing / hover pose beside the capsule: on a surface stand on
+       the same floor (the capsule's bottom) just outside its side, in free
+       fall hover beside it co-moving. */
+    const glm::dvec3 capCom = GetPosition(cap);
+    const glm::dvec3 upDir = glm::normalize(capCom);
+    const glm::dvec3 refs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+    int best = 0;
+    for(int i = 1; i < 3; i++) {
+        if(fabs(glm::dot(refs[i], upDir)) < fabs(glm::dot(refs[best], upDir))) { best = i; }
+    }
+    const glm::dvec3 tangent =
+        glm::normalize(refs[best] - glm::dot(refs[best], upDir) * upDir);
+    const glm::dvec3 right = glm::cross(tangent, upDir);
+    const glm::dmat3 orient = glm::dmat3(right, tangent, upDir);
+    const double offset = capDef->radius + 2.0;
+    if(ship->frame->isRotFrame()) {
+        const double floorR = std::max(glm::length(capCom) - capDef->height / 2.0,
+            (double)ship->m_parent->GetTerrainHeight(glm::vec3(upDir)));
+        setPosRot(kb, upDir * (floorR + k->restAlt()) + tangent * offset, orient);
+        SetVelocity(kb, glm::dvec3(0.0));
+    } else {
+        setPosRot(kb, capCom + tangent * offset, orient);
+        SetVelocity(kb, GetVelocity(cap));   // co-moving beside the ship
+    }
+
+    /* back into the physics world (it was parked while aboard) */
+    AddPhysicsBody(kb);
+    k->onRails = false;
+    k->railFrozen = false;
+    k->aboard = nullptr;
+
+    kerbalIdx = idx;
+    lastShipIdx = activeIdx;
+    select_ship(idx);
+    toast("EVA: %s", k->name.c_str());
+    printf("[crew] t=%.1f EVA: '%s' out of '%s' part %zu\n",
+           time, k->name.c_str(), ship->name.c_str(), part);
+}
+
+/* Put a free kerbal (at `idx`) into the capsule (ship, part): move its mass
+   onto the capsule (the ship gets heavier), park its body inside at the
+   capsule's COM (out of the physics world), and set its aboard state.
+   Refuses a full capsule or a non-capsule part. If the player was
+   controlling the kerbal, hand control to the ship it entered. */
+void Game::kerbalBoard(int idx, Vehicle *ship, size_t part) {
+    if(idx < 0 || idx >= (int)ships.size()) { return; }
+    Kerbal *k = static_cast<Kerbal *>(ships[idx]);
+    if(k->isAboard()) {
+        toast("Board: %s is already aboard", k->name.c_str());
+        return;
+    }
+    if(part >= ship->parts.size()) { return; }
+    const PartDef *capDef = ship->partDefs[part];
+    if(capDef->crew_capacity <= 0) {
+        toast("Board: part %zu is not a capsule", part);
+        return;
+    }
+    if((int)partCrew(ships, ship, part).size() >= capDef->crew_capacity) {
+        toast("Board: capsule full (%d)", capDef->crew_capacity);
+        return;
+    }
+    Body *cap = ship->parts[part];
+    Body *kb = k->parts[0];
+    const double kerbalMass = k->parts[0]->mass;
+
+    /* move the crew mass onto the capsule (the ship gets heavier) */
+    cap->mass += kerbalMass;
+    SetMass(cap, cap->mass);
+
+    /* park the kerbal inside the capsule (at its COM, out of the world) */
+    setPosRot(kb, GetPosition(cap), GetOrient(cap));
+    RemoveBody(kb);
+    k->onRails = true;
+    k->railFrozen = true;
+    k->aboard = ship;
+    k->aboardPart = part;
+    toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
+    printf("[crew] t=%.1f Board: '%s' into '%s' part %zu\n",
+           time, k->name.c_str(), ship->name.c_str(), part);
+
+    /* the player was controlling the kerbal that just boarded: hand control
+       to the ship it entered (it is no longer controllable). */
+    if(activeIdx == idx) {
+        const int sidx = shipIndex(ships, ship);
+        if(sidx >= 0) {
+            lastShipIdx = sidx;
+            select_ship(sidx);
+        }
+    }
+}
+
+/* V: toggle EVA. From a ship: EVA one of its aboard kerbals (the first) and
+   take control. From the kerbal: hand control back to the ship the player
+   came from. The kerbal stays free either way -- it boards back in via the
+   capsule part window's Board button (kerbalBoard). Both directions go
    through select_ship, so the old controller parks on rails and the new
    one re-enters physics. */
 void Game::toggle_eva() {
@@ -260,12 +433,13 @@ void Game::toggle_eva() {
         }
         return;
     }
-    if(kerbalIdx < 0) {
-        kerbalIdx = ships.spawn_kerbal_near(ship);
+    // controlling a regular ship: EVA its first aboard kerbal
+    std::vector<Kerbal *> crew = shipCrew(ships, ship);
+    if(crew.empty()) {
+        toast("EVA: no crew aboard %s", ship->name.c_str());
+        return;
     }
-    lastShipIdx = activeIdx;
-    select_ship(kerbalIdx);
-    toast("EVA: %s", ships[kerbalIdx]->name.c_str());
+    kerbalEVA(shipIndex(ships, crew.front()));
 }
 
 /* Enter rails warp: park every ship (flying ones coast on their conic,
@@ -295,6 +469,15 @@ void Game::remove_ship(int idx) {
     if(idx < 0 || idx >= (int)ships.size()) { return; }
     if(ships.size() <= 1) {
         printf("Refusing to remove the last ship\n");
+        return;
+    }
+    // A ship that still carries crew (or the crew themselves, whose mass is
+    // folded into a capsule part) can't be removed cleanly: deleting it would
+    // dangle their `aboard` pointer or leak the folded mass. EVA the crew
+    // out first.
+    if(ships[idx]->isCrewAboard() || !shipCrew(ships, ships[idx]).empty()) {
+        toast("Cannot remove %s -- EVA its crew out first",
+              ships[idx]->name.c_str());
         return;
     }
     Vehicle *v = ships[idx];

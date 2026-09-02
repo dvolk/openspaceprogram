@@ -253,6 +253,12 @@ public:
        fleet and the HUD are concerned. */
     virtual bool isEva() const { return false; }
 
+    /* True while an EVA character is ABOARD a ship (parked inside a capsule,
+       out of the physics world) -- the render pass skips it (it is inside
+       the capsule, not a visible body). Overridden in src/eva.h; a regular
+       ship never carries this, so it is false by default. */
+    virtual bool isCrewAboard() const { return false; }
+
     /* (Re)build the per-thruster / per-wheel behavior vectors from partDefs.
        Safe to call again after separateStage() has shrunk the part set: it
        touches ONLY the m_* vectors -- never partResources (fuel is never

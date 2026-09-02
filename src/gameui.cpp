@@ -1092,24 +1092,31 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     for(size_t i = 0; i < ships.size(); i++) {
         const bool active = ((int)i == activeIdx);
         ImGui::PushID((int)i);
-        if(active) {
-            ImGui::PushStyleColor(ImGuiCol_Button,
-                                 ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                                 ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                                 ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
-        }
-        if(ImGui::Button(ships[i]->name.c_str())) {
-            g.select_ship((int)i);
-        }
-        if(active) {
-            ImGui::PopStyleColor(3);
-        }
-        ImGui::SameLine();
-        if(ImGui::SmallButton("x")) {
-            g.remove_ship((int)i);
-            i = ships.size();   // the list shrank; stop iterating
+        if(ships[i]->isCrewAboard()) {
+            // a crew character aboard a capsule: it is in the fleet but not
+            // a controllable ship (no select/remove -- it lives in its
+            // capsule; EVA it from the capsule window to make it free)
+            ImGui::Text("%s (aboard)", ships[i]->name.c_str());
+        } else {
+            if(active) {
+                ImGui::PushStyleColor(ImGuiCol_Button,
+                                     ImVec4(0.30f, 0.45f, 0.70f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                     ImVec4(0.35f, 0.50f, 0.75f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                     ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
+            }
+            if(ImGui::Button(ships[i]->name.c_str())) {
+                g.select_ship((int)i);
+            }
+            if(active) {
+                ImGui::PopStyleColor(3);
+            }
+            ImGui::SameLine();
+            if(ImGui::SmallButton("x")) {
+                g.remove_ship((int)i);
+                i = ships.size();   // the list shrank; stop iterating
+            }
         }
         ImGui::PopID();
     }
@@ -1325,6 +1332,45 @@ void drawPartWindows(Game &g) {
                 ImGui::Text("%s: %.1fkg/%.1fkg", resNames[r],
                             ship->partResources[part].current[r],
                             ship->partResources[part].capacity[r]);
+            }
+            // --- crew (this part is a capsule: holds EVA characters) --------
+            // Aboard crew get an EVA button (takes them out, game.cpp); a
+            // free kerbal within boarding range (<= 10 m of the capsule)
+            // gets a Board button (puts them in). The transitions move the
+            // kerbal's mass onto/off the capsule and park/restore its body.
+            if(def->crew_capacity > 0) {
+                ImGui::Separator();
+                std::vector<Kerbal *> aboard = partCrew(g.ships, ship, part);
+                ImGui::Text("Crew: %d / %d", (int)aboard.size(), def->crew_capacity);
+                for(size_t ci = 0; ci < aboard.size(); ci++) {
+                    Kerbal *k = aboard[ci];
+                    ImGui::PushID(k);
+                    ImGui::Text("  %s", k->name.c_str());
+                    if(ImGui::SmallButton("EVA")) {
+                        g.kerbalEVA(shipIndex(g.ships, k));
+                    }
+                    ImGui::PopID();
+                }
+                // free kerbals in boarding range: a Board button each
+                const glm::dvec3 capCom = GetPosition(ship->parts[part]);
+                bool anyInRange = false;
+                for(Kerbal *k : freeKerbals(g.ships)) {
+                    const double dist =
+                        glm::length(k->get_center_of_mass() - capCom);
+                    if(dist > 10.0) { continue; }
+                    anyInRange = true;
+                    const bool full = ((int)aboard.size() >= def->crew_capacity);
+                    ImGui::PushID(k);
+                    ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
+                                full ? "  (capsule full)" : "");
+                    if(ImGui::SmallButton("Board")) {
+                        g.kerbalBoard(shipIndex(g.ships, k), ship, part);
+                    }
+                    ImGui::PopID();
+                }
+                if(!anyInRange) {
+                    ImGui::Text("  (no one in range to board)");
+                }
             }
             ImGui::Separator();
             ImGui::Text("Picked at: (%.0f, %.0f, %.0f)",

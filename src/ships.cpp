@@ -214,6 +214,68 @@ int Ships::spawn_kerbal_near(Vehicle *near)
     return (int)ships.size() - 1;
 }
 
+/* One crew kerbal aboard (ship, part): build a kerbal, park it inside the
+   capsule (out of the physics world), fold its mass into the capsule part
+   (the ship is heavier with crew aboard), and set its aboard state. The
+   parked position is bookkeeping only -- the transitions (game.cpp) recompute
+   the kerbal's pose when it EVAs, so a later scenario reposition of the ship
+   (apply_scenarios) does not need to touch it. */
+int Ships::spawn_crew_kerbal(Vehicle *ship, size_t part) {
+    if(part >= ship->parts.size()) { return -1; }
+    const PartDef *capDef = ship->partDefs[part];
+    if(capDef->crew_capacity <= 0) { return -1; }
+    Body *cap = ship->parts[part];
+
+    // the ship's home/scenario bookkeeping (it was just placed in the fleet)
+    size_t si = 0;
+    while(si < ships.size() && ships[si] != ship) { si++; }
+    TerrainBody *hb = (si < ships.size()) ? ship_homes[si] : ship->m_parent;
+    const ScenarioDef *sc = (si < ships.size()) ? ship_sc[si] : nullptr;
+
+    ShipDef def = load_ship_def("./res/ships/kerbal.json", part_catalog);
+    Kerbal *k = new Kerbal;
+    k->name = dedupName("kerbal");
+    k->defPath = "./res/ships/kerbal.json";
+    k->m_parent = ship->m_parent;
+    k->sun = sun;
+    k->frame = ship->frame;
+
+    // build it AT the capsule COM (it will be parked there, inside the ship)
+    const glm::dvec3 capCom = GetPosition(cap);
+    const glm::dmat3 capOrient = GetOrient(cap);
+    build_ship(k, def, partsshader, capCom, capOrient);
+    SetFriction(k->controller, 0.0);   // frictionless feet (see place_ship)
+
+    // park inside the capsule (out of the physics world) + fold its mass
+    // into the capsule part (the ship is heavier with crew aboard)
+    Body *kb = k->parts[0];
+    setPosRot(kb, capCom, capOrient);
+    RemoveBody(kb);
+    k->onRails = true;
+    k->railFrozen = true;
+    cap->mass += k->parts[0]->mass;
+    SetMass(cap, cap->mass);
+    k->aboard = ship;
+    k->aboardPart = part;
+
+    ships.push_back(k);
+    ship_homes.push_back(hb);
+    ship_sc.push_back(sc);
+    ship_slots.push_back(0);
+    printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",
+           k->name.c_str(), ship->name.c_str(), part,
+           1, capDef->crew_capacity);
+    return (int)ships.size() - 1;
+}
+
+void Ships::spawn_crew(Vehicle *ship) {
+    for(size_t i = 0; i < ship->parts.size(); i++) {
+        if(ship->partDefs[i]->crew_capacity > 0) {
+            spawn_crew_kerbal(ship, i);
+        }
+    }
+}
+
 void Ships::apply_scenarios(System &sys)
 {
     for(size_t i = 0; i < ships.size(); i++) {
@@ -264,6 +326,9 @@ void Ships::build_fleet(const std::vector<FleetEntry> &entries, System &sys,
         }
         const ScenarioDef *sc =
             scenario_by_name(fe.scenario.empty() ? default_scenario : fe.scenario);
-        place_ship(fe.ship, fe.name, hb, sc);
+        const int idx = place_ship(fe.ship, fe.name, hb, sc);
+        // startup crew: one kerbal aboard each capsule (the "characters in
+        // ships" state; the EVA/Board transitions in game.cpp move them)
+        spawn_crew(ships[idx]);
     }
 }

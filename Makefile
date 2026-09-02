@@ -156,6 +156,11 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
 	    tests/test_shipload.cpp src/shipdef.cpp -o test_shipload
 	./test_shipload
+	# crew_capacity on the part catalog (GL-free: which parts are capsules
+	# and their seat count, the default-0 for everything else, error path).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
+	    tests/test_crew.cpp src/shipdef.cpp -o test_crew
+	./test_crew
 	# stage-split bookkeeping (GL-free: which parts/constraints survive vs.
 	# drop, and the survivors' links remapped into the compressed indices).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
@@ -259,7 +264,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_rotation test_shipload test_crew test_stage test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

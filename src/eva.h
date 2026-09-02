@@ -49,6 +49,16 @@ struct Kerbal : Vehicle {
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
 
     bool isEva() const override { return true; }
+    bool isCrewAboard() const override { return isAboard(); }
+
+    /* --- crew: where this character is (set by the transitions in game.cpp)
+       Aboard a ship = parked inside one of its capsule parts (its body is
+       out of the physics world and its mass is folded into that part);
+       free = on EVA, a live body in the world. `aboard` is the single source
+       of truth -- the ship keeps no per-part occupant list. */
+    Vehicle *aboard = nullptr;  // the ship it sits in; nullptr = free (on EVA)
+    size_t aboardPart = 0;      // index into aboard->parts (the capsule)
+    bool isAboard() const { return aboard != nullptr; }
 
     /* The capsule-center altitude above the analytic surface when standing
        at rest: half the part height + the collision margins (0.5 terrain +

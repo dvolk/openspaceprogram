@@ -9,7 +9,7 @@
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
-      exhaust_velocity(0.0), hull_margin(-1.0) {
+      exhaust_velocity(0.0), crew_capacity(0), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -122,6 +122,16 @@ PartsCatalog load_parts_catalog(const char *path) {
             if(cap_total <= 0.0) {
                 throw std::runtime_error(std::string(ctx)
                                          + "\"capacity\" must total > 0 (kg)");
+            }
+        }
+
+        /* crew capacity (int); > 0 marks a capsule (holds that many EVA
+           characters, see PartDef.crew_capacity); omitted -> 0 */
+        if(pv.contains("crew_capacity")) {
+            d.crew_capacity = pv["crew_capacity"].get<int>();
+            if(d.crew_capacity < 0) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"crew_capacity\" must be >= 0");
             }
         }
 

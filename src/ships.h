@@ -119,6 +119,14 @@ public:
     // end; returns the new fleet index.
     int spawn_kerbal_near(Vehicle *near);
 
+    // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts
+    // (partDefs[i]->crew_capacity > 0) -- parked inside (out of the physics
+    // world, the railFrozen convention), its mass folded into the capsule
+    // part (the ship is heavier with crew aboard), aboard state set. Called
+    // from build_fleet after each ship is placed; copies spawned at runtime
+    // (spawn_ship) deliberately do NOT get crew.
+    void spawn_crew(Vehicle *ship);
+
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys);
 
@@ -142,6 +150,10 @@ public:
 private:
     // Ensure the (body, pad-site) pad exists; build it on demand.
     void place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double pad_height);
+
+    // One crew kerbal aboard (ship, part); the spawn_crew loop calls it per
+    // capsule. Returns the new fleet index.
+    int spawn_crew_kerbal(Vehicle *ship, size_t part);
 
     // De-duplicate a name across the fleet (first keeps the bare name,
     // later ones get #2, #3 ..).

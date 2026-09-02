@@ -8,7 +8,8 @@
       "mass": 1149.82,
       "radius": 1.0,
       "height": 2.0,
-      "torque": 200
+      "torque": 200,
+      "crew_capacity": 1
     },
     {
       "name": "capsule_r3h6",
@@ -18,7 +19,8 @@
       "mass": 31045.22,
       "radius": 3.0,
       "height": 6.0,
-      "torque": 600
+      "torque": 600,
+      "crew_capacity": 3
     },
     {
       "name": "capsule_r5h10",
@@ -28,7 +30,8 @@
       "mass": 143727.86,
       "radius": 5.0,
       "height": 10.0,
-      "torque": 1000
+      "torque": 1000,
+      "crew_capacity": 6
     },
     {
       "name": "reaction_wheel",

@@ -128,8 +128,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
             kv.second->Draw(camera, ship->m_parent, ship->frame);
         }
         // render frame = the active ship's frame; idle ships in a
-        // different frame are transformed into it in Vehicle::Draw
-        for(auto *s : ships) { s->Draw(camera, ship->frame); }
+        // different frame are transformed into it in Vehicle::Draw. An
+        // EVA character aboard a ship is skipped -- it is parked inside a
+        // capsule (out of the physics world), not a visible body.
+        for(auto *s : ships) {
+            if(s->isCrewAboard()) { continue; }
+            s->Draw(camera, ship->frame);
+        }
     }
 
     for(auto&& planet : planets) {
