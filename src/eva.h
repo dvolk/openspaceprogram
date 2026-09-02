@@ -13,8 +13,7 @@
 // steering force applied at the feet so it translates instead of
 // toppling; space = jump), in free fall it flies RCS-style relative to
 // the camera (W/S along the view direction, A/D strafe, LShift/LCtrl
-// up/down, the speed cap limiting the velocity RCS adds -- not the
-// orbital speed), QE yaw
+// up/down; a fixed acceleration with no speed cap, KSP-style), QE yaw
 // about the view axis, attitude slewed upright on screen facing the
 // camera. The pure geometry lives in evamath.h (headless-testable).
 //
@@ -45,8 +44,6 @@ struct Kerbal : Vehicle {
     bool jumpRequested = false;  // armed this tick; the first substep fires it
     glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // RCS translation dir, unit or 0
-    glm::dvec3 rcsBaseVel = glm::dvec3(0.0); // velocity at rcsDir engagement;
-                                             // the speed cap limits v - this
     double viewYaw = 0.0;        // QE yaw about the view axis, rad (accumulated)
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
 

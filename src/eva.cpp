@@ -15,8 +15,9 @@
 static const double kWalkSpeed   = 2.5;     // m/s
 static const double kWalkAccel   = 10.0;    // m/s^2 toward walkSpeed (damping)
 static const double kJumpSpeed   = 2.5;     // m/s radial kick
-static const double kRcsAccel    = 2.0;     // m/s^2 translation
-static const double kRcsMaxSpeed = 3.0;     // m/s soft cap (along the input)
+static const double kRcsAccel    = 2.0;     // m/s^2 translation; no speed cap,
+                                            // KSP-style -- fuel will be the
+                                            // limiter once resources land
 static const double kEvaTorque   = 100.0;   // N m attitude authority (space)
 static const double kGroundTorque = 300.0;  // N m attitude authority (ground)
 static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
@@ -78,15 +79,8 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
         if(isDown(SDL_SCANCODE_A)) { t -= sright; }
         if(isDown(SDL_SCANCODE_LSHIFT)) { t += up; }
         if(isDown(SDL_SCANCODE_LCTRL)) { t -= up; }
-        const glm::dvec3 newDir = (glm::length2(t) > 1e-9)
+        k->rcsDir = (glm::length2(t) > 1e-9)
             ? glm::normalize(t) : glm::dvec3(0.0);
-        // The speed cap limits the velocity RCS ADDS, not the total (the
-        // orbital speed dwarfs it): snapshot the base whenever the input
-        // direction changes so every fresh direction gets its budget.
-        if(glm::length2(newDir) > 0.0 && newDir != k->rcsDir) {
-            k->rcsBaseVel = k->GetVel();
-        }
-        k->rcsDir = newDir;
         k->walkDir = glm::dvec3(0.0);
         double yaw = 0.0;
         if(isDown(SDL_SCANCODE_Q)) { yaw += 1.0; }
@@ -141,15 +135,10 @@ void Kerbal::applyEva(double h) {
             ? walkDir : getRelAxis_(b, 1);
         slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);
     } else {
-        /* RCS translation along the camera axes, soft-capped on the
-           velocity added since the input direction was engaged (capping
-           the total would block every key with a positive projection on
-           the orbital velocity). */
+        // RCS translation along the camera axes: a fixed acceleration
+        // for as long as the key is held (no speed cap -- KSP-style).
         if(glm::length2(rcsDir) > 0.0) {
-            const glm::dvec3 v = GetVelocity(b);
-            if(glm::dot(rcsDir, v - rcsBaseVel) < kRcsMaxSpeed) {
-                ApplyCentralForce(b, b->mass * kRcsAccel * rcsDir);
-            }
+            ApplyCentralForce(b, b->mass * kRcsAccel * rcsDir);
         }
         /* Upright on screen, facing the camera direction, plus the
            accumulated QE yaw about the view axis. */
