@@ -149,6 +149,9 @@ struct Game {
     double accumulator = 0.0;
     const double dt = 1.0/50.0;   // TODO explain why 50
     bool redraw = false;         // a frame of logic ran: RENDER should draw
+    // Physics substeps executed by tick() (the while(accumulator>=dt) loop).
+    // The --perf breakdown (main.cpp) reads and resets this once per frame.
+    long long phys_steps = 0;
 
     // --- background jobs (job.h) --------------------------------------------
     // Long computations run off the main thread so the frame stays

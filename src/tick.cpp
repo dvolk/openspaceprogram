@@ -159,6 +159,7 @@ void tick(Game &g) {
         // dt (1/50), so the physics clock ran 20% faster than the analytic
         // body positions and the ship systematically outran the planets.
         g.time += g.dt * g.time_accel;
+        g.phys_steps++;   // one substep ran (the --perf breakdown counts these)
 
         if(g.time_accel != 0) {
             // The active ship's SOI owner before this tick's frame

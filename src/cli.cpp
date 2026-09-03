@@ -254,6 +254,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "idling a CPU core at 100% even while paused")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_flag("--perf", args.perf,
+                 "Print a per-frame phase timing breakdown (events / logic / "
+                 "jobs / render + fps + physics substeps): a rolling line "
+                 "every second and a summary at exit. Off by default; the "
+                 "timing overhead is negligible when off");
+
     app.add_option("--fov", args.camFovDeg,
                    "Camera vertical field of view in degrees (default 60; "
                    "adjustable in the Settings window)")

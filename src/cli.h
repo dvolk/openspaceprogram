@@ -61,6 +61,7 @@ struct GameArgs {
     std::string font_path = "./res/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
+    bool perf = false;   // --perf: print a per-frame phase timing breakdown
     float camFovDeg = 60.0f;
     // terrain LOD: a patch subdivides while it projects wider than this
     // [px]. 1024 = coarsest (default; fastest startup, the e2e env

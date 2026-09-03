@@ -573,11 +573,68 @@ int main(int argc, char **argv)
         printf("frame cap: off (uncapped)\n");
     }
 
+    // --perf: per-frame phase breakdown. Off by default and (when off)
+    // zero-cost: the steady_clock reads and the accumulation are only taken
+    // when args.perf is set. When on, each loop phase is timed and a rolling
+    // line prints ~every second (perf_roll), with a full summary at exit
+    // (perf_summary). The "logic" phase is where the Part*/Body* indirection
+    // lives (tick -> physics_tick -> ships -> parts -> bodies); the per-substep
+    // number is the one to compare across refactors.
+    const bool perf_on = args.perf;
+    double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0, p_total = 0.0; // cumulative ms
+    long long p_frames = 0, p_steps = 0;                                        // cumulative counts
+    double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_render = 0.0;       // rolling-window ms
+    long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
+    std::chrono::steady_clock::time_point pf_iter, pf_a, pf_b, pf_c, pf_d;    // this frame's marks
+    const std::chrono::steady_clock::time_point perf_loop_start =
+        std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point perf_w_start = perf_loop_start;
+
+    const auto perf_ms = [](std::chrono::steady_clock::time_point a,
+                            std::chrono::steady_clock::time_point b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    const auto perf_roll = [&]() {
+        const auto now = std::chrono::steady_clock::now();
+        const double dt = std::chrono::duration<double>(now - perf_w_start).count();
+        if(dt < 1.0 || w_frames == 0) { return; }
+        printf("perf  logic=%7.3fms  render=%7.3fms  events=%6.3fms  jobs=%6.3fms"
+               "   %6.1ffps   %d phys steps (%.3fms/step)\n",
+               w_logic / (double)w_frames, w_render / (double)w_frames,
+               w_events / (double)w_frames, w_jobs / (double)w_frames,
+               (double)w_frames / dt, (int)w_steps,
+               (w_steps > 0) ? (w_logic / (double)w_steps) : 0.0);
+        w_events = w_logic = w_jobs = w_render = 0.0;
+        w_frames = 0; w_steps = 0;
+        perf_w_start = now;
+    };
+    const auto perf_summary = [&]() {
+        if(p_frames == 0) { return; }
+        const double wall = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - perf_loop_start).count();
+        printf("\n=== perf summary (%lld frames over %.2f s, %.1f fps) ===\n",
+               p_frames, wall, (wall > 0.0) ? (double)p_frames / wall : 0.0);
+        const char *names[4] = {"events", "logic", "jobs", "render"};
+        const double vals[4] = {p_events, p_logic, p_jobs, p_render};
+        for(int i = 0; i < 4; i++) {
+            printf("  %-7s avg %9.4f ms  (%5.1f%%)\n", names[i],
+                   vals[i] / (double)p_frames,
+                   (p_total > 0.0) ? (vals[i] * 100.0 / p_total) : 0.0);
+        }
+        printf("  %-7s avg %9.4f ms  (frame total, incl. frame-cap sleep)\n",
+               "total", p_total / (double)p_frames);
+        if(p_steps > 0) {
+            printf("  physics %lld substeps, %.4f ms/substep (the logic phase)\n",
+                   p_steps, p_logic / (double)p_steps);
+        }
+    };
+
     /* main loop timing from
        http://gafferongames.com/game-physics/fix-your-timestep/
     */
     while (running == true) {
         const Uint32 iter_start_ms = SDL_GetTicks();
+        if(perf_on) { pf_iter = std::chrono::steady_clock::now(); }
 
         // --timeout: auto-exit once the wall-clock budget is spent.
         if(args.timeout_seconds > 0.0) {
@@ -608,6 +665,7 @@ int main(int argc, char **argv)
         // state through the game.
         emit_sim_events(game);
         poll_events(game);
+        if(perf_on) { pf_a = std::chrono::steady_clock::now(); }
 
         /*
           LOGIC
@@ -616,6 +674,7 @@ int main(int argc, char **argv)
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
         // game's clock and marks the frame for a redraw.
         tick(game);
+        if(perf_on) { pf_b = std::chrono::steady_clock::now(); }
 
         // Background jobs (the porkchop grid, the surface map, and
         // terrain patch subdivision): run the finished jobs' main-thread
@@ -625,6 +684,7 @@ int main(int argc, char **argv)
         // state lives in the window that owns the job, e.g. the Porkchop's
         // "sweeping ..." -- not a global HUD line.)
         game.jobs.poll();
+        if(perf_on) { pf_c = std::chrono::steady_clock::now(); }
 
         /*
           RENDERING
@@ -699,6 +759,23 @@ int main(int argc, char **argv)
             check_gl_error();
         }
 
+        // --perf: fold this frame's phase times into the cumulative + rolling
+        // totals, and print the rolling line when a second has passed.
+        if(perf_on) {
+            pf_d = std::chrono::steady_clock::now();
+            const double f_events = perf_ms(pf_iter, pf_a);
+            const double f_logic  = perf_ms(pf_a, pf_b);
+            const double f_jobs   = perf_ms(pf_b, pf_c);
+            const double f_render = perf_ms(pf_c, pf_d);
+            p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
+            p_render += f_render; p_total += perf_ms(pf_iter, pf_d);
+            p_frames++; p_steps += game.phys_steps;
+            w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
+            w_render += f_render; w_frames++; w_steps += game.phys_steps;
+            perf_roll();
+        }
+        game.phys_steps = 0;   // tick() re-arms it next frame
+
         // --frame-cap: burn the rest of the frame budget. Without this the
         // iteration spins at full speed whenever the swap isn't vsync-gated
         // (paused VAB, headless, vsync off) -- 100% of a core doing nothing.
@@ -709,6 +786,9 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    // --perf: the final breakdown (the rolling lines are the live view).
+    if(perf_on) { perf_summary(); }
 
     // The ships + space pads are owned by the bodies (TerrainBody::ships /
     // ::pads), so they are freed when the bodies are deleted below -- no
