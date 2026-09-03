@@ -1980,6 +1980,12 @@ void drawMainMenu(Game &g) {
         if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
             ui::SetOpen("Controls", !ui::IsOpen("Controls"));
         }
+        if(ImGui::Button("Game Debug Info", ImVec2(bw, 0.0f))) {
+            ui::SetOpen("Game Debug Info", !ui::IsOpen("Game Debug Info"));
+        }
+        if(ImGui::Button("Telemetry", ImVec2(bw, 0.0f))) {
+            ui::SetOpen("Telemetry", !ui::IsOpen("Telemetry"));
+        }
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;
         }

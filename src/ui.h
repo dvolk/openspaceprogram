@@ -323,7 +323,7 @@ bool Window(const char* name, const Options& o, Body&& body) {
 
     // Most windows have no X close button (they're toggled from the
     // Windows list, the main menu and the TAB key); the menu-like windows
-    // (Settings, Controls) are closable.
+    // (Settings, Controls, Game Debug Info, Telemetry) are closable.
     bool* p_open = o.closable ? &st.open : nullptr;
     const bool visible = ImGui::Begin(name, p_open, flags);
     if (visible)

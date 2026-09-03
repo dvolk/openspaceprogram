@@ -61,8 +61,10 @@ void Game::setup_ui_windows() {
     o_controls.closable = true;  // X close button (menu window)
     o_debug     = info_opts(ui::Slot::TopCenter);
     o_debug.default_open = false;
+    o_debug.closable = true;  // X close button (menu window)
     o_telemetry = info_opts(ui::Slot::MiddleLeft);
     o_telemetry.default_open = false;
+    o_telemetry.closable = true;  // X close button (menu window)
     // 2x2 grid of plots: wider than the old two-stacked-plots layout so the
     // two columns have room (each cell is ~half this width).
     o_telemetry.initial_size = ImVec2(880.0f, 620.0f);
@@ -121,15 +123,15 @@ void Game::setup_ui_windows() {
     // is always drawn, so it always needs the toggle + checkbox.
     add_ui_window("Ship List", "Ship List", o_ships);
     add_ui_window("Autopilot", "Autopilot", o_autopilot);
-    add_ui_window("Game Debug Info", "Game Debug Info", o_debug);
-    add_ui_window("Telemetry", "Telemetry", o_telemetry);
     add_ui_window("Transfer", "Transfer", o_transfer);
     // Porkchop: toggled from the Transfer window (pick a target, then
     // open the plot for it).
     add_ui_window_hidden("Porkchop", "Porkchop", o_porkchop);
-    // Settings and Controls: main-menu only.
+    // Settings, Controls, Game Debug Info and Telemetry: main-menu only.
     add_ui_window_hidden("Settings", "Settings", o_settings);
     add_ui_window_hidden("Controls", "Controls", o_controls);
+    add_ui_window_hidden("Game Debug Info", "Game Debug Info", o_debug);
+    add_ui_window_hidden("Telemetry", "Telemetry", o_telemetry);
     // The TAB toggle + the main-menu "Toggle windows" button call
     // toggle_windows(), which flips ui_visible and re-opens every registry
     // window (plus the HUD) from their defaults.
