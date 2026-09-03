@@ -573,10 +573,11 @@ int main(int argc, char **argv)
         printf("frame cap: off (uncapped)\n");
     }
 
-    // --perf: per-frame phase breakdown. Off by default and (when off)
-    // zero-cost: the steady_clock reads and the accumulation are only taken
-    // when args.perf is set. When on, each loop phase is timed and a rolling
-    // line prints ~every second (perf_roll), with a full summary at exit
+    // Per-frame phase timing. The steady_clock reads and the push into the
+    // Game::perf_* series run EVERY frame (the Telemetry window reads them);
+    // the cost is a handful of vDSO clock reads + five ring writes, negligible.
+    // --perf only controls the console output: when set, a rolling line prints
+    // ~every second (perf_roll) and a full summary prints at exit
     // (perf_summary). The "logic" phase is where the Part*/Body* indirection
     // lives (tick -> physics_tick -> ships -> parts -> bodies); the per-substep
     // number is the one to compare across refactors.
@@ -643,7 +644,7 @@ int main(int argc, char **argv)
     */
     while (running == true) {
         const Uint32 iter_start_ms = SDL_GetTicks();
-        if(perf_on) { pf_iter = std::chrono::steady_clock::now(); }
+        pf_iter = std::chrono::steady_clock::now();
 
         // --timeout: auto-exit once the wall-clock budget is spent.
         if(args.timeout_seconds > 0.0) {
@@ -674,7 +675,7 @@ int main(int argc, char **argv)
         // state through the game.
         emit_sim_events(game);
         poll_events(game);
-        if(perf_on) { pf_a = std::chrono::steady_clock::now(); }
+        pf_a = std::chrono::steady_clock::now();
 
         /*
           LOGIC
@@ -683,7 +684,7 @@ int main(int argc, char **argv)
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
         // game's clock and marks the frame for a redraw.
         tick(game);
-        if(perf_on) { pf_b = std::chrono::steady_clock::now(); }
+        pf_b = std::chrono::steady_clock::now();
 
         // Background jobs (the porkchop grid, the surface map, and
         // terrain patch subdivision): run the finished jobs' main-thread
@@ -695,7 +696,7 @@ int main(int argc, char **argv)
         game.jobs.poll();
         // pf_swap defaults to pf_c so a frame that skips the render block
         // (redraw false) records render = present = 0, not a stale window.
-        if(perf_on) { pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c; }
+        pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c;
 
         /*
           RENDERING
@@ -769,20 +770,31 @@ int main(int argc, char **argv)
             // Mark the render/present boundary: everything above is issuing
             // GL commands (the real render cost); SwapBuffers is where the
             // vsync block lives (the present cost).
-            if(perf_on) { pf_swap = std::chrono::steady_clock::now(); }
+            pf_swap = std::chrono::steady_clock::now();
             display.SwapBuffers();
             check_gl_error();
         }
 
-        // --perf: fold this frame's phase times into the cumulative + rolling
-        // totals, and print the rolling line when a second has passed.
+        // Close the frame's timing: fold this frame's phase times into the
+        // Telemetry series (always) and, with --perf, the console running
+        // totals (the rolling line prints when a second has passed).
+        pf_d = std::chrono::steady_clock::now();
+        const double f_events  = perf_ms(pf_iter, pf_a);
+        const double f_logic   = perf_ms(pf_a, pf_b);
+        const double f_jobs    = perf_ms(pf_b, pf_c);
+        const double f_render  = perf_ms(pf_c, pf_swap);  // issue GL cmds
+        const double f_present = perf_ms(pf_swap, pf_d);  // SwapBuffers (vsync)
+        // Always push into the Telemetry window's series (wall-clock x-axis,
+        // s since loop start; the ring dedups on the last sample's time).
+        const double perf_t =
+            std::chrono::duration<double>(pf_d - perf_loop_start).count();
+        game.perf_events.push(perf_t, f_events);
+        game.perf_logic.push(perf_t, f_logic);
+        game.perf_jobs.push(perf_t, f_jobs);
+        game.perf_render.push(perf_t, f_render);
+        game.perf_present.push(perf_t, f_present);
+        // --perf: fold into the console running totals + print the rolling line.
         if(perf_on) {
-            pf_d = std::chrono::steady_clock::now();
-            const double f_events  = perf_ms(pf_iter, pf_a);
-            const double f_logic   = perf_ms(pf_a, pf_b);
-            const double f_jobs    = perf_ms(pf_b, pf_c);
-            const double f_render  = perf_ms(pf_c, pf_swap);  // issue GL cmds
-            const double f_present = perf_ms(pf_swap, pf_d);  // SwapBuffers (vsync)
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
             p_render += f_render; p_present += f_present;
             p_total += perf_ms(pf_iter, pf_d);

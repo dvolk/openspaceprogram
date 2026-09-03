@@ -63,7 +63,9 @@ void Game::setup_ui_windows() {
     o_debug.default_open = false;
     o_telemetry = info_opts(ui::Slot::MiddleLeft);
     o_telemetry.default_open = false;
-    o_telemetry.initial_size = ImVec2(460.0f, 680.0f);
+    // 2x2 grid of plots: wider than the old two-stacked-plots layout so the
+    // two columns have room (each cell is ~half this width).
+    o_telemetry.initial_size = ImVec2(880.0f, 620.0f);
     o_settings  = info_opts(ui::Slot::BottomCenter);
     o_settings.default_open = false;
     o_settings.closable = true;  // X close button (menu window)

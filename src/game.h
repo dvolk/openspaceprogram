@@ -247,6 +247,20 @@ struct Game {
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;
 
+    // Per-frame timing samples for the Telemetry window. main.cpp pushes
+    // every frame (always, not gated on --perf, so the window can show them);
+    // the --perf console breakdown reads the same per-frame values. x-axis is
+    // wall-clock seconds since loop start (frame timings are real-time, not
+    // sim time); y-axis is ms/frame.
+    TimeSeries perf_events;
+    TimeSeries perf_logic;
+    TimeSeries perf_jobs;
+    TimeSeries perf_render;
+    TimeSeries perf_present;
+    // Which series each of the 4 Telemetry cells is showing (0..6, see the
+    // kSeries table in gameui.cpp). Defaults to the first four.
+    int telemetry_sel[4] = {0, 1, 2, 3};
+
     // --- orbit camera focus targets (the ship + every body; G cycles) ------
     struct FocusTarget { const char *name; TerrainBody *body; };
     std::vector<FocusTarget> focusTargets;

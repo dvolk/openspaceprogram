@@ -88,6 +88,64 @@ static std::string fmt_cal_time(const Calendar &cal, double t) {
     return line;
 }
 
+// --- Telemetry window: a 2x2 grid of plots, each with a dropdown to pick
+// which time series to show. The series are the two conserved 2-body
+// constants (per-frame, sim-time x-axis) and the five per-frame timings
+// (main.cpp pushes them every frame; wall-clock x-axis). ---
+struct TeleSeriesDef { const char *name; const char *yaxis; };
+static const TeleSeriesDef kSeries[7] = {
+    {"specific orbital energy", "J/kg"},
+    {"angular momentum", "m^2/s"},
+    {"frame: events", "ms"},
+    {"frame: logic", "ms"},
+    {"frame: jobs", "ms"},
+    {"frame: render", "ms"},
+    {"frame: present", "ms"},
+};
+static const int kNumSeries = 7;
+
+// Resolve a series index (0..6) to its ring buffer. 0-1 live on the active
+// ship's view (render.cpp samples them); 2-6 are the per-frame timings on
+// Game (main.cpp samples them).
+static TimeSeries *telemetry_series(Game &g, int idx) {
+    switch(idx) {
+        case 0: return &g.view.energy_series;
+        case 1: return &g.view.angmom_series;
+        case 2: return &g.perf_events;
+        case 3: return &g.perf_logic;
+        case 4: return &g.perf_jobs;
+        case 5: return &g.perf_render;
+        case 6: return &g.perf_present;
+        default: return nullptr;
+    }
+}
+
+// One grid cell: a full-width dropdown to pick the series, then the plot
+// filling the rest of the cell.
+static void draw_telemetry_cell(Game &g, int idx) {
+    const char *items[kNumSeries];
+    for(int i = 0; i < kNumSeries; i++) { items[i] = kSeries[i].name; }
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+    ImGui::Combo("##series", &g.telemetry_sel[idx], items, kNumSeries);
+    ImGui::PopItemWidth();
+
+    const int sel = g.telemetry_sel[idx];
+    if(sel < 0 || sel >= kNumSeries) { return; }
+    TimeSeries *s = telemetry_series(g, sel);
+    if(s == nullptr || s->count < 2) {
+        ImGui::TextDisabled("(no data)");
+        return;
+    }
+    const int n = s->stage();
+    ImPlot::SetNextAxesToFit();
+    if(ImPlot::BeginPlot(kSeries[sel].name)) {
+        ImPlot::SetupAxis(ImAxis_X1, "t (s)");
+        ImPlot::SetupAxis(ImAxis_Y1, kSeries[sel].yaxis);
+        ImPlot::PlotLine(kSeries[sel].name, s->t_arr(), s->v_arr(), n);
+        ImPlot::EndPlot();
+    }
+}
+
 void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // The window bodies are verbatim from main's ImGui pass; their locals
     // are Game members (aliased so the bodies read the same).
@@ -128,8 +186,6 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     glm::dvec3 &surf_vel = view.surf_vel;
     glm::dvec3 &facing_dir = view.facing_dir;
     glm::dvec3 &vel_dir = view.vel_dir;
-    TimeSeries &energy_series = view.energy_series;
-    TimeSeries &angmom_series = view.angmom_series;
     double &ver_speed = view.ver_speed;
     double &hor_speed2 = view.hor_speed2;
     double &latitude = view.latitude;
@@ -1068,28 +1124,28 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Eng: %.2f J", o.energy);
     });
 
-    // Initial size comes from o_telemetry.initial_size (the plots
-    // need real estate; content-fit would clip them).
+    // Initial size comes from o_telemetry.initial_size (a 2x2 grid of plots
+    // needs real estate; content-fit would clip them).
     ui::Window("Telemetry", g.o_telemetry, [&] {
-        // Two separate plots: e (~1e5) and |h| (~1e11) differ by
-        // ~6 orders of magnitude, so sharing one axis would flatten
-        // e to a line and hide the drift we're looking for.
-        if(energy_series.count > 1) {
-            const int n = energy_series.stage();
-            ImPlot::SetNextAxesToFit();  // live auto-fit, both axes
-            if(ImPlot::BeginPlot("specific orbital energy (J/kg)")) {
-                ImPlot::SetupAxis(ImAxis_X1, "t (s)");
-                ImPlot::PlotLine("e", energy_series.t_arr(), energy_series.v_arr(), n);
-                ImPlot::EndPlot();
-            }
-        }
-        if(angmom_series.count > 1) {
-            const int n = angmom_series.stage();
-            ImPlot::SetNextAxesToFit();  // live auto-fit, both axes
-            if(ImPlot::BeginPlot("angular momentum (m^2/s)")) {
-                ImPlot::SetupAxis(ImAxis_X1, "t (s)");
-                ImPlot::PlotLine("|h|", angmom_series.t_arr(), angmom_series.v_arr(), n);
-                ImPlot::EndPlot();
+        // A 2x2 grid of plots. Each cell is a child region with a dropdown to
+        // pick which series to show, then the plot. Positioned explicitly
+        // (SetCursorPos) so the grid stays a clean 2x2 regardless of how the
+        // child cursors settle.
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const float gap = ImGui::GetStyle().ItemSpacing.x;
+        const float cw = (avail.x - gap) * 0.5f;
+        const float ch = (avail.y - gap) * 0.5f;
+        const ImVec2 origin = ImGui::GetCursorPos();
+        for(int r = 0; r < 2; r++) {
+            for(int c = 0; c < 2; c++) {
+                const int idx = r * 2 + c;
+                ImGui::SetCursorPos(ImVec2(origin.x + c * (cw + gap),
+                                            origin.y + r * (ch + gap)));
+                char id[16];
+                snprintf(id, sizeof(id), "##tc%d", idx);
+                ImGui::BeginChild(id, ImVec2(cw, ch));
+                draw_telemetry_cell(g, idx);
+                ImGui::EndChild();
             }
         }
     });
