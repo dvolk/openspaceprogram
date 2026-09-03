@@ -581,11 +581,17 @@ int main(int argc, char **argv)
     // lives (tick -> physics_tick -> ships -> parts -> bodies); the per-substep
     // number is the one to compare across refactors.
     const bool perf_on = args.perf;
-    double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0, p_total = 0.0; // cumulative ms
-    long long p_frames = 0, p_steps = 0;                                        // cumulative counts
-    double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_render = 0.0;       // rolling-window ms
+    double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0,
+           p_present = 0.0, p_total = 0.0;                                     // cumulative ms
+    long long p_frames = 0, p_steps = 0;                                       // cumulative counts
+    double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_render = 0.0,
+           w_present = 0.0;                                                    // rolling-window ms
     long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
-    std::chrono::steady_clock::time_point pf_iter, pf_a, pf_b, pf_c, pf_d;    // this frame's marks
+    // This frame's marks. pf_swap sits between the last draw call and the
+    // SwapBuffers, so "render" = issuing the GL commands and "present" = the
+    // SwapBuffers (which blocks on vsync -- that's the display pacing, not
+    // render cost; keeping the two apart is why the breakdown is honest).
+    std::chrono::steady_clock::time_point pf_iter, pf_a, pf_b, pf_c, pf_swap, pf_d;
     const std::chrono::steady_clock::time_point perf_loop_start =
         std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point perf_w_start = perf_loop_start;
@@ -599,12 +605,13 @@ int main(int argc, char **argv)
         const double dt = std::chrono::duration<double>(now - perf_w_start).count();
         if(dt < 1.0 || w_frames == 0) { return; }
         printf("perf  logic=%7.3fms  render=%7.3fms  events=%6.3fms  jobs=%6.3fms"
-               "   %6.1ffps   %d phys steps (%.3fms/step)\n",
+               "  present=%7.3fms   %6.1ffps   %d phys steps (%.3fms/step)\n",
                w_logic / (double)w_frames, w_render / (double)w_frames,
                w_events / (double)w_frames, w_jobs / (double)w_frames,
+               w_present / (double)w_frames,
                (double)w_frames / dt, (int)w_steps,
                (w_steps > 0) ? (w_logic / (double)w_steps) : 0.0);
-        w_events = w_logic = w_jobs = w_render = 0.0;
+        w_events = w_logic = w_jobs = w_render = w_present = 0.0;
         w_frames = 0; w_steps = 0;
         perf_w_start = now;
     };
@@ -614,15 +621,17 @@ int main(int argc, char **argv)
             std::chrono::steady_clock::now() - perf_loop_start).count();
         printf("\n=== perf summary (%lld frames over %.2f s, %.1f fps) ===\n",
                p_frames, wall, (wall > 0.0) ? (double)p_frames / wall : 0.0);
-        const char *names[4] = {"events", "logic", "jobs", "render"};
-        const double vals[4] = {p_events, p_logic, p_jobs, p_render};
-        for(int i = 0; i < 4; i++) {
+        const char *names[5] = {"events", "logic", "jobs", "render", "present"};
+        const double vals[5] = {p_events, p_logic, p_jobs, p_render, p_present};
+        for(int i = 0; i < 5; i++) {
             printf("  %-7s avg %9.4f ms  (%5.1f%%)\n", names[i],
                    vals[i] / (double)p_frames,
                    (p_total > 0.0) ? (vals[i] * 100.0 / p_total) : 0.0);
         }
         printf("  %-7s avg %9.4f ms  (frame total, incl. frame-cap sleep)\n",
                "total", p_total / (double)p_frames);
+        printf("  (render = issuing GL draw commands; present = SwapBuffers,\n"
+               "   which blocks on vsync -- display pacing, not render cost)\n");
         if(p_steps > 0) {
             printf("  physics %lld substeps, %.4f ms/substep (the logic phase)\n",
                    p_steps, p_logic / (double)p_steps);
@@ -684,7 +693,9 @@ int main(int argc, char **argv)
         // state lives in the window that owns the job, e.g. the Porkchop's
         // "sweeping ..." -- not a global HUD line.)
         game.jobs.poll();
-        if(perf_on) { pf_c = std::chrono::steady_clock::now(); }
+        // pf_swap defaults to pf_c so a frame that skips the render block
+        // (redraw false) records render = present = 0, not a stale window.
+        if(perf_on) { pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c; }
 
         /*
           RENDERING
@@ -755,6 +766,10 @@ int main(int argc, char **argv)
                 screenshot_requested = false;
             }
 
+            // Mark the render/present boundary: everything above is issuing
+            // GL commands (the real render cost); SwapBuffers is where the
+            // vsync block lives (the present cost).
+            if(perf_on) { pf_swap = std::chrono::steady_clock::now(); }
             display.SwapBuffers();
             check_gl_error();
         }
@@ -763,15 +778,18 @@ int main(int argc, char **argv)
         // totals, and print the rolling line when a second has passed.
         if(perf_on) {
             pf_d = std::chrono::steady_clock::now();
-            const double f_events = perf_ms(pf_iter, pf_a);
-            const double f_logic  = perf_ms(pf_a, pf_b);
-            const double f_jobs   = perf_ms(pf_b, pf_c);
-            const double f_render = perf_ms(pf_c, pf_d);
+            const double f_events  = perf_ms(pf_iter, pf_a);
+            const double f_logic   = perf_ms(pf_a, pf_b);
+            const double f_jobs    = perf_ms(pf_b, pf_c);
+            const double f_render  = perf_ms(pf_c, pf_swap);  // issue GL cmds
+            const double f_present = perf_ms(pf_swap, pf_d);  // SwapBuffers (vsync)
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
-            p_render += f_render; p_total += perf_ms(pf_iter, pf_d);
+            p_render += f_render; p_present += f_present;
+            p_total += perf_ms(pf_iter, pf_d);
             p_frames++; p_steps += game.phys_steps;
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
-            w_render += f_render; w_frames++; w_steps += game.phys_steps;
+            w_render += f_render; w_present += f_present;
+            w_frames++; w_steps += game.phys_steps;
             perf_roll();
         }
         game.phys_steps = 0;   // tick() re-arms it next frame
