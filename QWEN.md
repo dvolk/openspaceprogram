@@ -20,6 +20,6 @@
 - there's a cli flag to send mouse input: --sim-mouse TIME_MS,DURATION_MS,X,Y,BTN quintuples. X,Y are window pixels (BTN 0=move only, 1=LMB click, 2=MMB, 3=RMB; names L/R/M work too). DURATION_MS=0 = quick click, >0 with a button = drag. To orbit the camera, move over the 3D view first (BTN 0) then RMB-drag: the camera look = the motion delta (yaw=-dx/200 rad, pitch=+dy/200 rad; 200px~=1 rad). eg --sim-mouse 500,0,900,500,0,600,500,1100,600,RMB
 - Save ALL temporary files in ./tmp/. Don't overwrite or delete files, as I'm quite nosy.
 - ./middleware/ contains CLI11, bullet3, glm, imgui, nlohmann vendored in.
-- ./references/ contains pioneer and orbiter source code as they're related space sim games.
+- ../references/ contains pioneer and orbiter source code as they're related space sim games.
 - Written reports in ./reports/<subject>_YYYY_MM_DD are immutable snapshots of how the project was. avoid reading and never edit after writing. Supporting code, logs, graphics, figures are welcome.
 - For visual confirmation ask me to check, unless I specifically ask you to iterate with screenshots as this bloats context.
