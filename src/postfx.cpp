@@ -22,20 +22,36 @@ static const float QUAD_VERTS[16] = {
 // Built-in effects. All share the fullscreen-quad vertex shader and the
 // `scene` input (texture unit 0); each registers exactly the uniforms
 // its fragment shader uses (setUniform_* by name no-ops the rest).
+//
+// `name` is a requestable name (aliases resolve to the same `canonical`);
+// `canonical` is what the Effect is stored under, so "sharpen" and "cas"
+// both map to one "cas" effect. `param` marks the effect that exposes the
+// per-effect strength knob (End() feeds it to the "gamma" uniform).
 struct FXDef {
     const char *name;
+    const char *canonical;
     const char *fs;
     const char **uniforms; // nullptr-terminated
+    bool has_param;        // reads the per-effect "gamma" uniform
 };
 static const char *CRT_UNIFORMS[] = { "scene", "resolution", "time", nullptr };
 static const char *GRAIN_UNIFORMS[] = { "scene", "time", nullptr };
 static const char *CAS_UNIFORMS[] = { "scene", "resolution", nullptr };
+static const char *GAMMA_UNIFORMS[] = { "scene", "gamma", nullptr };
 static const FXDef FX_DEFS[] = {
-    { "crt", "./res/fx_crt", CRT_UNIFORMS },
-    { "grain", "./res/fx_grain", GRAIN_UNIFORMS },
-    { "cas", "./res/fx_sharpen", CAS_UNIFORMS },
-    { "sharpen", "./res/fx_sharpen", CAS_UNIFORMS },
+    { "crt",     "crt",     "./res/fx_crt",     CRT_UNIFORMS,   false },
+    { "grain",   "grain",   "./res/fx_grain",   GRAIN_UNIFORMS, false },
+    { "cas",     "cas",     "./res/fx_sharpen", CAS_UNIFORMS,   false },
+    { "sharpen", "cas",     "./res/fx_sharpen", CAS_UNIFORMS,   false },
+    { "gamma",   "gamma",   "./res/fx_gamma",   GAMMA_UNIFORMS, true },
 };
+
+static const FXDef *FindDef(const std::string& name) {
+    for(size_t i = 0; i < sizeof(FX_DEFS) / sizeof(FX_DEFS[0]); i++) {
+        if(name == FX_DEFS[i].name) return &FX_DEFS[i];
+    }
+    return nullptr;
+}
 
 PostFX::PostFX() :
     m_quadVAO(0),
@@ -82,37 +98,106 @@ PostFX::~PostFX()
     check_gl_error();
 }
 
+static std::vector<std::string> BuildAvailable()
+{
+    // Canonical names in pass order, deduped (aliases collapse).
+    std::vector<std::string> out;
+    for(size_t i = 0; i < sizeof(FX_DEFS) / sizeof(FX_DEFS[0]); i++) {
+        const std::string c = FX_DEFS[i].canonical;
+        bool dup = false;
+        for(size_t j = 0; j < out.size(); j++) {
+            if(out[j] == c) { dup = true; break; }
+        }
+        if(!dup) out.push_back(c);
+    }
+    return out;
+}
+
 const std::vector<std::string>& PostFX::Available()
 {
-    static const std::vector<std::string> names = { "crt", "grain", "cas" };
+    static const std::vector<std::string> names = BuildAvailable();
     return names;
 }
 
 bool PostFX::AddEffect(const std::string& name)
 {
-    for(size_t i = 0; i < sizeof(FX_DEFS) / sizeof(FX_DEFS[0]); i++) {
-        const FXDef &d = FX_DEFS[i];
-        if(name != d.name) continue;
+    const FXDef *def = FindDef(name);
+    if(def == nullptr) return false;
 
-        Effect e;
-        e.name = d.name;
-        e.shader.reset(new Shader);
-        e.shader->registerAttribs({ "position", "uv" });
-        std::vector<const char *> uniforms;
-        for(const char **u = d.uniforms; *u != nullptr; u++) {
-            uniforms.push_back(*u);
+    // Idempotent: an effect with this canonical name already exists.
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].name == def->canonical) return true;
+    }
+
+    Effect e;
+    e.name = def->canonical;
+    e.enabled = false;
+    e.param = 1.0f;
+    e.shader.reset(new Shader);
+    e.shader->registerAttribs({ "position", "uv" });
+    std::vector<const char *> uniforms;
+    for(const char **u = def->uniforms; *u != nullptr; u++) {
+        uniforms.push_back(*u);
+    }
+    e.shader->registerUniforms(uniforms);
+    e.shader->FromFile("./res/fx_quad.vs", std::string(def->fs) + ".fs");
+    m_effects.push_back(std::move(e));
+    return true;
+}
+
+bool PostFX::SetEnabled(const std::string& name, bool enabled)
+{
+    const FXDef *def = FindDef(name);
+    if(def == nullptr) return false;
+    if(!AddEffect(name)) return false;
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].name == def->canonical) {
+            m_effects[i].enabled = enabled;
+            return true;
         }
-        e.shader->registerUniforms(uniforms);
-        e.shader->FromFile("./res/fx_quad.vs", std::string(d.fs) + ".fs");
-        m_effects.push_back(std::move(e));
-        return true;
     }
     return false;
 }
 
+bool PostFX::IsEnabled(const std::string& name) const
+{
+    const FXDef *def = FindDef(name);
+    if(def == nullptr) return false;
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].name == def->canonical) return m_effects[i].enabled;
+    }
+    return false;
+}
+
+bool PostFX::SetParam(const std::string& name, float value)
+{
+    const FXDef *def = FindDef(name);
+    if(def == nullptr || !def->has_param) return false;
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].name == def->canonical) {
+            m_effects[i].param = value;
+            return true;
+        }
+    }
+    return false;
+}
+
+float PostFX::GetParam(const std::string& name) const
+{
+    const FXDef *def = FindDef(name);
+    if(def == nullptr || !def->has_param) return 1.0f;
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].name == def->canonical) return m_effects[i].param;
+    }
+    return 1.0f;
+}
+
 bool PostFX::Active() const
 {
-    return !m_effects.empty();
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].enabled) return true;
+    }
+    return false;
 }
 
 void PostFX::RebuildTargets(int width, int height)
@@ -191,25 +276,39 @@ void PostFX::End()
     glDisable(GL_DEPTH_TEST);
     check_gl_error();
 
-    const int n = (int)m_effects.size();
-    for(int i = 0; i < n; i++) {
-        // Effect i reads target i; the last effect composites to the
-        // screen, the others write to the ping-ponged target i+1.
-        glBindFramebuffer(GL_FRAMEBUFFER, i + 1 < n ? m_fbo[i + 1] : 0);
+    // The scene rendered into target 0 (Begin). Only the enabled effects
+    // run, in the order they were added; each reads one target and writes
+    // the other (the two ping-pong, so any count stacks) and the last
+    // composites to the screen.
+    int nactive = 0;
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        if(m_effects[i].enabled) nactive++;
+    }
+    int read = 0;   // the current source target (0 = the scene)
+    int run = 0;    // how many active passes have run
+    for(size_t i = 0; i < m_effects.size(); i++) {
+        Effect &e = m_effects[i];
+        if(!e.enabled) continue;
+
+        const bool last = (run + 1 == nactive);
+        glBindFramebuffer(GL_FRAMEBUFFER, last ? 0 : m_fbo[1 - read]);
         check_gl_error();
 
-        m_effects[i].shader->Bind();
+        e.shader->Bind();
         check_gl_error();
 
         glActiveTexture(GL_TEXTURE0);
         check_gl_error();
-        glBindTexture(GL_TEXTURE_2D, m_colorTex[i]);
+        glBindTexture(GL_TEXTURE_2D, m_colorTex[read]);
         check_gl_error();
-        m_effects[i].shader->setUniform_i("scene", 0);
-        m_effects[i].shader->setUniform_vec2("resolution",
-                                             glm::vec2((float)m_width, (float)m_height));
-        m_effects[i].shader->setUniform_vec1("time",
-                                             (float)(SDL_GetTicks() / 1000.0));
+        e.shader->setUniform_i("scene", 0);
+        e.shader->setUniform_vec2("resolution",
+                                 glm::vec2((float)m_width, (float)m_height));
+        e.shader->setUniform_vec1("time",
+                                 (float)(SDL_GetTicks() / 1000.0));
+        // The per-effect strength; a no-op for any pass without a "gamma"
+        // uniform (only the gamma effect registers it).
+        e.shader->setUniform_vec1("gamma", e.param);
 
         glBindVertexArray(m_quadVAO);
         check_gl_error();
@@ -222,6 +321,9 @@ void PostFX::End()
         check_gl_error();
         glUseProgram(0);
         check_gl_error();
+
+        if(!last) read = 1 - read;
+        run++;
     }
 
     glEnable(GL_DEPTH_TEST);

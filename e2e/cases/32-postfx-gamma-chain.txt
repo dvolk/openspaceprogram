@@ -1,0 +1,11 @@
+# Gamma in a chain: gamma first (reads the scene, writes the ping-ponged
+# target), then crt composites to the screen -- exercises the two-target
+# ping-pong with the param-driven effect in a non-final position.
+NAME postfx-gamma-chain
+ARGS --postfx gamma,crt --gl-debug --timeout 5
+EXPECT postfx: gamma -> crt
+EXPECT Main loop starting
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program

@@ -158,6 +158,12 @@ int main(int argc, char **argv)
     lineshader->FromFile("./res/lineShader2");
 
     PostFX *postfx = new PostFX;
+    // Create every built-in effect up front (no mid-frame shader
+    // compilation) so the Settings window can toggle them at runtime;
+    // they all start disabled and the --postfx selection enables a subset.
+    for(const std::string &name : PostFX::Available()) {
+        postfx->AddEffect(name);
+    }
     // Each --postfx value may itself be comma-separated, so both
     // --postfx crt,grain and --postfx crt --postfx grain work.
     std::vector<std::string> fx_names;
@@ -172,7 +178,7 @@ int main(int argc, char **argv)
             size_t e = name.find_last_not_of(" \t");
             name = (b == std::string::npos) ? "" : name.substr(b, e - b + 1);
             if(!name.empty()) {
-                if(!postfx->AddEffect(name)) {
+                if(!postfx->SetEnabled(name, true)) {
                     printf("error: unknown --postfx effect '%s' (available: ",
                            name.c_str());
                     const std::vector<std::string> &avail = PostFX::Available();
