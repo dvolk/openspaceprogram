@@ -214,7 +214,7 @@ void pickAt(Game &g, int px, int py) {
         g.openPartWindow(ship, part, hit.point);
         printf("[pick] t=%.1f ship=%s part=%zu (%s)\n",
                g.time, ship->name.c_str(), part,
-               ship->partDefs[part]->name.c_str());
+               ship->parts[part]->def->name.c_str());
         fflush(stdout);
     } else {
         printf("[pick] t=%.1f miss px=%d py=%d\n", g.time, px, py);
@@ -313,10 +313,10 @@ void Game::kerbalEVA(Kerbal *k) {
     Vehicle *ship = k->aboard;
     const size_t part = k->aboardPart;
     if(part >= ship->parts.size()) { return; }
-    const PartDef *capDef = ship->partDefs[part];
-    Body *cap = ship->parts[part];
-    Body *kb = k->parts[0];
-    const double kerbalMass = k->parts[0]->mass;
+    const PartDef *capDef = ship->parts[part]->def;
+    Body *cap = ship->parts[part]->body;
+    Body *kb = k->parts[0]->body;
+    const double kerbalMass = k->parts[0]->body->mass;
 
     /* move the crew mass off the capsule (the ship gets lighter) */
     cap->mass -= kerbalMass;
@@ -385,7 +385,7 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         return;
     }
     if(part >= ship->parts.size()) { return; }
-    const PartDef *capDef = ship->partDefs[part];
+    const PartDef *capDef = ship->parts[part]->def;
     if(capDef->crew_capacity <= 0) {
         toast("Board: part %zu is not a capsule", part);
         return;
@@ -394,9 +394,9 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         toast("Board: capsule full (%d)", capDef->crew_capacity);
         return;
     }
-    Body *cap = ship->parts[part];
-    Body *kb = k->parts[0];
-    const double kerbalMass = k->parts[0]->mass;
+    Body *cap = ship->parts[part]->body;
+    Body *kb = k->parts[0]->body;
+    const double kerbalMass = k->parts[0]->body->mass;
 
     /* move the crew mass onto the capsule (the ship gets heavier) */
     cap->mass += kerbalMass;

@@ -67,7 +67,7 @@ public:
                         TerrainBody *hb, const ScenarioDef *sc, System &sys);
 
     // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts
-    // (partDefs[i]->crew_capacity > 0) -- parked inside (out of the
+    // (parts[i]->def->crew_capacity > 0) -- parked inside (out of the
     // physics world, the railFrozen convention), its mass folded into the
     // capsule part (the ship is heavier with crew aboard), aboard state
     // set, and stored on the ship (Vehicle::crew). Called from build_fleet

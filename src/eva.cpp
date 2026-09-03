@@ -50,7 +50,7 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
     const double alt = glm::length(pos)
         - (double)k->m_parent->GetTerrainHeight(glm::vec3(radial));
     const double rest = k->restAlt();
-    k->grounded = BodyInContact(k->controller) || alt < rest + kGroundBand;
+    k->grounded = BodyInContact(k->controller->body) || alt < rest + kGroundBand;
     if(k->jumping) {
         // still rising through the contact-margin band: stay ungrounded
         if(alt > rest + kClearBand) { k->jumping = false; }
@@ -95,7 +95,7 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
 }
 
 void Kerbal::applyEva(double h) {
-    Body *b = controller;
+    Body *b = controller->body;
     const glm::dvec3 pos = GetPosition(b);
     const glm::dvec3 radial = glm::normalize(pos);
     const double surfR = (double)m_parent->GetTerrainHeight(glm::vec3(radial));
@@ -160,7 +160,7 @@ void Kerbal::applyEva(double h) {
 }
 
 void Kerbal::slewTo(const glm::dmat3 &target, double h, double authority) {
-    Body *b = controller;
+    Body *b = controller->body;
     const glm::dmat3 R = GetOrient(b);
     glm::dvec3 axis;
     const double ang = evaRotAxisAngle(target * glm::transpose(R), axis);

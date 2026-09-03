@@ -97,9 +97,9 @@ void draw3d(Game &g, TransferPlanner &planner) {
             // screen plane is the ship's right/up plane, so pitch (nose
             // along the up axis) read as left/right and yaw (nose along
             // the right axis) as up/down -- the two looked swapped.
-            camera->ref = glm::dmat3(getRelAxis_(ship->controller, 2),   // back = nose
-                                     getRelAxis_(ship->controller, 0),   // right
-                                     getRelAxis_(ship->controller, 1));  // up
+            camera->ref = glm::dmat3(getRelAxis_(ship->controller->body, 2),   // back = nose
+                                     getRelAxis_(ship->controller->body, 0),   // right
+                                     getRelAxis_(ship->controller->body, 1));  // up
             }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
@@ -214,9 +214,9 @@ void draw3d(Game &g, TransferPlanner &planner) {
     energy_series.push(g.time, o.energy);
     angmom_series.push(g.time, o.ang_momentum);
 
-    up = getRelAxis_(ship->controller, 1);
-    facing = getRelAxis_(ship->controller, 2);
-    other = getRelAxis_(ship->controller, 0);
+    up = getRelAxis_(ship->controller->body, 1);
+    facing = getRelAxis_(ship->controller->body, 2);
+    other = getRelAxis_(ship->controller->body, 0);
 
     facing_dir = glm::normalize(facing);
     vel_dir = glm::normalize(vel);
@@ -274,15 +274,17 @@ void draw3d(Game &g, TransferPlanner &planner) {
     glm::dmat4 View = camera->GetView();
     glm::mat4 Projection = camera->GetProjection();
     if(ship->m_thrust > 0) {
-        for(size_t t = 0; t < ship->m_thrusters.size(); t++) {
+        for(Part *p : ship->parts) {
+            if(!p->isThruster()) { continue; }
             /* the plume mesh is authored for the base part
                (radius 1 m, height 2 m): scale it to this thruster's
                size so the tail lands on the engine tail (-h/2) */
-            const glm::dvec2 &dim = ship->m_thrusterDims[t];
-            glm::dmat4 Model = ship->m_thrusters[t]->model_matrix
-                * glm::dmat4(glm::dmat3(dim.x, 0.0, 0.0,
-                                         0.0, dim.x, 0.0,
-                                         0.0, 0.0, dim.y / 2.0));
+            const double radius = p->def->radius;
+            const double height = p->def->height;
+            glm::dmat4 Model = p->body->model_matrix
+                * glm::dmat4(glm::dmat3(radius, 0.0, 0.0,
+                                         0.0, radius, 0.0,
+                                         0.0, 0.0, height / 2.0));
             // shifted into the render frame, like the view
             glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
             g.engine_plume_model->shader->Bind();

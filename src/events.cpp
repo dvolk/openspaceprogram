@@ -291,13 +291,12 @@ void poll_events(Game &g) {
                     }
                     // Refuse to drop a stage that still carries a crewed
                     // capsule (the crew's `aboard` state would dangle); EVA
-                    // the crew out first. Per-part metadata lives in the
-                    // partDefs / partStages vectors parallel to parts.
+                    // the crew out first. Per-part metadata lives on each Part.
                     bool crewOnStage = false;
                     for(size_t i = 0; i < g.ship->parts.size(); i++) {
-                        if(g.ship->partStages[i] != g.ship->activeStage()) { continue; }
-                        if(g.ship->partDefs[i] == nullptr ||
-                           g.ship->partDefs[i]->crew_capacity <= 0) { continue; }
+                        if(g.ship->parts[i]->stage != g.ship->activeStage()) { continue; }
+                        if(g.ship->parts[i]->def == nullptr ||
+                           g.ship->parts[i]->def->crew_capacity <= 0) { continue; }
                         if(!partCrew(g.ship, i).empty()) {
                             crewOnStage = true;
                         }

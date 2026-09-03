@@ -64,7 +64,7 @@ struct Kerbal : Vehicle {
        at rest: half the part height + the collision margins (0.5 terrain +
        0.1 hull -- the same 0.6 the pad placement lifts ships by). */
     double restAlt() const {
-        return partDefs[0]->height / 2.0 + 0.6;
+        return parts[0]->def->height / 2.0 + 0.6;
     }
 
     /* The per-substep EVA law (the applyControlForces override): walking

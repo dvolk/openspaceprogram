@@ -48,13 +48,13 @@ static int g_checks = 0;
 
 /* A ship of `n` tank parts, each holding cap[i] kg of BOTH propellants
    (the catalog tanks do), on the given stages (empty -> all stage 1;
-   otherwise stages.size() must equal n). The PartDefs and collision
-   shapes outlive the Vehicle (partDefs point into them; Bullet keeps the
-   shape pointer in the rigid body). */
+   otherwise stages.size() must equal n). Each Part wraps its rigid body and
+   points at a PartDef in `defs` (which must outlive the Vehicle -- the
+   reserve() means the pointers stay valid). The collision shape is owned by
+   the btRigidBody (freed by ~Body), so it is NOT tracked here. */
 struct Ship {
     Vehicle *v;
     std::vector<PartDef> defs;
-    std::vector<btBoxShape *> shapes;
 };
 
 static Ship makeShip(const std::vector<float> &cap,
@@ -73,27 +73,31 @@ static Ship makeShip(const std::vector<float> &cap,
         b->model = nullptr;   // no GL model in a headless test
         b->btBody = new btRigidBody(ci);
         b->mass = m;
-        s.v->parts.push_back(b);
-        s.shapes.push_back(shape);
+
         PartDef d;
         d.capacity[(int)ResourceType::Hydrogen] = cap[i];
         d.capacity[(int)ResourceType::LOX] = cap[i];
         s.defs.push_back(d);
-        s.v->partDefs.push_back(&s.defs.back());
-        s.v->partStages.push_back(stages.empty() ? 1 : stages[i]);
+
+        Part *p = new Part;
+        p->body  = b;
+        p->def   = &s.defs.back();
+        p->stage = stages.empty() ? 1 : stages[i];
+        s.v->parts.push_back(p);
     }
-    s.v->controllerIndex = 0;
-    s.v->init();   // seeds partResources from the defs' capacities
+    s.v->controller = s.v->parts[0];
+    s.v->init();   // seeds each tank Part's resources from its def
     return s;
 }
 
 static void destroyShip(Ship &s) {
     /* onRails = true keeps the destructor off RemoveBody (the physics
-       engine is not constructed in a headless test). */
+       engine is not constructed in a headless test). ~Vehicle deletes each
+       Part, and ~Part frees the Body (which frees the btRigidBody and its
+       owned collision shape). The PartDefs in s.defs outlive the Parts and
+       are released when this Ship goes out of scope. */
     s.v->onRails = true;
     delete s.v;
-    for(size_t i = 0; i < s.shapes.size(); i++) { delete s.shapes[i]; }
-    s.shapes.clear();
 }
 
 /* The core fix: 4 equal tanks (a central + 3 radial, the heavy_one layout)
@@ -110,14 +114,14 @@ static void test_prorata_equal_tanks() {
     for(int i = 0; i < 4; i++) {
         char buf[96];
         snprintf(buf, sizeof buf, "tank %d drained 25 kg (not first-only)", i);
-        CHECK_NEAR(s.v->partResources[(size_t)i].current[(int)ResourceType::Hydrogen],
+        CHECK_NEAR(s.v->parts[(size_t)i]->resources.current[(int)ResourceType::Hydrogen],
                    75.0, 1e-5, buf);
         snprintf(buf, sizeof buf, "tank %d's part shed its 25 kg", i);
-        CHECK_NEAR(s.v->parts[(size_t)i]->mass, 175.0, 1e-5, buf);
+        CHECK_NEAR(s.v->parts[(size_t)i]->body->mass, 175.0, 1e-5, buf);
     }
-    CHECK_TRUE(s.v->partResources[0].current[(int)ResourceType::Hydrogen] > 50.0f,
+    CHECK_TRUE(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen] > 50.0f,
                "first tank NOT drained first (old behavior)");
-    CHECK_NEAR(s.v->partResources[0].current[(int)ResourceType::LOX], 100.0, 1e-6,
+    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::LOX], 100.0, 1e-6,
                "LOX untouched by the H2 draw");
     destroyShip(s);
 }
@@ -132,9 +136,9 @@ static void test_prorata_unequal_tanks() {
 
     const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 30.0f);
     CHECK_TRUE(ok, "consume 30 kg from 200 + 100 kg tanks");
-    CHECK_NEAR(s.v->partResources[0].current[(int)ResourceType::Hydrogen], 180.0, 1e-5,
+    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 180.0, 1e-5,
                "big tank drained 20 (200 -> 180)");
-    CHECK_NEAR(s.v->partResources[1].current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
+    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
                "small tank drained 10 (100 -> 90)");
     destroyShip(s);
 }
@@ -148,9 +152,9 @@ static void test_stranded_fuel() {
 
     const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f);
     CHECK_TRUE(ok, "pool-covered flow fires (vacuity guard: old code refused)");
-    CHECK_NEAR(s.v->partResources[0].current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tank 0 drained 50");
-    CHECK_NEAR(s.v->partResources[1].current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tank 1 drained 50");
     destroyShip(s);
 }
@@ -163,11 +167,11 @@ static void test_insufficient_total() {
 
     const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 130.0f);
     CHECK_TRUE(!ok, "flow above the total is refused");
-    CHECK_NEAR(s.v->partResources[0].current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 0 untouched");
-    CHECK_NEAR(s.v->partResources[1].current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 1 untouched");
-    CHECK_NEAR(s.v->parts[0]->mass, 160.0, 1e-6, "part 0 mass untouched");
+    CHECK_NEAR(s.v->parts[0]->body->mass, 160.0, 1e-6, "part 0 mass untouched");
     destroyShip(s);
 }
 
@@ -179,13 +183,13 @@ static void test_full_drain() {
 
     const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f);
     CHECK_TRUE(ok, "consuming exactly the total is allowed");
-    CHECK_NEAR(s.v->partResources[0].current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tank 0 empty");
-    CHECK_NEAR(s.v->partResources[1].current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tank 1 empty");
-    CHECK_TRUE(s.v->partResources[0].current[(int)ResourceType::Hydrogen] >= 0.0f,
+    CHECK_TRUE(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
                "no negative contents (float rounding)");
-    CHECK_TRUE(s.v->partResources[1].current[(int)ResourceType::Hydrogen] >= 0.0f,
+    CHECK_TRUE(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
                "no negative contents (float rounding)");
     destroyShip(s);
 }
@@ -198,13 +202,13 @@ static void test_stage_gating() {
 
     const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 80.0f);
     CHECK_TRUE(ok, "consume 80 kg from the active stage (2 x 50)");
-    CHECK_NEAR(s.v->partResources[0].current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "stage-1 tank 0 drained 40");
-    CHECK_NEAR(s.v->partResources[1].current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "stage-1 tank 1 drained 40");
-    CHECK_NEAR(s.v->partResources[2].current[(int)ResourceType::Hydrogen], 1000.0, 1e-6,
+    CHECK_NEAR(s.v->parts[2]->resources.current[(int)ResourceType::Hydrogen], 1000.0, 1e-6,
                "stage-2 tank untouched");
-    CHECK_NEAR(s.v->parts[2]->mass, 1100.0, 1e-6, "stage-2 part mass untouched");
+    CHECK_NEAR(s.v->parts[2]->body->mass, 1100.0, 1e-6, "stage-2 part mass untouched");
     destroyShip(s);
 }
 
@@ -225,7 +229,7 @@ static void test_repeated_draws_stay_symmetric() {
     for(int i = 0; i < 3; i++) {
         char buf[96];
         snprintf(buf, sizeof buf, "tank %d still in step (100 -> 260/3)", i);
-        CHECK_NEAR(s.v->partResources[(size_t)i].current[(int)ResourceType::Hydrogen],
+        CHECK_NEAR(s.v->parts[(size_t)i]->resources.current[(int)ResourceType::Hydrogen],
                    260.0 / 3.0, 1e-5, buf);
     }
     destroyShip(s);

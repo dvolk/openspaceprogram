@@ -66,8 +66,13 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         model->FromData(mesh, partsshader, tex);
         model->hull_margin = resolveHullMargin(def.hull_margin, pd.hull_margin);
 
-        Body *part = create_body(model, 0, 0, 0, (float)pd.mass, false);
-        setPosRot(part, base + orient * (pos[i] + shift), orient * rot[i]);
+        Body *b = create_body(model, 0, 0, 0, (float)pd.mass, false);
+        setPosRot(b, base + orient * (pos[i] + shift), orient * rot[i]);
+
+        Part *part = new Part;
+        part->body  = b;
+        part->def   = &pd;
+        part->stage = def.parts[i].stage;
 
         if(i == 0) {
             ship->setRoot(part);
@@ -75,10 +80,8 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
             const ShipPart &sp = def.parts[i];
             ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i]);
         }
-        ship->partDefs.push_back(&pd);
-        ship->partStages.push_back(def.parts[i].stage);
     }
-    ship->controllerIndex = def.controllerIndex();
+    ship->controller = ship->parts[def.controllerIndex()];
     ship->init();
 }
 
@@ -256,12 +259,12 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     // which silently straightened a radial part into the stack axis.)
     const glm::dmat3 orient = faceAlong(velWorld);
     const glm::dvec3 com0 = ship->get_center_of_mass();
-    const glm::dmat3 Rrel = orient * glm::transpose(GetOrient(ship->parts[0]));
-    for(auto&& part : ship->parts) {
-        const glm::dvec3 p = GetPosition(part);
-        const glm::dmat3 R0 = GetOrient(part);
-        setPosRot(part, target + Rrel * (p - com0), Rrel * R0);
-        SetVelocity(part, vel);
+    const glm::dmat3 Rrel = orient * glm::transpose(GetOrient(ship->parts[0]->body));
+    for(Part *part : ship->parts) {
+        const glm::dvec3 p = GetPosition(part->body);
+        const glm::dmat3 R0 = GetOrient(part->body);
+        setPosRot(part->body, target + Rrel * (p - com0), Rrel * R0);
+        SetVelocity(part->body, vel);
     }
 
     printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s\n",
@@ -283,18 +286,18 @@ void spin_log(Vehicle *ship, double time) {
     printf("[spin] t=%.2fs ship=%s com=[%.0f %.0f %.0f] parts=%zu\n",
            time, ship->name.c_str(), com.x, com.y, com.z, ship->parts.size());
     for(size_t i = 0; i < ship->parts.size(); i++) {
-        const glm::dvec3 w = GetAngVelocity(ship->parts[i]);
-        const glm::dvec3 p = GetPosition(ship->parts[i]);
+        const glm::dvec3 w = GetAngVelocity(ship->parts[i]->body);
+        const glm::dvec3 p = GetPosition(ship->parts[i]->body);
         printf("[spin]   %-14s pos=[%.1f %.1f %.1f] w=[%.3e %.3e %.3e] |w|=%.3e\n",
-               ship->partDefs[i]->name.c_str(),
+               ship->parts[i]->def->name.c_str(),
                p.x, p.y, p.z, w.x, w.y, w.z, glm::length(w));
     }
 
     for(size_t i = 0; i < ship->parts.size(); i++) {
         for(size_t j = i + 1; j < ship->parts.size(); j++) {
-            const ContactPairInfo cp = contact_report(ship->parts[i], ship->parts[j]);
+            const ContactPairInfo cp = contact_report(ship->parts[i]->body, ship->parts[j]->body);
             printf("[spin]   contact %-8s-%-8s: manifs=%d (other=%d) pts=%zu |F|=%.3e |T|=%.3e maxImp=%.3e\n",
-                   ship->partDefs[i]->name.c_str(), ship->partDefs[j]->name.c_str(),
+                   ship->parts[i]->def->name.c_str(), ship->parts[j]->def->name.c_str(),
                    cp.manifolds, cp.otherManifolds, cp.points.size(),
                    glm::length(cp.netForce), glm::length(cp.netTorque), cp.maxImpulse);
             for(size_t k = 0; k < cp.points.size(); k++) {
@@ -310,9 +313,9 @@ void spin_log(Vehicle *ship, double time) {
     const double M = ship->m_parent->mass;
     glm::dvec3 tau(0, 0, 0);
     for(size_t i = 0; i < ship->parts.size(); i++) {
-        const glm::dvec3 p = GetPosition(ship->parts[i]);
+        const glm::dvec3 p = GetPosition(ship->parts[i]->body);
         const double r = glm::length(p);
-        const glm::dvec3 F = -G * M * ship->parts[i]->mass * p / (r * r * r);
+        const glm::dvec3 F = -G * M * ship->parts[i]->body->mass * p / (r * r * r);
         tau += glm::cross(p - com, F);
     }
     printf("[spin]   tidal gravity torque |tau|=%.3e\n", glm::length(tau));

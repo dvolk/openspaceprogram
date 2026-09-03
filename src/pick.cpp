@@ -113,7 +113,7 @@ bool pickShipPart(Game &g, int px, int py,
 
         for(size_t i = 0; i < s->parts.size(); i++) {
             PickBodyHit h;
-            if(!pickBody(sray, s->parts[i], h)) { continue; }
+            if(!pickBody(sray, s->parts[i]->body, h)) { continue; }
             if(h.dist < bestDist) {
                 bestDist = h.dist;
                 bestShip = s;

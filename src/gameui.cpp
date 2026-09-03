@@ -1027,7 +1027,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                    args.camFovDeg);
         }
         ImGui::Text("Home distance: %f",
-                    glm::length(ship->GetPositionRelTo(ship->controller,
+                    glm::length(ship->GetPositionRelTo(ship->controller->body,
                                                         ship->home->frame)));
         ImGui::Text("Pos: %.3fkm", distance / 1000);
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
@@ -1172,24 +1172,24 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
         ImGui::Text("Wheel torque: %.0fN m", ship->GetWheelTorque());
         ImGui::Text("Angular rate: %.2fdeg/s",
-                    glm::degrees(glm::length(GetAngVelocity(ship->controller))));
+                    glm::degrees(glm::length(GetAngVelocity(ship->controller->body))));
     });
     ui::Window("Ship Parts", g.o_parts, [&] {
         int i = 0;
-        for(auto&& part : ship->parts) {
-            ImGui::Text("Part #%d  (stage %d)", i, ship->partStages[i]);
+        for(Part *p : ship->parts) {
+            ImGui::Text("Part #%d  (stage %d)", i, p->stage);
             ImGui::Separator();
-            ImGui::Text("Name: %s", ship->partDefs[i]->name.c_str());
-            ImGui::Text("Mass: %.3fkg", part->mass);
+            ImGui::Text("Name: %s", p->def->name.c_str());
+            ImGui::Text("Mass: %.3fkg", p->body->mass);
             ImGui::Text("Hydrogen: %.3fkg/%.3fkg",
-                        ship->partResources[i].current[(int)ResourceType::Hydrogen],
-                        ship->partResources[i].capacity[(int)ResourceType::Hydrogen]);
+                        p->resources.current[(int)ResourceType::Hydrogen],
+                        p->resources.capacity[(int)ResourceType::Hydrogen]);
             ImGui::Text("LOX: %.3fkg/%.3fkg",
-                        ship->partResources[i].current[(int)ResourceType::LOX],
-                        ship->partResources[i].capacity[(int)ResourceType::LOX]);
+                        p->resources.current[(int)ResourceType::LOX],
+                        p->resources.capacity[(int)ResourceType::LOX]);
             ImGui::Text("Hydrazine: %.3fkg/%.3fkg",
-                        ship->partResources[i].current[(int)ResourceType::Hydrazine],
-                        ship->partResources[i].capacity[(int)ResourceType::Hydrazine]);
+                        p->resources.current[(int)ResourceType::Hydrazine],
+                        p->resources.capacity[(int)ResourceType::Hydrazine]);
             ImGui::Spacing();
             i++;
         }
@@ -1279,9 +1279,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // resource no tank carries (cap 0) reads as empty (0)
         auto frac = [&](ResourceType r) {
             float cur = 0, cap = 0;
-            for(size_t i = 0; i < ship->partResources.size(); i++) {
-                cur += ship->partResources[i].current[(int)r];
-                cap += ship->partResources[i].capacity[(int)r];
+            for(Part *p : ship->parts) {
+                cur += p->resources.current[(int)r];
+                cap += p->resources.capacity[(int)r];
             }
             return (cap > 0) ? cur / cap : 0.0f;
         };
@@ -1313,8 +1313,8 @@ void drawPartWindows(Game &g) {
             continue;
         }
         const size_t part = sel.part;
-        const PartDef *def = ship->partDefs[part];
-        const Body *partBody = ship->parts[part];
+        const PartDef *def = ship->parts[part]->def;
+        const Body *partBody = ship->parts[part]->body;
 
         char name[160];
         snprintf(name, sizeof(name), "Part: %s #%zu",
@@ -1333,7 +1333,7 @@ void drawPartWindows(Game &g) {
         if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
             ImGui::Text("Ship: %s", ship->name.c_str());
             ImGui::Text("Part #%zu  (stage %d)", part,
-                        ship->partStages[part]);
+                        ship->parts[part]->stage);
             ImGui::Separator();
             ImGui::Text("Name: %s", def->name.c_str());
             if(!def->type.empty()) {
@@ -1356,8 +1356,8 @@ void drawPartWindows(Game &g) {
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0f) { continue; }
                 ImGui::Text("%s: %.1fkg/%.1fkg", resNames[r],
-                            ship->partResources[part].current[r],
-                            ship->partResources[part].capacity[r]);
+                            ship->parts[part]->resources.current[r],
+                            ship->parts[part]->resources.capacity[r]);
             }
             // --- crew (this part is a capsule: holds EVA characters) --------
             // Aboard crew get an EVA button (takes them out, game.cpp); a
@@ -1378,7 +1378,7 @@ void drawPartWindows(Game &g) {
                     ImGui::PopID();
                 }
                 // free kerbals in boarding range: a Board button each
-                const glm::dvec3 capCom = GetPosition(ship->parts[part]);
+                const glm::dvec3 capCom = GetPosition(ship->parts[part]->body);
                 bool anyInRange = false;
                 for(Kerbal *k : freeKerbals(g.sys)) {
                     const double dist =

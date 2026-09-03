@@ -113,7 +113,7 @@ Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wa
         // frictionless feet: the walk steering is a force applied at the
         // COM, and foot friction would pair with it into a tipping couple
         // that rolls the standing capsule over (see src/eva.cpp).
-        SetFriction(v->controller, 0.0);
+        SetFriction(v->controller->body, 0.0);
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     hb->ships.push_back(v);
@@ -157,9 +157,9 @@ std::string Ships::dedupName(System &sys, const std::string &nm)
    need to touch it. */
 Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     if(part >= ship->parts.size()) { return nullptr; }
-    const PartDef *capDef = ship->partDefs[part];
+    const PartDef *capDef = ship->parts[part]->def;
     if(capDef->crew_capacity <= 0) { return nullptr; }
-    Body *cap = ship->parts[part];
+    Body *cap = ship->parts[part]->body;
 
     ShipDef def = load_ship_def("./res/ships/kerbal.json", part_catalog);
     Kerbal *k = new Kerbal;
@@ -175,16 +175,16 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     const glm::dvec3 capCom = GetPosition(cap);
     const glm::dmat3 capOrient = GetOrient(cap);
     build_ship(k, def, partsshader, capCom, capOrient);
-    SetFriction(k->controller, 0.0);   // frictionless feet (see place_ship)
+    SetFriction(k->controller->body, 0.0);   // frictionless feet (see place_ship)
 
     // park inside the capsule (out of the physics world) + fold its mass
     // into the capsule part (the ship is heavier with crew aboard)
-    Body *kb = k->parts[0];
+    Body *kb = k->parts[0]->body;
     setPosRot(kb, capCom, capOrient);
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
-    cap->mass += k->parts[0]->mass;
+    cap->mass += k->parts[0]->body->mass;
     SetMass(cap, cap->mass);
     k->aboard = ship;
     k->aboardPart = part;
@@ -202,7 +202,7 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
 
 void Ships::spawn_crew(Vehicle *ship, System &sys) {
     for(size_t i = 0; i < ship->parts.size(); i++) {
-        if(ship->partDefs[i]->crew_capacity > 0) {
+        if(ship->parts[i]->def->crew_capacity > 0) {
             spawn_crew_kerbal(ship, i, sys);
         }
     }

@@ -29,6 +29,7 @@
 #include "body.h"
 #include "physics.h"
 #include "shipdef.h"
+#include "part.h"
 #include "terrain.h"
 #include "frame.h"
 #include "orbit.h"
@@ -77,8 +78,7 @@ public:
     std::string name;   // display name (def name, disambiguated in main)
     std::string defPath; // the ship def file it was built from ("" = test ship);
                          // lets a runtime spawn duplicate this ship's design
-    std::vector<Body *> parts;
-    std::vector<ResourceContent> partResources;
+    std::vector<Part *> parts;   // each Part owns its Body (see part.h)
 
     TerrainBody *m_parent;
     Frame *frame;
@@ -99,14 +99,17 @@ public:
 
     glm::dvec3 m_com;
 
-    Body *controller;
-    int controllerIndex = -1;   // part index; -1 = unresolved (build_ship sets it)
-    std::vector<Body *> m_thrusters;
-    std::vector<Body *> m_reaction_wheels;
+    /* the controller part (the cockpit, or the first reaction wheel by
+       default): the camera basis and the stick frame are built from its
+       local axes. build_ship() resolves it from def.controllerIndex(). */
+    Part *controller;
     std::vector<void *> constraints;
-    /* which parts each constraint joins: (parentIdx, childIdx) into
-       `parts`, parallel to `constraints`. Staging splits on these links. */
-    std::vector<std::pair<size_t, size_t>> constraintLinks;
+    /* which parts each constraint joins (parent, child) BY POINTER, parallel
+       to `constraints`. A Part* is stable for the ship's lifetime, so staging
+       just drops the constraints that touch a removed part -- no index
+       remapping (the old pair<size_t,size_t> links + computeStageSplit are
+       gone). */
+    std::vector<std::pair<Part *, Part *>> constraintLinks;
     /* the weld's LOCAL anchor points (parentAnchor, childAnchor), parallel
        to `constraints`. The rails handoff detaches every weld and re-glues
        from these when the ship re-enters physics. */
@@ -129,25 +132,15 @@ public:
     glm::dvec3 rail_pos;      // m, cluster COM in ship->frame coords
     glm::dvec3 rail_vel;      // m/s, inertial, ship->frame coords
     glm::dmat3 rail_orient = glm::dmat3(1.0); // cluster axes -> frame axes
-    std::vector<glm::dvec3> rail_rel_pos;     // parked part pose, cluster axes
-    std::vector<glm::dmat3> rail_rel_rot;
+    /* the per-part parked pose (relative to the cluster COM, in cluster axes)
+       lives on each Part now (Part::railRelPos / Part::railRelRot). */
 
-    /* Per-part catalog specs (parallel to parts; set by build_ship() before
-       init()). init() copies the behavior values into the per-thruster /
-       per-wheel vectors below, so the catalog may be freed afterwards. */
-    std::vector<const PartDef *> partDefs;
-    /* per-part stage number (parallel to parts; set by build_ship from the
-       ship def). 1 = single stage. Drives engine/fuel gating + separation. */
-    std::vector<int> partStages;
-    std::vector<double> m_thrusterThrust;  // N at full throttle (T = 2*rate*ve)
-    std::vector<double> m_thrusterRate;    // kg/s per tank at full throttle
-    std::vector<glm::dvec2> m_thrusterDims;  // (radius, height) m, parallel to m_thrusters
-    std::vector<int> m_thrusterStage;     // stage of each thruster (parallel to m_thrusters)
-    std::vector<double> m_wheelTorque;     // N m, rated
-    double m_exhaustVel = 0;               // m/s (first engine; delta-v estimate)
-    /* the armed per-thruster force for THIS tick (N at current throttle);
-       armed by ApplyThrust, applied per substep, disarmed by clearThrust */
-    std::vector<float> m_armedThrust;
+    /* Per-part catalog spec / stage / tank contents / armed thrust / behavior
+       all live on each Part now (see part.h). The old partDefs / partStages /
+       partResources / m_thruster* / m_reaction_wheels / m_wheel* / m_armed*
+       vectors -- all "parallel to parts" -- are gone: a Part carries its own
+       def + stage + resources, and thruster/wheel behavior is derived from
+       the def, so there is nothing to keep in sync or rebuild. */
 
     float thruster_util = 1.0;
     double exhaust_scale = 1.0;  // test knob (Settings / --exhaust-scale):
@@ -171,94 +164,77 @@ public:
     SlewMode slewRequest = SlewNone;
     void setSlewRequest(SlewMode m) { slewRequest = m; }
 
-    void setRoot(Body *part) {
-        parts = { part };
+    void setRoot(Part *part) {
+        parts.push_back(part);
     }
 
     /* Weld `part` to the part at `parentIdx` at the given LOCAL anchor
        points (which must coincide in world space -- the 6DOF weld enforces
-       zero relative linear offset). Records the link for staging. The
-       caller has already setPosRot-ed the child to the matching pose. */
-    void attach(Body *part, size_t parentIdx,
+       zero relative linear offset). Records the link (by pointer) for
+       staging. The caller has already setPosRot-ed the child to the matching
+       pose. */
+    void attach(Part *part, size_t parentIdx,
                 const glm::dvec3 &parentAnchor, const glm::dvec3 &childAnchor) {
-        void *constraint = GlueTogether(parts[parentIdx], part,
+        Part *parent = parts[parentIdx];
+        void *constraint = GlueTogether(parent->body, part->body,
                                         parentAnchor, childAnchor);
         parts.push_back(part);
         constraints.push_back(constraint);
-        constraintLinks.push_back(std::make_pair(parentIdx, parts.size() - 1));
+        constraintLinks.push_back(std::make_pair(parent, part));
         constraintAnchors.push_back(std::make_pair(parentAnchor, childAnchor));
     }
 
-    void attachDown(Body *part, const PartDef *def) {
+    void attachDown(Part *part) {
         /* weld at the part faces: parent bottom (-h/2) to child top (+h/2);
-           generalizes the old hardcoded +-1 m (2 m parts). partDefs is
-           parallel to parts, so the parent's def is the last one pushed. */
-        const PartDef *parent = partDefs.back();
+           generalizes the old hardcoded +-1 m (2 m parts). The parent is the
+           last part pushed. */
+        const PartDef *parent = parts.back()->def;
         attach(part, parts.size() - 1,
                glm::dvec3(0.0, 0.0, -parent->height / 2.0),
-               glm::dvec3(0.0, 0.0,  def->height / 2.0));
+               glm::dvec3(0.0, 0.0,  part->def->height / 2.0));
     }
 
-    void attachRadial(Body *part, const PartDef *def) {
+    void attachRadial(Part *part) {
         /* weld the part to the parent's SIDE: the part's local +Z axis is
            rotated to the parent's local +X (call site), so the part's
            bottom face (local -h/2) touches the parent's side at +radius.
            The anchors coincide in world space at the tangent point
-           (parent local (r,0,0) == part local (0,0,-h/2)).
-           Same partDefs convention as attachDown. */
-        const PartDef *parent = partDefs.back();
+           (parent local (r,0,0) == part local (0,0,-h/2)). */
+        const PartDef *parent = parts.back()->def;
         attach(part, parts.size() - 1,
                glm::dvec3(parent->radius, 0.0, 0.0),
-               glm::dvec3(0.0, 0.0, -def->height / 2.0));
+               glm::dvec3(0.0, 0.0, -part->def->height / 2.0));
     }
 
-    void attachSide(Body *part, const PartDef *def) {
+    void attachSide(Part *part) {
         /* weld the part to the parent's SIDE with PARALLEL axes: the part
            keeps the parent's local +Z axis (no rotation at the call site),
            sits along the parent's local +X, and its cylindrical surface
            touches the parent's at +radius. The anchors coincide in world
            space at the tangent point (parent local (r,0,0) == part local
            (-r,0,0)). Unlike attachRadial the child is NOT rotated, so this
-           is the "side by side, parallel axes" case.
-           Same partDefs convention as attachDown. */
-        const PartDef *parent = partDefs.back();
+           is the "side by side, parallel axes" case. */
+        const PartDef *parent = parts.back()->def;
         attach(part, parts.size() - 1,
                glm::dvec3(parent->radius, 0.0, 0.0),
-               glm::dvec3(-def->radius, 0.0, 0.0));
+               glm::dvec3(-part->def->radius, 0.0, 0.0));
     }
 
     void init() {
-        partResources.resize(parts.size());
-        /* the cockpit part; build_ship() sets controllerIndex from the ship
-           def (default: first reaction wheel, else the root). The < 0
-           branch is defensive -- build_ship always resolves it first. */
-        int ci = controllerIndex < 0 ? 0 : controllerIndex;
-        controller = parts[(size_t)ci];
-        NeverSleep(controller);
-        if(partDefs.size() != parts.size()) {
-            throw std::runtime_error("Vehicle::init: partDefs must be parallel to parts");
-        }
-        if(partStages.size() != parts.size()) {
-            throw std::runtime_error("Vehicle::init: partStages must be parallel to parts");
-        }
+        if(parts.empty()) { return; }
+        if(controller == nullptr) { controller = parts[0]; }
+        NeverSleep(controller->body);
         /* propellant reservoirs: seed each tank part's resources so the
            thrusters can draw from them (they shed mass as they burn). Only
-           done at construction -- separateStage() must NOT re-seed, so this
-           stays here and out of rebuildBehavior(). */
+           done at construction -- separateStage() must NOT re-seed. */
         for(size_t i = 0; i < parts.size(); i++) {
-            const PartDef *d = partDefs[i];
-            bool has_capacity = false;
-            for(size_t r = 0; r < d->capacity.size(); r++) {
-                if(d->capacity[r] > 0.0f) { has_capacity = true; }
-            }
-            if(has_capacity) {
-                for(int r = 0; r < (int)ResourceType::Num; r++) {
-                    partResources[i].capacity[r] = d->capacity[r];
-                    partResources[i].current[r] = d->capacity[r];
-                }
+            Part *p = parts[i];
+            if(!p->isTank()) { continue; }
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                p->resources.capacity[r] = p->def->capacity[r];
+                p->resources.current[r]  = p->def->capacity[r];
             }
         }
-        rebuildBehavior();
     }
 
     /* True of the EVA kerbal (src/eva.h): control input, the camera and
@@ -272,40 +248,6 @@ public:
        the capsule, not a visible body). Overridden in src/eva.h; a regular
        ship never carries this, so it is false by default. */
     virtual bool isCrewAboard() const { return false; }
-
-    /* (Re)build the per-thruster / per-wheel behavior vectors from partDefs.
-       Safe to call again after separateStage() has shrunk the part set: it
-       touches ONLY the m_* vectors -- never partResources (fuel is never
-       re-seeded) and never the parts/constraints themselves. */
-    void rebuildBehavior() {
-        m_thrusters.clear();
-        m_reaction_wheels.clear();
-        m_thrusterThrust.clear();
-        m_thrusterRate.clear();
-        m_thrusterDims.clear();
-        m_thrusterStage.clear();
-        m_wheelTorque.clear();
-        m_exhaustVel = 0;
-        for(size_t i = 0; i < parts.size(); i++) {
-            const PartDef *d = partDefs[i];
-            /* behavior is field-driven (see shipdef.h): a part may carry
-               any combination of these, so the checks are independent */
-            if(d->torque > 0.0) {
-                m_reaction_wheels.push_back(parts[i]);
-                m_wheelTorque.push_back(d->torque);
-            }
-            if(d->fuel_rate > 0.0 && d->exhaust_velocity > 0.0) {
-                m_thrusters.push_back(parts[i]);
-                m_thrusterThrust.push_back(d->fullThrust());
-                m_thrusterRate.push_back(d->fuel_rate);
-                m_thrusterDims.push_back(glm::dvec2(d->radius, d->height));
-                m_thrusterStage.push_back(partStages[i]);
-                if(m_exhaustVel == 0.0) { m_exhaustVel = d->exhaust_velocity; }
-            }
-        }
-        /* no thrust may be armed across a rebuild (a split just happened) */
-        m_armedThrust.assign(m_thrusters.size(), 0.0f);
-    }
 
     /* Draw `amt` kg of `type` from the ACTIVE stage's tanks, pro-rata
        across every tank that still holds it (stages are self-contained: a
@@ -321,20 +263,20 @@ public:
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */) {
         const int as = activeStage();
         float total = 0;
-        for(size_t i = 0; i < parts.size(); i++) {
-            if(partStages[i] != as) { continue; }
-            total += partResources[i].current[(int)type];
+        for(Part *p : parts) {
+            if(p->stage != as) { continue; }
+            total += p->resources.current[(int)type];
         }
         if(total < amt) { return false; }
-        for(size_t i = 0; i < parts.size(); i++) {
-            if(partStages[i] != as) { continue; }
-            const float have = partResources[i].current[(int)type];
+        for(Part *p : parts) {
+            if(p->stage != as) { continue; }
+            const float have = p->resources.current[(int)type];
             if(have <= 0.0f) { continue; }
             float take = amt * have / total; /* pro-rata share */
             if(take > have) { take = have; } /* float rounding */
-            partResources[i].current[(int)type] = have - take;
-            parts[i]->mass -= (double)take; /* why does Body have mass at all? */
-            SetMass(parts[i], parts[i]->mass);
+            p->resources.current[(int)type] = have - take;
+            p->body->mass -= (double)take;
+            SetMass(p->body, p->body->mass);
         }
         return true;
     }
@@ -342,8 +284,8 @@ public:
     float getFuelMass(const std::vector /* eh */ <enum ResourceType>& types) {
         float fuel = 0;
         for(auto&& type : types) {
-            for(auto&& partResource : partResources) {
-                fuel += partResource.current[(int)type];
+            for(Part *p : parts) {
+                fuel += p->resources.current[(int)type];
             }
         }
         return fuel;
@@ -351,15 +293,17 @@ public:
 
     float getDeltaV() {
         float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
-        return (float)(m_exhaustVel * exhaust_scale)
+        double ve = 0;   // first thruster's exhaust velocity (the delta-v estimate)
+        for(Part *p : parts) { if(p->isThruster()) { ve = p->exhaustVelocity(); break; } }
+        return (float)(ve * exhaust_scale)
              * log(getMass() / (getMass() - remaining_fuel));
     }
 
     /* TODO should be cached per frame */
     float getMass() {
         float r = 0;
-        for(auto&& part : parts) {
-            r += part->mass;
+        for(Part *p : parts) {
+            r += p->body->mass;
         }
         return r;
     }
@@ -368,10 +312,10 @@ public:
        the ship. Stages are dropped low-to-high, so this is what fires and
        what separateStage() detaches next. */
     int activeStage() {
-        if(partStages.empty()) { return 1; }
-        int s = partStages[0];
-        for(size_t i = 1; i < partStages.size(); i++) {
-            if(partStages[i] < s) { s = partStages[i]; }
+        if(parts.empty()) { return 1; }
+        int s = parts[0]->stage;
+        for(size_t i = 1; i < parts.size(); i++) {
+            if(parts[i]->stage < s) { s = parts[i]->stage; }
         }
         return s;
     }
@@ -383,8 +327,8 @@ public:
        dropped (a remaining-count would read e.g. "stage 2 of 1"). */
     int numStages() {
         int n = 0;
-        for(size_t i = 0; i < partStages.size(); i++) {
-            if(partStages[i] > n) { n = partStages[i]; }
+        for(Part *p : parts) {
+            if(p->stage > n) { n = p->stage; }
         }
         return n;
     }
@@ -410,26 +354,26 @@ public:
     }
 
     void setVelocity(glm::dvec3 vel) {
-        for(auto&& part : parts) {
-            SetVelocity(part, vel);
+        for(Part *p : parts) {
+            SetVelocity(p->body, vel);
         }
     }
 
     void setPosition(glm::dvec3 pos) {
         void SetPosition(Body *b, glm::dvec3 com, glm::dvec3 pos);
-        for(auto&& part : parts) {
-            SetPosition(part, get_center_of_mass(), pos);
+        for(Part *p : parts) {
+            SetPosition(p->body, get_center_of_mass(), pos);
         }
     }
 
     const glm::dvec3& get_center_of_mass(void) {
         double total_mass = 0;
-        for(auto&& part : parts) {
-            total_mass += part->mass;
+        for(Part *p : parts) {
+            total_mass += p->body->mass;
         }
         m_com = glm::dvec3(0, 0, 0);
-        for(auto&& part : parts) {
-            m_com += GetPosition(part) * (part->mass / total_mass);
+        for(Part *p : parts) {
+            m_com += GetPosition(p->body) * (p->body->mass / total_mass);
         }
         return m_com;
     }
@@ -438,21 +382,21 @@ public:
         const double& parent_mass = m_parent->mass;
         const double G = 6.674e-11;
         glm::dvec3 gf;
-        for(auto&& part : parts) {
-            if(part->mass == 0) { continue; }
-            const glm::dvec3& b1b2 = GetPosition(part);
-            const double m1m2 = part->mass * parent_mass;
+        for(Part *p : parts) {
+            if(p->body->mass == 0) { continue; }
+            const glm::dvec3& b1b2 = GetPosition(p->body);
+            const double m1m2 = p->body->mass * parent_mass;
             const double invrsqr = 1.0 / glm::length2(b1b2);
             const double mag = G * m1m2 * invrsqr;
             gf = mag * sqrt(invrsqr) * -b1b2;
-            ApplyCentralForce(part, gf, mag);
+            ApplyCentralForce(p->body, gf, mag);
             if(frame->isRotFrame()) {
                 // In rotating coordinates the ship additionally feels
                 // Coriolis + centrifugal; without these its true inertial
                 // orbit is perturbed for as long as it spends in the rotating
                 // frame (see GetFictitiousAccel in frame.h).
-                const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, GetVelocity(part));
-                ApplyCentralForce(part, part->mass * a_fict);
+                const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, GetVelocity(p->body));
+                ApplyCentralForce(p->body, p->body->mass * a_fict);
             }
         }
         return gf;
@@ -479,9 +423,9 @@ public:
         if(!onRails) {
             for(auto&& c : constraints) { Detach(c); }
             constraints.clear();
-            for(auto&& part : parts) { RemoveBody(part); }
+            for(Part *p : parts) { RemoveBody(p->body); }
         }
-        for(auto&& part : parts) { delete part; }
+        for(Part *p : parts) { delete p; }   // ~Part deletes the Body
     }
 
     glm::dvec3 processGravity() {
@@ -494,9 +438,10 @@ public:
     // h seconds of the tick's n*h, cutting the delivered thrust to 1/n
     // (and n grows with time acceleration, so it got worse at warp).
     void applyThrustForce() {
-        for(size_t i = 0; i < m_thrusters.size(); i++) {
-            if(m_armedThrust[i] == 0.0f) { continue; }
-            ApplyCentralForceForward(m_thrusters[i], (double)m_armedThrust[i]);
+        for(Part *p : parts) {
+            if(!p->isThruster()) { continue; }
+            if(p->armedThrust == 0.0f) { continue; }
+            ApplyCentralForceForward(p->body, (double)p->armedThrust);
         }
     }
 
@@ -508,12 +453,20 @@ public:
         applyRotationForce(h);
     }
 
+    /* the first reaction-wheel body (nullptr if the ship has none): the
+       stick / slew / kill-rot laws all use it as the ship's attitude
+       reference. Replaces the old m_reaction_wheels.front(). */
+    Body *firstWheel() {
+        for(Part *p : parts) { if(p->isWheel()) { return p->body; } }
+        return nullptr;
+    }
+
     // The armed rotation commands -- like thrust -- are re-applied before
     // EVERY substep (h = that substep's duration); applied once per tick
     // they would act only during the first substep, cutting the delivered
     // authority to 1/n and making it worse at warp.
     void applyRotationForce(double h) {
-        if(m_reaction_wheels.empty()) { return; }
+        if(firstWheel() == nullptr) { return; }
         /* Manual stick: standard aviation mapping, body-relative.
            Pitch (W/S) about the ship's right axis, yaw (A/D) about its
            up axis, roll (Q/E) about the nose. The camera tracks the
@@ -522,7 +475,7 @@ public:
            its rated torque along the combined axis; diagonals (W+A)
            compose as a vector sum. */
         if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
-            Body *rw0 = m_reaction_wheels.front();
+            Body *rw0 = firstWheel();
             const glm::dvec3 pitchAxis = -getRelAxis_(rw0, 0);  // right (W/S)
             const glm::dvec3 yawAxis   = -getRelAxis_(rw0, 1);  // up    (A/D)
             const glm::dvec3 rollAxis  =  getRelAxis_(rw0, 2);  // nose  (Q/E)
@@ -530,9 +483,9 @@ public:
                 (double)stick[0] * rollAxis
                 + (double)stick[1] * pitchAxis
                 + (double)stick[2] * yawAxis;
-            for(size_t wi = 0; wi < m_reaction_wheels.size(); wi++) {
-                ApplyTorque(m_reaction_wheels[wi],
-                            (double)m_wheelTorque[wi] * worldAxis);
+            for(Part *p : parts) {
+                if(!p->isWheel()) { continue; }
+                ApplyTorque(p->body, (double)p->wheelTorque() * worldAxis);
             }
         }
         /* Autopilot: one authority-bounded step of the slew/kill-rot law
@@ -557,8 +510,9 @@ public:
        prograde wobble: watch E and w_slew for a sustained oscillation, and
        roll/third for a residual spin the law is not killing. */
     void slew_log(double time) {
-        if(slew == SlewNone || m_reaction_wheels.empty()) { return; }
-        Body *wheel = m_reaction_wheels.front();
+        if(slew == SlewNone) { return; }
+        Body *wheel = firstWheel();
+        if(wheel == nullptr) { return; }
         const glm::dvec3 facing = getRelAxis_(wheel, 2);
         if(slew == SlewKillRot) {
             const glm::dvec3 w = GetAngVelocity(wheel);
@@ -618,12 +572,10 @@ public:
     void att_log(double time) {
         if(parts.empty()) { return; }
         Body *hull = nullptr;
-        for(Body *p : parts) {
-            bool wheel = false;
-            for(Body *w : m_reaction_wheels) { if(w == p) { wheel = true; break; } }
-            if(!wheel) { hull = p; break; }
+        for(Part *p : parts) {
+            if(!p->isWheel()) { hull = p->body; break; }
         }
-        if(!hull) { hull = parts[0]; }
+        if(!hull) { hull = parts[0]->body; }
         const glm::dvec3 nose = getRelAxis_(hull, 2);
         const glm::dvec3 w = GetAngVelocity(hull);
         printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
@@ -637,16 +589,24 @@ public:
        the HUD; the ship's TOTAL wheel authority is maxTorque() (the sum) */
     float GetWheelTorque() {
         double t = 0.0;
-        for(size_t i = 0; i < m_wheelTorque.size(); i++) {
-            if(m_wheelTorque[i] > t) { t = m_wheelTorque[i]; }
+        for(Part *p : parts) {
+            if(p->isWheel() && p->wheelTorque() > t) { t = p->wheelTorque(); }
         }
         return (float)t;
+    }
+
+    /* number of reaction-wheel parts (the torque in slewToward / killRotStep
+       is distributed evenly across them). Replaces m_reaction_wheels.size(). */
+    size_t numWheels() {
+        size_t n = 0;
+        for(Part *p : parts) { if(p->isWheel()) { n++; } }
+        return n;
     }
 
     /* disarm the armed thrust (called once per tick, like clearRotCmd,
        so a tick without the keys doesn't keep firing) */
     void clearThrust() {
-        for(size_t i = 0; i < m_armedThrust.size(); i++) { m_armedThrust[i] = 0.0f; }
+        for(Part *p : parts) { p->armedThrust = 0.0f; }
     }
 
     /* disarm the armed rotation commands (called once per tick, so a tick
@@ -676,72 +636,61 @@ public:
         const size_t n = parts.size();
         if(n < 2) { return 0; }   // single-part ship: nothing to separate
 
-        /* drop set = every part on this stage */
-        std::vector<bool> drop(n, false);
+        /* a part is "dropped" iff its stage == `stage` (no separate
+           bookkeeping; each Part carries its own stage). */
         size_t dropped = 0;
-        for(size_t i = 0; i < n; i++) {
-            if(partStages[i] == stage) { drop[i] = true; dropped++; }
-        }
+        for(Part *p : parts) { if(p->stage == stage) { dropped++; } }
         if(dropped == 0) { return 0; }   // nothing on this stage
         if(dropped == n) { return 0; }   // can't drop the whole ship
+        const bool controllerDropped =
+            (controller != nullptr && controller->stage == stage);
 
-        /* the controller part's OLD index (to remap, or replace if dropped);
-           build_ship resolved the default, so < 0 is defensive only */
-        const int oldCi = controllerIndex < 0 ? 0 : controllerIndex;
-
-        StageSplit split = computeStageSplit(n, constraintLinks, drop);
-
-        /* 1) Remove every constraint touching a dropped part (the stage
-           interface AND the dropped set's internal welds). */
-        for(size_t c : split.cutConstraints) {
-            Detach(constraints[c]);   // out of the world + deleted
+        /* a constraint is cut if EITHER end is on the dropping stage (the
+           stage interface AND the stage's internal welds). A Part* link is
+           stable, so the survivors keep their (still-alive) endpoints -- no
+           index remapping (the old computeStageSplit is gone). */
+        std::vector<bool> isCut(constraints.size(), false);
+        for(size_t c = 0; c < constraints.size(); c++) {
+            if(constraintLinks[c].first->stage == stage ||
+               constraintLinks[c].second->stage == stage) { isCut[c] = true; }
         }
-        /* 2) Unregister + delete the dropped parts' bodies. */
-        for(size_t i : split.droppedParts) {
-            RemoveBody(parts[i]);     // unregister from the world
-            delete parts[i];          // frees model + rigid body
+
+        /* collect the survivors FIRST (their Part* stay valid), then free the
+           dropped parts -- so no freed pointer is ever dereferenced. */
+        std::vector<Part *> keepParts;
+        for(Part *p : parts) { if(p->stage != stage) { keepParts.push_back(p); } }
+
+        /* 1) Detach the cut constraints (they reference the dropped bodies). */
+        for(size_t c = 0; c < constraints.size(); c++) {
+            if(isCut[c]) { Detach(constraints[c]); }
         }
-        /* 3) Rebuild the part-set vectors from the kept parts. */
-        std::vector<Body *>          keepParts;
-        std::vector<const PartDef *> keepDefs;
-        std::vector<ResourceContent> keepRes;
-        std::vector<int>             keepStages;
-        for(size_t i : split.keptParts) {
-            keepParts.push_back(parts[i]);
-            keepDefs.push_back(partDefs[i]);
-            keepRes.push_back(partResources[i]);
-            keepStages.push_back(partStages[i]);
+        /* 2) Unregister + delete the dropped parts (~Part frees the Body). */
+        for(Part *p : parts) {
+            if(p->stage != stage) { continue; }
+            RemoveBody(p->body);
+            delete p;
         }
         parts.swap(keepParts);
-        partDefs.swap(keepDefs);
-        partResources.swap(keepRes);
-        partStages.swap(keepStages);
-        /* 4) Keep only the surviving constraints; their links are already
-           remapped into the new (kept-only) index space. */
-        std::vector<bool> isCut(constraints.size(), false);
-        for(size_t c : split.cutConstraints) { isCut[c] = true; }
+        /* 3) Keep only the surviving constraints / links / anchors (every
+           kept link's endpoints are still-alive Parts). */
         std::vector<void *> keepCons;
+        std::vector<std::pair<Part *, Part *>> keepLinks;
         std::vector<std::pair<glm::dvec3, glm::dvec3>> keepAnchors;
         for(size_t c = 0; c < constraints.size(); c++) {
-            if(!isCut[c]) {
-                keepCons.push_back(constraints[c]);
-                keepAnchors.push_back(constraintAnchors[c]);
-            }
+            if(isCut[c]) { continue; }
+            keepCons.push_back(constraints[c]);
+            keepLinks.push_back(constraintLinks[c]);
+            keepAnchors.push_back(constraintAnchors[c]);
         }
         constraints.swap(keepCons);
+        constraintLinks.swap(keepLinks);
         constraintAnchors.swap(keepAnchors);
-        constraintLinks = split.keptLinks;
-        /* 5) Remap the controller (or, if it was itself dropped, fall back
-           to the first surviving part). */
-        if(split.newIndexOf[(size_t)oldCi] >= 0) {
-            controllerIndex = (int)split.newIndexOf[(size_t)oldCi];
-        } else {
-            controllerIndex = 0;
-        }
-        controller = parts[(size_t)controllerIndex];
-        NeverSleep(controller);
-        /* 6) Rebuild the thruster/wheel vectors (also disarms any thrust). */
-        rebuildBehavior();
+        /* 4) If the controller was on the dropped stage, fall back to the
+           first survivor (a Part* is stable -- no index remapping). */
+        if(controllerDropped) { controller = parts[0]; }
+        NeverSleep(controller->body);
+        /* 5) Disarm any thrust (the split just happened). */
+        clearThrust();
         return (int)dropped;
     }
 
@@ -770,10 +719,11 @@ public:
 
         const glm::dmat4 xform = renderXform(renderFrame);
 
-        for(auto&& part : parts) {
+        for(Part *p : parts) {
             // Per-part terrain shadow
-            const float shadow = ComputeTerrainShadow(m_parent, frame, GetPosition(part), sun);
-            part->Draw(camera, sunlightVec, shadow, xform);
+            const float shadow =
+                ComputeTerrainShadow(m_parent, frame, GetPosition(p->body), sun);
+            p->body->Draw(camera, sunlightVec, shadow, xform);
         }
     }
 
@@ -819,7 +769,7 @@ public:
     }
 
     glm::dvec3 GetVel() {
-        return GetVelocity(controller);
+        return GetVelocity(controller->body);
     }
 
 protected:
@@ -842,8 +792,8 @@ protected:
     float GetActiveThrust() {
         const int as = activeStage();
         double t = 0;
-        for(size_t i = 0; i < m_thrusterThrust.size(); i++) {
-            if(m_thrusterStage[i] == as) { t += m_thrusterThrust[i]; }
+        for(Part *p : parts) {
+            if(p->isThruster() && p->stage == as) { t += p->thrust(); }
         }
         return (float)(t * exhaust_scale);
     }
@@ -858,15 +808,16 @@ protected:
     void ApplyThrust(double step) {
         if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
         const int as = activeStage();
-        for(size_t i = 0; i < m_thrusters.size(); i++) {
-            if(m_thrusterStage[i] != as) { continue; } /* not the live stage */
+        for(Part *p : parts) {
+            if(!p->isThruster()) { continue; }
+            if(p->stage != as) { continue; } /* not the live stage */
             const float flow =
-                (float)(m_thrusterRate[i] * (double)thruster_util * step); /* kg this tick, per tank */
+                (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
             if(consumeResourceMass(ResourceType::Hydrogen, flow) and
                consumeResourceMass(ResourceType::LOX,      flow))
                 {
-                    m_armedThrust[i] =
-                        (float)(m_thrusterThrust[i] * thruster_util * exhaust_scale);
+                    p->armedThrust =
+                        (float)(p->thrust() * thruster_util * exhaust_scale);
                     m_thrust = 1.0;
                 }
         }
@@ -882,7 +833,9 @@ protected:
 
     double maxTorque() {
         double t = 0;
-        for(size_t i = 0; i < m_wheelTorque.size(); i++) { t += m_wheelTorque[i]; }
+        for(Part *p : parts) {
+            if(p->isWheel()) { t += p->wheelTorque(); }
+        }
         return t;
     }
 
@@ -894,10 +847,11 @@ protected:
     glm::dmat3 getInertia() {
         const glm::dvec3 com = get_center_of_mass();
         glm::dmat3 I = glm::dmat3(0.0);
-        for(auto&& part : parts) {
-            const glm::dvec3 d = GetPosition(part) - com;
-            const glm::dmat3 R = GetOrient(part);
-            const glm::dvec3 il = getInertiaDiag(part);
+        for(Part *p : parts) {
+            Body *b = p->body;
+            const glm::dvec3 d = GetPosition(b) - com;
+            const glm::dmat3 R = GetOrient(b);
+            const glm::dvec3 il = getInertiaDiag(b);
             /* part's local inertia is diagonal (Bullet stores it that way);
                build the diagonal matrix explicitly -- GLM has no
                vec -> diagonal-mat constructor */
@@ -906,7 +860,7 @@ protected:
                 0.0, il.y, 0.0,
                 0.0, 0.0, il.z);
             I += R * il_diag * glm::transpose(R);
-            I += part->mass * (glm::dot(d, d) * glm::dmat3(1.0) - glm::outerProduct(d, d));
+            I += b->mass * (glm::dot(d, d) * glm::dmat3(1.0) - glm::outerProduct(d, d));
         }
         return I;
     }
@@ -941,7 +895,7 @@ protected:
     void slewToward(glm::dvec3 dir, double h) {
         if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
         dir = glm::normalize(dir);
-        Body *wheel = m_reaction_wheels.front();
+        Body *wheel = firstWheel();
         const glm::dvec3 facing = getRelAxis_(wheel, 2);
         const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
         if(E < 1e-9) { return; } /* already aligned */
@@ -975,8 +929,9 @@ protected:
            and |torque| == maxTorque exactly as before. */
         const double tq = glm::length(torque);
         if(tq > maxTorque()) { torque *= maxTorque() / tq; }
-        for(auto&& rw : m_reaction_wheels) {
-            ApplyTorque(rw, torque / (double)m_reaction_wheels.size());
+        for(Part *p : parts) {
+            if(!p->isWheel()) { continue; }
+            ApplyTorque(p->body, torque / (double)numWheels());
         }
     }
 
@@ -984,7 +939,7 @@ protected:
        min(|w|, alpha*h) per substep -- monotonic, no sign flip, never more
        forceful than a maxed manual stick. */
     void killRotStep(double h) {
-        Body *wheel = m_reaction_wheels.front();
+        Body *wheel = firstWheel();
         const glm::dvec3 w = GetAngVelocity(wheel);
         if(glm::length(w) < 0.001) { return; } /* at rest: nothing to kill */
         const glm::dmat3 I = getInertia();
@@ -996,8 +951,9 @@ protected:
             const double dw = -w[i] * std::min(1.0, A / std::fabs(w[i]));
             torque[i] = Iii * dw / h; /* |torque[i]| <= maxTorque() */
         }
-        for(auto&& rw : m_reaction_wheels) {
-            ApplyTorque(rw, torque / (double)m_reaction_wheels.size());
+        for(Part *p : parts) {
+            if(!p->isWheel()) { continue; }
+            ApplyTorque(p->body, torque / (double)numWheels());
         }
     }
 
@@ -1028,26 +984,24 @@ public:
         void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
         glm::dmat3 GetOrient(Body *b);
 
-        int i = 0;
-        for(auto&& part : parts) {
-            const char *name = partDefs[i]->name.c_str();
-            i++;
+        for(Part *p : parts) {
+            const char *name = p->def->name.c_str();
 
-            glm::dvec3 oldVel = GetVelocity(part);
-            glm::dvec3 vel = GetVelocityRelTo(part, newFrame);
+            glm::dvec3 oldVel = GetVelocity(p->body);
+            glm::dvec3 vel = GetVelocityRelTo(p->body, newFrame);
             glm::dvec3 fpos = frame->GetPositionRelTo(newFrame);
             glm::dmat3 forient = frame->GetOrientRelTo(newFrame);
 
-            glm::dvec3 newPos = forient * GetPosition(part) + fpos;
-            glm::dmat3 newOrient = forient * GetOrient(part);
+            glm::dvec3 newPos = forient * GetPosition(p->body) + fpos;
+            glm::dmat3 newOrient = forient * GetOrient(p->body);
 
-            glm::dvec3 pos = GetPosition(part);
+            glm::dvec3 pos = GetPosition(p->body);
             printf("@@@ %s OLD position: %.0f %.0f %.0f\n", name, pos.x, pos.y, pos.z);
             printf("@@@ %s NEW position: %.0f %.0f %.0f\n", name, newPos.x, newPos.y, newPos.z);
 
-            setPosRot(part, newPos, newOrient);
+            setPosRot(p->body, newPos, newOrient);
 
-            pos = GetPosition(part);
+            pos = GetPosition(p->body);
             // The stored velocity is the frame-coordinate velocity, so a ship's
             // inertial velocity is R*(v + stasis(p)) + V.  GetVelocityRelTo
             // already added the OLD frame's stasis term; the NEW frame's term
@@ -1058,7 +1012,7 @@ public:
             printf("@@@ %s OLD velocity: %.0f %.0f %.0f\n", name, oldVel.x, oldVel.y, oldVel.z);
             printf("@@@ %s NEW velocity: %.0f %.0f %.0f\n", name, newVel.x, newVel.y, newVel.z);
 
-            SetVelocity(part, newVel);
+            SetVelocity(p->body, newVel);
         }
         // The ship lives in the ships list of its SOI body (terrain.h):
         // crossing to another body's SoI is a list move, done here so the
@@ -1086,7 +1040,7 @@ public:
         if(ship_r > frame->soi + 10000) {
             // switching to parent SOI if there is one
             if(frame->parent != NULL) {
-                glm::dvec3 pos = GetPosition(controller);
+                glm::dvec3 pos = GetPosition(controller->body);
                 printf("@@@ %s switching frame from %s to parent %s\n",
                        name.c_str(), frame->name.c_str(),
                        frame->parent->name.c_str());
@@ -1094,14 +1048,14 @@ public:
                 printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
                 printf("@@@@@ OLD position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
                 moveToFrame(frame->parent);
-                pos = GetPosition(controller);
+                pos = GetPosition(controller->body);
                 printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
             }
         }
         else {
             // check if we've entered a child SOI
             for(auto&& child : frame->children) {
-                double dist = glm::length(GetPositionRelTo(controller, child));
+                double dist = glm::length(GetPositionRelTo(controller->body, child));
                 if(dist < child->soi - 10000) {
                     printf("@@@ %s switching frame from %s to child %s, distance: %.0f\n",
                            name.c_str(), frame->name.c_str(),
@@ -1121,12 +1075,12 @@ public:
        shares the rail velocity with zero spin, and readers like
        --orbit-log and the HUD fit their elements to consistent data. */
     void writeRailPose() {
-        for(size_t i = 0; i < parts.size(); i++) {
-            setPosRot(parts[i],
-                      rail_pos + rail_orient * rail_rel_pos[i],
-                      rail_orient * rail_rel_rot[i]);
-            SetVelocity(parts[i], rail_vel);
-            SetAngVelocity(parts[i], glm::dvec3(0.0));
+        for(Part *p : parts) {
+            setPosRot(p->body,
+                      rail_pos + rail_orient * p->railRelPos,
+                      rail_orient * p->railRelRot);
+            SetVelocity(p->body, rail_vel);
+            SetAngVelocity(p->body, glm::dvec3(0.0));
         }
     }
 
@@ -1138,9 +1092,9 @@ public:
         glm::dvec3 p = get_center_of_mass();
         glm::dvec3 v(0.0);
         double mtot = 0.0;
-        for(auto&& part : parts) {
-            v += GetVelocity(part) * part->mass;
-            mtot += part->mass;
+        for(Part *p2 : parts) {
+            v += GetVelocity(p2->body) * p2->body->mass;
+            mtot += p2->body->mass;
         }
         v /= mtot;
         if(frame != inertial) {
@@ -1184,9 +1138,9 @@ public:
         const glm::dvec3 com_frame = p;   // pre-transform, old frame coords
         glm::dvec3 v(0.0);
         double mtot = 0.0;
-        for(auto&& part : parts) {
-            v += GetVelocity(part) * part->mass;
-            mtot += part->mass;
+        for(Part *p2 : parts) {
+            v += GetVelocity(p2->body) * p2->body->mass;
+            mtot += p2->body->mass;
         }
         v /= mtot;
         const glm::dvec3 vel_frame = v;   // pre-transform, old frame coords
@@ -1202,11 +1156,9 @@ public:
         /* the cluster pose at park time, relative to its COM (cluster
            axes == old frame axes; rail_orient carries them into the
            inertial node and then holds inertially) */
-        rail_rel_pos.resize(parts.size());
-        rail_rel_rot.resize(parts.size());
-        for(size_t i = 0; i < parts.size(); i++) {
-            rail_rel_pos[i] = GetPosition(parts[i]) - com_frame;
-            rail_rel_rot[i] = GetOrient(parts[i]);
+        for(Part *p2 : parts) {
+            p2->railRelPos = GetPosition(p2->body) - com_frame;
+            p2->railRelRot = GetOrient(p2->body);
         }
 
         if(grounded) {
@@ -1230,7 +1182,7 @@ public:
             Detach(constraints[c]);
         }
         constraints.clear();
-        for(auto&& part : parts) { RemoveBody(part); }
+        for(Part *p2 : parts) { RemoveBody(p2->body); }
 
         onRails = true;
         if(!railFrozen) { writeRailPose(); }
@@ -1252,18 +1204,18 @@ public:
     void leaveRails() {
         if(!onRails) { return; }
         writeRailPose();
-        for(auto&& part : parts) {
-            AddPhysicsBody(part);
+        for(Part *p : parts) {
+            AddPhysicsBody(p->body);
         }
         /* GlueTogether locks the CURRENT relative pose, which is exactly
            the parked geometry, so the stored anchors reproduce the welds. */
         for(size_t c = 0; c < constraintLinks.size(); c++) {
-            constraints.push_back(GlueTogether(parts[constraintLinks[c].first],
-                                               parts[constraintLinks[c].second],
+            constraints.push_back(GlueTogether(constraintLinks[c].first->body,
+                                               constraintLinks[c].second->body,
                                                constraintAnchors[c].first,
                                                constraintAnchors[c].second));
         }
-        NeverSleep(controller);
+        NeverSleep(controller->body);
         onRails = false;
         railFrozen = false;
         printf("@@@ %s left the rails around %s\n",

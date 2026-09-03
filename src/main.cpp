@@ -379,7 +379,7 @@ int main(int argc, char **argv)
     // One camera, two modes (orbit + free): starts in Orbit mode focused on
     // the ship; --free-cam-* / use_free_cam drops it into free flight at the
     // (possibly overridden) pose. The terrain LOD reads the live one.
-    Camera *cam = new Camera(GetPosition(ship->controller),
+    Camera *cam = new Camera(GetPosition(ship->controller->body),
                              camFov, camAspect, camZNear, camZFar);
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
