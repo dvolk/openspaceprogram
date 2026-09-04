@@ -294,6 +294,46 @@
       "height": 1.125
     },
     {
+      "name": "decoupler_r1",
+      "type": "decoupler",
+      "mesh": "reaction_wheel_r1h0.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 50,
+      "radius": 1.0,
+      "height": 0.25,
+      "decoupler": true
+    },
+    {
+      "name": "decoupler_r1.5",
+      "type": "decoupler",
+      "mesh": "reaction_wheel_r1.5h0.375.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 75,
+      "radius": 1.5,
+      "height": 0.375,
+      "decoupler": true
+    },
+    {
+      "name": "decoupler_r2.25",
+      "type": "decoupler",
+      "mesh": "reaction_wheel_r2.25h0.5625.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 110,
+      "radius": 2.25,
+      "height": 0.5625,
+      "decoupler": true
+    },
+    {
+      "name": "decoupler_radial",
+      "type": "decoupler",
+      "mesh": "decoupler_radial.obj",
+      "texture": "adapter.png",
+      "mass": 40,
+      "radius": 0.5,
+      "height": 0.5,
+      "decoupler": true
+    },
+    {
       "name": "nose_cap",
       "type": "nose_cap",
       "mesh": "nose_cap.obj",

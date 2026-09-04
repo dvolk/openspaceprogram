@@ -143,6 +143,15 @@ struct PartDef {
        board / leave (the "capsule weight changes with crew" rule). */
     int crew_capacity;
 
+    /* true -> a decoupler: a staging boundary. When the ship's stage
+       counter reaches this part's stage, the weld to its parent is cut and
+       the decoupler plus its child-side subtree (the parts attached below
+       it, away from the root) are dropped -- it flies off with the stage
+       like a KSP separator, not dangling under the survivor. See
+       Vehicle::separateStage. The part carries no other behavior (no thrust
+       / wheel / tank) -- it is the separation point. */
+    bool decoupler;
+
     /* Collision convex-hull margin (m), the catalog default for this
        part. -1 = not set -> the physics engine's default applies
        (OSP_HULL_MARGIN / 0.1). A ship def's hull_margin (see ShipDef)

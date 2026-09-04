@@ -47,6 +47,7 @@ struct Part {
             && def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0;
     }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
+    bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isTank() const {
         if(def == nullptr) { return false; }

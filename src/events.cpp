@@ -291,14 +291,16 @@ void poll_events(Game &g) {
                     }
                     // Refuse to drop a stage that still carries a crewed
                     // capsule (the crew's `aboard` state would dangle); EVA
-                    // the crew out first. Per-part metadata lives on each Part.
+                    // the crew out first. Check the parts that WOULD be
+                    // dropped (the decoupler's child side), not all parts on
+                    // the stage -- a sibling branch sharing the stage is fine.
                     bool crewOnStage = false;
-                    for(size_t i = 0; i < g.ship->parts.size(); i++) {
-                        if(g.ship->parts[i]->stage != g.ship->activeStage()) { continue; }
-                        if(g.ship->parts[i]->def == nullptr ||
-                           g.ship->parts[i]->def->crew_capacity <= 0) { continue; }
-                        if(!partCrew(g.ship, i).empty()) {
-                            crewOnStage = true;
+                    for(Part *p : g.ship->droppedPartsAtStage(g.ship->activeStage())) {
+                        if(p->def == nullptr || p->def->crew_capacity <= 0) { continue; }
+                        for(size_t i = 0; i < g.ship->parts.size(); i++) {
+                            if(g.ship->parts[i] == p && !partCrew(g.ship, i).empty()) {
+                                crewOnStage = true;
+                            }
                         }
                     }
                     if(crewOnStage) {
@@ -308,6 +310,7 @@ void poll_events(Game &g) {
                         g.toast("Cannot stage -- EVA the capsule's crew out first");
                     } else {
                         int dropped = g.ship->separateStage(g.ship->activeStage());
+                        g.ship->advanceStage();
                         if(dropped > 0) {
                             printf("Stage: dropped %d part(s); now on stage %d of %d\n",
                                    dropped, g.ship->activeStage(), g.ship->numStages());

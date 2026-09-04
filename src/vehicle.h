@@ -12,6 +12,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -224,6 +226,17 @@ public:
         if(parts.empty()) { return; }
         if(controller == nullptr) { controller = parts[0]; }
         NeverSleep(controller->body);
+        /* stage bookkeeping: totalStages_ = the highest stage number (the
+           "stage X of N" readout); activeStage_ starts at the LOWEST stage
+           on the ship, so the lowest engines fire at t=0 (a ship whose first
+           engine is stage 2 still lifts off). Both computed once here. */
+        totalStages_ = 1;
+        int lowest = parts[0]->stage;
+        for(size_t i = 1; i < parts.size(); i++) {
+            if(parts[i]->stage > totalStages_) { totalStages_ = parts[i]->stage; }
+            if(parts[i]->stage < lowest) { lowest = parts[i]->stage; }
+        }
+        activeStage_ = lowest;
         /* propellant reservoirs: seed each tank part's resources so the
            thrusters can draw from them (they shed mass as they burn). Only
            done at construction -- separateStage() must NOT re-seed. */
@@ -249,27 +262,27 @@ public:
        ship never carries this, so it is false by default. */
     virtual bool isCrewAboard() const { return false; }
 
-    /* Draw `amt` kg of `type` from the ACTIVE stage's tanks, pro-rata
-       across every tank that still holds it (stages are self-contained: a
-       stage burns its own propellant, so the booster's engines never drain
-       the upper stage's tanks). Pro-rata, NOT first-tank-first: draining
-       one tank to empty before its siblings shifts the ship's mass
-       distribution and torques it under thrust (the radial-tank spin);
-       shares proportional to each tank's contents keep a symmetric cluster
-       draining together, and empty the tanks simultaneously. Returns true
-       if the stage's total covers amt (else the thruster doesn't fire
-       this tick). amt is the kg consumed THIS tick (the caller scales the
-       kg/s flow by the tick's simulated time). */
-    bool consumeResourceMass(enum ResourceType type, float amt /* kg */) {
-        const int as = activeStage();
+    /* Draw `amt` kg of `type` from the tanks on `stage`, pro-rata across
+       every tank on that stage that still holds it (stages are
+       self-contained: an engine burns its OWN stage's propellant, so the
+       central engine never drains the upper stage's tanks and vice versa).
+       Pro-rata, NOT first-tank-first: draining one tank to empty before its
+       siblings shifts the ship's mass distribution and torques it under
+       thrust (the radial-tank spin); shares proportional to each tank's
+       contents keep a symmetric cluster draining together, and empty the
+       tanks simultaneously. Returns true if the stage's total covers amt
+       (else the thruster doesn't fire this tick). amt is the kg consumed
+       THIS tick (the caller scales the kg/s flow by the tick's simulated
+       time). */
+    bool consumeResourceMass(enum ResourceType type, float amt /* kg */, int stage = 1) {
         float total = 0;
         for(Part *p : parts) {
-            if(p->stage != as) { continue; }
+            if(p->stage != stage) { continue; }
             total += p->resources.current[(int)type];
         }
         if(total < amt) { return false; }
         for(Part *p : parts) {
-            if(p->stage != as) { continue; }
+            if(p->stage != stage) { continue; }
             const float have = p->resources.current[(int)type];
             if(have <= 0.0f) { continue; }
             float take = amt * have / total; /* pro-rata share */
@@ -308,30 +321,29 @@ public:
         return r;
     }
 
-    /* The active (currently live) stage: the lowest stage number still on
-       the ship. Stages are dropped low-to-high, so this is what fires and
-       what separateStage() detaches next. */
-    int activeStage() {
-        if(parts.empty()) { return 1; }
-        int s = parts[0]->stage;
-        for(size_t i = 1; i < parts.size(); i++) {
-            if(parts[i]->stage < s) { s = parts[i]->stage; }
-        }
-        return s;
-    }
+    /* Staging state. `activeStage_` is a monotonic stage COUNTER (the stage
+       about to be triggered): it starts at 1 and advances by one on each
+       stage press, whether or not that stage had a decoupler. This is what
+       lets a part on a lower stage (the central engine) keep firing after a
+       HIGHER-numbered part above it has already been triggered -- the old
+       "lowest stage number on the ship" rule got stuck at 1 forever in that
+       case. An engine fires once the counter has reached its stage
+       (stage <= activeStage_) and then stays lit; a decoupler triggers
+       (drops its child-side subtree) when the counter is at its stage.
+       `totalStages_` is the highest stage number on the ship at build time,
+       for the "stage X of N" readout. */
+    int activeStage_ = 1;
+    int totalStages_ = 1;
 
-    /* Total number of stages on the ship (the highest stage number --
-       stages are labelled 1..N from the booster up, so the max label IS the
-       total). Deliberately the max, not the count of *remaining* stages, so
-       the "stage X of N" readout stays stable after the active stage is
-       dropped (a remaining-count would read e.g. "stage 2 of 1"). */
-    int numStages() {
-        int n = 0;
-        for(Part *p : parts) {
-            if(p->stage > n) { n = p->stage; }
-        }
-        return n;
-    }
+    /* The active stage (the counter, see above). */
+    int activeStage() { return activeStage_; }
+    /* Advance to the next stage (clamped at the last one). Called once per
+       stage press, after the current stage's decouplers have fired. */
+    void advanceStage() { if(activeStage_ < totalStages_) { activeStage_++; } }
+
+    /* Total number of stages on the ship (the highest stage number at build
+       time), for the "stage X of N" readout. */
+    int numStages() { return totalStages_; }
 
     float getThrust() {
         return GetActiveThrust() * thruster_util;
@@ -626,39 +638,74 @@ public:
         clearRotCmd();
     }
 
-    /* Separate `stage`: cut the welds joining it to the rest of the ship,
-       remove its parts from the Bullet world and from this ship's part
-       set, and delete them. The surviving parts keep their relative
-       geometry (their internal welds are untouched). Refuses to drop the
-       whole ship. Returns the number of parts dropped (0 = no-op). Call at
-       a tick boundary, not mid-substep. */
+    /* The parts that WOULD be dropped if `stage` is triggered: each
+       decoupler on that stage plus the child-side subtree it anchors. The
+       child side is the parts attached BELOW the decoupler (away from the
+       root/capsule) -- its direct children and their subtrees. The
+       decoupler itself IS dropped (it flies off with the stage, like a KSP
+       separator -- otherwise it dangles under the surviving engine). This
+       is what makes staging scope the deletion to ONE side of an
+       attachment: a sibling branch (e.g. the central engine, a child of the
+       central tank) is untouched even though it shares a stage with the
+       booster the decoupler drops. Empty if no decoupler is on that stage. */
+    std::vector<Part *> droppedPartsAtStage(int stage) {
+        /* parent -> children, from the weld links (each non-root part has
+           exactly one parent weld, so this is a tree). */
+        std::map<Part *, std::vector<Part *>> children;
+        for(size_t c = 0; c < constraintLinks.size(); c++) {
+            children[constraintLinks[c].first].push_back(constraintLinks[c].second);
+        }
+        std::set<Part *> dropped;
+        for(Part *p : parts) {
+            if(!p->isDecoupler() || p->stage != stage) { continue; }
+            dropped.insert(p);   // the decoupler flies off with its stage
+            /* BFS over the decoupler's child side (its direct children and
+               their descendants). */
+            std::vector<Part *> stack;
+            for(size_t i = 0; i < children[p].size(); i++) { stack.push_back(children[p][i]); }
+            while(!stack.empty()) {
+                Part *q = stack.back(); stack.pop_back();
+                if(dropped.count(q)) { continue; }
+                dropped.insert(q);
+                auto it = children.find(q);
+                if(it != children.end()) {
+                    for(size_t i = 0; i < it->second.size(); i++) { stack.push_back(it->second[i]); }
+                }
+            }
+        }
+        return std::vector<Part *>(dropped.begin(), dropped.end());
+    }
+
+    /* Separate `stage`: for every decoupler on that stage, cut the weld to
+       its parent and drop the decoupler plus its child-side subtree (see
+       droppedPartsAtStage). The dropped parts are removed from the Bullet
+       world and this ship's part set and deleted; the survivors keep their
+       relative geometry (their internal welds are untouched). Refuses to
+       drop the whole ship. Returns the number of parts dropped (0 = no
+       decoupler on this stage, a no-op). Call at a tick boundary, not
+       mid-substep. */
     int separateStage(int stage) {
-        const size_t n = parts.size();
-        if(n < 2) { return 0; }   // single-part ship: nothing to separate
-
-        /* a part is "dropped" iff its stage == `stage` (no separate
-           bookkeeping; each Part carries its own stage). */
-        size_t dropped = 0;
-        for(Part *p : parts) { if(p->stage == stage) { dropped++; } }
-        if(dropped == 0) { return 0; }   // nothing on this stage
-        if(dropped == n) { return 0; }   // can't drop the whole ship
+        std::vector<Part *> dropped = droppedPartsAtStage(stage);
+        if(dropped.empty()) { return 0; }   // no decoupler on this stage
+        if(dropped.size() == parts.size()) { return 0; }   // can't drop the whole ship
+        std::set<Part *> droppedSet(dropped.begin(), dropped.end());
         const bool controllerDropped =
-            (controller != nullptr && controller->stage == stage);
+            (controller != nullptr && droppedSet.count(controller) > 0);
 
-        /* a constraint is cut if EITHER end is on the dropping stage (the
-           stage interface AND the stage's internal welds). A Part* link is
-           stable, so the survivors keep their (still-alive) endpoints -- no
-           index remapping (the old computeStageSplit is gone). */
+        /* a constraint is cut if EITHER end is in the dropped set (the cut
+           weld AND the subtree's internal welds). A Part* link is stable,
+           so the survivors keep their (still-alive) endpoints -- no index
+           remapping (the old computeStageSplit is gone). */
         std::vector<bool> isCut(constraints.size(), false);
         for(size_t c = 0; c < constraints.size(); c++) {
-            if(constraintLinks[c].first->stage == stage ||
-               constraintLinks[c].second->stage == stage) { isCut[c] = true; }
+            if(droppedSet.count(constraintLinks[c].first) ||
+               droppedSet.count(constraintLinks[c].second)) { isCut[c] = true; }
         }
 
         /* collect the survivors FIRST (their Part* stay valid), then free the
            dropped parts -- so no freed pointer is ever dereferenced. */
         std::vector<Part *> keepParts;
-        for(Part *p : parts) { if(p->stage != stage) { keepParts.push_back(p); } }
+        for(Part *p : parts) { if(!droppedSet.count(p)) { keepParts.push_back(p); } }
 
         /* 1) Detach the cut constraints (they reference the dropped bodies). */
         for(size_t c = 0; c < constraints.size(); c++) {
@@ -666,7 +713,7 @@ public:
         }
         /* 2) Unregister + delete the dropped parts (~Part frees the Body). */
         for(Part *p : parts) {
-            if(p->stage != stage) { continue; }
+            if(!droppedSet.count(p)) { continue; }
             RemoveBody(p->body);
             delete p;
         }
@@ -685,13 +732,13 @@ public:
         constraints.swap(keepCons);
         constraintLinks.swap(keepLinks);
         constraintAnchors.swap(keepAnchors);
-        /* 4) If the controller was on the dropped stage, fall back to the
-           first survivor (a Part* is stable -- no index remapping). */
+        /* 4) If the controller was dropped, fall back to the first survivor
+           (a Part* is stable -- no index remapping). */
         if(controllerDropped) { controller = parts[0]; }
         NeverSleep(controller->body);
         /* 5) Disarm any thrust (the split just happened). */
         clearThrust();
-        return (int)dropped;
+        return (int)dropped.size();
     }
 
     /* This ship's part frame -> renderFrame. Usually the identity
@@ -783,17 +830,18 @@ protected:
         if(thruster_util < 0) { thruster_util = 0; }
     }
 
-    /* the ship's full-throttle thrust RIGHT NOW (N) = the sum of the ACTIVE
-       stage's engines' full thrust (each T = (H2 + LOX flow) x ve = 2 x
-       fuel_rate x ve, both propellants end up in the plume), scaled by
-       exhaust_scale (the test knob). Only the active stage fires, so this
-       is the usable thrust; for a single-stage ship it equals the grand
+    /* the ship's full-throttle thrust RIGHT NOW (N) = the sum of every
+       engine that has already been ignited (stage <= the stage counter) of
+       its full thrust (each T = (H2 + LOX flow) x ve = 2 x fuel_rate x ve,
+       both propellants end up in the plume), scaled by exhaust_scale (the
+       test knob). Engines stay lit once ignited, so this is the sum of all
+       lit engines on the ship; for a single-stage ship it equals the grand
        total. */
     float GetActiveThrust() {
         const int as = activeStage();
         double t = 0;
         for(Part *p : parts) {
-            if(p->isThruster() && p->stage == as) { t += p->thrust(); }
+            if(p->isThruster() && p->stage <= as) { t += p->thrust(); }
         }
         return (float)(t * exhaust_scale);
     }
@@ -801,20 +849,21 @@ protected:
     /* Called once per physics tick (step = the tick's simulated duration).
        Consumes the tick's fuel and arms the per-thruster thrust; the force
        itself is applied by applyThrustForce() before EVERY substep below.
-       A thruster that can't consume its flow this tick doesn't thrust. Only
-       the ACTIVE stage's thrusters fire (and they draw the active stage's
-       tanks -- see consumeResourceMass), so a non-active engine is skipped
-       before any fuel is spent. */
+       A thruster that can't consume its flow this tick doesn't thrust.
+       Every engine that has already been ignited (stage <= the stage
+       counter) fires, and each draws its OWN stage's tanks (see
+       consumeResourceMass) -- so an engine keeps burning from its own
+       propellant until it runs dry or is dropped. */
     void ApplyThrust(double step) {
         if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
         const int as = activeStage();
         for(Part *p : parts) {
             if(!p->isThruster()) { continue; }
-            if(p->stage != as) { continue; } /* not the live stage */
+            if(p->stage > as) { continue; } /* not ignited yet */
             const float flow =
                 (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
-            if(consumeResourceMass(ResourceType::Hydrogen, flow) and
-               consumeResourceMass(ResourceType::LOX,      flow))
+            if(consumeResourceMass(ResourceType::Hydrogen, flow, p->stage) and
+               consumeResourceMass(ResourceType::LOX,      flow, p->stage))
                 {
                     p->armedThrust =
                         (float)(p->thrust() * thruster_util * exhaust_scale);

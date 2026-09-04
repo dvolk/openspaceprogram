@@ -1,0 +1,14 @@
+{
+  "name": "central_radial",
+  "controller": "capsule_1",
+  "hull_margin": 0,
+  "parts": [
+    { "part": "capsule", "id": "capsule_1", "stage": 1 },
+    { "part": "tank_r1h3", "id": "central_tank", "parent": "capsule_1", "stage": 1 },
+    { "part": "engine", "id": "central_engine", "parent": "central_tank", "stage": 1 },
+
+    { "part": "decoupler_radial", "id": "dec_radial", "attach": "radial", "parent": "central_tank", "stage": 1 },
+    { "part": "tank_r1h1", "id": "booster_tank", "parent": "dec_radial", "stage": 1 },
+    { "part": "engine", "id": "booster_engine", "parent": "booster_tank", "stage": 1 }
+  ]
+}

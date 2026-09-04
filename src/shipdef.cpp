@@ -9,7 +9,8 @@
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
-      exhaust_velocity(0.0), crew_capacity(0), hull_margin(-1.0) {
+      exhaust_velocity(0.0), crew_capacity(0), decoupler(false),
+      hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -133,6 +134,12 @@ PartsCatalog load_parts_catalog(const char *path) {
                 throw std::runtime_error(std::string(ctx)
                                          + "\"crew_capacity\" must be >= 0");
             }
+        }
+
+        /* decoupler (bool); a staging boundary (see PartDef.decoupler).
+           Omitted -> false. */
+        if(pv.contains("decoupler")) {
+            d.decoupler = pv["decoupler"].get<bool>();
         }
 
         /* hull margin (m); omitted -> -1, the physics engine then falls

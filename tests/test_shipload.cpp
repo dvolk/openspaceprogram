@@ -60,7 +60,7 @@ static glm::dmat3 testOrient() {
 int main() {
     // --- parts catalog ----------------------------------------------------
     PartsCatalog cat = load_parts_catalog("res/parts.json");
-    CHECK(cat.parts.size() == 30);
+    CHECK(cat.parts.size() == 34);
     CHECK(cat.find("nope") == nullptr);
 
     const PartDef *cap = cat.find("capsule");
