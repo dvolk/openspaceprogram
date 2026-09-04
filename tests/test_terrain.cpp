@@ -160,16 +160,16 @@ int main() {
     const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));
     const glm::vec3 p4 = glm::normalize(glm::vec3( 1,-1, 1));
 
-    // 7. The grid without a skirt (a root patch): 25x25 vertices, 24x24
+    // 7. The grid without a skirt (a root patch): 49x49 vertices, 48x48
     //    quads, every vertex on the BAND-LIMITED height field (the same
     //    fade the builder computes for the quad), indices in range.
     {
         const TerrainParams t = kerbin();
         const GridGeom g = buildGridGeom(t, false, 1, p1, p2, p3, p4);
-        check(g.verts.size() == 25 * 25, "grid: 25x25 vertices (no skirt)");
-        check(g.indices.size() == 24 * 24 * 6, "grid: 24x24 quads * 6 (no skirt)");
+        check(g.verts.size() == 49 * 49, "grid: 49x49 vertices (no skirt)");
+        check(g.indices.size() == 48 * 48 * 6, "grid: 48x48 quads * 6 (no skirt)");
         check(g.num_inner == 0, "grid: no skirt -> num_inner == 0");
-        const float fade = terrainDepthFade(1, 25, t.surface.frequency);
+        const float fade = terrainDepthFade(1, 49, t.surface.frequency);
         check(fade > 0.0f && fade < (float)t.surface.octaves,
               "grid: a root patch band-limits (partial octave set)");
         bool ok = true;
@@ -187,22 +187,22 @@ int main() {
         check(idx_ok, "grid: indices in range");
     }
 
-    // 8. The grid WITH a skirt (a child patch): 27x27 vertices, the inner
+    // 8. The grid WITH a skirt (a child patch): 51x51 vertices, the inner
     //    quads first (num_inner), and the skirt ring strictly below the
     //    lowest terrain vertex.
     {
         const TerrainParams t = kerbin();
         const GridGeom g = buildGridGeom(t, true, 2, p1, p2, p3, p4);
-        const int edge = 27;
-        check(g.verts.size() == (size_t)edge * edge, "skirt: 27x27 vertices");
-        check(g.indices.size() == 26 * 26 * 6, "skirt: 26x26 quads * 6");
-        check(g.num_inner == 24 * 24 * 6, "skirt: inner index count");
+        const int edge = 51;
+        check(g.verts.size() == (size_t)edge * edge, "skirt: 51x51 vertices");
+        check(g.indices.size() == 50 * 50 * 6, "skirt: 50x50 quads * 6");
+        check(g.num_inner == 48 * 48 * 6, "skirt: inner index count");
         float skirt_max = 0.0f;
         float inner_min = HUGE_VALF;
         for(int i = 0; i < edge; i++) {
             for(int j = 0; j < edge; j++) {
                 const float r = glm::length(g.verts[(size_t)j + (size_t)i * edge].pos);
-                if(i >= 1 && i <= 25 && j >= 1 && j <= 25) {
+                if(i >= 1 && i <= 49 && j >= 1 && j <= 49) {
                     inner_min = std::min(inner_min, r);
                 } else {
                     skirt_max = std::max(skirt_max, r);

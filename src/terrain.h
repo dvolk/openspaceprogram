@@ -46,6 +46,12 @@ struct GeoPatch {
 
     int depth;
 
+    // Cached in the ctor (constant per patch): the Update() traversal
+    // runs every frame over every alive patch, so it must not re-sample
+    // the height function or re-measure the corners.
+    double centroid_height;   // [m] terrain radius at `centroid`
+    double width_m;           // [m] widest edge arc (v0-v3 chord * radius)
+
     // A requestSubdivide job is in flight: the worker is building the four
     // children's grids and the main-thread continuation will attach them
     // (or discard them if the collapse path cleared the flag first).
@@ -57,8 +63,10 @@ struct GeoPatch {
     ~GeoPatch();
 
     // skirt_pass=false draws the terrain (stamping stencil), true draws
-    // only the skirt ring where the stencil says no terrain was drawn
-    void Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3 & sunlightVec, bool skirt_pass);
+    // only the skirt ring where the stencil says no terrain was drawn.
+    // The body-constant uniforms + shader bind happen once per pass in
+    // TerrainBody::Draw; this only issues the mesh draws.
+    void Draw(const Camera* camera, bool skirt_pass);
     // max_patch_px: subdivide while the patch projects wider than this
     // [screen px]; collapse below half (the hysteresis band). Subdivision
     // is async (requestSubdivide): the parent keeps drawing until its
@@ -270,6 +278,19 @@ struct TerrainBody {
     void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
+        // double-precision view*model, like GeoPatch::Draw used to do
+        const glm::dmat4 ModelView = camera->GetView()
+            * glm::translate(-camera->GetRenderOrigin()) * transform;
+        const glm::mat4 mvp = camera->GetProjection() * glm::mat4(ModelView);
+
+        // The uniforms are body-constant (same MVP / sun / color on every
+        // patch), so they upload once per pass instead of per patch.
+        shader->Bind();
+        shader->setUniform_mat4(0, mvp);
+        shader->setUniform_mat4(1, glm::mat4(transform));
+        shader->setUniform_vec3(2, sunlightVec);
+        shader->setUniform_vec4(3, glm::vec4(0.8, 0.8, 0.8, 1.0));
+
         // two passes with a stencil mask: pass 1 draws the terrain and
         // stamps stencil=1; pass 2 draws the skirts only where stencil==0,
         // i.e. where no terrain fragment was drawn (the cracks between
@@ -282,12 +303,12 @@ struct TerrainBody {
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         for(auto&& patch : patches) {
-            patch->Draw(camera, transform, sunlightVec, false);
+            patch->Draw(camera, false);
         }
         glStencilFunc(GL_EQUAL, 0, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         for(auto&& patch : patches) {
-            patch->Draw(camera, transform, sunlightVec, true);
+            patch->Draw(camera, true);
         }
         glDisable(GL_STENCIL_TEST);
     }

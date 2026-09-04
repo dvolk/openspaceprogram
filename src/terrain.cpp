@@ -153,6 +153,11 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     this->v2 = v2;
     this->v3 = v3;
     this->centroid = glm::normalize(v0 + v1 + v2 + v3);
+    // Cache the per-patch constants Update() and Draw() use every frame
+    // (the height sample is a full noise evaluation; doing it per patch
+    // per frame in Update was pure waste).
+    centroid_height = (double)body->GetTerrainHeight(centroid);
+    width_m = (double)body->radius * (double)glm::length(v0 - v3);
     // Leaf patches (subdivision stops at depth == the body's max_depth)
     // get the collision mesh.
     bool has_collision = depth >= body->max_depth;
@@ -177,26 +182,9 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     body->alive.insert(this);
 }
 
-void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm::vec3& sunlightVec, bool skirt_pass) {
+void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
     if(kids[0] == NULL) {
         // patch isn't subdivided
-        glm::vec4 color = glm::vec4(0.8, 0.8, 0.8, 1.0);
-        model->shader->Bind();
-
-        const glm::dmat4 & View = camera->GetView();
-        // make sure View * Model happens with double precision
-        // (transform shifted into the render frame: the view is built there)
-        glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin()) * transform;
-        glm::mat4 ModelViewFloat = ModelView;
-        const glm::mat4 & Projection = camera->GetProjection();
-        glm::mat4 MVP = Projection * ModelViewFloat;
-        glm::mat4 ModelFloat = transform;
-
-        model->shader->setUniform_mat4(0, MVP);
-        model->shader->setUniform_mat4(1, ModelFloat);
-        model->shader->setUniform_vec3(2, sunlightVec);
-        model->shader->setUniform_vec4(3, color);
-
         if(skirt_pass == false) {
             model->mesh->Draw();
         } else {
@@ -207,19 +195,20 @@ void GeoPatch::Draw(const Camera* camera, const glm::dmat4& transform, const glm
         }
     }
     else {
-        kids[0]->Draw(camera, transform, sunlightVec, skirt_pass);
-        kids[1]->Draw(camera, transform, sunlightVec, skirt_pass);
-        kids[2]->Draw(camera, transform, sunlightVec, skirt_pass);
-        kids[3]->Draw(camera, transform, sunlightVec, skirt_pass);
+        kids[0]->Draw(camera, skirt_pass);
+        kids[1]->Draw(camera, skirt_pass);
+        kids[2]->Draw(camera, skirt_pass);
+        kids[3]->Draw(camera, skirt_pass);
     }
 }
 
 void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px, JobRunner &jobs) {
     const glm::dvec3 camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
-    // Distance to this patch's OWN surface point: the height is sampled
-    // at the patch direction (an earlier version sampled it at the camera
+    // Distance to this patch's OWN surface point (centroid_height is
+    // cached in the ctor; an earlier version re-sampled the height here
+    // every frame, and one before that sampled it at the camera
     // direction, which mis-measured the distance on slopes).
-    const glm::dvec3 centroid_pos = (double)body->GetTerrainHeight(centroid) * (glm::dvec3)centroid;
+    const glm::dvec3 centroid_pos = centroid_height * (glm::dvec3)centroid;
     const double dist = glm::length(camera_pos - centroid_pos);
 
     // Projected patch width in screen pixels (small-angle; exact in the
@@ -228,7 +217,6 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max
     // the hysteresis band keeps the LOD from flapping near the boundary.
     // The budget is in px (not metres or degrees) so it follows FOV,
     // zoom, and window size/resolution automatically.
-    const double width_m = (double)body->radius * glm::length(v0 - v3);
     const double fov_h = 2.0 * std::atan(std::tan(camera->fov * 0.5) * (double)camera->aspect);
     const double px_width = (width_m / dist) * ((double)camera->viewport_h / fov_h);
 

@@ -420,7 +420,13 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
                               glm::vec3 p3, glm::vec3 p4)
 {
     GridGeom geom;
-    const int size = 25;
+    // 49x49: the patch COUNT is set by the LOD budget in screen px
+    // (--terrain-px) alone; the grid size sets the on-screen triangle
+    // density (px/(size-1) per cell at the subdivision boundary). A big
+    // grid + a proportionally big budget keeps the same look and the
+    // same total triangles at a quarter of the patches, draw calls and
+    // subdivision-job rounds.
+    const int size = 49;
     const int off = has_skirt ? 1 : 0;
     const int edge = size + 2 * off;
     const float frac = 1.0f / (size - 1);
