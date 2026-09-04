@@ -6,8 +6,8 @@ Part meshes are authored centered at the origin with the stack axis along
 given `--height`. Convention for the catalog: height = max(r1, r2) / 2,
 e.g.
 
-    python3 gen_adapter.py res/adapter_r3to5.obj --r1 3 --r2 5 --height 2.5
-    python3 gen_adapter.py res/adapter_r5to3.obj --r1 5 --r2 3 --height 2.5
+    python3 gen_adapter.py res/adapter_r1to1.5.obj --r1 1 --r2 1.5 --height 0.75
+    python3 gen_adapter.py res/adapter_r1to2.25.obj --r1 1 --r2 2.25 --height 1.125
 
 Geometry: 32 side segments, disc fans on both ends, smooth analytic side
 normal, flat normals on the discs. Winding is CCW from outside (the

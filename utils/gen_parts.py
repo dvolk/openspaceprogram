@@ -16,6 +16,11 @@ catalog is reproducible and internally consistent instead of hand-tuned:
   capsule / wheel / adapter / nose_cap
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
+  extras (EXTRA_FIELDS)
+                  crew seats + the kerbal's RCS propellant -- per-part
+                  values that don't derive from geometry, applied on top
+
+Radial sizes are 1.0 / 1.5 / 2.25 m (see PARTS).
 
 Resolves res/ and parts.json relative to the repo root (the parent of
 utils/, where this script lives), so it can be run from anywhere:
@@ -58,38 +63,52 @@ CAPSULE_TORQUE_PER_M = 200.0
 WHEEL_TORQUE_PER_M = 2000.0
 
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
+# Radial sizes are 1.0 / 1.5 / 2.25 m. Heights follow the per-type ratio
+# (capsule & engine h=2r, wheel h=0.25r, nose cap h=r/2, adapter h=max(r)/2);
+# tanks keep the independent fuel-height options.
 PARTS = [
-    ("capsule",        "capsule",        "capsule.obj",                  "capsule.png"),
-    ("capsule_r3h6",   "capsule",        "capsule_r3h6.obj",             "capsule.png"),
-    ("capsule_r5h10",  "capsule",        "capsule_r5h10.obj",            "capsule.png"),
-    ("reaction_wheel", "reaction_wheel", "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
-    ("reaction_wheel_r3h0.75",  "reaction_wheel", "reaction_wheel_r3h0.75.obj",  "reaction_wheel.png"),
-    ("reaction_wheel_r5h1.25",  "reaction_wheel", "reaction_wheel_r5h1.25.obj",  "reaction_wheel.png"),
-    ("engine",         "engine",         "engine.obj",                   "engine.png"),
-    ("engine_r3h6",    "engine",         "engine_r3h6.obj",              "engine.png"),
-    ("engine_r5h10",   "engine",         "engine_r5h10.obj",             "engine.png"),
-    ("fuel_tank",      "fuel_tank",      "fuel_tank.obj",                "fuel_tank.png"),
-    ("tank_r1h1",      "fuel_tank",      "tank_r1h1.obj",                "fuel_tank.png"),
-    ("tank_r1h3",      "fuel_tank",      "tank_r1h3.obj",                "fuel_tank.png"),
-    ("tank_r1h5",      "fuel_tank",      "tank_r1h5.obj",                "fuel_tank.png"),
-    ("tank_r3h1",      "fuel_tank",      "tank_r3h1.obj",                "fuel_tank.png"),
-    ("tank_r3h2",      "fuel_tank",      "tank_r3h2.obj",                "fuel_tank.png"),
-    ("tank_r3h3",      "fuel_tank",      "tank_r3h3.obj",                "fuel_tank.png"),
-    ("tank_r3h5",      "fuel_tank",      "tank_r3h5.obj",                "fuel_tank.png"),
-    ("tank_r5h1",      "fuel_tank",      "tank_r5h1.obj",                "fuel_tank.png"),
-    ("tank_r5h3",      "fuel_tank",      "tank_r5h3.obj",                "fuel_tank.png"),
-    ("tank_r5h5",      "fuel_tank",      "tank_r5h5.obj",                "fuel_tank.png"),
-    ("adapter_r1to3",  "adapter",        "adapter_r1to3.obj",            "adapter.png"),
-    ("adapter_r1to5",  "adapter",        "adapter_r1to5.obj",            "adapter.png"),
-    ("adapter_r3to1",  "adapter",        "adapter_r3to1.obj",            "adapter.png"),
-    ("adapter_r3to5",  "adapter",        "adapter_r3to5.obj",            "adapter.png"),
-    ("adapter_r5to1",  "adapter",        "adapter_r5to1.obj",            "adapter.png"),
-    ("adapter_r5to3",  "adapter",        "adapter_r5to3.obj",            "adapter.png"),
-    ("nose_cap",       "nose_cap",       "nose_cap.obj",                 "nose_cap.png"),
-    ("nose_cap_r3h1.5","nose_cap",       "nose_cap_r3h1.5.obj",          "nose_cap.png"),
-    ("nose_cap_r5h2.5","nose_cap",       "nose_cap_r5h2.5.obj",          "nose_cap.png"),
-    ("kerbal",         "kerbal",         "kerbal.obj",                   "kerbal.png"),
+    ("capsule",          "capsule",        "capsule.obj",                  "capsule.png"),
+    ("capsule_r1.5h3",   "capsule",        "capsule_r1.5h3.obj",           "capsule.png"),
+    ("capsule_r2.25h4.5","capsule",        "capsule_r2.25h4.5.obj",        "capsule.png"),
+    ("reaction_wheel",   "reaction_wheel", "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
+    ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "reaction_wheel_r1.5h0.375.obj",  "reaction_wheel.png"),
+    ("reaction_wheel_r2.25h0.5625","reaction_wheel", "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
+    ("engine",           "engine",         "engine.obj",                   "engine.png"),
+    ("engine_r1.5h3",    "engine",         "engine_r1.5h3.obj",            "engine.png"),
+    ("engine_r2.25h4.5", "engine",         "engine_r2.25h4.5.obj",         "engine.png"),
+    ("fuel_tank",        "fuel_tank",      "fuel_tank.obj",                "fuel_tank.png"),
+    ("tank_r1h1",        "fuel_tank",      "tank_r1h1.obj",                "fuel_tank.png"),
+    ("tank_r1h3",        "fuel_tank",      "tank_r1h3.obj",                "fuel_tank.png"),
+    ("tank_r1h5",        "fuel_tank",      "tank_r1h5.obj",                "fuel_tank.png"),
+    ("tank_r1.5h1",      "fuel_tank",      "tank_r1.5h1.obj",              "fuel_tank.png"),
+    ("tank_r1.5h2",      "fuel_tank",      "tank_r1.5h2.obj",              "fuel_tank.png"),
+    ("tank_r1.5h3",      "fuel_tank",      "tank_r1.5h3.obj",              "fuel_tank.png"),
+    ("tank_r1.5h5",      "fuel_tank",      "tank_r1.5h5.obj",              "fuel_tank.png"),
+    ("tank_r2.25h1",     "fuel_tank",      "tank_r2.25h1.obj",             "fuel_tank.png"),
+    ("tank_r2.25h3",     "fuel_tank",      "tank_r2.25h3.obj",             "fuel_tank.png"),
+    ("tank_r2.25h5",     "fuel_tank",      "tank_r2.25h5.obj",             "fuel_tank.png"),
+    ("adapter_r1to1.5",  "adapter",        "adapter_r1to1.5.obj",          "adapter.png"),
+    ("adapter_r1to2.25", "adapter",        "adapter_r1to2.25.obj",         "adapter.png"),
+    ("adapter_r1.5to1",  "adapter",        "adapter_r1.5to1.obj",          "adapter.png"),
+    ("adapter_r1.5to2.25","adapter",       "adapter_r1.5to2.25.obj",       "adapter.png"),
+    ("adapter_r2.25to1", "adapter",        "adapter_r2.25to1.obj",         "adapter.png"),
+    ("adapter_r2.25to1.5","adapter",       "adapter_r2.25to1.5.obj",       "adapter.png"),
+    ("nose_cap",         "nose_cap",       "nose_cap.obj",                 "nose_cap.png"),
+    ("nose_cap_r1.5h0.75","nose_cap",      "nose_cap_r1.5h0.75.obj",       "nose_cap.png"),
+    ("nose_cap_r2.25h1.125","nose_cap",    "nose_cap_r2.25h1.125.obj",     "nose_cap.png"),
+    ("kerbal",           "kerbal",         "kerbal.obj",                   "kerbal.png"),
 ]
+
+# per-part extra fields that do NOT derive from the geometry: crew seats and
+# the kerbal's RCS propellant. Applied on top of the generated entry so the
+# catalog stays fully reproducible (no hand-edits to parts.json). The kerbal
+# mass is declared (not mesh-derived) to preserve the hand-set value.
+EXTRA_FIELDS = {
+    "capsule":           {"crew_capacity": 1},
+    "capsule_r1.5h3":    {"crew_capacity": 3},
+    "capsule_r2.25h4.5": {"crew_capacity": 6},
+    "kerbal":            {"mass": 97.05, "capacity": {"hydrazine": 10.0}},
+}
 
 
 def mesh_geom(mesh_file):
@@ -146,6 +165,7 @@ def generate(name, ptype, mesh, texture):
         elif ptype == "reaction_wheel":
             e["torque"] = clean(WHEEL_TORQUE_PER_M * radius)
 
+    e.update(EXTRA_FIELDS.get(name, {}))
     return e
 
 
@@ -155,7 +175,7 @@ def summary_line(e):
         t = 2.0 * e["fuel_rate"] * e["exhaust_velocity"]
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (
             n, t / 1e3, e["fuel_rate"], e["mass"])
-    if "capacity" in e:
+    if "capacity" in e and "hydrogen" in e["capacity"]:
         c = e["capacity"]["hydrogen"] + e["capacity"]["lox"]
         return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
             n, c, e["mass"], clean(c * TANK_DRY_DENSITY / PROP_DENSITY))

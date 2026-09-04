@@ -7,7 +7,7 @@ radius r and height h is a rescale by
 
     sx = sy = r        sz = h / 2
 
-e.g.  rescale_obj.py res/engine.obj res/engine_r3h5.obj --sx 3 --sy 3 --sz 2.5
+e.g.  rescale_obj.py res/engine.obj res/engine_r1.5h3.obj --sx 1.5 --sy 1.5 --sz 1.5
 
 Positions scale by (sx, sy, sz); normals by the inverse transpose
 (diagonal scale -> (1/sx, 1/sy, 1/sz)) and are re-normalized, which is exact

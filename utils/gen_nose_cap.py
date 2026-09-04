@@ -7,8 +7,8 @@ disc at z = -h/2 and an apex at z = +h/2. Larger sizes come from
 rescale_obj.py (sx = sy = r, sz = h / 2), e.g.
 
     python3 gen_nose_cap.py res/nose_cap.obj
-    python3 rescale_obj.py res/nose_cap.obj res/nose_cap_r3h1.5.obj --sx 3 --sy 3 --sz 0.75
-    python3 rescale_obj.py res/nose_cap.obj res/nose_cap_r5h2.5.obj --sx 5 --sy 5 --sz 1.25
+    python3 rescale_obj.py res/nose_cap.obj res/nose_cap_r1.5h0.75.obj --sx 1.5 --sy 1.5 --sz 0.375
+    python3 rescale_obj.py res/nose_cap.obj res/nose_cap_r2.25h1.125.obj --sx 2.25 --sy 2.25 --sz 0.5625
 
 Geometry: 32 side segments, a base disc fan, smooth analytic side normals,
 flat normals on the base disc and apex. Winding is CCW from outside

@@ -56,8 +56,8 @@
          { "part": "reaction_wheel" },
          { "part": "fuel_tank" },
          { "part": "engine" },
-         { "part": "tank_r3h2", "attach": "radial", "parent": "fuel_tank_1" },
-         { "part": "engine_r5h10", "attach": "down", "parent": "tank_r3h2_1" }
+         { "part": "tank_r1.5h2", "attach": "radial", "parent": "fuel_tank_1" },
+         { "part": "engine_r2.25h4.5", "attach": "down", "parent": "tank_r1.5h2_1" }
        ]
      }
    Per-part fields (all optional unless noted):

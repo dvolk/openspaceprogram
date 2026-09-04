@@ -8,36 +8,36 @@
     { "part": "tank_r1h1", "id": "tank_r1h1_1", "stage": 4 },
     { "part": "engine", "id": "engine_1", "stage": 4 },
 
-    { "part": "adapter_r3to1", "id": "adapter1", "stage": 3 },
+    { "part": "adapter_r1.5to1", "id": "adapter1", "stage": 3 },
 
-    { "part": "reaction_wheel_r3h0.75", "id": "rw2", "stage": 3 },
-    { "part": "tank_r3h3", "id": "tank_r3h3", "stage": 3 },
-    { "part": "engine_r3h6", "id": "engine_2", "stage": 3 },
+    { "part": "reaction_wheel_r1.5h0.375", "id": "rw2", "stage": 3 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3", "stage": 3 },
+    { "part": "engine_r1.5h3", "id": "engine_2", "stage": 3 },
 
-    { "part": "adapter_r5to3", "id": "adapter2", "stage": 2 },
+    { "part": "adapter_r2.25to1.5", "id": "adapter2", "stage": 2 },
 
-    { "part": "tank_r5h5", "id": "big_tank1", "stage": 2 },
-    { "part": "tank_r5h5", "id": "big_tank2", "stage": 2 },
-    { "part": "engine_r5h10", "id": "engine3", "stage": 2 },
+    { "part": "tank_r2.25h5", "id": "big_tank1", "stage": 2 },
+    { "part": "tank_r2.25h5", "id": "big_tank2", "stage": 2 },
+    { "part": "engine_r2.25h4.5", "id": "engine3", "stage": 2 },
 
-    { "part": "tank_r3h3", "id": "tank_r3h3_2", "attach": "side", "parent": "big_tank1", "angle": 0,   "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_22", "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_23", "stage": 1 },
-    { "part": "engine_r3h6", "id": "engine_33", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_2", "attach": "side", "parent": "big_tank1", "angle": 0,   "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_22", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_23", "stage": 1 },
+    { "part": "engine_r1.5h3", "id": "engine_33", "stage": 1 },
 
-    { "part": "tank_r3h3", "id": "tank_r3h3_3", "attach": "side", "parent": "big_tank1", "angle": 90,  "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_32", "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_33", "stage": 1 },
-    { "part": "engine_r3h6", "id": "engine_43", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_3", "attach": "side", "parent": "big_tank1", "angle": 90,  "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_32", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_33", "stage": 1 },
+    { "part": "engine_r1.5h3", "id": "engine_43", "stage": 1 },
 
-    { "part": "tank_r3h3", "id": "tank_r3h3_4", "attach": "side", "parent": "big_tank1", "angle": 180, "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_42", "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_43", "stage": 1 },
-    { "part": "engine_r3h6", "id": "engine_53", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_4", "attach": "side", "parent": "big_tank1", "angle": 180, "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_42", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_43", "stage": 1 },
+    { "part": "engine_r1.5h3", "id": "engine_53", "stage": 1 },
 
-    { "part": "tank_r3h3", "id": "tank_r3h3_5", "attach": "side", "parent": "big_tank1", "angle": 270, "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_52", "stage": 1 },
-    { "part": "tank_r3h3", "id": "tank_r3h3_53", "stage": 1 },
-    { "part": "engine_r3h6", "id": "engine_63", "stage": 1 }
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_5", "attach": "side", "parent": "big_tank1", "angle": 270, "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_52", "stage": 1 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3_53", "stage": 1 },
+    { "part": "engine_r1.5h3", "id": "engine_63", "stage": 1 }
   ]
 }

@@ -26,21 +26,21 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
        catalog (no JSON ship def). Passive tanks only -- no
        wheels, no thrusters -- so any spin is self-inflicted by
        the physics:
-       - "radial":  tank_r5h5 + a tank_r3h2 welded to its side
+       - "radial":  tank_r2.25h5 + a tank_r1.5h2 welded to its side
        - "stacked": the same pair welded along the axis (baseline)
        - "stacks":  two 2-part stacks welded side by side:
-                    [tank_r5h5 + tank_r3h2] beside
-                    [tank_r5h5 + tank_r3h2], the second stack's
+                    [tank_r2.25h5 + tank_r1.5h2] beside
+                    [tank_r2.25h5 + tank_r1.5h2], the second stack's
                     root welded radially to the first stack's
                     root (the in-game way to build it).
        Stacked welds use attachDown's convention: the child sits
        on the parent's -Z side, anchors (0,0,-hP/2) /
        (0,0,+hC/2) coinciding in world space. */
-    const PartDef *defBig = part_catalog.find("tank_r5h5");
-    const PartDef *defSml = part_catalog.find("tank_r3h2");
+    const PartDef *defBig = part_catalog.find("tank_r2.25h5");
+    const PartDef *defSml = part_catalog.find("tank_r1.5h2");
     if(defBig == nullptr || defSml == nullptr) {
-        throw std::runtime_error("--radial-test: tank_r5h5 / "
-                                 "tank_r3h2 missing from the parts catalog");
+        throw std::runtime_error("--radial-test: tank_r2.25h5 / "
+                                 "tank_r1.5h2 missing from the parts catalog");
     }
 
     /* honor an explicit --scenario, otherwise orbit (no pad
@@ -96,16 +96,16 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
     if(mode == "stacks") {
         /* Two 2-part stacks, side by side. Pad normal = local +Z,
            radial dir = local +X:
-             stack 1: A1 (tank_r5h5, root) + A2 (tank_r3h2)
+             stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2)
                       attached below A1, axis Z
-             stack 2: B1 (tank_r5h5) welded to A1's +X side
-                      (axis X) + B2 (tank_r3h2) attached beyond
+             stack 2: B1 (tank_r2.25h5) welded to A1's +X side
+                      (axis X) + B2 (tank_r1.5h2) attached beyond
                       B1 along B1's axis
            Layout (local): A1 (0,0,0)  A2 (0,0,-3.5)
-                           B1 (7.5,0,0) B2 (11,0,0)
+                           B1 (4.75,0,0) B2 (8.25,0,0)
            Welds (anchors coincide in world space):
              A1-A2 stacked:  A1 (0,0,-2.5)   == A2 (0,0,+1)
-             A1-B1 radial:   A1 (5,0,0)      == B1 (0,0,-2.5)
+             A1-B1 radial:   A1 (2.25,0,0)   == B1 (0,0,-2.5)
              B1-B2 stacked:  B1 (0,0,+2.5)   == B2 (0,0,-1) */
         v->name = "stacks4";
         Part *a1 = makePart(defBig);
@@ -143,15 +143,15 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
            (pad normal = local +Z) -- the variant of 'stacks' where
            the second stack is NOT rotated, so both stacks' axes
            point the same way:
-             stack 1: A1 (tank_r5h5, root) + A2 (tank_r3h2) below A1
-             stack 2: B1 (tank_r5h5) welded to A1's +X side
-                      + B2 (tank_r3h2) below B1
+             stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2) below A1
+             stack 2: B1 (tank_r2.25h5) welded to A1's +X side
+                      + B2 (tank_r1.5h2) below B1
            Layout (local): A1 (0,0,0)    A2 (0,0,-3.5)
-                           B1 (10,0,0)   B2 (10,0,-3.5)
+                           B1 (4.5,0,0)  B2 (4.5,0,-3.5)
            Welds (anchors coincide in world space):
              A1-A2 stacked:  A1 (0,0,-2.5)  == A2 (0,0,+1)
              B1-B2 stacked:  B1 (0,0,-2.5)  == B2 (0,0,+1)
-             A1-B1 lateral:  A1 (5,0,0)     == B1 (-5,0,0) */
+             A1-B1 lateral:  A1 (2.25,0,0) == B1 (-2.25,0,0) */
         v->name = "parstacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);

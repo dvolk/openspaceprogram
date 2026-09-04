@@ -34,8 +34,8 @@ int main() {
 
     // the capsule family: crew_capacity set (1, 3, 6)
     const PartDef *cap  = cat.find("capsule");
-    const PartDef *cap3 = cat.find("capsule_r3h6");
-    const PartDef *cap6 = cat.find("capsule_r5h10");
+    const PartDef *cap3 = cat.find("capsule_r1.5h3");
+    const PartDef *cap6 = cat.find("capsule_r2.25h4.5");
     CHECK(cap != nullptr && cap3 != nullptr && cap6 != nullptr);
     CHECK(cap->crew_capacity == 1);
     CHECK(cap3->crew_capacity == 3);
@@ -43,7 +43,7 @@ int main() {
 
     // every other part is not a capsule (crew_capacity 0 = the default)
     const char *nonCapsules[] = { "engine", "fuel_tank", "reaction_wheel",
-                                  "kerbal", "nose_cap", "tank_r3h2" };
+                                  "kerbal", "nose_cap", "tank_r1.5h2" };
     for(const char *n : nonCapsules) {
         const PartDef *d = cat.find(n);
         CHECK(d != nullptr);
