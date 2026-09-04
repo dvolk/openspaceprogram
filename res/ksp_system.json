@@ -105,7 +105,9 @@
       "has_sea": false,
       "power_scaler": 3,
       "surface": {
-        "amplitude": 3000,
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
         "palette": [
           [
             0.0,
@@ -223,10 +225,13 @@
       "has_sea": true,
       "power_scaler": 3,
       "surface": {
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
         "sea_color": [
-          0.0,
-          0.35,
-          0.75
+          0.2,
+          0.45,
+          0.65
         ],
         "palette": [
           [
@@ -296,7 +301,9 @@
       "has_sea": false,
       "power_scaler": 1,
       "surface": {
-        "amplitude": 1500,
+        "amplitude": 2500,
+        "persistence": 0.7,
+        "frequency": 1.2,
         "palette": [
           [
             0.0,
@@ -384,6 +391,9 @@
       "has_sea": true,
       "power_scaler": 3,
       "surface": {
+        "amplitude": 3000,
+        "persistence": 0.55,
+        "frequency": 1.1,
         "atmosphere": {
           "color": [
             0.4,
@@ -632,7 +642,10 @@
       "has_sea": true,
       "power_scaler": 3,
       "surface": {
-        "amplitude": 3000,
+        "amplitude": 5000,
+        "octaves": 10,
+        "persistence": 0.55,
+        "frequency": 1.1,
         "sea_color": [
           0.0,
           0.4,
