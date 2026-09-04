@@ -113,8 +113,8 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
             std::make_shared<std::array<GridGeom, 4> >();
         for(int q = 0; q < 4; q++) {
             // has_skirt: children are always depth >= 2.
-            geoms->at(q) = buildGridGeom(tp, true, quad[q][0], quad[q][1],
-                                         quad[q][2], quad[q][3]);
+            geoms->at(q) = buildGridGeom(tp, true, child_depth, quad[q][0],
+                                         quad[q][1], quad[q][2], quad[q][3]);
         }
         // Main-thread continuation (JobRunner::poll): attach the children
         // (GL upload + collision) -- or discard the grids.
@@ -153,10 +153,9 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     this->v2 = v2;
     this->v3 = v3;
     this->centroid = glm::normalize(v0 + v1 + v2 + v3);
-    // Leaf patches (subdivision stops at depth == max_depth) get the
-    // collision mesh; the old `>` was never true since depth never
-    // exceeds max_depth, so terrain collision was silently never added.
-    bool has_collision = depth >= max_depth;
+    // Leaf patches (subdivision stops at depth == the body's max_depth)
+    // get the collision mesh.
+    bool has_collision = depth >= body->max_depth;
     // GridGeom (pure math, terragen.h) -> Mesh (GL upload): main thread
     // only, called from here (the startup path and the job continuation).
     std::vector<PosNorColVertex> pv(geom.verts.size());
@@ -236,7 +235,7 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max
     // Subdivision is async: request it, keep drawing this (coarser) patch
     // until the continuation attaches the children. While a job is in
     // flight the flag suppresses re-posting; the continuation clears it.
-    if(depth < max_depth and px_width > (double)max_patch_px and
+    if(depth < body->max_depth and px_width > (double)max_patch_px and
        kids[0] == NULL and !subdivide_in_flight) {
         requestSubdivide(jobs);
     }

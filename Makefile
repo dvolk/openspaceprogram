@@ -202,9 +202,10 @@ test:
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_eva.cpp -o test_eva
 	./test_eva
 	# terrain core (src/terragen.h, header-only pure math): the height
-	# function (sea floor + altitude rescale), the surface color (sea,
-	# palette, gas-giant bands), and the grid builder (vertex/index
-	# counts, on-surface vertices, the skirt ring below the terrain).
+	# model (bounds, sea floor, the LOD band-limit fade), the surface
+	# color (sea, palette, gas-giant bands), and the grid builder
+	# (vertex/index counts, band-limited on-surface vertices, the skirt
+	# ring below the terrain).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_terrain.cpp -o test_terrain
 	./test_terrain
 	# background job runner (src/job.cpp): the worker/main-thread handoff --

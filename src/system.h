@@ -55,13 +55,13 @@ struct System {
           "g":       m/s^2 (surface gravity, used for TWR),
           "seed":         terrain-noise seed (noise-domain offset; 0 = legacy pattern),
           "has_sea":      bool,              // legacy: implies surface.sea_level = 0
-          "power_scaler": int,               // legacy: default for surface.power
           "surface": {                       // optional; every field optional
-            "amplitude":   m,                // peak noise height        (2500)
-            "octaves":     int,              // simplex octaves          (12)
-            "persistence": 0..1,             // octave falloff           (0.6)
-            "frequency":   float,            // noise-domain scale       (1.0)
-            "power":       int,              // height-distribution exp  (3)
+            "amplitude":   m,                // tallest relief above the
+                                             // base radius            (2500)
+            "octaves":     int,              // noise octaves (continents
+                                             // + mountains)              (9)
+            "persistence": 0..1,             // octave falloff           (0.5)
+            "frequency":   float,            // feature-size multiplier  (1.0)
             "sea_level":   m,                // key present => has ocean (0)
             "sea_color":   [r,g,b],          //                         (0.1,0.1,0.8)
             "palette":     [ [t, [r,g,b]], ... ]   // land-color stops, t in 0..1

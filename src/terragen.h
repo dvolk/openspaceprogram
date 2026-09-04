@@ -6,10 +6,10 @@
 //                             "surface" JSON block); value-copyable so a
 //                             worker thread can hold a snapshot (the async
 //                             subdivision job does -- see terrain.h)
-//   terrainHeight(...)        the analytic height function (a star function
-//                             in the body's rotating frame)
+//   terrainHeight(...)        the analytic height function, full detail
+//                             (physics, spawning, shadows, surface map)
 //   terrainSurfaceColor(...)  the exact per-vertex color the grid bakes
-//                             (noise, palette / band, sea, contrast)
+//                             (palette / band, sea, contrast)
 //   buildGridGeom(...)        the grid a GeoPatch draws: size x size
 //                             terrain vertices + normals + colors, an
 //                             optional skirt ring, and the indices
@@ -17,6 +17,38 @@
 // The game-side half (GL upload into a Mesh, Bullet collision, the patch
 // tree, LOD) lives in terrain.h / terrain.cpp: the GeoPatch ctor consumes
 // a GridGeom on the main thread.
+//
+// Height model (written from scratch -- the old noise aliased into a
+// stepped, voxel-like surface at coarse LOD and its cubic height rescale
+// left flat plains with knife-sharp hills):
+//
+//   relief = amplitude/2.1 * (0.7*continents + 1.4*mask*mountains)
+//
+//   continents   smooth simplex FBM, octaves 0..5 (noise scales 2..64):
+//                planet-wide landmasses down to ~10 km rolling hills on a
+//                Kerbin-sized body
+//   mountains    a smooth fold (1 - m^2) of a mid-band FBM (octaves 2..):
+//                broad rounded crests and gradual flanks -- big and soft
+//                on purpose, the shading is normal-based
+//   mask         smoothstep of the continents: mountains only rise where
+//                the base ground is already high, so lowlands and coasts
+//                stay gentle
+//
+// The noise lives on the UNIT SPHERE (the direction rotated by the
+// body's seed, times frequency), so feature sizes grow with the body's
+// radius, and the mesh LOD does the same (TerrainBody::max_depth adds
+// one level per radius doubling): every body ends up with comparable
+// mesh + feature density per surface area.
+//
+// Band-limited grids: buildGridGeom() fades every octave whose wavelength
+// is shorter than ~2 grid cells (the grid's Nyquist limit). A coarse
+// patch therefore drops exactly the detail it cannot resolve; sampling it
+// anyway is what aliased into the stepped surface near the ground. The
+// fade is a continuous weight in the octave index, so neighbouring depths
+// agree to within the one partial octave (the skirt covers that seam),
+// and a max-depth patch still bakes every octave -- its grid resolves
+// them all -- so the visual surface and the analytic height function
+// physics uses agree where it matters (landed).
 
 #pragma once
 
@@ -51,19 +83,23 @@ struct AtmosphereParams {
 };
 
 // Per-body terrain + color parameters (the optional "surface" JSON block).
-// Defaults reproduce the legacy hardcoded behavior.
 struct Surface {
-    float amplitude = 2500.0f;   // [m] peak noise height
-    int octaves = 12;            // simplex octaves
-    float persistence = 0.6f;    // octave falloff
-    float frequency = 1.0f;      // noise-domain scale
-    int power = 3;               // height-distribution exponent
+    float amplitude = 2500.0f;   // [m] tallest relief above the base radius
+    int octaves = 9;             // noise octaves: continents 0..5, mountains 2..N-1
+    float persistence = 0.5f;    // octave amplitude falloff
+    float frequency = 1.0f;      // feature-size multiplier (unit-sphere noise)
     bool has_sea = false;
-    float sea_level = 0.0f;      // [m] above base radius
+    float sea_level = 0.0f;      // [m] above base radius; floor is flat here
     glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
     std::vector<PaletteStop> palette;  // empty => type-based default palette
-    float max_height = 1.0f;     // [m] scaled relief above sea level (computed)
-    glm::vec3 seed_offset = glm::vec3(0.0f);
+    float max_height = 1.0f;     // [m] highest relief above sea level
+                                 // (measured numerically by load_system)
+    // Per-body noise orientation (set by load_system from "seed"). A
+    // rotation, not an additive offset: adding seed*100 to the sample
+    // point pushed the high-octave noise coordinates into the float
+    // quantization range, which tiled the surface in lattice-aligned
+    // terrace stripes (worst on the high-seed bodies).
+    glm::mat3 seed_rot = glm::mat3(1.0f);
     bool bands = false;          // gas giant: smooth sphere, latitude bands
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
     AtmosphereParams atmosphere; // optional rim; enabled => body has air
@@ -110,83 +146,108 @@ struct TerrainParams {
     COLOUR (*colour_func)(float, float, float);
 };
 
-// Fractal Brownian motion (the body's height noise).
-inline float terrainNoise3d(const glm::vec3& p, int octaves, float persistence) {
-    float sum = 0;
-    float strength = 1.0;
-    float scale = 2.0;
+// ---------------------------------------------------------------------------
+// The noise: octaves of 3-D simplex on the unit sphere. Octave i runs at
+// noise scale 2^(i+1) (octave 0 ~ 1-radian features), so its wavelength on
+// the body is radius / 2^(i+1) -- feature sizes track the body's radius.
+// The first `base_octaves` octaves are smooth FBM (the continents/hills);
+// the rest are the mountains.
+// ---------------------------------------------------------------------------
 
-    for(int i = 0; i < octaves; i++) {
-        sum += strength * glm::simplex(p * scale);
-        scale *= 2.0;
-        strength *= persistence;
+// glm::simplex ranks its skew-space components with step() comparisons;
+// wherever two components tie (exactly axis-aligned directions -- the
+// patch face centers, edge midpoints), a 1-ulp input perturbation flips
+// the corner ranking and the value jumps ~0.1, i.e. ulp-wide cliffs in
+// the heightfield along the symmetric directions. A fixed off-axis
+// offset moves the samples away from the ties (the old additive seed
+// offset did this by accident; the per-body rotation alone does not).
+static const glm::vec3 terrain_noise_off(0.173f, 0.291f, 0.417f);
+
+// One octave loop over [first, last): sum += amp * simplex, amplitudes
+// falling by persistence. `fade` band-limits the sum: octave i's weight
+// ramps 1 -> 0 as i goes fade-1 -> fade, so callers drop exactly the
+// wavelengths a grid cannot resolve. Octaves past the fade are skipped
+// outright (weights only ever decrease with i).
+inline float terrainFbmOctaves(const glm::vec3& q, int first, int last,
+                               float persistence, float fade) {
+    float sum = 0.0f, norm = 0.0f, amp = 1.0f;
+    glm::vec3 p = q * 2.0f;   // octave 0 scale = 2
+    for (int i = 0; i < last; i++, p *= 2.0f, amp *= persistence) {
+        if (i < first) { continue; }
+        const float w = glm::clamp(fade - (float)i, 0.0f, 1.0f);
+        if (w <= 0.0f) { break; }
+        sum += amp * w * glm::simplex(p);
+        norm += amp;
     }
-
-    return sum;
+    return (norm > 0.0f) ? sum / norm : 0.0f;   // [-1, 1]
 }
 
-// Bilinear point on the quad (v0, v1, v2, v3) at (x, y) in [0,1]^2,
-// normalized back onto the sphere (the patch's surface patch).
-inline glm::vec3 terrainSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
-                                    const glm::vec3& v2, const glm::vec3& v3,
-                                    const float x, const float y)
-{
-    // Bilinear on the quad (the standard (1-x)(1-y)v0 + x(1-y)v1 +
-    // xy*v2 + (1-x)y*v3 blend), normalized back onto the sphere.
-    return glm::normalize(v0 +
-                          x * (1.0f - y) * (v1 - v0) +
-                          x * y * (v2 - v0) +
-                          (1.0f - x) * y * (v3 - v0));
+// Signed relief [m] relative to the base radius at unit direction p
+// (before the sea-floor clamp): continents in [-0.7, 0.7]*A plus broad
+// mountains up to +1.2*A riding the high ground, normalized by 1.9 so
+// `amplitude` is the tallest peak. The mountains are a smooth fold
+// (1 - m^2) of a mid-band FBM: rounded crests and gradual flanks (the
+// shading is normal-based, so knife-edge ridged noise read as spikes),
+// and the spectrum stops at ~radius/256, so features stay big and soft.
+// `fade` band-limits both noises (see terrainFbmOctaves); pass octaves
+// (or more) for full detail.
+inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
+                           float fade) {
+    const Surface &s = t.surface;
+    const glm::vec3 q = (s.seed_rot * p) * s.frequency + terrain_noise_off;
+    const int base_octaves = std::min(s.octaves, 6);
+
+    const float continents =
+        terrainFbmOctaves(q, 0, base_octaves, s.persistence, fade);
+    float h = 0.7f * continents;
+    if (s.octaves > 2) {
+        const float mask = glm::smoothstep(0.0f, 0.6f, continents);
+        const float m = terrainFbmOctaves(q, 2, s.octaves, s.persistence,
+                                          fade);
+        h += 1.4f * mask * (1.0f - m * m);
+    }
+    return h * (s.amplitude / 2.1f);
 }
 
-inline float terrainScaleHeightNoise(float noise, const TerrainParams& t) {
-    constexpr float ref_height = 3000.0; // guess
-
-    // rescale noise by altitude (sign-safe for fractional powers)
-    float sign = noise < 0 ? -1.0f : 1.0f;
-    float n = sign * noise;
-    n *= pow(n / ref_height, t.surface.power);
-    return sign * n;
+// Height (m, from the body center) at a unit direction, band-limited by
+// `fade`. Gas giants are a smooth sphere. The sea floor is flat at
+// sea_level (that IS the sea: nothing renders below it).
+inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
+                               float fade) {
+    const Surface &s = t.surface;
+    if (s.bands) {
+        return t.radius;
+    }
+    float relief = terrainRelief(p, t, fade);
+    if (s.has_sea && relief < s.sea_level) {
+        relief = s.sea_level;
+    }
+    return t.radius + relief;
 }
 
-// Height (m, from the body center) at a unit direction: the noise, the
-// sea floor, and the altitude rescale. Gas giants are a smooth sphere.
+// The full-detail height (every octave): what physics, spawning, shadows
+// and the surface map query. A max-depth patch bakes this same function
+// (its grid resolves every octave), so the walked and the rendered
+// surfaces agree where the ship is.
 inline float terrainHeight(const glm::vec3& p, const TerrainParams& t) {
-    const Surface &s = t.surface;
-    if(s.bands) {
-        return t.radius;   // gas giant: smooth sphere
-    }
-    float noise = terrainNoise3d(p * s.frequency + s.seed_offset,
-                                 s.octaves, s.persistence) * s.amplitude;
-
-    if(s.has_sea && noise < s.sea_level) {
-        noise = s.sea_level;
-    }
-
-    return t.radius + terrainScaleHeightNoise(noise, t);
-}
-
-// Same, without the altitude rescale (the raw relief; the color ramp
-// reads this for a smoother gradient).
-inline float terrainHeightUnscaled(const glm::vec3& p, const TerrainParams& t) {
-    const Surface &s = t.surface;
-    float noise = terrainNoise3d(p * s.frequency + s.seed_offset,
-                                 s.octaves, s.persistence) * s.amplitude;
-
-    if(s.has_sea && noise < s.sea_level) {
-        noise = s.sea_level;
-    }
-
-    return t.radius + noise;
+    return terrainHeightFade(p, t, (float)t.surface.octaves);
 }
 
 // The surface color at a unit direction in the body's rotating frame:
-// the exact per-vertex color the grid bakes (noise, palette / band, sea,
+// the exact per-vertex color the grid bakes (palette / band, sea,
 // contrast), so the 2-D surface map (surfmap.cpp) matches the rendered
-// surface pixel for pixel.
-inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t) {
+// surface. Colors are evaluated at FULL height detail even on coarse
+// grids: the height fade would shift palette bands between LOD depths
+// and paint visible seam lines; full-detail color has no such
+// discontinuity. The one exception is the color JITTER: it is spatial
+// detail, so the grid passes a band-limited noise scale for it (a scale
+// finer than the grid cells moires into the dotted lowland pattern seen
+// on small bodies); <= 0 means the full meter-scale speckle (the surface
+// map).
+inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
+                                     float jitter_scale = -1.0f) {
     const Surface &s = t.surface;
-    if(s.bands) {
+    if (s.bands) {
         // gas giant: smooth sphere, color by latitude band
         COLOUR cb = s.BandColor(p);
         glm::vec3 color = glm::vec3(cb.r, cb.g, cb.b);
@@ -198,19 +259,22 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t)
         return color;
     }
 
-    // set the color based on unscaled noise for better gradient
-    float height = terrainHeightUnscaled(p, t);
+    const float height = terrainHeight(p, t);
 
-    // add some color noise
-    float color_noise = terrainNoise3d(p * t.radius + s.seed_offset, 1, 0.60) * 100;
-    float h = height + ((color_noise / 2) - color_noise);
+    // color jitter so wide palette bands don't look flat
+    if (jitter_scale <= 0.0f) {
+        jitter_scale = t.radius;
+    }
+    const float jitter =
+        glm::simplex((s.seed_rot * p) * jitter_scale + terrain_noise_off) * 50.0f;
+    const float h = height + jitter;
 
     COLOUR c;
-    if(s.palette.empty()) {
+    if (s.palette.empty()) {
         // no palette in the JSON: fall back to the type-based default
         c = (*t.colour_func)(h, t.radius - 1, t.radius + 3000);
     } else {
-        float tt = (h - (t.radius + s.sea_level)) / s.max_height;
+        const float tt = (h - (t.radius + s.sea_level)) / s.max_height;
         c = s.PaletteColor(tt);
     }
 
@@ -221,7 +285,7 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t)
                                            brightness,
                                            brightness);
 
-    if(s.has_sea && height <= t.radius + s.sea_level) {
+    if (s.has_sea && height <= t.radius + s.sea_level) {
         color = s.sea_color;
     }
     return color;
@@ -267,6 +331,51 @@ inline COLOUR GetColourEarth(float v, float vmin, float vmax)
     return(c);
 }
 
+// ---------------------------------------------------------------------------
+// The patch grid
+// ---------------------------------------------------------------------------
+
+// Bilinear point on the quad (v0, v1, v2, v3) at (x, y) in [0,1]^2,
+// normalized back onto the sphere (the patch's surface patch). Tolerates
+// x/y slightly outside [0,1] (the normal stencil reaches one cell past
+// the boundary; the heightfield there is the same analytic function the
+// neighbour patch bakes, so seam normals match).
+inline glm::vec3 terrainSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
+                                    const glm::vec3& v2, const glm::vec3& v3,
+                                    const float x, const float y)
+{
+    return glm::normalize(v0 +
+                          x * (1.0f - y) * (v1 - v0) +
+                          x * y * (v2 - v0) +
+                          (1.0f - x) * y * (v3 - v0));
+}
+
+// The octave fade for one grid cell: octave i's wavelength on the unit
+// sphere is ~1/2^(i+1) (times the frequency multiplier); keep wavelengths
+// >= 2 cells (Nyquist) -> i <= log2(1/(2*cell*frequency)) - 1, with the
+// boundary octave partially weighted. A zero/tiny cell (deep patches,
+// where the corner dots below round to 1) means "resolve everything".
+inline float terrainGridFade(float cell_angle, float frequency) {
+    if (!(cell_angle > 0.0f) || !std::isfinite(cell_angle)) {
+        return 1e30f;
+    }
+    return std::log2(1.0f / (2.0f * cell_angle * frequency)) - 1.0f;
+}
+
+// The fade for every patch at a subdivision depth. Heights must be a
+// pure function of (position, depth) -- like Pioneer's terrain, which
+// samples one deterministic heightfield at every LOD -- or neighbouring
+// patches disagree where they share an edge. A per-patch fade (from the
+// actual corner angles, which vary between sibling quads) painted seam
+// lines along same-depth boundaries, so the cell angle is the nominal
+// one for the depth: the root cube-face edge (acos 1/3) halved per level.
+inline float terrainDepthFade(int depth, int grid_size, float frequency) {
+    const float root_angle = 1.2310f;   // acos(1/3), root cube-face edge
+    const float cell = root_angle / (float)(1 << (depth - 1))
+                       / (float)(grid_size - 1);
+    return terrainGridFade(cell, frequency);
+}
+
 // One terrain-grid vertex (the GL-free half of Mesh's PosNorColVertex;
 // the GeoPatch ctor converts to Mesh's type when it uploads).
 struct TerrVert {
@@ -307,8 +416,8 @@ struct GridGeom {
 // equal-depth roots, and a root-vs-child T-junction is masked by the
 // child's skirt flaring across the seam.
 inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
-                              glm::vec3 p1, glm::vec3 p2, glm::vec3 p3,
-                              glm::vec3 p4)
+                              int depth, glm::vec3 p1, glm::vec3 p2,
+                              glm::vec3 p3, glm::vec3 p4)
 {
     GridGeom geom;
     const int size = 25;
@@ -321,68 +430,64 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     // patches just use the first edge*edge of them
     geom.verts.resize((size_t)edge * (size_t)edge);
 
-    float min_height = t.surface.bands ? t.radius : HUGE_VALF;
+    // Band-limit the heightfield to this grid (see terrainGridFade): the
+    // fade is the same on every patch at this depth, so seam heights and
+    // normals agree between same-depth neighbours. The color jitter gets
+    // the same treatment (4 cells here), capped at a 16 m wavelength so
+    // even max-depth grids stay above their cell size.
+    const float fade = terrainDepthFade(depth, size, t.surface.frequency);
+    const float jitter_scale =
+        std::min(t.radius / 16.0f, std::pow(2.0f, fade - 2.0f));
+    auto height_at = [&](const glm::vec3 &d) {
+        return terrainHeightFade(d, t, fade);
+    };
+
+    float min_height = HUGE_VALF;
 
     // inner grid at grid coords [off..off+size-1]^2
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
-            glm::vec3 sphere_p = terrainSpherePoint(p1, p2, p3, p4, i*frac, j*frac);
-
-            // The vertex color (noise, palette / band, sea, contrast):
-            // shared with the 2-D surface map (terrainSurfaceColor) so the
-            // map matches the rendered surface.
-            const glm::vec3 color = terrainSurfaceColor(sphere_p, t);
-
-            if (t.surface.bands) {
-                // gas giant: smooth sphere
-                geom.verts[(size_t)(j + off) + (size_t)edge * (i + off)] =
-                    TerrVert(sphere_p * t.radius, sphere_p, color);
-                continue;
-            }
-
-            // set the color based on unscaled noise for better gradient
-            float height = terrainHeightUnscaled(sphere_p, t);
-
-            // add back scaling
-            height = t.radius + terrainScaleHeightNoise(height - t.radius, t);
-
+            const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4,
+                                                   i*frac, j*frac);
+            const float height = height_at(d);
             min_height = std::min(min_height, height);
 
-            glm::vec3 p = sphere_p * height;
-
+            // The vertex color (palette / band, sea, contrast), with the
+            // jitter band-limited to this grid; the 2-D surface map uses
+            // the same function at full speckle.
+            const glm::vec3 color = terrainSurfaceColor(d, t, jitter_scale);
             geom.verts[(size_t)(j + off) + (size_t)edge * (i + off)] =
-                TerrVert(p, sphere_p, color);
+                TerrVert(d * height, d, color);
         }
     }
 
-    // normals: finite differences over the whole inner grid, edge ring
-    // included. Stencils that reach past the patch sample the true
-    // heightfield one cell outside (it's analytic and shared, so neighbour
-    // patches compute matching seam normals and no line shows at the
-    // border). The skirt copies the edge normals; its dropped-down
+    // normals: central differences over the whole inner grid. Stencils
+    // that reach past the patch sample the (band-limited) heightfield one
+    // cell outside -- it's analytic and shared, and same-depth neighbours
+    // use the same fade, so seam normals match and no line shows at the
+    // border. The skirt copies the edge normals; its dropped-down
     // vertices never enter a stencil.
-    auto terrain_pos = [&](float u, float v) {
-        glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4, u, v);
-        if (t.surface.bands) {
-            return d * t.radius;
-        }
-        float hgt = terrainHeightUnscaled(d, t);
-        hgt = t.radius + terrainScaleHeightNoise(hgt - t.radius, t);
-        return d * hgt;
+    auto pos_at = [&](float u, float v) {
+        const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4, u, v);
+        return d * height_at(d);
     };
     for (int i = off; i < off + size; i++) {
         for (int j = off; j < off + size; j++) {
-            // x along j, y along i: same axes as the old interior-only
-            // pass, the cross product sign matters for lighting
-            glm::vec3 x1 = (j - 1 >= off) ? geom.verts[(size_t)(j-1) + (size_t)i*edge].pos
-                                          : terrain_pos((i - off) * frac, (j - 1 - off) * frac);
-            glm::vec3 x2 = (j + 1 < off + size) ? geom.verts[(size_t)(j+1) + (size_t)i*edge].pos
-                                                : terrain_pos((i - off) * frac, (j + 1 - off) * frac);
-            glm::vec3 y1 = (i - 1 >= off) ? geom.verts[(size_t)j + (size_t)(i-1)*edge].pos
-                                          : terrain_pos((i - 1 - off) * frac, (j - off) * frac);
-            glm::vec3 y2 = (i + 1 < off + size) ? geom.verts[(size_t)j + (size_t)(i+1)*edge].pos
-                                                : terrain_pos((i + 1 - off) * frac, (j - off) * frac);
-            glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
+            // x along j, y along i: the cross product sign matters for
+            // lighting
+            const glm::vec3 x1 = (j - 1 >= off)
+                ? geom.verts[(size_t)(j-1) + (size_t)i*edge].pos
+                : pos_at((i - off) * frac, (j - 1 - off) * frac);
+            const glm::vec3 x2 = (j + 1 < off + size)
+                ? geom.verts[(size_t)(j+1) + (size_t)i*edge].pos
+                : pos_at((i - off) * frac, (j + 1 - off) * frac);
+            const glm::vec3 y1 = (i - 1 >= off)
+                ? geom.verts[(size_t)j + (size_t)(i-1)*edge].pos
+                : pos_at((i - 1 - off) * frac, (j - off) * frac);
+            const glm::vec3 y2 = (i + 1 < off + size)
+                ? geom.verts[(size_t)j + (size_t)(i+1)*edge].pos
+                : pos_at((i + 1 - off) * frac, (j - off) * frac);
+            const glm::vec3 n = glm::normalize(glm::cross(x2-x1, y2-y1));
             geom.verts[(size_t)j + (size_t)edge * (size_t)i].normal = -n;
         }
     }
@@ -393,10 +498,10 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     if (has_skirt) {
         const float skirt_r = min_height * skirt_scale;
         auto skirt_vertex = [&](int i, int j, float u, float v, int si, int sj) {
-            glm::vec3 sphere_p = terrainSpherePoint(p1, p2, p3, p4, u, v);
+            const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4, u, v);
             const TerrVert &src = geom.verts[(size_t)sj + (size_t)edge * (size_t)si];
             geom.verts[(size_t)j + (size_t)edge * (size_t)i] =
-                TerrVert(sphere_p * skirt_r, src.normal, src.color);
+                TerrVert(d * skirt_r, src.normal, src.color);
         };
         for (int j = off; j < off + size; j++) {
             skirt_vertex(off - 1, j, -frac, (j - off)*frac, off, j);

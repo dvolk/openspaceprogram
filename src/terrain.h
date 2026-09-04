@@ -38,7 +38,6 @@ struct GeoPatch {
     TerrainBody *body;
     Model *model;
     btRigidBody *collision;
-    static const int max_depth = 14;
 
     GeoPatch *kids[4];
 
@@ -95,6 +94,13 @@ struct TerrainBody {
     float mass;
     std::string name;
     double seed = 0;   // noise-domain offset; 0 = legacy pattern
+    // Subdivision stop for this body's patch tree (set by Create() from
+    // the radius). The patch angular size at a given depth is the same on
+    // every body, so leaf-cell METRES scale with the radius: one extra
+    // level per radius doubling keeps mesh density per surface area
+    // comparable across bodies (the old constant 14 left big bodies with
+    // a sparse mesh and tiny ones over-subdivided). See Create().
+    int max_depth = 14;
     Surface surface;
     Frame *frame; // owner
     Frame *rot_frame; // owner
@@ -136,15 +142,10 @@ struct TerrainBody {
 
     COLOUR (*colour_func)(float v, float vmin, float vmax);
 
-    // Thin delegates to the pure functions (terragen.h).
+    // Thin delegate to the pure height function (terragen.h): the full-
+    // detail analytic surface (physics, spawning, shadows, the HUD).
     float GetTerrainHeight(const glm::vec3& p) const {
         return terrainHeight(p, params());
-    }
-    float GetTerrainHeightUnscaled(const glm::vec3& p) const {
-        return terrainHeightUnscaled(p, params());
-    }
-    float ScaleHeightNoise(float noise) const {
-        return terrainScaleHeightNoise(noise, params());
     }
     // The surface color at a unit direction in the body's rotating frame:
     // the exact per-vertex color the grid bakes (noise, palette / band,
@@ -161,6 +162,14 @@ struct TerrainBody {
     void Create(float radius, float mass) {
         this->radius = radius;
         this->mass = mass;
+        // Mesh density per surface area: one extra subdivision level per
+        // radius doubling, anchored at 14 for a Kerbin-sized (600 km)
+        // body. Floor of 8 so tiny moons don't build useless depth;
+        // ceiling of 17 where float32 vertex coordinates (magnitude
+        // ~radius) stop resolving leaf cells on the biggest bodies.
+        max_depth = 14 + (int)llround(std::log2((double)radius / 600.0e3));
+        if (max_depth < 8) { max_depth = 8; }
+        if (max_depth > 17) { max_depth = 17; }
         const glm::vec3 p1 = glm::normalize(glm::vec3( 1, 1, 1));
         const glm::vec3 p2 = glm::normalize(glm::vec3(-1, 1, 1));
         const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));
@@ -174,12 +183,12 @@ struct TerrainBody {
         // before the main loop starts there is nothing else to draw, so
         // blocking here is fine. Child patches are async (GeoPatch::
         // requestSubdivide).
-        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, buildGridGeom(params(), false, p1, p2, p3, p4));
-        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, buildGridGeom(params(), false, p4, p3, p7, p8));
-        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, buildGridGeom(params(), false, p1, p4, p8, p5));
-        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, buildGridGeom(params(), false, p2, p1, p5, p6));
-        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, buildGridGeom(params(), false, p3, p2, p6, p7));
-        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, buildGridGeom(params(), false, p8, p7, p6, p5));
+        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, buildGridGeom(params(), false, 1, p1, p2, p3, p4));
+        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, buildGridGeom(params(), false, 1, p4, p3, p7, p8));
+        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, buildGridGeom(params(), false, 1, p1, p4, p8, p5));
+        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, buildGridGeom(params(), false, 1, p2, p1, p5, p6));
+        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, buildGridGeom(params(), false, 1, p3, p2, p6, p7));
+        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, buildGridGeom(params(), false, 1, p8, p7, p6, p5));
     }
 
     // Build the atmosphere rim shell on demand. It sits just above the

@@ -58,7 +58,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
 
         // Legacy flat fields act as defaults for the surface parameters.
         Surface &s = body->surface;
-        s.power   = bv.value("power_scaler", 3);
         s.has_sea = bv.value("has_sea", false);
 
         if(bv.contains("surface") && bv["surface"].is_object()) {
@@ -67,7 +66,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
             s.octaves     = sv.value("octaves", s.octaves);
             s.persistence = sv.value("persistence", s.persistence);
             s.frequency   = sv.value("frequency", s.frequency);
-            s.power       = sv.value("power", s.power);
             if(sv.contains("sea_level")) {
                 s.has_sea = true;
                 s.sea_level = sv.value("sea_level", 0.0);
@@ -118,16 +116,38 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                 s.atmosphere.intensity = av.value("intensity", 1.0f);
             }
         }
-        // Scaled relief a full-amplitude peak ends up at, after
-        // ScaleHeightNoise() — used to normalize palette elevation t.
-        if(s.amplitude > 0.0f) {
-            s.max_height = s.amplitude
-                           * std::pow(s.amplitude / 3000.0f, s.power);
+        // Per-body noise orientation: two irrational-angle turns so
+        // neighbouring seeds land on uncorrelated surfaces.
+        {
+            const double a = body->seed * 2.39996322972865332;   // golden angle
+            const double b = a * 1.618033988749895;
+            const double ca = std::cos(a), sa = std::sin(a);
+            const double cb = std::cos(b), sb = std::sin(b);
+            const glm::dmat3 ry(ca, 0.0, -sa,  0.0, 1.0, 0.0,  sa, 0.0, ca);
+            const glm::dmat3 rx(1.0, 0.0, 0.0,  0.0, cb, sb,  0.0, -sb, cb);
+            s.seed_rot = glm::mat3(ry * rx);
         }
-        if(s.max_height <= 0.0f) {
-            s.max_height = 1.0f;
+
+        // The highest relief above sea level, measured on the height
+        // function itself: normalizes the palette elevation ramp and
+        // sizes the atmosphere shell + the shadow-test bound. Fibonacci
+        // sphere spread, 5% margin over the sampled max.
+        if(s.bands) {
+            s.max_height = 0.0f;   // gas giant: smooth sphere
+        } else {
+            const TerrainParams tp{s, (float)radius, nullptr};
+            const int N = 2048;
+            const float golden = 2.39996322972865332f;   // golden angle
+            float hi = 0.0f;
+            for(int i = 0; i < N; i++) {
+                const float y = 1.0f - 2.0f * (i + 0.5f) / (float)N;
+                const float rr = std::sqrt(std::max(0.0f, 1.0f - y * y));
+                const glm::vec3 d(rr * std::cos(i * golden), y,
+                                  rr * std::sin(i * golden));
+                hi = std::max(hi, terrainHeight(d, tp) - (float)radius);
+            }
+            s.max_height = std::max(1.0f, (hi - s.sea_level) * 1.05f);
         }
-        s.seed_offset = glm::vec3((float)body->seed * 100.0f);
 
         // Shader + elevation palette by body type.
         if(type == "star") {
