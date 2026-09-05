@@ -47,7 +47,11 @@ void Game::setup_ui_windows() {
     o_resources = info_opts(ui::Slot::TopRight);
     o_resources.width_ratio = 1.25f; // bars have no width of their own
     o_menu      = info_opts(ui::Slot::MiddleRight);
-    o_menu.flags |= ImGuiWindowFlags_NoTitleBar; // docked panel: no title
+    // Docked panel (like the HUD and the Main Menu): no title bar, not
+    // user-movable / not user-resizable; it still re-fits and re-places
+    // on a relayout (F10 / "Reset windows").
+    o_menu.flags |= ImGuiWindowFlags_NoTitleBar;
+    o_menu.fixed = true;
     o_vessel    = info_opts(ui::Slot::BottomRight);
     o_map = info_opts(ui::Slot::BottomLeft);
     o_map.default_open = true;
