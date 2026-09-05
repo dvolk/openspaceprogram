@@ -329,8 +329,8 @@
       "mesh": "decoupler_radial.obj",
       "texture": "adapter.png",
       "mass": 40,
-      "radius": 0.5,
-      "height": 0.5,
+      "radius": 0.02,
+      "height": 0.02,
       "decoupler": true
     },
     {
