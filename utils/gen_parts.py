@@ -16,9 +16,13 @@ catalog is reproducible and internally consistent instead of hand-tuned:
   capsule / wheel / adapter / nose_cap
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
+  decoupler       staging boundary: decoupler + fuel_barrier flags; the
+                  mass is declared (EXTRA_FIELDS), radius/height follow
+                  the mesh unless declared
   extras (EXTRA_FIELDS)
-                  crew seats + the kerbal's RCS propellant -- per-part
-                  values that don't derive from geometry, applied on top
+                  crew seats, the kerbal's RCS propellant, the decouplers'
+                  declared mass + staging flags -- per-part values that
+                  don't derive from geometry, applied on top
 
 Radial sizes are 1.0 / 1.5 / 2.25 m (see PARTS).
 
@@ -93,21 +97,33 @@ PARTS = [
     ("adapter_r1.5to2.25","adapter",       "adapter_r1.5to2.25.obj",       "adapter.png"),
     ("adapter_r2.25to1", "adapter",        "adapter_r2.25to1.obj",         "adapter.png"),
     ("adapter_r2.25to1.5","adapter",       "adapter_r2.25to1.5.obj",       "adapter.png"),
+    ("decoupler_r1",     "decoupler",      "decoupler_r1.obj",             "decoupler.png"),
+    ("decoupler_r1.5",   "decoupler",      "decoupler_r1.5.obj",           "decoupler.png"),
+    ("decoupler_r2.25",  "decoupler",      "decoupler_r2.25.obj",          "decoupler.png"),
+    ("decoupler_radial", "decoupler",      "decoupler_radial.obj",         "decoupler.png"),
     ("nose_cap",         "nose_cap",       "nose_cap.obj",                 "nose_cap.png"),
     ("nose_cap_r1.5h0.75","nose_cap",      "nose_cap_r1.5h0.75.obj",       "nose_cap.png"),
     ("nose_cap_r2.25h1.125","nose_cap",    "nose_cap_r2.25h1.125.obj",     "nose_cap.png"),
     ("kerbal",           "kerbal",         "kerbal.obj",                   "kerbal.png"),
 ]
 
-# per-part extra fields that do NOT derive from the geometry: crew seats and
-# the kerbal's RCS propellant. Applied on top of the generated entry so the
-# catalog stays fully reproducible (no hand-edits to parts.json). The kerbal
-# mass is declared (not mesh-derived) to preserve the hand-set value.
+# per-part extra fields that do NOT derive from the geometry: crew seats,
+# the kerbal's RCS propellant, and the decouplers' mass + staging flags.
+# Applied on top of the generated entry so the catalog stays fully
+# reproducible (no hand-edits to parts.json). The kerbal mass is declared
+# (not mesh-derived) to preserve the hand-set value; the decouplers'
+# masses likewise. decoupler_r2.25's height is declared because mesh_geom
+# rounds the 0.5625 m mesh span to 0.562 (round-3, as the wheel's entry).
 EXTRA_FIELDS = {
     "capsule":           {"crew_capacity": 1},
     "capsule_r1.5h3":    {"crew_capacity": 3},
     "capsule_r2.25h4.5": {"crew_capacity": 6},
     "kerbal":            {"mass": 97.05, "capacity": {"hydrazine": 10.0}},
+    "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
+    "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
+    "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,
+                          "height": 0.5625},
+    "decoupler_radial":  {"mass": 40, "decoupler": True, "fuel_barrier": True},
 }
 
 
@@ -156,6 +172,14 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"hydrogen": clean(half), "lox": clean(half)}
+    elif ptype == "decoupler":
+        # staging boundary: mass is declared in EXTRA_FIELDS; radius/height
+        # follow the mesh unless overridden there. The decoupler/fuel_barrier
+        # flags land in the final EXTRA_FIELDS update below, keeping the key
+        # order of the hand-written entries.
+        e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
+        e["radius"] = radius
+        e["height"] = height
     else:  # capsule / reaction_wheel / adapter / nose_cap
         e["mass"] = clean(volume * MASS_DENSITY[ptype])
         e["radius"] = radius
