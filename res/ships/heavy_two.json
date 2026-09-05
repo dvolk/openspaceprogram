@@ -1,0 +1,36 @@
+{
+  "name": "heavy_two",
+  "controller": "capsule_1",
+  "hull_margin": 0,
+  "parts": [
+    { "part": "capsule", "id": "capsule_1", "stage": 4 },
+    { "part": "reaction_wheel", "id": "rw1", "stage": 4 },
+    { "part": "tank_r1h3", "id": "central_tank0", "stage": 4 },
+    { "part": "engine", "id": "central_engine0", "parent": "central_tank0", "stage": 4 },
+
+    { "part": "decoupler_r1", "id": "decupler_r1", "stage": 3 },
+    { "part": "adapter_r1.5to1", "id": "adapter1", "stage": 3 },
+
+    { "part": "reaction_wheel_r1.5h0.375", "id": "rw2", "stage": 3 },
+    { "part": "tank_r1.5h5", "id": "central_tank1", "stage": 3 },
+    { "part": "engine_r1.5h3", "id": "central_engine1", "parent": "central_tank1", "stage": 3 },
+
+    { "part": "decoupler_r1.5", "id": "decupler_r1.5", "stage": 2 },
+    { "part": "adapter_r2.25to1.5", "id": "adapter2", "stage": 2 },
+
+    { "part": "reaction_wheel_r2.25h0.5625", "id": "rw3", "stage": 2 },
+    { "part": "tank_r2.25h5", "id": "central_tank2", "stage": 2 },
+    { "part": "tank_r2.25h5", "id": "central_tank3", "parent": "central_tank2", "stage": 2 },
+    { "part": "engine_r2.25h4.5", "id": "central_engine2", "parent": "central_tank3", "stage": 2 },
+
+    { "part": "decoupler_radial", "id": "rdecupler1", "attach": "side", "parent": "central_tank2", "stage": 1 },
+    { "part": "tank_r1.5h5", "id": "rtank11", "parent": "rdecupler1", "attach": "side", "stage": 1 },
+    { "part": "tank_r1.5h5", "id": "rtank12", "parent": "rtank11", "stage": 1 },
+    { "part": "engine_r1.5h3", "id": "rengine1", "parent": "rtank12", "stage": 1 },
+
+    { "part": "decoupler_radial", "id": "rdecupler2", "attach": "side", "parent": "central_tank2", "angle": 180, "stage": 1 },
+    { "part": "tank_r1.5h5", "id": "rtank21", "parent": "rdecupler2", "attach": "side", "stage": 1 },
+    { "part": "tank_r1.5h5", "id": "rtank22", "parent": "rtank21", "stage": 1 },
+    { "part": "engine_r1.5h3", "id": "rengine2", "parent": "rtank22", "stage": 1 }
+  ]
+}
