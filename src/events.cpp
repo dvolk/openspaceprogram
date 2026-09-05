@@ -85,7 +85,19 @@ void emit_sim_events(Game &g) {
         };
         for(auto &a : g.args.sim_mouse_actions) {
             if(!a.started && now >= a.time_ms) {
-                if(a.button != 0 && a.up_ms > a.time_ms) {
+                if(a.button == 4 || a.button == 5) {
+                    // wheel notch (4 = up = zoom in, 5 = down = zoom out):
+                    // one SDL_MOUSEWHEEL event, X,Y / duration ignored
+                    SDL_Event wev = {0};
+                    wev.type = SDL_MOUSEWHEEL;
+                    wev.wheel.windowID = g.sim_win_id;
+                    wev.wheel.which = 0;
+                    wev.wheel.x = a.x;
+                    wev.wheel.y = (a.button == 4) ? 1 : -1;
+                    SDL_PushEvent(&wev);
+                    a.started = true;
+                    a.released = true;   // complete: skip the button-release path
+                } else if(a.button != 0 && a.up_ms > a.time_ms) {
                     // drag: press, then move (release comes at up_ms)
                     push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
                     push_motion(a.x, a.y);

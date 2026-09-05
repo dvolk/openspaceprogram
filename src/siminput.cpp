@@ -69,6 +69,7 @@ int sim_parse_button(const std::string &s) {
         {"L", 1}, {"LEFT", 1}, {"LMB", 1},
         {"M", 2}, {"MIDDLE", 2}, {"MMB", 2},
         {"R", 3}, {"RIGHT", 3}, {"RMB", 3},
+        {"WHEEL_UP", 4}, {"WHEELDOWN", 5}, {"WHEEL_DOWN", 5},
         {"NONE", 0},
     };
     std::map<std::string, int>::const_iterator it = names.find(up);

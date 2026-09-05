@@ -84,6 +84,10 @@ struct SimKeyPress {
    - button != 0 && duration == 0 -> a CLICK: move the cursor to (x,y),
      then press + release in place (same frame). Used to click UI buttons.
    - button == 0                  -> a MOVE: just reposition the cursor.
+   - button == 4 / 5              -> a WHEEL notch at time_ms (4 = up =
+     zoom in, 5 = down = zoom out), one SDL_MOUSEWHEEL event (y = +/-1);
+     X,Y and duration are ignored. One notch per entry -- repeat the entry
+     for more. Works in orbit-camera mode (where the wheel zooms).
    (x,y) are absolute window pixels; the emitted MOUSEMOTION carries the
    delta from the previous simulated position, which is what the camera
    consumes (yaw = -dx/200 rad, pitch = +dy/200 rad; 200px ~= 1 rad). */

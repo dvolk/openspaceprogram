@@ -110,9 +110,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "yaw = -dx/200 rad, pitch = +dy/200 rad, 200px ~= 1 rad). "
                    "BTN is an SDL button code (1=LEFT, 2=MIDDLE, 3=RIGHT) or "
                    "name (L/LEFT/LMB, M/MIDDLE/MMB, R/RIGHT/RMB); 0/NONE = "
-                   "move only. DURATION_MS>0 with a button = a drag (held); "
-                   "0 = a quick click. Repeat the flag to append more "
-                   "quintuples.")
+                   "move only; 4/WHEEL_UP and 5/WHEEL_DOWN = one wheel notch "
+                   "(zoom in / out in orbit camera; X,Y and DURATION "
+                   "ignored, one notch per entry). DURATION_MS>0 with a "
+                   "button = a drag (held); 0 = a quick click. Repeat the "
+                   "flag to append more quintuples.")
         ->delimiter(',');
 
     std::vector<std::string> sim_mode;
