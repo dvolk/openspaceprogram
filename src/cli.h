@@ -15,6 +15,21 @@ struct GameArgs {
     std::string scenario = "pad";
     bool scenario_given = false;    // --scenario was passed explicitly
 
+    // The settings (Settings window) the command line set explicitly
+    // (filled in parse_cli from CLI11 ->count()): Game::load_settings()
+    // must not overwrite these -- the CLI beats settings.json field by
+    // field. A flag not listed here (absent) means the file may apply.
+    struct {
+        bool window_mode = false;    // --fullscreen / --borderless / --exclusive
+        bool width = false;          // --width
+        bool height = false;         // --height
+        bool msaa = false;           // --msaa
+        bool postfx = false;         // --postfx (the whole effect set)
+        bool fov = false;            // --fov
+        bool terrain_px = false;     // --terrain-px
+        bool exhaust_scale = false;  // --exhaust-scale
+    } cli_given;
+
     std::string system_file = "res/ksp_system.json";
     std::string parts_file = "res/parts.json";
     std::vector<std::string> ship_files;

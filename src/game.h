@@ -376,6 +376,14 @@ struct Game {
     // Rebuild the imgui style from the Settings state (theme, DPI scale,
     // rounding, transparency).
     void apply_ui_style();
+    // Settings persistence (settings.h): the window's "Save" button writes
+    // the current Settings state to ./settings.json; startup (main.cpp)
+    // restores it if the file exists. A field the CLI set explicitly
+    // (args.cli_given) beats the file; a display-mode/size the file changes
+    // is applied live through the same setWindowMode path the window's
+    // dropdowns use.
+    bool save_settings();
+    void load_settings();
     // Take control of `v` (release + park the current one, recenter the
     // orbit camera, drop rails warp).
     void select_ship(Vehicle *v);

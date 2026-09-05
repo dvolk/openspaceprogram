@@ -232,6 +232,13 @@ test:
 	    tests/test_pick.cpp src/pick.cpp src/camera.cpp src/frame.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_pick
 	./test_pick
+	# settings.json mapping (src/settings.cpp, nlohmann): the
+	# SettingsData <-> JSON round trip, absent-key tolerance (a field the
+	# file does not mention keeps the current value), mistyped-key
+	# tolerance, and the window-mode name mapping.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ \
+	    tests/test_settings.cpp src/settings.cpp -o test_settings
+	./test_settings
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on

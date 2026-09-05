@@ -269,10 +269,13 @@ def run_case(case):
         return False, ["./osp not found; run `make` (or `make e2e`) first."]
     # Start each case from a clean ImGui layout (window positions persist in
     # imgui.ini otherwise, which would make UI clicks non-deterministic).
-    try:
-        os.remove(os.path.join(REPO_ROOT, "imgui.ini"))
-    except FileNotFoundError:
-        pass
+    # And from no saved settings: a locally saved settings.json (display
+    # mode, postfx, the UI knobs) would leak into every case otherwise.
+    for f in ("imgui.ini", "settings.json"):
+        try:
+            os.remove(os.path.join(REPO_ROOT, f))
+        except FileNotFoundError:
+            pass
 
     cmd = build_cmd(game, case["args"])
     diag = []

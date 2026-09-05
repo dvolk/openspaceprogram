@@ -9,11 +9,14 @@
 #include <cstdarg>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 #include "eva.h"      // Kerbal (the crew characters)
 #include "physics.h"  // SetMass, AddPhysicsBody, RemoveBody, setPosRot, GetPosition
 #include "pick.h"     // pickShipPart (pickAt)
+#include "settings.h" // SettingsData + the settings.json JSON mapping
 #include "shipdef.h"  // PartDef (crew_capacity)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
@@ -165,6 +168,123 @@ void Game::apply_ui_style() {
     style.WindowRounding = window_rounding;
     style.Alpha = ui_alpha;
     ImGui::GetStyle() = style;
+}
+
+/* Settings persistence (the JSON mapping is in settings.cpp).
+   collect_settings reads the live state (args + Game + PostFX);
+   apply_settings writes it back, honoring the CLI mask (args.cli_given:
+   the command line beats the file, field by field). load starts from
+   collect, so a field the file does not mention keeps its current value. */
+static SettingsData collect_settings(Game &g) {
+    SettingsData s;
+    s.window_mode = (int)g.args.window_mode;
+    s.screen_width = g.args.screen_width;
+    s.screen_height = g.args.screen_height;
+    s.msaa_samples = g.args.msaa_samples;
+    s.physics_debug_drawing = g.physics_debug_drawing;
+    s.world_drawing = g.world_drawing;
+    s.draw_starfield = g.draw_starfield;
+    s.draw_skylines = g.draw_skylines;
+    for(const std::string &fx : PostFX::Available()) {
+        if(g.postfx->IsEnabled(fx)) { s.postfx_enabled.push_back(fx); }
+    }
+    s.gamma = g.postfx->GetParam("gamma");
+    s.ui_style = g.ui_style;
+    s.window_rounding = g.window_rounding;
+    s.ui_alpha = g.ui_alpha;
+    s.ui_scale = g.ui_scale;
+    s.camFovDeg = g.args.camFovDeg;
+    s.terrain_px = g.args.terrain_px;
+    s.exhaust_scale = g.args.exhaust_scale;
+    s.flip_pitch = g.flip_pitch;
+    s.flip_yaw = g.flip_yaw;
+    s.flip_roll = g.flip_roll;
+    return s;
+}
+
+static void apply_settings(Game &g, const SettingsData &s) {
+    GameArgs &args = g.args;
+    if(!args.cli_given.window_mode) {
+        args.window_mode = static_cast<WindowMode>(s.window_mode);
+    }
+    if(!args.cli_given.width)  { args.screen_width  = s.screen_width; }
+    if(!args.cli_given.height) { args.screen_height = s.screen_height; }
+    if(!args.cli_given.msaa)   { args.msaa_samples  = s.msaa_samples; }
+    if(!args.cli_given.fov)           { args.camFovDeg     = s.camFovDeg; }
+    if(!args.cli_given.terrain_px)    { args.terrain_px    = s.terrain_px; }
+    if(!args.cli_given.exhaust_scale){ args.exhaust_scale = s.exhaust_scale; }
+    if(!args.cli_given.postfx) {
+        // The effect set is one CLI unit (--postfx): apply the file's
+        // list. Unknown names are never touched -- only Available() names
+        // are iterated.
+        for(const std::string &fx : PostFX::Available()) {
+            const bool on =
+                std::find(s.postfx_enabled.begin(), s.postfx_enabled.end(),
+                          fx) != s.postfx_enabled.end();
+            g.postfx->SetEnabled(fx, on);
+        }
+        g.postfx->SetParam("gamma", s.gamma);
+    }
+    g.physics_debug_drawing = s.physics_debug_drawing;
+    g.world_drawing = s.world_drawing;
+    g.draw_starfield = s.draw_starfield;
+    g.draw_skylines = s.draw_skylines;
+    g.ui_style = s.ui_style;
+    g.window_rounding = s.window_rounding;
+    g.ui_alpha = s.ui_alpha;
+    g.ui_scale = s.ui_scale;
+    g.flip_pitch = s.flip_pitch;
+    g.flip_yaw = s.flip_yaw;
+    g.flip_roll = s.flip_roll;
+}
+
+/* "Save" (the Settings window): the current Settings state to
+   ./settings.json. */
+bool Game::save_settings() {
+    nlohmann::json j;
+    settings_write(collect_settings(*this), j);
+    std::ofstream f(kSettingsFile);
+    if(!f) { return false; }
+    f << j.dump(2) << "\n";
+    f.flush();
+    return (bool)f;
+}
+
+/* Startup (main): restore the saved state over the CLI defaults when
+   ./settings.json exists. A field the file does not mention keeps its
+   current value; a field the CLI set explicitly (args.cli_given) is
+   never touched. */
+void Game::load_settings() {
+    std::ifstream f(kSettingsFile);
+    if(!f) { return; }   // no settings.json: the CLI + defaults stand
+    std::string text((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(text);
+    } catch(const std::exception &e) {
+        printf("settings.json: %s (ignored)\n", e.what());
+        return;
+    }
+    // The launch mode/size (what the Renderer was created with): if the
+    // file changes it, apply it live below.
+    const WindowMode orig_mode = args.window_mode;
+    const int orig_w = args.screen_width;
+    const int orig_h = args.screen_height;
+
+    SettingsData s = collect_settings(*this);
+    settings_read(j, s);
+    apply_settings(*this, s);
+
+    if(args.window_mode != orig_mode ||
+       (args.window_mode != WindowMode::Fullscreen &&
+        (args.screen_width != orig_w || args.screen_height != orig_h))) {
+        // The saved display settings changed the launch mode/size: apply
+        // live (the first poll_events' SIZE_CHANGED finishes the resize,
+        // the same path the Settings dropdowns use).
+        display.setWindowMode(args.window_mode,
+                              args.screen_width, args.screen_height);
+    }
 }
 
 /* Push a one-shot on-screen message. The queue is bounded: expired

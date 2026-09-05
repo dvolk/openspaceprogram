@@ -247,6 +247,11 @@ int main(int argc, char **argv)
     // it through this, so the state has a single home.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
+    // settings.json (the Settings window's "Save" button): restore the
+    // saved state over the CLI defaults, before apply_ui_style and the
+    // camera construction read the ui + fov values. A field the CLI set
+    // explicitly (args.cli_given) beats the file.
+    game.load_settings();
     game.apply_ui_style();  // the Settings defaults (dark theme, scale 1.0)
 
     // --start-time: start the analytic clock (and every body's orbit and

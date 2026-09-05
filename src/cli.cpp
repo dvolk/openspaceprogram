@@ -501,5 +501,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     args.scenario_given = app.get_option("--scenario") != nullptr
                         && app.get_option("--scenario")->count() > 0;
 
+    /* Which settings the CLI set explicitly (CLI11 ->count()): the
+       settings.json load honors this mask -- the command line beats the
+       saved file, field by field. */
+    args.cli_given.window_mode =
+        (fs_opt->count() + bl_opt->count() + ex_opt->count()) > 0;
+    args.cli_given.width = app.get_option("--width")->count() > 0;
+    args.cli_given.height = app.get_option("--height")->count() > 0;
+    args.cli_given.msaa = !msaa.empty();
+    args.cli_given.postfx = !args.postfx_spec.empty();
+    args.cli_given.fov = app.get_option("--fov")->count() > 0;
+    args.cli_given.terrain_px = app.get_option("--terrain-px")->count() > 0;
+    args.cli_given.exhaust_scale =
+        app.get_option("--exhaust-scale")->count() > 0;
+
     return true;
 }

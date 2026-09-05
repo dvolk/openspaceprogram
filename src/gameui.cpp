@@ -444,6 +444,13 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Checkbox("Flip yaw (A/D)", &flip_yaw);
         ImGui::Checkbox("Flip roll (Q/E)", &flip_roll);
         ImGui::Spacing();
+        if(ImGui::Button("Save settings", ImVec2(240.0f, 0.0f))) {
+            if(g.save_settings()) {
+                g.toast("Settings saved (settings.json)");
+            } else {
+                g.toast("Could not write settings.json");
+            }
+        }
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
             ui::SetOpen("Settings", false);
         }
