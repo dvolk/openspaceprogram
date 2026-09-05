@@ -375,6 +375,11 @@
       "capacity": {
         "hydrazine": 10.0
       }
+    },
+    {
+      "name": "fuel_link",
+      "type": "fuel_link",
+      "fuel_link": true
     }
   ]
 }

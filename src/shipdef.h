@@ -160,6 +160,14 @@ struct PartDef {
        and leave it false. See Vehicle::buildFuelGroups. */
     bool fuel_barrier;
 
+    /* true -> a fuel link: a virtual (no-mesh) one-way connection between
+       fuel groups. It carries no physics (no body, no mass) -- it only
+       declares that fuel may flow one way between two parts' groups (see
+       Vehicle::fuelLinks). It is removed from def.parts at the top of
+       build_ship, so the rest of build_ship never sees it. See ShipPart's
+       from/to for the endpoints. */
+    bool fuel_link;
+
     /* Collision convex-hull margin (m), the catalog default for this
        part. -1 = not set -> the physics engine's default applies
        (OSP_HULL_MARGIN / 0.1). A ship def's hull_margin (see ShipDef)
@@ -186,7 +194,11 @@ enum class AttachMode {
 
 /* One part INSTANCE in a ship def, in construction order (index 0 = root).
    `parent` is resolved to an index at load time; it must point at an
-   earlier part (that rule is what keeps the parts a tree). */
+   earlier part (that rule is what keeps the parts a tree). A fuel link
+   (see PartDef.fuel_link) is a virtual part: it has no parent/attach --
+   instead `from`/`to` name the two parts (by instance id) whose groups
+   it connects, fuel flowing from -> to. The ids are resolved to Part*
+   at build time (see build_ship). */
 struct ShipPart {
     std::string part;      // catalog name
     std::string id;        // instance id (explicit, or auto "<name>_<n>")
@@ -196,6 +208,10 @@ struct ShipPart {
     double angle;          // degrees around the parent's stack axis (0 = parent +X)
     double offset;         // m of gap along the attach axis, beyond touching faces
     int stage;             // reserved for staging; 1 = single stage
+    std::string from;      // fuel link only: source part id (fuel flows out of)
+    std::string to;        // fuel link only: destination part id (fuel flows into)
+
+    bool isFuelLink() const { return def != nullptr && def->fuel_link; }
 };
 
 struct ShipDef {

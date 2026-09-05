@@ -31,6 +31,9 @@
     { "part": "decoupler_radial", "id": "rdecupler2", "attach": "side", "parent": "central_tank2", "angle": 180, "stage": 1 },
     { "part": "tank_r1.5h5", "id": "rtank21", "parent": "rdecupler2", "attach": "side", "stage": 1 },
     { "part": "tank_r1.5h5", "id": "rtank22", "parent": "rtank21", "stage": 1 },
-    { "part": "engine_r1.5h3", "id": "rengine2", "parent": "rtank22", "stage": 1 }
+    { "part": "engine_r1.5h3", "id": "rengine2", "parent": "rtank22", "stage": 1 },
+
+    { "part": "fuel_link", "id": "asparagus1", "from": "rtank12", "to": "central_engine2" },
+    { "part": "fuel_link", "id": "asparagus2", "from": "rtank22", "to": "central_engine2" }
   ]
 }

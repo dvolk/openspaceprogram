@@ -4,6 +4,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <functional>
+#include <map>
 #include <stdexcept>
 
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
@@ -18,7 +20,42 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                        const glm::dvec3 &base, const glm::dmat3 &orient)
 {
     printf("Building ship '%s' (%d parts)\n", def.name.c_str(), (int)def.parts.size());
-    const size_t n = def.parts.size();
+
+    /* 0) partition the def's parts into physical parts (those that get a
+       Body) and fuel links (virtual -- no Body, no mesh). The fuel links
+       are resolved to Part* edges after the physical parts exist. The
+       parent indices (set at load time) are indices into def.parts, so I
+       remap them to the physical-part indices as I go. A fuel link can
+       never be a parent (it is virtual), so the remap is safe. */
+    std::vector<ShipPart> physical;
+    std::vector<const ShipPart *> links;
+    std::map<size_t, size_t> physIndex;  // def.parts index -> physical index
+    for(size_t i = 0; i < def.parts.size(); i++) {
+        const ShipPart &sp = def.parts[i];
+        if(sp.isFuelLink()) {
+            links.push_back(&sp);
+            continue;
+        }
+        physIndex[i] = physical.size();
+        physical.push_back(sp);
+        if(physical.back().parent >= 0) {
+            auto it = physIndex.find((size_t)physical.back().parent);
+            if(it == physIndex.end()) {
+                throw std::runtime_error("build_ship: parent of '" + sp.id
+                                         + "' is a fuel link (virtual parts cannot be parents)");
+            }
+            physical.back().parent = (int)it->second;
+        }
+    }
+
+    /* Remap the controller index to the physical-part index (the controller
+       is always a physical part -- a fuel link can't be a controller). */
+    int controllerIdx = def.controllerIndex();
+    auto cit = physIndex.find((size_t)controllerIdx);
+    if(cit == physIndex.end()) {
+        throw std::runtime_error("build_ship: controller is a fuel link");
+    }
+    const size_t n = physical.size();
 
     /* 1) relative poses in a canonical frame: the root at the origin, +Z =
        the stack axis, each child welded to its (earlier) parent by the
@@ -29,9 +66,9 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     pos[0] = glm::dvec3(0.0);
     rot[0] = glm::dmat3(1.0);
     for(size_t i = 1; i < n; i++) {
-        const ShipPart &sp = def.parts[i];
+        const ShipPart &sp = physical[i];
         AttachPose ap = attachPose(pos[(size_t)sp.parent], rot[(size_t)sp.parent],
-                                   *def.parts[(size_t)sp.parent].def, *sp.def,
+                                   *physical[(size_t)sp.parent].def, *sp.def,
                                    sp.attach, sp.angle, sp.offset);
         pos[i] = ap.childPos;
         rot[i] = ap.childRot;
@@ -44,7 +81,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
        radius (its cross-section lies across the stack axis). */
     double lowest = 1e30;
     for(size_t i = 0; i < n; i++) {
-        const ShipPart &sp = def.parts[i];
+        const ShipPart &sp = physical[i];
         double extent = (i > 0 && sp.attach == AttachMode::Radial)
                        ? sp.def->radius : sp.def->height / 2.0;
         lowest = std::min(lowest, pos[i].z - extent);
@@ -57,7 +94,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     const glm::dvec3 shift = glm::dvec3(0.0, 0.0, -lowest + 0.6);
 
     for(size_t i = 0; i < n; i++) {
-        const PartDef &pd = *def.parts[i].def;
+        const PartDef &pd = *physical[i].def;
 
         Mesh *mesh = new Mesh;
         mesh->FromFile((std::string("./res/") + pd.mesh).c_str(), true);
@@ -72,16 +109,78 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         Part *part = new Part;
         part->body  = b;
         part->def   = &pd;
-        part->stage = def.parts[i].stage;
+        part->stage = physical[i].stage;
 
         if(i == 0) {
             ship->setRoot(part);
         } else {
-            const ShipPart &sp = def.parts[i];
+            const ShipPart &sp = physical[i];
             ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i]);
         }
     }
-    ship->controller = ship->parts[def.controllerIndex()];
+    ship->controller = ship->parts[cit->second];
+
+    /* 4) resolve the fuel links (from/to ids -> Part*). The ids reference
+       the physical parts (a fuel link can't reference another fuel link),
+       so I build an id -> Part* map and look up each endpoint. Reject link
+       cycles (A->B and B->A, or longer) -- the drain model requires a DAG. */
+    if(!links.empty()) {
+        std::map<std::string, Part *> idToPart;
+        for(size_t i = 0; i < n; i++) {
+            idToPart[physical[i].id] = ship->parts[i];
+        }
+        for(size_t k = 0; k < links.size(); k++) {
+            const ShipPart *lk = links[k];
+            auto f = idToPart.find(lk->from);
+            auto t = idToPart.find(lk->to);
+            if(f == idToPart.end()) {
+                throw std::runtime_error("build_ship: fuel link '" + lk->id
+                                         + "' references unknown part '" + lk->from + "'");
+            }
+            if(t == idToPart.end()) {
+                throw std::runtime_error("build_ship: fuel link '" + lk->id
+                                         + "' references unknown part '" + lk->to + "'");
+            }
+            ship->fuelLinks.push_back(Vehicle::FuelLink{ f->second, t->second });
+        }
+        /* cycle check: build the directed graph (from -> to) and do a DFS
+           for back-edges. The graph is over fuel GROUPS (not parts), so I
+           collapse each endpoint to its fuelGroup first. */
+        ship->buildFuelGroups();
+        std::map<int, std::vector<int>> dag;  // fuelGroup -> outgoing fuelGroups
+        for(size_t k = 0; k < ship->fuelLinks.size(); k++) {
+            int a = ship->fuelLinks[k].from->fuelGroup;
+            int b = ship->fuelLinks[k].to->fuelGroup;
+            if(a < 0 || b < 0) { continue; }  // an endpoint in no group (a barrier)
+            if(a != b) { dag[a].push_back(b); }
+        }
+        std::map<int, int> color;  // 0 = white, 1 = grey, 2 = black
+        for(auto it = dag.begin(); it != dag.end(); ++it) { color[it->first] = 0; }
+        for(size_t k = 0; k < ship->fuelLinks.size(); k++) {
+            int a = ship->fuelLinks[k].from->fuelGroup;
+            if(a >= 0) { color[a] = 0; }
+        }
+        std::function<bool(int, std::string&)> dfs = [&](int u, std::string &path) -> bool {
+            color[u] = 1;
+            for(size_t i = 0; i < dag[u].size(); i++) {
+                int v = dag[u][i];
+                if(color[v] == 1) { return true; }  // back-edge -> cycle
+                if(color[v] == 0 && dfs(v, path)) { return true; }
+            }
+            color[u] = 2;
+            return false;
+        };
+        for(auto it = dag.begin(); it != dag.end(); ++it) {
+            if(color[it->first] == 0) {
+                std::string path;
+                if(dfs(it->first, path)) {
+                    throw std::runtime_error("build_ship: fuel links form a cycle "
+                                             "(a two-way link is not allowed)");
+                }
+            }
+        }
+    }
+
     ship->init();
 }
 

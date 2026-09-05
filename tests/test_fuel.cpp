@@ -305,6 +305,109 @@ static void test_repeated_draws_stay_symmetric() {
     destroyShip(s);
 }
 
+/* A fuel link (from -> to) means fuel flows from->to, so the engine in `to`'s
+   group can draw from `from`'s group. The linked source is drained FIRST
+   (furthest source first), then the engine's own group. */
+static void test_fuel_link_one_way() {
+    printf("== Fuel link: one-way (linked source drains first) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tankA = addPart(s, 100, 100);
+    Part *tankB = addPart(s, 100, 100);
+    link(s, engA, tankA);
+    initShip(s);   /* groups: engA+tankA=0, tankB=1 */
+
+    /* Fuel link: tankB's group -> engA's group (fuel flows from B to A). */
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankB, engA});
+
+    /* Engine A drains tankB (linked source, dist 1) first, then tankA (dist 0). */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
+               "engine A draws 50 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+               "tankB drained 50 (linked source, drained first)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched (own group, drained second)");
+
+    /* Drain 80 more: tankB has 50 left (drains fully), then tankA drains 30. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 80.0f, engA),
+               "engine A draws 80 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankB empty");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+               "tankA drained 30");
+    destroyShip(s);
+}
+
+/* Two-hop chain C->B->A: the furthest source (C) drains first, then B, then A.
+   This exercises the transitive drain order (the "C->B->A drains C, then B,
+   then A" rule). The links are tank->tank (not just tank->engine). */
+static void test_fuel_link_two_hop() {
+    printf("== Fuel link: two-hop C->B->A (furthest first, tank->tank) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tankA = addPart(s, 100, 100);
+    Part *tankB = addPart(s, 100, 100);
+    Part *tankC = addPart(s, 100, 100);
+    link(s, engA, tankA);
+    initShip(s);   /* groups: engA+tankA=0, tankB=1, tankC=2 */
+
+    /* Fuel links: C feeds B, B feeds A (tank->tank chain). */
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankC, tankB});
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankB, engA});
+
+    /* Engine A drains C (dist 2), then B (dist 1), then A (dist 0). */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
+               "engine A draws 50 kg");
+    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+               "tankC drained 50 (furthest, drained first)");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankB untouched");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched");
+
+    /* Drain 120 more: C has 50 left (drains fully), then B drains 70. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 120.0f, engA),
+               "engine A draws 120 kg");
+    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankC empty");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 30.0, 1e-5,
+               "tankB drained 70");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched");
+
+    /* Drain 120 more: B has 30 left (drains fully), then A drains 90. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 120.0f, engA),
+               "engine A draws 120 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankB empty");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+               "tankA drained 90");
+    destroyShip(s);
+}
+
+/* A flow above the total of ALL source groups (linked + own): refused,
+   nothing drained. */
+static void test_fuel_link_insufficient() {
+    printf("== Fuel link: insufficient total across all groups ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tankA = addPart(s, 60, 60);
+    Part *tankB = addPart(s, 60, 60);
+    link(s, engA, tankA);
+    initShip(s);   /* groups: engA+tankA=0, tankB=1 */
+
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankB, engA});
+
+    /* Total = 60 (A) + 60 (B) = 120. Request 130: refused. */
+    CHECK_TRUE(!s.v->consumeResourceMass(ResourceType::Hydrogen, 130.0f, engA),
+               "flow above the total is refused");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+               "tankA untouched");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+               "tankB untouched");
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -319,6 +422,12 @@ int main() {
     test_full_drain();
     printf("\n");
     test_repeated_draws_stay_symmetric();
+    printf("\n");
+    test_fuel_link_one_way();
+    printf("\n");
+    test_fuel_link_two_hop();
+    printf("\n");
+    test_fuel_link_insufficient();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

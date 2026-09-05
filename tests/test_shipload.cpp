@@ -60,7 +60,7 @@ static glm::dmat3 testOrient() {
 int main() {
     // --- parts catalog ----------------------------------------------------
     PartsCatalog cat = load_parts_catalog("res/parts.json");
-    CHECK(cat.parts.size() == 34);
+    CHECK(cat.parts.size() == 35);
     CHECK(cat.find("nope") == nullptr);
 
     const PartDef *cap = cat.find("capsule");
@@ -86,6 +86,19 @@ int main() {
     // it splits fuel groups (an engine can't draw from the other side).
     const PartDef *dc = cat.find("decoupler_r1");
     CHECK(dc != nullptr && dc->decoupler && dc->fuel_barrier);
+
+    // fuel link: a virtual (no-mesh) one-way fuel connection. It is a marker
+    // entry -- no geometry, no mass (the catalog parser skips the validation
+    // for it). The endpoints come from the ship def (from/to), not the catalog.
+    const PartDef *fl = cat.find("fuel_link");
+    CHECK(fl != nullptr);
+    CHECK(fl->fuel_link);
+    CHECK(fl->mesh.empty() && fl->texture.empty());
+    CHECK(fl->mass == 0.0);
+    CHECK(fl->torque == 0.0 && fl->fuel_rate == 0.0);
+    for(size_t r = 0; r < fl->capacity.size(); r++) {
+        CHECK(fl->capacity[r] == 0.0f);
+    }
 
     // pre-size parts default to the legacy 2 m cube (radius 1, height 2)
     CHECK(cap->radius == 1.0 && cap->height == 2.0);
@@ -710,6 +723,65 @@ int main() {
              "\"hull_margin\": -0.5 } ] }";
         f.close();
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // fuel link in a ship def: from/to are parsed, the part is flagged
+    {
+        const char *ok = "/tmp/test_shipload_fuellink.json";
+        std::ofstream f(ok);
+        f << "{ \"name\": \"linkship\", "
+             "\"parts\": [ { \"part\": \"tank_r1h3\", \"id\": \"tA\" }, "
+             " { \"part\": \"engine\", \"id\": \"eA\", \"parent\": \"tA\" }, "
+             " { \"part\": \"tank_r1h3\", \"id\": \"tB\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"l1\", "
+             "   \"from\": \"tB\", \"to\": \"eA\" } ] }";
+        f.close();
+        ShipDef fldef = load_ship_def(ok, cat);
+        CHECK(fldef.parts.size() == 4);
+        CHECK(fldef.parts[3].isFuelLink());
+        CHECK(fldef.parts[3].from == "tB");
+        CHECK(fldef.parts[3].to == "eA");
+        CHECK(!fldef.parts[0].isFuelLink());
+        CHECK(fldef.parts[0].from.empty() && fldef.parts[0].to.empty());
+        std::remove(ok);
+    }
+
+    // fuel link without from/to: rejected
+    {
+        const char *bad = "/tmp/test_shipload_fuellink.json";
+        std::ofstream f(bad);
+        f << "{ \"name\": \"linkship\", "
+             "\"parts\": [ { \"part\": \"tank_r1h3\", \"id\": \"tA\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"l1\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+
+    // fuel link with from == to: rejected
+    {
+        const char *bad = "/tmp/test_shipload_fuellink.json";
+        std::ofstream f(bad);
+        f << "{ \"name\": \"linkship\", "
+             "\"parts\": [ { \"part\": \"tank_r1h3\", \"id\": \"tA\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"l1\", "
+             "   \"from\": \"tA\", \"to\": \"tA\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+
+    // fuel link referencing itself: rejected
+    {
+        const char *bad = "/tmp/test_shipload_fuellink.json";
+        std::ofstream f(bad);
+        f << "{ \"name\": \"linkship\", "
+             "\"parts\": [ { \"part\": \"tank_r1h3\", \"id\": \"tA\" }, "
+             " { \"part\": \"fuel_link\", \"id\": \"l1\", "
+             "   \"from\": \"l1\", \"to\": \"tA\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
         std::remove(bad);
     }
 

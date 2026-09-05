@@ -10,7 +10,7 @@
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
       exhaust_velocity(0.0), crew_capacity(0), decoupler(false),
-      fuel_barrier(false), hull_margin(-1.0) {
+      fuel_barrier(false), fuel_link(false), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -67,25 +67,34 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         d.type = pv.value("type", std::string(""));   // free-form label (display only)
-        d.mesh = pv.value("mesh", std::string(""));
-        d.texture = pv.value("texture", std::string(""));
-        if(d.mesh.empty() || d.texture.empty()) {
-            throw std::runtime_error(std::string(ctx) + "missing \"mesh\"/\"texture\"");
-        }
-        d.mass = pv.value("mass", -1.0);
-        if(d.mass <= 0.0) {
-            throw std::runtime_error(std::string(ctx) + "\"mass\" must be > 0 (kg)");
-        }
 
-        /* size (metres): the .obj is authored to match; defaults are the
-           legacy 2 m cube so pre-size parts are unchanged */
-        d.radius = pv.value("radius", 1.0);
-        d.height = pv.value("height", 2.0);
-        if(d.radius <= 0.0) {
-            throw std::runtime_error(std::string(ctx) + "\"radius\" must be > 0 (m)");
-        }
-        if(d.height <= 0.0) {
-            throw std::runtime_error(std::string(ctx) + "\"height\" must be > 0 (m)");
+        /* fuel link: a virtual (no-mesh) one-way fuel connection. It is a
+           marker entry -- no geometry, no mass, so the mesh/texture/mass/
+           size validation below is skipped. (It still needs a catalog
+           entry so ship defs can reference it by name.) */
+        d.fuel_link = pv.value("fuel_link", false);
+
+        if(!d.fuel_link) {
+            d.mesh = pv.value("mesh", std::string(""));
+            d.texture = pv.value("texture", std::string(""));
+            if(d.mesh.empty() || d.texture.empty()) {
+                throw std::runtime_error(std::string(ctx) + "missing \"mesh\"/\"texture\"");
+            }
+            d.mass = pv.value("mass", -1.0);
+            if(d.mass <= 0.0) {
+                throw std::runtime_error(std::string(ctx) + "\"mass\" must be > 0 (kg)");
+            }
+
+            /* size (metres): the .obj is authored to match; defaults are
+               the legacy 2 m cube so pre-size parts are unchanged */
+            d.radius = pv.value("radius", 1.0);
+            d.height = pv.value("height", 2.0);
+            if(d.radius <= 0.0) {
+                throw std::runtime_error(std::string(ctx) + "\"radius\" must be > 0 (m)");
+            }
+            if(d.height <= 0.0) {
+                throw std::runtime_error(std::string(ctx) + "\"height\" must be > 0 (m)");
+            }
         }
 
         /* Behavior is field-driven (see shipdef.h): each optional field is
@@ -286,6 +295,28 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
         if(sp.stage < 1) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
                                      + ": \"stage\" must be >= 1");
+        }
+
+        /* fuel link: from/to (the two parts it connects, by instance id).
+           Required, distinct, not the link's own id. The ids are resolved
+           to Part* at build time (after all parts exist), so here I only
+           check the strings. parent/attach/angle/offset/stage are ignored
+           for a fuel link (it is virtual -- not welded). */
+        if(sp.isFuelLink()) {
+            sp.from = pv.value("from", std::string(""));
+            sp.to = pv.value("to", std::string(""));
+            if(sp.from.empty() || sp.to.empty()) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": a fuel link needs \"from\" and \"to\"");
+            }
+            if(sp.from == sp.to) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": a fuel link's \"from\" and \"to\" must differ");
+            }
+            if(sp.from == sp.id || sp.to == sp.id) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": a fuel link cannot reference itself");
+            }
         }
 
         idToIndex[sp.id] = i;

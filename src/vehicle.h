@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -116,6 +117,15 @@ public:
        to `constraints`. The rails handoff detaches every weld and re-glues
        from these when the ship re-enters physics. */
     std::vector<std::pair<glm::dvec3, glm::dvec3>> constraintAnchors;
+
+    /* Fuel links (see PartDef.fuel_link): one-way fuel connections between
+       fuel groups. `from` -> `to` means fuel flows from `from`'s group to
+       `to`'s group (the engine in `to`'s group can draw fuel from `from`'s
+       group). Virtual -- no physics. Populated in build_ship (from the
+       def's fuel_link parts), dropped in separateStage (when either
+       endpoint is removed). */
+    struct FuelLink { Part *from; Part *to; };
+    std::vector<FuelLink> fuelLinks;
 
     /* Rails: an idle ship in free fall coasts analytically on its two-body
        conic instead of being integrated: its welds and rigid bodies are
@@ -324,31 +334,99 @@ public:
         return pool;
     }
 
-    /* Draw `amt` kg of `type` from the engine's fuel pool (fuelPool),
-       pro-rata across every tank in the pool that still holds it. Pro-rata,
-       NOT first-tank-first: draining one tank to empty before its siblings
-       shifts the ship's mass distribution and torques it under thrust (the
-       radial-tank spin); shares proportional to each tank's contents keep a
-       symmetric cluster draining together, and empty the tanks
-       simultaneously. Returns true if the pool's total covers amt (else the
-       thruster doesn't fire this tick). amt is the kg consumed THIS tick
-       (the caller scales the kg/s flow by the tick's simulated time). */
+    /* The fuel groups an engine can draw from, in drain order (furthest
+       source first). With no fuel links this is just the engine's own group
+       (distance 0) -- identical to the old behavior. With links it is the
+       reverse-reachable set: groups X with a directed path X -> ... -> G
+       (the engine's group), ordered by descending hop distance. The furthest
+       source empties first (the "C->B->A drains C, then B, then A" rule). */
+    std::vector<int> fuelDrainOrder(Part *engine) const {
+        const int g = engine->fuelGroup;
+        std::vector<int> groups;
+        if(g < 0) { return groups; }
+        /* reverse adjacency over fuel groups: rev[Y] = { X : X feeds Y }. */
+        std::map<int, std::vector<int> > rev;
+        for(size_t k = 0; k < fuelLinks.size(); k++) {
+            int a = fuelLinks[k].from->fuelGroup;
+            int b = fuelLinks[k].to->fuelGroup;
+            if(a < 0 || b < 0 || a == b) { continue; }
+            rev[b].push_back(a);
+        }
+        /* BFS from G in the reverse graph; dist[X] = hops from X to G. */
+        std::map<int, int> dist;
+        dist[g] = 0;
+        std::vector<int> queue;
+        queue.push_back(g);
+        for(size_t qi = 0; qi < queue.size(); qi++) {
+            int u = queue[qi];
+            std::map<int, std::vector<int> >::const_iterator it = rev.find(u);
+            if(it == rev.end()) { continue; }
+            for(size_t i = 0; i < it->second.size(); i++) {
+                int v = it->second[i];
+                if(dist.count(v)) { continue; }
+                dist[v] = dist[u] + 1;
+                queue.push_back(v);
+            }
+        }
+        for(std::map<int, int>::const_iterator it = dist.begin(); it != dist.end(); ++it) {
+            groups.push_back(it->first);
+        }
+        std::sort(groups.begin(), groups.end(), [&](int a, int b) {
+            return dist[a] > dist[b];
+        });
+        return groups;
+    }
+
+    /* Draw `amt` kg of `type` from the engine's fuel sources (fuelDrainOrder),
+       group-by-group in priority order (furthest source first), pro-rata
+       WITHIN each group. Pro-rata, NOT first-tank-first: draining one tank
+       to empty before its siblings shifts the ship's mass distribution and
+       torques it under thrust (the radial-tank spin); shares proportional
+       to each tank's contents keep a symmetric cluster draining together.
+       Returns true if the total covers amt (else the thruster doesn't fire
+       this tick). amt is the kg consumed THIS tick (the caller scales the
+       kg/s flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */, Part *engine) {
-        const std::vector<Part *> pool = fuelPool(engine);
+        const std::vector<int> groups = fuelDrainOrder(engine);
+        if(groups.empty()) { return false; }
+        /* Total fuel across all source groups. */
         float total = 0;
-        for(size_t i = 0; i < pool.size(); i++) {
-            total += pool[i]->resources.current[(int)type];
+        for(size_t gi = 0; gi < groups.size(); gi++) {
+            for(size_t i = 0; i < parts.size(); i++) {
+                Part *p = parts[i];
+                if(!p->isTank()) { continue; }
+                if(p->fuelGroup != groups[gi]) { continue; }
+                total += p->resources.current[(int)type];
+            }
         }
         if(total < amt) { return false; }
-        for(size_t i = 0; i < pool.size(); i++) {
-            Part *p = pool[i];
-            const float have = p->resources.current[(int)type];
-            if(have <= 0.0f) { continue; }
-            float take = amt * have / total; /* pro-rata share */
-            if(take > have) { take = have; } /* float rounding */
-            p->resources.current[(int)type] = have - take;
-            p->body->mass -= (double)take;
-            SetMass(p->body, p->body->mass);
+        /* Drain group-by-group in priority order, pro-rata within each. */
+        float remaining = amt;
+        for(size_t gi = 0; gi < groups.size() && remaining > 0.0f; gi++) {
+            const int grp = groups[gi];
+            std::vector<Part *> tanks;
+            float groupTotal = 0;
+            for(size_t i = 0; i < parts.size(); i++) {
+                Part *p = parts[i];
+                if(!p->isTank()) { continue; }
+                if(p->fuelGroup != grp) { continue; }
+                float have = p->resources.current[(int)type];
+                if(have <= 0.0f) { continue; }
+                tanks.push_back(p);
+                groupTotal += have;
+            }
+            if(groupTotal <= 0.0f) { continue; }
+            float take = remaining < groupTotal ? remaining : groupTotal;
+            for(size_t ti = 0; ti < tanks.size(); ti++) {
+                Part *p = tanks[ti];
+                float have = p->resources.current[(int)type];
+                float share = take * have / groupTotal;
+                if(share > have) { share = have; }
+                p->resources.current[(int)type] = have - share;
+                p->body->mass -= (double)share;
+                SetMass(p->body, p->body->mass);
+            }
+            remaining -= take;
         }
         return true;
     }
@@ -791,6 +869,16 @@ public:
         constraints.swap(keepCons);
         constraintLinks.swap(keepLinks);
         constraintAnchors.swap(keepAnchors);
+        /* 3b) Drop fuel links whose endpoint is in the dropped set (a link
+           touching a removed part is dangling). A Part* is stable, so the
+           surviving links keep their (still-alive) endpoints. */
+        std::vector<FuelLink> keepFuelLinks;
+        for(size_t k = 0; k < fuelLinks.size(); k++) {
+            if(droppedSet.count(fuelLinks[k].from) ||
+               droppedSet.count(fuelLinks[k].to)) { continue; }
+            keepFuelLinks.push_back(fuelLinks[k]);
+        }
+        fuelLinks.swap(keepFuelLinks);
         /* 4) If the controller was dropped, fall back to the first survivor
            (a Part* is stable -- no index remapping). */
         if(controllerDropped) { controller = parts[0]; }
