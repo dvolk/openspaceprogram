@@ -10,7 +10,6 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <iterator>
 #include <string>
 
 #include "eva.h"      // Kerbal (the crew characters)
@@ -202,8 +201,7 @@ static SettingsData collect_settings(Game &g) {
     return s;
 }
 
-static void apply_settings(Game &g, const SettingsData &s) {
-    GameArgs &args = g.args;
+static void apply_settings_args(const SettingsData &s, GameArgs &args) {
     if(!args.cli_given.window_mode) {
         args.window_mode = static_cast<WindowMode>(s.window_mode);
     }
@@ -213,7 +211,10 @@ static void apply_settings(Game &g, const SettingsData &s) {
     if(!args.cli_given.fov)           { args.camFovDeg     = s.camFovDeg; }
     if(!args.cli_given.terrain_px)    { args.terrain_px    = s.terrain_px; }
     if(!args.cli_given.exhaust_scale){ args.exhaust_scale = s.exhaust_scale; }
-    if(!args.cli_given.postfx) {
+}
+
+static void apply_settings_game(Game &g, const SettingsData &s) {
+    if(!g.args.cli_given.postfx) {
         // The effect set is one CLI unit (--postfx): apply the file's
         // list. Unknown names are never touched -- only Available() names
         // are iterated.
@@ -238,6 +239,18 @@ static void apply_settings(Game &g, const SettingsData &s) {
     g.flip_roll = s.flip_roll;
 }
 
+/* Startup phase 1 (main, before the Renderer): the file's args fields
+   must reach the window creation (the display mode/size + the MSAA count
+   are fixed in the GLX visual then), so they apply over the CLI defaults
+   here. SettingsData's defaults ARE the CLI defaults, so a field the
+   file does not mention lands back on the same value. No-op when the
+   file is absent. */
+void load_settings_args(GameArgs &args) {
+    SettingsData s;
+    if(!settings_load_file(s)) { return; }
+    apply_settings_args(s, args);
+}
+
 /* "Save" (the Settings window): the current Settings state to
    ./settings.json. */
 bool Game::save_settings() {
@@ -250,41 +263,14 @@ bool Game::save_settings() {
     return (bool)f;
 }
 
-/* Startup (main): restore the saved state over the CLI defaults when
-   ./settings.json exists. A field the file does not mention keeps its
-   current value; a field the CLI set explicitly (args.cli_given) is
-   never touched. */
+/* Startup phase 2 (main, once the Game exists): the Game + PostFX
+   fields. Started from the live state (collect_settings), so a field
+   the file does not mention keeps its current value. No-op when the
+   file is absent. */
 void Game::load_settings() {
-    std::ifstream f(kSettingsFile);
-    if(!f) { return; }   // no settings.json: the CLI + defaults stand
-    std::string text((std::istreambuf_iterator<char>(f)),
-                     std::istreambuf_iterator<char>());
-    nlohmann::json j;
-    try {
-        j = nlohmann::json::parse(text);
-    } catch(const std::exception &e) {
-        printf("settings.json: %s (ignored)\n", e.what());
-        return;
-    }
-    // The launch mode/size (what the Renderer was created with): if the
-    // file changes it, apply it live below.
-    const WindowMode orig_mode = args.window_mode;
-    const int orig_w = args.screen_width;
-    const int orig_h = args.screen_height;
-
     SettingsData s = collect_settings(*this);
-    settings_read(j, s);
-    apply_settings(*this, s);
-
-    if(args.window_mode != orig_mode ||
-       (args.window_mode != WindowMode::Fullscreen &&
-        (args.screen_width != orig_w || args.screen_height != orig_h))) {
-        // The saved display settings changed the launch mode/size: apply
-        // live (the first poll_events' SIZE_CHANGED finishes the resize,
-        // the same path the Settings dropdowns use).
-        display.setWindowMode(args.window_mode,
-                              args.screen_width, args.screen_height);
-    }
+    if(!settings_load_file(s)) { return; }
+    apply_settings_game(*this, s);
 }
 
 /* Push a one-shot on-screen message. The queue is bounded: expired

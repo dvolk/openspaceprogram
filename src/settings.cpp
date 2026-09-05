@@ -4,6 +4,10 @@
 // mistyped (hand-edited) field leaves s's current value in place.
 #include "settings.h"
 
+#include <cstdio>
+#include <fstream>
+#include <iterator>
+
 namespace {
 const char *mode_name(int m) {
     switch(m) {
@@ -115,4 +119,20 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     if(j.contains("flip_roll") && j["flip_roll"].is_boolean()) {
         s.flip_roll = j["flip_roll"].get<bool>();
     }
+}
+
+bool settings_load_file(SettingsData &s) {
+    std::ifstream f(kSettingsFile);
+    if(!f) { return false; }   // no settings.json: the caller's values stand
+    std::string text((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(text);
+    } catch(const std::exception &e) {
+        printf("settings.json: %s (ignored)\n", e.what());
+        return false;
+    }
+    settings_read(j, s);
+    return true;
 }

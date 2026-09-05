@@ -54,3 +54,8 @@ struct SettingsData {
 // load -- the current value stands for anything unrecognized).
 void settings_write(const SettingsData &s, nlohmann::json &j);
 void settings_read(const nlohmann::json &j, SettingsData &s);
+
+// Read kSettingsFile (if it exists and parses) over s -- so a field the
+// file does not mention keeps s's value; false (and s untouched) when
+// the file is missing, unreadable, or not valid JSON.
+bool settings_load_file(SettingsData &s);

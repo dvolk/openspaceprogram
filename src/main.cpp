@@ -82,6 +82,14 @@ int main(int argc, char **argv)
     int exit_code = 1;
     if(!parse_cli(argc, argv, args, &exit_code)) { return exit_code; }
 
+    // settings.json (the Settings window's "Save") phase 1: the file's
+    // args fields must reach the window creation -- the display mode/size
+    // and the MSAA count are fixed in the GLX visual by it, and
+    // setWindowMode can't change the MSAA after. Explicit CLI flags win
+    // field by field (args.cli_given). Phase 2 (game.load_settings)
+    // applies the Game + PostFX fields once the Game exists.
+    load_settings_args(args);
+
     Renderer display(args.screen_width, args.screen_height, args.window_mode,
                      args.msaa_samples, args.gl_debug);
     check_gl_error();
@@ -247,10 +255,9 @@ int main(int argc, char **argv)
     // it through this, so the state has a single home.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
-    // settings.json (the Settings window's "Save" button): restore the
-    // saved state over the CLI defaults, before apply_ui_style and the
-    // camera construction read the ui + fov values. A field the CLI set
-    // explicitly (args.cli_given) beats the file.
+    // settings.json phase 2 (the args fields were applied before the
+    // Renderer above): the Game + PostFX state, before apply_ui_style
+    // reads the ui knobs.
     game.load_settings();
     game.apply_ui_style();  // the Settings defaults (dark theme, scale 1.0)
 

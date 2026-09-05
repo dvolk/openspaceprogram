@@ -378,10 +378,11 @@ struct Game {
     void apply_ui_style();
     // Settings persistence (settings.h): the window's "Save" button writes
     // the current Settings state to ./settings.json; startup (main.cpp)
-    // restores it if the file exists. A field the CLI set explicitly
-    // (args.cli_given) beats the file; a display-mode/size the file changes
-    // is applied live through the same setWindowMode path the window's
-    // dropdowns use.
+    // restores it in two phases, split by what must exist to apply it --
+    // the args fields before the Renderer (the display mode/size + the
+    // MSAA count are fixed at window creation) and the Game + PostFX
+    // fields once the Game exists. A field the CLI set explicitly
+    // (args.cli_given) beats the file, in both phases.
     bool save_settings();
     void load_settings();
     // Take control of `v` (release + park the current one, recenter the
@@ -415,6 +416,14 @@ struct Game {
 // window, and log the outcome (the [pick] line is what the e2e cases
 // assert). Misses log a miss and leave the existing windows alone.
 void pickAt(Game &g, int px, int py);
+
+// settings.json launch phase (main.cpp, BEFORE the Renderer is built):
+// apply the file's args fields (display mode/size, the MSAA count -- the
+// GLX visual is fixed at window creation -- the FOV/terrain/exhaust
+// knobs) over the CLI defaults, honoring args.cli_given (the CLI wins).
+// No-op when settings.json is absent. The Game + PostFX fields are the
+// second phase (Game::load_settings), run once the Game exists.
+void load_settings_args(GameArgs &args);
 
 // Crew queries (defined in game.cpp). The aboard crew live on their ship
 // (Vehicle::crew), so these read it directly; the free kerbals are the

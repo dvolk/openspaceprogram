@@ -323,21 +323,26 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             // Antialiasing: the window's MSAA sample count is fixed at
             // creation (the GLX visual is chosen then), so picking a new
             // value here sets the launch value -- it takes effect on
-            // restart. The selection mirrors the count the window actually
-            // runs at (the driver may grant fewer than requested).
+            // restart. The selection tracks args.msaa_samples (the launch
+            // value, i.e. what's saved and what restart loads), so the
+            // dropdown always reflects your pick. Mirroring the count the
+            // current window actually runs at instead left it stuck on the
+            // old value until a restart.
             {
                 static const int aa_values[] = {0, 2, 4, 8};
                 static const char *const aa_names[] = {"none", "2x", "4x",
                                                        "8x"};
                 const int n_aa = 4;
-                const int granted = g.display.msaaSamples();
                 int sel = 0, best = INT_MAX;
                 for(int i = 0; i < n_aa; i++) {
-                    const int d = std::abs(aa_values[i] - granted);
+                    const int d = std::abs(aa_values[i] - args.msaa_samples);
                     if(d < best) { best = d; sel = i; }
                 }
+                // Split literals: in C, "\02" is the OCTAL escape for
+                // 0x02 (STX), not a null + '2' -- a single literal here
+                // would list the 2x/4x entries as missing-glyph boxes.
                 if(ImGui::Combo("Antialiasing", &sel,
-                                "none\02x\04x\08x\0")) {
+                                "none\0" "2x\0" "4x\0" "8x\0")) {
                     args.msaa_samples = aa_values[sel];
                     g.toast("Antialiasing: %s (applies on restart)",
                             aa_names[sel]);
