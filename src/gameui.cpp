@@ -376,17 +376,17 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             if(!on) { continue; }
             const std::vector<FXParam> params = PostFX::Params(fx);
             if(params.empty()) { continue; }
-            ImGui::Indent();
             for(const FXParam &p : params) {
-                char plabel[96];
-                snprintf(plabel, sizeof(plabel), "%s (%.2f = neutral)",
-                         p.name, p.neutral);
+                // Underscored uniform name -> natural-language label
+                // (black_level -> "black level").
+                char label[64];
+                snprintf(label, sizeof(label), "%s", p.name);
+                for(char *c = label; *c; c++) { if(*c == '_') *c = ' '; }
                 float v = g.postfx->GetParam(fx, p.name);
-                if(ImGui::SliderFloat(plabel, &v, p.min, p.max, "%.2f")) {
+                if(ImGui::SliderFloat(label, &v, p.min, p.max, "%.2f")) {
                     g.postfx->SetParam(fx, p.name, v);
                 }
             }
-            ImGui::Unindent();
         }
         if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
             g.apply_ui_style();
