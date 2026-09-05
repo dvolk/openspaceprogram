@@ -30,7 +30,15 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["starfield"] = s.draw_starfield;
     j["reference_circles"] = s.draw_skylines;
     j["postfx"] = s.postfx_enabled;   // enabled effect names, pass order
-    j["gamma"] = s.gamma;
+    nlohmann::json params = nlohmann::json::object();
+    for(const auto &fx : s.postfx_params) {
+        nlohmann::json inner = nlohmann::json::object();
+        for(const auto &p : fx.second) {
+            inner[p.first] = p.second;
+        }
+        params[fx.first] = inner;
+    }
+    j["postfx_params"] = params;
     j["ui_style"] = s.ui_style;
     j["window_rounding"] = s.window_rounding;
     j["ui_alpha"] = s.ui_alpha;
@@ -86,8 +94,21 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
             if(e.is_string()) { s.postfx_enabled.push_back(e.get<std::string>()); }
         }
     }
-    if(j.contains("gamma") && j["gamma"].is_number()) {
-        s.gamma = j["gamma"].get<float>();
+    // postfx_params: effect -> param name -> value; non-object entries and
+    // mistyped values are skipped, the rest lands as-is (unknown effect or
+    // param names are harmless -- SetParam ignores them at apply time).
+    if(j.contains("postfx_params") && j["postfx_params"].is_object()) {
+        s.postfx_params.clear();
+        for(auto it = j["postfx_params"].begin();
+            it != j["postfx_params"].end(); ++it) {
+            if(!it.value().is_object()) { continue; }
+            for(auto pit = it.value().begin(); pit != it.value().end(); ++pit) {
+                if(pit.value().is_number()) {
+                    s.postfx_params[it.key()][pit.key()] =
+                        pit.value().get<float>();
+                }
+            }
+        }
     }
     if(j.contains("ui_style") && j["ui_style"].is_number_integer()) {
         s.ui_style = j["ui_style"].get<int>();

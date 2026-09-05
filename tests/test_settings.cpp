@@ -21,8 +21,9 @@ int main() {
     s.draw_starfield = true;
     s.draw_skylines = true;
     s.postfx_enabled.push_back("crt");
-    s.postfx_enabled.push_back("gamma");
-    s.gamma = 1.25f;
+    s.postfx_enabled.push_back("color");
+    s.postfx_params["color"]["gamma"] = 1.25f;
+    s.postfx_params["color"]["brightness"] = 1.5f;
     s.ui_style = 2;
     s.window_rounding = 12.0f;
     s.ui_alpha = 0.5f;
@@ -52,8 +53,9 @@ int main() {
     assert(r.draw_skylines == true);
     assert(r.postfx_enabled.size() == 2);
     assert(r.postfx_enabled[0] == "crt");
-    assert(r.postfx_enabled[1] == "gamma");
-    assert(r.gamma == 1.25f);
+    assert(r.postfx_enabled[1] == "color");
+    assert(r.postfx_params["color"]["gamma"] == 1.25f);
+    assert(r.postfx_params["color"]["brightness"] == 1.5f);
     assert(r.ui_style == 2);
     assert(r.window_rounding == 12.0f);
     assert(r.ui_alpha == 0.5f);
@@ -69,7 +71,7 @@ int main() {
     //    state, mimicking collect_settings): only the file's fields move.
     SettingsData cur;
     cur.window_mode = 1;
-    cur.gamma = 1.7f;
+    cur.postfx_params["color"]["gamma"] = 1.7f;
     cur.camFovDeg = 65.0f;
     cur.postfx_enabled.push_back("grain");
     nlohmann::json partial = nlohmann::json::parse(
@@ -77,17 +79,19 @@ int main() {
     settings_read(partial, cur);
     assert(cur.window_mode == 3);
     assert(cur.camFovDeg == 90.0f);
-    assert(cur.gamma == 1.7f);   // untouched
+    assert(cur.postfx_params["color"]["gamma"] == 1.7f);   // untouched
     assert(cur.postfx_enabled.size() == 1);
     assert(cur.postfx_enabled[0] == "grain");
 
     // 3) mistyped keys are skipped, not fatal.
     nlohmann::json bad = nlohmann::json::parse(
-        R"({"screen_width": "six-hundred", "postfx": 42, "fov": [1, 2]})");
+        R"({"screen_width": "six-hundred", "postfx": 42,
+            "postfx_params": [1], "fov": [1, 2]})");
     SettingsData t;
     settings_read(bad, t);
     assert(t.screen_width == 1920);   // the default stands
     assert(t.postfx_enabled.empty());
+    assert(t.postfx_params.empty());
     assert(t.camFovDeg == 60.0f);
 
     // 4) an unknown window-mode word keeps the current value.

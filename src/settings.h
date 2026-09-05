@@ -6,6 +6,7 @@
 // beats the file, field by field.
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -30,10 +31,11 @@ struct SettingsData {
     bool world_drawing = true;
     bool draw_starfield = true;
     bool draw_skylines = false;
-    // postfx (PostFX): the enabled effect names (pass order) + the gamma
-    // strength (stored even when gamma is off, so re-enabling restores it)
+    // postfx (PostFX): the enabled effect names (pass order) + each
+    // effect's parameter values (stored even when the effect is off, so
+    // re-enabling restores them): effect -> param name -> value
     std::vector<std::string> postfx_enabled;
-    float gamma = 1.0f;
+    std::map<std::string, std::map<std::string, float>> postfx_params;
     // ui (Game)
     int ui_style = 0;             // 0 dark, 1 light, 2 classic
     float window_rounding = 0.0f;

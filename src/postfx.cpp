@@ -25,25 +25,27 @@ static const float QUAD_VERTS[16] = {
 //
 // `name` is a requestable name (aliases resolve to the same `canonical`);
 // `canonical` is what the Effect is stored under, so "sharpen" and "cas"
-// both map to one "cas" effect. `param` marks the effect that exposes the
-// per-effect strength knob (End() feeds it to the "gamma" uniform).
-struct FXDef {
-    const char *name;
-    const char *canonical;
-    const char *fs;
-    const char **uniforms; // nullptr-terminated
-    bool has_param;        // reads the per-effect "gamma" uniform
+// both map to one "cas" effect. `params` are the effect's settable
+// parameters (each a uniform End() feeds from the stored value); the
+// registered uniform list is "scene" + the param names + extra_uniforms.
+// The "color" effect (alias "gamma"): gamma, brightness, black level and
+// saturation, each 1.0/0.0-neutral as its name says.
+static const FXParam COLOR_PARAMS[] = {
+    { "gamma",       0.25f, 3.0f, 1.0f },
+    { "brightness",  0.0f,  2.0f, 1.0f },
+    { "black_level", -0.5f, 0.5f, 0.0f },
+    { "saturation",  0.0f,  2.0f, 1.0f },
 };
-static const char *CRT_UNIFORMS[] = { "scene", "resolution", "time", nullptr };
-static const char *GRAIN_UNIFORMS[] = { "scene", "time", nullptr };
-static const char *CAS_UNIFORMS[] = { "scene", "resolution", nullptr };
-static const char *GAMMA_UNIFORMS[] = { "scene", "gamma", nullptr };
+static const char *CRT_EXTRA[] = { "resolution", "time", nullptr };
+static const char *GRAIN_EXTRA[] = { "time", nullptr };
+static const char *CAS_EXTRA[] = { "resolution", nullptr };
 static const FXDef FX_DEFS[] = {
-    { "crt",     "crt",     "./res/fx_crt",     CRT_UNIFORMS,   false },
-    { "grain",   "grain",   "./res/fx_grain",   GRAIN_UNIFORMS, false },
-    { "cas",     "cas",     "./res/fx_sharpen", CAS_UNIFORMS,   false },
-    { "sharpen", "cas",     "./res/fx_sharpen", CAS_UNIFORMS,   false },
-    { "gamma",   "gamma",   "./res/fx_gamma",   GAMMA_UNIFORMS, true },
+    { "crt",     "crt",     "./res/fx_crt",     CRT_EXTRA,     nullptr,      0 },
+    { "grain",   "grain",   "./res/fx_grain",   GRAIN_EXTRA,   nullptr,      0 },
+    { "cas",     "cas",     "./res/fx_sharpen", CAS_EXTRA,     nullptr,      0 },
+    { "sharpen", "cas",     "./res/fx_sharpen", CAS_EXTRA,     nullptr,      0 },
+    { "color",   "color",   "./res/fx_color",   nullptr,       COLOR_PARAMS, 4 },
+    { "gamma",   "color",   "./res/fx_color",   nullptr,       COLOR_PARAMS, 4 },
 };
 
 static const FXDef *FindDef(const std::string& name) {
@@ -130,14 +132,23 @@ bool PostFX::AddEffect(const std::string& name)
     }
 
     Effect e;
+    e.def = def;
     e.name = def->canonical;
     e.enabled = false;
-    e.param = 1.0f;
+    for(int i = 0; i < def->n_params; i++) {
+        e.param_values.push_back(def->params[i].neutral);
+    }
     e.shader.reset(new Shader);
     e.shader->registerAttribs({ "position", "uv" });
     std::vector<const char *> uniforms;
-    for(const char **u = def->uniforms; *u != nullptr; u++) {
-        uniforms.push_back(*u);
+    uniforms.push_back("scene");
+    for(int i = 0; i < def->n_params; i++) {
+        uniforms.push_back(def->params[i].name);
+    }
+    if(def->extra_uniforms != nullptr) {
+        for(const char **u = def->extra_uniforms; *u != nullptr; u++) {
+            uniforms.push_back(*u);
+        }
     }
     e.shader->registerUniforms(uniforms);
     e.shader->FromFile("./res/fx_quad.vs", std::string(def->fs) + ".fs");
@@ -169,27 +180,53 @@ bool PostFX::IsEnabled(const std::string& name) const
     return false;
 }
 
-bool PostFX::SetParam(const std::string& name, float value)
+std::vector<FXParam> PostFX::Params(const std::string& name)
+{
+    std::vector<FXParam> out;
+    const FXDef *def = FindDef(name);
+    if(def == nullptr) { return out; }
+    for(int i = 0; i < def->n_params; i++) {
+        out.push_back(def->params[i]);
+    }
+    return out;
+}
+
+static int ParamIndex(const FXDef *def, const std::string& param)
+{
+    for(int i = 0; i < def->n_params; i++) {
+        if(param == def->params[i].name) return i;
+    }
+    return -1;
+}
+
+bool PostFX::SetParam(const std::string& name, const std::string& param,
+                      float value)
 {
     const FXDef *def = FindDef(name);
-    if(def == nullptr || !def->has_param) return false;
+    if(def == nullptr) { return false; }
+    int idx = ParamIndex(def, param);
+    if(idx < 0) { return false; }
     for(size_t i = 0; i < m_effects.size(); i++) {
         if(m_effects[i].name == def->canonical) {
-            m_effects[i].param = value;
+            m_effects[i].param_values[idx] = value;
             return true;
         }
     }
-    return false;
+    return false;   // the effect has not been created yet
 }
 
-float PostFX::GetParam(const std::string& name) const
+float PostFX::GetParam(const std::string& name, const std::string& param) const
 {
     const FXDef *def = FindDef(name);
-    if(def == nullptr || !def->has_param) return 1.0f;
+    if(def == nullptr) { return 0.0f; }
+    int idx = ParamIndex(def, param);
+    if(idx < 0) { return 0.0f; }
     for(size_t i = 0; i < m_effects.size(); i++) {
-        if(m_effects[i].name == def->canonical) return m_effects[i].param;
+        if(m_effects[i].name == def->canonical) {
+            return m_effects[i].param_values[idx];
+        }
     }
-    return 1.0f;
+    return def->params[idx].neutral;   // the effect has not been created yet
 }
 
 bool PostFX::Active() const
@@ -306,9 +343,12 @@ void PostFX::End()
                                  glm::vec2((float)m_width, (float)m_height));
         e.shader->setUniform_vec1("time",
                                  (float)(SDL_GetTicks() / 1000.0));
-        // The per-effect strength; a no-op for any pass without a "gamma"
-        // uniform (only the gamma effect registers it).
-        e.shader->setUniform_vec1("gamma", e.param);
+        // The settable parameters (the "color" effect's gamma/brightness/
+        // black_level/saturation); effects without any skip this loop.
+        for(int i = 0; i < e.def->n_params; i++) {
+            e.shader->setUniform_vec1(e.def->params[i].name,
+                                      e.param_values[i]);
+        }
 
         glBindVertexArray(m_quadVAO);
         check_gl_error();

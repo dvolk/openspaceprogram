@@ -355,8 +355,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Checkbox("Starfield", &draw_starfield);
         ImGui::Checkbox("Reference circles", &draw_skylines);
         // Post-processing: one checkbox per effect (the passes run in this
-        // order, i.e. PostFX::Available() order); gamma also gets a
-        // strength slider. A toggle takes effect from the next frame.
+        // order, i.e. PostFX::Available() order); an effect that exposes
+        // parameters (color: gamma/brightness/black level/saturation) also
+        // gets a slider per parameter (range + neutral value from the
+        // effect's definition). A toggle takes effect from the next frame.
         ImGui::Separator();
         ImGui::Text("Post-processing");
         for(const std::string &fx : PostFX::Available()) {
@@ -364,20 +366,27 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             if(fx == "crt") label = "CRT (retro tube)";
             else if(fx == "grain") label = "Film grain";
             else if(fx == "cas") label = "CAS sharpen";
-            else if(fx == "gamma") label = "Gamma";
+            else if(fx == "color") {
+                label = "Color (gamma, brightness, black level, saturation)";
+            }
             bool on = g.postfx->IsEnabled(fx);
             if(ImGui::Checkbox(label, &on)) {
                 g.postfx->SetEnabled(fx, on);
             }
-            if(fx == "gamma" && on) {
-                float gamma = g.postfx->GetParam("gamma");
-                ImGui::Indent();
-                if(ImGui::SliderFloat("gamma (1.0 = neutral)", &gamma,
-                                      0.25f, 3.0f, "%.2f")) {
-                    g.postfx->SetParam("gamma", gamma);
+            if(!on) { continue; }
+            const std::vector<FXParam> params = PostFX::Params(fx);
+            if(params.empty()) { continue; }
+            ImGui::Indent();
+            for(const FXParam &p : params) {
+                char plabel[96];
+                snprintf(plabel, sizeof(plabel), "%s (%.2f = neutral)",
+                         p.name, p.neutral);
+                float v = g.postfx->GetParam(fx, p.name);
+                if(ImGui::SliderFloat(plabel, &v, p.min, p.max, "%.2f")) {
+                    g.postfx->SetParam(fx, p.name, v);
                 }
-                ImGui::Unindent();
             }
+            ImGui::Unindent();
         }
         if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
             g.apply_ui_style();

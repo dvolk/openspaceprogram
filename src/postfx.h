@@ -7,6 +7,29 @@
 #include <vector>
 #include "shader.h"
 
+// A settable per-effect parameter (a uniform the effect's fragment shader
+// reads): its name (== the uniform), the Settings-window slider range,
+// and the neutral (no-op) value used as the default.
+struct FXParam {
+    const char *name;
+    float min;
+    float max;
+    float neutral;
+};
+
+// A built-in effect definition (the FX_DEFS table in postfx.cpp):
+// requestable name(s) resolving to one canonical effect, its fragment
+// shader, the uniforms besides "scene" + the parameter names, and the
+// settable parameters (nullptr = none).
+struct FXDef {
+    const char *name;
+    const char *canonical;
+    const char *fs;
+    const char **extra_uniforms; // nullptr-terminated
+    const FXParam *params;       // settable parameters (nullptr = none)
+    int n_params;
+};
+
 // Post-processing chain. With no effects active the scene renders
 // straight to the screen (zero cost). With N active effects the scene
 // renders into target 0 and each effect is a fullscreen pass that reads
@@ -26,9 +49,10 @@ public:
 
     // Built-in effect names, canonical, in the order the passes run.
     static const std::vector<std::string>& Available();
-    // Create an effect by name ("crt", "grain", "cas", "gamma"; "sharpen"
-    // is an alias for "cas"); false if unknown. Idempotent: adding a name
-    // that already exists is a no-op. New effects start disabled.
+    // Create an effect by name ("crt", "grain", "cas", "color"; "sharpen"
+    // is an alias for "cas", "gamma" an alias for "color"); false if
+    // unknown. Idempotent: adding a name that already exists is a no-op.
+    // New effects start disabled.
     bool AddEffect(const std::string& name);
 
     // Enable/disable an effect by name (alias-resolved); false if unknown.
@@ -36,11 +60,17 @@ public:
     bool SetEnabled(const std::string& name, bool enabled);
     bool IsEnabled(const std::string& name) const;
 
-    // The per-effect strength knob. Only the "gamma" effect uses it (as its
-    // "gamma" uniform; 1.0 = neutral). Set/Get are no-ops returning
-    // defaults for effects without a param.
-    bool SetParam(const std::string& name, float value);
-    float GetParam(const std::string& name) const;
+    // The effect's settable parameters (empty for effects without any);
+    // slider order == return order. "color" exposes gamma, brightness,
+    // black_level, saturation.
+    static std::vector<FXParam> Params(const std::string& name);
+
+    // Set/get a parameter value (each param is a uniform the effect reads;
+    // the neutral value is the default). false / 0.0 for an unknown effect
+    // or parameter name, and Set is a no-op until the effect exists.
+    bool SetParam(const std::string& name, const std::string& param,
+                  float value);
+    float GetParam(const std::string& name, const std::string& param) const;
 
     // True if any effect is enabled (drives Begin/End).
     bool Active() const;
@@ -58,10 +88,11 @@ private:
     // program, so a by-value copy/move (vector reallocation, a temporary
     // in AddEffect) would free objects a second Effect still references.
     struct Effect {
+        const FXDef *def;         // its FX_DEFS entry (uniforms + parameters)
         std::string name;         // canonical name (alias-resolved)
         std::unique_ptr<Shader> shader;
         bool enabled = false;     // toggled from Settings / --postfx
-        float param = 1.0f;       // strength; the "gamma" pass reads it as its "gamma" uniform (1.0 = neutral)
+        std::vector<float> param_values;  // parallel to def->params (neutral defaults)
     };
     std::vector<Effect> m_effects;
 

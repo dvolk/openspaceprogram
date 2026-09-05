@@ -186,8 +186,12 @@ static SettingsData collect_settings(Game &g) {
     s.draw_skylines = g.draw_skylines;
     for(const std::string &fx : PostFX::Available()) {
         if(g.postfx->IsEnabled(fx)) { s.postfx_enabled.push_back(fx); }
+        std::vector<FXParam> params = PostFX::Params(fx);
+        if(params.empty()) { continue; }
+        for(const FXParam &p : params) {
+            s.postfx_params[fx][p.name] = g.postfx->GetParam(fx, p.name);
+        }
     }
-    s.gamma = g.postfx->GetParam("gamma");
     s.ui_style = g.ui_style;
     s.window_rounding = g.window_rounding;
     s.ui_alpha = g.ui_alpha;
@@ -224,7 +228,13 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
                           fx) != s.postfx_enabled.end();
             g.postfx->SetEnabled(fx, on);
         }
-        g.postfx->SetParam("gamma", s.gamma);
+        // The effects all exist now (SetEnabled creates them), so the
+        // param values land; unknown effect/param names are skipped.
+        for(const auto &fx : s.postfx_params) {
+            for(const auto &p : fx.second) {
+                g.postfx->SetParam(fx.first, p.first, p.second);
+            }
+        }
     }
     g.physics_debug_drawing = s.physics_debug_drawing;
     g.world_drawing = s.world_drawing;

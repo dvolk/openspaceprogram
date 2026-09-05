@@ -203,9 +203,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "and/or comma-separated (e.g. --postfx cas,grain). "
                    "Available: crt (retro tube look), grain (animated film "
                    "grain), cas (adaptive-contrast sharpening, 'sharpen' "
-                   "also accepted), gamma (gamma/brightness; also toggleable "
-                   "with a strength slider in Settings). Omit for direct "
-                   "output (default)");
+                   "also accepted), color (gamma/brightness/black level/"
+                   "saturation; 'gamma' also accepted, slider per knob in "
+                   "Settings). Omit for direct output (default)");
 
     app.add_flag("--gl-debug", args.gl_debug,
                  "Enable the OpenGL debug output callback (GL_DEBUG_* "
