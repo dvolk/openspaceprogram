@@ -2,8 +2,8 @@
 //
 // This was the ImGui section of main's loop: the readout windows (HUD,
 // the window list, Settings, TRANSFER, Game Debug Info, ORBITAL,
-// TELEMETRY, SURFACE, SHIPS, VESSEL, SHIP PARTS, Controls, Autopilot,
-// RESOURCES), the orbital map and the fixed main menu. They moved out
+// TELEMETRY, SURFACE, SHIPS, VESSEL, Controls, Autopilot, RESOURCES),
+// the orbital map and the fixed main menu. They moved out
 // as-is: main's locals became Game members (aliased in each function so
 // the bodies read the same), and the per-frame state the readouts show
 // is the ShipView snapshot the 3D pass (render.cpp) computes. Drawn in
@@ -1274,27 +1274,6 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(GetAngVelocity(ship->controller->body))));
     });
-    ui::Window("Ship Parts", g.o_parts, [&] {
-        int i = 0;
-        for(Part *p : ship->parts) {
-            ImGui::Text("Part #%d  (stage %d)", i, p->stage);
-            ImGui::Separator();
-            ImGui::Text("Name: %s", p->def->name.c_str());
-            ImGui::Text("Mass: %.3fkg", p->body->mass);
-            ImGui::Text("Hydrogen: %.3fkg/%.3fkg",
-                        p->resources.current[(int)ResourceType::Hydrogen],
-                        p->resources.capacity[(int)ResourceType::Hydrogen]);
-            ImGui::Text("LOX: %.3fkg/%.3fkg",
-                        p->resources.current[(int)ResourceType::LOX],
-                        p->resources.capacity[(int)ResourceType::LOX]);
-            ImGui::Text("Hydrazine: %.3fkg/%.3fkg",
-                        p->resources.current[(int)ResourceType::Hydrazine],
-                        p->resources.capacity[(int)ResourceType::Hydrazine]);
-            ImGui::Spacing();
-            i++;
-        }
-    });
-
     ui::Window("Controls", g.o_controls, [&] {
         ImGui::Text("Game");
         ImGui::Separator();

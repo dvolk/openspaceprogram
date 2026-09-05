@@ -12,8 +12,8 @@
 #include "transferplanner.h" // TransferPlanner (the TRANSFER window state)
 
 // Draw the readout windows (HUD, Windows, Settings, TRANSFER, Game Debug
-// Info, ORBITAL, TELEMETRY, SURFACE, SHIPS, VESSEL, SHIP PARTS, Controls,
-// Autopilot, RESOURCES) for g. planner feeds the TRANSFER window (its
+// Info, ORBITAL, TELEMETRY, SURFACE, SHIPS, VESSEL, Controls, Autopilot,
+// RESOURCES) for g. planner feeds the TRANSFER window (its
 // solution is computed in the 3D pass).
 void drawUIReadouts(Game &g, TransferPlanner &planner);
 

@@ -45,13 +45,10 @@ void Game::setup_ui_windows() {
     o_surface   = info_opts(ui::Slot::TopLeft);
     o_surface.right_of = "Orbital";
     o_resources = info_opts(ui::Slot::TopRight);
-    o_resources.width_ratio = 1.5f; // bars have no width of their own
+    o_resources.width_ratio = 1.25f; // bars have no width of their own
     o_menu      = info_opts(ui::Slot::MiddleRight);
     o_menu.flags |= ImGuiWindowFlags_NoTitleBar; // docked panel: no title
     o_vessel    = info_opts(ui::Slot::BottomRight);
-    o_parts     = info_opts(ui::Slot::BottomRight);
-    o_parts.below = "Vessel Info";
-    o_parts.default_open = false;
     o_map = info_opts(ui::Slot::BottomLeft);
     o_map.default_open = true;
     o_map.initial_size = ImVec2(480.0f, 480.0f); // orbit drawn at (200,200)
@@ -119,7 +116,6 @@ void Game::setup_ui_windows() {
     // Surface Map sits under Surface Info, mirroring Orbit Info -> Orbit Map.
     add_ui_window("Surface Map", "Surface Map", o_surfmap);
     add_ui_window("Vessel Info", "Vessel Info", o_vessel);
-    add_ui_window("Ship Parts", "Vessel Parts", o_parts);
     // Registered regardless of fleet size: the window (ship list + spawn)
     // is always drawn, so it always needs the toggle + checkbox.
     add_ui_window("Ship List", "Ship List", o_ships);

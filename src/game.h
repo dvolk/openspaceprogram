@@ -290,7 +290,6 @@ struct Game {
     ui::Options o_resources;
     ui::Options o_menu;
     ui::Options o_vessel;
-    ui::Options o_parts;
     ui::Options o_map;
     ui::Options o_ships;
     ui::Options o_autopilot;
