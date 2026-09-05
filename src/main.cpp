@@ -83,7 +83,7 @@ int main(int argc, char **argv)
     if(!parse_cli(argc, argv, args, &exit_code)) { return exit_code; }
 
     Renderer display(args.screen_width, args.screen_height, args.window_mode,
-                     args.gl_debug);
+                     args.msaa_samples, args.gl_debug);
     check_gl_error();
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: resolve keycodes to scancodes now that SDL is initialized

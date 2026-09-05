@@ -53,6 +53,7 @@ struct GameArgs {
 
     std::vector<std::string> postfx_spec;
     bool gl_debug = false;
+    int msaa_samples = 4;   // --msaa: the window's sample count (0 = none)
 
     int screen_width = 1920;
     int screen_height = 1080;

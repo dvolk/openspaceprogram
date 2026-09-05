@@ -211,6 +211,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Enable the OpenGL debug output callback (GL_DEBUG_* "
                  "messages print as they occur)");
 
+    std::string msaa;
+    app.add_option("--msaa", msaa,
+                   "Multisample antialiasing: none | 2x | 4x | 8x "
+                   "(default 4x). Fixed at window creation (the GLX visual "
+                   "is chosen then), so it applies at launch/restart")
+        ->check(CLI::IsMember({"none", "2x", "4x", "8x"}));
+
     app.add_option("--width", args.screen_width,
                    "Window width in pixels (used with --borderless and "
                    "--exclusive; ignored with --fullscreen)")
@@ -300,6 +307,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         *exit_code = app.exit(e);
         return false;
     }
+
+    /* --msaa: map the label to a sample count (unspecified keeps the
+       4x default in GameArgs). */
+    if(msaa == "none") { args.msaa_samples = 0; }
+    else if(msaa == "2x") { args.msaa_samples = 2; }
+    else if(msaa == "4x") { args.msaa_samples = 4; }
+    else if(msaa == "8x") { args.msaa_samples = 8; }
 
     /* --sim-press: fold the flat START_MS,DURATION_MS,KEY list into press
        entries. */

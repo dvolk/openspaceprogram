@@ -27,7 +27,8 @@ class Renderer
 {
 public:
     Renderer(int width, int height,
-             WindowMode mode = WindowMode::Windowed, bool gl_debug = false);
+             WindowMode mode = WindowMode::Windowed,
+             int msaa_samples = 4, bool gl_debug = false);
 
     void Clear(float r, float g, float b, float a);
     void SwapBuffers();
@@ -48,6 +49,10 @@ public:
     // The refresh rate (Hz) the display is currently running at; 0 if
     // unknown.
     int currentRefresh();
+    // The sample count the window was actually created with. The driver
+    // may grant fewer than requested, or zero on a stack with no
+    // multisample visual (the constructor's fallback).
+    int msaaSamples() const;
 
     SDL_Window *get_display() { return m_window; }
     int get_width() { return m_screen_width; }

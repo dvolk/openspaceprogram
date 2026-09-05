@@ -12,7 +12,8 @@
 
 using namespace std;
 
-Renderer::Renderer(int width, int height, WindowMode mode, bool gl_debug)
+Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
+                   bool gl_debug)
 {
     int gl_major = 4;
     int gl_minor = 5;
@@ -39,13 +40,13 @@ Renderer::Renderer(int width, int height, WindowMode mode, bool gl_debug)
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     check_gl_error();
-    // 4x MSAA for geometry edges, when the stack has a multisample GLX
+    // MSAA for geometry edges, when the stack has a multisample GLX
     // visual (window creation falls back below if it doesn't). Note the
     // --postfx path renders into a non-multisampled FBO, so only the
     // default path's 3D gets the window's MSAA.
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, msaa_samples > 0 ? 1 : 0);
     check_gl_error();
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
     check_gl_error();
     // 32-bit float depth was tried (see git history): on this stack window
     // creation fails with DEPTH 32 + STENCIL 8, and it wouldn't have helped
@@ -281,6 +282,12 @@ int Renderer::currentRefresh() {
         return (int)cur.refresh_rate;
     }
     return 0;
+}
+
+int Renderer::msaaSamples() const {
+    int granted = 0;
+    SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &granted);
+    return granted;
 }
 
 void Renderer::Clear(float r, float g, float b, float a)

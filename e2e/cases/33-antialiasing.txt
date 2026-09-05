@@ -1,0 +1,12 @@
+# --msaa: the launch flag parses and the granted sample count is reported.
+# The granted value varies by stack (Xvfb/llvmpipe has no multisample
+# visual, so the constructor falls back to 0 -- see display.cpp), so assert
+# the report line exists, not its count.
+NAME antialiasing
+ARGS --msaa 2x --timeout 4
+EXPECT Main loop starting
+CHECK re.search(r"MSAA: \d+ sample\(s\)", out)
+FORBID GL_
+FORBID error:
+FORBID Error compiling shader
+FORBID Error linking shader program
