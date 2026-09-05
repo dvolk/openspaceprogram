@@ -276,6 +276,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
     if(ship->m_thrust > 0) {
         for(Part *p : ship->parts) {
             if(!p->isThruster()) { continue; }
+            /* only engines actually thrusting THIS tick (armed in
+               ApplyThrust: ignited = stage <= counter, AND drew propellant).
+               m_thrust above is a coarse "something fired" flag, so without
+               this check a lit stage would paint fake plumes on the engines
+               of un-ignited higher stages. */
+            if(p->armedThrust <= 0.0f) { continue; }
             /* the plume mesh is authored for the base part
                (radius 1 m, height 2 m): scale it to this thruster's
                size so the tail lands on the engine tail (-h/2) */
