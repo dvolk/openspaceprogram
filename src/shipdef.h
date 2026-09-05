@@ -28,7 +28,8 @@
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
            "capacity": { "hydrogen": 26100, "lox": 26100 }, // optional, kg -> a propellant tank
            "crew_capacity": 3,             // optional, int; > 0 -> a capsule (holds that many EVA characters)
-           "hull_margin": 0.0             // optional, m; collision convex-hull margin
+           "hull_margin": 0.0,            // optional, m; collision convex-hull margin
+           "fuel_barrier": true           // optional, bool; true -> fuel does not flow across this part (splits fuel groups)
          }, ...
        ]
      }
@@ -151,6 +152,13 @@ struct PartDef {
        Vehicle::separateStage. The part carries no other behavior (no thrust
        / wheel / tank) -- it is the separation point. */
     bool decoupler;
+
+    /* true -> a fuel barrier: propellant does NOT flow across this part, so
+       it splits the parts on either side into separate fuel groups (an
+       engine cannot draw fuel from across it). Decouplers are fuel barriers;
+       most parts (tanks, engines, adapters, wheels, capsules) conduct fuel
+       and leave it false. See Vehicle::buildFuelGroups. */
+    bool fuel_barrier;
 
     /* Collision convex-hull margin (m), the catalog default for this
        part. -1 = not set -> the physics engine's default applies

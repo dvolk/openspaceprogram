@@ -82,6 +82,11 @@ int main() {
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] < 100.0f); // a suit load, not a tank
     CHECK(kb->mass > kb->capacity[(int)ResourceType::Hydrazine]); // mass includes the fuel
 
+    // decouplers are fuel barriers: propellant does not flow across one, so
+    // it splits fuel groups (an engine can't draw from the other side).
+    const PartDef *dc = cat.find("decoupler_r1");
+    CHECK(dc != nullptr && dc->decoupler && dc->fuel_barrier);
+
     // pre-size parts default to the legacy 2 m cube (radius 1, height 2)
     CHECK(cap->radius == 1.0 && cap->height == 2.0);
     CHECK(eng->radius == 1.0 && eng->height == 2.0);

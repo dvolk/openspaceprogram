@@ -1,16 +1,27 @@
 //
-// Headless test for Vehicle::consumeResourceMass (src/vehicle.h): a tick's
-// fuel must drain PRO-RATA across the active stage's tanks, not from the
-// first tank that can cover the flow. First-tank-first drained one tank to
-// empty before its siblings (with a radial layout: the central tank, then
-// each side tank in turn), shifting the ship's mass distribution and
-// torquing the ship under thrust. Pro-rata shares -- proportional to each
-// tank's contents -- keep a symmetric cluster draining together, and let a
-// flow that no single tank can cover still fire (the pool supplies it).
+// Headless test for Vehicle::consumeResourceMass / fuelPool (src/vehicle.h).
+//
+// The fuel model is CONNECTION-based, not stage-based: an engine draws the
+// propellant of its FUEL GROUP (buildFuelGroups) -- the connected component
+// of the part tree it sits in, with fuel barriers (PartDef::fuel_barrier,
+// e.g. decouplers) as walls that split the groups. Stage numbers gate only
+// WHEN an engine ignites; they no longer decide WHICH tanks feed it.
+//
+// These tests pin:
+//   * an engine drains the tanks in its own fuel group, pro-rata (not
+//     first-tank-first -- that shifts the mass distribution and torques the
+//     ship under thrust);
+//   * a fuel barrier SPLITS the groups, so an engine never draws fuel from
+//     across it (the heavy_two fix: the central engine burns the central
+//     tanks, not the boosters' tanks across the radial decoupler);
+//   * a flow no single tank can cover still fires (the pool supplies it),
+//     and a flow above the total is refused with no partial drain.
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
-// part-mass shedding + Bullet inertia update is exercised too. No GL
-// context is needed.
+// part-mass shedding + Bullet inertia update is exercised too. No GL context
+// is needed. The ships here are built by hand: parts + weld links (just the
+// Part* adjacency for buildFuelGroups -- no Bullet constraint, so it stays
+// headless).
 //
 // Runs from the repo root:
 //   make test   (or: ./test_fuel)
@@ -20,6 +31,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + PartDef + ResourceContent (inline)
@@ -46,207 +58,265 @@ static int g_checks = 0;
         }                                                                      \
     } while (0)
 
-/* A ship of `n` tank parts, each holding cap[i] kg of BOTH propellants
-   (the catalog tanks do), on the given stages (empty -> all stage 1;
-   otherwise stages.size() must equal n). Each Part wraps its rigid body and
-   points at a PartDef in `defs` (which must outlive the Vehicle -- the
-   reserve() means the pointers stay valid). The collision shape is owned by
-   the btRigidBody (freed by ~Body), so it is NOT tracked here. */
+/* A hand-built ship. `defs` must outlive the Vehicle (Part::def points
+   into it; reserve() keeps the pointers valid). Each Part wraps its rigid
+   body and owns its collision shape (freed by ~Body). */
 struct Ship {
     Vehicle *v;
     std::vector<PartDef> defs;
 };
 
-static Ship makeShip(const std::vector<float> &cap,
-                     const std::vector<int> &stages) {
-    Ship s;
-    s.v = new Vehicle;
-    const size_t n = cap.size();
-    s.defs.reserve(n);
-    for(size_t i = 0; i < n; i++) {
-        const double m = 100.0 + (double)cap[i]; /* dry mass + fuel */
-        btBoxShape *shape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
-        btVector3 I;
-        shape->calculateLocalInertia(m, I);
-        btRigidBody::btRigidBodyConstructionInfo ci(m, 0, shape, I);
-        Body *b = new Body;
-        b->model = nullptr;   // no GL model in a headless test
-        b->btBody = new btRigidBody(ci);
-        b->mass = m;
+/* Add one part. h2/lox > 0 -> a tank; engine -> a thruster; barrier -> a
+   fuel wall (decoupler). Returns the new Part (index parts.size()-1). */
+static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
+                     bool barrier = false) {
+    const double m = 100.0 + (double)h2 + (double)lox;   /* dry mass + fuel */
+    btBoxShape *shape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
+    btVector3 I;
+    shape->calculateLocalInertia(m, I);
+    btRigidBody::btRigidBodyConstructionInfo ci(m, 0, shape, I);
+    Body *b = new Body;
+    b->model = nullptr;    /* no GL model in a headless test */
+    b->btBody = new btRigidBody(ci);
+    b->mass = m;
 
-        PartDef d;
-        d.capacity[(int)ResourceType::Hydrogen] = cap[i];
-        d.capacity[(int)ResourceType::LOX] = cap[i];
-        s.defs.push_back(d);
+    PartDef d;
+    d.capacity[(int)ResourceType::Hydrogen] = h2;
+    d.capacity[(int)ResourceType::LOX] = lox;
+    if(engine) { d.fuel_rate = 1.0; d.exhaust_velocity = 100.0; }
+    d.fuel_barrier = barrier;
+    s.defs.push_back(d);
 
-        Part *p = new Part;
-        p->body  = b;
-        p->def   = &s.defs.back();
-        p->stage = stages.empty() ? 1 : stages[i];
-        s.v->parts.push_back(p);
-    }
+    Part *p = new Part;
+    p->body = b;
+    p->def = &s.defs.back();
+    s.v->parts.push_back(p);
+    return p;
+}
+
+/* Join two parts into the same fuel group (a weld link). buildFuelGroups
+   only needs the Part* adjacency, so no Bullet constraint is created and the
+   test stays headless. The anchor pair keeps links/anchors the same length
+   (separateStage zips them). */
+static void link(Ship &s, Part *a, Part *b) {
+    s.v->constraintLinks.push_back(std::make_pair(a, b));
+    s.v->constraintAnchors.push_back(
+        std::make_pair(glm::dvec3(0.0), glm::dvec3(0.0)));
+}
+
+/* init() dereferences controller->body (NeverSleep), but a headless ship has
+   no build_ship() to name a controller part, so name one (the first part)
+   first, then seed the tanks and build the fuel groups. */
+static void initShip(Ship &s) {
     s.v->controller = s.v->parts[0];
-    s.v->init();   // seeds each tank Part's resources from its def
-    return s;
+    s.v->init();
 }
 
 static void destroyShip(Ship &s) {
-    /* onRails = true keeps the destructor off RemoveBody (the physics
-       engine is not constructed in a headless test). ~Vehicle deletes each
-       Part, and ~Part frees the Body (which frees the btRigidBody and its
-       owned collision shape). The PartDefs in s.defs outlive the Parts and
-       are released when this Ship goes out of scope. */
+    /* onRails = true keeps the destructor off RemoveBody (no physics world
+       here). ~Vehicle deletes each Part; ~Part frees the Body (rigid body +
+       owned shape). The PartDefs in s.defs outlive the Parts. */
     s.v->onRails = true;
     delete s.v;
 }
 
-/* The core fix: 4 equal tanks (a central + 3 radial, the heavy_one layout)
-   all drain by the same amount. The OLD first-tank-first code emptied tank
-   0 and left 100 kg in the rest -- the "first tank still 3/4 full" guard
-   below is what this test must catch on the old implementation. */
-static void test_prorata_equal_tanks() {
-    printf("== Pro-rata drain: 4 equal tanks ==\n");
-    Ship s = makeShip({100, 100, 100, 100}, {1, 1, 1, 1});
+/* A tank -> tank -> tank chain with an engine at the root: all four in one
+   fuel group. An engine drains the group's tanks PRO-RATA (proportional to
+   contents), not first-tank-first. */
+static void test_prorata_in_group() {
+    printf("== Pro-rata drain within one fuel group ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, /*engine=*/true);
+    Part *t0 = addPart(s, 100, 100);
+    Part *t1 = addPart(s, 100, 100);
+    Part *t2 = addPart(s, 100, 100);
+    link(s, eng, t0); link(s, t0, t1); link(s, t1, t2);
+    initShip(s);   /* seeds tanks + builds fuel groups */
 
-    const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f);
-    CHECK_TRUE(ok, "consume 100 kg from 4 x 100 kg tanks");
-
-    for(int i = 0; i < 4; i++) {
-        char buf[96];
-        snprintf(buf, sizeof buf, "tank %d drained 25 kg (not first-only)", i);
-        CHECK_NEAR(s.v->parts[(size_t)i]->resources.current[(int)ResourceType::Hydrogen],
-                   75.0, 1e-5, buf);
-        snprintf(buf, sizeof buf, "tank %d's part shed its 25 kg", i);
-        CHECK_NEAR(s.v->parts[(size_t)i]->body->mass, 175.0, 1e-5, buf);
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 90.0f, eng),
+               "consume 90 kg from the engine's fuel group");
+    Part *tanks[3] = {t0, t1, t2};
+    for(int i = 0; i < 3; i++) {
+        char buf[64];
+        snprintf(buf, sizeof buf, "tank %d drained 30 (pro-rata in group)", i);
+        CHECK_NEAR(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
+                   70.0, 1e-5, buf);
+        snprintf(buf, sizeof buf, "tank %d's part shed its 30 kg", i);
+        CHECK_NEAR(tanks[i]->body->mass, 270.0, 1e-5, buf);
     }
-    CHECK_TRUE(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen] > 50.0f,
-               "first tank NOT drained first (old behavior)");
-    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::LOX], 100.0, 1e-6,
+    CHECK_NEAR(t0->resources.current[(int)ResourceType::LOX], 100.0, 1e-6,
                "LOX untouched by the H2 draw");
     destroyShip(s);
 }
 
 /* Unequal tanks: the shares are proportional to each tank's CONTENTS
    (200:100 -> 20:10), not an equal split (15:15) and not first-only (30:0).
-   Proportional-to-contents is what keeps the ratio constant, so the tanks
-   empty simultaneously and a symmetric ship stays symmetric. */
-static void test_prorata_unequal_tanks() {
-    printf("== Pro-rata drain: unequal tanks, shares proportional to contents ==\n");
-    Ship s = makeShip({200, 100}, {1, 1});
+   Proportional-to-contents keeps the ratio constant, so the tanks empty
+   simultaneously and a symmetric ship stays symmetric. */
+static void test_prorata_unequal() {
+    printf("== Pro-rata: unequal tanks, shares proportional to contents ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *big = addPart(s, 200, 200);
+    Part *small = addPart(s, 100, 100);
+    link(s, eng, big); link(s, big, small);
+    initShip(s);
 
-    const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 30.0f);
-    CHECK_TRUE(ok, "consume 30 kg from 200 + 100 kg tanks");
-    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 180.0, 1e-5,
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 30.0f, eng),
+               "consume 30 kg from 200 + 100 kg tanks");
+    CHECK_NEAR(big->resources.current[(int)ResourceType::Hydrogen], 180.0, 1e-5,
                "big tank drained 20 (200 -> 180)");
-    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
+    CHECK_NEAR(small->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
                "small tank drained 10 (100 -> 90)");
     destroyShip(s);
 }
 
-/* A flow that no SINGLE tank can cover but the combined pool can: the
-   OLD code refused it (stranded 20 kg of usable fuel); the new code
-   fires and drains both. */
-static void test_stranded_fuel() {
-    printf("== Stranded fuel: flow covered by the pool, no single tank ==\n");
-    Ship s = makeShip({60, 60}, {1, 1});
+/* THE heavy_two fix: a fuel barrier (decoupler) SPLITS the fuel groups, so
+   an engine on one side never draws from the tanks on the other side. Here
+   engineA and tankA are on one side of the wall, engineB and tankB on the
+   other. engineA must drain tankA only; engineB must drain tankB only. */
+static void test_barrier_splits_groups() {
+    printf("== Fuel barrier splits groups: each engine draws its side only ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tankA = addPart(s, 100, 100);
+    Part *wall = addPart(s, 0, 0, /*engine=*/false, /*barrier=*/true);
+    Part *tankB = addPart(s, 100, 100);
+    Part *engB = addPart(s, 0, 0, true);
+    link(s, engA, tankA);
+    link(s, tankA, wall);
+    link(s, wall, tankB);
+    link(s, tankB, engB);
+    initShip(s);
 
-    const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f);
-    CHECK_TRUE(ok, "pool-covered flow fires (vacuity guard: old code refused)");
-    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_TRUE(!tankA->isFuelBarrier() && wall->isFuelBarrier(),
+               "wall is the only fuel barrier");
+
+    /* engineA drains only tankA (NOT tankB, across the wall). */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
+               "engineA draws 50 kg from its own group");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+               "tankA drained 50");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankB untouched (the barrier blocks the draw)");
+
+    /* engineB drains only tankB (NOT tankA). */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 30.0f, engB),
+               "engineB draws 30 kg from its own group");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+               "tankB drained 30");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-6,
+               "tankA unchanged by engineB's draw");
+    destroyShip(s);
+}
+
+/* A flow that no SINGLE tank can cover but the combined group can: the
+   group supplies it (drains both), not refused. */
+static void test_stranded_fuel() {
+    printf("== Stranded fuel: flow covered by the group, no single tank ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *t0 = addPart(s, 60, 60);
+    Part *t1 = addPart(s, 60, 60);
+    link(s, eng, t0); link(s, t0, t1);
+    initShip(s);
+
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f, eng),
+               "group-covered flow fires");
+    CHECK_NEAR(t0->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tank 0 drained 50");
-    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tank 1 drained 50");
     destroyShip(s);
 }
 
-/* A flow above the combined total: refused, and NOTHING is drained
+/* A flow above the combined group total: refused, and NOTHING is drained
    (no partial drain, no half-burn). */
 static void test_insufficient_total() {
     printf("== Insufficient total: refused, no partial drain ==\n");
-    Ship s = makeShip({60, 60}, {1, 1});
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *t0 = addPart(s, 60, 60);
+    Part *t1 = addPart(s, 60, 60);
+    link(s, eng, t0); link(s, t0, t1);
+    initShip(s);
 
-    const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 130.0f);
-    CHECK_TRUE(!ok, "flow above the total is refused");
-    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_TRUE(!s.v->consumeResourceMass(ResourceType::Hydrogen, 130.0f, eng),
+               "flow above the group total is refused");
+    CHECK_NEAR(t0->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 0 untouched");
-    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 1 untouched");
-    CHECK_NEAR(s.v->parts[0]->body->mass, 160.0, 1e-6, "part 0 mass untouched");
+    CHECK_NEAR(t0->body->mass, 220.0, 1e-6, "tank 0 mass untouched");
     destroyShip(s);
 }
 
-/* Consuming exactly the total: allowed, all tanks land on zero (not a
+/* Consuming exactly the group total: allowed, all tanks land on zero (not a
    negative float round-off). */
 static void test_full_drain() {
-    printf("== Full drain: consume exactly the total ==\n");
-    Ship s = makeShip({50, 50}, {1, 1});
+    printf("== Full drain: consume exactly the group total ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *t0 = addPart(s, 50, 50);
+    Part *t1 = addPart(s, 50, 50);
+    link(s, eng, t0); link(s, t0, t1);
+    initShip(s);
 
-    const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f);
-    CHECK_TRUE(ok, "consuming exactly the total is allowed");
-    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f, eng),
+               "consuming exactly the group total is allowed");
+    CHECK_NEAR(t0->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tank 0 empty");
-    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tank 1 empty");
-    CHECK_TRUE(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
+    CHECK_TRUE(t0->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
                "no negative contents (float rounding)");
-    CHECK_TRUE(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
+    CHECK_TRUE(t1->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
                "no negative contents (float rounding)");
     destroyShip(s);
 }
 
-/* The ACTIVE (lowest-numbered) stage burns its own propellant only: the
-   upper stage's tanks are untouched. */
-static void test_stage_gating() {
-    printf("== Stage gating: the upper stage's tanks are untouched ==\n");
-    Ship s = makeShip({50, 50, 1000}, {1, 1, 2});
-
-    const bool ok = s.v->consumeResourceMass(ResourceType::Hydrogen, 80.0f);
-    CHECK_TRUE(ok, "consume 80 kg from the active stage (2 x 50)");
-    CHECK_NEAR(s.v->parts[0]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
-               "stage-1 tank 0 drained 40");
-    CHECK_NEAR(s.v->parts[1]->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
-               "stage-1 tank 1 drained 40");
-    CHECK_NEAR(s.v->parts[2]->resources.current[(int)ResourceType::Hydrogen], 1000.0, 1e-6,
-               "stage-2 tank untouched");
-    CHECK_NEAR(s.v->parts[2]->body->mass, 1100.0, 1e-6, "stage-2 part mass untouched");
-    destroyShip(s);
-}
-
-/* ApplyThrust calls consumeResourceMass once PER ENGINE per propellant
-   per tick: after several draws the cluster must still be in step with
-   itself (no tank drifting out of line). */
+/* ApplyThrust draws once PER ENGINE per propellant per tick: after several
+   draws the cluster must still be in step with itself (no tank drifting out
+   of line). */
 static void test_repeated_draws_stay_symmetric() {
     printf("== Repeated draws (per engine, per propellant) stay symmetric ==\n");
-    Ship s = makeShip({100, 100, 100}, {1, 1, 1});
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, true);
+    Part *t0 = addPart(s, 100, 100);
+    Part *t1 = addPart(s, 100, 100);
+    Part *t2 = addPart(s, 100, 100);
+    link(s, eng, t0); link(s, t0, t1); link(s, t1, t2);
+    initShip(s);
 
-    for(int k = 0; k < 4; k++) { /* 2 engines x 2 ticks, 10 kg each */
-        if(!s.v->consumeResourceMass(ResourceType::Hydrogen, 10.0f)) {
+    for(int k = 0; k < 4; k++) {   /* 2 engines x 2 ticks, 10 kg each */
+        if(!s.v->consumeResourceMass(ResourceType::Hydrogen, 10.0f, eng)) {
             CHECK_TRUE(false, "draw refused mid-burn");
             break;
         }
     }
     /* 4 draws x 10 kg = 40 kg off 300 -> 260 total, 260/3 per tank. */
+    Part *tanks[3] = {t0, t1, t2};
     for(int i = 0; i < 3; i++) {
-        char buf[96];
+        char buf[64];
         snprintf(buf, sizeof buf, "tank %d still in step (100 -> 260/3)", i);
-        CHECK_NEAR(s.v->parts[(size_t)i]->resources.current[(int)ResourceType::Hydrogen],
+        CHECK_NEAR(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
                    260.0 / 3.0, 1e-5, buf);
     }
     destroyShip(s);
 }
 
 int main() {
-    test_prorata_equal_tanks();
+    test_prorata_in_group();
     printf("\n");
-    test_prorata_unequal_tanks();
+    test_prorata_unequal();
+    printf("\n");
+    test_barrier_splits_groups();
     printf("\n");
     test_stranded_fuel();
     printf("\n");
     test_insufficient_total();
     printf("\n");
     test_full_drain();
-    printf("\n");
-    test_stage_gating();
     printf("\n");
     test_repeated_draws_stay_symmetric();
 

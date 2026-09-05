@@ -248,6 +248,9 @@ public:
                 p->resources.current[r]  = p->def->capacity[r];
             }
         }
+        /* fuel groups: an engine draws from the tanks it's connected to
+           (its fuel group), not by stage -- the weld links are known now. */
+        buildFuelGroups();
     }
 
     /* True of the EVA kerbal (src/eva.h): control input, the camera and
@@ -262,27 +265,83 @@ public:
        ship never carries this, so it is false by default. */
     virtual bool isCrewAboard() const { return false; }
 
-    /* Draw `amt` kg of `type` from the tanks on `stage`, pro-rata across
-       every tank on that stage that still holds it (stages are
-       self-contained: an engine burns its OWN stage's propellant, so the
-       central engine never drains the upper stage's tanks and vice versa).
-       Pro-rata, NOT first-tank-first: draining one tank to empty before its
-       siblings shifts the ship's mass distribution and torques it under
-       thrust (the radial-tank spin); shares proportional to each tank's
-       contents keep a symmetric cluster draining together, and empty the
-       tanks simultaneously. Returns true if the stage's total covers amt
-       (else the thruster doesn't fire this tick). amt is the kg consumed
-       THIS tick (the caller scales the kg/s flow by the tick's simulated
-       time). */
-    bool consumeResourceMass(enum ResourceType type, float amt /* kg */, int stage = 1) {
-        float total = 0;
+    /* Assign each part a fuel-group id (Part::fuelGroup). A fuel group is a
+       connected component of the part tree across the parts that CONDUCT
+       fuel; a part with PartDef::fuel_barrier (a decoupler) is a WALL that
+       splits the groups, so an engine never draws fuel from across it.
+       Barrier parts keep fuelGroup = -1 (they are in no group). This is the
+       base undirected grouping; a fuel link, when added, will bridge groups
+       one-way inside fuelPool(), leaving this the same. Recompute after
+       separateStage() -- the tree shrinks when parts drop. */
+    void buildFuelGroups() {
+        for(Part *p : parts) { p->fuelGroup = -1; }
+        /* undirected adjacency over the weld links (parent<->child; each
+           non-root part has exactly one parent weld). */
+        std::map<Part *, std::vector<Part *>> adj;
+        for(size_t c = 0; c < constraintLinks.size(); c++) {
+            Part *a = constraintLinks[c].first;
+            Part *b = constraintLinks[c].second;
+            adj[a].push_back(b);
+            adj[b].push_back(a);
+        }
+        int next = 0;
         for(Part *p : parts) {
-            if(p->stage != stage) { continue; }
-            total += p->resources.current[(int)type];
+            if(p->isFuelBarrier()) { continue; }   /* a wall: stays -1 */
+            if(p->fuelGroup != -1) { continue; }   /* already grouped */
+            int g = next++;
+            std::vector<Part *> stack;
+            stack.push_back(p);
+            p->fuelGroup = g;
+            while(!stack.empty()) {
+                Part *q = stack.back(); stack.pop_back();
+                auto it = adj.find(q);
+                if(it == adj.end()) { continue; }
+                for(size_t i = 0; i < it->second.size(); i++) {
+                    Part *r = it->second[i];
+                    if(r->isFuelBarrier()) { continue; }   /* don't cross a wall */
+                    if(r->fuelGroup != -1) { continue; }   /* already grouped */
+                    r->fuelGroup = g;
+                    stack.push_back(r);
+                }
+            }
+        }
+    }
+
+    /* The tanks an engine may draw fuel from: the tanks in its fuel group
+       (buildFuelGroups) -- its connected neighbours, never across a fuel
+       barrier (a decoupler). This is the single place a fuel link will later
+       change (to "tanks reachable via directed fuel edges"), so the drain
+       logic below stays put. */
+    std::vector<Part *> fuelPool(Part *engine) const {
+        std::vector<Part *> pool;
+        const int g = engine->fuelGroup;
+        for(size_t i = 0; i < parts.size(); i++) {
+            Part *p = parts[i];
+            if(!p->isTank()) { continue; }
+            if(p->fuelGroup != g) { continue; }
+            pool.push_back(p);
+        }
+        return pool;
+    }
+
+    /* Draw `amt` kg of `type` from the engine's fuel pool (fuelPool),
+       pro-rata across every tank in the pool that still holds it. Pro-rata,
+       NOT first-tank-first: draining one tank to empty before its siblings
+       shifts the ship's mass distribution and torques it under thrust (the
+       radial-tank spin); shares proportional to each tank's contents keep a
+       symmetric cluster draining together, and empty the tanks
+       simultaneously. Returns true if the pool's total covers amt (else the
+       thruster doesn't fire this tick). amt is the kg consumed THIS tick
+       (the caller scales the kg/s flow by the tick's simulated time). */
+    bool consumeResourceMass(enum ResourceType type, float amt /* kg */, Part *engine) {
+        const std::vector<Part *> pool = fuelPool(engine);
+        float total = 0;
+        for(size_t i = 0; i < pool.size(); i++) {
+            total += pool[i]->resources.current[(int)type];
         }
         if(total < amt) { return false; }
-        for(Part *p : parts) {
-            if(p->stage != stage) { continue; }
+        for(size_t i = 0; i < pool.size(); i++) {
+            Part *p = pool[i];
             const float have = p->resources.current[(int)type];
             if(have <= 0.0f) { continue; }
             float take = amt * have / total; /* pro-rata share */
@@ -738,6 +797,11 @@ public:
         NeverSleep(controller->body);
         /* 5) Disarm any thrust (the split just happened). */
         clearThrust();
+        /* 6) Recompute fuel groups. The survivors' pools are unchanged in
+           practice (the decoupler that fired was the separator, so the two
+           sides were already separate groups) -- recompute so the ids stay
+           fresh after the tree shrank. */
+        buildFuelGroups();
         return (int)dropped.size();
     }
 
@@ -851,9 +915,10 @@ protected:
        itself is applied by applyThrustForce() before EVERY substep below.
        A thruster that can't consume its flow this tick doesn't thrust.
        Every engine that has already been ignited (stage <= the stage
-       counter) fires, and each draws its OWN stage's tanks (see
-       consumeResourceMass) -- so an engine keeps burning from its own
-       propellant until it runs dry or is dropped. */
+       counter) fires, and each draws its OWN fuel group's tanks (see
+       fuelPool) -- so an engine keeps burning from its connected propellant
+       until it runs dry or its tanks are dropped. Stage gates WHEN it
+       ignites; the fuel group (connection) decides WHAT it burns. */
     void ApplyThrust(double step) {
         if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
         const int as = activeStage();
@@ -862,8 +927,8 @@ protected:
             if(p->stage > as) { continue; } /* not ignited yet */
             const float flow =
                 (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
-            if(consumeResourceMass(ResourceType::Hydrogen, flow, p->stage) and
-               consumeResourceMass(ResourceType::LOX,      flow, p->stage))
+            if(consumeResourceMass(ResourceType::Hydrogen, flow, p) and
+               consumeResourceMass(ResourceType::LOX,      flow, p))
                 {
                     p->armedThrust =
                         (float)(p->thrust() * thruster_util * exhaust_scale);

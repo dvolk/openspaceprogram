@@ -147,9 +147,9 @@ void Kerbal::applyEva(double h) {
         // whose draw the pool can't cover doesn't thrust.
         if(glm::length2(rcsDir) > 0.0) {
             const float flow = (float)(kRcsFlow * h);
-            /* the kerbal is a one-part ship; draw its RCS hydrazine from
-               its own (single) stage's tank */
-            if(consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]->stage)) {
+            /* the kerbal is a one-part ship and its own tank; draw its RCS
+               hydrazine from its own (single) fuel group */
+            if(consumeResourceMass(ResourceType::Hydrazine, flow, parts[0])) {
                 ApplyCentralForce(b, kRcsForce * rcsDir);
             }
         }

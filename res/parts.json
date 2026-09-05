@@ -301,7 +301,8 @@
       "mass": 50,
       "radius": 1.0,
       "height": 0.25,
-      "decoupler": true
+      "decoupler": true,
+      "fuel_barrier": true
     },
     {
       "name": "decoupler_r1.5",
@@ -311,7 +312,8 @@
       "mass": 75,
       "radius": 1.5,
       "height": 0.375,
-      "decoupler": true
+      "decoupler": true,
+      "fuel_barrier": true
     },
     {
       "name": "decoupler_r2.25",
@@ -321,7 +323,8 @@
       "mass": 110,
       "radius": 2.25,
       "height": 0.5625,
-      "decoupler": true
+      "decoupler": true,
+      "fuel_barrier": true
     },
     {
       "name": "decoupler_radial",
@@ -331,7 +334,8 @@
       "mass": 40,
       "radius": 0.02,
       "height": 0.02,
-      "decoupler": true
+      "decoupler": true,
+      "fuel_barrier": true
     },
     {
       "name": "nose_cap",

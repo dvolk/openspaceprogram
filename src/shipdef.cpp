@@ -10,7 +10,7 @@
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
       exhaust_velocity(0.0), crew_capacity(0), decoupler(false),
-      hull_margin(-1.0) {
+      fuel_barrier(false), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -141,6 +141,15 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(pv.contains("decoupler")) {
             d.decoupler = pv["decoupler"].get<bool>();
         }
+
+        /* fuel barrier (bool); fuel does not flow across a barrier, so it
+           splits fuel groups (see PartDef.fuel_barrier). Omitted -> false.
+           A decoupler is a fuel barrier by definition -- force it so the
+           flag can't be silently lost by a stale catalog regen. */
+        if(pv.contains("fuel_barrier")) {
+            d.fuel_barrier = pv["fuel_barrier"].get<bool>();
+        }
+        if(d.decoupler) { d.fuel_barrier = true; }
 
         /* hull margin (m); omitted -> -1, the physics engine then falls
            back to OSP_HULL_MARGIN / 0.1 */

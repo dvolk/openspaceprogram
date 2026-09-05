@@ -29,6 +29,7 @@ struct Part {
     const PartDef *def;         // non-owning; points into the PartsCatalog
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
     int stage = 1;              // from the ship def (1 = single stage)
+    int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group
     float armedThrust = 0.0f;   // N armed this tick (disarmed by clearThrust)
 
     /* parked (rails) pose relative to the cluster COM, in cluster axes.
@@ -48,6 +49,7 @@ struct Part {
     }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
+    bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isTank() const {
         if(def == nullptr) { return false; }
