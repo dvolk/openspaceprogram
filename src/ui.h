@@ -4,9 +4,9 @@
 //
 //   * layout: every window is placed into one of 9 screen slots (corners,
 //     middle edges, center; default: center), with an optional pixel
-//     offset. A window can also be placed to the right of, or below,
-//     another window (right_of / below); the source must be drawn earlier
-//     in the same frame.
+//     offset. A window can also be placed to the left of, to the right
+//     of, or below another window (left_of / right_of / below); the
+//     source must be drawn earlier in the same frame.
 //   * size: windows fit their content on first layout (or use
 //     initial_size / width_ratio when set), and stay user-resizable
 //     afterwards.
@@ -54,9 +54,10 @@ struct Options {
     Slot slot = Slot::Center;            // where to place the window
     ImVec2 offset = ImVec2(0.0f, 0.0f);  // pixel nudge from the slot anchor
 
-    // Place this window's X to the right of / Y below the named window.
-    // The source must be drawn earlier in the frame; if it's closed, the
-    // slot placement stands.
+    // Place this window to the left of / right of / below the named
+    // window (its X / its X / its Y). The source must be drawn earlier
+    // in the frame; if it's closed, the slot placement stands.
+    const char* left_of = nullptr;
     const char* right_of = nullptr;
     const char* below = nullptr;
 
@@ -94,7 +95,7 @@ public:
     static Manager& Get() { static Manager m; return m; }
 
     ImVec2 margin = ImVec2(8.0f, 8.0f); // slot distance from viewport edges
-    float spacing = 8.0f;               // gap used by right_of / below
+    float spacing = 8.0f;               // gap used by left_of / right_of / below
     int max_wait = 8;                   // frames to wait for a late source
     int generation = 1;
 
@@ -151,7 +152,7 @@ public:
     }
 
     // Record the on-screen rect after a window's End(), for use as a
-    // right_of / below source by later windows.
+    // left_of / right_of / below source by later windows.
     void cache_rect(const char* name) {
         WinState* st = find(name);
         if (st == nullptr)
@@ -198,15 +199,17 @@ public:
         slot_anchor(o.slot, margin, pos, pivot);
         pos.x += o.offset.x;
         pos.y += o.offset.y;
-        if (o.right_of != nullptr && !axis_from(o.right_of, self, true, pos, pivot))
+        if (o.left_of != nullptr && !axis_from(o.left_of, self, true, true, pos, pivot))
             return false;
-        if (o.below != nullptr && !axis_from(o.below, self, false, pos, pivot))
+        if (o.right_of != nullptr && !axis_from(o.right_of, self, true, false, pos, pivot))
+            return false;
+        if (o.below != nullptr && !axis_from(o.below, self, false, false, pos, pivot))
             return false;
         return true;
     }
 
 private:
-    bool axis_from(const char* src, WinState& self, bool x_axis,
+    bool axis_from(const char* src, WinState& self, bool x_axis, bool left,
                    ImVec2& pos, ImVec2& pivot) {
         const WinState* s = find(src);
         if (s == nullptr || !s->open)
@@ -226,8 +229,12 @@ private:
                 return false;
             return true;
         }
-        if (x_axis) { pos.x = s->rect_max.x + spacing; pivot.x = 0.0f; }
-        else        { pos.y = s->rect_max.y + spacing; pivot.y = 0.0f; }
+        if (x_axis) {
+            if (left) { pos.x = s->rect_min.x - spacing; pivot.x = 1.0f; }
+            else      { pos.x = s->rect_max.x + spacing; pivot.x = 0.0f; }
+        } else {
+            pos.y = s->rect_max.y + spacing; pivot.y = 0.0f;
+        }
         return true;
     }
 
@@ -276,12 +283,14 @@ bool Window(const char* name, const Options& o, Body&& body) {
         // Windows closed by default open centered on screen: their slot
         // is where they sit in the default layout, but the first time the
         // user opens one, screen center is the least surprising spot.
-        // Fixed windows keep their slot (they re-place every frame anyway).
+        // A window anchored to a sibling (left_of / right_of / below)
+        // keeps the anchor: an explicit relative position wins. Fixed
+        // windows keep their slot (they re-place every frame anyway).
         Options o2 = o;
-        if (!o2.default_open && !o2.fixed) {
+        if (!o2.default_open && !o2.fixed &&
+            o2.left_of == nullptr && o2.right_of == nullptr &&
+            o2.below == nullptr) {
             o2.slot = Slot::Center;
-            o2.right_of = nullptr;
-            o2.below = nullptr;
         }
         ImVec2 pos, pivot;
         if (!m.resolve(o2, st, pos, pivot))
@@ -321,9 +330,9 @@ bool Window(const char* name, const Options& o, Body&& body) {
                 static_cast<std::size_t>(o.width_ratio * 1000.0f)));
     }
 
-    // Most windows have no X close button (they're toggled from the
-    // Windows list, the main menu and the TAB key); the menu-like windows
-    // (Settings, Controls, Game Debug Info, Telemetry) are closable.
+    // Closable windows pass their open state to imgui so the X button
+    // closes them; a closed window can be re-opened from the Windows
+    // list, the main menu or the TAB key.
     bool* p_open = o.closable ? &st.open : nullptr;
     const bool visible = ImGui::Begin(name, p_open, flags);
     if (visible)

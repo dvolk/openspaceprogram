@@ -281,9 +281,10 @@ struct Game {
     bool ui_visible = true;
 
     // --- UI window options (gameui.cpp draws with them) ---------------------
-    // The per-window layout blocks (slot, the right_of / below chain, size,
-    // default-open state), set up once by setup_ui_windows(); the registry
-    // above copies the ones the TAB toggle controls.
+    // The per-window layout blocks (slot, the sibling anchor (left_of /
+    // right_of / below), size, default-open state), set up once by
+    // setup_ui_windows(); the registry above copies the ones the TAB
+    // toggle controls.
     ui::Options o_orbit;
     ui::Options o_surface;
     ui::Options o_resources;

@@ -36,6 +36,7 @@ void Game::setup_ui_windows() {
     auto info_opts = [](ui::Slot slot) {
         ui::Options o;
         o.slot = slot;
+        o.closable = true;   // X close button on the title bar
         return o;
     };
     // Layout: top left ORBITAL + SURFACE, top right RESOURCES,
@@ -46,6 +47,7 @@ void Game::setup_ui_windows() {
     o_resources = info_opts(ui::Slot::TopRight);
     o_resources.width_ratio = 1.5f; // bars have no width of their own
     o_menu      = info_opts(ui::Slot::MiddleRight);
+    o_menu.flags |= ImGuiWindowFlags_NoTitleBar; // docked panel: no title
     o_vessel    = info_opts(ui::Slot::BottomRight);
     o_parts     = info_opts(ui::Slot::BottomRight);
     o_parts.below = "Vessel Info";
@@ -58,21 +60,18 @@ void Game::setup_ui_windows() {
     o_ships.default_open = false;
     o_autopilot = info_opts(ui::Slot::Center);
     o_autopilot.default_open = false;
+    o_autopilot.left_of = "Windows";  // docked left of the window list
     o_controls  = info_opts(ui::Slot::BottomCenter);
     o_controls.default_open = false;
-    o_controls.closable = true;  // X close button (menu window)
     o_debug     = info_opts(ui::Slot::TopCenter);
     o_debug.default_open = false;
-    o_debug.closable = true;  // X close button (menu window)
     o_telemetry = info_opts(ui::Slot::MiddleLeft);
     o_telemetry.default_open = false;
-    o_telemetry.closable = true;  // X close button (menu window)
     // 2x2 grid of plots: wider than the old two-stacked-plots layout so the
     // two columns have room (each cell is ~half this width).
     o_telemetry.initial_size = ImVec2(880.0f, 620.0f);
     o_settings  = info_opts(ui::Slot::BottomCenter);
     o_settings.default_open = false;
-    o_settings.closable = true;  // X close button (menu window)
     // Transfer planner: target selection + dv readouts.
     o_transfer = info_opts(ui::Slot::Center);
     o_transfer.default_open = false;
