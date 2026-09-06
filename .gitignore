@@ -25,5 +25,8 @@ tmp/
 # Source data (baked into the tracked ksp_system.json)
 ksp_system.csv
 
+# KSP parts wiki scrape (utils/gen_parts_wiki.py output; re-run to refresh)
+utils/parts_wiki/
+
 # bear -- make
 compile_commands.json
