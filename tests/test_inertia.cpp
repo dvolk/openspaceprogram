@@ -269,7 +269,7 @@ static void checkRot(const glm::dmat3 &got, const glm::dmat3 &want,
    rebuildCompound() makes a btCompoundShape of the part hulls at their
    authored ship-local poses and re-bases the children into the principal
    (centre-of-mass) frame, because a btRigidBody's transform IS its COM
-   transform and its inertia is stored diagonal. Three things are pinned
+   transform and its inertia is stored diagonal. Four things are pinned
    here, in increasing order of how easily they go wrong:
 
      1. `principal`'s origin is the authored COM in S, and its basis rotates
@@ -289,7 +289,11 @@ static void checkRot(const glm::dmat3 &got, const glm::dmat3 &want,
         BEFORE the re-base and is self-consistent either way -- the children
         are the only thing the re-base actually changes.
      3. syncShipBody() -- mirroring the live parts onto the shadow body --
-        must then give back exactly the world poses this test set by hand.  */
+        must then give back exactly the world poses this test set by hand.
+     4. partWorldPose() and its siblings -- the accessors the rest of the
+        game reads -- must agree with compoundPartPose(). That agreement is
+        the whole basis on which the switch-over later swaps one
+        implementation for the other without touching a call site.   */
 static void checkCompound(Ship &s, const char *msg) {
     s.v->rebuildCompound();
     char buf[192];
@@ -365,7 +369,7 @@ static void checkCompound(Ship &s, const char *msg) {
     for(size_t i = 0; i < s.pos.size(); i++) {
         const Part *p = s.v->parts[i];
         glm::dvec3 gp; glm::dmat3 gr;
-        s.v->partWorldPose(p, gp, gr);
+        s.v->compoundPartPose(p, gp, gr);
         const glm::dvec3 wp = tprime + sprime * p->localPos;
         const double ptol = 1e-9 * std::max(1.0, glm::length(wp));
         for(int c = 0; c < 3; c++) {
@@ -399,7 +403,7 @@ static void checkCompound(Ship &s, const char *msg) {
     s.v->syncShipBody();
     for(size_t i = 0; i < s.pos.size(); i++) {
         glm::dvec3 gp; glm::dmat3 gr;
-        s.v->partWorldPose(s.v->parts[i], gp, gr);
+        s.v->compoundPartPose(s.v->parts[i], gp, gr);
         const double ptol = 1e-9 * std::max(1.0, glm::length(s.pos[i]));
         for(int c = 0; c < 3; c++) {
             snprintf(buf, sizeof(buf),
@@ -409,6 +413,47 @@ static void checkCompound(Ship &s, const char *msg) {
         snprintf(buf, sizeof(buf),
                  "%s: part %zu world rot after syncShipBody", msg, i);
         checkRot(gr, s.rot[i], 1e-12, buf);
+    }
+
+    /* 4) the accessor the rest of the game reads: partWorldPose is the live
+       per-part body today and becomes compoundPartPose when the ship does,
+       so pin that it currently agrees with the pose this test set by hand --
+       and that the two routes give the SAME answer, which is the property
+       the switch-over relies on. */
+    for(size_t i = 0; i < s.pos.size(); i++) {
+        const Part *p = s.v->parts[i];
+        glm::dvec3 lp, cp; glm::dmat3 lr, cr;
+        s.v->partWorldPose(p, lp, lr);
+        s.v->compoundPartPose(p, cp, cr);
+        const double ptol = 1e-9 * std::max(1.0, glm::length(s.pos[i]));
+        for(int c = 0; c < 3; c++) {
+            snprintf(buf, sizeof(buf), "%s: part %zu partWorldPose pos [%d]", msg, i, c);
+            CHECK_NEAR(lp[c], s.pos[i][c], ptol, buf);
+            snprintf(buf, sizeof(buf),
+                     "%s: part %zu partWorldPose == compoundPartPose pos [%d]", msg, i, c);
+            CHECK_NEAR(lp[c], cp[c], ptol, buf);
+        }
+        snprintf(buf, sizeof(buf), "%s: part %zu partWorldPose rot", msg, i);
+        checkRot(lr, s.rot[i], 1e-12, buf);
+        snprintf(buf, sizeof(buf),
+                 "%s: part %zu partWorldPose == compoundPartPose rot", msg, i);
+        checkRot(lr, cr, 1e-12, buf);
+
+        /* the rest of the accessor set, against the same reference */
+        const glm::dvec3 v = s.v->partPos(p);
+        for(int c = 0; c < 3; c++) {
+            snprintf(buf, sizeof(buf), "%s: part %zu partPos [%d]", msg, i, c);
+            CHECK_NEAR(v[c], s.pos[i][c], ptol, buf);
+        }
+        snprintf(buf, sizeof(buf), "%s: part %zu partRot", msg, i);
+        checkRot(s.v->partRot(p), s.rot[i], 1e-12, buf);
+        for(int n = 0; n < 3; n++) {
+            const glm::dvec3 ax = s.v->partAxis(p, n);
+            for(int c = 0; c < 3; c++) {
+                snprintf(buf, sizeof(buf), "%s: part %zu partAxis(%d) [%d]", msg, i, n, c);
+                CHECK_NEAR(ax[c], s.rot[i][n][c], 1e-12, buf);
+            }
+        }
     }
 }
 

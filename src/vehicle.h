@@ -385,15 +385,48 @@ public:
         shipBody->setAngularVelocity(btVector3(w.x, w.y, w.z));
     }
 
-    /* A part's world pose, derived from the ship body and the part's
-       authored local pose -- the single accessor every consumer of a part's
-       pose goes through once the per-part bodies are gone. */
-    void partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
+    /* A part's world pose AS THE COMPOUND says it: the ship body's transform
+       taken back to frame S through `principal`, then out to the part's
+       authored pose. This is what partWorldPose() below becomes once the
+       per-part bodies stop being registered; until then --compound-check and
+       test_inertia hold it against the live pose, which is what makes that
+       switch a verified one-liner instead of a leap. */
+    void compoundPartPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
         glm::dvec3 sPos; glm::dmat3 sRot;
         shipFrameS(sPos, sRot);
         pos = sPos + sRot * p->localPos;
         rot = sRot * p->localRot;
     }
+
+    /* --- part state accessors -------------------------------------------
+
+       The one route to a part's pose, axes and velocity. Everything that
+       reads where a part IS, or how fast it is moving, goes through these;
+       nothing outside them reaches into Part::body for state. (Forces, mass
+       and the render model still take the Body -- they move when the bodies
+       do.)
+
+       Today these read the part's own rigid body, so the sweep that
+       introduces them is bit-identical at every call site. When the ship
+       becomes a single compound body the IMPLEMENTATIONS change to read
+       shipBody -- i.e. they become compoundPartPose() and its velocity
+       analogue -- and no call site moves. Doing the sweep as its own step is
+       what keeps that switch small enough to trust. */
+    void partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
+        pos = GetPosition(p->body);
+        rot = GetOrient(p->body);
+    }
+    glm::dvec3 partPos(const Part *p) const { return GetPosition(p->body); }
+    glm::dmat3 partRot(const Part *p) const { return GetOrient(p->body); }
+    /* the part's local axis n (0 = right, 1 = up, 2 = nose) in world axes.
+       This is the column partRot(p)[n] also gives; read straight out of
+       Bullet so the sweep stays bit-identical rather than picking up a
+       quaternion round trip. */
+    glm::dvec3 partAxis(const Part *p, int n) const {
+        return getRelAxis_(p->body, n);
+    }
+    glm::dvec3 partVel(const Part *p) const { return GetVelocity(p->body); }
+    glm::dvec3 partAngVel(const Part *p) const { return GetAngVelocity(p->body); }
 
     /* --compound-check: the migration gate. Rebuilds the compound from the
        CURRENT parts + masses (so checkCompoundInvariants sees live fuel),
@@ -423,13 +456,13 @@ public:
         const char *worstPos = "", *worstAng = "";
         for(Part *p : parts) {
             glm::dvec3 dp; glm::dmat3 dr;
-            partWorldPose(p, dp, dr);
-            const double e = glm::length(dp - GetPosition(p->body));
+            compoundPartPose(p, dp, dr);
+            const double e = glm::length(dp - partPos(p));
             if(e > maxPos || worstPos[0] == 0) {
                 maxPos = e; worstPos = p->def->name.c_str();
             }
             /* the angle between two rotations: acos((tr(R1^T R2) - 1) / 2) */
-            const glm::dmat3 rel = glm::transpose(dr) * GetOrient(p->body);
+            const glm::dmat3 rel = glm::transpose(dr) * partRot(p);
             const double c = std::min(1.0, std::max(-1.0,
                 (rel[0][0] + rel[1][1] + rel[2][2] - 1.0) * 0.5));
             const double a = glm::degrees(std::acos(c));
