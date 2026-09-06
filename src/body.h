@@ -33,7 +33,11 @@ struct Body {
         delete shape;
     }
 
-    // model matrix received from bullet for drawing
+    /* The pose to draw at, read off this body's own rigid body. Right for
+       anything whose rigid body IS the registered, integrated one (a space
+       pad). A ship part is not that any more -- the ship is one body and a
+       part's pose is derived from it -- so Vehicle::Draw passes the matrix
+       in through DrawAt instead. */
     void UpdateModelMatrix() {
         btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);
     }
@@ -47,17 +51,24 @@ struct Body {
     void Draw(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
               const glm::dmat4 &xform = glm::dmat4(1.0)) {
         UpdateModelMatrix();
+        DrawAt(camera, sunlightVec, shadow, model_matrix, xform);
+    }
 
+    /* Draw at an explicit model matrix, leaving model_matrix untouched.
+       (modelMat, not model: `model` is the mesh+shader member.) */
+    void DrawAt(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
+                const glm::dmat4 &modelMat,
+                const glm::dmat4 &xform = glm::dmat4(1.0)) {
         glm::dmat4 View = camera->GetView();
         // The view is built in the render frame (origin = renderOrigin),
         // so shift the geometry into that frame before the float32 cast.
         const glm::dmat4 xf = glm::translate(-camera->GetRenderOrigin()) * xform;
         // make sure View * Model happens with double precision
-        glm::dmat4 ModelView = View * xf * model_matrix;
+        glm::dmat4 ModelView = View * xf * modelMat;
         glm::mat4 ModelViewFloat = ModelView;
         glm::mat4 Projection = camera->GetProjection();
         glm::mat4 MVP = Projection * ModelViewFloat;
-        glm::mat4 ModelFloat = xf * model_matrix;
+        glm::mat4 ModelFloat = xf * modelMat;
 
         model->shader->Bind();
         model->shader->setUniform_mat4(0, MVP);

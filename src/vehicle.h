@@ -1361,7 +1361,16 @@ public:
             // Per-part terrain shadow
             const float shadow =
                 ComputeTerrainShadow(m_parent, frame, partPos(p), sun);
-            p->body->Draw(camera, sunlightVec, shadow, xform);
+            /* Drawn at the part's world pose rather than at a matrix read
+               off its own rigid body: a ship is ONE body, so a part's pose
+               is derived. (While partWorldPose still reads the per-part
+               body this is the same matrix Draw would have built itself --
+               measured to 1.7e-18 on the engine plume, which is built the
+               same way.) */
+            glm::dvec3 pp; glm::dmat3 pr;
+            partWorldPose(p, pp, pr);
+            p->body->DrawAt(camera, sunlightVec, shadow,
+                            glm::translate(pp) * glm::dmat4(pr), xform);
         }
     }
 
