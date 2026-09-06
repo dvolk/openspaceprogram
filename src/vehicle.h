@@ -542,6 +542,12 @@ public:
     struct FuelLink { Part *from; Part *to; };
     std::vector<FuelLink> fuelLinks;
 
+    /* --drain-log state: the last sample's per-group total fuel mass +
+       time, so the next sample can print the drain rate (kg/s) -- the
+       change in a group's mass between two samples. */
+    std::map<int, double> drainPrevMass_;
+    double drainPrevTime_ = 0.0;
+
     /* Rails: an idle ship in free fall coasts analytically on its two-body
        conic instead of being integrated: its welds and rigid bodies are
        parked out of the Bullet world and the rigid cluster's pose is
@@ -1284,6 +1290,44 @@ public:
         }
         printf("\n");
         fflush(stdout);
+    }
+
+    /* --drain-log: each fuel group's drain rate (kg/s) -- the change in
+       the group's total fuel mass (sum over its tanks' resources) between
+       consecutive samples. The "how is the fuel flowing" instrument: a
+       symmetric asparagus shows the two outer groups draining at the same
+       rate and every inner group at 0, so a serial or lopsided drain shows
+       up as the rates diverging (or a sink touched early). The first
+       sample only records the baseline (no rate); from the second on the
+       rate is the interval average. */
+    void drain_log(double time) {
+        // Each group's total fuel mass now, in one pass over the parts.
+        std::map<int, double> cur;
+        for(size_t i = 0; i < parts.size(); i++) {
+            Part *p = parts[i];
+            if(p->fuelGroup < 0 || !p->isTank()) { continue; }
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                if(p->resources.current[r] <= 0.0f) { continue; }
+                cur[p->fuelGroup] += p->resources.current[r];
+            }
+        }
+        if(drainPrevTime_ > 0.0 && time > drainPrevTime_) {
+            const double dt = time - drainPrevTime_;
+            printf("[drainlog] t=%.3fs dt=%.3fs ship=\"%s\"",
+                   time, dt, name.c_str());
+            for(std::map<int, double>::iterator it = cur.begin(); it != cur.end(); ++it) {
+                const int g = it->first;
+                const double mass = it->second;
+                const double prev = drainPrevMass_.count(g) ? drainPrevMass_[g] : mass;
+                double rate = (prev - mass) / dt;
+                if(rate < 0.0) { rate = 0.0; }   /* float noise / a stage that just dropped */
+                printf(" g%d=%.3f", g, rate);
+            }
+            printf(" kg/s\n");
+            fflush(stdout);
+        }
+        drainPrevTime_ = time;
+        drainPrevMass_.swap(cur);
     }
 
     /* the largest wheel's rated torque (N m) -- the per-wheel rating for

@@ -269,6 +269,17 @@ void tick(Game &g) {
                 }
             }
 
+            /* --drain-log: each fuel group's drain rate (kg/s), once per
+               0.5 s of sim time -- the "how is the fuel flowing"
+               instrument: the outer groups drain, the inner stay at 0. */
+            if(g.args.drain_log) {
+                static double last_drain_log = -1e30;
+                if(g.time - last_drain_log >= 0.5) {
+                    last_drain_log = g.time;
+                    g.ship->drain_log(g.time);
+                }
+            }
+
             /* --slew-log: autopilot (prograde/retrograde/kill-rot) state,
                once per 0.1 s of sim time -- fine enough to resolve the
                slew's ~1 s timescale and any oscillation around the target. */

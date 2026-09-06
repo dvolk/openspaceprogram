@@ -210,6 +210,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "links to stdout; the instrument for the fuel-link "
                  "drain-rate bug (symmetric radial groups must stay equal)");
 
+    app.add_flag("--drain-log", args.drain_log,
+                 "Periodically print each fuel group's drain rate (kg/s) "
+                 "to stdout -- the change in a group's fuel mass between "
+                 "samples; the instrument for how fuel is flowing (which "
+                 "groups feed the engines and at what rate)");
+
     app.add_flag("--compound-check", args.compound_check,
                  "Periodically print, for every ship, how far the part poses "
                  "derived from its single compound rigid body are from the "

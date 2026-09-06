@@ -66,6 +66,7 @@ struct GameArgs {
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
     bool att_log = false;          // log the ship's nose + angular velocity
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links
+    bool drain_log = false;      // --drain-log: per-fuel-group drain rate (kg/s)
     bool compound_check = false;   // --compound-check: the ship-as-one-rigid-body gate
 
     std::vector<std::string> postfx_spec;
