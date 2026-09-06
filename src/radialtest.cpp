@@ -77,7 +77,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         model->FromData(mesh, partsshader,
                         load_texture((std::string("./res/") + def->texture).c_str()));
         model->hull_margin = def->hull_margin;
-        Body *b = create_body(model, 0, 0, 0, (float)def->mass, false);
+        Body *b = create_body(model, 0, 0, 0, (float)def->mass);
         Part *p = new Part;
         p->body  = b;
         p->def   = def;

@@ -47,8 +47,7 @@ public:
     ~PhysicsEngine();
 
     void tick(float timeStep);
-    void RegisterObject(Body *body, glm::vec3 pos,
-                        glm::vec3 rot, bool planet);
+    void RegisterObject(Body *body, glm::vec3 pos, glm::vec3 rot);
     btRigidBody *AddTerrainCollision(Mesh *mesh);
     void RemoveTerrainCollision(btRigidBody *b);
     /* Remove a body's rigid body from the dynamics world (call BEFORE
@@ -81,8 +80,6 @@ private:
     btBroadphaseInterface *overlappingPairCache;
     btSequentialImpulseConstraintSolver *solver;
     btDiscreteDynamicsWorld *dynamicsWorld;
-    btCollisionShape *debugShape;
-    btCollisionShape *planetShape;
     GLDebugDrawer *debugDrawer;
 };
 

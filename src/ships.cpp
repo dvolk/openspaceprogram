@@ -54,7 +54,7 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
     Model *model = new Model;
     model->FromData(m, partsshader, t);
     StaticBuilding *sp = new StaticBuilding;
-    sp->body = create_body(model, 0, 0, 0, 0, false);
+    sp->body = create_body(model, 0, 0, 0, 0);
     setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
     sp->parent = hb;
     sp->sun = sun;

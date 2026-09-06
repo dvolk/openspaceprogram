@@ -103,7 +103,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         model->FromData(mesh, partsshader, tex);
         model->hull_margin = resolveHullMargin(def.hull_margin, pd.hull_margin);
 
-        Body *b = create_body(model, 0, 0, 0, (float)pd.mass, false);
+        Body *b = create_body(model, 0, 0, 0, (float)pd.mass);
         setPosRot(b, base + orient * (pos[i] + shift), orient * rot[i]);
 
         Part *part = new Part;

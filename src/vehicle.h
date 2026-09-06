@@ -194,8 +194,7 @@ public:
         btScalar total = 0;
         for(size_t i = 0; i < parts.size(); i++) {
             Part *p = parts[i];
-            inS->addChildShape(toBt(p->localPos, p->localRot),
-                               p->body->btBody->getCollisionShape());
+            inS->addChildShape(toBt(p->localPos, p->localRot), p->body->shape);
             masses[i] = (btScalar)p->body->mass;
             total += masses[i];
             compoundParts.push_back(p);

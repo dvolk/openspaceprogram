@@ -88,7 +88,7 @@ static bool castRay(const PickRay &ray, btCollisionObject *obj,
 }
 
 bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
-    return castRay(ray, body->btBody, body->btBody->getCollisionShape(),
+    return castRay(ray, body->btBody, body->shape,
                    body->btBody->getWorldTransform(), hit);
 }
 

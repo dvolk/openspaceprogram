@@ -16,6 +16,13 @@ struct Body {
     // bullet object, stores all the physical body information
     btRigidBody *btBody;
 
+    /* The collision shape -- the convex hull of the part mesh. Owned HERE,
+       not by the rigid body: Bullet's btRigidBody never owned its shape (it
+       leaked one per part), and the hull has to outlive registration anyway,
+       because the ship's compound references it as a child and picking casts
+       against it. Freed after btBody, which points at it. */
+    btCollisionShape *shape = nullptr;
+
     double mass;
 
     glm::dmat4 model_matrix = glm::dmat4(1.0);
@@ -23,6 +30,7 @@ struct Body {
     ~Body() {
         delete model;
         delete btBody;
+        delete shape;
     }
 
     // model matrix received from bullet for drawing
@@ -66,8 +74,6 @@ struct Body {
     }
 };
 
-void RegisterPhysicsBody(Body *body, glm::vec3 pos,
-                         glm::vec3 rot, bool planet);
+void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot);
 
-Body *create_body(Model *model, float x, float y, float z,
-                  float mass, bool planet);
+Body *create_body(Model *model, float x, float y, float z, float mass);

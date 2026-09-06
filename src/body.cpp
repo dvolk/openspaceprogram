@@ -3,13 +3,13 @@
 void setRigidBody(Body *b, btRigidBody *rb) { b->btBody = rb; }
 btRigidBody* getRigidBody(Body *b) { return b->btBody; }
 
-Body *create_body(Model *model, float x, float y, float z, float mass, bool debug_mesh)
+Body *create_body(Model *model, float x, float y, float z, float mass)
 {
     Body *body = new Body;
     body->model = model;
     body->mass = mass;
     glm::vec3 pos = glm::vec3(x, y, z);
-    RegisterPhysicsBody(body, pos, glm::vec3(0, 0, 0), debug_mesh);
+    RegisterPhysicsBody(body, pos, glm::vec3(0, 0, 0));
     return body;
 }
 

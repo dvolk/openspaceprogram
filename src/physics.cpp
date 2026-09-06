@@ -173,9 +173,6 @@ PhysicsEngine::PhysicsEngine() {
     dynamicsWorld->setGravity(btVector3(0, 0, 0));
     dynamicsWorld->setApplySpeculativeContactRestitution(true);
 
-    debugShape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
-    planetShape = new btBoxShape(btVector3(10, 10, 10));
-
     debugDrawer = new GLDebugDrawer;
     debugDrawer->init();
     dynamicsWorld->setDebugDrawer(debugDrawer);
@@ -188,7 +185,6 @@ PhysicsEngine::~PhysicsEngine() {
     delete overlappingPairCache;
     delete dispatcher;
     delete collisionConfiguration;
-    delete debugShape;
 }
 
 void PhysicsEngine::tick(float timeStep) {
@@ -252,39 +248,33 @@ btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m) {
 }
 
 void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
-                                   glm::vec3 rot, bool debug_mesh)
+                                   glm::vec3 rot)
 {
     btTransform startTransform;
     startTransform.setIdentity();
 
-    btCollisionShape *shape;
-    if(debug_mesh == false) {
-        Mesh *m = body->model->mesh;
+    Mesh *m = body->model->mesh;
 
-        printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
-        assert(m->vs != NULL);
-        assert(m->num_vertices >= 3);
+    printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
+    assert(m->vs != NULL);
+    assert(m->num_vertices >= 3);
 
-        /* Convex hull of the part mesh. Bullet has no collision
-           algorithm for concave-vs-concave pairs (the dispatcher
-           falls through to btEmptyAlgorithm), so dynamic bodies
-           must stay convex. The hull keeps the part's real
-           silhouette (vs the 2 m debug box) and pairs correctly
-           with the triangle-mesh world (terrain / space port). */
-        btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
-                                                        3 * sizeof(double));
+    /* Convex hull of the part mesh. Bullet has no collision
+       algorithm for concave-vs-concave pairs (the dispatcher
+       falls through to btEmptyAlgorithm), so dynamic bodies
+       must stay convex. The hull keeps the part's real
+       silhouette and pairs correctly with the triangle-mesh
+       world (terrain / space port). Owned by the Body, which
+       outlives this registration. */
+    btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
+                                                    3 * sizeof(double));
 
-        /* the model carries the part's resolved margin (ship def > catalog,
-           see resolveHullMargin); -1 when neither sets one */
-        const double margin = (body->model->hull_margin >= 0.0)
-                            ? body->model->hull_margin : hull_margin();
-        hull->setMargin(margin);
-
-        shape = hull;
-    }
-    else {
-        shape = debugShape;
-    }
+    /* the model carries the part's resolved margin (ship def > catalog,
+       see resolveHullMargin); -1 when neither sets one */
+    const double margin = (body->model->hull_margin >= 0.0)
+                        ? body->model->hull_margin : hull_margin();
+    hull->setMargin(margin);
+    body->shape = hull;
 
     startTransform.setOrigin(btVector3(pos.x, pos.y, pos.z));
     btQuaternion euler_rot(rot.x, rot.y, rot.z);
@@ -296,11 +286,11 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     btVector3 localInertia(1.0f, 1.0f, 1.0f);
 
     if(body->mass != 0.0f) {
-        shape->calculateLocalInertia(body->mass, localInertia);
+        hull->calculateLocalInertia(body->mass, localInertia);
     }
 
     btRigidBody::btRigidBodyConstructionInfo
-        rbInfo(body->mass, myMotionState, shape, localInertia);
+        rbInfo(body->mass, myMotionState, hull, localInertia);
 
     rbInfo.m_friction = 4.0;
 
@@ -406,9 +396,9 @@ void AddPhysicsBody(Body *body) {
     physics->AddBody(body);
 }
 
-void RegisterPhysicsBody(Body *body,
-                         glm::vec3 pos, glm::vec3 rot, bool planet) {
-    physics->RegisterObject(body, pos, rot, planet);
+void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot)
+{
+    physics->RegisterObject(body, pos, rot);
 }
 
 void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag) {
@@ -427,7 +417,7 @@ void SetMass(Body *body, double newMass) {
     // to the identity on every call.
     btRigidBody *rb = getRigidBody(body);
     btVector3 inertia(0, 0, 0);
-    rb->getCollisionShape()->calculateLocalInertia(newMass, inertia);
+    body->shape->calculateLocalInertia(newMass, inertia);
     rb->setMassProps(newMass, inertia);
 }
 
