@@ -19,6 +19,8 @@ catalog is reproducible and internally consistent instead of hand-tuned:
   decoupler       staging boundary: decoupler + fuel_barrier flags; the
                   mass is declared (EXTRA_FIELDS), radius/height follow
                   the mesh unless declared
+  fuel_link       virtual one-way fuel connection: no mesh, no physics --
+                  just the fuel_link flag (EXTRA_FIELDS)
   extras (EXTRA_FIELDS)
                   crew seats, the kerbal's RCS propellant, the decouplers'
                   declared mass + staging flags -- per-part values that
@@ -67,6 +69,8 @@ CAPSULE_TORQUE_PER_M = 200.0
 WHEEL_TORQUE_PER_M = 2000.0
 
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
+# fuel_link is virtual: mesh/texture are None and generate() skips the
+# geometry step for it.
 # Radial sizes are 1.0 / 1.5 / 2.25 m. Heights follow the per-type ratio
 # (capsule & engine h=2r, wheel h=0.25r, nose cap h=r/2, adapter h=max(r)/2);
 # tanks keep the independent fuel-height options.
@@ -105,10 +109,12 @@ PARTS = [
     ("nose_cap_r1.5h0.75","nose_cap",      "nose_cap_r1.5h0.75.obj",       "nose_cap.png"),
     ("nose_cap_r2.25h1.125","nose_cap",    "nose_cap_r2.25h1.125.obj",     "nose_cap.png"),
     ("kerbal",           "kerbal",         "kerbal.obj",                   "kerbal.png"),
+    ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
 # per-part extra fields that do NOT derive from the geometry: crew seats,
-# the kerbal's RCS propellant, and the decouplers' mass + staging flags.
+# the kerbal's RCS propellant, the decouplers' mass + staging flags, and
+# the fuel_link's flag.
 # Applied on top of the generated entry so the catalog stays fully
 # reproducible (no hand-edits to parts.json). The kerbal mass is declared
 # (not mesh-derived) to preserve the hand-set value; the decouplers'
@@ -124,6 +130,7 @@ EXTRA_FIELDS = {
     "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,
                           "height": 0.5625},
     "decoupler_radial":  {"mass": 40, "decoupler": True, "fuel_barrier": True},
+    "fuel_link":         {"fuel_link": True},
 }
 
 
@@ -149,6 +156,13 @@ def clean(x):
 
 
 def generate(name, ptype, mesh, texture):
+    if ptype == "fuel_link":
+        # a virtual one-way fuel connection (see PartDef.fuel_link): no
+        # mesh, no physics -- just the fuel_link flag from EXTRA_FIELDS
+        e = {"name": name, "type": ptype}
+        e.update(EXTRA_FIELDS[name])
+        return e
+
     radius, height, volume = mesh_geom(mesh)
     e = {
         "name": name,
@@ -195,6 +209,8 @@ def generate(name, ptype, mesh, texture):
 
 def summary_line(e):
     n = e["name"]
+    if "fuel_link" in e:
+        return "  %-24s virtual one-way fuel link" % n
     if "fuel_rate" in e:
         t = 2.0 * e["fuel_rate"] * e["exhaust_velocity"]
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (
