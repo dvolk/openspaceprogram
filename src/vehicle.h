@@ -177,59 +177,94 @@ public:
     void setSlewRequest(SlewMode m) { slewRequest = m; }
 
     void setRoot(Part *part) {
+        part->parent   = nullptr;
+        part->localPos = glm::dvec3(0.0);
+        part->localRot = glm::dmat3(1.0);
         parts.push_back(part);
     }
 
     /* Weld `part` to the part at `parentIdx` at the given LOCAL anchor
        points (which must coincide in world space -- the 6DOF weld enforces
-       zero relative linear offset). Records the link (by pointer) for
-       staging. The caller has already setPosRot-ed the child to the matching
-       pose. */
+       zero relative linear offset), and record its authored pose in the
+       ship-local frame S (Part::localPos/localRot; S is the root's frame,
+       so these are pure geometry -- see part.h). `parent` is the topology
+       edge the staging + fuel-group walks use.
+
+       The caller has already setPosRot-ed the child to the world pose that
+       MATCHES localPos/localRot; the anchors die with the weld, the local
+       pose does not (it is what a part's world pose is derived from). */
     void attach(Part *part, size_t parentIdx,
-                const glm::dvec3 &parentAnchor, const glm::dvec3 &childAnchor) {
+                const glm::dvec3 &parentAnchor, const glm::dvec3 &childAnchor,
+                const glm::dvec3 &localPos, const glm::dmat3 &localRot) {
         Part *parent = parts[parentIdx];
         void *constraint = GlueTogether(parent->body, part->body,
                                         parentAnchor, childAnchor);
+        part->parent   = parent;
+        part->localPos = localPos;
+        part->localRot = localRot;
         parts.push_back(part);
         constraints.push_back(constraint);
         constraintLinks.push_back(std::make_pair(parent, part));
         constraintAnchors.push_back(std::make_pair(parentAnchor, childAnchor));
     }
 
+    /* The three convenience attach modes (used by the --radial-test ship
+       builder; build_ship goes through attachPose + attach directly). Each
+       derives the child's ship-local pose from the parent's, so the pose and
+       the anchors stay consistent by construction -- the anchor coincidence
+       below is the same invariant attachPose's cases satisfy. */
+
     void attachDown(Part *part) {
         /* weld at the part faces: parent bottom (-h/2) to child top (+h/2);
            generalizes the old hardcoded +-1 m (2 m parts). The parent is the
-           last part pushed. */
-        const PartDef *parent = parts.back()->def;
+           last part pushed. The child sits straight below it, axes unchanged,
+           so the child's +hC/2 anchor lands on the parent's -hP/2 anchor. */
+        const Part *pp = parts.back();
+        const PartDef *parent = pp->def;
+        const double dz = -(parent->height + part->def->height) / 2.0;
         attach(part, parts.size() - 1,
                glm::dvec3(0.0, 0.0, -parent->height / 2.0),
-               glm::dvec3(0.0, 0.0,  part->def->height / 2.0));
+               glm::dvec3(0.0, 0.0,  part->def->height / 2.0),
+               pp->localPos + pp->localRot * glm::dvec3(0.0, 0.0, dz),
+               pp->localRot);
     }
 
     void attachRadial(Part *part) {
         /* weld the part to the parent's SIDE: the part's local +Z axis is
-           rotated to the parent's local +X (call site), so the part's
-           bottom face (local -h/2) touches the parent's side at +radius.
-           The anchors coincide in world space at the tangent point
-           (parent local (r,0,0) == part local (0,0,-h/2)). */
-        const PartDef *parent = parts.back()->def;
+           rotated to the parent's local +X, so the part's bottom face
+           (local -h/2) touches the parent's side at +radius. The anchors
+           coincide at the tangent point (parent local (r,0,0) == part local
+           (0,0,-h/2)). */
+        const Part *pp = parts.back();
+        const PartDef *parent = pp->def;
+        /* columns are the images of X, Y, Z: takes the child's +Z onto the
+           parent's +X (the same rotZtoX the --radial-test call site uses). */
+        const glm::dmat3 rotZtoX(glm::dvec3(0, 0, -1),
+                                 glm::dvec3(0, 1, 0),
+                                 glm::dvec3(1, 0, 0));
+        const glm::dvec3 off(parent->radius + part->def->height / 2.0, 0.0, 0.0);
         attach(part, parts.size() - 1,
                glm::dvec3(parent->radius, 0.0, 0.0),
-               glm::dvec3(0.0, 0.0, -part->def->height / 2.0));
+               glm::dvec3(0.0, 0.0, -part->def->height / 2.0),
+               pp->localPos + pp->localRot * off,
+               pp->localRot * rotZtoX);
     }
 
     void attachSide(Part *part) {
         /* weld the part to the parent's SIDE with PARALLEL axes: the part
-           keeps the parent's local +Z axis (no rotation at the call site),
-           sits along the parent's local +X, and its cylindrical surface
-           touches the parent's at +radius. The anchors coincide in world
-           space at the tangent point (parent local (r,0,0) == part local
-           (-r,0,0)). Unlike attachRadial the child is NOT rotated, so this
-           is the "side by side, parallel axes" case. */
-        const PartDef *parent = parts.back()->def;
+           keeps the parent's local +Z axis, sits along the parent's local
+           +X, and its cylindrical surface touches the parent's at +radius.
+           The anchors coincide at the tangent point (parent local (r,0,0) ==
+           part local (-r,0,0)). Unlike attachRadial the child is NOT
+           rotated, so this is the "side by side, parallel axes" case. */
+        const Part *pp = parts.back();
+        const PartDef *parent = pp->def;
+        const glm::dvec3 off(parent->radius + part->def->radius, 0.0, 0.0);
         attach(part, parts.size() - 1,
                glm::dvec3(parent->radius, 0.0, 0.0),
-               glm::dvec3(-part->def->radius, 0.0, 0.0));
+               glm::dvec3(-part->def->radius, 0.0, 0.0),
+               pp->localPos + pp->localRot * off,
+               pp->localRot);
     }
 
     void init() {
@@ -285,14 +320,13 @@ public:
        separateStage() -- the tree shrinks when parts drop. */
     void buildFuelGroups() {
         for(Part *p : parts) { p->fuelGroup = -1; }
-        /* undirected adjacency over the weld links (parent<->child; each
-           non-root part has exactly one parent weld). */
+        /* undirected adjacency over the part tree (Part::parent; each
+           non-root part has exactly one parent edge). */
         std::map<Part *, std::vector<Part *>> adj;
-        for(size_t c = 0; c < constraintLinks.size(); c++) {
-            Part *a = constraintLinks[c].first;
-            Part *b = constraintLinks[c].second;
-            adj[a].push_back(b);
-            adj[b].push_back(a);
+        for(Part *p : parts) {
+            if(p->parent == nullptr) { continue; }
+            adj[p->parent].push_back(p);
+            adj[p].push_back(p->parent);
         }
         int next = 0;
         for(Part *p : parts) {
@@ -786,11 +820,11 @@ public:
        central tank) is untouched even though it shares a stage with the
        booster the decoupler drops. Empty if no decoupler is on that stage. */
     std::vector<Part *> droppedPartsAtStage(int stage) {
-        /* parent -> children, from the weld links (each non-root part has
-           exactly one parent weld, so this is a tree). */
+        /* parent -> children, from Part::parent (each non-root part has
+           exactly one parent edge, so this is a tree). */
         std::map<Part *, std::vector<Part *>> children;
-        for(size_t c = 0; c < constraintLinks.size(); c++) {
-            children[constraintLinks[c].first].push_back(constraintLinks[c].second);
+        for(Part *p : parts) {
+            if(p->parent != nullptr) { children[p->parent].push_back(p); }
         }
         std::set<Part *> dropped;
         for(Part *p : parts) {

@@ -8,6 +8,7 @@
 //   - the propellant tank contents (ResourceContent),
 //   - the stage number (from the ship def, not the catalog),
 //   - the transient per-tick armed thrust,
+//   - the part-tree edge (parent) and the authored ship-local pose,
 //   - the parked (rails) pose relative to the cluster COM.
 //
 // Behavior (thruster / reaction wheel / capsule) is DERIVED from the
@@ -31,6 +32,22 @@ struct Part {
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group
     float armedThrust = 0.0f;   // N armed this tick (disarmed by clearThrust)
+
+    /* The part-tree edge: the part this one is welded to (nullptr for the
+       root). Topology only -- it carries no physics handle. This is the
+       adjacency droppedPartsAtStage and buildFuelGroups walk, so it is the
+       authoritative source for the tree; a Part* is stable for the ship's
+       lifetime, so staging needs no index remapping. */
+    Part *parent = nullptr;
+
+    /* Authored pose in the SHIP-LOCAL frame S, where S is the root part's
+       frame at build time: the root gets zero/identity and every other part
+       is placed relative to it (build_ship's pos[]/rot[], from attachPose --
+       geometry pinned numerically by test_shipload). Pure geometry: fixed at
+       attach time, independent of mass, fuel and crew, never mutated after.
+       A part's world pose is DERIVED from these (see Vehicle). */
+    glm::dvec3 localPos = glm::dvec3(0.0);
+    glm::dmat3 localRot = glm::dmat3(1.0);
 
     /* parked (rails) pose relative to the cluster COM, in cluster axes.
        Written by goOnRails(), read by writeRailPose(); identity/zero for a

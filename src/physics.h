@@ -94,17 +94,18 @@ void RemoveBody(Body *body);
 /* Re-add a parked body's rigid body to the world (inverse of RemoveBody). */
 void AddPhysicsBody(Body *body);
 
-double GetMass(Body *body);
 void SetMass(Body *body, double newMass);
+/* Force applied at `rel`, an offset from the body's centre of mass -- the
+   one primitive that lets several parts push a SINGLE rigid body correctly,
+   each contributing its share of the net force plus the torque from its own
+   offset. No callers yet: per-part gravity and thrust still go through the
+   per-part bodies, so it looks dead. Do not remove it. */
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force);
 void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag);
 void ApplyCentralForce(Body *body, glm::dvec3 force);
 void ApplyCentralForceForward(Body *body, double mag);
 void ApplyTorque(Body *body, glm::dvec3 dir, double mag);
 void ApplyTorque(Body *body, glm::dvec3 torque);
-void ApplyTorqueRelX(Body *body, double mag);
-void ApplyTorqueRelY(Body *body, double mag);
-void ApplyTorqueRelZ(Body *body, double mag);
 /* local axis n (0/1/2) of the body, in world coordinates */
 glm::dvec3 getRelAxis_(Body *body, int n);
 /* the body's local moment-of-inertia diagonal (kg m^2), as Bullet has it */
@@ -121,7 +122,6 @@ void setGravity(Body *body, double acc);
 glm::dvec3 GetPosition(Body *body);
 glm::dvec3 GetVelocity(Body *body);
 glm::dvec3 GetAngVelocity(Body *b);
-glm::dvec3 getCOM(Body *body);
 glm::dmat3 GetOrient(Body *body);
 
 /* Weld two parts; anchors are local points that must coincide in world

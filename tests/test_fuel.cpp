@@ -31,6 +31,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <utility>
 #include <vector>
 
@@ -59,11 +60,14 @@ static int g_checks = 0;
     } while (0)
 
 /* A hand-built ship. `defs` must outlive the Vehicle (Part::def points
-   into it; reserve() keeps the pointers valid). Each Part wraps its rigid
-   body and owns its collision shape (freed by ~Body). */
+   into it). A deque, not a vector: push_back on a vector reallocates and
+   would dangle every Part::def handed out so far -- a deque never
+   invalidates references to existing elements, so no reserve() bookkeeping
+   is needed at the call sites. Each Part wraps its rigid body and owns its
+   collision shape (freed by ~Body). */
 struct Ship {
     Vehicle *v;
-    std::vector<PartDef> defs;
+    std::deque<PartDef> defs;
 };
 
 /* Add one part. h2/lox > 0 -> a tank; engine -> a thruster; barrier -> a
@@ -94,14 +98,14 @@ static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
     return p;
 }
 
-/* Join two parts into the same fuel group (a weld link). buildFuelGroups
-   only needs the Part* adjacency, so no Bullet constraint is created and the
-   test stays headless. The anchor pair keeps links/anchors the same length
-   (separateStage zips them). */
+/* Join two parts into the same fuel group by setting the part-tree edge
+   (b becomes a's child). buildFuelGroups walks Part::parent, so that single
+   pointer is all the grouping needs -- no Bullet constraint, no anchors, and
+   the test stays headless. Every chain below is linear, so no part is ever
+   given two parents. */
 static void link(Ship &s, Part *a, Part *b) {
-    s.v->constraintLinks.push_back(std::make_pair(a, b));
-    s.v->constraintAnchors.push_back(
-        std::make_pair(glm::dvec3(0.0), glm::dvec3(0.0)));
+    (void)s;
+    b->parent = a;
 }
 
 /* init() dereferences controller->body (NeverSleep), but a headless ship has

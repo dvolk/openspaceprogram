@@ -507,15 +507,6 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
     getRigidBody(b)->proceedToTransform(t);
 }
 
-glm::dvec3 getCOM(Body *body) {
-    btVector3 COM = getRigidBody(body)->getCenterOfMassTransform().getOrigin();
-    return glm::dvec3(COM.getX(), COM.getY(), COM.getZ());
-}
-
-double GetMass(Body *body) {
-    return body->mass;
-}
-
 btVector3 getRelAxis(Body *body, int n) {
     return getRigidBody(body)->getCenterOfMassTransform().getBasis().getColumn(n);
 }
@@ -538,19 +529,6 @@ void ApplyCentralForceForward(Body *body, double mag) {
 void setGravity(Body *body, double acc) {
     const btVector3 dir = getRigidBody(body)->getCenterOfMassPosition();
     getRigidBody(body)->setGravity(acc * dir.normalized());
-}
-
-void ApplyTorqueRelX(Body *body, double mag) {
-    const btVector3& axis = getRelAxis(body, 0);
-    getRigidBody(body)->applyTorque(mag * axis.normalized());
-}
-void ApplyTorqueRelY(Body *body, double mag) {
-    const btVector3& axis = getRelAxis(body, 1);
-    getRigidBody(body)->applyTorque(mag * axis.normalized());
-}
-void ApplyTorqueRelZ(Body *body, double mag) {
-    const btVector3& axis = getRelAxis(body, 2);
-    getRigidBody(body)->applyTorque(mag * axis.normalized());
 }
 
 void ApplyTorque(Body *body, glm::dvec3 dir, double mag) {

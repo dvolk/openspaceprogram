@@ -115,7 +115,13 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
             ship->setRoot(part);
         } else {
             const ShipPart &sp = physical[i];
-            ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i]);
+            /* pos[i]/rot[i] are already the ship-local (S) transforms -- S is
+               the root's frame, pos[0]=0/rot[0]=I, and the pad `shift` and
+               the world base/orient are applied uniformly to every part, so
+               they cancel in the relative pose. attachPose's geometry is
+               pinned numerically by test_shipload. */
+            ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i],
+                         pos[i], rot[i]);
         }
     }
     ship->controller = ship->parts[cit->second];
