@@ -8,8 +8,12 @@
 //                leaving p_view = R * (p - cam.pos)).
 //   pickBody     a ray vs ONE rigid body's collision shape, via Bullet's
 //                own convex/concave cast (so a pick hits exactly what
-//                collides; works for the part hulls, and for triangle
-//                meshes -- terrain/pads -- later).
+//                collides; works for triangle meshes -- terrain/pads --
+//                as well as convex hulls). A ship's parts are children of
+//                its ONE compound body rather than bodies of their own, so
+//                pickShipPart casts against those children instead; this
+//                stays the seam for a standalone body and the headless unit
+//                under test in tests/test_pick.cpp.
 //   pickShipPart the first concrete use of both: the nearest ship part
 //                under a pixel, across every ship (each in its own frame).
 //

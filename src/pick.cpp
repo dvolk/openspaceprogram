@@ -52,7 +52,13 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
     };
 }
 
-bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
+/* The cast itself: one ray against one collision shape at one transform.
+   Takes the object/shape/transform apart rather than a Body, because a
+   ship's parts are children of ONE compound rigid body -- the shape and
+   the pose come from the compound, not from a per-part body. */
+static bool castRay(const PickRay &ray, btCollisionObject *obj,
+                    const btCollisionShape *shape, const btTransform &xform,
+                    PickBodyHit &hit) {
     // One long segment along the ray, in the body's frame (double
     // precision, so a scene-sized length is exact enough).
     const double L = 1e7;   // m
@@ -68,11 +74,7 @@ bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
     rayTo.setOrigin(to);
 
     btCollisionWorld::ClosestRayResultCallback cb(from, to);
-    btCollisionWorld::rayTestSingle(rayFrom, rayTo,
-                                    body->btBody,
-                                    body->btBody->getCollisionShape(),
-                                    body->btBody->getWorldTransform(),
-                                    cb);
+    btCollisionWorld::rayTestSingle(rayFrom, rayTo, obj, shape, xform, cb);
     if(!cb.hasHit()) { return false; }
 
     hit.point  = glm::dvec3(cb.m_hitPointWorld.getX(),
@@ -83,6 +85,24 @@ bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
                             cb.m_hitNormalWorld.getZ());
     hit.dist   = cb.m_closestHitFraction * L;
     return true;
+}
+
+bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
+    return castRay(ray, body->btBody, body->btBody->getCollisionShape(),
+                   body->btBody->getWorldTransform(), hit);
+}
+
+/* One child of a ship's compound, at the pose the compound puts it in. The
+   child index IS the part index: rebuildCompound fills compoundParts in
+   parts order and test_inertia pins the correspondence, so a hit names the
+   part without a search. */
+static bool pickShipChild(const PickRay &ray, Vehicle *ship, size_t child,
+                          PickBodyHit &hit) {
+    return castRay(ray, ship->shipBody,
+                   ship->compound->getChildShape((int)child),
+                   ship->shipBody->getCenterOfMassTransform()
+                       * ship->compound->getChildTransform((int)child),
+                   hit);
 }
 
 bool pickShipPart(Game &g, int px, int py,
@@ -102,6 +122,7 @@ bool pickShipPart(Game &g, int px, int py,
 
     for(auto *b : g.sys.bodies) {
     for(auto *s : b->ships) {
+        if(s->compound == nullptr) { continue; }
         // The ship's part frame -> render frame (the same transform
         // Vehicle::Draw uses); the ray must live in the ship's frame,
         // where its bodies' transforms live.
@@ -111,9 +132,14 @@ bool pickShipPart(Game &g, int px, int py,
         PickRay sray{ glm::dvec3(po.x, po.y, po.z),
                       glm::normalize(glm::dmat3(invXf) * ray.dir) };
 
+        /* The ship body is not the registered one yet, so mirror the live
+           parts onto it first -- one call per ship per click, and it goes
+           away when the ship body becomes the registered body. */
+        s->syncShipBody();
+
         for(size_t i = 0; i < s->parts.size(); i++) {
             PickBodyHit h;
-            if(!pickBody(sray, s->parts[i]->body, h)) { continue; }
+            if(!pickShipChild(sray, s, i, h)) { continue; }
             if(h.dist < bestDist) {
                 bestDist = h.dist;
                 bestShip = s;

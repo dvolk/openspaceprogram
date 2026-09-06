@@ -252,9 +252,11 @@ test:
 	# own view/projection (a point on the ray projects back to the pixel),
 	# then the real Bullet convex-cast hull ray-test (hit point/distance,
 	# a miss, translated + rotated bodies). pick.cpp includes game.h (the
-	# fleet), so the imgui include dir is needed for ui.h.
+	# fleet), so the imgui include dir is needed for ui.h; and pickShipPart
+	# casts against a ship's compound children, which inlines Vehicle's
+	# pose accessors, so physics.cpp + body.cpp + shipdef.cpp link in.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_pick.cpp src/pick.cpp src/camera.cpp src/frame.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_pick.cpp src/pick.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/camera.cpp src/frame.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_pick
 	./test_pick
 	# settings.json mapping (src/settings.cpp, nlohmann): the
