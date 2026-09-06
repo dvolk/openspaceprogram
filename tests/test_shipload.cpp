@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <fstream>
 #include <functional>
+#include <dirent.h>
 #include <stdexcept>
 #include <string>
 
@@ -784,6 +785,41 @@ int main() {
         CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
         std::remove(bad);
     }
+    /* Every ship def in res/ships/ must resolve against the real catalog. An
+       unknown part name throws at load time -- and a ship that nothing loads
+       (not fleet.json, not an e2e case, not src/) can sit broken for a long
+       time: heavy_one.json referenced "reaction_wheel2.25h0.5625", missing
+       the _r, and no test or case ever reached it. This sweep reads the
+       directory rather than carrying a list, so a ship added tomorrow is
+       covered the moment it lands. */
+    {
+        DIR *ships = opendir("res/ships");
+        CHECK(ships != nullptr);
+        if(ships != nullptr) {
+            int swept = 0;
+            struct dirent *e;
+            while((e = readdir(ships)) != nullptr) {
+                const std::string nm(e->d_name);
+                if(nm.size() < 6 || nm.compare(nm.size() - 5, 5, ".json") != 0) {
+                    continue;
+                }
+                const std::string path = "res/ships/" + nm;
+                bool ok = false;
+                try {
+                    ok = !load_ship_def(path.c_str(), cat).parts.empty();
+                } catch(const std::exception &ex) {
+                    printf("  %s: %s\n", path.c_str(), ex.what());
+                }
+                if(!ok) { printf("  FAILED to load: %s\n", path.c_str()); }
+                CHECK(ok);
+                swept++;
+            }
+            closedir(ships);
+            printf("  swept %d ship defs in res/ships/\n", swept);
+            CHECK(swept > 0);   // a silent empty sweep would pass vacuously
+        }
+    }
+
 
     if(failures) {
         printf("test_shipload: %d FAILURES\n", failures);
