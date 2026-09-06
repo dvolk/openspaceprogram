@@ -97,6 +97,39 @@
       "exhaust_velocity": 4400.0
     },
     {
+      "name": "orbital_engine",
+      "type": "orbital_engine",
+      "mesh": "orbital_engine.obj",
+      "texture": "engine.png",
+      "mass": 166.67,
+      "radius": 1.0,
+      "height": 1.0,
+      "fuel_rate": 1.89,
+      "exhaust_velocity": 4400.0
+    },
+    {
+      "name": "orbital_engine_r1.5h1.5",
+      "type": "orbital_engine",
+      "mesh": "orbital_engine_r1.5h1.5.obj",
+      "texture": "engine.png",
+      "mass": 375,
+      "radius": 1.5,
+      "height": 1.5,
+      "fuel_rate": 4.26,
+      "exhaust_velocity": 4400.0
+    },
+    {
+      "name": "orbital_engine_r2.25h2.25",
+      "type": "orbital_engine",
+      "mesh": "orbital_engine_r2.25h2.25.obj",
+      "texture": "engine.png",
+      "mass": 843.75,
+      "radius": 2.25,
+      "height": 2.25,
+      "fuel_rate": 9.59,
+      "exhaust_velocity": 4400.0
+    },
+    {
       "name": "fuel_tank",
       "type": "fuel_tank",
       "mesh": "fuel_tank.obj",

@@ -13,6 +13,9 @@ catalog is reproducible and internally consistent instead of hand-tuned:
   engine          thrust   = ENGINE_THRUST_PER_M2 * radius^2  (exit area)
                   mass     = thrust * ENGINE_MASS_PER_N
                   fuel_rate= thrust / (2 * EXHAUST_VELOCITY)   (both tanks)
+  orbital_engine  like engine, but 1/3 thrust -- hence 1/3 mass and 1/3
+                  fuel rate; half the height (from the mesh). A low-thrust
+                  engine for orbital maneuvering.
   capsule / wheel / adapter / nose_cap
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
@@ -84,6 +87,9 @@ PARTS = [
     ("engine",           "engine",         "engine.obj",                   "engine.png"),
     ("engine_r1.5h3",    "engine",         "engine_r1.5h3.obj",            "engine.png"),
     ("engine_r2.25h4.5", "engine",         "engine_r2.25h4.5.obj",         "engine.png"),
+    ("orbital_engine",        "orbital_engine", "orbital_engine.obj",              "engine.png"),
+    ("orbital_engine_r1.5h1.5","orbital_engine", "orbital_engine_r1.5h1.5.obj",     "engine.png"),
+    ("orbital_engine_r2.25h2.25","orbital_engine","orbital_engine_r2.25h2.25.obj", "engine.png"),
     ("fuel_tank",        "fuel_tank",      "fuel_tank.obj",                "fuel_tank.png"),
     ("tank_r1h1",        "fuel_tank",      "tank_r1h1.obj",                "fuel_tank.png"),
     ("tank_r1h3",        "fuel_tank",      "tank_r1h3.obj",                "fuel_tank.png"),
@@ -171,8 +177,11 @@ def generate(name, ptype, mesh, texture):
         "texture": texture,
     }
 
-    if ptype == "engine":
+    if ptype in ("engine", "orbital_engine"):
         thrust = ENGINE_THRUST_PER_M2 * radius * radius
+        if ptype == "orbital_engine":
+            # 1/3 thrust -> 1/3 mass and 1/3 fuel rate (same exhaust velocity)
+            thrust /= 3.0
         e["mass"] = clean(thrust * ENGINE_MASS_PER_N)
         e["radius"] = radius
         e["height"] = height
