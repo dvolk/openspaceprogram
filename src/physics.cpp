@@ -49,6 +49,17 @@ class GLDebugDrawer : public btIDebugDraw {
 public:
     std::vector<float> lineBuffer;
 
+    /* Line vertices are stored RELATIVE to this, subtracted in double in
+       drawLine(). Bullet hands drawLine absolute frame coordinates, and the
+       buffer is float32, so the subtraction has to happen BEFORE the
+       narrowing: at Kerbin's radius a float32 quantum is ~7 cm and at 1 AU
+       ~18 km, so absolute vertices are already quantized by the time any
+       shader-side origin shift could cancel them. That is why the debug
+       wireframe jittered while the ship meshes -- which shift in double,
+       see body.h -- stayed solid. Same convention as the other Draw sites;
+       see Camera::renderOrigin. */
+    glm::dvec3 renderOrigin = glm::dvec3(0.0);
+
     void init();
     void Draw(const Camera * camera);
 
@@ -72,15 +83,15 @@ void GLDebugDrawer::Draw(const Camera * camera)
 {
     const glm::mat4 view = camera->GetView();
     const glm::mat4 projection = camera->GetProjection();
-    // the line vertices are world coordinates; the view is built in the
-    // render frame, so shift them into it
-    const glm::mat4 renderShift = glm::translate(-camera->GetRenderOrigin());
 
     int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
     check_gl_error();
     lineshader->Bind();
     check_gl_error();
-    lineshader->setUniform_mat4(0, projection * view * renderShift);
+    // the vertices are already render-frame relative (drawLine subtracts
+    // renderOrigin in double) and the view is built in the render frame, so
+    // no origin shift belongs in this matrix
+    lineshader->setUniform_mat4(0, projection * view);
     check_gl_error();
     glBindVertexArray(m_vao);
     check_gl_error();
@@ -117,13 +128,20 @@ void GLDebugDrawer::init() {
 }
 
 void GLDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {
-    lineBuffer.push_back(from.getX());
-    lineBuffer.push_back(from.getY());
-    lineBuffer.push_back(from.getZ());
-    lineBuffer.push_back(to.getX());
-    lineBuffer.push_back(to.getY());
-    lineBuffer.push_back(to.getZ());
-
+    // Subtract in double, THEN narrow to float32 (see renderOrigin): Bullet
+    // hands us absolute frame coordinates, and the render-frame-relative
+    // difference is the only thing the float32 buffer can hold without
+    // quantizing the ship itself away.
+    const glm::dvec3 a(from.getX(), from.getY(), from.getZ());
+    const glm::dvec3 b(to.getX(), to.getY(), to.getZ());
+    const glm::vec3 ra(a - renderOrigin);
+    const glm::vec3 rb(b - renderOrigin);
+    lineBuffer.push_back(ra.x);
+    lineBuffer.push_back(ra.y);
+    lineBuffer.push_back(ra.z);
+    lineBuffer.push_back(rb.x);
+    lineBuffer.push_back(rb.y);
+    lineBuffer.push_back(rb.z);
 }
 
 void debug_draw(const Camera * camera) {
@@ -136,6 +154,8 @@ void create_physics(void) {
 
 void PhysicsEngine::Draw(const Camera * camera) {
     debugDrawer->lineBuffer.clear();
+    // set BEFORE debugDrawWorld: drawLine subtracts it as the buffer fills
+    debugDrawer->renderOrigin = camera->GetRenderOrigin();
     dynamicsWorld->debugDrawWorld();
     debugDrawer->Draw(camera);
 }
