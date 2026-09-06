@@ -34,6 +34,9 @@ CHECK namespace (parsed from the game's stdout):
   eva     list of dicts, one per [evalog] line: t, mode ("ground"/"space"),
           grounded (0/1), pos (3-tuple), vel (3-tuple), alt (m above the
           analytic terrain), mass (kg; None if the binary predates the field)
+  fuel    list of dicts, one per [fuel] line: t, ship, groups
+          (group id -> {resource: (current, capacity)}), links
+          (a list of (from_group, to_group) fuel-link pairs)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -94,6 +97,19 @@ EVA_RE = re.compile(
     r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
     r"(?:\s+mass=([-\d.]+)kg)?"
 )
+FUEL_RE = re.compile(
+    r"\[fuel\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+(.*)"
+)
+# One `gN=RES:cur/cap[tanks] [RES:cur/cap[tanks] ...]` segment per group.
+# The unit repeat stops at the next group id because the unit requires a
+# `:` after the name, and a group id is followed by `=` (same for
+# `links=`); so it cannot run into the next group.
+FUEL_GROUP_RE = re.compile(
+    r"g(\d+)=((?:\s*[A-Za-z0-9]+:[-\d.]+/[-\d.]+\[[^\]]*\])*)"
+)
+FUEL_RES_RE = re.compile(r"([A-Za-z0-9]+):([-\d.]+)/([-\d.]+)")
+FUEL_LINK_RE = re.compile(r"links=(\S+)")
+FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 
 
 def parse_cases(path):
@@ -242,6 +258,26 @@ def parse_eva(out):
     return rows
 
 
+def parse_fuel(out):
+    rows = []
+    for m in FUEL_RE.finditer(out):
+        t, ship, rest = m.groups()
+        groups = {}
+        for gm in FUEL_GROUP_RE.finditer(rest):
+            res = {}
+            for rm in FUEL_RES_RE.finditer(gm.group(2)):
+                res[rm.group(1)] = (float(rm.group(2)), float(rm.group(3)))
+            groups[int(gm.group(1))] = res
+        links = []
+        lm = FUEL_LINK_RE.search(rest)
+        if lm:
+            for pm in FUEL_LINK_PAIR_RE.finditer(lm.group(1)):
+                links.append((int(pm.group(1)), int(pm.group(2))))
+        rows.append({"t": float(t), "ship": ship,
+                     "groups": groups, "links": links})
+    return rows
+
+
 def first(seq):
     return seq[0]
 
@@ -315,12 +351,15 @@ def run_case(case):
     surfmap = parse_surfmap(out)
     att = parse_att(out)
     eva = parse_eva(out)
+    fuel = parse_fuel(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
+        "fuel": fuel,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,
+        "set": set,
         "re": re,
     }
     for expr in case["check"]:

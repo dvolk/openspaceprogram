@@ -14,6 +14,10 @@
 //   * a fuel barrier SPLITS the groups, so an engine never draws fuel from
 //     across it (the heavy_two fix: the central engine burns the central
 //     tanks, not the boosters' tanks across the radial decoupler);
+//   * with fuel links, the drain is LAYER by hop distance (furthest
+//     layer first), pro-rata ACROSS a layer: the symmetric star (two arms,
+//     both one hop out -- heavy_two) drains both arms together, and the
+//     dual chain C->B->A, D->E->A drains {C,D}, then {B,E}, then A;
 //   * a flow no single tank can cover still fires (the pool supplies it),
 //     and a flow above the total is refused with no partial drain.
 //
@@ -392,6 +396,134 @@ static void test_fuel_link_two_hop() {
     destroyShip(s);
 }
 
+/* Two symmetric sources at the SAME hop distance (the heavy_two star: two
+   radial arms, both one hop from the central engine's group). They are ONE
+   layer and drain TOGETHER, pro-rata -- NOT one arm to empty then the
+   other: that serial drain split the mass distribution and spun the ship. */
+static void test_fuel_link_star_symmetric() {
+    printf("== Fuel link: symmetric star (same-distance arms drain together) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tankA = addPart(s, 100, 100);
+    Part *tankB = addPart(s, 100, 100);
+    Part *tankC = addPart(s, 100, 100);
+    link(s, engA, tankA);
+    initShip(s);   /* groups: engA+tankA=0, tankB=1, tankC=2 */
+
+    /* Fuel links: B -> A and C -> A (both arms feed the engine's group). */
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankB, engA});
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankC, engA});
+
+    /* 60 kg off the {B,C} layer (both at dist 1): 30 each, A untouched. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 60.0f, engA),
+               "engine A draws 60 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+               "tankB drained 30 (pro-rata with its sibling arm)");
+    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+               "tankC drained 30 (pro-rata with its sibling arm)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched (own group is the last layer)");
+
+    /* 150 more: the {B,C} layer has 70+70 left -- BOTH drain to empty,
+       70 each, in step -- then the {A} layer takes the final 10. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 150.0f, engA),
+               "engine A draws 150 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankB empty (drained with its sibling, not before it)");
+    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankC empty (drained with its sibling)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
+               "tankA drained 10 (own group, last)");
+    destroyShip(s);
+}
+
+/* Two chains feeding one engine: C->B->A and D->E->A. The layers are the
+   hop-distance levels: {C,D} (2 hops), {B,E} (1 hop), {A} (own group).
+   C and D drain together (pro-rata) until BOTH are empty; then B and E
+   together; finally A. NOT C-to-empty then D, and NOT B or E before D. */
+static void test_fuel_link_dual_chain() {
+    printf("== Fuel link: dual chains C->B->A, D->E->A (layer by layer) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tankA = addPart(s, 100, 100);
+    Part *tankB = addPart(s, 100, 100);
+    Part *tankC = addPart(s, 100, 100);
+    Part *tankD = addPart(s, 100, 100);
+    Part *tankE = addPart(s, 100, 100);
+    link(s, engA, tankA);
+    initShip(s);   /* groups: engA+tankA=0, B=1, C=2, D=3, E=4 */
+
+    /* Fuel links: C feeds B, B feeds A; D feeds E, E feeds A. */
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankC, tankB});
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankB, engA});
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankD, tankE});
+    s.v->fuelLinks.push_back(Vehicle::FuelLink{tankE, engA});
+
+    /* 50 kg off the {C,D} layer (both at dist 2): 25 each, nothing else. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
+               "engine A draws 50 kg");
+    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 75.0, 1e-5,
+               "tankC drained 25 (pro-rata with D, furthest layer)");
+    CHECK_NEAR(tankD->resources.current[(int)ResourceType::Hydrogen], 75.0, 1e-5,
+               "tankD drained 25 (pro-rata with C)");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankB untouched (its layer is next)");
+    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankE untouched (its layer is next)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched (own group, last layer)");
+
+    /* 150 more: the {C,D} layer (150 left) drains fully -- 75 each, in
+       step -- B, E and A untouched. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 150.0f, engA),
+               "engine A draws 150 kg");
+    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankC empty");
+    CHECK_NEAR(tankD->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankD empty (with C, not C first)");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankB untouched (its layer is next)");
+    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankE untouched (its layer is next)");
+
+    /* 100 more: the {B,E} layer (100 left): 50 each, A untouched. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f, engA),
+               "engine A draws 100 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+               "tankB drained 50 (pro-rata with E)");
+    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+               "tankE drained 50 (pro-rata with B)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched (last layer)");
+
+    /* 50 more: {B,E} has 50+50 left -- 25 each, A still untouched. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
+               "engine A draws 50 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 25.0, 1e-5,
+               "tankB drained 25 (pro-rata with E)");
+    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 25.0, 1e-5,
+               "tankE drained 25 (pro-rata with B)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched (all closer layers still have fuel)");
+
+    /* 50 more: B and E drain to empty (25 each). */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
+               "engine A draws 50 kg");
+    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankB empty");
+    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+               "tankE empty (with B)");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+               "tankA untouched (its layer is last)");
+
+    /* 60 more: only the {A} layer has fuel: A drains 60. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 60.0f, engA),
+               "engine A draws 60 kg");
+    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 40.0, 1e-5,
+               "tankA drained 60 (own group, last)");
+    destroyShip(s);
+}
+
 /* A flow above the total of ALL source groups (linked + own): refused,
    nothing drained. */
 static void test_fuel_link_insufficient() {
@@ -433,6 +565,10 @@ int main() {
     test_fuel_link_one_way();
     printf("\n");
     test_fuel_link_two_hop();
+    printf("\n");
+    test_fuel_link_star_symmetric();
+    printf("\n");
+    test_fuel_link_dual_chain();
     printf("\n");
     test_fuel_link_insufficient();
 

@@ -1,0 +1,61 @@
+# Fuel-link drain: heavy_two is an asparagus -- two radial arms, each
+# one-way linked into the central engine's fuel group. The drain must be
+# SYMMETRIC: the two arms feed the same engine, so they must drain at the
+# same rate.
+#
+# The regression this pins: consumeResourceMass used to drain the source
+# groups SERIALLY in an arbitrary order (first group takes its full share
+# before the second is touched). With two symmetric arms that means one
+# arm carries the engine's whole flow and the other barely drains -- the
+# mass distribution lops over and the ship spins under thrust (the user-
+# visible bug). The fix drains by LAYER: groups at the same distance from
+# the engine's group drain together, pro-rata across every tank in the
+# layer.
+#
+# --fuel-log gives one line per sample with each group's H2 (current /
+# capacity) and the fuel links. From the links we find the two SOURCE
+# groups (both feed one SINK) and assert, at every sample:
+#   * the two arms stay equal (within 0.5% of capacity) -- symmetry;
+#   * the SINK (the engine's own group) is untouched while ANY arm still
+#     has fuel -- layering (furthest layer drains first);
+#   * the arms actually drain (a real burn, >10% of capacity);
+#   * and the user-visible symptom is gone: |w| stays ~0 during the burn.
+#
+# Timeline (--time-accel 1: 1 wall s == 1 sim s):
+#   1.0-41.0 s  I held (thrust, ~27 kg/s per arm)
+#   41.0-55 s   coast to the --timeout 55 exit
+#
+# The phase windows for the spin check sit well inside the burn so a small
+# offset between the --sim-press clock and the --att-log clock cannot
+# bleed the idle phases in.
+NAME fuel-link-symmetric
+ARGS --ship res/ships/heavy_two.json --time-accel 1
+ARGS --fuel-log --att-log --timeout 55
+ARGS --sim-press 1000,40000,I
+EXPECT [fuel]
+FORBID GL_
+FORBID error:
+CHECK len(fuel) >= 5
+# The link shape (checked on one row; every row's later checks would
+# IndexError if the shape differed): exactly two arms -- different source
+# groups, one common sink (the central engine's group).
+CHECK len(first(fuel)["links"]) == 2
+CHECK first(fuel)["links"][0][0] != first(fuel)["links"][1][0]
+CHECK first(fuel)["links"][0][1] == first(fuel)["links"][1][1]
+# SYMMETRY: the two arms' H2 stay equal at every sample, within 0.5% of
+# capacity (float noise). A serial drain would diverge by hundreds of kg.
+# (Written as a chained comparison: no abs() in the comprehension body --
+# free vars there resolve against globals, which the CHECK sandbox blocks.)
+CHECK all(-0.005 * r["groups"][r["links"][0][0]]["H2"][1] <= r["groups"][r["links"][0][0]]["H2"][0] - r["groups"][r["links"][1][0]]["H2"][0] <= 0.005 * r["groups"][r["links"][0][0]]["H2"][1] for r in fuel)
+# DRAIN: both arms actually shed fuel over the burn.
+CHECK last(fuel)["groups"][last(fuel)["links"][0][0]]["H2"][0] < first(fuel)["groups"][first(fuel)["links"][0][0]]["H2"][0]
+CHECK last(fuel)["groups"][last(fuel)["links"][1][0]]["H2"][0] < first(fuel)["groups"][first(fuel)["links"][1][0]]["H2"][0]
+# ...and it is a meaningful burn (>10% of the arm's capacity).
+CHECK first(fuel)["groups"][first(fuel)["links"][0][0]]["H2"][0] - last(fuel)["groups"][last(fuel)["links"][0][0]]["H2"][0] > 0.1 * first(fuel)["groups"][first(fuel)["links"][0][0]]["H2"][1]
+# LAYERING: the sink (the engine's own group) is untouched while ANY arm
+# still has fuel -- the furthest layer drains first. (Untouched == exactly
+# the seeded capacity, so the float equality is exact.)
+CHECK all((r["groups"][r["links"][0][0]]["H2"][0] > 0.0 or r["groups"][r["links"][1][0]]["H2"][0] > 0.0) == (r["groups"][r["links"][0][1]]["H2"][0] == r["groups"][r["links"][0][1]]["H2"][1]) for r in fuel)
+# SYMPTOM: the ship does NOT spin under the burn (|w| ~ 0 rad/s during
+# thrust; the pre-fix serial drain built up measurable spin).
+CHECK max(a["wnorm"] for a in att if 2.0 < a["t"] < 38.0) < 0.01

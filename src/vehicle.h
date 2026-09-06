@@ -778,16 +778,21 @@ public:
         return pool;
     }
 
-    /* The fuel groups an engine can draw from, in drain order (furthest
-       source first). With no fuel links this is just the engine's own group
-       (distance 0) -- identical to the old behavior. With links it is the
-       reverse-reachable set: groups X with a directed path X -> ... -> G
-       (the engine's group), ordered by descending hop distance. The furthest
-       source empties first (the "C->B->A drains C, then B, then A" rule). */
-    std::vector<int> fuelDrainOrder(Part *engine) const {
+    /* The fuel groups an engine can draw from, in LAYERS by hop distance,
+       furthest layer first. layers[0] holds the furthest groups,
+       layers[last] is the engine's own group (distance 0); the groups
+       WITHIN a layer are all the same distance out. With no fuel links
+       there is a single layer {G} -- identical to the old behavior.
+       Groups in a layer drain TOGETHER (pro-rata, consumeResourceMass):
+       that is what keeps a symmetric star (two radial arms, both one hop
+       out) draining symmetrically instead of one arm before the other. It
+       generalises the chain rule -- C->B->A, D->E->A drains {C,D}
+       together, then {B,E}, then A -- because the layers are exactly the
+       hop-distance levels. */
+    std::vector<std::vector<int> > fuelDrainLayers(Part *engine) const {
         const int g = engine->fuelGroup;
-        std::vector<int> groups;
-        if(g < 0) { return groups; }
+        std::vector<std::vector<int> > layers;
+        if(g < 0) { return layers; }
         /* reverse adjacency over fuel groups: rev[Y] = { X : X feeds Y }. */
         std::map<int, std::vector<int> > rev;
         for(size_t k = 0; k < fuelLinks.size(); k++) {
@@ -812,59 +817,74 @@ public:
                 queue.push_back(v);
             }
         }
+        /* bucket the groups by distance, then take the buckets in
+           descending order (std::map is ascending, so walk it backwards).
+           Within a bucket the group ids are ascending (dist is keyed by
+           group id), so the order is deterministic. */
+        std::map<int, std::vector<int> > byDist;
         for(std::map<int, int>::const_iterator it = dist.begin(); it != dist.end(); ++it) {
-            groups.push_back(it->first);
+            byDist[it->second].push_back(it->first);
         }
-        std::sort(groups.begin(), groups.end(), [&](int a, int b) {
-            return dist[a] > dist[b];
-        });
-        return groups;
+        for(std::map<int, std::vector<int> >::const_reverse_iterator it = byDist.rbegin();
+            it != byDist.rend(); ++it) {
+            layers.push_back(it->second);
+        }
+        return layers;
     }
 
-    /* Draw `amt` kg of `type` from the engine's fuel sources (fuelDrainOrder),
-       group-by-group in priority order (furthest source first), pro-rata
-       WITHIN each group. Pro-rata, NOT first-tank-first: draining one tank
-       to empty before its siblings shifts the ship's mass distribution and
-       torques it under thrust (the radial-tank spin); shares proportional
-       to each tank's contents keep a symmetric cluster draining together.
-       Returns true if the total covers amt (else the thruster doesn't fire
-       this tick). amt is the kg consumed THIS tick (the caller scales the
-       kg/s flow by the tick's simulated time). */
+    /* Draw `amt` kg of `type` from the engine's fuel sources, LAYER by
+       LAYER (fuelDrainLayers: furthest layer first) and pro-rata across
+       ALL the tanks in a layer. Pro-rata, NOT first-tank-first or
+       first-group-first: draining one tank (or one arm's tanks) to empty
+       before its siblings shifts the ship's mass distribution and torques
+       it under thrust (the radial-tank spin); shares proportional to each
+       tank's contents keep a symmetric cluster draining together. The
+       layering is the symmetry that matters: the two radial arms of
+       heavy_two are one layer and split the flow, and a chain C->B->A,
+       D->E->A is three layers {C,D}, {B,E}, {A} -- C,D first, then B,E,
+       then A. Returns true if the total covers amt (else the thruster
+       doesn't fire this tick). amt is the kg consumed THIS tick (the
+       caller scales the kg/s flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */, Part *engine) {
-        const std::vector<int> groups = fuelDrainOrder(engine);
-        if(groups.empty()) { return false; }
-        /* Total fuel across all source groups. */
+        const std::vector<std::vector<int> > layers = fuelDrainLayers(engine);
+        if(layers.empty()) { return false; }
+        /* Total fuel across all source groups (every layer). */
         float total = 0;
-        for(size_t gi = 0; gi < groups.size(); gi++) {
-            for(size_t i = 0; i < parts.size(); i++) {
-                Part *p = parts[i];
-                if(!p->isTank()) { continue; }
-                if(p->fuelGroup != groups[gi]) { continue; }
-                total += p->resources.current[(int)type];
+        for(size_t li = 0; li < layers.size(); li++) {
+            for(size_t gi = 0; gi < layers[li].size(); gi++) {
+                for(size_t i = 0; i < parts.size(); i++) {
+                    Part *p = parts[i];
+                    if(!p->isTank()) { continue; }
+                    if(p->fuelGroup != layers[li][gi]) { continue; }
+                    total += p->resources.current[(int)type];
+                }
             }
         }
         if(total < amt) { return false; }
-        /* Drain group-by-group in priority order, pro-rata within each. */
+        /* Drain layer by layer (furthest first), pro-rata across the
+           layer's tanks. */
         float remaining = amt;
-        for(size_t gi = 0; gi < groups.size() && remaining > 0.0f; gi++) {
-            const int grp = groups[gi];
+        for(size_t li = 0; li < layers.size() && remaining > 0.0f; li++) {
             std::vector<Part *> tanks;
-            float groupTotal = 0;
-            for(size_t i = 0; i < parts.size(); i++) {
-                Part *p = parts[i];
-                if(!p->isTank()) { continue; }
-                if(p->fuelGroup != grp) { continue; }
-                float have = p->resources.current[(int)type];
-                if(have <= 0.0f) { continue; }
-                tanks.push_back(p);
-                groupTotal += have;
+            float layerTotal = 0;
+            for(size_t gi = 0; gi < layers[li].size(); gi++) {
+                const int grp = layers[li][gi];
+                for(size_t i = 0; i < parts.size(); i++) {
+                    Part *p = parts[i];
+                    if(!p->isTank()) { continue; }
+                    if(p->fuelGroup != grp) { continue; }
+                    float have = p->resources.current[(int)type];
+                    if(have <= 0.0f) { continue; }
+                    tanks.push_back(p);
+                    layerTotal += have;
+                }
             }
-            if(groupTotal <= 0.0f) { continue; }
-            float take = remaining < groupTotal ? remaining : groupTotal;
+            if(layerTotal <= 0.0f) { continue; }
+            float take = remaining < layerTotal ? remaining : layerTotal;
             for(size_t ti = 0; ti < tanks.size(); ti++) {
                 Part *p = tanks[ti];
                 float have = p->resources.current[(int)type];
-                float share = take * have / groupTotal;
+                float share = take * have / layerTotal;
                 if(share > have) { share = have; }
                 p->resources.current[(int)type] = have - share;
                 /* No SetMass: a part has no rigid body. The ship's mass
@@ -1209,8 +1229,11 @@ public:
             if(!seen) { groups.push_back(g); }
         }
         std::sort(groups.begin(), groups.end());
-        printf("[fuel] t=%.3fs ship=\"%s\" groups=%zu\n",
-               time, name.c_str(), groups.size());
+        /* ONE line per sample (e2e-greppable): each group's current /
+           capacity per resource, with the member tanks' own contents in
+           brackets (parts order -- a pro-rata drain keeps them equal),
+           then the fuel links as group pairs. */
+        printf("[fuel] t=%.3fs ship=\"%s\"", time, name.c_str());
         for(size_t gi = 0; gi < groups.size(); gi++) {
             const int g = groups[gi];
             /* the resources this group carries (any member tank has
@@ -1223,46 +1246,43 @@ public:
                     if(p->def->capacity[r] > 0.0f) { res.push_back(r); break; }
                 }
             }
-            printf("[fuel]   g%d", g);
+            printf(" g%d=", g);
             for(size_t ri = 0; ri < res.size(); ri++) {
+                if(ri > 0) { printf(" "); }
                 const int r = res[ri];
                 float cur = 0.0f, cap = 0.0f;
+                std::vector<float> tankCur;
                 for(size_t i = 0; i < parts.size(); i++) {
                     Part *p = parts[i];
                     if(p->fuelGroup != g || !p->isTank()) { continue; }
+                    if(p->def->capacity[r] <= 0.0f) { continue; }
                     cur += p->resources.current[r];
                     cap += p->resources.capacity[r];
+                    tankCur.push_back(p->resources.current[r]);
                 }
-                printf(" %s=%.1f/%.1f", resourceName(r), cur, cap);
-            }
-            printf("\n");
-            /* each member tank (p<index> = its position in parts), so a
-               within-group imbalance is visible too -- a pro-rata drain
-               keeps the sibling lines equal. */
-            for(size_t i = 0; i < parts.size(); i++) {
-                Part *p = parts[i];
-                if(p->fuelGroup != g || !p->isTank()) { continue; }
-                printf("[fuel]     p%zu %s", i, p->def->name.c_str());
-                for(size_t ri = 0; ri < res.size(); ri++) {
-                    printf(" %s=%.1f", resourceName(res[ri]),
-                           p->resources.current[res[ri]]);
+                printf("%s:%.1f/%.1f[", resourceName(r), cur, cap);
+                for(size_t ti = 0; ti < tankCur.size(); ti++) {
+                    if(ti > 0) { printf(","); }
+                    printf("%.1f", tankCur[ti]);
                 }
-                printf("\n");
+                printf("]");
             }
         }
         /* the fuel links, collapsed to group ids (the same rule
-           fuelDrainOrder applies: skip barrier endpoints and self-links). */
+           fuelDrainLayers applies: skip barrier endpoints and self-links). */
         if(!fuelLinks.empty()) {
-            bool any = false;
+            printf(" links=");
+            bool first = true;
             for(size_t k = 0; k < fuelLinks.size(); k++) {
                 const int a = fuelLinks[k].from->fuelGroup;
                 const int b = fuelLinks[k].to->fuelGroup;
                 if(a < 0 || b < 0 || a == b) { continue; }
-                printf("%s g%d->g%d", any ? " " : "[fuel]   links", a, b);
-                any = true;
+                if(!first) { printf(","); }
+                printf("g%d->g%d", a, b);
+                first = false;
             }
-            if(any) { printf("\n"); }
         }
+        printf("\n");
         fflush(stdout);
     }
 
