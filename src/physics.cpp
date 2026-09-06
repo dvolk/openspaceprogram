@@ -20,20 +20,20 @@
 
 PhysicsEngine *physics;
 
-/* Convex-hull margin (m), the DEFAULT when a part doesn't set one.
-   Tunable via OSP_HULL_MARGIN. Each part's collision hull is its mesh
-   expanded by this much on every face. Because the ship's parts are welded
-   face-to-face (the visible meshes touch exactly), two adjacent hulls
-   overlap by 2*margin -- the contact solver then fires an impulse to
-   resolve that overlap on EVERY substep. A large margin (the old
-   0.5 m -> 1.0 m overlap) is fine for chunky parts but destabilizes a thin
-   one (the 0.25 m reaction-wheel disc): the impulse the solver applies to
-   its low moment of inertia tumbles the whole ship. 0.1 m (0.2 m overlap)
-   keeps every current part stable, verified headless. Overrides: a ship
-   def's "hull_margin" (the ship JSON in res/ships/) wins, then a catalog
-   entry's (res/parts.json); the welded-hull overlap problem is
-   layout-dependent, so the ship level is the one ships that need
-   exact-surface hulls use. */
+/* The default convex-hull collision margin (m), overridable per part
+   (res/parts.json), per ship (ShipDef::hull_margin, which wins) and wholesale
+   by OSP_HULL_MARGIN -- the last is what makes the value measurable, since
+   build_ship's pad lift assumes it:
+
+       shift = -lowest + 0.6     // terrain margin 0.5 + hull margin 0.1
+
+   so a ship that overrides the margin is placed by a formula that no longer
+   describes it. It also reaches the mass properties: a convex hull inherits
+   btPolyhedralConvexShape::calculateLocalInertia, which is a BOX inertia over
+   the shape's AABB *inflated by the margin* -- so 0 -> 0.1 measured +1.2% /
+   +1.1% / +6.5% on heavy_two's principal moments (most on the roll axis,
+   where the parts' radii are small and 0.2 m of inflation is proportionally
+   largest). Keep that in mind before tuning it: it is not a free parameter. */
 static double hull_margin() {
     const char *e = getenv("OSP_HULL_MARGIN");
     if(e && e[0]) { return strtod(e, NULL); }
@@ -372,14 +372,25 @@ void ApplyTorque(Body *body, glm::dvec3 torque) {
 
 /* The shape's inertia diagonal at the Body's current mass. Read from the
    SHAPE, not from a rigid body's stored props: a ship part has no rigid body
-   (see Body::btBody). For a registered body this is the same number
-   RegisterObject / SetMass stored, since both come from this same call. */
+   (see Body::btBody). The per-kilogram figure is cached on the Body -- see
+   Body::inertiaPerKg for why that is exact and not an approximation.
+
+   Vehicle::checkCompoundInvariants compares this against the child inertias
+   Bullet computes itself inside calculatePrincipalAxisTransform (which calls
+   calculateLocalInertia(mass) directly, uncached), so the linearity the cache
+   rests on is re-verified on every ship at every build, staging event and
+   burn-triggered refresh -- in the unit tests and in the game. */
 glm::dvec3 getInertiaDiag(Body *body) {
-    btVector3 i(1.0, 1.0, 1.0);
-    if(body->mass != 0.0 && body->shape != nullptr) {
-        body->shape->calculateLocalInertia(body->mass, i);
+    if(body->mass == 0.0 || body->shape == nullptr) {
+        return glm::dvec3(1.0, 1.0, 1.0);   // RegisterObject's placeholder
     }
-    return glm::dvec3(i.getX(), i.getY(), i.getZ());
+    if(!body->inertiaCached) {
+        btVector3 i(0, 0, 0);
+        body->shape->calculateLocalInertia(1.0, i);
+        body->inertiaPerKg = glm::dvec3(i.getX(), i.getY(), i.getZ());
+        body->inertiaCached = true;
+    }
+    return body->inertiaPerKg * body->mass;
 }
 
 glm::dvec3 GetPosition(Body *b) {

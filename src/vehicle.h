@@ -511,19 +511,25 @@ public:
     /* --compound-check: the ship's single-body state, per ship. Rebuilds the
        compound, which re-asserts that it still reproduces the part assembly
        it came from -- the invariant the whole representation rests on -- then
-       reports the body the game is actually simulating. There is no
-       derived-vs-live pose error to report any more: a part has no rigid body
-       of its own to disagree with, which is the point of the change. */
+       reports the body the game is actually simulating: mass, COM, speed,
+       spin, and the principal inertia diagonal -- the denominator of a
+       reaction wheel's authority and of the autopilot slew law, so the number
+       worth watching when a ship stops turning the way it used to. There is
+       no derived-vs-live pose error to report any more: a part has no rigid
+       body of its own to disagree with, which is the point of the change. */
     void compoundCheck(double time) {
         rebuildCompound();
         if(hull == nullptr) { return; }
         const glm::dvec3 com = comPos();
+        const btVector3 &I = hull->btBody->getLocalInertia();
         printf("[compound] t=%.2fs ship=%s parts=%zu mass=%.1f kg "
-               "com=[%.1f %.1f %.1f] |v|=%.3f m/s |w|=%.5f rad/s\n",
+               "com=[%.1f %.1f %.1f] |v|=%.3f m/s |w|=%.5f rad/s "
+               "I=[%.4g %.4g %.4g] kg m^2\n",
                time, name.c_str(), parts.size(), hull->mass,
                com.x, com.y, com.z,
                glm::length(GetVelocity(hull)),
-               glm::length(GetAngVelocity(hull)));
+               glm::length(GetAngVelocity(hull)),
+               I.getX(), I.getY(), I.getZ());
         fflush(stdout);
     }
 

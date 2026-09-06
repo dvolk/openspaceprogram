@@ -28,6 +28,18 @@ struct Body {
        against it. Freed after btBody, which points at it. */
     btCollisionShape *shape = nullptr;
 
+    /* The shape's inertia diagonal per kilogram, and whether it has been
+       worked out yet. A fixed shape's inertia is exactly LINEAR in its mass
+       -- Bullet's btPolyhedralConvexShape::calculateLocalInertia, which a
+       convex hull inherits, is (mass/12)*(ly^2+lz^2, ...) over the shape's
+       AABB -- so it is computed once per hull instead of once per
+       rebuildCompound(). That matters because a rebuild walks every part and
+       a burn triggers one: a 1000-part ship would otherwise pay an AABB walk
+       plus a tensor per part, repeatedly, for a number that only changes when
+       the shape or its margin does (neither does at runtime). */
+    glm::dvec3 inertiaPerKg = glm::dvec3(0.0);
+    bool inertiaCached = false;
+
     double mass;
 
     glm::dmat4 model_matrix = glm::dmat4(1.0);

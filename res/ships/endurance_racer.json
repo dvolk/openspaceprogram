@@ -1,7 +1,6 @@
 {
   "name": "endurance_racer",
   "controller": "capsule_1",
-  "hull_margin": 0,
   "parts": [
     { "part": "capsule", "id": "capsule_1" },
     { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },

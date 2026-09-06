@@ -1,7 +1,6 @@
 {
   "name": "heavy_one",
   "controller": "capsule_1",
-  "hull_margin": 0,
   "parts": [
     { "part": "capsule", "id": "capsule_1", "stage": 4 },
     { "part": "reaction_wheel", "id": "rw1", "stage": 4 },
