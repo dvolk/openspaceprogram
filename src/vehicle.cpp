@@ -224,16 +224,23 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
   ScenarioDef lives in vehicle.h.
 */
 static const ScenarioDef kScenarios[] = {
-    {"pad",          true,  0.0,  false, -1, 0.0,     0.0, 0.0},
-    {"pad-polar",    true,  0.0,  true,  -1, 0.0,     0.0, 0.0},
-    {"rot-orbit",    false, 0.85, false, -1, 0.0,     0.0, 0.0},
-    {"inertial-orbit", false, 1.25, false, -1, 0.0,   0.0, 0.0},
-    {"high-orbit",   false, 5.0,  false, -1, 0.0,     0.0, 0.0},
-    {"high-polar",   false, 5.0,  true,  -1, 0.0,     0.0, 0.0},
-    {"ellipse-peri", false, 0.0,  false,  0, 10e3, 1000e3, 0.0},
-    {"ellipse-apo",  false, 0.0,  false,  1, 10e3, 1000e3, 0.0},
-    {"ellipse-mid",  false, 0.0,  false,  2, 10e3, 1000e3, 0.0},
-    {"escape",       false, 0.85, false, -1, 0.0,     0.0, 2.0},
+    {"pad",            true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"pad-polar",      true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
+    {"rot-orbit",      false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"inertial-orbit", false, 1.25, false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"high-orbit",     false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"high-polar",     false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
+    {"ellipse-peri",   false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
+    {"ellipse-apo",    false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
+    {"ellipse-mid",    false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
+    {"escape",         false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
+    /* the absolute-radius distance ladder (see ScenarioDef): anchored to
+       real solar-system distances, so a name means the same distance
+       around any body. Precision test beds -- neptune is comfortably
+       inside double's range (~1 mm ULP), oort is where it starts to bite
+       (~0.22 m). */
+    {"neptune",        false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
+    {"oort",           false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
 };
 
 const ScenarioDef *scenario_by_name(const std::string &name) {
@@ -300,7 +307,11 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         }
     } else {
         // Circular orbit around the home body: radius measured from its frame origin.
-        const double r = home->radius + sc.alt_frac * (home->rot_frame->soi - home->radius);
+        // abs_r > 0 pins the radius to an absolute distance (the neptune /
+        // oort ladder); otherwise alt_frac scales it against the SOI.
+        const double r = sc.abs_r > 0.0
+                       ? sc.abs_r
+                       : home->radius + sc.alt_frac * (home->rot_frame->soi - home->radius);
         const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
         shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 

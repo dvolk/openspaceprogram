@@ -1509,7 +1509,22 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
    (ell_phase 0), apoapsis (1), or 90 deg of true anomaly (2). The escape
    scenario places the ship at the circular-orbit radius with esc_frac x
    the local escape velocity, prograde -- a hyperbolic trajectory that
-   coasts out of the body's SOI on its own (no thrusting). */
+   coasts out of the body's SOI on its own (no thrusting).
+
+   The distance scenarios (neptune, oort) set abs_r instead: a circular
+   orbit at an ABSOLUTE radius from the body centre, anchored to a real
+   solar-system distance rather than a multiple of the home body's SOI, so
+   the same name means the same distance around any body. Use them with
+   --body Kerbol: around a planet the radius is still exact, but the spawn
+   inherits the planet's own orbital velocity, so the ship is hyperbolic
+   with respect to the star (ecc ~1.8 at neptune around Kerbin) rather than
+   circular. They exist as precision test beds -- Kerbol's SOI runs out to
+   1e16 m, and double precision (BT_USE_DOUBLE_PRECISION) degrades with
+   distance:
+     4.495e12 m (neptune)  ULP ~1.0 mm     float32 would be ~536 km
+     1.000e15 m (oort)     ULP ~0.22 m     float32 would be ~1.2e5 km
+   i.e. oort is roughly where a floating origin would start to matter for
+   the physics itself, and neptune is comfortably inside double's range. */
 struct ScenarioDef {
     const char *name;
     bool on_pad;
@@ -1519,6 +1534,9 @@ struct ScenarioDef {
     double peri_alt; // ellipse: periapsis altitude above the body radius (m)
     double apo_alt;  // ellipse: apoapsis altitude above the body radius (m)
     double esc_frac; // escape: launch speed in local escape velocities (0 = not escape)
+    double abs_r;    // > 0: absolute circular-orbit radius from the body
+                     // centre (m), overriding alt_frac -- for scenarios
+                     // anchored to a real distance (see above)
 };
 
 /* Look up a scenario by name; throws listing the available names if

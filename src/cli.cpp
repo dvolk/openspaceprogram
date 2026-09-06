@@ -17,17 +17,28 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--body", args.body_name,
         "Body the ship starts on / orbits (default: the system's home body)");
 
+    /* The name list is duplicated below (the help text and the IsMember
+       validator) and again in vehicle.cpp's kScenarios, which is the real
+       source of truth -- scenario_by_name() lists them when it throws.
+       Unifying would mean exposing the names from vehicle.h, and that pulls
+       body.h (Bullet + GL) into this deliberately dependency-free
+       translation unit. So: add a scenario in ALL THREE places. */
     app.add_option("--scenario", args.scenario,
         "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
         "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid, "
-        "escape (the ellipse-* scenarios are a 10x1000 km ASL orbit started "
-        "at periapsis, apoapsis, or halfway by angle between them; escape "
-        "is 2x escape velocity at the rot-orbit radius, coasting out of "
-        "the body's SOI on its own; default: pad)")
+        "escape, neptune, oort (the ellipse-* scenarios are a 10x1000 km "
+        "ASL orbit started at periapsis, apoapsis, or halfway by angle "
+        "between them; escape is 2x escape velocity at the rot-orbit "
+        "radius, coasting out of the body's SOI on its own; neptune / oort "
+        "are circular orbits at an absolute 4.495e12 / 1e15 m from the body "
+        "centre -- real-solar-system distances, for precision testing; use "
+        "them with --body Kerbol, since around a planet the ship inherits "
+        "that planet's orbital velocity and is hyperbolic w.r.t. the star; "
+        "default: pad)")
         ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
                                "inertial-orbit", "high-orbit", "high-polar",
                                "ellipse-peri", "ellipse-apo", "ellipse-mid",
-                               "escape"}));
+                               "escape", "neptune", "oort"}));
 
     app.add_option("--system", args.system_file,
                    "Star-system JSON file to load (default: res/ksp_system.json; "
