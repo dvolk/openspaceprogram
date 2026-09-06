@@ -204,6 +204,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "hull's angular velocity (world coords) to stdout; the "
                  "instrument for the attitude-physics e2e test");
 
+    app.add_flag("--compound-check", args.compound_check,
+                 "Periodically print, for every ship, how far the part poses "
+                 "derived from its single compound rigid body are from the "
+                 "parts' own live poses (max position + angle error, and the "
+                 "centre-of-mass drift) -- the gate on the "
+                 "ship-as-one-rigid-body migration; a nonzero error is the "
+                 "weld wobble the compound removes");
+
     app.add_flag("--eva-log", args.eva_log,
                  "Periodically print the EVA kerbal's mode (ground/space), "
                  "grounded state, position and velocity to stdout; the "

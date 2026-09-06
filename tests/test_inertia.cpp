@@ -1,6 +1,8 @@
 //
 // Headless golden-value test for the ship's mass properties:
-// Vehicle::get_center_of_mass() and Vehicle::getInertia() (src/vehicle.h).
+// Vehicle::get_center_of_mass() and Vehicle::getInertia() (src/vehicle.h),
+// and the single compound rigid body Vehicle::rebuildCompound() builds from
+// them.
 //
 // getInertia() is the quantity a torque actually moves -- the denominator of
 // a reaction wheel's authority and of the autopilot slew law -- and it had no
@@ -14,6 +16,13 @@
 // Bullet), assembled with the parallel-axis theorem about the ship COM,
 // including the products of inertia -- so a transposed rotation, a missing
 // R*I*R^T term, or a COM taken about the wrong point all fail.
+//
+// checkCompound() holds the same reference against what
+// btCompoundShape::calculatePrincipalAxisTransform produces, and against the
+// part poses derived back out of the resulting rigid body. A btRigidBody's
+// transform is its CENTRE-OF-MASS transform and its inertia is stored
+// diagonal, so the compound's children have to be re-based into the principal
+// frame -- the subtlety that half exists to pin.
 //
 // Boxes are deliberately non-cubic and parts deliberately rotated: a cube or
 // an axis-aligned part hides exactly the axis-convention mistakes this is
@@ -104,6 +113,13 @@ struct Ship {
     std::vector<glm::dvec3> il;
     std::vector<glm::dmat3> rot;
     std::vector<glm::dvec3> pos;
+    /* frame S -- the ship-local frame the authored poses (Part::localPos /
+       localRot) live in, and which the compound is built in. By convention S
+       is the ROOT part's frame and the root's own authored pose is the
+       identity, so S is just the first part's world pose. */
+    bool haveS = false;
+    glm::dvec3 sPos = glm::dvec3(0.0);
+    glm::dmat3 sRot = glm::dmat3(1.0);
 };
 
 /* A box part at an explicit world pose. Its local inertia is set to the
@@ -145,6 +161,13 @@ static Part *addBox(Ship &s, const char *name, double m,
     p->def    = &s.defs.back();
     p->stage  = 1;
     p->parent = s.v->parts.empty() ? nullptr : s.v->parts[0];
+    /* the authored ship-local pose: the world pose above seen from S. This is
+       the relation build_ship's attachPose gives a real ship, and the one
+       partWorldPose inverts -- so checkCompound can ask for the world poses
+       back and get exactly these. */
+    if(!s.haveS) { s.sPos = pos; s.sRot = rot; s.haveS = true; }
+    p->localPos = glm::transpose(s.sRot) * (pos - s.sPos);
+    p->localRot = glm::transpose(s.sRot) * rot;
     s.v->parts.push_back(p);
 
     s.mass.push_back(m);
@@ -229,6 +252,166 @@ static void checkInertia(Ship &s, const char *msg) {
     CHECK_TRUE(minor1 > 0.0 && minor2 > 0.0 && minor3 > 0.0, pdbuf);
 }
 
+/* Element-wise rotation-matrix comparison (a dmat3 is column-major: [c][r]). */
+static void checkRot(const glm::dmat3 &got, const glm::dmat3 &want,
+                     double tol, const char *msg) {
+    for(int c = 0; c < 3; c++) {
+        for(int r = 0; r < 3; r++) {
+            char buf[192];
+            snprintf(buf, sizeof(buf), "%s [col %d row %d]", msg, c, r);
+            CHECK_NEAR(got[c][r], want[c][r], tol, buf);
+        }
+    }
+}
+
+/* --- the ship as ONE rigid body (Vehicle::rebuildCompound) ---------------
+
+   rebuildCompound() makes a btCompoundShape of the part hulls at their
+   authored ship-local poses and re-bases the children into the principal
+   (centre-of-mass) frame, because a btRigidBody's transform IS its COM
+   transform and its inertia is stored diagonal. Three things are pinned
+   here, in increasing order of how easily they go wrong:
+
+     1. `principal`'s origin is the authored COM in S, and its basis rotates
+        the body's diagonal inertia back onto the analytic tensor about that
+        COM -- i.e. calculatePrincipalAxisTransform was read the right way
+        round. (rebuildCompound asserts the same invariant itself on every
+        build, so this also exercises that assert on a ship whose numbers the
+        test knows independently.)
+     2. put the ship body at an ARBITRARY world pose: every part's derived
+        world pose must be that pose applied to its authored local pose, AND
+        the compound's re-based child taken into world by the same body
+        transform must land on it too. This is the check that matters.
+        Deriving the body's pose from the parts' own live poses instead would
+        cancel `principal` out of the round trip and prove nothing about it;
+        and reading only `principal` would miss a re-base done the wrong way
+        round (or skipped) entirely, because `principal` comes from the shape
+        BEFORE the re-base and is self-consistent either way -- the children
+        are the only thing the re-base actually changes.
+     3. syncShipBody() -- mirroring the live parts onto the shadow body --
+        must then give back exactly the world poses this test set by hand.  */
+static void checkCompound(Ship &s, const char *msg) {
+    s.v->rebuildCompound();
+    char buf[192];
+    if(s.v->shipBody == nullptr) {
+        g_failures++;
+        printf("FAIL: %s: rebuildCompound built no ship body\n", msg);
+        return;
+    }
+
+    /* the child-index -> Part mapping picking will resolve hits through */
+    g_checks++;
+    bool mapOk = s.v->compoundParts.size() == s.v->parts.size();
+    for(size_t i = 0; mapOk && i < s.v->parts.size(); i++) {
+        if(s.v->compoundParts[i] != s.v->parts[i]) { mapOk = false; }
+    }
+    snprintf(buf, sizeof(buf), "%s: compoundParts is the part order", msg);
+    CHECK_TRUE(mapOk, buf);
+
+    /* the independent reference, in frame S, from the authored local poses */
+    double mtot = 0.0;
+    glm::dvec3 comS(0.0);
+    for(size_t i = 0; i < s.pos.size(); i++) {
+        mtot += s.mass[i];
+        comS += s.mass[i] * s.v->parts[i]->localPos;
+    }
+    comS /= mtot;
+    glm::dmat3 wantS(0.0);
+    for(size_t i = 0; i < s.pos.size(); i++) {
+        const Part *p = s.v->parts[i];
+        wantS += partInertia(s.mass[i], s.il[i], p->localRot, p->localPos, comS);
+    }
+
+    glm::dvec3 pOrigin; glm::dmat3 pBasis;
+    Vehicle::fromBt(s.v->principal, pOrigin, pBasis);
+    const double comTol = 1e-9 * std::max(1.0, glm::length(comS));
+    for(int c = 0; c < 3; c++) {
+        snprintf(buf, sizeof(buf), "%s: principal origin = the COM in S [%d]", msg, c);
+        CHECK_NEAR(pOrigin[c], comS[c], comTol, buf);
+    }
+
+    const btVector3 &bi = s.v->shipBody->getLocalInertia();
+    const glm::dmat3 diag(bi.getX(), 0.0, 0.0,
+                          0.0, bi.getY(), 0.0,
+                          0.0, 0.0, bi.getZ());
+    const glm::dmat3 gotS = pBasis * diag * glm::transpose(pBasis);
+    /* btMatrix3x3::diagonalize is a Jacobi iteration that stops once every
+       off-diagonal is under 1e-5 x the diagonal trace, so the eigenvalues it
+       hands back carry that much of the tensor's residue -- the tolerance
+       cannot be tighter than that. */
+    double trace = 0.0;
+    for(int c = 0; c < 3; c++) { trace += std::fabs(wantS[c][c]); }
+    const double iTol = 1e-5 * std::max(1.0, trace);
+    for(int c = 0; c < 3; c++) {
+        for(int r = 0; r < 3; r++) {
+            snprintf(buf, sizeof(buf), "%s: principal-basis inertia [col %d row %d]",
+                     msg, c, r);
+            CHECK_NEAR(gotS[c][r], wantS[c][r], iTol, buf);
+        }
+    }
+    /* the same tensor in WORLD axes must be getInertia()'s -- tying the
+       compound to the reference the rest of this file already pins */
+    const glm::dmat3 gotW = s.sRot * gotS * glm::transpose(s.sRot);
+    checkRot(gotW, s.v->getInertia(), iTol, (std::string(msg) +
+             ": compound inertia == getInertia() (world axes)").c_str());
+
+    /* 2) an arbitrary world pose for the ship body (not the one the parts
+       happen to have -- see the block comment) */
+    const glm::dmat3 sprime = glm::mat3_cast(
+        glm::angleAxis(-0.9, glm::normalize(glm::dvec3(0.4, -1.0, 2.0))));
+    const glm::dvec3 tprime(1234.5, -678.9, 42.0);
+    s.v->shipBody->setWorldTransform(
+        Vehicle::toBt(tprime + sprime * pOrigin, sprime * pBasis));
+    for(size_t i = 0; i < s.pos.size(); i++) {
+        const Part *p = s.v->parts[i];
+        glm::dvec3 gp; glm::dmat3 gr;
+        s.v->partWorldPose(p, gp, gr);
+        const glm::dvec3 wp = tprime + sprime * p->localPos;
+        const double ptol = 1e-9 * std::max(1.0, glm::length(wp));
+        for(int c = 0; c < 3; c++) {
+            snprintf(buf, sizeof(buf),
+                     "%s: part %zu world pos at an arbitrary ship pose [%d]",
+                     msg, i, c);
+            CHECK_NEAR(gp[c], wp[c], ptol, buf);
+        }
+        snprintf(buf, sizeof(buf),
+                 "%s: part %zu world rot at an arbitrary ship pose", msg, i);
+        checkRot(gr, sprime * p->localRot, 1e-12, buf);
+
+        /* the collision geometry sits where the derived pose says the part
+           is: child i of the re-based compound, taken into world by the body
+           transform, IS part i's world pose (see item 2 above) */
+        glm::dvec3 cw; glm::dmat3 cwr;
+        Vehicle::fromBt(s.v->shipBody->getCenterOfMassTransform()
+                        * s.v->compound->getChildTransform((int)i), cw, cwr);
+        for(int c = 0; c < 3; c++) {
+            snprintf(buf, sizeof(buf),
+                     "%s: part %zu compound child in world [%d]", msg, i, c);
+            CHECK_NEAR(cw[c], wp[c], ptol, buf);
+        }
+        snprintf(buf, sizeof(buf),
+                 "%s: part %zu compound child rotation", msg, i);
+        checkRot(cwr, sprime * p->localRot, 1e-12, buf);
+    }
+
+    /* 3) syncShipBody mirrors the live parts: the derived poses must come
+       back as the world poses this test set by hand */
+    s.v->syncShipBody();
+    for(size_t i = 0; i < s.pos.size(); i++) {
+        glm::dvec3 gp; glm::dmat3 gr;
+        s.v->partWorldPose(s.v->parts[i], gp, gr);
+        const double ptol = 1e-9 * std::max(1.0, glm::length(s.pos[i]));
+        for(int c = 0; c < 3; c++) {
+            snprintf(buf, sizeof(buf),
+                     "%s: part %zu world pos after syncShipBody [%d]", msg, i, c);
+            CHECK_NEAR(gp[c], s.pos[i][c], ptol, buf);
+        }
+        snprintf(buf, sizeof(buf),
+                 "%s: part %zu world rot after syncShipBody", msg, i);
+        checkRot(gr, s.rot[i], 1e-12, buf);
+    }
+}
+
 /* --- the cases ----------------------------------------------------------- */
 
 /* One part at the origin, unrotated: the COM is the part and the tensor is
@@ -239,6 +422,7 @@ static void test_single() {
            glm::dvec3(0.0), glm::dmat3(1.0));
     checkCom(s, "single part: COM");
     checkInertia(s, "single part: inertia");
+    checkCompound(s, "single part: compound");
     destroyShip(s);
 }
 
@@ -253,6 +437,7 @@ static void test_symmetric_pair() {
            glm::dvec3(0.0, 0.0, -4.0), glm::dmat3(1.0));
     checkCom(s, "symmetric pair: COM");
     checkInertia(s, "symmetric pair: inertia");
+    checkCompound(s, "symmetric pair: compound");
     destroyShip(s);
 }
 
@@ -274,6 +459,7 @@ static void test_unequal_masses() {
                "unequal masses: COM sits at the mass-weighted z");
     checkCom(s, "unequal masses: COM");
     checkInertia(s, "unequal masses: inertia");
+    checkCompound(s, "unequal masses: compound");
     destroyShip(s);
 }
 
@@ -293,6 +479,7 @@ static void test_rotated_part() {
            glm::dvec3(0.0, 0.0, 6.0), rotX90);
     checkCom(s, "rotated part: COM");
     checkInertia(s, "rotated part: inertia (R*I*R^T)");
+    checkCompound(s, "rotated part: compound");
     destroyShip(s);
 }
 
@@ -317,6 +504,7 @@ static void test_general_assembly() {
            glm::dvec3(-0.4, 0.9, 6.2), glm::transpose(turn));
     checkCom(s, "general assembly: COM");
     checkInertia(s, "general assembly: inertia");
+    checkCompound(s, "general assembly: compound");
 
     /* the products of inertia really are nonzero here -- if this ever goes
        vacuous the case stops testing what it is for */
@@ -337,7 +525,7 @@ static void test_general_assembly() {
 }
 
 int main() {
-    printf("== ship mass properties (src/vehicle.h) ==\n");
+    printf("== ship mass properties + the compound body (src/vehicle.h) ==\n");
     test_single();
     test_symmetric_pair();
     test_unequal_masses();

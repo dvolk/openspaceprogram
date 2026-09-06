@@ -65,6 +65,7 @@ struct GameArgs {
     bool spin_log_enabled = false;
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
     bool att_log = false;          // log the ship's nose + angular velocity
+    bool compound_check = false;   // --compound-check: the ship-as-one-rigid-body gate
 
     std::vector<std::string> postfx_spec;
     bool gl_debug = false;

@@ -1,0 +1,30 @@
+# Ship as ONE rigid body: alongside its per-part bodies, every ship is also
+# built as a single btCompoundShape (one child per part hull, at the part's
+# authored ship-local pose) re-based into the centre-of-mass / principal-axis
+# frame, plus the btRigidBody for it. --compound-check re-derives each part's
+# world pose from that body and prints how far it is from the part's own live
+# pose; in free fall that is double-precision dust, and the deviation it does
+# show on the pad IS the weld wobble the compound exists to remove.
+#
+# rebuildCompound() also asserts -- silently on success -- that the compound
+# reproduces the assembly's centre of mass, its inertia tensor about that COM,
+# and every re-based child pose. That runs on EVERY ship build in EVERY case,
+# so this one's job is the wiring around it: the flag reaches the tick, a line
+# is printed per ship, and the compound survives a staging event (the part
+# list shrinks 7 -> 4 and the compound is rebuilt from it, the survivors
+# keeping their authored poses in the original ship-local frame).
+#
+# "does NOT reproduce" is the assert's own message; a tripped assert also
+# aborts the process, so the exit-code check would catch it too -- the FORBID
+# is here for the diagnostic.
+NAME compound-check
+ARGS --scenario rot-orbit --ship res/ships/stager.json --time-accel 1 --timeout 15 --compound-check
+ARGS --sim-press 3000,0,SPACE
+EXPECT Main loop starting
+EXPECT [compound] t=
+EXPECT ship=stager parts=7
+EXPECT Stage: dropped
+EXPECT ship=stager parts=4
+FORBID does NOT reproduce
+FORBID GL_
+FORBID error:

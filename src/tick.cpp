@@ -320,6 +320,19 @@ void tick(Game &g) {
             }
         }
 
+        /* --compound-check: every ship's compound-vs-parts agreement. Not
+           gated on time_accel (a paused ship still has live part poses to
+           compare) and over `all`, not just the active ship: the idle and
+           railed ships are where the frozen-in deformation shows up. */
+        if(g.args.compound_check) {
+            static Uint32 last_compound_ms = 0;
+            const Uint32 now_ms = SDL_GetTicks();
+            if(now_ms - last_compound_ms >= g.orbit_log_interval_ms) {
+                last_compound_ms = now_ms;
+                for(auto *s : all) { s->compoundCheck(g.time); }
+            }
+        }
+
         // --eva-log: the kerbal's mode + state (the EVA e2e assertions)
         if(g.args.eva_log && g.ship->isEva()) {
             const Uint32 now_ms = SDL_GetTicks();

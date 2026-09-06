@@ -161,7 +161,11 @@ test:
 	# non-cubic parts. This is the tensor a reaction wheel's authority and
 	# the autopilot slew law divide by; nothing else pins it (test_attitude
 	# and test_slew3d simulate their own hardcoded Ix/Iz, and e2e 22 only
-	# checks ratios). Headless: no world, no GL context.
+	# checks ratios). Also pins the ship's single compound rigid body
+	# (Vehicle::rebuildCompound): the principal-axis transform's COM origin,
+	# its diagonalized inertia against that same analytic reference, the
+	# re-based child poses, and the part poses derived back out of the body
+	# at an arbitrary world pose. Headless: no world, no GL context.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_inertia
