@@ -155,6 +155,17 @@ test:
 	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_staging
 	./test_staging
+	# ship mass properties (Vehicle::get_center_of_mass / getInertia from
+	# src/vehicle.h): golden values against an independent analytic
+	# parallel-axis assembly, incl. the products of inertia and rotated
+	# non-cubic parts. This is the tensor a reaction wheel's authority and
+	# the autopilot slew law divide by; nothing else pins it (test_attitude
+	# and test_slew3d simulate their own hardcoded Ix/Iz, and e2e 22 only
+	# checks ratios). Headless: no world, no GL context.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_inertia
+	./test_inertia
 	# rotation model (physical wheel torque, per-substep law, torque
 	# delivery): same real-Bullet link as test_thrust.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
@@ -277,7 +288,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_staging test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_staging test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

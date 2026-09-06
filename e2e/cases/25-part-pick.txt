@@ -3,12 +3,20 @@
 # carries the ship + part name, not a miss. The cursor is moved there
 # first (BTN 0, zero motion) so the click passes the 6 px / 400 ms gate.
 # RMB *drag* is still the camera (08-mouse-orbit pins that).
+#
+# part=0 (capsule) is pinned deliberately, not incidentally: racer's
+# controller is its root part and the orbit camera looks straight at it, so
+# the center pixel must resolve to THAT part. This is the assertion that
+# catches picking silently returning the wrong part -- which is exactly what
+# a change to the collision topology (one compound body per ship instead of
+# one rigid body per part, so the hit has to be mapped back from a compound
+# child index) would break. "ship=" alone passed with any part index.
 NAME part-pick
 ARGS --scenario pad --ship res/ships/racer.json --time-accel 0 --timeout 15
 ARGS --sim-mouse 1000,0,960,540,0
 ARGS --sim-mouse 1200,0,960,540,RMB
 EXPECT Main loop starting
-EXPECT ship=
+EXPECT ship=racer part=0 (capsule)
 FORBID miss px=
 FORBID GL_
 FORBID error:
