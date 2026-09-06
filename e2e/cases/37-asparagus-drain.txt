@@ -1,0 +1,56 @@
+# Asparagus drain: heavy_asp is a double-asparagus -- two radial arms, each
+# a 3-stage CHAIN (C->B->A and F->E->D), both one-way linked into the
+# central engine's fuel group (A->central, D->central). The drain must be
+# LAYERED (furthest hop from the engine first) and SYMMETRIC across the two
+# arms: the two outermost groups (C and F) drain together, pro-rata, while
+# every inner group (B, A, E, D and the central core) stays untouched.
+#
+# This is the multi-layer generalisation of the fuel-link-symmetric case
+# (36): there the two arms were a single hop out of the engine, here each
+# arm is three hops out and the layers are {C,F}, {B,E}, {A,D}, {central}.
+# A serial or nearest-first drain would touch the inner groups before the
+# outer ones are spent (or lops one arm against the other), which the checks
+# below catch.
+#
+# --fuel-log gives one line per sample with each group's H2 (current /
+# capacity) and the fuel links. From the links we identify, per sample:
+#   * the OUTERMOST groups = link sources that are no link's target (the two
+#     chain heads, C and F);
+#   * the INNERMOST group  = a link target that is no link's source (the
+#     central engine's group, the common sink of both arms).
+# and assert:
+#   * there are exactly two outermost and one innermost group (the shape);
+#   * the two outermost groups stay equal at every sample (symmetry);
+#   * the outer groups actually shed fuel (a real burn, >10% of capacity);
+#   * the innermost group is untouched (layering: the furthest drains first).
+#
+# Timeline (--time-accel 1: 1 wall s == 1 sim s):
+#   0.5-10.5 s  I held (thrust, ~52 kg/s off each outer group)
+#   10.5-16 s   coast to the --timeout 16 exit
+NAME asparagus-drain
+ARGS --ship res/ships/heavy_asp.json --time-accel 1
+ARGS --fuel-log --timeout 16
+ARGS --sim-press 500,10000,I
+EXPECT [fuel]
+FORBID GL_
+FORBID error:
+CHECK len(fuel) >= 15
+# SHAPE: exactly two OUTERMOST groups (link sources that are no link's
+# target -- the two chain heads), and exactly one INNERMOST group (a link
+# target that is no link's source -- the common sink). This is what makes
+# heavy_asp a double-asparagus rather than a star.
+CHECK len(set(l[0] for l in first(fuel)["links"]) - set(l[1] for l in first(fuel)["links"])) == 2
+CHECK len(set(l[1] for l in first(fuel)["links"]) - set(l[0] for l in first(fuel)["links"])) == 1
+# SYMMETRY: the two outermost groups' H2 stay equal at every sample -- their
+# spread is under 0.1% of capacity (float noise). A serial drain would
+# diverge the two arms by hundreds of kg.
+CHECK all((max(r["groups"][g]["H2"][0] for g in (set(l[0] for l in r["links"]) - set(l[1] for l in r["links"]))) - min(r["groups"][g]["H2"][0] for g in (set(l[0] for l in r["links"]) - set(l[1] for l in r["links"])))) < 0.001 * max(r["groups"][g]["H2"][1] for g in (set(l[0] for l in r["links"]) - set(l[1] for l in r["links"]))) for r in fuel)
+# DRAIN: the outermost groups actually shed fuel over the burn.
+CHECK any(last(fuel)["groups"][g]["H2"][0] < first(fuel)["groups"][g]["H2"][0] for g in (set(l[0] for l in first(fuel)["links"]) - set(l[1] for l in first(fuel)["links"])))
+# ...and it is a meaningful burn (>10% of the outer group's capacity).
+CHECK any(first(fuel)["groups"][g]["H2"][0] - last(fuel)["groups"][g]["H2"][0] > 0.1 * first(fuel)["groups"][g]["H2"][1] for g in (set(l[0] for l in first(fuel)["links"]) - set(l[1] for l in first(fuel)["links"])))
+# LAYERING: the innermost group (the engine's own group) is untouched --
+# the furthest layer drains first, so the sink is not touched while the
+# outer groups still have fuel. (Untouched == exactly the seeded capacity,
+# so the float equality is exact.)
+CHECK all(last(fuel)["groups"][g]["H2"][0] == first(fuel)["groups"][g]["H2"][1] for g in (set(l[1] for l in first(fuel)["links"]) - set(l[0] for l in first(fuel)["links"])))

@@ -362,9 +362,16 @@ def run_case(case):
         "set": set,
         "re": re,
     }
+    # `ns` goes in the GLOBALS, not just locals: free variables in a
+    # generator/comprehension body resolve against the globals (the locals
+    # dict is invisible to them), so a check like `max(... for g in ...)`
+    # would raise NameError with the names only in locals. Keeping
+    # __builtins__ empty still blocks a case file from reaching open/exec.
+    check_globals = dict(ns)
+    check_globals["__builtins__"] = {}
     for expr in case["check"]:
         try:
-            ok = bool(eval(expr, {"__builtins__": {}}, ns))  # noqa: S307 - trusted case files
+            ok = bool(eval(expr, check_globals))  # noqa: S307 - trusted case files
         except Exception as e:
             diag.append("CHECK raised: %r (%s)" % (expr, e))
             continue
