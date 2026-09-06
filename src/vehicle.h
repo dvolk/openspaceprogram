@@ -228,6 +228,42 @@ public:
         checkCompoundInvariants();
     }
 
+    /* The centre of mass of the CURRENT part masses, in frame S -- i.e. what
+       principal.getOrigin() would be after a rebuild. One pass over the
+       parts and no allocation, so it is cheap enough to ask every tick. */
+    glm::dvec3 compoundCom() const {
+        double total = 0.0;
+        glm::dvec3 com(0.0);
+        for(size_t i = 0; i < parts.size(); i++) {
+            const double m = parts[i]->body->mass;
+            total += m;
+            com += m * parts[i]->localPos;
+        }
+        return (total > 0.0) ? com / total : com;
+    }
+
+    /* Rebuild the compound only once the masses have moved the COM further
+       than kComRebuildTol since the last rebuild. A burn shifts the COM
+       continuously and a rebuild allocates two compound shapes plus a rigid
+       body, so rebuilding per tank draw per tick would be pure waste -- but
+       never rebuilding is wrong too, because the children are re-based
+       through principal, so a stale COM displaces every hull the picking and
+       the collision both read. Called once per ship per tick, which covers
+       every source of a mass change (a burn, crew boarding or EVAing,
+       anything added later) from one call site instead of hunting each
+       writer down. */
+    void refreshCompound() {
+        if(compound == nullptr) { rebuildCompound(); return; }
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        if(glm::length(compoundCom() - pOrigin) > kComRebuildTol) {
+            rebuildCompound();
+        }
+    }
+    /* metres, in frame S: far under anything the game reads a pose to, and
+       far over what one tick of a burn produces. */
+    static constexpr double kComRebuildTol = 0.01;
+
     /* The compound must reproduce the assembly it was built from. Two
        invariants, both recomputed here independently from the same authored
        data (the analytic parallel-axis form test_inertia pins getInertia()

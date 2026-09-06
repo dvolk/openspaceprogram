@@ -569,6 +569,77 @@ static void test_general_assembly() {
     destroyShip(s);
 }
 
+/* --- refreshCompound: the COM-drift threshold ----------------------------
+
+   A burn moves the centre of mass, and the compound's children are re-based
+   through `principal`, so a stale COM displaces every hull that picking and
+   collision read. Rebuilding two compound shapes per tank draw per tick would
+   be waste, so refreshCompound() rebuilds only once the mass distribution has
+   shifted the COM past kComRebuildTol. Both halves are pinned: under the
+   tolerance the compound is left exactly as it was, over it the rebuild lands
+   on the NEW centre of mass.
+
+   What is perturbed here is a part's AUTHORED POSE rather than its mass,
+   because that keeps the inertia invariant intact -- checkCompoundInvariants
+   compares Bullet's child inertias, recomputed from the current masses, with
+   the bodies' stored diagonals, so changing a mass without also calling
+   SetMass would trip that assert. The quantity under test, compoundCom()
+   against principal.getOrigin(), is identical either way.
+
+   Layout: 300 kg at z=+6, 9000 kg at z=0, 1500 kg at z=-4, total 10800 kg,
+   so moving the capsule by dz shifts the COM by dz/36.                    */
+static void test_refresh() {
+    Ship s; s.v = new TestVehicle;
+    addBox(s, "capsule",  300.0, 1.0, 1.0, 1.0,
+           glm::dvec3(0.0, 0.0,  6.0), glm::dmat3(1.0));
+    addBox(s, "tank",    9000.0, 2.0, 2.0, 2.5,
+           glm::dvec3(0.0, 0.0,  0.0), glm::dmat3(1.0));
+    addBox(s, "engine",  1500.0, 1.5, 1.5, 1.0,
+           glm::dvec3(0.0, 0.0, -4.0), glm::dmat3(1.0));
+    s.v->rebuildCompound();
+
+    glm::dvec3 origin; glm::dmat3 basis;
+    Vehicle::fromBt(s.v->principal, origin, basis);
+    CHECK_NEAR(origin.z, s.v->compoundCom().z, 1e-12,
+               "refresh: the compound starts on the authored COM");
+
+    /* under the tolerance: dz = 0.05 m moves the COM by 0.05/36 = 1.4 mm */
+    Part *cap = s.v->parts[0];
+    cap->localPos += glm::dvec3(0.0, 0.0, 0.05);
+    const double driftSmall = glm::length(s.v->compoundCom() - origin);
+    CHECK_TRUE(driftSmall < Vehicle::kComRebuildTol,
+               "refresh: the small nudge really is under the tolerance "
+               "(otherwise this case proves nothing)");
+    s.v->refreshCompound();
+    glm::dvec3 after; glm::dmat3 b2;
+    Vehicle::fromBt(s.v->principal, after, b2);
+    g_checks++;
+    if(after != origin) {
+        g_failures++;
+        printf("FAIL: refresh: under the tolerance the compound must be left "
+               "untouched (COM z %.12g -> %.12g)\n", origin.z, after.z);
+    }
+
+    /* over it: dz = 1.0 m moves the COM by 1/36 = 28 mm */
+    cap->localPos += glm::dvec3(0.0, 0.0, 0.95);
+    const double driftBig = glm::length(s.v->compoundCom() - origin);
+    CHECK_TRUE(driftBig > Vehicle::kComRebuildTol,
+               "refresh: the big nudge really is over the tolerance");
+    s.v->refreshCompound();
+    glm::dvec3 rebuilt; glm::dmat3 b3;
+    Vehicle::fromBt(s.v->principal, rebuilt, b3);
+    const glm::dvec3 want = s.v->compoundCom();
+    CHECK_NEAR(rebuilt.z, want.z, 1e-12,
+               "refresh: over the tolerance the rebuild lands on the new COM");
+    CHECK_TRUE(glm::length(rebuilt - origin) > Vehicle::kComRebuildTol,
+               "refresh: the rebuild really did move the principal origin");
+
+    /* and the rebuilt compound still reproduces its assembly -- the invariant
+       assert ran inside rebuildCompound, so reaching here is the pass */
+    checkCom(s, "refresh: COM after the rebuild");
+    destroyShip(s);
+}
+
 int main() {
     printf("== ship mass properties + the compound body (src/vehicle.h) ==\n");
     test_single();
@@ -576,6 +647,7 @@ int main() {
     test_unequal_masses();
     test_rotated_part();
     test_general_assembly();
+    test_refresh();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }

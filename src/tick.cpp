@@ -185,6 +185,14 @@ void tick(Game &g) {
             for(auto *s : all) {
                 if(s->onRails) { s->railsTick(g.dt * g.time_accel); }
                 else { s->switchFrames(); }
+                /* The compound's COM has to track the mass distribution, and
+                   a burn moves it. Checked here rather than at each mass
+                   writer so one call site covers all of them, and it only
+                   rebuilds once the drift is worth it (see
+                   Vehicle::refreshCompound). Not run on the rails-warp path
+                   above: nothing burns there, and that path is deliberately
+                   O(ships) per tick. */
+                s->refreshCompound();
             }
 
             // Integrate the (time-accelerated) step in substeps,
