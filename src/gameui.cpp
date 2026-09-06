@@ -1272,7 +1272,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
         ImGui::Text("Wheel torque: %.0fN m", ship->GetWheelTorque());
         ImGui::Text("Angular rate: %.2fdeg/s",
-                    glm::degrees(glm::length(GetAngVelocity(ship->controller->body))));
+                    glm::degrees(glm::length(ship->partAngVel(ship->controller))));
     });
     ui::Window("Controls", g.o_controls, [&] {
         ImGui::Text("Game");
@@ -1457,7 +1457,7 @@ void drawPartWindows(Game &g) {
                     ImGui::PopID();
                 }
                 // free kerbals in boarding range: a Board button each
-                const glm::dvec3 capCom = GetPosition(ship->parts[part]->body);
+                const glm::dvec3 capCom = ship->partPos(ship->parts[part]);
                 bool anyInRange = false;
                 for(Kerbal *k : freeKerbals(g.sys)) {
                     const double dist =

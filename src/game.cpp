@@ -433,9 +433,10 @@ void Game::kerbalEVA(Kerbal *k) {
     const size_t part = k->aboardPart;
     if(part >= ship->parts.size()) { return; }
     const PartDef *capDef = ship->parts[part]->def;
-    Body *cap = ship->parts[part]->body;
+    Part *capPart = ship->parts[part];
+    Body *cap = capPart->body;
     Body *kb = k->parts[0]->body;
-    const double kerbalMass = k->parts[0]->body->mass;
+    const double kerbalMass = kb->mass;
 
     /* move the crew mass off the capsule (the ship gets lighter) */
     cap->mass -= kerbalMass;
@@ -444,7 +445,7 @@ void Game::kerbalEVA(Kerbal *k) {
     /* the standing / hover pose beside the capsule: on a surface stand on
        the same floor (the capsule's bottom) just outside its side, in free
        fall hover beside it co-moving. */
-    const glm::dvec3 capCom = GetPosition(cap);
+    const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dvec3 upDir = glm::normalize(capCom);
     const glm::dvec3 refs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
     int best = 0;
@@ -463,7 +464,7 @@ void Game::kerbalEVA(Kerbal *k) {
         SetVelocity(kb, glm::dvec3(0.0));
     } else {
         setPosRot(kb, capCom + tangent * offset, orient);
-        SetVelocity(kb, GetVelocity(cap));   // co-moving beside the ship
+        SetVelocity(kb, ship->partVel(capPart));   // co-moving beside the ship
     }
 
     /* the kerbal now lives beside the ship: same SoI body (its ship list)
@@ -513,16 +514,19 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         toast("Board: capsule full (%d)", capDef->crew_capacity);
         return;
     }
-    Body *cap = ship->parts[part]->body;
+    Part *capPart = ship->parts[part];
+    Body *cap = capPart->body;
     Body *kb = k->parts[0]->body;
-    const double kerbalMass = k->parts[0]->body->mass;
+    const double kerbalMass = kb->mass;
 
     /* move the crew mass onto the capsule (the ship gets heavier) */
     cap->mass += kerbalMass;
     SetMass(cap, cap->mass);
 
     /* park the kerbal inside the capsule (at its COM, out of the world) */
-    setPosRot(kb, GetPosition(cap), GetOrient(cap));
+    glm::dvec3 capPos; glm::dmat3 capRot;
+    ship->partWorldPose(capPart, capPos, capRot);
+    setPosRot(kb, capPos, capRot);
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;

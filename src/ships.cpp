@@ -159,7 +159,8 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     if(part >= ship->parts.size()) { return nullptr; }
     const PartDef *capDef = ship->parts[part]->def;
     if(capDef->crew_capacity <= 0) { return nullptr; }
-    Body *cap = ship->parts[part]->body;
+    Part *capPart = ship->parts[part];
+    Body *cap = capPart->body;
 
     ShipDef def = load_ship_def("./res/ships/kerbal.json", part_catalog);
     Kerbal *k = new Kerbal;
@@ -172,8 +173,8 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     k->frame = ship->frame;
 
     // build it AT the capsule COM (it will be parked there, inside the ship)
-    const glm::dvec3 capCom = GetPosition(cap);
-    const glm::dmat3 capOrient = GetOrient(cap);
+    const glm::dvec3 capCom = ship->partPos(capPart);
+    const glm::dmat3 capOrient = ship->partRot(capPart);
     build_ship(k, def, partsshader, capCom, capOrient);
     SetFriction(k->controller->body, 0.0);   // frictionless feet (see place_ship)
 
@@ -184,7 +185,7 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
-    cap->mass += k->parts[0]->body->mass;
+    cap->mass += kb->mass;
     SetMass(cap, cap->mass);
     k->aboard = ship;
     k->aboardPart = part;

@@ -375,10 +375,10 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     // which silently straightened a radial part into the stack axis.)
     const glm::dmat3 orient = faceAlong(velWorld);
     const glm::dvec3 com0 = ship->get_center_of_mass();
-    const glm::dmat3 Rrel = orient * glm::transpose(GetOrient(ship->parts[0]->body));
+    const glm::dmat3 Rrel = orient * glm::transpose(ship->partRot(ship->rootPart()));
     for(Part *part : ship->parts) {
-        const glm::dvec3 p = GetPosition(part->body);
-        const glm::dmat3 R0 = GetOrient(part->body);
+        const glm::dvec3 p = ship->partPos(part);
+        const glm::dmat3 R0 = ship->partRot(part);
         setPosRot(part->body, target + Rrel * (p - com0), Rrel * R0);
         SetVelocity(part->body, vel);
     }
@@ -402,8 +402,8 @@ void spin_log(Vehicle *ship, double time) {
     printf("[spin] t=%.2fs ship=%s com=[%.0f %.0f %.0f] parts=%zu\n",
            time, ship->name.c_str(), com.x, com.y, com.z, ship->parts.size());
     for(size_t i = 0; i < ship->parts.size(); i++) {
-        const glm::dvec3 w = GetAngVelocity(ship->parts[i]->body);
-        const glm::dvec3 p = GetPosition(ship->parts[i]->body);
+        const glm::dvec3 w = ship->partAngVel(ship->parts[i]);
+        const glm::dvec3 p = ship->partPos(ship->parts[i]);
         printf("[spin]   %-14s pos=[%.1f %.1f %.1f] w=[%.3e %.3e %.3e] |w|=%.3e\n",
                ship->parts[i]->def->name.c_str(),
                p.x, p.y, p.z, w.x, w.y, w.z, glm::length(w));
@@ -429,7 +429,7 @@ void spin_log(Vehicle *ship, double time) {
     const double M = ship->m_parent->mass;
     glm::dvec3 tau(0, 0, 0);
     for(size_t i = 0; i < ship->parts.size(); i++) {
-        const glm::dvec3 p = GetPosition(ship->parts[i]->body);
+        const glm::dvec3 p = ship->partPos(ship->parts[i]);
         const double r = glm::length(p);
         const glm::dvec3 F = -G * M * ship->parts[i]->body->mass * p / (r * r * r);
         tau += glm::cross(p - com, F);

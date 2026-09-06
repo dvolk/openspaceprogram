@@ -19,7 +19,7 @@
 #include "mesh.h"        // Mesh::Draw (the reference skylines)
 #include "model.h"       // Model (the engine plume)
 #include "orbit.h"       // computeOrbitElements + the plane math
-#include "physics.h"     // getRelAxis_ / debug_draw
+#include "physics.h"     // debug_draw
 #include "shader.h"      // Shader::Bind / setUniform_*
 #include "skybox.h"      // Skybox::Draw
 #include "surfmap.h"     // surfmapCompute (the M key's surface map)
@@ -97,9 +97,9 @@ void draw3d(Game &g, TransferPlanner &planner) {
             // screen plane is the ship's right/up plane, so pitch (nose
             // along the up axis) read as left/right and yaw (nose along
             // the right axis) as up/down -- the two looked swapped.
-            camera->ref = glm::dmat3(getRelAxis_(ship->controller->body, 2),   // back = nose
-                                     getRelAxis_(ship->controller->body, 0),   // right
-                                     getRelAxis_(ship->controller->body, 1));  // up
+            camera->ref = glm::dmat3(ship->partAxis(ship->controller, 2),   // back = nose
+                                     ship->partAxis(ship->controller, 0),   // right
+                                     ship->partAxis(ship->controller, 1));  // up
             }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
@@ -214,9 +214,9 @@ void draw3d(Game &g, TransferPlanner &planner) {
     energy_series.push(g.time, o.energy);
     angmom_series.push(g.time, o.ang_momentum);
 
-    up = getRelAxis_(ship->controller->body, 1);
-    facing = getRelAxis_(ship->controller->body, 2);
-    other = getRelAxis_(ship->controller->body, 0);
+    up = ship->partAxis(ship->controller, 1);
+    facing = ship->partAxis(ship->controller, 2);
+    other = ship->partAxis(ship->controller, 0);
 
     facing_dir = glm::normalize(facing);
     vel_dir = glm::normalize(vel);
@@ -287,7 +287,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
                size so the tail lands on the engine tail (-h/2) */
             const double radius = p->def->radius;
             const double height = p->def->height;
-            glm::dmat4 Model = p->body->model_matrix
+            /* Built from the part's world pose rather than read off
+               Body::model_matrix: that field is a cache Body::Draw fills as
+               a side effect, so using it here made the plume depend on
+               Vehicle::Draw having already run for this ship this frame. */
+            glm::dvec3 plumePos; glm::dmat3 plumeRot;
+            ship->partWorldPose(p, plumePos, plumeRot);
+            glm::dmat4 Model = glm::translate(plumePos) * glm::dmat4(plumeRot)
                 * glm::dmat4(glm::dmat3(radius, 0.0, 0.0,
                                          0.0, radius, 0.0,
                                          0.0, 0.0, height / 2.0));

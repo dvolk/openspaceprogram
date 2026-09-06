@@ -402,9 +402,9 @@ public:
 
        The one route to a part's pose, axes and velocity. Everything that
        reads where a part IS, or how fast it is moving, goes through these;
-       nothing outside them reaches into Part::body for state. (Forces, mass
-       and the render model still take the Body -- they move when the bodies
-       do.)
+       nothing outside them reaches into Part::body for state. Forces still
+       take the Body and move onto the ship body with it; a part's mass and
+       its render model are its own and stay put.
 
        Today these read the part's own rigid body, so the sweep that
        introduces them is bit-identical at every call site. When the ship

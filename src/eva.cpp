@@ -96,7 +96,7 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
 
 void Kerbal::applyEva(double h) {
     Body *b = controller->body;
-    const glm::dvec3 pos = GetPosition(b);
+    const glm::dvec3 pos = partPos(controller);
     const glm::dvec3 radial = glm::normalize(pos);
     const double surfR = (double)m_parent->GetTerrainHeight(glm::vec3(radial));
     const double rest = restAlt();
@@ -108,8 +108,8 @@ void Kerbal::applyEva(double h) {
        contact holds the kerbal near restAlt otherwise). */
     const double alt = glm::length(pos) - surfR;
     if(alt < rest - kFloorDrop) {
-        setPosRot(b, radial * (surfR + rest), GetOrient(b));
-        const glm::dvec3 v = GetVelocity(b);
+        setPosRot(b, radial * (surfR + rest), partRot(controller));
+        const glm::dvec3 v = partVel(controller);
         const double vr = glm::dot(v, radial);
         if(vr < 0.0) { SetVelocity(b, v - radial * vr); }
         return;
@@ -118,11 +118,11 @@ void Kerbal::applyEva(double h) {
     if(mode == EVA_GROUND) {
         if(jumpRequested) {
             jumpRequested = false;
-            SetVelocity(b, GetVelocity(b) + radial * kJumpSpeed);
+            SetVelocity(b, partVel(controller) + radial * kJumpSpeed);
         }
         /* Walk steering: drive the tangent-plane velocity toward
            walkDir * walkSpeed; no input -> damp to a stand. */
-        const glm::dvec3 v = GetVelocity(b);
+        const glm::dvec3 v = partVel(controller);
         const glm::dvec3 vh = evaOntoPlane(v, radial);
         glm::dvec3 a = (walkDir * kWalkSpeed - vh) / h;
         const double amax = kWalkAccel;
@@ -137,7 +137,7 @@ void Kerbal::applyEva(double h) {
            and overwriting the pose / angular velocity instead stalls
            the translation (the contact solver fights the overwrite). */
         const glm::dvec3 faceHint = (glm::length2(walkDir) > 0.0)
-            ? walkDir : getRelAxis_(b, 1);
+            ? walkDir : partAxis(controller, 1);
         slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);
     } else {
         // RCS translation along the camera axes: a fixed thrust (N) for as
@@ -163,10 +163,10 @@ void Kerbal::applyEva(double h) {
 
 void Kerbal::slewTo(const glm::dmat3 &target, double h, double authority) {
     Body *b = controller->body;
-    const glm::dmat3 R = GetOrient(b);
+    const glm::dmat3 R = partRot(controller);
     glm::dvec3 axis;
     const double ang = evaRotAxisAngle(target * glm::transpose(R), axis);
-    const glm::dvec3 w = GetAngVelocity(b);
+    const glm::dvec3 w = partAngVel(controller);
     const glm::dmat3 I = getInertia();
     glm::dvec3 tq(0.0);
     if(ang < 1e-9) {
