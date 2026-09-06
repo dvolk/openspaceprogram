@@ -15,11 +15,19 @@
 # "Axial tilt" is NOT on the individual pages, so we merge that one column
 # back in from the old ksp_system.csv to keep the new file a true superset.
 #
+# Each body page is fetched once and cached at tmp/ksp_wiki/<name>.html, so
+# re-runs never touch the site; --refresh re-downloads. The fetch is plain
+# urllib -- the site's bot wall challenges browser-like clients but passes a
+# plain Python request.
+#
 # Output: ksp_bodies.csv (ksp_system.csv is left untouched). Both live in
 # utils/ next to this script (paths resolved via __file__, run from anywhere).
+import argparse
+import io
 import os
 import re
 import time
+import urllib.request
 import warnings
 
 import pandas as pd
@@ -27,6 +35,8 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 HERE = os.path.dirname(os.path.abspath(__file__))   # utils/
+REPO = os.path.dirname(HERE)
+CACHE_DIR = os.path.join(REPO, "tmp", "ksp_wiki")
 
 WIKI = "https://wiki.kerbalspaceprogram.com/wiki/{name}"
 BODIES = [
@@ -95,16 +105,31 @@ def split_temp(s):
 # ---------------------------------------------------------------------------
 # infobox parsing
 # ---------------------------------------------------------------------------
-def get_infobox(name):
-    url = WIKI.format(name=name)
-    for t in pd.read_html(url):
+def page(name, refresh):
+    """Body page HTML, cached at tmp/ksp_wiki/<name>.html.
+
+    Returns (text, downloaded): the cache is the default, so a re-run that
+    finds every page cached makes zero network requests."""
+    path = os.path.join(CACHE_DIR, name + ".html")
+    if not refresh and os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return f.read(), False
+    body = urllib.request.urlopen(WIKI.format(name=name), timeout=60).read()
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(body)
+    with open(path, encoding="utf-8") as f:
+        return f.read(), True
+
+def get_infobox(name, text):
+    for t in pd.read_html(io.StringIO(text)):
         col0 = t[0].astype(str).tolist()
         if any("Semi-major axis" in c or "Equatorial radius" in c for c in col0):
             return t
-    raise RuntimeError(f"no infobox table found on {url}")
+    raise RuntimeError(f"no infobox table found on {name}")
 
-def parse_body(name):
-    t = get_infobox(name)
+def parse_body(name, text):
+    t = get_infobox(name, text)
     header = None
     fields = {}           # field name -> [value, value, ...] in order
     for _, r in t.iterrows():
@@ -207,6 +232,12 @@ def build_row(name, header, fields):
 # main
 # ---------------------------------------------------------------------------
 def main():
+    ap = argparse.ArgumentParser(
+        description="Build ksp_bodies.csv from the KSP wiki body pages")
+    ap.add_argument("--refresh", action="store_true",
+                    help="re-download the body pages even if the cache exists")
+    args = ap.parse_args()
+
     # old CSV gives the one column the wiki pages lack (axial tilt)
     old = pd.read_csv(OLD_CSV)
     old.columns = [str(c).strip().lower().replace(" ", "_") for c in old.columns]
@@ -216,15 +247,18 @@ def main():
 
     rows = []
     for i, name in enumerate(BODIES):
+        fresh = False
         try:
-            header, fields = parse_body(name)
+            text, fresh = page(name, args.refresh)
+            header, fields = parse_body(name, text)
             row = build_row(name, header, fields)
             row["axial_tilt_deg"] = tilt.get(name)   # merged from old CSV
             rows.append(row)
             print(f"[{i+1:2d}/{len(BODIES)}] {name:8s}  fields={len(fields)}")
         except Exception as e:   # noqa: BLE001 - keep going, report per-body
             print(f"[{i+1:2d}/{len(BODIES)}] {name:8s}  FAILED: {e}")
-        time.sleep(0.5)
+        if fresh:
+            time.sleep(0.5)   # be polite between actual downloads
 
     df = pd.DataFrame(rows)
     # move the identity columns to the front
