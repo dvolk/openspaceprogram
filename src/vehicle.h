@@ -1661,17 +1661,18 @@ public:
         }
     }
 
-    /* Write the rail state into the parked part transforms (once per
-       tick). Draw, get_center_of_mass and everything else that reads
-       Bullet transforms then sees the railed ship's current pose even
-       though its bodies are not in the world. The velocities are kept in
-       sync too -- the cluster is rigid and torque-free, so every part
-       shares the rail velocity with zero spin, and readers like
-       --orbit-log and the HUD fit their elements to consistent data. */
+    /* Write the rail state into the ship's body (once per tick). Draw,
+       get_center_of_mass and everything else that reads the body then sees
+       the railed ship's current pose even though it is not in the world.
+       Angular velocity is zeroed: a parked ship is torque-free, and readers
+       like --orbit-log and the HUD fit their elements to consistent data. */
     void writeRailPose() {
-        /* ONE write. rail_pos is the COM, which is exactly the hull's
-           transform origin, and rail_orient * railRot are frame S's axes;
-           every part's pose then follows from its authored local pose. */
+        /* ONE write, and it is the whole ship. rail_pos is the COM, which is
+           exactly the hull's transform origin, and rail_orient * railRot are
+           frame S's axes; every part's pose then follows from its authored
+           local pose. There is no per-part snapshot to restore and no
+           deformation to freeze -- the geometry the rails carry IS the
+           authored geometry. */
         glm::dvec3 pOrigin; glm::dmat3 pBasis;
         fromBt(principal, pOrigin, pBasis);
         setPosRot(hull, rail_pos, (rail_orient * railRot) * pBasis);
@@ -1679,18 +1680,29 @@ public:
         SetAngVelocity(hull, glm::dvec3(0.0));
     }
 
-    /* The COM's osculating orbit dips into the terrain band (periapsis
-       within 3 km of the surface): sitting on / skimming the ground rather
-       than coasting clear of it. */
-    bool inTerrainBand() {
-        Frame *inertial = frame->getNonRotFrame();
-        glm::dvec3 p = get_center_of_mass();
-        glm::dvec3 v = GetVelocity(hull);
+    /* The ship's COM state in `inertial` -- the frame node where its
+       trajectory is a Kepler conic (the same transform the HUD uses). The
+       ordering matters: the OLD frame's stasis (rotation) velocity is added
+       before rotating, and the result is offset by the frame's own velocity
+       in the inertial node. Getting it wrong biases every conic fitted from
+       here. */
+    void comStateIn(Frame *inertial, glm::dvec3 &p, glm::dvec3 &v) {
+        p = get_center_of_mass();
+        v = GetVelocity(hull);
         if(frame != inertial) {
             v += frame->GetStasisVelocity(p);
             v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
             p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
         }
+    }
+
+    /* The COM's osculating orbit dips into the terrain band (periapsis
+       within 3 km of the surface): sitting on / skimming the ground rather
+       than coasting clear of it. */
+    bool inTerrainBand() {
+        Frame *inertial = frame->getNonRotFrame();
+        glm::dvec3 p, v;
+        comStateIn(inertial, p, v);
         const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
         return el.periapsis <= inertial->body->radius + 3000.0;
     }
@@ -1716,22 +1728,16 @@ public:
         if(onRails) { return true; }
         if(!canRail()) { return false; }
 
-        /* COM state in the body's inertial frame node, where the
-           trajectory is a Kepler conic (same transform the HUD uses).
-           Cluster velocity = mass-weighted mean of the part velocities
-           (the rigid cluster coasts as one body; residual spin is
-           discarded with the attitude). */
+        /* The COM state in the body's inertial frame node, where the
+           trajectory is a Kepler conic. The velocity is the hull's own -- one
+           rigid body, one COM velocity -- and the parked ship's residual spin
+           is discarded with its attitude (writeRailPose zeroes it). */
         Frame *oldFrame = frame;
         Frame *inertial = frame->getNonRotFrame();
-        glm::dvec3 p = get_center_of_mass();
-        const glm::dvec3 com_frame = p;   // pre-transform, old frame coords
-        glm::dvec3 v = GetVelocity(hull);
-        const glm::dvec3 vel_frame = v;   // pre-transform, old frame coords
-        if(frame != inertial) {
-            v += frame->GetStasisVelocity(p);
-            v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
-            p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
-        }
+        const glm::dvec3 com_frame = get_center_of_mass();  // old frame coords
+        const glm::dvec3 vel_frame = GetVelocity(hull);     // old frame coords
+        glm::dvec3 p, v;
+        comStateIn(inertial, p, v);
 
         const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
         const bool grounded = el.periapsis <= inertial->body->radius + 3000.0;
