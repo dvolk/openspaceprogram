@@ -1292,19 +1292,25 @@ public:
         fflush(stdout);
     }
 
-    /* --drain-log: each fuel group's drain rate (kg/s) -- the change in
-       the group's total fuel mass (sum over its tanks' resources) between
-       consecutive samples. The "how is the fuel flowing" instrument: a
-       symmetric asparagus shows the two outer groups draining at the same
-       rate and every inner group at 0, so a serial or lopsided drain shows
-       up as the rates diverging (or a sink touched early). The first
-       sample only records the baseline (no rate); from the second on the
-       rate is the interval average. */
+    /* --drain-log: the thrust delivered this tick (N) + each fuel group's
+       drain rate (kg/s) -- the change in the group's total fuel mass (sum
+       over its tanks' resources) between consecutive samples. The "how is
+       the fuel flowing" instrument: a symmetric asparagus shows the two
+       outer groups draining at the same rate and every inner group at 0,
+       so a serial or lopsided drain shows up as the rates diverging (or a
+       sink touched early). The first sample only records the baseline (no
+       rate); from the second on the rate is the interval average. The
+       thrust is the sum of the parts' armedThrust -- ApplyThrust arms a
+       part only if its flow was covered this tick, so it is the thrust
+       actually delivered (an engine whose layers ran dry is 0, not its
+       rating). */
     void drain_log(double time) {
         // Each group's total fuel mass now, in one pass over the parts.
         std::map<int, double> cur;
+        double thrust = 0.0;
         for(size_t i = 0; i < parts.size(); i++) {
             Part *p = parts[i];
+            thrust += (double)p->armedThrust;
             if(p->fuelGroup < 0 || !p->isTank()) { continue; }
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(p->resources.current[r] <= 0.0f) { continue; }
@@ -1313,8 +1319,8 @@ public:
         }
         if(drainPrevTime_ > 0.0 && time > drainPrevTime_) {
             const double dt = time - drainPrevTime_;
-            printf("[drainlog] t=%.3fs dt=%.3fs ship=\"%s\"",
-                   time, dt, name.c_str());
+            printf("[drainlog] t=%.3fs dt=%.3fs ship=\"%s\" thrust=%.1fN",
+                   time, dt, name.c_str(), thrust);
             for(std::map<int, double>::iterator it = cur.begin(); it != cur.end(); ++it) {
                 const int g = it->first;
                 const double mass = it->second;
@@ -1457,6 +1463,12 @@ public:
            sides were already separate groups) -- recompute so the ids stay
            fresh after the tree shrank. */
         buildFuelGroups();
+        /* 7) Reset the --drain-log baseline: a rate spanning this split
+           would mix the two phases (and its mass map is about to lose the
+           dropped groups). The next drain_log call re-baselines silently,
+           so every printed rate covers one phase only. */
+        drainPrevTime_ = 0.0;
+        drainPrevMass_.clear();
         return (int)dropped.size();
     }
 

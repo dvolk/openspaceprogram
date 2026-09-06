@@ -35,8 +35,12 @@ CHECK namespace (parsed from the game's stdout):
           grounded (0/1), pos (3-tuple), vel (3-tuple), alt (m above the
           analytic terrain), mass (kg; None if the binary predates the field)
   fuel    list of dicts, one per [fuel] line: t, ship, groups
-          (group id -> {resource: (current, capacity)}), links
-          (a list of (from_group, to_group) fuel-link pairs)
+          (group id -> {resource: (current, capacity, per-tank currents)}),
+          links (a list of (from_group, to_group) fuel-link pairs)
+  drainlog list of dicts, one per [drainlog] line: t, dt (the sample
+          interval, s), ship, thrust (N, the thrust delivered in the
+          sample's tick), rates (group id -> drain rate in kg/s,
+          H2+LOX combined; a group only appears while it carries fuel)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -97,6 +101,11 @@ EVA_RE = re.compile(
     r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
     r"(?:\s+mass=([-\d.]+)kg)?"
 )
+DRAINLOG_RE = re.compile(
+    r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
+    r"thrust=([-\d.]+)N\s+(.*)"
+)
+DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
     r"\[fuel\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+(.*)"
 )
@@ -107,7 +116,7 @@ FUEL_RE = re.compile(
 FUEL_GROUP_RE = re.compile(
     r"g(\d+)=((?:\s*[A-Za-z0-9]+:[-\d.]+/[-\d.]+\[[^\]]*\])*)"
 )
-FUEL_RES_RE = re.compile(r"([A-Za-z0-9]+):([-\d.]+)/([-\d.]+)")
+FUEL_RES_RE = re.compile(r"([A-Za-z0-9]+):([-\d.]+)/([-\d.]+)\[([^\]]*)\]")
 FUEL_LINK_RE = re.compile(r"links=(\S+)")
 FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 
@@ -266,7 +275,8 @@ def parse_fuel(out):
         for gm in FUEL_GROUP_RE.finditer(rest):
             res = {}
             for rm in FUEL_RES_RE.finditer(gm.group(2)):
-                res[rm.group(1)] = (float(rm.group(2)), float(rm.group(3)))
+                tanks = [float(x) for x in rm.group(4).split(",") if x]
+                res[rm.group(1)] = (float(rm.group(2)), float(rm.group(3)), tanks)
             groups[int(gm.group(1))] = res
         links = []
         lm = FUEL_LINK_RE.search(rest)
@@ -275,6 +285,23 @@ def parse_fuel(out):
                 links.append((int(pm.group(1)), int(pm.group(2))))
         rows.append({"t": float(t), "ship": ship,
                      "groups": groups, "links": links})
+    return rows
+
+
+def parse_drainlog(out):
+    rows = []
+    for m in DRAINLOG_RE.finditer(out):
+        t, dt, ship, thrust, rest = m.groups()
+        rates = {}
+        for gm in DRAINLOG_RATE_RE.finditer(rest):
+            rates[int(gm.group(1))] = float(gm.group(2))
+        rows.append({
+            "t": float(t), "dt": float(dt), "ship": ship,
+            "thrust": float(thrust),
+            # group id -> drain rate (kg/s, H2+LOX combined); a group only
+            # appears while it still carries fuel.
+            "rates": rates,
+        })
     return rows
 
 
@@ -352,10 +379,11 @@ def run_case(case):
     att = parse_att(out)
     eva = parse_eva(out)
     fuel = parse_fuel(out)
+    drainlog = parse_drainlog(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
-        "fuel": fuel,
+        "fuel": fuel, "drainlog": drainlog,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

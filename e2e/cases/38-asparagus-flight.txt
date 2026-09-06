@@ -1,0 +1,108 @@
+# Asparagus flight: the full staged burn of heavy_asp, quantitative end to
+# end. One continuous thrust (I held) with five stage drops (SPACE) walks
+# the ship through all six of its stages, from all seven engines down to
+# the final upper-stage engine alone.
+#
+# The ship is a double-asparagus (two radial arms, each a 3-stage chain
+# C->B->A and F->E->D, both feeding the central engine) riding on a
+# 3-stage central stack: core (2 x tank_r2.25h5 + the central engine),
+# mid (tank_r1.5h3 + engine_r1.5h3, stage 5), upper (tank_r1h1 + engine,
+# stage 6, with the capsule on top). The stage counter gates ignition
+# (an engine fires only from its stage on), so the phases are:
+#
+#   phase 1   6 arm engines + central   C and F drain (the outermost groups)
+#   stage 1   the C and F arms fly off (10 parts)
+#   phase 2   4 arm engines + central   B and E drain
+#   stage 2   the B and E arms fly off
+#   phase 3   2 arm engines + central   A and D drain
+#   stage 3   the A and D arms fly off
+#   phase 4   the central engine alone  the core (2 x tank_r2.25h5) drains
+#   stage 4   the core flies off (6 parts, decoupler included)
+#   phase 5   engine_r1.5h3 alone       the mid tank (tank_r1.5h3) drains
+#   stage 5   the mid stage flies off (5 parts, decoupler included)
+#   phase 6   the final engine alone    the upper tank (tank_r1h1) drains
+#
+# Every --drain-log sample carries the thrust delivered that tick (N) and
+# every fuel group's drain rate (kg/s, H2 + LOX combined), so a sample's
+# thrust identifies its phase and its rates say exactly which groups feed
+# the engines, at what rate. The expected values come straight off the
+# part catalog (engine_r1.5h3: 12.78 kg/s at 2 x 12.78 x 4400 = 112464 N;
+# engine_r2.25h4.5: 28.76 kg/s at 253088 N; engine: 5.68 kg/s at 50048 N;
+# the central engine's flow splits pro-rata across the two outermost
+# groups, 14.38 kg/s of H2 to each):
+#
+#   phase   thrust (N)   draining groups        idle groups
+#   1       927872       2 x 105.44 kg/s (C,F)  7
+#   2       702944       2 x  79.88 kg/s (B,E)  5
+#   3       478016       2 x  54.32 kg/s (A,D)  3
+#   4       253088       1 x  57.52 kg/s (core) 2
+#   5       112464       1 x  25.56 kg/s (mid)  1
+#   6        50048       1 x  11.36 kg/s (up)   0
+#
+# The group counts 9 -> 7 -> 5 -> 3 -> 2 -> 1 pin the staging itself; the
+# EXPECT lines pin that each drop took exactly the right parts, and the
+# stage-order CHECK pins the SEQUENCE (1 -> 2 -> 3 -> 4 -> 5, not any
+# other order).
+#
+# A sample's rate covers the interval since the previous sample. The game
+# re-baselines the drain log on every stage drop, so a rate never mixes
+# two phases; the one exception is phase 1's FIRST sample, whose interval
+# includes the pre-thrust interval (thrust starts mid-interval) -- the
+# phase-1 rate checks skip it.
+#
+# Timeline (wall time, --time-accel 1): thrust 0.5-66 s, SPACE at
+# 12 / 24 / 36 / 48 / 60 s, --timeout 70 exits after the final phase.
+NAME asparagus-flight
+ARGS --ship res/ships/heavy_asp.json --time-accel 1
+ARGS --drain-log --fuel-log --timeout 70
+ARGS --sim-press 500,65500,I,12000,0,SPACE,24000,0,SPACE,36000,0,SPACE,48000,0,SPACE,60000,0,SPACE
+EXPECT [drainlog]
+EXPECT [fuel]
+EXPECT Stage: dropped 10 part(s); now on stage 2 of 6
+EXPECT Stage: dropped 10 part(s); now on stage 3 of 6
+EXPECT Stage: dropped 10 part(s); now on stage 4 of 6
+EXPECT Stage: dropped 6 part(s); now on stage 5 of 6
+EXPECT Stage: dropped 5 part(s); now on stage 6 of 6
+FORBID GL_
+FORBID error:
+# STAGE ORDER: the drops happen 1 -> 2 -> 3 -> 4 -> 5, in that order.
+CHECK out.index("now on stage 2 of 6") < out.index("now on stage 3 of 6") < out.index("now on stage 4 of 6") < out.index("now on stage 5 of 6") < out.index("now on stage 6 of 6")
+# PHASE 1: all seven engines lit (927872 N = 6 x 112464 + 253088), nine
+# groups (6 arms + core + mid + upper), exactly the two outermost draining
+# at 105.44 kg/s each; the first sample is skipped in the rate checks
+# (pre-thrust interval).
+CHECK len([r for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0]) >= 4
+CHECK all(len(r["rates"]) == 9 for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0)
+CHECK all(len([v for v in r["rates"].values() if v > 1.0]) == 2 for r in [r for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0][1:])
+CHECK all(abs(v - 105.44) < 0.05 * 105.44 for r in [r for r in drainlog if abs(r["thrust"] - 927872.0) < 0.01 * 927872.0][1:] for v in r["rates"].values() if v > 1.0)
+# PHASE 2: C and F gone, seven groups, B and E draining at 79.88 each.
+CHECK len([r for r in drainlog if abs(r["thrust"] - 702944.0) < 0.01 * 702944.0]) >= 4
+CHECK all(len(r["rates"]) == 7 for r in drainlog if abs(r["thrust"] - 702944.0) < 0.01 * 702944.0)
+CHECK all(len([v for v in r["rates"].values() if v > 1.0]) == 2 for r in drainlog if abs(r["thrust"] - 702944.0) < 0.01 * 702944.0)
+CHECK all(abs(v - 79.88) < 0.05 * 79.88 for r in drainlog if abs(r["thrust"] - 702944.0) < 0.01 * 702944.0 for v in r["rates"].values() if v > 1.0)
+# PHASE 3: A and D the outermost, five groups, draining at 54.32 each.
+CHECK len([r for r in drainlog if abs(r["thrust"] - 478016.0) < 0.01 * 478016.0]) >= 4
+CHECK all(len(r["rates"]) == 5 for r in drainlog if abs(r["thrust"] - 478016.0) < 0.01 * 478016.0)
+CHECK all(len([v for v in r["rates"].values() if v > 1.0]) == 2 for r in drainlog if abs(r["thrust"] - 478016.0) < 0.01 * 478016.0)
+CHECK all(abs(v - 54.32) < 0.05 * 54.32 for r in drainlog if abs(r["thrust"] - 478016.0) < 0.01 * 478016.0 for v in r["rates"].values() if v > 1.0)
+# PHASE 4: only the central engine left, three groups (core + mid + upper),
+# the core draining at the engine's full flow (28.76 x 2).
+CHECK len([r for r in drainlog if abs(r["thrust"] - 253088.0) < 0.01 * 253088.0]) >= 4
+CHECK all(len(r["rates"]) == 3 for r in drainlog if abs(r["thrust"] - 253088.0) < 0.01 * 253088.0)
+CHECK all(len([v for v in r["rates"].values() if v > 1.0]) == 1 for r in drainlog if abs(r["thrust"] - 253088.0) < 0.01 * 253088.0)
+CHECK all(abs(v - 57.52) < 0.05 * 57.52 for r in drainlog if abs(r["thrust"] - 253088.0) < 0.01 * 253088.0 for v in r["rates"].values() if v > 1.0)
+# PHASE 5: the core is gone, two groups (mid + upper), the mid tank
+# draining at engine_r1.5h3's flow (12.78 x 2).
+CHECK len([r for r in drainlog if abs(r["thrust"] - 112464.0) < 0.01 * 112464.0]) >= 4
+CHECK all(len(r["rates"]) == 2 for r in drainlog if abs(r["thrust"] - 112464.0) < 0.01 * 112464.0)
+CHECK all(len([v for v in r["rates"].values() if v > 1.0]) == 1 for r in drainlog if abs(r["thrust"] - 112464.0) < 0.01 * 112464.0)
+CHECK all(abs(v - 25.56) < 0.05 * 25.56 for r in drainlog if abs(r["thrust"] - 112464.0) < 0.01 * 112464.0 for v in r["rates"].values() if v > 1.0)
+# PHASE 6: the mid stage is gone, one group (upper), the upper tank
+# draining at the final engine's flow (5.68 x 2).
+CHECK len([r for r in drainlog if abs(r["thrust"] - 50048.0) < 0.01 * 50048.0]) >= 4
+CHECK all(len(r["rates"]) == 1 for r in drainlog if abs(r["thrust"] - 50048.0) < 0.01 * 50048.0)
+CHECK all(abs(v - 11.36) < 0.05 * 11.36 for r in drainlog if abs(r["thrust"] - 50048.0) < 0.01 * 50048.0 for v in r["rates"].values() if v > 1.0)
+# PRO-RATA: within every fuel group the member tanks stay equal (the drain
+# is pro-rata over their contents) -- a first-tank-first drain would empty
+# one tank while its siblings stayed full.
+CHECK all(max(r["groups"][g][res][2]) - min(r["groups"][g][res][2]) < 0.005 * r["groups"][g][res][1] for r in fuel for g in r["groups"] for res in r["groups"][g])
