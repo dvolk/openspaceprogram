@@ -70,7 +70,7 @@ static Part *addPart(Ship &s, Part *parent, int stage, bool decoupler,
 }
 
 static void destroyShip(Ship &s) {
-    /* onRails keeps ~Vehicle off Detach/RemoveBody: these Parts have no
+    /* onRails keeps ~Vehicle off RemoveBody: these Parts have no
        Body, and there is no physics world here. */
     s.v->onRails = true;
     delete s.v;

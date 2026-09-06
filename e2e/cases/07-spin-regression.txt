@@ -1,13 +1,21 @@
-# Spin regression: the two-tank "stacks" radial-test ship coasts in orbit
-# with --spin-log printing per-part angular velocity + contact forces. Guards
-# against a physics regression that NaNs the spin/contact math or crashes the
-# hand-built radial-test ship construction (it bypasses build_ship()).
+# Spin regression: the four-part "stacks" radial-test ship coasts in orbit
+# with --spin-log printing the ship's rotational state. A ship is ONE rigid
+# body now, so there is a single angular velocity and no inter-part contact
+# torque to report -- what is left that can still spin a passive ship is the
+# tidal (differential-gravity) torque, so that is pinned alongside the state
+# it acts on. Also guards against a physics regression that NaNs the
+# spin/torque math, and against breaking the hand-built radial-test ship
+# construction, which bypasses build_ship() entirely (it links parts into the
+# tree itself and places the whole ship with one placeShip call).
 # FORBID nan: the %.3e NaN token; verified absent from healthy output.
 # (Not FORBID ing bare "inf" -- it would false-positive on words like "info".)
 NAME spin-regression
 ARGS --radial-test stacks --time-accel 10 --timeout 15 --spin-log
 EXPECT Main loop starting
-EXPECT [spin]
+EXPECT [spin] t=
+EXPECT ship=stacks4 parts=4
+EXPECT w=[
+EXPECT tidal gravity torque |tau|=
 FORBID GL_
 FORBID error:
 FORBID nan

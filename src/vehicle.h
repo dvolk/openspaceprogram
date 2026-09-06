@@ -1181,13 +1181,6 @@ public:
         return (float)t;
     }
 
-    /* number of reaction-wheel parts (the torque in slewToward / killRotStep
-       is distributed evenly across them). Replaces m_reaction_wheels.size(). */
-    size_t numWheels() {
-        size_t n = 0;
-        for(Part *p : parts) { if(p->isWheel()) { n++; } }
-        return n;
-    }
 
     /* disarm the armed thrust (called once per tick, like clearRotCmd,
        so a tick without the keys doesn't keep firing) */
@@ -1573,27 +1566,13 @@ protected:
 
 public:
 
-    /* A part's state in another frame's coordinates. These take the Part,
-       not its Body, so their reads go through the part accessors like every
-       other consumer of a part's state. */
-    glm::dmat3 GetOrientRelTo(const Part *part, Frame *relTo)
-    {
-        glm::dmat3 forient = frame->GetOrientRelTo(relTo);
-        return forient * partRot(part);
-    }
-
+    /* A part's position in another frame's coordinates. Takes the Part, not
+       its Body, so the read goes through the part accessors like every other
+       consumer of a part's state. */
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo) {
         glm::dvec3 fpos = frame->GetPositionRelTo(relTo);
         glm::dmat3 forient = frame->GetOrientRelTo(relTo);
         return forient * partPos(part) + fpos;
-    }
-
-    glm::dvec3 GetVelocityRelTo(const Part *part, Frame *relTo) {
-        glm::dmat3 forient = frame->GetOrientRelTo(relTo);
-        glm::dvec3 vel = partVel(part);
-        glm::dvec3 pos = partPos(part);
-        if(frame != relTo) vel += frame->GetStasisVelocity(pos);
-        return forient * vel + frame->GetVelocityRelTo(relTo);
     }
 
     void moveToFrame(Frame *newFrame) {

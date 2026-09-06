@@ -15,32 +15,6 @@ class btRigidBody;
 class GLDebugDrawer;
 class Camera;
 
-/* One contact point from the last solver pass (spin diagnostics). */
-struct ContactPointInfo {
-    glm::dvec3 pos;      // world
-    glm::dvec3 normal;   // world (Bullet's normalOnB convention)
-    double pen;          // m, > 0 = overlapping
-    glm::dvec3 impulse;  // N s applied at this point in the last solve
-};
-
-/* The contact state of a two-body pair after the last solve.
-   netTorque is the internal torque the pair as a whole receives from
-   these contacts: (comB - comA) x sum(impulses) -- nonzero only when the
-   impulses are not all parallel to the COM offset (friction / off-axis
-   normals). That is the torque that spins a welded ship. The sign
-   follows Bullet's body ordering; the magnitude is the quantity of
-   interest. */
-struct ContactPairInfo {
-    int manifolds = 0;
-    int otherManifolds = 0;   /* manifolds in the world NOT involving this
-                                 pair -- sanity check that the matcher is
-                                 seeing the dispatcher's manifold list */
-    std::vector<ContactPointInfo> points;
-    glm::dvec3 netForce = glm::dvec3(0, 0, 0);   // N s
-    glm::dvec3 netTorque = glm::dvec3(0, 0, 0);  // N m s
-    double maxImpulse = 0.0;                      // N s
-};
-
 class PhysicsEngine {
 public:
     PhysicsEngine();
@@ -58,22 +32,10 @@ public:
     /* Re-add a parked body's EXISTING rigid body to the world (the inverse
        of RemoveBody; the rails handoff parks and restores ship parts). */
     void AddBody(Body *body);
-    /* Weld two parts at the given local anchor points (the anchor points
-       must coincide in world space, i.e. they define the relative offset). */
-    void * GlueTogether(Body *parent, Body *child,
-                        glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
     /* True when the body has any contact point in the current world state
        (terrain, pads, ships -- whatever it touches). */
     bool BodyInContact(Body *body);
-    void collisions(void);
     void Draw(const Camera * camera);
-    /* Remove a constraint from the world AND delete it (no dangling ref). */
-    void Detach(void * constraint);
-    /* Spin diagnostics: the contact state between two ship parts after
-       the last solve (per point: world position, normal, penetration,
-       applied impulse), plus the pair's net internal torque -- the only
-       way the welded pair can spin itself. */
-    ContactPairInfo reportContactPair(Body *a, Body *b);
 
 private:
     btDefaultCollisionConfiguration *collisionConfiguration;
@@ -93,19 +55,15 @@ void RemoveBody(Body *body);
 void AddPhysicsBody(Body *body);
 
 /* Force applied at `rel`, an offset from the body's centre of mass -- the
-   one primitive that lets several parts push a SINGLE rigid body correctly,
-   each contributing its share of the net force plus the torque from its own
-   offset. No callers yet: per-part gravity and thrust still go through the
-   per-part bodies, so it looks dead. Do not remove it. */
+   primitive that lets several parts push a SINGLE rigid body correctly, each
+   contributing its share of the net force plus the torque from its own
+   offset. This is how a ship's thrust and its per-part gravity are now
+   delivered, so an off-axis engine and the tide both turn the ship. */
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force);
-void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag);
 void ApplyCentralForce(Body *body, glm::dvec3 force);
-void ApplyCentralForceForward(Body *body, double mag);
-void ApplyTorque(Body *body, glm::dvec3 dir, double mag);
 void ApplyTorque(Body *body, glm::dvec3 torque);
-/* local axis n (0/1/2) of the body, in world coordinates */
-glm::dvec3 getRelAxis_(Body *body, int n);
-/* the body's local moment-of-inertia diagonal (kg m^2), as Bullet has it */
+/* the body's local moment-of-inertia diagonal (kg m^2), from its shape at its
+   current mass */
 glm::dvec3 getInertiaDiag(Body *body);
 
 void SetVelocity(Body *body, glm::dvec3 vel);
@@ -114,24 +72,15 @@ void SetFriction(Body *body, double f);
 /* Teleports pose AND zeroes both velocities (proceedToTransform) --
    right for rails handoffs, a trap for live bodies. */
 void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);
-void setGravity(Body *body, double acc);
 
 glm::dvec3 GetPosition(Body *body);
 glm::dvec3 GetVelocity(Body *body);
 glm::dvec3 GetAngVelocity(Body *b);
 glm::dmat3 GetOrient(Body *body);
 
-/* Weld two parts; anchors are local points that must coincide in world
-   space (they define the relative offset, e.g. faces at +-h/2). */
-void * GlueTogether(Body *parent, Body *child,
-                    glm::dvec3 parentAnchor, glm::dvec3 childAnchor);
 /* True when the body touches anything in the current world state (the
    EVA grounded check; see PhysicsEngine::BodyInContact). */
 bool BodyInContact(Body *body);
-/* Remove a weld (constraint) from the world and delete it. */
-void Detach(void *constraint);
-/* Spin diagnostics for a two-part ship (see ContactPairInfo). */
-ContactPairInfo contact_report(Body *a, Body *b);
 
 void debug_draw(const Camera * camera);
 

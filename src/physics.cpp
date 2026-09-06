@@ -314,53 +314,6 @@ btRigidBody* getRigidBody(Body *b);
 
 
 
-void *PhysicsEngine::GlueTogether(Body *parent, Body *child,
-                                  glm::dvec3 parentAnchor, glm::dvec3 childAnchor) {
-    btRigidBody *btParent = getRigidBody(parent);
-    btRigidBody *btChild = getRigidBody(child);
-
-    // btPoint2PointConstraint *constraint =
-    //     new btPoint2PointConstraint(*btParent, *btChild,
-    //                                 btVector3(0,-1,0), btVector3(0,1,0));
-
-    /* The 6DOF constraint locks the CURRENT relative Euler angle to the
-       angular limits (0,0,0 here), i.e. it drives the relative ORIENTATION
-       toward the identity. That preserves the parts' actual relative pose
-       only if the two constraint frames already share a world rotation --
-       which is true iff frameA_world and frameB_world use the SAME
-       rotation. So build both frames as (identity rotation, anchor):
-       the anchors coincide in world space by construction (the callers
-       choose local anchors that land on the same world point), and the
-       identity-vs-identity relative rotation is satisfied from the first
-       solve for ANY relative part orientation (stacked or radial).
-
-       The old code used one arbitrary quaternion (1,1,1) for both frames;
-       the relative rotation it implied was the parts' actual relative
-       rotation CONJUGATED by that quaternion, which equals the identity
-       only when the parts share a world orientation (the stacked case).
-       A radially attached part (perpendicular axes) started ~90 deg off,
-       and the solver's first pass kicked it toward parallel at tens of
-       rad/s -- the radial spin bug. */
-    btQuaternion qA, qB;
-    btParent->getCenterOfMassTransform().getBasis().getRotation(qA);
-    btChild->getCenterOfMassTransform().getBasis().getRotation(qB);
-    qA = qA.inverse(); /* local rotation so the world frame rotation is I */
-    qB = qB.inverse();
-    btTransform t1 = btTransform(qA,
-                                 btVector3(parentAnchor.x, parentAnchor.y, parentAnchor.z));
-    btTransform t2 = btTransform(qB,
-                                 btVector3(childAnchor.x, childAnchor.y, childAnchor.z));
-
-    btGeneric6DofConstraint *constraint =
-        new btGeneric6DofConstraint(*btParent, *btChild, t1, t2, false);
-
-    constraint->setAngularLowerLimit(btVector3(0, 0, 0));
-    constraint->setAngularUpperLimit(btVector3(0, 0, 0));
-
-    dynamicsWorld->addConstraint(constraint, true);
-
-    return (void *)constraint;
-}
 
 struct AnyContactCallback : public btCollisionWorld::ContactResultCallback {
     bool any = false;
@@ -378,17 +331,7 @@ bool PhysicsEngine::BodyInContact(Body *body) {
     return cb.any;
 }
 
-void Detach(void *constraint) {
-    physics->Detach(constraint);
-}
 
-void PhysicsEngine::Detach(void *constraint) {
-    btTypedConstraint *c = (btTypedConstraint *)constraint;
-    dynamicsWorld->removeConstraint(c);
-    /* btTypedConstraint has a virtual dtor, so deleting through the base
-       pointer frees the concrete (6DOF) constraint. */
-    delete c;
-}
 
 void PhysicsEngine::RemoveBody(Body *body) {
     dynamicsWorld->removeRigidBody(body->btBody);
@@ -411,10 +354,6 @@ void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot)
     physics->RegisterObject(body, pos, rot);
 }
 
-void ApplyCentralForce(Body *body, glm::dvec3 dir, double mag) {
-    btVector3 ndir = btVector3(dir.x, dir.y, dir.z).normalized();
-    getRigidBody(body)->applyCentralForce(mag * ndir);
-}
 
 void ApplyCentralForce(Body *body, glm::dvec3 force) {
     getRigidBody(body)->applyCentralForce(btVector3(force.x, force.y, force.z));
@@ -503,138 +442,24 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
     getRigidBody(b)->proceedToTransform(t);
 }
 
-btVector3 getRelAxis(Body *body, int n) {
-    return getRigidBody(body)->getCenterOfMassTransform().getBasis().getColumn(n);
-}
 
-glm::dvec3 getRelAxis_(Body *body, int n) {
-    btVector3 v = getRigidBody(body)->getCenterOfMassTransform().getBasis().getColumn(n);
-    return glm::dvec3(v.getX(), v.getY(), v.getZ());
-}
 
 // TODO this seems like it would be useful
 // double angleFacing(Body *body, glm::dvec3 dir) {
 //   return getRelAxis(body, 2).angle(btVector3(dir.x, dir.y, dir.z));
 // }
 
-void ApplyCentralForceForward(Body *body, double mag) {
-    btVector3 forward = getRelAxis(body, 2);
-    getRigidBody(body)->applyCentralForce(mag * forward.normalized());
-}
 
-void setGravity(Body *body, double acc) {
-    const btVector3 dir = getRigidBody(body)->getCenterOfMassPosition();
-    getRigidBody(body)->setGravity(acc * dir.normalized());
-}
 
-void ApplyTorque(Body *body, glm::dvec3 dir, double mag) {
-    btVector3 ndir = btVector3(dir.x, dir.y, dir.z).normalized();
-    getRigidBody(body)->applyTorque(mag * ndir);
-}
 
-void *GlueTogether(Body *parent, Body *child,
-                   glm::dvec3 parentAnchor, glm::dvec3 childAnchor) {
-    return physics->GlueTogether(parent, child, parentAnchor, childAnchor);
-}
 
 bool BodyInContact(Body *body) {
     return physics->BodyInContact(body);
 }
 
-ContactPairInfo PhysicsEngine::reportContactPair(Body *a, Body *b) {
-    btRigidBody *btA = getRigidBody(a);
-    btRigidBody *btB = getRigidBody(b);
-    ContactPairInfo out;
 
-    int numManifolds = dynamicsWorld->getDispatcher()->getNumManifolds();
-    for(int i = 0; i < numManifolds; i++) {
-        btPersistentManifold *cm =
-            dynamicsWorld->getDispatcher()->getManifoldByIndexInternal(i);
-        /* pointer identity vs the two ship parts (no downcast needed) */
-        const btCollisionObject *ob0 = cm->getBody0();
-        const btCollisionObject *ob1 = cm->getBody1();
-        const btCollisionObject *ca = (const btCollisionObject *)getRigidBody(a);
-        const btCollisionObject *cb = (const btCollisionObject *)getRigidBody(b);
-        if((ob0 != ca && ob0 != cb) || (ob1 != ca && ob1 != cb)) {
-            out.otherManifolds++;
-            continue;
-        }
-        if(ob0 == ob1) { continue; }
 
-        out.manifolds++;
-        cm->refreshContactPoints(ob0->getWorldTransform(), ob1->getWorldTransform());
-        for(int j = 0; j < cm->getNumContacts(); j++) {
-            btManifoldPoint &pt = cm->getContactPoint(j);
-            ContactPointInfo ci;
-            const btVector3 p = pt.getPositionWorldOnA();
-            ci.pos = glm::dvec3(p.getX(), p.getY(), p.getZ());
-            /* Bullet 2.x manifold point: scalar normal impulse + two
-               lateral (friction) impulses along stored world directions. */
-            const glm::dvec3 n(pt.m_normalWorldOnB.getX(),
-                               pt.m_normalWorldOnB.getY(),
-                               pt.m_normalWorldOnB.getZ());
-            ci.normal = n;
-            ci.pen = -pt.getDistance(); /* sign to be read off the data */
-            const glm::dvec3 d1(pt.m_lateralFrictionDir1.getX(),
-                                pt.m_lateralFrictionDir1.getY(),
-                                pt.m_lateralFrictionDir1.getZ());
-            const glm::dvec3 d2(pt.m_lateralFrictionDir2.getX(),
-                                pt.m_lateralFrictionDir2.getY(),
-                                pt.m_lateralFrictionDir2.getZ());
-            ci.impulse = pt.m_appliedImpulse * n
-                       + pt.m_appliedImpulseLateral1 * d1
-                       + pt.m_appliedImpulseLateral2 * d2;
-            out.points.push_back(ci);
-            out.maxImpulse = std::max(out.maxImpulse, glm::length(ci.impulse));
-        }
-    }
 
-    out.netForce = glm::dvec3(0, 0, 0);
-    for(size_t j = 0; j < out.points.size(); j++) {
-        out.netForce += out.points[j].impulse;
-    }
-    /* internal torque on the pair: the impulses are equal-and-opposite at
-       the same world point, so only (comB - comA) x F_net survives. The
-       sign follows Bullet's body ordering (which body is "a"); the
-       magnitude is what spins the ship. */
-    const glm::dvec3 comA = GetPosition(a);
-    const glm::dvec3 comB = GetPosition(b);
-    out.netTorque = glm::cross(comB - comA, out.netForce);
-    return out;
-}
-
-ContactPairInfo contact_report(Body *a, Body *b) {
-    return physics->reportContactPair(a, b);
-}
-
-void PhysicsEngine::collisions() {
-    //Perform collision detection
-    dynamicsWorld->performDiscreteCollisionDetection();
-
-    int numManifolds = dynamicsWorld->getDispatcher()->getNumManifolds();
-    printf("manifolds: %d\n", numManifolds);
-    //For each contact manifold
-    for (int i = 0; i < numManifolds; i++) {
-        btPersistentManifold* contactManifold = dynamicsWorld->getDispatcher()->getManifoldByIndexInternal(i);
-        const btCollisionObject* obA = static_cast<const btCollisionObject*>(contactManifold->getBody0());
-        const btCollisionObject* obB = static_cast<const btCollisionObject*>(contactManifold->getBody1());
-        contactManifold->refreshContactPoints(obA->getWorldTransform(), obB->getWorldTransform());
-        int numContacts = contactManifold->getNumContacts();
-        //For each contact point in that manifold
-        for (int j = 0; j < numContacts; j++) {
-            //Get the contact information
-            btManifoldPoint& pt = contactManifold->getContactPoint(j);
-            btVector3 ptA = pt.getPositionWorldOnA();
-            btVector3 ptB = pt.getPositionWorldOnB();
-            double ptdist = pt.getDistance();
-            printf("cdist: %f\n", ptdist);
-        }
-    }
-}
-
-void collisions() {
-    physics->collisions();
-}
 
 void NeverSleep(Body *body) {
     getRigidBody(body)->setSleepingThresholds(0.0, 0.0);

@@ -388,30 +388,28 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
            glm::length(shipWorldPos - center), glm::length(velWorld));
 }
 
-/* --radial-test spin diagnostics (two-part ship): the per-part angular
-   velocities (if they differ, the weld is not holding a rigid body), the
-   INTERNAL contact torque between the two parts -- the only way a passive
-   welded pair can spin itself -- and the tidal (differential gravity)
-   torque, which is the one legitimate external torque and should be
-   negligible at ship scale. */
+/* --spin-log: the ship's rotational state. A ship is ONE rigid body, so
+   there is a single angular velocity and nothing internal to compare it
+   against -- which is the point of the representation. The old per-part
+   spread, and the inter-part contact torque that drove it, measured how far
+   the welds were from holding a rigid body; that error no longer exists, and
+   Bullet generates no contacts at all between the children of a compound.
+
+   What is left that can still spin a passive ship is the tidal
+   (differential-gravity) torque -- the one legitimate external torque, and
+   negligible at ship scale -- so that is reported alongside the state it acts
+   on. */
 void spin_log(Vehicle *ship, double time) {
-    if(ship->parts.size() < 2) { return; }
+    if(ship->hull == nullptr) { return; }
 
     const glm::dvec3 com = ship->get_center_of_mass();
-    printf("[spin] t=%.2fs ship=%s com=[%.0f %.0f %.0f] parts=%zu\n",
-           time, ship->name.c_str(), com.x, com.y, com.z, ship->parts.size());
-    for(size_t i = 0; i < ship->parts.size(); i++) {
-        const glm::dvec3 w = ship->partAngVel(ship->parts[i]);
-        const glm::dvec3 p = ship->partPos(ship->parts[i]);
-        printf("[spin]   %-14s pos=[%.1f %.1f %.1f] w=[%.3e %.3e %.3e] |w|=%.3e\n",
-               ship->parts[i]->def->name.c_str(),
-               p.x, p.y, p.z, w.x, w.y, w.z, glm::length(w));
-    }
-
-    /* No inter-part contact report: a ship is ONE rigid body now, and Bullet
-       generates no contacts between the children of a compound. That is the
-       point -- those contacts (and the weld impulses fighting them) were the
-       wobble. --spin-log's ship-level repurposing is a separate step. */
+    const glm::dvec3 v = GetVelocity(ship->hull);
+    const glm::dvec3 w = GetAngVelocity(ship->hull);
+    printf("[spin] t=%.2fs ship=%s parts=%zu mass=%.1f kg com=[%.1f %.1f %.1f]"
+           " |v|=%.3f m/s w=[%.3e %.3e %.3e] |w|=%.3e rad/s\n",
+           time, ship->name.c_str(), ship->parts.size(), ship->hull->mass,
+           com.x, com.y, com.z, glm::length(v),
+           w.x, w.y, w.z, glm::length(w));
 
     const double G = 6.674e-11;
     const double M = ship->m_parent->mass;

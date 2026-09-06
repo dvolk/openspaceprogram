@@ -11,7 +11,6 @@
 #include "body.h"     // create_body
 #include "mesh.h"     // Mesh
 #include "model.h"    // Model
-#include "physics.h"  // setPosRot, GlueTogether
 #include "texture.h"  // load_texture
 
 RadialTestShip build_radial_test_ship(const std::string &mode,
