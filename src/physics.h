@@ -48,6 +48,7 @@ public:
 
     void tick(float timeStep);
     void RegisterObject(Body *body, glm::vec3 pos, glm::vec3 rot);
+    void BuildHull(Body *body);
     btRigidBody *AddTerrainCollision(Mesh *mesh);
     void RemoveTerrainCollision(btRigidBody *b);
     /* Remove a body's rigid body from the dynamics world (call BEFORE
@@ -91,7 +92,6 @@ void RemoveBody(Body *body);
 /* Re-add a parked body's rigid body to the world (inverse of RemoveBody). */
 void AddPhysicsBody(Body *body);
 
-void SetMass(Body *body, double newMass);
 /* Force applied at `rel`, an offset from the body's centre of mass -- the
    one primitive that lets several parts push a SINGLE rigid body correctly,
    each contributing its share of the net force plus the torque from its own

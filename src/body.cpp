@@ -13,6 +13,15 @@ Body *create_body(Model *model, float x, float y, float z, float mass)
     return body;
 }
 
+Body *create_part_body(Model *model, float mass)
+{
+    Body *body = new Body;
+    body->model = model;
+    body->mass = mass;
+    BuildPartHull(body);
+    return body;
+}
+
 void print_mat(glm::dmat4 m) {
     printf("- %f %f %f %f\n  %f %f %f %f\n  %f %f %f %f\n  %f %f %f %f\n",
            m[0][0], m[0][1], m[0][2], m[0][3],

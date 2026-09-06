@@ -82,6 +82,7 @@ static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
     Body *b = new Body;
     b->model = nullptr;    /* no GL model in a headless test */
     b->btBody = new btRigidBody(ci);
+    b->shape = b->btBody->getCollisionShape();
     b->mass = m;
 
     PartDef d;
@@ -108,9 +109,11 @@ static void link(Ship &s, Part *a, Part *b) {
     b->parent = a;
 }
 
-/* init() dereferences controller->body (NeverSleep), but a headless ship has
-   no build_ship() to name a controller part, so name one (the first part)
-   first, then seed the tanks and build the fuel groups. */
+/* A headless ship has no build_ship() to name a controller part, so name one
+   (the first part) first; init() then seeds the tanks, builds the fuel groups
+   and builds the ship's single rigid body. enterWorld() is deliberately NOT
+   called -- there is no physics world here, which is exactly why it is a
+   separate step from init(). */
 static void initShip(Ship &s) {
     s.v->controller = s.v->parts[0];
     s.v->init();

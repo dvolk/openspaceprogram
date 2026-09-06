@@ -109,52 +109,65 @@ public:
        default): the camera basis and the stick frame are built from its
        local axes. build_ship() resolves it from def.controllerIndex(). */
     Part *controller;
-    std::vector<void *> constraints;
-    /* which parts each constraint joins (parent, child) BY POINTER, parallel
-       to `constraints`. A Part* is stable for the ship's lifetime, so staging
-       just drops the constraints that touch a removed part -- no index
-       remapping (the old pair<size_t,size_t> links + computeStageSplit are
-       gone). */
-    std::vector<std::pair<Part *, Part *>> constraintLinks;
-    /* the weld's LOCAL anchor points (parentAnchor, childAnchor), parallel
-       to `constraints`. The rails handoff detaches every weld and re-glues
-       from these when the ship re-enters physics. */
-    std::vector<std::pair<glm::dvec3, glm::dvec3>> constraintAnchors;
-
     /* --- the ship as ONE rigid body (btCompoundShape) -------------------
 
-       A ship is meant to be a SINGLE btRigidBody whose collision shape is a
-       compound of the part hulls, each at its authored ship-local pose. The
-       per-part bodies and the 6DOF weld chain above are still the live
-       representation; the compound is built ALONGSIDE them, and checked
-       against them (--compound-check), before anything is switched over.
+       A ship is a SINGLE btRigidBody whose collision shape is a compound of
+       the part hulls, each at its authored ship-local pose. There are no
+       per-part rigid bodies and no welds between them: Part::body carries the
+       render model, the collision hull and the mass, and nothing else. So a
+       part's pose is always DERIVED (partWorldPose) and every force goes to
+       the one body, at the part's offset from the COM -- which is what
+       delivers an off-axis engine's torque, and the tide's.
 
        Frames. S is the ship-local frame the authored poses live in (part.h):
        the root part's frame at build time, so the root's authored pose is the
-       identity and its LIVE pose is therefore S itself -- no fit over the
-       (wobbling) parts is needed to recover it. A btRigidBody's transform is
-       its CENTRE-OF-MASS transform and its inertia is stored DIAGONAL, so the
-       compound's children cannot stay in S: they are re-based into the
-       principal frame, and `principal` -- btCompoundShape::
-       calculatePrincipalAxisTransform's output -- is the transform between
-       the two. It maps the body's COM frame ONTO S (origin = the COM in S,
-       basis = the principal inertia axes in S; Bullet's diagonalize documents
-       tensor_S = basis * tensor_body * basis^T). Hence
+       identity. A btRigidBody's transform is its CENTRE-OF-MASS transform and
+       its inertia is stored DIAGONAL, so the compound's children cannot stay
+       in S: they are re-based into the principal frame, and `principal` --
+       btCompoundShape::calculatePrincipalAxisTransform's output -- is the
+       transform between the two. It maps the body's COM frame ONTO S (origin
+       = the COM in S, basis = the principal inertia axes in S; Bullet's
+       diagonalize documents tensor_S = basis * tensor_body * basis^T). Hence
 
-           shipBody transform   =  frameS() * principal
-           a part's world pose  =  shipBody transform * principal^-1 * T_S_part
+           hull transform      =  frameS() * principal
+           a part's world pose =  hull transform * principal^-1 * T_S_part
 
        The compound is a pure function of the part list (authored geometry +
        current masses), so rebuildCompound() is the whole of it: staging, a
-       runtime spawn and a fuel burn (mass moves the COM) all just call it
-       again. */
-    btCompoundShape *compound = nullptr;   // OWNED; references (does not own) the part hulls
-    btRigidBody *shipBody = nullptr;       // OWNED; not registered in the world yet
+       runtime spawn and a burn that has moved the mass distribution far
+       enough (refreshCompound) all just call it again, preserving frame S and
+       the velocity across the rebuild. */
+
+    /* The ship's one rigid body, wrapped in a Body so the existing physics
+       API works on it unchanged -- GetPosition, GetVelocity, ApplyForce,
+       ApplyTorque, SetFriction, NeverSleep, BodyInContact, setPosRot and
+       Remove/AddPhysicsBody all take a Body*. Its MASS is not written
+       directly: the ship's mass follows from the parts, through
+       rebuildCompound. hull->btBody is the rigid body
+       and hull->shape the compound, and hull OWNS both, so nothing else frees
+       them. hull->model is null: the ship is drawn part by part. */
+    Body *hull = nullptr;
     btTransform principal = btTransform::getIdentity();
     /* the parts in the compound, in child-index order. A child index is
-       rebuild-scoped (only meaningful for the current `compound`), so
-       anything mapping a collision hit back to a Part goes through this. */
+       rebuild-scoped (only meaningful for the current compound), so anything
+       mapping a collision hit back to a Part goes through this. It is always
+       `parts` in order -- test_inertia pins that, and picking relies on it. */
     std::vector<Part *> compoundParts;
+
+    /* Is the hull in the physics world? A registered collision object has a
+       broadphase handle and an unregistered one does not, so this asks Bullet
+       rather than tracking a flag that could drift out of step with the world
+       -- which is how a rebuild once deleted a REGISTERED body and left a
+       dangling proxy that crashed the next updateSingleAabb. */
+    bool hullInWorld() const {
+        return hull != nullptr && hull->btBody != nullptr
+            && hull->btBody->getBroadphaseHandle() != nullptr;
+    }
+
+    btCompoundShape *compoundShape() const {
+        return (hull != nullptr && hull->shape != nullptr)
+             ? static_cast<btCompoundShape *>(hull->shape) : nullptr;
+    }
 
     /* btTransform <-> (glm position, glm rotation). Always through a
        quaternion: btMatrix3x3 is row-major (m_el[i] = row i) and glm is
@@ -176,15 +189,79 @@ public:
         rot = glm::mat3_cast(glm::dquat(q.w(), q.x(), q.y(), q.z()));
     }
 
-    /* (Re)build the compound + the ship's rigid body from the CURRENT part
-       list: one child per part -- its own collision hull, referenced not
-       copied (the parts outlive the compound) -- at its authored pose in S,
-       then re-based into the principal frame. */
+    /* Frame S in world coordinates: the hull's COM frame mapped back through
+       `principal`. */
+    void frameS(glm::dvec3 &pos, glm::dmat3 &rot) const {
+        glm::dvec3 bodyPos; glm::dmat3 bodyRot;
+        fromBt(hull->btBody->getCenterOfMassTransform(), bodyPos, bodyRot);
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        rot = bodyRot * glm::transpose(pBasis);
+        pos = bodyPos - rot * pOrigin;
+    }
+
+    /* The COM in world coordinates, straight off the hull -- its transform
+       origin IS the COM. O(1), where a mass-weighted walk over the parts is
+       O(n), and it is the point Bullet actually rotates the ship about. */
+    glm::dvec3 comPos() const {
+        const btVector3 &o = hull->btBody->getCenterOfMassPosition();
+        return glm::dvec3(o.getX(), o.getY(), o.getZ());
+    }
+
+    /* Place the whole ship: frame S at (sPos, sRot). One write to the one
+       body, and every part's pose follows from its authored local pose.
+       setPosRot zeroes both velocities (proceedToTransform), so callers that
+       care set them after. */
+    void placeShip(const glm::dvec3 &sPos, const glm::dmat3 &sRot) {
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        setPosRot(hull, sPos + sRot * pOrigin, sRot * pBasis);
+    }
+
+    /* The same, addressed by the COM instead of by frame S's origin: the two
+       differ by the COM's offset within S, which the caller should not have
+       to know. */
+    void placeShipAtCom(const glm::dvec3 &com, const glm::dmat3 &sRot) {
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        placeShip(com - sRot * pOrigin, sRot);
+    }
+
+    /* (Re)build the compound + the hull from the CURRENT part list: one child
+       per part -- its own collision hull, referenced not copied (the parts
+       outlive the compound) -- at its authored pose in S, then re-based into
+       the principal frame. Frame S and the velocity are carried across, so a
+       rebuild neither teleports nor stops the ship. */
     void rebuildCompound() {
-        /* the body first (it references the shape). Neither is in the world
-           yet, so neither needs unregistering. */
-        delete shipBody; shipBody = nullptr;
-        delete compound; compound = nullptr;
+        /* `principal` moves when the masses do, and the body's transform is
+           the COM transform, so leaving the transform alone across a rebuild
+           would shift the ship by the COM movement and leave it spinning
+           about the wrong point. */
+        const bool have = (hull != nullptr && hull->btBody != nullptr);
+        /* Out of the world before the delete, back in after: the rebuild
+           replaces the rigid body, and a registered one cannot just be
+           freed. */
+        const bool wasInWorld = hullInWorld();
+        if(wasInWorld) { RemoveBody(hull); }
+        glm::dvec3 sPos(0.0), vCom(0.0), omega(0.0), oldOrigin(0.0);
+        glm::dmat3 sRot(1.0);
+        /* a rebuild makes a new rigid body, so the state that lives on the
+           OLD one and is not part of the compound has to be carried over
+           explicitly: the friction. An EVA kerbal's feet are set
+           frictionless once, at spawn, and a burn must not undo it. (The
+           never-sleep flag needs no carrying -- every ship has it, so it is
+           re-asserted unconditionally below.) */
+        btScalar friction = 4.0;          // RegisterObject's value
+        if(have) {
+            frameS(sPos, sRot);
+            vCom = GetVelocity(hull);
+            omega = GetAngVelocity(hull);
+            glm::dmat3 ignore;
+            fromBt(principal, oldOrigin, ignore);
+            friction = hull->btBody->getFriction();
+        }
+
+        delete hull; hull = nullptr;
         compoundParts.clear();
         principal = btTransform::getIdentity();
         if(parts.empty()) { return; }
@@ -211,18 +288,35 @@ public:
            body that tumbles under any off-axis torque. (Bullet's own
            CompoundBoxes tutorial writes this product the other way round;
            the FractureDemo form below is the correct one.) */
-        compound = new btCompoundShape(true, inS->getNumChildShapes());
+        btCompoundShape *nc = new btCompoundShape(true, inS->getNumChildShapes());
         const btTransform toBody = principal.inverse();
         for(int i = 0; i < inS->getNumChildShapes(); i++) {
-            compound->addChildShape(toBody * inS->getChildTransform(i),
-                                    inS->getChildShape(i));
+            nc->addChildShape(toBody * inS->getChildTransform(i),
+                              inS->getChildShape(i));
         }
         delete inS;
 
-        btRigidBody::btRigidBodyConstructionInfo ci(total, nullptr, compound,
+        hull = new Body;
+        hull->model = nullptr;      // drawn part by part, not as one mesh
+        hull->shape = nc;
+        hull->mass  = (double)total;
+        btRigidBody::btRigidBodyConstructionInfo ci(total, nullptr, nc,
                                                     inertiaDiag);
-        ci.m_friction = 4.0;   // RegisterObject's per-part value
-        shipBody = new btRigidBody(ci);
+        ci.m_friction = friction;
+        hull->btBody = new btRigidBody(ci);
+        NeverSleep(hull);
+
+        /* Restore frame S under the new principal, and the COM's velocity:
+           the COM moved WITHIN S, so its world velocity changed by
+           omega x the shift. omega is in world axes and is unchanged. */
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        hull->btBody->setWorldTransform(toBt(sPos + sRot * pOrigin, sRot * pBasis));
+        if(have) {
+            SetVelocity(hull, vCom + glm::cross(omega, sRot * (pOrigin - oldOrigin)));
+            SetAngVelocity(hull, omega);
+        }
+        if(wasInWorld) { AddPhysicsBody(hull); }
 
         checkCompoundInvariants();
     }
@@ -241,27 +335,29 @@ public:
         return (total > 0.0) ? com / total : com;
     }
 
-    /* Rebuild the compound only once the masses have moved the COM further
-       than kComRebuildTol since the last rebuild. A burn shifts the COM
-       continuously and a rebuild allocates two compound shapes plus a rigid
-       body, so rebuilding per tank draw per tick would be pure waste -- but
-       never rebuilding is wrong too, because the children are re-based
-       through principal, so a stale COM displaces every hull the picking and
-       the collision both read. Called once per ship per tick, which covers
-       every source of a mass change (a burn, crew boarding or EVAing,
-       anything added later) from one call site instead of hunting each
-       writer down. */
+    /* Rebuild once the mass distribution has moved enough to matter. A burn
+       shifts the COM and the total mass continuously, and a rebuild walks
+       every part's hull inertia, so one per tank draw per tick would be pure
+       waste -- but never rebuilding is wrong twice over: the children are
+       re-based through principal, so a stale COM displaces every hull that
+       picking and collision read, and a stale total mass is a stale
+       acceleration. Called once per ship per tick, so one call site covers
+       every source of a mass change (a burn, crew aboard, crew out). */
     void refreshCompound() {
-        if(compound == nullptr) { rebuildCompound(); return; }
+        if(hull == nullptr) { rebuildCompound(); return; }
         glm::dvec3 pOrigin; glm::dmat3 pBasis;
         fromBt(principal, pOrigin, pBasis);
-        if(glm::length(compoundCom() - pOrigin) > kComRebuildTol) {
+        const double total = (double)getMass();
+        if(glm::length(compoundCom() - pOrigin) > kComRebuildTol
+           || std::fabs(total - hull->mass) > kMassRebuildFrac * hull->mass) {
             rebuildCompound();
         }
     }
-    /* metres, in frame S: far under anything the game reads a pose to, and
-       far over what one tick of a burn produces. */
+    /* metres in frame S, and a fraction of the ship's mass: both far under
+       anything the game reads a pose or an acceleration to, and far over what
+       one tick of a burn produces. */
     static constexpr double kComRebuildTol = 0.01;
+    static constexpr double kMassRebuildFrac = 1e-3;
 
     /* The compound must reproduce the assembly it was built from. Two
        invariants, both recomputed here independently from the same authored
@@ -280,10 +376,12 @@ public:
           shape BEFORE the re-base. This also pins compoundParts[i] to child
           i, the mapping a collision hit is resolved through.
 
-       Neither needs live physics state, so both run on every build and every
-       staging event -- in the unit tests and in the game. */
+       Neither needs live physics state, so both run on every build, every
+       staging event and every burn-triggered refresh -- in the unit tests and
+       in the game. */
     void checkCompoundInvariants() const {
-        if(shipBody == nullptr) { return; }
+        btCompoundShape *cs = compoundShape();
+        if(cs == nullptr) { return; }
         double total = 0.0, extent = 0.0;
         glm::dvec3 com(0.0);
         for(size_t i = 0; i < parts.size(); i++) {
@@ -312,7 +410,7 @@ public:
         /* Bullet's, rotated out of the principal frame back into S */
         glm::dvec3 pOrigin; glm::dmat3 pBasis;
         fromBt(principal, pOrigin, pBasis);
-        const btVector3 &bi = shipBody->getLocalInertia();
+        const btVector3 &bi = hull->btBody->getLocalInertia();
         const glm::dmat3 diag(bi.getX(), 0.0, 0.0,
                               0.0, bi.getY(), 0.0,
                               0.0, 0.0, bi.getZ());
@@ -336,13 +434,13 @@ public:
         const double comTol = 1e-9 * std::max(1.0, glm::length(com));
 
         double childPosErr = 0.0, childRotErr = 0.0;
-        if((size_t)compound->getNumChildShapes() != compoundParts.size()) {
+        if((size_t)cs->getNumChildShapes() != compoundParts.size()) {
             childPosErr = 1e30;   // the mapping is broken; report it as such
         } else {
             for(size_t i = 0; i < compoundParts.size(); i++) {
                 const Part *p = compoundParts[i];
                 glm::dvec3 cp; glm::dmat3 cr;
-                fromBt(principal * compound->getChildTransform((int)i), cp, cr);
+                fromBt(principal * cs->getChildTransform((int)i), cp, cr);
                 childPosErr = std::max(childPosErr, glm::length(cp - p->localPos));
                 for(int c = 0; c < 3; c++) {
                     for(int r = 0; r < 3; r++) {
@@ -378,137 +476,54 @@ public:
         return parts.empty() ? nullptr : parts[0];
     }
 
-    /* Frame S in world coordinates, from the LIVE per-part bodies: S is the
-       root part's frame and the root's authored pose is the identity, so the
-       root's live pose IS S. This is the P1.1 direction of the handoff --
-       the per-part bodies are still the truth, so the shadow ship body is
-       written FROM them. */
-    void liveFrameS(glm::dvec3 &pos, glm::dmat3 &rot) const {
-        Body *root = rootPart()->body;
-        pos = GetPosition(root);
-        rot = GetOrient(root);
-    }
+    /* --- part state accessors -------------------------------------------
 
-    /* Frame S in world coordinates, from the ship body (the inverse of the
-       relation in the block comment). This is the direction that survives
-       into the switch-over, where the ship body is the truth. */
-    void shipFrameS(glm::dvec3 &pos, glm::dmat3 &rot) const {
-        glm::dvec3 bodyPos; glm::dmat3 bodyRot;
-        fromBt(shipBody->getCenterOfMassTransform(), bodyPos, bodyRot);
-        glm::dvec3 pOrigin; glm::dmat3 pBasis;
-        fromBt(principal, pOrigin, pBasis);
-        rot = bodyRot * glm::transpose(pBasis);
-        pos = bodyPos - rot * pOrigin;
-    }
-
-    /* Mirror the live parts onto the shadow ship body (P1.1 only: once the
-       ship body is the registered one this goes away). Pose, plus the rigid
-       cluster's velocity at the COM -- the root's linear velocity plus
-       omega x the COM offset, omega being the root's own spin. */
-    void syncShipBody() {
-        if(shipBody == nullptr || parts.empty()) { return; }
+       The one route to a part's pose, axes and velocity, and the only place
+       that knows a part has no rigid body of its own. The pose is derived
+       from the hull's transform through `principal` and the part's authored
+       local pose; the velocity from the hull's -- the COM velocity plus
+       omega x the offset, omega being the whole ship's, since a rigid body
+       has one. Forces, mass and the render model still go through the Body. */
+    void partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
         glm::dvec3 sPos; glm::dmat3 sRot;
-        liveFrameS(sPos, sRot);
-        glm::dvec3 pOrigin; glm::dmat3 pBasis;
-        fromBt(principal, pOrigin, pBasis);
-        shipBody->setWorldTransform(toBt(sPos + sRot * pOrigin, sRot * pBasis));
-
-        Body *root = rootPart()->body;
-        const glm::dvec3 w = GetAngVelocity(root);
-        const glm::dvec3 v = GetVelocity(root) + glm::cross(w, sRot * pOrigin);
-        shipBody->setLinearVelocity(btVector3(v.x, v.y, v.z));
-        shipBody->setAngularVelocity(btVector3(w.x, w.y, w.z));
-    }
-
-    /* A part's world pose AS THE COMPOUND says it: the ship body's transform
-       taken back to frame S through `principal`, then out to the part's
-       authored pose. This is what partWorldPose() below becomes once the
-       per-part bodies stop being registered; until then --compound-check and
-       test_inertia hold it against the live pose, which is what makes that
-       switch a verified one-liner instead of a leap. */
-    void compoundPartPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
-        glm::dvec3 sPos; glm::dmat3 sRot;
-        shipFrameS(sPos, sRot);
+        frameS(sPos, sRot);
         pos = sPos + sRot * p->localPos;
         rot = sRot * p->localRot;
     }
-
-    /* --- part state accessors -------------------------------------------
-
-       The one route to a part's pose, axes and velocity. Everything that
-       reads where a part IS, or how fast it is moving, goes through these;
-       nothing outside them reaches into Part::body for state. Forces still
-       take the Body and move onto the ship body with it; a part's mass and
-       its render model are its own and stay put.
-
-       Today these read the part's own rigid body, so the sweep that
-       introduces them is bit-identical at every call site. When the ship
-       becomes a single compound body the IMPLEMENTATIONS change to read
-       shipBody -- i.e. they become compoundPartPose() and its velocity
-       analogue -- and no call site moves. Doing the sweep as its own step is
-       what keeps that switch small enough to trust. */
-    void partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
-        pos = GetPosition(p->body);
-        rot = GetOrient(p->body);
+    glm::dvec3 partPos(const Part *p) const {
+        glm::dvec3 pos; glm::dmat3 rot;
+        partWorldPose(p, pos, rot);
+        return pos;
     }
-    glm::dvec3 partPos(const Part *p) const { return GetPosition(p->body); }
-    glm::dmat3 partRot(const Part *p) const { return GetOrient(p->body); }
-    /* the part's local axis n (0 = right, 1 = up, 2 = nose) in world axes.
-       This is the column partRot(p)[n] also gives; read straight out of
-       Bullet so the sweep stays bit-identical rather than picking up a
-       quaternion round trip. */
-    glm::dvec3 partAxis(const Part *p, int n) const {
-        return getRelAxis_(p->body, n);
+    glm::dmat3 partRot(const Part *p) const {
+        glm::dvec3 pos; glm::dmat3 rot;
+        partWorldPose(p, pos, rot);
+        return rot;
     }
-    glm::dvec3 partVel(const Part *p) const { return GetVelocity(p->body); }
-    glm::dvec3 partAngVel(const Part *p) const { return GetAngVelocity(p->body); }
+    /* the part's local axis n (0 = right, 1 = up, 2 = nose) in world axes */
+    glm::dvec3 partAxis(const Part *p, int n) const { return partRot(p)[n]; }
+    glm::dvec3 partVel(const Part *p) const {
+        return GetVelocity(hull)
+             + glm::cross(GetAngVelocity(hull), partPos(p) - comPos());
+    }
+    glm::dvec3 partAngVel(const Part *p) const { return GetAngVelocity(hull); }
 
-    /* --compound-check: the migration gate. Rebuilds the compound from the
-       CURRENT parts + masses (so checkCompoundInvariants sees live fuel),
-       mirrors the live per-part bodies onto the shadow ship body, then
-       reports how far the poses derived FROM the compound are from the parts'
-       own live poses. For a perfectly rigid ship that is zero; what it
-       actually reports is the weld wobble -- the deviation the compound
-       removes -- plus, for a railed ship, the deformation frozen in at park
-       time (writeRailPose snapshots whatever pose the welds had drifted
-       to). */
+    /* --compound-check: the ship's single-body state, per ship. Rebuilds the
+       compound, which re-asserts that it still reproduces the part assembly
+       it came from -- the invariant the whole representation rests on -- then
+       reports the body the game is actually simulating. There is no
+       derived-vs-live pose error to report any more: a part has no rigid body
+       of its own to disagree with, which is the point of the change. */
     void compoundCheck(double time) {
         rebuildCompound();
-        if(shipBody == nullptr) { return; }
-        syncShipBody();
-
-        /* the COM the compound says (principal's origin, which IS the
-           authored COM in S) against the live one (the mass-weighted part
-           positions): the same deviation as one number for the whole ship */
-        glm::dvec3 sPos; glm::dmat3 sRot;
-        shipFrameS(sPos, sRot);
-        glm::dvec3 comS; glm::dmat3 comSBasis;
-        fromBt(principal, comS, comSBasis);
-        const double comDrift =
-            glm::length(sPos + sRot * comS - get_center_of_mass());
-
-        double maxPos = 0.0, maxAng = 0.0;
-        const char *worstPos = "", *worstAng = "";
-        for(Part *p : parts) {
-            glm::dvec3 dp; glm::dmat3 dr;
-            compoundPartPose(p, dp, dr);
-            const double e = glm::length(dp - partPos(p));
-            if(e > maxPos || worstPos[0] == 0) {
-                maxPos = e; worstPos = p->def->name.c_str();
-            }
-            /* the angle between two rotations: acos((tr(R1^T R2) - 1) / 2) */
-            const glm::dmat3 rel = glm::transpose(dr) * partRot(p);
-            const double c = std::min(1.0, std::max(-1.0,
-                (rel[0][0] + rel[1][1] + rel[2][2] - 1.0) * 0.5));
-            const double a = glm::degrees(std::acos(c));
-            if(a > maxAng || worstAng[0] == 0) {
-                maxAng = a; worstAng = p->def->name.c_str();
-            }
-        }
+        if(hull == nullptr) { return; }
+        const glm::dvec3 com = comPos();
         printf("[compound] t=%.2fs ship=%s parts=%zu mass=%.1f kg "
-               "posErr=%.4g m (%s) angErr=%.4g deg (%s) comDrift=%.4g m\n",
-               time, name.c_str(), parts.size(), (double)getMass(),
-               maxPos, worstPos, maxAng, worstAng, comDrift);
+               "com=[%.1f %.1f %.1f] |v|=%.3f m/s |w|=%.5f rad/s\n",
+               time, name.c_str(), parts.size(), hull->mass,
+               com.x, com.y, com.z,
+               glm::length(GetVelocity(hull)),
+               glm::length(GetAngVelocity(hull)));
         fflush(stdout);
     }
 
@@ -538,8 +553,12 @@ public:
     glm::dvec3 rail_pos;      // m, cluster COM in ship->frame coords
     glm::dvec3 rail_vel;      // m/s, inertial, ship->frame coords
     glm::dmat3 rail_orient = glm::dmat3(1.0); // cluster axes -> frame axes
-    /* the per-part parked pose (relative to the cluster COM, in cluster axes)
-       lives on each Part now (Part::railRelPos / Part::railRelRot). */
+    /* Frame S's axes at park time. rail_pos is the COM and rail_orient
+       carries these into the frame the pose is written in, so the hull's
+       orientation is rail_orient * railRot and every part's pose follows
+       from its authored local pose. The ship is rigid, so there is nothing
+       per-part left to snapshot. */
+    glm::dmat3 railRot = glm::dmat3(1.0);
 
     /* Per-part catalog spec / stage / tank contents / armed thrust / behavior
        all live on each Part now (see part.h). The old partDefs / partStages /
@@ -577,36 +596,23 @@ public:
         parts.push_back(part);
     }
 
-    /* Weld `part` to the part at `parentIdx` at the given LOCAL anchor
-       points (which must coincide in world space -- the 6DOF weld enforces
-       zero relative linear offset), and record its authored pose in the
-       ship-local frame S (Part::localPos/localRot; S is the root's frame,
-       so these are pure geometry -- see part.h). `parent` is the topology
-       edge the staging + fuel-group walks use.
-
-       The caller has already setPosRot-ed the child to the world pose that
-       MATCHES localPos/localRot; the anchors die with the weld, the local
-       pose does not (it is what a part's world pose is derived from). */
+    /* Hang `part` off the part at `parentIdx` and record its authored pose in
+       the ship-local frame S (Part::localPos/localRot; S is the root's frame,
+       so these are pure geometry -- see part.h). `parent` is the topology edge
+       the staging + fuel-group walks use. There is nothing to weld: the ship
+       is ONE rigid body, and the local pose is what puts this part's hull at
+       the right place inside it. */
     void attach(Part *part, size_t parentIdx,
-                const glm::dvec3 &parentAnchor, const glm::dvec3 &childAnchor,
                 const glm::dvec3 &localPos, const glm::dmat3 &localRot) {
-        Part *parent = parts[parentIdx];
-        void *constraint = GlueTogether(parent->body, part->body,
-                                        parentAnchor, childAnchor);
-        part->parent   = parent;
+        part->parent   = parts[parentIdx];
         part->localPos = localPos;
         part->localRot = localRot;
         parts.push_back(part);
-        constraints.push_back(constraint);
-        constraintLinks.push_back(std::make_pair(parent, part));
-        constraintAnchors.push_back(std::make_pair(parentAnchor, childAnchor));
     }
 
     /* The three convenience attach modes (used by the --radial-test ship
        builder; build_ship goes through attachPose + attach directly). Each
-       derives the child's ship-local pose from the parent's, so the pose and
-       the anchors stay consistent by construction -- the anchor coincidence
-       below is the same invariant attachPose's cases satisfy. */
+       derives the child's ship-local pose from the parent's. */
 
     void attachDown(Part *part) {
         /* weld at the part faces: parent bottom (-h/2) to child top (+h/2);
@@ -617,18 +623,14 @@ public:
         const PartDef *parent = pp->def;
         const double dz = -(parent->height + part->def->height) / 2.0;
         attach(part, parts.size() - 1,
-               glm::dvec3(0.0, 0.0, -parent->height / 2.0),
-               glm::dvec3(0.0, 0.0,  part->def->height / 2.0),
                pp->localPos + pp->localRot * glm::dvec3(0.0, 0.0, dz),
                pp->localRot);
     }
 
     void attachRadial(Part *part) {
-        /* weld the part to the parent's SIDE: the part's local +Z axis is
+        /* hang the part off the parent's SIDE: the part's local +Z axis is
            rotated to the parent's local +X, so the part's bottom face
-           (local -h/2) touches the parent's side at +radius. The anchors
-           coincide at the tangent point (parent local (r,0,0) == part local
-           (0,0,-h/2)). */
+           (local -h/2) touches the parent's side at +radius. */
         const Part *pp = parts.back();
         const PartDef *parent = pp->def;
         /* columns are the images of X, Y, Z: takes the child's +Z onto the
@@ -638,25 +640,20 @@ public:
                                  glm::dvec3(1, 0, 0));
         const glm::dvec3 off(parent->radius + part->def->height / 2.0, 0.0, 0.0);
         attach(part, parts.size() - 1,
-               glm::dvec3(parent->radius, 0.0, 0.0),
-               glm::dvec3(0.0, 0.0, -part->def->height / 2.0),
                pp->localPos + pp->localRot * off,
                pp->localRot * rotZtoX);
     }
 
     void attachSide(Part *part) {
-        /* weld the part to the parent's SIDE with PARALLEL axes: the part
+        /* hang the part off the parent's SIDE with PARALLEL axes: the part
            keeps the parent's local +Z axis, sits along the parent's local
            +X, and its cylindrical surface touches the parent's at +radius.
-           The anchors coincide at the tangent point (parent local (r,0,0) ==
-           part local (-r,0,0)). Unlike attachRadial the child is NOT
-           rotated, so this is the "side by side, parallel axes" case. */
+           Unlike attachRadial the child is NOT rotated, so this is the "side
+           by side, parallel axes" case. */
         const Part *pp = parts.back();
         const PartDef *parent = pp->def;
         const glm::dvec3 off(parent->radius + part->def->radius, 0.0, 0.0);
         attach(part, parts.size() - 1,
-               glm::dvec3(parent->radius, 0.0, 0.0),
-               glm::dvec3(-part->def->radius, 0.0, 0.0),
                pp->localPos + pp->localRot * off,
                pp->localRot);
     }
@@ -664,7 +661,6 @@ public:
     void init() {
         if(parts.empty()) { return; }
         if(controller == nullptr) { controller = parts[0]; }
-        NeverSleep(controller->body);
         /* stage bookkeeping: totalStages_ = the highest stage number (the
            "stage X of N" readout); activeStage_ starts at the LOWEST stage
            on the ship, so the lowest engines fire at t=0 (a ship whose first
@@ -691,9 +687,19 @@ public:
            (its fuel group), not by stage -- the weld links are known now. */
         buildFuelGroups();
         /* the ship's single rigid body: the part list is complete, so the
-           compound can be built (and its mass properties asserted against
-           the assembly it came from). */
+           compound can be built, and its mass properties asserted against
+           the assembly it came from. ONE body per ship, not one per part --
+           and nothing to weld, because a rigid body has no internal degrees
+           of freedom to constrain. Registering it is enterWorld()'s job, so
+           that a headless caller (the unit tests) can build a ship with no
+           physics world in existence. */
         rebuildCompound();
+    }
+
+    /* Put the ship's one rigid body into the physics world. Kept apart from
+       init(), which builds it, for the reason above. */
+    void enterWorld() {
+        if(hull != nullptr && !hullInWorld()) { AddPhysicsBody(hull); }
     }
 
     /* True of the EVA kerbal (src/eva.h): control input, the camera and
@@ -855,8 +861,10 @@ public:
                 float share = take * have / groupTotal;
                 if(share > have) { share = have; }
                 p->resources.current[(int)type] = have - share;
+                /* No SetMass: a part has no rigid body. The ship's mass
+                   properties follow from the parts, and refreshCompound()
+                   (once per tick) rebuilds them once the drift matters. */
                 p->body->mass -= (double)share;
-                SetMass(p->body, p->body->mass);
             }
             remaining -= take;
         }
@@ -935,42 +943,50 @@ public:
     }
 
     void setVelocity(glm::dvec3 vel) {
-        for(Part *p : parts) {
-            SetVelocity(p->body, vel);
-        }
+        SetVelocity(hull, vel);
     }
 
+    /* A part's mass changed OUTSIDE a burn (crew aboard, crew out). The burn
+       path is picked up by refreshCompound's per-tick threshold; these are
+       one-off and large, so rebuild now rather than wait for it. */
+    void addPartMass(Part *p, double delta) {
+        p->body->mass += delta;
+        rebuildCompound();
+    }
+
+    /* The COM is the hull's transform origin -- a rigid body's transform IS
+       its centre-of-mass transform -- so this is O(1), and it is exactly the
+       point Bullet rotates the ship about. */
     const glm::dvec3& get_center_of_mass(void) {
-        double total_mass = 0;
-        for(Part *p : parts) {
-            total_mass += p->body->mass;
-        }
-        m_com = glm::dvec3(0, 0, 0);
-        for(Part *p : parts) {
-            m_com += partPos(p) * (p->body->mass / total_mass);
-        }
+        m_com = comPos();
         return m_com;
     }
 
     glm::dvec3 applyGravity() {
         const double& parent_mass = m_parent->mass;
         const double G = 6.674e-11;
-        glm::dvec3 gf;
+        const glm::dvec3 com = comPos();
+        glm::dvec3 gf(0.0);
         for(Part *p : parts) {
             if(p->body->mass == 0) { continue; }
             const glm::dvec3 b1b2 = partPos(p);
             const double m1m2 = p->body->mass * parent_mass;
             const double invrsqr = 1.0 / glm::length2(b1b2);
             const double mag = G * m1m2 * invrsqr;
-            gf = mag * sqrt(invrsqr) * -b1b2;
-            ApplyCentralForce(p->body, gf, mag);
+            const glm::dvec3 f = mag * sqrt(invrsqr) * -b1b2;
+            /* AT the part, not at the COM: ApplyForce's rel_pos is what
+               delivers the differential (tidal) torque, the one legitimate
+               external torque on a rigid ship. Summing the forces and applying
+               them at the COM would drop it. */
+            ApplyForce(hull, b1b2 - com, f);
+            gf += f;
             if(frame->isRotFrame()) {
                 // In rotating coordinates the ship additionally feels
                 // Coriolis + centrifugal; without these its true inertial
                 // orbit is perturbed for as long as it spends in the rotating
                 // frame (see GetFictitiousAccel in frame.h).
                 const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, partVel(p));
-                ApplyCentralForce(p->body, p->body->mass * a_fict);
+                ApplyForce(hull, b1b2 - com, p->body->mass * a_fict);
             }
         }
         return gf;
@@ -978,33 +994,22 @@ public:
 
 public:
     Vehicle() { }
-    /* Tear the ship down in a safe order: welds first (they reference the
-       bodies), then unregister each body from the world, then delete the
-       bodies (which free their model + rigid body). goOnRails() already did
-       the first two steps and cleared `constraints`, so for a railed ship
-       only the deletes remain. The onRails guard is LOAD-BEARING: Bullet's
-       removeCollisionObject is not idempotent -- it reads the object's
-       world-array index (which remove never resets to -1), so a second
-       remove on an absent body can evict the WRONG collision object. The
-       old body of this dtor (bare `delete part`) also deleted each rigid
-       body while it was still registered in the world -- UB that only got
-       away with it because the process exits right after. */
+    /* Tear the ship down in a safe order: unregister the one rigid body from
+       the world, delete it (which frees the compound it carries), then delete
+       the parts (which free their models and their collision hulls -- the
+       compound only referenced those). goOnRails() already unregistered, so
+       for a railed ship only the deletes remain. The onRails guard is
+       LOAD-BEARING: Bullet's removeCollisionObject is not idempotent -- it
+       reads the object's world-array index (which remove never resets to -1),
+       so a second remove on an absent body can evict the WRONG collision
+       object. */
     virtual ~Vehicle() {
         // The crew aboard (Kerbals, eva.h) are owned by this ship: delete
         // them before their parts would outlive their `aboard` target.
         for(auto&& k : crew) { delete k; }
         crew.clear();
-        if(!onRails) {
-            for(auto&& c : constraints) { Detach(c); }
-            constraints.clear();
-            for(Part *p : parts) { RemoveBody(p->body); }
-        }
-        /* the ship's own rigid body + compound go before the parts: the
-           compound references (does not own) each part's hull, and the hulls
-           are freed with the bodies below. Neither is registered in the
-           world yet, so there is nothing to unregister. */
-        delete shipBody; shipBody = nullptr;
-        delete compound; compound = nullptr;
+        if(hullInWorld()) { RemoveBody(hull); }
+        delete hull; hull = nullptr;
         compoundParts.clear();
         for(Part *p : parts) { delete p; }   // ~Part deletes the Body
     }
@@ -1019,10 +1024,15 @@ public:
     // h seconds of the tick's n*h, cutting the delivered thrust to 1/n
     // (and n grows with time acceleration, so it got worse at warp).
     void applyThrustForce() {
+        const glm::dvec3 com = comPos();
         for(Part *p : parts) {
             if(!p->isThruster()) { continue; }
             if(p->armedThrust == 0.0f) { continue; }
-            ApplyCentralForceForward(p->body, (double)p->armedThrust);
+            /* Along the engine's own +Z, applied AT the engine: an off-axis or
+               tilted engine torques the ship directly, which is what the weld
+               used to have to transmit. */
+            ApplyForce(hull, partPos(p) - com,
+                       partAxis(p, 2) * (double)p->armedThrust);
         }
     }
 
@@ -1066,10 +1076,9 @@ public:
                 (double)stick[0] * rollAxis
                 + (double)stick[1] * pitchAxis
                 + (double)stick[2] * yawAxis;
-            for(Part *p : parts) {
-                if(!p->isWheel()) { continue; }
-                ApplyTorque(p->body, (double)p->wheelTorque() * worldAxis);
-            }
+            /* Every wheel turns the same rigid body along the same axis, so
+               their torques simply sum -- and maxTorque() is that sum. */
+            ApplyTorque(hull, maxTorque() * worldAxis);
         }
         /* Autopilot: one authority-bounded step of the slew/kill-rot law
            (h = this substep's duration, so the law re-evaluates per
@@ -1147,20 +1156,14 @@ public:
     }
 
     /* --att-log: the ship's nose (local +Z of the hull, world coords) and
-       the hull's angular velocity (world coords), for the attitude-physics
-       e2e test. The angular velocity must come from a HULL part, not the
-       reaction wheel: the wheel spins relative to the hull, so its own
-       GetAngVelocity is the wheel's spin, not the ship's. Every hull part
-       shares the ship's rigid-body angular velocity, so any one works. */
+       its angular velocity (world coords), for the attitude-physics e2e test.
+       One rigid body, so there is exactly one of each: the root part's +Z is
+       frame S's, and the spin is the hull's. (A reaction wheel used to have
+       to be avoided here -- under the welds it spun relative to the hull.) */
     void att_log(double time) {
-        if(parts.empty()) { return; }
-        Part *hull = nullptr;
-        for(Part *p : parts) {
-            if(!p->isWheel()) { hull = p; break; }
-        }
-        if(!hull) { hull = parts[0]; }
-        const glm::dvec3 nose = partAxis(hull, 2);
-        const glm::dvec3 w = partAngVel(hull);
+        if(hull == nullptr || parts.empty()) { return; }
+        const glm::dvec3 nose = partAxis(rootPart(), 2);
+        const glm::dvec3 w = GetAngVelocity(hull);
         printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
                "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s\n",
                time, nose.x, nose.y, nose.z,
@@ -1263,46 +1266,25 @@ public:
         const bool controllerDropped =
             (controller != nullptr && droppedSet.count(controller) > 0);
 
-        /* a constraint is cut if EITHER end is in the dropped set (the cut
-           weld AND the subtree's internal welds). A Part* link is stable,
-           so the survivors keep their (still-alive) endpoints -- no index
-           remapping (the old computeStageSplit is gone). */
-        std::vector<bool> isCut(constraints.size(), false);
-        for(size_t c = 0; c < constraints.size(); c++) {
-            if(droppedSet.count(constraintLinks[c].first) ||
-               droppedSet.count(constraintLinks[c].second)) { isCut[c] = true; }
-        }
-
         /* collect the survivors FIRST (their Part* stay valid), then free the
            dropped parts -- so no freed pointer is ever dereferenced. */
         std::vector<Part *> keepParts;
         for(Part *p : parts) { if(!droppedSet.count(p)) { keepParts.push_back(p); } }
 
-        /* 1) Detach the cut constraints (they reference the dropped bodies). */
-        for(size_t c = 0; c < constraints.size(); c++) {
-            if(isCut[c]) { Detach(constraints[c]); }
-        }
-        /* 2) Unregister + delete the dropped parts (~Part frees the Body). */
-        for(Part *p : parts) {
-            if(!droppedSet.count(p)) { continue; }
-            RemoveBody(p->body);
-            delete p;
-        }
         parts.swap(keepParts);
-        /* 3) Keep only the surviving constraints / links / anchors (every
-           kept link's endpoints are still-alive Parts). */
-        std::vector<void *> keepCons;
-        std::vector<std::pair<Part *, Part *>> keepLinks;
-        std::vector<std::pair<glm::dvec3, glm::dvec3>> keepAnchors;
-        for(size_t c = 0; c < constraints.size(); c++) {
-            if(isCut[c]) { continue; }
-            keepCons.push_back(constraints[c]);
-            keepLinks.push_back(constraintLinks[c]);
-            keepAnchors.push_back(constraintAnchors[c]);
-        }
-        constraints.swap(keepCons);
-        constraintLinks.swap(keepLinks);
-        constraintAnchors.swap(keepAnchors);
+        /* The survivors keep their authored poses in the ORIGINAL frame S
+           (the root never drops -- a decoupler takes its child-side subtree),
+           so S is still well defined and rebuildCompound carries the ship's
+           pose and velocity across untouched.
+
+           Rebuild the ship's single body from the survivors BEFORE freeing
+           the dropped parts: the old compound still references their
+           collision hulls as children, and ~Part frees those. Rebuilding is
+           also what takes the dropped hulls out of the collision world, the
+           compound being the only thing registered -- a part has no rigid
+           body of its own to unregister, and nothing to un-weld. */
+        rebuildCompound();
+        for(Part *p : dropped) { delete p; }
         /* 3b) Drop fuel links whose endpoint is in the dropped set (a link
            touching a removed part is dangling). A Part* is stable, so the
            surviving links keep their (still-alive) endpoints. */
@@ -1316,7 +1298,6 @@ public:
         /* 4) If the controller was dropped, fall back to the first survivor
            (a Part* is stable -- no index remapping). */
         if(controllerDropped) { controller = parts[0]; }
-        NeverSleep(controller->body);
         /* 5) Disarm any thrust (the split just happened). */
         clearThrust();
         /* 6) Recompute fuel groups. The survivors' pools are unchanged in
@@ -1324,11 +1305,6 @@ public:
            sides were already separate groups) -- recompute so the ids stay
            fresh after the tree shrank. */
         buildFuelGroups();
-        /* 7) The compound is a pure function of the part list, and the list
-           just shrank: rebuild it. The survivors keep their authored poses
-           in the ORIGINAL frame S (the root never drops -- a decoupler takes
-           its child-side subtree), so S is still well defined. */
-        rebuildCompound();
         return (int)dropped.size();
     }
 
@@ -1415,8 +1391,11 @@ public:
         }
     }
 
+    /* The COM velocity -- get_center_of_mass() is the COM position, so the
+       orbit elements are now fitted to one point's state rather than the
+       controller part's velocity at the cluster's COM. */
     glm::dvec3 GetVel() {
-        return partVel(controller);
+        return GetVelocity(hull);
     }
 
 protected:
@@ -1489,33 +1468,21 @@ protected:
         return t;
     }
 
-    /* The ship's total moment of inertia about its COM (kg m^2): each
-       part's local inertia (as Bullet has it) in world coordinates, plus
-       the parallel-axis term for its offset from the ship's COM. This is
-       the inertia a torque actually moves -- the denominator of the
-       wheel's authority. */
+    /* The ship's moment-of-inertia tensor about its COM, in world axes: the
+       one rigid body's own. Bullet stores it DIAGONAL in the principal frame,
+       so rotating it out by the body's basis gives the tensor -- the same
+       parallel-axis assembly this used to be built from by hand, already done
+       by calculatePrincipalAxisTransform and held against that assembly by
+       checkCompoundInvariants. O(1) rather than O(parts), and this is read
+       every substep by the slew and kill-rot laws. */
     glm::dmat3 getInertia() {
-        const glm::dvec3 com = get_center_of_mass();
-        glm::dmat3 I = glm::dmat3(0.0);
-        for(Part *p : parts) {
-            const glm::dvec3 d = partPos(p) - com;
-            const glm::dmat3 R = partRot(p);
-            /* a part's own hull inertia is a SHAPE property, not a pose, so
-               it stays read off the Body. The compound's child inertias are
-               the same numbers -- checkCompoundInvariants holds the two
-               assemblies against each other. */
-            const glm::dvec3 il = getInertiaDiag(p->body);
-            /* part's local inertia is diagonal (Bullet stores it that way);
-               build the diagonal matrix explicitly -- GLM has no
-               vec -> diagonal-mat constructor */
-            const glm::dmat3 il_diag(
-                il.x, 0.0, 0.0,
-                0.0, il.y, 0.0,
-                0.0, 0.0, il.z);
-            I += R * il_diag * glm::transpose(R);
-            I += p->body->mass * (glm::dot(d, d) * glm::dmat3(1.0) - glm::outerProduct(d, d));
-        }
-        return I;
+        glm::dvec3 com; glm::dmat3 R;
+        fromBt(hull->btBody->getCenterOfMassTransform(), com, R);
+        const btVector3 &bi = hull->btBody->getLocalInertia();
+        const glm::dmat3 diag(bi.getX(), 0.0, 0.0,
+                              0.0, bi.getY(), 0.0,
+                              0.0, 0.0, bi.getZ());
+        return R * diag * glm::transpose(R);
     }
 
     /* The target direction (in the ship's frame) for the current directional
@@ -1582,10 +1549,7 @@ protected:
            and |torque| == maxTorque exactly as before. */
         const double tq = glm::length(torque);
         if(tq > maxTorque()) { torque *= maxTorque() / tq; }
-        for(Part *p : parts) {
-            if(!p->isWheel()) { continue; }
-            ApplyTorque(p->body, torque / (double)numWheels());
-        }
+        ApplyTorque(hull, torque);
     }
 
     /* Kill the spin within the wheel's authority: each axis' rate drops by
@@ -1604,10 +1568,7 @@ protected:
             const double dw = -w[i] * std::min(1.0, A / std::fabs(w[i]));
             torque[i] = Iii * dw / h; /* |torque[i]| <= maxTorque() */
         }
-        for(Part *p : parts) {
-            if(!p->isWheel()) { continue; }
-            ApplyTorque(p->body, torque / (double)numWheels());
-        }
+        ApplyTorque(hull, torque);
     }
 
 public:
@@ -1636,36 +1597,38 @@ public:
     }
 
     void moveToFrame(Frame *newFrame) {
-        for(Part *p : parts) {
-            const char *name = p->def->name.c_str();
+        /* One rigid body, so a frame change is one pose write and one
+           velocity write; the transform is rigid, so the COM maps like any
+           other point. */
+        const glm::dvec3 oldCom = get_center_of_mass();
+        const glm::dvec3 oldVel = GetVelocity(hull);
+        const glm::dvec3 fpos = frame->GetPositionRelTo(newFrame);
+        const glm::dmat3 forient = frame->GetOrientRelTo(newFrame);
 
-            glm::dvec3 oldVel = partVel(p);
-            glm::dvec3 vel = GetVelocityRelTo(p, newFrame);
-            glm::dvec3 fpos = frame->GetPositionRelTo(newFrame);
-            glm::dmat3 forient = frame->GetOrientRelTo(newFrame);
+        glm::dvec3 sPos; glm::dmat3 sRot;
+        frameS(sPos, sRot);
+        placeShip(forient * sPos + fpos, forient * sRot);
 
-            glm::dvec3 newPos = forient * partPos(p) + fpos;
-            glm::dmat3 newOrient = forient * partRot(p);
+        // The stored velocity is the frame-coordinate velocity, so a ship's
+        // inertial velocity is R*(v + stasis(p)) + V. The OLD frame's stasis
+        // term is added here and the NEW frame's SUBTRACTED below, or the
+        // ship's inertial velocity is wrong by 2*stasis and the orbit jumps
+        // shape at every inertial->rotational switch.
+        glm::dvec3 vel = oldVel;
+        if(frame != newFrame) { vel += frame->GetStasisVelocity(oldCom); }
+        vel = forient * vel + frame->GetVelocityRelTo(newFrame);
+        const glm::dvec3 newCom = forient * oldCom + fpos;
+        const glm::dvec3 newVel = vel - newFrame->GetStasisVelocity(newCom);
 
-            glm::dvec3 pos = partPos(p);
-            printf("@@@ %s OLD position: %.0f %.0f %.0f\n", name, pos.x, pos.y, pos.z);
-            printf("@@@ %s NEW position: %.0f %.0f %.0f\n", name, newPos.x, newPos.y, newPos.z);
+        printf("@@@ %s frame %s -> %s: com (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)"
+               " vel (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)\n",
+               name.c_str(), frame->name.c_str(), newFrame->name.c_str(),
+               oldCom.x, oldCom.y, oldCom.z, newCom.x, newCom.y, newCom.z,
+               oldVel.x, oldVel.y, oldVel.z, newVel.x, newVel.y, newVel.z);
 
-            setPosRot(p->body, newPos, newOrient);
+        /* after placeShip: proceedToTransform zeroes both velocities */
+        SetVelocity(hull, newVel);
 
-            pos = partPos(p);
-            // The stored velocity is the frame-coordinate velocity, so a ship's
-            // inertial velocity is R*(v + stasis(p)) + V.  GetVelocityRelTo
-            // already added the OLD frame's stasis term; the NEW frame's term
-            // must be SUBTRACTED, or the ship's inertial velocity is wrong by
-            // 2*stasis and the orbit jumps shape at every inertial->rotational
-            // switch.
-            glm::dvec3 newVel = vel - newFrame->GetStasisVelocity(pos);
-            printf("@@@ %s OLD velocity: %.0f %.0f %.0f\n", name, oldVel.x, oldVel.y, oldVel.z);
-            printf("@@@ %s NEW velocity: %.0f %.0f %.0f\n", name, newVel.x, newVel.y, newVel.z);
-
-            SetVelocity(p->body, newVel);
-        }
         // The ship lives in the ships list of its SOI body (terrain.h):
         // crossing to another body's SoI is a list move, done here so the
         // body lists always agree with m_parent. (Rare -- this runs once
@@ -1727,13 +1690,14 @@ public:
        shares the rail velocity with zero spin, and readers like
        --orbit-log and the HUD fit their elements to consistent data. */
     void writeRailPose() {
-        for(Part *p : parts) {
-            setPosRot(p->body,
-                      rail_pos + rail_orient * p->railRelPos,
-                      rail_orient * p->railRelRot);
-            SetVelocity(p->body, rail_vel);
-            SetAngVelocity(p->body, glm::dvec3(0.0));
-        }
+        /* ONE write. rail_pos is the COM, which is exactly the hull's
+           transform origin, and rail_orient * railRot are frame S's axes;
+           every part's pose then follows from its authored local pose. */
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        setPosRot(hull, rail_pos, (rail_orient * railRot) * pBasis);
+        SetVelocity(hull, rail_vel);
+        SetAngVelocity(hull, glm::dvec3(0.0));
     }
 
     /* The COM's osculating orbit dips into the terrain band (periapsis
@@ -1742,13 +1706,7 @@ public:
     bool inTerrainBand() {
         Frame *inertial = frame->getNonRotFrame();
         glm::dvec3 p = get_center_of_mass();
-        glm::dvec3 v(0.0);
-        double mtot = 0.0;
-        for(Part *p2 : parts) {
-            v += partVel(p2) * p2->body->mass;
-            mtot += p2->body->mass;
-        }
-        v /= mtot;
+        glm::dvec3 v = GetVelocity(hull);
         if(frame != inertial) {
             v += frame->GetStasisVelocity(p);
             v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
@@ -1788,13 +1746,7 @@ public:
         Frame *inertial = frame->getNonRotFrame();
         glm::dvec3 p = get_center_of_mass();
         const glm::dvec3 com_frame = p;   // pre-transform, old frame coords
-        glm::dvec3 v(0.0);
-        double mtot = 0.0;
-        for(Part *p2 : parts) {
-            v += partVel(p2) * p2->body->mass;
-            mtot += p2->body->mass;
-        }
-        v /= mtot;
+        glm::dvec3 v = GetVelocity(hull);
         const glm::dvec3 vel_frame = v;   // pre-transform, old frame coords
         if(frame != inertial) {
             v += frame->GetStasisVelocity(p);
@@ -1805,13 +1757,12 @@ public:
         const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
         const bool grounded = el.periapsis <= inertial->body->radius + 3000.0;
 
-        /* the cluster pose at park time, relative to its COM (cluster
-           axes == old frame axes; rail_orient carries them into the
-           inertial node and then holds inertially) */
-        for(Part *p2 : parts) {
-            p2->railRelPos = partPos(p2) - com_frame;
-            p2->railRelRot = partRot(p2);
-        }
+        /* Frame S's axes at park time (== the old frame's axes for a ship
+           built in it); rail_orient carries them into the inertial node and
+           then holds inertially. Nothing per-part to snapshot: the ship is
+           rigid, so the authored local poses ARE the parked geometry. */
+        glm::dvec3 sPosPark;
+        frameS(sPosPark, railRot);
 
         if(grounded) {
             /* freeze: the pose is static in the rotating surface frame
@@ -1829,12 +1780,8 @@ public:
             railFrozen = false;
         }
 
-        /* out of the world: welds first (they reference the bodies) */
-        for(size_t c = 0; c < constraints.size(); c++) {
-            Detach(constraints[c]);
-        }
-        constraints.clear();
-        for(Part *p2 : parts) { RemoveBody(p2->body); }
+        /* out of the world: the one body */
+        if(hullInWorld()) { RemoveBody(hull); }
 
         onRails = true;
         if(!railFrozen) { writeRailPose(); }
@@ -1850,24 +1797,14 @@ public:
     }
 
     /* Re-enter physics from rails: rebuild the Bullet state from the rail
-       state and hand the cluster back to the integrator. Pose and velocity
+       state and hand the ship back to the integrator. Pose and velocity
        already track the rail state (writeRailPose), so this is just
-       re-register and re-weld. */
+       re-register -- nothing to re-weld, because a rigid body has no internal
+       degrees of freedom and the parked geometry IS the authored geometry. */
     void leaveRails() {
         if(!onRails) { return; }
         writeRailPose();
-        for(Part *p : parts) {
-            AddPhysicsBody(p->body);
-        }
-        /* GlueTogether locks the CURRENT relative pose, which is exactly
-           the parked geometry, so the stored anchors reproduce the welds. */
-        for(size_t c = 0; c < constraintLinks.size(); c++) {
-            constraints.push_back(GlueTogether(constraintLinks[c].first->body,
-                                               constraintLinks[c].second->body,
-                                               constraintAnchors[c].first,
-                                               constraintAnchors[c].second));
-        }
-        NeverSleep(controller->body);
+        if(!hullInWorld()) { AddPhysicsBody(hull); }
         onRails = false;
         railFrozen = false;
         printf("@@@ %s left the rails around %s\n",

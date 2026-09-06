@@ -77,29 +77,31 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         model->FromData(mesh, partsshader,
                         load_texture((std::string("./res/") + def->texture).c_str()));
         model->hull_margin = def->hull_margin;
-        Body *b = create_body(model, 0, 0, 0, (float)def->mass);
+        Body *b = create_part_body(model, (float)def->mass);
         Part *p = new Part;
         p->body  = b;
         p->def   = def;
         p->stage = 1;
         return p;
     };
-    /* Weld two Parts at coinciding local anchors, recording the link (by
-       pointer) + anchors the same way Vehicle::attach() does, plus pb's
-       authored ship-local pose. These two modes push into v->parts directly
-       instead of going through Vehicle::attach, so `weld` is what sets
-       Part::parent -- the topology the staging and fuel-group walks read.
-       S is the root's frame, i.e. (base, pad_orient) here, so a part's local
-       pose is exactly the offset/rotation its setPosRot below applies. */
-    auto weld = [&](Part *pa, Part *pb,
-                    const glm::dvec3 &paA, const glm::dvec3 &pbA,
+    /* Hang pb off pa and record its authored ship-local pose, the way
+       Vehicle::attach() does. These modes push into v->parts directly instead
+       of going through attach, so this is what sets Part::parent -- the
+       topology the staging and fuel-group walks read. S is the root's frame,
+       i.e. (base, pad_orient), which placeShip below applies to the whole
+       ship at once.
+
+       The two anchor arguments are ignored: they were the weld's pivot points
+       and there is no weld any more -- a rigid body has no internal degrees
+       of freedom to constrain. They stay at the call sites because they
+       record where the parts touch, which is what makes each layout
+       legible. */
+    auto link = [&](Part *pa, Part *pb,
+                    const glm::dvec3 &/*paAnchor*/, const glm::dvec3 &/*pbAnchor*/,
                     const glm::dvec3 &localPos, const glm::dmat3 &localRot) {
         pb->parent   = pa;
         pb->localPos = localPos;
         pb->localRot = localRot;
-        v->constraints.push_back(GlueTogether(pa->body, pb->body, paA, pbA));
-        v->constraintLinks.push_back(std::make_pair(pa, pb));
-        v->constraintAnchors.push_back(std::make_pair(paA, pbA));
     };
 
     if(mode == "stacks") {
@@ -121,17 +123,6 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *a2 = makePart(defSml);
         Part *b1 = makePart(defBig);
         Part *b2 = makePart(defSml);
-        setPosRot(a1->body, base, pad_orient);
-        setPosRot(a2->body,
-                  base - pad_orient * glm::dvec3(0.0, 0.0,
-                                                 defBig->height / 2.0 + defSml->height / 2.0),
-                  pad_orient);
-        setPosRot(b1->body,
-                  base + pad_orient * glm::dvec3(defBig->radius + defBig->height / 2.0, 0.0, 0.0),
-                  pad_orient * rotZtoX);
-        setPosRot(b2->body,
-                  base + pad_orient * glm::dvec3(defBig->radius + defBig->height + defSml->height / 2.0, 0.0, 0.0),
-                  pad_orient * rotZtoX);
 
         v->setRoot(a1);
         v->parts.push_back(a2);
@@ -140,17 +131,17 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         /* local poses mirror the setPosRot calls above (S = the root a1's
            frame): a2 straight below, b1 radial off a1's +X with its axis
            turned onto X, b2 stacked beyond b1 along that same axis. */
-        weld(a1, a2,
+        link(a1, a2,
              glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
              glm::dvec3(0.0, 0.0,  defSml->height / 2.0),
              glm::dvec3(0.0, 0.0, -(defBig->height + defSml->height) / 2.0),
              glm::dmat3(1.0));
-        weld(a1, b1,
+        link(a1, b1,
              glm::dvec3(defBig->radius, 0.0, 0.0),
              glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
              glm::dvec3(defBig->radius + defBig->height / 2.0, 0.0, 0.0),
              rotZtoX);
-        weld(b1, b2,
+        link(b1, b2,
              glm::dvec3(0.0, 0.0,  defBig->height / 2.0),
              glm::dvec3(0.0, 0.0, -defSml->height / 2.0),
              glm::dvec3(defBig->radius + defBig->height + defSml->height / 2.0,
@@ -177,10 +168,6 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *b1 = makePart(defBig);
         Part *b2 = makePart(defSml);
         const double dz = defBig->height / 2.0 + defSml->height / 2.0;
-        setPosRot(a1->body, base, pad_orient);
-        setPosRot(a2->body, base - pad_orient * glm::dvec3(0.0, 0.0, dz), pad_orient);
-        setPosRot(b1->body, base + pad_orient * glm::dvec3(defBig->radius + defBig->radius, 0.0, 0.0), pad_orient);
-        setPosRot(b2->body, base + pad_orient * glm::dvec3(defBig->radius + defBig->radius, 0.0, -dz), pad_orient);
 
         v->setRoot(a1);
         v->parts.push_back(a2);
@@ -188,15 +175,15 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         v->parts.push_back(b2);
         /* local poses mirror the setPosRot calls above; every axis stays
            parallel here, so all four localRot are the identity. */
-        weld(a1, a2,
+        link(a1, a2,
              glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
              glm::dvec3(0.0, 0.0,  defSml->height / 2.0),
              glm::dvec3(0.0, 0.0, -dz), glm::dmat3(1.0));
-        weld(a1, b1,
+        link(a1, b1,
              glm::dvec3(defBig->radius, 0.0, 0.0),
              glm::dvec3(-defBig->radius, 0.0, 0.0),
              glm::dvec3(2.0 * defBig->radius, 0.0, 0.0), glm::dmat3(1.0));
-        weld(b1, b2,
+        link(b1, b2,
              glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
              glm::dvec3(0.0, 0.0,  defSml->height / 2.0),
              glm::dvec3(2.0 * defBig->radius, 0.0, -dz), glm::dmat3(1.0));
@@ -205,13 +192,10 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         v->name = (mode == "radial") ? "radial2"
                    : (mode == "parallel") ? "parallel2" : "stack2";
         Part *a = makePart(defBig);
-        setPosRot(a->body, base, pad_orient);
         Part *b = makePart(defSml);
         v->setRoot(a);
         if(mode == "radial") {
             /* B's bottom face (-hB/2) touches A's side at +rA */
-            setPosRot(b->body, base + pad_orient * glm::dvec3(defBig->radius + defSml->height / 2.0, 0.0, 0.0),
-                      pad_orient * rotZtoX);
             v->attachRadial(b);
         }
         else if(mode == "parallel") {
@@ -219,16 +203,12 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                the pad normal (parallel). B at +X by rA + rB so the
                cylindrical surfaces meet; anchor world point (rA,0,0)
                on A == (-rB,0,0) on B. */
-            setPosRot(b->body, base + pad_orient * glm::dvec3(defBig->radius + defSml->radius, 0.0, 0.0),
-                      pad_orient);
             v->attachSide(b);
         }
         else {
             /* attachDown welds the child on the parent's -Z side:
                anchor coincidence needs B at base - (hA/2+hB/2)
                along the pad normal */
-            setPosRot(b->body, base - pad_orient * glm::dvec3(0.0, 0.0, defBig->height / 2.0 + defSml->height / 2.0),
-                      pad_orient);
             v->attachDown(b);
         }
     }
@@ -238,6 +218,8 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
        the root. */
     v->controller = v->parts[0];
     v->init();
+    v->placeShip(base, pad_orient);
+    v->enterWorld();
     v->setVelocity(glm::dvec3(0, 0, 0));
 
     RadialTestShip r;

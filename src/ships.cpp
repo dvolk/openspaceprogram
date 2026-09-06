@@ -113,7 +113,7 @@ Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wa
         // frictionless feet: the walk steering is a force applied at the
         // COM, and foot friction would pair with it into a tipping couple
         // that rolls the standing capsule over (see src/eva.cpp).
-        SetFriction(v->controller->body, 0.0);
+        SetFriction(v->hull, 0.0);
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     hb->ships.push_back(v);
@@ -160,7 +160,6 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     const PartDef *capDef = ship->parts[part]->def;
     if(capDef->crew_capacity <= 0) { return nullptr; }
     Part *capPart = ship->parts[part];
-    Body *cap = capPart->body;
 
     ShipDef def = load_ship_def("./res/ships/kerbal.json", part_catalog);
     Kerbal *k = new Kerbal;
@@ -176,17 +175,16 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dmat3 capOrient = ship->partRot(capPart);
     build_ship(k, def, partsshader, capCom, capOrient);
-    SetFriction(k->controller->body, 0.0);   // frictionless feet (see place_ship)
+    SetFriction(k->hull, 0.0);   // frictionless feet (see place_ship)
 
     // park inside the capsule (out of the physics world) + fold its mass
     // into the capsule part (the ship is heavier with crew aboard)
-    Body *kb = k->parts[0]->body;
-    setPosRot(kb, capCom, capOrient);
+    Body *kb = k->hull;
+    k->placeShipAtCom(capCom, capOrient);
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
-    cap->mass += kb->mass;
-    SetMass(cap, cap->mass);
+    ship->addPartMass(capPart, kb->mass);
     k->aboard = ship;
     k->aboardPart = part;
 

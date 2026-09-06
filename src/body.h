@@ -13,8 +13,13 @@ struct Body {
     // mesh + shader
     Model *model;
 
-    // bullet object, stores all the physical body information
-    btRigidBody *btBody;
+    /* The rigid body, or null. A ship PART has no rigid body of its own --
+       the ship is one body (Vehicle::hull) and the part is a child of its
+       compound shape -- so this stays null for parts and any leftover
+       per-part physics call crashes immediately instead of silently reading
+       a transform nothing integrates. Bodies that ARE simulated (a space
+       pad) have one. */
+    btRigidBody *btBody = nullptr;
 
     /* The collision shape -- the convex hull of the part mesh. Owned HERE,
        not by the rigid body: Bullet's btRigidBody never owned its shape (it
@@ -86,5 +91,12 @@ struct Body {
 };
 
 void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot);
+/* Build body->shape (the convex hull of its model) without a rigid body. */
+void BuildPartHull(Body *body);
 
 Body *create_body(Model *model, float x, float y, float z, float mass);
+
+/* A ship part's Body: model + collision hull + mass, and NO rigid body --
+   the part is a child of the ship's compound, not a simulated object of its
+   own (see Body::btBody). Nothing is registered in the world. */
+Body *create_part_body(Model *model, float mass);

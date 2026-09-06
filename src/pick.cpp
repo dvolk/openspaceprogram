@@ -98,10 +98,11 @@ bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
    part without a search. */
 static bool pickShipChild(const PickRay &ray, Vehicle *ship, size_t child,
                           PickBodyHit &hit) {
-    return castRay(ray, ship->shipBody,
-                   ship->compound->getChildShape((int)child),
-                   ship->shipBody->getCenterOfMassTransform()
-                       * ship->compound->getChildTransform((int)child),
+    btCompoundShape *cs = ship->compoundShape();
+    return castRay(ray, ship->hull->btBody,
+                   cs->getChildShape((int)child),
+                   ship->hull->btBody->getCenterOfMassTransform()
+                       * cs->getChildTransform((int)child),
                    hit);
 }
 
@@ -122,7 +123,7 @@ bool pickShipPart(Game &g, int px, int py,
 
     for(auto *b : g.sys.bodies) {
     for(auto *s : b->ships) {
-        if(s->compound == nullptr) { continue; }
+        if(s->compoundShape() == nullptr) { continue; }
         // The ship's part frame -> render frame (the same transform
         // Vehicle::Draw uses); the ray must live in the ship's frame,
         // where its bodies' transforms live.
@@ -131,11 +132,6 @@ bool pickShipPart(Game &g, int px, int py,
         const glm::dvec4 po = invXf * glm::dvec4(ray.origin, 1.0);
         PickRay sray{ glm::dvec3(po.x, po.y, po.z),
                       glm::normalize(glm::dmat3(invXf) * ray.dir) };
-
-        /* The ship body is not the registered one yet, so mirror the live
-           parts onto it first -- one call per ship per click, and it goes
-           away when the ship body becomes the registered body. */
-        s->syncShipBody();
 
         for(size_t i = 0; i < s->parts.size(); i++) {
             PickBodyHit h;

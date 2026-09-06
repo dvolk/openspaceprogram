@@ -50,7 +50,7 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
     const double alt = glm::length(pos)
         - (double)k->m_parent->GetTerrainHeight(glm::vec3(radial));
     const double rest = k->restAlt();
-    k->grounded = BodyInContact(k->controller->body) || alt < rest + kGroundBand;
+    k->grounded = BodyInContact(k->hull) || alt < rest + kGroundBand;
     if(k->jumping) {
         // still rising through the contact-margin band: stay ungrounded
         if(alt > rest + kClearBand) { k->jumping = false; }
@@ -95,7 +95,7 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
 }
 
 void Kerbal::applyEva(double h) {
-    Body *b = controller->body;
+    Body *b = hull;
     const glm::dvec3 pos = partPos(controller);
     const glm::dvec3 radial = glm::normalize(pos);
     const double surfR = (double)m_parent->GetTerrainHeight(glm::vec3(radial));
@@ -108,7 +108,7 @@ void Kerbal::applyEva(double h) {
        contact holds the kerbal near restAlt otherwise). */
     const double alt = glm::length(pos) - surfR;
     if(alt < rest - kFloorDrop) {
-        setPosRot(b, radial * (surfR + rest), partRot(controller));
+        placeShipAtCom(radial * (surfR + rest), partRot(controller));
         const glm::dvec3 v = partVel(controller);
         const double vr = glm::dot(v, radial);
         if(vr < 0.0) { SetVelocity(b, v - radial * vr); }
@@ -162,7 +162,7 @@ void Kerbal::applyEva(double h) {
 }
 
 void Kerbal::slewTo(const glm::dmat3 &target, double h, double authority) {
-    Body *b = controller->body;
+    Body *b = hull;
     const glm::dmat3 R = partRot(controller);
     glm::dvec3 axis;
     const double ang = evaRotAxisAngle(target * glm::transpose(R), axis);

@@ -253,28 +253,8 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     btTransform startTransform;
     startTransform.setIdentity();
 
-    Mesh *m = body->model->mesh;
-
-    printf("PhysicsEngine::RegisterObject(): m->num_vertices: %d\n", m->num_vertices);
-    assert(m->vs != NULL);
-    assert(m->num_vertices >= 3);
-
-    /* Convex hull of the part mesh. Bullet has no collision
-       algorithm for concave-vs-concave pairs (the dispatcher
-       falls through to btEmptyAlgorithm), so dynamic bodies
-       must stay convex. The hull keeps the part's real
-       silhouette and pairs correctly with the triangle-mesh
-       world (terrain / space port). Owned by the Body, which
-       outlives this registration. */
-    btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
-                                                    3 * sizeof(double));
-
-    /* the model carries the part's resolved margin (ship def > catalog,
-       see resolveHullMargin); -1 when neither sets one */
-    const double margin = (body->model->hull_margin >= 0.0)
-                        ? body->model->hull_margin : hull_margin();
-    hull->setMargin(margin);
-    body->shape = hull;
+    BuildHull(body);
+    btCollisionShape *hull = body->shape;
 
     startTransform.setOrigin(btVector3(pos.x, pos.y, pos.z));
     btQuaternion euler_rot(rot.x, rot.y, rot.z);
@@ -298,6 +278,36 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
 
     setRigidBody(body, b);
     dynamicsWorld->addRigidBody(b);
+}
+
+/* The convex hull of a model's mesh, stored on the Body (which owns it).
+   Shared by RegisterObject (a simulated body: a space pad) and
+   create_part_body (a ship part, whose hull becomes a child of the ship's
+   compound and so must exist without a rigid body of its own). */
+void PhysicsEngine::BuildHull(Body *body) {
+    Mesh *m = body->model->mesh;
+
+    printf("PhysicsEngine::BuildHull(): m->num_vertices: %d\n", m->num_vertices);
+    assert(m->vs != NULL);
+    assert(m->num_vertices >= 3);
+
+    /* Bullet has no collision algorithm for concave-vs-concave pairs (the
+       dispatcher falls through to btEmptyAlgorithm), so anything that moves
+       must stay convex. The hull keeps the part's real silhouette and pairs
+       correctly with the triangle-mesh world (terrain / space port). */
+    btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
+                                                    3 * sizeof(double));
+
+    /* the model carries the part's resolved margin (ship def > catalog,
+       see resolveHullMargin); -1 when neither sets one */
+    const double margin = (body->model->hull_margin >= 0.0)
+                        ? body->model->hull_margin : hull_margin();
+    hull->setMargin(margin);
+    body->shape = hull;
+}
+
+void BuildPartHull(Body *body) {
+    physics->BuildHull(body);
 }
 
 btRigidBody* getRigidBody(Body *b);
@@ -410,17 +420,6 @@ void ApplyCentralForce(Body *body, glm::dvec3 force) {
     getRigidBody(body)->applyCentralForce(btVector3(force.x, force.y, force.z));
 }
 
-void SetMass(Body *body, double newMass) {
-    // setMassProps takes the inertia tensor AS-IS, so it must be recomputed
-    // from the collision shape (as RegisterObject does) -- a fixed
-    // btVector3(1,1,1) would silently reset the body's moment of inertia
-    // to the identity on every call.
-    btRigidBody *rb = getRigidBody(body);
-    btVector3 inertia(0, 0, 0);
-    body->shape->calculateLocalInertia(newMass, inertia);
-    rb->setMassProps(newMass, inertia);
-}
-
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force) {
     // Bullet's signature is applyForce(force, rel_pos); the old body had
     // them swapped (never called, so it went unnoticed).
@@ -432,8 +431,15 @@ void ApplyTorque(Body *body, glm::dvec3 torque) {
     getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
 }
 
+/* The shape's inertia diagonal at the Body's current mass. Read from the
+   SHAPE, not from a rigid body's stored props: a ship part has no rigid body
+   (see Body::btBody). For a registered body this is the same number
+   RegisterObject / SetMass stored, since both come from this same call. */
 glm::dvec3 getInertiaDiag(Body *body) {
-    const btVector3& i = getRigidBody(body)->getLocalInertia();
+    btVector3 i(1.0, 1.0, 1.0);
+    if(body->mass != 0.0 && body->shape != nullptr) {
+        body->shape->calculateLocalInertia(body->mass, i);
+    }
     return glm::dvec3(i.getX(), i.getY(), i.getZ());
 }
 

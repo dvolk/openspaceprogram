@@ -62,7 +62,6 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
        shared attachPose geometry (shipdef.cpp). */
     std::vector<glm::dvec3> pos(n);
     std::vector<glm::dmat3> rot(n);
-    std::vector<glm::dvec3> pAnchor(n), cAnchor(n);
     pos[0] = glm::dvec3(0.0);
     rot[0] = glm::dmat3(1.0);
     for(size_t i = 1; i < n; i++) {
@@ -72,8 +71,6 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                                    sp.attach, sp.angle, sp.offset);
         pos[i] = ap.childPos;
         rot[i] = ap.childRot;
-        pAnchor[i] = ap.parentAnchor;
-        cAnchor[i] = ap.childAnchor;
     }
 
     /* 2) the ship's lowest point along the stack axis: an axis-aligned part
@@ -103,8 +100,10 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         model->FromData(mesh, partsshader, tex);
         model->hull_margin = resolveHullMargin(def.hull_margin, pd.hull_margin);
 
-        Body *b = create_body(model, 0, 0, 0, (float)pd.mass);
-        setPosRot(b, base + orient * (pos[i] + shift), orient * rot[i]);
+        /* No rigid body and no world pose of its own: the part is a child of
+           the ship's one compound body, and its pose is derived from
+           pos[i]/rot[i] once the ship is placed as a whole (below). */
+        Body *b = create_part_body(model, (float)pd.mass);
 
         Part *part = new Part;
         part->body  = b;
@@ -120,8 +119,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                the world base/orient are applied uniformly to every part, so
                they cancel in the relative pose. attachPose's geometry is
                pinned numerically by test_shipload. */
-            ship->attach(part, (size_t)sp.parent, pAnchor[i], cAnchor[i],
-                         pos[i], rot[i]);
+            ship->attach(part, (size_t)sp.parent, pos[i], rot[i]);
         }
     }
     ship->controller = ship->parts[cit->second];
@@ -188,6 +186,13 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     }
 
     ship->init();
+    /* Place the whole ship. init() built the single rigid body at the origin;
+       this puts frame S where the pad staging wants it -- S's origin at
+       base + orient*shift and S's axes at `orient` -- and every part's world
+       pose then follows from its authored local pose. One write, not one per
+       part. */
+    ship->placeShip(base + orient * shift, orient);
+    ship->enterWorld();
 }
 
 // Resolve the reference frame that owns a world position
@@ -367,21 +372,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         ship->moveToFrame(frame);
     }
 
-    // Nose (local +Z) along prograde: rigidly re-orient the whole ship.
-    // Part 0 (the root) takes `orient`; every other part gets the same
-    // world rotation (Rrel) about the ship's COM, so its RELATIVE geometry
-    // survives -- a stacked part stays stacked, a radial part keeps its
-    // perpendicular axis. (The old loop applied `orient` to every part,
-    // which silently straightened a radial part into the stack axis.)
+    // Nose (local +Z) along prograde: rigidly re-orient the whole ship. One
+    // body, so this is one pose write -- the COM goes to `target` and frame
+    // S's axes to `orient`. Every part's RELATIVE geometry survives by
+    // construction (a stacked part stays stacked, a radial part keeps its
+    // perpendicular axis) because the parts are rigidly embedded in the
+    // compound.
     const glm::dmat3 orient = faceAlong(velWorld);
-    const glm::dvec3 com0 = ship->get_center_of_mass();
-    const glm::dmat3 Rrel = orient * glm::transpose(ship->partRot(ship->rootPart()));
-    for(Part *part : ship->parts) {
-        const glm::dvec3 p = ship->partPos(part);
-        const glm::dmat3 R0 = ship->partRot(part);
-        setPosRot(part->body, target + Rrel * (p - com0), Rrel * R0);
-        SetVelocity(part->body, vel);
-    }
+    ship->placeShipAtCom(target, orient);
+    ship->setVelocity(vel);
 
     printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
@@ -409,21 +408,10 @@ void spin_log(Vehicle *ship, double time) {
                p.x, p.y, p.z, w.x, w.y, w.z, glm::length(w));
     }
 
-    for(size_t i = 0; i < ship->parts.size(); i++) {
-        for(size_t j = i + 1; j < ship->parts.size(); j++) {
-            const ContactPairInfo cp = contact_report(ship->parts[i]->body, ship->parts[j]->body);
-            printf("[spin]   contact %-8s-%-8s: manifs=%d (other=%d) pts=%zu |F|=%.3e |T|=%.3e maxImp=%.3e\n",
-                   ship->parts[i]->def->name.c_str(), ship->parts[j]->def->name.c_str(),
-                   cp.manifolds, cp.otherManifolds, cp.points.size(),
-                   glm::length(cp.netForce), glm::length(cp.netTorque), cp.maxImpulse);
-            for(size_t k = 0; k < cp.points.size(); k++) {
-                const ContactPointInfo &p = cp.points[k];
-                printf("[spin]     pt%zu pos=[%.1f %.1f %.1f] pen=%.4f imp=[%.3e %.3e %.3e] |imp|=%.3e\n",
-                       k, p.pos.x, p.pos.y, p.pos.z, p.pen,
-                       p.impulse.x, p.impulse.y, p.impulse.z, glm::length(p.impulse));
-            }
-        }
-    }
+    /* No inter-part contact report: a ship is ONE rigid body now, and Bullet
+       generates no contacts between the children of a compound. That is the
+       point -- those contacts (and the weld impulses fighting them) were the
+       wobble. --spin-log's ship-level repurposing is a separate step. */
 
     const double G = 6.674e-11;
     const double M = ship->m_parent->mass;

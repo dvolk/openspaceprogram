@@ -13,7 +13,7 @@
 #include <string>
 
 #include "eva.h"      // Kerbal (the crew characters)
-#include "physics.h"  // SetMass, AddPhysicsBody, RemoveBody, setPosRot, GetPosition
+#include "physics.h"  // AddPhysicsBody, RemoveBody, setPosRot
 #include "pick.h"     // pickShipPart (pickAt)
 #include "settings.h" // SettingsData + the settings.json JSON mapping
 #include "shipdef.h"  // PartDef (crew_capacity)
@@ -434,13 +434,11 @@ void Game::kerbalEVA(Kerbal *k) {
     if(part >= ship->parts.size()) { return; }
     const PartDef *capDef = ship->parts[part]->def;
     Part *capPart = ship->parts[part];
-    Body *cap = capPart->body;
-    Body *kb = k->parts[0]->body;
+    Body *kb = k->hull;
     const double kerbalMass = kb->mass;
 
     /* move the crew mass off the capsule (the ship gets lighter) */
-    cap->mass -= kerbalMass;
-    SetMass(cap, cap->mass);
+    ship->addPartMass(capPart, -kerbalMass);
 
     /* the standing / hover pose beside the capsule: on a surface stand on
        the same floor (the capsule's bottom) just outside its side, in free
@@ -460,10 +458,10 @@ void Game::kerbalEVA(Kerbal *k) {
     if(ship->frame->isRotFrame()) {
         const double floorR = std::max(glm::length(capCom) - capDef->height / 2.0,
             (double)ship->m_parent->GetTerrainHeight(glm::vec3(upDir)));
-        setPosRot(kb, upDir * (floorR + k->restAlt()) + tangent * offset, orient);
+        k->placeShipAtCom(upDir * (floorR + k->restAlt()) + tangent * offset, orient);
         SetVelocity(kb, glm::dvec3(0.0));
     } else {
-        setPosRot(kb, capCom + tangent * offset, orient);
+        k->placeShipAtCom(capCom + tangent * offset, orient);
         SetVelocity(kb, ship->partVel(capPart));   // co-moving beside the ship
     }
 
@@ -515,18 +513,16 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         return;
     }
     Part *capPart = ship->parts[part];
-    Body *cap = capPart->body;
-    Body *kb = k->parts[0]->body;
+    Body *kb = k->hull;
     const double kerbalMass = kb->mass;
 
     /* move the crew mass onto the capsule (the ship gets heavier) */
-    cap->mass += kerbalMass;
-    SetMass(cap, cap->mass);
+    ship->addPartMass(capPart, kerbalMass);
 
     /* park the kerbal inside the capsule (at its COM, out of the world) */
     glm::dvec3 capPos; glm::dmat3 capRot;
     ship->partWorldPose(capPart, capPos, capRot);
-    setPosRot(kb, capPos, capRot);
+    k->placeShipAtCom(capPos, capRot);
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;

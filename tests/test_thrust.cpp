@@ -21,8 +21,9 @@
 //      so the ship burned 50/60 of the nominal rate -- inconsistent with the
 //      thrust model (49984 N = 11.36 kg/s x 4400 m/s, both propellants).
 //
-//   3. SetMass inertia (src/physics.cpp) -- tests the REAL function.
-//      setMassProps(mass, I) uses I AS-IS. Previously a fixed btVector3(1,1,1)
+//   3. getInertiaDiag (src/physics.cpp) -- tests the REAL function. A part has
+//      no rigid body, so its inertia comes from its shape at the Body's mass.
+//      Previously a fixed btVector3(1,1,1)
 //      was passed, so every fuel consumption silently reset the part's moment
 //      of inertia to the identity tensor, destroying the mesh-derived inertia
 //      set at registration. Now the inertia is recomputed from the collision
@@ -73,15 +74,20 @@ static int g_checks = 0;
     } while (0)
 
 /*
- * 3. SetMass: the real function, from src/physics.cpp.
+ * 3. getInertiaDiag: the real function, from src/physics.cpp. A ship part has
+ *    no rigid body of its own any more, so this reads the SHAPE at the Body's
+ *    mass -- and it is the independent reference that Vehicle::
+ *    checkCompoundInvariants holds the compound's child inertias against.
+ *    (SetMass, which this section used to test, is gone: a ship's mass follows
+ *    from its parts through rebuildCompound, so nothing sets the mass of a
+ *    registered body at runtime.)
  */
-static void test_setmass_inertia() {
-    printf("== SetMass: inertia follows the mass (not the identity) ==\n");
+static void test_inertia_diag() {
+    printf("== getInertiaDiag: inertia follows the mass (not the identity) ==\n");
 
     btBoxShape shape(btVector3(1.0, 1.0, 1.0));
     // unit box: I = 2m/3, so m0 = 4.0 keeps I0 and I1 away from (1,1,1)
     const double m0 = 4.0;
-    const double m1 = m0 / 2.0;
 
     btVector3 I0;
     shape.calculateLocalInertia(m0, I0);
@@ -90,46 +96,35 @@ static void test_setmass_inertia() {
         return;
     }
 
-    {
-        btRigidBody::btRigidBodyConstructionInfo ci(m0, 0, &shape, I0);
-        btRigidBody *rb = new btRigidBody(ci);
+    Body b;
+    b.model = nullptr;   // no GL model in a headless test
+    b.btBody = nullptr;  // a part is not a simulated object of its own
+    b.shape = &shape;    // ... but it does have a collision hull
+    b.mass = m0;
 
-        Body b;
-        b.model = nullptr;   // no GL model in a headless test
-        b.btBody = rb;
-        b.mass = m0;
+    const glm::dvec3 I = getInertiaDiag(&b);
+    CHECK_NEAR(I.x, I0.getX(), 1e-9, "I_x(m) == the shape's I_x");
+    CHECK_NEAR(I.y, I0.getY(), 1e-9, "I_y(m) == the shape's I_y");
+    CHECK_NEAR(I.z, I0.getZ(), 1e-9, "I_z(m) == the shape's I_z");
+    CHECK_TRUE(!(I == glm::dvec3(1.0, 1.0, 1.0)),
+               "inertia must not be the identity tensor");
 
-        SetMass(&b, m1);
+    /* A fixed shape's inertia scales LINEARLY with its mass, and it must track
+       Body::mass -- the only mass a part has now. This is the check a fixed
+       btVector3(1,1,1) inertia (the old SetMass bug) fails. */
+    b.mass = m0 / 2.0;
+    const glm::dvec3 Ih = getInertiaDiag(&b);
+    CHECK_NEAR(Ih.x, 0.5 * I0.getX(), 1e-9, "I_x(m/2) == 0.5 * I_x(m)");
+    CHECK_NEAR(Ih.y, 0.5 * I0.getY(), 1e-9, "I_y(m/2) == 0.5 * I_y(m)");
+    CHECK_NEAR(Ih.z, 0.5 * I0.getZ(), 1e-9, "I_z(m/2) == 0.5 * I_z(m)");
+    CHECK_TRUE(!(Ih == glm::dvec3(1.0, 1.0, 1.0)),
+               "inertia at half the mass must not be the identity tensor");
 
-        // read the (inverse) local inertia back out of the rigid body
-        const btVector3 inv = rb->getInvInertiaDiagLocal();
-        const btVector3 I1(1.0 / inv.getX(), 1.0 / inv.getY(), 1.0 / inv.getZ());
-
-        // A fixed shape's inertia scales LINEARLY with its mass.
-        CHECK_NEAR(I1.getX(), 0.5 * I0.getX(), 1e-9, "I_x(1.5 kg) == 0.5 * I_x(3 kg)");
-        CHECK_NEAR(I1.getY(), 0.5 * I0.getY(), 1e-9, "I_y(1.5 kg) == 0.5 * I_y(3 kg)");
-        CHECK_NEAR(I1.getZ(), 0.5 * I0.getZ(), 1e-9, "I_z(1.5 kg) == 0.5 * I_z(3 kg)");
-
-        // And it must NOT be the identity tensor (the old bug).
-        CHECK_TRUE(!(I1 == btVector3(1, 1, 1)),
-                   "inertia after SetMass must not be the identity tensor");
-
-        // b's destructor deletes rb.
-    }
-
-    // Harness guard: the OLD code (setMassProps(m, (1,1,1))) leaves the
-    // inertia exactly (1,1,1) -- if that holds, this test can tell the
-    // old implementation from the new one (not vacuous).
-    {
-        btRigidBody::btRigidBodyConstructionInfo ci(m0, 0, &shape, I0);
-        btRigidBody *rb = new btRigidBody(ci);
-        rb->setMassProps(m1, btVector3(1, 1, 1));
-        const btVector3 inv = rb->getInvInertiaDiagLocal();
-        const btVector3 Iold(1.0 / inv.getX(), 1.0 / inv.getY(), 1.0 / inv.getZ());
-        CHECK_TRUE(Iold == btVector3(1, 1, 1),
-                   "harness: old setMassProps pattern must leave inertia (1,1,1)");
-        delete rb;
-    }
+    /* A massless body keeps the (1,1,1) placeholder RegisterObject gives it,
+       rather than a degenerate zero tensor that would make it un-rotatable. */
+    b.mass = 0.0;
+    CHECK_TRUE(getInertiaDiag(&b) == glm::dvec3(1.0, 1.0, 1.0),
+               "massless body: the (1,1,1) placeholder, not a zero tensor");
 }
 
 /*
@@ -271,7 +266,7 @@ static void test_fuel_flow() {
 }
 
 int main() {
-    test_setmass_inertia();
+    test_inertia_diag();
     printf("\n");
     test_substep_delivery();
     printf("\n");

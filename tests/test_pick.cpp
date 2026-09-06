@@ -47,6 +47,7 @@ static Body *makeBody(btCollisionShape *shape, const glm::dmat4 &xf) {
     btQuaternion q;
     m3.getRotation(q);
     b->btBody = new btRigidBody(1.0, 0, shape, btVector3(1.0, 1.0, 1.0));
+    b->shape = shape;
     b->btBody->setWorldTransform(btTransform(
         q, btVector3(xf[3][0], xf[3][1], xf[3][2])));
     return b;

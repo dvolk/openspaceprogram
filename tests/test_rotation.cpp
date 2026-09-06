@@ -53,7 +53,7 @@
 //   4. KillRot (per-substep law) decays the spin monotonically, no sign
 //      flip, at every warp.
 //   5. getInertiaDiag (src/physics.cpp, the REAL function) reads back the
-//      shape-derived inertia, scales linearly with mass through SetMass,
+//      shape-derived inertia, scales linearly with the Body's mass,
 //      and is not the identity tensor. GetAngVelocity round-trips.
 //   6. Torque delivery, on a REAL Bullet world (mirrors test_thrust.cpp):
 //      torque re-applied before EVERY substep delivers the full
@@ -325,6 +325,7 @@ static void test_inertia_and_angvel_readers() {
         Body b;
         b.model = nullptr;   // no GL model in a headless test
         b.btBody = rb;
+        b.shape = rb->getCollisionShape();   // Body owns its hull now
         b.mass = m0;
 
         // Reads back exactly the shape-derived inertia (a unit box is
@@ -336,9 +337,9 @@ static void test_inertia_and_angvel_readers() {
         CHECK_TRUE(!(I == glm::dvec3(1.0, 1.0, 1.0)),
                    "inertia must not be the identity tensor");
 
-        // SetMass recomputes the inertia from the shape; the reader must
-        // see the new (halved) values, still not the identity.
-        SetMass(&b, m1);
+        // The inertia is read from the SHAPE at the Body's mass, so it must
+        // track a mass change and stay linear in it -- still not the identity.
+        b.mass = m1;
         const glm::dvec3 Ih = getInertiaDiag(&b);
         CHECK_NEAR(Ih.x, 0.5 * I0.getX(), 1e-9, "I_x(m/2) == 0.5 * I_x(m)");
         CHECK_NEAR(Ih.y, 0.5 * I0.getY(), 1e-9, "I_y(m/2) == 0.5 * I_y(m)");

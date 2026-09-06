@@ -52,8 +52,6 @@ struct Part {
     /* parked (rails) pose relative to the cluster COM, in cluster axes.
        Written by goOnRails(), read by writeRailPose(); identity/zero for a
        part not currently railed. */
-    glm::dvec3 railRelPos = glm::dvec3(0.0);
-    glm::dmat3 railRelRot = glm::dmat3(1.0);
 
     Part() : body(nullptr), def(nullptr) { }
     ~Part() { delete body; }
