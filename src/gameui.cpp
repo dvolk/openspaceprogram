@@ -1127,8 +1127,8 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                    args.camFovDeg);
         }
         ImGui::Text("Home distance: %f",
-                    glm::length(ship->GetPositionRelTo(ship->controller->body,
-                                                        ship->home->frame)));
+                    glm::length(ship->GetPositionRelTo(ship->controller,
+                                                       ship->home->frame)));
         ImGui::Text("Pos: %.3fkm", distance / 1000);
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
         ImGui::Text("Vel: %.3fm/s", speed);

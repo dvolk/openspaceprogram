@@ -905,13 +905,6 @@ public:
         }
     }
 
-    void setPosition(glm::dvec3 pos) {
-        void SetPosition(Body *b, glm::dvec3 com, glm::dvec3 pos);
-        for(Part *p : parts) {
-            SetPosition(p->body, get_center_of_mass(), pos);
-        }
-    }
-
     const glm::dvec3& get_center_of_mass(void) {
         double total_mass = 0;
         for(Part *p : parts) {
@@ -919,7 +912,7 @@ public:
         }
         m_com = glm::dvec3(0, 0, 0);
         for(Part *p : parts) {
-            m_com += GetPosition(p->body) * (p->body->mass / total_mass);
+            m_com += partPos(p) * (p->body->mass / total_mass);
         }
         return m_com;
     }
@@ -930,7 +923,7 @@ public:
         glm::dvec3 gf;
         for(Part *p : parts) {
             if(p->body->mass == 0) { continue; }
-            const glm::dvec3& b1b2 = GetPosition(p->body);
+            const glm::dvec3 b1b2 = partPos(p);
             const double m1m2 = p->body->mass * parent_mass;
             const double invrsqr = 1.0 / glm::length2(b1b2);
             const double mag = G * m1m2 * invrsqr;
@@ -941,7 +934,7 @@ public:
                 // Coriolis + centrifugal; without these its true inertial
                 // orbit is perturbed for as long as it spends in the rotating
                 // frame (see GetFictitiousAccel in frame.h).
-                const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, GetVelocity(p->body));
+                const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, partVel(p));
                 ApplyCentralForce(p->body, p->body->mass * a_fict);
             }
         }
@@ -1006,11 +999,13 @@ public:
         applyRotationForce(h);
     }
 
-    /* the first reaction-wheel body (nullptr if the ship has none): the
+    /* the first reaction-wheel PART (nullptr if the ship has none): the
        stick / slew / kill-rot laws all use it as the ship's attitude
-       reference. Replaces the old m_reaction_wheels.front(). */
-    Body *firstWheel() {
-        for(Part *p : parts) { if(p->isWheel()) { return p->body; } }
+       reference. Replaces the old m_reaction_wheels.front(). A Part, not a
+       Body, so the reads below go through the part accessors like every
+       other consumer of a part's state. */
+    Part *firstWheel() {
+        for(Part *p : parts) { if(p->isWheel()) { return p; } }
         return nullptr;
     }
 
@@ -1028,10 +1023,10 @@ public:
            its rated torque along the combined axis; diagonals (W+A)
            compose as a vector sum. */
         if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
-            Body *rw0 = firstWheel();
-            const glm::dvec3 pitchAxis = -getRelAxis_(rw0, 0);  // right (W/S)
-            const glm::dvec3 yawAxis   = -getRelAxis_(rw0, 1);  // up    (A/D)
-            const glm::dvec3 rollAxis  =  getRelAxis_(rw0, 2);  // nose  (Q/E)
+            Part *rw0 = firstWheel();
+            const glm::dvec3 pitchAxis = -partAxis(rw0, 0);  // right (W/S)
+            const glm::dvec3 yawAxis   = -partAxis(rw0, 1);  // up    (A/D)
+            const glm::dvec3 rollAxis  =  partAxis(rw0, 2);  // nose  (Q/E)
             const glm::dvec3 worldAxis =
                 (double)stick[0] * rollAxis
                 + (double)stick[1] * pitchAxis
@@ -1064,11 +1059,11 @@ public:
        roll/third for a residual spin the law is not killing. */
     void slew_log(double time) {
         if(slew == SlewNone) { return; }
-        Body *wheel = firstWheel();
+        Part *wheel = firstWheel();
         if(wheel == nullptr) { return; }
-        const glm::dvec3 facing = getRelAxis_(wheel, 2);
+        const glm::dvec3 facing = partAxis(wheel, 2);
         if(slew == SlewKillRot) {
-            const glm::dvec3 w = GetAngVelocity(wheel);
+            const glm::dvec3 w = partAngVel(wheel);
             printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
                    "w=[%+.4f %+.4f %+.4f]\n",
                    time, glm::length(w), w.x, w.y, w.z);
@@ -1097,7 +1092,7 @@ public:
         axis = glm::normalize(axis);
         const glm::dvec3 rollAxis  = glm::normalize(facing);
         const glm::dvec3 thirdAxis = glm::cross(axis, rollAxis);
-        const glm::dvec3 w = GetAngVelocity(wheel);
+        const glm::dvec3 w = partAngVel(wheel);
         const double w_slew  = glm::dot(w, axis);
         const double w_roll  = glm::dot(w, rollAxis);
         const double w_third = glm::dot(w, thirdAxis);
@@ -1124,13 +1119,13 @@ public:
        shares the ship's rigid-body angular velocity, so any one works. */
     void att_log(double time) {
         if(parts.empty()) { return; }
-        Body *hull = nullptr;
+        Part *hull = nullptr;
         for(Part *p : parts) {
-            if(!p->isWheel()) { hull = p->body; break; }
+            if(!p->isWheel()) { hull = p; break; }
         }
-        if(!hull) { hull = parts[0]->body; }
-        const glm::dvec3 nose = getRelAxis_(hull, 2);
-        const glm::dvec3 w = GetAngVelocity(hull);
+        if(!hull) { hull = parts[0]; }
+        const glm::dvec3 nose = partAxis(hull, 2);
+        const glm::dvec3 w = partAngVel(hull);
         printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
                "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s\n",
                time, nose.x, nose.y, nose.z,
@@ -1330,7 +1325,7 @@ public:
         for(Part *p : parts) {
             // Per-part terrain shadow
             const float shadow =
-                ComputeTerrainShadow(m_parent, frame, GetPosition(p->body), sun);
+                ComputeTerrainShadow(m_parent, frame, partPos(p), sun);
             p->body->Draw(camera, sunlightVec, shadow, xform);
         }
     }
@@ -1377,7 +1372,7 @@ public:
     }
 
     glm::dvec3 GetVel() {
-        return GetVelocity(controller->body);
+        return partVel(controller);
     }
 
 protected:
@@ -1459,10 +1454,13 @@ protected:
         const glm::dvec3 com = get_center_of_mass();
         glm::dmat3 I = glm::dmat3(0.0);
         for(Part *p : parts) {
-            Body *b = p->body;
-            const glm::dvec3 d = GetPosition(b) - com;
-            const glm::dmat3 R = GetOrient(b);
-            const glm::dvec3 il = getInertiaDiag(b);
+            const glm::dvec3 d = partPos(p) - com;
+            const glm::dmat3 R = partRot(p);
+            /* a part's own hull inertia is a SHAPE property, not a pose, so
+               it stays read off the Body. The compound's child inertias are
+               the same numbers -- checkCompoundInvariants holds the two
+               assemblies against each other. */
+            const glm::dvec3 il = getInertiaDiag(p->body);
             /* part's local inertia is diagonal (Bullet stores it that way);
                build the diagonal matrix explicitly -- GLM has no
                vec -> diagonal-mat constructor */
@@ -1471,7 +1469,7 @@ protected:
                 0.0, il.y, 0.0,
                 0.0, 0.0, il.z);
             I += R * il_diag * glm::transpose(R);
-            I += b->mass * (glm::dot(d, d) * glm::dmat3(1.0) - glm::outerProduct(d, d));
+            I += p->body->mass * (glm::dot(d, d) * glm::dmat3(1.0) - glm::outerProduct(d, d));
         }
         return I;
     }
@@ -1506,8 +1504,8 @@ protected:
     void slewToward(glm::dvec3 dir, double h) {
         if(glm::length2(dir) < 1e-12) { return; } /* no direction to align to */
         dir = glm::normalize(dir);
-        Body *wheel = firstWheel();
-        const glm::dvec3 facing = getRelAxis_(wheel, 2);
+        Part *wheel = firstWheel();
+        const glm::dvec3 facing = partAxis(wheel, 2);
         const double E = glm::acos(glm::clamp(glm::dot(facing, dir), -1.0, 1.0));
         if(E < 1e-9) { return; } /* already aligned */
         glm::dvec3 axis = glm::cross(facing, dir); /* + turns the nose toward dir */
@@ -1530,7 +1528,7 @@ protected:
            slew axis rotated that undamped spin coupled into the nose -- the
            sustained wobble around the prograde/retrograde target. Killing it
            is the fix. Roll about the nose is intentionally left free. */
-        const glm::dvec3 w_now = GetAngVelocity(wheel);
+        const glm::dvec3 w_now = partAngVel(wheel);
         const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
         glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
         glm::dvec3 torque = I * dW / h;
@@ -1550,8 +1548,8 @@ protected:
        min(|w|, alpha*h) per substep -- monotonic, no sign flip, never more
        forceful than a maxed manual stick. */
     void killRotStep(double h) {
-        Body *wheel = firstWheel();
-        const glm::dvec3 w = GetAngVelocity(wheel);
+        Part *wheel = firstWheel();
+        const glm::dvec3 w = partAngVel(wheel);
         if(glm::length(w) < 0.001) { return; } /* at rest: nothing to kill */
         const glm::dmat3 I = getInertia();
         glm::dvec3 torque(0.0);
@@ -1570,49 +1568,48 @@ protected:
 
 public:
 
-    glm::dmat3 GetOrientRelTo(Body *part, Frame *relTo)
+    /* A part's state in another frame's coordinates. These take the Part,
+       not its Body, so their reads go through the part accessors like every
+       other consumer of a part's state. */
+    glm::dmat3 GetOrientRelTo(const Part *part, Frame *relTo)
     {
-        glm::dmat3 GetOrient(Body *b);
         glm::dmat3 forient = frame->GetOrientRelTo(relTo);
-        return forient * GetOrient(part);
+        return forient * partRot(part);
     }
 
-    glm::dvec3 GetPositionRelTo(Body *part, Frame *relTo) {
+    glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo) {
         glm::dvec3 fpos = frame->GetPositionRelTo(relTo);
         glm::dmat3 forient = frame->GetOrientRelTo(relTo);
-        return forient * GetPosition(part) + fpos;
+        return forient * partPos(part) + fpos;
     }
 
-    glm::dvec3 GetVelocityRelTo(Body *part, Frame *relTo) {
+    glm::dvec3 GetVelocityRelTo(const Part *part, Frame *relTo) {
         glm::dmat3 forient = frame->GetOrientRelTo(relTo);
-        glm::dvec3 vel = GetVelocity(part);
-        glm::dvec3 pos = GetPosition(part);
+        glm::dvec3 vel = partVel(part);
+        glm::dvec3 pos = partPos(part);
         if(frame != relTo) vel += frame->GetStasisVelocity(pos);
         return forient * vel + frame->GetVelocityRelTo(relTo);
     }
 
     void moveToFrame(Frame *newFrame) {
-        void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot);
-        glm::dmat3 GetOrient(Body *b);
-
         for(Part *p : parts) {
             const char *name = p->def->name.c_str();
 
-            glm::dvec3 oldVel = GetVelocity(p->body);
-            glm::dvec3 vel = GetVelocityRelTo(p->body, newFrame);
+            glm::dvec3 oldVel = partVel(p);
+            glm::dvec3 vel = GetVelocityRelTo(p, newFrame);
             glm::dvec3 fpos = frame->GetPositionRelTo(newFrame);
             glm::dmat3 forient = frame->GetOrientRelTo(newFrame);
 
-            glm::dvec3 newPos = forient * GetPosition(p->body) + fpos;
-            glm::dmat3 newOrient = forient * GetOrient(p->body);
+            glm::dvec3 newPos = forient * partPos(p) + fpos;
+            glm::dmat3 newOrient = forient * partRot(p);
 
-            glm::dvec3 pos = GetPosition(p->body);
+            glm::dvec3 pos = partPos(p);
             printf("@@@ %s OLD position: %.0f %.0f %.0f\n", name, pos.x, pos.y, pos.z);
             printf("@@@ %s NEW position: %.0f %.0f %.0f\n", name, newPos.x, newPos.y, newPos.z);
 
             setPosRot(p->body, newPos, newOrient);
 
-            pos = GetPosition(p->body);
+            pos = partPos(p);
             // The stored velocity is the frame-coordinate velocity, so a ship's
             // inertial velocity is R*(v + stasis(p)) + V.  GetVelocityRelTo
             // already added the OLD frame's stasis term; the NEW frame's term
@@ -1651,7 +1648,7 @@ public:
         if(ship_r > frame->soi + 10000) {
             // switching to parent SOI if there is one
             if(frame->parent != NULL) {
-                glm::dvec3 pos = GetPosition(controller->body);
+                glm::dvec3 pos = partPos(controller);
                 printf("@@@ %s switching frame from %s to parent %s\n",
                        name.c_str(), frame->name.c_str(),
                        frame->parent->name.c_str());
@@ -1659,14 +1656,14 @@ public:
                 printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
                 printf("@@@@@ OLD position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
                 moveToFrame(frame->parent);
-                pos = GetPosition(controller->body);
+                pos = partPos(controller);
                 printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
             }
         }
         else {
             // check if we've entered a child SOI
             for(auto&& child : frame->children) {
-                double dist = glm::length(GetPositionRelTo(controller->body, child));
+                double dist = glm::length(GetPositionRelTo(controller, child));
                 if(dist < child->soi - 10000) {
                     printf("@@@ %s switching frame from %s to child %s, distance: %.0f\n",
                            name.c_str(), frame->name.c_str(),
@@ -1704,7 +1701,7 @@ public:
         glm::dvec3 v(0.0);
         double mtot = 0.0;
         for(Part *p2 : parts) {
-            v += GetVelocity(p2->body) * p2->body->mass;
+            v += partVel(p2) * p2->body->mass;
             mtot += p2->body->mass;
         }
         v /= mtot;
@@ -1750,7 +1747,7 @@ public:
         glm::dvec3 v(0.0);
         double mtot = 0.0;
         for(Part *p2 : parts) {
-            v += GetVelocity(p2->body) * p2->body->mass;
+            v += partVel(p2) * p2->body->mass;
             mtot += p2->body->mass;
         }
         v /= mtot;
@@ -1768,8 +1765,8 @@ public:
            axes == old frame axes; rail_orient carries them into the
            inertial node and then holds inertially) */
         for(Part *p2 : parts) {
-            p2->railRelPos = GetPosition(p2->body) - com_frame;
-            p2->railRelRot = GetOrient(p2->body);
+            p2->railRelPos = partPos(p2) - com_frame;
+            p2->railRelRot = partRot(p2);
         }
 
         if(grounded) {
