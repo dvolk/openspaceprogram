@@ -21,7 +21,7 @@ const PartDef *PartsCatalog::find(const std::string &name) const {
     return nullptr;
 }
 
-static int resource_index_from_string(const std::string &s, const char *ctx) {
+static int resource_index_from_string(const std::string &s, const std::string &ctx) {
     if(s == "hydrogen") { return (int)ResourceType::Hydrogen; }
     if(s == "lox") { return (int)ResourceType::LOX; }
     if(s == "ec") { return (int)ResourceType::EC; }
@@ -29,7 +29,7 @@ static int resource_index_from_string(const std::string &s, const char *ctx) {
     if(s == "water") { return (int)ResourceType::Water; }
     if(s == "food") { return (int)ResourceType::Food; }
     if(s == "hydrazine") { return (int)ResourceType::Hydrazine; }
-    throw std::runtime_error(std::string(ctx) + ": unknown resource '" + s
+    throw std::runtime_error(ctx + ": unknown resource '" + s
                              + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine)");
 }
 
@@ -61,9 +61,9 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(std::string("parts: entry ") + std::to_string(i)
                                      + " of " + path + ": missing \"name\"");
         }
-        const char *ctx = (std::string("parts: ") + d.name + ": ").c_str();
+        const std::string ctx = "parts: " + d.name + ": ";
         if(cat.find(d.name) != nullptr) {
-            throw std::runtime_error(std::string(ctx) + "duplicate part name");
+            throw std::runtime_error(ctx + "duplicate part name");
         }
 
         d.type = pv.value("type", std::string(""));   // free-form label (display only)
@@ -78,11 +78,11 @@ PartsCatalog load_parts_catalog(const char *path) {
             d.mesh = pv.value("mesh", std::string(""));
             d.texture = pv.value("texture", std::string(""));
             if(d.mesh.empty() || d.texture.empty()) {
-                throw std::runtime_error(std::string(ctx) + "missing \"mesh\"/\"texture\"");
+                throw std::runtime_error(ctx + "missing \"mesh\"/\"texture\"");
             }
             d.mass = pv.value("mass", -1.0);
             if(d.mass <= 0.0) {
-                throw std::runtime_error(std::string(ctx) + "\"mass\" must be > 0 (kg)");
+                throw std::runtime_error(ctx + "\"mass\" must be > 0 (kg)");
             }
 
             /* size (metres): the .obj is authored to match; defaults are
@@ -90,10 +90,10 @@ PartsCatalog load_parts_catalog(const char *path) {
             d.radius = pv.value("radius", 1.0);
             d.height = pv.value("height", 2.0);
             if(d.radius <= 0.0) {
-                throw std::runtime_error(std::string(ctx) + "\"radius\" must be > 0 (m)");
+                throw std::runtime_error(ctx + "\"radius\" must be > 0 (m)");
             }
             if(d.height <= 0.0) {
-                throw std::runtime_error(std::string(ctx) + "\"height\" must be > 0 (m)");
+                throw std::runtime_error(ctx + "\"height\" must be > 0 (m)");
             }
         }
 
@@ -102,7 +102,7 @@ PartsCatalog load_parts_catalog(const char *path) {
            of them is a passive mass (e.g. a bare capsule). */
         d.torque = pv.value("torque", 0.0);
         if(d.torque < 0.0) {
-            throw std::runtime_error(std::string(ctx) + "\"torque\" must be >= 0 (N m)");
+            throw std::runtime_error(ctx + "\"torque\" must be >= 0 (N m)");
         }
 
         bool has_rate = pv.contains("fuel_rate");
