@@ -1,0 +1,66 @@
+{
+  "name": "heavy_asp",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1", "stage": 6 },
+    { "part": "reaction_wheel", "id": "rw1", "stage": 6 },
+    { "part": "tank_r1h1", "id": "tank_r1h1_1", "stage": 6 },
+    { "part": "engine", "id": "engine_1", "stage": 6 },
+
+    { "part": "decoupler_r1", "id": "dec_3", "stage": 5 },
+
+    { "part": "adapter_r1.5to1", "id": "adapter1", "stage": 5 },
+    { "part": "reaction_wheel_r1.5h0.375", "id": "rw2", "stage": 5 },
+    { "part": "tank_r1.5h3", "id": "tank_r1.5h3", "stage": 5 },
+    { "part": "engine_r1.5h3", "id": "engine_2", "stage": 5 },
+
+    { "part": "decoupler_r1.5", "id": "dec_2", "stage": 4 },
+    { "part": "adapter_r2.25to1.5", "id": "adapter2", "stage": 4 },
+    { "part": "reaction_wheel_r2.25h0.5625", "id": "rw3", "stage": 4 },
+    { "part": "tank_r2.25h5", "id": "big_tank1", "stage": 4 },
+    { "part": "tank_r2.25h5", "id": "big_tank2", "stage": 4 },
+    { "part": "engine_r2.25h4.5", "id": "engine_central", "stage": 1 },
+
+    { "part": "decoupler_r1.5", "id": "dec_1c",         "parent": "big_tank1",      "stage": 3, "attach": "side", "angle": 0  },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_c1", "parent": "dec_1c",         "stage": 3 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_c2", "parent": "tank_r1.5h3_c1", "stage": 3 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_c3", "parent": "tank_r1.5h3_c2", "stage": 3 },
+    { "part": "engine_r1.5h3",  "id": "engine_c",       "parent": "tank_r1.5h3_c3", "stage": 1 },
+    { "part": "fuel_link",      "id": "asparagus_c_b",  "from":   "tank_r1.5h3_c3",        "to": "tank_r1.5h3_b3" },
+
+    { "part": "decoupler_r1.5", "id": "dec_1b",         "parent": "big_tank1",      "stage": 2, "attach": "side", "angle": 60  },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_b1", "parent": "dec_1b",         "stage": 2 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_b2", "parent": "tank_r1.5h3_b1", "stage": 2 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_b3", "parent": "tank_r1.5h3_b2", "stage": 2 },
+    { "part": "engine_r1.5h3",  "id": "engine_b",       "parent": "tank_r1.5h3_b3", "stage": 1 },
+    { "part": "fuel_link",      "id": "asparagus_b_a",  "from":   "tank_r1.5h3_b3",        "to": "tank_r1.5h3_a3" },
+
+    { "part": "decoupler_r1.5", "id": "dec_1a",         "parent": "big_tank1",      "stage": 1, "attach": "side", "angle": 120  },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_a1", "parent": "dec_1a",         "stage": 1 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_a2", "parent": "tank_r1.5h3_a1", "stage": 1 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_a3", "parent": "tank_r1.5h3_a2", "stage": 1 },
+    { "part": "engine_r1.5h3",  "id": "engine_a",       "parent": "tank_r1.5h3_a3", "stage": 1 },
+    { "part": "fuel_link",      "id": "asparagus_a_C",  "from":   "tank_r1.5h3_a3",        "to": "engine_central" },
+
+    { "part": "decoupler_r1.5", "id": "dec_1f",         "parent": "big_tank1",      "stage": 3, "attach": "side", "angle": 180  },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_f1", "parent": "dec_1f",         "stage": 3 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_f2", "parent": "tank_r1.5h3_f1", "stage": 3 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_f3", "parent": "tank_r1.5h3_f2", "stage": 3 },
+    { "part": "engine_r1.5h3",  "id": "engine_f",       "parent": "tank_r1.5h3_f3", "stage": 1 },
+    { "part": "fuel_link",      "id": "asparagus_f_e",  "from":   "tank_r1.5h3_f3",        "to": "tank_r1.5h3_e3" },
+
+    { "part": "decoupler_r1.5", "id": "dec_1e",         "parent": "big_tank1",      "stage": 2, "attach": "side", "angle": 240  },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_e1", "parent": "dec_1e",         "stage": 2 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_e2", "parent": "tank_r1.5h3_e1", "stage": 2 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_e3", "parent": "tank_r1.5h3_e2", "stage": 2 },
+    { "part": "engine_r1.5h3",  "id": "engine_e",       "parent": "tank_r1.5h3_e3", "stage": 1 },
+    { "part": "fuel_link",      "id": "asparagus_e_d",  "from":   "tank_r1.5h3_e3",        "to": "tank_r1.5h3_d3" },
+
+    { "part": "decoupler_r1.5", "id": "dec_1d",         "parent": "big_tank1",      "stage": 1, "attach": "side", "angle": 300  },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_d1", "parent": "dec_1d",         "stage": 1 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_d2", "parent": "tank_r1.5h3_d1", "stage": 1 },
+    { "part": "tank_r1.5h3",    "id": "tank_r1.5h3_d3", "parent": "tank_r1.5h3_d2", "stage": 1 },
+    { "part": "engine_r1.5h3",  "id": "engine_d",       "parent": "tank_r1.5h3_d3", "stage": 1 },
+    { "part": "fuel_link",      "id": "asparagus_d_C",  "from":   "tank_r1.5h3_d3",        "to": "engine_central" }
+  ]
+}
