@@ -1177,6 +1177,95 @@ public:
         fflush(stdout);
     }
 
+    /* --fuel-log: each fuel group's fuel mass (per resource), the
+       per-tank breakdown, and the fuel links -- the instrument for the
+       fuel-link drain-rate bug: two symmetric radial groups must show
+       equal mass at every sample, so a one-before-the-other drain shows
+       up as the two group lines diverging while the ship spins. */
+    static const char *resourceName(int r) {
+        switch((ResourceType)r) {
+            case ResourceType::Hydrogen:  return "H2";
+            case ResourceType::LOX:       return "LOX";
+            case ResourceType::EC:        return "EC";
+            case ResourceType::Oxygen:    return "O2";
+            case ResourceType::Water:     return "H2O";
+            case ResourceType::Food:      return "food";
+            case ResourceType::Hydrazine: return "N2H4";
+            case ResourceType::Num:       break;   /* count, not a resource */
+        }
+        return "?";
+    }
+
+    void fuel_log(double time) {
+        /* distinct group ids, ascending (stable order across ticks). */
+        std::vector<int> groups;
+        for(size_t i = 0; i < parts.size(); i++) {
+            const int g = parts[i]->fuelGroup;
+            if(g < 0) { continue; }   /* a fuel barrier: in no group */
+            bool seen = false;
+            for(size_t k = 0; k < groups.size(); k++) {
+                if(groups[k] == g) { seen = true; break; }
+            }
+            if(!seen) { groups.push_back(g); }
+        }
+        std::sort(groups.begin(), groups.end());
+        printf("[fuel] t=%.3fs ship=\"%s\" groups=%zu\n",
+               time, name.c_str(), groups.size());
+        for(size_t gi = 0; gi < groups.size(); gi++) {
+            const int g = groups[gi];
+            /* the resources this group carries (any member tank has
+               capacity > 0), printed in resource order. */
+            std::vector<int> res;
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                for(size_t i = 0; i < parts.size(); i++) {
+                    Part *p = parts[i];
+                    if(p->fuelGroup != g || !p->isTank()) { continue; }
+                    if(p->def->capacity[r] > 0.0f) { res.push_back(r); break; }
+                }
+            }
+            printf("[fuel]   g%d", g);
+            for(size_t ri = 0; ri < res.size(); ri++) {
+                const int r = res[ri];
+                float cur = 0.0f, cap = 0.0f;
+                for(size_t i = 0; i < parts.size(); i++) {
+                    Part *p = parts[i];
+                    if(p->fuelGroup != g || !p->isTank()) { continue; }
+                    cur += p->resources.current[r];
+                    cap += p->resources.capacity[r];
+                }
+                printf(" %s=%.1f/%.1f", resourceName(r), cur, cap);
+            }
+            printf("\n");
+            /* each member tank (p<index> = its position in parts), so a
+               within-group imbalance is visible too -- a pro-rata drain
+               keeps the sibling lines equal. */
+            for(size_t i = 0; i < parts.size(); i++) {
+                Part *p = parts[i];
+                if(p->fuelGroup != g || !p->isTank()) { continue; }
+                printf("[fuel]     p%zu %s", i, p->def->name.c_str());
+                for(size_t ri = 0; ri < res.size(); ri++) {
+                    printf(" %s=%.1f", resourceName(res[ri]),
+                           p->resources.current[res[ri]]);
+                }
+                printf("\n");
+            }
+        }
+        /* the fuel links, collapsed to group ids (the same rule
+           fuelDrainOrder applies: skip barrier endpoints and self-links). */
+        if(!fuelLinks.empty()) {
+            bool any = false;
+            for(size_t k = 0; k < fuelLinks.size(); k++) {
+                const int a = fuelLinks[k].from->fuelGroup;
+                const int b = fuelLinks[k].to->fuelGroup;
+                if(a < 0 || b < 0 || a == b) { continue; }
+                printf("%s g%d->g%d", any ? " " : "[fuel]   links", a, b);
+                any = true;
+            }
+            if(any) { printf("\n"); }
+        }
+        fflush(stdout);
+    }
+
     /* the largest wheel's rated torque (N m) -- the per-wheel rating for
        the HUD; the ship's TOTAL wheel authority is maxTorque() (the sum) */
     float GetWheelTorque() {

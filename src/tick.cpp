@@ -258,6 +258,17 @@ void tick(Game &g) {
                 }
             }
 
+            /* --fuel-log: each fuel group's fuel mass + the fuel links,
+               once per 0.5 s of sim time (the heavy_two radial drain
+               instrument: the symmetric radial groups must stay equal). */
+            if(g.args.fuel_log) {
+                static double last_fuel_log = -1e30;
+                if(g.time - last_fuel_log >= 0.5) {
+                    last_fuel_log = g.time;
+                    g.ship->fuel_log(g.time);
+                }
+            }
+
             /* --slew-log: autopilot (prograde/retrograde/kill-rot) state,
                once per 0.1 s of sim time -- fine enough to resolve the
                slew's ~1 s timescale and any oscillation around the target. */

@@ -204,6 +204,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "hull's angular velocity (world coords) to stdout; the "
                  "instrument for the attitude-physics e2e test");
 
+    app.add_flag("--fuel-log", args.fuel_log,
+                 "Periodically print each fuel group's fuel mass (per "
+                 "resource, plus each member tank) and the ship's fuel "
+                 "links to stdout; the instrument for the fuel-link "
+                 "drain-rate bug (symmetric radial groups must stay equal)");
+
     app.add_flag("--compound-check", args.compound_check,
                  "Periodically print, for every ship, how far the part poses "
                  "derived from its single compound rigid body are from the "
