@@ -20,7 +20,7 @@
     { "part": "reaction_wheel_r2.25h0.5625", "id": "rw3", "stage": 2 },
     { "part": "tank_r2.25h5", "id": "central_tank2", "stage": 2 },
     { "part": "tank_r2.25h5", "id": "central_tank3", "parent": "central_tank2", "stage": 2 },
-    { "part": "engine_r2.25h4.5", "id": "central_engine2", "parent": "central_tank3", "stage": 2 },
+    { "part": "engine_r2.25h4.5", "id": "central_engine2", "parent": "central_tank3", "stage": 1 },
 
     { "part": "decoupler_radial", "id": "rdecupler1", "attach": "side", "parent": "central_tank2", "stage": 1 },
     { "part": "tank_r1.5h5", "id": "rtank11", "parent": "rdecupler1", "attach": "side", "stage": 1 },
