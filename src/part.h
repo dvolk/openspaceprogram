@@ -73,6 +73,12 @@ struct Part {
         }
         return false;
     }
+    /* a battery: EC storage (capacity[EC] > 0). isTank() is ALSO true for a
+       battery (it has capacity), so the fuel system seeds + fuel-groups it
+       like any tank; the power system reads its EC as the charge. */
+    bool isBattery() const {
+        return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0f;
+    }
 
     /* --- derived behavior values (the old per-thruster / per-wheel
        vectors, now read straight off the def) --- */
@@ -80,4 +86,6 @@ struct Part {
     double rate() const { return def->fuel_rate; }        // kg/s per tank
     double wheelTorque() const { return def->torque; }    // N m, rated
     double exhaustVelocity() const { return def->exhaust_velocity; }
+    double powerDraw() const { return def->power_draw; }  // W, while active
+    double powerGen() const { return def->power_gen; }    // W, constant
 };

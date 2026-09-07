@@ -26,7 +26,10 @@
            "torque": 5000,                // optional, N m -> contributes as a reaction wheel
            "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
+           "power_draw": 1000,            // optional, W; > 0 -> draws EC while active (a reaction wheel)
+           "power_gen": 300,             // optional, W; > 0 -> a constant EC source (an RTG)
            "capacity": { "hydrogen": 26100, "lox": 26100 }, // optional, kg -> a propellant tank
+           "capacity": { "ec": 157079 },  // optional, Wh -> a battery (EC storage)
            "crew_capacity": 3,             // optional, int; > 0 -> a capsule (holds that many EVA characters)
            "hull_margin": 0.0,            // optional, m; collision convex-hull margin
            "fuel_barrier": true           // optional, bool; true -> fuel does not flow across this part (splits fuel groups)
@@ -135,6 +138,14 @@ struct PartDef {
     double torque;            // N m; > 0 -> contributes as a reaction wheel
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
     double exhaust_velocity;  // m/s; with fuel_rate -> thruster
+    /* Electrical (KSP-style EC), independent of each other:
+       power_draw (W) > 0 -> a part that draws EC while active (a reaction
+       wheel); power_gen (W) > 0 -> a constant EC source (an RTG). A battery
+       is neither -- it is EC STORAGE, marked by capacity[EC] > 0 (see
+       Part::isBattery). The per-tick balance (gen vs draw, charging /
+       draining the batteries, gating the wheels) is Vehicle's job. */
+    double power_draw;
+    double power_gen;
     std::vector<float> capacity; // kg per ResourceType; > 0 -> propellant tank
 
     /* Crew capacity: how many EVA characters (src/eva.h) this part can hold

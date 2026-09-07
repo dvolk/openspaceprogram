@@ -121,6 +121,32 @@ int main() {
     // the wheel is a thin disc: height = 25% of the radius
     CHECK(rw->radius == 1.0 && rw->height == 0.25);
     CHECK(rw->mesh == "reaction_wheel_r1h0.25.obj");
+    // the wheel draws EC while active (the power budget) but generates none
+    CHECK(rw->power_draw > 0.0);
+    CHECK(rw->power_gen == 0.0);
+
+    // battery: EC STORAGE (capacity[EC] > 0), no power draw or gen. The mass
+    // includes the cells (like a tank includes propellant).
+    const PartDef *bat = cat.find("battery");
+    CHECK(bat != nullptr);
+    CHECK(bat->type == "battery");
+    CHECK(bat->mass > 0.0);
+    CHECK(bat->capacity[(int)ResourceType::EC] > 0.0f);
+    CHECK(bat->power_draw == 0.0 && bat->power_gen == 0.0);
+    CHECK(bat->torque == 0.0);
+    // the other resource slots stay empty (it's an EC store, not a fuel tank)
+    CHECK(bat->capacity[(int)ResourceType::Hydrogen] == 0.0f);
+    CHECK(bat->capacity[(int)ResourceType::LOX] == 0.0f);
+
+    // rtg: a constant EC source (power_gen > 0), no draw, no EC storage.
+    const PartDef *rtg = cat.find("rtg");
+    CHECK(rtg != nullptr);
+    CHECK(rtg->type == "rtg");
+    CHECK(rtg->mass > 0.0);
+    CHECK(rtg->power_gen > 0.0);
+    CHECK(rtg->power_draw == 0.0);
+    CHECK(rtg->capacity[(int)ResourceType::EC] == 0.0f);
+    CHECK(rtg->torque == 0.0);
 
     // engine is the pump: thrust params, but no propellant of its own
     CHECK(eng->type == "engine");
@@ -723,6 +749,28 @@ int main() {
         f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
              "\"hull_margin\": -0.5 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // power fields must be >= 0 (W)
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"reaction_wheel\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"power_draw\": -5 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"rtg\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"power_gen\": -5 } ] }";
         f.close();
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);
