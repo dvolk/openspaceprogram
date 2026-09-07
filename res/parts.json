@@ -9,6 +9,10 @@
       "radius": 1.0,
       "height": 2.0,
       "torque": 200,
+      "power_draw_constant": 100,
+      "capacity": {
+        "ec": 2000
+      },
       "crew_capacity": 1
     },
     {
@@ -20,6 +24,10 @@
       "radius": 1.5,
       "height": 3.0,
       "torque": 300,
+      "power_draw_constant": 300,
+      "capacity": {
+        "ec": 6000
+      },
       "crew_capacity": 3
     },
     {
@@ -31,6 +39,10 @@
       "radius": 2.25,
       "height": 4.5,
       "torque": 450,
+      "power_draw_constant": 600,
+      "capacity": {
+        "ec": 12000
+      },
       "crew_capacity": 6
     },
     {

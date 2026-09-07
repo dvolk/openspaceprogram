@@ -20,6 +20,12 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
                   wheel also carries power_draw = radius * WHEEL_DRAW_WATTS_PER_M
+  capsule (power) power_draw_constant = crew * CAPSULE_LIFE_SUPPORT_W_PER_CREW
+                  (a CONSTANT draw, life support -- on all the time, unlike a
+                   wheel's power_draw which is only while active)
+                  capacity[EC]        = crew * CAPSULE_BATTERY_WH_PER_CREW
+                  (a small built-in battery; the reserve that keeps the crew
+                   alive. Scales with crew.)
   battery         active   = volume * BATTERY_ACTIVE_DENSITY (the Li-ion cells)
                   dry      = volume * BATTERY_DRY_DENSITY (hull/BMS/wiring)
                   mass     = active + dry
@@ -89,12 +95,20 @@ WHEEL_TORQUE_PER_M = 2000.0
 #                   (the cells fill the volume at the pack's bulk density;
 #                    the charge is that mass times the cell Wh/kg. Like the
 #                    fuel tank, a share of the volume is hull/BMS/wiring.)
+#   capsule         power_draw_constant = crew * CAPSULE_LIFE_SUPPORT_W_PER_CREW
+#                   (a CONSTANT draw, life support, on all the time; scales
+#                    with the crew it shelters)
+#                   capacity[EC]        = crew * CAPSULE_BATTERY_WH_PER_CREW
+#                   (a small built-in battery, the reserve that keeps the
+#                    crew alive; scales with crew.)
 WHEEL_DRAW_WATTS_PER_M = 1000.0   # W per m of radius (r1 -> 1000 W)
 RTG_WATTS_PER_M3       = 380.0    # W per m^3 (r1 -> ~300 W)
 RTG_DENSITY            = 150.0    # kg/m^3, fuel + thermoelectrics + housing
 BATTERY_ACTIVE_DENSITY = 1000.0   # kg/m^3, Li-ion pack bulk density
 BATTERY_WATTS_PER_KG   = 200.0    # Wh/kg, modern space Li-ion (per kg of cells)
 BATTERY_DRY_DENSITY    = 100.0    # kg/m^3, hull + BMS + wiring overhead
+CAPSULE_LIFE_SUPPORT_W_PER_CREW = 100.0   # W per crew, constant (base capsule = 100 W)
+CAPSULE_BATTERY_WH_PER_CREW     = 2000.0  # Wh per crew (~20 laptop batteries; base = 2 kWh)
 
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual: mesh/texture are None and generate() skips the
@@ -258,6 +272,13 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         if ptype == "capsule":
             e["torque"] = clean(CAPSULE_TORQUE_PER_M * radius)
+            # a crew module also has a CONSTANT life-support draw (on all the
+            # time, unlike a wheel's active power_draw) and a small built-in
+            # battery (EC capacity) as the reserve; both scale with the crew
+            # it shelters (EXTRA_FIELDS).
+            crew = EXTRA_FIELDS[name]["crew_capacity"]
+            e["power_draw_constant"] = clean(CAPSULE_LIFE_SUPPORT_W_PER_CREW * crew)
+            e["capacity"] = {"ec": clean(CAPSULE_BATTERY_WH_PER_CREW * crew)}
         elif ptype == "reaction_wheel":
             e["torque"] = clean(WHEEL_TORQUE_PER_M * radius)
             e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_M * radius)
@@ -278,6 +299,12 @@ def summary_line(e):
         c = e["capacity"]["hydrogen"] + e["capacity"]["lox"]
         return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
             n, c, e["mass"], clean(c * TANK_DRY_DENSITY / PROP_DENSITY))
+    if "power_draw_constant" in e:
+        # a capsule: attitude torque + a constant life-support draw + a small
+        # built-in battery (EC capacity) -- show all three, not just the EC.
+        tor = "  torque=%s" % e["torque"] if "torque" in e else ""
+        ec = "  EC=%dWh" % e["capacity"]["ec"] if "capacity" in e and "ec" in e["capacity"] else ""
+        return "  %-24s mass=%7s%s  const=%dW%s" % (n, e["mass"], tor, e["power_draw_constant"], ec)
     if "capacity" in e and "ec" in e["capacity"]:
         return "  %-24s EC=%6dWh  mass=%7s" % (n, e["capacity"]["ec"], e["mass"])
     if "power_gen" in e:

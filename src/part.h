@@ -86,6 +86,7 @@ struct Part {
     double rate() const { return def->fuel_rate; }        // kg/s per tank
     double wheelTorque() const { return def->torque; }    // N m, rated
     double exhaustVelocity() const { return def->exhaust_velocity; }
-    double powerDraw() const { return def->power_draw; }  // W, while active
-    double powerGen() const { return def->power_gen; }    // W, constant
+    double powerDraw() const { return def->power_draw; }          // W, only while active (a reaction wheel)
+    double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time (capsule life support)
+    double powerGen() const { return def->power_gen; }            // W, constant source (an RTG)
 };

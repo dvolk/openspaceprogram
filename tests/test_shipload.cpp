@@ -114,6 +114,13 @@ int main() {
     CHECK(cap->texture == "capsule.png");
     CHECK(cap->torque > 0.0);   // the capsule carries an attitude wheel
     CHECK(cap->fuel_rate == 0.0 && cap->exhaust_velocity == 0.0);
+    // the capsule is a crew module: a CONSTANT life-support draw (on all the
+    // time, unlike a wheel's active power_draw) plus a small built-in battery
+    // (EC capacity) as the reserve. It is not an active draw and not a source.
+    CHECK(cap->power_draw_constant > 0.0);            // life support, always on
+    CHECK(cap->capacity[(int)ResourceType::EC] > 0.0f); // built-in battery
+    CHECK(cap->power_draw == 0.0);                    // not an active draw
+    CHECK(cap->power_gen == 0.0);                     // not a source
 
     CHECK(rw->type == "reaction_wheel");
     CHECK(rw->mass > 0.0);
@@ -208,6 +215,9 @@ int main() {
     CHECK(t152->capacity[(int)ResourceType::Hydrogen]
           > t11->capacity[(int)ResourceType::Hydrogen]);
     CHECK(c153->radius == 1.5 && c153->height == 3.0 && c153->torque > cap->torque);
+    // the larger capsule shelters more crew: more constant draw + a bigger battery
+    CHECK(c153->power_draw_constant > cap->power_draw_constant);
+    CHECK(c153->capacity[(int)ResourceType::EC] > cap->capacity[(int)ResourceType::EC]);
 
     // nose caps: a simple pointy cone on a tank's top face, one per tank
     // radius; height = radius / 2; passive (no behavior fields at all)
@@ -268,7 +278,10 @@ int main() {
         mass += d->mass;
         if(d->fuel_rate > 0.0 && d->exhaust_velocity > 0.0) { thrust += d->fullThrust(); }
         if(d->torque > 0.0) { torque += d->torque; }
-        for(size_t r = 0; r < d->capacity.size(); r++) { fuel += d->capacity[r]; }
+        // propellant only (H2/LOX) -- the capsule's built-in EC battery is
+        // charge, not propellant
+        fuel += d->capacity[(int)ResourceType::Hydrogen]
+              + d->capacity[(int)ResourceType::LOX];
     }
     CHECK(mass > 0.0);
     CHECK(near(thrust, eng->fullThrust())); // only the engine thrusts
@@ -287,12 +300,12 @@ int main() {
             const PartDef *d = ex.parts[i].def;
             ex_mass += d->mass;
             if(d->torque > 0.0) { ex_torque += d->torque; }
-            bool has_cap = false;
-            for(size_t r = 0; r < d->capacity.size(); r++) {
-                ex_fuel += d->capacity[r];
-                if(d->capacity[r] > 0.0f) { has_cap = true; }
-            }
-            if(has_cap) { tanks++; }
+            // propellant only (H2/LOX): the capsule's built-in EC battery is
+            // charge, not propellant, and is not a propellant tank.
+            double cap_prop = d->capacity[(int)ResourceType::Hydrogen]
+                            + d->capacity[(int)ResourceType::LOX];
+            ex_fuel += cap_prop;
+            if(cap_prop > 0.0) { tanks++; }
         }
         CHECK(tanks == 2);
         // capsule + wheel + engine + two tanks
@@ -761,6 +774,16 @@ int main() {
         f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"reaction_wheel\", "
              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
              "\"power_draw\": -5 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"capsule\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"power_draw_constant\": -5 } ] }";
         f.close();
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);

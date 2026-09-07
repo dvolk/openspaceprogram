@@ -27,6 +27,7 @@
            "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
            "power_draw": 1000,            // optional, W; > 0 -> draws EC while active (a reaction wheel)
+           "power_draw_constant": 100,    // optional, W; > 0 -> a CONSTANT EC draw, on all the time (capsule life support)
            "power_gen": 300,             // optional, W; > 0 -> a constant EC source (an RTG)
            "capacity": { "hydrogen": 26100, "lox": 26100 }, // optional, kg -> a propellant tank
            "capacity": { "ec": 157079 },  // optional, Wh -> a battery (EC storage)
@@ -139,12 +140,19 @@ struct PartDef {
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
     double exhaust_velocity;  // m/s; with fuel_rate -> thruster
     /* Electrical (KSP-style EC), independent of each other:
-       power_draw (W) > 0 -> a part that draws EC while active (a reaction
-       wheel); power_gen (W) > 0 -> a constant EC source (an RTG). A battery
-       is neither -- it is EC STORAGE, marked by capacity[EC] > 0 (see
-       Part::isBattery). The per-tick balance (gen vs draw, charging /
-       draining the batteries, gating the wheels) is Vehicle's job. */
+       power_draw (W) > 0        -> a part that draws EC only while ACTIVE
+                                    (a reaction wheel; off when not torquing);
+       power_draw_constant (W) > 0 -> a part that draws EC ALL THE TIME
+                                    (capsule life support; on whether or not
+                                    anything else is active);
+       power_gen (W) > 0        -> a constant EC source (an RTG). A battery
+       is neither draw -- it is EC STORAGE, marked by capacity[EC] > 0 (see
+       Part::isBattery); a capsule carries BOTH a constant draw and its own
+       small built-in battery. The per-tick balance (gen vs draw, charging
+       / draining the batteries, gating the wheels when EC runs out) is
+       Vehicle's job. */
     double power_draw;
+    double power_draw_constant;
     double power_gen;
     std::vector<float> capacity; // kg per ResourceType; > 0 -> propellant tank
 

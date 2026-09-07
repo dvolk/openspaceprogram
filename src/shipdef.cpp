@@ -9,7 +9,8 @@
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
-      exhaust_velocity(0.0), power_draw(0.0), power_gen(0.0),
+      exhaust_velocity(0.0), power_draw(0.0), power_draw_constant(0.0),
+      power_gen(0.0),
       crew_capacity(0), decoupler(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
@@ -107,12 +108,19 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         /* electrical (KSP-style EC): power_draw (W) is a part's draw while
-           active (a reaction wheel); power_gen (W) is a constant source
-           (an RTG). Independent, both optional, both >= 0. A battery is
-           capacity[EC] > 0 (parsed with the capacity object below). */
+           active (a reaction wheel); power_draw_constant (W) is a draw that
+           runs all the time (capsule life support); power_gen (W) is a
+           constant source (an RTG). Independent, each optional, each >= 0.
+           A battery is capacity[EC] > 0 (parsed with the capacity object
+           below); a capsule carries both a constant draw and its own small
+           built-in battery. */
         d.power_draw = pv.value("power_draw", 0.0);
         if(d.power_draw < 0.0) {
             throw std::runtime_error(ctx + "\"power_draw\" must be >= 0 (W)");
+        }
+        d.power_draw_constant = pv.value("power_draw_constant", 0.0);
+        if(d.power_draw_constant < 0.0) {
+            throw std::runtime_error(ctx + "\"power_draw_constant\" must be >= 0 (W)");
         }
         d.power_gen = pv.value("power_gen", 0.0);
         if(d.power_gen < 0.0) {
