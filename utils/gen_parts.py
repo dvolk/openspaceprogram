@@ -10,6 +10,11 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   dry mass = volume * TANK_DRY_DENSITY
                   mass     = capacity + dry   (the body sheds propellant as it
                   burns, so a spent tank is left with just its structure)
+  mono_tank       capacity = volume * HYDRAZINE_DENSITY (hydrazine mono, the
+                  RCS fuel); dry/mass like the fuel tank. A tank, nothing else.
+  rcs             rcs_thrust = RCS_THRUST_PER_M2 * radius^2 (translation
+                  authority, burns hydrazine mono); mass = volume * 40
+                  (mostly structure + small thrusters, lighter than the wheel)
   engine          thrust   = ENGINE_THRUST_PER_M2 * radius^2  (exit area)
                   mass     = thrust * ENGINE_MASS_PER_N
                   fuel_rate= thrust / (2 * EXHAUST_VELOCITY)   (both tanks)
@@ -69,6 +74,15 @@ PROP_DENSITY = 133.0             # kg/m^3, 50/50 LH2 + LOX mixture by mass
 TANK_DRY_DENSITY = 13.3          # kg/m^3, structural wall mass per tank volume
 ENGINE_THRUST_PER_M2 = 50000.0   # N, thrust at radius = 1 m (scales with r^2)
 ENGINE_MASS_PER_N = 0.01         # kg per newton of thrust (~100 N/kg)
+# RCS (reaction control): the mono (hydrazine) tank + the thruster. Both are
+# reaction-wheel sized (the flat disc meshes), 3 radial sizes. The tank is
+# just a tank -- hydrazine capacity derived from the part volume like the
+# LOX tank (its own geometry, not the kerbal's backpack). The thruster is
+# mostly structure + a few small nozzles, so a low mass density (lighter
+# than the other parts); its translation authority scales with the exit
+# area (r^2).
+HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
+RCS_THRUST_PER_M2 = 200.0        # N, RCS thrust at radius = 1 m (scales with r^2)
 
 # structural mass per unit enclosed volume (kg/m^3); tuned so the base (r1)
 # part of each kind lands on a sensible mass, then scales with real volume
@@ -78,6 +92,7 @@ MASS_DENSITY = {
     "adapter":        15.0,      # thin coupler ring, mostly air
     "nose_cap":       192.0,     # thin fairing
     "kerbal":         160.0,     # one crew member (mesh by gen_kerbal.py)
+    "rcs":            40.0,      # mostly structure + small thrusters (light)
 }
 
 # attitude authority (N m), scales with radius (leverage of the wheel/arm)
@@ -146,6 +161,15 @@ PARTS = [
     ("tank_r2.25h1",     "fuel_tank",      "tank_r2.25h1.obj",             "fuel_tank.png"),
     ("tank_r2.25h3",     "fuel_tank",      "tank_r2.25h3.obj",             "fuel_tank.png"),
     ("tank_r2.25h5",     "fuel_tank",      "tank_r2.25h5.obj",             "fuel_tank.png"),
+    # mono (hydrazine) RCS fuel tank + RCS thruster, reaction-wheel sized
+    # (the flat disc meshes), 3 radial sizes. The tank stores hydrazine; the
+    # thruster provides translation authority (burns the tank's hydrazine).
+    ("mono_tank_r1",     "mono_tank",      "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
+    ("mono_tank_r1.5",   "mono_tank",      "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
+    ("mono_tank_r2.25",  "mono_tank",      "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
+    ("rcs_r1",           "rcs",            "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
+    ("rcs_r1.5",         "rcs",            "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
+    ("rcs_r2.25",        "rcs",            "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
     ("adapter_r1to1.5",  "adapter",        "adapter_r1to1.5.obj",          "adapter.png"),
     ("adapter_r1to2.25", "adapter",        "adapter_r1to2.25.obj",         "adapter.png"),
     ("adapter_r1.5to1",  "adapter",        "adapter_r1.5to1.obj",          "adapter.png"),
@@ -240,6 +264,24 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"hydrogen": clean(half), "lox": clean(half)}
+    elif ptype == "mono_tank":
+        # hydrazine (mono) RCS fuel tank: just a tank. Capacity from the part
+        # volume (like the LOX tank, but 100% hydrazine instead of 50/50);
+        # the structure is the same tank dry mass.
+        capacity = volume * HYDRAZINE_DENSITY
+        dry = volume * TANK_DRY_DENSITY
+        e["mass"] = clean(capacity + dry)
+        e["radius"] = radius
+        e["height"] = height
+        e["capacity"] = {"hydrazine": clean(capacity)}
+    elif ptype == "rcs":
+        # RCS thruster: translation authority scales with the exit area
+        # (r^2); the part is mostly structure + small thrusters, so a low
+        # mass density (lighter than the reaction wheel).
+        e["mass"] = clean(volume * MASS_DENSITY[ptype])
+        e["radius"] = radius
+        e["height"] = height
+        e["rcs_thrust"] = clean(RCS_THRUST_PER_M2 * radius * radius)
     elif ptype == "decoupler":
         # staging boundary: mass is declared in EXTRA_FIELDS; radius/height
         # follow the mesh unless overridden there. The decoupler/fuel_barrier
@@ -299,6 +341,12 @@ def summary_line(e):
         c = e["capacity"]["hydrogen"] + e["capacity"]["lox"]
         return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
             n, c, e["mass"], clean(c * TANK_DRY_DENSITY / PROP_DENSITY))
+    if "capacity" in e and "hydrazine" in e["capacity"]:
+        c = e["capacity"]["hydrazine"]
+        return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
+            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / HYDRAZINE_DENSITY))
+    if "rcs_thrust" in e:
+        return "  %-24s RCS=%7.1fkN  mass=%7s" % (n, e["rcs_thrust"] / 1e3, e["mass"])
     if "power_draw_constant" in e:
         # a capsule: attitude torque + a constant life-support draw + a small
         # built-in battery (EC capacity) -- show all three, not just the EC.

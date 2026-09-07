@@ -354,6 +354,72 @@
       }
     },
     {
+      "name": "mono_tank_r1",
+      "type": "mono_tank",
+      "mesh": "reaction_wheel_r1h0.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 88.99,
+      "radius": 1.0,
+      "height": 0.25,
+      "capacity": {
+        "hydrazine": 78.54
+      }
+    },
+    {
+      "name": "mono_tank_r1.5",
+      "type": "mono_tank",
+      "mesh": "reaction_wheel_r1.5h0.375.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 300.33,
+      "radius": 1.5,
+      "height": 0.375,
+      "capacity": {
+        "hydrazine": 265.07
+      }
+    },
+    {
+      "name": "mono_tank_r2.25",
+      "type": "mono_tank",
+      "mesh": "reaction_wheel_r2.25h0.5625.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 1013.6,
+      "radius": 2.25,
+      "height": 0.562,
+      "capacity": {
+        "hydrazine": 894.62
+      }
+    },
+    {
+      "name": "rcs_r1",
+      "type": "rcs",
+      "mesh": "reaction_wheel_r1h0.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 31.42,
+      "radius": 1.0,
+      "height": 0.25,
+      "rcs_thrust": 200
+    },
+    {
+      "name": "rcs_r1.5",
+      "type": "rcs",
+      "mesh": "reaction_wheel_r1.5h0.375.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 106.03,
+      "radius": 1.5,
+      "height": 0.375,
+      "rcs_thrust": 450
+    },
+    {
+      "name": "rcs_r2.25",
+      "type": "rcs",
+      "mesh": "reaction_wheel_r2.25h0.5625.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 357.85,
+      "radius": 2.25,
+      "height": 0.562,
+      "rcs_thrust": 1012.5
+    },
+    {
       "name": "adapter_r1to1.5",
       "type": "adapter",
       "mesh": "adapter_r1to1.5.obj",
@@ -489,28 +555,6 @@
       "capacity": {
         "hydrazine": 10.0
       }
-    },
-    {
-      "name": "mono_tank",
-      "type": "fuel_tank",
-      "mesh": "fuel_tank.obj",
-      "texture": "fuel_tank.png",
-      "mass": 400.0,
-      "radius": 1.0,
-      "height": 1.0,
-      "capacity": {
-        "hydrazine": 40.0
-      }
-    },
-    {
-      "name": "rcs",
-      "type": "rcs",
-      "mesh": "reaction_wheel_r1h0.25.obj",
-      "texture": "reaction_wheel.png",
-      "mass": 50.0,
-      "radius": 1.0,
-      "height": 0.25,
-      "rcs_thrust": 2000.0
     },
     {
       "name": "fuel_link",
