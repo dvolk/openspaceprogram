@@ -102,6 +102,46 @@ int main() {
     settings_read(badmode, m);
     assert(m.window_mode == 2);
 
+    // 5) keybinds: round-trip (incl. a combo binding and a cleared slot),
+    //    absent-key tolerance, and mistyped-entry tolerance.
+    auto hasBind = [](const KeyBindings &kb, Slot s, SDL_Scancode sc, Uint16 mods) {
+        for (const auto &b : kb.perSlot[(size_t)s]) {
+            if (b.sc == sc && b.mods == mods) { return true; }
+        }
+        return false;
+    };
+    SettingsData k;
+    k.keybinds.perSlot[(size_t)Slot::Thrust].clear();
+    k.keybinds.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_J, 0});
+    k.keybinds.perSlot[(size_t)Slot::KillRot].clear();
+    k.keybinds.perSlot[(size_t)Slot::KillRot].push_back(KeyBind{SDL_SCANCODE_K, KMOD_CTRL});
+    k.keybinds.perSlot[(size_t)Slot::WarpUp].clear();   // unbound
+
+    nlohmann::json kj;
+    settings_write(k, kj);
+    SettingsData kr;
+    settings_read(nlohmann::json::parse(kj.dump()), kr);
+    assert(hasBind(kr.keybinds, Slot::Thrust, SDL_SCANCODE_J, 0));
+    assert(hasBind(kr.keybinds, Slot::KillRot, SDL_SCANCODE_K, KMOD_CTRL));
+    assert(kr.keybinds.perSlot[(size_t)Slot::WarpUp].empty());   // cleared stays cleared
+
+    // absent "keybinds" keeps the current bindings.
+    SettingsData kc;
+    kc.keybinds.perSlot[(size_t)Slot::Thrust].clear();
+    kc.keybinds.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_J, 0});
+    settings_read(nlohmann::json::parse(R"({"fov": 70})"), kc);
+    assert(hasBind(kc.keybinds, Slot::Thrust, SDL_SCANCODE_J, 0));
+
+    // mistyped entries are skipped (not fatal); a non-empty all-invalid list
+    // keeps the current bindings; an unknown slot is ignored.
+    nlohmann::json badkb = nlohmann::json::parse(
+        R"({"keybinds": {"thrust": 42, "nope": [{"sc": 5}],
+             "kill_rot": [{"sc": "x"}, {"sc": 999999}]}})");
+    SettingsData tk;
+    settings_read(badkb, tk);
+    assert(hasBind(tk.keybinds, Slot::Thrust, SDL_SCANCODE_I, 0));   // default kept
+    assert(hasBind(tk.keybinds, Slot::KillRot, SDL_SCANCODE_X, 0));  // default kept
+
     printf("test_settings: all checks passed\n");
     return 0;
 }

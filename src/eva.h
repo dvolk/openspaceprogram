@@ -12,8 +12,8 @@
 // upright (camera-relative WASD projected onto the tangent plane, the
 // steering force applied at the feet so it translates instead of
 // toppling; space = jump), in free fall it flies RCS-style relative to
-// the camera (W/S along the view direction, A/D strafe, LShift/LCtrl
-// up/down; a fixed thrust with no speed cap, KSP-style, limited by the
+// the camera (W/S along the view direction, A/D strafe, R/F up/down;
+// a fixed thrust with no speed cap, KSP-style, limited by the
 // suit's hydrazine), QE yaw about the view axis, attitude slewed
 // upright on screen facing the camera. The pure geometry lives in
 // evamath.h (headless-testable).
@@ -25,7 +25,7 @@
 
 #include <functional>
 
-#include "SDL2/SDL_scancode.h"   // SDL_Scancode (the arm signature)
+#include "keys.h"                // Slot (the arm signature)
 #include "vehicle.h"             // Vehicle
 #include "evamath.h"             // the pure control-law geometry
 
@@ -89,6 +89,6 @@ private:
 
 /* Arm the active kerbal's controls for this tick from the keys, the
    camera and the ground state (tick.cpp calls it instead of the ship's
-   Command path). isDown = the tick's key-state closure (keyboard OR the
-   --sim-press windows). */
-void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown);
+   Command path). active(slot) = the tick's key-state closure (keyboard OR
+   the --sim-press windows), answered against the key map (keys.h). */
+void evaArmCommands(Game &g, const std::function<bool(Slot)> &active);

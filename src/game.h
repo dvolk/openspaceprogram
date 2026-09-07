@@ -32,6 +32,7 @@
 #include "ui.h"       // ui::Options
 #include "eva.h"      // Kerbal (the crew characters, the aboard state)
 #include "vehicle.h"  // Vehicle
+#include "keys.h"     // KeyBindings (the rebindable key map)
 
 // Render resources (render.cpp draws with them; main owns their lifetime).
 // Forward-declared so Game can hold them by pointer without pulling their
@@ -243,6 +244,17 @@ struct Game {
     bool flip_pitch = false;
     bool flip_yaw = false;
     bool flip_roll = false;
+
+    // --- the key map (keys.h) --------------------------------------------
+    // The rebindable key bindings. Default-constructed to the game's default
+    // key assignments; load_settings() merges settings.json over it, and the
+    // Controls window edits it live. events.cpp (one-shot), tick.cpp and
+    // eva.cpp (held) all read through this table.
+    KeyBindings binds;
+    // While the Controls window is capturing a new binding: the Slot index
+    // being rebound (>=0), or -1 when not capturing. events.cpp swallows
+    // the next non-modifier key-down (the new binding) and sets it back to -1.
+    int rebind_capture_slot = -1;
 
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;

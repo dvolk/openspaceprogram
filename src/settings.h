@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "keys.h"   // KeyBindings (the rebindable key map)
+
 // The settings file (relative to the working directory; the game runs
 // from the repo root).
 static const char *kSettingsFile = "settings.json";
@@ -49,6 +51,9 @@ struct SettingsData {
     bool flip_pitch = false;
     bool flip_yaw = false;
     bool flip_roll = false;
+    // keybindings (Game::binds): the rebindable key map. Defaults are the
+    // game's default key assignments (KeyBindings' constructor).
+    KeyBindings keybinds;
 };
 
 // Fill j with s; overwrite s's fields from j, skipping absent keys and

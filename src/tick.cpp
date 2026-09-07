@@ -10,7 +10,7 @@
 
 #include <cstdio>
 
-#include "SDL2/SDL_scancode.h"   // SDL_SCANCODE_* (the command keys)
+#include "keys.h"                // Slot, slotHeld, slotSimKey (the command map)
 #include "eva.h"                 // evaArmCommands (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "physics.h"             // physics_tick()
@@ -50,15 +50,17 @@ void tick(Game &g) {
         g.ship->clearRotCmd();
 
         const Uint8* key = SDL_GetKeyboardState(NULL);
+        const Uint16 modState = SDL_GetModState();
         /* --sim-press: a synthetic key is "down" from its down time to
-           its up time. SDL_PushEvent does not update the state array
-           above (verified on this SDL), so held commands OR in each
-           entry's window instead. */
-        auto isDown = [&](SDL_Scancode sc) -> bool {
-            if(key[sc]) { return true; }
+           its up time. SDL_PushEvent does not update the key array above
+           (verified on this SDL), so a held command ORs in each entry's
+           window. Synthetic keys carry a scancode but no modifier state,
+           so they only back a PLAIN binding (slotSimKey). */
+        auto slotActive = [&](Slot s) -> bool {
+            if(slotHeld(s, key, modState, g.binds)) { return true; }
             for(size_t i = 0; i < g.args.sim_presses.size(); i++) {
-                if(g.args.sim_presses[i].sc == sc && g.args.sim_presses[i].down_sent
-                   && !g.args.sim_presses[i].up_sent) {
+                if(g.args.sim_presses[i].down_sent && !g.args.sim_presses[i].up_sent
+                   && slotSimKey(s, g.args.sim_presses[i].sc, g.binds)) {
                     return true;
                 }
             }
@@ -66,17 +68,17 @@ void tick(Game &g) {
         };
 
         if (g.camera->mode == CAM_FREE) {
-            if (isDown(SDL_SCANCODE_W)) { g.camera->MoveForward(g.cam_speed); }
-            else if (isDown(SDL_SCANCODE_S)) { g.camera->MoveForward(-g.cam_speed); }
+            if (slotActive(Slot::CamForward)) { g.camera->MoveForward(g.cam_speed); }
+            else if (slotActive(Slot::CamBack)) { g.camera->MoveForward(-g.cam_speed); }
 
-            if (isDown(SDL_SCANCODE_A)) { g.camera->MoveRight(-g.cam_speed); }
-            else if (isDown(SDL_SCANCODE_D)) { g.camera->MoveRight(g.cam_speed); }
+            if (slotActive(Slot::CamStrafeLeft)) { g.camera->MoveRight(-g.cam_speed); }
+            else if (slotActive(Slot::CamStrafeRight)) { g.camera->MoveRight(g.cam_speed); }
 
-            if (isDown(SDL_SCANCODE_Q)) { g.camera->Roll(-0.05); }
-            else if (isDown(SDL_SCANCODE_E)) { g.camera->Roll(0.05); }
+            if (slotActive(Slot::CamRollLeft)) { g.camera->Roll(-0.05); }
+            else if (slotActive(Slot::CamRollRight)) { g.camera->Roll(0.05); }
 
-            if (isDown(SDL_SCANCODE_LSHIFT) || isDown(SDL_SCANCODE_RSHIFT)) { g.camera->MoveUp(g.cam_speed); }
-            else if (isDown(SDL_SCANCODE_LCTRL) || isDown(SDL_SCANCODE_RCTRL)) { g.camera->MoveUp(-g.cam_speed); }
+            if (slotActive(Slot::CamUp)) { g.camera->MoveUp(g.cam_speed); }
+            else if (slotActive(Slot::CamDown)) { g.camera->MoveUp(-g.cam_speed); }
         }
 
         if (g.camera->mode == CAM_ORBIT) {
@@ -87,14 +89,16 @@ void tick(Game &g) {
                at a low warp (an SOI handoff drops the warp to 1 while the
                ship keeps its conic) just wakes in place. */
             if(g.ship->onRails && g.time_accel > 0) {
-                if(isDown(SDL_SCANCODE_W) || isDown(SDL_SCANCODE_S) ||
-                   isDown(SDL_SCANCODE_A) || isDown(SDL_SCANCODE_D) ||
-                   isDown(SDL_SCANCODE_Q) || isDown(SDL_SCANCODE_E) ||
-                   isDown(SDL_SCANCODE_I) || isDown(SDL_SCANCODE_X) ||
-                   isDown(SDL_SCANCODE_R) || isDown(SDL_SCANCODE_F) ||
-                   (g.ship->isEva() && (isDown(SDL_SCANCODE_SPACE) ||
-                    isDown(SDL_SCANCODE_LSHIFT) ||
-                    isDown(SDL_SCANCODE_LCTRL)))) {
+                // any flight control wakes a railed ship; in EVA the
+                // kerbal's jump (Space) is the extra -- the walk + up/down
+                // keys share the flight physical keys (W/S/A/D/Q/E/R/F).
+                bool wake = slotActive(Slot::PitchUp) || slotActive(Slot::PitchDown) ||
+                            slotActive(Slot::YawLeft) || slotActive(Slot::YawRight) ||
+                            slotActive(Slot::RollLeft) || slotActive(Slot::RollRight) ||
+                            slotActive(Slot::Thrust) || slotActive(Slot::KillRot) ||
+                            slotActive(Slot::ThrottleUp) || slotActive(Slot::ThrottleDown);
+                if(g.ship->isEva()) { wake = wake || slotActive(Slot::Space); }
+                if(wake) {
                     g.ship->leaveRails();
                     if(g.time_accel >= kRailsWarp) {
                         g.time_accel = 1;
@@ -108,7 +112,7 @@ void tick(Game &g) {
                 /* EVA: arm the kerbal's walking/RCS controls for this tick
                    (src/eva.cpp). Like the ship's Command path, nothing is
                    armed while paused. */
-                if(game_running) { evaArmCommands(g, isDown); }
+                if(game_running) { evaArmCommands(g, slotActive); }
             } else {
             /* The Autopilot window's engaged mode (set by its toggle
                buttons): apply it after clearRotCmd (above) so the ship
@@ -134,21 +138,21 @@ void tick(Game &g) {
             const float f_pitch = g.flip_pitch ? -1.0f : 1.0f;
             const float f_yaw   = g.flip_yaw   ? -1.0f : 1.0f;
             const float f_roll  = g.flip_roll  ? -1.0f : 1.0f;
-            // pitch: W/S about the ship's right axis
-            if (isDown(SDL_SCANCODE_W)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * +1.0f), game_running); }
-            if (isDown(SDL_SCANCODE_S)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * -1.0f), game_running); }
-            // yaw: A/D about the ship's up axis (baseline pre-flipped)
-            if (isDown(SDL_SCANCODE_A)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * -1.0f), game_running); }
-            if (isDown(SDL_SCANCODE_D)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * +1.0f), game_running); }
-            // roll: Q/E about the ship's nose (baseline pre-flipped)
-            if (isDown(SDL_SCANCODE_Q)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
-            if (isDown(SDL_SCANCODE_E)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
+            // pitch: about the ship's right axis (PitchUp/Down, default W/S)
+            if (slotActive(Slot::PitchUp)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * +1.0f), game_running); }
+            if (slotActive(Slot::PitchDown)) { g.ship->Command(ShipCmd(Pitch,  f_pitch * -1.0f), game_running); }
+            // yaw: about the ship's up axis (baseline pre-flipped)
+            if (slotActive(Slot::YawLeft)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * -1.0f), game_running); }
+            if (slotActive(Slot::YawRight)) { g.ship->Command(ShipCmd(Yaw,    f_yaw   * +1.0f), game_running); }
+            // roll: about the ship's nose (baseline pre-flipped)
+            if (slotActive(Slot::RollLeft)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
+            if (slotActive(Slot::RollRight)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
 
-            if (isDown(SDL_SCANCODE_I)) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
-            if (isDown(SDL_SCANCODE_X)) { g.ship->Command(ShipCmd(KillRot), game_running); }
+            if (slotActive(Slot::Thrust)) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
+            if (slotActive(Slot::KillRot)) { g.ship->Command(ShipCmd(KillRot), game_running); }
 
-            if (isDown(SDL_SCANCODE_R)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
-            if (isDown(SDL_SCANCODE_F)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }
+            if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
+            if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }
             }
         }
 

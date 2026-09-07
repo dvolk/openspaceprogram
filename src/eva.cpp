@@ -31,7 +31,7 @@ static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
 static const double kClearBand   = 0.7;     // m a jump must clear (contact margins)
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
 
-void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
+void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     Kerbal *k = static_cast<Kerbal *>(g.ship);
     const Camera *cam = g.camera;
 
@@ -60,10 +60,10 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
 
     if(k->mode == EVA_GROUND) {
         glm::dvec3 w(0.0);
-        if(isDown(SDL_SCANCODE_W)) { w += fwd; }
-        if(isDown(SDL_SCANCODE_S)) { w -= fwd; }
-        if(isDown(SDL_SCANCODE_D)) { w += sright; }
-        if(isDown(SDL_SCANCODE_A)) { w -= sright; }
+        if(active(Slot::EvaForward)) { w += fwd; }
+        if(active(Slot::EvaBack)) { w -= fwd; }
+        if(active(Slot::EvaRight)) { w += sright; }
+        if(active(Slot::EvaLeft)) { w -= sright; }
         // camera-relative -> surface-relative (walk along the tangent)
         w = evaOntoPlane(w, radial);
         k->walkDir = (glm::length2(w) > 1e-9) ? glm::normalize(w)
@@ -78,18 +78,18 @@ void evaArmCommands(Game &g, const std::function<bool(SDL_Scancode)> &isDown) {
         }
     } else {
         glm::dvec3 t(0.0);
-        if(isDown(SDL_SCANCODE_W)) { t += fwd; }
-        if(isDown(SDL_SCANCODE_S)) { t -= fwd; }
-        if(isDown(SDL_SCANCODE_D)) { t += sright; }
-        if(isDown(SDL_SCANCODE_A)) { t -= sright; }
-        if(isDown(SDL_SCANCODE_LSHIFT)) { t += up; }
-        if(isDown(SDL_SCANCODE_LCTRL)) { t -= up; }
+        if(active(Slot::EvaForward)) { t += fwd; }
+        if(active(Slot::EvaBack)) { t -= fwd; }
+        if(active(Slot::EvaRight)) { t += sright; }
+        if(active(Slot::EvaLeft)) { t -= sright; }
+        if(active(Slot::EvaUp)) { t += up; }
+        if(active(Slot::EvaDown)) { t -= up; }
         k->rcsDir = (glm::length2(t) > 1e-9)
             ? glm::normalize(t) : glm::dvec3(0.0);
         k->walkDir = glm::dvec3(0.0);
         double yaw = 0.0;
-        if(isDown(SDL_SCANCODE_Q)) { yaw += 1.0; }
-        if(isDown(SDL_SCANCODE_E)) { yaw -= 1.0; }
+        if(active(Slot::EvaYawLeft)) { yaw += 1.0; }
+        if(active(Slot::EvaYawRight)) { yaw -= 1.0; }
         k->viewYaw += yaw * kYawRate * g.dt;
     }
 }

@@ -272,9 +272,17 @@ test:
 	# SettingsData <-> JSON round trip, absent-key tolerance (a field the
 	# file does not mention keeps the current value), mistyped-key
 	# tolerance, and the window-mode name mapping.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ \
-	    tests/test_settings.cpp src/settings.cpp -o test_settings
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_settings.cpp src/settings.cpp src/keys.cpp -o test_settings
 	./test_settings
+	# key map (src/keys.cpp): the exact-modifier lookup (a plain binding
+	# fires only with no Shift/Ctrl/Alt held; a combo only with exactly its
+	# modifiers), the default map (the previously-hardcoded keys, cam/eva
+	# up-down on R/F), --sim-press plain-key compatibility, naming.
+	# Pure logic -- no SDL link (no SDL calls).
+	$(CXX) -O2 -std=c++11 -I./src -I/usr/include/SDL2 \
+	    tests/test_keys.cpp src/keys.cpp -o test_keys
+	./test_keys
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on
@@ -303,7 +311,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_keys test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

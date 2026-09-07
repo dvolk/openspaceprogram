@@ -163,8 +163,33 @@ void poll_events(Game &g) {
                 check_gl_error();
             }
         }
-        if(ev.type == SDL_KEYDOWN) {
-            if(ev.key.keysym.sym == SDLK_PERIOD) {
+        if(ev.type == SDL_KEYDOWN && g.rebind_capture_slot >= 0) {
+            // A rebind capture (Controls window) is in progress: the next
+            // non-modifier key becomes the new binding for the slot. Swallow
+            // it here so it does NOT fire its current slot. A bare modifier
+            // key-down (or unknown) is ignored -- keep capturing -- because a
+            // combo is captured on the non-modifier key that carries it.
+            const SDL_Scancode sc = ev.key.keysym.scancode;
+            const bool modKey = (sc == SDL_SCANCODE_LSHIFT)
+                || (sc == SDL_SCANCODE_RSHIFT) || (sc == SDL_SCANCODE_LCTRL)
+                || (sc == SDL_SCANCODE_RCTRL)  || (sc == SDL_SCANCODE_LALT)
+                || (sc == SDL_SCANCODE_RALT);
+            if(sc != SDL_SCANCODE_UNKNOWN && !modKey) {
+                const Uint16 mods = ev.key.keysym.mod & KMOD_RELEVANT;
+                std::vector<KeyBind> &v =
+                    g.binds.perSlot[(size_t)g.rebind_capture_slot];
+                v.clear();
+                v.push_back(KeyBind{sc, mods});
+                g.rebind_capture_slot = -1;   // captured: back to idle
+            }
+        } else if(ev.type == SDL_KEYDOWN) {
+            // One-shot actions: match the press (scancode + modifiers) against
+            // the key map (g.binds). The bodies are unchanged from the old
+            // hardcoded SDLK checks -- only the "which key" test moved to the
+            // table, so rebinding a control just re-points its slot.
+            const SDL_Scancode ksc = ev.key.keysym.scancode;
+            const Uint16 kmod = ev.key.keysym.mod;
+            if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
                 // Warp up one step (10x), capped at 100000 (ladder top).
                 // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
                 // requires every ship to be rail-eligible: the active ship
@@ -186,7 +211,7 @@ void poll_events(Game &g) {
                     }
                 }
             }
-            if(ev.key.keysym.sym == SDLK_COMMA) {
+            if(slotFired(Slot::WarpDown, ksc, kmod, g.binds)) {
                 if(g.time_accel > 1) {
                     const bool leaving_rails_warp =
                         (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
@@ -204,17 +229,17 @@ void poll_events(Game &g) {
                     g.toast("Time accel: paused");
                 }
             }
-            if(ev.key.keysym.sym == SDLK_l) {
+            if(slotFired(Slot::CamSpeedUp, ksc, kmod, g.binds)) {
                 if(g.cam_speed < 10000000) {
                     g.cam_speed *= 4;
                 }
             }
-            if(ev.key.keysym.sym == SDLK_k) {
+            if(slotFired(Slot::CamSpeedDown, ksc, kmod, g.binds)) {
                 if(g.cam_speed > 1) {
                     g.cam_speed /= 4;
                 }
             }
-            if(ev.key.keysym.sym == SDLK_c) {
+            if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds)) {
                 // Toggle between the body-orbit camera and free flight.
                 if(g.camera->mode == CAM_ORBIT) {
                     g.camera->toFree();
@@ -224,7 +249,7 @@ void poll_events(Game &g) {
                            g.focusTargets[g.focusBody].name);
                 }
             }
-            if(ev.key.keysym.sym == SDLK_g) {
+            if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds)) {
                 // Cycle the orbit camera's target body.
                 if(g.camera->mode == CAM_ORBIT) {
                     g.focusBody = (g.focusBody + 1) % g.numFocusTargets;
@@ -239,14 +264,14 @@ void poll_events(Game &g) {
                     printf("In free flight; press C to go to orbit, then G to switch body.\n");
                 }
             }
-            if(ev.key.keysym.sym == SDLK_TAB) {
+            if(slotFired(Slot::ToggleWindows, ksc, kmod, g.binds)) {
                 // toggle the info windows (one-shot; auto-repeat would
                 // just keep flipping)
                 if(!ev.key.repeat) {
                     g.toggle_windows();
                 }
             }
-            if(ev.key.keysym.sym == SDLK_F6) {
+            if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
                 // advance to the next selectable ship in the fleet, wrapping
                 // around (one-shot; auto-repeat would keep cycling). Crew
                 // characters aboard a capsule are skipped: they are not
@@ -271,14 +296,14 @@ void poll_events(Game &g) {
                     }
                 }
             }
-            if(ev.key.keysym.sym == SDLK_v) {
+            if(slotFired(Slot::ToggleEva, ksc, kmod, g.binds)) {
                 // toggle EVA: spawn/re-select the kerbal, or hand control
                 // back to the ship (game.cpp). One-shot.
                 if(!ev.key.repeat) {
                     g.toggle_eva();
                 }
             }
-            if(ev.key.keysym.sym == SDLK_SPACE) {
+            if(slotFired(Slot::Space, ksc, kmod, g.binds)) {
                 // EVA: space is the jump key -- the KEYDOWN edge arms it
                 // (evaArmCommands consumes the request on the next tick;
                 // an event edge, because a quick tap can end before any
@@ -332,10 +357,10 @@ void poll_events(Game &g) {
                     }
                 }
             }
-            if(ev.key.keysym.sym == SDLK_F12) {
+            if(slotFired(Slot::Screenshot, ksc, kmod, g.binds)) {
                 g.screenshot_requested = true;
             }
-            if(ev.key.keysym.sym == SDLK_p) {
+            if(slotFired(Slot::Porkchop, ksc, kmod, g.binds)) {
                 // Compute the porkchop plot for the current transfer target
                 // (one-shot; auto-repeat would just recompute it). The render
                 // pass consumes the flag and runs the (expensive) grid.
@@ -343,13 +368,13 @@ void poll_events(Game &g) {
                     g.porkchop_compute_requested = true;
                 }
             }
-            if(ev.key.keysym.sym == SDLK_m) {
+            if(slotFired(Slot::SurfaceMap, ksc, kmod, g.binds)) {
                 // Compute the surface map (one-shot, same pattern as P).
                 if(!ev.key.repeat) {
                     g.surfmap_compute_requested = true;
                 }
             }
-            if(ev.key.keysym.sym == SDLK_F11) {
+            if(slotFired(Slot::Wireframe, ksc, kmod, g.binds)) {
                 if(g.poly_mode == false) {
                     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                     g.poly_mode = true;
@@ -358,12 +383,12 @@ void poll_events(Game &g) {
                     g.poly_mode = false;
                 }
             }
-            if(ev.key.keysym.sym == SDLK_F10) {
+            if(slotFired(Slot::ResetWindows, ksc, kmod, g.binds)) {
                 // Reset the window layout to defaults (same as the
                 // main menu's "Reset windows" button).
                 ui::ResetGui();
             }
-            if(ev.key.keysym.sym == SDLK_ESCAPE) {
+            if(slotFired(Slot::Menu, ksc, kmod, g.binds)) {
                 // Toggle the main menu.
                 ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
             }

@@ -49,6 +49,23 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["flip_pitch"] = s.flip_pitch;
     j["flip_yaw"] = s.flip_yaw;
     j["flip_roll"] = s.flip_roll;
+    // keybinds: slot name -> list of {sc, mods}. Every slot is written (a
+    // cleared slot as an empty list), so a save->load round-trips exactly,
+    // including bindings the user unbound.
+    nlohmann::json kb = nlohmann::json::object();
+    for (size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
+        const char *name = slotName((Slot)i);
+        if (name == nullptr) { continue; }
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &b : s.keybinds.perSlot[i]) {
+            nlohmann::json e = nlohmann::json::object();
+            e["sc"] = (int)b.sc;
+            e["mods"] = (int)b.mods;
+            arr.push_back(e);
+        }
+        kb[name] = arr;
+    }
+    j["keybinds"] = kb;
 }
 
 void settings_read(const nlohmann::json &j, SettingsData &s) {
@@ -139,6 +156,42 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     }
     if(j.contains("flip_roll") && j["flip_roll"].is_boolean()) {
         s.flip_roll = j["flip_roll"].get<bool>();
+    }
+    // keybinds: object of slot name -> array of {sc, mods}. Per-slot merge
+    // (a slot the file does not mention keeps its current bindings), and
+    // mistyped entries are skipped, matching the rest of the reader. A
+    // present-but-empty list clears that slot (the user unbound it).
+    if(j.contains("keybinds") && j["keybinds"].is_object()) {
+        const nlohmann::json &kbo = j["keybinds"];
+        for(auto it = kbo.begin(); it != kbo.end(); ++it) {
+            Slot slot = slotFromName(it.key().c_str());
+            if(slot == Slot::SLOT_COUNT) { continue; }   // unknown slot: skip
+            if(!it.value().is_array()) { continue; }     // mistyped: skip
+            const nlohmann::json &arr = it.value();
+            if(arr.empty()) {
+                // An explicit empty list clears the slot (the user unbound it).
+                s.keybinds.perSlot[(size_t)slot].clear();
+                continue;
+            }
+            std::vector<KeyBind> binds;
+            for(const auto &e : arr) {
+                if(!e.is_object()) { continue; }
+                int sc = -1, mods = 0;
+                if(e.contains("sc") && e["sc"].is_number_integer()) {
+                    sc = e["sc"].get<int>();
+                }
+                if(e.contains("mods") && e["mods"].is_number_integer()) {
+                    mods = e["mods"].get<int>();
+                }
+                if(sc < 0 || sc >= SDL_NUM_SCANCODES) { continue; }
+                binds.push_back(KeyBind{(SDL_Scancode)sc,
+                                        (Uint16)(mods & KMOD_RELEVANT)});
+            }
+            // Non-empty list but no valid entry: a hand-edited mistake, not
+            // an unbind -- keep the slot's current bindings.
+            if(binds.empty()) { continue; }
+            s.keybinds.perSlot[(size_t)slot] = binds;
+        }
     }
 }
 

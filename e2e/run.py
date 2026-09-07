@@ -17,6 +17,10 @@ Each test is a case file in e2e/cases/*.txt with these keys (one per line,
   FORBID <substring>           must NOT occur in the output (repeat)
   CHECK <python expression>    must be truthy (repeat); see the namespace below
   LIMIT <seconds>              runner hard timeout for this case (default 120)
+  WRITE <path> <content>       write <content> to <path> (REPO_ROOT-relative)
+                               before the game launches, after the imgui.ini /
+                               settings.json cleanup -- stage a custom
+                               settings.json (e.g. a rebind) for just this case
 
 A case PASSES iff: the process exits 0, every EXPECT is found, no FORBID is
 found, and every CHECK is truthy.
@@ -127,6 +131,7 @@ def parse_cases(path):
     expect = []
     forbid = []
     check = []
+    writes = []
     limit = DEFAULT_LIMIT
     with open(path) as f:
         for raw in f:
@@ -148,6 +153,10 @@ def parse_cases(path):
                 check.append(rest)
             elif key == "LIMIT":
                 limit = float(rest)
+            elif key == "WRITE":
+                # "path content": the content is the rest after the path token.
+                wpath, _, wcontent = rest.partition(" ")
+                writes.append((wpath.strip(), wcontent.strip()))
             else:
                 raise ValueError("%s: unknown key %r" % (os.path.basename(path), key))
     if not args:
@@ -158,6 +167,7 @@ def parse_cases(path):
         "expect": expect,
         "forbid": forbid,
         "check": check,
+        "writes": writes,
         "limit": limit,
     }
 
@@ -339,6 +349,13 @@ def run_case(case):
             os.remove(os.path.join(REPO_ROOT, f))
         except FileNotFoundError:
             pass
+
+    # Stage any files the case declares (WRITE): written after the cleanup
+    # above, so a fixture (e.g. a rebind settings.json) is live for exactly
+    # this case and the next case's cleanup removes it again.
+    for wpath, wcontent in case.get("writes", []):
+        with open(os.path.join(REPO_ROOT, wpath), "w") as wf:
+            wf.write(wcontent)
 
     cmd = build_cmd(game, case["args"])
     diag = []

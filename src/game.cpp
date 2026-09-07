@@ -201,6 +201,7 @@ static SettingsData collect_settings(Game &g) {
     s.flip_pitch = g.flip_pitch;
     s.flip_yaw = g.flip_yaw;
     s.flip_roll = g.flip_roll;
+    s.keybinds = g.binds;
     return s;
 }
 
@@ -246,6 +247,7 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     g.flip_pitch = s.flip_pitch;
     g.flip_yaw = s.flip_yaw;
     g.flip_roll = s.flip_roll;
+    g.binds = s.keybinds;
 }
 
 /* Startup phase 1 (main, before the Renderer): the file's args fields

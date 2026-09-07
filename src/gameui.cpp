@@ -1315,48 +1315,75 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                     glm::degrees(glm::length(ship->partAngVel(ship->controller))));
     });
     ui::Window("Controls", g.o_controls, [&] {
-        ImGui::Text("Game");
-        ImGui::Separator();
-        ImGui::Text("p - compute porkchop plot (Porkchop window)");
-        ImGui::Text("m - refresh surface map (Surface Map window)");
-        ImGui::Text("f11 - toggle wireframe mode");
-        ImGui::Text(", - decrease time acceleration");
-        ImGui::Text(". - increase time acceleration");
-        ImGui::Text("k - decrease camera speed");
-        ImGui::Text("l - increase camera speed");
-        ImGui::Text("c - switch mode: orbit (flying) <-> free (exploring)");
-        ImGui::Text("g - orbit mode: cycle target (ship/sun/planet/moon)");
-        ImGui::Text("tab - toggle windows");
-        ImGui::Text("f6 - next ship (fleet)");
-        ImGui::Text("SHIPS window - select a ship, spawn a copy, remove one (x)");
-        ImGui::Text("f10 - reset windows");
-        ImGui::Text("esc - main menu");
-        ImGui::Text("mouse - UI (hold RMB over 3D to look, both modes)");
-        ImGui::Text("RMB click over 3D - pick a part (opens its window)");
-        ImGui::Text("RMB (orbital map) - cycle window -> bare map -> no window");
-        ImGui::Text("wheel - zoom (orbit mode)");
+        // Interactive rebind (replaces the old read-only key reference).
+        // Click "rebind", then press a key -- or a Shift/Ctrl/Alt combo -- to
+        // bind it to that control (the press is captured in events.cpp, which
+        // swallows it so it does not fire its old action). "clear" unbinds,
+        // "Reset all" restores the default map, "Save" writes settings.json.
+        ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");
         ImGui::Spacing();
-        ImGui::Text("Orbit mode (flying the ship)");
-        ImGui::Separator();
-        ImGui::Text("w/s - pitch up/down");
-        ImGui::Text("a/d - yaw left/right");
-        ImGui::Text("q/e - roll left/right (about the nose)");
-        ImGui::Text("flip pitch/yaw/roll: Settings -> Controls");
-        ImGui::Text("i - fire ship engines");
-        ImGui::Text("x - kill rotation");
-        ImGui::Text("Autopilot window - pro/retrograde + radial / normal slew");
-        ImGui::Text("r/f - throttle up/down");
-        ImGui::Text("SPACE - separate the active stage");
+        char buf[80];
+        const char *groupNames[(int)SlotGroup::GROUP_COUNT] = {
+            "Game (one-shot)",
+            "Flight (orbit mode)",
+            "Camera (free mode)",
+            "EVA (the kerbal)",
+        };
+        for(int gi = 0; gi < (int)SlotGroup::GROUP_COUNT; gi++) {
+            const SlotGroup grp = (SlotGroup)gi;
+            ImGui::Text("%s", groupNames[gi]);
+            ImGui::Separator();
+            for(size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
+                if(slotGroup((Slot)i) != grp) { continue; }
+                // Unique per-row ID: the button labels ("rebind"/"clear")
+                // repeat on all 42 rows, so without this every row's buttons
+                // share one window ID and ImGui rejects them ("N visible
+                // items with conflicting ID").
+                ImGui::PushID((int)i);
+                const std::vector<KeyBind> &v = g.binds.perSlot[i];
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("%s", slotLabel((Slot)i));
+                ImGui::SameLine(215.0f);
+                snprintf(buf, sizeof buf, "%s",
+                         v.empty() ? "(unbound)" : bindLabel(v[0]).c_str());
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.85f, 1.0f), "%s", buf);
+                ImGui::SameLine(365.0f);
+                const bool capturing = (g.rebind_capture_slot == (int)i);
+                if(capturing) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+                    if(ImGui::Button("press a key...", ImVec2(120.0f, 0.0f))) {
+                        g.rebind_capture_slot = -1;   // click again to cancel
+                    }
+                    ImGui::PopStyleColor();
+                } else {
+                    if(ImGui::Button("rebind", ImVec2(120.0f, 0.0f))) {
+                        g.rebind_capture_slot = (int)i;
+                    }
+                }
+                ImGui::SameLine(0.0f, 6.0f);
+                if(ImGui::Button("clear", ImVec2(60.0f, 0.0f))) {
+                    g.binds.perSlot[i].clear();
+                }
+                ImGui::PopID();
+            }
+        }
         ImGui::Spacing();
-        ImGui::Text("Free mode (exploring)");
-        ImGui::Separator();
-        ImGui::Text("w/s - forward/back");
-        ImGui::Text("a/d - strafe");
-        ImGui::Text("q/e - roll");
-        ImGui::Text("shift/ctrl - up/down");
+        if(ImGui::Button("Reset all to defaults", ImVec2(240.0f, 0.0f))) {
+            g.binds.resetDefaults();
+            g.rebind_capture_slot = -1;
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Save", ImVec2(90.0f, 0.0f))) {
+            if(g.save_settings()) {
+                g.toast("Settings saved (settings.json)");
+            } else {
+                g.toast("Could not write settings.json");
+            }
+        }
         ImGui::Spacing();
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
             ui::SetOpen("Controls", false);
+            g.rebind_capture_slot = -1;
         }
     });
 
