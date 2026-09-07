@@ -1,5 +1,5 @@
 # Asparagus flight: the full staged burn of heavy_asp, quantitative end to
-# end. One continuous thrust (I held) with five stage drops (SPACE) walks
+# end. One continuous thrust (T held) with five stage drops (SPACE) walks
 # the ship through all six of its stages, from all seven engines down to
 # the final upper-stage engine alone.
 #
@@ -55,7 +55,7 @@
 NAME asparagus-flight
 ARGS --ship res/ships/heavy_asp.json --time-accel 1
 ARGS --drain-log --fuel-log --timeout 70
-ARGS --sim-press 500,65500,I,12000,0,SPACE,24000,0,SPACE,36000,0,SPACE,48000,0,SPACE,60000,0,SPACE
+ARGS --sim-press 500,65500,T,12000,0,SPACE,24000,0,SPACE,36000,0,SPACE,48000,0,SPACE,60000,0,SPACE
 EXPECT [drainlog]
 EXPECT [fuel]
 EXPECT Stage: dropped 10 part(s); now on stage 2 of 6

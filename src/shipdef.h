@@ -26,6 +26,7 @@
            "torque": 5000,                // optional, N m -> contributes as a reaction wheel
            "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
+           "rcs_thrust": 5000,            // optional, N; > 0 -> RCS translation authority (burns hydrazine mono)
            "power_draw": 1000,            // optional, W; > 0 -> draws EC while active (a reaction wheel)
            "power_draw_constant": 100,    // optional, W; > 0 -> a CONSTANT EC draw, on all the time (capsule life support)
            "power_gen": 300,             // optional, W; > 0 -> a constant EC source (an RTG)
@@ -139,6 +140,7 @@ struct PartDef {
     double torque;            // N m; > 0 -> contributes as a reaction wheel
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
     double exhaust_velocity;  // m/s; with fuel_rate -> thruster
+    double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono, the EVA suit's propellant)
     /* Electrical (KSP-style EC), independent of each other:
        power_draw (W) > 0        -> a part that draws EC only while ACTIVE
                                     (a reaction wheel; off when not torquing);

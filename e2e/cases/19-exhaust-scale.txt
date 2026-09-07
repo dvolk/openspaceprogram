@@ -8,7 +8,7 @@ ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
 ARGS --timeout 10 --dbg-log
 ARGS --exhaust-scale 2
 ARGS --sim-press 1000,2000,R
-ARGS --sim-press 3000,2000,I
+ARGS --sim-press 3000,2000,T
 EXPECT [dbg]
 CHECK last(dbg)["alt"] - first(dbg)["alt"] > 250
 FORBID GL_

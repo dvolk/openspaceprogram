@@ -23,7 +23,7 @@ int main() {
         }
         return false;
     };
-    assert(hasPlain(Slot::Thrust, SDL_SCANCODE_I));
+    assert(hasPlain(Slot::Thrust, SDL_SCANCODE_T));
     assert(hasPlain(Slot::WarpUp, SDL_SCANCODE_PERIOD));
     assert(hasPlain(Slot::WarpDown, SDL_SCANCODE_COMMA));
     assert(hasPlain(Slot::PitchUp, SDL_SCANCODE_W));
@@ -37,10 +37,10 @@ int main() {
         assert(!kb.perSlot[i].empty());
     }
 
-    // 1b) The thrust latch is the one combo default: LShift+I (not plain I).
+    // 1b) The thrust latch is the one combo default: LShift+T (not plain T).
     //     LShift and RShift are distinct modifier keys, so the default names
     //     one concrete side (LShift) -- a RShift press is a different combo and
-    //     must not fire it, nor must a plain I (that's the Thrust slot, the
+    //     must not fire it, nor must a plain T (that's the Thrust slot, the
     //     plain key that releases the latch).
     auto hasCombo = [&](Slot s, SDL_Scancode sc, Uint16 mods) {
         for (const auto &b : kb.perSlot[(size_t)s]) {
@@ -48,20 +48,20 @@ int main() {
         }
         return false;
     };
-    assert(hasCombo(Slot::ThrustLatch, SDL_SCANCODE_I, KMOD_LSHIFT));
-    assert(!hasPlain(Slot::ThrustLatch, SDL_SCANCODE_I));      // not a plain I
-    assert(slotFired(Slot::ThrustLatch, SDL_SCANCODE_I, KMOD_LSHIFT, kb));
-    assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_I, 0, kb));   // plain I
-    assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_I, KMOD_RSHIFT, kb)); // other side
-    assert(slotFired(Slot::Thrust, SDL_SCANCODE_I, 0, kb));        // plain I
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LSHIFT, kb));
+    assert(hasCombo(Slot::ThrustLatch, SDL_SCANCODE_T, KMOD_LSHIFT));
+    assert(!hasPlain(Slot::ThrustLatch, SDL_SCANCODE_T));      // not a plain T
+    assert(slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, KMOD_LSHIFT, kb));
+    assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, 0, kb));   // plain T
+    assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, KMOD_RSHIFT, kb)); // other side
+    assert(slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kb));        // plain T
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, KMOD_LSHIFT, kb));
     assert(slotGroup(Slot::ThrustLatch) == SlotGroup::Flight);
 
     // 2) slotFired: exact-modifier match. A plain binding fires with no
     //    modifier and NOT with one held; a different key does not fire.
-    assert(slotFired(Slot::Thrust, SDL_SCANCODE_I, 0, kb));
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LSHIFT, kb));
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LCTRL, kb));
+    assert(slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kb));
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, KMOD_LSHIFT, kb));
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, KMOD_LCTRL, kb));
     assert(!slotFired(Slot::Thrust, SDL_SCANCODE_J, 0, kb));
 
     // 3) a combo binding fires only with exactly its modifier (and the exact
@@ -79,15 +79,15 @@ int main() {
 
     // 4) slotHeld: the same rule through a key-state array.
     std::vector<Uint8> key(SDL_NUM_SCANCODES, 0);
-    key[SDL_SCANCODE_I] = 1;
+    key[SDL_SCANCODE_T] = 1;
     assert(slotHeld(Slot::Thrust, key.data(), 0, kb));
     assert(!slotHeld(Slot::Thrust, key.data(), KMOD_LSHIFT, kb));
-    key[SDL_SCANCODE_I] = 0;
+    key[SDL_SCANCODE_T] = 0;
     assert(!slotHeld(Slot::Thrust, key.data(), 0, kb));
 
     // 5) slotSimKey: a synthetic (modifier-less) --sim-press key backs a
     //    plain binding, but not a combo one.
-    assert(slotSimKey(Slot::Thrust, SDL_SCANCODE_I, kb));
+    assert(slotSimKey(Slot::Thrust, SDL_SCANCODE_T, kb));
     assert(!slotSimKey(Slot::Thrust, SDL_SCANCODE_J, kb));
     assert(!slotSimKey(Slot::Thrust, SDL_SCANCODE_I, kb2));
 

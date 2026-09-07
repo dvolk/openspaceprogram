@@ -1,22 +1,22 @@
 # Rebinding (src/keys.cpp): the live input paths read the key map (g.binds),
 # not a hardcoded key. Stage a settings.json that rebinds Thrust from its
-# default I to J, then prove BOTH halves:
-#   - pressing the OLD key (I) does nothing (no ascent), and
-#   - pressing the NEW key (J) fires the engines (the ship ascends).
+# default T to U, then prove BOTH halves:
+#   - pressing the OLD key (T) does nothing (no ascent), and
+#   - pressing the NEW key (U) fires the engines (the ship ascends).
 # Same physics as 03-thrust-ascent (Moho + racer, the only TWR>1 pair) so the
 # ascent is real; R still ramps throttle (not rebound here). The cutoff
-# between the two windows (t <= 6.0) sits after the dead-I window and before
-# the live-J window, so "alt stayed < 10 up to 6.0" means I did not thrust.
+# between the two windows (t <= 6.0) sits after the dead-T window and before
+# the live-U window, so "alt stayed < 10 up to 6.0" means T did not thrust.
 NAME rebind-thrust
-WRITE settings.json {"keybinds": {"thrust": [{"sc": 13, "mods": 0}]}}
+WRITE settings.json {"keybinds": {"thrust": [{"sc": 24, "mods": 0}]}}
 ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
 ARGS --timeout 12 --dbg-log
 # ramp throttle (R is ThrottleUp, not rebound -- still live)
 ARGS --sim-press 1000,1500,R
-# old key I (was Thrust): now unbound -- must NOT thrust
-ARGS --sim-press 3500,1500,I
-# new key J (now Thrust): must thrust and lift the ship
-ARGS --sim-press 6500,2000,J
+# old key T (was Thrust): now unbound -- must NOT thrust
+ARGS --sim-press 3500,1500,T
+# new key U (now Thrust): must thrust and lift the ship
+ARGS --sim-press 6500,2000,U
 EXPECT [dbg]
 CHECK any(d["t"] <= 6.0 for d in dbg)
 CHECK all(d["alt"] < 10 for d in dbg if d["t"] <= 6.0)

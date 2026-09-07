@@ -1,0 +1,7 @@
+{
+  "name": "rcs_test",
+  "parts": [
+    { "part": "rcs", "id": "rcs_1" },
+    { "part": "mono_tank", "id": "tank_1", "parent": "rcs_1" }
+  ]
+}

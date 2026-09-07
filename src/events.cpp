@@ -392,7 +392,7 @@ void poll_events(Game &g) {
                 // Toggle the main menu.
                 ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
             }
-            // Thrust latch: the ThrustLatch slot (default Shift+I) toggles
+            // Thrust latch: the ThrustLatch slot (default LShift+T) toggles
             // it; while engaged, tick.cpp keeps the active ship's engines
             // lit even with the thrust key released. A plain thrust-key press
             // takes manual control and clears the latch (the held thrust then

@@ -9,8 +9,8 @@
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
-      exhaust_velocity(0.0), power_draw(0.0), power_draw_constant(0.0),
-      power_gen(0.0),
+      exhaust_velocity(0.0), rcs_thrust(0.0), power_draw(0.0),
+      power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), decoupler(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
@@ -105,6 +105,14 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.torque = pv.value("torque", 0.0);
         if(d.torque < 0.0) {
             throw std::runtime_error(ctx + "\"torque\" must be >= 0 (N m)");
+        }
+
+        /* RCS translation authority (N); > 0 -> the part contributes to the
+           ship's RCS (burns hydrazine mono, applied at the COM). Independent
+           of the other behavior fields -- a part may be a wheel AND an RCS. */
+        d.rcs_thrust = pv.value("rcs_thrust", 0.0);
+        if(d.rcs_thrust < 0.0) {
+            throw std::runtime_error(ctx + "\"rcs_thrust\" must be >= 0 (N)");
         }
 
         /* electrical (KSP-style EC): power_draw (W) is a part's draw while

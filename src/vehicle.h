@@ -1202,11 +1202,13 @@ public:
     }
 
     /* The armed control forces, re-applied before EVERY substep (Bullet
-       clears forces per stepSimulation). Ships deliver thrust + rotation;
-       the EVA kerbal overrides with its walking/RCS laws (src/eva.h). */
+       clears forces per stepSimulation). Ships deliver thrust + rotation +
+       RCS translation; the EVA kerbal overrides with its own laws
+       (src/eva.h) and does not call this. */
     virtual void applyControlForces(double h) {
         applyThrustForce();
         applyRotationForce(h);
+        applyRcsForce(h);
     }
 
     /* the first reaction-wheel PART (nullptr if the ship has none): the
@@ -1262,6 +1264,47 @@ public:
             slewToward(slewTargetDir(), h);
         }
     }
+
+    /* --- RCS translation (hydrazine mono, KSP-style) --------------------
+       Field-driven (Part::isRcs): a part with rcs_thrust > 0 contributes
+       that many newtons of translation authority; maxRcsThrust() is the
+       ship's total. The armed direction rcsDir is camera-relative (set once
+       per tick from the held RCS slots, tick.cpp) and consumed before every
+       substep: a fixed thrust for as long as the key is held AND the ship
+       can draw this substep's flow of hydrazine (consume-then-arm, the EVA
+       suit's pattern -- no speed cap, the propellant is the limiter). The
+       force is applied AT the COM (ApplyCentralForce): the net force
+       accelerates the whole ship regardless of where the thrusters sit,
+       which is the COM-translation approximation (a real positioned-thruster
+       build swaps this one line for ApplyForce at each part -- rcsDir and
+       the rcs_thrust field stay the same). */
+    glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed translation dir, unit or 0
+    void setRcsDir(const glm::dvec3 &d) { rcsDir = d; }
+    void clearRcs() { rcsDir = glm::dvec3(0.0); }
+    Part *firstRcsPart() {
+        for(Part *p : parts) { if(p->isRcs()) { return p; } }
+        return nullptr;
+    }
+    double maxRcsThrust() {
+        double t = 0.0;
+        for(Part *p : parts) { if(p->isRcs()) { t += p->rcsThrust(); } }
+        return t;
+    }
+    void applyRcsForce(double h) {
+        if(glm::length2(rcsDir) < 1e-12) { return; }
+        Part *e = firstRcsPart();
+        if(e == nullptr) { return; }
+        const double F = maxRcsThrust();
+        if(F <= 0.0) { return; }
+        /* flow this substep (kg) = thrust / (Isp * g0) * h, the same
+           monoprop Isp the EVA suit uses (src/eva.cpp kRcsIsp). */
+        const double flow = (F / (kRcsIsp * 9.81)) * h;
+        if(consumeResourceMass(ResourceType::Hydrazine, (float)flow, e)) {
+            ApplyCentralForce(hull, F * rcsDir);
+        }
+    }
+    /* s, monopropellant (hydrazine) efficiency -- the EVA suit's value. */
+    static constexpr double kRcsIsp = 220.0;
 
     /* Autopilot diagnostic (throttled; called from the tick when
        --slew-log is set). Prints the slew error angle, the ship's angular

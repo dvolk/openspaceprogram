@@ -45,9 +45,11 @@ void tick(Game &g) {
         // Thrust and rotation are armed once per tick (if the keys are
         // held, below) and then re-applied before every substep; clear
         // them first so a tick without the keys doesn't keep pushing or
-        // slewing from the last one.
+        // slewing from the last one. RCS translation is armed the same way
+        // (setRcsDir below) and consumed in applyRcsForce.
         g.ship->clearThrust();
         g.ship->clearRotCmd();
+        g.ship->clearRcs();
 
         const Uint8* key = SDL_GetKeyboardState(NULL);
         const Uint16 modState = SDL_GetModState();
@@ -96,7 +98,10 @@ void tick(Game &g) {
                             slotActive(Slot::YawLeft) || slotActive(Slot::YawRight) ||
                             slotActive(Slot::RollLeft) || slotActive(Slot::RollRight) ||
                             slotActive(Slot::Thrust) || slotActive(Slot::KillRot) ||
-                            slotActive(Slot::ThrottleUp) || slotActive(Slot::ThrottleDown);
+                            slotActive(Slot::ThrottleUp) || slotActive(Slot::ThrottleDown) ||
+                            slotActive(Slot::RcsForward) || slotActive(Slot::RcsBack) ||
+                            slotActive(Slot::RcsUp) || slotActive(Slot::RcsDown) ||
+                            slotActive(Slot::RcsLeft) || slotActive(Slot::RcsRight);
                 if(g.ship->isEva()) { wake = wake || slotActive(Slot::Space); }
                 if(wake) {
                     g.ship->leaveRails();
@@ -156,6 +161,30 @@ void tick(Game &g) {
 
             if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
             if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }
+
+            // RCS translation (camera-relative, KSP-style): arm a unit
+            // direction from the held slots against the camera basis. forward
+            // and up are the live view axes (both set in ComputeView, valid
+            // here in orbit mode); right is derived (cross) since the
+            // camera's own `right` member is only kept current in free mode.
+            // The direction is stored on the ship and consumed in
+            // applyRcsForce before every substep (the EVA kerbal's own
+            // translation runs its own path, so this is ship-only).
+            {
+                const glm::dvec3 f = g.camera->forward;
+                const glm::dvec3 u = g.camera->up;
+                const glm::dvec3 r = glm::normalize(glm::cross(f, u));
+                glm::dvec3 d(0.0);
+                if (slotActive(Slot::RcsForward)) { d += f; }
+                if (slotActive(Slot::RcsBack))    { d -= f; }
+                if (slotActive(Slot::RcsUp))      { d += u; }
+                if (slotActive(Slot::RcsDown))    { d -= u; }
+                if (slotActive(Slot::RcsLeft))    { d -= r; }
+                if (slotActive(Slot::RcsRight))   { d += r; }
+                if (game_running && glm::length2(d) > 1e-12) {
+                    g.ship->setRcsDir(glm::normalize(d));
+                }
+            }
             }
         }
 

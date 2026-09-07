@@ -1,0 +1,18 @@
+# Ship RCS translation (KSP-style, camera-relative): a ship on an inertial
+# orbit holds N (RcsForward) -- the ship translates along the camera forward
+# (into the screen), burning hydrazine mono (the same propellant the EVA suit
+# uses). RCS is a fixed thrust gated on the ship's propellant
+# (consume-then-arm, like the ship's engines), so the burn both changes the
+# velocity AND sheds fuel mass -- and the osculating orbit's specific energy
+# E (a constant between burns) moves. The N press exercises the
+# RcsForward binding (H/N back-forward, I/K up-down, J/L left-right; see
+# src/keys.cpp) -- the ship's analogue of the EVA kerbal's WASD translation.
+NAME ship-rcs
+ARGS --ship res/ships/rcs_test.json --scenario inertial-orbit --time-accel 1 --timeout 8 --dbg-log --orbit-log --orbit-interval 0.5 --sim-press 2000,2000,N --frame-cap 30
+EXPECT Building ship 'rcs_test' (2 parts)
+FORBID GL_
+FORBID error:
+CHECK len(dbg) >= 2
+# the burn changed the osculating orbit's specific energy (RCS actually
+# thrust; E is direction-independent, unlike a single velocity component)
+CHECK abs(last(orbit)["E"] - first(orbit)["E"]) > 100.0

@@ -11,10 +11,10 @@
 //   - the part-tree edge (parent) and the authored ship-local pose,
 //   - the parked (rails) pose relative to the cluster COM.
 //
-// Behavior (thruster / reaction wheel / capsule) is DERIVED from the
+// Behavior (thruster / reaction wheel / RCS / capsule) is DERIVED from the
 // PartDef, not stored: a Part is a thruster iff its def has
-// fuel_rate + exhaust_velocity, a wheel iff it has torque, a capsule iff it
-// has crew_capacity. That is what lets Vehicle drop the old m_thrusters /
+// fuel_rate + exhaust_velocity, a wheel iff it has torque, RCS iff it has
+// rcs_thrust, a capsule iff it has crew_capacity. That is what lets Vehicle drop the old m_thrusters /
 // m_reaction_wheels / m_thruster* / m_wheel* vectors and the rebuildBehavior
 // bookkeeping that kept them in sync.
 //
@@ -63,6 +63,7 @@ struct Part {
             && def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0;
     }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
+    bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
@@ -85,6 +86,7 @@ struct Part {
     double thrust() const { return def->fullThrust(); }  // N at full throttle
     double rate() const { return def->fuel_rate; }        // kg/s per tank
     double wheelTorque() const { return def->torque; }    // N m, rated
+    double rcsThrust() const { return def->rcs_thrust; }  // N, rated translation authority
     double exhaustVelocity() const { return def->exhaust_velocity; }
     double powerDraw() const { return def->power_draw; }          // W, only while active (a reaction wheel)
     double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time (capsule life support)

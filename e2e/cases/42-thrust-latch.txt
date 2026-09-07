@@ -1,19 +1,19 @@
-# Thrust latch (src/keys.cpp ThrustLatch, default Shift+I): while engaged,
+# Thrust latch (src/keys.cpp ThrustLatch, default LShift+T): while engaged,
 # the engines stay lit even with the thrust key released (tick.cpp ORs
 # g.thrust_latched into the held check). --sim-press cannot carry the Shift
 # modifier (events.cpp only sets the scancode), so this case rebinds the
-# latch to a plain key (T) and engages it with a single edge press. The
-# thrust key (I) is NEVER pressed, so any ascent is the latch driving thrust
+# latch to a plain key (U) and engages it with a single edge press. The
+# thrust key (T) is NEVER pressed, so any ascent is the latch driving thrust
 # -- throttle is ramped by R first, exactly as in 41-rebind.
 NAME thrust-latch
-WRITE settings.json {"keybinds": {"thrust_latch": [{"sc": 23, "mods": 0}]}}
+WRITE settings.json {"keybinds": {"thrust_latch": [{"sc": 24, "mods": 0}]}}
 ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
 ARGS --timeout 14 --dbg-log
 # ramp throttle (R = ThrottleUp) -- thrust needs throttle > 0
 ARGS --sim-press 1000,1500,R
-# engage the latch (T, rebound to thrust_latch): a single edge press.
-# From here on the thrust key I is never held.
-ARGS --sim-press 3500,0,T
+# engage the latch (U, rebound to thrust_latch): a single edge press.
+# From here on the thrust key T is never held.
+ARGS --sim-press 3500,0,U
 EXPECT [dbg]
 # before the latch engaged: no thrust, no ascent
 CHECK any(d["t"] <= 3.5 for d in dbg)

@@ -139,7 +139,7 @@ int main() {
              "kill_rot": [{"sc": "x"}, {"sc": 999999}]}})");
     SettingsData tk;
     settings_read(badkb, tk);
-    assert(hasBind(tk.keybinds, Slot::Thrust, SDL_SCANCODE_I, 0));   // default kept
+    assert(hasBind(tk.keybinds, Slot::Thrust, SDL_SCANCODE_T, 0));   // default kept
     assert(hasBind(tk.keybinds, Slot::KillRot, SDL_SCANCODE_X, 0));  // default kept
 
     printf("test_settings: all checks passed\n");

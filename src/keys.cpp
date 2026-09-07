@@ -23,8 +23,11 @@ void KeyBindings::resetDefaults() {
     // Game (one-shot, events.cpp)
     add(Slot::WarpUp,        SDL_SCANCODE_PERIOD);
     add(Slot::WarpDown,      SDL_SCANCODE_COMMA);
-    add(Slot::CamSpeedUp,    SDL_SCANCODE_L);
-    add(Slot::CamSpeedDown,  SDL_SCANCODE_K);
+    // Camera speed moved off L/K (now the RCS right/down translation keys,
+    // KSP-style) so the one-shot speed nudge and the held translation don't
+    // double-fire on the same press.
+    add(Slot::CamSpeedUp,    SDL_SCANCODE_RIGHTBRACKET);
+    add(Slot::CamSpeedDown,  SDL_SCANCODE_LEFTBRACKET);
     add(Slot::ToggleCamMode, SDL_SCANCODE_C);
     add(Slot::CycleTarget,   SDL_SCANCODE_G);
     add(Slot::ToggleWindows, SDL_SCANCODE_TAB);
@@ -45,16 +48,26 @@ void KeyBindings::resetDefaults() {
     add(Slot::YawRight,      SDL_SCANCODE_D);
     add(Slot::RollLeft,      SDL_SCANCODE_Q);
     add(Slot::RollRight,     SDL_SCANCODE_E);
-    add(Slot::Thrust,        SDL_SCANCODE_I);
-    // Latch is a modifier combo (toggles; a plain 'i' press -- the Thrust
+    add(Slot::Thrust,        SDL_SCANCODE_T);
+    // Latch is a modifier combo (toggles; a plain 't' press -- the Thrust
     // slot -- releases it). LShift and RShift are distinct modifier keys, so
-    // the default names one concrete side: LShift+I. (KMOD_SHIFT is
+    // the default names one concrete side: LShift+T. (KMOD_SHIFT is
     // LShift|RShift -- a value no single press produces -- and would never
-    // match; a rebind to RShift+I stores KMOD_RSHIFT instead.)
-    perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_I, KMOD_LSHIFT});
+    // match; a rebind to RShift+T stores KMOD_RSHIFT instead.)
+    perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_T, KMOD_LSHIFT});
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
+    // RCS translation (camera-relative). Shares physical keys with other
+    // groups (I/J/K/L are also CamSpeed / ... in the Game group, but those
+    // are one-shot edges in events.cpp and only fire on a press, never held,
+    // so the held RCS commands never collide with them in orbit mode).
+    add(Slot::RcsForward,    SDL_SCANCODE_N);
+    add(Slot::RcsBack,       SDL_SCANCODE_H);
+    add(Slot::RcsUp,         SDL_SCANCODE_I);
+    add(Slot::RcsDown,       SDL_SCANCODE_K);
+    add(Slot::RcsLeft,       SDL_SCANCODE_J);
+    add(Slot::RcsRight,      SDL_SCANCODE_L);
 
     // Camera (free mode, tick.cpp)
     add(Slot::CamForward,    SDL_SCANCODE_W);
@@ -142,6 +155,12 @@ const char *slotName(Slot s) {
         case Slot::KillRot:        return "kill_rot";
         case Slot::ThrottleUp:     return "throttle_up";
         case Slot::ThrottleDown:   return "throttle_down";
+        case Slot::RcsForward:     return "rcs_forward";
+        case Slot::RcsBack:        return "rcs_back";
+        case Slot::RcsUp:          return "rcs_up";
+        case Slot::RcsDown:        return "rcs_down";
+        case Slot::RcsLeft:        return "rcs_left";
+        case Slot::RcsRight:       return "rcs_right";
         case Slot::CamForward:     return "cam_forward";
         case Slot::CamBack:        return "cam_back";
         case Slot::CamStrafeLeft:  return "cam_strafe_left";
@@ -201,6 +220,12 @@ const char *slotLabel(Slot s) {
         case Slot::KillRot:        return "Kill rotation";
         case Slot::ThrottleUp:     return "Throttle up";
         case Slot::ThrottleDown:   return "Throttle down";
+        case Slot::RcsForward:     return "RCS forward";
+        case Slot::RcsBack:        return "RCS back";
+        case Slot::RcsUp:          return "RCS up";
+        case Slot::RcsDown:        return "RCS down";
+        case Slot::RcsLeft:        return "RCS left";
+        case Slot::RcsRight:       return "RCS right";
         case Slot::CamForward:     return "Camera forward";
         case Slot::CamBack:        return "Camera back";
         case Slot::CamStrafeLeft:  return "Camera strafe left";
@@ -236,6 +261,8 @@ SlotGroup slotGroup(Slot s) {
         case Slot::RollLeft: case Slot::RollRight:
         case Slot::Thrust: case Slot::ThrustLatch: case Slot::KillRot:
         case Slot::ThrottleUp: case Slot::ThrottleDown:
+        case Slot::RcsForward: case Slot::RcsBack:
+        case Slot::RcsUp: case Slot::RcsDown: case Slot::RcsLeft: case Slot::RcsRight:
             return SlotGroup::Flight;
         case Slot::CamForward: case Slot::CamBack:
         case Slot::CamStrafeLeft: case Slot::CamStrafeRight:

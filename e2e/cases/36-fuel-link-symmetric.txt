@@ -22,7 +22,7 @@
 #   * and the user-visible symptom is gone: |w| stays ~0 during the burn.
 #
 # Timeline (--time-accel 1: 1 wall s == 1 sim s):
-#   1.0-41.0 s  I held (thrust, ~27 kg/s per arm)
+#   1.0-41.0 s  T held (thrust, ~27 kg/s per arm)
 #   41.0-55 s   coast to the --timeout 55 exit
 #
 # The phase windows for the spin check sit well inside the burn so a small
@@ -31,7 +31,7 @@
 NAME fuel-link-symmetric
 ARGS --ship res/ships/heavy_two.json --time-accel 1
 ARGS --fuel-log --att-log --timeout 55
-ARGS --sim-press 1000,40000,I
+ARGS --sim-press 1000,40000,T
 EXPECT [fuel]
 FORBID GL_
 FORBID error:

@@ -43,8 +43,8 @@ enum class Slot {
     // --- Game: one-shot actions (events.cpp, SDL_KEYDOWN edges) ----------
     WarpUp,        // '.'  warp one step up (10x)
     WarpDown,      // ','  warp one step down
-    CamSpeedUp,    // 'l'  camera speed x4
-    CamSpeedDown,  // 'k'  camera speed /4
+    CamSpeedUp,    // ']'  camera speed x4
+    CamSpeedDown,  // '['  camera speed /4
     ToggleCamMode, // 'c'  orbit (flying) <-> free (exploring)
     CycleTarget,   // 'g'  orbit mode: cycle the target body/ship
     ToggleWindows, // TAB  toggle the info windows
@@ -64,11 +64,19 @@ enum class Slot {
     YawRight,      // 'd'
     RollLeft,      // 'q'
     RollRight,     // 'e'
-    Thrust,        // 'i'
-    ThrustLatch,   // 'Shift+i' latch thrust to fire (toggle; a plain 'i' release)
+    Thrust,        // 't'
+    ThrustLatch,   // 'LShift+t' latch thrust to fire (toggle; a plain 't' release)
     KillRot,       // 'x'
     ThrottleUp,    // 'r'
     ThrottleDown,  // 'f'
+    // RCS translation (camera-relative, KSP-style; the ship's analogue of
+    // the EVA suit's WASD/R/F -- the kerbal keeps its own keys):
+    RcsForward,    // 'n'  along the view direction (into the screen)
+    RcsBack,       // 'h'  out of the screen
+    RcsUp,         // 'i'  screen up
+    RcsDown,       // 'k'  screen down
+    RcsLeft,       // 'j'  screen left
+    RcsRight,      // 'l'  screen right
     // --- Camera: held commands in free mode (tick.cpp) -------------------
     CamForward,    // 'w'
     CamBack,       // 's'

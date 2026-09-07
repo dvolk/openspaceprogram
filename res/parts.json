@@ -491,6 +491,28 @@
       }
     },
     {
+      "name": "mono_tank",
+      "type": "fuel_tank",
+      "mesh": "fuel_tank.obj",
+      "texture": "fuel_tank.png",
+      "mass": 400.0,
+      "radius": 1.0,
+      "height": 1.0,
+      "capacity": {
+        "hydrazine": 40.0
+      }
+    },
+    {
+      "name": "rcs",
+      "type": "rcs",
+      "mesh": "reaction_wheel_r1h0.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 50.0,
+      "radius": 1.0,
+      "height": 0.25,
+      "rcs_thrust": 2000.0
+    },
+    {
       "name": "fuel_link",
       "type": "fuel_link",
       "fuel_link": true
