@@ -1,0 +1,6 @@
+{
+  "ships": [
+    { "ship": "res/ships/racer.json",  "name": "racer",  "scenario": "inertial-orbit" },
+    { "ship": "res/ships/tanker.json", "name": "tanker", "scenario": "inertial-orbit" }
+  ]
+}

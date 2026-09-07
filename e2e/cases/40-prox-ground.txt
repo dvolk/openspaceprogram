@@ -1,0 +1,14 @@
+# Proximity (ground regime): the default fleet's active ship is on the pad
+# (grounded); the pad neighbours sit 100-500 m apart (the pad slot group),
+# outside the default 10 m engage radius. Widen the ground radii so the
+# neighbours engage, and verify the GROUND regime label is used (not fly).
+# (The 2 km fly default is exercised by 39-prox-fly.)
+NAME prox-ground
+ARGS --fleet res/fleet.json --time-accel 1 --timeout 5 --prox-log
+ARGS --prox-ground-on 600 --prox-ground-off 1000
+EXPECT [prox]
+EXPECT ENGAGED
+EXPECT , ground)
+FORBID , fly)
+FORBID GL_
+FORBID error:

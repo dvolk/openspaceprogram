@@ -169,6 +169,11 @@ void tick(Game &g) {
 
             g.sun->frame->UpdateOrbitRails(g.time);
 
+            // Proximity: wake ships near the active ship (and, on a close
+            // approach, wake the active ship + cap the warp). Runs before the
+            // branch so a dropped warp routes this tick into the physics path.
+            g.updateProximity();
+
             if(g.time_accel >= kRailsWarp) {
                 /* Rails warp: every ship coasts analytically (or sits
                    frozen on the ground) and the Bullet world is not

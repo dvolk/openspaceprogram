@@ -391,6 +391,11 @@ struct Game {
     // Enter rails warp (park every ship); false + keeps the accel if any
     // ship is not rail-eligible.
     bool enter_rails_warp();
+    // Proximity activation: keep ships near the active ship live (in
+    // physics) so they can interact, park the rest; wake the active ship and
+    // cap the warp on a close approach. Ground/fly radii differ; a ground
+    // engage radius of 0 never auto-wakes grounded neighbors.
+    void updateProximity();
     // Remove a ship + its bookkeeping (refuses the last one; hands control
     // off if the active one is removed).
     void remove_ship(Vehicle *v);

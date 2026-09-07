@@ -595,6 +595,71 @@ bool Game::enter_rails_warp() {
     return true;
 }
 
+/* Proximity activation: keep the ships close to the active ship live (in
+   the physics world) so they can interact, and park the ones that are not.
+   The active ship is either grounded or flying (inTerrainBand); the two
+   regimes use very different radii -- a few tens of metres on the pad, a few
+   kilometres in orbit. An engaged ship that is parked while the active ship
+   is on rails (rails warp) wakes the active ship and caps the accel, so a
+   close approach always drops out of warp into live physics. A ground
+   engage radius of 0 disables auto-waking grounded neighbors (they wake only
+   when you switch to them). */
+void Game::updateProximity() {
+    Vehicle *a = ship;
+    if(a == nullptr) { return; }
+
+    const bool grounded = a->inTerrainBand();
+    const double r_on  = grounded ? args.prox_ground_on  : args.prox_fly_on;
+    const double r_off = grounded ? args.prox_ground_off : args.prox_fly_off;
+
+    std::vector<Vehicle *> all = collectVehicles(sys);
+    bool any_engaged = false;
+    for(auto *s : all) {
+        if(s == a) { continue; }
+        if(s->isCrewAboard()) { continue; }   // crew riding in a ship is not a target
+        const double d = a->distanceTo(s);
+        if(s->onRails && r_on > 0.0 && d < r_on) {
+            s->releaseControl();   // no armed commands once it's live
+            s->leaveRails();
+            if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
+                                       time, s->name.c_str(), d, r_on,
+                                       grounded ? "ground" : "fly"); }
+        } else if(!s->onRails && d > r_off) {
+            s->goOnRails();
+            if(args.prox_log) { printf("[prox] t=%.3f %s RELEASED at %.1f m (> %.1f m, %s)\n",
+                                       time, s->name.c_str(), d, r_off,
+                                       grounded ? "ground" : "fly"); }
+        }
+        if(!s->onRails) { any_engaged = true; }
+    }
+
+    if(any_engaged && a->onRails) {
+        a->leaveRails();
+        if(args.prox_log) { printf("[prox] t=%.3f active %s WOKEN from rails\n",
+                                   time, a->name.c_str()); }
+    }
+    if(any_engaged && time_accel > args.prox_warp) {
+        time_accel = args.prox_warp;
+        toast("Close approach: time accel limited to %dx", (int)args.prox_warp);
+        if(args.prox_log) { printf("[prox] t=%.3f warp CAPPED to %d\n",
+                                   time, (int)args.prox_warp); }
+    }
+
+    if(args.prox_log) {
+        static double last_snap = -1e30;
+        if(time - last_snap >= 0.5) {
+            last_snap = time;
+            printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f\n",
+                   time, grounded ? "ground" : "fly", r_on, r_off);
+            for(auto *s : all) {
+                if(s == a) { continue; }
+                printf("[prox]   %s dist=%.1f m %s\n", s->name.c_str(),
+                       a->distanceTo(s), s->onRails ? "on-rails" : "LIVE");
+            }
+        }
+    }
+}
+
 /* Remove a ship + its bookkeeping. The Vehicle dtor detaches the welds
    and unregisters the bodies (skipped when the ship is already parked on
    rails), so this is safe in any state. Refuses to remove the last ship.

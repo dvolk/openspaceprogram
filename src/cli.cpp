@@ -223,6 +223,31 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "'is the ship losing power?' (life support + the active "
                  "wheels drain the battery; an RTG charges it)");
 
+    app.add_flag("--prox-log", args.prox_log,
+                 "Print proximity engage/release events, the active-ship "
+                 "wake, the warp cap, and a throttled per-ship distance "
+                 "snapshot -- the instrument for the proximity e2e tests");
+
+    app.add_option("--prox-fly-on", args.prox_fly_on,
+                   "Engage radius (m) while the active ship is flying: a "
+                   "non-active ship within it leaves the rails and gets "
+                   "physics (default 2000 = 2 km)");
+    app.add_option("--prox-fly-off", args.prox_fly_off,
+                   "Release radius (m) while the active ship is flying: a "
+                   "proximity-activated ship beyond it returns to the rails "
+                   "(default 10000 = 10 km)");
+    app.add_option("--prox-ground-on", args.prox_ground_on,
+                   "Engage radius (m) while the active ship is grounded: a "
+                   "non-active ship within it leaves the rails (default "
+                   "10 = 10 m; 0 disables auto-waking grounded neighbors)");
+    app.add_option("--prox-ground-off", args.prox_ground_off,
+                   "Release radius (m) while the active ship is grounded: a "
+                   "proximity-activated ship beyond it returns to the rails "
+                   "(default 20 = 20 m)");
+    app.add_option("--prox-warp", args.prox_warp,
+                   "Max time accel while any non-active ship is engaged "
+                   "(default 1)");
+
     app.add_flag("--compound-check", args.compound_check,
                  "Periodically print, for every ship, how far the part poses "
                  "derived from its single compound rigid body are from the "

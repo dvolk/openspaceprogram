@@ -2005,6 +2005,19 @@ public:
         }
     }
 
+    // Separation between this ship's COM and another's, in the universe (root)
+    // frame. The root is shared by every body in the system, so expressing
+    // both COMs there gives a frame-invariant distance, independent of the SOI
+    // each ship is currently tracking.
+    double distanceTo(Vehicle *o) {
+        Frame *root = frame;
+        while(root->parent) { root = root->parent; }
+        glm::dvec3 p, v, q, w;
+        comStateIn(root, p, v);
+        o->comStateIn(root, q, w);
+        return glm::length(p - q);
+    }
+
     /* The COM's osculating orbit dips into the terrain band (periapsis
        within 3 km of the surface): sitting on / skimming the ground rather
        than coasting clear of it. */

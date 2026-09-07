@@ -68,6 +68,12 @@ struct GameArgs {
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links
     bool drain_log = false;      // --drain-log: per-fuel-group drain rate (kg/s)
     bool power_log = false;      // --power-log: power balance (gen/draw/pool/gate)
+    bool prox_log = false;       // --prox-log: proximity engage/release + distances
+    double prox_fly_on = 2000.0;    // --prox-fly-on: engage radius while the active ship flies (m)
+    double prox_fly_off = 10000.0;  // --prox-fly-off: release radius while flying (m)
+    double prox_ground_on = 10.0;   // --prox-ground-on: engage radius while grounded (m; 0 = never auto-wake)
+    double prox_ground_off = 20.0;  // --prox-ground-off: release radius while grounded (m)
+    double prox_warp = 1.0;         // --prox-warp: max time accel while a ship is engaged
     bool compound_check = false;   // --compound-check: the ship-as-one-rigid-body gate
 
     std::vector<std::string> postfx_spec;
