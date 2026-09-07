@@ -1432,11 +1432,18 @@ void drawPartWindows(Game &g) {
             static const char *resNames[(int)ResourceType::Num] = {
                 "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food", "Hydrazine"
             };
+            // EC is stored energy (watt-hours), not a substance (kg) -- a
+            // battery's charge drains under load without losing mass.
+            static const char *resUnits[(int)ResourceType::Num] = {
+                "kg", "kg", "Wh", "kg", "kg", "kg", "kg"
+            };
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0f) { continue; }
-                ImGui::Text("%s: %.1fkg/%.1fkg", resNames[r],
+                ImGui::Text("%s: %.1f%s/%.1f%s", resNames[r],
                             ship->parts[part]->resources.current[r],
-                            ship->parts[part]->resources.capacity[r]);
+                            resUnits[r],
+                            ship->parts[part]->resources.capacity[r],
+                            resUnits[r]);
             }
             // --- crew (this part is a capsule: holds EVA characters) --------
             // Aboard crew get an EVA button (takes them out, game.cpp); a
