@@ -392,6 +392,24 @@ void poll_events(Game &g) {
                 // Toggle the main menu.
                 ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
             }
+            // Thrust latch: the ThrustLatch slot (default Shift+I) toggles
+            // it; while engaged, tick.cpp keeps the active ship's engines
+            // lit even with the thrust key released. A plain thrust-key press
+            // takes manual control and clears the latch (the held thrust then
+            // drives it while the key is down). One-shot: guard against the
+            // OS key auto-repeat re-firing the edge.
+            if(slotFired(Slot::ThrustLatch, ksc, kmod, g.binds)) {
+                if(!ev.key.repeat) {
+                    g.thrust_latched = !g.thrust_latched;
+                    printf("Thrust latch: %s\n", g.thrust_latched ? "engaged" : "off");
+                    g.toast("Thrust latch %s", g.thrust_latched ? "engaged" : "off");
+                }
+            } else if(slotFired(Slot::Thrust, ksc, kmod, g.binds)
+                      && !ev.key.repeat && g.thrust_latched) {
+                g.thrust_latched = false;
+                printf("Thrust latch: off (manual thrust)\n");
+                g.toast("Thrust latch off");
+            }
         }
         if(ev.type == SDL_MOUSEBUTTONDOWN) {
             // holding RMB over 3D (not over a UI window) moves the camera.

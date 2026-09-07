@@ -148,7 +148,10 @@ void tick(Game &g) {
             if (slotActive(Slot::RollLeft)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
             if (slotActive(Slot::RollRight)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
 
-            if (slotActive(Slot::Thrust)) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
+            // The thrust latch (g.thrust_latched, toggled by the ThrustLatch
+            // slot) keeps the engines lit even with the thrust key released:
+            // it ORs into the held check so Command(Thrust) re-arms every tick.
+            if (slotActive(Slot::Thrust) || g.thrust_latched) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
             if (slotActive(Slot::KillRot)) { g.ship->Command(ShipCmd(KillRot), game_running); }
 
             if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }

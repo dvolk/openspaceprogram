@@ -114,7 +114,7 @@ int main() {
     k.keybinds.perSlot[(size_t)Slot::Thrust].clear();
     k.keybinds.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_J, 0});
     k.keybinds.perSlot[(size_t)Slot::KillRot].clear();
-    k.keybinds.perSlot[(size_t)Slot::KillRot].push_back(KeyBind{SDL_SCANCODE_K, KMOD_CTRL});
+    k.keybinds.perSlot[(size_t)Slot::KillRot].push_back(KeyBind{SDL_SCANCODE_K, KMOD_LCTRL});
     k.keybinds.perSlot[(size_t)Slot::WarpUp].clear();   // unbound
 
     nlohmann::json kj;
@@ -122,7 +122,7 @@ int main() {
     SettingsData kr;
     settings_read(nlohmann::json::parse(kj.dump()), kr);
     assert(hasBind(kr.keybinds, Slot::Thrust, SDL_SCANCODE_J, 0));
-    assert(hasBind(kr.keybinds, Slot::KillRot, SDL_SCANCODE_K, KMOD_CTRL));
+    assert(hasBind(kr.keybinds, Slot::KillRot, SDL_SCANCODE_K, KMOD_LCTRL));
     assert(kr.keybinds.perSlot[(size_t)Slot::WarpUp].empty());   // cleared stays cleared
 
     // absent "keybinds" keeps the current bindings.

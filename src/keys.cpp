@@ -46,6 +46,12 @@ void KeyBindings::resetDefaults() {
     add(Slot::RollLeft,      SDL_SCANCODE_Q);
     add(Slot::RollRight,     SDL_SCANCODE_E);
     add(Slot::Thrust,        SDL_SCANCODE_I);
+    // Latch is a modifier combo (toggles; a plain 'i' press -- the Thrust
+    // slot -- releases it). LShift and RShift are distinct modifier keys, so
+    // the default names one concrete side: LShift+I. (KMOD_SHIFT is
+    // LShift|RShift -- a value no single press produces -- and would never
+    // match; a rebind to RShift+I stores KMOD_RSHIFT instead.)
+    perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_I, KMOD_LSHIFT});
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
@@ -132,6 +138,7 @@ const char *slotName(Slot s) {
         case Slot::RollLeft:       return "roll_left";
         case Slot::RollRight:      return "roll_right";
         case Slot::Thrust:         return "thrust";
+        case Slot::ThrustLatch:    return "thrust_latch";
         case Slot::KillRot:        return "kill_rot";
         case Slot::ThrottleUp:     return "throttle_up";
         case Slot::ThrottleDown:   return "throttle_down";
@@ -190,6 +197,7 @@ const char *slotLabel(Slot s) {
         case Slot::RollLeft:       return "Roll left";
         case Slot::RollRight:      return "Roll right";
         case Slot::Thrust:         return "Thrust";
+        case Slot::ThrustLatch:    return "Thrust latch (hold thrust)";
         case Slot::KillRot:        return "Kill rotation";
         case Slot::ThrottleUp:     return "Throttle up";
         case Slot::ThrottleDown:   return "Throttle down";
@@ -226,7 +234,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::PitchUp: case Slot::PitchDown:
         case Slot::YawLeft: case Slot::YawRight:
         case Slot::RollLeft: case Slot::RollRight:
-        case Slot::Thrust: case Slot::KillRot:
+        case Slot::Thrust: case Slot::ThrustLatch: case Slot::KillRot:
         case Slot::ThrottleUp: case Slot::ThrottleDown:
             return SlotGroup::Flight;
         case Slot::CamForward: case Slot::CamBack:
@@ -333,10 +341,15 @@ std::string keyName(SDL_Scancode sc) {
 
 std::string bindLabel(const KeyBind &b) {
     std::string s;
-    // Conventional left-to-right modifier order (Shift, Ctrl, Alt).
-    if (b.mods & KMOD_SHIFT) { s += "Shift+"; }
-    if (b.mods & KMOD_CTRL)  { s += "Ctrl+"; }
-    if (b.mods & KMOD_ALT)   { s += "Alt+"; }
+    // Conventional left-to-right modifier order (Shift, Ctrl, Alt). LShift and
+    // RShift (and the L/R Ctrl, Alt pairs) are distinct modifier keys, so each
+    // side is shown on its own -- a binding names the exact side it used.
+    if (b.mods & KMOD_LSHIFT) { s += "LShift+"; }
+    if (b.mods & KMOD_RSHIFT) { s += "RShift+"; }
+    if (b.mods & KMOD_LCTRL)  { s += "LCtrl+"; }
+    if (b.mods & KMOD_RCTRL)  { s += "RCtrl+"; }
+    if (b.mods & KMOD_LALT)   { s += "LAlt+"; }
+    if (b.mods & KMOD_RALT)   { s += "RAlt+"; }
     s += keyName(b.sc);
     return s;
 }

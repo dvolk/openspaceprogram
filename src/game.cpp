@@ -364,6 +364,9 @@ void Game::select_ship(Vehicle *v) {
     ship->goOnRails();
     v->leaveRails();
     ship = v;
+    // The thrust latch is per-active-ship: a new ship starts with thrust
+    // released (the user re-latches if they want it on this ship).
+    thrust_latched = false;
     if(time_accel >= kRailsWarp) {
         time_accel = 10;
         toast("Active ship: %s, warp 10x", ship->name.c_str());
@@ -594,6 +597,11 @@ bool Game::enter_rails_warp() {
         }
     }
     for(auto *s : all) { s->goOnRails(); }
+    // On rails the engines are off (the ships coast on their conics), so the
+    // thrust latch -- which keeps the active ship's engines lit -- no longer
+    // applies. Clear it so it doesn't re-engage thrust the moment the warp is
+    // dropped back to physics.
+    thrust_latched = false;
     return true;
 }
 

@@ -255,6 +255,11 @@ struct Game {
     // being rebound (>=0), or -1 when not capturing. events.cpp swallows
     // the next non-modifier key-down (the new binding) and sets it back to -1.
     int rebind_capture_slot = -1;
+    // Thrust latch (events.cpp: the ThrustLatch slot toggles it, a plain
+    // Thrust press clears it). While true, tick.cpp keeps commanding the
+    // active ship's thrust each tick even with the thrust key released, so
+    // the engines stay lit until it is undone.
+    bool thrust_latched = false;
 
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;

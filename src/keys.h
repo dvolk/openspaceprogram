@@ -29,6 +29,11 @@
 
 // The modifier bits a binding may require. Anything else (NumLock, CapsLock,
 // GUI/Cmd, ...) is ignored -- a binding is Shift/Ctrl/Alt or none.
+//
+// LShift and RShift (and the L/R Ctrl, Alt pairs) are DISTINCT modifier keys:
+// a binding names the exact side, and a press matches only the side it used.
+// KMOD_SHIFT is LShift|RShift -- a value no single press produces -- so a
+// binding always stores one concrete side (KMOD_LSHIFT or KMOD_RSHIFT).
 static const Uint16 KMOD_RELEVANT = KMOD_SHIFT | KMOD_CTRL | KMOD_ALT;
 
 // One rebindable control. The enum value is its index into KeyBindings.
@@ -60,6 +65,7 @@ enum class Slot {
     RollLeft,      // 'q'
     RollRight,     // 'e'
     Thrust,        // 'i'
+    ThrustLatch,   // 'Shift+i' latch thrust to fire (toggle; a plain 'i' release)
     KillRot,       // 'x'
     ThrottleUp,    // 'r'
     ThrottleDown,  // 'f'
