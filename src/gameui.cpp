@@ -1133,6 +1133,46 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
         ImGui::Text("Vel: %.3fm/s", speed);
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
+
+        // --- power balance (the electrical system) -------------------------
+        // The same resolution powerTick runs each substep, shown live: the
+        // gate (are the reaction wheels live?), the net balance (charging /
+        // draining the pool) and the breakdown. Only shown for a ship that
+        // actually has an EC system (gen, draw, or storage).
+        double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
+        ship->getPower(&gen, &constDraw, &charge, &capacity);
+        if(gen > 0.0 || constDraw > 0.0 || capacity > 0.0) {
+            // active draw: the wheels, only while commanding (the same
+            // condition powerTick uses).
+            bool wheelsActive = (ship->stick[0] != 0.0f ||
+                                 ship->stick[1] != 0.0f ||
+                                 ship->stick[2] != 0.0f)
+                || ship->slew != SlewNone;
+            double activeDraw = 0.0;
+            if(wheelsActive) {
+                for(Part *p : ship->parts) {
+                    if(p->isWheel()) { activeDraw += p->powerDraw(); }
+                }
+            }
+            const double net = gen - constDraw - activeDraw;
+
+            ImGui::Separator();
+            ImGui::Text("Power");
+            if(ship->powered_) {
+                ImGui::TextColored(ImVec4(0.30f, 0.85f, 0.30f, 1.0f),
+                                  "  Status:    POWERED");
+            } else {
+                ImGui::TextColored(ImVec4(0.90f, 0.30f, 0.30f, 1.0f),
+                                  "  Status:    NO POWER (uncontrolled)");
+            }
+            ImGui::Text("  Net:       %+.1f W   (%s)",
+                        net, net >= 0.0 ? "charging" : "draining");
+            ImGui::Text("  Charge:    %.1f / %.1f Wh", charge, capacity);
+            ImGui::Text("  Generation:  %.1f W", gen);
+            ImGui::Text("  Const draw:  %.1f W   (life support)", constDraw);
+            ImGui::Text("  Active:      %.1f W   (wheels, while commanding)",
+                        activeDraw);
+        }
     });
 
     // Labels are abbreviated to <= 3 chars and right-padded to the

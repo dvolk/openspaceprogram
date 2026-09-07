@@ -6,6 +6,7 @@
     { "ship": "res/ships/laythe_explorer.json", "name": "laythe explorer", "scenario": "inertial-orbit" },
     { "ship": "res/ships/transporter.json", "name": "transporter", "scenario": "high-orbit" },
     { "ship": "res/ships/endurance_racer.json", "name": "endurance racer", "scenario": "pad" },
-    { "ship": "res/ships/ranger.json", "name": "ranger", "scenario": "pad" }
+    { "ship": "res/ships/ranger.json", "name": "ranger", "scenario": "pad" },
+    { "ship": "res/ships/power_test.json", "name": "power test", "scenario": "pad" }
   ]
 }

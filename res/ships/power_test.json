@@ -1,0 +1,11 @@
+{
+  "name": "power_test",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule_r2.25h4.5", "id": "capsule_1" },
+    { "part": "reaction_wheel_r2.25h0.5625", "id": "wheel_1", "parent": "capsule_1" },
+    { "part": "rtg", "id": "rtg_1", "attach": "side", "parent": "capsule_1", "angle": 0 },
+    { "part": "tank_r2.25h3", "id": "tank_1", "parent": "wheel_1" },
+    { "part": "engine_r2.25h4.5", "id": "engine_1", "parent": "tank_1" }
+  ]
+}
