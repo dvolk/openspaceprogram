@@ -548,6 +548,12 @@ public:
     std::map<int, double> drainPrevMass_;
     double drainPrevTime_ = 0.0;
 
+    /* Electrical state (powerTick, per substep): the gate for the reaction
+       wheels (attitude control) -- true = the ship can draw power. Set by
+       powerTick before applyControlForces each substep; default true so a
+       ship with no EC system is ungated until its first tick. */
+    bool powered_ = true;
+
     /* Rails: an idle ship in free fall coasts analytically on its two-body
        conic instead of being integrated: its welds and rigid bodies are
        parked out of the Bullet world and the rigid cluster's pose is
@@ -930,6 +936,133 @@ public:
         return r;
     }
 
+    /* --- electrical (KSP-style EC) ---------------------------------------
+       The ship's EC is a shared pool across its battery parts (a part is a
+       battery when capacity[EC] > 0 -- the capsule and the battery parts);
+       the charge lives in their resources.current[EC], like propellant.
+       powerTick runs once per substep, BEFORE applyControlForces, and does
+       two things:
+         1. gate  -- the reaction wheels (attitude control) draw power, so
+            they work only if the ship can supply it. Life support (the
+            constant draw) has priority: the wheels need power left over
+            (excess generation) or stored charge. A ship with NO EC system
+            at all is ungated -- its wheels work as before (no regression).
+         2. balance -- generation (RTGs) charges the pool; the constant draw
+            (life support) and the active draw (the wheels, only while they
+            are commanded) drain it.
+       Units: power in W, charge in Wh (1 Wh = 3600 J), so W over h seconds
+       is W*h/3600 Wh. EC has no mass -- draining/charging never touches a
+       part's mass (unlike propellant). */
+    void powerTick(double h) {
+        double totalGen = 0.0, constantDraw = 0.0;
+        double ecCharge = 0.0, ecCapacity = 0.0;
+        for(size_t i = 0; i < parts.size(); i++) {
+            Part *p = parts[i];
+            totalGen += p->powerGen();
+            constantDraw += p->powerDrawConstant();
+            if(p->isBattery()) {
+                ecCharge += p->resources.current[(int)ResourceType::EC];
+                ecCapacity += p->resources.capacity[(int)ResourceType::EC];
+            }
+        }
+        // gate: no EC system -> ungated (wheels work as before). Otherwise
+        // the wheels need power left over for them after life support --
+        // excess generation or stored charge.
+        const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
+        powered_ = hasEC ? ((totalGen > constantDraw) || (ecCharge > 0.0)) : true;
+        // active draw: the wheels draw only while they are actually working
+        // (powered AND commanding attitude) -- the same condition
+        // applyRotationForce uses to apply torque.
+        double activeDraw = 0.0;
+        const bool wheelsActive = powered_
+            && ((stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)
+                || slew != SlewNone);
+        if(wheelsActive) {
+            for(size_t i = 0; i < parts.size(); i++) {
+                if(parts[i]->isWheel()) { activeDraw += parts[i]->powerDraw(); }
+            }
+        }
+        // balance: generation charges, the draws drain; clamp to the pool.
+        const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
+        if(netWh < 0.0) { drainEC(-netWh); }
+        else if(netWh > 0.0) { chargeEC(netWh); }
+    }
+
+    /* Drain up to `wh` of EC from the pool, pro-rata across the batteries
+       by their current charge. Clamped to what is stored (never below 0).
+       No mass change: EC is energy, not a substance. */
+    void drainEC(double wh) {
+        if(wh <= 0.0) { return; }
+        double total = 0.0;
+        for(Part *p : parts) {
+            if(p->isBattery()) { total += p->resources.current[(int)ResourceType::EC]; }
+        }
+        if(total <= 0.0) { return; }
+        double take = (wh < total) ? wh : total;
+        for(Part *p : parts) {
+            if(!p->isBattery()) { continue; }
+            float have = p->resources.current[(int)ResourceType::EC];
+            if(have <= 0.0f) { continue; }
+            float share = (float)(take * have / total);
+            if(share > have) { share = have; }
+            p->resources.current[(int)ResourceType::EC] = have - share;
+        }
+    }
+
+    /* Charge the pool by up to `wh`, pro-rata across the batteries by their
+       free capacity. Clamped to the capacity (never above it). No mass
+       change. */
+    void chargeEC(double wh) {
+        if(wh <= 0.0) { return; }
+        double freeCap = 0.0;
+        for(Part *p : parts) {
+            if(p->isBattery()) {
+                freeCap += p->resources.capacity[(int)ResourceType::EC]
+                         - p->resources.current[(int)ResourceType::EC];
+            }
+        }
+        if(freeCap <= 0.0) { return; }
+        double add = (wh < freeCap) ? wh : freeCap;
+        for(Part *p : parts) {
+            if(!p->isBattery()) { continue; }
+            float cap = p->resources.capacity[(int)ResourceType::EC];
+            float have = p->resources.current[(int)ResourceType::EC];
+            float free = cap - have;
+            if(free <= 0.0f) { continue; }
+            float share = (float)(add * free / freeCap);
+            if(share > free) { share = free; }
+            p->resources.current[(int)ResourceType::EC] = have + share;
+        }
+    }
+
+    /* Total EC charge / capacity across the pool (the HUD + --power-log). */
+    void getPower(double *gen, double *constDraw, double *charge, double *capacity) {
+        double g = 0.0, c = 0.0, q = 0.0, cap = 0.0;
+        for(Part *p : parts) {
+            g += p->powerGen();
+            c += p->powerDrawConstant();
+            if(p->isBattery()) {
+                q += p->resources.current[(int)ResourceType::EC];
+                cap += p->resources.capacity[(int)ResourceType::EC];
+            }
+        }
+        if(gen) { *gen = g; }
+        if(constDraw) { *constDraw = c; }
+        if(charge) { *charge = q; }
+        if(capacity) { *capacity = cap; }
+    }
+
+    /* --power-log: the ship's power balance + pool + gate, one line per
+       sample (the "is the ship losing power?" instrument). */
+    void power_log(double time) {
+        double gen, constDraw, charge, capacity;
+        getPower(&gen, &constDraw, &charge, &capacity);
+        printf("[powerlog] t=%.1fs ship=\"%s\" powered=%d gen=%.1fW "
+               "const_draw=%.1fW charge=%.1fWh capacity=%.1fWh\n",
+               time, name.c_str(), (int)powered_, gen, constDraw, charge, capacity);
+        fflush(stdout);
+    }
+
     /* Staging state. `activeStage_` is a monotonic stage COUNTER (the stage
        about to be triggered): it starts at 1 and advances by one on each
        stage press, whether or not that stage had a decoupler. This is what
@@ -1092,6 +1225,11 @@ public:
     // authority to 1/n and making it worse at warp.
     void applyRotationForce(double h) {
         if(firstWheel() == nullptr) { return; }
+        /* Power gate: the reaction wheels are electric -- with no power the
+           ship is uncontrolled (no manual stick AND no autopilot slew).
+           powered_ is set by powerTick this substep (a ship with no EC
+           system is ungated, so this is a no-op for them). */
+        if(!powered_) { return; }
         /* Manual stick: standard aviation mapping, body-relative.
            Pitch (W/S) about the ship's right axis, yaw (A/D) about its
            up axis, roll (Q/E) about the nose. The camera tracks the

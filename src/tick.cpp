@@ -227,6 +227,11 @@ void tick(Game &g) {
                 for(auto *s : all) {
                     if(s->onRails) { continue; }
                     s->processGravity();
+                    /* Electrical resolution BEFORE the control forces, so
+                       the power gate (powered_) is current when the
+                       reaction wheels are applied (a ship that runs out of
+                       power becomes uncontrolled this substep). */
+                    s->powerTick(h);
                     s->applyControlForces(h);
                 }
                 physics_tick(h);
@@ -277,6 +282,17 @@ void tick(Game &g) {
                 if(g.time - last_drain_log >= 0.5) {
                     last_drain_log = g.time;
                     g.ship->drain_log(g.time);
+                }
+            }
+
+            /* --power-log: the ship's power balance (generation, constant
+               draw, stored charge, and the wheel gate) once per 0.5 s of
+               sim time -- the "is the ship losing power?" instrument. */
+            if(g.args.power_log) {
+                static double last_power_log = -1e30;
+                if(g.time - last_power_log >= 0.5) {
+                    last_power_log = g.time;
+                    g.ship->power_log(g.time);
                 }
             }
 

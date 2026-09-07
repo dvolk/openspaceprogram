@@ -216,6 +216,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "samples; the instrument for how fuel is flowing (which "
                  "groups feed the engines and at what rate)");
 
+    app.add_flag("--power-log", args.power_log,
+                 "Periodically print the ship's electrical balance to "
+                 "stdout -- generation (W), constant draw (W), stored "
+                 "charge (Wh) and the wheel gate -- the instrument for "
+                 "'is the ship losing power?' (life support + the active "
+                 "wheels drain the battery; an RTG charges it)");
+
     app.add_flag("--compound-check", args.compound_check,
                  "Periodically print, for every ship, how far the part poses "
                  "derived from its single compound rigid body are from the "
