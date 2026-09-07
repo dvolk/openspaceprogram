@@ -41,7 +41,8 @@
       "mass": 100.53,
       "radius": 1.0,
       "height": 0.25,
-      "torque": 2000
+      "torque": 2000,
+      "power_draw": 1000
     },
     {
       "name": "reaction_wheel_r1.5h0.375",
@@ -51,7 +52,8 @@
       "mass": 339.29,
       "radius": 1.5,
       "height": 0.375,
-      "torque": 3000
+      "torque": 3000,
+      "power_draw": 1500
     },
     {
       "name": "reaction_wheel_r2.25h0.5625",
@@ -61,7 +63,74 @@
       "mass": 1145.11,
       "radius": 2.25,
       "height": 0.562,
-      "torque": 4500
+      "torque": 4500,
+      "power_draw": 2250
+    },
+    {
+      "name": "battery",
+      "type": "battery",
+      "mesh": "reaction_wheel_r1h0.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 863.94,
+      "radius": 1.0,
+      "height": 0.25,
+      "capacity": {
+        "ec": 157079.63
+      }
+    },
+    {
+      "name": "battery_r1.5h0.375",
+      "type": "battery",
+      "mesh": "reaction_wheel_r1.5h0.375.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 2915.79,
+      "radius": 1.5,
+      "height": 0.375,
+      "capacity": {
+        "ec": 530143.76
+      }
+    },
+    {
+      "name": "battery_r2.25h0.5625",
+      "type": "battery",
+      "mesh": "reaction_wheel_r2.25h0.5625.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 9840.79,
+      "radius": 2.25,
+      "height": 0.562,
+      "capacity": {
+        "ec": 1789235.19
+      }
+    },
+    {
+      "name": "rtg",
+      "type": "rtg",
+      "mesh": "reaction_wheel_r1h0.25.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 117.81,
+      "radius": 1.0,
+      "height": 0.25,
+      "power_gen": 298.45
+    },
+    {
+      "name": "rtg_r1.5h0.375",
+      "type": "rtg",
+      "mesh": "reaction_wheel_r1.5h0.375.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 397.61,
+      "radius": 1.5,
+      "height": 0.375,
+      "power_gen": 1007.27
+    },
+    {
+      "name": "rtg_r2.25h0.5625",
+      "type": "rtg",
+      "mesh": "reaction_wheel_r2.25h0.5625.obj",
+      "texture": "reaction_wheel.png",
+      "mass": 1341.93,
+      "radius": 2.25,
+      "height": 0.562,
+      "power_gen": 3399.55
     },
     {
       "name": "engine",

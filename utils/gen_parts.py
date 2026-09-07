@@ -19,6 +19,13 @@ catalog is reproducible and internally consistent instead of hand-tuned:
   capsule / wheel / adapter / nose_cap
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
+                  wheel also carries power_draw = radius * WHEEL_DRAW_WATTS_PER_M
+  battery         active   = volume * BATTERY_ACTIVE_DENSITY (the Li-ion cells)
+                  dry      = volume * BATTERY_DRY_DENSITY (hull/BMS/wiring)
+                  mass     = active + dry
+                  capacity = active * BATTERY_WATTS_PER_KG (Wh of EC charge)
+  rtg             mass      = volume * RTG_DENSITY (fuel + thermos + housing)
+                  power_gen = volume * RTG_WATTS_PER_M3 (a constant source)
   decoupler       staging boundary: decoupler + fuel_barrier flags; the
                   mass is declared (EXTRA_FIELDS), radius/height follow
                   the mesh unless declared
@@ -71,6 +78,24 @@ MASS_DENSITY = {
 CAPSULE_TORQUE_PER_M = 200.0
 WHEEL_TORQUE_PER_M = 2000.0
 
+# electrical (KSP-style EC): power in watts (W), charge in watt-hours (Wh).
+# Like the fuel tanks, the values are derived from the part VOLUME (the mesh
+# is the source of truth for size), so the three sizes scale consistently:
+#   reaction wheel  power_draw = radius * WHEEL_DRAW_WATTS_PER_M
+#                   (draws while active; scales with radius like the torque)
+#   rtg             power_gen  = volume * RTG_WATTS_PER_M3
+#                   (a constant source; output scales with volume)
+#   battery         capacity   = volume * BATTERY_ACTIVE_DENSITY * BATTERY_WATTS_PER_KG
+#                   (the cells fill the volume at the pack's bulk density;
+#                    the charge is that mass times the cell Wh/kg. Like the
+#                    fuel tank, a share of the volume is hull/BMS/wiring.)
+WHEEL_DRAW_WATTS_PER_M = 1000.0   # W per m of radius (r1 -> 1000 W)
+RTG_WATTS_PER_M3       = 380.0    # W per m^3 (r1 -> ~300 W)
+RTG_DENSITY            = 150.0    # kg/m^3, fuel + thermoelectrics + housing
+BATTERY_ACTIVE_DENSITY = 1000.0   # kg/m^3, Li-ion pack bulk density
+BATTERY_WATTS_PER_KG   = 200.0    # Wh/kg, modern space Li-ion (per kg of cells)
+BATTERY_DRY_DENSITY    = 100.0    # kg/m^3, hull + BMS + wiring overhead
+
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual: mesh/texture are None and generate() skips the
 # geometry step for it.
@@ -84,6 +109,12 @@ PARTS = [
     ("reaction_wheel",   "reaction_wheel", "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
     ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "reaction_wheel_r1.5h0.375.obj",  "reaction_wheel.png"),
     ("reaction_wheel_r2.25h0.5625","reaction_wheel", "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
+    ("battery",          "battery",        "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
+    ("battery_r1.5h0.375","battery",       "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
+    ("battery_r2.25h0.5625","battery",     "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
+    ("rtg",              "rtg",            "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
+    ("rtg_r1.5h0.375",   "rtg",            "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
+    ("rtg_r2.25h0.5625", "rtg",            "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
     ("engine",           "engine",         "engine.obj",                   "engine.png"),
     ("engine_r1.5h3",    "engine",         "engine_r1.5h3.obj",            "engine.png"),
     ("engine_r2.25h4.5", "engine",         "engine_r2.25h4.5.obj",         "engine.png"),
@@ -203,6 +234,24 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
         e["height"] = height
+    elif ptype == "battery":
+        # EC storage (KSP-style): the cells fill the part volume at the
+        # pack's bulk density, the charge is that mass times the cell
+        # Wh/kg, and a share of the volume is hull/BMS/wiring (dry) --
+        # the same capacity + dry structure as the fuel tank.
+        active = volume * BATTERY_ACTIVE_DENSITY
+        dry = volume * BATTERY_DRY_DENSITY
+        e["mass"] = clean(active + dry)
+        e["radius"] = radius
+        e["height"] = height
+        e["capacity"] = {"ec": clean(active * BATTERY_WATTS_PER_KG)}
+    elif ptype == "rtg":
+        # constant power source: output scales with volume (more fuel +
+        # thermoelectrics); the mass is the fuel/thermos/housing.
+        e["mass"] = clean(volume * RTG_DENSITY)
+        e["radius"] = radius
+        e["height"] = height
+        e["power_gen"] = clean(volume * RTG_WATTS_PER_M3)
     else:  # capsule / reaction_wheel / adapter / nose_cap
         e["mass"] = clean(volume * MASS_DENSITY[ptype])
         e["radius"] = radius
@@ -211,6 +260,7 @@ def generate(name, ptype, mesh, texture):
             e["torque"] = clean(CAPSULE_TORQUE_PER_M * radius)
         elif ptype == "reaction_wheel":
             e["torque"] = clean(WHEEL_TORQUE_PER_M * radius)
+            e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_M * radius)
 
     e.update(EXTRA_FIELDS.get(name, {}))
     return e
@@ -228,8 +278,13 @@ def summary_line(e):
         c = e["capacity"]["hydrogen"] + e["capacity"]["lox"]
         return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
             n, c, e["mass"], clean(c * TANK_DRY_DENSITY / PROP_DENSITY))
+    if "capacity" in e and "ec" in e["capacity"]:
+        return "  %-24s EC=%6dWh  mass=%7s" % (n, e["capacity"]["ec"], e["mass"])
+    if "power_gen" in e:
+        return "  %-24s gen=%5dW  mass=%7s" % (n, e["power_gen"], e["mass"])
     tor = "  torque=%s" % e["torque"] if "torque" in e else ""
-    return "  %-24s mass=%7s%s" % (n, e["mass"], tor)
+    draw = "  draw=%dW" % e["power_draw"] if "power_draw" in e else ""
+    return "  %-24s mass=%7s%s%s" % (n, e["mass"], tor, draw)
 
 
 def main():
