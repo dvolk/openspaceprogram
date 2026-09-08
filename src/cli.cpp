@@ -76,6 +76,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::IsMember({"radial", "parallel", "stacked", "stacks",
                                "parstacks"}));
 
+    /* Docking pair: probe (active) + station, nose-to-nose in the same
+       orbit (see src/docktest.cpp). near = inside the capture window,
+       it docks on the first live tick; approach = outside it, the player
+       burns prograde to close the last stretch. */
+    app.add_option("--dock-test", args.dock_test,
+                   "Build the docking pair (probe + station) instead of a "
+                   "fleet: near | approach")
+        ->check(CLI::IsMember({"near", "approach"}));
+
     app.add_option("-t,--time-accel", args.initial_time_accel,
                    "Initial time acceleration (0 = paused, default 0)")
         ->check(CLI::NonNegativeNumber);

@@ -62,6 +62,16 @@ static const int kToastVisible = 3;    // the last N toasts shown (stacked)
 static const int kPickClickPx = 6;     // total cursor motion, px
 static const int kPickClickMs = 400;   // press duration, ms
 
+// Docking capture (Game::updateDocking, once per tick at the boundary):
+// the two port face-centres must be within kDockCapture, each port axis
+// within kDockAlign (cos of the max misalignment) of the line between the
+// ports, and the port points' relative speed under kDockMaxV at capture.
+// The hulls are 0.1 m inflated (0.2 m contact gap), so a slow aligned
+// approach locks before the hulls touch; a fast one bounces instead.
+static const double kDockCapture = 1.5;   // m, port face-centre distance
+static const double kDockAlign   = 0.966; // cos(15 deg) axis misalignment
+static const double kDockMaxV    = 2.0;   // m/s relative speed at capture
+
 struct ToastMsg {
     std::string text;
     double born;   // wall-clock seconds (SDL_GetTicks() * 0.001)
@@ -413,6 +423,15 @@ struct Game {
     // cap the warp on a close approach. Ground/fly radii differ; a ground
     // engage radius of 0 never auto-wakes grounded neighbors.
     void updateProximity();
+    // Docking: once per tick at the boundary (after the physics substeps),
+    // the active ship's port against every other live ship's port -- close,
+    // aligned and slow enough, the two merge (the active ship survives) and
+    // the joint is recorded as a seam on the survivor.
+    void updateDocking();
+    // Undock: split the most recent seam off the active ship -- the other
+    // side's subtree is extracted into a new ship (the general
+    // Vehicle::extractSubtreeAsShip primitive) and returned to the fleet.
+    void undock();
     // Remove a ship + its bookkeeping (refuses the last one; hands control
     // off if the active one is removed).
     void remove_ship(Vehicle *v);

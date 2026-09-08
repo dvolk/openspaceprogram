@@ -198,17 +198,39 @@ void tick(Game &g) {
         g.phys_steps++;   // one substep ran (the --perf breakdown counts these)
 
         if(g.time_accel != 0) {
+            /* Re-snapshot the ship list for THIS step. It is walked several
+               times below (the rails/physics branch and every substep), and
+               updateDocking() at the end of a step can DELETE the absorbed
+               ship; the accumulator loop then runs another step, and a
+               snapshot taken once before the while loop would still hold the
+               freed pointer and crash walking it. updateDocking erases the
+               absorbed ship from its body's ships list before deleting it,
+               so a fresh per-step snapshot never sees a dangling ship. Still
+               one snapshot per step (not per walk), so a ship that
+               switchFrames moves between body lists mid-step is walked
+               exactly once. */
+            all = collectVehicles(g.sys);
+
             // The active ship's SOI owner before this tick's frame
             // bookkeeping (checked after the branch, below): crossing into
             // a different body's SOI drops warp to 1x.
             TerrainBody *soiOwner = g.ship->m_parent;
 
-            g.sun->frame->UpdateOrbitRails(g.time);
-
             // Proximity: wake ships near the active ship (and, on a close
             // approach, wake the active ship + cap the warp). Runs before the
             // branch so a dropped warp routes this tick into the physics path.
+            //
+            // Runs BEFORE UpdateOrbitRails on purpose: a ship woken here is
+            // re-expressed in the rotating frame (leaveRails + switchFrames)
+            // with the frame transforms still at last tick's epoch -- the same
+            // transforms every live ship's Bullet pose was built against. If
+            // the frame were advanced first, the woken ship's stale rail_pos
+            // (this tick's railsTick has not run for it yet) would be rotated
+            // into the NEW frame, landing it frame_velocity*dt (~4 m at LEO)
+            // off the active ship -- enough to blow the dock capture window.
             g.updateProximity();
+
+            g.sun->frame->UpdateOrbitRails(g.time);
 
             if(g.time_accel >= kRailsWarp) {
                 /* Rails warp: every ship coasts analytically (or sits
@@ -277,6 +299,12 @@ void tick(Game &g) {
                 }
                 physics_tick(h);
             }
+
+            /* Docking: once per tick, at the boundary, after the substeps
+               (the port-pair test + the merge + the velocity carry are all
+               post-physics bookkeeping; one boundary check per tick is
+               enough at any warp). */
+            g.updateDocking();
 
             } // end physics-warp branch (g.time_accel < kRailsWarp)
 

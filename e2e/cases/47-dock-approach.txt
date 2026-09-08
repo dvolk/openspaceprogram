@@ -1,0 +1,17 @@
+# Approach docking: --dock-test approach starts the port faces 2 m apart --
+# just OUTSIDE the 1.5 m capture window -- co-moving on the same orbit, with
+# the probe's dock target armed. The probe must burn the last stretch: its
+# engine thrusts along +Z, toward the station ahead of it, so a short prograde
+# burst (T) closes the gap into capture while the relative speed stays under
+# the 2 m/s gate, and the targeted ports mate. (The burst is wall-clock timed
+# via --sim-press, so it lands on 1 or 2 physics ticks; either closes the gap
+# slow enough to dock -- both are asserted only through the [dock] line.)
+NAME dock-approach
+ARGS --dock-test approach --time-accel 1 --timeout 4
+ARGS --sim-press 500,30,T
+EXPECT Dock-test (approach)
+EXPECT [dock] t=
+EXPECT a="dockprobe" b="dockstation"
+FORBID Segmentation
+FORBID GL_
+FORBID error:

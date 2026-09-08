@@ -89,6 +89,30 @@ int main() {
     const PartDef *dc = cat.find("decoupler_r1");
     CHECK(dc != nullptr && dc->decoupler && dc->fuel_barrier);
 
+    // docking ports: a connection point (end face that locks to another
+    // port). They are fuel barriers (a boundary between two ships' fuel
+    // systems) and carry NO other behavior -- no thrust, no wheel, no tank,
+    // not a decoupler. One per standard radius, reusing the decoupler geometry.
+    const PartDef *dp1   = cat.find("docking_port_r1");
+    const PartDef *dp15  = cat.find("docking_port_r1.5");
+    const PartDef *dp225 = cat.find("docking_port_r2.25");
+    CHECK(dp1 != nullptr && dp15 != nullptr && dp225 != nullptr);
+    for(const PartDef *dp : { dp1, dp15, dp225 }) {
+        CHECK(dp->docking_port);
+        CHECK(dp->fuel_barrier);        // forced by the parser, like a decoupler
+        CHECK(!dp->decoupler);
+        CHECK(dp->mass > 0.0);
+        CHECK(dp->torque == 0.0);
+        CHECK(dp->fuel_rate == 0.0 && dp->exhaust_velocity == 0.0);
+        for(size_t r = 0; r < dp->capacity.size(); r++) {
+            CHECK(dp->capacity[r] == 0.0f);
+        }
+    }
+    // sizes track the decoupler sizes (same geometry)
+    CHECK(dp1->radius == dc->radius && dp1->height == dc->height);
+    CHECK(dp15->radius == 1.5 && dp15->height == 0.375);
+    CHECK(dp225->radius == 2.25 && dp225->height == 0.5625);
+
     // fuel link: a virtual (no-mesh) one-way fuel connection. It is a marker
     // entry -- no geometry, no mass (the catalog parser skips the validation
     // for it). The endpoints come from the ship def (from/to), not the catalog.

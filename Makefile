@@ -164,6 +164,18 @@ test:
 	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_staging
 	./test_staging
+	# docking merge/split (Vehicle::absorbShip + extractSubtreeAsShip from
+	# src/vehicle.h): absorbShip is a rigid merge -- every absorbed part keeps
+	# its exact world pose, the seam is recorded, the absorbed root rehangs off
+	# the survivor's port -- and extractSubtreeAsShip is its exact inverse (the
+	# undock round-trip restores both ships' geometry). This is the same general
+	# primitive a future "dropped stage becomes a ship" will call. Headless:
+	# init() runs rebuildCompound (the one hull body) but NOT enterWorld, and
+	# extractSubtreeAsShip leaves enterWorld to its caller, so no physics world.
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
+	    tests/test_dock.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_dock
+	./test_dock
 	# ship mass properties (Vehicle::get_center_of_mass / getInertia from
 	# src/vehicle.h): golden values against an independent analytic
 	# parallel-axis assembly, incl. the products of inertia and rotated
@@ -311,7 +323,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_keys test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_keys test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

@@ -357,6 +357,14 @@ void poll_events(Game &g) {
                     }
                 }
             }
+            if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {
+                // split the most recent docked seam off the active ship
+                // (Game::undock handles the rails wake; one-shot)
+                if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+                   && !g.ship->isEva()) {
+                    g.undock();
+                }
+            }
             if(slotFired(Slot::Screenshot, ksc, kmod, g.binds)) {
                 g.screenshot_requested = true;
             }

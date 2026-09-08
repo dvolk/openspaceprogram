@@ -36,6 +36,7 @@ struct GameArgs {
     std::string fleet_file;
 
     std::string radial_test;
+    std::string dock_test;
     int initial_time_accel = 0;
     double start_time = 0.0;   // --start-time: the sim clock's t0 (s)
     double timeout_seconds = 0.0;

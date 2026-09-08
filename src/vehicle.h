@@ -678,6 +678,29 @@ public:
 
     void init() {
         if(parts.empty()) { return; }
+        /* propellant reservoirs: seed each tank part's resources so the
+           thrusters can draw from them (they shed mass as they burn). Only
+           done at construction -- separateStage() and extractSubtreeAsShip()
+           must NOT re-seed (a stage that has been burning keeps what it has
+           left). */
+        for(size_t i = 0; i < parts.size(); i++) {
+            Part *p = parts[i];
+            if(!p->isTank()) { continue; }
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                p->resources.capacity[r] = p->def->capacity[r];
+                p->resources.current[r]  = p->def->capacity[r];
+            }
+        }
+        finalize();
+    }
+
+    /* init() minus the tank re-seed: the bookkeeping that finalizes a ship
+       whose part list is already final -- the controller fallback, the stage
+       readout, the fuel groups and the compound. init() calls it after
+       seeding; extractSubtreeAsShip() calls it directly (the extracted
+       parts carry their current tank contents). */
+    void finalize() {
+        if(parts.empty()) { return; }
         if(controller == nullptr) { controller = parts[0]; }
         /* stage bookkeeping: totalStages_ = the highest stage number (the
            "stage X of N" readout); activeStage_ starts at the LOWEST stage
@@ -690,17 +713,6 @@ public:
             if(parts[i]->stage < lowest) { lowest = parts[i]->stage; }
         }
         activeStage_ = lowest;
-        /* propellant reservoirs: seed each tank part's resources so the
-           thrusters can draw from them (they shed mass as they burn). Only
-           done at construction -- separateStage() must NOT re-seed. */
-        for(size_t i = 0; i < parts.size(); i++) {
-            Part *p = parts[i];
-            if(!p->isTank()) { continue; }
-            for(int r = 0; r < (int)ResourceType::Num; r++) {
-                p->resources.capacity[r] = p->def->capacity[r];
-                p->resources.current[r]  = p->def->capacity[r];
-            }
-        }
         /* fuel groups: an engine draws from the tanks it's connected to
            (its fuel group), not by stage -- the weld links are known now. */
         buildFuelGroups();
@@ -731,6 +743,16 @@ public:
        the capsule, not a visible body). Overridden in src/eva.h; a regular
        ship never carries this, so it is false by default. */
     virtual bool isCrewAboard() const { return false; }
+
+    /* The crew's capsule slot is an index into the ship's part list, and a
+       merge (absorbShip) or a split (extractSubtreeAsShip) reindexes the
+       list. A crew member whose capsule moved with `dest` applies the
+       old->new index map to its slot and returns true (so the caller moves
+       it into dest's crew); one whose capsule stayed returns false. Only a
+       Kerbal (eva.h) has a slot to reindex, so the base is a no-op. */
+    virtual bool crewRebase(Vehicle *dest, const std::map<size_t, size_t> &reindex) {
+        return false;
+    }
 
     /* Assign each part a fuel-group id (Part::fuelGroup). A fuel group is a
        connected component of the part tree across the parts that CONDUCT
@@ -1651,6 +1673,289 @@ public:
         drainPrevTime_ = 0.0;
         drainPrevMass_.clear();
         return (int)dropped.size();
+    }
+
+    /* --- docking ----------------------------------------------------------
+
+       A dock joins two ships into ONE rigid body: this ship (the survivor,
+       always the active one -- Game::updateDocking) absorbs the other.
+       The absorbed ship's parts are rebased from its frame S_B into this
+       ship's S, its root part is reparented under this ship's port part
+       (the part-tree edge), and this ship is rebuilt as the union. The
+       joint is recorded as a seam, so an undock (extractSubtreeAsShip)
+       undoes exactly this.
+
+       Both ships are rigid bodies, so the merge is a pure rigid rebase:
+       the absorbed parts keep their exact relative geometry in S -- only
+       their coordinates in S and their one tree parent change. The merged
+       velocity is the inelastic (mass-weighted) average of the two, and
+       the angular velocity is the survivor's (a rigid body has one).
+
+       After the call the absorbed ship is an empty shell: its parts, fuel
+       links and crew have moved into this ship (its hull is left, so its
+       dtor can unregister it from the world). The caller (the Game layer)
+       removes it from the fleet list, nulls any selection pointing at it,
+       and deletes it.
+
+       Precondition (Game::updateDocking's job): both ships are live (not
+       on rails), in the same frame, and their ports are close, aligned
+       and slow (the capture test). */
+
+    /* One dock seam: the tree edge that joins the two ships. `port` is
+       THIS ship's port part (the parent of the joint), `root` the absorbed
+       ship's root part (the child). `name` is the absorbed ship's display
+       name, restored when the seam is undone. */
+    struct DockSeam {
+        Part *port;
+        Part *root;
+        std::string name;
+    };
+    /* The docks this ship has absorbed, in order (undock pops the last). */
+    std::vector<DockSeam> seams;
+
+    /* Docking INTENT: the port (on another ship) this ship wants to mate
+       with, set by right-clicking that port -> "Target for docking".
+       Game::updateDocking only docks a ship that has a target, and clears
+       it on success -- so an undock cannot immediately re-dock (the intent
+       is gone; the player must re-target). Held PER SHIP (not on Game) so
+       every ship carries its own intent, which is what a future AI-controlled
+       ship needs to dock under its own steam. The pointers are validated and
+       dropped when the target ship/port goes away (see updateDocking and the
+       cleanups where a ship is deleted). */
+    Vehicle *dockTargetShip = nullptr;
+    Part *dockTargetPort = nullptr;
+
+    void absorbShip(Vehicle *B, Part *portA) {
+        if(B == nullptr || B == this || B->parts.empty()) { return; }
+        if(portA == nullptr || !portA->isDockingPort()) { return; }
+
+        /* Rigid rebase of B's parts from B's frame into this ship's S:
+           with frame S at world (p, R) and S_B at (p_B, R_B),
+               x_S  =  R^T R_B x_Sb + R^T (p_B - p)   (position)
+           R^T R_B likewise for the rotations. */
+        glm::dvec3 pA, pB; glm::dmat3 RA, RB;
+        frameS(pA, RA);
+        B->frameS(pB, RB);
+        const glm::dmat3 T_rot = glm::transpose(RA) * RB;
+        const glm::dvec3 T_pos = glm::transpose(RA) * (pB - pA);
+        for(Part *q : B->parts) {
+            q->localPos = T_rot * q->localPos + T_pos;
+            q->localRot = T_rot * q->localRot;
+        }
+
+        /* Rigid-body state before the move (B's hull is still live; after,
+           it is an empty shell). */
+        const double mA = getMass();
+        const double mB = B->getMass();
+        const glm::dvec3 vA = GetVelocity(hull);
+        const glm::dvec3 vB = GetVelocity(B->hull);
+        const glm::dvec3 wA = GetAngVelocity(hull);
+
+        /* Topology: B's root hangs off this ship's port part -- one tree
+           edge, the two port parts being the joint. The part lists, fuel
+           links and crew move into this ship; B is left an empty shell. */
+        const size_t aSize = parts.size();
+        Part *bRoot = B->rootPart();
+        bRoot->parent = portA;
+
+        /* crew: their capsules are B's parts, now at aSize + (old index). */
+        std::map<size_t, size_t> reindex;
+        for(size_t i = 0; i < B->parts.size(); i++) { reindex[i] = aSize + i; }
+        for(size_t i = 0; i < B->crew.size(); i++) {
+            B->crew[i]->crewRebase(this, reindex);
+            crew.push_back(B->crew[i]);
+        }
+        B->crew.clear();
+
+        parts.insert(parts.end(), B->parts.begin(), B->parts.end());
+        B->parts.clear();
+        fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
+        B->fuelLinks.clear();
+
+        /* stage counters: the union (the parts keep their baked-in numbers). */
+        if(B->totalStages_ > totalStages_) { totalStages_ = B->totalStages_; }
+        if(B->activeStage_ > activeStage_) { activeStage_ = B->activeStage_; }
+
+        clearThrust();
+        clearRotCmd();
+
+        seams.push_back(DockSeam{ portA, bRoot, B->name });
+
+        /* Rebuild as the union (carries frame S + the velocity, which the
+           inelastic average below then corrects), and regroup the fuel --
+           the port parts are fuel barriers, so the two ships' fuel systems
+           stay separate groups inside the one body. */
+        rebuildCompound();
+        buildFuelGroups();
+        SetVelocity(hull, (mA * vA + mB * vB) / (mA + mB));
+        SetAngVelocity(hull, wA);
+    }
+
+    /* Extract a connected subtree (rooted at `root`) into a new Vehicle:
+       the general "a part of this ship becomes a ship" primitive.
+
+       The dropped parts keep their exact relative geometry, rebased into a
+       new frame S' = the root's old frame (origin at the root's position in
+       S, axes the root's orientation in S -- the same root-frame rule
+       build_ship uses, so the new ship's root part has identity pose). The
+       new ship inherits this ship's frame/home/sun (the split is local),
+       is placed at the root's current world pose, and given the rigid
+       velocity of the dropped side's COM (this ship is one rigid body, so
+       that point moves as v + w x r). This ship is left with the
+       survivors, rebuilt.
+
+       Returns nullptr if `root` is not part of this ship or would drop the
+       whole ship (callers refuse that). The new ship is NOT yet in the
+       fleet list NOR the physics world -- the caller enters it into the
+       world (enterWorld) and adds it to the SoI body's ships and, if it
+       came from a seam, pops that seam. Keeping the world registration in
+       the caller lets the split run headless (no physics world), like the
+       fuel/power tests build ships without enterWorld.
+
+       Undock (Game::undock) is the first user: the dropped side is the
+       subtree under the most recent seam's root. Staging's "dropped stage
+       becomes a ship" is the second: the same call with the stage's
+       subtree (its decoupler root), instead of deleting it. */
+    Vehicle *extractSubtreeAsShip(Part *root, const std::string &name) {
+        if(root == nullptr) { return nullptr; }
+        bool found = false;
+        for(Part *p : parts) { if(p == root) { found = true; break; } }
+        if(!found) { return nullptr; }
+
+        /* The subtree: `root` plus its descendants (BFS over the children
+           map, the same walk droppedPartsAtStage uses). */
+        std::map<Part *, std::vector<Part *>> children;
+        for(Part *p : parts) {
+            if(p->parent != nullptr) { children[p->parent].push_back(p); }
+        }
+        std::set<Part *> droppedSet;
+        std::vector<Part *> dropped;
+        droppedSet.insert(root);
+        dropped.push_back(root);
+        for(size_t i = 0; i < dropped.size(); i++) {
+            auto it = children.find(dropped[i]);
+            if(it == children.end()) { continue; }
+            for(size_t k = 0; k < it->second.size(); k++) {
+                Part *q = it->second[k];
+                if(droppedSet.count(q)) { continue; }
+                droppedSet.insert(q);
+                dropped.push_back(q);
+            }
+        }
+        if(droppedSet.size() == parts.size()) { return nullptr; }  // can't split the whole ship
+
+        /* New frame S' = the root's old frame: x' = R_r^T (x - p_r),
+           R' = R_r^T R. */
+        const glm::dvec3 pR = root->localPos;
+        const glm::dmat3 RR = root->localRot;
+
+        /* Rigid velocity of the dropped side's COM (before the rebase --
+           partPos needs the current hull). */
+        double M = 0.0;
+        glm::dvec3 comDropped(0.0);
+        for(Part *q : dropped) { M += q->body->mass; comDropped += q->body->mass * partPos(q); }
+        comDropped /= M;
+        const glm::dvec3 vOut = GetVelocity(hull)
+                              + glm::cross(GetAngVelocity(hull), comDropped - comPos());
+        const glm::dvec3 w = GetAngVelocity(hull);
+        glm::dvec3 rootWorldPos; glm::dmat3 rootWorldRot;
+        partWorldPose(root, rootWorldPos, rootWorldRot);
+
+        /* New ship: same frame/home/sun (the split is local); no scenario
+           (it is a runtime ship, not a def build). */
+        Vehicle *nv = new Vehicle();
+        nv->name = name;
+        nv->defPath = "";
+        nv->m_parent = m_parent;
+        nv->frame = frame;
+        nv->home = home;
+        nv->sun = sun;
+        nv->scenario = nullptr;
+
+        /* Part list in the original order (stable indices for the crew
+           reindex below); rebase the poses into S'. */
+        std::vector<Part *> nvParts;
+        std::map<size_t, size_t> goReindex;   // old index -> new ship index
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(!droppedSet.count(parts[i])) { continue; }
+            Part *q = parts[i];
+            q->localPos = glm::transpose(RR) * (q->localPos - pR);
+            q->localRot = glm::transpose(RR) * q->localRot;
+            nvParts.push_back(q);
+            goReindex[i] = nvParts.size() - 1;
+        }
+        root->parent = nullptr;   // root of the new ship
+        nv->parts = nvParts;
+        /* controller: the build rule (the first wheel, else the root). */
+        nv->controller = nullptr;
+        for(size_t i = 0; i < nvParts.size(); i++) {
+            if(nvParts[i]->isWheel()) { nv->controller = nvParts[i]; break; }
+        }
+        if(nv->controller == nullptr) { nv->controller = root; }
+
+        /* fuel links: both endpoints dropped -> the new ship; both kept ->
+           this ship; crossing the cut -> dangling, dropped. */
+        std::vector<FuelLink> nvLinks, keepLinks;
+        for(size_t k = 0; k < fuelLinks.size(); k++) {
+            const bool fIn = droppedSet.count(fuelLinks[k].from) > 0;
+            const bool tIn = droppedSet.count(fuelLinks[k].to) > 0;
+            if(fIn && tIn) { nvLinks.push_back(fuelLinks[k]); }
+            else if(!fIn && !tIn) { keepLinks.push_back(fuelLinks[k]); }
+        }
+        nv->fuelLinks = nvLinks;
+        fuelLinks = keepLinks;
+
+        /* crew: a kerbal follows its capsule (crewRebase tells which side
+           it is on); the survivors' slots reindex too, because erasing the
+           dropped parts shifts the indices before them. */
+        std::map<size_t, size_t> stayReindex;
+        {
+            size_t j = 0;
+            for(size_t i = 0; i < parts.size(); i++) {
+                if(!droppedSet.count(parts[i])) { stayReindex[i] = j++; }
+            }
+        }
+        std::vector<Vehicle *> movedCrew;
+        for(size_t i = 0; i < crew.size(); i++) {
+            Vehicle *k = crew[i];
+            if(k->crewRebase(nv, goReindex)) { movedCrew.push_back(k); }
+            else { k->crewRebase(this, stayReindex); }
+        }
+        for(size_t i = 0; i < movedCrew.size(); i++) { nv->crew.push_back(movedCrew[i]); }
+        {
+            std::vector<Vehicle *> keepCrew;
+            for(size_t i = 0; i < crew.size(); i++) {
+                bool gone = false;
+                for(size_t j = 0; j < movedCrew.size(); j++) { if(crew[i] == movedCrew[j]) { gone = true; break; } }
+                if(!gone) { keepCrew.push_back(crew[i]); }
+            }
+            crew = keepCrew;
+        }
+
+        /* this ship: the survivors (their Part* are valid; no delete order
+           to worry about -- the new ship owns the dropped parts). */
+        {
+            std::vector<Part *> keep;
+            for(Part *p : parts) { if(!droppedSet.count(p)) { keep.push_back(p); } }
+            parts.swap(keep);
+        }
+        const bool controllerDropped = (controller != nullptr && droppedSet.count(controller) > 0);
+        rebuildCompound();
+        if(controllerDropped) { controller = parts[0]; }
+        clearThrust();
+        buildFuelGroups();
+        drainPrevTime_ = 0.0;
+        drainPrevMass_.clear();
+
+        /* The new ship: finalize (no tank re-seed -- the parts carry their
+           current contents), place it at the root's world pose, and give it
+           the rigid velocity of its COM. The caller enters it into the
+           physics world (enterWorld) -- kept out so the split runs headless. */
+        nv->finalize();
+        nv->placeShip(rootWorldPos, rootWorldRot);
+        nv->setVelocity(vOut);
+        SetAngVelocity(nv->hull, w);
+        return nv;
     }
 
     /* This ship's part frame -> renderFrame. Usually the identity

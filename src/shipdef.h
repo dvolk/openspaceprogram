@@ -34,7 +34,8 @@
            "capacity": { "ec": 157079 },  // optional, Wh -> a battery (EC storage)
            "crew_capacity": 3,             // optional, int; > 0 -> a capsule (holds that many EVA characters)
            "hull_margin": 0.0,            // optional, m; collision convex-hull margin
-           "fuel_barrier": true           // optional, bool; true -> fuel does not flow across this part (splits fuel groups)
+           "fuel_barrier": true,          // optional, bool; true -> fuel does not flow across this part (splits fuel groups)
+           "docking_port": true           // optional, bool; true -> a docking port (an end face that can lock to another port)
          }, ...
        ]
      }
@@ -173,6 +174,15 @@ struct PartDef {
        Vehicle::separateStage. The part carries no other behavior (no thrust
        / wheel / tank) -- it is the separation point. */
     bool decoupler;
+
+    /* true -> a docking port: the part's end face (whichever of its +-Z
+       faces points at the other port) can lock to another docking port of a
+       different ship, joining the two ships into one rigid body (see
+       Vehicle::absorbShip / Game::updateDocking). Like a decoupler it
+       carries no other behavior (no thrust / wheel / tank) -- it is a
+       connection point. It is a fuel barrier by definition, for the same
+       reason a decoupler is: a boundary between two ships' fuel systems. */
+    bool docking_port;
 
     /* true -> a fuel barrier: propellant does NOT flow across this part, so
        it splits the parts on either side into separate fuel groups (an

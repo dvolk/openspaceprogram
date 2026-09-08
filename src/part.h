@@ -65,6 +65,7 @@ struct Part {
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
+    bool isDockingPort() const { return def != nullptr && def->docking_port; }
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isTank() const {

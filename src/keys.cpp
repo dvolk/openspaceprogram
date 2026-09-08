@@ -34,6 +34,7 @@ void KeyBindings::resetDefaults() {
     add(Slot::NextShip,      SDL_SCANCODE_F6);
     add(Slot::ToggleEva,     SDL_SCANCODE_V);
     add(Slot::Space,         SDL_SCANCODE_SPACE);
+    add(Slot::Undock,        SDL_SCANCODE_U);
     add(Slot::Screenshot,    SDL_SCANCODE_F12);
     add(Slot::Porkchop,      SDL_SCANCODE_P);
     add(Slot::SurfaceMap,    SDL_SCANCODE_M);
@@ -138,6 +139,7 @@ const char *slotName(Slot s) {
         case Slot::NextShip:       return "next_ship";
         case Slot::ToggleEva:      return "toggle_eva";
         case Slot::Space:          return "space";
+        case Slot::Undock:         return "undock";
         case Slot::Screenshot:     return "screenshot";
         case Slot::Porkchop:       return "porkchop";
         case Slot::SurfaceMap:     return "surface_map";
@@ -203,6 +205,7 @@ const char *slotLabel(Slot s) {
         case Slot::NextShip:       return "Next ship";
         case Slot::ToggleEva:      return "Toggle EVA";
         case Slot::Space:          return "Stage / jump";
+        case Slot::Undock:         return "Undock";
         case Slot::Screenshot:     return "Screenshot";
         case Slot::Porkchop:       return "Compute porkchop";
         case Slot::SurfaceMap:     return "Compute surface map";
@@ -252,7 +255,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::WarpUp: case Slot::WarpDown:
         case Slot::CamSpeedUp: case Slot::CamSpeedDown:
         case Slot::ToggleCamMode: case Slot::CycleTarget: case Slot::ToggleWindows:
-        case Slot::NextShip: case Slot::ToggleEva: case Slot::Space:
+        case Slot::NextShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
         case Slot::Screenshot: case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:
             return SlotGroup::Game;

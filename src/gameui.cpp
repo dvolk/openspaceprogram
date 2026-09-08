@@ -1512,6 +1512,31 @@ void drawPartWindows(Game &g) {
                             ship->parts[part]->resources.capacity[r],
                             resUnits[r]);
             }
+            // --- docking port: target it for the active ship's next dock ----
+            // Docking is intent-driven (Game::updateDocking): the active ship
+            // mates only with a port it has targeted, and the dock consumes
+            // the target -- so undocking cannot immediately re-dock. Target a
+            // port on ANOTHER ship to arm a dock with it (per-ship intent, so
+            // a future AI ship can target and dock under its own steam).
+            if(def->docking_port) {
+                ImGui::Separator();
+                Vehicle *act = g.ship;
+                if(act != nullptr && act != ship && !act->isEva()) {
+                    if(act->dockTargetPort == ship->parts[part]) {
+                        ImGui::Text("Docking target of %s", act->name.c_str());
+                        if(ImGui::SmallButton("Clear docking target")) {
+                            act->dockTargetShip = nullptr;
+                            act->dockTargetPort = nullptr;
+                        }
+                    } else if(ImGui::SmallButton("Target for docking")) {
+                        act->dockTargetShip = ship;
+                        act->dockTargetPort = ship->parts[part];
+                        g.toast("Docking target: %s", ship->name.c_str());
+                    }
+                } else {
+                    ImGui::Text("(switch to another ship to dock with this port)");
+                }
+            }
             // --- crew (this part is a capsule: holds EVA characters) --------
             // Aboard crew get an EVA button (takes them out, game.cpp); a
             // free kerbal within boarding range (<= 10 m of the capsule)

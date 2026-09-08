@@ -51,6 +51,7 @@ enum class Slot {
     NextShip,      // F6   advance to the next selectable ship
     ToggleEva,     // 'v'  EVA out of the ship / back in
     Space,         // SPACE stage (ship) / jump (EVA)
+    Undock,        // 'u'  split the most recent docked seam (active ship)
     Screenshot,    // F12
     Porkchop,      // 'p'  compute the porkchop plot
     SurfaceMap,    // 'm'  compute the surface map

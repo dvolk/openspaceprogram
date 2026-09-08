@@ -60,6 +60,17 @@ struct Kerbal : Vehicle {
     size_t aboardPart = 0;      // index into aboard->parts (the capsule)
     bool isAboard() const { return aboard != nullptr; }
 
+    /* The capsule-slot reindex (Vehicle::crewRebase): a merge/split moved
+       the ship's part list, so if `reindex` covers this kerbal's current
+       slot, its capsule is on `dest`'s side -- move there and reindex. */
+    bool crewRebase(Vehicle *dest, const std::map<size_t, size_t> &reindex) override {
+        std::map<size_t, size_t>::const_iterator it = reindex.find(aboardPart);
+        if(it == reindex.end()) { return false; }
+        aboard = dest;
+        aboardPart = it->second;
+        return true;
+    }
+
     /* The capsule-center altitude above the analytic surface when standing
        at rest: half the part height + the collision margins (0.5 terrain +
        0.1 hull -- the same 0.6 the pad placement lifts ships by). */

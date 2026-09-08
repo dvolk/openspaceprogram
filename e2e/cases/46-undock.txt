@@ -1,0 +1,17 @@
+# Undock (U) splits the most recent seam back off the active ship via the
+# general Vehicle::extractSubtreeAsShip primitive (the same call a future
+# "dropped stage becomes a ship" makes). Docking CONSUMED the probe's dock
+# target, so after the split the two ships -- still ~0.75 m apart and
+# co-moving, i.e. well inside the capture window -- do NOT re-dock: exactly
+# one [dock] line, then one [undock]. That single-dock count is also the
+# negative test for intent-gating (in range but untargeted => no dock).
+NAME undock
+ARGS --dock-test near --time-accel 1 --timeout 4
+ARGS --sim-press 500,0,U
+EXPECT [dock] t=
+EXPECT [undock] t=
+CHECK out.count("[dock]") == 1
+CHECK out.count("[undock]") == 1
+FORBID Segmentation
+FORBID GL_
+FORBID error:

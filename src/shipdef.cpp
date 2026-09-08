@@ -11,7 +11,7 @@ PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
       exhaust_velocity(0.0), rcs_thrust(0.0), power_draw(0.0),
       power_draw_constant(0.0), power_gen(0.0),
-      crew_capacity(0), decoupler(false),
+      crew_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
@@ -189,6 +189,16 @@ PartsCatalog load_parts_catalog(const char *path) {
             d.fuel_barrier = pv["fuel_barrier"].get<bool>();
         }
         if(d.decoupler) { d.fuel_barrier = true; }
+
+        /* docking port (bool); an end face that can lock to another port
+           (see PartDef.docking_port). Omitted -> false. A docking port is a
+           fuel barrier by definition -- a boundary between two ships' fuel
+           systems -- force it, like the decoupler, so the flag can't be
+           silently lost by a stale catalog. */
+        if(pv.contains("docking_port")) {
+            d.docking_port = pv["docking_port"].get<bool>();
+        }
+        if(d.docking_port) { d.fuel_barrier = true; }
 
         /* hull margin (m); omitted -> -1, the physics engine then falls
            back to OSP_HULL_MARGIN / 0.1 */

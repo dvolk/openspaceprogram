@@ -631,6 +631,16 @@ void Game::updateProximity() {
         if(s->onRails && r_on > 0.0 && d < r_on) {
             s->releaseControl();   // no armed commands once it's live
             s->leaveRails();
+            /* Re-express the woken ship in its SOI's rotating frame NOW,
+               while the frame transforms are still at last tick's epoch
+               (updateProximity runs before UpdateOrbitRails). leaveRails
+               leaves it in the inertial node holding its stale rail_pos --
+               this tick's railsTick has not run for it -- and the per-ship
+               switchFrames below runs AFTER the frame has advanced, which
+               would rotate that stale pose into the new frame and land the
+               ship frame_velocity*dt (~4 m at LEO) off the live ships. Doing
+               the conversion here keeps every ship's pose on one epoch. */
+            s->switchFrames();
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->name.c_str(), d, r_on,
                                        grounded ? "ground" : "fly"); }
@@ -645,6 +655,7 @@ void Game::updateProximity() {
 
     if(any_engaged && a->onRails) {
         a->leaveRails();
+        a->switchFrames();   // same epoch-consistency as the neighbor wake
         if(args.prox_log) { printf("[prox] t=%.3f active %s WOKEN from rails\n",
                                    time, a->name.c_str()); }
     }
@@ -668,6 +679,137 @@ void Game::updateProximity() {
             }
         }
     }
+}
+
+/* Docking: INTENT-driven. The active ship mates only with a port the
+   player has targeted (right-click the port -> "Target for docking",
+   stored per ship on Vehicle::dockTarget*). Checked once per tick at the
+   boundary (tick.cpp, after the physics substeps): this ship's best port
+   against the targeted port -- the two port face-centres within
+   kDockCapture, each port axis within kDockAlign of the line between the
+   ports, and the port points' relative speed under kDockMaxV at capture.
+   The active ship is the survivor (it absorbs the target's ship); the
+   joint is recorded as a seam on it. The intent is consumed (cleared) on
+   success, so an undock cannot immediately re-dock -- the player has to
+   target again. At most one dock per tick. */
+void Game::updateDocking() {
+    Vehicle *a = ship;
+    if(a == nullptr || a->isEva() || a->onRails) { return; }
+    /* No intent, no dock: the ship must have a targeted port. */
+    if(a->dockTargetPort == nullptr || a->dockTargetShip == nullptr) { return; }
+    Vehicle *b = a->dockTargetShip;
+    /* Validate the intent: the target must be another live ship that still
+       carries that docking port (else it went stale -- the ship was removed
+       or the port staged away -- so drop it). A ship is only ever deleted
+       through updateDocking / remove_ship, both of which drop targets that
+       point at it, so b is live here. */
+    bool targetOk = (b != a && !b->isEva() && !b->isCrewAboard());
+    if(targetOk) {
+        targetOk = false;
+        for(Part *p : b->parts) {
+            if(p == a->dockTargetPort && p->isDockingPort()) { targetOk = true; break; }
+        }
+    }
+    if(!targetOk) { a->dockTargetShip = nullptr; a->dockTargetPort = nullptr; return; }
+    /* Parked on rails or in another frame: cannot mate this tick. Keep the
+       intent and wait -- proximity wakes the target when it is near, and a
+       frame switch brings it into this ship's frame. */
+    if(b->onRails || b->frame != a->frame) { return; }
+
+    Part *pb = a->dockTargetPort;
+    /* This ship's best port to mate with the targeted one. */
+    Part *bestA = nullptr;
+    double bestD = kDockCapture;
+    double bestV = 0.0;
+    for(Part *pa : a->parts) {
+        if(!pa->isDockingPort()) { continue; }
+        glm::dvec3 paP, pbP;
+        glm::dmat3 paR, pbR;
+        a->partWorldPose(pa, paP, paR);
+        b->partWorldPose(pb, pbP, pbR);
+        const glm::dvec3 dir = pbP - paP;
+        const double d = glm::length(dir);
+        if(d < 1e-9) { continue; }
+        const glm::dvec3 n = dir / d;
+        /* Each port presents the face closest to the other part:
+           its +Z face if the other is on that side, else its -Z. */
+        const double sA = (glm::dot(paR[2], dir) >= 0.0) ? 1.0 : -1.0;
+        const double sB = (glm::dot(pbR[2], paP - pbP) >= 0.0) ? 1.0 : -1.0;
+        const glm::dvec3 axisA = paR[2] * sA;
+        const glm::dvec3 axisB = pbR[2] * sB;
+        if(glm::dot(axisA, n) < kDockAlign) { continue; }
+        if(glm::dot(axisB, -n) < kDockAlign) { continue; }
+        const glm::dvec3 faceA = paP + axisA * (pa->def->height * 0.5);
+        const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
+        const glm::dvec3 rv = a->partVel(pa) - b->partVel(pb);
+        const double fd = glm::length(faceA - faceB);
+        if(fd >= bestD) { continue; }
+        if(glm::length(rv) > kDockMaxV) { continue; }
+        bestA = pa;
+        bestD = fd;
+        bestV = glm::length(rv);
+    }
+    if(bestA == nullptr) { return; }
+
+    const std::string bName = b->name;
+    a->absorbShip(b, bestA);
+    a->dockTargetShip = nullptr;   // the intent is consumed by the dock
+    a->dockTargetPort = nullptr;
+    dropPartWindowsFor(b);
+    if(b->m_parent != nullptr) {
+        for(auto it = b->m_parent->ships.begin(); it != b->m_parent->ships.end(); it++) {
+            if(*it == b) { b->m_parent->ships.erase(it); break; }
+        }
+    }
+    if(kerbal == b) { kerbal = nullptr; }
+    if(lastShip == b) { lastShip = nullptr; }
+    /* Any other ship that had targeted b now dangles -- drop its intent. */
+    for(auto *s : collectVehicles(sys)) {
+        if(s->dockTargetShip == b) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
+    }
+    toast("Docked with %s", bName.c_str());
+    printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
+           time, a->name.c_str(), bName.c_str(), bestD, bestV);
+    delete b;
+}
+
+/* Undock: split the most recent seam off the active ship. The other side
+   (the subtree under the seam's root) is extracted into a new ship via the
+   general Vehicle::extractSubtreeAsShip primitive (the same call a future
+   "dropped stage becomes a ship" will make) and returned to the fleet.
+   One-shot (the handler in events.cpp). */
+void Game::undock() {
+    Vehicle *a = ship;
+    if(a == nullptr || a->isEva()) { return; }
+    if(a->seams.empty()) {
+        toast("Nothing docked to undock");
+        return;
+    }
+    /* Undock needs the parts in the physics world: wake a ship parked on
+       rails first (like staging does). */
+    if(a->onRails) {
+        a->leaveRails();
+        if(time_accel >= kRailsWarp) {
+            time_accel = 1;
+            toast("Undock: left the rails, warp 1x");
+        }
+    }
+    Vehicle::DockSeam seam = a->seams.back();
+    Vehicle *out = a->extractSubtreeAsShip(seam.root, seam.name);
+    if(out == nullptr) {
+        toast("Cannot undock");
+        return;
+    }
+    out->enterWorld();   // the split leaves world registration to the caller
+    a->seams.pop_back();
+    /* part windows on the survivor address parts by index, which just
+       shifted -- drop them rather than dangle. */
+    dropPartWindowsFor(a);
+    if(out->m_parent != nullptr) {
+        out->m_parent->ships.push_back(out);
+    }
+    toast("Undocked %s", seam.name.c_str());
+    printf("[undock] t=%.3f a=\"%s\" b=\"%s\"\n", time, a->name.c_str(), seam.name.c_str());
 }
 
 /* Remove a ship + its bookkeeping. The Vehicle dtor detaches the welds
@@ -704,6 +846,11 @@ void Game::remove_ship(Vehicle *v) {
             it != v->m_parent->ships.end(); it++) {
             if(*it == v) { v->m_parent->ships.erase(it); break; }
         }
+    }
+    // Ships that had v targeted for docking now dangle -- drop their intent
+    // (pointer compare only, so it is safe once v is off the lists).
+    for(auto *s : collectVehicles(sys)) {
+        if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
     }
     delete v;
 

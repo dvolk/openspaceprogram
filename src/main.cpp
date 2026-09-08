@@ -51,6 +51,7 @@
 #include "system.h"
 #include "vehicle.h"
 #include "radialtest.h"
+#include "docktest.h"
 #include "ships.h"
 #include "game.h"
 #include "events.h"
@@ -306,6 +307,18 @@ int main(int argc, char **argv)
             ships.catalog(), home, sun, partsshader);
         ships.add_ship(rts.v, home, rts.sc, rts.slot);
         first = rts.v;
+    } else if(!args.dock_test.empty()) {
+        DockTestShips dts = build_dock_test_ships(
+            args.dock_test, args.scenario_given, args.scenario,
+            ships.catalog(), home, sun, partsshader, sys);
+        /* Both are placed already (the builder ran spawn_vehicle for the
+           station and placed the probe relative to it), so null scenario:
+           apply_scenarios skips them. The probe is the ACTIVE ship; the
+           station parks on rails until proximity wakes it (it is metres
+           away). */
+        ships.add_ship(dts.probe, home, nullptr, 0);
+        ships.add_ship(dts.station, home, nullptr, 1);
+        first = dts.probe;
     } else {
         first = ships.build_fleet(fleet_entries, sys, home, args.scenario);
     }
