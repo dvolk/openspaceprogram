@@ -41,7 +41,7 @@ public:
 protected:
 private:
     static const unsigned int NUM_SHADERS = 2;
-    static const unsigned int MAX_NUM_UNIFORMS = 8;
+    static const unsigned int MAX_NUM_UNIFORMS = 16;
 
     void CheckShaderError(GLuint shader, GLuint flag, bool isProgram, const std::string& errorMessage);
     GLuint CreateShader(const std::string& text, unsigned int type);

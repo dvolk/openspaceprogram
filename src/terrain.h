@@ -216,12 +216,15 @@ struct TerrainBody {
     void DrawAtmosphere(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
         if(atmosphere == nullptr) return;
 
-        // The shell's inner surface is back-face-culled once the camera is
-        // inside it, so it's invisible from the surface anyway; skip the draw
-        // call explicitly rather than issue a fully-culled one (a proper
-        // interior sky-dome is the §8.5 enhancement).
+        // Inside the shell (on the surface, or below its top): draw the
+        // inner surface as the sky dome. From inside the eye is on the
+        // inner side of every face, so the visible faces are all back
+        // faces -- cull FRONT instead of the global BACK, and let the
+        // shader use the inside blend (horizon haze, not the Fresnel rim).
+        // The near wall is closer than the far side, so depth keeps the
+        // sky reading as the air above the camera.
         const glm::dvec3 center = glm::dvec3(transform[3]);
-        if(glm::length(camera->GetPos() - center) < (double)atm_radius) return;
+        const bool inside = glm::length(camera->GetPos() - center) < (double)atm_radius;
 
         const glm::dmat4 &View = camera->GetView();
         // double, then truncate (shifted into the render frame like the view;
@@ -244,6 +247,8 @@ struct TerrainBody {
         // night side instead of glowing uniformly ("neon night-side" artifact).
         atmosphere->shader->setUniform_vec3(6,
             glm::vec3(SunlightDir(this, sun, renderFrame)));
+        atmosphere->shader->setUniform_vec1(7, inside ? 1.0f : 0.0f);
+        atmosphere->shader->setUniform_vec3(8, glm::vec3(center));
 
         // Transparent: blend over whatever is behind (terrain haze / starfield
         // ring), keep depth test so closer opaque things still occlude us, but
@@ -251,7 +256,9 @@ struct TerrainBody {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);
+        if(inside) glCullFace(GL_FRONT);
         atmosphere->mesh->Draw();
+        if(inside) glCullFace(GL_BACK);
         glDepthMask(true);
         glDisable(GL_BLEND);
     }

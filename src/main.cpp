@@ -148,12 +148,14 @@ int main(int argc, char **argv)
     sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
     sunshader->FromFile("./res/sunShader");
 
-    // Atmosphere rim shell (Fresnel limb glow). See reports/atmosphere2026_08_25.
+    // Atmosphere shell: Fresnel limb glow from orbit, interior sky dome
+    // from the surface (the `inside` flag). See reports/atmosphere2026_08_25.
     Shader *atmosphereshader = new Shader;
     atmosphereshader->registerAttribs({ "position", "normal" });
     atmosphereshader->registerUniforms({ "MVP", "Normal", "cameraPos",
                                          "color", "intensity", "power",
-                                         "lightDirection" });
+                                         "lightDirection", "inside",
+                                         "planetCenter" });
     atmosphereshader->FromFile("./res/atmosphereShader");
 
     Shader *skyboxshader = new Shader;
