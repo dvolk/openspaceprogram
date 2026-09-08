@@ -160,12 +160,14 @@ int main(int argc, char **argv)
 
     // Cloud deck: a shell between the terrain and the atmosphere rim --
     // a solid ceiling from below, a textured disc from orbit. Coverage
-    // is procedural FBM in the shader (seeded per body), no asset.
+    // is baked (BuildClouds) into a per-body equirectangular map -- on
+    // the job worker, so startup doesn't pay for it; the shader is one
+    // texture fetch + lighting.
     Shader *cloudshader = new Shader;
     cloudshader->registerAttribs({ "position", "normal" });
     cloudshader->registerUniforms({ "MVP", "Normal", "cameraPos", "color",
-                                    "lightDirection", "seedRot", "freq",
-                                    "drift", "coverage", "planetCenter" });
+                                    "lightDirection", "drift", "planetCenter",
+                                    "coverage_tex" });
     cloudshader->FromFile("./res/cloudShader");
 
     Shader *skyboxshader = new Shader;
@@ -243,13 +245,6 @@ int main(int argc, char **argv)
         }
     }
 
-    // Build the atmosphere rim + cloud deck shells now that the bodies +
-    // shaders exist. Bodies without either are no-ops (no mesh, no cost).
-    for(auto&& b : sys.bodies) {
-        b->BuildAtmosphere(atmosphereshader);
-        b->BuildClouds(cloudshader);
-    }
-
     /* The ships are built from JSON: the parts catalog (res/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
        order + offsets, and the fleet supplies one entry per ship: its def,
@@ -269,6 +264,17 @@ int main(int argc, char **argv)
     // it through this, so the state has a single home.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
+
+    // Build the atmosphere rim + cloud deck shells now that the bodies,
+    // the shaders and the job runner exist. Bodies without either are
+    // no-ops (no mesh, no cost). BuildClouds posts its coverage bake to
+    // the runner (the deck draws a solid placeholder until it lands), so
+    // the ~0.4s-per-body CPU cost no longer stalls startup.
+    for(auto&& b : sys.bodies) {
+        b->BuildAtmosphere(atmosphereshader);
+        b->BuildClouds(cloudshader, args.cloud_mesh, game.jobs);
+    }
+
     // settings.json phase 2 (the args fields were applied before the
     // Renderer above): the Game + PostFX state, before apply_ui_style
     // reads the ui knobs.

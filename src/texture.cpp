@@ -96,3 +96,32 @@ void upload_texture_r8(Texture *tex, int w, int h, const unsigned char *rgba) {
     glBindTexture(GL_TEXTURE_2D, tex->id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
 }
+
+Texture *make_coverage_texture(int w, int h, const unsigned char *r,
+                               bool wrap_s) {
+    Texture *ret = new Texture;
+    glGenTextures(1, &ret->id);
+    glBindTexture(GL_TEXTURE_2D, ret->id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                    wrap_s ? GL_REPEAT : GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, r);
+    // Mip chain + trilinear minify: the deck minifies at distance / grazing
+    // angles (the rim in orbit), where a single level shimmers; anisotropy
+    // needs the chain to work on.
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    float aniso = max_anisotropy();
+    if (aniso > 0.0f) {
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, aniso);
+    }
+    return ret;
+}
+
+void upload_coverage_r8(Texture *tex, int w, int h, const unsigned char *r) {
+    glBindTexture(GL_TEXTURE_2D, tex->id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, r);
+    // Rebuild the chain for the new size (the placeholder's was trivial).
+    glGenerateMipmap(GL_TEXTURE_2D);
+}

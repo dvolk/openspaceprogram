@@ -353,6 +353,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "adjustable in the Settings window)")
         ->check(CLI::Range(32, 1024));
 
+    app.add_option("--cloud-mesh", args.cloud_mesh,
+                   "Cloud deck sphere resolution (lat = lon = N rings; "
+                   "default 128). The cloud detail lives in the baked "
+                   "coverage map, so this only changes the deck's rim "
+                   "smoothness and its vertex cost -- try 32..256")
+        ->check(CLI::Range(8, 512));
+
     // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,
                    "Start in the free camera at this world position: X Y Z "

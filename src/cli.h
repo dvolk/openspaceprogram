@@ -85,6 +85,11 @@ struct GameArgs {
     int screen_height = 1080;
     WindowMode window_mode = WindowMode::Windowed;
 
+    // Cloud deck sphere resolution (lat = lon = res rings), applied at
+    // load by BuildClouds. The detail lives in the baked coverage map,
+    // so this only changes the deck's silhouette smoothness at the rim.
+    int cloud_mesh = 128;
+
     std::string font_path = "./res/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;

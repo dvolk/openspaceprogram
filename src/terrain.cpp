@@ -319,12 +319,13 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
 // palettes, and the grid builder that used to be create_grid_mesh -- now
 // lives in terragen.h.)
 
-// Smooth UV sphere for the atmosphere rim. No noise: it must be a clean
-// shell just above the terrain. Winding is outward = front (CCW seen from
-// outside) so back-face culling keeps the near hemisphere the camera sees.
-Mesh *TerrainBody::create_atmosphere_mesh(float radius) {
+// Smooth UV sphere for the atmosphere rim + the cloud deck. No noise: it
+// must be a clean shell just above the terrain. Winding is outward = front
+// (CCW seen from outside) so back-face culling keeps the near hemisphere
+// the camera sees. res = latitude = longitude rings.
+Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
     Mesh *mesh = new Mesh;
-    const int lat = 128, lon = 128;
+    const int lat = res, lon = res;
     std::vector<PosNorColVertex> verts;
     verts.reserve((lat + 1) * (lon + 1));
     for(int i = 0; i <= lat; i++) {

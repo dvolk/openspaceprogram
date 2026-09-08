@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <memory>
 #include <set>
 #include <string>
 
@@ -22,6 +23,7 @@
 #include "model.h"
 #include "mesh.h"
 #include "shader.h"
+#include "texture.h"
 #include "camera.h"
 #include "frame.h"
 #include "calendar.h"
@@ -165,9 +167,9 @@ struct TerrainBody {
         return terrainSurfaceColor(p, params());
     }
 
-    // The atmosphere rim shell (defined in terrain.cpp with the other
-    // mesh builders).
-    Mesh *create_atmosphere_mesh(float radius);
+    // The rim / deck shell sphere (defined in terrain.cpp with the other
+    // mesh builders); res = latitude = longitude rings.
+    Mesh *create_atmosphere_mesh(float radius, int res);
 
     void Create(float radius, float mass) {
         this->radius = radius;
@@ -209,7 +211,7 @@ struct TerrainBody {
         float shell_radius = radius + surface.max_height
                              + surface.atmosphere.thickness;
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
-        Mesh *m = create_atmosphere_mesh(shell_radius);
+        Mesh *m = create_atmosphere_mesh(shell_radius, 128);
         atmosphere = new Model;
         atmosphere->FromData(m, atmosphereshader, NULL);
         atm_radius = shell_radius;
@@ -217,18 +219,70 @@ struct TerrainBody {
 
     // Build the cloud deck shell on demand. Like the atmosphere it sits
     // above the highest terrain (no peak pokes through): base radius +
-    // scaled relief + the data height. The coverage pattern is procedural
-    // in the shader (FBM on the body-seeded direction), so the mesh is the
-    // same clean sphere as the atmosphere -- no cloud asset to load.
-    void BuildClouds(Shader *cloudshader) {
+    // scaled relief + the data height.
+    //
+    // The coverage is BAKED once (equirectangular R8, the cloudCover FBM
+    // in terragen.h) -- the pattern is static in the body's frame, so the
+    // shader fetches it instead of recomputing it per fragment. The bake
+    // itself is ~0.4s per body of CPU work, so it runs on the JobRunner
+    // worker: this call posts it and the deck immediately draws a solid
+    // 1x1 placeholder (the "solid ceiling" read), then poll()'s
+    // continuation uploads the real grid and the pattern refines in.
+    void BuildClouds(Shader *cloudshader, int res, JobRunner &jobs) {
         if(clouds != nullptr || !surface.clouds.enabled) return;
         float shell_radius = radius + surface.max_height
                              + surface.clouds.height;
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
-        Mesh *m = create_atmosphere_mesh(shell_radius);
+        Mesh *m = create_atmosphere_mesh(shell_radius, res);
+        // Solid placeholder (coverage 1): the deck reads as the solid
+        // ceiling from the first frame until the bake lands.
+        const unsigned char solid = 255;
         clouds = new Model;
-        clouds->FromData(m, cloudshader, NULL);
+        // The Model owns the texture (~Model deletes it); the bake
+        // re-uploads into it (upload_coverage_r8), so no texture swap.
+        clouds->FromData(m, cloudshader, make_coverage_texture(1, 1, &solid,
+                                                               true));
         cloud_radius = shell_radius;
+
+        // The bake layout MUST match the deck shader's UV (cloudShader.vs):
+        // u = lon/2pi + 0.5 with lon = atan2(x, z) (the game's convention,
+        // lon 0 = +Z); v = 0.5 - lat/pi, so row 0 (v=0) is the north pole.
+        // Cell centers (px + 0.5) land on the same texel centers the
+        // shader's UV hits.
+        const int W = 2048, H = 1024;
+        // Snapshots for the worker (job.h: the body may only touch its own
+        // copy of the inputs -- not game state, GL or imgui).
+        const glm::mat3 rot = surface.seed_rot;
+        const CloudParams cp = surface.clouds;
+        Texture *tex = clouds->texture;
+        const std::string label = std::string("Clouds (") + name + ")";
+        jobs.post(label, [tex, rot, cp, W, H]() -> std::function<void()> {
+            // Worker thread: pure math over the snapshots above.
+            std::vector<unsigned char> px((size_t)W * H);
+            for(int py = 0; py < H; py++) {
+                const float lat = (0.5f - (py + 0.5f) / (float)H) * (float)M_PI;
+                const float cl = (float)std::cos(lat);
+                const float sl = (float)std::sin(lat);
+                for(int pxi = 0; pxi < W; pxi++) {
+                    const float lon = ((pxi + 0.5f) / (float)W)
+                                      * 2.0f * (float)M_PI - (float)M_PI;
+                    const glm::vec3 dir(cl * std::sin(lon), sl,
+                                        cl * std::cos(lon));
+                    px[(size_t)py * W + pxi] =
+                        (unsigned char)(cloudCover(dir, rot, cp) * 255.0f
+                                        + 0.5f);
+                }
+            }
+            // Main-thread continuation (JobRunner::poll): upload to the
+            // texture the deck already draws. The shared_ptr lets the
+            // buffer outlive this body (the C++11-safe move across the
+            // thread handoff -- the same idiom as the surface map job).
+            std::shared_ptr<std::vector<unsigned char> > ppx =
+                std::make_shared<std::vector<unsigned char> >(std::move(px));
+            return [tex, W, H, ppx]() {
+                upload_coverage_r8(tex, W, H, ppx->data());
+            };
+        });
     }
 
     void DrawAtmosphere(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
@@ -310,11 +364,15 @@ struct TerrainBody {
         // terrain lights with, so the deck's terminator matches the ground.
         clouds->shader->setUniform_vec3(4,
             glm::vec3(SunlightDir(this, sun, renderFrame)));
-        clouds->shader->setUniform_mat3(5, glm::mat3(surface.seed_rot));
-        clouds->shader->setUniform_vec1(6, surface.clouds.freq);
-        clouds->shader->setUniform_vec1(7, (float)(time * surface.clouds.drift));
-        clouds->shader->setUniform_vec1(8, surface.clouds.coverage);
-        clouds->shader->setUniform_vec3(9, glm::vec3(center));
+        // Drift as a horizontal UV offset (the data drift is pattern
+        // units/s; a full longitude is 2*pi*freq pattern units = 1.0 UV).
+        clouds->shader->setUniform_vec1(5,
+            (float)(time * surface.clouds.drift)
+            / (float)(2.0 * glm::pi<double>() * surface.clouds.freq));
+        clouds->shader->setUniform_vec3(6, glm::vec3(center));
+        clouds->shader->setUniform_i(7, 0);   // coverage_tex -> unit 0
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, clouds->texture->id);
 
         // Transparent over the terrain (and under the atmosphere rim,
         // which draws after): keep the depth test so the limb stays
@@ -328,6 +386,7 @@ struct TerrainBody {
         if(inside) glCullFace(GL_BACK);
         glDepthMask(true);
         glDisable(GL_BLEND);
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 
     // Direction light travels (sun -> object) in renderFrame's axes, where

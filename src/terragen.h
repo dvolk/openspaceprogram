@@ -85,8 +85,8 @@ struct AtmosphereParams {
 // Per-body cloud deck (optional "surface.clouds" block). A single shell at
 // `height` above the highest terrain (the same above-peaks rule as the
 // atmosphere shell): a solid ceiling from below, a textured disc from
-// orbit. The coverage pattern is procedural FBM in the cloud shader,
-// oriented by the body's seed -- no mesh or texture asset.
+// orbit. The coverage pattern is a seeded FBM (cloudCover below), baked
+// at load into a per-body equirectangular map the shader fetches.
 struct CloudParams {
     bool enabled = false;
     float height = 2500.0f;   // [m] above radius + max_height
@@ -151,6 +151,64 @@ struct Surface {
         return PaletteColor(v);
     }
 };
+
+// Cloud deck coverage (baked at load into an equirectangular R8 texture by
+// TerrainBody::BuildClouds, so the deck fragment shader is one texture
+// fetch instead of this FBM per visible fragment per frame -- the pattern
+// is static in the body's frame, only the camera moves). Pure math, so
+// tests can pin it without GL. A port of the deck shader's FBM (value
+// noise, 4 octaves); the pattern is a function of DIRECTION ONLY, so the
+// equirectangular bake has no seam (lon -pi and +pi are one direction).
+inline float cloudFract(float x) { return x - std::floor(x); }
+
+inline float cloudHash13(const glm::vec3 &q) {
+    glm::vec3 p = q * 0.3183099f;
+    p = glm::vec3(cloudFract(p.x), cloudFract(p.y), cloudFract(p.z));
+    const float d = p.x * (p.z + 19.19f) + p.y * (p.y + 19.19f)
+                  + p.z * (p.x + 19.19f);
+    return cloudFract((p.x + p.y + 2.0f * d) * (p.z + d));
+}
+
+inline float cloudValueNoise(const glm::vec3 &q) {
+    const glm::vec3 i = glm::floor(q);
+    glm::vec3 f = q - i;
+    f = f * f * (3.0f - 2.0f * f);
+    const float a = cloudHash13(i + glm::vec3(0.0f, 0.0f, 0.0f));
+    const float b = cloudHash13(i + glm::vec3(1.0f, 0.0f, 0.0f));
+    const float c = cloudHash13(i + glm::vec3(0.0f, 1.0f, 0.0f));
+    const float d = cloudHash13(i + glm::vec3(1.0f, 1.0f, 0.0f));
+    const float e = cloudHash13(i + glm::vec3(0.0f, 0.0f, 1.0f));
+    const float g = cloudHash13(i + glm::vec3(1.0f, 0.0f, 1.0f));
+    const float h = cloudHash13(i + glm::vec3(0.0f, 1.0f, 1.0f));
+    const float n = cloudHash13(i + glm::vec3(1.0f, 1.0f, 1.0f));
+    const float ab = a + (b - a) * f.x, cd = c + (d - c) * f.x;
+    const float ag = e + (g - e) * f.x, hn = h + (n - h) * f.x;
+    const float xy = ab + (cd - ab) * f.y, zn = ag + (hn - ag) * f.y;
+    return xy + (zn - xy) * f.z;
+}
+
+inline float cloudFbm(const glm::vec3 &q) {
+    float v = 0.0f, amp = 0.5f;
+    glm::vec3 p = q;
+    for (int i = 0; i < 4; i++) {
+        v += amp * cloudValueNoise(p);
+        p = p * 2.03f + glm::vec3(11.7f, 7.3f, 5.9f);
+        amp *= 0.5f;
+    }
+    return v;
+}
+
+// Deck coverage at a unit direction (body frame): 0 = clear, 1 = cloud.
+// The threshold slides with `coverage` (more coverage -> lower threshold,
+// i.e. more of the deck is cloudy).
+inline float cloudCover(const glm::vec3 &dir, const glm::mat3 &seedRot,
+                        const CloudParams &c) {
+    const float n = cloudFbm(seedRot * (dir * c.freq));
+    const float T = 0.78f + (0.38f - 0.78f) * c.coverage;
+    const float x = (n - (T - 0.12f)) / 0.24f;   // the T +/- 0.12 smoothstep
+    const float t = glm::clamp(x, 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
 
 // Everything the height/color functions and the grid builder need from a
 // body, as VALUES: the async terrain job snapshots one for the worker

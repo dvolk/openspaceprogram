@@ -212,6 +212,46 @@ int main() {
         check(skirt_max < inner_min, "skirt: ring dropped below the terrain");
     }
 
+    // 9. The cloud deck coverage (baked into the deck texture at load):
+    //    in [0,1], varies across the surface (not a constant), and the
+    //    coverage parameter shifts the mean monotonically (more
+    //    coverage -> more cloud).
+    {
+        CloudParams c;
+        c.coverage = 0.6f;
+        c.freq = 10.0f;
+        bool ok = true, varied = false;
+        float first = -1.0f;
+        for(const auto &p : dirs) {
+            const float v = cloudCover(p, glm::mat3(1.0f), c);
+            if(!std::isfinite(v) || v < -1e-6f || v > 1.0f + 1e-6f) { ok = false; break; }
+            if(first < 0.0f) { first = v; }
+            else if(std::fabs(v - first) > 1e-3f) { varied = true; }
+        }
+        check(ok, "clouds: coverage finite and in [0,1]");
+        check(varied, "clouds: the pattern varies across the surface");
+        // A spread of directions (Fibonacci, like load_system's max_height):
+        // the higher coverage setting must average more cloud.
+        float mean_lo = 0.0f, mean_hi = 0.0f;
+        const int N = 256;
+        CloudParams lo = c; lo.coverage = 0.2f;
+        CloudParams hi = c; hi.coverage = 0.9f;
+        for(int i = 0; i < N; i++) {
+            const float y = 1.0f - 2.0f * (i + 0.5f) / (float)N;
+            const float rr = std::sqrt(std::max(0.0f, 1.0f - y * y));
+            const glm::vec3 d(rr * std::cos(i * 2.39996322972865332f), y,
+                              rr * std::sin(i * 2.39996322972865332f));
+            mean_lo += cloudCover(d, glm::mat3(1.0f), lo);
+            mean_hi += cloudCover(d, glm::mat3(1.0f), hi);
+        }
+        check(mean_hi > mean_lo, "clouds: more coverage -> more cloud");
+        // Determinism: the same direction/params give the same value
+        // (the bake and any re-bake must agree).
+        check(cloudCover(dirs[3], glm::mat3(1.0f), c)
+              == cloudCover(dirs[3], glm::mat3(1.0f), c),
+              "clouds: deterministic");
+    }
+
     if(g_failures == 0) {
         std::printf("test_terrain: all checks passed\n");
         return 0;
