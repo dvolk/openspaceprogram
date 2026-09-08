@@ -15,33 +15,23 @@ Lately, some of the code is written by qwen code.
 <img src="https://i.imgur.com/eKhFz34.png"/>
 <img src="https://i.imgur.com/1xzE4Fo.png"/>
 
-## building on Ubuntu 16.04+
+## building
 
-<!-- TODO can we build bullet with make? -->
-<!-- TODO maybe vendor SDL, assimp, glew? -->
+system deps (Ubuntu; the game still links SDL2 + GLEW + zlib from the
+system -- bullet3, assimp and the header-only libs are vendored in
+middleware/):
 
-    sudo apt-get install g++ libsdl2-dev libsdl2-image-dev libassimp-dev libglew-dev --no-install-recommends
+    sudo apt-get install g++ cmake make libsdl2-dev libsdl2-image-dev libglew-dev zlib1g-dev --no-install-recommends
 
     git clone --recurse-submodules https://github.com/dvolk/openspaceprogram
-
     cd openspaceprogram
-    mkdir obj/
-    cd middleware/bullet3
-    mkdir build
-    cd build
-    cmake -DUSE_DOUBLE_PRECISION=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-    make
-    cd ..
-    ln -s src bullet
+    ./bootstrap.sh   # builds the vendored bullet3 + assimp into middleware/*/build
+    make             # -> ./osp
 
-    cd ..
-
-finally
-
-    make
-
-<!-- TODO some docs for cli options -->
+<!-- TODO maybe vendor SDL, glew? -->
 
 start osp with
 
     ./osp
+
+<!-- TODO some docs for cli options -->
