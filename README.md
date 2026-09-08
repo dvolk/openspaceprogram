@@ -1,6 +1,6 @@
 # Open Space Program
 
-Open source space simulator
+Open source space sim
 
 Written in C++ with SDL2, GLM, ImGui, Bullet physics, AssImp.
 
@@ -15,23 +15,23 @@ Lately, some of the code is written by qwen code.
 <img src="https://i.imgur.com/eKhFz34.png"/>
 <img src="https://i.imgur.com/1xzE4Fo.png"/>
 
-## building
-
-system deps (Ubuntu; the game still links SDL2 + GLEW + zlib from the
-system -- bullet3, assimp and the header-only libs are vendored in
-middleware/):
+## Build from source/run
 
     sudo apt-get install g++ cmake make libsdl2-dev libsdl2-image-dev libglew-dev zlib1g-dev --no-install-recommends
 
-    git clone --recurse-submodules https://github.com/dvolk/openspaceprogram
+    git clone https://github.com/dvolk/openspaceprogram
     cd openspaceprogram
-    ./bootstrap.sh   # builds the vendored bullet3 + assimp into middleware/*/build
-    make             # -> ./osp
+    ./bootstrap.sh
+    make
 
-<!-- TODO maybe vendor SDL, glew? -->
-
-start osp with
+start OSP with
 
     ./osp
 
-<!-- TODO some docs for cli options -->
+## Cli options
+
+OSP comes with lots of cli options. eg:
+
+    ./osp --body Laythe --scenario rot-orbit --ship res/ships/stager.json
+
+Use`--help` to see all.
