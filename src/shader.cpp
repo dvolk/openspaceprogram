@@ -135,6 +135,13 @@ void Shader::setUniform_vec4(int index, const glm::vec4 & v4) {
     glUniform4f(m_uniforms[index], v4.x, v4.y, v4.z, v4.w);
 }
 
+void Shader::setUniform_mat3(int index, const glm::mat3 & m3) {
+    if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
+        return;
+    }
+    glUniformMatrix3fv(m_uniforms[index], 1, GL_FALSE, &m3[0][0]);
+}
+
 void Shader::setUniform_mat4(int index, const glm::mat4 & m4) {
     if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
         return;

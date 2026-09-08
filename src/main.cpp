@@ -158,6 +158,16 @@ int main(int argc, char **argv)
                                          "planetCenter" });
     atmosphereshader->FromFile("./res/atmosphereShader");
 
+    // Cloud deck: a shell between the terrain and the atmosphere rim --
+    // a solid ceiling from below, a textured disc from orbit. Coverage
+    // is procedural FBM in the shader (seeded per body), no asset.
+    Shader *cloudshader = new Shader;
+    cloudshader->registerAttribs({ "position", "normal" });
+    cloudshader->registerUniforms({ "MVP", "Normal", "cameraPos", "color",
+                                    "lightDirection", "seedRot", "freq",
+                                    "drift", "coverage", "planetCenter" });
+    cloudshader->FromFile("./res/cloudShader");
+
     Shader *skyboxshader = new Shader;
     skyboxshader->registerAttribs({ "position" });
     skyboxshader->registerUniforms({ "projectionview" });
@@ -233,10 +243,11 @@ int main(int argc, char **argv)
         }
     }
 
-    // Build the atmosphere rim shells now that the bodies + shader exist.
-    // Bodies without an atmosphere are no-ops (no mesh, no draw cost).
+    // Build the atmosphere rim + cloud deck shells now that the bodies +
+    // shaders exist. Bodies without either are no-ops (no mesh, no cost).
     for(auto&& b : sys.bodies) {
         b->BuildAtmosphere(atmosphereshader);
+        b->BuildClouds(cloudshader);
     }
 
     /* The ships are built from JSON: the parts catalog (res/parts.json)
@@ -863,6 +874,7 @@ int main(int argc, char **argv)
     delete sunshader;
     delete terrainshader;
     delete atmosphereshader;
+    delete cloudshader;
     delete billboardshader;
     delete skyboxshader;
     delete postfx;

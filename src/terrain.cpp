@@ -36,6 +36,7 @@ TerrainBody::~TerrainBody() {
     pads.clear();
     for(int i = 0; i < 6; i++) { delete patches[i]; }
     delete atmosphere;
+    delete clouds;
     delete frame;
     delete rot_frame;
 }

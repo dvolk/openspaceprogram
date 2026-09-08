@@ -115,6 +115,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                 s.atmosphere.power = av.value("power", 3.0f);
                 s.atmosphere.intensity = av.value("intensity", 1.0f);
             }
+            if(sv.contains("clouds") && sv["clouds"].is_object()) {
+                const nlohmann::json &cv = sv["clouds"];
+                s.clouds.enabled = true;
+                if(cv.contains("color") && cv["color"].is_array()
+                   && cv["color"].size() >= 3) {
+                    const nlohmann::json &c = cv["color"];
+                    s.clouds.color = glm::vec3(c[0].get<float>(),
+                                               c[1].get<float>(),
+                                               c[2].get<float>());
+                }
+                s.clouds.height = cv.value("height", 2500.0f);
+                s.clouds.coverage = cv.value("coverage", 0.6f);
+                s.clouds.freq = cv.value("freq", 10.0f);
+                s.clouds.drift = cv.value("drift", 0.0f);
+            }
         }
         // Per-body noise orientation: two irrational-angle turns so
         // neighbouring seeds land on uncorrelated surfaces.

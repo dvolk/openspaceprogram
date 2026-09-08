@@ -276,6 +276,12 @@
           "thickness": 15000,
           "power": 4.0,
           "intensity": 0.7
+        },
+        "clouds": {
+          "height": 2500,
+          "coverage": 0.6,
+          "freq": 10,
+          "drift": 0.00001
         }
       },
       "inertial": {
@@ -403,6 +409,12 @@
           "thickness": 22000,
           "power": 4.0,
           "intensity": 0.7
+        },
+        "clouds": {
+          "height": 3000,
+          "coverage": 0.5,
+          "freq": 10,
+          "drift": 0.00001
         }
       },
       "inertial": {
@@ -686,6 +698,12 @@
           "thickness": 12000,
           "power": 4.0,
           "intensity": 0.7
+        },
+        "clouds": {
+          "height": 2000,
+          "coverage": 0.55,
+          "freq": 10,
+          "drift": 0.00001
         }
       },
       "inertial": {

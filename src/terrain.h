@@ -95,6 +95,8 @@ struct TerrainBody {
     Shader *shader;
     Model *atmosphere = nullptr; // Fresnel rim shell (built on demand)
     float atm_radius = 0.0f;     // shell radius [m]; 0 = no atmosphere
+    Model *clouds = nullptr;     // cloud deck shell (built on demand)
+    float cloud_radius = 0.0f;   // deck radius [m]; 0 = no clouds
     float radius;
     double mu;
     double g; // [m/s^2]
@@ -213,6 +215,22 @@ struct TerrainBody {
         atm_radius = shell_radius;
     }
 
+    // Build the cloud deck shell on demand. Like the atmosphere it sits
+    // above the highest terrain (no peak pokes through): base radius +
+    // scaled relief + the data height. The coverage pattern is procedural
+    // in the shader (FBM on the body-seeded direction), so the mesh is the
+    // same clean sphere as the atmosphere -- no cloud asset to load.
+    void BuildClouds(Shader *cloudshader) {
+        if(clouds != nullptr || !surface.clouds.enabled) return;
+        float shell_radius = radius + surface.max_height
+                             + surface.clouds.height;
+        if(shell_radius <= radius) shell_radius = radius * 1.02f;
+        Mesh *m = create_atmosphere_mesh(shell_radius);
+        clouds = new Model;
+        clouds->FromData(m, cloudshader, NULL);
+        cloud_radius = shell_radius;
+    }
+
     void DrawAtmosphere(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
         if(atmosphere == nullptr) return;
 
@@ -258,6 +276,55 @@ struct TerrainBody {
         glDepthMask(false);
         if(inside) glCullFace(GL_FRONT);
         atmosphere->mesh->Draw();
+        if(inside) glCullFace(GL_BACK);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+    }
+
+    void DrawClouds(const Camera *camera, TerrainBody *sun,
+                    Frame *renderFrame, double time) {
+        if(clouds == nullptr) return;
+
+        // Same inside/outside flip as the atmosphere: the eye below the
+        // deck (on the surface, or in the air under it) is inside the
+        // shell, so the visible faces are back faces -- cull FRONT and
+        // the near wall reads as the solid ceiling. From orbit the default
+        // cull shows the near-side exterior (the deck top over the planet).
+        const glm::dvec3 center = glm::dvec3(transform[3]);
+        const bool inside = glm::length(camera->GetPos() - center) < (double)cloud_radius;
+
+        const glm::dmat4 &View = camera->GetView();
+        // double, then truncate (the view is built in the render frame,
+        // like the atmosphere path; the Normal/cameraPos uniforms stay in
+        // world coordinates, a consistent pair for the shader's V math)
+        glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin()) * transform;
+        glm::mat4 ModelViewFloat = ModelView;
+        const glm::mat4 &Projection = camera->GetProjection();
+
+        clouds->shader->Bind();
+        clouds->shader->setUniform_mat4(0, Projection * ModelViewFloat);
+        clouds->shader->setUniform_mat4(1, glm::mat4(transform));
+        clouds->shader->setUniform_vec3(2, glm::vec3(camera->GetPos()));
+        clouds->shader->setUniform_vec3(3, surface.clouds.color);
+        // Direction light travels (sun -> planet); the same value the
+        // terrain lights with, so the deck's terminator matches the ground.
+        clouds->shader->setUniform_vec3(4,
+            glm::vec3(SunlightDir(this, sun, renderFrame)));
+        clouds->shader->setUniform_mat3(5, glm::mat3(surface.seed_rot));
+        clouds->shader->setUniform_vec1(6, surface.clouds.freq);
+        clouds->shader->setUniform_vec1(7, (float)(time * surface.clouds.drift));
+        clouds->shader->setUniform_vec1(8, surface.clouds.coverage);
+        clouds->shader->setUniform_vec3(9, glm::vec3(center));
+
+        // Transparent over the terrain (and under the atmosphere rim,
+        // which draws after): keep the depth test so the limb stays
+        // correct, but don't write depth so nothing behind the deck gets
+        // clobbered (plumes, the rim shell).
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(false);
+        if(inside) glCullFace(GL_FRONT);
+        clouds->mesh->Draw();
         if(inside) glCullFace(GL_BACK);
         glDepthMask(true);
         glDisable(GL_BLEND);

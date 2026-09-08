@@ -263,9 +263,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // skybox (the starfield is the background) so the rim ring blends
     // over it and the horizon haze blends over the already-drawn
     // terrain. Depth-write off; no-ops for bodies without an
-    // atmosphere. See reports/atmosphere2026_08_25.
+    // atmosphere. See reports/atmosphere2026_08_25. Cloud decks draw
+    // first in the loop (under the rim): the deck is the solid white
+    // layer, the rim the thin air around it.
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
+            planet->DrawClouds(camera, sun, ship->frame, g.time);
             planet->DrawAtmosphere(camera, sun, ship->frame);
         }
     }

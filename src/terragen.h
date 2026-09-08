@@ -82,6 +82,20 @@ struct AtmosphereParams {
     float intensity = 1.0f;   // overall alpha scale
 };
 
+// Per-body cloud deck (optional "surface.clouds" block). A single shell at
+// `height` above the highest terrain (the same above-peaks rule as the
+// atmosphere shell): a solid ceiling from below, a textured disc from
+// orbit. The coverage pattern is procedural FBM in the cloud shader,
+// oriented by the body's seed -- no mesh or texture asset.
+struct CloudParams {
+    bool enabled = false;
+    float height = 2500.0f;   // [m] above radius + max_height
+    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);  // cloud tint (white)
+    float coverage = 0.6f;    // 0..1: how much of the deck is cloudy
+    float freq = 10.0f;       // pattern scale (unit-sphere noise coords)
+    float drift = 0.0f;       // [pattern units/s] wind: pattern creep vs ground
+};
+
 // Per-body terrain + color parameters (the optional "surface" JSON block).
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
@@ -103,6 +117,7 @@ struct Surface {
     bool bands = false;          // gas giant: smooth sphere, latitude bands
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
     AtmosphereParams atmosphere; // optional rim; enabled => body has air
+    CloudParams clouds;          // optional deck; enabled => body has clouds
 
     COLOUR PaletteColor(float t) const {
         const std::vector<PaletteStop> &s = palette;

@@ -28,6 +28,7 @@ public:
     void setUniform_vec2(int index, const glm::vec2 & v2);
     void setUniform_vec3(int index, const glm::vec3 & v3);
     void setUniform_vec4(int index, const glm::vec4 & v4);
+    void setUniform_mat3(int index, const glm::mat3 & m3);
     void setUniform_mat4(int index, const glm::mat4 & m4);
 
     // Name-based variants: no-op if the uniform isn't in this program
