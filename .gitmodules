@@ -10,3 +10,6 @@
 [submodule "middleware/implot"]
 	path = middleware/implot
 	url = https://github.com/epezent/implot
+[submodule "middleware/assimp"]
+	path = middleware/assimp
+	url = https://github.com/assimp/assimp

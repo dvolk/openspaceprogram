@@ -9,10 +9,10 @@ CXX= g++
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I/usr/include/SDL2
+CXXFLAGS=-O2 -MMD -MP $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I/usr/include/SDL2
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
-LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL -lassimp
+LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL $(ASSIMP_LIB)
 
 # Default to all cores: a plain `make` runs parallel (verified: MAKEFLAGS
 # set in-file takes effect, and a command-line -jN still overrides it).
@@ -29,6 +29,10 @@ IMGUI_OBJS=./obj/imgui/imgui.o ./obj/imgui/imgui_draw.o ./obj/imgui/imgui_widget
 # through the existing imgui renderer, so only its two .cpp files are built.
 IMPLLOT_DIR=./middleware/implot
 IMPLLOT_OBJS=./obj/implot/implot.o ./obj/implot/implot_items.o
+# assimp submodule (pinned to a tagged release), built static via cmake like
+# bullet3 (assimp 6 defaults to shared, so force -DBUILD_SHARED_LIBS=OFF).
+# The static lib references zlib (uncompress), so -lz rides along.
+ASSIMP_LIB=./middleware/assimp/build/lib/libassimp.a -lz
 # clone bullet3 in ./middleware
 # cd ./middleware/bullet3
 # ln -s bullet src
@@ -135,7 +139,7 @@ test:
 	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_thrust
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_thrust
 	./test_thrust
 	# fuel drain (the real Vehicle::consumeResourceMass from src/vehicle.h
 	# + the real SetMass): pro-rata across the active stage's tanks (not
@@ -143,7 +147,7 @@ test:
 	# Same real-Bullet link as test_thrust (no GL context needed).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_fuel.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_fuel
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_fuel
 	./test_fuel
 	# electrical (KSP-style EC): the powerTick gate (wheels need power
 	# left over after life support; no-EC ships ungated) + the pool balance
@@ -152,7 +156,7 @@ test:
 	# Same real-Bullet link as test_fuel (no GL context needed).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_power.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_power
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_power
 	./test_power
 	# staging topology (Vehicle::droppedPartsAtStage from src/vehicle.h): a
 	# decoupler drops itself + its whole child-side subtree, a sibling branch
@@ -162,7 +166,7 @@ test:
 	# inline destructor references the physics teardown symbols.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_staging
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_staging
 	./test_staging
 	# docking merge/split (Vehicle::absorbShip + extractSubtreeAsShip from
 	# src/vehicle.h): absorbShip is a rigid merge -- every absorbed part keeps
@@ -174,7 +178,7 @@ test:
 	# extractSubtreeAsShip leaves enterWorld to its caller, so no physics world.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_dock.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_dock
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_dock
 	./test_dock
 	# ship mass properties (Vehicle::get_center_of_mass / getInertia from
 	# src/vehicle.h): golden values against an independent analytic
@@ -189,13 +193,13 @@ test:
 	# at an arbitrary world pose. Headless: no world, no GL context.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_inertia
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_inertia
 	./test_inertia
 	# rotation model (physical wheel torque, per-substep law, torque
 	# delivery): same real-Bullet link as test_thrust.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_rotation
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_rotation
 	./test_rotation
 	# ship/part JSON data model (GL-free: catalog + ship-def parse/validate,
 	# part resolution, aggregates). Runs from the repo root (needs res/).
@@ -278,7 +282,7 @@ test:
 	# pose accessors, so physics.cpp + body.cpp + shipdef.cpp link in.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I/usr/include/SDL2 \
 	    tests/test_pick.cpp src/pick.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/camera.cpp src/frame.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image -lassimp -o test_pick
+	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_pick
 	./test_pick
 	# settings.json mapping (src/settings.cpp, nlohmann): the
 	# SettingsData <-> JSON round trip, absent-key tolerance (a field the
