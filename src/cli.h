@@ -66,6 +66,7 @@ struct GameArgs {
     bool spin_log_enabled = false;
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
     bool att_log = false;          // log the ship's nose + angular velocity
+    bool tq_log = false;           // --tq-log: COM-lag x net-force spurious-torque probe
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links
     bool drain_log = false;      // --drain-log: per-fuel-group drain rate (kg/s)
     bool power_log = false;      // --power-log: power balance (gen/draw/pool/gate)

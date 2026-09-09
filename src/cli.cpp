@@ -213,6 +213,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "hull's angular velocity (world coords) to stdout; the "
                  "instrument for the attitude-physics e2e test");
 
+    app.add_flag("--tq-log", args.tq_log,
+                 "Print the spurious-torque probe once per tick: the hull "
+                 "origin's COM lag (|dcom|), the net force (|F|), the "
+                 "|dcom x F| torque the fix cancels, and |w| -- the "
+                 "instrument for the com-torque e2e test");
+
     app.add_flag("--fuel-log", args.fuel_log,
                  "Periodically print each fuel group's fuel mass (per "
                  "resource, plus each member tank) and the ship's fuel "

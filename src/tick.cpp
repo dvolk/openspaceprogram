@@ -435,6 +435,14 @@ void tick(Game &g) {
             }
         }
 
+        // --tq-log: the spurious-torque probe, once per TICK (not the
+        // interval gate): the per-tick quantity is the point, and the bug
+        // it hunts was a per-tick dcom x F that a per-second log would
+        // average out.
+        if(g.args.tq_log && !g.ship->onRails) {
+            g.ship->tq_log(g.time);
+        }
+
         /* --compound-check: every ship's compound-vs-parts agreement. Not
            gated on time_accel (a paused ship still has live part poses to
            compare) and over `all`, not just the active ship: the idle and

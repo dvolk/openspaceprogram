@@ -1443,6 +1443,52 @@ public:
         fflush(stdout);
     }
 
+    /* --tq-log: the spurious-torque bug class on one line, once per tick.
+       dcom is how far the hull's transform origin (Bullet's rotation
+       centre) lags the true mass COM; F is the net force the ship feels
+       right now (per-part gravity + rotating-frame fictitious + armed
+       thrust -- the same terms applyGravity / applyThrustForce apply);
+       |dcom x F| is the torque those origin-referenced levers would add
+       if uncorrected -- the amount the fix cancels. Expect |dcom x F| to
+       be sizable around any burn: the COM drifts between refreshCompound
+       re-centers (here |dcom| ~1e-4..7e-4 m, |dcom x F| up to ~15 N m),
+       and after the burn the last lag stays frozen (no more mass change
+       -> no more recentering) and keeps acting -- in the rot-orbit
+       scenario it sits at ~5e-4 m x 2.4e4 N = ~13 N m indefinitely. The
+       discriminating signal is |w|: healthy stays ~1e-6 rad/s while
+       |dcom x F| is sizable; the regression is |w| ramping (pre-fix, the
+       frozen lag x the ~24 kN net force grew it ~1.3e-3 rad/s per second).
+       Stateless: re-derives the forces from the current state, so there
+       is nothing to reset. */
+    void tq_log(double time) {
+        if(hull == nullptr || parts.empty()) { return; }
+        const double G = 6.674e-11;
+        const double& parent_mass = m_parent->mass;
+        glm::dvec3 F(0.0);
+        for(Part *p : parts) {
+            if(p->body->mass == 0) { continue; }
+            const glm::dvec3 b1b2 = partPos(p);
+            const double r2 = glm::length2(b1b2);
+            F += G * p->body->mass * parent_mass * (-b1b2) / (r2 * sqrt(r2));
+            if(frame->isRotFrame()) {
+                F += p->body->mass *
+                     frame->GetFictitiousAccel(b1b2, partVel(p));
+            }
+        }
+        for(Part *p : parts) {
+            if(p->isThruster() && p->armedThrust != 0.0f) {
+                F += partAxis(p, 2) * (double)p->armedThrust;
+            }
+        }
+        const glm::dvec3 dcom = comOffset();
+        const glm::dvec3 w = GetAngVelocity(hull);
+        printf("[tqlog] t=%.3fs |dcom|=%.3e m F=[%.4e %.4e %.4e] "
+               "|F|=%.4e N |dxF|=%.3e N m |w|=%.3e rad/s\n",
+               time, glm::length(dcom), F.x, F.y, F.z, glm::length(F),
+               glm::length(glm::cross(dcom, F)), glm::length(w));
+        fflush(stdout);
+    }
+
     /* --fuel-log: each fuel group's fuel mass (per resource), the
        per-tank breakdown, and the fuel links -- the instrument for the
        fuel-link drain-rate bug: two symmetric radial groups must show

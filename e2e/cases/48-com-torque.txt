@@ -1,0 +1,43 @@
+# Spurious-torque regression: Bullet rotates the hull about its transform
+# origin, and refreshCompound only re-centers that origin onto the true
+# mass COM when its threshold trips. During a burn the true COM drifts
+# (fuel leaves the tanks) while the origin stays put, so any NET force
+# acting through that offset adds a spurious dcom x F torque the ship's
+# true COM does not feel -- the ship spins up in a steady linear |w| ramp,
+# and after the burn the frozen last lag keeps the ramp going.
+#
+# rot-orbit is the worst case: a circular INERTIAL orbit expressed in
+# Kerbin's SPIN frame feels ~24 kN net (gravity + Coriolis +
+# centrifugal), so the spurious term is at its biggest there.
+#
+# Timeline (--time-accel 1: 1 wall s == 1 sim s):
+#   1.0-6.0 s  T held (burn)
+#   6.0-14 s   coast (where the frozen-lag phase of the regression lives)
+#
+# The regression signature on --tq-log (the manual probe; see tq_log in
+# vehicle.h) is |w| ramping while |dcom x F| is sizable. A healthy run
+# shows a sizable |dcom x F| too (the fix cancels it, it does not remove
+# the lag), so the assertion here is on |w|, not on the probe.
+
+NAME com-torque
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --att-log --orbit-interval 0.3 --drain-log
+ARGS --sim-press 1000,5000,T
+ARGS --timeout 14
+LIMIT 40
+EXPECT [attlog]
+FORBID GL_
+FORBID error:
+CHECK len(att) >= 10
+# The engine actually fired (a drainlog sample reports thrust delivered)
+# -- the regression only exists during/after a burn, so a case that never
+# burns proves nothing.
+CHECK any(d["thrust"] > 0 for d in drainlog)
+# The regression itself: |w| stays flat through the burn AND the post-burn
+# coast. The uncorrected dcom x F torque ramps |w| linearly (measured:
+# ~1.3e-3 rad/s per second after the burn); the healthy run holds ~5e-6
+# rad/s, so the 1e-3 bound has ~200x margin over healthy and is exceeded
+# by a regression ~25x over by the end of the run.
+CHECK max(a["wnorm"] for a in att) < 1e-3
+# Finiteness: no NaN (x == x is false for NaN).
+CHECK all(a["wnorm"] == a["wnorm"] for a in att)
