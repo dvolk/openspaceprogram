@@ -1338,8 +1338,13 @@ public:
        build swaps this one line for ApplyForce at each part -- rcsDir and
        the rcs_thrust field stay the same). */
     glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed translation dir, unit or 0
+    /* burned this tick (applyRcsForce drew hydrazine): the render pass
+       draws the COM plume off this, same armed/disarmed pattern as
+       m_thrust + armedThrust for the engines (cleared by clearRcs, the
+       per-tick disarm in tick.cpp). */
+    bool rcsFiring = false;
     void setRcsDir(const glm::dvec3 &d) { rcsDir = d; }
-    void clearRcs() { rcsDir = glm::dvec3(0.0); }
+    void clearRcs() { rcsDir = glm::dvec3(0.0); rcsFiring = false; }
     Part *firstRcsPart() {
         for(Part *p : parts) { if(p->isRcs()) { return p; } }
         return nullptr;
@@ -1360,6 +1365,7 @@ public:
         const double flow = (F / (kRcsIsp * 9.81)) * h;
         if(consumeResourceMass(ResourceType::Hydrazine, (float)flow, e)) {
             ApplyCentralForce(hull, F * rcsDir);
+            rcsFiring = true;
         }
     }
     /* s, monopropellant (hydrazine) efficiency -- the EVA suit's value. */

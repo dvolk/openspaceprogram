@@ -320,6 +320,48 @@ void draw3d(Game &g, TransferPlanner &planner) {
     }
     /* end draw engine plume */
 
+    /* draw the RCS plume: the temporary magical RCS applies its whole
+       translation at the COM (applyRcsForce), so the puff is drawn from
+       the COM along the armed camera-relative direction, reusing the
+       engine plume's quad + texture. The quad's plane is spanned by the
+       exhaust direction and the camera axis LEAST aligned with it, so
+       the flat strip stays near screen-facing for every RCS direction
+       (edge-on it would vanish). */
+    if(ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12) {
+        const glm::dvec3 z = glm::normalize(ship->rcsDir);  // thrust dir; the mesh extends toward -z
+        const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
+        const glm::dvec3 seed = (std::abs(glm::dot(camR, z)) < std::abs(glm::dot(g.camera->up, z)))
+            ? camR : g.camera->up;
+        const glm::dvec3 x = glm::normalize(seed - glm::dot(seed, z) * z);
+        const glm::dvec3 y = glm::cross(z, x);
+        /* 2 m wide, 3 m long off the COM (a radius-1 engine's plume is
+           4 m long) -- long enough to clearly read as coming off the
+           ship, since the tail starts at the COM inside the hull. The
+           translate offset puts the mesh tail (local z = -1) on the COM. */
+        const double sx = 0.5, sz = 0.75;
+        glm::dmat4 Model = glm::translate(com + z * sz)
+            * glm::dmat4(glm::dmat3(x, y, z))
+            * glm::dmat4(glm::dmat3(sx, 0.0, 0.0,
+                                         0.0, sx, 0.0,
+                                         0.0, 0.0, sz));
+        glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
+        g.engine_plume_model->shader->Bind();
+        g.engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
+        g.engine_plume_model->shader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
+        g.engine_plume_model->shader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g.engine_plume_model->texture->id);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
+        glDisable(GL_CULL_FACE);
+        g.engine_plume_model->mesh->Draw();
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    /* end draw RCS plume */
+
     /* Transfer planner: rebuild the target list, recompute the
        solution on input change or every 30 frames, and fire the
        --xfer-log (transferplanner.cpp). com / vel are this
