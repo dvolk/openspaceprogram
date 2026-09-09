@@ -2328,11 +2328,15 @@ protected:
 
     /* Kill the spin within the wheel's authority: each axis' rate drops by
        min(|w|, alpha*h) per substep -- monotonic, no sign flip, never more
-       forceful than a maxed manual stick. */
+       forceful than a maxed manual stick. No deadband: the law is
+       proportional, so it converges to exact zero. A fixed |w| cutoff would
+       strand a residual spin whenever the per-substep authority alpha*h is
+       smaller than the cutoff -- heavy ships (e.g. docked stacks) damp
+       linearly into the cutoff and then keep drifting forever. */
     void killRotStep(double h) {
         Part *wheel = firstWheel();
         const glm::dvec3 w = partAngVel(wheel);
-        if(glm::length(w) < 0.001) { return; } /* at rest: nothing to kill */
+        if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
         const glm::dmat3 I = getInertia();
         glm::dvec3 torque(0.0);
         for(int i = 0; i < 3; i++) {
