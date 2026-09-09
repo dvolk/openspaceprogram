@@ -21,7 +21,7 @@
      }
 
    Entries sharing a (body, scenario) pair are slotted automatically by
-   main.cpp: pad ships 20 m apart along the pad, orbit ships 100 m apart
+   main.cpp: pad ships 20 m apart along the pad, orbit ships 20 m apart
    along the orbit binormal.
 */
 

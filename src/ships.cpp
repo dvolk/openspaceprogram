@@ -20,6 +20,11 @@
 #include "texture.h"  // load_texture
 #include "vehicle.h"  // build_ship, faceAlong, spawn_vehicle, scenario_by_name, Vehicle
 
+// Ships sharing a (body, scenario) orbit get this much separation along the
+// orbit binormal (slot N sits ORBIT_SLOT_SPACING * N from the reference
+// orbit) so they don't spawn on top of each other.
+static const double ORBIT_SLOT_SPACING = 20.0;
+
 std::vector<Vehicle *> collectVehicles(System &sys) {
     std::vector<Vehicle *> out;
     for(auto *b : sys.bodies) {
@@ -124,7 +129,7 @@ Vehicle *Ships::spawn_ship(const std::string &defPath, const std::string &wantNa
                            TerrainBody *hb, const ScenarioDef *sc, System &sys)
 {
     Vehicle *v = place_ship(defPath, wantName, hb, sc, sys);
-    spawn_vehicle(v, *sc, hb, sys, 100.0 * (double)v->slot);
+    spawn_vehicle(v, *sc, hb, sys, ORBIT_SLOT_SPACING * (double)v->slot);
     v->goOnRails();
     // N = v's position in the canonical order, M = the whole fleet.
     int n = 0, i = 0;
@@ -211,7 +216,7 @@ void Ships::apply_scenarios(System &sys) {
     for(auto *b : sys.bodies) {
         for(auto *s : b->ships) {
             if(s->scenario == nullptr) { continue; }
-            spawn_vehicle(s, *s->scenario, s->home, sys, 100.0 * (double)s->slot);
+            spawn_vehicle(s, *s->scenario, s->home, sys, ORBIT_SLOT_SPACING * (double)s->slot);
         }
     }
 }

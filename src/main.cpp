@@ -252,7 +252,7 @@ int main(int argc, char **argv)
        or, when that is not given, from the --ship flags as a uniform fleet
        (all entries share the --body/--scenario). Omitted entry body/scenario
        fall back to the CLI values. Ships sharing a (body, scenario) pair are
-       slotted: pad slots 20 m apart along the pad, orbit slots 100 m apart
+       slotted: pad slots 20 m apart along the pad, orbit slots 20 m apart
        along the orbit binormal. */
     Ships ships(args.parts_file, partsshader, sun);
 
@@ -345,7 +345,7 @@ int main(int argc, char **argv)
 
     /* Apply each ship's scenario (before the camera is constructed,
        so the camera focuses on the spawn point). Ships sharing a
-       body+scenario group get their own orbit slot (100 m apart along the
+       body+scenario group get their own orbit slot (20 m apart along the
        orbit binormal) so they don't spawn on top of each other. */
     ships.apply_scenarios(sys);
 
