@@ -1,13 +1,16 @@
 // docktest.cpp -- the --dock-test pair builder (see docktest.h).
 //
 // Two single-stage r1.0 ships, nose-to-nose along the station's prograde
-// (the docking axis), co-moving on the same circular orbit:
-//   station  tank_r1h3 (root) + docking_port_r1 on its REAR end (-Z)
-//   probe    docking_port_r1 (root, FRONT) + tank + engine behind it
-// The probe is the active ship and its engine thrusts along its +Z, which
-// is the direction toward the station (the station is ahead of it along
-// prograde) -- so a prograde burn closes the gap. Both ports present the
-// face pointing at the other port, exactly along the line between them,
+// (the docking axis), co-moving on the same circular orbit. Each carries
+// the same seven parts (port to engine):
+//   docking_port_r1, capsule, rcs_r1, mono_tank_r1, reaction_wheel,
+//   tank_r1h3, engine
+// The probe is oriented port (front, +Z) ... engine (rear); the station is
+// its mirror, engine (front, +Z) ... port (rear, -Z), so each port faces
+// the other. The probe is the active ship and its engine thrusts along its
+// +Z, which is the direction toward the station (the station is ahead of it
+// along prograde) -- so a prograde burn closes the gap. Both ports present
+// the face pointing at the other port, exactly along the line between them,
 // so the alignment test (cos 15 deg) passes with margin.
 #include "docktest.h"
 
@@ -30,11 +33,17 @@ DockTestShips build_dock_test_ships(const std::string &mode,
                                     System &sys)
 {
     const PartDef *defPort = part_catalog.find("docking_port_r1");
-    const PartDef *defEng  = part_catalog.find("engine");
+    const PartDef *defCap  = part_catalog.find("capsule");
+    const PartDef *defRcs  = part_catalog.find("rcs_r1");
+    const PartDef *defMono = part_catalog.find("mono_tank_r1");
+    const PartDef *defRw   = part_catalog.find("reaction_wheel");
     const PartDef *defTank = part_catalog.find("tank_r1h3");
-    if(defPort == nullptr || defEng == nullptr || defTank == nullptr) {
-        throw std::runtime_error("--dock-test: docking_port_r1 / engine / "
-                                 "tank_r1h3 missing from the parts catalog");
+    const PartDef *defEng  = part_catalog.find("engine");
+    if(defPort == nullptr || defCap == nullptr || defRcs == nullptr
+       || defMono == nullptr || defRw == nullptr
+       || defTank == nullptr || defEng == nullptr) {
+        throw std::runtime_error("--dock-test: a part the pair needs is "
+                                 "missing from the parts catalog");
     }
 
     /* the starting port-face gap (m): "near" sits inside the kDockCapture
@@ -67,30 +76,42 @@ DockTestShips build_dock_test_ships(const std::string &mode,
         return p;
     };
 
-    /* --- station: tank (root) + port on its rear end (-Z) ---------------
+    /* --- station: the same 7-part stack, mirror-oriented ---------------
        Both ships are oriented local +Z = prograde (spawn_vehicle's
-       faceAlong(vel)). The station's port must face the probe, which sits
-       BEHIND it, so the port goes on the tank's -Z side. */
+       faceAlong(vel)). The probe sits BEHIND the station, so the station's
+       port must face it: the stack runs engine (nose, +Z) ... port (tail,
+       -Z) -- the reverse of the probe. */
     Vehicle *station = new Vehicle;
     station->m_parent = home;
     station->sun = sun;
     station->frame = home->rot_frame;
     station->name = "dockstation";
+    Part *stEng  = makePart(defEng);
     Part *stTank = makePart(defTank);
+    Part *stRw   = makePart(defRw);
+    Part *stMono = makePart(defMono);
+    Part *stRcs  = makePart(defRcs);
+    Part *stCap  = makePart(defCap);
     Part *stPort = makePart(defPort);
-    station->setRoot(stTank);
-    station->attachDown(stPort);   // port stacked on the tank's rear (-Z) face
-    station->controller = stTank;
+    station->setRoot(stEng);
+    station->attachDown(stTank);   // nose -> tail: engine, tank, ...
+    station->attachDown(stRw);
+    station->attachDown(stMono);
+    station->attachDown(stRcs);
+    station->attachDown(stCap);
+    station->attachDown(stPort);   // port on the tail (-Z), facing the probe
+    station->controller = stRw;
     station->init();
     station->enterWorld();
     // Circular orbit, slot 0 (no lateral offset): the station's COM ends up
     // at the orbit radius, oriented nose (+Z) along prograde.
     spawn_vehicle(station, *sc, home, sys, 0.0);
 
-    /* --- probe: port (root, front) + tank + engine behind it -----------
-       The engine sits at the rear and thrusts along its +Z = the probe's
-       +Z = prograde = toward the station ahead of it. attachDown stacks
-       each part face-to-face below the last (port, then tank, then engine),
+    /* --- probe: port (root, front) ... engine (rear) -------------------
+       The same 7-part stack as the station, oriented the other way: port at
+       the front (+Z, facing the station ahead of it), engine at the rear.
+       The engine thrusts along its +Z = the probe's +Z = prograde = toward
+       the station. attachDown stacks each part face-to-face below the last,
        so nothing overlaps. */
     Vehicle *probe = new Vehicle;
     probe->m_parent = home;
@@ -98,12 +119,20 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     probe->frame = home->rot_frame;
     probe->name = "dockprobe";
     Part *prPort = makePart(defPort);
+    Part *prCap  = makePart(defCap);
+    Part *prRcs  = makePart(defRcs);
+    Part *prMono = makePart(defMono);
+    Part *prRw   = makePart(defRw);
     Part *prTank = makePart(defTank);
     Part *prEng  = makePart(defEng);
     probe->setRoot(prPort);
-    probe->attachDown(prTank);     // tank below the port
-    probe->attachDown(prEng);      // engine below the tank (no overlap)
-    probe->controller = prTank;
+    probe->attachDown(prCap);      // port, capsule, ... engine at the rear
+    probe->attachDown(prRcs);
+    probe->attachDown(prMono);
+    probe->attachDown(prRw);
+    probe->attachDown(prTank);
+    probe->attachDown(prEng);      // engine at the rear, thrusting +Z
+    probe->controller = prRw;
     probe->init();
 
     /* --- place the probe on the station's orbit, trailing in phase -----

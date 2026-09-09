@@ -1,10 +1,11 @@
 // docktest.h -- the --dock-test pair builder (see docktest.cpp). Builds a
 // nose-to-nose docking pair straight from the parts catalog so the
-// docking check + the undock round trip have a known, aligned geometry:
-//   station  tank_r1h3 (root) + docking_port_r1 on its +Z end
-//   probe    docking_port_r1 (root) + engine + tank_r1h3 below it
-// The probe is the ACTIVE ship (it is returned first and main() makes it
-// the player's); its engine thrusts along its +Z, toward the station.
+// docking check + the undock round trip have a known, aligned geometry.
+// Each ship carries the same seven parts (port to engine):
+// docking_port_r1, capsule, rcs_r1, mono_tank_r1, reaction_wheel, tank_r1h3,
+// engine -- the probe port-first, the station its mirror (port-last). The
+// probe is the ACTIVE ship (it is returned first and main() makes it the
+// player's); its engine thrusts along its +Z, toward the station.
 #pragma once
 
 #include <string>
@@ -18,7 +19,7 @@ struct System;
    them and pushes them into the fleet) + the starting port-face gap. */
 struct DockTestShips {
     Vehicle *probe;    // the active ship (root = its docking port)
-    Vehicle *station;  // the target (root = its fuel tank)
+    Vehicle *station;  // the target (root = its engine, port at the tail)
     double gap;        // port-face gap at start (m)
 };
 
