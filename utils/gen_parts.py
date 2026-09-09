@@ -40,6 +40,8 @@ catalog is reproducible and internally consistent instead of hand-tuned:
   decoupler       staging boundary: decoupler + fuel_barrier flags; the
                   mass is declared (EXTRA_FIELDS), radius/height follow
                   the mesh unless declared
+  docking_port    like the decoupler (declared mass, geometry from mesh),
+                  but carries the docking_port + fuel_barrier flags
   fuel_link       virtual one-way fuel connection: no mesh, no physics --
                   just the fuel_link flag (EXTRA_FIELDS)
   extras (EXTRA_FIELDS)
@@ -180,6 +182,12 @@ PARTS = [
     ("decoupler_r1.5",   "decoupler",      "decoupler_r1.5.obj",           "decoupler.png"),
     ("decoupler_r2.25",  "decoupler",      "decoupler_r2.25.obj",          "decoupler.png"),
     ("decoupler_radial", "decoupler",      "decoupler_radial.obj",         "decoupler.png"),
+    # docking ports: same geometry + declared mass as the decouplers, but
+    # they mate ships together instead of staging (docking_port, not
+    # decoupler). Mesh/texture are their own copies of the decoupler's.
+    ("docking_port_r1",    "docking_port", "docking_port_r1.obj",          "docking_port.png"),
+    ("docking_port_r1.5",  "docking_port", "docking_port_r1.5.obj",        "docking_port.png"),
+    ("docking_port_r2.25", "docking_port", "docking_port_r2.25.obj",       "docking_port.png"),
     ("nose_cap",         "nose_cap",       "nose_cap.obj",                 "nose_cap.png"),
     ("nose_cap_r1.5h0.75","nose_cap",      "nose_cap_r1.5h0.75.obj",       "nose_cap.png"),
     ("nose_cap_r2.25h1.125","nose_cap",    "nose_cap_r2.25h1.125.obj",     "nose_cap.png"),
@@ -188,13 +196,14 @@ PARTS = [
 ]
 
 # per-part extra fields that do NOT derive from the geometry: crew seats,
-# the kerbal's RCS propellant, the decouplers' mass + staging flags, and
-# the fuel_link's flag.
+# the kerbal's RCS propellant, the decouplers'/docking ports' mass + flags,
+# and the fuel_link's flag.
 # Applied on top of the generated entry so the catalog stays fully
 # reproducible (no hand-edits to parts.json). The kerbal mass is declared
-# (not mesh-derived) to preserve the hand-set value; the decouplers'
-# masses likewise. decoupler_r2.25's height is declared because mesh_geom
-# rounds the 0.5625 m mesh span to 0.562 (round-3, as the wheel's entry).
+# (not mesh-derived) to preserve the hand-set value; the decouplers'/docking
+# ports' masses likewise. decoupler_r2.25's and docking_port_r2.25's height
+# are declared because mesh_geom rounds the 0.5625 m mesh span to 0.562
+# (round-3, as the wheel's entry).
 EXTRA_FIELDS = {
     "capsule":           {"crew_capacity": 1},
     "capsule_r1.5h3":    {"crew_capacity": 3},
@@ -205,6 +214,10 @@ EXTRA_FIELDS = {
     "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,
                           "height": 0.5625},
     "decoupler_radial":  {"mass": 40, "decoupler": True, "fuel_barrier": True},
+    "docking_port_r1":   {"mass": 50, "docking_port": True, "fuel_barrier": True},
+    "docking_port_r1.5": {"mass": 75, "docking_port": True, "fuel_barrier": True},
+    "docking_port_r2.25":{"mass": 110, "docking_port": True, "fuel_barrier": True,
+                         "height": 0.5625},
     "fuel_link":         {"fuel_link": True},
 }
 
@@ -282,11 +295,11 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["rcs_thrust"] = clean(RCS_THRUST_PER_M2 * radius * radius)
-    elif ptype == "decoupler":
-        # staging boundary: mass is declared in EXTRA_FIELDS; radius/height
-        # follow the mesh unless overridden there. The decoupler/fuel_barrier
-        # flags land in the final EXTRA_FIELDS update below, keeping the key
-        # order of the hand-written entries.
+    elif ptype in ("decoupler", "docking_port"):
+        # staging boundary (decoupler) / docking port: mass is declared in
+        # EXTRA_FIELDS; radius/height follow the mesh unless overridden there.
+        # The decoupler/docking_port + fuel_barrier flags land in the final
+        # EXTRA_FIELDS update below, keeping the key order of the entries.
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
         e["height"] = height

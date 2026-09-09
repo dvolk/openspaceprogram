@@ -520,8 +520,8 @@
     {
       "name": "docking_port_r1",
       "type": "docking_port",
-      "mesh": "decoupler_r1.obj",
-      "texture": "decoupler.png",
+      "mesh": "docking_port_r1.obj",
+      "texture": "docking_port.png",
       "mass": 50,
       "radius": 1.0,
       "height": 0.25,
@@ -531,8 +531,8 @@
     {
       "name": "docking_port_r1.5",
       "type": "docking_port",
-      "mesh": "decoupler_r1.5.obj",
-      "texture": "decoupler.png",
+      "mesh": "docking_port_r1.5.obj",
+      "texture": "docking_port.png",
       "mass": 75,
       "radius": 1.5,
       "height": 0.375,
@@ -542,8 +542,8 @@
     {
       "name": "docking_port_r2.25",
       "type": "docking_port",
-      "mesh": "decoupler_r2.25.obj",
-      "texture": "decoupler.png",
+      "mesh": "docking_port_r2.25.obj",
+      "texture": "docking_port.png",
       "mass": 110,
       "radius": 2.25,
       "height": 0.5625,
