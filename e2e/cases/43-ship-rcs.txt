@@ -1,7 +1,6 @@
-# Ship RCS translation (KSP-style, camera-relative): a ship on an inertial
-# orbit holds N (RcsForward) -- the ship translates along the camera forward
-# (into the screen), burning hydrazine mono (the same propellant the EVA suit
-# uses). RCS is a fixed thrust gated on the ship's propellant
+# Ship RCS translation (KSP-style, ship-relative): a ship on an inertial
+# orbit holds N (RcsForward) -- the ship translates along its own nose,
+# burning hydrazine mono (the same propellant the EVA suit uses). RCS is a fixed thrust gated on the ship's propellant
 # (consume-then-arm, like the ship's engines), so the burn both changes the
 # velocity AND sheds fuel mass -- and the osculating orbit's specific energy
 # E (a constant between burns) moves. The N press exercises the

@@ -70,14 +70,14 @@ enum class Slot {
     KillRot,       // 'x'
     ThrottleUp,    // 'r'
     ThrottleDown,  // 'f'
-    // RCS translation (camera-relative, KSP-style; the ship's analogue of
+    // RCS translation (ship-relative, KSP-style; the ship's analogue of
     // the EVA suit's WASD/R/F -- the kerbal keeps its own keys):
-    RcsForward,    // 'n'  along the view direction (into the screen)
-    RcsBack,       // 'h'  out of the screen
-    RcsUp,         // 'i'  screen up
-    RcsDown,       // 'k'  screen down
-    RcsLeft,       // 'j'  screen left
-    RcsRight,      // 'l'  screen right
+    RcsForward,    // 'n'  along the ship's nose
+    RcsBack,       // 'h'  astern
+    RcsUp,         // 'i'  ship up
+    RcsDown,       // 'k'  ship down
+    RcsLeft,       // 'j'  ship left
+    RcsRight,      // 'l'  ship right
     // --- Camera: held commands in free mode (tick.cpp) -------------------
     CamForward,    // 'w'
     CamBack,       // 's'

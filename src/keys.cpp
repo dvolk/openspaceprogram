@@ -59,7 +59,7 @@ void KeyBindings::resetDefaults() {
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
-    // RCS translation (camera-relative). Shares physical keys with other
+    // RCS translation (ship-relative). Shares physical keys with other
     // groups (I/J/K/L are also CamSpeed / ... in the Game group, but those
     // are one-shot edges in events.cpp and only fire on a press, never held,
     // so the held RCS commands never collide with them in orbit mode).

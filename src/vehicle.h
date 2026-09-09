@@ -56,6 +56,11 @@ enum ShipCmdType {
     KillRot,
     Prograde,    // align nose with velocity
     Retrograde,  // align nose against velocity
+    // RCS translation (ship-relative, KSP-style): each command drives the
+    // ship's own body axis -- see applyRcsForce for the exact map.
+    RcsNose,   // N/H: along the ship's nose
+    RcsUp,     // I/K: along the ship's up
+    RcsRight,  // J/L: along the ship's right
 };
 
 struct ShipCmd {
@@ -1327,24 +1332,42 @@ public:
     /* --- RCS translation (hydrazine mono, KSP-style) --------------------
        Field-driven (Part::isRcs): a part with rcs_thrust > 0 contributes
        that many newtons of translation authority; maxRcsThrust() is the
-       ship's total. The armed direction rcsDir is camera-relative (set once
-       per tick from the held RCS slots, tick.cpp) and consumed before every
-       substep: a fixed thrust for as long as the key is held AND the ship
-       can draw this substep's flow of hydrazine (consume-then-arm, the EVA
-       suit's pattern -- no speed cap, the propellant is the limiter). The
-       force is applied AT the COM (ApplyCentralForce): the net force
-       accelerates the whole ship regardless of where the thrusters sit,
-       which is the COM-translation approximation (a real positioned-thruster
-       build swaps this one line for ApplyForce at each part -- rcsDir and
-       the rcs_thrust field stay the same). */
-    glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed translation dir, unit or 0
+       ship's total. The armed direction rcsDir is SHIP-RELATIVE: components
+       in the ship's own body axes (x = right, y = up, z = nose), armed once
+       per tick through Command (the held RCS slots, tick.cpp) -- the same
+       local-axes pattern as the stick -- and consumed before every substep:
+       a fixed thrust for as long as the key is held AND the ship can draw
+       this substep's flow of hydrazine (consume-then-arm, the EVA suit's
+       pattern -- no speed cap, the propellant is the limiter). Diagonals
+       (two axes held) compose as a vector sum and are normalized at the
+       point of use (rcsWorldDir), so the authority is the same however many
+       axes are held. The force is applied AT the COM (ApplyCentralForce):
+       the net force accelerates the whole ship regardless of where the
+       thrusters sit, which is the COM-translation approximation (a real
+       positioned-thruster build swaps this one line for ApplyForce at each
+       part -- rcsDir and the rcs_thrust field stay the same). */
+    glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed dir in ship axes (right, up, nose); 0 = off
     /* burned this tick (applyRcsForce drew hydrazine): the render pass
        draws the COM plume off this, same armed/disarmed pattern as
        m_thrust + armedThrust for the engines (cleared by clearRcs, the
        per-tick disarm in tick.cpp). */
     bool rcsFiring = false;
-    void setRcsDir(const glm::dvec3 &d) { rcsDir = d; }
     void clearRcs() { rcsDir = glm::dvec3(0.0); rcsFiring = false; }
+    /* The armed RCS direction in WORLD axes (unit; (0,0,0) when disarmed):
+       rcsDir's ship-body components mapped through the root part's axes.
+       The root's local frame IS the ship frame S, and its nose is the same
+       axis the attitude law slews (att_log). Resolved at the point of use,
+       so the direction tracks the ship's live attitude, substep by
+       substep -- not a camera basis sampled once per tick. */
+    glm::dvec3 rcsWorldDir() const {
+        if(glm::length2(rcsDir) < 1e-12) { return glm::dvec3(0.0); }
+        const Part *ref = rootPart();
+        if(ref == nullptr) { return glm::dvec3(0.0); }
+        const glm::dvec3 d = rcsDir.x * partAxis(ref, 0)
+                           + rcsDir.y * partAxis(ref, 1)
+                           + rcsDir.z * partAxis(ref, 2);
+        return glm::normalize(d);
+    }
     Part *firstRcsPart() {
         for(Part *p : parts) { if(p->isRcs()) { return p; } }
         return nullptr;
@@ -1364,7 +1387,7 @@ public:
            monoprop Isp the EVA suit uses (src/eva.cpp kRcsIsp). */
         const double flow = (F / (kRcsIsp * 9.81)) * h;
         if(consumeResourceMass(ResourceType::Hydrazine, (float)flow, e)) {
-            ApplyCentralForce(hull, F * rcsDir);
+            ApplyCentralForce(hull, F * rcsWorldDir());
             rcsFiring = true;
         }
     }
@@ -2117,6 +2140,18 @@ public:
                 break;
             case Roll:
                 stick[0] = (cmd.amount >= 0) ? +1.0f : -1.0f;
+                break;
+            // RCS translation in the ship's own axes (rcsWorldDir): each
+            // command arms one body axis; diagonals compose as a vector sum,
+            // like the stick.
+            case RcsNose:
+                rcsDir.z = (cmd.amount >= 0) ? +1.0 : -1.0;
+                break;
+            case RcsUp:
+                rcsDir.y = (cmd.amount >= 0) ? +1.0 : -1.0;
+                break;
+            case RcsRight:
+                rcsDir.x = (cmd.amount >= 0) ? +1.0 : -1.0;
                 break;
             case KillRot:
                 slew = SlewKillRot;

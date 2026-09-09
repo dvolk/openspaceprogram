@@ -322,13 +322,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
 
     /* draw the RCS plume: the temporary magical RCS applies its whole
        translation at the COM (applyRcsForce), so the puff is drawn from
-       the COM along the armed camera-relative direction, reusing the
+       the COM along the armed ship-relative direction, reusing the
        engine plume's quad + texture. The quad's plane is spanned by the
        exhaust direction and the camera axis LEAST aligned with it, so
        the flat strip stays near screen-facing for every RCS direction
        (edge-on it would vanish). */
     if(ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12) {
-        const glm::dvec3 z = glm::normalize(ship->rcsDir);  // thrust dir; the mesh extends toward -z
+        const glm::dvec3 z = ship->rcsWorldDir();  // thrust dir; the mesh extends toward -z
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
         const glm::dvec3 seed = (std::abs(glm::dot(camR, z)) < std::abs(glm::dot(g.camera->up, z)))
             ? camR : g.camera->up;
