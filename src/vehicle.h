@@ -335,6 +335,21 @@ public:
         return (total > 0.0) ? com / total : com;
     }
 
+    /* The true mass COM minus the hull's transform origin, in world axes.
+       The two coincide right after a rebuild, but a burn shifts the true COM
+       (fuel leaves the tanks) while the origin stays put until the next
+       refreshCompound threshold trips -- so this is generally nonzero during
+       a burn. Bullet rotates the hull about its transform origin, so any net
+       force acting through that offset origin adds a spurious
+       (comOffset x F) torque the ship's true COM does not feel; the force
+       laws subtract it (see applyGravity / applyThrustForce). */
+    glm::dvec3 comOffset() const {
+        if(hull == nullptr || parts.empty()) { return glm::dvec3(0.0); }
+        glm::dvec3 sPos; glm::dmat3 sRot;
+        frameS(sPos, sRot);
+        return sPos + sRot * compoundCom() - comPos();
+    }
+
     /* Rebuild once the mass distribution has moved enough to matter. A burn
        shifts the COM and the total mass continuously, and a rebuild walks
        every part's hull inertia, so one per tank draw per tick would be pure
@@ -1154,6 +1169,7 @@ public:
         const double G = 6.674e-11;
         const glm::dvec3 com = comPos();
         glm::dvec3 gf(0.0);
+        glm::dvec3 ff_total(0.0);
         for(Part *p : parts) {
             if(p->body->mass == 0) { continue; }
             const glm::dvec3 b1b2 = partPos(p);
@@ -1173,8 +1189,19 @@ public:
                 // orbit is perturbed for as long as it spends in the rotating
                 // frame (see GetFictitiousAccel in frame.h).
                 const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, partVel(p));
-                ApplyForce(hull, b1b2 - com, p->body->mass * a_fict);
+                const glm::dvec3 ff = p->body->mass * a_fict;
+                ApplyForce(hull, b1b2 - com, ff);
+                ff_total += ff;
             }
+        }
+        /* The per-part levers above are referenced to the hull's transform
+           origin, which lags the true COM during a burn; a net force through
+           that offset adds a spurious (comOffset x F) torque the ship's true
+           COM does not feel, so cancel it. (The legitimate tidal torque is
+           about the true COM and is unaffected.) */
+        const glm::dvec3 dcom = comOffset();
+        if(glm::length2(dcom) > 0.0) {
+            ApplyTorque(hull, -glm::cross(dcom, gf + ff_total));
         }
         return gf;
     }
@@ -1212,14 +1239,24 @@ public:
     // (and n grows with time acceleration, so it got worse at warp).
     void applyThrustForce() {
         const glm::dvec3 com = comPos();
+        glm::dvec3 ftotal(0.0);
         for(Part *p : parts) {
             if(!p->isThruster()) { continue; }
             if(p->armedThrust == 0.0f) { continue; }
             /* Along the engine's own +Z, applied AT the engine: an off-axis or
                tilted engine torques the ship directly, which is what the weld
                used to have to transmit. */
-            ApplyForce(hull, partPos(p) - com,
-                       partAxis(p, 2) * (double)p->armedThrust);
+            const glm::dvec3 ft = partAxis(p, 2) * (double)p->armedThrust;
+            ApplyForce(hull, partPos(p) - com, ft);
+            ftotal += ft;
+        }
+        if(glm::length2(ftotal) < 1e-24) { return; }
+        /* Same spurious-torque cancellation as applyGravity: the thrust lever
+           is referenced to the hull origin, which lags the true COM during a
+           burn, so subtract the (comOffset x F) term it introduces. */
+        const glm::dvec3 dcom = comOffset();
+        if(glm::length2(dcom) > 0.0) {
+            ApplyTorque(hull, -glm::cross(dcom, ftotal));
         }
     }
 
