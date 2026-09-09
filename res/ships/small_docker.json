@@ -1,0 +1,13 @@
+{
+  "name": "small docker",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "docking_port_r1", "id": "docking_port" },
+    { "part": "capsule", "id": "capsule_1" },
+    { "part": "reaction_wheel", "id": "rw1"},
+    { "part": "rcs_r1", "id": "rcs_1" },
+    { "part": "mono_tank_r1", "id": "tank_1" },
+    { "part": "tank_r1h1", "id": "tank_r1h1_1" },
+    { "part": "orbital_engine", "id": "engine_1" }
+  ]
+}
