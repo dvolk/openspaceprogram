@@ -407,6 +407,15 @@ int main(int argc, char **argv)
     Billboard *burn_indicator =
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0,
                      glm::vec4(0.2f, 0.45f, 1.0f, 1.0f));
+    // Target ship's relative velocity, two pink markers: the prograde
+    // (diamond) icon for you − target, the retrograde (X) icon for
+    // target − you. Shown when a ship is targeted in the TRANSFER window,
+    // or the ship whose docking port is selected.
+    const glm::vec4 relvelcolor = glm::vec4(1.0f, 0.4f, 0.9f, 1.0f);
+    Billboard *relvel_indicator =
+        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, relvelcolor);
+    Billboard *relvel_retro_indicator =
+        mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, relvelcolor);
 
     /* camera init */
     const float camFov = (float)glm::radians(args.camFovDeg);
@@ -535,6 +544,8 @@ int main(int argc, char **argv)
     game.normal_plus_indicator = normal_plus_indicator;
     game.normal_minus_indicator = normal_minus_indicator;
     game.burn_indicator = burn_indicator;
+    game.relvel_indicator = relvel_indicator;
+    game.relvel_retro_indicator = relvel_retro_indicator;
 
     /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
        scenario + park on rails; appended at the end so it is never the
@@ -888,6 +899,9 @@ int main(int argc, char **argv)
     delete front_indicator;
     delete prograde_indicator;
     delete retrograde_indicator;
+    delete burn_indicator;
+    delete relvel_indicator;
+    delete relvel_retro_indicator;
 
     delete front_indicator_texture;
     delete prograde_indicator_texture;

@@ -410,6 +410,46 @@ void draw3d(Game &g, TransferPlanner &planner) {
         g.burn_indicator->pos = planner.xfer.burn_dir;
         g.burn_indicator->Draw(camera, M_PI);
     }
+    // Target ship's relative velocity: two pink markers, shown when a ship
+    // is targeted in the TRANSFER window, or when a docking port on another
+    // ship is selected (the dock intent). The prograde (diamond) icon marks
+    // you − target, the retrograde (X) icon marks target − you -- opposite
+    // sides of the ship, both the same magnitude.
+    Vehicle *relvel_target = nullptr;
+    if(planner.xfer_target >= 0 &&
+       planner.xfer_target < (int)planner.xferTargets.size()) {
+        relvel_target = planner.xferTargets[planner.xfer_target].ship;
+    }
+    if(relvel_target == nullptr &&
+       ship->dockTargetShip != nullptr && ship->dockTargetPort != nullptr) {
+        relvel_target = ship->dockTargetShip;
+    }
+    if(relvel_target != nullptr) {
+        // Both velocities in the shared inertial frame (the same idiom as
+        // the planner's shipInertial/targetInertial: stasis + frame
+        // velocity carry a rotating/moving frame's contribution), then the
+        // difference expressed in this render frame (ship->frame).
+        Frame *inertial = ship->frame->getNonRotFrame();
+        Frame *sf = ship->frame;
+        Frame *tsf = relvel_target->frame;
+        const glm::dmat3 Os = sf->GetOrientRelTo(inertial);
+        const glm::dvec3 sv = Os * (vel + sf->GetStasisVelocity(com))
+            + sf->GetVelocityRelTo(inertial);
+        const glm::dvec3 tcom = relvel_target->get_center_of_mass();
+        const glm::dmat3 Ot = tsf->GetOrientRelTo(inertial);
+        const glm::dvec3 tv = Ot * (relvel_target->GetVel()
+            + tsf->GetStasisVelocity(tcom))
+            + tsf->GetVelocityRelTo(inertial);
+        const glm::dvec3 relvel = glm::transpose(Os) * (tv - sv);  // target − you
+        if(glm::length(relvel) > 1e-9) {
+            // you − target: the prograde (diamond) icon, on the opposite side.
+            g.relvel_indicator->pos = -relvel;
+            g.relvel_indicator->Draw(camera, M_PI);
+            // target − you: the retrograde (X) icon.
+            g.relvel_retro_indicator->pos = relvel;
+            g.relvel_retro_indicator->Draw(camera, M_PI);
+        }
+    }
     // horizon_indicator->pos = groundHed;
     // horizon_indicator->Draw(camera, M_PI);
 

@@ -237,6 +237,8 @@ struct Game {
     Billboard *normal_plus_indicator = nullptr;
     Billboard *normal_minus_indicator = nullptr;
     Billboard *burn_indicator = nullptr;
+    Billboard *relvel_indicator = nullptr;      // you − target (prograde icon)
+    Billboard *relvel_retro_indicator = nullptr; // target − you (retrograde icon)
 
     // --- the draw toggles (the Settings window writes, render.cpp reads) --
     bool physics_debug_drawing = false;
