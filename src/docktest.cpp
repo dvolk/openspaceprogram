@@ -184,9 +184,11 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     // passes the moment the gap is inside capture.
     probe->setVelocity(vP);
 
-    /* Docking is intent-driven (Game::updateDocking docks only a targeted
-       port): arm the probe to mate with the station's port, which is what
-       the player does in-game by right-clicking it -> "Target for docking". */
+    /* Docking is intent-driven (Game::updateDocking needs BOTH halves): the
+       probe's own port is armed (its half) and the station's port is targeted
+       (the other half) -- what the player does in-game by right-clicking each
+       port -> "Arm for docking" / "Target for docking". */
+    probe->dockArmPort = prPort;
     probe->dockTargetShip = station;
     probe->dockTargetPort = stPort;
 

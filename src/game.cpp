@@ -681,22 +681,26 @@ void Game::updateProximity() {
     }
 }
 
-/* Docking: INTENT-driven. The active ship mates only with a port the
-   player has targeted (right-click the port -> "Target for docking",
-   stored per ship on Vehicle::dockTarget*). Checked once per tick at the
-   boundary (tick.cpp, after the physics substeps): this ship's best port
-   against the targeted port -- the two port face-centres within
-   kDockCapture, each port axis within kDockAlign of the line between the
-   ports, and the port points' relative speed under kDockMaxV at capture.
-   The active ship is the survivor (it absorbs the target's ship); the
-   joint is recorded as a seam on it. The intent is consumed (cleared) on
-   success, so an undock cannot immediately re-dock -- the player has to
-   target again. At most one dock per tick. */
+/* Docking: INTENT-driven. The active ship mates only when the player has
+   BOTH armed one of its own docking ports (right-click the port -> "Arm for
+   docking", Vehicle::dockArmPort) AND targeted a port on another ship (->
+   "Target for docking", Vehicle::dockTarget*). Checked once per tick at the
+   boundary (tick.cpp, after the physics substeps): the armed port against
+   the targeted port -- the two port face-centres within kDockCapture, each
+   port axis within kDockAlign of the line between the ports, and the port
+   points' relative speed under kDockMaxV at capture. The armed port is the
+   one that mates (no best-fit scan -- the player picked which of the ship's
+   ports this dock uses). The active ship is the survivor (it absorbs the
+   target's ship); the joint is recorded as a seam on it. The intent is
+   consumed (cleared) on success, so an undock cannot immediately re-dock --
+   the player has to re-arm and re-target. At most one dock per tick. */
 void Game::updateDocking() {
     Vehicle *a = ship;
     if(a == nullptr || a->isEva() || a->onRails) { return; }
-    /* No intent, no dock: the ship must have a targeted port. */
-    if(a->dockTargetPort == nullptr || a->dockTargetShip == nullptr) { return; }
+    /* No intent, no dock: the ship must have a targeted port AND an armed
+       port of its own (the two halves of the intent). */
+    if(a->dockTargetPort == nullptr || a->dockTargetShip == nullptr
+       || a->dockArmPort == nullptr) { return; }
     Vehicle *b = a->dockTargetShip;
     /* Validate the intent: the target must be another live ship that still
        carries that docking port (else it went stale -- the ship was removed
@@ -717,44 +721,49 @@ void Game::updateDocking() {
     if(b->onRails || b->frame != a->frame) { return; }
 
     Part *pb = a->dockTargetPort;
-    /* This ship's best port to mate with the targeted one. */
-    Part *bestA = nullptr;
-    double bestD = kDockCapture;
-    double bestV = 0.0;
-    for(Part *pa : a->parts) {
-        if(!pa->isDockingPort()) { continue; }
-        glm::dvec3 paP, pbP;
-        glm::dmat3 paR, pbR;
-        a->partWorldPose(pa, paP, paR);
-        b->partWorldPose(pb, pbP, pbR);
-        const glm::dvec3 dir = pbP - paP;
-        const double d = glm::length(dir);
-        if(d < 1e-9) { continue; }
-        const glm::dvec3 n = dir / d;
-        /* Each port presents the face closest to the other part:
-           its +Z face if the other is on that side, else its -Z. */
-        const double sA = (glm::dot(paR[2], dir) >= 0.0) ? 1.0 : -1.0;
-        const double sB = (glm::dot(pbR[2], paP - pbP) >= 0.0) ? 1.0 : -1.0;
-        const glm::dvec3 axisA = paR[2] * sA;
-        const glm::dvec3 axisB = pbR[2] * sB;
-        if(glm::dot(axisA, n) < kDockAlign) { continue; }
-        if(glm::dot(axisB, -n) < kDockAlign) { continue; }
-        const glm::dvec3 faceA = paP + axisA * (pa->def->height * 0.5);
-        const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
-        const glm::dvec3 rv = a->partVel(pa) - b->partVel(pb);
-        const double fd = glm::length(faceA - faceB);
-        if(fd >= bestD) { continue; }
-        if(glm::length(rv) > kDockMaxV) { continue; }
-        bestA = pa;
-        bestD = fd;
-        bestV = glm::length(rv);
+    /* The armed port is the one that mates -- the player picked which of
+       this ship's docking ports this dock uses, so there is no best-fit
+       scan. */
+    Part *bestA = a->dockArmPort;
+    /* Validate the arm: it must still be a live docking port on this ship
+       (else it went stale -- staged away -- and the intent can't be
+       fulfilled). Drop the dangling arm; keep the target so a re-arm is all
+       the player needs to retry. */
+    bool armOk = false;
+    for(Part *p : a->parts) {
+        if(p == bestA && p->isDockingPort()) { armOk = true; break; }
     }
-    if(bestA == nullptr) { return; }
+    if(!armOk) { a->dockArmPort = nullptr; return; }
+
+    glm::dvec3 paP, pbP;
+    glm::dmat3 paR, pbR;
+    a->partWorldPose(bestA, paP, paR);
+    b->partWorldPose(pb, pbP, pbR);
+    const glm::dvec3 dir = pbP - paP;
+    const double d = glm::length(dir);
+    if(d < 1e-9) { return; }
+    const glm::dvec3 n = dir / d;
+    /* Each port presents the face closest to the other part:
+       its +Z face if the other is on that side, else its -Z. */
+    const double sA = (glm::dot(paR[2], dir) >= 0.0) ? 1.0 : -1.0;
+    const double sB = (glm::dot(pbR[2], paP - pbP) >= 0.0) ? 1.0 : -1.0;
+    const glm::dvec3 axisA = paR[2] * sA;
+    const glm::dvec3 axisB = pbR[2] * sB;
+    if(glm::dot(axisA, n) < kDockAlign) { return; }
+    if(glm::dot(axisB, -n) < kDockAlign) { return; }
+    const glm::dvec3 faceA = paP + axisA * (bestA->def->height * 0.5);
+    const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
+    const glm::dvec3 rv = a->partVel(bestA) - b->partVel(pb);
+    const double bestD = glm::length(faceA - faceB);
+    if(bestD >= kDockCapture) { return; }
+    const double bestV = glm::length(rv);
+    if(bestV > kDockMaxV) { return; }
 
     const std::string bName = b->name;
     a->absorbShip(b, bestA);
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
-    a->dockTargetPort = nullptr;
+    a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
+    a->dockArmPort = nullptr;      //  a redock)
     dropPartWindowsFor(b);
     if(b->m_parent != nullptr) {
         for(auto it = b->m_parent->ships.begin(); it != b->m_parent->ships.end(); it++) {

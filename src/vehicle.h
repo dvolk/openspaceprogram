@@ -1825,17 +1825,22 @@ public:
     /* The docks this ship has absorbed, in order (undock pops the last). */
     std::vector<DockSeam> seams;
 
-    /* Docking INTENT: the port (on another ship) this ship wants to mate
-       with, set by right-clicking that port -> "Target for docking".
-       Game::updateDocking only docks a ship that has a target, and clears
-       it on success -- so an undock cannot immediately re-dock (the intent
-       is gone; the player must re-target). Held PER SHIP (not on Game) so
-       every ship carries its own intent, which is what a future AI-controlled
-       ship needs to dock under its own steam. The pointers are validated and
-       dropped when the target ship/port goes away (see updateDocking and the
-       cleanups where a ship is deleted). */
+    /* Docking INTENT (held PER SHIP, not on Game, so a future AI-controlled
+       ship can dock under its own steam). A dock needs BOTH halves set:
+       - dockTargetShip / dockTargetPort: the port on ANOTHER ship this ship
+         wants to mate with (right-click it -> "Target for docking").
+       - dockArmPort: which of THIS ship's own docking ports does the mating
+         (right-click it -> "Arm for docking"). Mandatory, so a ship with
+         several ports uses the one the player picked.
+       Game::updateDocking only docks when both are set and clears them on
+       success -- so an undock cannot immediately re-dock (the player has to
+       re-arm and re-target). The target pointers are validated and dropped
+       when the target ship/port goes away (see updateDocking and the cleanups
+       where a ship is deleted); dockArmPort points at this ship's own part
+       (no cross-ship dangle) and is validated the same way. */
     Vehicle *dockTargetShip = nullptr;
     Part *dockTargetPort = nullptr;
+    Part *dockArmPort = nullptr;   // this ship's port to mate with (mandatory)
 
     void absorbShip(Vehicle *B, Part *portA) {
         if(B == nullptr || B == this || B->parts.empty()) { return; }

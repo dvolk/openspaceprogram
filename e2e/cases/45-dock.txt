@@ -1,10 +1,11 @@
 # Docking is intent-driven: Game::updateDocking mates the active ship only
-# with a port it has targeted (Vehicle::dockTarget*, set in-game by
-# right-clicking the port -> "Target for docking"). --dock-test near builds a
-# station and a probe co-moving with their port faces already inside the
-# 1.5 m capture window, and the builder arms the probe's target -- the test
-# equivalent of that right-click. On the first live tick the probe (active)
-# absorbs the station: one [dock] line naming both ships.
+# when it has BOTH an armed port of its own (Vehicle::dockArmPort, in-game
+# "Arm for docking") AND a targeted port on the other ship (Vehicle::dockTarget*,
+# in-game "Target for docking"). --dock-test near builds a station and a probe
+# co-moving with their port faces already inside the 1.5 m capture window, and
+# the builder sets both halves on the probe -- the test equivalent of the two
+# right-clicks. On the first live tick the probe (active) absorbs the station:
+# one [dock] line naming both ships.
 NAME dock
 ARGS --dock-test near --time-accel 1 --timeout 3
 EXPECT Dock-test (near)

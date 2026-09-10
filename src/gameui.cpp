@@ -1512,29 +1512,46 @@ void drawPartWindows(Game &g) {
                             ship->parts[part]->resources.capacity[r],
                             resUnits[r]);
             }
-            // --- docking port: target it for the active ship's next dock ----
+            // --- docking port ------------------------------------------------
             // Docking is intent-driven (Game::updateDocking): the active ship
-            // mates only with a port it has targeted, and the dock consumes
-            // the target -- so undocking cannot immediately re-dock. Target a
-            // port on ANOTHER ship to arm a dock with it (per-ship intent, so
-            // a future AI ship can target and dock under its own steam).
+            // docks only when it has BOTH an armed port of its own (right-click
+            // one of its own ports -> "Arm for docking") AND a targeted port on
+            // another ship (-> "Target for docking"). The dock consumes both --
+            // so undocking cannot immediately re-dock. Per-ship intent, so a
+            // future AI ship can dock under its own steam.
             if(def->docking_port) {
                 ImGui::Separator();
                 Vehicle *act = g.ship;
-                if(act != nullptr && act != ship && !act->isEva()) {
-                    if(act->dockTargetPort == ship->parts[part]) {
-                        ImGui::Text("Docking target of %s", act->name.c_str());
-                        if(ImGui::SmallButton("Clear docking target")) {
-                            act->dockTargetShip = nullptr;
-                            act->dockTargetPort = nullptr;
+                if(act != nullptr && !act->isEva()) {
+                    if(act != ship) {
+                        // This port is on another ship: make it the dock
+                        // target (the other ship's half of the intent).
+                        if(act->dockTargetPort == ship->parts[part]) {
+                            ImGui::Text("Docking target of %s", act->name.c_str());
+                            if(ImGui::SmallButton("Clear docking target")) {
+                                act->dockTargetShip = nullptr;
+                                act->dockTargetPort = nullptr;
+                            }
+                        } else if(ImGui::SmallButton("Target for docking")) {
+                            act->dockTargetShip = ship;
+                            act->dockTargetPort = ship->parts[part];
+                            g.toast("Docking target: %s", ship->name.c_str());
                         }
-                    } else if(ImGui::SmallButton("Target for docking")) {
-                        act->dockTargetShip = ship;
-                        act->dockTargetPort = ship->parts[part];
-                        g.toast("Docking target: %s", ship->name.c_str());
+                    } else {
+                        // This port is on the ACTIVE ship: arm it as the port
+                        // that does the mating (this ship's half of the intent).
+                        if(act->dockArmPort == ship->parts[part]) {
+                            ImGui::Text("Armed port of %s", act->name.c_str());
+                            if(ImGui::SmallButton("Disarm port")) {
+                                act->dockArmPort = nullptr;
+                            }
+                        } else if(ImGui::SmallButton("Arm for docking")) {
+                            act->dockArmPort = ship->parts[part];
+                            g.toast("Armed port %zu", part);
+                        }
                     }
                 } else {
-                    ImGui::Text("(switch to another ship to dock with this port)");
+                    ImGui::Text("(switch to a controllable ship to use this port)");
                 }
             }
             // --- crew (this part is a capsule: holds EVA characters) --------
