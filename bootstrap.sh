@@ -14,6 +14,13 @@ JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # its own section so the game link's -Wl,--gc-sections can drop the ones we
 # don't reference (saves ~200 KB on bullet3, ~140 KB on assimp).
 SECT="-ffunction-sections -fdata-sections"
+# LTO: emit GIMPLE bytecode instead of machine code, so the game link's
+# -flto (the LTO var in the Makefile) runs the optimizer across the game +
+# these libs too. Requires the same compiler version as the game link (a
+# compiler upgrade means a bootstrap re-run); changing this flag re-runs
+# cmake, which rebuilds the libs (bytecode objects are not interchangeable
+# with the old machine-code ones).
+LTO="-flto"
 
 for tool in g++ cmake make; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -30,27 +37,35 @@ git submodule update --init --recursive
 # symlink bullet -> src
 ln -sfn src middleware/bullet3/bullet
 
-echo "=== building bullet3 (static, double precision) ==="
+echo "=== building bullet3 (static, double precision, -O2) ==="
 # CMAKE_POLICY_VERSION_MINIMUM: bullet3 declares a pre-3.5 cmake policy,
 # which cmake 4 rejects without this
 # demos/extras/tests are not linked by the game, so keep them out
+# -O2: this build never set CMAKE_BUILD_TYPE, so bullet3 was silently the
+# only lib compiled at -O0 (unoptimized physics, bloated code). -O2 matches
+# the game code; no -DNDEBUG on purpose, so btAssert stays live.
 cmake -S middleware/bullet3 -B middleware/bullet3/build \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DUSE_DOUBLE_PRECISION=ON \
     -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF \
-    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+    -DCMAKE_C_FLAGS="-O2 $SECT $LTO" -DCMAKE_CXX_FLAGS="-O2 $SECT $LTO"
 cmake --build middleware/bullet3/build -j"$JOBS"
 
 echo "=== building SDL2 (static, X11) ==="
 # Static lib (SDL_SHARED=OFF), X11 video driver linked in (X11_SHARED=OFF,
 # so the game link carries the -lX11... libs). Wayland/Vulkan stay off:
 # the game runs on X11 (e2e under Xvfb) and uses GL 4.5 via GLEW.
+# SDL2's own EGL API declares SDL_EGL_CreateSurface with a mismatched
+# type (NativeWindowType vs void*) in SDL_egl_c.h vs SDL_egl.c; LTO is
+# the first thing to see both TUs together and warn. The game uses the
+# GLX/SDL_GL path, never the EGL API, so silence it there.
 cmake -S middleware/sdl2 -B middleware/sdl2/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF \
     -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
     -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
-    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+    -DCMAKE_C_FLAGS="$SECT $LTO -Wno-lto-type-mismatch" \
+    -DCMAKE_CXX_FLAGS="$SECT $LTO -Wno-lto-type-mismatch"
 cmake --build middleware/sdl2/build -j"$JOBS"
 
 echo "=== building SDL_image (static, PNG-only) ==="
@@ -69,7 +84,7 @@ cmake -S middleware/sdl2-image -B middleware/sdl2-image/build \
     -DSDL2IMAGE_PNM=OFF -DSDL2IMAGE_QOI=OFF -DSDL2IMAGE_SVG=OFF \
     -DSDL2IMAGE_TGA=OFF -DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF \
     -DSDL2IMAGE_XCF=OFF -DSDL2IMAGE_XPM=OFF -DSDL2IMAGE_XV=OFF \
-    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+    -DCMAKE_C_FLAGS="$SECT $LTO" -DCMAKE_CXX_FLAGS="$SECT $LTO"
 cmake --build middleware/sdl2-image/build -j"$JOBS"
 
 echo "=== building GLEW (static, 2.2.0) ==="
@@ -90,7 +105,7 @@ fi
 cmake -S middleware/glew/build/cmake -B middleware/glew/build-cmake \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_UTILS=OFF \
-    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+    -DCMAKE_C_FLAGS="$SECT $LTO" -DCMAKE_CXX_FLAGS="$SECT $LTO"
 cmake --build middleware/glew/build-cmake -j"$JOBS"
 
 echo "=== building assimp (static, OBJ-only) ==="
@@ -103,7 +118,7 @@ cmake -S middleware/assimp -B middleware/assimp/build \
     -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
     -DASSIMP_BUILD_OBJ_IMPORTER=ON \
     -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF \
-    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+    -DCMAKE_C_FLAGS="$SECT $LTO" -DCMAKE_CXX_FLAGS="$SECT $LTO"
 cmake --build middleware/assimp/build -j"$JOBS"
 
 echo

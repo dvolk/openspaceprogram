@@ -6,9 +6,10 @@ TARGET=osp
 
 # LTO: at compile time -flto emits GIMPLE bytecode instead of machine code;
 # the optimizer + codegen then run once at the link (see LFLAGS), across all
-# TUs we build here (src/, imgui, implot). bullet3/assimp are prebuilt via
-# cmake without LTO and link in as plain objects -- fine, they just don't
-# participate. A `make clean` is required after toggling this (bytecode
+# TUs we build here (src/, imgui, implot) and the cmake-built middleware --
+# bootstrap.sh passes -flto to those too, so the whole binary is one LTO
+# program. Bytecode is compiler-version-locked: a compiler upgrade means a
+# bootstrap re-run. A `make clean` is required after toggling this (bytecode
 # objects are not interchangeable with machine-code ones).
 # -flto=N runs the final codegen on N threads; plain -flto uses 1.
 LTO=-flto
@@ -81,7 +82,12 @@ GL_LIBS=$(SDLIMG_A) $(SDL2_A) $(GLEW_A) -lGL -lpng $(SDL2_SYS)
 # build it with cmake with double precision enabled
 BULLET3_OBJS=./middleware/bullet3/build/src/BulletDynamics/libBulletDynamics.a ./middleware/bullet3/build/src/BulletCollision/libBulletCollision.a ./middleware/bullet3/build/src/BulletSoftBody/libBulletSoftBody.a ./middleware/bullet3/build/src/Bullet3Geometry/libBullet3Geometry.a ./middleware/bullet3/build/src/BulletInverseDynamics/libBulletInverseDynamics.a ./middleware/bullet3/build/src/Bullet3Common/libBullet3Common.a ./middleware/bullet3/build/src/Bullet3Collision/libBullet3Collision.a ./middleware/bullet3/build/src/LinearMath/libLinearMath.a ./middleware/bullet3/build/src/Bullet3Serialize/Bullet2FileLoader/libBullet2FileLoader.a ./middleware/bullet3/build/src/Bullet3OpenCL/libBullet3OpenCL_clew.a ./middleware/bullet3/build/src/Bullet3Dynamics/libBullet3Dynamics.a
 
-LFLAGS=$(LTO) $(LDFLAGS) -Wall $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
+# -Wno-lto-type-mismatch: SDL2's own EGL API (SDL_egl_c.h vs SDL_egl.c)
+# declares SDL_EGL_CreateSurface with mismatched types, and the LTO pass
+# here is the first thing to see both TUs together and warn. The game uses
+# the GLX/SDL_GL path, never the EGL API (bootstrap.sh silences the same
+# warning in SDL2's own compile).
+LFLAGS=$(LTO) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
 
 SRCDIR=src
 OBJDIR=obj
