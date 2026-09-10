@@ -1475,13 +1475,25 @@ void drawPartWindows(Game &g) {
         snprintf(name, sizeof(name), "%s > %s##%p#%zu",
                  ship->name.c_str(), disp, (const void *)ship, part);
         if(!sel.placed) {
-            // Cascade the popups so several open ones don't fully
-            // overlap; after that the user places them freely.
+            // Open near the mouse: the part was picked there, so the
+            // window appears just down-right of the pointer, flipping to
+            // up-left when there is no room on the default side. The
+            // clamped size is a conservative bound on the window (the
+            // content is short), so the flip decision is right even at a
+            // screen corner; after that the user places it freely.
             const ImGuiViewport *vp = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(
-                ImVec2(vp->WorkPos.x + 8.0f + 28.0f * (float)idx,
-                       vp->WorkPos.y + 8.0f + 28.0f * (float)idx),
-                ImGuiCond_Appearing);
+            const float maxw = 320.0f, maxh = 340.0f, gap = 12.0f;
+            float x = (float)sel.mx + gap;
+            float y = (float)sel.my + gap;
+            if(x + maxw > vp->WorkPos.x + vp->WorkSize.x) {
+                x = (float)sel.mx - gap - maxw;
+            }
+            if(y + maxh > vp->WorkPos.y + vp->WorkSize.y) {
+                y = (float)sel.my - gap - maxh;
+            }
+            x = std::max(x, (float)vp->WorkPos.x);
+            y = std::max(y, (float)vp->WorkPos.y);
+            ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Appearing);
             sel.placed = true;
         }
         bool open = true;

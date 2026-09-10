@@ -87,6 +87,7 @@ struct PartSel {
     size_t part = 0;    // index into ship->parts
     double t = 0;       // sim seconds at selection
     glm::dvec3 point;   // hit point, ship frame
+    int mx = 0, my = 0; // mouse at pick, window pixels (window placement)
     bool placed = false;  // first window placement done
 };
 
@@ -441,8 +442,10 @@ struct Game {
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);
     // Open (or focus) the part window for (ship, part) -- picking the
-    // same part again does not open a second one (pickAt).
-    void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point);
+    // same part again does not open a second one (pickAt). (mx,my) is
+    // the mouse at pick, window pixels; the window opens near it.
+    void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
+                        int mx, int my);
     // Drop every part window of a ship (remove_ship); its entries would
     // dangle the moment the Vehicle is deleted.
     void dropPartWindowsFor(Vehicle *ship);
