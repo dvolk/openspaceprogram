@@ -13,7 +13,13 @@ JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # Section flags for the cmake-built static libs: put every function/global in
 # its own section so the game link's -Wl,--gc-sections can drop the ones we
 # don't reference (saves ~200 KB on bullet3, ~140 KB on assimp).
-SECT="-ffunction-sections -fdata-sections"
+# -fvisibility=hidden (what the game's own build does in the Makefile, and
+# what SDL2 already does internally): the libs are statically linked, so
+# their symbols never need to be exported -- hiding them keeps them out of
+# the dynamic symbol table and lets the LTO pass at the game link inline /
+# eliminate unreferenced code more aggressively (a hidden symbol can't be
+# called from outside the binary).
+SECT="-ffunction-sections -fdata-sections -fvisibility=hidden"
 # LTO: emit GIMPLE bytecode instead of machine code, so the game link's
 # -flto (the LTO var in the Makefile) runs the optimizer across the game +
 # these libs too. Requires the same compiler version as the game link (a
