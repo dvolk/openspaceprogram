@@ -35,10 +35,16 @@ cmake -S middleware/bullet3 -B middleware/bullet3/build \
     -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF
 cmake --build middleware/bullet3/build -j"$JOBS"
 
-echo "=== building assimp (static) ==="
+echo "=== building assimp (static, OBJ-only) ==="
+# We only ever load .obj meshes, so build just the OBJ importer (and no
+# exporters). The default all-importers build pulls in ~30 format loaders
+# (FBX, glTF, STEP, IFC, ...) that add ~11 MB to the game binary.
 cmake -S middleware/assimp -B middleware/assimp/build \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-    -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_INSTALL=OFF
+    -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_INSTALL=OFF \
+    -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
+    -DASSIMP_BUILD_OBJ_IMPORTER=ON \
+    -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF
 cmake --build middleware/assimp/build -j"$JOBS"
 
 echo

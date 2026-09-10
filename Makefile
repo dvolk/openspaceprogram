@@ -4,12 +4,39 @@ TARGET=osp
 #LD_OPT=-O2 -flto -fprofile-arcs
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
 
+# LTO: at compile time -flto emits GIMPLE bytecode instead of machine code;
+# the optimizer + codegen then run once at the link (see LFLAGS), across all
+# TUs we build here (src/, imgui, implot). bullet3/assimp are prebuilt via
+# cmake without LTO and link in as plain objects -- fine, they just don't
+# participate. A `make clean` is required after toggling this (bytecode
+# objects are not interchangeable with machine-code ones).
+# -flto=N runs the final codegen on N threads; plain -flto uses 1.
+LTO=-flto
+
+# Binary-size trim (dead code + symbol table):
+#   -ffunction-sections / -fdata-sections   each function / global gets its
+#                                           own section, so the linker can
+#                                           drop the unused ones individually
+#   -Wl,--gc-sections                       drop every section not reachable
+#                                           from a root (main, .ctors, the
+#                                           dynamic symbol table)
+#   -fvisibility=hidden                     default-hide OUR symbols so they
+#                                           don't bloat the dynamic symbol
+#                                           table (the C/C++ libs we link opt
+#                                           their own API in, so calls still
+#                                           resolve)
+#   -Wl,--as-needed                         only record DT_NEEDED for a shared
+#                                           lib that actually resolves a used
+#                                           symbol (drops unneeded deps)
+SECT=-ffunction-sections -fdata-sections -fvisibility=hidden
+LDFLAGS=-Wl,--gc-sections -Wl,--as-needed
+
 CXX= g++
 # -MMD -MP emit a .d dependency file per object so a changed header (e.g. frame.h)
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I/usr/include/SDL2
+CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I/usr/include/SDL2
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=-lSDL2_image -lSDL2 -lGLEW -lGL $(ASSIMP_LIB)
@@ -32,14 +59,17 @@ IMPLLOT_OBJS=./obj/implot/implot.o ./obj/implot/implot_items.o
 # assimp submodule (pinned to a tagged release), built static via cmake like
 # bullet3 (assimp 6 defaults to shared, so force -DBUILD_SHARED_LIBS=OFF).
 # The static lib references zlib (uncompress), so -lz rides along.
-ASSIMP_LIB=./middleware/assimp/build/lib/libassimp.a -lz
+# $(ASSIMP_A) is the archive file (used as a relink prerequisite); ASSIMP_LIB
+# is what goes on the link line (archive + -lz).
+ASSIMP_A=./middleware/assimp/build/lib/libassimp.a
+ASSIMP_LIB=$(ASSIMP_A) -lz
 # clone bullet3 in ./middleware
 # cd ./middleware/bullet3
 # ln -s bullet src
 # build it with cmake with double precision enabled
 BULLET3_OBJS=./middleware/bullet3/build/src/BulletDynamics/libBulletDynamics.a ./middleware/bullet3/build/src/BulletCollision/libBulletCollision.a ./middleware/bullet3/build/src/BulletSoftBody/libBulletSoftBody.a ./middleware/bullet3/build/src/Bullet3Geometry/libBullet3Geometry.a ./middleware/bullet3/build/src/BulletInverseDynamics/libBulletInverseDynamics.a ./middleware/bullet3/build/src/Bullet3Common/libBullet3Common.a ./middleware/bullet3/build/src/Bullet3Collision/libBullet3Collision.a ./middleware/bullet3/build/src/LinearMath/libLinearMath.a ./middleware/bullet3/build/src/Bullet3Serialize/Bullet2FileLoader/libBullet2FileLoader.a ./middleware/bullet3/build/src/Bullet3OpenCL/libBullet3OpenCL_clew.a ./middleware/bullet3/build/src/Bullet3Dynamics/libBullet3Dynamics.a
 
-LFLAGS=$(LTO) -Wall $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
+LFLAGS=$(LTO) $(LDFLAGS) -Wall $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
 
 SRCDIR=src
 OBJDIR=obj
@@ -53,7 +83,12 @@ OBJECTS  := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d) $(IMGUI_OBJS:.o=.d) $(IMPLLOT_OBJS:.o=.d)
 rm = rm -f
 
-$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS)
+# The static libs (assimp + bullet) are prerequisites too: they're built by
+# bootstrap.sh (cmake), not this make, so a middleware rebuild doesn't show up
+# as a changed .o -- listing the .a files makes make relink when they're
+# newer than the binary. (On a fresh checkout before bootstrap, make reports
+# the missing .a instead of failing at the link.)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(ASSIMP_A) $(BULLET3_OBJS)
 	$(LINKER) $@ $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(OBJECTS) $(LFLAGS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
@@ -322,6 +357,9 @@ test-gl:
 	./test_gl_vao
 
 .PHONY: clean
+# Only the src/ objects: imgui/implot are pinned submodules you rarely touch,
+# so keeping their .o files across a clean keeps the rebuild cycle fast.
+# (After a CXXFLAGS/LTO/SECT change, delete obj/ by hand once to force them.)
 clean:
 	$(rm) $(OBJECTS) $(OBJECTS:.o=.d)
 
