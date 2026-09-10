@@ -21,6 +21,14 @@ SECT="-ffunction-sections -fdata-sections"
 # cmake, which rebuilds the libs (bytecode objects are not interchangeable
 # with the old machine-code ones).
 LTO="-flto"
+# -march: target ISA (keep it the same as the Makefile's MARCH, same
+# default). Default native (AVX2 etc. on this machine); MARCH=x86-64-v3
+# for a portable-but-modern ISA, MARCH= (empty) for plain x86-64. The
+# binary is locked to the ISA it was built with (older CPU -> SIGILL).
+# Changing it re-runs cmake, which rebuilds all the libs.
+MARCH="${MARCH-native}"
+ARCH=""
+if [ -n "$MARCH" ]; then ARCH="-march=$MARCH"; fi
 
 for tool in g++ cmake make; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -37,18 +45,19 @@ git submodule update --init --recursive
 # symlink bullet -> src
 ln -sfn src middleware/bullet3/bullet
 
-echo "=== building bullet3 (static, double precision, -O2) ==="
+echo "=== building bullet3 (static, double precision, Release) ==="
 # CMAKE_POLICY_VERSION_MINIMUM: bullet3 declares a pre-3.5 cmake policy,
 # which cmake 4 rejects without this
 # demos/extras/tests are not linked by the game, so keep them out
-# -O2: this build never set CMAKE_BUILD_TYPE, so bullet3 was silently the
-# only lib compiled at -O0 (unoptimized physics, bloated code). -O2 matches
-# the game code; no -DNDEBUG on purpose, so btAssert stays live.
+# Release (-O3 -DNDEBUG): bullet3's own CMakeLists also defaults to
+# Release, but set it explicitly like the other libs; the build type owns
+# the optimization flags, so nothing else is passed.
 cmake -S middleware/bullet3 -B middleware/bullet3/build \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DUSE_DOUBLE_PRECISION=ON \
     -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF \
-    -DCMAKE_C_FLAGS="-O2 $SECT $LTO" -DCMAKE_CXX_FLAGS="-O2 $SECT $LTO"
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/bullet3/build -j"$JOBS"
 
 echo "=== building SDL2 (static, X11) ==="
@@ -64,8 +73,8 @@ cmake -S middleware/sdl2 -B middleware/sdl2/build \
     -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF \
     -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
     -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
-    -DCMAKE_C_FLAGS="$SECT $LTO -Wno-lto-type-mismatch" \
-    -DCMAKE_CXX_FLAGS="$SECT $LTO -Wno-lto-type-mismatch"
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH -Wno-lto-type-mismatch" \
+    -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH -Wno-lto-type-mismatch"
 cmake --build middleware/sdl2/build -j"$JOBS"
 
 echo "=== building SDL_image (static, PNG-only) ==="
@@ -84,7 +93,7 @@ cmake -S middleware/sdl2-image -B middleware/sdl2-image/build \
     -DSDL2IMAGE_PNM=OFF -DSDL2IMAGE_QOI=OFF -DSDL2IMAGE_SVG=OFF \
     -DSDL2IMAGE_TGA=OFF -DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF \
     -DSDL2IMAGE_XCF=OFF -DSDL2IMAGE_XPM=OFF -DSDL2IMAGE_XV=OFF \
-    -DCMAKE_C_FLAGS="$SECT $LTO" -DCMAKE_CXX_FLAGS="$SECT $LTO"
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/sdl2-image/build -j"$JOBS"
 
 echo "=== building GLEW (static, 2.2.0) ==="
@@ -102,10 +111,13 @@ fi
 # The cmake project lives in build/cmake (there is no root CMakeLists.txt),
 # and the static target glew_s -> <builddir>/lib/libGLEW.a. The build dir is
 # build-cmake (NOT build/, which is a SOURCE directory of this tree).
+# Release: GLEW's CMakeLists also defaults to it; set explicitly for
+# uniformity with the other libs.
 cmake -S middleware/glew/build/cmake -B middleware/glew/build-cmake \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_UTILS=OFF \
-    -DCMAKE_C_FLAGS="$SECT $LTO" -DCMAKE_CXX_FLAGS="$SECT $LTO"
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/glew/build-cmake -j"$JOBS"
 
 echo "=== building assimp (static, OBJ-only) ==="
@@ -118,7 +130,7 @@ cmake -S middleware/assimp -B middleware/assimp/build \
     -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
     -DASSIMP_BUILD_OBJ_IMPORTER=ON \
     -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF \
-    -DCMAKE_C_FLAGS="$SECT $LTO" -DCMAKE_CXX_FLAGS="$SECT $LTO"
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/assimp/build -j"$JOBS"
 
 echo

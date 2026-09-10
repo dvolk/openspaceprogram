@@ -32,6 +32,14 @@ toolchain + the dev headers those builds need.
     ./bootstrap.sh
     make
 
+The build defaults to `-march=native` (code for the machine it's built on).
+To target another ISA, set `MARCH` for *both* bootstrap and make (keep them
+matching so the whole binary targets one ISA), e.g.
+`MARCH=x86-64-v3 ./bootstrap.sh && MARCH=x86-64-v3 make`, or `MARCH=` for
+plain x86-64. A binary built for a newer ISA won't run on older CPUs.
+After changing `MARCH`, run `make clean` first (make can't detect a flag
+change).
+
 start OSP with
 
     ./osp
