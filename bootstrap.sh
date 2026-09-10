@@ -41,6 +41,58 @@ cmake -S middleware/bullet3 -B middleware/bullet3/build \
     -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
 cmake --build middleware/bullet3/build -j"$JOBS"
 
+echo "=== building SDL2 (static, X11) ==="
+# Static lib (SDL_SHARED=OFF), X11 video driver linked in (X11_SHARED=OFF,
+# so the game link carries the -lX11... libs). Wayland/Vulkan stay off:
+# the game runs on X11 (e2e under Xvfb) and uses GL 4.5 via GLEW.
+cmake -S middleware/sdl2 -B middleware/sdl2/build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF \
+    -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
+    -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
+    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+cmake --build middleware/sdl2/build -j"$JOBS"
+
+echo "=== building SDL_image (static, PNG-only) ==="
+# The game only loads/saves PNG (textures, skybox, screenshots), so build
+# just the PNG loader + saver (like the OBJ-only assimp build). Links the
+# system libpng + the SDL2 we built above (SDL2_DIR -> its build dir, so
+# find_package picks ours even if the system SDL2 dev files exist).
+cmake -S middleware/sdl2-image -B middleware/sdl2-image/build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DSDL2_DIR="$PWD/middleware/sdl2/build/SDL2" \
+    -DSDL2IMAGE_DEPS_SHARED=OFF -DSDL2IMAGE_VENDORED=OFF \
+    -DSDL2IMAGE_SAMPLES=OFF -DSDL2IMAGE_BACKEND_STB=OFF -DSDL2IMAGE_PNG_SAVE=ON \
+    -DSDL2IMAGE_AVIF=OFF -DSDL2IMAGE_BMP=OFF -DSDL2IMAGE_GIF=OFF \
+    -DSDL2IMAGE_JPG=OFF -DSDL2IMAGE_LBM=OFF -DSDL2IMAGE_PCX=OFF \
+    -DSDL2IMAGE_PNM=OFF -DSDL2IMAGE_QOI=OFF -DSDL2IMAGE_SVG=OFF \
+    -DSDL2IMAGE_TGA=OFF -DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF \
+    -DSDL2IMAGE_XCF=OFF -DSDL2IMAGE_XPM=OFF -DSDL2IMAGE_XV=OFF \
+    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+cmake --build middleware/sdl2-image/build -j"$JOBS"
+
+echo "=== building GLEW (static, 2.2.0) ==="
+# GLEW's git repo contains only the generator (src/glew.c is generated from
+# the Khronos registry), so vendor the official 2.2.0 source tarball
+# (pre-generated; the same artifact distros build from). Fetched once, kept
+# in tmp/, and only re-downloaded if the extracted source is missing.
+if [ ! -f middleware/glew/src/glew.c ]; then
+    mkdir -p tmp
+    curl -fsSL -o tmp/glew_2.2.0.orig.tar.xz \
+        'http://archive.ubuntu.com/ubuntu/pool/universe/g/glew/glew_2.2.0.orig.tar.xz'
+    mkdir -p middleware/glew
+    tar xJf tmp/glew_2.2.0.orig.tar.xz -C middleware/glew --strip-components=1
+fi
+# The cmake project lives in build/cmake (there is no root CMakeLists.txt),
+# and the static target glew_s -> <builddir>/lib/libGLEW.a. The build dir is
+# build-cmake (NOT build/, which is a SOURCE directory of this tree).
+cmake -S middleware/glew/build/cmake -B middleware/glew/build-cmake \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DBUILD_UTILS=OFF \
+    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
+cmake --build middleware/glew/build-cmake -j"$JOBS"
+
 echo "=== building assimp (static, OBJ-only) ==="
 # We only ever load .obj meshes, so build just the OBJ importer (and no
 # exporters). The default all-importers build pulls in ~30 format loaders

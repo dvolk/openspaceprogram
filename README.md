@@ -17,7 +17,15 @@ Lately, some of the code is written by qwen code.
 
 ## Build from source/run
 
-    sudo apt-get install g++ cmake make libsdl2-dev libsdl2-image-dev libglew-dev zlib1g-dev --no-install-recommends
+SDL2, SDL_image, GLEW, Bullet, AssImp, glm, imgui, implot are vendored in
+`middleware/` (git submodules; GLEW is fetched as the official 2.2.0 source
+tarball because its git repo ships only the code generator) -- `bootstrap.sh`
+checks them out and builds them static. The system packages below are the
+toolchain + the dev headers those builds need.
+
+    sudo apt-get install g++ cmake make zlib1g-dev libpng-dev libgl1-mesa-dev \
+        libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev \
+        libxrandr-dev libxrender-dev libxss-dev --no-install-recommends
 
     git clone https://github.com/dvolk/openspaceprogram
     cd openspaceprogram

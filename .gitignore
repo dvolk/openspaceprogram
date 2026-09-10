@@ -4,6 +4,11 @@ obj_asan/
 osp
 osp_asan
 
+# GLEW: the official git repo ships only the code *generator* (glew.c is
+# generated from the Khronos registry), so bootstrap.sh fetches the
+# official 2.2.0 source tarball instead and extracts it here.
+middleware/glew/
+
 # Test binaries at repo root (the tests/ sources stay tracked)
 /test_*
 

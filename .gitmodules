@@ -13,3 +13,9 @@
 [submodule "middleware/assimp"]
 	path = middleware/assimp
 	url = https://github.com/assimp/assimp
+[submodule "middleware/sdl2"]
+	path = middleware/sdl2
+	url = https://github.com/libsdl-org/SDL
+[submodule "middleware/sdl2-image"]
+	path = middleware/sdl2-image
+	url = https://github.com/libsdl-org/SDL_image
