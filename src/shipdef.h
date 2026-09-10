@@ -18,6 +18,8 @@
        "parts": [
          { "name": "engine",
            "type": "engine",              // free-form label (display only)
+           "display_name": "Engine (2m)", // human-readable name (display only);
+                                          //   optional; empty -> fall back to name
            "mesh": "engine.obj",          // file in res/
            "texture": "engine.png",       // file in res/
            "mass": 12500,                 // kg (dry mass of the part)
@@ -125,6 +127,7 @@ struct ResourceContent {
 struct PartDef {
     std::string name;
     std::string type;         // free-form label (display only)
+    std::string display_name; // human-readable name (display only); empty -> fall back to name
     std::string mesh;     // file in res/
     std::string texture;  // file in res/
     double mass;          // kg

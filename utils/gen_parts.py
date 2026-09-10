@@ -63,6 +63,7 @@ import argparse
 import json
 import math
 import os
+import re
 
 import trimesh
 
@@ -243,11 +244,52 @@ def clean(x):
     return int(r) if abs(r - round(r)) < 1e-9 else r
 
 
+# Human-readable part names for the UI. The catalog `name` is a machine id
+# ("capsule_r1.5h3"); the display name is the label a person reads ("Capsule
+# (3m)"). Display-only: behavior still comes from the part fields. Derived
+# from the type + size, with a few specials handled by name.
+DISPLAY_BASE = {
+    "capsule":        "Capsule",
+    "reaction_wheel": "Reaction Wheel",
+    "battery":        "Battery",
+    "rtg":            "RTG",
+    "engine":         "Engine",
+    "orbital_engine": "Orbital Engine",
+    "fuel_tank":      "Fuel Tank",
+    "mono_tank":      "Mono Tank",
+    "rcs":            "RCS",
+    "adapter":        "Adapter",
+    "decoupler":      "Decoupler",
+    "docking_port":   "Docking Port",
+    "nose_cap":       "Nose Cap",
+    "kerbal":         "Kerbal",
+    "fuel_link":      "Fuel Link",
+}
+
+def display_name_for(name, ptype, radius, height):
+    base = DISPLAY_BASE.get(ptype, name)
+    if ptype in ("kerbal", "fuel_link"):
+        return base                       # a character / a virtual link: no size
+    if name == "decoupler_radial":
+        return "Radial Decoupler"         # the odd-shaped radial separator
+    if ptype == "adapter":
+        m = re.match(r"adapter_r(.*)to(.*)$", name)   # "adapter_r1to1.5"
+        if m:
+            return "%s %s to %s" % (base, clean(m.group(1)), clean(m.group(2)))
+        return base
+    # the rest: base name + the part's DIAMETER (radius * 2, matching the UI's
+    # "dia" readout). Fuel tanks also carry height -- they come in lengths.
+    d = clean(radius * 2.0)
+    if ptype == "fuel_tank":
+        return "%s (%sm x %sm)" % (base, d, clean(height))
+    return "%s (%sm)" % (base, d)
+
+
 def generate(name, ptype, mesh, texture):
     if ptype == "fuel_link":
         # a virtual one-way fuel connection (see PartDef.fuel_link): no
         # mesh, no physics -- just the fuel_link flag from EXTRA_FIELDS
-        e = {"name": name, "type": ptype}
+        e = {"name": name, "type": ptype, "display_name": "Fuel Link"}
         e.update(EXTRA_FIELDS[name])
         return e
 
@@ -255,6 +297,7 @@ def generate(name, ptype, mesh, texture):
     e = {
         "name": name,
         "type": ptype,
+        "display_name": display_name_for(name, ptype, radius, height),
         "mesh": mesh,
         "texture": texture,
     }

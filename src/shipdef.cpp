@@ -69,6 +69,9 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         d.type = pv.value("type", std::string(""));   // free-form label (display only)
+        // human-readable name (display only); optional, empty -> the UI
+        // falls back to the machine `name`
+        d.display_name = pv.value("display_name", std::string(""));
 
         /* fuel link: a virtual (no-mesh) one-way fuel connection. It is a
            marker entry -- no geometry, no mass, so the mesh/texture/mass/

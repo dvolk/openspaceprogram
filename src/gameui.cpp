@@ -1481,7 +1481,14 @@ void drawPartWindows(Game &g) {
             ImGui::Text("Part #%zu  (stage %d)", part,
                         ship->parts[part]->stage);
             ImGui::Separator();
-            ImGui::Text("Name: %s", def->name.c_str());
+            // the human-readable name (catalog display_name); fall back to the
+            // machine id for catalogs that predate the field
+            const char *disp = def->display_name.empty() ? def->name.c_str()
+                                                         : def->display_name.c_str();
+            ImGui::Text("Name: %s", disp);
+            if(!def->display_name.empty()) {
+                ImGui::Text("ID: %s", def->name.c_str());
+            }
             if(!def->type.empty()) {
                 ImGui::Text("Type: %s", def->type.c_str());
             }

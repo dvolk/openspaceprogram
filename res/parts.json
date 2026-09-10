@@ -3,6 +3,7 @@
     {
       "name": "capsule",
       "type": "capsule",
+      "display_name": "Capsule (2m)",
       "mesh": "capsule.obj",
       "texture": "capsule.png",
       "mass": 1149.82,
@@ -18,6 +19,7 @@
     {
       "name": "capsule_r1.5h3",
       "type": "capsule",
+      "display_name": "Capsule (3m)",
       "mesh": "capsule_r1.5h3.obj",
       "texture": "capsule.png",
       "mass": 3880.65,
@@ -33,6 +35,7 @@
     {
       "name": "capsule_r2.25h4.5",
       "type": "capsule",
+      "display_name": "Capsule (4.5m)",
       "mesh": "capsule_r2.25h4.5.obj",
       "texture": "capsule.png",
       "mass": 13097.2,
@@ -48,6 +51,7 @@
     {
       "name": "reaction_wheel",
       "type": "reaction_wheel",
+      "display_name": "Reaction Wheel (2m)",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
       "mass": 100.53,
@@ -59,6 +63,7 @@
     {
       "name": "reaction_wheel_r1.5h0.375",
       "type": "reaction_wheel",
+      "display_name": "Reaction Wheel (3m)",
       "mesh": "reaction_wheel_r1.5h0.375.obj",
       "texture": "reaction_wheel.png",
       "mass": 339.29,
@@ -70,6 +75,7 @@
     {
       "name": "reaction_wheel_r2.25h0.5625",
       "type": "reaction_wheel",
+      "display_name": "Reaction Wheel (4.5m)",
       "mesh": "reaction_wheel_r2.25h0.5625.obj",
       "texture": "reaction_wheel.png",
       "mass": 1145.11,
@@ -81,6 +87,7 @@
     {
       "name": "battery",
       "type": "battery",
+      "display_name": "Battery (2m)",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
       "mass": 863.94,
@@ -93,6 +100,7 @@
     {
       "name": "battery_r1.5h0.375",
       "type": "battery",
+      "display_name": "Battery (3m)",
       "mesh": "reaction_wheel_r1.5h0.375.obj",
       "texture": "reaction_wheel.png",
       "mass": 2915.79,
@@ -105,6 +113,7 @@
     {
       "name": "battery_r2.25h0.5625",
       "type": "battery",
+      "display_name": "Battery (4.5m)",
       "mesh": "reaction_wheel_r2.25h0.5625.obj",
       "texture": "reaction_wheel.png",
       "mass": 9840.79,
@@ -117,6 +126,7 @@
     {
       "name": "rtg",
       "type": "rtg",
+      "display_name": "RTG (2m)",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
       "mass": 117.81,
@@ -127,6 +137,7 @@
     {
       "name": "rtg_r1.5h0.375",
       "type": "rtg",
+      "display_name": "RTG (3m)",
       "mesh": "reaction_wheel_r1.5h0.375.obj",
       "texture": "reaction_wheel.png",
       "mass": 397.61,
@@ -137,6 +148,7 @@
     {
       "name": "rtg_r2.25h0.5625",
       "type": "rtg",
+      "display_name": "RTG (4.5m)",
       "mesh": "reaction_wheel_r2.25h0.5625.obj",
       "texture": "reaction_wheel.png",
       "mass": 1341.93,
@@ -147,6 +159,7 @@
     {
       "name": "engine",
       "type": "engine",
+      "display_name": "Engine (2m)",
       "mesh": "engine.obj",
       "texture": "engine.png",
       "mass": 500,
@@ -158,6 +171,7 @@
     {
       "name": "engine_r1.5h3",
       "type": "engine",
+      "display_name": "Engine (3m)",
       "mesh": "engine_r1.5h3.obj",
       "texture": "engine.png",
       "mass": 1125,
@@ -169,6 +183,7 @@
     {
       "name": "engine_r2.25h4.5",
       "type": "engine",
+      "display_name": "Engine (4.5m)",
       "mesh": "engine_r2.25h4.5.obj",
       "texture": "engine.png",
       "mass": 2531.25,
@@ -180,6 +195,7 @@
     {
       "name": "orbital_engine",
       "type": "orbital_engine",
+      "display_name": "Orbital Engine (2m)",
       "mesh": "orbital_engine.obj",
       "texture": "engine.png",
       "mass": 166.67,
@@ -191,6 +207,7 @@
     {
       "name": "orbital_engine_r1.5h1.5",
       "type": "orbital_engine",
+      "display_name": "Orbital Engine (3m)",
       "mesh": "orbital_engine_r1.5h1.5.obj",
       "texture": "engine.png",
       "mass": 375,
@@ -202,6 +219,7 @@
     {
       "name": "orbital_engine_r2.25h2.25",
       "type": "orbital_engine",
+      "display_name": "Orbital Engine (4.5m)",
       "mesh": "orbital_engine_r2.25h2.25.obj",
       "texture": "engine.png",
       "mass": 843.75,
@@ -213,6 +231,7 @@
     {
       "name": "fuel_tank",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (2m x 2m)",
       "mesh": "fuel_tank.obj",
       "texture": "fuel_tank.png",
       "mass": 919.23,
@@ -226,6 +245,7 @@
     {
       "name": "tank_r1h1",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (2m x 1m)",
       "mesh": "tank_r1h1.obj",
       "texture": "fuel_tank.png",
       "mass": 459.62,
@@ -239,6 +259,7 @@
     {
       "name": "tank_r1h3",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (2m x 3m)",
       "mesh": "tank_r1h3.obj",
       "texture": "fuel_tank.png",
       "mass": 1378.85,
@@ -252,6 +273,7 @@
     {
       "name": "tank_r1h5",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (2m x 5m)",
       "mesh": "tank_r1h5.obj",
       "texture": "fuel_tank.png",
       "mass": 2298.08,
@@ -265,6 +287,7 @@
     {
       "name": "tank_r1.5h1",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (3m x 1m)",
       "mesh": "tank_r1.5h1.obj",
       "texture": "fuel_tank.png",
       "mass": 1034.13,
@@ -278,6 +301,7 @@
     {
       "name": "tank_r1.5h2",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (3m x 2m)",
       "mesh": "tank_r1.5h2.obj",
       "texture": "fuel_tank.png",
       "mass": 2068.27,
@@ -291,6 +315,7 @@
     {
       "name": "tank_r1.5h3",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (3m x 3m)",
       "mesh": "tank_r1.5h3.obj",
       "texture": "fuel_tank.png",
       "mass": 3102.4,
@@ -304,6 +329,7 @@
     {
       "name": "tank_r1.5h5",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (3m x 5m)",
       "mesh": "tank_r1.5h5.obj",
       "texture": "fuel_tank.png",
       "mass": 5170.67,
@@ -317,6 +343,7 @@
     {
       "name": "tank_r2.25h1",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (4.5m x 1m)",
       "mesh": "tank_r2.25h1.obj",
       "texture": "fuel_tank.png",
       "mass": 2326.8,
@@ -330,6 +357,7 @@
     {
       "name": "tank_r2.25h3",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (4.5m x 3m)",
       "mesh": "tank_r2.25h3.obj",
       "texture": "fuel_tank.png",
       "mass": 6980.4,
@@ -343,6 +371,7 @@
     {
       "name": "tank_r2.25h5",
       "type": "fuel_tank",
+      "display_name": "Fuel Tank (4.5m x 5m)",
       "mesh": "tank_r2.25h5.obj",
       "texture": "fuel_tank.png",
       "mass": 11634,
@@ -356,6 +385,7 @@
     {
       "name": "mono_tank_r1",
       "type": "mono_tank",
+      "display_name": "Mono Tank (2m)",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
       "mass": 88.99,
@@ -368,6 +398,7 @@
     {
       "name": "mono_tank_r1.5",
       "type": "mono_tank",
+      "display_name": "Mono Tank (3m)",
       "mesh": "reaction_wheel_r1.5h0.375.obj",
       "texture": "reaction_wheel.png",
       "mass": 300.33,
@@ -380,6 +411,7 @@
     {
       "name": "mono_tank_r2.25",
       "type": "mono_tank",
+      "display_name": "Mono Tank (4.5m)",
       "mesh": "reaction_wheel_r2.25h0.5625.obj",
       "texture": "reaction_wheel.png",
       "mass": 1013.6,
@@ -392,6 +424,7 @@
     {
       "name": "rcs_r1",
       "type": "rcs",
+      "display_name": "RCS (2m)",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
       "mass": 31.42,
@@ -402,6 +435,7 @@
     {
       "name": "rcs_r1.5",
       "type": "rcs",
+      "display_name": "RCS (3m)",
       "mesh": "reaction_wheel_r1.5h0.375.obj",
       "texture": "reaction_wheel.png",
       "mass": 106.03,
@@ -412,6 +446,7 @@
     {
       "name": "rcs_r2.25",
       "type": "rcs",
+      "display_name": "RCS (4.5m)",
       "mesh": "reaction_wheel_r2.25h0.5625.obj",
       "texture": "reaction_wheel.png",
       "mass": 357.85,
@@ -422,6 +457,7 @@
     {
       "name": "adapter_r1to1.5",
       "type": "adapter",
+      "display_name": "Adapter 1 to 1.5",
       "mesh": "adapter_r1to1.5.obj",
       "texture": "adapter.png",
       "mass": 55.6,
@@ -431,6 +467,7 @@
     {
       "name": "adapter_r1to2.25",
       "type": "adapter",
+      "display_name": "Adapter 1 to 2.25",
       "mesh": "adapter_r1to2.25.obj",
       "texture": "adapter.png",
       "mass": 145.95,
@@ -440,6 +477,7 @@
     {
       "name": "adapter_r1.5to1",
       "type": "adapter",
+      "display_name": "Adapter 1.5 to 1",
       "mesh": "adapter_r1.5to1.obj",
       "texture": "adapter.png",
       "mass": 55.6,
@@ -449,6 +487,7 @@
     {
       "name": "adapter_r1.5to2.25",
       "type": "adapter",
+      "display_name": "Adapter 1.5 to 2.25",
       "mesh": "adapter_r1.5to2.25.obj",
       "texture": "adapter.png",
       "mass": 187.65,
@@ -458,6 +497,7 @@
     {
       "name": "adapter_r2.25to1",
       "type": "adapter",
+      "display_name": "Adapter 2.25 to 1",
       "mesh": "adapter_r2.25to1.obj",
       "texture": "adapter.png",
       "mass": 145.95,
@@ -467,6 +507,7 @@
     {
       "name": "adapter_r2.25to1.5",
       "type": "adapter",
+      "display_name": "Adapter 2.25 to 1.5",
       "mesh": "adapter_r2.25to1.5.obj",
       "texture": "adapter.png",
       "mass": 187.65,
@@ -476,6 +517,7 @@
     {
       "name": "decoupler_r1",
       "type": "decoupler",
+      "display_name": "Decoupler (2m)",
       "mesh": "decoupler_r1.obj",
       "texture": "decoupler.png",
       "mass": 50,
@@ -487,6 +529,7 @@
     {
       "name": "decoupler_r1.5",
       "type": "decoupler",
+      "display_name": "Decoupler (3m)",
       "mesh": "decoupler_r1.5.obj",
       "texture": "decoupler.png",
       "mass": 75,
@@ -498,6 +541,7 @@
     {
       "name": "decoupler_r2.25",
       "type": "decoupler",
+      "display_name": "Decoupler (4.5m)",
       "mesh": "decoupler_r2.25.obj",
       "texture": "decoupler.png",
       "mass": 110,
@@ -509,6 +553,7 @@
     {
       "name": "decoupler_radial",
       "type": "decoupler",
+      "display_name": "Radial Decoupler",
       "mesh": "decoupler_radial.obj",
       "texture": "decoupler.png",
       "mass": 40,
@@ -520,6 +565,7 @@
     {
       "name": "docking_port_r1",
       "type": "docking_port",
+      "display_name": "Docking Port (2m)",
       "mesh": "docking_port_r1.obj",
       "texture": "docking_port.png",
       "mass": 50,
@@ -531,6 +577,7 @@
     {
       "name": "docking_port_r1.5",
       "type": "docking_port",
+      "display_name": "Docking Port (3m)",
       "mesh": "docking_port_r1.5.obj",
       "texture": "docking_port.png",
       "mass": 75,
@@ -542,6 +589,7 @@
     {
       "name": "docking_port_r2.25",
       "type": "docking_port",
+      "display_name": "Docking Port (4.5m)",
       "mesh": "docking_port_r2.25.obj",
       "texture": "docking_port.png",
       "mass": 110,
@@ -553,6 +601,7 @@
     {
       "name": "nose_cap",
       "type": "nose_cap",
+      "display_name": "Nose Cap (2m)",
       "mesh": "nose_cap.obj",
       "texture": "nose_cap.png",
       "mass": 99.89,
@@ -562,6 +611,7 @@
     {
       "name": "nose_cap_r1.5h0.75",
       "type": "nose_cap",
+      "display_name": "Nose Cap (3m)",
       "mesh": "nose_cap_r1.5h0.75.obj",
       "texture": "nose_cap.png",
       "mass": 337.12,
@@ -571,6 +621,7 @@
     {
       "name": "nose_cap_r2.25h1.125",
       "type": "nose_cap",
+      "display_name": "Nose Cap (4.5m)",
       "mesh": "nose_cap_r2.25h1.125.obj",
       "texture": "nose_cap.png",
       "mass": 1137.77,
@@ -580,6 +631,7 @@
     {
       "name": "kerbal",
       "type": "kerbal",
+      "display_name": "Kerbal",
       "mesh": "kerbal.obj",
       "texture": "kerbal.png",
       "mass": 97.05,
@@ -592,6 +644,7 @@
     {
       "name": "fuel_link",
       "type": "fuel_link",
+      "display_name": "Fuel Link",
       "fuel_link": true
     }
   ]

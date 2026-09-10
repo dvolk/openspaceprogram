@@ -126,6 +126,15 @@ int main() {
         CHECK(fl->capacity[r] == 0.0f);
     }
 
+    // display_name: a human-readable label (the `name` is a machine id).
+    // Display-only, so pin that it is present and distinct from the id, not
+    // the exact wording (that is owned by gen_parts.py).
+    CHECK(!cap->display_name.empty());
+    CHECK(cap->display_name != cap->name);
+    CHECK(!eng->display_name.empty());
+    CHECK(!fl->display_name.empty());
+    CHECK(fl->display_name != fl->name);
+
     // pre-size parts default to the legacy 2 m cube (radius 1, height 2)
     CHECK(cap->radius == 1.0 && cap->height == 2.0);
     CHECK(eng->radius == 1.0 && eng->height == 2.0);
