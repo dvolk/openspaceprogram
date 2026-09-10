@@ -138,15 +138,15 @@ test:
 	# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
 	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_thrust
 	./test_thrust
-	# fuel drain (the real Vehicle::consumeResourceMass from src/vehicle.h
+	# fuel drain (the real Vehicle::consumeResourceMass from src/vehicle.cpp
 	# + the real SetMass): pro-rata across the active stage's tanks (not
 	# first-tank-first), stage gating, no stranded fuel, no partial drain.
 	# Same real-Bullet link as test_thrust (no GL context needed).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_fuel.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_fuel.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_fuel
 	./test_fuel
 	# electrical (KSP-style EC): the powerTick gate (wheels need power
@@ -155,21 +155,21 @@ test:
 	# no mass. Calls powerTick/drainEC/chargeEC directly, so headless.
 	# Same real-Bullet link as test_fuel (no GL context needed).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_power.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_power.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_power
 	./test_power
-	# staging topology (Vehicle::droppedPartsAtStage from src/vehicle.h): a
+	# staging topology (Vehicle::droppedPartsAtStage from src/vehicle.cpp): a
 	# decoupler drops itself + its whole child-side subtree, a sibling branch
 	# sharing the stage NUMBER survives (the heavy_two rule), and nested /
 	# same-stage decouplers compose. Pure graph logic over Part::parent -- it
-	# reads no Bullet state -- but it links like test_fuel because vehicle.h's
-	# inline destructor references the physics teardown symbols.
+	# reads no Bullet state -- but it links like test_fuel because ~Vehicle
+	# (src/vehicle.cpp) references the physics teardown symbols.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_staging
 	./test_staging
 	# docking merge/split (Vehicle::absorbShip + extractSubtreeAsShip from
-	# src/vehicle.h): absorbShip is a rigid merge -- every absorbed part keeps
+	# src/vehicle.cpp): absorbShip is a rigid merge -- every absorbed part keeps
 	# its exact world pose, the seam is recorded, the absorbed root rehangs off
 	# the survivor's port -- and extractSubtreeAsShip is its exact inverse (the
 	# undock round-trip restores both ships' geometry). This is the same general
@@ -177,11 +177,11 @@ test:
 	# init() runs rebuildCompound (the one hull body) but NOT enterWorld, and
 	# extractSubtreeAsShip leaves enterWorld to its caller, so no physics world.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_dock.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_dock.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_dock
 	./test_dock
 	# ship mass properties (Vehicle::get_center_of_mass / getInertia from
-	# src/vehicle.h): golden values against an independent analytic
+	# src/vehicle.cpp): golden values against an independent analytic
 	# parallel-axis assembly, incl. the products of inertia and rotated
 	# non-cubic parts. This is the tensor a reaction wheel's authority and
 	# the autopilot slew law divide by; nothing else pins it (test_attitude
@@ -192,13 +192,13 @@ test:
 	# re-based child poses, and the part poses derived back out of the body
 	# at an arbitrary world pose. Headless: no world, no GL context.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_inertia
 	./test_inertia
 	# rotation model (physical wheel torque, per-substep law, torque
 	# delivery): same real-Bullet link as test_thrust.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_rotation
 	./test_rotation
 	# ship/part JSON data model (GL-free: catalog + ship-def parse/validate,
@@ -278,10 +278,10 @@ test:
 	# then the real Bullet convex-cast hull ray-test (hit point/distance,
 	# a miss, translated + rotated bodies). pick.cpp includes game.h (the
 	# fleet), so the imgui include dir is needed for ui.h; and pickShipPart
-	# casts against a ship's compound children, which inlines Vehicle's
-	# pose accessors, so physics.cpp + body.cpp + shipdef.cpp link in.
+	# casts against a ship's compound children through Vehicle's pose
+	# accessors, so vehicle.cpp + physics.cpp + body.cpp + shipdef.cpp link in.
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I/usr/include/SDL2 \
-	    tests/test_pick.cpp src/pick.cpp src/physics.cpp src/body.cpp src/shipdef.cpp src/camera.cpp src/frame.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
+	    tests/test_pick.cpp src/pick.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/camera.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/model.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) -lGL -lGLEW -lSDL2 -lSDL2_image $(ASSIMP_LIB) -o test_pick
 	./test_pick
 	# settings.json mapping (src/settings.cpp, nlohmann): the
