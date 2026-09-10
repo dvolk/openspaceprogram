@@ -1462,13 +1462,18 @@ void drawPartWindows(Game &g) {
         const PartDef *def = ship->parts[part]->def;
         const Body *partBody = ship->parts[part]->body;
 
-        // the human-readable name (catalog display_name); fall back to the
-        // machine id for catalogs that predate the field
+        // the human-readable part name (catalog display_name); fall back to
+        // the machine id for catalogs that predate the field
         const char *disp = def->display_name.empty() ? def->name.c_str()
                                                      : def->display_name.c_str();
 
-        char name[160];
-        snprintf(name, sizeof(name), "Part: %s #%zu", disp, part);
+        // window title "<ship> > <part>". The ##suffix is a hidden ImGui
+        // window id (not shown in the title bar), unique per (ship, part) --
+        // so two ports on two different ships, or two identical parts on one
+        // ship, open as separate windows instead of colliding on the title.
+        char name[256];
+        snprintf(name, sizeof(name), "%s > %s##%p#%zu",
+                 ship->name.c_str(), disp, (const void *)ship, part);
         if(!sel.placed) {
             // Cascade the popups so several open ones don't fully
             // overlap; after that the user places them freely.
