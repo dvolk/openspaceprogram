@@ -1462,9 +1462,13 @@ void drawPartWindows(Game &g) {
         const PartDef *def = ship->parts[part]->def;
         const Body *partBody = ship->parts[part]->body;
 
+        // the human-readable name (catalog display_name); fall back to the
+        // machine id for catalogs that predate the field
+        const char *disp = def->display_name.empty() ? def->name.c_str()
+                                                     : def->display_name.c_str();
+
         char name[160];
-        snprintf(name, sizeof(name), "Part: %s #%zu",
-                 ship->name.c_str(), part);
+        snprintf(name, sizeof(name), "Part: %s #%zu", disp, part);
         if(!sel.placed) {
             // Cascade the popups so several open ones don't fully
             // overlap; after that the user places them freely.
@@ -1481,11 +1485,6 @@ void drawPartWindows(Game &g) {
             ImGui::Text("Part #%zu  (stage %d)", part,
                         ship->parts[part]->stage);
             ImGui::Separator();
-            // the human-readable name (catalog display_name); fall back to the
-            // machine id for catalogs that predate the field
-            const char *disp = def->display_name.empty() ? def->name.c_str()
-                                                         : def->display_name.c_str();
-            ImGui::Text("Name: %s", disp);
             if(!def->display_name.empty()) {
                 ImGui::Text("ID: %s", def->name.c_str());
             }
