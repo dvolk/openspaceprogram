@@ -336,7 +336,14 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
                 std::sin(theta) * std::cos(phi),
                 std::cos(theta),
                 std::sin(theta) * std::sin(phi));
-            verts.push_back(PosNorColVertex(dir * radius, dir, glm::vec3(1,1,1)));
+            // The color slot carries the UNWRAPPED sphere params
+            // (phi/2pi, theta/pi) for the cloud deck: its vertex shader
+            // needs a longitude that varies continuously around the seam
+            // (an atan(position) there has a branch cut that smears one
+            // meridian). The atmosphere shader ignores color.
+            verts.push_back(PosNorColVertex(dir * radius, dir,
+                glm::vec3(phi / (2.0f * (float)M_PI),
+                          theta / (float)M_PI, 0.0f)));
         }
     }
     std::vector<unsigned int> idx;

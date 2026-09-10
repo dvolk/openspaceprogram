@@ -164,7 +164,9 @@ int main(int argc, char **argv)
     // the job worker, so startup doesn't pay for it; the shader is one
     // texture fetch + lighting.
     Shader *cloudshader = new Shader;
-    cloudshader->registerAttribs({ "position", "normal" });
+    // "uvParam" binds the mesh's color slot (attrib location 2): the
+    // unwrapped sphere params the deck UV is built from.
+    cloudshader->registerAttribs({ "position", "normal", "uvParam" });
     cloudshader->registerUniforms({ "MVP", "Normal", "cameraPos", "color",
                                     "lightDirection", "drift", "planetCenter",
                                     "coverage_tex" });
