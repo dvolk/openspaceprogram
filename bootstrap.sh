@@ -10,6 +10,11 @@ cd "$(dirname "$0")"
 
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
+# Section flags for the cmake-built static libs: put every function/global in
+# its own section so the game link's -Wl,--gc-sections can drop the ones we
+# don't reference (saves ~200 KB on bullet3, ~140 KB on assimp).
+SECT="-ffunction-sections -fdata-sections"
+
 for tool in g++ cmake make; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: $tool not found -- install the system deps (see README) and re-run" >&2
@@ -32,7 +37,8 @@ echo "=== building bullet3 (static, double precision) ==="
 cmake -S middleware/bullet3 -B middleware/bullet3/build \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DUSE_DOUBLE_PRECISION=ON \
-    -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF
+    -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF \
+    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
 cmake --build middleware/bullet3/build -j"$JOBS"
 
 echo "=== building assimp (static, OBJ-only) ==="
@@ -44,7 +50,8 @@ cmake -S middleware/assimp -B middleware/assimp/build \
     -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_INSTALL=OFF \
     -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
     -DASSIMP_BUILD_OBJ_IMPORTER=ON \
-    -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF
+    -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF \
+    -DCMAKE_C_FLAGS="$SECT" -DCMAKE_CXX_FLAGS="$SECT"
 cmake --build middleware/assimp/build -j"$JOBS"
 
 echo
