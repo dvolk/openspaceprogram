@@ -25,6 +25,26 @@ LTO=-flto
 MARCH ?= native
 ARCH = $(if $(MARCH),-march=$(MARCH))
 
+# PGO: profile-guided optimization (the "release build" lever), two phases:
+#   1. make clean && make PGO=gen     (instrumented build, a bit slower)
+#   2. run the game across the hot paths (launch, orbit, EVA, dock, spin)
+#   3. make clean && make PGO=use     (reads the profile data, optimizes)
+# Profile data lands in tmp/pgo (survives `make clean`; the dir is baked
+# into the binary as an absolute path, so it works from any cwd).
+# `make clean` is mandatory between phases: make can't detect a flag
+# change (see MARCH). Stale data after a big code change warns "no data
+# for counter" -- repeat 1-3. Scope: the game + imgui/implot (CXXFLAGS)
+# and the link; the middleware stays PGO-free, so bootstrap.sh never
+# depends on profile data existing.
+PGO ?=
+ifeq ($(PGO),gen)
+PGOFLAGS = -fprofile-generate -fprofile-dir=$(CURDIR)/tmp/pgo
+else
+ifeq ($(PGO),use)
+PGOFLAGS = -fprofile-use -fprofile-dir=$(CURDIR)/tmp/pgo
+endif
+endif
+
 # Binary-size trim (dead code + symbol table):
 #   -ffunction-sections / -fdata-sections   each function / global gets its
 #                                           own section, so the linker can
@@ -48,7 +68,7 @@ CXX= g++
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include
+CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -98,7 +118,7 @@ BULLET3_OBJS=./middleware/bullet3/build/src/BulletDynamics/libBulletDynamics.a .
 # here is the first thing to see both TUs together and warn. The game uses
 # the GLX/SDL_GL path, never the EGL API (bootstrap.sh silences the same
 # warning in SDL2's own compile).
-LFLAGS=$(LTO) $(ARCH) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
+LFLAGS=$(LTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
 
 SRCDIR=src
 OBJDIR=obj

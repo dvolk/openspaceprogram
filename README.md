@@ -40,6 +40,18 @@ plain x86-64. A binary built for a newer ISA won't run on older CPUs.
 After changing `MARCH`, run `make clean` first (make can't detect a flag
 change).
 
+Release build (PGO, ~10% faster on heavy fleet scenarios):
+
+    make clean && make PGO=gen        # instrumented build
+    # the heavy scenario (tmp/pgo-fleet100.json: 100 heavy_asp in one
+    # orbit) plus a couple of the usual launch/orbit/EVA scenarios:
+    ./osp --fleet tmp/pgo-fleet100.json --terrain-px 32 --time-accel 10 --timeout 60
+    make clean && make PGO=use        # optimized build from the profile
+
+Profile data lives in `tmp/pgo`. After big code changes, repeat the cycle
+(stale data just warns "no data for counter"). Plain `make` stays the
+dev build (no PGO).
+
 start OSP with
 
     ./osp
