@@ -38,6 +38,7 @@ void tick(Game &g) {
     for(auto *s : all) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
+        s->drag_cd = g.args.drag_cd;
     }
 
     while (g.accumulator >= g.dt) {
@@ -269,15 +270,18 @@ void tick(Game &g) {
             if (n > 2000) { n = 2000; }
             const double h = step / n;
             for (int i = 0; i < n; i++) {
-                // every NON-RAILED ship feels its own gravity + armed
-                // control forces each substep (ships: thrust + rotation;
-                // the EVA kerbal: walking/RCS -- see applyControlForces);
-                // physics_tick then steps the shared Bullet world all of
-                // them at once. Railed ships have no bodies in the world
-                // -- their conic already advanced this tick in railsTick.
+                // every NON-RAILED ship feels its own gravity + atmospheric
+                // drag + armed control forces each substep (ships: thrust +
+                // rotation; the EVA kerbal: walking/RCS -- see
+                // applyControlForces); physics_tick then steps the shared
+                // Bullet world all of them at once. Railed ships have no
+                // bodies in the world -- their conic already advanced this
+                // tick in railsTick (and so feel no drag: the known rails
+                // gap, see reports/atmospheric-drag2026_09_11).
                 for(auto *s : all) {
                     if(s->onRails) { continue; }
                     s->processGravity();
+                    s->applyAtmosphericDrag(h);
                     /* Electrical resolution BEFORE the control forces, so
                        the power gate (powered_) is current when the
                        reaction wheels are applied (a ship that runs out of
@@ -419,6 +423,24 @@ void tick(Game &g) {
                        "vel=[%.2f %.2f %.2f] |v|=%.2f m/s\n",
                        g.time, p.x, p.y, p.z, alt, v.x, v.y, v.z,
                        glm::length(v));
+                fflush(stdout);
+            }
+        }
+
+        /* --drag-log: the active ship's drag (the last substep's: altitude,
+           air density, speed, force). The "is drag actually acting?"
+           instrument -- rho>0 means the atmosphere model is live at this
+           altitude, |F|>0 means the ship is moving through the air. */
+        if(g.args.drag_log) {
+            const Uint32 now_ms = SDL_GetTicks();
+            if(now_ms - g.drag_log_last_ms >= g.orbit_log_interval_ms) {
+                g.drag_log_last_ms = now_ms;
+                const glm::dvec3 v = g.ship->GetVel();
+                printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
+                       "|v|=%.2f m/s |F|=%.2f N  Cd=%.3f\n",
+                       g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
+                       glm::length(v), glm::length(g.ship->lastDragForce),
+                       g.ship->drag_cd);
                 fflush(stdout);
             }
         }

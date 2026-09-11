@@ -10,6 +10,7 @@
 
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
 #include "texture.h"   // load_texture
+#include "drag.h"      // the drag law (airDensity / dragForce)
 
 /* Instantiate a ship def: one rigid body per part (mesh + texture from the
    catalog entry), welded parent-first in the def's construction order.
@@ -1243,6 +1244,68 @@ void Vehicle::applyThrustForce() {
     if(glm::length2(dcom) > 0.0) {
         ApplyTorque(hull, -glm::cross(dcom, ftotal));
     }
+}
+
+double Vehicle::dragArea() const {
+    double a = 0.0;
+    for(Part *p : parts) {
+        if(p->def == nullptr) { continue; }
+        a += 2.0 * p->def->radius * p->def->height;
+    }
+    return a;
+}
+
+glm::dvec3 Vehicle::applyAtmosphericDrag(double h) {
+    (void)h;  // a force (not an impulse); Bullet integrates it over the substep
+    // The drag state the --drag-log instrument prints; reset so a substep
+    // with no air (no atmo / above it / on the ground) reports zero.
+    lastDragForce = glm::dvec3(0.0);
+    lastDragAlt = 0.0;
+    lastDragRho = 0.0;
+
+    // Only a body with a PHYSICAL atmosphere (a density model) produces
+    // drag -- a limb rim alone (render) does not.
+    if(m_parent == nullptr) { return lastDragForce; }
+    const AtmosphereParams &atm = m_parent->surface.atmosphere;
+    if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
+        return lastDragForce;
+    }
+
+    // Altitude above SEA LEVEL -- the fixed reference radius, not the local
+    // terrain. The atmosphere is a spherically-symmetric shell, so its
+    // density depends only on distance from the body's centre: a ship at a
+    // given altitude reads the same air whether it is over a peak or a
+    // valley (measuring above the terrain would make it read denser over a
+    // peak -- backwards). sea_level is 0 for a landlocked body, so this is
+    // altitude above the base radius there. (|com| is the distance from the
+    // centre; GetTerrainHeight is not needed.)
+    const glm::dvec3 com = get_center_of_mass();
+    const double r = glm::length(com);
+    if(r <= 0.0) { return lastDragForce; }
+    const double ref_radius =
+        (double)m_parent->radius + (double)m_parent->surface.sea_level;
+    const double alt = r - ref_radius;
+    lastDragAlt = alt;
+    if(alt <= 0.0) { return lastDragForce; }  // at / below sea level (in the sea)
+
+    const DragAtmosphere da { atm.sea_level_density, atm.scale_height };
+    const double rho = airDensity(da, alt);
+    lastDragRho = rho;
+    if(rho <= 0.0) { return lastDragForce; }  // numerically above the air
+
+    // v_rel = the ship's velocity in its (rot) frame -- the air co-rotates
+    // with the planet, so this is already air-relative (see drag.h).
+    const glm::dvec3 vrel = GetVel();
+    if(glm::length2(vrel) <= 0.0) { return lastDragForce; }  // at rest in air
+
+    const glm::dvec3 force = dragForce(da, drag_cd, dragArea(), alt, vrel);
+    lastDragForce = force;
+    if(glm::length2(force) <= 0.0) { return lastDragForce; }
+    // A central force at the COM: it decelerates the ship (F/m is Bullet's
+    // job -- heavier ships bleed less velocity) and, being through the COM,
+    // adds no torque (v1 has no centre-of-pressure / pitch-stability term).
+    ApplyCentralForce(hull, force);
+    return force;
 }
 
 void Vehicle::applyControlForces(double h) {

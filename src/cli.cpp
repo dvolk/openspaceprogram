@@ -102,6 +102,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "adjustable in the Settings window)")
         ->check(CLI::Range(0.5f, 5.0f));
 
+    app.add_option("--drag-cd", args.drag_cd,
+                   "The atmospheric drag coefficient (src/drag.h): F = "
+                   "-v*0.5*rho*Cd*A*v^2. Default 1.2; 0 disables drag "
+                   "entirely (a test / A-B knob)")
+        ->check(CLI::NonNegativeNumber);
+
+    app.add_flag("--drag-log", args.drag_log,
+                 "Log the active ship's drag per tick (altitude, density, "
+                 "speed, force) -- the 'is drag acting?' instrument");
+
     app.add_option("--timeout", args.timeout_seconds,
                    "Auto-exit the main loop after this many wall-clock "
                    "seconds (0 = run until closed; default: 0)")

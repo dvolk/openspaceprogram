@@ -114,6 +114,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
                     av.value("thickness", (float)(body->radius * 0.02));
                 s.atmosphere.power = av.value("power", 3.0f);
                 s.atmosphere.intensity = av.value("intensity", 1.0f);
+                // Physical drag (src/drag.h): both optional, 0 = no drag.
+                // A rim (the fields above) can exist without these, and
+                // vice versa.
+                s.atmosphere.sea_level_density =
+                    av.value("sea_level_density", 0.0);
+                s.atmosphere.scale_height =
+                    av.value("scale_height", 0.0);
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {
                 const nlohmann::json &cv = sv["clouds"];

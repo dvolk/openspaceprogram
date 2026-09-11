@@ -187,6 +187,8 @@ struct Game {
     Uint32 att_log_last_ms = 0;
     /* Same gate, independent clock (--eva-log: the kerbal's mode/pos/vel). */
     Uint32 eva_log_last_ms = 0;
+    /* Same gate, independent clock (--drag-log: the active ship's drag). */
+    Uint32 drag_log_last_ms = 0;
 
     // --- input / selection state -------------------------------------------
     bool running = true;

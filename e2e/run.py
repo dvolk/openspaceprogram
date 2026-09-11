@@ -45,6 +45,9 @@ CHECK namespace (parsed from the game's stdout):
           interval, s), ship, thrust (N, the thrust delivered in the
           sample's tick), rates (group id -> drain rate in kg/s,
           H2+LOX combined; a group only appears while it carries fuel)
+  drag    list of dicts, one per [drag] line: t, alt (m above the surface),
+          rho (kg/m^3, the air density), v (m/s, air-relative speed),
+          F (N, the drag force magnitude), cd (the drag coefficient)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -108,6 +111,10 @@ EVA_RE = re.compile(
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
     r"thrust=([-\d.]+)N\s+(.*)"
+)
+DRAG_RE = re.compile(
+    r"\[drag\]\s+t=([\d.]+)s\s+alt=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
+    r"\|v\|=([-\d.]+) m/s\s+\|F\|=([-\d.]+) N\s+Cd=([-\d.]+)"
 )
 DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
@@ -315,6 +322,17 @@ def parse_drainlog(out):
     return rows
 
 
+def parse_drag(out):
+    rows = []
+    for m in DRAG_RE.finditer(out):
+        (t, alt, rho, v, F, cd) = m.groups()
+        rows.append({
+            "t": float(t), "alt": float(alt), "rho": float(rho),
+            "v": float(v), "F": float(F), "cd": float(cd),
+        })
+    return rows
+
+
 def first(seq):
     return seq[0]
 
@@ -397,10 +415,11 @@ def run_case(case):
     eva = parse_eva(out)
     fuel = parse_fuel(out)
     drainlog = parse_drainlog(out)
+    drag = parse_drag(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
-        "fuel": fuel, "drainlog": drainlog,
+        "fuel": fuel, "drainlog": drainlog, "drag": drag,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

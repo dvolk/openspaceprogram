@@ -342,6 +342,15 @@ public:
     double exhaust_scale = 1.0;  // test knob (Settings / --exhaust-scale):
                                  // scales ve, so thrust and delta-v scale with
                                  // it (the fuel burn does not); synced per tick
+    double drag_cd = 1.2;        // test knob (--drag-cd): the drag coefficient
+                                 // (src/drag.h); 0 = no drag; synced per tick
+
+    /* The last substep's drag (applyAtmosphericDrag): the force the --drag-log
+       instrument prints, plus the altitude / density it came from. Written
+       every substep, read once per tick by the log (tick.cpp). */
+    glm::dvec3 lastDragForce = glm::dvec3(0.0);
+    double lastDragAlt = 0.0;
+    double lastDragRho = 0.0;
 
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
        (applyRotationForce, before every stepSimulation) -- like thrust,
@@ -573,6 +582,31 @@ public:
     // h seconds of the tick's n*h, cutting the delivered thrust to 1/n
     // (and n grows with time acceleration, so it got worse at warp).
     void applyThrustForce();
+
+    /* Atmospheric drag (v1): a central force opposing the air-relative
+       motion, -v̂·½·rho·Cd·A·|v|² (src/drag.h), with
+         v_rel = GetVel()     (the ship is in the atmosphere body's rot
+                           frame, so this IS air-relative -- the air
+                           co-rotates with the planet; see drag.h)
+         alt   = |com| - (radius + sea_level)   -- above SEA LEVEL, the
+                           fixed reference radius; the atmosphere is a
+                           symmetric shell so its density depends only on
+                           distance from the centre, not local terrain
+         rho   = sea_level_density · exp(-alt / scale_height)
+         A     = dragArea()    (the sum of the parts' silhouettes)
+       No-op when m_parent has no physical atmosphere, the ship is at or
+       below the surface, or it has no speed. Like thrust, re-applied before
+       EVERY substep (Bullet clears forces per stepSimulation). Returns the
+       force applied this call (also stored in lastDragForce for the
+       --drag-log instrument). */
+    glm::dvec3 applyAtmosphericDrag(double h);
+
+    /* The ship's drag cross-section [m^2]: the sum over its parts of each
+       part's cylindrical side-silhouette (2·radius·height, from PartDef).
+       Scales with ship size and shrinks as stages drop (asparagus), with no
+       per-part catalog field. A per-part drag_area (KSP-style) is the v2
+       refinement if this sum feels off. */
+    double dragArea() const;
 
     /* The armed control forces, re-applied before EVERY substep (Bullet
        clears forces per stepSimulation). Ships deliver thrust + rotation +

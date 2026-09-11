@@ -342,6 +342,12 @@ test:
 	# ring below the terrain).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_terrain.cpp -o test_terrain
 	./test_terrain
+	# atmospheric drag law (src/drag.h, header-only pure math): the
+	# exponential density (rho(H)=rho0/e, monotone, below-surface -> 0,
+	# degenerate atmo -> 0) and the force (opposite v, |F|=0.5 rho cd A v^2,
+	# 4x at 2x speed, zero on any degenerate input).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_drag.cpp -o test_drag
+	./test_drag
 	# background job runner (src/job.cpp): the worker/main-thread handoff --
 	# the body runs off the calling thread, the returned continuation runs on
 	# the poll() thread, jobs land in posted order, a throwing body does not
@@ -414,7 +420,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_jobs test_settings test_eva test_keys test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_drag test_jobs test_settings test_eva test_keys test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

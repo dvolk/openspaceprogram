@@ -80,6 +80,13 @@ struct AtmosphereParams {
     float thickness = 0.0f;   // [m] shell radius above radius + max_height
     float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
     float intensity = 1.0f;   // overall alpha scale
+    /* Physical drag (src/drag.h): the density model is
+       rho(alt) = sea_level_density * exp(-alt / scale_height).
+       Both 0 = no drag -- a body may draw a limb rim (above) without an
+       atmosphere for physics, and vice versa. See
+       reports/atmospheric-drag2026_09_11. */
+    double sea_level_density = 0.0;  // kg/m^3 at the surface; 0 = no drag
+    double scale_height = 0.0;       // [m]; the density /e-fold altitude
 };
 
 // Per-body cloud deck (optional "surface.clouds" block). A single shell at
