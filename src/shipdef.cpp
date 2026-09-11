@@ -14,7 +14,7 @@ PartDef::PartDef()
       crew_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
       drag_area(0.0), cd(0.0), k_drag(0.0),
-      lift_area(0.0), cl(0.0) {
+      lift_area(0.0), cl(0.0), stall_angle(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -241,6 +241,10 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.cl = pv.value("cl", 0.0);
         if(d.cl < 0.0) {
             throw std::runtime_error(ctx + "\"cl\" must be >= 0");
+        }
+        d.stall_angle = pv.value("stall_angle", 0.0);
+        if(d.stall_angle < 0.0) {
+            throw std::runtime_error(ctx + "\"stall_angle\" must be >= 0 (rad)");
         }
 
         cat.parts.push_back(d);

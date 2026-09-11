@@ -285,7 +285,7 @@ static void test_liftDirection() {
 }
 
 static void test_liftForce() {
-    printf("== liftForce: |L| = q*S*cl*alpha, sign follows alpha ==\n");
+    printf("== liftForce: |L| = q*S*CL(a), sign follows a, stalls past A ==\n");
     const glm::dvec3 liftDir(0.0, 1.0, 0.0);  // up
     const double q = 60.0;      // dynamic pressure (Pa)
     const double S = 4.0;       // m^2
@@ -307,6 +307,16 @@ static void test_liftForce() {
     CHECK_TRUE(liftForce(q, S, cl, 0.0, liftDir) == glm::dvec3(0.0),
                "zero AoA -> zero lift");
 
+    // With a stall angle A: below stall it is still the linear law, and at
+    // 2A it is a deep stall (zero lift) -- the vector path honours liftCurve.
+    {
+        const double A = 0.20;
+        const glm::dvec3 L_lin  = liftForce(q, S, cl, 0.10, liftDir, A);
+        CHECK_NEAR(L_lin.y, q * S * cl * 0.10, 1e-12, "below stall: linear");
+        const glm::dvec3 L_deep = liftForce(q, S, cl, 2.0 * A, liftDir, A);
+        CHECK_TRUE(L_deep == glm::dvec3(0.0), "deep stall (2A) -> zero lift");
+    }
+
     // Degenerate inputs -> zero.
     CHECK_TRUE(liftForce(0.0, S, cl, alpha, liftDir) == glm::dvec3(0.0),
                "no dynamic pressure -> zero");
@@ -314,6 +324,54 @@ static void test_liftForce() {
                "no lift area -> zero");
     CHECK_TRUE(liftForce(q, S, 0.0, alpha, liftDir) == glm::dvec3(0.0),
                "no cl (a rocket) -> zero");
+}
+
+static void test_liftCurve() {
+    printf("== liftCurve: linear up to stall, soft droop, deep stall ==\n");
+    const double cl = 6.0;        // per radian
+    const double A  = 0.30;       // stall angle (rad)
+    const double clmax = cl * A;  // peak CL, reached at |alpha| = A
+
+    // Below stall: exactly linear (the Phase 2 law), sign follows alpha.
+    CHECK_NEAR(liftCurve(cl, 0.05, A), cl * 0.05, 1e-12, "below stall: linear");
+    CHECK_NEAR(liftCurve(cl, -0.05, A), -cl * 0.05, 1e-12, "below stall: linear (-)");
+
+    // Zero AoA: no lift (a symmetric section).
+    CHECK_NEAR(liftCurve(cl, 0.0, A), 0.0, 0.0, "zero AoA -> 0");
+
+    // At the stall angle: the peak (cl*A), continuous from both sides.
+    CHECK_NEAR(liftCurve(cl, A, A), clmax, 1e-12, "at stall angle: peak");
+    CHECK_NEAR(liftCurve(cl, -A, A), -clmax, 1e-12, "at stall angle: peak (-)");
+
+    // Just past stall: the droop has begun (below the peak, still positive).
+    CHECK_NEAR(liftCurve(cl, A * 1.1, A),
+               cl * A * std::cos(0.1 * M_PI * 0.5), 1e-12, "past stall: droop");
+
+    // Monotone decrease through the droop: peak > 1.1A > 1.5A > 2A (=0).
+    CHECK_TRUE(liftCurve(cl, A, A) > liftCurve(cl, A * 1.1, A), "droop: A > 1.1A");
+    CHECK_TRUE(liftCurve(cl, A * 1.1, A) > liftCurve(cl, A * 1.5, A),
+               "droop: 1.1A > 1.5A");
+    CHECK_TRUE(liftCurve(cl, A * 1.5, A) > 0.0, "droop: 1.5A > 0");
+
+    // At 2x the stall angle the droop is complete (deep stall); beyond it, and
+    // at a fully sideways 90 deg, the wing is edge-on and generates no lift.
+    CHECK_NEAR(liftCurve(cl, A * 2.0, A), 0.0, 0.0, "at 2A: deep stall -> 0");
+    CHECK_NEAR(liftCurve(cl, A * 3.0, A), 0.0, 0.0, "beyond 2A: still 0");
+    CHECK_NEAR(liftCurve(cl, M_PI * 0.5, A), 0.0, 0.0, "90 deg -> 0");
+
+    // Symmetric in |alpha|: equal magnitude up or down, sign follows alpha.
+    CHECK_NEAR(std::fabs(liftCurve(cl, 0.2, A)), std::fabs(liftCurve(cl, -0.2, A)),
+               1e-12, "symmetric magnitude");
+    CHECK_TRUE(liftCurve(cl, 0.2, A) > 0.0 && liftCurve(cl, -0.2, A) < 0.0,
+               "sign follows alpha");
+
+    // No stall (A = 0): pure linear for ALL alpha (the Phase 2 law, no droop).
+    CHECK_NEAR(liftCurve(cl, 1.0, 0.0), cl * 1.0, 1e-12, "no stall: linear (+)");
+    CHECK_NEAR(liftCurve(cl, -1.0, 0.0), -cl * 1.0, 1e-12, "no stall: linear (-)");
+
+    // Degenerate: no slope -> no lift.
+    CHECK_NEAR(liftCurve(0.0, 0.1, A), 0.0, 0.0, "cl = 0 -> 0");
+    CHECK_NEAR(liftCurve(-1.0, 0.1, A), 0.0, 0.0, "cl < 0 -> 0");
 }
 
 static void test_partDrag() {
@@ -378,6 +436,8 @@ int main() {
     test_liftDirection();
     printf("\n");
     test_liftForce();
+    printf("\n");
+    test_liftCurve();
     printf("\n");
     test_partDrag();
 

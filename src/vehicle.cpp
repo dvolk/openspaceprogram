@@ -1341,9 +1341,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         // drag (the Phase 1 law, per part): opposite the flow.
         const glm::dvec3 fdrag = partDrag(q, vhat, offAxis, area, cd, k);
         // lift (Phase 2, per part): out of the flow, ∝ the pitch AoA; 0 for
-        // a part with no lift_area / cl (a rocket stays a rocket).
+        // a part with no lift_area / cl (a rocket stays a rocket). The soft
+        // stall (Phase 3) collapses it past the part's stall_angle.
         const glm::dvec3 flift = liftForce(q, d->lift_area, d->cl, alpha,
-                                           liftDir);
+                                           liftDir, d->stall_angle);
         const glm::dvec3 fi = fdrag + flift;
         if(glm::length2(fi) <= 0.0) { continue; }
         const glm::dvec3 ri = partPos(p) - com;  // part's offset from the COM

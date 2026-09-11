@@ -18,6 +18,10 @@
 
 #include <glm/glm.hpp>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 /* The physical half of a body's atmosphere (the render half -- colour,
    Fresnel power -- lives in AtmosphereParams, terragen.h). Both zero means
    "no drag" (a body may draw a limb rim without an atmosphere for physics). */
@@ -153,17 +157,46 @@ inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
     return l / len;
 }
 
+/* The lift coefficient CL(α) of a symmetric section, with a soft stall
+   (Phase 3). The curve is linear up to the stall angle, then the flow
+   separates and the lift collapses:
+     |α| <= A        CL = cl · α                           (linear)
+     A < |α| < 2·A   CL = cl · A · cos( (π/2)·(|α|−A)/A )  (soft droop)
+     |α| >= 2·A      CL = 0                                (deep stall)
+   where A = stall_angle (rad). The peak is cl·A, reached at |α| = A; a real
+   wing loses lift beyond it (this is why a stalled craft sinks instead of
+   holding altitude), and a fully sideways wing (|α| ≈ 90°) is edge-on and
+   generates none. A = 0 disables the stall -- pure linear, exactly the
+   Phase 2 law -- so a part with no stall_angle is unchanged. Symmetric in
+   |α| (a symmetric section stalls up and down the same); the sign of CL
+   follows α. CL is continuous in α (no force jump), so the CoP torque
+   carries no impulse. */
+inline double liftCurve(double cl, double alpha, double stallAngle) {
+    if(cl <= 0.0) { return 0.0; }
+    const double a = std::fabs(alpha);
+    const double A = stallAngle;
+    double c;
+    if(A <= 0.0 || a <= A) {
+        c = cl * a;                                          // linear (up to stall)
+    } else {
+        const double t = (a - A) / A;                        // 0 at A, 1 at 2A
+        c = (t >= 1.0) ? 0.0 : cl * A * std::cos(t * M_PI * 0.5);  // droop
+    }
+    return (alpha < 0.0) ? -c : c;                           // sign follows α
+}
+
 /* The lift force on one part:
-     L = q · S · cl · alpha · liftDir
-   q = dynamic pressure (0.5·rho·v²), S = the part's lift_area [m²], cl =
-   its lift-curve slope (dimensionless, per radian), alpha = the angle of
-   attack (rad). A symmetric section (CL0 = 0) has no lift at zero AoA; the
-   sign of the force follows alpha (negative AoA pushes down). No stall
-   clamp yet (Phase 3). Zero for any degenerate input. */
+     L = q · S · CL(α) · liftDir
+   q = dynamic pressure (0.5·rho·v²), S = the part's lift_area [m²], and
+   CL(α) = liftCurve(cl, α, stallAngle). A symmetric section (CL0 = 0) has
+   no lift at zero AoA; the sign of the force follows α (negative AoA pushes
+   down), and the soft stall collapses the lift past the stall angle.
+   stallAngle = 0 keeps the Phase 2 linear law. Zero for any degenerate
+   input. */
 inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
-                            const glm::dvec3 &liftDir) {
+                            const glm::dvec3 &liftDir, double stallAngle = 0.0) {
     if(q <= 0.0 || S <= 0.0 || cl <= 0.0) { return glm::dvec3(0.0); }
-    return liftDir * (q * S * cl * alpha);
+    return liftDir * (q * S * liftCurve(cl, alpha, stallAngle));
 }
 
 /* The drag on one part, given the shared flow factors (q = 0.5·rho·v²,

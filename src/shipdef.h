@@ -225,13 +225,19 @@ struct PartDef {
                     part asset -- sets this).
          cl         the lift-curve slope (dimensionless, per radian):
                     CL = cl * alpha, so the lift force is q * lift_area *
-                    cl * alpha (src/drag.h liftForce). 0 = no lift. No stall
-                    clamp yet (Phase 3). */
+                    cl * alpha (src/drag.h liftForce). 0 = no lift.
+         stall_angle rad; the angle of attack where lift peaks and the flow
+                    stalls. The lift curve is linear (CL = cl * alpha) up to
+                    it, then drops to zero by 2 * stall_angle (src/drag.h
+                    liftCurve). 0 = no stall (pure linear, the Phase 2 law).
+                    The peak CL is cl * stall_angle. A lifting surface sets
+                    it (a wing/fin, with its part asset). */
     double drag_area;
     double cd;
     double k_drag;
     double lift_area;
     double cl;
+    double stall_angle;
 
     PartDef();
 
