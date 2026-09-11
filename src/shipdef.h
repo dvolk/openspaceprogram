@@ -208,6 +208,22 @@ struct PartDef {
        overrides this when set (see resolveHullMargin). */
     double hull_margin;
 
+    /* Aerodynamics (src/drag.h, reports/aerodynamics2026_09_11). All
+       optional, all 0 = "use the ship's global default for this term" (so a
+       part that leaves them unset keeps exactly the v1 behaviour). A part
+       sets one to override the global for itself:
+         drag_area  m^2; the part's drag cross-section. 0 = fall back to the
+                    silhouette 2*radius*height (the v1 area).
+         cd         the part's baseline (parasite) drag coefficient. 0 = use
+                    the ship's global --drag-cd.
+         k_drag     the part's off-axis (weathervane) coefficient: the part's
+                    drag grows by k* (1 - (v^nose)^2) as the ship turns off
+                    its nose. 0 = use the ship's global --drag-k.
+       A lifting surface (a wing, Phase 2) will add lift_area / cl here. */
+    double drag_area;
+    double cd;
+    double k_drag;
+
     PartDef();
 
     /* full thrust of one engine: T = (H2 + LOX flow) x ve -- both

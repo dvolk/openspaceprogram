@@ -108,6 +108,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "entirely (a test / A-B knob)")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_option("--drag-k", args.drag_k,
+                   "The off-axis (weathervane) drag coefficient (src/drag.h): "
+                   "drag grows by k*(1-(v*nose)^2) as the ship turns off its "
+                   "nose, so a banked/pitched ship drags more than a "
+                   "prograde one. Default 1.0; 0 = attitude-independent "
+                   "(the v1 behaviour)")
+        ->check(CLI::NonNegativeNumber);
+
     app.add_flag("--drag-log", args.drag_log,
                  "Log the active ship's drag per tick (altitude, density, "
                  "speed, force) -- the 'is drag acting?' instrument");

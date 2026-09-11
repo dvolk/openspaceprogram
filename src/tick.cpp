@@ -39,6 +39,7 @@ void tick(Game &g) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
         s->drag_cd = g.args.drag_cd;
+        s->drag_k = g.args.drag_k;
     }
 
     while (g.accumulator >= g.dt) {
@@ -437,10 +438,11 @@ void tick(Game &g) {
                 g.drag_log_last_ms = now_ms;
                 const glm::dvec3 v = g.ship->GetVel();
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
-                       "|v|=%.2f m/s |F|=%.2f N  Cd=%.3f\n",
+                       "|v|=%.2f m/s |F|=%.2f N  Cd=%.3f K=%.3f AoA=%.1f deg\n",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
                        glm::length(v), glm::length(g.ship->lastDragForce),
-                       g.ship->drag_cd);
+                       g.ship->drag_cd, g.ship->drag_k,
+                       glm::degrees(g.ship->lastDragAlpha));
                 fflush(stdout);
             }
         }

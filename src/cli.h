@@ -42,6 +42,7 @@ struct GameArgs {
     double timeout_seconds = 0.0;
     float exhaust_scale = 1.0f;  // test knob: scales ve (thrust + delta-v)
     double drag_cd = 1.2;       // --drag-cd: the drag coefficient (0 = off)
+    double drag_k = 1.0;        // --drag-k: the off-axis (weathervane) coefficient
     bool drag_log = false;      // --drag-log: the active ship's drag per tick
 
     std::vector<SimKeyPress> sim_presses;

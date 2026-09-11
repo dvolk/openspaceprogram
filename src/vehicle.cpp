@@ -1246,11 +1246,21 @@ void Vehicle::applyThrustForce() {
     }
 }
 
-double Vehicle::dragArea() const {
-    double a = 0.0;
+Vehicle::DragAreas Vehicle::aeroDragAreas() const {
+    DragAreas a;
     for(Part *p : parts) {
         if(p->def == nullptr) { continue; }
-        a += 2.0 * p->def->radius * p->def->height;
+        // area: the part's authored drag_area, or its silhouette (2·r·h) --
+        // the v1 area, so a part that sets nothing is unchanged.
+        const double area = (p->def->drag_area > 0.0)
+            ? p->def->drag_area
+            : 2.0 * p->def->radius * p->def->height;
+        // coefficient: the part's authored value, or the ship's global
+        // default for that term (so an unset part keeps the v1 behaviour).
+        const double cd = (p->def->cd > 0.0) ? p->def->cd : drag_cd;
+        const double k  = (p->def->k_drag > 0.0) ? p->def->k_drag : drag_k;
+        a.A0 += area * cd;   // parasite (attitude-independent) drag area
+        a.AK += area * k;    // weathervane (off-axis) drag area
     }
     return a;
 }
@@ -1262,6 +1272,12 @@ glm::dvec3 Vehicle::applyAtmosphericDrag(double h) {
     lastDragForce = glm::dvec3(0.0);
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
+    lastDragAlpha = 0.0;
+
+    // --drag-cd 0 = no drag at all (the master off switch, the v1 contract).
+    // The off-axis (weathervane) term is gated on it too, so "0 disables
+    // drag entirely" holds even with --drag-k set.
+    if(drag_cd <= 0.0) { return lastDragForce; }
 
     // Only a body with a PHYSICAL atmosphere (a density model) produces
     // drag -- a limb rim alone (render) does not.
@@ -1298,12 +1314,29 @@ glm::dvec3 Vehicle::applyAtmosphericDrag(double h) {
     const glm::dvec3 vrel = GetVel();
     if(glm::length2(vrel) <= 0.0) { return lastDragForce; }  // at rest in air
 
-    const glm::dvec3 force = dragForce(da, drag_cd, dragArea(), alt, vrel);
+    // The nose axis (the root part's local +Z, in world) sets the off-axis
+    // (weathervane) term: the ship drags more as it turns off it. A ship
+    // with no root part (defensive) is treated as prograde (no penalty).
+    const Part *root = rootPart();
+    const glm::dvec3 nose = (root != nullptr) ? partAxis(root, 2)
+                                              : glm::dvec3(0.0, 0.0, 1.0);
+
+    const DragAreas da2 = aeroDragAreas();
+    if(da2.A0 + da2.AK <= 0.0) { return lastDragForce; }  // no drag area
+
+    // The pitch angle of attack the --drag-log instrument prints.
+    if(root != nullptr) {
+        lastDragAlpha =
+            aeroFrame(vrel, partAxis(root, 0), partAxis(root, 1), nose).alpha;
+    }
+
+    const glm::dvec3 force = dragForceAOA(da, da2.A0, da2.AK, alt, vrel, nose);
     lastDragForce = force;
     if(glm::length2(force) <= 0.0) { return lastDragForce; }
     // A central force at the COM: it decelerates the ship (F/m is Bullet's
     // job -- heavier ships bleed less velocity) and, being through the COM,
-    // adds no torque (v1 has no centre-of-pressure / pitch-stability term).
+    // adds no torque (Phase 2 adds the centre-of-pressure / pitch-stability
+    // term; see reports/aerodynamics2026_09_11).
     ApplyCentralForce(hull, force);
     return force;
 }

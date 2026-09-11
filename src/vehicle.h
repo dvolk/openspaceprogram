@@ -344,13 +344,18 @@ public:
                                  // it (the fuel burn does not); synced per tick
     double drag_cd = 1.2;        // test knob (--drag-cd): the drag coefficient
                                  // (src/drag.h); 0 = no drag; synced per tick
+    double drag_k = 1.0;         // test knob (--drag-k): the off-axis
+                                 // (weathervane) coefficient; 0 = the v1
+                                 // attitude-independent drag; synced per tick
 
     /* The last substep's drag (applyAtmosphericDrag): the force the --drag-log
-       instrument prints, plus the altitude / density it came from. Written
-       every substep, read once per tick by the log (tick.cpp). */
+       instrument prints, plus the altitude / density / angle-of-attack it
+       came from. Written every substep, read once per tick by the log
+       (tick.cpp). */
     glm::dvec3 lastDragForce = glm::dvec3(0.0);
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
+    double lastDragAlpha = 0.0;  // pitch angle of attack (rad) of the last substep
 
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
        (applyRotationForce, before every stepSimulation) -- like thrust,
@@ -583,8 +588,9 @@ public:
     // (and n grows with time acceleration, so it got worse at warp).
     void applyThrustForce();
 
-    /* Atmospheric drag (v1): a central force opposing the air-relative
-       motion, -v̂·½·rho·Cd·A·|v|² (src/drag.h), with
+    /* Atmospheric drag (v2, reports/aerodynamics2026_09_11): a central
+       force opposing the air-relative motion, -v̂·½·rho·v²·(A0 + AK·sin²θ)
+       (src/drag.h), with
          v_rel = GetVel()     (the ship is in the atmosphere body's rot
                            frame, so this IS air-relative -- the air
                            co-rotates with the planet; see drag.h)
@@ -593,20 +599,32 @@ public:
                            symmetric shell so its density depends only on
                            distance from the centre, not local terrain
          rho   = sea_level_density · exp(-alt / scale_height)
-         A     = dragArea()    (the sum of the parts' silhouettes)
-       No-op when m_parent has no physical atmosphere, the ship is at or
-       below the surface, or it has no speed. Like thrust, re-applied before
-       EVERY substep (Bullet clears forces per stepSimulation). Returns the
-       force applied this call (also stored in lastDragForce for the
-       --drag-log instrument). */
+         A0    = aeroDragAreas().A0   (parasite drag area, Σ area·cd)
+         AK    = aeroDragAreas().AK   (weathervane area, Σ area·k_drag)
+         sin²θ = 1 - (v̂·n̂)²       (off-axis factor, nose = root part +Z)
+       The parasite term (AK=0) is exactly the v1 law, so a ship that is
+       prograde (nose into the flow) feels identical drag to before; the
+       weathervane term adds the "turned off the nose, so it drags more"
+       piece. No-op when m_parent has no physical atmosphere, the ship is at
+       or below the surface, or it has no speed. Like thrust, re-applied
+       before EVERY substep (Bullet clears forces per stepSimulation).
+       Returns the force applied this call (also stored in lastDragForce for
+       the --drag-log instrument). Becomes the full aero force (lift +
+       CoP torque) in Phase 2. */
     glm::dvec3 applyAtmosphericDrag(double h);
 
-    /* The ship's drag cross-section [m^2]: the sum over its parts of each
-       part's cylindrical side-silhouette (2·radius·height, from PartDef).
-       Scales with ship size and shrinks as stages drop (asparagus), with no
-       per-part catalog field. A per-part drag_area (KSP-style) is the v2
-       refinement if this sum feels off. */
-    double dragArea() const;
+    /* The ship's drag areas [m^2], summed over its parts (aeroDragAreas):
+         A0 = Σ area_i · cd_i    the parasite (attitude-independent) area
+         AK = Σ area_i · k_i     the weathervane (off-axis) area
+       where per part
+         area_i = drag_area if set, else the silhouette 2·radius·height
+         cd_i   = cd  if set, else the ship's global drag_cd (--drag-cd)
+         k_i    = k_drag if set, else the ship's global drag_k (--drag-k)
+       Scales with ship size and shrinks as stages drop (asparagus). With
+       every part leaving cd/k_drag unset, A0 = drag_cd·Σ(2·radius·height)
+       -- exactly the v1 dragArea()·cd, so the v1 law is preserved. */
+    struct DragAreas { double A0 = 0.0; double AK = 0.0; };
+    DragAreas aeroDragAreas() const;
 
     /* The armed control forces, re-applied before EVERY substep (Bullet
        clears forces per stepSimulation). Ships deliver thrust + rotation +

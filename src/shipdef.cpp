@@ -12,7 +12,8 @@ PartDef::PartDef()
       exhaust_velocity(0.0), rcs_thrust(0.0), power_draw(0.0),
       power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), decoupler(false), docking_port(false),
-      fuel_barrier(false), fuel_link(false), hull_margin(-1.0) {
+      fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
+      drag_area(0.0), cd(0.0), k_drag(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -211,6 +212,24 @@ PartsCatalog load_parts_catalog(const char *path) {
                 throw std::runtime_error(std::string(ctx)
                                          + "\"hull_margin\" must be >= 0 (m)");
             }
+        }
+
+        /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0,
+           which means "use the ship's global default for that term" (a part
+           that sets none keeps exactly the v1 silhouette-drag behaviour).
+           drag_area overrides the silhouette; cd / k_drag override the
+           global --drag-cd / --drag-k for this part. */
+        d.drag_area = pv.value("drag_area", 0.0);
+        if(d.drag_area < 0.0) {
+            throw std::runtime_error(ctx + "\"drag_area\" must be >= 0 (m^2)");
+        }
+        d.cd = pv.value("cd", 0.0);
+        if(d.cd < 0.0) {
+            throw std::runtime_error(ctx + "\"cd\" must be >= 0");
+        }
+        d.k_drag = pv.value("k_drag", 0.0);
+        if(d.k_drag < 0.0) {
+            throw std::runtime_error(ctx + "\"k_drag\" must be >= 0");
         }
 
         cat.parts.push_back(d);
