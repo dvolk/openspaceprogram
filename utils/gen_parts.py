@@ -128,6 +128,18 @@ BATTERY_DRY_DENSITY    = 100.0    # kg/m^3, hull + BMS + wiring overhead
 CAPSULE_LIFE_SUPPORT_W_PER_CREW = 100.0   # W per crew, constant (base capsule = 100 W)
 CAPSULE_BATTERY_WH_PER_CREW     = 2000.0  # Wh per crew (~20 laptop batteries; base = 2 kWh)
 
+# wing (a lifting surface): mass from the structure; the aero fields are
+# design values (not geometry-derived). lift_area is the planform (delta)
+# area = radius * height (a 2 m x 2 m triangle = 2 m^2). cl is the
+# lift-curve slope (per radian, ~ the thin-airfoil 2*pi); stall_angle is
+# where the lift peaks and the flow separates (see src/drag.h liftCurve);
+# cd / k_drag are the parasite + weathervane drag coefficients.
+WING_DENSITY       = 50.0     # kg/m^3, wing structure (skin + spars)
+WING_CL            = 6.0      # lift-curve slope (per radian)
+WING_STALL_ANGLE   = 0.35     # rad (~20 deg), where lift peaks + the flow stalls
+WING_CD            = 0.04     # parasite drag coefficient (a thin wing, prograde)
+WING_K_DRAG        = 0.8      # weathervane drag coefficient (off-axis area)
+
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual: mesh/texture are None and generate() skips the
 # geometry step for it.
@@ -193,6 +205,9 @@ PARTS = [
     ("nose_cap_r1.5h0.75","nose_cap",      "nose_cap_r1.5h0.75.obj",       "nose_cap.png"),
     ("nose_cap_r2.25h1.125","nose_cap",    "nose_cap_r2.25h1.125.obj",     "nose_cap.png"),
     ("kerbal",           "kerbal",         "kerbal.obj",                   "kerbal.png"),
+    # a wing: a lifting surface (delta wing, wing.obj by gen_wing.py). Adds
+    # lift + a weathervane drag to a ship (see the WING_* constants).
+    ("wing",             "wing",           "wing.obj",                     "wing.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -263,6 +278,7 @@ DISPLAY_BASE = {
     "docking_port":   "Docking Port",
     "nose_cap":       "Nose Cap",
     "kerbal":         "Kerbal",
+    "wing":           "Wing",
     "fuel_link":      "Fuel Link",
 }
 
@@ -364,6 +380,22 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["power_gen"] = clean(volume * RTG_WATTS_PER_M3)
+    elif ptype == "wing":
+        # a lifting surface: the wing's flat plate (radius * height = the
+        # triangular plate's bounding box) is both its LIFT area and its
+        # DRAG area. Lift curve slope (cl) and stall angle are declared
+        # constants (not geometry-derived); the weathervane drag (k_drag)
+        # turns the flat plate into an off-axis drag area, the same way the
+        # v1 rocket parts use their radius*height as an area.
+        e["mass"] = clean(volume * WING_DENSITY)
+        e["radius"] = radius
+        e["height"] = height
+        e["lift_area"] = clean(radius * height)
+        e["cl"] = WING_CL
+        e["stall_angle"] = WING_STALL_ANGLE
+        e["drag_area"] = clean(radius * height)
+        e["cd"] = WING_CD
+        e["k_drag"] = WING_K_DRAG
     else:  # capsule / reaction_wheel / adapter / nose_cap
         e["mass"] = clean(volume * MASS_DENSITY[ptype])
         e["radius"] = radius
@@ -389,6 +421,11 @@ def summary_line(e):
     n = e["name"]
     if "fuel_link" in e:
         return "  %-24s virtual one-way fuel link" % n
+    if "lift_area" in e:
+        # a wing: its lift area + lift curve, and the weathervane drag it
+        # also provides (k_drag is the off-axis drag coefficient).
+        return "  %-24s S=%5s  cl=%4s  A_stall=%s  K=%3s  mass=%7s" % (
+            n, e["lift_area"], e["cl"], e["stall_angle"], e.get("k_drag", 0), e["mass"])
     if "fuel_rate" in e:
         t = 2.0 * e["fuel_rate"] * e["exhaust_velocity"]
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (

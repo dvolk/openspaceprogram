@@ -642,6 +642,22 @@
       }
     },
     {
+      "name": "wing",
+      "type": "wing",
+      "display_name": "Wing (2m)",
+      "mesh": "wing.obj",
+      "texture": "wing.png",
+      "mass": 10,
+      "radius": 1.0,
+      "height": 2.0,
+      "lift_area": 2,
+      "cl": 6.0,
+      "stall_angle": 0.35,
+      "drag_area": 2,
+      "cd": 0.04,
+      "k_drag": 0.8
+    },
+    {
       "name": "fuel_link",
       "type": "fuel_link",
       "display_name": "Fuel Link",
