@@ -317,44 +317,11 @@ void poll_events(Game &g) {
                 // survivors frozen mid-air).
                 if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
                    && !g.ship->isEva()) {
-                    // staging needs the parts in the physics world:
-                    // wake a ship parked on rails first
-                    if(g.ship->onRails) {
-                        g.ship->leaveRails();
-                        if(g.time_accel >= kRailsWarp) {
-                            g.time_accel = 1;
-                            g.toast("Staging: left the rails, warp 1x");
-                        }
-                    }
-                    // Refuse to drop a stage that still carries a crewed
-                    // capsule (the crew's `aboard` state would dangle); EVA
-                    // the crew out first. Check the parts that WOULD be
-                    // dropped (the decoupler's child side), not all parts on
-                    // the stage -- a sibling branch sharing the stage is fine.
-                    bool crewOnStage = false;
-                    for(Part *p : g.ship->droppedPartsAtStage(g.ship->activeStage())) {
-                        if(p->def == nullptr || p->def->crew_capacity <= 0) { continue; }
-                        for(size_t i = 0; i < g.ship->parts.size(); i++) {
-                            if(g.ship->parts[i] == p && !partCrew(g.ship, i).empty()) {
-                                crewOnStage = true;
-                            }
-                        }
-                    }
-                    if(crewOnStage) {
-                        // the crew is locked to the vessel: staging the
-                        // capsule would strand them (their `aboard` dangles)
-                        printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");
-                        g.toast("Cannot stage -- EVA the capsule's crew out first");
-                    } else {
-                        int dropped = g.ship->separateStage(g.ship->activeStage());
-                        g.ship->advanceStage();
-                        if(dropped > 0) {
-                            printf("Stage: dropped %d part(s); now on stage %d of %d\n",
-                                   dropped, g.ship->activeStage(), g.ship->numStages());
-                        } else {
-                            printf("Stage: nothing left to separate\n");
-                        }
-                    }
+                    // separate the active stage (one-shot; auto-repeat would
+                    // keep dropping stages). Game::stage() handles the rails
+                    // wake, the crew guard and the split -- the dropped
+                    // stages come off as separate ships (see game.cpp).
+                    g.stage();
                 }
             }
             if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {

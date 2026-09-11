@@ -824,6 +824,112 @@ void Game::undock() {
     printf("[undock] t=%.3f a=\"%s\" b=\"%s\"\n", time, a->name.c_str(), seam.name.c_str());
 }
 
+/* Stage: fire the active stage's decouplers. Each decoupler's child-side
+   subtree comes off as a SEPARATE ship (the same extractSubtreeAsShip
+   primitive undock uses -- not a delete) and is returned to the fleet, so
+   the dropped stages keep flying rather than vanishing (like KSP). The
+   survivor stays the active ship and its stage counter advances so the
+   next stage's engines light. One-shot (the SPACE handler in events.cpp).
+
+   A decoupler nested inside another's subtree on the same stage is absorbed
+   by the outer one (extracted with it), so the decouplers are fired
+   shallowest-first and a decoupler already absorbed into a previous
+   extraction (extract returns null) is skipped. */
+void Game::stage() {
+    Vehicle *a = ship;
+    if(a == nullptr || a->isEva()) { return; }
+    const int st = a->activeStage();
+
+    /* Staging needs the parts in the physics world: wake a ship parked on
+       rails first (like undock). */
+    if(a->onRails) {
+        a->leaveRails();
+        if(time_accel >= kRailsWarp) {
+            time_accel = 1;
+            toast("Staging: left the rails, warp 1x");
+        }
+    }
+
+    /* The parts that WOULD come off (the decouplers on this stage plus their
+       child-side subtrees, unioned). Refuse if any carries a crewed capsule
+       -- the crew is locked to the vessel, so EVA them out first. (The
+       survivor keeps its crew; a sibling branch sharing the stage is not in
+       this set.) */
+    const std::vector<Part *> dropped = a->droppedPartsAtStage(st);
+    bool crewOnStage = false;
+    for(Part *p : dropped) {
+        if(p->def == nullptr || p->def->crew_capacity <= 0) { continue; }
+        for(size_t i = 0; i < a->parts.size(); i++) {
+            if(a->parts[i] == p && !partCrew(a, i).empty()) { crewOnStage = true; }
+        }
+    }
+    if(crewOnStage) {
+        printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");
+        toast("Cannot stage -- EVA the capsule's crew out first");
+        return;
+    }
+
+    /* The decouplers on this stage (the roots of the dropped subtrees),
+       shallowest-first. */
+    std::vector<Part *> decs;
+    for(Part *p : dropped) { if(p->isDecoupler()) { decs.push_back(p); } }
+    if(decs.empty()) {
+        printf("Stage: nothing left to separate\n");
+        return;
+    }
+    auto depth = [&](Part *p) {
+        int d = 0;
+        while(p->parent != nullptr) { d++; p = p->parent; }
+        return d;
+    };
+    std::sort(decs.begin(), decs.end(),
+              [&](Part *x, Part *y) { return depth(x) < depth(y); });
+
+    /* De-duplicate a name against the live fleet (first keeps the bare name,
+       later ones get #2, #3 ..) -- the same rule Ships::dedupName uses,
+       inlined so the new ships register as they split. */
+    auto dedup = [&](const std::string &base) -> std::string {
+        std::string nm = base;
+        int n = 2;
+        for(;;) {
+            bool taken = false;
+            for(Vehicle *s : collectVehicles(sys)) {
+                if(s->name == nm) { taken = true; break; }
+            }
+            if(!taken) { return nm; }
+            nm = base + " #" + std::to_string(n);
+            n++;
+        }
+    };
+
+    int ships = 0, parts = 0;
+    for(Part *d : decs) {
+        /* Name: the parent ship's name, qualified by the decoupler part so
+           several ships from one staging stay distinguishable. */
+        std::string base = a->name;
+        const std::string qual =
+            d->def->display_name.empty() ? d->def->name : d->def->display_name;
+        if(!qual.empty()) { base += " " + qual; }
+        Vehicle *out = a->extractSubtreeAsShip(d, dedup(base));
+        if(out == nullptr) { continue; }   // already absorbed into an outer ship
+        out->enterWorld();
+        if(out->m_parent != nullptr) { out->m_parent->ships.push_back(out); }
+        ships++;
+        parts += (int)out->parts.size();
+    }
+    if(ships > 0) {
+        a->advanceStage();
+        /* part windows on the survivor address parts by index, which just
+           shifted -- drop them rather than dangle. */
+        dropPartWindowsFor(a);
+        printf("Stage: dropped %d ship(s) / %d part(s); now on stage %d of %d\n",
+               ships, parts, a->activeStage(), a->numStages());
+        toast("Staged -- dropped %d ship(s)", ships);
+    } else {
+        printf("Stage: nothing left to separate\n");
+    }
+}
+
 /* Remove a ship + its bookkeeping. The Vehicle dtor detaches the welds
    and unregisters the bodies (skipped when the ship is already parked on
    rails), so this is safe in any state. Refuses to remove the last ship.

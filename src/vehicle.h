@@ -256,7 +256,7 @@ public:
     /* The part frame S is anchored to: the one with no parent edge. That is
        build_ship's setRoot, and staging never drops it (a decoupler takes
        its child-side subtree, and dropping the root would drop the whole
-       ship, which separateStage refuses). */
+       ship, which staging refuses). */
     Part *rootPart() const;
 
     /* --- part state accessors -------------------------------------------
@@ -290,7 +290,7 @@ public:
        fuel groups. `from` -> `to` means fuel flows from `from`'s group to
        `to`'s group (the engine in `to`'s group can draw fuel from `from`'s
        group). Virtual -- no physics. Populated in build_ship (from the
-       def's fuel_link parts), dropped in separateStage (when either
+       def's fuel_link parts), dropped when a stage splits (when either
        endpoint is removed). */
     struct FuelLink { Part *from; Part *to; };
     std::vector<FuelLink> fuelLinks;
@@ -353,6 +353,7 @@ public:
        (exclusive). */
     float stick[3] = {0.0f, 0.0f, 0.0f};
     int slew = SlewNone;
+    glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
     /* The autopilot mode the Autopilot window has engaged (its toggle
        buttons). Persistent across ticks, unlike `slew` (cleared each tick):
        the logic tick re-applies it after clearRotCmd(), so the ship keeps
@@ -421,7 +422,7 @@ public:
        Barrier parts keep fuelGroup = -1 (they are in no group). This is the
        base undirected grouping; a fuel link, when added, will bridge groups
        one-way inside fuelPool(), leaving this the same. Recompute after
-       separateStage() -- the tree shrinks when parts drop. */
+       a stage split -- the tree shrinks when parts drop. */
     void buildFuelGroups();
 
     /* The tanks an engine may draw fuel from: the tanks in its fuel group
@@ -718,16 +719,6 @@ public:
        central tank) is untouched even though it shares a stage with the
        booster the decoupler drops. Empty if no decoupler is on that stage. */
     std::vector<Part *> droppedPartsAtStage(int stage);
-
-    /* Separate `stage`: for every decoupler on that stage, cut the weld to
-       its parent and drop the decoupler plus its child-side subtree (see
-       droppedPartsAtStage). The dropped parts are removed from the Bullet
-       world and this ship's part set and deleted; the survivors keep their
-       relative geometry (their internal welds are untouched). Refuses to
-       drop the whole ship. Returns the number of parts dropped (0 = no
-       decoupler on this stage, a no-op). Call at a tick boundary, not
-       mid-substep. */
-    int separateStage(int stage);
 
     /* --- docking ----------------------------------------------------------
 

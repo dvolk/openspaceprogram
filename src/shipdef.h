@@ -174,7 +174,7 @@ struct PartDef {
        the decoupler plus its child-side subtree (the parts attached below
        it, away from the root) are dropped -- it flies off with the stage
        like a KSP separator, not dangling under the survivor. See
-       Vehicle::separateStage. The part carries no other behavior (no thrust
+       Vehicle::extractSubtreeAsShip. The part carries no other behavior (no thrust
        / wheel / tank) -- it is the separation point. */
     bool decoupler;
 

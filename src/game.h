@@ -435,6 +435,13 @@ struct Game {
     // side's subtree is extracted into a new ship (the general
     // Vehicle::extractSubtreeAsShip primitive) and returned to the fleet.
     void undock();
+    // Stage: fire the active stage's decouplers -- each one's child-side
+    // subtree comes off as a SEPARATE ship (the same extractSubtreeAsShip
+    // primitive undock uses, not a delete) and is returned to the fleet, so
+    // the dropped stages fly off and keep coasting like KSP. Refuses a stage
+    // that still carries a crewed capsule (EVA them out first), wakes a
+    // railed ship first, and advances the survivor's stage counter.
+    void stage();
     // Remove a ship + its bookkeeping (refuses the last one; hands control
     // off if the active one is removed).
     void remove_ship(Vehicle *v);

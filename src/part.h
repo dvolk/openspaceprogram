@@ -20,7 +20,7 @@
 //
 // Ownership: Part OWNS its Body (deletes it in ~Part). The PartDef is
 // non-owning (the catalog outlives the ship). Vehicle owns the Part (deletes
-// each Part in ~Vehicle / separateStage).
+// each Part in ~Vehicle).
 
 #include "body.h"      // Body (complete type -- ~Part deletes it)
 #include "shipdef.h"   // PartDef, ResourceContent

@@ -805,7 +805,7 @@ void Vehicle::init() {
     if(parts.empty()) { return; }
     /* propellant reservoirs: seed each tank part's resources so the
        thrusters can draw from them (they shed mass as they burn). Only
-       done at construction -- separateStage() and extractSubtreeAsShip()
+       done at construction -- extractSubtreeAsShip()
        must NOT re-seed (a stage that has been burning keeps what it has
        left). */
     for(size_t i = 0; i < parts.size(); i++) {
@@ -1234,6 +1234,7 @@ void Vehicle::applyThrustForce() {
         ApplyForce(hull, partPos(p) - com, ft);
         ftotal += ft;
     }
+    lastThrustForce = ftotal;
     if(glm::length2(ftotal) < 1e-24) { return; }
     /* Same spurious-torque cancellation as applyGravity: the thrust lever
        is referenced to the hull origin, which lags the true COM during a
@@ -1594,62 +1595,6 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     return std::vector<Part *>(dropped.begin(), dropped.end());
 }
 
-int Vehicle::separateStage(int stage) {
-    std::vector<Part *> dropped = droppedPartsAtStage(stage);
-    if(dropped.empty()) { return 0; }   // no decoupler on this stage
-    if(dropped.size() == parts.size()) { return 0; }   // can't drop the whole ship
-    std::set<Part *> droppedSet(dropped.begin(), dropped.end());
-    const bool controllerDropped =
-        (controller != nullptr && droppedSet.count(controller) > 0);
-
-    /* collect the survivors FIRST (their Part* stay valid), then free the
-       dropped parts -- so no freed pointer is ever dereferenced. */
-    std::vector<Part *> keepParts;
-    for(Part *p : parts) { if(!droppedSet.count(p)) { keepParts.push_back(p); } }
-
-    parts.swap(keepParts);
-    /* The survivors keep their authored poses in the ORIGINAL frame S
-       (the root never drops -- a decoupler takes its child-side subtree),
-       so S is still well defined and rebuildCompound carries the ship's
-       pose and velocity across untouched.
-
-       Rebuild the ship's single body from the survivors BEFORE freeing
-       the dropped parts: the old compound still references their
-       collision hulls as children, and ~Part frees those. Rebuilding is
-       also what takes the dropped hulls out of the collision world, the
-       compound being the only thing registered -- a part has no rigid
-       body of its own to unregister, and nothing to un-weld. */
-    rebuildCompound();
-    for(Part *p : dropped) { delete p; }
-    /* 3b) Drop fuel links whose endpoint is in the dropped set (a link
-       touching a removed part is dangling). A Part* is stable, so the
-       surviving links keep their (still-alive) endpoints. */
-    std::vector<FuelLink> keepFuelLinks;
-    for(size_t k = 0; k < fuelLinks.size(); k++) {
-        if(droppedSet.count(fuelLinks[k].from) ||
-           droppedSet.count(fuelLinks[k].to)) { continue; }
-        keepFuelLinks.push_back(fuelLinks[k]);
-    }
-    fuelLinks.swap(keepFuelLinks);
-    /* 4) If the controller was dropped, fall back to the first survivor
-       (a Part* is stable -- no index remapping). */
-    if(controllerDropped) { controller = parts[0]; }
-    /* 5) Disarm any thrust (the split just happened). */
-    clearThrust();
-    /* 6) Recompute fuel groups. The survivors' pools are unchanged in
-       practice (the decoupler that fired was the separator, so the two
-       sides were already separate groups) -- recompute so the ids stay
-       fresh after the tree shrank. */
-    buildFuelGroups();
-    /* 7) Reset the --drain-log baseline: a rate spanning this split
-       would mix the two phases (and its mass map is about to lose the
-       dropped groups). The next drain_log call re-baselines silently,
-       so every printed rate covers one phase only. */
-    drainPrevTime_ = 0.0;
-    drainPrevMass_.clear();
-    return (int)dropped.size();
-}
-
 void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     if(B == nullptr || B == this || B->parts.empty()) { return; }
     if(portA == nullptr || !portA->isDockingPort()) { return; }
@@ -1852,6 +1797,11 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
        the rigid velocity of its COM. The caller enters it into the
        physics world (enterWorld) -- kept out so the split runs headless. */
     nv->finalize();
+    /* The new ship was never commanded: its parts left the active ship
+       mid-tick, still carrying that tick's armedThrust. Disarm them so the
+       split-off vessel coasts instead of firing its inherited thrust (the
+       survivor's own parts are disarmed by the clearThrust() above). */
+    nv->clearThrust();
     nv->placeShip(rootWorldPos, rootWorldRot);
     nv->setVelocity(vOut);
     SetAngVelocity(nv->hull, w);

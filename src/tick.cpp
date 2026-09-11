@@ -286,6 +286,15 @@ void tick(Game &g) {
                     s->applyControlForces(h);
                 }
                 physics_tick(h);
+                if(g.args.debug_accel) {
+                    for(auto *s : all) {
+                        if(s->onRails) { continue; }
+                        const glm::dvec3 v = GetVelocity(s->hull);
+                        printf("[accel] %-28s |F|=%9.0fN  v=(%8.2f,%8.2f,%8.2f) |v|=%7.2f\n",
+                               s->name.c_str(), glm::length(s->lastThrustForce),
+                               v.x, v.y, v.z, glm::length(v));
+                    }
+                }
             }
 
             /* Docking: once per tick, at the boundary, after the substeps

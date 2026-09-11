@@ -169,6 +169,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Periodically print ship position/altitude/velocity "
                  "(surface-level companion to --orbit-log)");
 
+    app.add_flag("--debug-accel", args.debug_accel,
+                 "Per-substep dump of every ship's thrust force + velocity "
+                 "(diagnosing spurious forces on dropped ships)");
+
     app.add_flag("--xfer-log", args.xfer_log,
                  "Periodically print the transfer planner's solution to "
                  "stdout (needs a target; --transfer-target selects one)");

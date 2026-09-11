@@ -52,6 +52,7 @@ struct GameArgs {
     bool orbit_log = false;
     double orbit_interval = 1.0;
     bool dbg_log = false;
+    bool debug_accel = false;   // --debug-accel: per-substep thrust/velocity dump
     bool xfer_log = false;
     bool porkchop_log = false;   // --porkchop-log: the launch-window grid min
     int porkchop_n = 40;        // --porkchop-n: the plot grid (porkchop_n x

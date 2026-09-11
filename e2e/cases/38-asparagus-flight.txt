@@ -58,11 +58,11 @@ ARGS --drain-log --fuel-log --timeout 70
 ARGS --sim-press 500,65500,T,12000,0,SPACE,24000,0,SPACE,36000,0,SPACE,48000,0,SPACE,60000,0,SPACE
 EXPECT [drainlog]
 EXPECT [fuel]
-EXPECT Stage: dropped 10 part(s); now on stage 2 of 6
-EXPECT Stage: dropped 10 part(s); now on stage 3 of 6
-EXPECT Stage: dropped 10 part(s); now on stage 4 of 6
-EXPECT Stage: dropped 6 part(s); now on stage 5 of 6
-EXPECT Stage: dropped 5 part(s); now on stage 6 of 6
+EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 2 of 6
+EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 3 of 6
+EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 4 of 6
+EXPECT Stage: dropped 1 ship(s) / 6 part(s); now on stage 5 of 6
+EXPECT Stage: dropped 1 ship(s) / 5 part(s); now on stage 6 of 6
 FORBID GL_
 FORBID error:
 # STAGE ORDER: the drops happen 1 -> 2 -> 3 -> 4 -> 5, in that order.
