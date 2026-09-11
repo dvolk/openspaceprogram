@@ -209,9 +209,10 @@ struct PartDef {
     double hull_margin;
 
     /* Aerodynamics (src/drag.h, reports/aerodynamics2026_09_11). All
-       optional, all 0 = "use the ship's global default for this term" (so a
-       part that leaves them unset keeps exactly the v1 behaviour). A part
-       sets one to override the global for itself:
+       optional. Drag terms: 0 = "use the ship's global default for that
+       term" (a part that sets none keeps exactly the v1 behaviour). Lift
+       terms: 0 = no lift (a rocket stays a rocket). A part sets one to
+       override the global for itself:
          drag_area  m^2; the part's drag cross-section. 0 = fall back to the
                     silhouette 2*radius*height (the v1 area).
          cd         the part's baseline (parasite) drag coefficient. 0 = use
@@ -219,10 +220,18 @@ struct PartDef {
          k_drag     the part's off-axis (weathervane) coefficient: the part's
                     drag grows by k* (1 - (v^nose)^2) as the ship turns off
                     its nose. 0 = use the ship's global --drag-k.
-       A lifting surface (a wing, Phase 2) will add lift_area / cl here. */
+         lift_area  m^2; the part's lift reference area. 0 = no lift (the
+                    default; a lifting surface -- a wing/fin, added with its
+                    part asset -- sets this).
+         cl         the lift-curve slope (dimensionless, per radian):
+                    CL = cl * alpha, so the lift force is q * lift_area *
+                    cl * alpha (src/drag.h liftForce). 0 = no lift. No stall
+                    clamp yet (Phase 3). */
     double drag_area;
     double cd;
     double k_drag;
+    double lift_area;
+    double cl;
 
     PartDef();
 

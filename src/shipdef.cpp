@@ -13,7 +13,8 @@ PartDef::PartDef()
       power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
-      drag_area(0.0), cd(0.0), k_drag(0.0) {
+      drag_area(0.0), cd(0.0), k_drag(0.0),
+      lift_area(0.0), cl(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -214,11 +215,13 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0,
-           which means "use the ship's global default for that term" (a part
-           that sets none keeps exactly the v1 silhouette-drag behaviour).
-           drag_area overrides the silhouette; cd / k_drag override the
-           global --drag-cd / --drag-k for this part. */
+        /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0.
+           Drag terms: 0 = "use the ship's global default for that term" (a
+           part that sets none keeps exactly the v1 silhouette-drag
+           behaviour). drag_area overrides the silhouette; cd / k_drag
+           override the global --drag-cd / --drag-k for this part. Lift
+           terms: 0 = no lift (a rocket stays a rocket); a lifting surface
+           sets lift_area and cl. */
         d.drag_area = pv.value("drag_area", 0.0);
         if(d.drag_area < 0.0) {
             throw std::runtime_error(ctx + "\"drag_area\" must be >= 0 (m^2)");
@@ -230,6 +233,14 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.k_drag = pv.value("k_drag", 0.0);
         if(d.k_drag < 0.0) {
             throw std::runtime_error(ctx + "\"k_drag\" must be >= 0");
+        }
+        d.lift_area = pv.value("lift_area", 0.0);
+        if(d.lift_area < 0.0) {
+            throw std::runtime_error(ctx + "\"lift_area\" must be >= 0 (m^2)");
+        }
+        d.cl = pv.value("cl", 0.0);
+        if(d.cl < 0.0) {
+            throw std::runtime_error(ctx + "\"cl\" must be >= 0");
         }
 
         cat.parts.push_back(d);

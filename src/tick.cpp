@@ -282,7 +282,7 @@ void tick(Game &g) {
                 for(auto *s : all) {
                     if(s->onRails) { continue; }
                     s->processGravity();
-                    s->applyAtmosphericDrag(h);
+                    s->applyAeroForce(h);
                     /* Electrical resolution BEFORE the control forces, so
                        the power gate (powered_) is current when the
                        reaction wheels are applied (a ship that runs out of
@@ -428,19 +428,26 @@ void tick(Game &g) {
             }
         }
 
-        /* --drag-log: the active ship's drag (the last substep's: altitude,
-           air density, speed, force). The "is drag actually acting?"
-           instrument -- rho>0 means the atmosphere model is live at this
-           altitude, |F|>0 means the ship is moving through the air. */
+        /* --drag-log: the active ship's aero (the last substep's: altitude,
+           air density, speed, the total force, the lift part, and the moment
+           about the COM). The "is aero actually acting?" instrument --
+           rho>0 means the atmosphere model is live at this altitude, |F|>0
+           means the ship is moving through the air, |L|>0 means a wing is
+           generating lift, |tau|>0 means the aero is torquing the ship
+           (weathervane / pitch stability). */
         if(g.args.drag_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.drag_log_last_ms >= g.orbit_log_interval_ms) {
                 g.drag_log_last_ms = now_ms;
                 const glm::dvec3 v = g.ship->GetVel();
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
-                       "|v|=%.2f m/s |F|=%.2f N  Cd=%.3f K=%.3f AoA=%.1f deg\n",
+                       "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N |tau|=%.2f Nm "
+                       "Cd=%.3f K=%.3f AoA=%.1f deg\n",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
-                       glm::length(v), glm::length(g.ship->lastDragForce),
+                       glm::length(v),
+                       glm::length(g.ship->lastAeroForce),
+                       glm::length(g.ship->lastLiftForce),
+                       glm::length(g.ship->lastAeroTorque),
                        g.ship->drag_cd, g.ship->drag_k,
                        glm::degrees(g.ship->lastDragAlpha));
                 fflush(stdout);

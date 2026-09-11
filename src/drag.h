@@ -78,7 +78,7 @@ inline double offAxisFactor(const glm::dvec3 &v_rel, const glm::dvec3 &nose) {
      F = -v̂ · ½ · rho(alt) · v² · (A0 + AK · (1 - (v̂·n̂)²))
    A0 = the parasite (attitude-independent) drag area, AK = the weathervane
    drag area (both already folded from the parts' area x coefficient -- see
-   Vehicle::aeroDragAreas). With AK = 0 this is exactly dragForce with
+   Vehicle::applyAeroForce). With AK = 0 this is exactly dragForce with
    cd·area = A0, so the v1 law is the AK = 0 special case. Zero for any
    degenerate input (no air, no speed, no area, bad nose axis). */
 inline glm::dvec3 dragForceAOA(const DragAtmosphere &a, double A0, double AK,
@@ -118,4 +118,64 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
     f.offAxis = offAxisFactor(v_rel, nose);
     f.valid = true;
     return f;
+}
+
+/* The dynamic pressure q = 0.5 · rho(alt) · |v_rel|² -- the factor common to
+   the lift and drag laws (the air's kinetic energy per unit volume). Pulled
+   out so a set of parts shares one q instead of each recomputing rho. Zero
+   for any degenerate input (no air, or at rest in the air). */
+inline double dynamicPressure(const DragAtmosphere &a, double alt,
+                              const glm::dvec3 &v_rel) {
+    const double rho = airDensity(a, alt);
+    if(rho <= 0.0) { return 0.0; }
+    return 0.5 * rho * glm::dot(v_rel, v_rel);
+}
+
+/* The lift direction: the ship's up axis (nose x right, the wing normal)
+   with its component along the flow removed -- the axis the lift acts along.
+   Lift is the aero force OUT of the relative flow, and for a wing aligned
+   with the ship that is the up axis projected perpendicular to the flow.
+   Perpendicular to v_rel by construction, and on the ship's "up" side, so a
+   section at positive AoA pushes up and one at negative AoA pushes down (the
+   sign is carried by CL, see liftForce). Zero for degenerate input. */
+inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
+                                const glm::dvec3 &right,
+                                const glm::dvec3 &nose) {
+    const double v = glm::length(v_rel);
+    if(v <= 0.0 || glm::length(nose) <= 0.0 || glm::length(right) <= 0.0) {
+        return glm::dvec3(0.0);
+    }
+    const glm::dvec3 up   = glm::cross(nose, right);   // the ship's +Y
+    const glm::dvec3 vhat = v_rel / v;
+    const glm::dvec3 l    = up - glm::dot(up, vhat) * vhat;  // up, out of flow
+    const double len = glm::length(l);
+    if(len <= 0.0) { return glm::dvec3(0.0); }
+    return l / len;
+}
+
+/* The lift force on one part:
+     L = q · S · cl · alpha · liftDir
+   q = dynamic pressure (0.5·rho·v²), S = the part's lift_area [m²], cl =
+   its lift-curve slope (dimensionless, per radian), alpha = the angle of
+   attack (rad). A symmetric section (CL0 = 0) has no lift at zero AoA; the
+   sign of the force follows alpha (negative AoA pushes down). No stall
+   clamp yet (Phase 3). Zero for any degenerate input. */
+inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
+                            const glm::dvec3 &liftDir) {
+    if(q <= 0.0 || S <= 0.0 || cl <= 0.0) { return glm::dvec3(0.0); }
+    return liftDir * (q * S * cl * alpha);
+}
+
+/* The drag on one part, given the shared flow factors (q = 0.5·rho·v²,
+   offAxis = 1-(v̂·n̂)², vhat = v̂):
+     F = -vhat · q · (area·cd + area·k·offAxis)
+   This is the per-part form of dragForceAOA with the shared factors (the
+   density, the speed, the off-axis penalty) pulled out, so a set of parts'
+   forces SUM to exactly the composite dragForceAOA -- the v1 law at AK = 0.
+   Zero for degenerate input. */
+inline glm::dvec3 partDrag(double q, const glm::dvec3 &vhat, double offAxis,
+                           double area, double cd, double k) {
+    const double a = area * cd + area * k * offAxis;
+    if(q <= 0.0 || a <= 0.0) { return glm::dvec3(0.0); }
+    return -vhat * (q * a);
 }

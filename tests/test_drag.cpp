@@ -241,6 +241,129 @@ static void test_dragForceAOA() {
                "no atmosphere -> zero");
 }
 
+static void test_liftDirection() {
+    printf("== liftDirection: the wing normal, out of the flow ==\n");
+    const glm::dvec3 right(1.0, 0.0, 0.0), nose(0.0, 0.0, 1.0);  // identity
+
+    // Prograde (flow along the nose): the lift direction is the up axis.
+    const glm::dvec3 ld0 = liftDirection(glm::dvec3(0.0, 0.0, 300.0),
+                                         right, nose);
+    CHECK_NEAR(ld0.x, 0.0, 0.0, "prograde liftDir x == 0");
+    CHECK_NEAR(ld0.y, 1.0, 1e-12, "prograde liftDir y == 1 (up)");
+    CHECK_NEAR(ld0.z, 0.0, 0.0, "prograde liftDir z == 0");
+    CHECK_NEAR(glm::length(ld0), 1.0, 1e-12, "liftDir is a unit vector");
+
+    // Always perpendicular to the flow (lift is the force OUT of the flow).
+    {
+        const glm::dvec3 v(300.0, 100.0, 200.0);
+        const glm::dvec3 ld = liftDirection(v, right, nose);
+        CHECK_TRUE(std::fabs(glm::dot(ld, v)) < 1e-9,
+                   "liftDir is perpendicular to v");
+        CHECK_NEAR(glm::length(ld), 1.0, 1e-12, "deflected liftDir is unit");
+    }
+
+    // A banked ship: the lift direction follows the (banked) up axis, not
+    // the world up. Rolled 90 deg about the nose: right=+Y, up=nose x right.
+    {
+        const glm::dvec3 right2(0.0, 1.0, 0.0), nose2(0.0, 0.0, 1.0);
+        const glm::dvec3 v(0.0, 0.0, 300.0);  // prograde for this banked ship
+        const glm::dvec3 ld2 = liftDirection(v, right2, nose2);
+        const glm::dvec3 up2 = glm::cross(nose2, right2);  // = -X
+        CHECK_NEAR(glm::length(ld2 - up2), 0.0, 1e-12,
+                   "banked liftDir follows the banked up axis");
+    }
+
+    // Degenerate inputs -> zero.
+    CHECK_TRUE(liftDirection(glm::dvec3(0.0), right, nose) == glm::dvec3(0.0),
+               "zero v -> zero");
+    CHECK_TRUE(liftDirection(glm::dvec3(0.0, 0.0, 300.0),
+                             glm::dvec3(0.0), nose) == glm::dvec3(0.0),
+               "zero right -> zero");
+    CHECK_TRUE(liftDirection(glm::dvec3(0.0, 0.0, 300.0),
+                             right, glm::dvec3(0.0)) == glm::dvec3(0.0),
+               "zero nose -> zero");
+}
+
+static void test_liftForce() {
+    printf("== liftForce: |L| = q*S*cl*alpha, sign follows alpha ==\n");
+    const glm::dvec3 liftDir(0.0, 1.0, 0.0);  // up
+    const double q = 60.0;      // dynamic pressure (Pa)
+    const double S = 4.0;       // m^2
+    const double cl = 6.0;      // per radian
+    const double alpha = 0.10;  // rad
+    const double L_expect = q * S * cl * alpha;
+
+    // Positive AoA: the lift is along liftDir, the right magnitude.
+    const glm::dvec3 L = liftForce(q, S, cl, alpha, liftDir);
+    CHECK_NEAR(L.y, L_expect, 1e-12, "|L| == q*S*cl*alpha (positive AoA)");
+    CHECK_NEAR(L.x, 0.0, 0.0, "lift has no x component");
+    CHECK_NEAR(L.z, 0.0, 0.0, "lift has no z component");
+
+    // Negative AoA: the same magnitude, opposite direction (down).
+    const glm::dvec3 Ln = liftForce(q, S, cl, -alpha, liftDir);
+    CHECK_NEAR(Ln.y, -L_expect, 1e-12, "negative AoA pushes down");
+
+    // Zero AoA: a symmetric section (CL0 = 0) generates no lift.
+    CHECK_TRUE(liftForce(q, S, cl, 0.0, liftDir) == glm::dvec3(0.0),
+               "zero AoA -> zero lift");
+
+    // Degenerate inputs -> zero.
+    CHECK_TRUE(liftForce(0.0, S, cl, alpha, liftDir) == glm::dvec3(0.0),
+               "no dynamic pressure -> zero");
+    CHECK_TRUE(liftForce(q, 0.0, cl, alpha, liftDir) == glm::dvec3(0.0),
+               "no lift area -> zero");
+    CHECK_TRUE(liftForce(q, S, 0.0, alpha, liftDir) == glm::dvec3(0.0),
+               "no cl (a rocket) -> zero");
+}
+
+static void test_partDrag() {
+    printf("== partDrag: per-part, sums to the composite dragForceAOA ==\n");
+    const DragAtmosphere a { 1.225, 5500.0 };
+    const double alt = 100.0;
+    const glm::dvec3 vrel(200.0, 50.0, 300.0);
+    const glm::dvec3 nose(0.0, 0.0, 1.0);
+    const double q = dynamicPressure(a, alt, vrel);
+    const double offAxis = offAxisFactor(vrel, nose);
+    const glm::dvec3 vhat = glm::normalize(vrel);
+
+    // Two parts: the per-part drags sum to the composite (same area x cd and
+    // area x k) -- so the v1 law is preserved, just distributed per part.
+    {
+        const double area1 = 2.0, cd1 = 1.0, k1 = 0.5;
+        const double area2 = 3.0, cd2 = 2.0, k2 = 1.0;
+        const glm::dvec3 fsum =
+            partDrag(q, vhat, offAxis, area1, cd1, k1) +
+            partDrag(q, vhat, offAxis, area2, cd2, k2);
+        const double A0 = area1 * cd1 + area2 * cd2;
+        const double AK = area1 * k1 + area2 * k2;
+        const glm::dvec3 fcomp = dragForceAOA(a, A0, AK, alt, vrel, nose);
+        CHECK_TRUE(glm::length(fsum - fcomp) < 1e-9,
+                   "sum of partDrag == composite dragForceAOA");
+    }
+
+    // A single part with k = 0 is exactly the v1 dragForce (cd * area).
+    {
+        const double area = 4.0, cd = 1.2;
+        const glm::dvec3 f = partDrag(q, vhat, offAxis, area, cd, 0.0);
+        const glm::dvec3 f_v1 = dragForce(a, cd, area, alt, vrel);
+        CHECK_TRUE(glm::length(f - f_v1) < 1e-9, "k=0 part == v1 dragForce");
+    }
+
+    // Opposite the flow, always (for any off-axis factor).
+    {
+        const glm::dvec3 f = partDrag(q, vhat, offAxis, 4.0, 1.2, 1.0);
+        CHECK_TRUE(glm::dot(f, vrel) < 0.0, "partDrag opposes v");
+        CHECK_TRUE(glm::length(glm::cross(f, vrel)) < 1e-6 * glm::length(f),
+                   "partDrag anti-parallel to v");
+    }
+
+    // Degenerate inputs -> zero.
+    CHECK_TRUE(partDrag(0.0, vhat, offAxis, 4.0, 1.2, 1.0) == glm::dvec3(0.0),
+               "no q -> zero");
+    CHECK_TRUE(partDrag(q, vhat, offAxis, 0.0, 1.2, 1.0) == glm::dvec3(0.0),
+               "no area -> zero");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -251,6 +374,12 @@ int main() {
     test_aeroFrame();
     printf("\n");
     test_dragForceAOA();
+    printf("\n");
+    test_liftDirection();
+    printf("\n");
+    test_liftForce();
+    printf("\n");
+    test_partDrag();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

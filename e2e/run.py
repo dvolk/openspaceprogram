@@ -114,7 +114,10 @@ DRAINLOG_RE = re.compile(
 )
 DRAG_RE = re.compile(
     r"\[drag\]\s+t=([\d.]+)s\s+alt=([-\d.]+) m\s+rho=([-\d.e+]+) kg/m3\s+"
-    r"\|v\|=([-\d.]+) m/s\s+\|F\|=([-\d.]+) N\s+Cd=([-\d.]+)"
+    r"\|v\|=([-\d.]+) m/s\s+\|F\|=([-\d.]+) N"
+    r"(?:\s+\|L\|=([-\d.]+) N)?"
+    r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
+    r"\s+Cd=([-\d.]+)"
     r"(?:\s+K=([-\d.]+))?(?:\s+AoA=([-\d.e+]+) deg)?"
 )
 DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
@@ -326,11 +329,15 @@ def parse_drainlog(out):
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
-        (t, alt, rho, v, F, cd, k, aoa) = m.groups()
+        (t, alt, rho, v, F, L, tau, cd, k, aoa) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
         }
+        if L is not None:
+            row["L"] = float(L)
+        if tau is not None:
+            row["tau"] = float(tau)
         if k is not None:
             row["k"] = float(k)
         if aoa is not None:
