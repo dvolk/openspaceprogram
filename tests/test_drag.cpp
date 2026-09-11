@@ -422,6 +422,57 @@ static void test_partDrag() {
                "no area -> zero");
 }
 
+static void test_controlForce() {
+    printf("== controlForce: the deflection-driven steering force ==\n");
+    const double q = 100.0;  // dynamic pressure
+    const double S = 2.0;    // control area
+    const double cl = 6.0;   // deflection effectiveness (per radian)
+    const glm::dvec3 dir(0.0, 1.0, 0.0);  // force direction (the up axis)
+
+    // Linear in the deflection: double the deflection -> double the force.
+    {
+        const glm::dvec3 f1 = controlForce(q, S, cl, 0.10, dir);
+        const glm::dvec3 f2 = controlForce(q, S, cl, 0.20, dir);
+        CHECK_TRUE(glm::length(f2 - 2.0 * f1) < 1e-9, "linear in delta");
+        CHECK_TRUE(glm::length(f1) == q * S * cl * 0.10, "magnitude = q*S*cl*delta");
+    }
+
+    // The sign follows the deflection (symmetric, like a symmetric section).
+    {
+        const glm::dvec3 fpos = controlForce(q, S, cl, +0.10, dir);
+        const glm::dvec3 fneg = controlForce(q, S, cl, -0.10, dir);
+        CHECK_TRUE(glm::length(fpos + fneg) < 1e-9, "odd in delta");
+        CHECK_TRUE(glm::dot(fpos, dir) > 0.0, "positive delta -> +dir");
+        CHECK_TRUE(glm::dot(fneg, dir) < 0.0, "negative delta -> -dir");
+    }
+
+    // The force is exactly along `dir` (no lateral component).
+    {
+        const glm::dvec3 f = controlForce(q, S, cl, 0.15, dir);
+        CHECK_TRUE(glm::length(glm::cross(f, dir)) < 1e-6 * glm::length(f),
+                   "parallel to dir");
+    }
+
+    // Scales with q, area, and cl (each linearly).
+    {
+        CHECK_TRUE(glm::length(controlForce(2.0*q, S, cl, 0.1, dir))
+                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir)),
+                   "linear in q");
+        CHECK_TRUE(glm::length(controlForce(q, 2.0*S, cl, 0.1, dir))
+                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir)),
+                   "linear in area");
+        CHECK_TRUE(glm::length(controlForce(q, S, 2.0*cl, 0.1, dir))
+                   == 2.0 * glm::length(controlForce(q, S, cl, 0.1, dir)),
+                   "linear in cl");
+    }
+
+    // Degenerate inputs -> zero (no air, no area, no effectiveness, no deflection).
+    CHECK_TRUE(controlForce(0.0, S, cl, 0.1, dir) == glm::dvec3(0.0), "no q -> zero");
+    CHECK_TRUE(controlForce(q, 0.0, cl, 0.1, dir) == glm::dvec3(0.0), "no area -> zero");
+    CHECK_TRUE(controlForce(q, S, 0.0, 0.1, dir) == glm::dvec3(0.0), "no cl -> zero");
+    CHECK_TRUE(controlForce(q, S, cl, 0.0, dir) == glm::dvec3(0.0), "no delta -> zero");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -440,6 +491,8 @@ int main() {
     test_liftCurve();
     printf("\n");
     test_partDrag();
+    printf("\n");
+    test_controlForce();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

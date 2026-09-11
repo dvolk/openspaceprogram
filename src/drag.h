@@ -212,3 +212,27 @@ inline glm::dvec3 partDrag(double q, const glm::dvec3 &vhat, double offAxis,
     if(q <= 0.0 || a <= 0.0) { return glm::dvec3(0.0); }
     return -vhat * (q * a);
 }
+
+/* The force on one DEFLECTED control surface (an elevator / rudder /
+   aileron): the lift law with the DEFLECTION in place of the angle of
+   attack --
+     F = q · S · cl · delta
+   where S is the control area, cl is the deflection effectiveness (per
+   radian, the lift-curve slope of the surface), and delta is the deflection
+   (rad, driven by the player's control input and bounded by the surface's
+   max_deflection). It is LINEAR (no stall) -- a control surface is steered
+   by how far it is deflected, not by an AoA limit, and its deflection is
+   bounded by its travel (max_deflection), not by flow separation. The sign
+   follows delta (deflected one way pushes the ship one way, the other way
+   the opposite -- symmetric, like a symmetric section).
+
+   The steering moment about the COM is NOT here: it comes from applying
+   this force AT the surface's position (see Vehicle::applyAeroForce), so a
+   surface's leverage is its distance from the COM -- a tail behind the CG
+   pitches/yaws the ship, a canard ahead pitches it the other way. Zero for
+   any degenerate input (no air, no speed, no area, no deflection). */
+inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
+                               const glm::dvec3 &dir) {
+    if(q <= 0.0 || S <= 0.0 || cl <= 0.0 || delta == 0.0) { return glm::dvec3(0.0); }
+    return dir * (q * S * cl * delta);
+}

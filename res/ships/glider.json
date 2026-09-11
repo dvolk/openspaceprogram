@@ -6,6 +6,8 @@
     { "part": "fuel_tank", "id": "fuel_tank_1", "parent": "reaction_wheel_1" },
     { "part": "engine", "id": "engine_1", "parent": "fuel_tank_1" },
     { "part": "wing", "id": "wing_1", "parent": "fuel_tank_1", "attach": "radial", "angle": 0 },
-    { "part": "wing", "id": "wing_2", "parent": "fuel_tank_1", "attach": "radial", "angle": 180 }
+    { "part": "wing", "id": "wing_2", "parent": "fuel_tank_1", "attach": "radial", "angle": 180 },
+    { "part": "rudder", "id": "rudder_1", "parent": "engine_1", "attach": "radial", "angle": 90 },
+    { "part": "rudder", "id": "rudder_2", "parent": "engine_1", "attach": "radial", "angle": 270 }
   ]
 }

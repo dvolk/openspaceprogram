@@ -1353,6 +1353,45 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         ftotal += fi;
         lift_total += flift;
     }
+
+    // Control surfaces (deflection-driven steering authority): the air gives
+    // a deflected surface its leverage, so the force is the lift law with the
+    // deflection in place of the AoA (controlForce) -- LINEAR (no stall),
+    // bounded by the surface's travel (max_deflection). The player's pitch
+    // (W/S) and yaw (A/D) inputs deflect each surface; the steering moment
+    // about the COM comes from the surface's OFFSET (a tail behind the CG
+    // pitches/yaws the ship, a canard ahead pitches it the other way). Zero
+    // in vacuum (q = 0) and at rest (returned above). `stick` is the ship's
+    // control input (W/S pitch, A/D yaw), set by Command (see vehicle.h).
+    if(stick[1] != 0.0f || stick[2] != 0.0f) {
+        // The yaw-plane force direction: the ship's right axis out of the
+        // flow (mirrors liftDirection for the pitch plane).
+        const glm::dvec3 yawDirRaw = right - glm::dot(right, vhat) * vhat;
+        const double yawLen = glm::length(yawDirRaw);
+        const glm::dvec3 yawDir = (yawLen > 0.0) ? yawDirRaw / yawLen
+                                                 : glm::dvec3(0.0);
+        for(Part *p : parts) {
+            if(p->def == nullptr) { continue; }
+            const PartDef *d = p->def;
+            if(d->control_area <= 0.0 || d->cl <= 0.0
+               || d->max_deflection <= 0.0) { continue; }
+            glm::dvec3 F = glm::dvec3(0.0);
+            if(stick[1] != 0.0f) {  // pitch (W/S) -> force in the pitch plane
+                F += controlForce(q, d->control_area, d->cl,
+                                  (double)stick[1] * d->max_deflection, liftDir);
+            }
+            if(stick[2] != 0.0f) {  // yaw (A/D) -> force in the yaw plane
+                F += controlForce(q, d->control_area, d->cl,
+                                  (double)stick[2] * d->max_deflection, yawDir);
+            }
+            if(glm::length2(F) <= 0.0) { continue; }
+            const glm::dvec3 ri = partPos(p) - com;
+            ApplyForce(hull, ri, F);
+            ftotal += F;
+            moment += glm::cross(ri, F);
+        }
+    }
+
     lastAeroForce = ftotal;
     lastLiftForce = lift_total;
     lastAeroTorque = moment;

@@ -140,6 +140,18 @@ WING_STALL_ANGLE   = 0.35     # rad (~20 deg), where lift peaks + the flow stall
 WING_CD            = 0.04     # parasite drag coefficient (a thin wing, prograde)
 WING_K_DRAG        = 0.8      # weathervane drag coefficient (off-axis area)
 
+# rudder (a control surface): a deflection-driven steering surface (an
+# elevator / rudder). Reuses the wing mesh (a flat plate) + texture. The
+# control_area is the planform area = radius * height; cl is the deflection
+# effectiveness (per radian, the same thin-airfoil 2*pi as the wing's
+# lift-curve slope); max_deflection is the travel limit (rad). cd / k_drag
+# are the parasite + weathervane drag coefficients (a thin plate).
+RUDDER_DENSITY        = 50.0  # kg/m^3, control-surface structure (skin + spars)
+RUDDER_CL             = 6.0   # deflection effectiveness (per radian)
+RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
+RUDDER_CD             = 0.04  # parasite drag coefficient (a thin plate, prograde)
+RUDDER_K_DRAG         = 0.8   # weathervane drag coefficient (off-axis area)
+
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual: mesh/texture are None and generate() skips the
 # geometry step for it.
@@ -208,6 +220,9 @@ PARTS = [
     # a wing: a lifting surface (delta wing, wing.obj by gen_wing.py). Adds
     # lift + a weathervane drag to a ship (see the WING_* constants).
     ("wing",             "wing",           "wing.obj",                     "wing.png"),
+    # a rudder: a control surface (deflection-driven steering authority).
+    # Reuses the wing mesh (a flat plate) + texture (see the RUDDER_* const).
+    ("rudder",           "rudder",         "wing.obj",                     "wing.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -279,6 +294,7 @@ DISPLAY_BASE = {
     "nose_cap":       "Nose Cap",
     "kerbal":         "Kerbal",
     "wing":           "Wing",
+    "rudder":         "Rudder",
     "fuel_link":      "Fuel Link",
 }
 
@@ -396,6 +412,21 @@ def generate(name, ptype, mesh, texture):
         e["drag_area"] = clean(radius * height)
         e["cd"] = WING_CD
         e["k_drag"] = WING_K_DRAG
+    elif ptype == "rudder":
+        # a control surface: the plate's area (radius * height) is its
+        # CONTROL area. The deflection effectiveness (cl) and travel limit
+        # (max_deflection) are declared constants (not geometry-derived);
+        # the weathervane drag (k_drag) turns the flat plate into an
+        # off-axis drag area, the same way the wing does.
+        e["mass"] = clean(volume * RUDDER_DENSITY)
+        e["radius"] = radius
+        e["height"] = height
+        e["control_area"] = clean(radius * height)
+        e["cl"] = RUDDER_CL
+        e["max_deflection"] = RUDDER_MAX_DEFLECTION
+        e["drag_area"] = clean(radius * height)
+        e["cd"] = RUDDER_CD
+        e["k_drag"] = RUDDER_K_DRAG
     else:  # capsule / reaction_wheel / adapter / nose_cap
         e["mass"] = clean(volume * MASS_DENSITY[ptype])
         e["radius"] = radius
@@ -426,6 +457,11 @@ def summary_line(e):
         # also provides (k_drag is the off-axis drag coefficient).
         return "  %-24s S=%5s  cl=%4s  A_stall=%s  K=%3s  mass=%7s" % (
             n, e["lift_area"], e["cl"], e["stall_angle"], e.get("k_drag", 0), e["mass"])
+    if "control_area" in e:
+        # a control surface: its control area + deflection effectiveness,
+        # and the weathervane drag it also provides.
+        return "  %-24s S=%5s  cl=%4s  delta_max=%s  K=%3s  mass=%7s" % (
+            n, e["control_area"], e["cl"], e["max_deflection"], e.get("k_drag", 0), e["mass"])
     if "fuel_rate" in e:
         t = 2.0 * e["fuel_rate"] * e["exhaust_velocity"]
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (

@@ -231,13 +231,30 @@ struct PartDef {
                     it, then drops to zero by 2 * stall_angle (src/drag.h
                     liftCurve). 0 = no stall (pure linear, the Phase 2 law).
                     The peak CL is cl * stall_angle. A lifting surface sets
-                    it (a wing/fin, with its part asset). */
+                    it (a wing/fin, with its part asset).
+   Control surfaces (deflection-driven steering authority): 0 = no control
+   surface (the default; a control surface -- a rudder/elevator, added with
+   its part asset -- sets these). The force is the lift law with the
+   deflection in place of the angle of attack (src/drag.h controlForce):
+         control_area  m^2; the part's control reference area. 0 = none.
+         cl            the deflection effectiveness (per radian). REUSES the
+                       same `cl` as the lift-curve slope above -- a part is a
+                       lifting surface when lift_area > 0, a control surface
+                       when control_area > 0 (or both).
+         max_deflection rad; the surface's travel limit (the deflection is
+                       bounded by the player input x this). 0 = none.
+   The steering moment about the COM comes from the surface's POSITION
+   (Vehicle::applyAeroForce): a tail behind the CG pitches/yaws the ship, a
+   canard ahead pitches it the other way. Air gives the authority --
+   zero in vacuum. */
     double drag_area;
     double cd;
     double k_drag;
     double lift_area;
     double cl;
     double stall_angle;
+    double control_area;
+    double max_deflection;
 
     PartDef();
 
