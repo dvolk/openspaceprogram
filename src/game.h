@@ -148,7 +148,7 @@ struct Game {
     int cam_speed = 1;
 
     // --- the clock ----------------------------------------------------------
-    int time_accel = 0;
+    int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
 
     // --- one-shot on-screen messages (gameui.cpp draws the last N) ----------

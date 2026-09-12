@@ -86,7 +86,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->check(CLI::IsMember({"near", "approach"}));
 
     app.add_option("-t,--time-accel", args.initial_time_accel,
-                   "Initial time acceleration (0 = paused, default 0)")
+                   "Initial time acceleration (0 = paused, default 1)")
         ->check(CLI::NonNegativeNumber);
 
     app.add_option("--start-time", args.start_time,
