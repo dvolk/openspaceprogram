@@ -32,12 +32,10 @@ static bool near(double a, double b, double eps) {
     return std::fabs(a - b) <= eps;
 }
 
-// A hull body at xform. The test owns `shape` (the Body deletes its model
-// + btBody but not the shape -- physics.cpp manages hulls the same way);
-// delete both at the end of each case.
+// A hull body at xform. The Body owns the shape (its dtor frees it, after
+// the btBody that points at it), so the case only deletes the Body.
 static Body *makeBody(btCollisionShape *shape, const glm::dmat4 &xf) {
     Body *b = new Body;
-    b->model = nullptr;
     b->mass = 1.0;
     // (this Bullet's btQuaternion has no matrix ctor; the project's own
     // idiom is basis -> getRotation -> btTransform(q, origin))

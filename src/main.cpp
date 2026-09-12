@@ -32,7 +32,6 @@
 #include "mesh.h"
 #include "shader.h"
 #include "camera.h"
-#include "model.h"
 #include "body.h"
 #include "physics.h"
 #include "gldebug.h"
@@ -132,55 +131,49 @@ int main(int argc, char **argv)
     create_physics();
     check_gl_error();
 
-    /* data init */
-    Shader *partsshader = new Shader;
-    partsshader->registerAttribs({ "position", "uv", "normal" });
-    partsshader->registerUniforms({ "MVP", "Normal", "lightDirection", "shadow" });
-    partsshader->FromFile("./res/partsShader");
+    /* data init (the get_shader registry owns these: compiled once,
+       shared, never deleted) */
+    Shader *partsshader = get_shader("./res/partsShader",
+                                     { "position", "uv", "normal" },
+                                     { "MVP", "Normal", "lightDirection", "shadow" });
 
-    Shader *terrainshader = new Shader;
-    terrainshader->registerAttribs({ "position", "normal", "color" });
-    terrainshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
-    terrainshader->FromFile("./res/terrainShader");
+    Shader *terrainshader = get_shader("./res/terrainShader",
+                                       { "position", "normal", "color" },
+                                       { "MVP", "Normal", "lightDirection", "color" });
 
-    Shader *sunshader = new Shader;
-    sunshader->registerAttribs({ "position", "normal", "color" });
-    sunshader->registerUniforms({ "MVP", "Normal", "lightDirection", "color" });
-    sunshader->FromFile("./res/sunShader");
+    Shader *sunshader = get_shader("./res/sunShader",
+                                   { "position", "normal", "color" },
+                                   { "MVP", "Normal", "lightDirection", "color" });
 
     // Atmosphere shell: Fresnel limb glow from orbit, interior sky dome
     // from the surface (the `inside` flag). See reports/atmosphere2026_08_25.
-    Shader *atmosphereshader = new Shader;
-    atmosphereshader->registerAttribs({ "position", "normal" });
-    atmosphereshader->registerUniforms({ "MVP", "Normal", "cameraPos",
-                                         "color", "intensity", "power",
-                                         "lightDirection", "inside",
-                                         "planetCenter" });
-    atmosphereshader->FromFile("./res/atmosphereShader");
+    Shader *atmosphereshader = get_shader("./res/atmosphereShader",
+                                          { "position", "normal" },
+                                          { "MVP", "Normal", "cameraPos",
+                                            "color", "intensity", "power",
+                                            "lightDirection", "inside",
+                                            "planetCenter" });
 
     // Cloud deck: a shell between the terrain and the atmosphere rim --
     // a solid ceiling from below, a textured disc from orbit. Coverage
     // is baked (BuildClouds) into a per-body equirectangular map -- on
     // the job worker, so startup doesn't pay for it; the shader is one
     // texture fetch + lighting.
-    Shader *cloudshader = new Shader;
     // "uvParam" binds the mesh's color slot (attrib location 2): the
     // unwrapped sphere params the deck UV is built from.
-    cloudshader->registerAttribs({ "position", "normal", "uvParam" });
-    cloudshader->registerUniforms({ "MVP", "Normal", "cameraPos", "color",
-                                    "lightDirection", "drift", "planetCenter",
-                                    "coverage_tex" });
-    cloudshader->FromFile("./res/cloudShader");
+    Shader *cloudshader = get_shader("./res/cloudShader",
+                                     { "position", "normal", "uvParam" },
+                                     { "MVP", "Normal", "cameraPos", "color",
+                                       "lightDirection", "drift", "planetCenter",
+                                       "coverage_tex" });
 
-    Shader *skyboxshader = new Shader;
-    skyboxshader->registerAttribs({ "position" });
-    skyboxshader->registerUniforms({ "projectionview" });
-    skyboxshader->FromFile("./res/skyboxShader");
+    Shader *skyboxshader = get_shader("./res/skyboxShader",
+                                      { "position" },
+                                      { "projectionview" });
 
-    Shader *lineshader = new Shader;
-    lineshader->registerAttribs({ "position" });
-    lineshader->registerUniforms({ "MVP", "color" });
-    lineshader->FromFile("./res/lineShader2");
+    Shader *lineshader = get_shader("./res/lineShader2",
+                                    { "position" },
+                                    { "MVP", "color" });
 
     PostFX *postfx = new PostFX;
     // Create every built-in effect up front (no mid-frame shader
@@ -367,26 +360,22 @@ int main(int argc, char **argv)
         }
     }
 
-    Mesh *engine_plume_mesh = new Mesh;
-    engine_plume_mesh->FromFile("./res/engine_plume.obj", false);
-    Texture *engine_plume_texture = load_texture("res/engine_plume.png");
-    Model *engine_plume_model = new Model;
-    engine_plume_model->FromData(engine_plume_mesh, partsshader, engine_plume_texture);
+    Mesh *engine_plume_mesh = get_mesh("./res/engine_plume.obj");
+    Texture *engine_plume_texture = get_texture("res/engine_plume.png");
 
-    Shader *billboardshader = new Shader;
-    billboardshader->registerAttribs({ "position", "texcoord", "normal" });
-    billboardshader->registerUniforms({ "MVP", "color_uniform" });
-    billboardshader->FromFile("./res/billboardshader");
+    Shader *billboardshader = get_shader("./res/billboardshader",
+                                         { "position", "texcoord", "normal" },
+                                         { "MVP", "color_uniform" });
 
     // Billboard icons opt out of mip chains: their alpha cutouts bleed
     // into the neighbouring level when minified.
-    Texture * front_indicator_texture = load_texture("res/front_crosshair.png", false);
-    Texture * prograde_indicator_texture = load_texture("res/prograde_icon.png", false);
-    Texture * retrograde_indicator_texture = load_texture("res/retrograde_icon.png", false);
-    Texture * radial_in_indicator_texture = load_texture("res/radial_in_icon.png", false);
-    Texture * radial_out_indicator_texture = load_texture("res/radial_out_icon.png", false);
-    Texture * normal_plus_indicator_texture = load_texture("res/normal_plus_icon.png", false);
-    Texture * normal_minus_indicator_texture = load_texture("res/normal_minus_icon.png", false);
+    Texture * front_indicator_texture = get_texture("res/front_crosshair.png", false);
+    Texture * prograde_indicator_texture = get_texture("res/prograde_icon.png", false);
+    Texture * retrograde_indicator_texture = get_texture("res/retrograde_icon.png", false);
+    Texture * radial_in_indicator_texture = get_texture("res/radial_in_icon.png", false);
+    Texture * radial_out_indicator_texture = get_texture("res/radial_out_icon.png", false);
+    Texture * normal_plus_indicator_texture = get_texture("res/normal_plus_icon.png", false);
+    Texture * normal_minus_indicator_texture = get_texture("res/normal_minus_icon.png", false);
 
     glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0); // TODO should these be different colors?
 
@@ -530,12 +519,13 @@ int main(int argc, char **argv)
         skyline_xy->InitMesh(xyinterface);
     }
 
-    // Hand the render resources to the game (render.cpp draws with them;
-    // main still owns their lifetime, the teardown below).
+    // Hand the render resources to the game (render.cpp draws with them).
     game.skybox = &skybox;
     game.skyboxshader = skyboxshader;
     game.lineshader = lineshader;
-    game.engine_plume_model = engine_plume_model;
+    game.partsshader = partsshader;
+    game.engine_plume_mesh = engine_plume_mesh;
+    game.engine_plume_texture = engine_plume_texture;
     game.skyline_xz = skyline_xz;
     game.skyline_xy = skyline_xy;
     game.front_indicator = front_indicator;
@@ -889,25 +879,21 @@ int main(int argc, char **argv)
 
     for(auto&& body : sys.bodies) { delete body; }
 
-    delete partsshader;
-    delete sunshader;
-    delete terrainshader;
-    delete atmosphereshader;
-    delete cloudshader;
-    delete billboardshader;
-    delete skyboxshader;
-    delete postfx;
+    // The shaders + textures + plume mesh are registry-owned (get_*):
+    // they outlive this scope on purpose (shared assets, reclaimed by the
+    // GL context teardown) and must NOT be deleted here.
+    delete postfx;   // owns its own per-effect shaders (unique programs)
 
     delete front_indicator;
     delete prograde_indicator;
     delete retrograde_indicator;
+    delete radial_in_indicator;
+    delete radial_out_indicator;
+    delete normal_plus_indicator;
+    delete normal_minus_indicator;
     delete burn_indicator;
     delete relvel_indicator;
     delete relvel_retro_indicator;
-
-    delete front_indicator_texture;
-    delete prograde_indicator_texture;
-    delete retrograde_indicator_texture;
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();

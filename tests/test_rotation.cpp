@@ -323,7 +323,6 @@ static void test_inertia_and_angvel_readers() {
         btRigidBody *rb = new btRigidBody(ci);
 
         Body b;
-        b.model = nullptr;   // no GL model in a headless test
         b.btBody = rb;
         b.shape = rb->getCollisionShape();   // Body owns its hull now
         b.mass = m0;

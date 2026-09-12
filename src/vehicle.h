@@ -149,7 +149,8 @@ public:
        directly: the ship's mass follows from the parts, through
        rebuildCompound. hull->btBody is the rigid body
        and hull->shape the compound, and hull OWNS both, so nothing else frees
-       them. hull->model is null: the ship is drawn part by part. */
+       them. hull's render assets (mesh/shader/texture) are null: the ship
+       is drawn part by part. */
     Body *hull = nullptr;
     btTransform principal = btTransform::getIdentity();
     /* the parts in the compound, in child-index order. A child index is

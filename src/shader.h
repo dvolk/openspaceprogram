@@ -7,8 +7,20 @@
 #include <glm/glm.hpp>
 
 class Camera;
+class Shader;
 
 std::string LoadShader(const std::string& fileName);
+
+/* Shared file-asset registry (shader.cpp): lookup-or-load, ONE program per
+   file, so a shader is compiled once no matter how many systems use it.
+   The registry owns the Shader (lives until process exit), so callers must
+   never delete it. The attrib/uniform registration is part of the load
+   (FromFile binds attribs and resolves uniform locations), so it is passed
+   here and done exactly once -- every caller of one file must pass the
+   same lists (they do: each shader file is used by one system). */
+Shader *get_shader(const std::string &path,
+                   const std::vector<const char *> &attribs,
+                   const std::vector<const char *> &uniforms);
 
 class Shader
 {
@@ -22,6 +34,13 @@ public:
 
     void registerAttribs(std::vector<const char *> names);
     void registerUniforms(std::vector<const char *> names);
+
+    /* true if (attribs, uniforms) is elementwise identical to the lists
+       this Shader was registered with -- get_shader's cache-hit guard:
+       uniform indices are positional, so a second caller with a different
+       list would silently address the wrong uniforms. */
+    bool registeredAs(const std::vector<const char *> &attribs,
+                      const std::vector<const char *> &uniforms) const;
 
     void setUniform_i(int index, int v);
     void setUniform_vec1(int index, float v);

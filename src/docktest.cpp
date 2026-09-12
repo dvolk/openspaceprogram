@@ -18,10 +18,9 @@
 #include <stdexcept>
 
 #include "body.h"     // create_part_body
-#include "mesh.h"     // Mesh
-#include "model.h"    // Model
+#include "mesh.h"     // get_mesh
 #include "physics.h"  // GetVelocity
-#include "texture.h"  // load_texture
+#include "texture.h"  // get_texture
 
 DockTestShips build_dock_test_ships(const std::string &mode,
                                     bool scenario_given,
@@ -59,16 +58,13 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     const ScenarioDef *sc = scenario_by_name(
         scenario_given ? scenario : "rot-orbit");
 
-    /* One Part (a rigid body + render model wrapped with its catalog spec),
-       exactly the radialtest builder's makePart. */
+    /* One Part (shared render assets + hull + mass, wrapped with the
+       catalog spec), exactly the radialtest builder's makePart. */
     auto makePart = [&](const PartDef *def) -> Part * {
-        Mesh *mesh = new Mesh;
-        mesh->FromFile((std::string("./res/") + def->mesh).c_str(), true);
-        Model *model = new Model;
-        model->FromData(mesh, partsshader,
-                        load_texture((std::string("./res/") + def->texture).c_str()));
-        model->hull_margin = def->hull_margin;
-        Body *b = create_part_body(model, (float)def->mass);
+        Mesh *mesh = get_mesh(std::string("./res/") + def->mesh);
+        Texture *tex = get_texture(std::string("./res/") + def->texture);
+        Body *b = create_part_body(mesh, partsshader, tex, (float)def->mass,
+                                   def->hull_margin);
         Part *p = new Part;
         p->body  = b;
         p->def   = def;

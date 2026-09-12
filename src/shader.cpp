@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <map>
 #include "shader.h"
 #include "gldebug.h"
 #include "camera.h"
@@ -95,6 +96,21 @@ void Shader::registerUniforms(std::vector<const char *> names) {
     for(unsigned int i = 0; i < names.size(); i++) {
         uniformNames.push_back(names[i]);
     }
+}
+
+bool Shader::registeredAs(const std::vector<const char *> &attribs,
+                          const std::vector<const char *> &uniforms) const {
+    if(attribs.size() != attribNames.size() ||
+       uniforms.size() != uniformNames.size()) {
+        return false;
+    }
+    for(size_t i = 0; i < attribs.size(); i++) {
+        if(strcmp(attribs[i], attribNames[i]) != 0) { return false; }
+    }
+    for(size_t i = 0; i < uniforms.size(); i++) {
+        if(strcmp(uniforms[i], uniformNames[i]) != 0) { return false; }
+    }
+    return true;
 }
 
 // A registered-but-optimized-out uniform has location GL_INVALID_INDEX;
@@ -236,4 +252,52 @@ GLuint Shader::CreateShader(const std::string& text, unsigned int type)
     CheckShaderError(shader, GL_COMPILE_STATUS, false, "Error compiling shader!");
 
     return shader;
+}
+
+/* --- the shared file-shader registry (see shader.h) ----------------------
+   One program per file, compiled once. The map lives until process exit;
+   the GL context teardown reclaims the programs. Main-thread only, so no
+   lock. (The postfx effects keep using FromFile directly: each one is a
+   UNIQUE program -- same vertex file, different fragment -- so there is
+   nothing to share there.) */
+static std::map<std::string, Shader *> s_shaders;
+
+static std::string asset_key(const std::string &path) {
+    if(path.compare(0, 2, "./") == 0) { return path.substr(2); }
+    return path;
+}
+
+Shader *get_shader(const std::string &path,
+                   const std::vector<const char *> &attribs,
+                   const std::vector<const char *> &uniforms) {
+    std::string key = asset_key(path);
+    std::map<std::string, Shader *>::iterator it = s_shaders.find(key);
+    if(it != s_shaders.end()) {
+        Shader *s = it->second;
+        // The registration is fixed at first load; a second caller with a
+        // DIFFERENT list would silently mis-address the positional uniforms,
+        // so fail loudly instead of returning it.
+        if(!s->registeredAs(attribs, uniforms)) {
+            printf("ERROR: get_shader('%s') was already loaded with a "
+                   "different attrib/uniform list -- the first registration "
+                   "wins; the caller's uniform indices will not match\n",
+                   key.c_str());
+        }
+        return s;
+    }
+    Shader *s = new Shader;
+    s->registerAttribs(attribs);
+    s->registerUniforms(uniforms);
+    s->FromFile(path);
+    // A link failure is cached (like the mesh/texture placeholders), so a
+    // broken shader would otherwise render nothing, silently, for every
+    // caller. CheckShaderError already logged the GL reason; this names it.
+    GLint linked = 0;
+    glGetProgramiv(s->m_program, GL_LINK_STATUS, &linked);
+    if(linked == GL_FALSE) {
+        printf("WARNING: shader '%s' failed to link -- its draws will be "
+               "invisible\n", key.c_str());
+    }
+    s_shaders[key] = s;
+    return s;
 }

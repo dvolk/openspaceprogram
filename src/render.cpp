@@ -17,7 +17,6 @@
 
 #include "billboard.h"   // Billboard::Draw + the icon pos
 #include "mesh.h"        // Mesh::Draw (the reference skylines)
-#include "model.h"       // Model (the engine plume)
 #include "orbit.h"       // computeOrbitElements + the plane math
 #include "physics.h"     // debug_draw
 #include "shader.h"      // Shader::Bind / setUniform_*
@@ -302,17 +301,17 @@ void draw3d(Game &g, TransferPlanner &planner) {
                                          0.0, 0.0, height / 2.0));
             // shifted into the render frame, like the view
             glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
-            g.engine_plume_model->shader->Bind();
-            g.engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
-            g.engine_plume_model->shader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
-            g.engine_plume_model->shader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+            g.partsshader->Bind();
+            g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
+            g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
+            g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
 
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, g.engine_plume_model->texture->id);
+            glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
             glDisable(GL_CULL_FACE);
-            g.engine_plume_model->mesh->Draw();
+            g.engine_plume_mesh->Draw();
             glEnable(GL_CULL_FACE);
             glDisable(GL_BLEND);
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -345,17 +344,17 @@ void draw3d(Game &g, TransferPlanner &planner) {
                                          0.0, sx, 0.0,
                                          0.0, 0.0, sz));
         glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
-        g.engine_plume_model->shader->Bind();
-        g.engine_plume_model->shader->setUniform_mat4(0, Projection * ModelViewFloat);
-        g.engine_plume_model->shader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
-        g.engine_plume_model->shader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+        g.partsshader->Bind();
+        g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
+        g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
+        g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, g.engine_plume_model->texture->id);
+        glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE);
         glDisable(GL_CULL_FACE);
-        g.engine_plume_model->mesh->Draw();
+        g.engine_plume_mesh->Draw();
         glEnable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         glBindTexture(GL_TEXTURE_2D, 0);

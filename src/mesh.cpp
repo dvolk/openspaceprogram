@@ -1,7 +1,6 @@
 #include "mesh.h"
 
-// #include <map>
-// #include <algorithm>
+#include <map>
 #include <fstream>
 #include <iostream>
 #include <stdlib.h>
@@ -12,7 +11,7 @@
 
 #include "gldebug.h"
 
-void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
+bool Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 {
     Assimp::Importer importer;
 
@@ -24,14 +23,14 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 
     if(!scene) {
         printf("Error: %s\n", importer.GetErrorString());
-        return;
+        return false;
     }
 
     printf("scene meshes: %d\n", scene->HasMeshes());
 
     if(scene->mNumMeshes == 0) {
         printf("Error: no meshes in %s\n", pFile.c_str());
-        return;
+        return false;
     }
 
     aiMesh *aim = scene->mMeshes[0];
@@ -42,7 +41,6 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
     }
 
     PosTexNorIndInterface model;
-    static const glm::vec3 pink = glm::vec3(1.0, 192.0/255.0, 203.0/255.0);
 
     for(unsigned int i = 0; i < aim->mNumVertices; i++) {
         model.positions.push_back(glm::vec3(aim->mVertices[i].x, aim->mVertices[i].y, aim->mVertices[i].z));
@@ -67,12 +65,83 @@ void Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
     }
 
     InitMesh(model, copyData);
+    return true;
 }
 
-void Mesh::FromFile(const std::string& fileName, bool copyData)
+bool Mesh::FromFile(const std::string& fileName, bool copyData)
 {
-    AssImpFromFile(fileName, copyData);
-    printf("Loaded file: %s\n", fileName.c_str());
+    bool ok = AssImpFromFile(fileName, copyData);
+    if(ok) { printf("Loaded file: %s\n", fileName.c_str()); }
+    return ok;
+}
+
+/* --- the shared file-asset registry (see mesh.h) -------------------------
+   One Mesh per file, shared by every part/pad that uses it: the assimp
+   import, the GPU buffers and the vs/is hull copies all happen once. The
+   map lives until process exit; the GL context teardown reclaims the
+   objects. Main-thread only (the job worker does pure math), so no lock. */
+static std::map<std::string, Mesh *> s_meshes;
+
+static std::string asset_key(const std::string &path) {
+    if(path.compare(0, 2, "./") == 0) { return path.substr(2); }
+    return path;
+}
+
+/* A failed import leaves nothing to draw or collide with; stand in with a
+   unit cube (the same PosTexNorInd layout a file mesh gets, and the vs/is
+   copies, so BuildPartHull's convex hull still works). One cube per failed
+   key (cached, so no per-part re-import either way). */
+static Mesh *placeholder_box() {
+    PosTexNorIndInterface m;
+    struct Face { glm::vec3 u; glm::vec3 v; };
+    // face plane spanned by (u, v), outward normal u x v; corners in
+    // (u, v) space at (-1,-1) (+u,-v) (+u,+v) (-u,+v) -- CCW from outside
+    const Face faces[6] = {
+        { glm::vec3( 1, 0, 0), glm::vec3(0,  1, 0) },  // +Z
+        { glm::vec3(-1, 0, 0), glm::vec3(0,  1, 0) },  // -Z
+        { glm::vec3( 0, 1, 0), glm::vec3(0,  0, 1) },  // +X
+        { glm::vec3( 0,-1, 0), glm::vec3(0,  0, 1) },  // -X
+        { glm::vec3( 1, 0, 0), glm::vec3(0,  0,-1) },  // +Y
+        { glm::vec3(-1, 0, 0), glm::vec3(0,  0,-1) },  // -Y
+    };
+    const float su[4] = { -1, 1, 1, -1 };
+    const float sv[4] = { -1, -1, 1, 1 };
+    const glm::vec2 uvs[4] = { glm::vec2(0, 0), glm::vec2(1, 0),
+                               glm::vec2(1, 1), glm::vec2(0, 1) };
+    for(int f = 0; f < 6; f++) {
+        const glm::vec3 n = glm::cross(faces[f].u, faces[f].v);
+        unsigned int base = (unsigned int)m.positions.size();
+        for(int c = 0; c < 4; c++) {
+            m.positions.push_back((faces[f].u * su[c]
+                                   + faces[f].v * sv[c] + n) * 0.5f);
+            m.normals.push_back(n);
+            m.texcoords.push_back(uvs[c]);
+        }
+        m.indices.push_back(base);
+        m.indices.push_back(base + 1);
+        m.indices.push_back(base + 2);
+        m.indices.push_back(base);
+        m.indices.push_back(base + 2);
+        m.indices.push_back(base + 3);
+    }
+    Mesh *mesh = new Mesh;
+    mesh->InitMesh(m, true);   // copyData: BuildPartHull needs vs/is
+    return mesh;
+}
+
+Mesh *get_mesh(const std::string &path) {
+    std::string key = asset_key(path);
+    std::map<std::string, Mesh *>::iterator it = s_meshes.find(key);
+    if(it != s_meshes.end()) { return it->second; }
+    Mesh *mesh = new Mesh;
+    if(!mesh->FromFile(path, true)) {
+        printf("get_mesh: could not import '%s' -- using the cube placeholder\n",
+               path.c_str());
+        delete mesh;
+        mesh = placeholder_box();
+    }
+    s_meshes[key] = mesh;
+    return mesh;
 }
 
 void Mesh::InitMesh(const PosInterface & model) {

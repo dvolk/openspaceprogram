@@ -19,15 +19,25 @@
 #include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes the
                        // ships this body owns)
 
+/* Free a demand-built shell: the procedural mesh + (clouds) the baked
+   texture are the body's; the shader is shared (the registry owns it). */
+static void free_shell(TerrainBody::Shell *s) {
+    if(s == nullptr) { return; }
+    delete s->mesh;
+    delete s->texture;
+    delete s;
+}
+
 TerrainBody::~TerrainBody() {
     // The ships in my SOI first (they reference my frame; the Vehicle dtor
     // also unregisters their bodies from the still-live Bullet world).
     for(auto *s : ships) { delete s; }
     ships.clear();
-    // The pads next. Each owns its own model (like a ship part), so the
-    // rigid Body is freed here: unregister it from the Bullet world first
-    // (the world would otherwise hold a dangling btBody), then ~Body frees
-    // its model + rigid body; the StaticBuilding struct is freed last.
+    // The pads next. Their render assets are shared (the registries own
+    // them), so only the rigid Body is freed here: unregister it from the
+    // Bullet world first (the world would otherwise hold a dangling
+    // btBody), then ~Body frees the rigid body + hull shape; the
+    // StaticBuilding struct is freed last.
     for(auto *p : pads) {
         RemoveBody(p->body);
         delete p->body;
@@ -35,8 +45,8 @@ TerrainBody::~TerrainBody() {
     }
     pads.clear();
     for(int i = 0; i < 6; i++) { delete patches[i]; }
-    delete atmosphere;
-    delete clouds;
+    free_shell(atmosphere);
+    free_shell(clouds);
     delete frame;
     delete rot_frame;
 }
@@ -70,7 +80,7 @@ GeoPatch::~GeoPatch() {
         removeTerrainCollision(collision);
         delete collision;
     }
-    delete model;
+    delete mesh;   // owned (procedural grid); the shader is shared
 }
 
 // The four children's corner quads: the edge midpoints (v01, v12, v23,
@@ -142,7 +152,8 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
 }
 
 GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, const GridGeom &geom) {
-    model = new Model;
+    this->shader = shader;   // shared (the body's terrain shader)
+    mesh = nullptr;          // set below, once the grid is built
     kids[0] = NULL;
     kids[1] = NULL;
     kids[2] = NULL;
@@ -173,7 +184,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     grid_mesh->FromData(pv.data(), (unsigned int)pv.size(),
                         geom.indices.data(), (unsigned int)geom.indices.size(),
                         has_collision, geom.num_inner);
-    model->FromData(grid_mesh, shader, NULL);
+    mesh = grid_mesh;   // owned by this patch
     if(has_collision == true) {
         collision = addTerrainCollision(grid_mesh);
         printf("added terrain collision with %p\n", (void*)this);
@@ -187,12 +198,12 @@ void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
     if(kids[0] == NULL) {
         // patch isn't subdivided
         if(skirt_pass == false) {
-            model->mesh->Draw();
+            mesh->Draw();
         } else {
             // the stencil (set up in TerrainBody::Draw) only passes where
             // no terrain fragment was drawn, so the skirt shows in the
             // cracks/limb and can never z-fight the surface
-            model->mesh->DrawSkirt();
+            mesh->DrawSkirt();
         }
     }
     else {

@@ -26,7 +26,7 @@
 #include "shipdef.h"   // PartDef, ResourceContent
 
 struct Part {
-    Body *body;                 // OWNED (the rigid body + render model)
+    Body *body;                 // OWNED (the rigid body + hull shape; the render assets it holds are registry-shared)
     const PartDef *def;         // non-owning; points into the PartsCatalog
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
     int stage = 1;              // from the ship def (1 = single stage)

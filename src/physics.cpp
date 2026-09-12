@@ -114,10 +114,7 @@ void GLDebugDrawer::Draw(const Camera * camera)
 void GLDebugDrawer::init() {
     lineBuffer.reserve(512 * 1024);
 
-    lineshader = new Shader;
-    lineshader->registerAttribs({ "pos" });
-    lineshader->registerUniforms({ "VP" });
-    lineshader->FromFile("./res/lineShader");
+    lineshader = get_shader("./res/lineShader", { "pos" }, { "VP" });
 
     m_debugMode = DBG_DrawWireframe;
 
@@ -280,12 +277,12 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     dynamicsWorld->addRigidBody(b);
 }
 
-/* The convex hull of a model's mesh, stored on the Body (which owns it).
+/* The convex hull of the body's mesh, stored on the Body (which owns it).
    Shared by RegisterObject (a simulated body: a space pad) and
    create_part_body (a ship part, whose hull becomes a child of the ship's
    compound and so must exist without a rigid body of its own). */
 void PhysicsEngine::BuildHull(Body *body) {
-    Mesh *m = body->model->mesh;
+    Mesh *m = body->mesh;
 
     printf("PhysicsEngine::BuildHull(): m->num_vertices: %d\n", m->num_vertices);
     assert(m->vs != NULL);
@@ -298,10 +295,10 @@ void PhysicsEngine::BuildHull(Body *body) {
     btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                                     3 * sizeof(double));
 
-    /* the model carries the part's resolved margin (ship def > catalog,
+    /* the body carries the part's resolved margin (ship def > catalog,
        see resolveHullMargin); -1 when neither sets one */
-    const double margin = (body->model->hull_margin >= 0.0)
-                        ? body->model->hull_margin : hull_margin();
+    const double margin = (body->hull_margin >= 0.0)
+                        ? body->hull_margin : hull_margin();
     hull->setMargin(margin);
     body->shape = hull;
 }

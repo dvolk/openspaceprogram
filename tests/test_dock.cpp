@@ -77,7 +77,7 @@ struct Ship {
 static Part *mkPart(Ship &s, const char *name, double mass,
                     double hx, double hy, double hz, bool port) {
     Body *b = new Body;
-    b->model  = nullptr;                 // no GL model in a headless test
+    // mesh/shader/texture default to null (no GL in a headless test)
     b->btBody = nullptr;                 // a part is not simulated on its own
     b->shape  = new btBoxShape(btVector3(hx, hy, hz));
     b->mass   = mass;

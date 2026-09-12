@@ -8,10 +8,9 @@
 
 #include <stdexcept>
 
-#include "body.h"     // create_body
-#include "mesh.h"     // Mesh
-#include "model.h"    // Model
-#include "texture.h"  // load_texture
+#include "body.h"     // create_part_body
+#include "mesh.h"     // get_mesh
+#include "texture.h"  // get_texture
 
 RadialTestShip build_radial_test_ship(const std::string &mode,
                                       bool scenario_given,
@@ -66,17 +65,15 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                              glm::dvec3(0, 1, 0),
                              glm::dvec3(1, 0, 0));
 
-    /* One Part (a rigid body + render model wrapped with its catalog spec).
-       All parts are passive single-stage tanks (stage 1); the Part OWNS the
-       Body and the def points into the catalog (which outlives the ship). */
+    /* One Part (shared render assets + hull + mass, wrapped with the
+       catalog spec). All parts are passive single-stage tanks (stage 1);
+       the Part OWNS the Body and the def points into the catalog (which
+       outlives the ship). */
     auto makePart = [&](const PartDef *def) -> Part * {
-        Mesh *mesh = new Mesh;
-        mesh->FromFile((std::string("./res/") + def->mesh).c_str(), true);
-        Model *model = new Model;
-        model->FromData(mesh, partsshader,
-                        load_texture((std::string("./res/") + def->texture).c_str()));
-        model->hull_margin = def->hull_margin;
-        Body *b = create_part_body(model, (float)def->mass);
+        Mesh *mesh = get_mesh(std::string("./res/") + def->mesh);
+        Texture *tex = get_texture(std::string("./res/") + def->texture);
+        Body *b = create_part_body(mesh, partsshader, tex, (float)def->mass,
+                                   def->hull_margin);
         Part *p = new Part;
         p->body  = b;
         p->def   = def;

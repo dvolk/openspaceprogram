@@ -84,7 +84,6 @@ static Part *addPowerPart(Ship &s, double power_draw, double const_draw,
     shape->calculateLocalInertia(m, I);
     btRigidBody::btRigidBodyConstructionInfo ci(m, 0, shape, I);
     Body *b = new Body;
-    b->model = nullptr;    /* no GL model in a headless test */
     b->btBody = new btRigidBody(ci);
     b->shape = b->btBody->getCollisionShape();
     b->mass = m;

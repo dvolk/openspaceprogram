@@ -1,5 +1,10 @@
 #include "texture.h"
 
+#include <cstdio>
+#include <map>
+#include <string>
+#include <vector>
+
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <SDL_image.h>
@@ -14,13 +19,12 @@ float max_anisotropy() {
     return max_aniso;
 }
 
-Texture *load_texture(const char *filename, bool mipmap) {
-    Texture * ret = new Texture;
-  
+static Texture *load_texture_file(const char *filename, bool mipmap) {
     SDL_Surface* res_texture = IMG_Load(filename);
     if (res_texture == NULL) {
         return NULL;
     }
+    Texture * ret = new Texture;
 
     SDL_PixelFormat pf;
     pf.palette = 0;
@@ -72,6 +76,42 @@ Texture *load_texture(const char *filename, bool mipmap) {
     }
 
     return ret;
+}
+
+/* --- the shared file-asset registry -------------------------------------
+   One GL texture per (file, mipmap) pair, shared by every part/pad that
+   uses the file: a 100-part ship built from K part types uploads K
+   textures, not 100. The map lives until process exit; the GL context
+   teardown reclaims the objects, so there is no cleanup pass. All calls
+   are main-thread (the job worker does pure math only), so no lock. */
+static std::map<std::string, Texture *> s_textures;
+
+/* "res/x.png" and "./res/x.png" must land in one cache slot. */
+static std::string asset_key(const std::string &path) {
+    if(path.compare(0, 2, "./") == 0) { return path.substr(2); }
+    return path;
+}
+
+Texture *get_texture(const std::string &path, bool mipmap) {
+    std::string key = asset_key(path) + (mipmap ? "#mip" : "#nomip");
+    std::map<std::string, Texture *>::iterator it = s_textures.find(key);
+    if(it != s_textures.end()) { return it->second; }
+    Texture *tex = load_texture_file(path.c_str(), mipmap);
+    if(tex == nullptr) {
+        // Hot pink: a part with a broken texture still renders, visibly
+        // wrong. Cache the placeholder too, so a missing file does not
+        // re-attempt the load (and re-print) on every part built from it.
+        printf("get_texture: could not load '%s' -- using the hot-pink placeholder\n",
+               path.c_str());
+        const int w = 16, h = 16;
+        std::vector<unsigned char> px((size_t)w * h * 4);
+        for(size_t i = 0; i < px.size(); i += 4) {
+            px[i + 0] = 255; px[i + 1] = 105; px[i + 2] = 180; px[i + 3] = 255;
+        }
+        tex = make_texture_r8(w, h, px.data(), false);
+    }
+    s_textures[key] = tex;
+    return tex;
 }
 
 Texture *make_texture_r8(int w, int h, const unsigned char *rgba,

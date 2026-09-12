@@ -3,21 +3,28 @@
 void setRigidBody(Body *b, btRigidBody *rb) { b->btBody = rb; }
 btRigidBody* getRigidBody(Body *b) { return b->btBody; }
 
-Body *create_body(Model *model, float x, float y, float z, float mass)
+Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
+                  float x, float y, float z, float mass)
 {
     Body *body = new Body;
-    body->model = model;
+    body->mesh = mesh;
+    body->shader = shader;
+    body->texture = texture;
     body->mass = mass;
     glm::vec3 pos = glm::vec3(x, y, z);
     RegisterPhysicsBody(body, pos, glm::vec3(0, 0, 0));
     return body;
 }
 
-Body *create_part_body(Model *model, float mass)
+Body *create_part_body(Mesh *mesh, Shader *shader, Texture *texture,
+                       float mass, double hull_margin)
 {
     Body *body = new Body;
-    body->model = model;
+    body->mesh = mesh;
+    body->shader = shader;
+    body->texture = texture;
     body->mass = mass;
+    body->hull_margin = hull_margin;
     BuildPartHull(body);
     return body;
 }

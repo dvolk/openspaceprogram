@@ -39,9 +39,9 @@
 // headers into every includer.
 struct Billboard;
 struct Mesh;
-struct Model;
 struct Shader;
 struct Skybox;
+struct Texture;
 
 // Rails warp threshold: at accel > 10 nobody is integrated -- every ship
 // coasts on rails (or sits frozen on the ground) and the Bullet world is
@@ -224,12 +224,16 @@ struct Game {
     std::vector<PartSel> part_sels;
 
     // --- render resources (render.cpp draws with them) ---------------------
-    // main creates + deletes them (the teardown at the end of main); they
-    // are handed over here once they exist.
+    // Handed over here once they exist. The FILE assets (the shaders, the
+    // plume mesh/texture, the billboard icons) are registry-owned
+    // (get_*, shared); the billboards' quads are freed with the billboards
+    // (the teardown at the end of main).
     Skybox *skybox = nullptr;
     Shader *skyboxshader = nullptr;
     Shader *lineshader = nullptr;
-    Model *engine_plume_model = nullptr;
+    Shader *partsshader = nullptr;
+    Mesh *engine_plume_mesh = nullptr;
+    Texture *engine_plume_texture = nullptr;
     Mesh *skyline_xz = nullptr;
     Mesh *skyline_xy = nullptr;
     Billboard *front_indicator = nullptr;

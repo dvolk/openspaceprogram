@@ -9,7 +9,8 @@
 #include <stdexcept>
 
 #include "system.h"    // System (spawn_vehicle resolves the home body's SOI)
-#include "texture.h"   // load_texture
+#include "mesh.h"      // get_mesh
+#include "texture.h"   // get_texture
 #include "drag.h"      // the drag law (airDensity / dragForce)
 
 /* Instantiate a ship def: one rigid body per part (mesh + texture from the
@@ -94,17 +95,17 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     for(size_t i = 0; i < n; i++) {
         const PartDef &pd = *physical[i].def;
 
-        Mesh *mesh = new Mesh;
-        mesh->FromFile((std::string("./res/") + pd.mesh).c_str(), true);
-        Texture *tex = load_texture((std::string("./res/") + pd.texture).c_str());
-        Model *model = new Model;
-        model->FromData(mesh, partsshader, tex);
-        model->hull_margin = resolveHullMargin(def.hull_margin, pd.hull_margin);
+        /* Shared assets (the get_mesh/get_texture registries): one assimp
+           import + GPU upload + texture upload per part FILE, so a
+           100-part ship built from 10 part types pays 10x, not 100x. */
+        Mesh *mesh = get_mesh(std::string("./res/") + pd.mesh);
+        Texture *tex = get_texture(std::string("./res/") + pd.texture);
 
         /* No rigid body and no world pose of its own: the part is a child of
            the ship's one compound body, and its pose is derived from
            pos[i]/rot[i] once the ship is placed as a whole (below). */
-        Body *b = create_part_body(model, (float)pd.mass);
+        Body *b = create_part_body(mesh, partsshader, tex, (float)pd.mass,
+                                   resolveHullMargin(def.hull_margin, pd.hull_margin));
 
         Part *part = new Part;
         part->body  = b;
@@ -551,8 +552,7 @@ void Vehicle::rebuildCompound() {
     }
     delete inS;
 
-    hull = new Body;
-    hull->model = nullptr;      // drawn part by part, not as one mesh
+    hull = new Body;            // mesh/shader/texture stay null: drawn part by part
     hull->shape = nc;
     hull->mass  = (double)total;
     btRigidBody::btRigidBodyConstructionInfo ci(total, nullptr, nc,

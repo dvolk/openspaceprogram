@@ -4,10 +4,10 @@
 // ships list of the body of its SoI (TerrainBody::ships, terrain.h), and
 // a character aboard a ship lives on that ship (Vehicle::crew, eva.h).
 // This class holds only the shared resources every built ship references
-// (the parts catalog, the shared space-port model, the part shader, the
-// star) plus the operations that build ships/crew and place them into the
-// world. The active-ship selection (game.h) and the tick (tick.cpp) walk
-// the bodies' lists, not this class.
+// (the parts catalog, the part shader, the star) plus the operations that
+// build ships/crew and place them into the world. The active-ship
+// selection (game.h) and the tick (tick.cpp) walk the bodies' lists, not
+// this class.
 #pragma once
 
 #include <string>
@@ -17,7 +17,6 @@
 #include "camera.h"   // Camera
 #include "frame.h"    // Frame
 #include "mesh.h"     // Mesh
-#include "model.h"    // Model
 #include "shader.h"   // Shader
 #include "shipdef.h"  // PartsCatalog
 #include "texture.h"  // Texture

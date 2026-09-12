@@ -26,8 +26,8 @@ public:
     btRigidBody *AddTerrainCollision(Mesh *mesh);
     void RemoveTerrainCollision(btRigidBody *b);
     /* Remove a body's rigid body from the dynamics world (call BEFORE
-       deleting the Body). The collision shape / model are the Body's to
-       free; this only unregisters it so the world holds no dangling ptr. */
+       deleting the Body). The collision shape is the Body's to free; this
+       only unregisters it so the world holds no dangling ptr. */
     void RemoveBody(Body *body);
     /* Re-add a parked body's EXISTING rigid body to the world (the inverse
        of RemoveBody; the rails handoff parks and restores ship parts). */

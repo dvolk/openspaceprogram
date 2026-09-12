@@ -20,7 +20,6 @@
 #include <glm/glm.hpp>
 
 #include "terragen.h"
-#include "model.h"
 #include "mesh.h"
 #include "shader.h"
 #include "texture.h"
@@ -38,7 +37,8 @@ class StaticBuilding;   // a space pad (defined at the end of this file)
 
 struct GeoPatch {
     TerrainBody *body;
-    Model *model;
+    Mesh *mesh;      // OWNED (procedural grid, unique per patch)
+    Shader *shader;  // shared (the body's terrain shader)
     btRigidBody *collision;
 
     GeoPatch *kids[4];
@@ -95,9 +95,19 @@ struct GeoPatch {
 struct TerrainBody {
     GeoPatch *patches[6];
     Shader *shader;
-    Model *atmosphere = nullptr; // Fresnel rim shell (built on demand)
+    /* A demand-built shell (the atmosphere rim, the cloud deck): a
+       PROCEDURAL mesh (unique to the body) drawn with a shared shader, and
+       for the clouds a baked coverage texture. The body OWNS the mesh and
+       the texture (~TerrainBody frees both); the shader is shared (the
+       registry owns it). */
+    struct Shell {
+        Mesh *mesh;
+        Shader *shader;
+        Texture *texture;
+    };
+    Shell *atmosphere = nullptr; // Fresnel rim shell (built on demand)
     float atm_radius = 0.0f;     // shell radius [m]; 0 = no atmosphere
-    Model *clouds = nullptr;     // cloud deck shell (built on demand)
+    Shell *clouds = nullptr;     // cloud deck shell (built on demand)
     float cloud_radius = 0.0f;   // deck radius [m]; 0 = no clouds
     float radius;
     double mu;
@@ -212,8 +222,10 @@ struct TerrainBody {
                              + surface.atmosphere.thickness;
         if(shell_radius <= radius) shell_radius = radius * 1.02f;
         Mesh *m = create_atmosphere_mesh(shell_radius, 128);
-        atmosphere = new Model;
-        atmosphere->FromData(m, atmosphereshader, NULL);
+        atmosphere = new Shell;
+        atmosphere->mesh = m;
+        atmosphere->shader = atmosphereshader;
+        atmosphere->texture = nullptr;
         atm_radius = shell_radius;
     }
 
@@ -237,11 +249,12 @@ struct TerrainBody {
         // Solid placeholder (coverage 1): the deck reads as the solid
         // ceiling from the first frame until the bake lands.
         const unsigned char solid = 255;
-        clouds = new Model;
-        // The Model owns the texture (~Model deletes it); the bake
+        clouds = new Shell;
+        // The Shell owns the texture (~TerrainBody frees it); the bake
         // re-uploads into it (upload_coverage_r8), so no texture swap.
-        clouds->FromData(m, cloudshader, make_coverage_texture(1, 1, &solid,
-                                                               true));
+        clouds->mesh = m;
+        clouds->shader = cloudshader;
+        clouds->texture = make_coverage_texture(1, 1, &solid, true);
         cloud_radius = shell_radius;
 
         // The bake layout MUST match the deck shader's UV (cloudShader.vs):
@@ -470,10 +483,11 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
 // same (body, pad site). Drawn like terrain (culls itself when the active
 // ship is not on the pad's body); the light source is the star.
 //
-// Owned by its body (TerrainBody::pads). Each pad owns its own model
-// (like a ship part), so ~TerrainBody can free the rigid Body (it
-// unregisters from the Bullet world first, then ~Body frees the model +
-// rigid body) -- nothing to leak.
+// Owned by its body (TerrainBody::pads). The pad's render assets are
+// shared (the get_mesh/get_texture registries own them), so
+// ~TerrainBody only frees the rigid Body (it unregisters from the Bullet
+// world first, then ~Body frees the rigid body + hull shape) -- nothing
+// to leak.
 // Draw is defined in terrain.cpp (it needs the complete Body type).
 class StaticBuilding {
 public:

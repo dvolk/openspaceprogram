@@ -2,9 +2,9 @@
 //
 // The ships themselves are owned by the bodies they sit in
 // (TerrainBody::ships) or, when aboard, by their ship (Vehicle::crew);
-// this file only builds them and places them there. Each space pad gets
-// its own model (like a ship part), so a pad is torn down with its body --
-// no shared-model lifetime to manage.
+// this file only builds them and places them there. A space pad's render
+// assets are shared (the get_mesh/get_texture registries), so a pad is
+// torn down with just its rigid body -- no asset lifetime to manage.
 #include "ships.h"
 
 #include <cstdio>
@@ -12,12 +12,11 @@
 
 #include "body.h"     // create_body
 #include "eva.h"      // Kerbal (the crew characters)
-#include "mesh.h"     // Mesh
-#include "model.h"    // Model
+#include "mesh.h"     // get_mesh
 #include "physics.h"  // setPosRot
 #include "shipdef.h"  // load_ship_def, ShipDef, PartsCatalog
 #include "system.h"   // System (build_fleet / spawn_vehicle resolve bodies)
-#include "texture.h"  // load_texture
+#include "texture.h"  // get_texture
 #include "vehicle.h"  // build_ship, faceAlong, spawn_vehicle, scenario_by_name, Vehicle
 
 // Ships sharing a (body, scenario) orbit get this much separation along the
@@ -49,17 +48,14 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
         if(p->parent == hb && p->polar == polar) { return; }
     }
     const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
-    // Each pad owns its own model (a ship part would be built the same
-    // way): unique mesh + texture, the part shader shared. That means the
-    // pad's Body can be deleted freely in ~TerrainBody -- ~Body frees its
-    // own model + rigid body -- with nothing left to leak.
-    Mesh *m = new Mesh;
-    m->FromFile("./res/space_port.obj", true);
-    Texture *t = load_texture("./res/space_port.png");
-    Model *model = new Model;
-    model->FromData(m, partsshader, t);
+    // The pad's render assets are SHARED (the registries own them; a ship
+    // part on the same pad files would draw the very same mesh + texture),
+    // the part shader shared as well. ~TerrainBody frees just the rigid
+    // body + hull shape -- nothing to leak.
+    Mesh *m = get_mesh("./res/space_port.obj");
+    Texture *t = get_texture("./res/space_port.png");
     StaticBuilding *sp = new StaticBuilding;
-    sp->body = create_body(model, 0, 0, 0, 0);
+    sp->body = create_body(m, partsshader, t, 0, 0, 0, 0);
     setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
     sp->parent = hb;
     sp->sun = sun;

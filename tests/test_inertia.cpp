@@ -138,7 +138,7 @@ static Part *addBox(Ship &s, const char *name, double m,
 
     btBoxShape *shape = new btBoxShape(btVector3(hx, hy, hz));
     Body *b = new Body;
-    b->model  = nullptr;      // no GL model in a headless test
+    // mesh/shader/texture default to null (no GL in a headless test)
     b->btBody = nullptr;      // a part is not a simulated object of its own
     b->shape  = shape;        // ... but it does own its collision hull
     b->mass   = m;

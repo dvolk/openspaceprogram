@@ -1,14 +1,22 @@
 #pragma once
 
+#include <string>
+
 struct Texture {
     ~Texture();
 
     unsigned int id; /* really GLuint */
 };
 
-/* mipmap=false keeps a single level (no alpha-edge bleed from mip chains);
-   use it for the flat billboard icons. */
-Texture * load_texture(const char *filename, bool mipmap = true);
+/* Shared file-asset registry (texture.cpp): lookup-or-load, ONE GL texture
+   per (file, mipmap) pair, shared by every part/pad that uses the file.
+   The registry owns the texture (it lives until process exit; the GL
+   context teardown reclaims it), so callers must never delete it.
+   mipmap=false keeps a single level (no alpha-edge bleed from mip chains);
+   use it for the flat billboard icons. A file that fails to load yields a
+   hot-pink placeholder instead of NULL, so a broken texture is visible in
+   the game rather than a crash far from the cause. */
+Texture *get_texture(const std::string &path, bool mipmap = true);
 
 /* CPU-generated RGBA8 texture (the porkchop heatmap; the surface map):
    rgba is w*h pixels of [R,G,B,A], row 0 = bottom (GL convention).

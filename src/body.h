@@ -3,15 +3,25 @@
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
 
-#include "model.h"
 #include "camera.h"
 #include "mesh.h"
 #include "shader.h"
 #include "texture.h"
 
 struct Body {
-    // mesh + shader
-    Model *model;
+    /* The render assets: SHARED (the get_mesh/get_texture registries own
+       them, see mesh.h/texture.h), so ~Body must not free them -- every
+       part of a ship that uses one part type draws the SAME mesh and
+       texture. The hull body (Vehicle::hull) leaves them null: the ship
+       is drawn part by part. */
+    Mesh *mesh = nullptr;
+    Shader *shader = nullptr;
+    Texture *texture = nullptr;
+
+    /* collision convex-hull margin (m); -1 = not set -> the physics
+       engine uses its default (OSP_HULL_MARGIN / 0.1). Set from the
+       part catalog entry when a part body is built. */
+    double hull_margin = -1.0;
 
     /* The rigid body, or null. A ship PART has no rigid body of its own --
        the ship is one body (Vehicle::hull) and the part is a child of its
@@ -45,9 +55,12 @@ struct Body {
     glm::dmat4 model_matrix = glm::dmat4(1.0);
 
     ~Body() {
-        delete model;
         delete btBody;
         delete shape;
+        /* mesh/shader/texture are shared (the asset registries own them,
+           and live until process exit) -- never freed here. The hull
+           shape copied the mesh's vertices at build time, so it holds no
+           pointer into the mesh. */
     }
 
     /* The pose to draw at, read off this body's own rigid body. Right for
@@ -71,8 +84,7 @@ struct Body {
         DrawAt(camera, sunlightVec, shadow, model_matrix, xform);
     }
 
-    /* Draw at an explicit model matrix, leaving model_matrix untouched.
-       (modelMat, not model: `model` is the mesh+shader member.) */
+    /* Draw at an explicit model matrix, leaving model_matrix untouched. */
     void DrawAt(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
                 const glm::dmat4 &modelMat,
                 const glm::dmat4 &xform = glm::dmat4(1.0)) {
@@ -87,28 +99,31 @@ struct Body {
         glm::mat4 MVP = Projection * ModelViewFloat;
         glm::mat4 ModelFloat = xf * modelMat;
 
-        model->shader->Bind();
-        model->shader->setUniform_mat4(0, MVP);
-        model->shader->setUniform_mat4(1, ModelFloat);
-        model->shader->setUniform_vec3(2, sunlightVec);
-        model->shader->setUniform_vec1(3, shadow);
+        shader->Bind();
+        shader->setUniform_mat4(0, MVP);
+        shader->setUniform_mat4(1, ModelFloat);
+        shader->setUniform_vec3(2, sunlightVec);
+        shader->setUniform_vec1(3, shadow);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, model->texture->id);
+        glBindTexture(GL_TEXTURE_2D, texture->id);
 
-        model->mesh->Draw();
+        mesh->Draw();
 
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 };
 
 void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot);
-/* Build body->shape (the convex hull of its model) without a rigid body. */
+/* Build body->shape (the convex hull of its mesh) without a rigid body. */
 void BuildPartHull(Body *body);
 
-Body *create_body(Model *model, float x, float y, float z, float mass);
+Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
+                  float x, float y, float z, float mass);
 
-/* A ship part's Body: model + collision hull + mass, and NO rigid body --
-   the part is a child of the ship's compound, not a simulated object of its
-   own (see Body::btBody). Nothing is registered in the world. */
-Body *create_part_body(Model *model, float mass);
+/* A ship part's Body: shared render assets + collision hull + mass, and
+   NO rigid body -- the part is a child of the ship's compound, not a
+   simulated object of its own (see Body::btBody). Nothing is registered
+   in the world. */
+Body *create_part_body(Mesh *mesh, Shader *shader, Texture *texture,
+                       float mass, double hull_margin);

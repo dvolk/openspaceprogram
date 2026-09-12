@@ -97,7 +97,7 @@ static void test_inertia_diag() {
     }
 
     Body b;
-    b.model = nullptr;   // no GL model in a headless test
+    // mesh/shader/texture default to null (a headless test has no GL)
     b.btBody = nullptr;  // a part is not a simulated object of its own
     b.shape = &shape;    // ... but it does have a collision hull
     b.mass = m0;

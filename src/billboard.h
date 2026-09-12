@@ -1,12 +1,16 @@
 #include <glm/glm.hpp>
 
+#include "mesh.h"   // complete type: ~Billboard deletes the quad
+
 class Camera;
 class Frame;
 class Shader;
-class Mesh;
 class Texture;
 
 struct Billboard {
+    ~Billboard() { delete mesh; }   // owns its procedural quad (the texture
+                                    // is registry-shared)
+
     Frame *frame;
     Texture *texture;
     Shader *shader;
