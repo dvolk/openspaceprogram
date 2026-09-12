@@ -237,6 +237,17 @@ inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
     return dir * (q * S * cl * delta);
 }
 
+/* The control-surface DEFLECTION EFFECTIVENESS: the part's dedicated
+   cl_control if it is set (>0), else its lift-curve slope cl (so a part
+   that only declares cl keeps working -- the old behaviour). This
+   un-overloads the two historically-shared uses of "cl": the lift-curve
+   slope (with the soft stall) and the deflection effectiveness (linear,
+   bounded by the travel). A part that is both a wing and a control surface
+   can now give each its own number. Zero when neither is set. */
+inline double controlCl(double cl, double clControl) {
+    return (clControl > 0.0) ? clControl : cl;
+}
+
 /* The control-surface DEFLECTION SIGN for a surface at position `ri` (rel.
    to the COM). The steering torque is ri x F, so a tail (behind the CG)
    and a canard (ahead of it) need OPPOSITE deflections for the same

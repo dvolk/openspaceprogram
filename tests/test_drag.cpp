@@ -545,6 +545,18 @@ static void test_controlDeflectionSign() {
     }
 }
 
+static void test_controlCl() {
+    printf("== controlCl: deflection effectiveness (cl_control, fallback cl) ==\n");
+    // cl_control > 0 -> it is the deflection effectiveness (the part's own
+    // number), even if cl (the lift slope) is also set.
+    CHECK_TRUE(controlCl(0.0, 6.0) == 6.0, "cl_control set -> used");
+    CHECK_TRUE(controlCl(6.0, 4.0) == 4.0, "cl_control overrides cl");
+    // cl_control = 0 (unset) -> fall back to cl: the old single-"cl" behaviour
+    // for a part that only declares cl.
+    CHECK_TRUE(controlCl(6.0, 0.0) == 6.0, "cl_control 0 -> falls back to cl");
+    CHECK_TRUE(controlCl(0.0, 0.0) == 0.0, "neither set -> 0");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -567,6 +579,8 @@ int main() {
     test_controlForce();
     printf("\n");
     test_controlDeflectionSign();
+    printf("\n");
+    test_controlCl();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

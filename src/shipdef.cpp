@@ -15,7 +15,7 @@ PartDef::PartDef()
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
       drag_area(0.0), cd(0.0), k_drag(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
-      control_area(0.0), control_axis(ControlAxis::Pitch),
+      control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
@@ -262,6 +262,10 @@ PartsCatalog load_parts_catalog(const char *path) {
         else {
             throw std::runtime_error(ctx + "\"control_axis\" must be "
                                           "\"pitch\", \"yaw\" or \"roll\"");
+        }
+        d.cl_control = pv.value("cl_control", 0.0);
+        if(d.cl_control < 0.0) {
+            throw std::runtime_error(ctx + "\"cl_control\" must be >= 0");
         }
         d.max_deflection = pv.value("max_deflection", 0.0);
         if(d.max_deflection < 0.0) {

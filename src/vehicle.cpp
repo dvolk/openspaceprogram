@@ -1376,7 +1376,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         for(Part *p : parts) {
             if(p->def == nullptr) { continue; }
             const PartDef *d = p->def;
-            if(d->control_area <= 0.0 || d->cl <= 0.0
+            // deflection effectiveness: the dedicated cl_control if set, else
+            // the lift-curve slope cl (controlCl -- keeps a cl-only part
+            // working). A surface with neither is not a control surface.
+            const double clc = controlCl(d->cl, d->cl_control);
+            if(d->control_area <= 0.0 || clc <= 0.0
                || d->max_deflection <= 0.0) { continue; }
             // The axis -> (moment axis, force plane, stick, target sign)
             // selection is the PURE controlAxisParams (pinned in
@@ -1398,7 +1402,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const double sign =
                 controlDeflectionSign(ri, forceDir, about, ax.targetSign);
             const glm::dvec3 F = controlForce(
-                q, d->control_area, d->cl,
+                q, d->control_area, clc,
                 sign * (double)sv * d->max_deflection, forceDir);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);

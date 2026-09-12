@@ -282,10 +282,12 @@ struct PartDef {
                        acts on (default pitch; a rudder is yaw, an aileron
                        roll). Only the matching stick (W/S, A/D, Q/E) drives
                        it -- a surface no longer responds to every axis.
-         cl            the deflection effectiveness (per radian). REUSES the
-                       same `cl` as the lift-curve slope above -- a part is a
-                       lifting surface when lift_area > 0, a control surface
-                       when control_area > 0 (or both).
+         cl_control    the deflection effectiveness (per radian) for this
+                       surface. 0 = fall back to the lift-curve slope `cl`
+                       (a part that only declares `cl` keeps the old
+                       behaviour). Set it to give a part that is BOTH a wing
+                       and a control surface a lift-slope and a deflection
+                       effectiveness that differ (src/drag.h controlCl).
          max_deflection rad; the surface's travel limit (the deflection is
                        bounded by the player input x this). 0 = none.
    The steering moment about the COM comes from the surface's POSITION
@@ -300,6 +302,7 @@ struct PartDef {
     double stall_angle;
     double control_area;
     ControlAxis control_axis;
+    double cl_control;
     double max_deflection;
 
     PartDef();

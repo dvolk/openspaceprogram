@@ -142,10 +142,10 @@ WING_K_DRAG        = 0.8      # weathervane drag coefficient (off-axis area)
 
 # rudder (a control surface): a deflection-driven steering surface (an
 # elevator / rudder). Reuses the wing mesh (a flat plate) + texture. The
-# control_area is the planform area = radius * height; cl is the deflection
-# effectiveness (per radian, the same thin-airfoil 2*pi as the wing's
-# lift-curve slope); max_deflection is the travel limit (rad). cd / k_drag
-# are the parasite + weathervane drag coefficients (a thin plate).
+# control_area is the planform area = radius * height; cl_control is the
+# deflection effectiveness (per radian, the same thin-airfoil 2*pi as the
+# wing's lift-curve slope); max_deflection is the travel limit (rad).
+# cd / k_drag are the parasite + weathervane drag coefficients (a thin plate).
 RUDDER_DENSITY        = 50.0  # kg/m^3, control-surface structure (skin + spars)
 RUDDER_CL             = 6.0   # deflection effectiveness (per radian)
 RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
@@ -418,8 +418,8 @@ def generate(name, ptype, mesh, texture):
         e["k_drag"] = WING_K_DRAG
     elif ptype in ("rudder", "elevator", "aileron"):
         # a control surface: the plate's area (radius * height) is its
-        # CONTROL area. The deflection effectiveness (cl) and travel limit
-        # (max_deflection) are declared constants (not geometry-derived);
+        # CONTROL area. The deflection effectiveness (cl_control) and travel
+        # limit (max_deflection) are declared constants (not geometry-derived);
         # the weathervane drag (k_drag) turns the flat plate into an
         # off-axis drag area, the same way the wing does. Each type is ONE
         # steering axis, like the real control surfaces: a rudder yaws (A/D),
@@ -430,7 +430,11 @@ def generate(name, ptype, mesh, texture):
         e["control_area"] = clean(radius * height)
         e["control_axis"] = {"rudder": "yaw", "elevator": "pitch",
                              "aileron": "roll"}[ptype]
-        e["cl"] = RUDDER_CL
+        # cl_control = the deflection effectiveness (per radian). These are
+        # control surfaces, not lifting surfaces (no lift_area), so cl (the
+        # lift-curve slope) stays 0 -- cl_control is their own number (I4:
+        # the two "cl"s are no longer overloaded).
+        e["cl_control"] = RUDDER_CL
         e["max_deflection"] = RUDDER_MAX_DEFLECTION
         e["drag_area"] = clean(radius * height)
         e["cd"] = RUDDER_CD
@@ -468,8 +472,9 @@ def summary_line(e):
     if "control_area" in e:
         # a control surface: its control area + deflection effectiveness,
         # and the weathervane drag it also provides.
-        return "  %-24s S=%5s  cl=%4s  delta_max=%s  K=%3s  mass=%7s" % (
-            n, e["control_area"], e["cl"], e["max_deflection"], e.get("k_drag", 0), e["mass"])
+        return "  %-24s S=%5s  cl_c=%4s  axis=%-6s delta_max=%s  mass=%7s" % (
+            n, e["control_area"], e.get("cl_control", 0),
+            e.get("control_axis", "pitch"), e["max_deflection"], e["mass"])
     if "fuel_rate" in e:
         t = 2.0 * e["fuel_rate"] * e["exhaust_velocity"]
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (
