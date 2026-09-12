@@ -1355,17 +1355,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         lift_total += flift;
     }
 
-    // Control surfaces (deflection-driven steering authority): each surface
-    // steers exactly ONE axis (its control_axis -- an elevator pitches, a
-    // rudder yaws, an aileron rolls). The air gives a deflected surface its
-    // leverage, so the force is the lift law with the deflection in place of
-    // the AoA (controlForce) -- LINEAR (no stall), bounded by the travel
-    // (max_deflection). Only the stick for the surface's axis drives it. The
-    // steering moment about the COM comes from the surface's OFFSET (a tail
-    // behind the CG pitches/yaws the ship, a canard ahead the other way; a
-    // laterally-offset pair rolls). Zero in vacuum (q = 0) and at rest
-    // (returned above). `stick` is the ship's input (Q/E roll, W/S pitch,
-    // A/D yaw), set by Command (see vehicle.h).
+    // Control surfaces (deflection-driven steering): each surface steers ONE
+    // axis (its control_axis -- elevator pitches, rudder yaws, aileron rolls)
+    // and is driven by that axis's stick alone. The force is the lift law with
+    // the deflection in place of the AoA (controlForce) -- linear, bounded by
+    // the travel -- applied at the surface, so its OFFSET from the COM is the
+    // steering leverage (a tail pitches/yaws the ship, a canard ahead the
+    // other way, a laterally-offset pair rolls). Zero in vacuum (q = 0) and
+    // at rest (returned above).
     {
         lastControlDeflections.clear();
         // Force directions, out of the flow (mirrors liftDirection): pitch
@@ -1380,9 +1377,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             if(p->def == nullptr) { continue; }
             const PartDef *d = p->def;
             if(d->control_area <= 0.0 || d->max_deflection <= 0.0) { continue; }
-            // deflection effectiveness: the dedicated cl_control if set, else
-            // the lift-curve slope cl (controlCl -- keeps a cl-only part
-            // working).
+            // Deflection effectiveness (per radian): the part's dedicated
+            // cl_control if it is set (>0), else its lift-curve slope cl
+            // (controlCl) -- so a part that only declares cl (no cl_control)
+            // keeps the old single-"cl" behaviour.
             const double clc = controlCl(d->cl, d->cl_control);
             // The axis -> (moment axis, force plane, stick, target sign)
             // selection is the PURE controlAxisParams (pinned in
