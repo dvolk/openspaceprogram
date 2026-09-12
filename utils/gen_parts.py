@@ -221,10 +221,12 @@ PARTS = [
     # lift + a weathervane drag to a ship (see the WING_* constants).
     ("wing",             "wing",           "wing.obj",                     "wing.png"),
     # a rudder: a control surface (deflection-driven steering authority).
-    # Reuses the wing mesh (a flat plate) + texture (see the RUDDER_* const).
-    ("rudder",           "rudder",         "wing.obj",                     "wing.png"),
-    ("elevator",         "elevator",       "wing.obj",                     "wing.png"),
-    ("aileron",          "aileron",        "wing.obj",                     "wing.png"),
+    # Reuses the wing mesh (a flat plate) but gets its OWN tinted texture so
+    # the surfaces are visually distinct (blue rudder / red elevator / green
+    # aileron) from the gray wing and each other (see the RUDDER_* const).
+    ("rudder",           "rudder",         "wing.obj",                     "rudder.png"),
+    ("elevator",         "elevator",       "wing.obj",                     "elevator.png"),
+    ("aileron",          "aileron",        "wing.obj",                     "aileron.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
