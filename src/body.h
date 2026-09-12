@@ -55,6 +55,13 @@ struct Body {
     glm::dmat4 model_matrix = glm::dmat4(1.0);
 
     ~Body() {
+        if(btBody != nullptr) {
+            // Bullet never frees the body's motion state (~btRigidBody is
+            // a no-op) and nothing reads it (static bodies), so it is
+            // ours: free it before the body that points at it. The hull
+            // body has none (constructed with a null).
+            delete btBody->getMotionState();
+        }
         delete btBody;
         delete shape;
         /* mesh/shader/texture are shared (the asset registries own them,

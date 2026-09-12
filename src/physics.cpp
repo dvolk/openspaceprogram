@@ -209,8 +209,19 @@ void removeTerrainCollision(btRigidBody *b) {
 }
 
 void PhysicsEngine::RemoveTerrainCollision(btRigidBody *b) {
-    // delete b->getCollisionShape();
     dynamicsWorld->removeRigidBody(b);
+    // Bullet frees NONE of these: ~btRigidBody is a no-op, and neither
+    // ~btBvhTriangleMeshShape nor its base releases the striding
+    // interface (whose own dtor is empty) -- so a removed patch used to
+    // leak the interface, the shape and its BVH on every LOD collapse.
+    // Free interface -> shape -> motion state, in that order; ~GeoPatch
+    // deletes the patch's mesh (the interface points into its vs/is)
+    // only after this, so the pointers stay valid until they die.
+    btTriangleMeshShape *t =
+        static_cast<btTriangleMeshShape *>(b->getCollisionShape());
+    delete t->getMeshInterface();
+    delete t;
+    delete b->getMotionState();
 }
 
 btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m) {

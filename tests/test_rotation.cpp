@@ -307,19 +307,22 @@ static void test_killrot_law() {
 static void test_inertia_and_angvel_readers() {
     printf("== getInertiaDiag / GetAngVelocity: real Bullet readers ==\n");
 
-    btBoxShape shape(btVector3(1.0, 1.0, 1.0));
+    // heap shape: ~Body frees it (a stack one would be `delete`d out from
+    // under the stack)
+    btBoxShape *shape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
     const double m0 = 4.0;
     const double m1 = m0 / 2.0;
 
     btVector3 I0;
-    shape.calculateLocalInertia(m0, I0);
+    shape->calculateLocalInertia(m0, I0);
     if(I0.getX() <= 0.0) {
         printf("SKIP: shape inertia is degenerate\n");
+        delete shape;
         return;
     }
 
     {
-        btRigidBody::btRigidBodyConstructionInfo ci(m0, 0, &shape, I0);
+        btRigidBody::btRigidBodyConstructionInfo ci(m0, 0, shape, I0);
         btRigidBody *rb = new btRigidBody(ci);
 
         Body b;

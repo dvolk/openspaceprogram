@@ -85,21 +85,24 @@ static int g_checks = 0;
 static void test_inertia_diag() {
     printf("== getInertiaDiag: inertia follows the mass (not the identity) ==\n");
 
-    btBoxShape shape(btVector3(1.0, 1.0, 1.0));
+    // heap shape: ~Body frees it (a stack one would be `delete`d out from
+    // under the stack)
+    btBoxShape *shape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
     // unit box: I = 2m/3, so m0 = 4.0 keeps I0 and I1 away from (1,1,1)
     const double m0 = 4.0;
 
     btVector3 I0;
-    shape.calculateLocalInertia(m0, I0);
+    shape->calculateLocalInertia(m0, I0);
     if(I0.getX() <= 0.0) {
         printf("SKIP: shape inertia is degenerate\n");
+        delete shape;
         return;
     }
 
     Body b;
     // mesh/shader/texture default to null (a headless test has no GL)
     b.btBody = nullptr;  // a part is not a simulated object of its own
-    b.shape = &shape;    // ... but it does have a collision hull
+    b.shape = shape;     // ... but it does have a collision hull (owned)
     b.mass = m0;
 
     const glm::dvec3 I = getInertiaDiag(&b);
