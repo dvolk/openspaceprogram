@@ -15,7 +15,8 @@ PartDef::PartDef()
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
       drag_area(0.0), cd(0.0), k_drag(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
-      control_area(0.0), max_deflection(0.0) {
+      control_area(0.0), control_axis(ControlAxis::Pitch),
+      max_deflection(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
 }
 
@@ -250,6 +251,17 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.control_area = pv.value("control_area", 0.0);
         if(d.control_area < 0.0) {
             throw std::runtime_error(ctx + "\"control_area\" must be >= 0 (m^2)");
+        }
+        // control_axis: the one steering axis the surface acts on. A string
+        // (pitch|yaw|roll) so a part reads like the other part fields; an
+        // unknown value is a load error, not a silent default.
+        const std::string axis = pv.value("control_axis", std::string("pitch"));
+        if(axis == "pitch")      { d.control_axis = ControlAxis::Pitch; }
+        else if(axis == "yaw")   { d.control_axis = ControlAxis::Yaw; }
+        else if(axis == "roll")  { d.control_axis = ControlAxis::Roll; }
+        else {
+            throw std::runtime_error(ctx + "\"control_axis\" must be "
+                                          "\"pitch\", \"yaw\" or \"roll\"");
         }
         d.max_deflection = pv.value("max_deflection", 0.0);
         if(d.max_deflection < 0.0) {

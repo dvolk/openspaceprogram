@@ -242,16 +242,20 @@ inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
    and a canard (ahead of it) need OPPOSITE deflections for the same
    steering torque -- a fixed force direction is position-dependent. This
    returns the sign (-1 or +1) that, multiplied by the stick input, makes
-   the torque about `aboutAxis` match the reaction wheel's convention (W
-   -> nose up) for EITHER a tail or a canard:
-     sign = -sign( dot(cross(ri, forceDir), aboutAxis) )
-   `forceDir` is the force direction (up for pitch, right for yaw) and
-   `aboutAxis` is the axis the torque should be about (right for pitch, up
-   for yaw). A surface exactly at the COM (dot 0) has zero lever -> no
-   steering moment, so its sign is moot (returns +1). Pure math (glm) so
-   tests/ can pin it without Bullet/GL. */
+   the torque about `aboutAxis` match the reaction wheel's convention for
+   EITHER a tail or a canard:
+     sign = targetSign * ( dot(cross(ri, forceDir), aboutAxis) >= 0 ? +1 : -1 )
+   `forceDir` is the force direction and `aboutAxis` the axis the torque
+   should be about. `targetSign` (+1 or -1) is the SIGN of the wheel's
+   torque about that axis for a positive stick -- pitch (W/S) is -right and
+   yaw (A/D) is -up, but roll (Q/E) is +nose, so roll passes +1 and
+   pitch/yaw pass -1 (the default). A surface exactly at the COM (dot 0)
+   has zero lever -> no steering moment, so its sign is moot (returns
+   targetSign). Pure math (glm) so tests/ can pin it without Bullet/GL. */
 inline double controlDeflectionSign(const glm::dvec3 &ri,
                                     const glm::dvec3 &forceDir,
-                                    const glm::dvec3 &aboutAxis) {
-    return (glm::dot(glm::cross(ri, forceDir), aboutAxis) >= 0.0) ? -1.0 : 1.0;
+                                    const glm::dvec3 &aboutAxis,
+                                    double targetSign = -1.0) {
+    const double d = glm::dot(glm::cross(ri, forceDir), aboutAxis);
+    return (d >= 0.0) ? targetSign : -targetSign;
 }

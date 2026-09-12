@@ -517,11 +517,31 @@ static void test_controlDeflectionSign() {
         CHECK_TRUE(glm::dot(torque, up) < 0.0, "tail yaw -> -up torque");
     }
 
+    // Roll: an aileron pair, laterally offset (ri ~ +/-right), force in the
+    // up plane. The wheel's Q (stick[0]=+1) is a +nose torque, so BOTH
+    // ailerons roll that way (right up / left down -- differential). The roll
+    // targetSign is +1 (the wheel's roll is +nose, unlike pitch/yaw's -axis).
+    {
+        const double rRight = controlDeflectionSign(right,  up, nose, +1.0);
+        const double rLeft  = controlDeflectionSign(-right, up, nose, +1.0);
+        const glm::dvec3 Fright = up * (rRight * 1.0);  // stick[0]=+1
+        const glm::dvec3 Fleft  = up * (rLeft  * 1.0);  // stick[0]=+1
+        CHECK_TRUE(glm::dot(glm::cross(right, Fright), nose) > 0.0,
+                   "right aileron Q -> +nose torque");
+        CHECK_TRUE(glm::dot(glm::cross(-right, Fleft), nose) > 0.0,
+                   "left aileron Q -> +nose torque");
+        CHECK_TRUE(rRight == -rLeft, "aileron pair deflects opposite (roll)");
+        CHECK_TRUE(Fright + Fleft == glm::dvec3(0.0),
+                   "aileron pair: net force cancels (pure roll)");
+    }
+
     // A surface exactly at the COM (zero lever) -> sign is moot; the helper
-    // returns +1 (no crash, no zero-div).
+    // returns targetSign (here -1, the default) -- defined, no crash, no
+    // zero-div.
     {
         const double sign = controlDeflectionSign(glm::dvec3(0.0), up, right);
         CHECK_TRUE(sign == 1.0 || sign == -1.0, "COM surface: sign is +-1 (defined)");
+        CHECK_TRUE(sign == -1.0, "COM surface: returns targetSign (-1 default)");
     }
 }
 

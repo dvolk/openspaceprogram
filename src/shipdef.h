@@ -119,6 +119,47 @@ struct ResourceContent {
     }
 };
 
+/* The steering axis a control surface acts on (its deflection produces a
+   moment about exactly this axis). A surface is one or the other, like a
+   real control surface: an elevator pitches, a rudder yaws, an aileron
+   rolls. The moment still comes from the surface's OFFSET from the COM
+   (Vehicle::applyAeroForce); the axis only picks which stick drives it and
+   the force plane (pitch/yaw/roll -> up/right/up out of the flow). */
+enum class ControlAxis { Pitch, Yaw, Roll };
+
+/* The per-axis steering parameters for a control surface (I1): the abstract
+   selection that Vehicle::applyAeroForce resolves to concrete vectors. Pure
+   (no glm) so tests/ can pin the mapping without Bullet/GL.
+   aboutAxis     which ship frame axis the moment is about: 0=right, 1=up,
+                 2=nose (this must equal the reaction wheel's axis for the
+                 axis, so the surface steers the way the stick expects).
+   forceDirKind  the flow-plane the force acts along: 0=up (liftDir),
+                 1=right (yawDir) -- both are the ship axis projected out of
+                 the flow (Vehicle::applyAeroForce resolves them).
+   stickIndex    the stick component that drives it: 0=roll(Q/E), 1=pitch
+                 (W/S), 2=yaw(A/D).
+   targetSign    the SIGN of the wheel's torque about that axis for a
+                 positive stick: pitch (W/S) -> -right, yaw (A/D) -> -up,
+                 roll (Q/E) -> +nose. So pitch/yaw are -1, roll is +1. */
+struct ControlAxisParams {
+    int aboutAxis = -1;
+    int forceDirKind = -1;
+    int stickIndex = -1;
+    double targetSign = -1.0;
+};
+inline ControlAxisParams controlAxisParams(ControlAxis axis) {
+    ControlAxisParams p;
+    switch(axis) {
+        case ControlAxis::Pitch:
+            p.aboutAxis = 0; p.forceDirKind = 0; p.stickIndex = 1; p.targetSign = -1.0; break;
+        case ControlAxis::Yaw:
+            p.aboutAxis = 1; p.forceDirKind = 1; p.stickIndex = 2; p.targetSign = -1.0; break;
+        case ControlAxis::Roll:
+            p.aboutAxis = 2; p.forceDirKind = 0; p.stickIndex = 0; p.targetSign = +1.0; break;
+    }
+    return p;
+}
+
 /* One part TYPE (a catalog entry; ship defs reference it by name).
    `type` is a free-form display label. Behavior comes from the optional
    fields below (see the header comment): torque makes it a reaction
@@ -237,6 +278,10 @@ struct PartDef {
    its part asset -- sets these). The force is the lift law with the
    deflection in place of the angle of attack (src/drag.h controlForce):
          control_area  m^2; the part's control reference area. 0 = none.
+         control_axis  pitch|yaw|roll; the ONE steering axis this surface
+                       acts on (default pitch; a rudder is yaw, an aileron
+                       roll). Only the matching stick (W/S, A/D, Q/E) drives
+                       it -- a surface no longer responds to every axis.
          cl            the deflection effectiveness (per radian). REUSES the
                        same `cl` as the lift-curve slope above -- a part is a
                        lifting surface when lift_area > 0, a control surface
@@ -254,6 +299,7 @@ struct PartDef {
     double cl;
     double stall_angle;
     double control_area;
+    ControlAxis control_axis;
     double max_deflection;
 
     PartDef();

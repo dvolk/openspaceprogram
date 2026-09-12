@@ -223,6 +223,8 @@ PARTS = [
     # a rudder: a control surface (deflection-driven steering authority).
     # Reuses the wing mesh (a flat plate) + texture (see the RUDDER_* const).
     ("rudder",           "rudder",         "wing.obj",                     "wing.png"),
+    ("elevator",         "elevator",       "wing.obj",                     "wing.png"),
+    ("aileron",          "aileron",        "wing.obj",                     "wing.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -295,6 +297,8 @@ DISPLAY_BASE = {
     "kerbal":         "Kerbal",
     "wing":           "Wing",
     "rudder":         "Rudder",
+    "elevator":       "Elevator",
+    "aileron":        "Aileron",
     "fuel_link":      "Fuel Link",
 }
 
@@ -412,16 +416,20 @@ def generate(name, ptype, mesh, texture):
         e["drag_area"] = clean(radius * height)
         e["cd"] = WING_CD
         e["k_drag"] = WING_K_DRAG
-    elif ptype == "rudder":
+    elif ptype in ("rudder", "elevator", "aileron"):
         # a control surface: the plate's area (radius * height) is its
         # CONTROL area. The deflection effectiveness (cl) and travel limit
         # (max_deflection) are declared constants (not geometry-derived);
         # the weathervane drag (k_drag) turns the flat plate into an
-        # off-axis drag area, the same way the wing does.
+        # off-axis drag area, the same way the wing does. Each type is ONE
+        # steering axis, like the real control surfaces: a rudder yaws (A/D),
+        # an elevator pitches (W/S), an aileron rolls (Q/E).
         e["mass"] = clean(volume * RUDDER_DENSITY)
         e["radius"] = radius
         e["height"] = height
         e["control_area"] = clean(radius * height)
+        e["control_axis"] = {"rudder": "yaw", "elevator": "pitch",
+                             "aileron": "roll"}[ptype]
         e["cl"] = RUDDER_CL
         e["max_deflection"] = RUDDER_MAX_DEFLECTION
         e["drag_area"] = clean(radius * height)

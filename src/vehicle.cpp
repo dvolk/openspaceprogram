@@ -1354,18 +1354,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         lift_total += flift;
     }
 
-    // Control surfaces (deflection-driven steering authority): the air gives
-    // a deflected surface its leverage, so the force is the lift law with the
-    // deflection in place of the AoA (controlForce) -- LINEAR (no stall),
-    // bounded by the surface's travel (max_deflection). The player's pitch
-    // (W/S) and yaw (A/D) inputs deflect each surface; the steering moment
-    // about the COM comes from the surface's OFFSET (a tail behind the CG
-    // pitches/yaws the ship, a canard ahead pitches it the other way). Zero
-    // in vacuum (q = 0) and at rest (returned above). `stick` is the ship's
-    // control input (W/S pitch, A/D yaw), set by Command (see vehicle.h).
-    if(stick[1] != 0.0f || stick[2] != 0.0f) {
-        // The yaw-plane force direction: the ship's right axis out of the
-        // flow (mirrors liftDirection for the pitch plane).
+    // Control surfaces (deflection-driven steering authority): each surface
+    // steers exactly ONE axis (its control_axis -- an elevator pitches, a
+    // rudder yaws, an aileron rolls). The air gives a deflected surface its
+    // leverage, so the force is the lift law with the deflection in place of
+    // the AoA (controlForce) -- LINEAR (no stall), bounded by the travel
+    // (max_deflection). Only the stick for the surface's axis drives it. The
+    // steering moment about the COM comes from the surface's OFFSET (a tail
+    // behind the CG pitches/yaws the ship, a canard ahead the other way; a
+    // laterally-offset pair rolls). Zero in vacuum (q = 0) and at rest
+    // (returned above). `stick` is the ship's input (Q/E roll, W/S pitch,
+    // A/D yaw), set by Command (see vehicle.h).
+    if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
+        // Force directions, out of the flow (mirrors liftDirection): pitch
+        // and roll share the "up" plane; yaw uses the ship's right axis. The
+        // axis picks the plane AND the stick that drives the surface.
         const glm::dvec3 yawDirRaw = right - glm::dot(right, vhat) * vhat;
         const double yawLen = glm::length(yawDirRaw);
         const glm::dvec3 yawDir = (yawLen > 0.0) ? yawDirRaw / yawLen
@@ -1375,24 +1378,28 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const PartDef *d = p->def;
             if(d->control_area <= 0.0 || d->cl <= 0.0
                || d->max_deflection <= 0.0) { continue; }
+            // The axis -> (moment axis, force plane, stick, target sign)
+            // selection is the PURE controlAxisParams (pinned in
+            // test_shipload); here it resolves to the ship's concrete axes.
+            const ControlAxisParams ax = controlAxisParams(d->control_axis);
+            const float sv = stick[ax.stickIndex];
+            if(sv == 0.0f) { continue; }  // not commanding this surface's axis
+            const glm::dvec3 forceDir = (ax.forceDirKind == 0) ? liftDir : yawDir;
+            const glm::dvec3 about =
+                (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
             const glm::dvec3 ri = partPos(p) - com;
             // The deflection sign is POSITION-DEPENDENT: the steering torque
             // is ri x F, so a tail (behind the CG) and a canard (ahead) need
-            // OPPOSITE deflections for the same steering torque (see
-            // controlDeflectionSign). The signs make W (stick[1]=+1) pitch
-            // the nose UP and A/D yaw consistently for EITHER a tail or a
-            // canard, matching the reaction wheel (applyRotationForce).
-            const double pitchSign = controlDeflectionSign(ri, up, right);
-            const double yawSign   = controlDeflectionSign(ri, right, up);
-            glm::dvec3 F = glm::dvec3(0.0);
-            if(stick[1] != 0.0f) {  // pitch (W/S) -> force in the pitch plane
-                F += controlForce(q, d->control_area, d->cl,
-                                  pitchSign * (double)stick[1] * d->max_deflection, liftDir);
-            }
-            if(stick[2] != 0.0f) {  // yaw (A/D) -> force in the yaw plane
-                F += controlForce(q, d->control_area, d->cl,
-                                  yawSign * (double)stick[2] * d->max_deflection, yawDir);
-            }
+            // OPPOSITE deflections for the same steering torque, and a
+            // laterally-offset pair (an aileron) deflects opposite to roll.
+            // controlDeflectionSign picks the sign so the moment about the
+            // axis matches the reaction wheel for EITHER position (the B1
+            // fix), consistent with applyRotationForce.
+            const double sign =
+                controlDeflectionSign(ri, forceDir, about, ax.targetSign);
+            const glm::dvec3 F = controlForce(
+                q, d->control_area, d->cl,
+                sign * (double)sv * d->max_deflection, forceDir);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);
             ftotal += F;
