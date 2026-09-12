@@ -1375,17 +1375,25 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const PartDef *d = p->def;
             if(d->control_area <= 0.0 || d->cl <= 0.0
                || d->max_deflection <= 0.0) { continue; }
+            const glm::dvec3 ri = partPos(p) - com;
+            // The deflection sign is POSITION-DEPENDENT: the steering torque
+            // is ri x F, so a tail (behind the CG) and a canard (ahead) need
+            // OPPOSITE deflections for the same steering torque (see
+            // controlDeflectionSign). The signs make W (stick[1]=+1) pitch
+            // the nose UP and A/D yaw consistently for EITHER a tail or a
+            // canard, matching the reaction wheel (applyRotationForce).
+            const double pitchSign = controlDeflectionSign(ri, up, right);
+            const double yawSign   = controlDeflectionSign(ri, right, up);
             glm::dvec3 F = glm::dvec3(0.0);
             if(stick[1] != 0.0f) {  // pitch (W/S) -> force in the pitch plane
                 F += controlForce(q, d->control_area, d->cl,
-                                  (double)stick[1] * d->max_deflection, liftDir);
+                                  pitchSign * (double)stick[1] * d->max_deflection, liftDir);
             }
             if(stick[2] != 0.0f) {  // yaw (A/D) -> force in the yaw plane
                 F += controlForce(q, d->control_area, d->cl,
-                                  (double)stick[2] * d->max_deflection, yawDir);
+                                  yawSign * (double)stick[2] * d->max_deflection, yawDir);
             }
             if(glm::length2(F) <= 0.0) { continue; }
-            const glm::dvec3 ri = partPos(p) - com;
             ApplyForce(hull, ri, F);
             ftotal += F;
             moment += glm::cross(ri, F);

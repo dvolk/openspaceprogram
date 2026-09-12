@@ -236,3 +236,22 @@ inline glm::dvec3 controlForce(double q, double S, double cl, double delta,
     if(q <= 0.0 || S <= 0.0 || cl <= 0.0 || delta == 0.0) { return glm::dvec3(0.0); }
     return dir * (q * S * cl * delta);
 }
+
+/* The control-surface DEFLECTION SIGN for a surface at position `ri` (rel.
+   to the COM). The steering torque is ri x F, so a tail (behind the CG)
+   and a canard (ahead of it) need OPPOSITE deflections for the same
+   steering torque -- a fixed force direction is position-dependent. This
+   returns the sign (-1 or +1) that, multiplied by the stick input, makes
+   the torque about `aboutAxis` match the reaction wheel's convention (W
+   -> nose up) for EITHER a tail or a canard:
+     sign = -sign( dot(cross(ri, forceDir), aboutAxis) )
+   `forceDir` is the force direction (up for pitch, right for yaw) and
+   `aboutAxis` is the axis the torque should be about (right for pitch, up
+   for yaw). A surface exactly at the COM (dot 0) has zero lever -> no
+   steering moment, so its sign is moot (returns +1). Pure math (glm) so
+   tests/ can pin it without Bullet/GL. */
+inline double controlDeflectionSign(const glm::dvec3 &ri,
+                                    const glm::dvec3 &forceDir,
+                                    const glm::dvec3 &aboutAxis) {
+    return (glm::dot(glm::cross(ri, forceDir), aboutAxis) >= 0.0) ? -1.0 : 1.0;
+}

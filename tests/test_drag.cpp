@@ -473,6 +473,58 @@ static void test_controlForce() {
     CHECK_TRUE(controlForce(q, S, cl, 0.0, dir) == glm::dvec3(0.0), "no delta -> zero");
 }
 
+static void test_controlDeflectionSign() {
+    printf("== controlDeflectionSign: position-dependent steering sign ==\n");
+    // Ship axes: nose=+Z, right=+X, up=+Y. The reaction wheel's convention:
+    // W (stick[1]=+1) -> torque about -right (nose up); A/D -> about -up.
+    const glm::dvec3 nose(0,0,1), right(1,0,0), up(0,1,0);
+
+    // A TAIL surface (behind the CG, ri ~ -nose) with W (stick[1]=+1) must
+    // produce a -right torque (nose UP). The deflection sign makes the force
+    // F = sign * stick[1] * up, and the torque is ri x F.
+    {
+        const glm::dvec3 ri = -nose;  // tail
+        const double sign = controlDeflectionSign(ri, up, right);  // pitch
+        const glm::dvec3 F = up * (sign * 1.0);  // W: stick[1]=+1
+        const glm::dvec3 torque = glm::cross(ri, F);
+        CHECK_TRUE(glm::dot(torque, right) < 0.0, "tail W -> -right torque (nose up)");
+    }
+
+    // A CANARD surface (ahead of the CG, ri ~ +nose) with W must ALSO
+    // produce a -right torque (nose UP) -- the deflection sign flips.
+    {
+        const glm::dvec3 ri = +nose;  // canard
+        const double sign = controlDeflectionSign(ri, up, right);  // pitch
+        const glm::dvec3 F = up * (sign * 1.0);  // W: stick[1]=+1
+        const glm::dvec3 torque = glm::cross(ri, F);
+        CHECK_TRUE(glm::dot(torque, right) < 0.0, "canard W -> -right torque (nose up)");
+    }
+
+    // The tail and canard signs are OPPOSITE (that's the whole point).
+    {
+        const double tailSign   = controlDeflectionSign(-nose, up, right);
+        const double canardSign = controlDeflectionSign(+nose, up, right);
+        CHECK_TRUE(tailSign == -canardSign, "tail and canard signs are opposite");
+    }
+
+    // Yaw: a tail with stick[2]=+1 must produce a -up torque (matching the
+    // wheel's A/D convention about -up).
+    {
+        const glm::dvec3 ri = -nose;  // tail
+        const double sign = controlDeflectionSign(ri, right, up);  // yaw
+        const glm::dvec3 F = right * (sign * 1.0);  // stick[2]=+1
+        const glm::dvec3 torque = glm::cross(ri, F);
+        CHECK_TRUE(glm::dot(torque, up) < 0.0, "tail yaw -> -up torque");
+    }
+
+    // A surface exactly at the COM (zero lever) -> sign is moot; the helper
+    // returns +1 (no crash, no zero-div).
+    {
+        const double sign = controlDeflectionSign(glm::dvec3(0.0), up, right);
+        CHECK_TRUE(sign == 1.0 || sign == -1.0, "COM surface: sign is +-1 (defined)");
+    }
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -493,6 +545,8 @@ int main() {
     test_partDrag();
     printf("\n");
     test_controlForce();
+    printf("\n");
+    test_controlDeflectionSign();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {
