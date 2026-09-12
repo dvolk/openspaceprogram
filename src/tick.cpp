@@ -450,6 +450,21 @@ void tick(Game &g) {
                        glm::length(g.ship->lastAeroTorque),
                        g.ship->drag_cd, g.ship->drag_k,
                        glm::degrees(g.ship->lastDragAlpha));
+                // The control surfaces' applied deflections (the "what is the
+                // pilot steering right now?" telemetry): one per surface --
+                // its name, instance index, axis, and deflection in degrees
+                // (0 = released). The name/axis are resolved from the part
+                // reference here (once per interval), not copied per substep.
+                if(!g.ship->lastControlDeflections.empty()) {
+                    printf("[ctrl]");
+                    for(const Vehicle::ControlDeflection &cd :
+                        g.ship->lastControlDeflections) {
+                        printf(" %s[%d](%s)=%+.1fdeg", cd.def->name.c_str(),
+                               cd.index, controlAxisName(cd.def->control_axis),
+                               glm::degrees(cd.deflection));
+                    }
+                    printf("\n");
+                }
                 fflush(stdout);
             }
         }

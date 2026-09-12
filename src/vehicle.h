@@ -360,6 +360,22 @@ public:
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // pitch angle of attack (rad) of the last substep
 
+    /* The last substep's control-surface deflections (applyAeroForce): one
+       entry per control surface -- the part type (name + the axis it steers),
+       its instance index in the ship (to tell two "rudders" apart), and the
+       applied deflection (rad, signed; 0 when that stick is released).
+       Stored as a PartDef* (no per-substep string copies -- the name is
+       resolved when the --drag-log prints it, once per interval). Written
+       every substep (cleared + refilled), read by tick.cpp. The "what is the
+       pilot steering right now?" telemetry: which surfaces are deflected
+       and how far. */
+    struct ControlDeflection {
+        const PartDef *def;  // the part type (name + control_axis)
+        int index;           // the Nth control surface in the ship (0-based)
+        double deflection;   // rad, signed (the applied hinge angle)
+    };
+    std::vector<ControlDeflection> lastControlDeflections;
+
     /* Rotation is armed once per tick (Command) and executed per SUBSTEP
        (applyRotationForce, before every stepSimulation) -- like thrust,
        because Bullet clears the accumulated torque on each stepSimulation.

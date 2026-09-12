@@ -159,6 +159,16 @@ inline ControlAxisParams controlAxisParams(ControlAxis axis) {
     }
     return p;
 }
+/* The axis's display label (the --drag-log control-surface telemetry names
+   the surface's axis by this). */
+inline const char *controlAxisName(ControlAxis axis) {
+    switch(axis) {
+        case ControlAxis::Pitch: return "pitch";
+        case ControlAxis::Yaw:   return "yaw";
+        case ControlAxis::Roll:  return "roll";
+    }
+    return "?";
+}
 
 /* One part TYPE (a catalog entry; ship defs reference it by name).
    `type` is a free-form display label. Behavior comes from the optional

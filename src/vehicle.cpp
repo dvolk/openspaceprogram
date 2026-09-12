@@ -1256,6 +1256,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
     lastDragAlpha = 0.0;
+    lastControlDeflections.clear();  // a no-air substep reports no steering
 
     // --drag-cd 0 = no aero at all (the master off switch, the v1 contract).
     // The weathervane and the lift terms are gated on it too, so "0 disables
@@ -1365,7 +1366,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // laterally-offset pair rolls). Zero in vacuum (q = 0) and at rest
     // (returned above). `stick` is the ship's input (Q/E roll, W/S pitch,
     // A/D yaw), set by Command (see vehicle.h).
-    if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
+    {
+        lastControlDeflections.clear();
         // Force directions, out of the flow (mirrors liftDirection): pitch
         // and roll share the "up" plane; yaw uses the ship's right axis. The
         // axis picks the plane AND the stick that drives the surface.
@@ -1373,21 +1375,20 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const double yawLen = glm::length(yawDirRaw);
         const glm::dvec3 yawDir = (yawLen > 0.0) ? yawDirRaw / yawLen
                                                  : glm::dvec3(0.0);
+        int ctrlIndex = 0;  // the Nth control surface (disambiguates instances)
         for(Part *p : parts) {
             if(p->def == nullptr) { continue; }
             const PartDef *d = p->def;
+            if(d->control_area <= 0.0 || d->max_deflection <= 0.0) { continue; }
             // deflection effectiveness: the dedicated cl_control if set, else
             // the lift-curve slope cl (controlCl -- keeps a cl-only part
-            // working). A surface with neither is not a control surface.
+            // working).
             const double clc = controlCl(d->cl, d->cl_control);
-            if(d->control_area <= 0.0 || clc <= 0.0
-               || d->max_deflection <= 0.0) { continue; }
             // The axis -> (moment axis, force plane, stick, target sign)
             // selection is the PURE controlAxisParams (pinned in
             // test_shipload); here it resolves to the ship's concrete axes.
             const ControlAxisParams ax = controlAxisParams(d->control_axis);
-            const float sv = stick[ax.stickIndex];
-            if(sv == 0.0f) { continue; }  // not commanding this surface's axis
+            const float sv = stick[ax.stickIndex];   // 0 when that stick is free
             const glm::dvec3 forceDir = (ax.forceDirKind == 0) ? liftDir : yawDir;
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
@@ -1401,9 +1402,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             // fix), consistent with applyRotationForce.
             const double sign =
                 controlDeflectionSign(ri, forceDir, about, ax.targetSign);
-            const glm::dvec3 F = controlForce(
-                q, d->control_area, clc,
-                sign * (double)sv * d->max_deflection, forceDir);
+            const double deflection = sign * (double)sv * d->max_deflection;
+            // Record the applied deflection for the --drag-log telemetry (0
+            // when that stick is released -- the pilot is not steering it).
+            // Stored by part reference (no per-substep string copies); the
+            // name is resolved when the log prints it.
+            lastControlDeflections.push_back({d, ctrlIndex++, deflection});
+            if(sv == 0.0f || clc <= 0.0 || deflection == 0.0) { continue; }
+            const glm::dvec3 F = controlForce(q, d->control_area, clc,
+                                              deflection, forceDir);
             if(glm::length2(F) <= 0.0) { continue; }
             ApplyForce(hull, ri, F);
             ftotal += F;
