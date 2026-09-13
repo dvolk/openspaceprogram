@@ -119,6 +119,21 @@ void draw3d(Game &g, TransferPlanner &planner) {
       standard 3d stuff drawn here
     */
 
+    // Starfield first, as a pure background -- depth test and depth write both
+    // off. Every body then simply draws over it, including far ones (the sun
+    // at Neptune range) whose reverse-Z depth has collapsed to the 0.0
+    // background value; if the starfield were drawn last and depth-tested it
+    // would win that tie and paint them out. skyRot maps the inertial
+    // starfield into the ship's frame (it drifts once per sidereal day on a
+    // spinning planet; identity = an inertial world).
+    if(g.draw_starfield) {
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST);
+        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+    }
+
     if(g.world_drawing == true) {
         // one per home body; StaticBuilding::Draw culls itself when
         // the active ship is not on that body
@@ -254,23 +269,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
     longitude = atan2(dir.x, dir.z);
     latitude = asin(dir.y);
 
-    // Starfield: a cubemap pinned to the far plane (the vertex shader pushes
-    // the cube to reverse-Z depth 0.0). Drawn after the solid geometry and
-    // depth-tested with the global GEQUAL, so it fills the background and the
-    // terrain/pads/ships in front of it occlude it. skyRot maps the inertial
-    // starfield into the ship's frame (it drifts once per sidereal day on a
-    // spinning planet; identity = an inertial world).
-    if(g.draw_starfield) {
-        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
-    }
-
-    // Atmosphere rims: transparent Fresnel shells, drawn after the
-    // skybox (the starfield is the background) so the rim ring blends
-    // over it and the horizon haze blends over the already-drawn
-    // terrain. Depth-write off; no-ops for bodies without an
-    // atmosphere. See reports/atmosphere2026_08_25. Cloud decks draw
-    // first in the loop (under the rim): the deck is the solid white
-    // layer, the rim the thin air around it.
+    // Atmosphere rims: transparent Fresnel shells, drawn over the opaque
+    // bodies (and the starfield background, which was drawn first) so the
+    // rim ring blends over them and the horizon haze blends over the
+    // already-drawn terrain. Depth-write off; no-ops for bodies without an
+    // atmosphere. See reports/atmosphere2026_08_25. Cloud decks draw first
+    // in the loop (under the rim): the deck is the solid white layer, the
+    // rim the thin air around it.
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
             if(!g.args.no_clouds) {

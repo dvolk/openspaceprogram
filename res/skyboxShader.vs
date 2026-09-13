@@ -8,11 +8,11 @@ uniform mat4 projectionview;
 void main()
 {
     vec4 pos = projectionview * vec4(position, 1.0);
-    // Far-plane cube for the cubemap lookup, at the REVERSE-Z far depth (0.0):
-    // nearer fragments have the larger depth, so 0.0 is the farthest value and
-    // the terrain (depth > 0.0) occludes it under the global GEQUAL test.
-    // Same xy as the old `pos.xyww` trick; only the far extreme is flipped
-    // (1.0 was far under standard Z, 0.0 is far under reverse-Z).
+    // Far-plane cube for the cubemap lookup: push it to the reverse-Z far
+    // extreme (0.0) so it isn't clipped and its xy/w still give the view
+    // direction. The starfield is drawn first as a pure background (depth test
+    // off, see render.cpp), so this depth only positions the cube -- the
+    // bodies are painted over it, not occluded by a depth tie.
     gl_Position = vec4(pos.xy, 0.0, pos.w);
     texcoord0 = position;
 }  
