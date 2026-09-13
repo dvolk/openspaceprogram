@@ -254,9 +254,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
     longitude = atan2(dir.x, dir.z);
     latitude = asin(dir.y);
 
-    if(g.draw_starfield) {
-        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
-    }
+    // TEMP (reverse-Z migration): the far-plane skybox is depth-coupled to
+    // the old logZ terrain and doesn't fit the infinite-far projection.
+    // Disabled to unblock the depth fix; re-add via a reverse-Z method
+    // (view-only matrix, no translation). See tmp/depth_migration_scope.txt.
+    // if(g.draw_starfield) {
+    //     g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
+    // }
 
     // Atmosphere rims: transparent Fresnel shells, drawn after the
     // skybox (the starfield is the background) so the rim ring blends

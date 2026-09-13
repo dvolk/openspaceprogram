@@ -510,10 +510,9 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     const int off = has_skirt ? 1 : 0;
     const int edge = size + 2 * off;
     const float frac = 1.0f / (size - 1);
-    const float skirt_scale = 0.999995f;
 
-    // sized for the skirted grid (edge == size+2); the skirtless root
-    // patches just use the first edge*edge of them
+    // sized for the skirted grid (edge == size+2); a skirtless caller (off == 0)
+    // just uses the first edge*edge of them
     geom.verts.resize((size_t)edge * (size_t)edge);
 
     // Band-limit the heightfield to this grid (see terrainGridFade): the
@@ -528,15 +527,12 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
         return terrainHeightFade(d, t, fade);
     };
 
-    float min_height = HUGE_VALF;
-
     // inner grid at grid coords [off..off+size-1]^2
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
             const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4,
                                                    i*frac, j*frac);
             const float height = height_at(d);
-            min_height = std::min(min_height, height);
 
             // The vertex color (palette / band, sea, contrast), with the
             // jitter band-limited to this grid; the 2-D surface map uses
@@ -578,16 +574,41 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
         }
     }
 
-    // skirt ring: flare one cell past the boundary, down to the patch's
-    // lowest radius; copies normal/color from the adjacent edge vertex
-    // (after the normal pass above, so it gets the final normals)
+    // skirt ring: a 45° wall from the patch boundary -- drops toward the
+    // planet center down to the patch's lowest radius and flares out along the
+    // surface by the same amount (so it's a constant 45° at every subdivision).
+    // Copies normal/color from the adjacent edge vertex (after the normal pass
+    // above, so it gets the final normals).
     if (has_skirt) {
-        const float skirt_r = min_height * skirt_scale;
+        // 45° wall, constant across subdivision AND patch-proportional in
+        // length. Both legs -- the flare along the surface and the drop toward
+        // the planet center -- are one grid cell of the patch edge, so flare =
+        // drop = tan(45°)*drop and every quad is a 45° wall, while the length
+        // scales with the patch (big on coarse, small on fine). (The relief-
+        // based version lost that scaling: a coarse patch has little band-
+        // limited relief, so its skirts came out tiny and useless.) The flare
+        // lies under the neighbouring surface and is hidden by the depth test.
+        // edge_angle = acos(p1.p2) is the patch edge angle (1.231 rad for the
+        // root face, halved per subdivision), so one_cell is patch-proportional.
+        // To change the angle: flare = drop * tan(angle_from_vertical).
+        // To change the length: scale one_cell (e.g. 2*one_cell for a wider skirt).
+        const float edge_angle = std::acos(glm::clamp(glm::dot(p1, p2), -1.0f, 1.0f));
         auto skirt_vertex = [&](int i, int j, float u, float v, int si, int sj) {
-            const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4, u, v);
             const TerrVert &src = geom.verts[(size_t)sj + (size_t)edge * (size_t)si];
+            const float h_edge = glm::length(src.pos);          // src.pos = d_edge * h_edge
+            const glm::vec3 d_edge = src.pos / h_edge;
+            // outward tangent at the edge: one cell past the boundary, radial
+            // component removed (points away from the patch center)
+            const glm::vec3 d_out = terrainSpherePoint(p1, p2, p3, p4, u, v);
+            glm::vec3 tang = d_out - d_edge;
+            tang -= d_edge * glm::dot(tang, d_edge);
+            tang = glm::normalize(tang);
+            const float one_cell = edge_angle * h_edge / (float)(size - 1);
+            const float flare = one_cell;   // patch-proportional length
+            const float drop = flare;       // 45° wall
+            const glm::vec3 pos = src.pos + flare * tang - drop * d_edge;
             geom.verts[(size_t)j + (size_t)edge * (size_t)i] =
-                TerrVert(d * skirt_r, src.normal, src.color);
+                TerrVert(pos, src.normal, src.color);
         };
         for (int j = off; j < off + size; j++) {
             skirt_vertex(off - 1, j, -frac, (j - off)*frac, off, j);

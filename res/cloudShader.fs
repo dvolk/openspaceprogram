@@ -3,7 +3,6 @@
 in vec3 worldPos0;
 in vec3 worldNormal0;
 in vec2 uv0;
-in float logz;
 
 out vec4 fragColor;
 
@@ -45,5 +44,4 @@ void main()
     base += back * vec3(1.0, 0.5, 0.25) * 0.5;
 
     fragColor = vec4(base, cover * mix(0.35, 1.0, day));
-    gl_FragDepth = logz;   // must match the vertex shader / terrain log-depth
 }

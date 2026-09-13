@@ -55,13 +55,12 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
     check_gl_error();
-    // 32-bit float depth was tried (see git history): on this stack window
-    // creation fails with DEPTH 32 + STENCIL 8, and it wouldn't have helped
-    // anyway -- the log-z values come from a float32 varying, and the
-    // skirt hiding uses the stencil, not depth precision.
+    // 24-bit window depth: enough for the current reverse-Z setup. 32-bit
+    // float depth (GL_DEPTH_COMPONENT32F) is only available as an
+    // FBO/renderbuffer attachment, not a window surface -- see
+    // tmp/depth_migration_scope.txt (Option B) for the follow-up if
+    // near-surface precision (launch-pad/terrain jitter) ever bites.
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    check_gl_error();
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, gl_major);
     check_gl_error();
@@ -87,9 +86,8 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     m_window = create_window();
     check_gl_error();
     if(m_window == NULL) {
-        // e.g. Xvfb/llvmpipe: no multisample GLX visual (same family of
-        // quirk as the DEPTH 32 + STENCIL 8 failure above). Retry without
-        // MSAA so headless stacks still work.
+        // e.g. Xvfb/llvmpipe: no multisample GLX visual. Retry without MSAA
+        // so headless stacks still work.
         printf("MSAA window creation failed (%s); retrying without MSAA\n", SDL_GetError());
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
@@ -160,7 +158,18 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
 
     glEnable(GL_DEPTH_TEST);
     check_gl_error();
-    glDepthFunc(GL_LESS);
+    // Reverse-Z (replaces the Outerra logZ hack -- see
+    // tmp/depth_migration_scope.txt): clip depth is 1.0 (near) -> 0.0 (far),
+    // so nearer fragments have the LARGER depth value. glClipControl is core
+    // in GL 4.2 (we require 4.5).
+    glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+    check_gl_error();
+    // Depth test flipped to match. GEQUAL (not GREATER) so a far body at
+    // depth 0.0 still passes against the 0.0-cleared buffer.
+    glDepthFunc(GL_GEQUAL);
+    check_gl_error();
+    // "Far" is now the 0.0 extreme (was 1.0); clear depth to the far value.
+    glClearDepth(0.0);
     check_gl_error();
     glEnable(GL_CULL_FACE);
     check_gl_error();
@@ -333,7 +342,7 @@ void Renderer::Clear(float r, float g, float b, float a)
     check_gl_error();
     glClearColor(r, g, b, a);
     check_gl_error();
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     check_gl_error();
 }
 

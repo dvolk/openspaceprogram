@@ -2,8 +2,28 @@
 
 #include <cmath>
 
+// Reverse-Z infinite-far perspective: clip depth 1.0 (near) -> 0.0 (far), no
+// far plane. Replaces the Outerra logZ hack (see tmp/depth_migration_scope.txt).
+// Pairs with glClipControl(GL_ZERO_TO_ONE) / glDepthFunc(GL_GEQUAL) /
+// glClearDepth(0.0) in display.cpp.
+//
+// Column-vector (glm/OpenGL) convention -- the transpose of the row-vector
+// form in theomader's depth-precision article. For a point `d` in front of
+// the camera (view-space z = -d): clip.z = zNear, clip.w = d, so
+// ndc.z = zNear/d  (1.0 at the near plane, -> 0 as d -> infinity).
+static glm::mat4 reverseZInfinitePerspective(float fov, float aspect, float zNear) {
+    const float t = 1.0f / std::tan(fov * 0.5f);
+    const float x = t / aspect;   // vertical fov
+    const float y = t;
+    return glm::mat4(
+        x,    0.0f, 0.0f, 0.0f,    // col 0
+        0.0f, y,    0.0f, 0.0f,    // col 1
+        0.0f, 0.0f, 0.0f, -1.0f,   // col 2: clip.z = zNear
+        0.0f, 0.0f, zNear, 0.0f);  // col 3: clip.w = -view.z
+}
+
 void Camera::setAspect(float _aspect) {
-    this->projection = glm::perspective(fov, _aspect, zNear, zFar);
+    this->projection = reverseZInfinitePerspective(fov, _aspect, zNear);
 }
 
 void Camera::setViewport(int w, int h) {
@@ -13,7 +33,7 @@ void Camera::setViewport(int w, int h) {
 
 void Camera::setFov(float _fov) {
     this->fov = _fov;
-    this->projection = glm::perspective(fov, aspect, zNear, zFar);
+    this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
 }
 
 const glm::dvec3& Camera::GetPos() const {
@@ -38,7 +58,7 @@ glm::dmat4 *Camera::GetView_() {
 
 Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear, float zFar)
     : fov(fov), aspect(aspect), zNear(zNear), zFar(zFar) {
-    this->projection = glm::perspective(fov, aspect, zNear, zFar);
+    this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
     // Start in Orbit mode focused on focusPos, 10 m out along the ref
     // basis X̂ (the caller sets `ref` every frame; identity at spawn).
     // pos/forward/up are derived here once so a caller that reads them

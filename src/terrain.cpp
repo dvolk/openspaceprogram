@@ -200,9 +200,9 @@ void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
         if(skirt_pass == false) {
             mesh->Draw();
         } else {
-            // the stencil (set up in TerrainBody::Draw) only passes where
-            // no terrain fragment was drawn, so the skirt shows in the
-            // cracks/limb and can never z-fight the surface
+            // the skirt is drawn after the terrain and depth-tests against it,
+            // so it shows only in the cracks/limb (where no terrain was drawn)
+            // and hides under the neighbouring surface
             mesh->DrawSkirt();
         }
     }

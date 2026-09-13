@@ -64,10 +64,10 @@ struct GeoPatch {
              const GridGeom &geom);
     ~GeoPatch();
 
-    // skirt_pass=false draws the terrain (stamping stencil), true draws
-    // only the skirt ring where the stencil says no terrain was drawn.
-    // The body-constant uniforms + shader bind happen once per pass in
-    // TerrainBody::Draw; this only issues the mesh draws.
+    // skirt_pass=false draws the terrain, true draws only the skirt ring
+    // (which depth-tests against the terrain drawn first). The body-constant
+    // uniforms + shader bind happen once per pass in TerrainBody::Draw; this
+    // only issues the mesh draws.
     void Draw(const Camera* camera, bool skirt_pass);
     // max_patch_px: subdivide while the patch projects wider than this
     // [screen px]; collapse below half (the hysteresis band). Subdivision
@@ -205,12 +205,12 @@ struct TerrainBody {
         // before the main loop starts there is nothing else to draw, so
         // blocking here is fine. Child patches are async (GeoPatch::
         // requestSubdivide).
-        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, buildGridGeom(params(), false, 1, p1, p2, p3, p4));
-        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, buildGridGeom(params(), false, 1, p4, p3, p7, p8));
-        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, buildGridGeom(params(), false, 1, p1, p4, p8, p5));
-        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, buildGridGeom(params(), false, 1, p2, p1, p5, p6));
-        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, buildGridGeom(params(), false, 1, p3, p2, p6, p7));
-        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, buildGridGeom(params(), false, 1, p8, p7, p6, p5));
+        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, buildGridGeom(params(), true, 1, p1, p2, p3, p4));
+        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, buildGridGeom(params(), true, 1, p4, p3, p7, p8));
+        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, buildGridGeom(params(), true, 1, p1, p4, p8, p5));
+        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, buildGridGeom(params(), true, 1, p2, p1, p5, p6));
+        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, buildGridGeom(params(), true, 1, p3, p2, p6, p7));
+        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, buildGridGeom(params(), true, 1, p8, p7, p6, p5));
     }
 
     // Build the atmosphere rim shell on demand. It sits just above the
@@ -437,26 +437,19 @@ struct TerrainBody {
         shader->setUniform_vec3(2, sunlightVec);
         shader->setUniform_vec4(3, glm::vec4(0.8, 0.8, 0.8, 1.0));
 
-        // two passes with a stencil mask: pass 1 draws the terrain and
-        // stamps stencil=1; pass 2 draws the skirts only where stencil==0,
-        // i.e. where no terrain fragment was drawn (the cracks between
-        // patches at different subdivision depths, and the limb). Hiding
-        // the skirt under the neighbouring surface this way needs no depth
-        // comparison, which the float32 view transform can't resolve at
-        // range (its rounding is of the same order as the skirt depth
-        // margin, which z-fights).
-        glEnable(GL_STENCIL_TEST);
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        // Skirt pass fills the LOD cracks between patches at different
+        // subdivision depths (and the limb). The skirt tail is drawn after the
+        // terrain and depth-tests against it (mesh.h:DrawSkirt), so it hides
+        // under the surface and shows only in the gaps.
+        // Reverse-Z's front-loaded near-field precision resolves the
+        // skirt/terrain boundary that a stencil mask used to paper over, so the
+        // plain depth test is enough now.
         for(auto&& patch : patches) {
             patch->Draw(camera, false);
         }
-        glStencilFunc(GL_EQUAL, 0, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         for(auto&& patch : patches) {
             patch->Draw(camera, true);
         }
-        glDisable(GL_STENCIL_TEST);
     }
 
     void Update(const Camera* camera, int max_patch_px, JobRunner &jobs) {

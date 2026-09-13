@@ -7,7 +7,6 @@ in vec3 uvParam;   // unwrapped sphere params (phi/2pi, theta/pi), see create_at
 out vec3 worldPos0;
 out vec3 worldNormal0;
 out vec2 uv0;
-out float logz;
 
 uniform mat4 MVP;
 uniform mat4 Normal;   // actually the Model matrix (same convention as terrain)
@@ -27,14 +26,4 @@ void main()
     // unwrapped, u = 0.75 - phi/2pi varies continuously over [-0.25, 0.75]
     // and the texture's REPEAT wrap closes the seam. v = theta/pi.
     uv0 = vec2(0.75 - uvParam.x, uvParam.y);
-
-    // Logarithmic depth — must stay identical to terrainShader.vs (C=11,
-    // far=1e13) or the depth test against the terrain and the far-plane
-    // skybox breaks. See reports/atmosphere2026_08_25.
-    const float C = 11;
-    const float far = 1e13;
-    const float FC = 1.0 / log(far * C + 1);
-
-    logz = log(gl_Position.w * C + 1) * FC;
-    gl_Position.z = (2.0 * logz - 1.0) * gl_Position.w;
 }
