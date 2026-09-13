@@ -591,7 +591,7 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
         };
         for (int j = off; j < off + size; j++) {
             skirt_vertex(off - 1, j, -frac, (j - off)*frac, off, j);
-            skirt_vertex(off + size, j, 1.0f + frac, (j - off)*frac, off + size - 1, off + size - 1);
+            skirt_vertex(off + size, j, 1.0f + frac, (j - off)*frac, off + size - 1, j);
         }
         for (int i = off; i < off + size; i++) {
             skirt_vertex(i, off - 1, (i - off)*frac, -frac, i, off);

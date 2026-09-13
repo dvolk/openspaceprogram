@@ -210,6 +210,28 @@ int main() {
             }
         }
         check(skirt_max < inner_min, "skirt: ring dropped below the terrain");
+        // Each ring vertex copies the normal/color of the ADJACENT inner
+        // edge vertex (the seam it fills), so the skirt shades exactly
+        // like the terrain boundary -- a ring that copied one corner's
+        // shading painted a faint line along that edge.
+        bool seam_ok = true;
+        for(int j = 1; j <= 49 && seam_ok; j++) {
+            const TerrVert &l = g.verts[(size_t)j + (size_t)0 * edge];
+            const TerrVert &r = g.verts[(size_t)j + (size_t)50 * edge];
+            const TerrVert &li = g.verts[(size_t)j + (size_t)1 * edge];
+            const TerrVert &ri = g.verts[(size_t)j + (size_t)49 * edge];
+            seam_ok = (l.normal == li.normal && l.color == li.color)
+                   && (r.normal == ri.normal && r.color == ri.color);
+        }
+        for(int i = 1; i <= 49 && seam_ok; i++) {
+            const TerrVert &top = g.verts[(size_t)0 + (size_t)i * edge];
+            const TerrVert &bot = g.verts[(size_t)50 + (size_t)i * edge];
+            const TerrVert &ti = g.verts[(size_t)1 + (size_t)i * edge];
+            const TerrVert &bi = g.verts[(size_t)49 + (size_t)i * edge];
+            seam_ok = (top.normal == ti.normal && top.color == ti.color)
+                   && (bot.normal == bi.normal && bot.color == bi.color);
+        }
+        check(seam_ok, "skirt: ring vertices copy the adjacent edge's normal/color");
     }
 
     // 9. The cloud deck coverage (baked into the deck texture at load):
