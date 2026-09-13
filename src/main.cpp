@@ -14,8 +14,8 @@
 #include <map>
 #include <set>
 
-#include "SDL2/SDL.h"
-#include "SDL_keycode.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_keycode.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
 
@@ -65,7 +65,7 @@
 #include "cli.h"
 
 #include "../middleware/imgui/imgui.h"
-#include "../middleware/imgui/backends/imgui_impl_sdl2.h"
+#include "../middleware/imgui/backends/imgui_impl_sdl3.h"
 #include "../middleware/imgui/backends/imgui_impl_opengl3.h"
 #include "../middleware/implot/implot.h"
 
@@ -98,7 +98,7 @@ int main(int argc, char **argv)
        (SDL_GetScancodeFromKey needs SDL_Init; the CLI parse ran before the
        Renderer above created the video subsystem). */
     for(auto &p : args.sim_presses) {
-        p.sc = SDL_GetScancodeFromKey(p.key);
+        p.sc = SDL_GetScancodeFromKey(p.key, nullptr);
         if(p.sc == SDL_SCANCODE_UNKNOWN) {
             printf("warning: --sim-press key %d has no scancode in the "
                    "current keyboard layout: one-shot actions fire, held "
@@ -110,7 +110,7 @@ int main(int argc, char **argv)
     // ImPlot keeps its own state per imgui context (v1.0 requires an
     // explicit context; it is bound to the current one at creation).
     ImPlot::CreateContext();
-    ImGui_ImplSDL2_InitForOpenGL(display.get_display(), SDL_GL_GetCurrentContext());
+    ImGui_ImplSDL3_InitForOpenGL(display.get_display(), SDL_GL_GetCurrentContext());
     ImGui_ImplOpenGL3_Init("#version 430");
     check_gl_error();
 
@@ -456,7 +456,7 @@ int main(int argc, char **argv)
     game.numFocusTargets = (int)game.focusTargets.size();
 
     int screenshot_count = 0;
-    SDL_SetRelativeMouseMode(SDL_FALSE);
+    SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
     time_accel = args.initial_time_accel;
@@ -751,7 +751,7 @@ int main(int argc, char **argv)
         if(game.redraw == true) {
             check_gl_error();
             ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplSDL2_NewFrame();
+            ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
             check_gl_error();
 
@@ -896,7 +896,7 @@ int main(int argc, char **argv)
     delete relvel_retro_indicator;
 
     ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 
     return 0;

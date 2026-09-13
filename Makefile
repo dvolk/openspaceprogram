@@ -68,7 +68,7 @@ CXX= g++
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include
+CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -83,7 +83,7 @@ MAKEFLAGS += -j$(shell nproc)
 # imgui submodule (pinned to a tagged release), built like everything else
 # (the build rules are near the bottom, after the main target)
 IMGUI_DIR=./middleware/imgui
-IMGUI_OBJS=./obj/imgui/imgui.o ./obj/imgui/imgui_draw.o ./obj/imgui/imgui_widgets.o ./obj/imgui/imgui_tables.o ./obj/imgui/imgui_impl_sdl2.o ./obj/imgui/imgui_impl_opengl3.o
+IMGUI_OBJS=./obj/imgui/imgui.o ./obj/imgui/imgui_draw.o ./obj/imgui/imgui_widgets.o ./obj/imgui/imgui_tables.o ./obj/imgui/imgui_impl_sdl3.o ./obj/imgui/imgui_impl_opengl3.o
 # implot submodule (pinned to a tagged release): plotting plugin that draws
 # through the existing imgui renderer, so only its two .cpp files are built.
 IMPLLOT_DIR=./middleware/implot
@@ -95,18 +95,20 @@ IMPLLOT_OBJS=./obj/implot/implot.o ./obj/implot/implot_items.o
 # is what goes on the link line (archive + -lz).
 ASSIMP_A=./middleware/assimp/build/lib/libassimp.a
 ASSIMP_LIB=$(ASSIMP_A) -lz
-# SDL2 + SDL_image + GLEW: vendored in middleware/ like bullet3/assimp
+# SDL3 + SDL_image + GLEW: vendored in middleware/ like bullet3/assimp
 # (bootstrap.sh builds them static; GLEW from the official 2.2.0 tarball --
 # its git repo ships only the generator, see bootstrap.sh).
-SDL2_A=./middleware/sdl2/build/libSDL2.a
-SDLIMG_A=./middleware/sdl2-image/build/libSDL2_image.a
+SDL3_A=./middleware/sdl3/build/libSDL3.a
+SDLIMG_A=./middleware/sdl3-image/build/libSDL3_image.a
 GLEW_A=./middleware/glew/build-cmake/lib/libGLEW.a
-# SDL2 is built with the X11 driver linked in (not dlopen'd), so those
-# system libs ride along, plus dlopen/math/threads.
-SDL2_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXrender -lXss -ldl -lm -lpthread
+# SDL3 is built with the X11 driver linked in (not dlopen'd), so the X11
+# stack rides along. SDL3 also compiles the audio (alsa/pulse/sndio) and
+# KMS/DRM (gbm/drm) backends; the game never uses them, so -Wl,--as-needed
+# drops the unused .so's, but the linker still needs them resolvable.
+SDL3_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXss -lasound -lpulse -lsndio -lgbm -ldrm -ldl -lm -lpthread
 # Static link order matters (dependents before dependencies):
-# SDL_image -> SDL2, GLEW -> GL, SDL_image's PNG loader/saver -> libpng.
-GL_LIBS=$(SDLIMG_A) $(SDL2_A) $(GLEW_A) -lGL -lpng $(SDL2_SYS)
+# SDL_image -> SDL3, GLEW -> GL, SDL_image's PNG loader/saver -> libpng.
+GL_LIBS=$(SDLIMG_A) $(SDL3_A) $(GLEW_A) -lGL -lpng $(SDL3_SYS)
 # clone bullet3 in ./middleware
 # cd ./middleware/bullet3
 # ln -s bullet src
@@ -137,7 +139,7 @@ rm = rm -f
 # as a changed .o -- listing the .a files makes make relink when they're
 # newer than the binary. (On a fresh checkout before bootstrap, make reports
 # the missing .a instead of failing at the link.)
-$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(ASSIMP_A) $(SDL2_A) $(SDLIMG_A) $(GLEW_A) $(BULLET3_OBJS)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(ASSIMP_A) $(SDL3_A) $(SDLIMG_A) $(GLEW_A) $(BULLET3_OBJS)
 	$(LINKER) $@ $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(OBJECTS) $(LFLAGS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
@@ -184,7 +186,7 @@ $(OBJDIR)/gameui.o: src/version.h
 	@mkdir -p ./obj/imgui
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-./obj/imgui/imgui_impl_sdl2.o: $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
+./obj/imgui/imgui_impl_sdl3.o: $(IMGUI_DIR)/backends/imgui_impl_sdl3.cpp
 	@mkdir -p ./obj/imgui
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
@@ -221,7 +223,7 @@ test:
 	./test_slew3d
 	# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
 	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_thrust
 	./test_thrust
@@ -229,7 +231,7 @@ test:
 	# + the real SetMass): pro-rata across the active stage's tanks (not
 	# first-tank-first), stage gating, no stranded fuel, no partial drain.
 	# Same real-Bullet link as test_thrust (no GL context needed).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_fuel.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_fuel
 	./test_fuel
@@ -238,7 +240,7 @@ test:
 	# (RTG charges, life support + active wheels drain, clamped) + EC has
 	# no mass. Calls powerTick/drainEC/chargeEC directly, so headless.
 	# Same real-Bullet link as test_fuel (no GL context needed).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_power.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_power
 	./test_power
@@ -248,7 +250,7 @@ test:
 	# same-stage decouplers compose. Pure graph logic over Part::parent -- it
 	# reads no Bullet state -- but it links like test_fuel because ~Vehicle
 	# (src/vehicle.cpp) references the physics teardown symbols.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_staging
 	./test_staging
@@ -260,7 +262,7 @@ test:
 	# primitive a future "dropped stage becomes a ship" will call. Headless:
 	# init() runs rebuildCompound (the one hull body) but NOT enterWorld, and
 	# extractSubtreeAsShip leaves enterWorld to its caller, so no physics world.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_dock.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_dock
 	./test_dock
@@ -275,13 +277,13 @@ test:
 	# its diagonalized inertia against that same analytic reference, the
 	# re-based child poses, and the part poses derived back out of the body
 	# at an arbitrary world pose. Headless: no world, no GL context.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_inertia
 	./test_inertia
 	# rotation model (physical wheel torque, per-substep law, torque
 	# delivery): same real-Bullet link as test_thrust.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_rotation
 	./test_rotation
@@ -370,7 +372,7 @@ test:
 	# fleet), so the imgui include dir is needed for ui.h; and pickShipPart
 	# casts against a ship's compound children through Vehicle's pose
 	# accessors, so vehicle.cpp + physics.cpp + body.cpp + shipdef.cpp link in.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_pick.cpp src/pick.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/camera.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
 	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_pick
 	./test_pick
@@ -378,7 +380,7 @@ test:
 	# SettingsData <-> JSON round trip, absent-key tolerance (a field the
 	# file does not mention keeps the current value), mistyped-key
 	# tolerance, and the window-mode name mapping.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_settings.cpp src/settings.cpp src/keys.cpp -o test_settings
 	./test_settings
 	# key map (src/keys.cpp): the exact-modifier lookup (a plain binding
@@ -386,7 +388,7 @@ test:
 	# modifiers), the default map (the previously-hardcoded keys, cam/eva
 	# up-down on R/F), --sim-press plain-key compatibility, naming.
 	# Pure logic -- no SDL link (no SDL calls).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/sdl2/include -I./middleware/sdl2-image/include -I./middleware/glew/include \
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
 	    tests/test_keys.cpp src/keys.cpp -o test_keys
 	./test_keys
 
@@ -408,7 +410,7 @@ e2e: $(TARGET)
 # vertex-less gl_VertexID quad). Needs an X display:
 #     DISPLAY=:99 make test-gl
 test-gl:
-	$(CXX) -O2 -std=c++11 -I./middleware/sdl2/include tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
+	$(CXX) -O2 -std=c++11 -I./middleware/sdl3/include tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
 	./test_gl_vao
 
 .PHONY: clean

@@ -53,7 +53,7 @@ void tick(Game &g) {
         g.ship->clearRotCmd();
         g.ship->clearRcs();
 
-        const Uint8* key = SDL_GetKeyboardState(NULL);
+        const bool *key = SDL_GetKeyboardState(nullptr);
         const Uint16 modState = SDL_GetModState();
         /* --sim-press: a synthetic key is "down" from its down time to
            its up time. SDL_PushEvent does not update the key array above

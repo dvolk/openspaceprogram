@@ -19,9 +19,9 @@
 // headless-testable without a video context.
 #pragma once
 
-#include <SDL2/SDL_scancode.h>   // SDL_Scancode
-#include <SDL2/SDL_keycode.h>   // KMOD_SHIFT / KMOD_CTRL / KMOD_ALT
-#include <SDL2/SDL_stdinc.h>    // Uint8, Uint16
+#include <SDL3/SDL_scancode.h>  // SDL_Scancode
+#include <SDL3/SDL_keycode.h>   // SDL_KMOD_SHIFT / SDL_KMOD_CTRL / SDL_KMOD_ALT
+#include <SDL3/SDL_stdinc.h>    // Uint8, Uint16
 
 #include <array>
 #include <string>
@@ -32,9 +32,9 @@
 //
 // LShift and RShift (and the L/R Ctrl, Alt pairs) are DISTINCT modifier keys:
 // a binding names the exact side, and a press matches only the side it used.
-// KMOD_SHIFT is LShift|RShift -- a value no single press produces -- so a
-// binding always stores one concrete side (KMOD_LSHIFT or KMOD_RSHIFT).
-static const Uint16 KMOD_RELEVANT = KMOD_SHIFT | KMOD_CTRL | KMOD_ALT;
+// SDL_KMOD_SHIFT is LShift|RShift -- a value no single press produces -- so a
+// binding always stores one concrete side (SDL_KMOD_LSHIFT or SDL_KMOD_RSHIFT).
+static const Uint16 KMOD_RELEVANT = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT;
 
 // One rebindable control. The enum value is its index into KeyBindings.
 // Grouped for the UI: Game (one-shot), Flight (orbit mode), Camera (free
@@ -128,7 +128,7 @@ bool slotFired(Slot s, SDL_Scancode sc, Uint16 mods, const KeyBindings &kb);
 // Held path (tick.cpp / eva.cpp): is slot s currently armed? True if any of
 // s's keys is down (keyState = the SDL_GetKeyboardState array) with exactly
 // its modifiers (mods = the current SDL_GetModState).
-bool slotHeld(Slot s, const Uint8 *keyState, Uint16 mods, const KeyBindings &kb);
+bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb);
 
 // --sim-press compatibility: a synthetic key carries a scancode but no
 // modifier state, so it can only back a PLAIN binding. True if slot s has a

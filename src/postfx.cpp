@@ -2,7 +2,7 @@
 #include "gldebug.h"
 #include <iostream>
 #include <utility>
-#include "SDL2/SDL.h"
+#include <SDL3/SDL.h>
 
 // Fullscreen quad: x, y in NDC + texture uv. Interleaved (x, y, u, v).
 static const float QUAD_VERTS[16] = {

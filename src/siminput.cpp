@@ -16,15 +16,14 @@ SDL_Keycode sim_parse_key(const std::string &s) {
             return (SDL_Keycode)v;
         }
     }
-    // This SDL header defines no uppercase letter aliases (SDLK_a..z only).
     static const std::map<std::string, SDL_Keycode> names = {
-        {"A", SDLK_a}, {"B", SDLK_b}, {"C", SDLK_c}, {"D", SDLK_d},
-        {"E", SDLK_e}, {"F", SDLK_f}, {"G", SDLK_g}, {"H", SDLK_h},
-        {"I", SDLK_i}, {"J", SDLK_j}, {"K", SDLK_k}, {"L", SDLK_l},
-        {"M", SDLK_m}, {"N", SDLK_n}, {"O", SDLK_o}, {"P", SDLK_p},
-        {"Q", SDLK_q}, {"R", SDLK_r}, {"S", SDLK_s}, {"T", SDLK_t},
-        {"U", SDLK_u}, {"V", SDLK_v}, {"W", SDLK_w}, {"X", SDLK_x},
-        {"Y", SDLK_y}, {"Z", SDLK_z},
+        {"A", SDLK_A}, {"B", SDLK_B}, {"C", SDLK_C}, {"D", SDLK_D},
+        {"E", SDLK_E}, {"F", SDLK_F}, {"G", SDLK_G}, {"H", SDLK_H},
+        {"I", SDLK_I}, {"J", SDLK_J}, {"K", SDLK_K}, {"L", SDLK_L},
+        {"M", SDLK_M}, {"N", SDLK_N}, {"O", SDLK_O}, {"P", SDLK_P},
+        {"Q", SDLK_Q}, {"R", SDLK_R}, {"S", SDLK_S}, {"T", SDLK_T},
+        {"U", SDLK_U}, {"V", SDLK_V}, {"W", SDLK_W}, {"X", SDLK_X},
+        {"Y", SDLK_Y}, {"Z", SDLK_Z},
         {"SPACE", SDLK_SPACE}, {"TAB", SDLK_TAB},
         {"RETURN", SDLK_RETURN}, {"ENTER", SDLK_RETURN},
         {"ESCAPE", SDLK_ESCAPE},

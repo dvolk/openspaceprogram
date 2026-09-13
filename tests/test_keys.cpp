@@ -48,42 +48,44 @@ int main() {
         }
         return false;
     };
-    assert(hasCombo(Slot::ThrustLatch, SDL_SCANCODE_T, KMOD_LSHIFT));
+    assert(hasCombo(Slot::ThrustLatch, SDL_SCANCODE_T, SDL_KMOD_LSHIFT));
     assert(!hasPlain(Slot::ThrustLatch, SDL_SCANCODE_T));      // not a plain T
-    assert(slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, KMOD_LSHIFT, kb));
+    assert(slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, SDL_KMOD_LSHIFT, kb));
     assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, 0, kb));   // plain T
-    assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, KMOD_RSHIFT, kb)); // other side
+    assert(!slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, SDL_KMOD_RSHIFT, kb)); // other side
     assert(slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kb));        // plain T
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, KMOD_LSHIFT, kb));
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LSHIFT, kb));
     assert(slotGroup(Slot::ThrustLatch) == SlotGroup::Flight);
 
     // 2) slotFired: exact-modifier match. A plain binding fires with no
     //    modifier and NOT with one held; a different key does not fire.
     assert(slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kb));
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, KMOD_LSHIFT, kb));
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, KMOD_LCTRL, kb));
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LSHIFT, kb));
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LCTRL, kb));
     assert(!slotFired(Slot::Thrust, SDL_SCANCODE_J, 0, kb));
 
     // 3) a combo binding fires only with exactly its modifier (and the exact
     //    side -- L/R Ctrl are distinct keys).
     KeyBindings kb2;
     kb2.perSlot[(size_t)Slot::Thrust].clear();
-    kb2.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_I, KMOD_LCTRL});
-    assert(slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LCTRL, kb2));
+    kb2.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_I, SDL_KMOD_LCTRL});
+    assert(slotFired(Slot::Thrust, SDL_SCANCODE_I, SDL_KMOD_LCTRL, kb2));
     assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, 0, kb2));                          // plain press
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_RCTRL, kb2));                 // other side
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LSHIFT, kb2));                // wrong modifier
-    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LCTRL | KMOD_LSHIFT, kb2));   // too many
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, SDL_KMOD_RCTRL, kb2));                 // other side
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, SDL_KMOD_LSHIFT, kb2));                // wrong modifier
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_I, SDL_KMOD_LCTRL | SDL_KMOD_LSHIFT, kb2));   // too many
     // An irrelevant modifier bit (NumLock) is masked out -> still fires.
-    assert(slotFired(Slot::Thrust, SDL_SCANCODE_I, KMOD_LCTRL | KMOD_NUM, kb2));
+    assert(slotFired(Slot::Thrust, SDL_SCANCODE_I, SDL_KMOD_LCTRL | SDL_KMOD_NUM, kb2));
 
-    // 4) slotHeld: the same rule through a key-state array.
-    std::vector<Uint8> key(SDL_NUM_SCANCODES, 0);
-    key[SDL_SCANCODE_T] = 1;
-    assert(slotHeld(Slot::Thrust, key.data(), 0, kb));
-    assert(!slotHeld(Slot::Thrust, key.data(), KMOD_LSHIFT, kb));
-    key[SDL_SCANCODE_T] = 0;
-    assert(!slotHeld(Slot::Thrust, key.data(), 0, kb));
+    // 4) slotHeld: the same rule through a key-state array. (SDL3's
+    // SDL_GetKeyboardState array is bool-indexed, so the stand-in is bool
+    // too -- std::vector<bool> has no .data(), hence the plain array.)
+    bool key[SDL_SCANCODE_COUNT] = {false};
+    key[SDL_SCANCODE_T] = true;
+    assert(slotHeld(Slot::Thrust, key, 0, kb));
+    assert(!slotHeld(Slot::Thrust, key, SDL_KMOD_LSHIFT, kb));
+    key[SDL_SCANCODE_T] = false;
+    assert(!slotHeld(Slot::Thrust, key, 0, kb));
 
     // 5) slotSimKey: a synthetic (modifier-less) --sim-press key backs a
     //    plain binding, but not a combo one.
@@ -105,12 +107,12 @@ int main() {
     // 7) bindLabel: modifiers (each L/R side is a distinct modifier key) in
     //    Shift, Ctrl, Alt order, then the key.
     assert(bindLabel(KeyBind{SDL_SCANCODE_W, 0}) == "W");
-    assert(bindLabel(KeyBind{SDL_SCANCODE_W, KMOD_LSHIFT}) == "LShift+W");
-    assert(bindLabel(KeyBind{SDL_SCANCODE_W, KMOD_RSHIFT}) == "RShift+W");
-    assert(bindLabel(KeyBind{SDL_SCANCODE_W, KMOD_LCTRL}) == "LCtrl+W");
-    assert(bindLabel(KeyBind{SDL_SCANCODE_W, KMOD_LSHIFT | KMOD_LCTRL})
+    assert(bindLabel(KeyBind{SDL_SCANCODE_W, SDL_KMOD_LSHIFT}) == "LShift+W");
+    assert(bindLabel(KeyBind{SDL_SCANCODE_W, SDL_KMOD_RSHIFT}) == "RShift+W");
+    assert(bindLabel(KeyBind{SDL_SCANCODE_W, SDL_KMOD_LCTRL}) == "LCtrl+W");
+    assert(bindLabel(KeyBind{SDL_SCANCODE_W, SDL_KMOD_LSHIFT | SDL_KMOD_LCTRL})
            == "LShift+LCtrl+W");
-    assert(bindLabel(KeyBind{SDL_SCANCODE_W, KMOD_LSHIFT | KMOD_LCTRL | KMOD_LALT})
+    assert(bindLabel(KeyBind{SDL_SCANCODE_W, SDL_KMOD_LSHIFT | SDL_KMOD_LCTRL | SDL_KMOD_LALT})
            == "LShift+LCtrl+LAlt+W");
     assert(bindLabel(KeyBind{SDL_SCANCODE_UNKNOWN, 0}) == "key0");
 

@@ -6,8 +6,8 @@
 #include <vector>
 
 #include <GL/glew.h>
-#include <SDL2/SDL.h>
-#include <SDL_image.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 
 Texture::~Texture() {
     glDeleteTextures(1, &id);
@@ -26,21 +26,15 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
     }
     Texture * ret = new Texture;
 
-    SDL_PixelFormat pf;
-    pf.palette = 0;
-    pf.BitsPerPixel = 32;
-    pf.BytesPerPixel = 4;
-    // pf.alpha = 255;
-    pf.Rshift = pf.Rloss = pf.Gloss = pf.Bloss = pf.Aloss; // = pf.colorkey = 0;
-    pf.Rmask = 0x000000ff;
-    pf.Gshift = 8;
-    pf.Gmask = 0x0000ff00;
-    pf.Bshift = 16;
-    pf.Bmask = 0x00ff0000;
-    pf.Ashift = 24;
-    pf.Amask = 0xff000000;
-    SDL_Surface* glSurface = SDL_ConvertSurface(res_texture, &pf, SDL_SWSURFACE);
-    SDL_FreeSurface(res_texture);
+    // SDL3: the hand-built SDL_PixelFormat struct is gone; the format is an
+    // enum. Gotcha -- SDL3's 32-bit names are inverted from SDL2 on
+    // little-endian: the [R,G,B,A] byte order (what GL_RGBA below reads, R
+    // first) is SDL_PIXELFORMAT_ABGR8888, while SDL_PIXELFORMAT_RGBA8888 is
+    // [A,R,G,B]. Converting to RGBA8888 therefore reverses the channels
+    // (gray parts render red, plume black->red, alpha->R). Target ABGR8888
+    // (a no-op for the RGBA PNGs and a clean expand for RGB-only ones).
+    SDL_Surface* glSurface = SDL_ConvertSurface(res_texture, SDL_PIXELFORMAT_ABGR8888);
+    SDL_DestroySurface(res_texture);
 
     glGenTextures(1, &ret->id);
     glBindTexture(GL_TEXTURE_2D, ret->id);
@@ -63,7 +57,7 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
                  GL_RGBA,  // format
                  GL_UNSIGNED_BYTE, // type
                  glSurface->pixels);
-    SDL_FreeSurface(glSurface);
+    SDL_DestroySurface(glSurface);
 
     if (mipmap) {
         // Mipmap chain + trilinear minify: without a chain the anisotropy

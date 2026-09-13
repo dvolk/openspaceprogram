@@ -4,8 +4,8 @@
 #include <cstring>
 
 #include <GL/glew.h>
-#include "SDL2/SDL.h"
-#include <SDL_image.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 
 #include "display.h"
 #include "gldebug.h"
@@ -19,25 +19,32 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     int gl_minor = 5;
     bool gl_core = true;
     m_gl_debug = gl_debug;
-    Uint32 window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE;
+    // SDL_WindowFlags is Uint64 in SDL3 (Uint32 in SDL2): keep the native
+    // type so a flag above bit 31 can never be silently truncated.
+    SDL_WindowFlags window_flags = SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE;
     if (mode == WindowMode::Borderless) {
         window_flags |= SDL_WINDOW_BORDERLESS;
     } else if (mode == WindowMode::Fullscreen) {
         // Borderless fullscreen, not exclusive: no display mode change, so
-        // leaving fullscreen doesn't reconfigure the monitor.
-        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        // leaving fullscreen doesn't reconfigure the monitor. SDL3's
+        // creation-time SDL_WINDOW_FULLSCREEN IS the desktop (borderless)
+        // mode -- the SDL2 SDL_WINDOW_FULLSCREEN_DESKTOP.
+        window_flags |= SDL_WINDOW_FULLSCREEN;
     } else if (mode == WindowMode::Exclusive) {
         // Exclusive fullscreen: ask the display for width x height (on X11
         // that's a CRTC mode change -- the only way to get a non-native
-        // resolution); SDL falls back to covering the current mode if the
-        // panel has no matching mode.
+        // resolution); SDL falls back to the closest available mode if the
+        // panel has no matching one. The creation flag alone only gets the
+        // desktop mode in SDL3, so the exclusive mode is requested after
+        // context creation (below).
         window_flags |= SDL_WINDOW_FULLSCREEN;
     }
     char window_title[] = "Open Space Program";
     m_screen_width = width;
     m_screen_height = height;
   
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    // SDL3 dropped the SDL_INIT_TIMER flag: the timer is always available.
+    SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     check_gl_error();
     // MSAA for geometry edges, when the stack has a multisample GLX
@@ -71,13 +78,10 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
             check_gl_error();
         }
 
-    SDL_DisplayMode current;
-    SDL_GetCurrentDisplayMode(0, &current);
-    check_gl_error();
-
     auto create_window = [&]() -> SDL_Window * {
-        return SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED,
-                                SDL_WINDOWPOS_CENTERED, m_screen_width,
+        // SDL3's SDL_CreateWindow takes no x/y (the window manager places
+        // it); SDL2's SDL_WINDOWPOS_CENTERED pair is gone.
+        return SDL_CreateWindow(window_title, m_screen_width,
                                 m_screen_height, window_flags);
     };
     m_window = create_window();
@@ -97,6 +101,27 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     SDL_GLContext glcontext = SDL_GL_CreateContext(m_window);
     check_gl_error();
     assert(glcontext);
+    SDL_GL_MakeCurrent(m_window, glcontext);
+    check_gl_error();
+
+    if (mode == WindowMode::Exclusive) {
+        // Exclusive: request width x height as the display mode now that the
+        // context exists (on X11 the CRTC mode change; the GL context
+        // survives it). A panel without a matching mode gets the closest
+        // one; if even that is too small, keep the desktop mode.
+        SDL_DisplayMode closest;
+        if (SDL_GetClosestFullscreenDisplayMode(SDL_GetPrimaryDisplay(),
+                                                m_screen_width,
+                                                m_screen_height, 0.0f,
+                                                false, &closest)) {
+            SDL_SetWindowFullscreenMode(m_window, &closest);
+        } else {
+            printf("Exclusive %dx%d not available (%s); "
+                   "falling back to desktop mode\n",
+                   m_screen_width, m_screen_height, SDL_GetError());
+        }
+        check_gl_error();
+    }
 
     GLenum glew_status = glewInit();
     check_gl_error();
@@ -121,7 +146,7 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     // display mode regardless of the requested size. Everything downstream
     // (viewport, camera aspect, screenshots) reads m_screen_width/height.
     int w = 0, h = 0;
-    SDL_GL_GetDrawableSize(m_window, &w, &h); // void in SDL2
+    SDL_GetWindowSizeInPixels(m_window, &w, &h); // SDL3 rename of SDL_GL_GetDrawableSize
     if (w > 0 && h > 0) {
         m_screen_width = w;
         m_screen_height = h;
@@ -181,31 +206,37 @@ void Renderer::setWindowMode(WindowMode mode, int width, int height) {
     if(mode == WindowMode::Windowed || mode == WindowMode::Borderless) {
         // Leave fullscreen first (X11: restore the previous display mode),
         // then the decorations, then the window size.
-        SDL_SetWindowFullscreen(m_window, 0);
-        SDL_SetWindowBordered(m_window,
-                              (mode == WindowMode::Windowed) ? SDL_TRUE
-                                                             : SDL_FALSE);
+        SDL_SetWindowFullscreen(m_window, false);
+        SDL_SetWindowBordered(m_window, mode == WindowMode::Windowed);
         SDL_SetWindowSize(m_window, width, height);
     } else if(mode == WindowMode::Fullscreen) {
-        SDL_SetWindowBordered(m_window, SDL_FALSE);
-        // Borderless fullscreen at the display's native mode; `width` /
-        // `height` carry over to the next sized-mode switch.
-        SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_SetWindowBordered(m_window, false);
+        // Borderless fullscreen at the display's native mode (SDL3's
+        // `true` = desktop mode); `width` / `height` carry over to the
+        // next sized-mode switch.
+        SDL_SetWindowFullscreen(m_window, true);
     } else { // WindowMode::Exclusive
-        // Exclusive: ask for `width` x `height` as the display mode. Set
-        // the size first -- SDL uses the window size as the requested
-        // mode -- then flip (on X11 the CRTC mode change; the GL context
-        // survives it). A panel without a matching mode gets the current
-        // one (the constructor's note).
-        SDL_SetWindowSize(m_window, width, height);
-        SDL_SetWindowFullscreen(m_window, SDL_WINDOW_FULLSCREEN);
+        // Exclusive: ask for `width` x `height` as the display mode (on
+        // X11 the CRTC mode change; the GL context survives it). A panel
+        // without a matching mode gets the closest one (the constructor's
+        // note).
+        SDL_DisplayMode closest;
+        if (SDL_GetClosestFullscreenDisplayMode(SDL_GetPrimaryDisplay(),
+                                                width, height, 0.0f,
+                                                false, &closest)) {
+            SDL_SetWindowFullscreenMode(m_window, &closest);
+        } else {
+            printf("Exclusive %dx%d not available (%s); "
+                   "staying in the current mode\n",
+                   width, height, SDL_GetError());
+        }
     }
     check_gl_error();
     // Trust the drawable the compositor actually gave: the WM may clamp
     // a windowed size, exclusive may have fallen back. The SIZE_CHANGED
     // event (events.cpp) finishes the resize (postfx, the camera aspect).
     int w = 0, h = 0;
-    SDL_GL_GetDrawableSize(m_window, &w, &h); // void in SDL2
+    SDL_GetWindowSizeInPixels(m_window, &w, &h);
     if(w > 0 && h > 0) {
         m_screen_width = w;
         m_screen_height = h;
@@ -221,36 +252,43 @@ void Renderer::setWindowMode(WindowMode mode, int width, int height) {
 
 std::vector<Resolution> Renderer::displayModes() {
     std::vector<Resolution> out;
-    const int n = SDL_GetNumDisplayModes(0);
-    for(int i = 0; i < n; i++) {
-        SDL_DisplayMode dm;
-        if(SDL_GetDisplayMode(0, i, &dm) == 0
-           && dm.w > 0 && dm.h > 0) {
-            const Resolution r{dm.w, dm.h, (int)dm.refresh_rate};
-            // The driver may list the same (w,h,refresh) more than once
-            // (different pixel formats); one entry is enough.
-            bool have = false;
-            for(size_t j = 0; j < out.size(); j++) {
-                if(out[j].width == r.width && out[j].height == r.height
-                   && out[j].refresh == r.refresh) {
-                    have = true;
-                    break;
+    // SDL3: the per-index SDL_GetNumDisplayModes/SDL_GetDisplayMode pair is
+    // gone; SDL_GetFullscreenDisplayModes hands back the whole list at once
+    // (one allocation, freed with SDL_free).
+    const SDL_DisplayID did = SDL_GetPrimaryDisplay();
+    int n = 0;
+    SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(did, &n);
+    if(modes != NULL) {
+        for(int i = 0; i < n; i++) {
+            const SDL_DisplayMode &dm = *modes[i];
+            if(dm.w > 0 && dm.h > 0) {
+                const Resolution r{dm.w, dm.h, (int)dm.refresh_rate};
+                // The driver may list the same (w,h,refresh) more than once
+                // (different pixel formats); one entry is enough.
+                bool have = false;
+                for(size_t j = 0; j < out.size(); j++) {
+                    if(out[j].width == r.width && out[j].height == r.height
+                       && out[j].refresh == r.refresh) {
+                        have = true;
+                        break;
+                    }
                 }
+                if(!have) { out.push_back(r); }
             }
-            if(!have) { out.push_back(r); }
         }
+        SDL_free(modes);
     }
     // Some stacks keep the current mode out of the list (or report an
     // empty one); the dropdown must always offer what the display is
-    // actually running.
-    SDL_DisplayMode cur;
-    if(SDL_GetCurrentDisplayMode(0, &cur) == 0
-       && cur.w > 0 && cur.h > 0) {
+    // actually running. (SDL3 returns a pointer to an internal struct --
+    // read it, don't free it.)
+    const SDL_DisplayMode *cur = SDL_GetCurrentDisplayMode(did);
+    if(cur != NULL && cur->w > 0 && cur->h > 0) {
         bool have = false;
         int same_wh_refresh = 0;
         for(size_t i = 0; i < out.size(); i++) {
-            if(out[i].width == cur.w && out[i].height == cur.h) {
-                if(out[i].refresh == (int)cur.refresh_rate) {
+            if(out[i].width == cur->w && out[i].height == cur->h) {
+                if(out[i].refresh == (int)cur->refresh_rate) {
                     have = true;
                     break;
                 }
@@ -261,9 +299,9 @@ std::vector<Resolution> Renderer::displayModes() {
             // Some stacks report the current mode's refresh as 0 even
             // when the list carries one; don't add a duplicate-looking
             // entry (w x h with no Hz next to w x h @ 60Hz).
-            out.push_back(Resolution{cur.w, cur.h,
-                                     (int)cur.refresh_rate
-                                     ? (int)cur.refresh_rate
+            out.push_back(Resolution{cur->w, cur->h,
+                                     (int)cur->refresh_rate
+                                     ? (int)cur->refresh_rate
                                      : same_wh_refresh});
         }
     }
@@ -277,9 +315,9 @@ std::vector<Resolution> Renderer::displayModes() {
 }
 
 int Renderer::currentRefresh() {
-    SDL_DisplayMode cur;
-    if(SDL_GetCurrentDisplayMode(0, &cur) == 0) {
-        return (int)cur.refresh_rate;
+    const SDL_DisplayMode *cur = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
+    if(cur != NULL) {
+        return (int)cur->refresh_rate;
     }
     return 0;
 }
@@ -317,7 +355,13 @@ bool Renderer::SaveScreenshot(const char *filename)
     check_gl_error();
 
     bool ok = false;
-    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_RGBA32);
+    // SDL3: SDL_CreateSurface(w, h, format) replaces
+    // SDL_CreateRGBSurfaceWithFormat; the pixels are 4 bytes top-down, so
+    // each row is w*4 bytes. glReadPixels yields [R,G,B,A] bytes (R first);
+    // in SDL3 that byte order is SDL_PIXELFORMAT_ABGR8888 (the names are
+    // inverted from SDL2), so tag it ABGR8888 -- not RGBA8888, which is
+    // [A,R,G,B] and would reverse the channels in the saved PNG.
+    SDL_Surface *surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ABGR8888);
     if (surface) {
         // glReadPixels is bottom-up; SDL surface is top-down. Flip vertically.
         for (int y = 0; y < h; y++) {
@@ -325,13 +369,13 @@ bool Renderer::SaveScreenshot(const char *filename)
             unsigned char *dst = (unsigned char *)surface->pixels + y * surface->pitch;
             memcpy(dst, src, w * 4);
         }
-        if (IMG_SavePNG(surface, filename) == 0) {
+        if (IMG_SavePNG(surface, filename)) {
             printf("Screenshot saved: %s (%dx%d)\n", filename, w, h);
             ok = true;
         } else {
             printf("Failed to save screenshot %s: %s\n", filename, SDL_GetError());
         }
-        SDL_FreeSurface(surface);
+        SDL_DestroySurface(surface);
     }
     delete[] pixels;
     return ok;

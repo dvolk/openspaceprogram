@@ -1,6 +1,6 @@
 #include "skybox.h"
 
-#include <SDL_image.h>
+#include <SDL3_image/SDL_image.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -54,7 +54,7 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
                      image_data);
     }
     for(auto& kv : decoded) {
-        SDL_FreeSurface(kv.second);
+        SDL_DestroySurface(kv.second);
     }
 
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

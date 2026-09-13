@@ -3,7 +3,7 @@
 // after use/draw so the llvmpipe complaint is unambiguous.
 #include <stdio.h>
 #include <GL/glew.h>
-#include "SDL2/SDL.h"
+#include <SDL3/SDL.h>
 
 static GLuint compile(GLenum type, const char *src)
 {
@@ -24,7 +24,7 @@ int main(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_Window *w = SDL_CreateWindow("t", 0, 0, 640, 480, SDL_WINDOW_OPENGL);
+    SDL_Window *w = SDL_CreateWindow("t", 640, 480, SDL_WINDOW_OPENGL);
     SDL_GLContext c = SDL_GL_CreateContext(w);
     SDL_GL_MakeCurrent(w, c);
     glewInit();

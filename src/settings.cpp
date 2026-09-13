@@ -183,7 +183,7 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
                 if(e.contains("mods") && e["mods"].is_number_integer()) {
                     mods = e["mods"].get<int>();
                 }
-                if(sc < 0 || sc >= SDL_NUM_SCANCODES) { continue; }
+                if(sc < 0 || sc >= SDL_SCANCODE_COUNT) { continue; }
                 binds.push_back(KeyBind{(SDL_Scancode)sc,
                                         (Uint16)(mods & KMOD_RELEVANT)});
             }

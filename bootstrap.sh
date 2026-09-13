@@ -66,41 +66,57 @@ cmake -S middleware/bullet3 -B middleware/bullet3/build \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/bullet3/build -j"$JOBS"
 
-echo "=== building SDL2 (static, X11) ==="
-# Static lib (SDL_SHARED=OFF), X11 video driver linked in (X11_SHARED=OFF,
+echo "=== building SDL3 (static, X11) ==="
+# Static lib (SDL_SHARED=OFF), X11 video driver linked in (SDL_X11_SHARED=OFF,
 # so the game link carries the -lX11... libs). Wayland/Vulkan stay off:
 # the game runs on X11 (e2e under Xvfb) and uses GL 4.5 via GLEW.
-# SDL2's own EGL API declares SDL_EGL_CreateSurface with a mismatched
-# type (NativeWindowType vs void*) in SDL_egl_c.h vs SDL_egl.c; LTO is
-# the first thing to see both TUs together and warn. The game uses the
-# GLX/SDL_GL path, never the EGL API, so silence it there.
-cmake -S middleware/sdl2 -B middleware/sdl2/build \
+# SDL_TESTS defaults ON for the main project, so force it off (we never link
+# the testsuite). SDL3 ships a proper CMake config in the build dir that
+# SDL_image3's find_package(SDL3) consumes below.
+# The game renders with raw GL (GLEW) + imgui and only uses SDL's video/
+# events/keyboard/mouse/surface APIs, so compile out every subsystem it never
+# touches. The 2D renderer is the big one -- its software blit/blend backend
+# (~1 MB) is pure dead weight here. Joystick/haptic/HIDAPI/sensor/power/GPU,
+# camera, native dialogs, tray, KMSDRM (X11-only), and the offscreen + dummy
+# drivers are likewise unused. Audio and GLES stay on -- both are coming
+# later (desktop GL, SDL_OPENGL, stays too).
+cmake -S middleware/sdl3 -B middleware/sdl3/build \
     -DCMAKE_BUILD_TYPE=Release \
-    -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF \
+    -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_DEPS_SHARED=OFF \
+    -DSDL_TESTS=OFF \
+    -DSDL_RENDER=OFF -DSDL_GPU=OFF \
+    -DSDL_JOYSTICK=OFF -DSDL_HIDAPI=OFF -DSDL_HAPTIC=OFF \
+    -DSDL_SENSOR=OFF -DSDL_POWER=OFF \
+    -DSDL_CAMERA=OFF -DSDL_DIALOG=OFF -DSDL_TRAY=OFF \
+    -DSDL_KMSDRM=OFF -DSDL_OFFSCREEN=OFF \
+    -DSDL_OPENGL=ON -DSDL_OPENGLES=ON -DSDL_LIBUDEV=OFF \
+    -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
     -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
     -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
-    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH -Wno-lto-type-mismatch" \
-    -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH -Wno-lto-type-mismatch"
-cmake --build middleware/sdl2/build -j"$JOBS"
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
+    -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
+cmake --build middleware/sdl3/build -j"$JOBS"
 
-echo "=== building SDL_image (static, PNG-only) ==="
+echo "=== building SDL_image3 (static, PNG-only) ==="
 # The game only loads/saves PNG (textures, skybox, screenshots), so build
 # just the PNG loader + saver (like the OBJ-only assimp build). Links the
-# system libpng + the SDL2 we built above (SDL2_DIR -> its build dir, so
-# find_package picks ours even if the system SDL2 dev files exist).
-cmake -S middleware/sdl2-image -B middleware/sdl2-image/build \
+# system libpng + the SDL3 we built above (SDL3_DIR -> its build dir, so
+# find_package picks ours even if the system SDL3 dev files exist).
+cmake -S middleware/sdl3-image -B middleware/sdl3-image/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
-    -DSDL2_DIR="$PWD/middleware/sdl2/build/SDL2" \
-    -DSDL2IMAGE_DEPS_SHARED=OFF -DSDL2IMAGE_VENDORED=OFF \
-    -DSDL2IMAGE_SAMPLES=OFF -DSDL2IMAGE_BACKEND_STB=OFF -DSDL2IMAGE_PNG_SAVE=ON \
-    -DSDL2IMAGE_AVIF=OFF -DSDL2IMAGE_BMP=OFF -DSDL2IMAGE_GIF=OFF \
-    -DSDL2IMAGE_JPG=OFF -DSDL2IMAGE_LBM=OFF -DSDL2IMAGE_PCX=OFF \
-    -DSDL2IMAGE_PNM=OFF -DSDL2IMAGE_QOI=OFF -DSDL2IMAGE_SVG=OFF \
-    -DSDL2IMAGE_TGA=OFF -DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF \
-    -DSDL2IMAGE_XCF=OFF -DSDL2IMAGE_XPM=OFF -DSDL2IMAGE_XV=OFF \
+    -DSDL3_DIR="$PWD/middleware/sdl3/build" \
+    -DSDLIMAGE_DEPS_SHARED=OFF -DSDLIMAGE_VENDORED=OFF \
+    -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF -DSDLIMAGE_BACKEND_STB=OFF \
+    -DSDLIMAGE_PNG=ON -DSDLIMAGE_PNG_SAVE=ON \
+    -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_BMP=OFF -DSDLIMAGE_GIF=OFF \
+    -DSDLIMAGE_JPG=OFF -DSDLIMAGE_JXL=OFF -DSDLIMAGE_LBM=OFF \
+    -DSDLIMAGE_PCX=OFF -DSDLIMAGE_ANI=OFF -DSDLIMAGE_PNM=OFF \
+    -DSDLIMAGE_QOI=OFF -DSDLIMAGE_SVG=OFF \
+    -DSDLIMAGE_TGA=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF \
+    -DSDLIMAGE_XCF=OFF -DSDLIMAGE_XPM=OFF -DSDLIMAGE_XV=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/sdl2-image/build -j"$JOBS"
+cmake --build middleware/sdl3-image/build -j"$JOBS"
 
 echo "=== building GLEW (static, 2.2.0) ==="
 # GLEW's git repo contains only the generator (src/glew.c is generated from

@@ -17,7 +17,7 @@
 #include "gldebug.h"    // check_gl_error()
 
 #include "../middleware/imgui/imgui.h"
-#include "../middleware/imgui/backends/imgui_impl_sdl2.h"
+#include "../middleware/imgui/backends/imgui_impl_sdl3.h"
 
 void emit_sim_events(Game &g) {
     /* --sim-press: emit the synthetic key events that fell due this
@@ -27,22 +27,24 @@ void emit_sim_events(Game &g) {
     if(!g.args.sim_presses.empty()) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
         auto push_key = [&](SDL_EventType type, const SimKeyPress &p) {
+            // SDL3 flattens event.key.keysym.{sym,scancode} to
+            // event.key.{key,scancode}, and key.state becomes key.down.
             SDL_Event kev = {0};
             kev.type = type;
             kev.key.windowID = g.sim_win_id;
-            kev.key.state = (type == SDL_KEYDOWN) ? SDL_PRESSED : SDL_RELEASED;
-            kev.key.repeat = 0;
-            kev.key.keysym.sym = p.key;
-            kev.key.keysym.scancode = p.sc;
+            kev.key.down = (type == SDL_EVENT_KEY_DOWN);
+            kev.key.repeat = false;
+            kev.key.key = p.key;
+            kev.key.scancode = p.sc;
             SDL_PushEvent(&kev);
         };
         for(auto &p : g.args.sim_presses) {
             if(!p.down_sent && now >= p.down_ms) {
-                push_key(SDL_KEYDOWN, p);
+                push_key(SDL_EVENT_KEY_DOWN, p);
                 p.down_sent = true;
             }
             if(p.down_sent && !p.up_sent && now >= p.up_ms) {
-                push_key(SDL_KEYUP, p);
+                push_key(SDL_EVENT_KEY_UP, p);
                 p.up_sent = true;
             }
         }
@@ -59,7 +61,7 @@ void emit_sim_events(Game &g) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
         auto push_motion = [&](int x, int y) {
             SDL_Event mev = {0};
-            mev.type = SDL_MOUSEMOTION;
+            mev.type = SDL_EVENT_MOUSE_MOTION;
             mev.motion.windowID = g.sim_win_id;
             mev.motion.which = 0;
             mev.motion.x = x;
@@ -72,13 +74,13 @@ void emit_sim_events(Game &g) {
             g.args.sim_mouse_y = y;
         };
         auto push_btn = [&](SDL_EventType type, int button, int x, int y) {
+            // SDL3: button.state becomes button.down.
             SDL_Event bev = {0};
             bev.type = type;
             bev.button.windowID = g.sim_win_id;
             bev.button.which = 0;
             bev.button.button = (Uint8)button;
-            bev.button.state = (type == SDL_MOUSEBUTTONDOWN) ? SDL_PRESSED
-                                                             : SDL_RELEASED;
+            bev.button.down = (type == SDL_EVENT_MOUSE_BUTTON_DOWN);
             bev.button.x = x;
             bev.button.y = y;
             SDL_PushEvent(&bev);
@@ -89,7 +91,7 @@ void emit_sim_events(Game &g) {
                     // wheel notch (4 = up = zoom in, 5 = down = zoom out):
                     // one SDL_MOUSEWHEEL event, X,Y / duration ignored
                     SDL_Event wev = {0};
-                    wev.type = SDL_MOUSEWHEEL;
+                    wev.type = SDL_EVENT_MOUSE_WHEEL;
                     wev.wheel.windowID = g.sim_win_id;
                     wev.wheel.which = 0;
                     wev.wheel.x = a.x;
@@ -99,13 +101,13 @@ void emit_sim_events(Game &g) {
                     a.released = true;   // complete: skip the button-release path
                 } else if(a.button != 0 && a.up_ms > a.time_ms) {
                     // drag: press, then move (release comes at up_ms)
-                    push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
+                    push_btn(SDL_EVENT_MOUSE_BUTTON_DOWN, a.button, a.x, a.y);
                     push_motion(a.x, a.y);
                 } else if(a.button != 0) {
                     // click: move into place, press, release (same frame)
                     push_motion(a.x, a.y);
-                    push_btn(SDL_MOUSEBUTTONDOWN, a.button, a.x, a.y);
-                    push_btn(SDL_MOUSEBUTTONUP, a.button, a.x, a.y);
+                    push_btn(SDL_EVENT_MOUSE_BUTTON_DOWN, a.button, a.x, a.y);
+                    push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, a.x, a.y);
                     a.released = true;
                 } else {
                     // move only (no button)
@@ -116,7 +118,7 @@ void emit_sim_events(Game &g) {
             // release a held button at up_ms
             if(a.button != 0 && a.started && !a.released
                && now >= a.up_ms) {
-                push_btn(SDL_MOUSEBUTTONUP, a.button, a.x, a.y);
+                push_btn(SDL_EVENT_MOUSE_BUTTON_UP, a.button, a.x, a.y);
                 a.released = true;
             }
         }
@@ -144,51 +146,52 @@ void poll_events(Game &g) {
     SDL_Event ev;
 
     while (SDL_PollEvent(&ev)) {
-        ImGui_ImplSDL2_ProcessEvent(&ev);
-        if (ev.type == SDL_QUIT) {
+        ImGui_ImplSDL3_ProcessEvent(&ev);
+        if (ev.type == SDL_EVENT_QUIT) {
             g.running = false;
         }
 
-        if (ev.type == SDL_WINDOWEVENT) {
-            if(ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                g.display.onResize(ev.window.data1, ev.window.data2);
-                check_gl_error();
+        // SDL3: the SDL_WINDOWEVENT umbrella + .event subfield is gone; each
+        // window event is its own type (pixel-size change = the old
+        // SDL_WINDOWEVENT_SIZE_CHANGED).
+        if (ev.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+            g.display.onResize(ev.window.data1, ev.window.data2);
+            check_gl_error();
 
-                g.postfx->Resize(ev.window.data1, ev.window.data2);
-                check_gl_error();
+            g.postfx->Resize(ev.window.data1, ev.window.data2);
+            check_gl_error();
 
-                g.camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
-                // the terrain LOD (screen-px budget) reads the live one
-                g.camera->setViewport(ev.window.data1, ev.window.data2);
-                check_gl_error();
-            }
+            g.camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
+            // the terrain LOD (screen-px budget) reads the live one
+            g.camera->setViewport(ev.window.data1, ev.window.data2);
+            check_gl_error();
         }
-        if(ev.type == SDL_KEYDOWN && g.rebind_capture_slot >= 0) {
+        if(ev.type == SDL_EVENT_KEY_DOWN && g.rebind_capture_slot >= 0) {
             // A rebind capture (Controls window) is in progress: the next
             // non-modifier key becomes the new binding for the slot. Swallow
             // it here so it does NOT fire its current slot. A bare modifier
             // key-down (or unknown) is ignored -- keep capturing -- because a
             // combo is captured on the non-modifier key that carries it.
-            const SDL_Scancode sc = ev.key.keysym.scancode;
+            const SDL_Scancode sc = ev.key.scancode;
             const bool modKey = (sc == SDL_SCANCODE_LSHIFT)
                 || (sc == SDL_SCANCODE_RSHIFT) || (sc == SDL_SCANCODE_LCTRL)
                 || (sc == SDL_SCANCODE_RCTRL)  || (sc == SDL_SCANCODE_LALT)
                 || (sc == SDL_SCANCODE_RALT);
             if(sc != SDL_SCANCODE_UNKNOWN && !modKey) {
-                const Uint16 mods = ev.key.keysym.mod & KMOD_RELEVANT;
+                const Uint16 mods = ev.key.mod & KMOD_RELEVANT;
                 std::vector<KeyBind> &v =
                     g.binds.perSlot[(size_t)g.rebind_capture_slot];
                 v.clear();
                 v.push_back(KeyBind{sc, mods});
                 g.rebind_capture_slot = -1;   // captured: back to idle
             }
-        } else if(ev.type == SDL_KEYDOWN) {
+        } else if(ev.type == SDL_EVENT_KEY_DOWN) {
             // One-shot actions: match the press (scancode + modifiers) against
             // the key map (g.binds). The bodies are unchanged from the old
             // hardcoded SDLK checks -- only the "which key" test moved to the
             // table, so rebinding a control just re-points its slot.
-            const SDL_Scancode ksc = ev.key.keysym.scancode;
-            const Uint16 kmod = ev.key.keysym.mod;
+            const SDL_Scancode ksc = ev.key.scancode;
+            const Uint16 kmod = ev.key.mod;
             if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
                 // Warp up one step (10x), capped at 100000 (ladder top).
                 // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
@@ -386,7 +389,7 @@ void poll_events(Game &g) {
                 g.toast("Thrust latch off");
             }
         }
-        if(ev.type == SDL_MOUSEBUTTONDOWN) {
+        if(ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             // holding RMB over 3D (not over a UI window) moves the camera.
             if(ev.button.button == SDL_BUTTON_RIGHT &&
                !ImGui::GetIO().WantCaptureMouse) {
@@ -397,7 +400,7 @@ void poll_events(Game &g) {
                 g.rmbMoved = 0;
             }
         }
-        if(ev.type == SDL_MOUSEBUTTONUP) {
+        if(ev.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             if(ev.button.button == SDL_BUTTON_RIGHT) {
                 g.rmbCam = false;
                 // A short, still RMB press over the 3D view is a CLICK
@@ -411,7 +414,7 @@ void poll_events(Game &g) {
                 }
             }
         }
-        if(ev.type == SDL_MOUSEMOTION) {
+        if(ev.type == SDL_EVENT_MOUSE_MOTION) {
             if(g.rmbCam && !ImGui::GetIO().WantCaptureMouse) {
                 g.rmbMoved += std::abs(ev.motion.xrel)
                             + std::abs(ev.motion.yrel);
@@ -419,7 +422,7 @@ void poll_events(Game &g) {
                 g.camera->Pitch(ev.motion.yrel / 200.0f);
             }
         }
-        if(ev.type == SDL_MOUSEWHEEL) {
+        if(ev.type == SDL_EVENT_MOUSE_WHEEL) {
             // Zoom when the wheel is not scrolling a UI window.
             if(!ImGui::GetIO().WantCaptureMouse) {
                 g.camera->wheel(ev.wheel.y);

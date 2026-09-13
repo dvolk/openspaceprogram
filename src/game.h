@@ -14,7 +14,7 @@
 // is owned by Game.
 #pragma once
 
-#include <SDL2/SDL.h>   // Uint32
+#include <SDL3/SDL.h>   // Uint32
 
 #include <string>
 #include <vector>

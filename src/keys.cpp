@@ -52,10 +52,10 @@ void KeyBindings::resetDefaults() {
     add(Slot::Thrust,        SDL_SCANCODE_T);
     // Latch is a modifier combo (toggles; a plain 't' press -- the Thrust
     // slot -- releases it). LShift and RShift are distinct modifier keys, so
-    // the default names one concrete side: LShift+T. (KMOD_SHIFT is
+    // the default names one concrete side: LShift+T. (SDL_KMOD_SHIFT is
     // LShift|RShift -- a value no single press produces -- and would never
-    // match; a rebind to RShift+T stores KMOD_RSHIFT instead.)
-    perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_T, KMOD_LSHIFT});
+    // match; a rebind to RShift+T stores SDL_KMOD_RSHIFT instead.)
+    perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_T, SDL_KMOD_LSHIFT});
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
@@ -108,7 +108,7 @@ bool slotFired(Slot s, SDL_Scancode sc, Uint16 mods, const KeyBindings &kb) {
     return false;
 }
 
-bool slotHeld(Slot s, const Uint8 *keyState, Uint16 mods, const KeyBindings &kb) {
+bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb) {
     for (const auto &b : kb.perSlot[(size_t)s]) {
         if (keyState[b.sc] && (mods & KMOD_RELEVANT) == b.mods) { return true; }
     }
@@ -374,12 +374,12 @@ std::string bindLabel(const KeyBind &b) {
     // Conventional left-to-right modifier order (Shift, Ctrl, Alt). LShift and
     // RShift (and the L/R Ctrl, Alt pairs) are distinct modifier keys, so each
     // side is shown on its own -- a binding names the exact side it used.
-    if (b.mods & KMOD_LSHIFT) { s += "LShift+"; }
-    if (b.mods & KMOD_RSHIFT) { s += "RShift+"; }
-    if (b.mods & KMOD_LCTRL)  { s += "LCtrl+"; }
-    if (b.mods & KMOD_RCTRL)  { s += "RCtrl+"; }
-    if (b.mods & KMOD_LALT)   { s += "LAlt+"; }
-    if (b.mods & KMOD_RALT)   { s += "RAlt+"; }
+    if (b.mods & SDL_KMOD_LSHIFT) { s += "LShift+"; }
+    if (b.mods & SDL_KMOD_RSHIFT) { s += "RShift+"; }
+    if (b.mods & SDL_KMOD_LCTRL)  { s += "LCtrl+"; }
+    if (b.mods & SDL_KMOD_RCTRL)  { s += "RCtrl+"; }
+    if (b.mods & SDL_KMOD_LALT)   { s += "LAlt+"; }
+    if (b.mods & SDL_KMOD_RALT)   { s += "RAlt+"; }
     s += keyName(b.sc);
     return s;
 }
