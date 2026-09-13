@@ -447,6 +447,12 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // ships each tick; takes effect within one physics step.
         ImGui::SliderFloat("Exhaust scale (test)", &args.exhaust_scale,
                            0.5f, 5.0f, "%.2fx");
+        // Camera shake: the chase cam rumbles with the crew's felt
+        // acceleration (thrust + aero over mass, gravity excluded, so
+        // free fall is steady). 0 = off, 1 = default, read live by the
+        // render pass.
+        ImGui::SliderFloat("Camera shake", &args.cam_shake,
+                           0.0f, 3.0f, "%.1fx");
         // Controls: invert a manual attitude axis away from the default.
         // The default baseline already bakes in the preferred orientation
         // (viewed from the front, yaw + roll are pre-flipped to respond in

@@ -146,6 +146,18 @@ struct Game {
     // --- cameras -----------------------------------------------------------
     Camera *camera = nullptr;   // one object: orbit + free, `camera->mode` picks
     int cam_speed = 1;
+    // Camera shake at high acceleration (render.cpp, --cam-shake scale):
+    // the smoothed jitter applied to the chase cam while the ship's
+    // proper acceleration (thrust + aero over mass) is high. Two state
+    // vectors -- a translation offset (m) and a basis wobble (rad) --
+    // each low-passed toward fresh random targets per frame, so the
+    // rumble is correlated (a shake) instead of a per-frame strobe, and
+    // both decay to zero when the engine goes quiet. shake_last_ms is
+    // the previous frame's wall clock, for the fps-independent low-pass
+    // time constant.
+    glm::dvec3 shake_off = glm::dvec3(0.0);
+    glm::dvec3 shake_ang = glm::dvec3(0.0);
+    Uint32 shake_last_ms = 0;
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
@@ -185,6 +197,8 @@ struct Game {
     Uint32 dbg_log_last_ms = 0;
     /* Same gate, independent clock (the --att-log cadence is --orbit-interval). */
     Uint32 att_log_last_ms = 0;
+    /* Same gate, independent clock (--shake-log: the cam-shake state). */
+    Uint32 shake_log_last_ms = 0;
     /* Same gate, independent clock (--eva-log: the kerbal's mode/pos/vel). */
     Uint32 eva_log_last_ms = 0;
     /* Same gate, independent clock (--drag-log: the active ship's drag). */

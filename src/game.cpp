@@ -198,6 +198,7 @@ static SettingsData collect_settings(Game &g) {
     s.camFovDeg = g.args.camFovDeg;
     s.terrain_px = g.args.terrain_px;
     s.exhaust_scale = g.args.exhaust_scale;
+    s.cam_shake = g.args.cam_shake;
     s.flip_pitch = g.flip_pitch;
     s.flip_yaw = g.flip_yaw;
     s.flip_roll = g.flip_roll;
@@ -215,6 +216,7 @@ static void apply_settings_args(const SettingsData &s, GameArgs &args) {
     if(!args.cli_given.fov)           { args.camFovDeg     = s.camFovDeg; }
     if(!args.cli_given.terrain_px)    { args.terrain_px    = s.terrain_px; }
     if(!args.cli_given.exhaust_scale){ args.exhaust_scale = s.exhaust_scale; }
+    if(!args.cli_given.cam_shake)    { args.cam_shake     = s.cam_shake; }
 }
 
 static void apply_settings_game(Game &g, const SettingsData &s) {

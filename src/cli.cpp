@@ -102,6 +102,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "adjustable in the Settings window)")
         ->check(CLI::Range(0.5f, 5.0f));
 
+    app.add_option("--cam-shake", args.cam_shake,
+                   "Camera shake at high acceleration (the chase cam "
+                   "rumbles with the crew's felt g's): 0 disables it, "
+                   "higher scales it up (0-3.0, default 1; adjustable in "
+                   "the Settings window)")
+        ->check(CLI::Range(0.0f, 3.0f));
+
     app.add_option("--drag-cd", args.drag_cd,
                    "The atmospheric drag coefficient (src/drag.h): F = "
                    "-v*0.5*rho*Cd*A*v^2. Default 1.2; 0 disables drag "
@@ -234,6 +241,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Periodically print the ship's nose direction and the "
                  "hull's angular velocity (world coords) to stdout; the "
                  "instrument for the attitude-physics e2e test");
+
+    app.add_flag("--shake-log", args.shake_log,
+                 "Periodically print the camera shake state (the felt "
+                 "acceleration, the amplitude, the offset) to stdout; the "
+                 "instrument for the cam-shake e2e test");
 
     app.add_flag("--tq-log", args.tq_log,
                  "Print the spurious-torque probe once per tick: the hull "
@@ -628,6 +640,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     args.cli_given.terrain_px = app.get_option("--terrain-px")->count() > 0;
     args.cli_given.exhaust_scale =
         app.get_option("--exhaust-scale")->count() > 0;
+    args.cli_given.cam_shake =
+        app.get_option("--cam-shake")->count() > 0;
 
     return true;
 }

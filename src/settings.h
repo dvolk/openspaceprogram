@@ -47,6 +47,7 @@ struct SettingsData {
     float camFovDeg = 60.0f;
     int terrain_px = 512;
     float exhaust_scale = 1.0f;
+    float cam_shake = 1.0f;
     // control flips (Game)
     bool flip_pitch = false;
     bool flip_yaw = false;

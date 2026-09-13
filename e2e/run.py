@@ -48,6 +48,9 @@ CHECK namespace (parsed from the game's stdout):
   drag    list of dicts, one per [drag] line: t, alt (m above the surface),
           rho (kg/m^3, the air density), v (m/s, air-relative speed),
           F (N, the drag force magnitude), cd (the drag coefficient)
+  shake   list of dicts, one per [shakelog] line: t, a (m/s^2, the felt
+          acceleration), amp (m, the shake's target amplitude),
+          off (3-tuple, the live smoothed offset)
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -119,6 +122,10 @@ DRAG_RE = re.compile(
     r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
     r"\s+Cd=([-\d.]+)"
     r"(?:\s+K=([-\d.]+))?(?:\s+AoA=([-\d.e+]+) deg)?"
+)
+SHAKE_RE = re.compile(
+    r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
+    r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
 )
 DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
@@ -326,6 +333,17 @@ def parse_drainlog(out):
     return rows
 
 
+def parse_shake(out):
+    rows = []
+    for m in SHAKE_RE.finditer(out):
+        (t, a, amp, ox, oy, oz) = m.groups()
+        rows.append({
+            "t": float(t), "a": float(a), "amp": float(amp),
+            "off": (float(ox), float(oy), float(oz)),
+        })
+    return rows
+
+
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
@@ -429,10 +447,11 @@ def run_case(case):
     fuel = parse_fuel(out)
     drainlog = parse_drainlog(out)
     drag = parse_drag(out)
+    shake = parse_shake(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
-        "fuel": fuel, "drainlog": drainlog, "drag": drag,
+        "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

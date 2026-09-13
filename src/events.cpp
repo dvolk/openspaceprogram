@@ -244,6 +244,12 @@ void poll_events(Game &g) {
             }
             if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds)) {
                 // Toggle between the body-orbit camera and free flight.
+                // Zero the cam shake first: toFree() keeps the live pos
+                // (shake baked in) and toOrbit() derives the distance
+                // from it, so a mid-burn toggle would otherwise freeze a
+                // live offset into the pose (and the orbit radius).
+                g.shake_off = glm::dvec3(0.0);
+                g.shake_ang = glm::dvec3(0.0);
                 if(g.camera->mode == CAM_ORBIT) {
                     g.camera->toFree();
                 } else {

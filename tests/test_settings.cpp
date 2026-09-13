@@ -31,6 +31,7 @@ int main() {
     s.camFovDeg = 77.0f;
     s.terrain_px = 256;
     s.exhaust_scale = 2.5f;
+    s.cam_shake = 1.5f;
     s.flip_pitch = true;
     s.flip_yaw = false;
     s.flip_roll = true;
@@ -63,6 +64,7 @@ int main() {
     assert(r.camFovDeg == 77.0f);
     assert(r.terrain_px == 256);
     assert(r.exhaust_scale == 2.5f);
+    assert(r.cam_shake == 1.5f);
     assert(r.flip_pitch == true);
     assert(r.flip_yaw == false);
     assert(r.flip_roll == true);
@@ -141,6 +143,16 @@ int main() {
     settings_read(badkb, tk);
     assert(hasBind(tk.keybinds, Slot::Thrust, SDL_SCANCODE_T, 0));   // default kept
     assert(hasBind(tk.keybinds, Slot::KillRot, SDL_SCANCODE_X, 0));  // default kept
+
+    // 6) a hand-edited cam_shake outside the 0-3 range is clamped (the
+    //    CLI range guard does not reach the file path).
+    SettingsData cs;
+    settings_read(nlohmann::json::parse(R"({"cam_shake": 100})"), cs);
+    assert(cs.cam_shake == 3.0f);
+    settings_read(nlohmann::json::parse(R"({"cam_shake": -2})"), cs);
+    assert(cs.cam_shake == 0.0f);
+    settings_read(nlohmann::json::parse(R"({"cam_shake": 2.5})"), cs);
+    assert(cs.cam_shake == 2.5f);   // in range: untouched
 
     printf("test_settings: all checks passed\n");
     return 0;

@@ -28,6 +28,7 @@ struct GameArgs {
         bool fov = false;            // --fov
         bool terrain_px = false;     // --terrain-px
         bool exhaust_scale = false;  // --exhaust-scale
+        bool cam_shake = false;      // --cam-shake
     } cli_given;
 
     std::string system_file = "res/ksp_system.json";
@@ -41,6 +42,7 @@ struct GameArgs {
     double start_time = 0.0;   // --start-time: the sim clock's t0 (s)
     double timeout_seconds = 0.0;
     float exhaust_scale = 1.0f;  // test knob: scales ve (thrust + delta-v)
+    float cam_shake = 1.0f;   // camera shake at high accel (0 = off)
     double drag_cd = 1.2;       // --drag-cd: the drag coefficient (0 = off)
     double drag_k = 1.0;        // --drag-k: the off-axis (weathervane) coefficient
     bool drag_log = false;      // --drag-log: the active ship's drag per tick
@@ -70,6 +72,7 @@ struct GameArgs {
     bool spin_log_enabled = false;
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
     bool att_log = false;          // log the ship's nose + angular velocity
+    bool shake_log = false;       // --shake-log: the cam-shake state per interval
     bool tq_log = false;           // --tq-log: COM-lag x net-force spurious-torque probe
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links
     bool drain_log = false;      // --drain-log: per-fuel-group drain rate (kg/s)

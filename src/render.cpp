@@ -13,6 +13,7 @@
 #include "render.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <GL/glew.h>   // glBlendFunc / glLineWidth / the GL enums
 
 #include "billboard.h"   // Billboard::Draw + the icon pos
@@ -28,6 +29,74 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/projection.hpp>    // glm::proj
 #include <glm/gtx/vector_angle.hpp>  // glm::orientedAngle
+
+// Small-angle rotation (a is ~1e-3 rad): R ~= I + [a]x. The shake wobble
+// never approaches anything where the linearisation would matter.
+static glm::dmat3 shakeRot(const glm::dvec3 &a) {
+    return glm::dmat3(1.0, a.z, -a.y,
+                      -a.z, 1.0, a.x,
+                      a.y, -a.x, 1.0);
+}
+
+/* Camera shake at high acceleration: the crew's felt acceleration
+   (thrust + aero over mass -- gravity excluded, so coasting and free
+   fall are steady) sets the target amplitude. Each frame the state
+   (g.shake_off + g.shake_ang) is low-passed toward fresh random targets,
+   so the rumble is a smooth shake instead of a per-frame strobe, and
+   decays to zero on its own when the engine goes quiet. Active only for
+   the orbit camera focused on the ship (a body focus is a stable view,
+   the free cam is a debug tool); --cam-shake scales the whole thing
+   (0 = off). */
+static void camShakeStep(Game &g, Vehicle *ship) {
+    // The felt acceleration (what the crew feels): thrust + aero over
+    // mass -- gravity excluded, so coasting and free fall read zero.
+    // --shake-log reports it regardless of camera mode; the shake itself
+    // acts only for the orbit camera on the ship (a body focus is a
+    // stable view, the free cam is a debug tool).
+    double a = 0.0;
+    const double m = (double)ship->getMass();
+    if(g.time_accel > 0 && !ship->onRails && m > 0.0) {
+        a = glm::length(ship->lastThrustForce + ship->lastAeroForce) / m;
+    }
+    // Steady below the threshold (RCS-only flight, idle); above it the
+    // amplitude grows with the felt g's and saturates.
+    const bool active = a > 1.0
+        && g.args.cam_shake > 0.0
+        && g.camera->mode == CAM_ORBIT
+        && g.focusTargets[g.focusBody].body == nullptr;
+    const double target = active
+        ? (double)g.args.cam_shake * std::min(0.15, (a - 1.0) * 0.008)
+        : 0.0;
+    const Uint32 now_ms = SDL_GetTicks();
+    // Low-pass each axis toward a fresh random target: correlated jitter
+    // (a smooth rumble), toward zero when the engine is quiet. The time
+    // constant is in wall-clock seconds, so the rumble rate does not
+    // scale with the render fps (per-frame alpha would rumble 4x faster
+    // at 240 fps than at 60).
+    const double frame_dt = (now_ms - g.shake_last_ms) * 0.001;
+    g.shake_last_ms = now_ms;
+    const double tau = 0.05;    // s: ~3-frame correlation at 60 fps
+    const double alpha = frame_dt > 0.0 ? 1.0 - std::exp(-frame_dt / tau) : 1.0;
+    const double wobble = 0.02;  // rad of basis jitter per metre of offset
+    for(int i = 0; i < 3; i++) {
+        const double ro = ((double)std::rand() / RAND_MAX) * 2.0 - 1.0;
+        const double ra = ((double)std::rand() / RAND_MAX) * 2.0 - 1.0;
+        g.shake_off[i] += alpha * (ro * target - g.shake_off[i]);
+        g.shake_ang[i] += alpha * (ra * target * wobble - g.shake_ang[i]);
+    }
+    // --shake-log: the felt accel + the live target amplitude, at the
+    // --orbit-interval cadence (its own clock, like the other log gates).
+    if(g.args.shake_log) {
+        if(now_ms - g.shake_log_last_ms >= g.orbit_log_interval_ms) {
+            g.shake_log_last_ms = now_ms;
+            printf("[shakelog] t=%.3fs a=%.3f m/s2 amp=%.4f m "
+                   "off=[%+.4f %+.4f %+.4f]\n",
+                   g.time, a, target,
+                   g.shake_off.x, g.shake_off.y, g.shake_off.z);
+            fflush(stdout);
+        }
+    }
+}
 
 void draw3d(Game &g, TransferPlanner &planner) {
     // The pass body is verbatim from main's render section; its globals
@@ -106,6 +175,19 @@ void draw3d(Game &g, TransferPlanner &planner) {
                 ? glm::dmat3(1.0)
                 : glm::dmat3(b->frame->getRotFrame()->orient);
         }
+    }
+
+    // Camera shake at high acceleration (camShakeStep above): step the
+    // state once per frame, then -- for the orbit camera on the ship
+    // only -- rigidly shift the focus point by the offset and wobble the
+    // orbit basis. The chase cam follows both, so the whole view shakes
+    // with the ship (KSP's engine-rumble feel); a body focus and the
+    // free cam stay rock-steady.
+    camShakeStep(g, ship);
+    if(g.camera->mode == CAM_ORBIT &&
+       g.focusTargets[g.focusBody].body == nullptr) {
+        camera->focusPoint += g.shake_off;
+        camera->ref = shakeRot(g.shake_ang) * camera->ref;
     }
 
     // Render frame origin = the active ship's COM (both are in
