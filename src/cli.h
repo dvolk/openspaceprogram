@@ -95,6 +95,11 @@ struct GameArgs {
     // so this only changes the deck's silhouette smoothness at the rim.
     int cloud_mesh = 128;
 
+    // Render toggles (temporary debug knobs, for isolating terrain gaps /
+    // depth issues from the cloud + atmosphere layers that sit over them).
+    bool no_clouds = false;       // --no-clouds
+    bool no_atmosphere = false;   // --no-atmosphere
+
     std::string font_path = "./res/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;

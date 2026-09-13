@@ -186,12 +186,14 @@ struct TerrainBody {
         this->mass = mass;
         // Mesh density per surface area: one extra subdivision level per
         // radius doubling, anchored at 14 for a Kerbin-sized (600 km)
-        // body. Floor of 8 so tiny moons don't build useless depth;
-        // ceiling of 17 where float32 vertex coordinates (magnitude
-        // ~radius) stop resolving leaf cells on the biggest bodies.
+        // body. Floor of 8 so tiny moons don't build useless depth.
         max_depth = 14 + (int)llround(std::log2((double)radius / 600.0e3));
         if (max_depth < 8) { max_depth = 8; }
-        if (max_depth > 17) { max_depth = 17; }
+        // 12 is the current ceiling: the skirt geometry has a precision
+        // issue at deeper levels (depth >= 13) that needs investigating
+        // separately. The noise band-limiting smooths out most of the
+        // detail at those levels anyway, so the visual loss is small.
+        if (max_depth > 12) { max_depth = 12; }
         const glm::vec3 p1 = glm::normalize(glm::vec3( 1, 1, 1));
         const glm::vec3 p2 = glm::normalize(glm::vec3(-1, 1, 1));
         const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));

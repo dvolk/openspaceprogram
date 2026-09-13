@@ -254,13 +254,15 @@ void draw3d(Game &g, TransferPlanner &planner) {
     longitude = atan2(dir.x, dir.z);
     latitude = asin(dir.y);
 
-    // TEMP (reverse-Z migration): the far-plane skybox is depth-coupled to
-    // the old logZ terrain and doesn't fit the infinite-far projection.
-    // Disabled to unblock the depth fix; re-add via a reverse-Z method
-    // (view-only matrix, no translation). See tmp/depth_migration_scope.txt.
-    // if(g.draw_starfield) {
-    //     g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
-    // }
+    // Starfield: a cubemap pinned to the far plane (the vertex shader pushes
+    // the cube to reverse-Z depth 0.0). Drawn after the solid geometry and
+    // depth-tested with the global GEQUAL, so it fills the background and the
+    // terrain/pads/ships in front of it occlude it. skyRot maps the inertial
+    // starfield into the ship's frame (it drifts once per sidereal day on a
+    // spinning planet; identity = an inertial world).
+    if(g.draw_starfield) {
+        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
+    }
 
     // Atmosphere rims: transparent Fresnel shells, drawn after the
     // skybox (the starfield is the background) so the rim ring blends
@@ -271,8 +273,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // layer, the rim the thin air around it.
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
-            planet->DrawClouds(camera, sun, ship->frame, g.time);
-            planet->DrawAtmosphere(camera, sun, ship->frame);
+            if(!g.args.no_clouds) {
+                planet->DrawClouds(camera, sun, ship->frame, g.time);
+            }
+            if(!g.args.no_atmosphere) {
+                planet->DrawAtmosphere(camera, sun, ship->frame);
+            }
         }
     }
 

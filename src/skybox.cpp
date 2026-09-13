@@ -143,8 +143,6 @@ void Skybox::init(void) {
 
 void Skybox::Draw(const Camera * camera,
                   Shader * skyboxShader, const glm::dmat3 &skyRot) {
-    glDepthFunc(GL_LEQUAL);
-
     const glm::dmat4 view = camera->GetView();
     // The cubemap is at rest in the root (star/inertial) frame, but the scene
     // is drawn in the ship's frame, which may be rotating. skyRot is the map
@@ -163,5 +161,4 @@ void Skybox::Draw(const Camera * camera,
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
-    glDepthFunc(GL_LESS);
 }

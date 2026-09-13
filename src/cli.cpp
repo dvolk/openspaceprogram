@@ -388,6 +388,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "smoothness and its vertex cost -- try 32..256")
         ->check(CLI::Range(8, 512));
 
+    app.add_flag("--no-clouds", args.no_clouds,
+                 "Skip the cloud deck spheres (debug: see the terrain and "
+                 "its depth without the opaque cloud layer)");
+    app.add_flag("--no-atmosphere", args.no_atmosphere,
+                 "Skip the atmosphere rim/haze shells (debug: see the "
+                 "terrain and its depth without the transparent limb glow)");
+
     // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,
                    "Start in the free camera at this world position: X Y Z "

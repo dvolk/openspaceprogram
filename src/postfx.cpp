@@ -257,12 +257,11 @@ void PostFX::RebuildTargets(int width, int height)
         glBindTexture(GL_TEXTURE_2D, 0);
         check_gl_error();
 
-        // The scene shaders write gl_FragDepth (log depth), so the
-        // targets need a depth attachment like the default framebuffer
-        // does (only target 0 actually receives depth writes).
+        // The scene depth-tests, so each target needs a depth attachment
+        // (float depth for good range precision).
         glGenRenderbuffers(1, &m_depthRB[i]);
         glBindRenderbuffer(GL_RENDERBUFFER, m_depthRB[i]);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, width, height);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         check_gl_error();
 
@@ -295,19 +294,24 @@ void PostFX::Resize(int width, int height)
 
 void PostFX::Begin()
 {
+    // The scene goes straight to the window (keeping the window's own MSAA)
+    // unless a postfx effect is active; then it renders into the offscreen
+    // target and End() runs the effect passes over it.
     if(!Active()) return;
     if(m_fbo[0] == 0) {
         std::cerr << "PostFX::Begin() before Resize()" << std::endl;
         return;
     }
-    // The viewport is owned by Renderer::onResize (window size) and
-    // matches the target size, so it is left alone here.
+    // (The viewport is owned by Renderer::onResize and matches the target
+    // size, so it is left alone here.)
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo[0]);
     check_gl_error();
 }
 
 void PostFX::End()
 {
+    // No effects: the scene already rendered straight to the window (Begin
+    // was a no-op); the UI draws on top after this and SwapBuffers shows it.
     if(!Active()) return;
 
     glDisable(GL_DEPTH_TEST);
