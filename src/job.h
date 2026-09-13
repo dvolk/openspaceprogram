@@ -79,7 +79,18 @@ private:
         std::function<void()> apply;
     };
 
-    std::thread worker_;
+    // State first, the worker thread LAST: members initialize in
+    // DECLARATION order, and the std::thread ctor starts the thread
+    // immediately. Declaring worker_ first let run() race this ctor --
+    // it locked mu_ before mu_'s own ctor had run, over whatever bytes
+    // were already in that stack slot. Usually harmless (fresh stack
+    // pages are zeroed, which reads like a fresh mutex); rarely the
+    // garbage reads as a robust mutex with a dead owner and
+    // std::mutex::lock() throws system_error (EOWNERDEAD, "Owner died"),
+    // terminating the process at load (TSAN: the ctor's mutex-init write
+    // vs the worker's first lock, no happens-before between them).
+    // With worker_ last, pthread_create is the final initialization step,
+    // so the thread-start synchronization edge covers all the state above.
     mutable std::mutex mu_;
     std::condition_variable cv_;
     std::deque<Task> tasks_;
@@ -87,4 +98,5 @@ private:
     std::string current_ = "";   // the running job's label ("" when idle)
     int in_flight_ = 0;          // posted but not yet applied
     bool stop_ = false;
+    std::thread worker_;
 };
