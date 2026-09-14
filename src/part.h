@@ -65,9 +65,10 @@ struct Part {
     /* an air-breathing thruster (a jet engine): a thruster flagged jet.
        Same thrust pipeline (armedThrust / applyThrustForce), but the
        arming in Vehicle::ApplyThrust sets the thrust from the
-       air-breathing momentum balance (drag.h jetThrust) and draws H2
-       only -- air is the free oxidizer, so no LOX. In vacuum (no air) it
-       arms zero thrust: a jet cannot thrust in space. */
+       air-breathing momentum balance (drag.h jetThrust) and draws jet
+       fuel (a separate resource) only -- air is the free oxidizer, so no
+       LOX and no delta-v. In vacuum (no air) it arms zero thrust: a jet
+       cannot thrust in space. */
     bool isJet() const { return isThruster() && def->jet; }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }

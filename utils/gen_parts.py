@@ -92,18 +92,19 @@ RCS_THRUST_PER_M2 = 200.0        # N, RCS thrust at radius = 1 m (scales with r^
 # FAN    static (fan) thrust at sea level (the VTOL floor) -- scales with r^2
 # V_E    the REAL exhaust velocity (m/s), used in the fuel + ram terms
 # A      effective intake/capture area (m^2) -- scales with r^2 (the ram term)
-# FUEL   the H2 mass flow (kg/s), the burn rate -- scales with r^2
-# The jet burns H2 only (air is the free oxidizer -- no LOX).
+# FUEL   the jet-fuel mass flow (kg/s), the burn rate -- scales with r^2
+# The jet burns JET FUEL only (air is the free oxidizer -- no LOX, no delta-v).
 JET_FAN_PER_M2    = 32000.0      # N, static (fan) thrust at radius = 1 m
 JET_EXH_VEL       = 550.0        # m/s, the real exhaust velocity (not a knob)
 JET_INTAKE_PER_M2 = 0.9          # m^2, effective intake area at radius = 1 m
-JET_FUEL_PER_M2   = 6.82         # kg/s, H2 flow at radius = 1 m
+JET_FUEL_PER_M2   = 6.82         # kg/s, jet-fuel flow at radius = 1 m
 JET_MASS_PER_M2   = 1200.0       # kg, engine mass at radius = 1 m (~120 kN class)
 
-# H2-only tank (jet fuel): 100% liquid hydrogen, derived from the part
-# volume like the mono tank (the 50/50 fuel tank splits the volume
-# hydrogen/LOX; the jet tank does not).
-H2_DENSITY = 70.0                # kg/m^3, liquid hydrogen
+# Jet-fuel tank: 100% jet fuel -- a SEPARATE resource from rocket H2/LOX
+# (air is the free oxidizer, so no LOX, and it gives no delta-v). Derived
+# from the part volume like the mono tank (the 50/50 fuel tank splits the
+# volume hydrogen/LOX; the jet tank does not).
+JET_FUEL_DENSITY = 70.0          # kg/m^3, jet fuel (kept at the old H2 value for balance)
 
 # structural mass per unit enclosed volume (kg/m^3); tuned so the base (r1)
 # part of each kind lands on a sensible mass, then scales with real volume
@@ -198,10 +199,10 @@ PARTS = [
     # jet engine (air-breathing): one size (r1), the rocket engine's mesh
     # with its own tinted texture (like the rudder reuses wing.obj).
     ("jet",            "jet",            "engine.obj",                   "jet_engine.png"),
-    # H2-only tanks (jet fuel): one radius, the fuel tank's heights.
-    ("h2_tank_r1h1",   "h2_tank",        "tank_r1h1.obj",                "fuel_tank.png"),
-    ("h2_tank_r1h3",   "h2_tank",        "tank_r1h3.obj",                "fuel_tank.png"),
-    ("h2_tank_r1h5",   "h2_tank",        "tank_r1h5.obj",                "fuel_tank.png"),
+    # jet-fuel tanks: one radius, the fuel tank's heights.
+    ("jet_tank_r1h1",  "jet_tank",       "tank_r1h1.obj",                "fuel_tank.png"),
+    ("jet_tank_r1h3",  "jet_tank",       "tank_r1h3.obj",                "fuel_tank.png"),
+    ("jet_tank_r1h5",  "jet_tank",       "tank_r1h5.obj",                "fuel_tank.png"),
     ("fuel_tank",        "fuel_tank",      "fuel_tank.obj",                "fuel_tank.png"),
     ("tank_r1h1",        "fuel_tank",      "tank_r1h1.obj",                "fuel_tank.png"),
     ("tank_r1h3",        "fuel_tank",      "tank_r1h3.obj",                "fuel_tank.png"),
@@ -315,8 +316,8 @@ DISPLAY_BASE = {
     "engine":         "Engine",
     "orbital_engine": "Orbital Engine",
     "jet":            "Jet",
+    "jet_tank":       "Jet Fuel Tank",
     "fuel_tank":      "Fuel Tank",
-    "h2_tank":        "H2 Tank",
     "mono_tank":      "Mono Tank",
     "rcs":            "RCS",
     "adapter":        "Adapter",
@@ -345,7 +346,7 @@ def display_name_for(name, ptype, radius, height):
     # the rest: base name + the part's DIAMETER (radius * 2, matching the UI's
     # "dia" readout). Fuel tanks also carry height -- they come in lengths.
     d = clean(radius * 2.0)
-    if ptype in ("fuel_tank", "h2_tank"):
+    if ptype in ("fuel_tank", "jet_tank"):
         return "%s (%sm x %sm)" % (base, d, clean(height))
     return "%s (%sm)" % (base, d)
 
@@ -410,17 +411,17 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"hydrazine": clean(capacity)}
-    elif ptype == "h2_tank":
-        # H2-only tank (jet fuel): 100% hydrogen (like the mono tank's
-        # full-volume hydrazine; the 50/50 fuel tank splits the volume
-        # hydrogen/LOX). The jet draws this; the LOX in a fuel tank stays
-        # for the rockets.
-        capacity = volume * H2_DENSITY
+    elif ptype == "jet_tank":
+        # jet-fuel tank: 100% jet fuel -- a SEPARATE resource from rocket
+        # H2/LOX (air is the free oxidizer, so no LOX and no delta-v). Like
+        # the mono tank's full-volume hydrazine; the 50/50 fuel tank splits
+        # the volume hydrogen/LOX. The jet draws this.
+        capacity = volume * JET_FUEL_DENSITY
         dry = volume * TANK_DRY_DENSITY
         e["mass"] = clean(capacity + dry)
         e["radius"] = radius
         e["height"] = height
-        e["capacity"] = {"hydrogen": clean(capacity)}
+        e["capacity"] = {"jetfuel": clean(capacity)}
     elif ptype == "rcs":
         # RCS thruster: translation authority scales with the exit area
         # (r^2); the part is mostly structure + small thrusters, so a low
@@ -535,11 +536,15 @@ def summary_line(e):
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (
             n, t / 1e3, e["fuel_rate"], e["mass"])
     if "capacity" in e and "hydrogen" in e["capacity"]:
-        # a fuel tank (50/50 hydrogen + LOX) or an H2-only tank (jet fuel)
+        # a fuel tank (50/50 hydrogen + LOX)
         c = e["capacity"]["hydrogen"] + e["capacity"].get("lox", 0.0)
-        dens = PROP_DENSITY if "lox" in e["capacity"] else H2_DENSITY
         return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
-            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / dens))
+            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / PROP_DENSITY))
+    if "capacity" in e and "jetfuel" in e["capacity"]:
+        # a jet fuel tank (100% jet fuel, no LOX)
+        c = e["capacity"]["jetfuel"]
+        return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
+            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / JET_FUEL_DENSITY))
     if "capacity" in e and "hydrazine" in e["capacity"]:
         c = e["capacity"]["hydrazine"]
         return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (

@@ -1450,6 +1450,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
         ImGui::ProgressBar(frac(ResourceType::Hydrogen), ImVec2(-1, 0), "Hydrogen");
         ImGui::ProgressBar(frac(ResourceType::LOX), ImVec2(-1, 0), "LOX");
+        ImGui::ProgressBar(frac(ResourceType::JetFuel), ImVec2(-1, 0), "Jet fuel");
         ImGui::ProgressBar(frac(ResourceType::Hydrazine), ImVec2(-1, 0), "Hydrazine");
         ImGui::ProgressBar(frac(ResourceType::EC), ImVec2(-1, 0), "Electric charge");
         ImGui::ProgressBar(frac(ResourceType::Oxygen), ImVec2(-1, 0), "Oxygen");
@@ -1531,7 +1532,7 @@ void drawPartWindows(Game &g) {
                 ImGui::Text("Torque: %.0fN m (reaction wheel)", def->torque);
             }
             if(def->jet) {
-                ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s H2, intake %.2fm^2, %.0fm/s exhaust)",
+                ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
                             def->jet_fan_thrust, def->fuel_rate, def->jet_intake_area,
                             def->exhaust_velocity);
             } else if(def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0) {
@@ -1540,12 +1541,12 @@ void drawPartWindows(Game &g) {
                             def->exhaust_velocity);
             }
             static const char *resNames[(int)ResourceType::Num] = {
-                "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food", "Hydrazine"
+                "Hydrogen", "LOX", "EC", "Oxygen", "Water", "Food", "Hydrazine", "Jet fuel"
             };
             // EC is stored energy (watt-hours), not a substance (kg) -- a
             // battery's charge drains under load without losing mass.
             static const char *resUnits[(int)ResourceType::Num] = {
-                "kg", "kg", "Wh", "kg", "kg", "kg", "kg"
+                "kg", "kg", "Wh", "kg", "kg", "kg", "kg", "kg"
             };
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0f) { continue; }

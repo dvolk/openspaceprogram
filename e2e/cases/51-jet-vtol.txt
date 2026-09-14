@@ -3,7 +3,7 @@
 # rest (jet_fan_thrust 32 kN + the fuel-momentum term; ship ~3.3 t, Duna
 # g=2.943 -> TWR ~3.7 at rest). No runway, no wheels: a jet that cannot
 # leave the pad at rest has lost its static thrust, and a ship that never
-# sheds H2 is not running the jet at all.
+# sheds jet fuel is not running the jet at all.
 #
 # Duna is the lightest body with an atmosphere: every heavier one (Kerbin
 # and below) is below the ship's TWR, and the airless ones give the jet
@@ -13,7 +13,7 @@
 #
 # Timeline (--time-accel 1: 1 wall s == 1 sim s):
 #   1.0-3.0 s  R held (throttle ramps to full over ~2 s)
-#   3.0-9.0 s  T held (the jet burns; H2 at 6.82 kg/s for ~6 s ~= 40 kg)
+#   3.0-9.0 s  T held (the jet burns; jet fuel at 6.82 kg/s for ~6 s ~= 40 kg)
 #   9.0-14 s   coast to the --timeout 14 exit
 NAME jet-vtol
 ARGS --body Duna --scenario pad --ship res/ships/jet.json --time-accel 1
@@ -26,10 +26,10 @@ CHECK len(dbg) >= 2
 # fuel-momentum term, vs a ~3.3 t ship in 2.94 m/s^2 of gravity: a few
 # hundred metres over 6 s of thrust).
 CHECK last(dbg)["alt"] - first(dbg)["alt"] > 100
-# The jet is an AIR-breathing engine: it burns H2 (the onboard fuel) while
-# the oxidizer is free air -- so H2 must drain during the burn.
+# The jet is an AIR-breathing engine: it burns jet fuel (the onboard fuel)
+# while the oxidizer is free air -- so jet fuel must drain during the burn.
 EXPECT [fuel]
 CHECK len(fuel) >= 2
-CHECK first(fuel)["groups"][0]["H2"][0] - last(fuel)["groups"][0]["H2"][0] > 1.0
+CHECK first(fuel)["groups"][0]["JF"][0] - last(fuel)["groups"][0]["JF"][0] > 1.0
 FORBID GL_
 FORBID error:

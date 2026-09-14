@@ -242,6 +242,29 @@ int main() {
     CHECK(ft->mass > ft->capacity[(int)ResourceType::Hydrogen]
                        + ft->capacity[(int)ResourceType::LOX]);
 
+    // jet (air-breathing): an AIR-BREATHING thruster that burns a SEPARATE
+    // fuel type from rocket H2 -- so it and a rocket on the same ship never
+    // share a propellant pool, and its fuel gives no delta-v (no onboard
+    // oxidizer). Phase 1 added the engine; Phase 2 separated its fuel.
+    const PartDef *jet   = cat.find("jet");
+    const PartDef *jtank = cat.find("jet_tank_r1h3");
+    CHECK(jet != nullptr && jtank != nullptr);
+    CHECK(jet->jet && jet->fuel_rate > 0.0 && jet->exhaust_velocity > 0.0);
+    CHECK(jet->jet_fan_thrust > 0.0 && jet->jet_intake_area > 0.0);
+    // the jet engine is the pump, not a reservoir: no propellant of its own
+    for(size_t r = 0; r < jet->capacity.size(); r++) {
+        CHECK(jet->capacity[r] == 0.0f);
+    }
+    // the jet-fuel tank is a reservoir of the NEW JetFuel resource -- and
+    // ONLY that (the Phase 2 separation: not rocket H2/LOX, so it is
+    // excluded from delta-v and never feeds a rocket engine).
+    CHECK(jtank->type == "jet_tank");
+    CHECK(jtank->fuel_rate == 0.0 && jtank->exhaust_velocity == 0.0);
+    CHECK(jtank->capacity[(int)ResourceType::JetFuel] > 0.0f);
+    CHECK(jtank->capacity[(int)ResourceType::Hydrogen] == 0.0f);
+    CHECK(jtank->capacity[(int)ResourceType::LOX] == 0.0f);
+    CHECK(jtank->mass > jtank->capacity[(int)ResourceType::JetFuel]);
+
     // hull margin: no catalog part sets one -> -1 (physics falls back to
     // its default); the field itself still parses
     CHECK(cap->hull_margin == -1.0);

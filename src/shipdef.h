@@ -30,7 +30,8 @@
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
            "jet": true,                   // optional, bool; with fuel_rate + exhaust_velocity
                                           //   -> an AIR-BREATHING thruster (a jet engine,
-                                          //   see below); burns H2 only (air is free), no LOX
+                                          //   see below); burns jet fuel (air is the free
+                                          //   oxidizer, so no LOX / no delta-v)
            "jet_fan_thrust": 32000,       // optional, N; the jet's STATIC (fan) thrust at sea
                                           //   level -- the VTOL floor (no runways/wheels yet,
                                           //   so a stationary jet still pushes); default 0;
@@ -114,6 +115,7 @@ enum class ResourceType {
     Water,
     Food,
     Hydrazine,   // monopropellant (the EVA kerbal's RCS suit)
+    JetFuel,     // the onboard fuel of an air-breathing jet (air is the free oxidizer)
     Num
 };
 

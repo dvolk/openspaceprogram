@@ -36,8 +36,9 @@ static int resource_index_from_string(const std::string &s, const std::string &c
     if(s == "water") { return (int)ResourceType::Water; }
     if(s == "food") { return (int)ResourceType::Food; }
     if(s == "hydrazine") { return (int)ResourceType::Hydrazine; }
+    if(s == "jetfuel") { return (int)ResourceType::JetFuel; }
     throw std::runtime_error(ctx + ": unknown resource '" + s
-                             + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine)");
+                             + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)");
 }
 
 PartsCatalog load_parts_catalog(const char *path) {

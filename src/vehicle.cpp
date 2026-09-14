@@ -1010,6 +1010,9 @@ float Vehicle::getFuelMass(const std::vector <enum ResourceType>& types) {
 }
 
 float Vehicle::getDeltaV() {
+    // Rocket propellant only (H2 + LOX): jet fuel is a SEPARATE type
+    // (air-breathing, no onboard oxidizer) and produces no delta-v, so it
+    // is correctly absent from this count.
     float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
     double ve = 0;   // first ROCKET thruster's exhaust velocity (the delta-v estimate).
                      // Jets are skipped: they are air-breathing, so they produce no
@@ -1167,7 +1170,10 @@ float Vehicle::getFullThrustTWR() {
 }
 
 float Vehicle::getMaxTWR() {
-    float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
+    // ALL burnable propellant (rocket H2 + LOX and jet fuel): max TWR is at
+    // the lightest mass, i.e. after all of it has been spent.
+    float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX,
+                                         ResourceType::JetFuel }); /* kg */
     return GetActiveThrust() / ((getMass() - remaining_fuel) * m_parent->g);
 }
 
@@ -1663,6 +1669,7 @@ const char * Vehicle::resourceName(int r) {
         case ResourceType::Water:     return "H2O";
         case ResourceType::Food:      return "food";
         case ResourceType::Hydrazine: return "N2H4";
+        case ResourceType::JetFuel:   return "JF";
         case ResourceType::Num:       break;   /* count, not a resource */
     }
     return "?";
@@ -2172,16 +2179,15 @@ void Vehicle::ApplyThrust(double step) {
             /* Air-breathing: the thrust is the momentum balance
                T = T_fan + ṁ_f·v_e + ρ·A·v·(v_e − v), gated on the local air
                (drag.h jetThrust). In vacuum rho = 0 -> T = 0: no thrust
-               AND no burn (a jet cannot run without air). It draws H2 only
-               (air is the free oxidizer, no LOX) -- but from the SHARED
-               group pool: consumeResourceMass drains H2 pro-rata across
-               every tank in the fuel group, H2-only and 50/50 alike (and a
-               rocket in the same group draws H2 out of the H2 tank too). */
+               AND no burn (a jet cannot run without air). It draws JET
+               FUEL only (air is the free oxidizer, no LOX) -- a resource
+               SEPARATE from the rocket H2, so a jet and a rocket on the
+               same ship do not share a propellant pool. */
             const double T = jetThrust(
                 v_air, rho, rho_sea, p->def->jet_fan_thrust, p->def->fuel_rate,
                 p->def->exhaust_velocity, p->def->jet_intake_area);
             if(T <= 0.0) { continue; }
-            if(consumeResourceMass(ResourceType::Hydrogen, flow, p)) {
+            if(consumeResourceMass(ResourceType::JetFuel, flow, p)) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;
             }
