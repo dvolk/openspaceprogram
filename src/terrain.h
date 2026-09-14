@@ -442,6 +442,12 @@ struct TerrainBody {
         shader->setUniform_vec3(2, sunlightVec);
         shader->setUniform_vec4(3, glm::vec4(0.8, 0.8, 0.8, 1.0));
 
+        // Detail texture: shared by all bodies, loaded once via the
+        // get_texture registry (mipmapped, REPEAT wrap, anisotropic).
+        static Texture *detail_tex = get_texture("res/terrain_detail.png");
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, detail_tex->id);
+
         // Skirt pass fills the LOD cracks between patches at different
         // subdivision depths (and the limb). The skirt tail is drawn after the
         // terrain and depth-tests against it (mesh.h:DrawSkirt), so it hides

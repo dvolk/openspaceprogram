@@ -7,6 +7,8 @@ in vec3 color;
 out vec3 normal0;
 out vec4 color0;
 out vec3 up0;
+out vec3 bodyPos0;
+out vec3 bodyNormal0;
 
 uniform mat4 MVP;
 uniform mat4 Normal;
@@ -19,4 +21,8 @@ void main()
     color0 = vec4(color, 1.0);
     // Radial "up" at this vertex: body-centred position rotated to world.
     up0 = (Normal * vec4(position + anchor, 0.0)).xyz;
+    // Body-space position + normal for triplanar detail texturing
+    // (fixed to the planet surface, doesn't shift with rotation).
+    bodyPos0 = position + anchor;
+    bodyNormal0 = normal;
 }
