@@ -1184,6 +1184,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // Labels are abbreviated to <= 3 chars and right-padded to the
     // same width so the values start at a tidy column.
     ui::Window("Orbital", g.o_orbit, [&] {
+        ImGui::Text("Bod: %s", ship->m_parent->name.c_str());
         ImGui::Text("Vel: %.1fm/s", speed);
         ImGui::Text("Alt: %.1fm", distance);
         /* Every line below is always present; "-" = the quantity
@@ -1251,6 +1252,15 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
+        // Felt acceleration: thrust + aero over mass, the same quantity
+        // the camera shake keys off (camShakeStep, render.cpp).
+        double felt = 0.0;
+        const double felt_mass = (double)ship->getMass();
+        if(felt_mass > 0.0) {
+            felt = glm::length(ship->lastThrustForce + ship->lastAeroForce)
+                   / felt_mass;
+        }
+        ImGui::Text("Acc: %.1fm/s2", felt);
     });
 
     ui::Window("Ship List", g.o_ships, [&] {
