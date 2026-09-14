@@ -168,6 +168,14 @@ int main(int argc, char **argv)
                                        "lightDirection", "drift", "planetCenter",
                                        "coverage_tex" });
 
+    // Ocean surface: a transparent shell at sea level with animated wave
+    // normals, Fresnel reflection and a specular sun glint. Land pokes
+    // through via the depth test; the sea floor shows through the water.
+    Shader *oceanshader = get_shader("./res/oceanShader",
+                                     { "position", "normal" },
+                                     { "MVP", "Normal", "cameraPos", "seaColor",
+                                       "lightDirection", "time", "planetCenter" });
+
     Shader *skyboxshader = get_shader("./res/skyboxShader",
                                       { "position" },
                                       { "projectionview" });
@@ -269,6 +277,7 @@ int main(int argc, char **argv)
     for(auto&& b : sys.bodies) {
         b->BuildAtmosphere(atmosphereshader);
         b->BuildClouds(cloudshader, args.cloud_mesh, game.jobs);
+        b->BuildOcean(oceanshader);
     }
 
     // settings.json phase 2 (the args fields were applied before the

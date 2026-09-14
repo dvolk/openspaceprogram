@@ -290,8 +290,9 @@ inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
 }
 
 // Height (m, from the body center) at a unit direction, band-limited by
-// `fade`. Gas giants are a smooth sphere. The sea floor is flat at
-// sea_level (that IS the sea: nothing renders below it).
+// `fade`. Gas giants are a smooth sphere. Terrain renders at its true
+// height everywhere -- the ocean mesh (a separate shell at sea_level)
+// covers the below-sea-level terrain.
 inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
                                float fade) {
     const Surface &s = t.surface;
@@ -299,9 +300,6 @@ inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
         return t.radius;
     }
     float relief = terrainRelief(p, t, fade);
-    if (s.has_sea && relief < s.sea_level) {
-        relief = s.sea_level;
-    }
     return t.radius + relief;
 }
 
@@ -365,9 +363,6 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
                                            brightness,
                                            brightness);
 
-    if (s.has_sea && height <= t.radius + s.sea_level) {
-        color = s.sea_color;
-    }
     return color;
 }
 

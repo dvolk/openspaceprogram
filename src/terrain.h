@@ -117,6 +117,8 @@ struct TerrainBody {
     float atm_radius = 0.0f;     // shell radius [m]; 0 = no atmosphere
     Shell *clouds = nullptr;     // cloud deck shell (built on demand)
     float cloud_radius = 0.0f;   // deck radius [m]; 0 = no clouds
+    Shell *ocean = nullptr;      // ocean surface shell (built on demand)
+    float ocean_radius = 0.0f;   // shell radius [m]; 0 = no ocean
     float radius;
     double mu;
     double g; // [m/s^2]
@@ -306,6 +308,60 @@ struct TerrainBody {
                 upload_coverage_r8(tex, W, H, ppx->data());
             };
         });
+    }
+
+    // Build the ocean surface shell on demand. A UV sphere at sea level:
+    // land pokes through via the depth test, sea floor is covered by the
+    // transparent water surface.
+    void BuildOcean(Shader *oceanshader) {
+        if(ocean != nullptr || !surface.has_sea) return;
+        // Slight offset above sea level: at the exact coastline the terrain
+        // and ocean surfaces are coplanar, and without the offset the depth
+        // test flickers between them (z-fighting).
+        float shell_radius = radius + surface.sea_level + 0.1f;
+        Mesh *m = create_atmosphere_mesh(shell_radius, 128);
+        ocean = new Shell;
+        ocean->mesh = m;
+        ocean->shader = oceanshader;
+        ocean->texture = nullptr;
+        ocean_radius = shell_radius;
+    }
+
+    void DrawOcean(const Camera *camera, TerrainBody *sun,
+                   Frame *renderFrame, double time) {
+        if(ocean == nullptr) return;
+
+        const glm::dvec3 center = glm::dvec3(transform[3]);
+        const bool inside = glm::length(camera->GetPos() - center)
+                            < (double)ocean_radius;
+
+        const glm::dmat4 &View = camera->GetView();
+        glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin())
+                               * transform;
+        glm::mat4 ModelViewFloat = ModelView;
+        const glm::mat4 &Projection = camera->GetProjection();
+
+        ocean->shader->Bind();
+        ocean->shader->setUniform_mat4(0, Projection * ModelViewFloat);
+        ocean->shader->setUniform_mat4(1, glm::mat4(transform));
+        ocean->shader->setUniform_vec3(2, glm::vec3(camera->GetPos()));
+        ocean->shader->setUniform_vec3(3, surface.sea_color);
+        ocean->shader->setUniform_vec3(4,
+            glm::vec3(SunlightDir(this, sun, renderFrame)));
+        ocean->shader->setUniform_vec1(5, (float)time);
+        ocean->shader->setUniform_vec3(6, glm::vec3(center));
+
+        // Transparent over the terrain: depth test so land occludes the
+        // ocean, but no depth write so the sea floor shows through and
+        // later shells (clouds, atmosphere) aren't clipped.
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(false);
+        if(inside) glCullFace(GL_FRONT);
+        ocean->mesh->Draw();
+        if(inside) glCullFace(GL_BACK);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
     }
 
     void DrawAtmosphere(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {

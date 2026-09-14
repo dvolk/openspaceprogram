@@ -406,6 +406,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--no-atmosphere", args.no_atmosphere,
                  "Skip the atmosphere rim/haze shells (debug: see the "
                  "terrain and its depth without the transparent limb glow)");
+    app.add_flag("--no-ocean", args.no_ocean,
+                 "Skip the ocean surface shells (debug: see the sea floor "
+                 "terrain without the water layer)");
 
     // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,

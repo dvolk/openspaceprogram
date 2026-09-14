@@ -1,9 +1,9 @@
 // test_terrain.cpp -- unit tests for the pure terrain core (src/terragen.h,
-// glm + STL only): the height model (bounds, sea floor, band-limit fade),
-// the surface color (sea, palette, gas-giant bands), and the grid builder
-// (vertex/index counts, band-limited on-surface vertices, the anchor-
-// relative bake -- patch-scale vertex data with a sub-cm double round
-// trip -- index range, the skirt ring dropped below the terrain).
+// glm + STL only): the height model (bounds, band-limit fade), the surface
+// color (palette, gas-giant bands), and the grid builder (vertex/index
+// counts, band-limited on-surface vertices, the anchor-relative bake --
+// patch-scale vertex data with a sub-cm double round trip -- index range,
+// the skirt ring dropped below the terrain).
 // Links no GL / Bullet / imgui
 // -- the game-side half (GL upload, collision, the patch tree) stays in
 // terrain.cpp and is exercised by the e2e battery.
@@ -77,8 +77,8 @@ int main() {
         check(ok, "height: finite and bounded by the amplitude");
     }
 
-    // 2. The sea floor: with the sea level ABOVE the max relief, every
-    //    point sits exactly on the flat sea floor.
+    // 2. No sea floor clamp: terrain renders at its true height even
+    //    below sea level (the ocean mesh covers it).
     {
         TerrainParams t = kerbin();
         t.surface.has_sea = true;
@@ -86,11 +86,12 @@ int main() {
         bool ok = true;
         for(const auto &p : dirs) {
             const float h = terrainHeight(p, t);
-            if(!std::isfinite(h) || std::fabs(h - (t.radius + 10000.0f)) > 1e-3f) {
-                ok = false; break;
-            }
+            if(!std::isfinite(h)) { ok = false; break; }
+            // Heights must NOT be clamped to sea_level -- the terrain
+            // renders its true relief (well below 10000 here).
+            if(std::fabs(h - (t.radius + 10000.0f)) < 1.0f) { ok = false; break; }
         }
-        check(ok, "sea floor: height == radius + sea level");
+        check(ok, "sea floor: terrain is NOT clamped to sea level");
     }
 
     // 3. The band-limit fade: a finer grid (smaller cell angle) keeps at
@@ -121,7 +122,8 @@ int main() {
         check(ok, "color: finite and in [0,1]");
     }
 
-    // 5. An all-sea body paints exactly the sea color everywhere.
+    // 5. Sea color is NOT baked into terrain vertices (the ocean mesh
+    //    provides the water color); below-sea terrain keeps palette colors.
     {
         TerrainParams t = kerbin();
         t.surface.has_sea = true;
@@ -130,9 +132,12 @@ int main() {
         bool ok = true;
         for(const auto &p : dirs) {
             const glm::vec3 c = terrainSurfaceColor(p, t);
-            if(glm::distance(c, t.surface.sea_color) > 1e-6f) { ok = false; break; }
+            // The color must NOT be the sea color -- terrain keeps its
+            // palette/type-based color; the ocean shell paints the water.
+            if(glm::distance(c, t.surface.sea_color) < 1e-6f) { ok = false; break; }
+            if(!finite_v(c)) { ok = false; break; }
         }
-        check(ok, "all-sea: the color is exactly the sea color");
+        check(ok, "sea color: terrain is NOT painted with sea_color");
     }
 
     // 6. Gas giant (bands): a smooth sphere, color by latitude band.

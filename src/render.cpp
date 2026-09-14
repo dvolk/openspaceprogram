@@ -360,6 +360,9 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // rim the thin air around it.
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
+            if(!g.args.no_ocean) {
+                planet->DrawOcean(camera, sun, ship->frame, g.time);
+            }
             if(!g.args.no_clouds) {
                 planet->DrawClouds(camera, sun, ship->frame, g.time);
             }

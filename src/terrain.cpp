@@ -47,6 +47,7 @@ TerrainBody::~TerrainBody() {
     for(int i = 0; i < 6; i++) { delete patches[i]; }
     free_shell(atmosphere);
     free_shell(clouds);
+    free_shell(ocean);
     delete frame;
     delete rot_frame;
 }
