@@ -1,0 +1,15 @@
+{
+  "name": "jet",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1" },
+    { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },
+    { "part": "h2_tank_r1h3", "id": "h2_tank_1", "parent": "reaction_wheel_1" },
+    { "part": "jet", "id": "jet_1", "parent": "h2_tank_1" },
+    { "part": "wing", "id": "wing_1", "parent": "h2_tank_1", "attach": "radial", "angle": 0 },
+    { "part": "wing", "id": "wing_2", "parent": "h2_tank_1", "attach": "radial", "angle": 180 },
+    { "part": "rudder", "id": "rudder_1", "parent": "jet_1", "attach": "radial", "angle": 0 },
+    { "part": "rudder", "id": "rudder_2", "parent": "jet_1", "attach": "radial", "angle": 180 },
+    { "part": "elevator", "id": "elevator_1", "parent": "jet_1", "attach": "radial", "angle": 90 },
+    { "part": "elevator", "id": "elevator_2", "parent": "jet_1", "attach": "radial", "angle": 270 }
+  ]
+}

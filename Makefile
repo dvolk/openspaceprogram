@@ -350,6 +350,13 @@ test:
 	# 4x at 2x speed, zero on any degenerate input).
 	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_drag.cpp -o test_drag
 	./test_drag
+	# jet engine thrust factor (src/drag.h, header-only pure math): the
+	# air-breathing multiplier -- the speed ramp (the VTOL floor: f0 at
+	# rest, linear to 1 at v_rated, saturating above) times the density
+	# falloff (linear in rho/rho_sea, ZERO in vacuum, clamped at 1),
+	# degenerate inputs -> 0 (or the clamped floor).
+	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_jet.cpp -o test_jet
+	./test_jet
 	# background job runner (src/job.cpp): the worker/main-thread handoff --
 	# the body runs off the calling thread, the returned continuation runs on
 	# the poll() thread, jobs land in posted order, a throwing body does not
@@ -422,7 +429,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_drag test_jobs test_settings test_eva test_keys test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_drag test_jet test_jobs test_settings test_eva test_keys test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build).

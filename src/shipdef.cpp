@@ -9,7 +9,8 @@
 
 PartDef::PartDef()
     : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
-      exhaust_velocity(0.0), rcs_thrust(0.0), power_draw(0.0),
+      exhaust_velocity(0.0), jet(false), jet_zero_frac(0.3),
+      jet_rated_speed(100.0), rcs_thrust(0.0), power_draw(0.0),
       power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
@@ -153,6 +154,27 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(has_rate && (d.fuel_rate <= 0.0 || d.exhaust_velocity <= 0.0)) {
             throw std::runtime_error(std::string(ctx)
                                      + "\"fuel_rate\" and \"exhaust_velocity\" must be > 0");
+        }
+
+        /* jet engine (air-breathing) modifier: a flag + two tuning values
+           (see PartDef.jet / drag.h jetThrustFactor). Omitted -> not a jet,
+           and the tuning values keep their defaults (harmless). A jet
+           without a thrust source (fuel_rate + exhaust_velocity) is a
+           load error: the flag alone does nothing. */
+        if(pv.contains("jet")) {
+            d.jet = pv["jet"].get<bool>();
+        }
+        d.jet_zero_frac = pv.value("jet_zero_frac", 0.3);
+        if(d.jet_zero_frac < 0.0 || d.jet_zero_frac > 1.0) {
+            throw std::runtime_error(ctx + "\"jet_zero_frac\" must be in [0, 1]");
+        }
+        d.jet_rated_speed = pv.value("jet_rated_speed", 100.0);
+        if(d.jet_rated_speed <= 0.0) {
+            throw std::runtime_error(ctx + "\"jet_rated_speed\" must be > 0 (m/s)");
+        }
+        if(d.jet && !(d.fuel_rate > 0.0 && d.exhaust_velocity > 0.0)) {
+            throw std::runtime_error(ctx + "\"jet\" requires \"fuel_rate\" "
+                                          "and \"exhaust_velocity\" (the rated thrust)");
         }
 
         if(pv.contains("capacity")) {

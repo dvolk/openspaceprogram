@@ -62,6 +62,13 @@ struct Part {
         return def != nullptr
             && def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0;
     }
+    /* an air-breathing thruster (a jet engine): a thruster flagged jet.
+       Same thrust pipeline (armedThrust / applyThrustForce), but the
+       arming in Vehicle::ApplyThrust scales the thrust by the local air
+       (speed ramp + density falloff, drag.h jetThrustFactor) and draws
+       H2 only -- air is the free oxidizer, so no LOX. In vacuum (no air)
+       it arms zero thrust: a jet cannot thrust in space. */
+    bool isJet() const { return isThruster() && def->jet; }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }

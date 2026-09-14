@@ -248,6 +248,37 @@ inline double controlCl(double cl, double clControl) {
     return (clControl > 0.0) ? clControl : cl;
 }
 
+/* The JET ENGINE thrust factor: the air-breathing multiplier on a jet's
+   rated thrust (PartDef.jet), two physical effects in one factor:
+
+     f(v, alt) = [ f0 + (1 - f0) * min(v / v_rated, 1) ]  (speed ramp)
+              x min( rho / rho_sea, 1 )                   (density falloff)
+
+   Speed ramp: a jet's intake flow grows with airspeed, so its thrust
+   climbs from a floor to rated as the ship accelerates. f0 (in [0, 1])
+   is the thrust fraction at ZERO airspeed -- the VTOL floor: with no
+   runways or wheels yet, a stationary jet still pushes f0 * rated, so a
+   plane can take off vertically. v_rated is the airspeed (m/s) at which
+   the ramp reaches 1.0 (above it the factor saturates at the density
+   term).
+   Density falloff: the intake flow scales with the local air density, so
+   the thrust fades with altitude and is exactly ZERO in vacuum (rho = 0)
+   -- a jet cannot thrust in space. rho_sea is the body's sea-level
+   density (the falloff is relative, so a thin-atmosphere body's jets
+   stay proportional to that body's own air).
+   Zero for degenerate input (no air, no rated speed, negative floor).
+   Pure math (no glm needed) so tests/ can pin it without Bullet/GL. */
+inline double jetThrustFactor(double v, double rho, double rho_sea,
+                              double f0, double v_rated) {
+    if(rho <= 0.0 || rho_sea <= 0.0 || v_rated <= 0.0) { return 0.0; }
+    if(f0 < 0.0) { f0 = 0.0; }
+    if(f0 > 1.0) { f0 = 1.0; }
+    const double speed = (v < 0.0) ? 0.0 : v;
+    const double ramp = f0 + (1.0 - f0) * ((speed / v_rated < 1.0) ? speed / v_rated : 1.0);
+    const double density = ((rho / rho_sea) < 1.0) ? rho / rho_sea : 1.0;
+    return ramp * density;
+}
+
 /* The control-surface DEFLECTION SIGN for a surface at position `ri` (rel.
    to the COM). The steering torque is ri x F, so a tail (behind the CG)
    and a canard (ahead of it) need OPPOSITE deflections for the same

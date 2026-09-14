@@ -637,6 +637,13 @@ public:
        instrument). */
     glm::dvec3 applyAeroForce(double h);
 
+    /* The local air density (kg/m^3) at the ship's COM: the body's
+       sea-level density model (the same one applyAeroForce uses) sampled
+       at the COM's altitude. Zero when there is no physical atmosphere,
+       at / below sea level, or numerically above the air -- so a jet
+       engine (ApplyThrust) reads zero in vacuum and produces no thrust. */
+    double airDensityAtCom() const;
+
     /* The armed control forces, re-applied before EVERY substep (Bullet
        clears forces per stepSimulation). Ships deliver thrust + rotation +
        RCS translation; the EVA kerbal overrides with its own laws

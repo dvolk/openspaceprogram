@@ -1246,6 +1246,24 @@ void Vehicle::applyThrustForce() {
     }
 }
 
+double Vehicle::airDensityAtCom() const {
+    if(m_parent == nullptr) { return 0.0; }
+    const AtmosphereParams &atm = m_parent->surface.atmosphere;
+    if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
+        return 0.0;   // no physical atmosphere (a limb rim alone does not count)
+    }
+    const glm::dvec3 com = comPos();
+    const double r = glm::length(com);
+    if(r <= 0.0) { return 0.0; }
+    // Altitude above SEA LEVEL (the fixed reference radius), like
+    // applyAeroForce: the atmosphere is a spherically-symmetric shell, so
+    // the density depends only on the distance from the body's centre.
+    const double ref_radius =
+        (double)m_parent->radius + (double)m_parent->surface.sea_level;
+    const DragAtmosphere da { atm.sea_level_density, atm.scale_height };
+    return airDensity(da, r - ref_radius);
+}
+
 glm::dvec3 Vehicle::applyAeroForce(double h) {
     (void)h;  // a force (not an impulse); Bullet integrates it over the substep
     // The aero state the --drag-log instrument prints; reset so a substep
@@ -2099,11 +2117,40 @@ float Vehicle::GetActiveThrust() {
 void Vehicle::ApplyThrust(double step) {
     if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
     const int as = activeStage();
+    /* Jet state (shared by all jet parts this tick): the air-relative
+       speed (the ship's frame velocity -- the air co-rotates with the
+       planet, so this IS airspeed, like applyAeroForce) and the local air
+       density at the COM (0 in vacuum). The per-part thrust factor is
+       jetThrustFactor(v, rho, rho_sea, ...) -- the speed ramp (the VTOL
+       floor) times the density falloff (drag.h). */
+    const double v_air = glm::length(GetVel());
+    const double rho = airDensityAtCom();
+    const double rho_sea = (m_parent != nullptr)
+        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
         if(p->stage > as) { continue; } /* not ignited yet */
         const float flow =
             (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
+        if(p->isJet()) {
+            /* Air-breathing: the intake flow scales with the local air, so
+               the thrust is rated x the jet factor (speed ramp x density
+               falloff). In vacuum rho = 0 -> factor 0: no thrust AND no
+               burn (a jet cannot run without air). It draws H2 only (air
+               is the free oxidizer, no LOX) -- but from the SHARED group
+               pool: consumeResourceMass drains H2 pro-rata across every
+               tank in the fuel group, H2-only and 50/50 alike (and a
+               rocket in the same group draws H2 out of the H2 tank too). */
+            const double factor = jetThrustFactor(
+                v_air, rho, rho_sea, p->def->jet_zero_frac, p->def->jet_rated_speed);
+            if(factor <= 0.0) { continue; }
+            if(consumeResourceMass(ResourceType::Hydrogen, flow, p)) {
+                p->armedThrust =
+                    (float)(p->thrust() * thruster_util * factor * exhaust_scale);
+                m_thrust = 1.0;
+            }
+            continue;
+        }
         if(consumeResourceMass(ResourceType::Hydrogen, flow, p) and
            consumeResourceMass(ResourceType::LOX,      flow, p))
             {

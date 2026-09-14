@@ -229,6 +229,60 @@
       "exhaust_velocity": 4400.0
     },
     {
+      "name": "jet",
+      "type": "jet",
+      "display_name": "Jet (2m)",
+      "mesh": "engine.obj",
+      "texture": "jet_engine.png",
+      "mass": 1200,
+      "radius": 1.0,
+      "height": 2.0,
+      "fuel_rate": 6.82,
+      "exhaust_velocity": 8800.0,
+      "jet": true,
+      "jet_zero_frac": 0.3,
+      "jet_rated_speed": 100
+    },
+    {
+      "name": "h2_tank_r1h1",
+      "type": "h2_tank",
+      "display_name": "H2 Tank (2m x 1m)",
+      "mesh": "tank_r1h1.obj",
+      "texture": "fuel_tank.png",
+      "mass": 261.69,
+      "radius": 1.0,
+      "height": 1.0,
+      "capacity": {
+        "hydrogen": 219.91
+      }
+    },
+    {
+      "name": "h2_tank_r1h3",
+      "type": "h2_tank",
+      "display_name": "H2 Tank (2m x 3m)",
+      "mesh": "tank_r1h3.obj",
+      "texture": "fuel_tank.png",
+      "mass": 785.08,
+      "radius": 1.0,
+      "height": 3.0,
+      "capacity": {
+        "hydrogen": 659.73
+      }
+    },
+    {
+      "name": "h2_tank_r1h5",
+      "type": "h2_tank",
+      "display_name": "H2 Tank (2m x 5m)",
+      "mesh": "tank_r1h5.obj",
+      "texture": "fuel_tank.png",
+      "mass": 1308.47,
+      "radius": 1.0,
+      "height": 5.0,
+      "capacity": {
+        "hydrogen": 1099.56
+      }
+    },
+    {
       "name": "fuel_tank",
       "type": "fuel_tank",
       "display_name": "Fuel Tank (2m x 2m)",
