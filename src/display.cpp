@@ -367,16 +367,24 @@ bool Renderer::SaveScreenshot(const char *filename)
     // SDL3: SDL_CreateSurface(w, h, format) replaces
     // SDL_CreateRGBSurfaceWithFormat; the pixels are 4 bytes top-down, so
     // each row is w*4 bytes. glReadPixels yields [R,G,B,A] bytes (R first);
-    // in SDL3 that byte order is SDL_PIXELFORMAT_ABGR8888 (the names are
-    // inverted from SDL2), so tag it ABGR8888 -- not RGBA8888, which is
-    // [A,R,G,B] and would reverse the channels in the saved PNG.
+    // in SDL3 the 8888 names are the reverse of the memory order, so that
+    // byte order is SDL_PIXELFORMAT_ABGR8888 (not RGBA8888 = [A,B,G,R],
+    // which would scramble the channels in the saved PNG).
     SDL_Surface *surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ABGR8888);
     if (surface) {
         // glReadPixels is bottom-up; SDL surface is top-down. Flip vertically.
+        // Force alpha opaque: the window has no transparency, so the
+        // on-screen image is fully opaque, and the screenshot should match
+        // it. The scene's genuinely translucent layers (atmosphere, clouds)
+        // still carry partial alpha in the framebuffer; saved as-is a
+        // viewer would re-blend that coverage over its own background.
         for (int y = 0; y < h; y++) {
             const unsigned char *src = pixels + (h - 1 - y) * w * 4;
             unsigned char *dst = (unsigned char *)surface->pixels + y * surface->pitch;
             memcpy(dst, src, w * 4);
+            for (int x = 0; x < w; x++) {
+                dst[x * 4 + 3] = 255;
+            }
         }
         if (IMG_SavePNG(surface, filename)) {
             printf("Screenshot saved: %s (%dx%d)\n", filename, w, h);

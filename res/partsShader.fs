@@ -17,5 +17,10 @@ void main()
     vec4 tex_color = texture(mytexture, uv1);
     const float min_light = 0.15;
     const float max_light = 1.0;
-    fragColor = tex_color * clamp(dot(-lightDirection, normal0), min_light, max_light) * shadow;
+    float light = clamp(dot(-lightDirection, normal0), min_light, max_light);
+    // Opaque part: write alpha=1 explicitly. `tex_color * ...` would scale
+    // the alpha by the light (and shadow), leaking the scene's lighting
+    // into the framebuffer's alpha channel -- invisible in-game, but the
+    // F12 screenshot saved shaded parts as translucent.
+    fragColor = vec4(tex_color.rgb * light * shadow, 1.0);
 }
