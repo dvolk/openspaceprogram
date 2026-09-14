@@ -139,7 +139,8 @@ int main(int argc, char **argv)
 
     Shader *terrainshader = get_shader("./res/terrainShader",
                                        { "position", "normal", "color" },
-                                       { "MVP", "Normal", "lightDirection", "color" });
+                                       { "MVP", "Normal", "lightDirection", "color",
+                                         "anchor" });
 
     Shader *sunshader = get_shader("./res/sunShader",
                                    { "position", "normal", "color" },

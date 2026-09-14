@@ -209,6 +209,7 @@ void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
             * body->transform * glm::translate(anchor);
         shader->setUniform_mat4(0, camera->GetProjection()
                                    * glm::mat4(ModelView));
+        shader->setUniform_vec3(4, glm::vec3(anchor));
         // patch isn't subdivided
         if(skirt_pass == false) {
             mesh->Draw();
