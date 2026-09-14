@@ -1011,8 +1011,10 @@ float Vehicle::getFuelMass(const std::vector <enum ResourceType>& types) {
 
 float Vehicle::getDeltaV() {
     float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
-    double ve = 0;   // first thruster's exhaust velocity (the delta-v estimate)
-    for(Part *p : parts) { if(p->isThruster()) { ve = p->exhaustVelocity(); break; } }
+    double ve = 0;   // first ROCKET thruster's exhaust velocity (the delta-v estimate).
+                     // Jets are skipped: they are air-breathing, so they produce no
+                     // thrust in vacuum and their exhaust velocity is not a delta-v.
+    for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
     return (float)(ve * exhaust_scale)
          * log(getMass() / (getMass() - remaining_fuel));
 }
@@ -1133,11 +1135,31 @@ void Vehicle::advanceStage() { if(activeStage_ < totalStages_) { activeStage_++;
 int Vehicle::numStages() { return totalStages_; }
 
 float Vehicle::getThrust() {
-    return GetActiveThrust() * thruster_util;
+    /* The ACTUAL thrust at the current throttle and air state. Rockets
+       contribute their rated thrust; a jet contributes its air-breathing
+       thrust at the current airspeed + density (drag.h jetThrust), so the
+       HUD reads the real force, not a rated figure. */
+    const int as = activeStage();
+    const double v_air = glm::length(GetVel());
+    const double rho = airDensityAtCom();
+    const double rho_sea = (m_parent != nullptr)
+        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
+    double t = 0;
+    for(Part *p : parts) {
+        if(!p->isThruster() || p->stage > as) { continue; }
+        if(p->isJet()) {
+            t += jetThrust(v_air, rho, rho_sea, p->def->jet_fan_thrust,
+                           p->def->fuel_rate, p->def->exhaust_velocity,
+                           p->def->jet_intake_area);
+        } else {
+            t += p->thrust();
+        }
+    }
+    return (float)(t * thruster_util * exhaust_scale);
 }
 
 float Vehicle::getTWR() {
-    return (thruster_util * GetActiveThrust()) / (getMass() * m_parent->g);
+    return getThrust() / (getMass() * m_parent->g);
 }
 
 float Vehicle::getFullThrustTWR() {
@@ -2106,10 +2128,24 @@ void Vehicle::adjustThrottle(float delta) {
 }
 
 float Vehicle::GetActiveThrust() {
+    /* The FULL-THROTTLE thrust the ignited engines can produce. Rockets
+       contribute their rated value; a jet contributes its SEA-LEVEL PEAK
+       (jetThrust at v = v_e/2, its maximum) so "full TWR" is the best a jet
+       can do and stays >= the current (speed/density-dependent) TWR. Dead
+       in vacuum (no sea-level air -> peak 0), like ApplyThrust. */
     const int as = activeStage();
+    const double rho_sea = (m_parent != nullptr)
+        ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     double t = 0;
     for(Part *p : parts) {
-        if(p->isThruster() && p->stage <= as) { t += p->thrust(); }
+        if(!p->isThruster() || p->stage > as) { continue; }
+        if(p->isJet()) {
+            t += jetThrust(p->def->exhaust_velocity * 0.5, rho_sea, rho_sea,
+                           p->def->jet_fan_thrust, p->def->fuel_rate,
+                           p->def->exhaust_velocity, p->def->jet_intake_area);
+        } else {
+            t += p->thrust();
+        }
     }
     return (float)(t * exhaust_scale);
 }
@@ -2120,9 +2156,9 @@ void Vehicle::ApplyThrust(double step) {
     /* Jet state (shared by all jet parts this tick): the air-relative
        speed (the ship's frame velocity -- the air co-rotates with the
        planet, so this IS airspeed, like applyAeroForce) and the local air
-       density at the COM (0 in vacuum). The per-part thrust factor is
-       jetThrustFactor(v, rho, rho_sea, ...) -- the speed ramp (the VTOL
-       floor) times the density falloff (drag.h). */
+       density at the COM (0 in vacuum). The per-part thrust is the
+       air-breathing momentum balance jetThrust(v, rho, rho_sea, ...)
+       (drag.h). */
     const double v_air = glm::length(GetVel());
     const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
@@ -2133,20 +2169,20 @@ void Vehicle::ApplyThrust(double step) {
         const float flow =
             (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
         if(p->isJet()) {
-            /* Air-breathing: the intake flow scales with the local air, so
-               the thrust is rated x the jet factor (speed ramp x density
-               falloff). In vacuum rho = 0 -> factor 0: no thrust AND no
-               burn (a jet cannot run without air). It draws H2 only (air
-               is the free oxidizer, no LOX) -- but from the SHARED group
-               pool: consumeResourceMass drains H2 pro-rata across every
-               tank in the fuel group, H2-only and 50/50 alike (and a
+            /* Air-breathing: the thrust is the momentum balance
+               T = T_fan + ṁ_f·v_e + ρ·A·v·(v_e − v), gated on the local air
+               (drag.h jetThrust). In vacuum rho = 0 -> T = 0: no thrust
+               AND no burn (a jet cannot run without air). It draws H2 only
+               (air is the free oxidizer, no LOX) -- but from the SHARED
+               group pool: consumeResourceMass drains H2 pro-rata across
+               every tank in the fuel group, H2-only and 50/50 alike (and a
                rocket in the same group draws H2 out of the H2 tank too). */
-            const double factor = jetThrustFactor(
-                v_air, rho, rho_sea, p->def->jet_zero_frac, p->def->jet_rated_speed);
-            if(factor <= 0.0) { continue; }
+            const double T = jetThrust(
+                v_air, rho, rho_sea, p->def->jet_fan_thrust, p->def->fuel_rate,
+                p->def->exhaust_velocity, p->def->jet_intake_area);
+            if(T <= 0.0) { continue; }
             if(consumeResourceMass(ResourceType::Hydrogen, flow, p)) {
-                p->armedThrust =
-                    (float)(p->thrust() * thruster_util * factor * exhaust_scale);
+                p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;
             }
             continue;

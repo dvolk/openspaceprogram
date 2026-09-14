@@ -64,10 +64,10 @@ struct Part {
     }
     /* an air-breathing thruster (a jet engine): a thruster flagged jet.
        Same thrust pipeline (armedThrust / applyThrustForce), but the
-       arming in Vehicle::ApplyThrust scales the thrust by the local air
-       (speed ramp + density falloff, drag.h jetThrustFactor) and draws
-       H2 only -- air is the free oxidizer, so no LOX. In vacuum (no air)
-       it arms zero thrust: a jet cannot thrust in space. */
+       arming in Vehicle::ApplyThrust sets the thrust from the
+       air-breathing momentum balance (drag.h jetThrust) and draws H2
+       only -- air is the free oxidizer, so no LOX. In vacuum (no air) it
+       arms zero thrust: a jet cannot thrust in space. */
     bool isJet() const { return isThruster() && def->jet; }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
@@ -91,7 +91,7 @@ struct Part {
 
     /* --- derived behavior values (the old per-thruster / per-wheel
        vectors, now read straight off the def) --- */
-    double thrust() const { return def->fullThrust(); }  // N at full throttle
+    double thrust() const { return def->fullThrust(); }  // rocket rated thrust (N); jets use jetThrust
     double rate() const { return def->fuel_rate; }        // kg/s per tank
     double wheelTorque() const { return def->torque; }    // N m, rated
     double rcsThrust() const { return def->rcs_thrust; }  // N, rated translation authority

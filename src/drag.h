@@ -248,35 +248,39 @@ inline double controlCl(double cl, double clControl) {
     return (clControl > 0.0) ? clControl : cl;
 }
 
-/* The JET ENGINE thrust factor: the air-breathing multiplier on a jet's
-   rated thrust (PartDef.jet), two physical effects in one factor:
+/* The JET ENGINE (air-breathing) thrust in newtons, from the momentum
+   balance of an engine that burns fuel against FREE air (no onboard
+   oxidizer). At airspeed v through air of density rho:
 
-     f(v, alt) = [ f0 + (1 - f0) * min(v / v_rated, 1) ]  (speed ramp)
-              x min( rho / rho_sea, 1 )                   (density falloff)
+     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  rho·A·v·(v_e − v)     d = min(rho/rho_sea, 1)
+                └ static ┘  └ fuel mom ┘  └ ram / air momentum ┘
 
-   Speed ramp: a jet's intake flow grows with airspeed, so its thrust
-   climbs from a floor to rated as the ship accelerates. f0 (in [0, 1])
-   is the thrust fraction at ZERO airspeed -- the VTOL floor: with no
-   runways or wheels yet, a stationary jet still pushes f0 * rated, so a
-   plane can take off vertically. v_rated is the airspeed (m/s) at which
-   the ramp reaches 1.0 (above it the factor saturates at the density
-   term).
-   Density falloff: the intake flow scales with the local air density, so
-   the thrust fades with altitude and is exactly ZERO in vacuum (rho = 0)
-   -- a jet cannot thrust in space. rho_sea is the body's sea-level
-   density (the falloff is relative, so a thin-atmosphere body's jets
-   stay proportional to that body's own air).
-   Zero for degenerate input (no air, no rated speed, negative floor).
-   Pure math (no glm needed) so tests/ can pin it without Bullet/GL. */
-inline double jetThrustFactor(double v, double rho, double rho_sea,
-                              double f0, double v_rated) {
-    if(rho <= 0.0 || rho_sea <= 0.0 || v_rated <= 0.0) { return 0.0; }
-    if(f0 < 0.0) { f0 = 0.0; }
-    if(f0 > 1.0) { f0 = 1.0; }
+   T_fan   static (fan) thrust at sea level [N] -- the VTOL floor: a
+           stationary jet still pushes, so a plane can take off vertically
+           (no runways/wheels yet). A "true turbojet" would set this to 0.
+   ṁ_f     fuel mass flow at full throttle [kg/s] (the H2 draw; air is free).
+           The fuel-momentum term ṁ_f·v_e is small (the fuel is a fraction
+           of the exhaust mass).
+   v_e     the REAL exhaust velocity [m/s] (~500-600 for a turbofan core,
+           not a rocket's 4000+). NOT a thrust-encoding knob.
+   A       effective intake/capture area [m^2]: how much air the engine
+           ingests per unit speed.
+   rho·A·v·(v_e − v)  the AIR momentum: zero at rest, peaks near v = v_e/2,
+           falls to 0 at v = v_e, and would go negative (the engine drags)
+           beyond. The net is clamped at 0, so a jet never reverses.
+   d = min(rho/rho_sea, 1) gates the fan + fuel terms on available air, so
+   in vacuum (rho = 0) EVERY term is 0: a jet cannot thrust (or burn) in
+   space. rho_sea is the body's sea-level density, so a thin-atmosphere
+   body's jets stay proportional to that body's own air.
+   Zero (or clamped to 0) for any degenerate input. Pure math (no glm) so
+   tests/ can pin it without Bullet/GL. */
+inline double jetThrust(double v, double rho, double rho_sea,
+                        double T_fan, double m_f, double v_e, double A) {
+    if(rho <= 0.0 || rho_sea <= 0.0) { return 0.0; }   /* no air -> no thrust */
+    const double d = (rho / rho_sea < 1.0) ? rho / rho_sea : 1.0;
     const double speed = (v < 0.0) ? 0.0 : v;
-    const double ramp = f0 + (1.0 - f0) * ((speed / v_rated < 1.0) ? speed / v_rated : 1.0);
-    const double density = ((rho / rho_sea) < 1.0) ? rho / rho_sea : 1.0;
-    return ramp * density;
+    const double T = T_fan * d + m_f * v_e * d + rho * A * speed * (v_e - speed);
+    return (T < 0.0) ? 0.0 : T;
 }
 
 /* The control-surface DEFLECTION SIGN for a surface at position `ri` (rel.

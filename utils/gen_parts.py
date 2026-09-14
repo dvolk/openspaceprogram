@@ -87,17 +87,18 @@ ENGINE_MASS_PER_N = 0.01         # kg per newton of thrust (~100 N/kg)
 HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
 RCS_THRUST_PER_M2 = 200.0        # N, RCS thrust at radius = 1 m (scales with r^2)
 
-# Jet engine (air-breathing): 2.4x the same-size rocket engine's thrust --
-# the price of the VTOL floor (JET_ZERO_FRAC, the thrust fraction at zero
-# airspeed; see src/drag.h jetThrustFactor + PartDef.jet). The jet burns H2
-# ONLY (air is the free oxidizer -- no LOX), so at the same rated thrust its
-# FUEL FLOW is half the rocket's two-tank rule. The shared rated-thrust
-# formula is fullThrust() = 2 * fuel_rate * exhaust_velocity, so the jet's
-# fuel_rate is halved and its exhaust_velocity is the thrust-encoding knob
-# (2x the rocket's) that lands the formula on the rated thrust.
-JET_THRUST_PER_M2 = 120000.0     # N, thrust at radius = 1 m (scales with r^2)
-JET_ZERO_FRAC     = 0.3          # thrust fraction at zero airspeed (VTOL floor)
-JET_RATED_SPEED   = 100.0        # m/s, airspeed at which the ramp reaches rated
+# Jet engine (air-breathing): thrust from the momentum balance
+#   T = T_fan + m_f*V_E + rho*A*v*(V_E - v)          (src/drag.h jetThrust)
+# FAN    static (fan) thrust at sea level (the VTOL floor) -- scales with r^2
+# V_E    the REAL exhaust velocity (m/s), used in the fuel + ram terms
+# A      effective intake/capture area (m^2) -- scales with r^2 (the ram term)
+# FUEL   the H2 mass flow (kg/s), the burn rate -- scales with r^2
+# The jet burns H2 only (air is the free oxidizer -- no LOX).
+JET_FAN_PER_M2    = 32000.0      # N, static (fan) thrust at radius = 1 m
+JET_EXH_VEL       = 550.0        # m/s, the real exhaust velocity (not a knob)
+JET_INTAKE_PER_M2 = 0.9          # m^2, effective intake area at radius = 1 m
+JET_FUEL_PER_M2   = 6.82         # kg/s, H2 flow at radius = 1 m
+JET_MASS_PER_M2   = 1200.0       # kg, engine mass at radius = 1 m (~120 kN class)
 
 # H2-only tank (jet fuel): 100% liquid hydrogen, derived from the part
 # volume like the mono tank (the 50/50 fuel tank splits the volume
@@ -377,21 +378,20 @@ def generate(name, ptype, mesh, texture):
         e["fuel_rate"] = clean(thrust / (2.0 * EXHAUST_VELOCITY))
         e["exhaust_velocity"] = EXHAUST_VELOCITY
     elif ptype == "jet":
-        # Air-breathing (see the JET_* constants). Rated thrust is the
-        # shared fullThrust() = 2 * fuel_rate * exhaust_velocity; the jet
-        # burns H2 only (air is the free oxidizer), so its FUEL FLOW is
-        # half the rocket's two-tank rule and exhaust_velocity is the
-        # thrust-encoding knob (2x the rocket's) that lands the formula
-        # on the rated thrust.
-        thrust = JET_THRUST_PER_M2 * radius * radius
-        e["mass"] = clean(thrust * ENGINE_MASS_PER_N)
+        # Air-breathing (see the JET_* constants + src/drag.h jetThrust).
+        # jet_fan_thrust is the static (fan) thrust at sea level; the ram
+        # term (rho*A*v*(V_E - v)) is added at runtime from the local air.
+        # The jet burns H2 only (air is the free oxidizer -- no LOX).
+        fan = JET_FAN_PER_M2 * radius * radius
+        intake = JET_INTAKE_PER_M2 * radius * radius
+        e["mass"] = clean(JET_MASS_PER_M2 * radius * radius)
         e["radius"] = radius
         e["height"] = height
-        e["fuel_rate"] = clean(thrust / (4.0 * EXHAUST_VELOCITY))
-        e["exhaust_velocity"] = 2.0 * EXHAUST_VELOCITY
+        e["fuel_rate"] = clean(JET_FUEL_PER_M2 * radius * radius)
+        e["exhaust_velocity"] = JET_EXH_VEL
         e["jet"] = True
-        e["jet_zero_frac"] = JET_ZERO_FRAC
-        e["jet_rated_speed"] = clean(JET_RATED_SPEED)
+        e["jet_fan_thrust"] = clean(fan)
+        e["jet_intake_area"] = clean(intake)
     elif ptype == "fuel_tank":
         capacity = volume * PROP_DENSITY
         dry = volume * TANK_DRY_DENSITY

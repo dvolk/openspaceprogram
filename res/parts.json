@@ -238,10 +238,10 @@
       "radius": 1.0,
       "height": 2.0,
       "fuel_rate": 6.82,
-      "exhaust_velocity": 8800.0,
+      "exhaust_velocity": 550.0,
       "jet": true,
-      "jet_zero_frac": 0.3,
-      "jet_rated_speed": 100
+      "jet_fan_thrust": 32000,
+      "jet_intake_area": 0.9
     },
     {
       "name": "h2_tank_r1h1",

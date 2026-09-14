@@ -1,18 +1,18 @@
 //
-// Jet engine thrust factor (src/drag.h jetThrustFactor, header-only pure
-// math): the air-breathing multiplier on a jet's rated thrust -- the speed
-// ramp (the VTOL floor) times the density falloff. Pinned here without
-// Bullet/GL so the law is independent of the render/physics chain (like
-// test_drag).
+// Jet engine thrust (src/drag.h jetThrust, header-only pure math): the
+// air-breathing momentum balance of an engine that burns fuel against
+// FREE air. Pinned here without Bullet/GL so the law is independent of
+// the render/physics chain (like test_drag).
 //
-//   f(v, rho) = [ f0 + (1 - f0) * min(v / v_rated, 1) ] * min(rho / rho_sea, 1)
+//   T(v, rho) = T_fan*d + m_f*v_e*d + rho*A*v*(v_e - v),   d = min(rho/rho_sea, 1)
 //
 //   vacuum (rho = 0)      -> 0 (a jet cannot thrust in space)
-//   v = 0 (at rest)       -> f0 (the VTOL floor)
-//   v = v_rated           -> 1 at sea-level density
-//   v > v_rated           -> the ramp saturates at 1 (no overshoot)
-//   rho < rho_sea         -> the falloff is linear in rho/rho_sea
-//   degenerate inputs     -> 0
+//   v = 0 (at rest)       -> T_fan + m_f*v_e (the static/fan thrust)
+//   v = v_e/2             -> the ram term peaks (thrust maximum)
+//   v = v_e               -> the ram term is back to 0 (thrust = static)
+//   v > v_e               -> the ram term is negative; the net clamps at 0
+//   rho < rho_sea         -> the fan + fuel terms scale with rho/rho_sea
+//   degenerate inputs     -> handled (no negative thrust)
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
@@ -44,110 +44,123 @@ static int g_checks = 0;
         }                                                                     \
     } while (0)
 
-static void test_floor() {
-    printf("== jetThrustFactor: the VTOL floor (zero airspeed) ==\n");
-    const double rho = 1.225, rho_sea = 1.225, f0 = 0.3, v_rated = 100.0;
+/* Reference values (the r1 jet, res/parts.json) at Kerbin sea level
+   (rho_sea = 1.225). */
+static const double T_FAN = 32000.0, M_F = 6.82, V_E = 550.0, A = 0.9;
+static const double RHO_SEA = 1.225;
 
-    // At rest at sea level: exactly the floor fraction.
-    CHECK_NEAR(jetThrustFactor(0.0, rho, rho_sea, f0, v_rated), 0.3, 1e-12,
-               "v=0 -> f0");
-
-    // A higher floor -> a higher resting thrust (the floor IS the VTOL
-    // capability: 0.5 takes off easier than 0.3).
-    CHECK_TRUE(jetThrustFactor(0.0, rho, rho_sea, 0.5, v_rated)
-               > jetThrustFactor(0.0, rho, rho_sea, f0, v_rated),
-               "f0=0.5 beats f0=0.3 at rest");
-
-    // A floor of 1.0 = a full-thrust VTOL engine (no ramp at all).
-    CHECK_NEAR(jetThrustFactor(0.0, rho, rho_sea, 1.0, v_rated), 1.0, 1e-12,
-               "f0=1 -> 1 at rest");
+static double T(double v, double rho) {
+    return jetThrust(v, rho, RHO_SEA, T_FAN, M_F, V_E, A);
 }
 
-static void test_ramp() {
-    printf("== jetThrustFactor: the speed ramp ==\n");
-    const double rho = 1.225, rho_sea = 1.225, f0 = 0.3, v_rated = 100.0;
+static void test_static() {
+    printf("== jetThrust: the static (fan) thrust at rest ==\n");
 
-    // Linear between the floor and rated: half speed -> halfway up.
-    CHECK_NEAR(jetThrustFactor(50.0, rho, rho_sea, f0, v_rated),
-               0.3 + 0.7 * 0.5, 1e-12, "v=v_rated/2 -> halfway up the ramp");
+    // At rest at sea level: fan + fuel momentum (no ram yet).
+    CHECK_NEAR(T(0.0, RHO_SEA), T_FAN + M_F * V_E, 1e-12,
+               "v=0 -> T_fan + m_f*v_e");
 
-    // Rated speed: the full factor (at sea level).
-    CHECK_NEAR(jetThrustFactor(100.0, rho, rho_sea, f0, v_rated), 1.0, 1e-12,
-               "v=v_rated -> 1");
+    // The fan term dominates the small fuel-momentum term.
+    CHECK_TRUE(T(0.0, RHO_SEA) > T_FAN, "static thrust >= the fan thrust");
 
-    // Supersonic: the ramp SATURATES at 1 (no overshoot past rated).
-    CHECK_NEAR(jetThrustFactor(300.0, rho, rho_sea, f0, v_rated), 1.0, 1e-12,
-               "v>v_rated -> 1 (saturated)");
+    // A bigger fan -> a bigger resting thrust (the fan IS the VTOL
+    // capability: 40k takes off easier than 32k).
+    CHECK_TRUE(jetThrust(0.0, RHO_SEA, RHO_SEA, 40000.0, M_F, V_E, A)
+               > jetThrust(0.0, RHO_SEA, RHO_SEA, T_FAN, M_F, V_E, A),
+               "T_fan=40k beats T_fan=32k at rest");
+}
 
-    // Monotone: faster airspeed, more thrust (until the saturation).
-    CHECK_TRUE(jetThrustFactor(20.0, rho, rho_sea, f0, v_rated)
-               < jetThrustFactor(80.0, rho, rho_sea, f0, v_rated),
-               "ramp is monotone in v");
+static void test_ram() {
+    printf("== jetThrust: the ram (air momentum) term ==\n");
+
+    // The ram term rho*A*v*(v_e - v) peaks at v = v_e/2.
+    const double vpeak = V_E / 2.0;
+    const double peak = T(vpeak, RHO_SEA);
+    CHECK_TRUE(peak > T(0.0, RHO_SEA), "thrust rises off the static floor");
+
+    // It falls back to the static value at v = v_e (the ram term is 0 there).
+    CHECK_NEAR(T(V_E, RHO_SEA), T_FAN + M_F * V_E, 1e-9, "v=v_e -> back to static");
+
+    // Monotone up to the peak, then down (the physical turbofan shape).
+    CHECK_TRUE(T(vpeak * 0.5, RHO_SEA) < peak, "rising toward the peak");
+    CHECK_TRUE(T(vpeak * 1.5, RHO_SEA) < peak, "falling past the peak");
+
+    // The maximum is at v = v_e/2 (the derivative of v*(v_e - v) is 0 there).
+    const double lo = T(V_E * 0.49, RHO_SEA), hi = T(V_E * 0.51, RHO_SEA);
+    CHECK_TRUE(lo <= peak && hi <= peak, "the maximum is at v = v_e/2");
+}
+
+static void test_overspeed() {
+    printf("== jetThrust: overspeed (v > v_e) never reverses ==\n");
+
+    // Past v_e the ram term is negative (the engine would drag); the net
+    // clamps at 0, so a jet never pushes backwards.
+    CHECK_TRUE(T(2.0 * V_E, RHO_SEA) <= T_FAN + M_F * V_E, "overspeed <= static");
+    CHECK_TRUE(T(10.0 * V_E, RHO_SEA) >= 0.0, "thrust is never negative");
+    CHECK_TRUE(T(10.0 * V_E, RHO_SEA) < T(0.0, RHO_SEA), "overspeed < static");
 }
 
 static void test_density() {
-    printf("== jetThrustFactor: the density falloff ==\n");
-    const double rho_sea = 1.225, f0 = 0.3, v_rated = 100.0;
+    printf("== jetThrust: the density falloff ==\n");
 
-    // Half the sea-level density -> half the (resting) thrust.
-    CHECK_NEAR(jetThrustFactor(0.0, 0.6125, rho_sea, f0, v_rated),
-               0.5 * 0.3, 1e-12, "rho=rho_sea/2 -> factor/2");
+    // Half the sea-level density -> the static terms halve (the gate d = 0.5).
+    CHECK_NEAR(T(0.0, 0.5 * RHO_SEA), 0.5 * (T_FAN + M_F * V_E), 1e-12,
+               "rho=rho_sea/2 -> static/2");
 
     // The falloff is relative to the body's own sea level: a thin
     // atmosphere at its own sea level still reads full.
-    CHECK_NEAR(jetThrustFactor(0.0, 0.12, 0.12, f0, v_rated), 0.3, 1e-12,
-               "thin atmo at its sea level -> full factor");
+    CHECK_NEAR(jetThrust(0.0, 0.12, 0.12, T_FAN, M_F, V_E, A), T_FAN + M_F * V_E, 1e-12,
+               "thin atmo at its sea level -> full static");
 
-    // Higher altitude (lower rho) -> less thrust.
-    CHECK_TRUE(jetThrustFactor(0.0, 0.8, rho_sea, f0, v_rated)
-               < jetThrustFactor(0.0, 1.1, rho_sea, f0, v_rated),
-               "denser air -> more thrust");
+    // Denser than sea level clamps the gate at 1 (no overshoot).
+    CHECK_NEAR(jetThrust(0.0, 2.0 * RHO_SEA, RHO_SEA, T_FAN, M_F, V_E, A),
+               T_FAN + M_F * V_E, 1e-12, "rho > rho_sea: the gate clamps at 1");
 
-    // Denser than sea level clamps the DENSITY multiplier at 1 (no
-    // overshoot) -- the total factor is still the ramp (f0 at rest).
-    CHECK_NEAR(jetThrustFactor(0.0, 2.0 * rho_sea, rho_sea, f0, v_rated),
-               f0, 1e-12, "rho > rho_sea: the density multiplier clamps at 1");
+    // The gate clamps the fan + fuel at sea level, but the RAM term is
+    // linear in rho (not gated by d): at rho = 2*rho_sea the fan is full
+    // and the ram doubles.
+    CHECK_NEAR(jetThrust(V_E / 2.0, 2.0 * RHO_SEA, RHO_SEA, T_FAN, M_F, V_E, A),
+               T_FAN + M_F * V_E + (2.0 * RHO_SEA) * A * (V_E / 2.0) * (V_E - V_E / 2.0),
+               1e-9, "rho > rho_sea: fan clamps at 1, ram follows local rho");
 }
 
 static void test_vacuum() {
-    printf("== jetThrustFactor: vacuum ==\n");
-    const double f0 = 0.3, v_rated = 100.0;
+    printf("== jetThrust: vacuum ==\n");
 
-    // No air at all (a body with no atmosphere, or above it): ZERO thrust
-    // at ANY speed -- a jet cannot run without air.
-    CHECK_NEAR(jetThrustFactor(0.0, 0.0, 1.225, f0, v_rated), 0.0, 0.0,
+    // No air at all: ZERO thrust at ANY speed -- a jet cannot run without
+    // air (and, in ApplyThrust, burns no fuel).
+    CHECK_NEAR(jetThrust(0.0, 0.0, RHO_SEA, T_FAN, M_F, V_E, A), 0.0, 0.0,
                "rho=0 at rest -> 0");
-    CHECK_NEAR(jetThrustFactor(300.0, 0.0, 1.225, f0, v_rated), 0.0, 0.0,
+    CHECK_NEAR(jetThrust(300.0, 0.0, RHO_SEA, T_FAN, M_F, V_E, A), 0.0, 0.0,
                "rho=0 at speed -> 0 (no air, no thrust)");
     // A body with no sea-level density to reference is a vacuum too.
-    CHECK_NEAR(jetThrustFactor(0.0, 1.225, 0.0, f0, v_rated), 0.0, 0.0,
+    CHECK_NEAR(jetThrust(0.0, RHO_SEA, 0.0, T_FAN, M_F, V_E, A), 0.0, 0.0,
                "rho_sea=0 -> 0");
 }
 
 static void test_degenerate() {
-    printf("== jetThrustFactor: degenerate inputs ==\n");
-    const double rho = 1.225, rho_sea = 1.225;
+    printf("== jetThrust: degenerate inputs ==\n");
+    const double rho = RHO_SEA;
 
-    // No rated speed: no ramp to climb -> 0.
-    CHECK_NEAR(jetThrustFactor(0.0, rho, rho_sea, 0.3, 0.0), 0.0, 0.0,
-               "v_rated=0 -> 0");
-    CHECK_NEAR(jetThrustFactor(0.0, rho, rho_sea, 0.3, -5.0), 0.0, 0.0,
-               "v_rated<0 -> 0");
-    // A negative floor clamps to 0 (the factor never goes negative).
-    CHECK_NEAR(jetThrustFactor(0.0, rho, rho_sea, -1.0, 100.0), 0.0, 0.0,
-               "f0<0 clamps to 0");
-    // A floor above 1 clamps to 1 (no overshoot of rated at rest).
-    CHECK_NEAR(jetThrustFactor(0.0, rho, rho_sea, 2.0, 100.0), 1.0, 1e-12,
-               "f0>1 clamps to 1");
-    // A negative speed reads as zero speed (the floor).
-    CHECK_NEAR(jetThrustFactor(-50.0, rho, rho_sea, 0.3, 100.0), 0.3, 1e-12,
-               "v<0 -> the floor");
+    // A negative speed reads as zero speed (the static thrust).
+    CHECK_NEAR(jetThrust(-50.0, rho, RHO_SEA, T_FAN, M_F, V_E, A), T_FAN + M_F * V_E,
+               1e-12, "v<0 -> the static thrust");
+
+    // No intake area: no ram term, just the static (fan + fuel) thrust.
+    CHECK_NEAR(jetThrust(100.0, rho, RHO_SEA, T_FAN, M_F, V_E, 0.0), T_FAN + M_F * V_E,
+               1e-12, "A=0 -> static only (no ram)");
+
+    // No fan thrust: the static floor is just the (small) fuel momentum.
+    CHECK_NEAR(jetThrust(0.0, rho, RHO_SEA, 0.0, M_F, V_E, A), M_F * V_E, 1e-12,
+               "T_fan=0 -> just the fuel momentum");
 }
 
 int main() {
-    test_floor();
+    test_static();
     printf("\n");
-    test_ramp();
+    test_ram();
+    printf("\n");
+    test_overspeed();
     printf("\n");
     test_density();
     printf("\n");

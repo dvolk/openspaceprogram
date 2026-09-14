@@ -1,8 +1,9 @@
 # Jet VTOL: the air-breathing jet (res/ships/jet.json) lifts off from a Duna
-# pad at ZERO airspeed -- the f0 floor gives it 30% of rated thrust at rest
-# (120 kN rated, ship ~3.3 t, Duna g=2.943 -> TWR ~3.7 at rest). No
-# runway, no wheels: a jet that cannot leave the pad at rest has lost its
-# VTOL floor, and a ship that never sheds H2 is not running the jet at all.
+# pad at ZERO airspeed -- the static (fan) thrust term gives it ~36 kN at
+# rest (jet_fan_thrust 32 kN + the fuel-momentum term; ship ~3.3 t, Duna
+# g=2.943 -> TWR ~3.7 at rest). No runway, no wheels: a jet that cannot
+# leave the pad at rest has lost its static thrust, and a ship that never
+# sheds H2 is not running the jet at all.
 #
 # Duna is the lightest body with an atmosphere: every heavier one (Kerbin
 # and below) is below the ship's TWR, and the airless ones give the jet
@@ -21,8 +22,9 @@ ARGS --sim-press 1000,2000,R
 ARGS --sim-press 3000,6000,T
 EXPECT [dbg]
 CHECK len(dbg) >= 2
-# The ship gains real altitude (a VTOL floor of 30% of 120 kN vs a ~3.3 t
-# ship in 2.94 m/s^2 of gravity: a few hundred metres over 6 s of thrust).
+# The ship gains real altitude (static thrust ~35.8 kN = 32 kN fan + the
+# fuel-momentum term, vs a ~3.3 t ship in 2.94 m/s^2 of gravity: a few
+# hundred metres over 6 s of thrust).
 CHECK last(dbg)["alt"] - first(dbg)["alt"] > 100
 # The jet is an AIR-breathing engine: it burns H2 (the onboard fuel) while
 # the oxidizer is free air -- so H2 must drain during the burn.

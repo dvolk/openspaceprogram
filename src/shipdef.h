@@ -30,14 +30,14 @@
            "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
            "jet": true,                   // optional, bool; with fuel_rate + exhaust_velocity
                                           //   -> an AIR-BREATHING thruster (a jet engine,
-                                          //   see below); draws H2 only (air is free), no LOX
-           "jet_zero_frac": 0.3,          // optional, [0,1]; the jet's thrust FRACTION at zero
-                                          //   airspeed -- the VTOL floor (no runways/wheels yet,
-                                          //   so a stationary jet still pushes f0 * rated);
-                                          //   default 0.3; ignored for non-jet parts
-           "jet_rated_speed": 100,        // optional, m/s; the airspeed at which the jet's
-                                          //   thrust ramp reaches rated (0..this is a linear
-                                          //   ramp from jet_zero_frac up to 1.0); default 100
+                                          //   see below); burns H2 only (air is free), no LOX
+           "jet_fan_thrust": 32000,       // optional, N; the jet's STATIC (fan) thrust at sea
+                                          //   level -- the VTOL floor (no runways/wheels yet,
+                                          //   so a stationary jet still pushes); default 0;
+                                          //   ignored for non-jet parts
+           "jet_intake_area": 0.9,        // optional, m^2; effective intake/capture area --
+                                          //   the ram term rho·A·v·(v_e − v); default 0;
+                                          //   ignored for non-jet parts
            "rcs_thrust": 5000,            // optional, N; > 0 -> RCS translation authority (burns hydrazine mono)
            "power_draw": 1000,            // optional, W; > 0 -> draws EC while active (a reaction wheel)
            "power_draw_constant": 100,    // optional, W; > 0 -> a CONSTANT EC draw, on all the time (capsule life support)
@@ -204,19 +204,18 @@ struct PartDef {
 
     double torque;            // N m; > 0 -> contributes as a reaction wheel
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
-    double exhaust_velocity;  // m/s; with fuel_rate -> thruster
-    /* Jet engine (air-breathing) modifier on a thruster (see
-       drag.h jetThrustFactor). jet = true makes the thruster AIR-BREATHING:
-       it draws H2 only (air is the free oxidizer, no LOX), and its thrust
-       is rated x [jet_zero_frac + (1-frac) * min(v / jet_rated_speed, 1)]
-       x min(rho(alt) / rho_sea, 1) -- a speed ramp (the VTOL floor is
-       jet_zero_frac: a stationary jet still pushes, so a plane can take
-       off vertically until runways/wheels exist) and a density falloff
-       (ZERO in vacuum: a jet cannot thrust in space). Ignored unless the
-       part is also a thruster (fuel_rate + exhaust_velocity). */
+    double exhaust_velocity;  // m/s; with fuel_rate -> thruster. For a JET this is
+                              // the REAL exhaust velocity (~500-600 m/s), used in
+                              // drag.h jetThrust -- NOT a thrust-encoding knob.
+    /* Jet engine (air-breathing) modifier on a thruster (see drag.h
+       jetThrust). jet = true makes the thruster AIR-BREATHING: it burns H2
+       against FREE air (no LOX), and its thrust is the momentum balance
+       T = T_fan + ṁ_f·v_e + ρ·A·v·(v_e − v), gated on the local air (so a
+       jet is dead in vacuum: no thrust, no burn). Ignored unless the part
+       is also a thruster (fuel_rate + exhaust_velocity). */
     bool jet;
-    double jet_zero_frac;     // [0,1]; thrust fraction at zero airspeed
-    double jet_rated_speed;   // m/s; airspeed at which the ramp reaches rated
+    double jet_fan_thrust;    // N; static (fan) thrust at sea level -- the VTOL floor
+    double jet_intake_area;   // m^2; effective intake/capture area (the ram term)
     double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono, the EVA suit's propellant)
     /* Electrical (KSP-style EC), independent of each other:
        power_draw (W) > 0        -> a part that draws EC only while ACTIVE

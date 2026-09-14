@@ -375,6 +375,10 @@ void draw3d(Game &g, TransferPlanner &planner) {
     if(ship->m_thrust > 0) {
         for(Part *p : ship->parts) {
             if(!p->isThruster()) { continue; }
+            /* an air-breathing engine has no rocket plume (its exhaust is a
+               short faint puff, not a flame) -- suppress the flame mesh.
+               Thrust feedback comes from the ship's acceleration + HUD. */
+            if(p->isJet()) { continue; }
             /* only engines actually thrusting THIS tick (armed in
                ApplyThrust: ignited = stage <= counter, AND drew propellant).
                m_thrust above is a coarse "something fired" flag, so without

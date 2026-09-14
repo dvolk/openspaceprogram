@@ -1530,7 +1530,11 @@ void drawPartWindows(Game &g) {
             if(def->torque > 0.0) {
                 ImGui::Text("Torque: %.0fN m (reaction wheel)", def->torque);
             }
-            if(def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0) {
+            if(def->jet) {
+                ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s H2, intake %.2fm^2, %.0fm/s exhaust)",
+                            def->jet_fan_thrust, def->fuel_rate, def->jet_intake_area,
+                            def->exhaust_velocity);
+            } else if(def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0) {
                 ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
                             def->fullThrust(), def->fuel_rate,
                             def->exhaust_velocity);

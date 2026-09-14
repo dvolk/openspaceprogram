@@ -341,8 +341,9 @@ public:
 
     float thruster_util = 1.0;
     double exhaust_scale = 1.0;  // test knob (Settings / --exhaust-scale):
-                                 // scales ve, so thrust and delta-v scale with
-                                 // it (the fuel burn does not); synced per tick
+                                 // scales rocket ve (thrust + delta-v; the fuel
+                                 // burn does not) and the whole jet thrust (fan
+                                 // + fuel + ram); synced per tick
     double drag_cd = 1.2;        // test knob (--drag-cd): the drag coefficient
                                  // (src/drag.h); 0 = no drag; synced per tick
     double drag_k = 1.0;         // test knob (--drag-k): the off-axis
