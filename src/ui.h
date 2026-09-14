@@ -8,8 +8,10 @@
 //     of, or below another window (left_of / right_of / below); the
 //     source must be drawn earlier in the same frame.
 //   * size: windows fit their content on first layout (or use
-//     initial_size / fixed_width when set), and stay user-resizable
-//     afterwards.
+//     initial_size when set), and stay user-resizable afterwards. A
+//     fixed_width window is different: its width is pinned and its
+//     height tracks the content every frame, so it is not
+//     user-resizable.
 //   * freedom: the layout is applied once per generation; after that the
 //     user can move and resize windows freely.
 //   * reset: ui::ResetGui(), or `ui::ResetFlag() = true` from anywhere,
@@ -86,7 +88,6 @@ public:
         bool fixed = false;          // from options: re-laid-out every frame
         int applied_generation = 0; // layout applied for this generation?
         int wait_frames = 0;        // frames spent waiting for a source rect
-        int width_frames = 0;       // fixed-width constraint frames left
         int layout_frame = 0;       // imgui frame of the last relayout
         bool has_rect = false;      // measured on screen rect, this frame
         ImVec2 rect_min, rect_max;
@@ -140,7 +141,6 @@ public:
             st.open = st.default_open;
             st.applied_generation = 0;
             st.wait_frames = 0;
-            st.width_frames = 0;
             st.has_rect = false;
         }
         ResetFlag() = false;
@@ -272,8 +272,13 @@ bool Window(const char* name, const Options& o, Body&& body) {
 
     ImGuiWindowFlags flags = o.flags | ImGuiWindowFlags_NoSavedSettings;
     if (o.fixed)
-        flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                 ImGuiWindowFlags_AlwaysAutoResize;
+        flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
+    // fixed and fixed_width windows auto-fit every frame, so they track
+    // viewport resizes and content changes (a fixed_width window's height
+    // follows its rows, which vary with the ship). The trade-off: the
+    // user cannot manually resize them.
+    if (o.fixed || o.fixed_width > 0.0f)
+        flags |= ImGuiWindowFlags_AlwaysAutoResize;
 
     // First layout of this generation -- or every frame for fixed windows,
     // which must track viewport resizes and content changes.
@@ -299,13 +304,7 @@ bool Window(const char* name, const Options& o, Body&& body) {
         st.applied_generation = m.generation;
         st.layout_frame = (int)ImGui::GetFrameCount();
 
-        if (o.fixed_width > 0.0f) {
-            // width pinned to fixed_width, height auto-fits; the
-            // constraint is applied over the next few frames (below)
-            // while the one-shot fit settles.
-            flags |= ImGuiWindowFlags_AlwaysAutoResize;
-            st.width_frames = 3;
-        } else if (o.initial_size.x > 0.0f && o.initial_size.y > 0.0f) {
+        if (o.initial_size.x > 0.0f && o.initial_size.y > 0.0f) {
             ImGui::SetNextWindowSize(o.initial_size, ImGuiCond_Always);
         } else {
             // One-shot content fit: imgui auto-fits a window for two frames
@@ -320,9 +319,9 @@ bool Window(const char* name, const Options& o, Body&& body) {
     }
 
     // The width constraint is per-frame (imgui's NextWindowData), so it
-    // must be re-issued for each frame while the one-shot fit settles.
-    if (o.fixed_width > 0.0f && st.width_frames > 0) {
-        st.width_frames--;
+    // is re-issued every frame: with AlwaysAutoResize the height tracks
+    // the content and the width stays pinned.
+    if (o.fixed_width > 0.0f) {
         ImGui::SetNextWindowSizeConstraints(
             ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX),
             FixedWidthCallback,
