@@ -200,8 +200,8 @@ void physics_tick(float timeStep) {
 
 void setRigidBody(Body *b, btRigidBody *rb);
 
-btRigidBody *addTerrainCollision(Mesh *m) {
-    return physics->AddTerrainCollision(m);
+btRigidBody *addTerrainCollision(Mesh *m, const glm::dvec3 &anchor) {
+    return physics->AddTerrainCollision(m, anchor);
 }
 
 void removeTerrainCollision(btRigidBody *b) {
@@ -224,9 +224,14 @@ void PhysicsEngine::RemoveTerrainCollision(btRigidBody *b) {
     delete b->getMotionState();
 }
 
-btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m) {
+btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m,
+                                                const glm::dvec3 &anchor) {
     btTransform startTransform;
     startTransform.setIdentity();
+    // The patch mesh is baked relative to its anchor (terragen.h GridGeom);
+    // placing the body there puts the triangles back in body-frame coords.
+    // Bullet is double-precision here, so the anchor is exact.
+    startTransform.setOrigin(btVector3(anchor.x, anchor.y, anchor.z));
 
     btTriangleIndexVertexArray *mesh_interface
         = new btTriangleIndexVertexArray(m->num_indices / 3,

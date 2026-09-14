@@ -1,8 +1,10 @@
 // test_terrain.cpp -- unit tests for the pure terrain core (src/terragen.h,
 // glm + STL only): the height model (bounds, sea floor, band-limit fade),
 // the surface color (sea, palette, gas-giant bands), and the grid builder
-// (vertex/index counts, band-limited on-surface vertices, index range,
-// the skirt ring dropped below the terrain). Links no GL / Bullet / imgui
+// (vertex/index counts, band-limited on-surface vertices, the anchor-
+// relative bake -- patch-scale vertex data with a sub-cm double round
+// trip -- index range, the skirt ring dropped below the terrain).
+// Links no GL / Bullet / imgui
 // -- the game-side half (GL upload, collision, the patch tree) stays in
 // terrain.cpp and is exercised by the e2e battery.
 
@@ -162,7 +164,8 @@ int main() {
 
     // 7. The grid without a skirt (a root patch): 49x49 vertices, 48x48
     //    quads, every vertex on the BAND-LIMITED height field (the same
-    //    fade the builder computes for the quad), indices in range.
+    //    fade the builder computes for the quad, with the anchor added
+    //    back in double), indices in range.
     {
         const TerrainParams t = kerbin();
         const GridGeom g = buildGridGeom(t, false, 1, p1, p2, p3, p4);
@@ -175,16 +178,77 @@ int main() {
         bool ok = true;
         for(const auto &v : g.verts) {
             if(!finite_v(v.pos) || !finite_v(v.normal) || !finite_v(v.color)) { ok = false; break; }
-            const glm::vec3 d = glm::normalize(v.pos);
+            const glm::dvec3 w = glm::dvec3(v.pos) + g.anchor;
+            const glm::vec3 d = glm::normalize(glm::vec3(w));
             const float h = terrainHeightFade(d, t, fade);
-            if(std::fabs(glm::length(v.pos) - h) > h * 1e-4f) { ok = false; break; }
+            if(std::fabs(glm::length(w) - (double)h) > (double)h * 1e-4) { ok = false; break; }
         }
         check(ok, "grid: vertices on the band-limited height field");
+        // The anchor: the quad's sphere centroid at (about) terrain radius.
+        const glm::dvec3 cdir = glm::normalize(glm::dvec3(p1) + glm::dvec3(p2)
+                                             + glm::dvec3(p3) + glm::dvec3(p4));
+        bool anchor_ok = std::isfinite(g.anchor.x) && std::isfinite(g.anchor.y)
+                      && std::isfinite(g.anchor.z);
+        anchor_ok = anchor_ok
+            && glm::dot(glm::normalize(g.anchor), cdir) > 0.999
+            && std::fabs(glm::length(g.anchor) - (double)t.radius)
+               < (double)t.surface.amplitude * 1.01;
+        check(anchor_ok, "grid: anchor at the patch centroid, radius scale");
         bool idx_ok = true;
         for(const unsigned int ix : g.indices) {
             if(ix >= g.verts.size()) { idx_ok = false; break; }
         }
         check(idx_ok, "grid: indices in range");
+    }
+
+    // 7b. The anchor-relative bake (the float32 jitter fix): a deep patch's
+    //     vertex data is PATCH-scale, not radius-scale, and adding the
+    //     anchor back in double recovers the body-frame surface point to
+    //     well under a centimetre-scale quantum. A body-centred float bake
+    //     quantized at ULP(radius) (~6 cm on Kerbin, ~70 cm on Jool), which
+    //     made the terrain swim around the launch pad as the camera moved.
+    {
+        const TerrainParams t = kerbin();
+        const int depth = 9;
+        // Corners of a REAL depth-9 patch: the first child of the root
+        // face, subdivided down (the midpoint scheme subdivideCorners uses).
+        glm::vec3 q0 = p1, q1 = p2, q2 = p3, q3 = p4;
+        for(int lvl = 1; lvl < depth; lvl++) {
+            const glm::vec3 v01 = glm::normalize(q0 + q1);
+            const glm::vec3 v30 = glm::normalize(q3 + q0);
+            const glm::vec3 cn  = glm::normalize(q0 + q1 + q2 + q3);
+            q1 = v01; q2 = cn; q3 = v30;   // q0 stays: child quad[0]
+        }
+        const GridGeom g = buildGridGeom(t, true, depth, q0, q1, q2, q3);
+        const float fade = terrainDepthFade(depth, 49, t.surface.frequency);
+        // Patch extent bound: the root-face edge angle / 2^(depth-1) times
+        // the radius (the lateral half-span), plus the full relief swing
+        // (the anchor sits at the centroid's height).
+        const double extent = (double)t.radius * 1.2310 / (1 << (depth - 1))
+                              + 2.0 * (double)t.surface.amplitude;
+        bool small = true;
+        for(const auto &v : g.verts) {
+            if((double)glm::length(v.pos) > extent) { small = false; break; }
+        }
+        check(small, "anchor: vertex data is patch-scale, not radius-scale");
+        // Round trip: re-derive the baker's own float direction + height,
+        // and the anchored vertex must sit within float-at-patch-scale
+        // rounding of it (sub-mm here; a body-centred bake would be off
+        // by ~6 cm, orders past the tolerance).
+        const float frac = 1.0f / 48.0f;
+        bool precise = true;
+        for(int i = 1; i <= 49 && precise; i++) {
+            for(int j = 1; j <= 49; j++) {
+                const TerrVert &v = g.verts[(size_t)j + (size_t)i * 51];
+                const glm::vec3 d = terrainSpherePoint(q0, q1, q2, q3,
+                                                       (i - 1) * frac,
+                                                       (j - 1) * frac);
+                const double h = (double)terrainHeightFade(d, t, fade);
+                const glm::dvec3 w = glm::dvec3(v.pos) + g.anchor;
+                if(glm::length(w - glm::dvec3(d) * h) > 1e-2) { precise = false; break; }
+            }
+        }
+        check(precise, "anchor: round trip to the height field is sub-cm");
     }
 
     // 8. The grid WITH a skirt (a child patch): 51x51 vertices, the inner
@@ -201,7 +265,10 @@ int main() {
         float inner_min = HUGE_VALF;
         for(int i = 0; i < edge; i++) {
             for(int j = 0; j < edge; j++) {
-                const float r = glm::length(g.verts[(size_t)j + (size_t)i * edge].pos);
+                // radius = the anchored position added back in double
+                const float r = (float)glm::length(
+                    glm::dvec3(g.verts[(size_t)j + (size_t)i * edge].pos)
+                    + g.anchor);
                 if(i >= 1 && i <= 49 && j >= 1 && j <= 49) {
                     inner_min = std::min(inner_min, r);
                 } else {

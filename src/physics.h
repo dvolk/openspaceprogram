@@ -23,7 +23,10 @@ public:
     void tick(float timeStep);
     void RegisterObject(Body *body, glm::vec3 pos, glm::vec3 rot);
     void BuildHull(Body *body);
-    btRigidBody *AddTerrainCollision(Mesh *mesh);
+    /* Terrain patch collision. The mesh vertices are anchor-relative
+       (terragen.h GridGeom), so the rigid body is placed at `anchor`
+       (body-frame metres) to land them where they were baked from. */
+    btRigidBody *AddTerrainCollision(Mesh *mesh, const glm::dvec3 &anchor);
     void RemoveTerrainCollision(btRigidBody *b);
     /* Remove a body's rigid body from the dynamics world (call BEFORE
        deleting the Body). The collision shape is the Body's to free; this
@@ -46,7 +49,7 @@ private:
     GLDebugDrawer *debugDrawer;
 };
 
-btRigidBody *addTerrainCollision(Mesh *m);
+btRigidBody *addTerrainCollision(Mesh *m, const glm::dvec3 &anchor);
 void removeTerrainCollision(btRigidBody *b);
 void NeverSleep(Body *body);
 /* Unregister a body's rigid body from the world (call before `delete body`). */

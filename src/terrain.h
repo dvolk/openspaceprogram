@@ -46,6 +46,12 @@ struct GeoPatch {
     glm::vec3 centroid;
     glm::vec3 v0, v1, v2, v3;
 
+    // Body-frame anchor point [m] the mesh vertices are baked relative to
+    // (GridGeom::anchor -- the float32 precision fix; see buildGridGeom).
+    // Draw folds it into the modelview in double; the collision rigid body
+    // is translated by it.
+    glm::dvec3 anchor;
+
     int depth;
 
     // Cached in the ctor (constant per patch): the Update() traversal
@@ -65,9 +71,11 @@ struct GeoPatch {
     ~GeoPatch();
 
     // skirt_pass=false draws the terrain, true draws only the skirt ring
-    // (which depth-tests against the terrain drawn first). The body-constant
-    // uniforms + shader bind happen once per pass in TerrainBody::Draw; this
-    // only issues the mesh draws.
+    // (which depth-tests against the terrain drawn first). The shader bind
+    // + body-constant uniforms happen once per pass in TerrainBody::Draw;
+    // this uploads the patch's OWN MVP (the anchor composition happens in
+    // double, so the float32 uniform only ever holds patch-scale numbers)
+    // and issues the mesh draws.
     void Draw(const Camera* camera, bool skirt_pass);
     // max_patch_px: subdivide while the patch projects wider than this
     // [screen px]; collapse below half (the hysteresis band). Subdivision
@@ -426,15 +434,10 @@ struct TerrainBody {
     void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
-        // double-precision view*model, like GeoPatch::Draw used to do
-        const glm::dmat4 ModelView = camera->GetView()
-            * glm::translate(-camera->GetRenderOrigin()) * transform;
-        const glm::mat4 mvp = camera->GetProjection() * glm::mat4(ModelView);
-
-        // The uniforms are body-constant (same MVP / sun / color on every
-        // patch), so they upload once per pass instead of per patch.
+        // Body-constant uniforms upload once per pass; the MVP is per
+        // patch (its mesh is anchor-relative, so the patch folds its own
+        // anchor into the double-precision modelview -- see GeoPatch::Draw).
         shader->Bind();
-        shader->setUniform_mat4(0, mvp);
         shader->setUniform_mat4(1, glm::mat4(transform));
         shader->setUniform_vec3(2, sunlightVec);
         shader->setUniform_vec4(3, glm::vec4(0.8, 0.8, 0.8, 1.0));

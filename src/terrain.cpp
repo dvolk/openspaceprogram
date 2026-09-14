@@ -164,6 +164,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     this->v1 = v1;
     this->v2 = v2;
     this->v3 = v3;
+    this->anchor = geom.anchor;
     this->centroid = glm::normalize(v0 + v1 + v2 + v3);
     // Cache the per-patch constants Update() and Draw() use every frame
     // (the height sample is a full noise evaluation; doing it per patch
@@ -186,7 +187,7 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
                         has_collision, geom.num_inner);
     mesh = grid_mesh;   // owned by this patch
     if(has_collision == true) {
-        collision = addTerrainCollision(grid_mesh);
+        collision = addTerrainCollision(grid_mesh, anchor);
         printf("added terrain collision with %p\n", (void*)this);
     } else {
         collision = NULL;
@@ -196,6 +197,18 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
 
 void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
     if(kids[0] == NULL) {
+        // Per-patch MVP: the mesh is baked relative to `anchor`, and the
+        // anchor is composed into the modelview in DOUBLE (planet centre +
+        // rotated anchor - renderOrigin cancels there), so the float32
+        // uniform and the vertex data only ever hold patch-scale numbers.
+        // The old body-centred bake made the vertex shader cancel
+        // radius-scale float terms down to metres -- ULP(radius) of jitter
+        // per camera move (~0.4 m on Jool, ~0.04 m on Kerbin).
+        const glm::dmat4 ModelView = camera->GetView()
+            * glm::translate(-camera->GetRenderOrigin())
+            * body->transform * glm::translate(anchor);
+        shader->setUniform_mat4(0, camera->GetProjection()
+                                   * glm::mat4(ModelView));
         // patch isn't subdivided
         if(skirt_pass == false) {
             mesh->Draw();

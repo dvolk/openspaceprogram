@@ -472,10 +472,23 @@ struct TerrVert {
 // with the skirt ring) + indices. When num_inner is nonzero, the first
 // num_inner indices are the terrain and the tail is the skirt (Mesh::
 // DrawSkirt() renders the tail, after the terrain has written depth).
+//
+// Vertex positions are ANCHOR-RELATIVE: `anchor` is a body-frame point
+// near the patch (its sphere centroid at the band-limited height, in
+// DOUBLE), and every baked pos is that point subtracted. The game side
+// adds the anchor back in double precision only (GeoPatch::Draw folds it
+// into the modelview; the collision rigid body is translated by it).
+// Rationale: a body-centred float32 vertex sits at |pos| ~ planet radius,
+// and the vertex shader's R*v + t cancels radius-scale terms down to
+// metres -- float32 rounds at ULP(radius), so terrain jittered by
+// ~0.4 m on Jool / ~0.04 m on Kerbin with every camera move (the surface
+// visibly swam around the launch pad). Anchor-relative, every float32
+// number in the pipeline (vertex data AND matrix entries) is patch-scale.
 struct GridGeom {
     std::vector<TerrVert> verts;
     std::vector<unsigned int> indices;
     unsigned int num_inner = 0;
+    glm::dvec3 anchor = glm::dvec3(0.0);   // body-frame [m]; verts are relative
 };
 
 // The patch grid (pure math; the GeoPatch ctor does the GL upload +
@@ -527,6 +540,17 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
         return terrainHeightFade(d, t, fade);
     };
 
+    // The patch anchor (see GridGeom): the sphere centroid of the quad at
+    // the band-limited height, in double. All baked positions are relative
+    // to it; the game side adds it back in double only.
+    const glm::dvec3 cdir = glm::normalize(glm::dvec3(p1) + glm::dvec3(p2)
+                                         + glm::dvec3(p3) + glm::dvec3(p4));
+    const glm::dvec3 anchor = cdir * (double)height_at(glm::vec3(cdir));
+    geom.anchor = anchor;
+    auto anchored = [&](const glm::vec3 &d, float h) {
+        return glm::vec3(glm::dvec3(d) * (double)h - anchor);
+    };
+
     // inner grid at grid coords [off..off+size-1]^2
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
@@ -539,7 +563,7 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
             // the same function at full speckle.
             const glm::vec3 color = terrainSurfaceColor(d, t, jitter_scale);
             geom.verts[(size_t)(j + off) + (size_t)edge * (i + off)] =
-                TerrVert(d * height, d, color);
+                TerrVert(anchored(d, height), d, color);
         }
     }
 
@@ -551,7 +575,7 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     // vertices never enter a stencil.
     auto pos_at = [&](float u, float v) {
         const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4, u, v);
-        return d * height_at(d);
+        return anchored(d, height_at(d));
     };
     for (int i = off; i < off + size; i++) {
         for (int j = off; j < off + size; j++) {
@@ -595,8 +619,15 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
         const float edge_angle = std::acos(glm::clamp(glm::dot(p1, p2), -1.0f, 1.0f));
         auto skirt_vertex = [&](int i, int j, float u, float v, int si, int sj) {
             const TerrVert &src = geom.verts[(size_t)sj + (size_t)edge * (size_t)si];
-            const float h_edge = glm::length(src.pos);          // src.pos = d_edge * h_edge
-            const glm::vec3 d_edge = src.pos / h_edge;
+            // The edge vertex's direction + terrain radius, recomputed
+            // analytically: src.pos is anchor-relative, so its length is
+            // no longer the radius (and adding the anchor back in float
+            // would reintroduce the radius-scale rounding the anchor
+            // exists to avoid).
+            const glm::vec3 d_edge = terrainSpherePoint(p1, p2, p3, p4,
+                                                        (si - off) * frac,
+                                                        (sj - off) * frac);
+            const float h_edge = height_at(d_edge);
             // outward tangent at the edge: one cell past the boundary, radial
             // component removed (points away from the patch center)
             const glm::vec3 d_out = terrainSpherePoint(p1, p2, p3, p4, u, v);
@@ -606,7 +637,9 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
             const float one_cell = edge_angle * h_edge / (float)(size - 1);
             const float flare = one_cell;   // patch-proportional length
             const float drop = flare;       // 45° wall
-            const glm::vec3 pos = src.pos + flare * tang - drop * d_edge;
+            const glm::vec3 pos = anchored(d_edge, h_edge)
+                                + flare * tang
+                                - drop * d_edge;
             geom.verts[(size_t)j + (size_t)edge * (size_t)i] =
                 TerrVert(pos, src.normal, src.color);
         };
