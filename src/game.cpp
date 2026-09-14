@@ -45,7 +45,9 @@ void Game::setup_ui_windows() {
     o_surface   = info_opts(ui::Slot::TopLeft);
     o_surface.right_of = "Orbital";
     o_resources = info_opts(ui::Slot::TopRight);
-    o_resources.width_ratio = 1.25f; // bars have no width of their own
+    // bars have no width of their own; pin it to a 7-resource column so
+    // the width doesn't shrink with the number of resources shown
+    o_resources.fixed_width = 2.0f * 7.0f * args.font_size;
     o_menu      = info_opts(ui::Slot::MiddleRight);
     // Docked panel (like the HUD and the Main Menu): no title bar, not
     // user-movable / not user-resizable; it still re-fits and re-places

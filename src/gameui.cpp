@@ -1437,25 +1437,29 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Resources", g.o_resources, [&] {
-        // aggregate across the active ship's parts (any ship layout); a
-        // resource no tank carries (cap 0) reads as empty (0)
-        auto frac = [&](ResourceType r) {
+        // aggregate across the active ship's parts (any ship layout); only
+        // the resource types the ship has capacity for are shown, so the
+        // window never lists a bar it can't hold
+        static const char *resNames[(int)ResourceType::Num] = {
+            "Hydrogen", "LOX", "Electric charge", "Oxygen", "Water", "Food",
+            "Hydrazine", "Jet fuel"
+        };
+        // display order: fuels first, then life support (independent of the
+        // enum order)
+        static const ResourceType resOrder[] = {
+            ResourceType::Hydrogen, ResourceType::LOX, ResourceType::JetFuel,
+            ResourceType::Hydrazine, ResourceType::EC, ResourceType::Oxygen,
+            ResourceType::Water, ResourceType::Food
+        };
+        for(ResourceType r : resOrder) {
             float cur = 0, cap = 0;
             for(Part *p : ship->parts) {
                 cur += p->resources.current[(int)r];
                 cap += p->resources.capacity[(int)r];
             }
-            return (cap > 0) ? cur / cap : 0.0f;
-        };
-
-        ImGui::ProgressBar(frac(ResourceType::Hydrogen), ImVec2(-1, 0), "Hydrogen");
-        ImGui::ProgressBar(frac(ResourceType::LOX), ImVec2(-1, 0), "LOX");
-        ImGui::ProgressBar(frac(ResourceType::JetFuel), ImVec2(-1, 0), "Jet fuel");
-        ImGui::ProgressBar(frac(ResourceType::Hydrazine), ImVec2(-1, 0), "Hydrazine");
-        ImGui::ProgressBar(frac(ResourceType::EC), ImVec2(-1, 0), "Electric charge");
-        ImGui::ProgressBar(frac(ResourceType::Oxygen), ImVec2(-1, 0), "Oxygen");
-        ImGui::ProgressBar(frac(ResourceType::Water), ImVec2(-1, 0), "Water");
-        ImGui::ProgressBar(frac(ResourceType::Food), ImVec2(-1, 0), "Food");
+            if(cap <= 0) { continue; }
+            ImGui::ProgressBar(cur / cap, ImVec2(-1, 0), resNames[(int)r]);
+        }
     });
 }
 

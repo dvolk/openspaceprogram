@@ -8,7 +8,7 @@
 //     of, or below another window (left_of / right_of / below); the
 //     source must be drawn earlier in the same frame.
 //   * size: windows fit their content on first layout (or use
-//     initial_size / width_ratio when set), and stay user-resizable
+//     initial_size / fixed_width when set), and stay user-resizable
 //     afterwards.
 //   * freedom: the layout is applied once per generation; after that the
 //     user can move and resize windows freely.
@@ -65,10 +65,10 @@ struct Options {
     // (the default).
     ImVec2 initial_size = ImVec2(-1.0f, -1.0f);
 
-    // width = width_ratio * height, where height is the content auto-fit.
-    // -1 = off. For content with no meaningful width of its own (e.g.
-    // full-width progress bars).
-    float width_ratio = -1.0f;
+    // Fixed window width in pixels; the height still auto-fits the
+    // content. -1 = off. For content with no meaningful width of its own
+    // (e.g. full-width progress bars).
+    float fixed_width = -1.0f;
 
     bool fixed = false;      // no move, no resize; re-placed every frame
     bool closable = false;   // show the X close button (the menu windows)
@@ -86,7 +86,7 @@ public:
         bool fixed = false;          // from options: re-laid-out every frame
         int applied_generation = 0; // layout applied for this generation?
         int wait_frames = 0;        // frames spent waiting for a source rect
-        int ratio_frames = 0;       // width-ratio constraint frames left
+        int width_frames = 0;       // fixed-width constraint frames left
         int layout_frame = 0;       // imgui frame of the last relayout
         bool has_rect = false;      // measured on screen rect, this frame
         ImVec2 rect_min, rect_max;
@@ -140,7 +140,7 @@ public:
             st.open = st.default_open;
             st.applied_generation = 0;
             st.wait_frames = 0;
-            st.ratio_frames = 0;
+            st.width_frames = 0;
             st.has_rect = false;
         }
         ResetFlag() = false;
@@ -241,14 +241,14 @@ private:
     std::unordered_map<std::string, WinState> states;
 };
 
-// imgui size-constraint callback for width_ratio windows: width =
-// ratio * height (height = content auto-fit). imgui passes no window
-// identity to the callback, so the ratio travels in the user-data
-// pointer (imgui's documented pattern for scalar callback data).
-static void WidthRatioCallback(ImGuiSizeCallbackData* d) {
-    const float ratio =
-        static_cast<float>(reinterpret_cast<std::size_t>(d->UserData)) / 1000.0f;
-    d->DesiredSize.x = d->DesiredSize.y * ratio;
+// imgui size-constraint callback for fixed_width windows: the width is
+// pinned to the option, the height keeps auto-fitting the content. imgui
+// passes no window identity to the callback, so the width (in pixels)
+// travels in the user-data pointer (imgui's documented pattern for
+// scalar callback data).
+static void FixedWidthCallback(ImGuiSizeCallbackData* d) {
+    d->DesiredSize.x =
+        static_cast<float>(reinterpret_cast<std::size_t>(d->UserData));
 }
 
 // Draw a window with the wrapper's open state and layout. Returns true if
@@ -299,12 +299,12 @@ bool Window(const char* name, const Options& o, Body&& body) {
         st.applied_generation = m.generation;
         st.layout_frame = (int)ImGui::GetFrameCount();
 
-        if (o.width_ratio > 0.0f) {
-            // width = ratio * content height; the constraint is applied
-            // over the next few frames (below) while the one-shot fit
-            // settles.
+        if (o.fixed_width > 0.0f) {
+            // width pinned to fixed_width, height auto-fits; the
+            // constraint is applied over the next few frames (below)
+            // while the one-shot fit settles.
             flags |= ImGuiWindowFlags_AlwaysAutoResize;
-            st.ratio_frames = 3;
+            st.width_frames = 3;
         } else if (o.initial_size.x > 0.0f && o.initial_size.y > 0.0f) {
             ImGui::SetNextWindowSize(o.initial_size, ImGuiCond_Always);
         } else {
@@ -319,15 +319,14 @@ bool Window(const char* name, const Options& o, Body&& body) {
         ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
     }
 
-    // The ratio constraint is per-frame (imgui's NextWindowData), so it
+    // The width constraint is per-frame (imgui's NextWindowData), so it
     // must be re-issued for each frame while the one-shot fit settles.
-    if (o.width_ratio > 0.0f && st.ratio_frames > 0) {
-        st.ratio_frames--;
+    if (o.fixed_width > 0.0f && st.width_frames > 0) {
+        st.width_frames--;
         ImGui::SetNextWindowSizeConstraints(
             ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX),
-            WidthRatioCallback,
-            reinterpret_cast<void*>(
-                static_cast<std::size_t>(o.width_ratio * 1000.0f)));
+            FixedWidthCallback,
+            reinterpret_cast<void*>(static_cast<std::size_t>(o.fixed_width)));
     }
 
     // Closable windows pass their open state to imgui so the X button
