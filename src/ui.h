@@ -67,9 +67,10 @@ struct Options {
     // (the default).
     ImVec2 initial_size = ImVec2(-1.0f, -1.0f);
 
-    // Fixed window width in pixels; the height still auto-fits the
-    // content. -1 = off. For content with no meaningful width of its own
-    // (e.g. full-width progress bars).
+    // Fixed window width in font-size units (so it tracks the font size
+    // and the DPI scale); the height still auto-fits the content. -1 =
+    // off. For content with no meaningful width of its own (e.g.
+    // full-width progress bars).
     float fixed_width = -1.0f;
 
     bool fixed = false;      // no move, no resize; re-placed every frame
@@ -322,10 +323,13 @@ bool Window(const char* name, const Options& o, Body&& body) {
     // is re-issued every frame: with AlwaysAutoResize the height tracks
     // the content and the width stays pinned.
     if (o.fixed_width > 0.0f) {
+        // GetFontSize() includes the DPI scale (FontScaleDpi), so the
+        // width follows "Apply DPI" live, with no re-layout needed.
         ImGui::SetNextWindowSizeConstraints(
             ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX),
             FixedWidthCallback,
-            reinterpret_cast<void*>(static_cast<std::size_t>(o.fixed_width)));
+            reinterpret_cast<void*>(
+                static_cast<std::size_t>(o.fixed_width * ImGui::GetFontSize())));
     }
 
     // Closable windows pass their open state to imgui so the X button
