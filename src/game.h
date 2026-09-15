@@ -210,6 +210,19 @@ struct Game {
     bool vab_linkMode = false;
     std::string vab_linkFromId;   // the clicked source ("" = not picked yet)
     int vab_linkSel = -1;         // selected fuel-link index (-1 = none)
+    /* Detached subtrees (the VAB window's Subassemblies list): session
+       editor state -- NOT part of the ship file, and they outlive the
+       build they came from (usable across ships). Arming one makes the
+       placement ghost solve its ROOT like any part; placing grafts a
+       COPY and does not consume the entry (copy-paste). */
+    struct VabSubassembly {
+        std::string name;   // display: "<ship> > <root part id>"
+        BuildShip ship;     // its own tree, root at its own frame's identity
+    };
+    std::vector<VabSubassembly> vab_subassemblies;
+    int vab_armedAsm = -1;       // armed subassembly (exclusive with vab_armed)
+    int vab_ghostAssembly = -1;  // the assembly the current ghost previews
+                                 // (-1 = the armed catalog part)
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------

@@ -63,6 +63,11 @@ void vabLinkClick(Game &g);
 // (toast); success clears the selection + hover.
 void vabDeleteSelected(Game &g);
 
+// Del/X (the default "delete"): detach the selected part's subtree into
+// the session Subassemblies list instead of destroying it (the root
+// refuses). Shift+Del/X remains the destructive vabDeleteSelected.
+void vabDetachSelected(Game &g);
+
 // Write the build tree to `path` (save_ship_def); toasts the outcome.
 void vabSave(Game &g, const char *path);
 

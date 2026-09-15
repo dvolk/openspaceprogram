@@ -612,28 +612,54 @@ void drawVab(Game &g) {
                     glm::dmat4(1.0), opts);
     }
 
-    // the armed part's translucent ghost at the hovered attach target
-    if(g.vab_ghostValid && !g.vab_armed.empty()) {
-        const PartDef *ad = g.ships.catalog().find(g.vab_armed);
-        if(ad != nullptr) {
-            Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
-            Texture *gt = get_texture(std::string("./res/") + ad->texture);
-            if(gm != nullptr && gt != nullptr) {
-                DrawOpts go;
-                go.alpha = 0.4f;
-                // the primary ghost + its radial-symmetry clones (all
-                // unshifted S-frame poses: DrawModelAt applies the
-                // -renderOrigin (= -vab_center) shift like every model here)
-                const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos)
-                                        * glm::dmat4(g.vab_ghostRot);
-                DrawModelAt(cam, gm, g.partsshader, gt, gmodel, sunlight, 1.0f,
-                            glm::dmat4(1.0), go);
-                for(size_t k = 0; k < g.vab_ghostClones.size(); k++) {
-                    const AttachPose &cp = g.vab_ghostClones[k].pose;
-                    const glm::dmat4 cmodel = glm::translate(cp.childPos)
-                                            * glm::dmat4(cp.childRot);
-                    DrawModelAt(cam, gm, g.partsshader, gt, cmodel, sunlight,
+    // the armed part's (or subassembly's) translucent ghost at the hovered
+    // attach target
+    if(g.vab_ghostValid) {
+        DrawOpts go;
+        go.alpha = 0.4f;
+        if(g.vab_ghostAssembly >= 0
+           && (size_t)g.vab_ghostAssembly < g.vab_subassemblies.size()) {
+            /* an assembly ghost: the whole tree rides the solved root pose
+               (the parts' local poses are the assembly-frame solve), once
+               per root pose -- the primary plus each symmetry clone. All
+               unshifted S-frame poses: DrawModelAt applies the -renderOrigin
+               (= -vab_center) shift like every model here. */
+            const BuildShip &sub = g.vab_subassemblies[(size_t)g.vab_ghostAssembly].ship;
+            for(size_t pass = 0; pass < 1 + g.vab_ghostClones.size(); pass++) {
+                const glm::dvec3 rp = (pass == 0)
+                    ? g.vab_ghostPos : g.vab_ghostClones[pass - 1].pose.childPos;
+                const glm::dmat3 rr = (pass == 0)
+                    ? g.vab_ghostRot : g.vab_ghostClones[pass - 1].pose.childRot;
+                for(size_t i = 0; i < sub.parts.size(); i++) {
+                    const BuildPart &bp = sub.parts[i];
+                    if(bp.def == nullptr) { continue; }
+                    Mesh *m = get_mesh(std::string("./res/") + bp.def->mesh);
+                    Texture *t = get_texture(std::string("./res/") + bp.def->texture);
+                    if(m == nullptr || t == nullptr) { continue; }
+                    const glm::dmat4 model =
+                        glm::translate(rp + rr * bp.localPos)
+                        * glm::dmat4(rr * bp.localRot);
+                    DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
+                                glm::dmat4(1.0), go);
+                }
+            }
+        } else if(!g.vab_armed.empty()) {
+            const PartDef *ad = g.ships.catalog().find(g.vab_armed);
+            if(ad != nullptr) {
+                Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
+                Texture *gt = get_texture(std::string("./res/") + ad->texture);
+                if(gm != nullptr && gt != nullptr) {
+                    const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos)
+                                            * glm::dmat4(g.vab_ghostRot);
+                    DrawModelAt(cam, gm, g.partsshader, gt, gmodel, sunlight,
                                 1.0f, glm::dmat4(1.0), go);
+                    for(size_t k = 0; k < g.vab_ghostClones.size(); k++) {
+                        const AttachPose &cp = g.vab_ghostClones[k].pose;
+                        const glm::dmat4 cmodel = glm::translate(cp.childPos)
+                                                * glm::dmat4(cp.childRot);
+                        DrawModelAt(cam, gm, g.partsshader, gt, cmodel, sunlight,
+                                    1.0f, glm::dmat4(1.0), go);
+                    }
                 }
             }
         }

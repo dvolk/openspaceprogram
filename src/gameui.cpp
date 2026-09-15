@@ -2261,9 +2261,11 @@ void drawVabUI(Game &g) {
                 if(st < 1) { st = 1; }
                 bp.stage = st;
             }
-            // last: vabDeleteSelected swaps the parts vector (the bp
-            // reference dies with it)
-            if(ImGui::Button("Delete (with subtree)")) { vabDeleteSelected(g); }
+            // last: the vab ops swap the parts vector (the bp reference
+            // dies with it)
+            if(ImGui::Button("Detach subtree")) { vabDetachSelected(g); }
+            ImGui::SameLine();
+            if(ImGui::Button("Delete##sel")) { vabDeleteSelected(g); }
         }
     }
     ImGui::Separator();
@@ -2299,8 +2301,46 @@ void drawVabUI(Game &g) {
     if(g.vab_linkSel >= 0 && (size_t)g.vab_linkSel < g.vab.fuelLinks.size()) {
         if(ImGui::Button("Delete link")) { vabDeleteSelected(g); }
     }
+    ImGui::Separator();
+    /* Subassemblies: subtrees detached instead of deleted (Del). Arming one
+       places COPIES of the whole tree (root snaps like any part); the entry
+       survives placing -- copy & paste. Session-only until subassembly
+       files land. */
+    ImGui::Text("Subassemblies");
+    int dropAsm = -1;
+    for(size_t i = 0; i < g.vab_subassemblies.size(); i++) {
+        const Game::VabSubassembly &sa = g.vab_subassemblies[i];
+        char label[256];
+        snprintf(label, sizeof(label), "%s (%d parts)##asm%zu", sa.name.c_str(),
+                 (int)sa.ship.parts.size(), i);
+        const bool armed = (g.vab_armedAsm == (int)i);
+        if(ImGui::Selectable(label, armed)) {
+            if(armed) {
+                g.vab_armedAsm = -1;
+            } else {
+                g.vab_armedAsm = (int)i;
+                g.vab_armed.clear();      // exclusive with a catalog part
+                g.vab_ghostRoll = 0.0;
+            }
+        }
+        ImGui::SameLine();
+        char xl[32];
+        snprintf(xl, sizeof(xl), "x##asm%zu", i);
+        if(ImGui::SmallButton(xl)) { dropAsm = (int)i; }
+    }
+    if(dropAsm >= 0) {   // erase AFTER the loop (indices drive the widgets)
+        g.vab_subassemblies.erase(g.vab_subassemblies.begin() + dropAsm);
+        if(g.vab_armedAsm == dropAsm) { g.vab_armedAsm = -1; }
+        else if(g.vab_armedAsm > dropAsm) { g.vab_armedAsm--; }
+    }
+    if(g.vab_subassemblies.empty()) {
+        ImGui::TextDisabled("select a part -> Detach subtree (Del)");
+    } else if(g.vab_armedAsm >= 0) {
+        ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.6f, 1.0f),
+                           "placing copies -- hover a port/surface, LMB; Esc stops");
+    }
     ImGui::TextDisabled("RMB-drag orbit, wheel zoom; LMB places/selects");
-    ImGui::TextDisabled("Q/E roll; Del/X delete; Esc cancel/disarm; TAB hides the UI");
+    ImGui::TextDisabled("Q/E roll; Del detach; Shift+Del delete; TAB hides the UI");
     ImGui::End();
 
     // Palette: arm a catalog part, then hover the ship and LMB to place it
@@ -2317,6 +2357,7 @@ void drawVabUI(Game &g) {
         const bool armed = (g.vab_armed == pd.name);
         if(ImGui::Selectable(pd.name.c_str(), armed)) {
             g.vab_armed = armed ? std::string("") : pd.name;
+            g.vab_armedAsm = -1;     // exclusive with a subassembly
             g.vab_ghostRoll = 0.0;   // a fresh part starts unrolled
         }
     }
@@ -2336,8 +2377,12 @@ void drawVabUI(Game &g) {
     }
     ImGui::Checkbox("Snap distance 10cm (Alt bypasses)", &g.vab_snapLen);
     ImGui::Checkbox("Snap angle 10deg (Alt bypasses)", &g.vab_snapAng);
-    if(!g.vab_armed.empty()) {
-        ImGui::Text("armed: %s", g.vab_armed.c_str());
+    const bool asmArmed = g.vab_armedAsm >= 0
+        && (size_t)g.vab_armedAsm < g.vab_subassemblies.size();
+    if(asmArmed || !g.vab_armed.empty()) {
+        ImGui::Text("armed: %s", asmArmed
+                    ? g.vab_subassemblies[(size_t)g.vab_armedAsm].name.c_str()
+                    : g.vab_armed.c_str());
         if(g.vab_ghostValid) {
             ImGui::Text("roll: %.0f deg (Q/E)", g.vab_ghostRollUsed);
             if(g.vab_symmetry > 1) {

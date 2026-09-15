@@ -158,7 +158,24 @@ void vabClearHover(Game &g) {
     g.vab_hoverNode = -1;
     g.vab_hoverParent = -1;
     g.vab_ghostValid = false;
+    g.vab_ghostAssembly = -1;
     g.vab_ghostClones.clear();
+}
+
+/* The definition the ghost places: the armed subassembly's ROOT part, or
+   the armed catalog part. *asmOut (when non-null) receives the assembly's
+   tree for an assembly ghost, else nullptr. */
+static const PartDef *armedChildDef(const Game &g, const BuildShip **asmOut) {
+    if(asmOut != nullptr) { *asmOut = nullptr; }
+    if(g.vab_armedAsm >= 0
+       && (size_t)g.vab_armedAsm < g.vab_subassemblies.size()) {
+        const BuildShip &sub = g.vab_subassemblies[(size_t)g.vab_armedAsm].ship;
+        if(sub.parts.empty() || sub.parts[0].def == nullptr) { return nullptr; }
+        if(asmOut != nullptr) { *asmOut = &sub; }
+        return sub.parts[0].def;
+    }
+    if(g.vab_armed.empty()) { return nullptr; }
+    return g.ships.catalog().find(g.vab_armed);
 }
 
 void vabUpdateHover(Game &g, int px, int py) {
@@ -169,10 +186,9 @@ void vabUpdateHover(Game &g, int px, int py) {
     if(!pickVabPart(g, px, py, pi, hit)) { return; }
     g.vab_hover = pi;
     if(g.vab_linkMode) { return; }       // link picking: no placement ghost
-    if(g.vab_armed.empty()) { return; }  // inspecting only; no ghost
-
-    const PartDef *childDef = g.ships.catalog().find(g.vab_armed);
-    if(childDef == nullptr) { return; }
+    const BuildShip *asmShip = nullptr;
+    const PartDef *childDef = armedChildDef(g, &asmShip);
+    if(childDef == nullptr) { return; }  // inspecting only; no ghost
     const BuildPart &pp = g.vab.parts[(size_t)pi];
     if(pp.def == nullptr) { return; }
 
@@ -193,6 +209,7 @@ void vabUpdateHover(Game &g, int px, int py) {
         g.vab_hoverParent = pi;
         g.vab_hoverNode = node;
         g.vab_ghostSurface = false;
+        g.vab_ghostAssembly = asmShip ? g.vab_armedAsm : -1;
         g.vab_ghostParentNode = pn.id;
         g.vab_ghostChildNode = cn->id;
         g.vab_ghostPos = ap.childPos;
@@ -217,6 +234,7 @@ void vabUpdateHover(Game &g, int px, int py) {
     g.vab_hoverParent = pi;
     g.vab_hoverNode = -1;
     g.vab_ghostSurface = true;
+    g.vab_ghostAssembly = asmShip ? g.vab_armedAsm : -1;
     g.vab_ghostPoint = localPoint;
     g.vab_ghostNormal = localNormal;
     g.vab_ghostChildNode = cs->id;
@@ -231,6 +249,46 @@ void vabUpdateHover(Game &g, int px, int py) {
 
 int vabPlace(Game &g) {
     if(!g.vab_ghostValid || g.vab_hoverParent < 0) { return -1; }
+
+    /* An armed SUBASSEMBLY: graft a copy under the resolved root edge (one
+       graft per symmetry clone); the list entry is NOT consumed -- placing
+       is copy & paste (ids uniquify per graft). */
+    if(g.vab_ghostAssembly >= 0
+       && (size_t)g.vab_ghostAssembly < g.vab_subassemblies.size()) {
+        const BuildShip &sub = g.vab_subassemblies[(size_t)g.vab_ghostAssembly].ship;
+        if(sub.parts.empty() || sub.parts[0].def == nullptr) { return -1; }
+        BuildPart root;
+        root.def = sub.parts[0].def;
+        root.id = sub.parts[0].id;   // graftTree uniquifies on collision
+        root.parent = g.vab_hoverParent;
+        if(g.vab_ghostSurface) {
+            root.attach = AttachMode::Surface;
+            root.contactPoint = g.vab_ghostPoint;
+            root.contactNormal = g.vab_ghostNormal;
+            root.childNode = g.vab_ghostChildNode;
+            root.roll = g.vab_ghostRollUsed;
+        } else {
+            root.attach = AttachMode::Down;   // node ids carry the mating
+            root.parentNode = g.vab_ghostParentNode;
+            root.childNode = g.vab_ghostChildNode;
+            root.angle = g.vab_ghostRollUsed;
+        }
+        const size_t ri = g.vab.graftTree(sub, root);
+        for(size_t k = 0; k < g.vab_ghostClones.size(); k++) {
+            const SymClone &c = g.vab_ghostClones[k];
+            BuildPart rc = root;
+            rc.attach = AttachMode::Surface;   // clones are always surface edges
+            rc.parentNode.clear();
+            rc.contactPoint = c.edge.point;
+            rc.contactNormal = c.edge.normal;
+            rc.roll = c.edge.rollDeg;
+            g.vab.graftTree(sub, rc);
+        }
+        g.vab_ghostRoll = 0.0;
+        g.vab_ghostClones.clear();
+        return (int)ri;
+    }
+
     const PartDef *childDef = g.ships.catalog().find(g.vab_armed);
     if(childDef == nullptr) { return -1; }
 
@@ -368,6 +426,26 @@ void vabDeleteSelected(Game &g) {
     }
 }
 
+void vabDetachSelected(Game &g) {
+    const int sel = g.vab_selected;
+    if(sel < 0 || (size_t)sel >= g.vab.parts.size()) { return; }
+    if(sel == 0) { g.toast("Cannot detach the root part"); return; }
+    const std::string rootId = g.vab.parts[(size_t)sel].id;
+    BuildShip sub = g.vab.detachSubtree(sel);
+    if(sub.parts.empty()) { return; }
+    Game::VabSubassembly sa;
+    sa.name = (g.vab.name.empty() ? std::string("ship") : g.vab.name)
+              + " > " + rootId;
+    sa.ship = sub;
+    const int n = (int)sa.ship.parts.size();
+    g.vab_subassemblies.push_back(sa);
+    g.vab_selected = -1;
+    vabClearHover(g);
+    printf("[vab] detached %s (%d parts)\n", rootId.c_str(), n);
+    fflush(stdout);
+    g.toast("Detached %s (+%d) to Subassemblies", rootId.c_str(), n - 1);
+}
+
 void vabSave(Game &g, const char *path) {
     if(save_ship_def(g.vab, path)) {
         printf("[vab] saved %s (%d parts)\n", path, (int)g.vab.parts.size());
@@ -396,4 +474,8 @@ void vabLaunch(Game &g) {
            (int)g.vab.parts.size());
     fflush(stdout);
     g.toast("Launched %s", v->name.c_str());
+    if(!g.vab_subassemblies.empty()) {
+        g.toast("%d subassemblies stayed in the VAB",
+                (int)g.vab_subassemblies.size());
+    }
 }

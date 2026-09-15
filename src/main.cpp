@@ -795,7 +795,7 @@ int main(int argc, char **argv)
             if(lmb && !game.vab_lmb_prev && !overUI) {
                 if(game.vab_linkMode) {
                     vabLinkClick(game);
-                } else if(!game.vab_armed.empty()) {
+                } else if(!game.vab_armed.empty() || game.vab_armedAsm >= 0) {
                     vabPlace(game);
                 } else if(game.vab_hover >= 0) {
                     // nothing armed: a plain click selects the hovered part

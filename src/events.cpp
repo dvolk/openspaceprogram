@@ -334,19 +334,24 @@ static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat
 /* The VAB scene's keys: fixed scancodes, not flight bindings (they are
    editor-local and the flight slots are gated out of this scene). While an
    imgui text field is focused the UI owns the keyboard. */
-static void vabKeyActions(Game &g, SDL_Scancode ksc, bool repeat) {
+static void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_Q) { vabRotate(g, -5.0); }
     if(ksc == SDL_SCANCODE_E) { vabRotate(g, +5.0); }
     if((ksc == SDL_SCANCODE_DELETE || ksc == SDL_SCANCODE_X) && !repeat) {
-        vabDeleteSelected(g);
+        /* Del DETACHES the selected subtree into the Subassemblies list --
+           the non-destructive default delete; Shift+Del truly deletes it.
+           A selected fuel link has no subtree: it just deletes. */
+        if((kmod & SDL_KMOD_SHIFT) || g.vab_linkSel >= 0) { vabDeleteSelected(g); }
+        else { vabDetachSelected(g); }
     }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
         if(g.vab_linkMode) {
             g.vab_linkMode = false;   // the first Esc leaves link mode ...
             g.vab_linkFromId.clear();
         } else {
-            g.vab_armed.clear();      // ... the next disarms the palette part
+            g.vab_armed.clear();      // ... the next disarms whatever is armed
+            g.vab_armedAsm = -1;
             g.vab_ghostRoll = 0.0;
         }
     }
@@ -428,7 +433,7 @@ void poll_events(Game &g) {
             // (with no sim running they would silently poke the parked
             // ships), and the editor keys take over instead.
             if(g.scene == Scene::Vab) {
-                vabKeyActions(g, ksc, ev.key.repeat);
+                vabKeyActions(g, ksc, kmod, ev.key.repeat);
             } else {
                 flightKeyActions(g, ksc, kmod, ev.key.repeat);
             }
