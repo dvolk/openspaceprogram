@@ -84,22 +84,35 @@
      part     catalog name (required)
      id       instance id; omitted -> auto "<catalog name>_<n>" (n = 1, 2, ..
               per catalog name). Must be unique within the ship.
-     parent   id of the part to weld to; must already be defined (this is
+     parent   id of the part to attach to; must already be defined (this is
               what makes cycles impossible). Omitted -> the previous part,
               so a plain linear stack is a bare part list.
-     attach   "down" (default)  face-to-face on the parent's -Z face
-              "up"              face-to-face on the parent's +Z face (stack
-                                outward from a radially attached part, or a
-                                nose part above the root)
-              "radial"          child axis perpendicular, child's base face
-                                on the parent's side (like a KSP booster)
-              "side"            child axis parallel, side by side
-     angle    degrees around the parent's stack axis (0 = parent +X);
-              rotates the radial/side direction (and, for down, the child
-              about the shared axis)
-     offset   metres of GAP along the attach axis, beyond the touching
-              faces (default 0); the weld anchors sit at the gap, so the
-              solver holds it (see attachPose)
+
+   An edge is either a STACK edge (mates two named nodes) or a SURFACE edge
+   (places the child's surface node at a contact point on the parent):
+
+     attach   "down" (default)  stack edge on the parent's -Z face
+              "up"              stack edge on the parent's +Z face
+              "radial"          LEGACY procedural radial (child axis
+                                perpendicular); retired in Phase 2b
+              "surface"         surface edge: the child's surface node is
+                                placed at a contact point + normal on the
+                                parent (KSP srfAttach)
+     STACK edge node selection:
+     parentNode  node id on the parent to mate (default: "bottom" for down,
+                 "top" for up)
+     childNode   node id on the child to mate (default: "top" for down,
+                 "bottom" for up)
+     angle       stack edge: roll (deg) about the mating axis
+     SURFACE edge contact (one of):
+     point/normal  explicit contact point + outward normal in the PARENT's
+                   local frame (what the editor's raycast writes)
+     angle [+ z]   cylinder shorthand: contact at clock `angle` (deg, 0 =
+                   parent +X), height `z` (default 0) on the parent's
+                   radius; normal points radially outward
+     childNode     the child's surface node id (default: its surface node)
+     roll          surface edge: rotation (deg) about the contact normal
+     offset   metres of GAP along the attach axis / contact normal (default 0)
      stage    positive int, default 1. RESERVED for staging (separable
               stages); parsed + validated, no runtime effect yet.
    The absolute pad-relative offsets of the old schema are gone: the geometry
@@ -193,6 +206,11 @@ struct Node {
     std::string id;
     glm::dvec3 pos;
     glm::dvec3 dir;
+    /* true -> the part's surface-attach node (the KSP node_attach equivalent):
+       a surface edge places THIS node at a contact point on the parent, with
+       `dir` pointing inward (toward the parent). A part has at most one. Stack
+       edges mate the non-surface nodes by id. */
+    bool surface = false;
 };
 
 /* One part TYPE (a catalog entry; ship defs reference it by name).
@@ -234,10 +252,22 @@ struct PartDef {
         return nullptr;
     }
 
-    /* Fill the two axial stack nodes (top at +h/2, bottom at -h/2) from the
-       size above when `nodes` is empty. load_parts_catalog calls it for every
-       physical part, so a catalog part always has nodes; hand-built defs
-       (tests) call it directly. A part with explicit nodes is left alone. */
+    /* The part's surface-attach node (surface == true); nullptr if it has
+       none. A surface edge places this node at the parent contact. */
+    const Node *findSurfaceNode() const {
+        for(size_t i = 0; i < nodes.size(); i++) {
+            if(nodes[i].surface) { return &nodes[i]; }
+        }
+        return nullptr;
+    }
+
+    /* Fill the default nodes from the size above when `nodes` is empty:
+       the two axial stack faces (top +h/2, bottom -h/2) plus a side surface
+       node at (-radius, 0, 0) pointing inward, so an axis-aligned cylinder
+       part can both stack and surface-attach (at any clock angle, via roll)
+       with no authoring. load_parts_catalog calls it for every physical part;
+       hand-built defs (tests) call it directly. A part with explicit nodes is
+       left alone -- it must declare its own surface node if it needs one. */
     void synthesizeNodes() {
         if(!nodes.empty()) { return; }
         Node top;
@@ -248,8 +278,14 @@ struct PartDef {
         bottom.id  = "bottom";
         bottom.pos = glm::dvec3(0.0, 0.0, -height / 2.0);
         bottom.dir = glm::dvec3(0.0, 0.0, -1.0);
+        Node srf;
+        srf.id      = "srf";
+        srf.pos     = glm::dvec3(-radius, 0.0, 0.0);
+        srf.dir     = glm::dvec3(-1.0, 0.0, 0.0);
+        srf.surface = true;
         nodes.push_back(top);
         nodes.push_back(bottom);
+        nodes.push_back(srf);
     }
 
     double torque;            // N m; > 0 -> contributes as a reaction wheel
@@ -394,14 +430,15 @@ struct PartDef {
 };
 
 /* How a part is welded to its parent (see the header schema comment).
-   Down/Up are the two stack faces (child axis parallel to the parent's);
-   Radial/Side attach to the parent's side. */
+   Down/Up are stack edges (node mating); Radial is the legacy procedural
+   radial (retired in Phase 2b); Surface places the child's surface node at a
+   contact point + normal on the parent. */
 enum class AttachMode {
-    Down,    // face-to-face on the parent's -Z face (a plain stack)
-    Up,      // face-to-face on the parent's +Z face (stacking OUTWARD from a
-             // radially attached part, or a nose part above the root)
-    Radial,  // child axis perpendicular; child's base face on the parent's side
-    Side     // parallel axes, side by side
+    Down,    // stack edge: face-to-face on the parent's -Z face
+    Up,      // stack edge: face-to-face on the parent's +Z face (stacking
+             // OUTWARD from a surface-attached part, or a nose above the root)
+    Radial,  // LEGACY procedural radial (child axis perpendicular); Phase 2b
+    Surface  // surface edge: child surface node at a parent contact point+normal
 };
 
 /* One part INSTANCE in a ship def, in construction order (index 0 = root).
@@ -416,28 +453,37 @@ struct ShipPart {
     std::string id;        // instance id (explicit, or auto "<name>_<n>")
     const PartDef *def;    // resolved at load time (points into the catalog)
     int parent;            // part index of the attach parent; -1 = root (part 0)
-    AttachMode attach;     // down/up = stack edge (node mating); radial/side =
-                           // surface edge (procedural, interim until Phase 2)
-    double angle;          // surface edge: degrees around the parent's stack axis
-                           //   (0 = parent +X). stack edge: roll about the mating axis.
-    double offset;         // m of gap along the attach axis, beyond touching faces
-    /* Stack edges (attach down/up) mate two named nodes rather than using the
-       procedural geometry. Resolved at load: an explicit "parentNode"/
-       "childNode" wins, else down defaults to parent "bottom" / child "top"
-       and up to parent "top" / child "bottom" (the synthesized cylinder
-       faces), so existing defs that just say attach:down keep working. */
+    AttachMode attach;     // down/up = stack edge; surface = surface edge;
+                           // radial = legacy procedural radial (Phase 2b)
+    double angle;          // stack edge: roll about the mating axis. surface
+                           //   edge: consumed into contactNormal (cylinder shorthand).
+    double offset;         // m of gap along the attach axis / contact normal
+    /* Stack edges (attach down/up) mate two named nodes. Resolved at load: an
+       explicit "parentNode"/"childNode" wins, else down defaults to parent
+       "bottom" / child "top" and up to parent "top" / child "bottom" (the
+       synthesized cylinder faces), so a bare attach:down keeps working. */
     std::string parentNode;
-    std::string childNode;
+    std::string childNode;   // surface edge: the child's surface node id (empty
+                             //   -> the part's surface node)
+    /* Surface edges (attach surface): the contact is resolved at load into a
+       point + outward normal in the PARENT's local frame -- either from an
+       explicit "point"/"normal", or from the "angle"[+"z"] cylinder shorthand
+       on the parent's radius. `roll` then spins the child about that normal. */
+    glm::dvec3 contactPoint;
+    glm::dvec3 contactNormal;
+    double roll;
     int stage;             // reserved for staging; 1 = single stage
     std::string from;      // fuel link only: source part id (fuel flows out of)
     std::string to;        // fuel link only: destination part id (fuel flows into)
 
     bool isFuelLink() const { return def != nullptr && def->fuel_link; }
-    /* A stack edge mates nodes (down/up); a surface edge (radial/side) uses
-       the procedural path until Phase 2 surface attach replaces it. */
+    /* A stack edge mates two named nodes; a surface edge places the child's
+       surface node at a parent contact point. (Radial is the legacy procedural
+       path -- neither -- until Phase 2b folds it into surface.) */
     bool isStackEdge() const {
         return attach == AttachMode::Down || attach == AttachMode::Up;
     }
+    bool isSurfaceEdge() const { return attach == AttachMode::Surface; }
 };
 
 struct ShipDef {
@@ -501,6 +547,18 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
 AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                        const Node &parentNode, const Node &childNode,
                        double rollDeg = 0.0, double offset = 0.0);
+
+/* Surface attach (KSP srfAttach): place the child's surface node at a contact
+   point on the parent, oriented to the surface normal. This is attachNodes
+   with a synthetic parent node built from the contact -- the SAME solver, so
+   stack and surface attach never drift. `point` is the contact in the parent's
+   local frame and `normal` the outward surface normal there; `childNode` is the
+   child's surface node (its dir points inward, toward the parent). `rollDeg`
+   spins the child about the normal, `offset` pushes it out along the normal. */
+AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                         const glm::dvec3 &point, const glm::dvec3 &normal,
+                         const Node &childNode, double rollDeg = 0.0,
+                         double offset = 0.0);
 
 /* Collision hull margin (m) resolution: the ship def value wins over the
    part catalog value; either may be unset (-1), in which case the other

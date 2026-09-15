@@ -9,9 +9,9 @@
     { "part": "decoupler_r1", "id": "dec_1", "parent": "engine_upper", "stage": 1 },
     { "part": "fuel_tank", "id": "tank_boost", "parent": "dec_1", "stage": 1 },
     { "part": "engine", "id": "engine_boost", "parent": "tank_boost", "stage": 1 },
-    { "part": "tank_r1h1", "id": "tank_r1h1_2", "attach": "side", "parent": "tank_boost", "angle": 0, "stage": 1 },
-    { "part": "tank_r1h1", "id": "tank_r1h1_3", "attach": "side", "parent": "tank_boost", "angle": 90, "stage": 1 },
-    { "part": "tank_r1h1", "id": "tank_r1h1_4", "attach": "side", "parent": "tank_boost", "angle": 180, "stage": 1 },
-    { "part": "tank_r1h1", "id": "tank_r1h1_5", "attach": "side", "parent": "tank_boost", "angle": 270, "stage": 1 }
+    { "part": "tank_r1h1", "id": "tank_r1h1_2", "attach": "surface", "parent": "tank_boost", "angle": 0, "stage": 1 },
+    { "part": "tank_r1h1", "id": "tank_r1h1_3", "attach": "surface", "parent": "tank_boost", "angle": 90, "stage": 1 },
+    { "part": "tank_r1h1", "id": "tank_r1h1_4", "attach": "surface", "parent": "tank_boost", "angle": 180, "stage": 1 },
+    { "part": "tank_r1h1", "id": "tank_r1h1_5", "attach": "surface", "parent": "tank_boost", "angle": 270, "stage": 1 }
   ]
 }

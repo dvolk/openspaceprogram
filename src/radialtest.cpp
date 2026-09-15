@@ -108,7 +108,9 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
 
         v->setRoot(a1);
         v->attachMode(a2, 0, AttachMode::Down);   // A2 below A1
-        v->attachMode(b1, 0, AttachMode::Side);   // B1 beside A1, parallel
+        // B1 beside A1: surface-attach at clock 0 on A1's side (parallel axes)
+        v->attachSurface(b1, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
+                         glm::dvec3(1.0, 0.0, 0.0));
         v->attachMode(b2, 2, AttachMode::Down);   // B2 below B1
     }
     else {
@@ -123,9 +125,11 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         }
         else if(mode == "parallel") {
             /* B's side touches A's side at +rA; both axes stay on the pad
-               normal (parallel). attachSide puts B at +X by rA + rB so the
-               cylindrical surfaces meet. */
-            v->attachSide(b);
+               normal (parallel). Surface-attach B at clock 0 on A's side: its
+               surface node (-rB,0,0) lands on the contact (rA,0,0), so B sits
+               at +X by rA + rB and the cylindrical surfaces meet. */
+            v->attachSurface(b, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
+                             glm::dvec3(1.0, 0.0, 0.0));
         }
         else {
             /* attachDown stacks B on A's -Z side, face to face. */

@@ -62,8 +62,10 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     /* 1) relative poses in a canonical frame: the root at the origin, +Z =
        the stack axis. Each child is placed off its (earlier) parent by the
        shared attach geometry (shipdef.cpp): a STACK edge mates two named
-       nodes (attachNodes), a SURFACE edge (radial/side) uses the procedural
-       cylinder path (attachPose) until Phase 2. */
+       nodes (attachNodes), a SURFACE edge places the child's surface node at
+       a contact point+normal on the parent (attachSurface), and the LEGACY
+       radial edge uses the procedural cylinder path (attachPose) until
+       Phase 2b folds it into surface attach. */
     std::vector<glm::dvec3> pos(n);
     std::vector<glm::dmat3> rot(n);
     pos[0] = glm::dvec3(0.0);
@@ -85,6 +87,15 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                                          + "' that its part does not have");
             }
             ap = attachNodes(pPos, pRot, *pn, *cn, sp.angle, sp.offset);
+        } else if(sp.isSurfaceEdge()) {
+            const Node *cn = sp.def->findNode(sp.childNode);
+            if(cn == nullptr) {
+                throw std::runtime_error(std::string("build_ship: part '") + sp.id
+                                         + "' surface-attaches with node '" + sp.childNode
+                                         + "' that its part does not have");
+            }
+            ap = attachSurface(pPos, pRot, sp.contactPoint, sp.contactNormal,
+                               *cn, sp.roll, sp.offset);
         } else {
             ap = attachPose(pPos, pRot, *pp.def, *sp.def,
                             sp.attach, sp.angle, sp.offset);
@@ -794,8 +805,20 @@ void Vehicle::attachRadial(Part *part) {
     attachMode(part, parts.size() - 1, AttachMode::Radial);
 }
 
-void Vehicle::attachSide(Part *part) {
-    attachMode(part, parts.size() - 1, AttachMode::Side);
+void Vehicle::attachSurface(Part *part, size_t parentIdx,
+                            const glm::dvec3 &point, const glm::dvec3 &normal,
+                            double rollDeg, double offset) {
+    const Part *pp = parts[parentIdx];
+    const Node *cn = part->def->findSurfaceNode();
+    if(cn == nullptr) {
+        throw std::runtime_error(std::string("attachSurface: part '") + part->def->name
+                                 + "' has no surface node");
+    }
+    /* ::attachSurface is the free solver in shipdef.cpp (same name as this
+       method -- qualify it so this isn't a recursive call). */
+    const AttachPose ap = ::attachSurface(pp->localPos, pp->localRot, point,
+                                          normal, *cn, rollDeg, offset);
+    attach(part, parentIdx, ap.childPos, ap.childRot);
 }
 
 void Vehicle::init() {

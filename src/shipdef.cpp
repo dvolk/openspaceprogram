@@ -448,10 +448,10 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
             if(m == "down") { sp.attach = AttachMode::Down; }
             else if(m == "up") { sp.attach = AttachMode::Up; }
             else if(m == "radial") { sp.attach = AttachMode::Radial; }
-            else if(m == "side") { sp.attach = AttachMode::Side; }
+            else if(m == "surface") { sp.attach = AttachMode::Surface; }
             else {
                 throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"attach\" must be 'down', 'up', 'radial', or 'side' (got '"
+                                         + ": \"attach\" must be 'down', 'up', 'radial', or 'surface' (got '"
                                          + m + "')");
             }
         }
@@ -468,31 +468,68 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
                                      + ": \"offset\" must be >= 0 (m)");
         }
 
-        /* Stack edges (down/up) mate two named nodes. An explicit
-           "parentNode"/"childNode" wins; otherwise default to the
-           synthesized axial faces (down: parent bottom / child top; up:
-           parent top / child bottom), so a bare attach:down keeps working.
-           Surface edges (radial/side) leave these empty and use angle; fuel
-           links are virtual and have none; the root has no parent edge. */
+        /* Resolve the edge. A STACK edge (down/up) mates two named nodes; a
+           SURFACE edge places the child's surface node at a contact point on
+           the parent. Fuel links are virtual (no edge); the root has none.
+           Node ids / contacts are validated here so a typo is a load error,
+           not a null deref in build_ship. The parent is an earlier part
+           (construction order), so it is already in def.parts. */
         sp.parentNode = pv.value("parentNode", std::string(""));
         sp.childNode  = pv.value("childNode", std::string(""));
-        if(!sp.isFuelLink() && sp.isStackEdge() && sp.parent >= 0) {
-            const bool down = (sp.attach == AttachMode::Down);
-            if(sp.parentNode.empty()) { sp.parentNode = down ? "bottom" : "top"; }
-            if(sp.childNode.empty())  { sp.childNode  = down ? "top" : "bottom"; }
-            /* Fail fast on a bad node id -- a typo would otherwise surface as
-               a null deref deep in build_ship. The parent is an earlier part
-               (construction order), so it is already in def.parts. */
+        sp.roll          = pv.value("roll", 0.0);
+        sp.contactPoint  = glm::dvec3(0.0);
+        sp.contactNormal = glm::dvec3(0.0);
+        if(!sp.isFuelLink() && sp.parent >= 0) {
+            const std::string ectx = std::string("ship: part '") + sp.id + "' in "
+                                     + path + ": ";
             const ShipPart &pp = def.parts[(size_t)sp.parent];
-            if(pp.def && !pp.def->findNode(sp.parentNode)) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": parentNode '" + sp.parentNode
-                                         + "' is not a node of parent part '" + pp.part + "'");
+            if(sp.isStackEdge()) {
+                /* An explicit "parentNode"/"childNode" wins; otherwise default
+                   to the synthesized axial faces (down: parent bottom / child
+                   top; up: parent top / child bottom), so attach:down works. */
+                const bool down = (sp.attach == AttachMode::Down);
+                if(sp.parentNode.empty()) { sp.parentNode = down ? "bottom" : "top"; }
+                if(sp.childNode.empty())  { sp.childNode  = down ? "top" : "bottom"; }
+                if(pp.def && !pp.def->findNode(sp.parentNode)) {
+                    throw std::runtime_error(ectx + "parentNode '" + sp.parentNode
+                                             + "' is not a node of parent part '" + pp.part + "'");
+                }
+                if(!sp.def->findNode(sp.childNode)) {
+                    throw std::runtime_error(ectx + "childNode '" + sp.childNode
+                                             + "' is not a node of part '" + sp.part + "'");
+                }
             }
-            if(!sp.def->findNode(sp.childNode)) {
-                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": childNode '" + sp.childNode
-                                         + "' is not a node of part '" + sp.part + "'");
+            else if(sp.isSurfaceEdge()) {
+                /* Contact in the PARENT's local frame: an explicit point+normal
+                   (what the editor's raycast writes), or the cylinder shorthand
+                   -- clock `angle` [+ height `z`] on the parent's radius. */
+                if(pv.contains("point") || pv.contains("normal")) {
+                    sp.contactPoint  = parse_vec3(pv, "point",  ectx);
+                    sp.contactNormal = parse_vec3(pv, "normal", ectx);
+                } else {
+                    const double rP = (pp.def != nullptr) ? pp.def->radius : 1.0;
+                    const double z  = pv.value("z", 0.0);
+                    const double a  = glm::radians(sp.angle);
+                    sp.contactNormal = glm::dvec3(cos(a), sin(a), 0.0);
+                    sp.contactPoint  = glm::dvec3(rP * cos(a), rP * sin(a), z);
+                }
+                const double nl = glm::length(sp.contactNormal);
+                if(nl < 1e-9) {
+                    throw std::runtime_error(ectx + "surface \"normal\" must be non-zero");
+                }
+                sp.contactNormal /= nl;
+                /* The child attaches by its surface node (default) or a named one. */
+                if(sp.childNode.empty()) {
+                    const Node *srf = sp.def->findSurfaceNode();
+                    if(srf == nullptr) {
+                        throw std::runtime_error(ectx + "part '" + sp.part
+                                                 + "' has no surface node to attach with");
+                    }
+                    sp.childNode = srf->id;
+                } else if(!sp.def->findNode(sp.childNode)) {
+                    throw std::runtime_error(ectx + "childNode '" + sp.childNode
+                                             + "' is not a node of part '" + sp.part + "'");
+                }
             }
         }
 
@@ -593,6 +630,22 @@ AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
     return p;
 }
 
+AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                         const glm::dvec3 &point, const glm::dvec3 &normal,
+                         const Node &childNode, double rollDeg, double offset)
+{
+    /* Surface attach IS node mating: a synthetic parent node at the contact
+       (position = the contact point, direction = the outward normal). The
+       child's surface node dir points inward, so attachNodes anti-aligns it
+       onto the normal exactly as it would a stack node -- one solver, no
+       separate surface geometry to drift. */
+    Node contact;
+    contact.id  = "srf-contact";
+    contact.pos = point;
+    contact.dir = normal;   // attachNodes normalizes
+    return attachNodes(parentPos, parentRot, contact, childNode, rollDeg, offset);
+}
+
 AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       const PartDef &parentDef, const PartDef &childDef,
                       AttachMode mode, double angleDeg, double offset)
@@ -612,39 +665,36 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
         }
         return attachNodes(parentPos, parentRot, *pn, *cn, angleDeg, offset);
     }
+    if(mode == AttachMode::Surface) {
+        throw std::runtime_error("attachPose: a surface edge uses attachSurface "
+                                 "(point + normal), not attachPose");
+    }
 
-    /* Surface modes (radial/side): procedural cylinder attach -- the interim
-       surface path until Phase 2 replaces it with a raycast onto the parent
-       collider. `angleDeg` is the clock position around the parent's axis. */
+    /* Radial: LEGACY procedural cylinder attach (child axis turned perpendicular
+       onto the parent's side). The interim path for wings/radial decouplers
+       until Phase 2b replaces it with surface attach. `angleDeg` is the clock
+       position around the parent's axis. */
     const double rP = parentDef.radius;
-    const double rC = childDef.radius, hC = childDef.height;
+    const double hC = childDef.height;
 
     /* Rz(angle): maps parent-local +X to `dir`. Angle 0 = parent +X, so a
-       radial/side part at angle a sits on the parent's side at clock
-       position a (90 deg = parent +Y). */
+       radial part at angle a sits on the parent's side at clock position a. */
     const double a = glm::radians(angleDeg);
     const double c = cos(a), s = sin(a);
     const glm::dmat3 rz(glm::dvec3(c, s, 0.0),
                         glm::dvec3(-s, c, 0.0),
                         glm::dvec3(0.0, 0.0, 1.0));
     const glm::dvec3 dir = glm::dvec3(c, s, 0.0);
+    /* child +Z -> parent +X: columns are the images of X, Y, Z. */
+    const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
+                             glm::dvec3(0.0, 1.0, 0.0),
+                             glm::dvec3(1.0, 0.0, 0.0));
 
     AttachPose p;
-    if(mode == AttachMode::Radial) {
-        /* child axis perpendicular: its base face (-hC/2) on the parent's
-           side at radius rP, in the `dir` clock position. child +Z -> parent
-           +X via rotZtoX (columns are the images of X, Y, Z). */
-        const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
-                                 glm::dvec3(0.0, 1.0, 0.0),
-                                 glm::dvec3(1.0, 0.0, 0.0));
-        p.childPos = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
-        p.childRot = parentRot * rz * rotZtoX;
-    }
-    else { // Side
-        /* parallel axes, side by side: surfaces meet at rP + rC in `dir` */
-        p.childPos = parentPos + parentRot * (dir * (rP + rC + offset));
-        p.childRot = parentRot * rz;
-    }
+    /* child axis perpendicular: its base face (-hC/2) on the parent's side at
+       radius rP, in the `dir` clock position. */
+    p.childPos = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
+    p.childRot = parentRot * rz * rotZtoX;
     return p;
 }
 

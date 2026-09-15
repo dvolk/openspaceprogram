@@ -22,13 +22,13 @@
     { "part": "tank_r2.25h5", "id": "central_tank3", "parent": "central_tank2", "stage": 2 },
     { "part": "engine_r2.25h4.5", "id": "central_engine2", "parent": "central_tank3", "stage": 1 },
 
-    { "part": "decoupler_radial", "id": "rdecupler1", "attach": "side", "parent": "central_tank2", "stage": 1 },
-    { "part": "tank_r1.5h5", "id": "rtank11", "parent": "rdecupler1", "attach": "side", "stage": 1 },
+    { "part": "decoupler_radial", "id": "rdecupler1", "attach": "surface", "parent": "central_tank2", "stage": 1 },
+    { "part": "tank_r1.5h5", "id": "rtank11", "parent": "rdecupler1", "attach": "surface", "stage": 1 },
     { "part": "tank_r1.5h5", "id": "rtank12", "parent": "rtank11", "stage": 1 },
     { "part": "engine_r1.5h3", "id": "rengine1", "parent": "rtank12", "stage": 1 },
 
-    { "part": "decoupler_radial", "id": "rdecupler2", "attach": "side", "parent": "central_tank2", "angle": 180, "stage": 1 },
-    { "part": "tank_r1.5h5", "id": "rtank21", "parent": "rdecupler2", "attach": "side", "stage": 1 },
+    { "part": "decoupler_radial", "id": "rdecupler2", "attach": "surface", "parent": "central_tank2", "angle": 180, "stage": 1 },
+    { "part": "tank_r1.5h5", "id": "rtank21", "parent": "rdecupler2", "attach": "surface", "stage": 1 },
     { "part": "tank_r1.5h5", "id": "rtank22", "parent": "rtank21", "stage": 1 },
     { "part": "engine_r1.5h3", "id": "rengine2", "parent": "rtank22", "stage": 1 },
 

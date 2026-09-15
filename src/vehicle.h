@@ -409,11 +409,10 @@ public:
                 const glm::dvec3 &localPos, const glm::dmat3 &localRot);
 
     /* Solve `part`'s ship-local pose off the part at `parentIdx` with the
-       shared attachPose() geometry and record the edge. attachPose is the
-       single source of attach truth: the data-driven build_ship path, the
-       --radial-test/--dock-test builders and the wrappers below all funnel
-       through it, so the geometry can't drift between them. angle/offset
-       default to the plain face-to-face case. */
+       shared attachPose() geometry and record the edge. For stack modes
+       (Down/Up) and the legacy procedural Radial; surface edges use
+       attachSurface() below. angle/offset default to the plain face-to-face
+       case. */
     void attachMode(Part *part, size_t parentIdx, AttachMode mode,
                     double angleDeg = 0.0, double offset = 0.0);
 
@@ -423,7 +422,14 @@ public:
 
     void attachRadial(Part *part);
 
-    void attachSide(Part *part);
+    /* Surface-attach `part` (by its surface node) at a contact `point` with an
+       outward `normal`, both in the parent's local frame; `rollDeg` spins it
+       about the normal, `offset` pushes it out along the normal. The test
+       builders use this for side-by-side parts (the data-driven path resolves
+       the contact in load_ship_def and build_ship calls attachSurface directly). */
+    void attachSurface(Part *part, size_t parentIdx,
+                       const glm::dvec3 &point, const glm::dvec3 &normal,
+                       double rollDeg = 0.0, double offset = 0.0);
 
     void init();
 

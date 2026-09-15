@@ -423,11 +423,11 @@ int main() {
         f << "{ \"name\": \"side\", "
              "\"parts\": [ { \"part\": \"capsule\" }, "
              " { \"part\": \"fuel_tank\" }, { \"part\": \"engine\" }, "
-             " { \"part\": \"tank_r1h3\", \"attach\": \"side\", "
+             " { \"part\": \"tank_r1h3\", \"attach\": \"surface\", "
              "   \"parent\": \"engine_1\", \"angle\": 240 }, "
-             " { \"part\": \"tank_r1h3\", \"attach\": \"side\", "
+             " { \"part\": \"tank_r1h3\", \"attach\": \"surface\", "
              "   \"parent\": \"engine_1\", \"angle\": 120 }, "
-             " { \"part\": \"tank_r1h3\", \"attach\": \"side\", "
+             " { \"part\": \"tank_r1h3\", \"attach\": \"surface\", "
              "   \"parent\": \"engine_1\", \"angle\": 0 } ] }";
         f.close();
     }
@@ -448,7 +448,7 @@ int main() {
     CHECK(tall.parts[0].def == c153 && tall.parts[2].def == e225);
     std::remove(mix);
 
-    // the booster: two side pods on opposite sides of a tall core. The pods
+    // the booster: two surface pods on opposite sides of a tall core. The pods
     // are small (tank_r1h1) and the core is tall (tank_r2.25h5) so no two
     // non-welded parts touch -- a valid ship the hull-margin can't destabilize.
     {
@@ -457,9 +457,9 @@ int main() {
              "\"parts\": [ { \"part\": \"capsule\", \"id\": \"capsule_1\" }, "
              " { \"part\": \"tank_r2.25h5\", \"id\": \"core\" }, "
              " { \"part\": \"engine\", \"id\": \"eng\" }, "
-             " { \"part\": \"tank_r1h1\", \"id\": \"p1\", \"attach\": \"side\", "
+             " { \"part\": \"tank_r1h1\", \"id\": \"p1\", \"attach\": \"surface\", "
              "   \"parent\": \"core\", \"angle\": 0 }, "
-             " { \"part\": \"tank_r1h1\", \"id\": \"p2\", \"attach\": \"side\", "
+             " { \"part\": \"tank_r1h1\", \"id\": \"p2\", \"attach\": \"surface\", "
              "   \"parent\": \"core\", \"angle\": 180 } ] }";
         f.close();
     }
@@ -469,14 +469,20 @@ int main() {
     {
         const ShipPart &side = bo.parts[3];   // tank_r1h1, side of the tall tank
         CHECK(side.def == t11);
-        CHECK(side.attach == AttachMode::Side);
+        CHECK(side.attach == AttachMode::Surface);
         CHECK(side.parent == 1);             // the tank_r2.25h5 core
         CHECK(near(side.angle, 0.0));
+        // the cylinder shorthand resolved to a contact on the core's +X side
+        CHECK(side.isSurfaceEdge());
+        CHECK(vnear(side.contactNormal, glm::dvec3(1, 0, 0)));
+        CHECK(vnear(side.contactPoint, glm::dvec3(t2255->radius, 0, 0)));
+        CHECK(side.childNode == "srf");      // the synthesized surface node
         const ShipPart &opp = bo.parts[4];   // tank_r1h1, other side at 180 deg
         CHECK(opp.def == t11);
-        CHECK(opp.attach == AttachMode::Side);
+        CHECK(opp.attach == AttachMode::Surface);
         CHECK(opp.parent == 1);              // the tank_r2.25h5 core
         CHECK(near(opp.angle, 180.0));
+        CHECK(vnear(opp.contactNormal, glm::dvec3(-1, 0, 0)));
     }
     std::remove(mix);
 
@@ -494,7 +500,7 @@ int main() {
         for(int i = 0; i < 4; i++) {
             const ShipPart &pod = tk.parts[3 + (size_t)i];
             CHECK(pod.def == t153);
-            CHECK(pod.attach == AttachMode::Side);
+            CHECK(pod.attach == AttachMode::Surface);
             CHECK(pod.parent == 1);
             CHECK(near(pod.angle, podAngles[i]));
         }
@@ -512,7 +518,7 @@ int main() {
         for(int i = 0; i < 4; i++) {
             const ShipPart &pod = lx.parts[3 + (size_t)i];
             CHECK(pod.def == t11);
-            CHECK(pod.attach == AttachMode::Side);
+            CHECK(pod.attach == AttachMode::Surface);
             CHECK(pod.parent == 1);
             CHECK(near(pod.angle, podAngles[i]));
         }
@@ -590,15 +596,22 @@ int main() {
         CHECK(vnear(p.childPos, glm::dvec3(-2.5, 0.0, 0.0)));
         CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(-1.0, 0.0, 0.0)));
     }
-    // SIDE at 0 deg: parallel axes, side by side along +X
+    // SURFACE at clock 0: parallel axes, side by side along +X. This is the
+    // old procedural Side, now expressed as surface attach -- the child's
+    // synthesized surface node (-rC,0,0) lands on the parent's +X contact.
     {
-        AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Side, 0.0, 0.0);
+        const Node *cn = t152->findSurfaceNode();
+        CHECK(cn != nullptr);
+        AttachPose p = attachSurface(O, I, glm::dvec3(cap->radius, 0, 0),
+                                     glm::dvec3(1, 0, 0), *cn, 0.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(2.5, 0.0, 0.0)));   // r_p + r_c = 1+1.5
         CHECK(mnear(p.childRot, I));                            // axis stays parallel
     }
-    // SIDE at 180 deg: the other side, axis still parallel (rolled 180 about Z)
+    // SURFACE at clock 180: the other side, axis still parallel (rolled 180)
     {
-        AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Side, 180.0, 0.0);
+        const Node *cn = t152->findSurfaceNode();
+        AttachPose p = attachSurface(O, I, glm::dvec3(-cap->radius, 0, 0),
+                                     glm::dvec3(-1, 0, 0), *cn, 0.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(-2.5, 0.0, 0.0)));
         CHECK(near((p.childRot * glm::dvec3(0, 0, 1.0)).z, 1.0));
     }
@@ -688,6 +701,35 @@ int main() {
         f.close();
         CHECK(expect_throw([&](){ load_ship_def(mix, cat); }));
         std::remove(mix);
+    }
+    // a surface edge with an explicit point + normal (parent-local, what the
+    // editor's raycast writes) parses straight through
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"srf\", \"parts\": ["
+             "{ \"part\": \"tank_r1.5h3\", \"id\": \"t\" },"
+             "{ \"part\": \"tank_r1h1\", \"id\": \"p\", \"parent\": \"t\","
+             "  \"attach\": \"surface\", \"point\": [1.5, 0, 0.5],"
+             "  \"normal\": [1, 0, 0], \"roll\": 90 } ] }";
+        f.close();
+        ShipDef sr = load_ship_def(mix, cat);
+        const ShipPart &sp = sr.parts[1];
+        CHECK(sp.isSurfaceEdge());
+        CHECK(vnear(sp.contactPoint, glm::dvec3(1.5, 0, 0.5)));
+        CHECK(vnear(sp.contactNormal, glm::dvec3(1, 0, 0)));
+        CHECK(near(sp.roll, 90.0));
+        CHECK(sp.childNode == "srf");
+        std::remove(mix);
+    }
+    // roll spins the child about the contact normal without moving the contact
+    {
+        const Node *cn = t152->findSurfaceNode();
+        AttachPose a = attachSurface(O, I, glm::dvec3(1, 0, 0), glm::dvec3(1, 0, 0), *cn, 0.0, 0.0);
+        AttachPose b = attachSurface(O, I, glm::dvec3(1, 0, 0), glm::dvec3(1, 0, 0), *cn, 90.0, 0.0);
+        CHECK(vnear(a.childPos, b.childPos));                 // same contact point
+        CHECK(!mnear(a.childRot, b.childRot));                // but spun
+        // roll is about the normal (+X): the child's axis stays perpendicular to it
+        CHECK(near(glm::dot(b.childRot * glm::dvec3(0, 0, 1), glm::dvec3(1, 0, 0)), 0.0));
     }
 
     // --- error paths ---------------------------------------------------------
