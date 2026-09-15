@@ -408,18 +408,15 @@ struct ShipDef {
     }
 };
 
-/* The resolved pose + weld anchors for one attachment (GL-free math; the
-   same function the future VAB snap uses). All inputs/outputs are in the
-   SAME world frame (parent given in world coords).
-
-   The anchor points COINCIDE in world space at the returned child pose --
-   required, because the 6DOF weld (this Bullet 2.x) enforces zero relative
-   linear offset: anchors apart by the gap, not at the surfaces. */
+/* The resolved child pose for one attachment (GL-free math; the same
+   function the future VAB snap uses). attachPose is purely relative: the
+   parent is given in some frame and the child pose comes back in that same
+   frame, so callers can work in world coords or in the ship-local frame S
+   interchangeably (build_ship feeds it S-frame parent poses; a VAB would
+   feed it world poses). */
 struct AttachPose {
     glm::dvec3 childPos;
-    glm::dmat3  childRot;
-    glm::dvec3 parentAnchor;   // local to the parent
-    glm::dvec3 childAnchor;    // local to the child
+    glm::dmat3 childRot;
 };
 
 AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,

@@ -5,8 +5,8 @@
 // Covers: catalog + ship-def parsing (the parent-relative tree schema:
 // ids, parent/attach/angle/offset/stage, construction-order validation),
 // the aggregates the Vehicle would compute, the default-controller rule,
-// the attachPose geometry (anchor coincidence across mode/angle/offset),
-// and the error paths.
+// the attachPose geometry (child pose across mode/angle/offset), and the
+// error paths.
 
 #include "shipdef.h"
 
@@ -41,13 +41,6 @@ static bool mnear(const glm::dmat3 &a, const glm::dmat3 &b) {
     double s = 0;
     for(int i = 0; i < 3; i++) for(int j = 0; j < 3; j++) s += d[i][j] * d[i][j];
     return std::sqrt(s) < 1e-6;
-}
-// the weld invariant: the anchors coincide in world space
-static bool coincide(const AttachPose &p, const glm::dvec3 &ppos,
-                     const glm::dmat3 &prot) {
-    const glm::dvec3 wp = ppos + prot * p.parentAnchor;
-    const glm::dvec3 wc = p.childPos + p.childRot * p.childAnchor;
-    return vnear(wp, wc);
 }
 
 // a fixed non-trivial parent orientation (+Z pointing at world (1,1,1))
@@ -549,14 +542,14 @@ int main() {
         CHECK(near(p.childPos.z + (p.childRot * glm::dvec3(0.0, 0.0, -0.375)).z, 1.5));
         // the apex lands at tank top + cap height
         CHECK(near(p.childPos.z + (p.childRot * glm::dvec3(0.0, 0.0, 0.375)).z, 2.25));
-        const glm::dvec3 wp = p.parentAnchor;
-        const glm::dvec3 wc = p.childPos + p.childRot * p.childAnchor;
-        CHECK(glm::length(wp - wc) < 1e-9);
     }
     std::remove(mix);
 
     // --- attachPose geometry ---------------------------------------------
     // All cases: parent at the origin, identity orientation, unless noted.
+    // The numeric childPos/childRot expectations ARE the contract: they pin
+    // the exact solved pose per mode/angle/offset (face contact is implied by
+    // childPos plus the part dimensions).
     const glm::dvec3 O(0.0, 0.0, 0.0);
     const glm::dmat3 I(1.0);
 
@@ -565,26 +558,17 @@ int main() {
         AttachPose p = attachPose(O, I, *cap, *eng, AttachMode::Down, 0.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(0, 0, -2.0)));   // (2+2)/2 below
         CHECK(mnear(p.childRot, I));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(0, 0, -1.0)));
-        CHECK(vnear(p.childAnchor,  glm::dvec3(0, 0,  1.0)));
-        CHECK(coincide(p, O, I));
     }
-    // DOWN with a 0.5 m spacer gap (anchors sit at the gap edge)
+    // DOWN with a 0.5 m spacer gap
     {
         AttachPose p = attachPose(O, I, *cap, *eng, AttachMode::Down, 0.0, 0.5);
         CHECK(vnear(p.childPos, glm::dvec3(0, 0, -2.5)));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(0, 0, -1.5)));
-        CHECK(vnear(p.childAnchor,  glm::dvec3(0, 0,  1.0)));
-        CHECK(coincide(p, O, I));
     }
     // UP: child above the parent (shared axis) -- stacking outward
     {
         AttachPose p = attachPose(O, I, *cap, *eng, AttachMode::Up, 0.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(0, 0, 2.0)));
         CHECK(mnear(p.childRot, I));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(0, 0,  1.0)));
-        CHECK(vnear(p.childAnchor,  glm::dvec3(0, 0, -1.0)));
-        CHECK(coincide(p, O, I));
     }
     // RADIAL at 0 deg: child axis -> parent +X, base face on the parent side
     {
@@ -593,51 +577,42 @@ int main() {
         CHECK(vnear(p.childPos, glm::dvec3(2.0, 0.0, 0.0)));
         // child +Z points along parent +X
         CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(1.0, 0.0, 0.0)));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(1.0, 0.0, 0.0)));
-        CHECK(vnear(p.childAnchor,  glm::dvec3(0.0, 0.0, -1.0)));
-        CHECK(coincide(p, O, I));
     }
-    // RADIAL at 90 deg: child at the parent's +Y side
+    // RADIAL at 90 deg: child at the parent's +Y side, axis -> +Y
     {
         AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Radial, 90.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(0.0, 2.0, 0.0)));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(0.0, 1.0, 0.0)));
-        CHECK(coincide(p, O, I));
+        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(0.0, 1.0, 0.0)));
     }
     // RADIAL at 180 deg + 0.5 gap: child at the parent's -X side, 0.5 out
     {
         AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Radial, 180.0, 0.5);
         CHECK(vnear(p.childPos, glm::dvec3(-2.5, 0.0, 0.0)));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(-1.5, 0.0, 0.0)));
-        CHECK(vnear(p.childAnchor,  glm::dvec3(0.0, 0.0, -1.0)));
-        CHECK(coincide(p, O, I));
+        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(-1.0, 0.0, 0.0)));
     }
     // SIDE at 0 deg: parallel axes, side by side along +X
     {
         AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Side, 0.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(2.5, 0.0, 0.0)));   // r_p + r_c = 1+1.5
         CHECK(mnear(p.childRot, I));                            // axis stays parallel
-        CHECK(vnear(p.parentAnchor, glm::dvec3(1.0, 0.0, 0.0)));
-        CHECK(vnear(p.childAnchor,  glm::dvec3(-1.5, 0.0, 0.0)));
-        CHECK(coincide(p, O, I));
     }
-    // SIDE at 180 deg: the other side, still parallel
+    // SIDE at 180 deg: the other side, axis still parallel (rolled 180 about Z)
     {
         AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Side, 180.0, 0.0);
         CHECK(vnear(p.childPos, glm::dvec3(-2.5, 0.0, 0.0)));
-        CHECK(vnear(p.parentAnchor, glm::dvec3(-1.0, 0.0, 0.0)));
-        CHECK(coincide(p, O, I));
+        CHECK(near((p.childRot * glm::dvec3(0, 0, 1.0)).z, 1.0));
     }
     // a non-trivial parent frame: the same relations hold in the parent's frame
     {
         const glm::dmat3 rot = testOrient();
         const glm::dvec3 pp(3.0, -1.0, 7.0);
         AttachPose p = attachPose(pp, rot, *cap, *t152, AttachMode::Radial, 45.0, 0.25);
-        CHECK(coincide(p, pp, rot));
         // child offset from the parent is along the rotated attach direction
         const double d = glm::radians(45.0);
         const glm::dvec3 dir = rot * glm::dvec3(cos(d), sin(d), 0.0);
         CHECK(vnear(p.childPos - pp, dir * (1.0 + 1.0 + 0.25)));
+        // child axis turned onto the attach direction
+        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), dir));
     }
 
     // --- error paths ---------------------------------------------------------

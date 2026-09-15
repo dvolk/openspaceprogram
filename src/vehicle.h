@@ -403,14 +403,22 @@ public:
        so these are pure geometry -- see part.h). `parent` is the topology edge
        the staging + fuel-group walks use. There is nothing to weld: the ship
        is ONE rigid body, and the local pose is what puts this part's hull at
-       the right place inside it. */
+       the right place inside it. This is the low-level primitive -- the pose
+       is already solved; most callers want attachMode(). */
     void attach(Part *part, size_t parentIdx,
                 const glm::dvec3 &localPos, const glm::dmat3 &localRot);
 
-    /* The three convenience attach modes (used by the --radial-test ship
-       builder; build_ship goes through attachPose + attach directly). Each
-       derives the child's ship-local pose from the parent's. */
+    /* Solve `part`'s ship-local pose off the part at `parentIdx` with the
+       shared attachPose() geometry and record the edge. attachPose is the
+       single source of attach truth: the data-driven build_ship path, the
+       --radial-test/--dock-test builders and the wrappers below all funnel
+       through it, so the geometry can't drift between them. angle/offset
+       default to the plain face-to-face case. */
+    void attachMode(Part *part, size_t parentIdx, AttachMode mode,
+                    double angleDeg = 0.0, double offset = 0.0);
 
+    /* attachMode() against the most recently added part -- building a linear
+       stack without tracking indices. */
     void attachDown(Part *part);
 
     void attachRadial(Part *part);

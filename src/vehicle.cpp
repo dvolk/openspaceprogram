@@ -758,48 +758,26 @@ void Vehicle::attach(Part *part, size_t parentIdx, const glm::dvec3 &localPos, c
     parts.push_back(part);
 }
 
+void Vehicle::attachMode(Part *part, size_t parentIdx, AttachMode mode,
+                         double angleDeg, double offset) {
+    const Part *pp = parts[parentIdx];
+    /* attachPose is relative, so feeding it the parent's ship-local pose
+       returns the child's ship-local pose directly. */
+    const AttachPose ap = attachPose(pp->localPos, pp->localRot, *pp->def,
+                                     *part->def, mode, angleDeg, offset);
+    attach(part, parentIdx, ap.childPos, ap.childRot);
+}
+
 void Vehicle::attachDown(Part *part) {
-    /* weld at the part faces: parent bottom (-h/2) to child top (+h/2);
-       generalizes the old hardcoded +-1 m (2 m parts). The parent is the
-       last part pushed. The child sits straight below it, axes unchanged,
-       so the child's +hC/2 anchor lands on the parent's -hP/2 anchor. */
-    const Part *pp = parts.back();
-    const PartDef *parent = pp->def;
-    const double dz = -(parent->height + part->def->height) / 2.0;
-    attach(part, parts.size() - 1,
-           pp->localPos + pp->localRot * glm::dvec3(0.0, 0.0, dz),
-           pp->localRot);
+    attachMode(part, parts.size() - 1, AttachMode::Down);
 }
 
 void Vehicle::attachRadial(Part *part) {
-    /* hang the part off the parent's SIDE: the part's local +Z axis is
-       rotated to the parent's local +X, so the part's bottom face
-       (local -h/2) touches the parent's side at +radius. */
-    const Part *pp = parts.back();
-    const PartDef *parent = pp->def;
-    /* columns are the images of X, Y, Z: takes the child's +Z onto the
-       parent's +X (the same rotZtoX the --radial-test call site uses). */
-    const glm::dmat3 rotZtoX(glm::dvec3(0, 0, -1),
-                             glm::dvec3(0, 1, 0),
-                             glm::dvec3(1, 0, 0));
-    const glm::dvec3 off(parent->radius + part->def->height / 2.0, 0.0, 0.0);
-    attach(part, parts.size() - 1,
-           pp->localPos + pp->localRot * off,
-           pp->localRot * rotZtoX);
+    attachMode(part, parts.size() - 1, AttachMode::Radial);
 }
 
 void Vehicle::attachSide(Part *part) {
-    /* hang the part off the parent's SIDE with PARALLEL axes: the part
-       keeps the parent's local +Z axis, sits along the parent's local
-       +X, and its cylindrical surface touches the parent's at +radius.
-       Unlike attachRadial the child is NOT rotated, so this is the "side
-       by side, parallel axes" case. */
-    const Part *pp = parts.back();
-    const PartDef *parent = pp->def;
-    const glm::dvec3 off(parent->radius + part->def->radius, 0.0, 0.0);
-    attach(part, parts.size() - 1,
-           pp->localPos + pp->localRot * off,
-           pp->localRot);
+    attachMode(part, parts.size() - 1, AttachMode::Side);
 }
 
 void Vehicle::init() {

@@ -482,8 +482,7 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                         glm::dvec3(0.0, 0.0, 1.0));
     const glm::dvec3 dir = glm::dvec3(c, s, 0.0);
 
-    /* child +Z -> parent +X (the --radial-test rotZtoX): columns are the
-       images of X, Y, Z. */
+    /* child +Z -> parent +X: columns are the images of X, Y, Z. */
     const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
                              glm::dvec3(0.0, 1.0, 0.0),
                              glm::dvec3(1.0, 0.0, 0.0));
@@ -491,45 +490,27 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
     AttachPose p;
     if(mode == AttachMode::Down) {
         /* face-to-face on the parent's -Z face, shared axis */
-        p.childPos  = parentPos - parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
-        p.childRot  = parentRot * rz;
-        p.parentAnchor = glm::dvec3(0.0, 0.0, -(hP / 2.0 + offset));
-        p.childAnchor  = glm::dvec3(0.0, 0.0,  hC / 2.0);
+        p.childPos = parentPos - parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
+        p.childRot = parentRot * rz;
     }
     else if(mode == AttachMode::Up) {
         /* face-to-face on the parent's +Z face, shared axis: stacking
            OUTWARD from a radially attached part (its +Z points away from
            the ship), or a nose part above the root. The child's base face
            (-hC/2) meets the parent's top face (+hP/2). */
-        p.childPos  = parentPos + parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
-        p.childRot  = parentRot * rz;
-        p.parentAnchor = glm::dvec3(0.0, 0.0,  hP / 2.0 + offset);
-        p.childAnchor  = glm::dvec3(0.0, 0.0, -hC / 2.0);
+        p.childPos = parentPos + parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
+        p.childRot = parentRot * rz;
     }
     else if(mode == AttachMode::Radial) {
         /* child axis perpendicular: its base face (-hC/2) on the parent's
            side at radius rP, in the `dir` clock position */
-        p.childPos  = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
-        p.childRot  = parentRot * rz * rotZtoX;
-        p.parentAnchor = dir * (rP + offset);
-        p.childAnchor  = glm::dvec3(0.0, 0.0, -hC / 2.0);
+        p.childPos = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
+        p.childRot = parentRot * rz * rotZtoX;
     }
     else { // Side
         /* parallel axes, side by side: surfaces meet at rP + rC in `dir` */
-        p.childPos  = parentPos + parentRot * (dir * (rP + rC + offset));
-        p.childRot  = parentRot * rz;
-        p.parentAnchor = dir * (rP + offset);
-        p.childAnchor  = glm::dvec3(-rC, 0.0, 0.0);
-    }
-
-    /* invariant (enforced by the 6DOF weld): the anchors coincide in world
-       space. The parent anchor sits at the gap edge (surface + offset), so
-       the gap is what the solver holds. */
-    const glm::dvec3 wp = parentPos + parentRot * p.parentAnchor;
-    const glm::dvec3 wc = p.childPos + p.childRot * p.childAnchor;
-    if(glm::length(wp - wc) > 1e-9) {
-        throw std::runtime_error("attachPose: anchors do not coincide "
-                                 "(internal geometry error)");
+        p.childPos = parentPos + parentRot * (dir * (rP + rC + offset));
+        p.childRot = parentRot * rz;
     }
     return p;
 }

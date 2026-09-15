@@ -2,8 +2,9 @@
 //
 // Builds a passive-tank test ship straight from the parts catalog (no JSON
 // ship def). Every part is a passive single-stage tank -- no wheels, no
-// thrusters -- so any spin is self-inflicted by the physics. The per-mode
-// comments below document the exact weld layout and anchor coincidence.
+// thrusters -- so any spin is self-inflicted by the physics. Every edge goes
+// through Vehicle::attachMode -> attachPose, the same solver build_ship uses,
+// so these layouts exercise the real attach geometry rather than literals.
 #include "radialtest.h"
 
 #include <stdexcept>
@@ -24,16 +25,13 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
        catalog (no JSON ship def). Passive tanks only -- no
        wheels, no thrusters -- so any spin is self-inflicted by
        the physics:
-       - "radial":  tank_r2.25h5 + a tank_r1.5h2 welded to its side
-       - "stacked": the same pair welded along the axis (baseline)
-       - "stacks":  two 2-part stacks welded side by side:
+       - "radial":  tank_r2.25h5 + a tank_r1.5h2 attached to its side
+       - "stacked": the same pair attached along the axis (baseline)
+       - "stacks":  two 2-part stacks attached side by side:
                     [tank_r2.25h5 + tank_r1.5h2] beside
                     [tank_r2.25h5 + tank_r1.5h2], the second stack's
-                    root welded radially to the first stack's
-                    root (the in-game way to build it).
-       Stacked welds use attachDown's convention: the child sits
-       on the parent's -Z side, anchors (0,0,-hP/2) /
-       (0,0,+hC/2) coinciding in world space. */
+                    root attached radially to the first stack's
+                    root (the in-game way to build it). */
     const PartDef *defBig = part_catalog.find("tank_r2.25h5");
     const PartDef *defSml = part_catalog.find("tank_r1.5h2");
     if(defBig == nullptr || defSml == nullptr) {
@@ -59,11 +57,6 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
        staging -- spawn_vehicle repositions the ship. */
     const glm::dvec3 base = pad_dir
         * ((double)home->GetTerrainHeight(pad_dir) + 50.0);
-    /* radial weld: child's local +Z (its axis) -> parent's
-       local +X. Columns = images of X, Y, Z. */
-    const glm::dmat3 rotZtoX(glm::dvec3(0, 0, -1),
-                             glm::dvec3(0, 1, 0),
-                             glm::dvec3(1, 0, 0));
 
     /* One Part (shared render assets + hull + mass, wrapped with the
        catalog spec). All parts are passive single-stage tanks (stage 1);
@@ -80,40 +73,16 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         p->stage = 1;
         return p;
     };
-    /* Hang pb off pa and record its authored ship-local pose, the way
-       Vehicle::attach() does. These modes push into v->parts directly instead
-       of going through attach, so this is what sets Part::parent -- the
-       topology the staging and fuel-group walks read. S is the root's frame,
-       i.e. (base, pad_orient), which placeShip below applies to the whole
-       ship at once.
-
-       The two anchor arguments are ignored: they were the weld's pivot points
-       and there is no weld any more -- a rigid body has no internal degrees
-       of freedom to constrain. They stay at the call sites because they
-       record where the parts touch, which is what makes each layout
-       legible. */
-    auto link = [&](Part *pa, Part *pb,
-                    const glm::dvec3 &/*paAnchor*/, const glm::dvec3 &/*pbAnchor*/,
-                    const glm::dvec3 &localPos, const glm::dmat3 &localRot) {
-        pb->parent   = pa;
-        pb->localPos = localPos;
-        pb->localRot = localRot;
-    };
 
     if(mode == "stacks") {
-        /* Two 2-part stacks, side by side. Pad normal = local +Z,
-           radial dir = local +X:
-             stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2)
-                      attached below A1, axis Z
-             stack 2: B1 (tank_r2.25h5) welded to A1's +X side
-                      (axis X) + B2 (tank_r1.5h2) attached beyond
-                      B1 along B1's axis
-           Layout (local): A1 (0,0,0)  A2 (0,0,-3.5)
-                           B1 (4.75,0,0) B2 (8.25,0,0)
-           Welds (anchors coincide in world space):
-             A1-A2 stacked:  A1 (0,0,-2.5)   == A2 (0,0,+1)
-             A1-B1 radial:   A1 (2.25,0,0)   == B1 (0,0,-2.5)
-             B1-B2 stacked:  B1 (0,0,+2.5)   == B2 (0,0,-1) */
+        /* Two 2-part stacks, side by side. Pad normal = local +Z, radial
+           dir = local +X:
+             stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2) below A1
+             stack 2: B1 (tank_r2.25h5) radial off A1's +X side (its axis
+                      turned onto X) + B2 (tank_r1.5h2) stacked outward
+                      beyond B1 along that axis.
+           Every edge goes through attachMode/attachPose, so the layout is
+           the solver's, not hand-written literals. */
         v->name = "stacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);
@@ -121,68 +90,26 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *b2 = makePart(defSml);
 
         v->setRoot(a1);
-        v->parts.push_back(a2);
-        v->parts.push_back(b1);
-        v->parts.push_back(b2);
-        /* local poses mirror the setPosRot calls above (S = the root a1's
-           frame): a2 straight below, b1 radial off a1's +X with its axis
-           turned onto X, b2 stacked beyond b1 along that same axis. */
-        link(a1, a2,
-             glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
-             glm::dvec3(0.0, 0.0,  defSml->height / 2.0),
-             glm::dvec3(0.0, 0.0, -(defBig->height + defSml->height) / 2.0),
-             glm::dmat3(1.0));
-        link(a1, b1,
-             glm::dvec3(defBig->radius, 0.0, 0.0),
-             glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
-             glm::dvec3(defBig->radius + defBig->height / 2.0, 0.0, 0.0),
-             rotZtoX);
-        link(b1, b2,
-             glm::dvec3(0.0, 0.0,  defBig->height / 2.0),
-             glm::dvec3(0.0, 0.0, -defSml->height / 2.0),
-             glm::dvec3(defBig->radius + defBig->height + defSml->height / 2.0,
-                        0.0, 0.0),
-             rotZtoX);
+        v->attachMode(a2, 0, AttachMode::Down);    // A2 below A1
+        v->attachMode(b1, 0, AttachMode::Radial);  // B1 off A1's +X side
+        v->attachMode(b2, 2, AttachMode::Up);      // B2 outward beyond B1
     }
     else if(mode == "parstacks") {
-        /* Two 2-part stacks side by side with ALL axes PARALLEL
-           (pad normal = local +Z) -- the variant of 'stacks' where
-           the second stack is NOT rotated, so both stacks' axes
-           point the same way:
-             stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2) below A1
-             stack 2: B1 (tank_r2.25h5) welded to A1's +X side
-                      + B2 (tank_r1.5h2) below B1
-           Layout (local): A1 (0,0,0)    A2 (0,0,-3.5)
-                           B1 (4.5,0,0)  B2 (4.5,0,-3.5)
-           Welds (anchors coincide in world space):
-             A1-A2 stacked:  A1 (0,0,-2.5)  == A2 (0,0,+1)
-             B1-B2 stacked:  B1 (0,0,-2.5)  == B2 (0,0,+1)
-             A1-B1 lateral:  A1 (2.25,0,0) == B1 (-2.25,0,0) */
+        /* Two 2-part stacks side by side with ALL axes PARALLEL (pad normal
+           = local +Z) -- the variant of 'stacks' where the second stack is
+           NOT rotated, so both stacks' axes point the same way:
+             stack 1: A1 (root) + A2 below A1
+             stack 2: B1 side-by-side with A1 (parallel axes) + B2 below B1 */
         v->name = "parstacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);
         Part *b1 = makePart(defBig);
         Part *b2 = makePart(defSml);
-        const double dz = defBig->height / 2.0 + defSml->height / 2.0;
 
         v->setRoot(a1);
-        v->parts.push_back(a2);
-        v->parts.push_back(b1);
-        v->parts.push_back(b2);
-        /* local poses mirror the setPosRot calls above; every axis stays
-           parallel here, so all four localRot are the identity. */
-        link(a1, a2,
-             glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
-             glm::dvec3(0.0, 0.0,  defSml->height / 2.0),
-             glm::dvec3(0.0, 0.0, -dz), glm::dmat3(1.0));
-        link(a1, b1,
-             glm::dvec3(defBig->radius, 0.0, 0.0),
-             glm::dvec3(-defBig->radius, 0.0, 0.0),
-             glm::dvec3(2.0 * defBig->radius, 0.0, 0.0), glm::dmat3(1.0));
-        link(b1, b2,
-             glm::dvec3(0.0, 0.0, -defBig->height / 2.0),
-             glm::dvec3(0.0, 0.0,  defSml->height / 2.0),
-             glm::dvec3(2.0 * defBig->radius, 0.0, -dz), glm::dmat3(1.0));
+        v->attachMode(a2, 0, AttachMode::Down);   // A2 below A1
+        v->attachMode(b1, 0, AttachMode::Side);   // B1 beside A1, parallel
+        v->attachMode(b2, 2, AttachMode::Down);   // B2 below B1
     }
     else {
         v->name = (mode == "radial") ? "radial2"
@@ -195,16 +122,13 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
             v->attachRadial(b);
         }
         else if(mode == "parallel") {
-            /* B's side touches A's side at +rA; both axes stay on
-               the pad normal (parallel). B at +X by rA + rB so the
-               cylindrical surfaces meet; anchor world point (rA,0,0)
-               on A == (-rB,0,0) on B. */
+            /* B's side touches A's side at +rA; both axes stay on the pad
+               normal (parallel). attachSide puts B at +X by rA + rB so the
+               cylindrical surfaces meet. */
             v->attachSide(b);
         }
         else {
-            /* attachDown welds the child on the parent's -Z side:
-               anchor coincidence needs B at base - (hA/2+hB/2)
-               along the pad normal */
+            /* attachDown stacks B on A's -Z side, face to face. */
             v->attachDown(b);
         }
     }
