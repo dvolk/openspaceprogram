@@ -53,6 +53,12 @@ int vabPlace(Game &g);
 // attach axis by deltaDeg. No ghost, no selection: no-op.
 void vabRotate(Game &g, double deltaDeg);
 
+// Link-mode click: the first hovered part becomes the fuel link's SOURCE
+// (Game::vab_linkFromId), the second the DESTINATION -- appending the link
+// to Game::vab.fuelLinks and leaving link mode. Refuses a self-link or a
+// duplicate from->to; a click on empty space is ignored (the mode stays).
+void vabLinkClick(Game &g);
+
 // Delete/X: remove the selected part and its subtree. The root refuses
 // (toast); success clears the selection + hover.
 void vabDeleteSelected(Game &g);

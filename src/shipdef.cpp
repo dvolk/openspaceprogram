@@ -897,6 +897,18 @@ bool BuildShip::removePart(int idx) {
         if(keep[k].parent >= 0) { keep[k].parent = remap[(size_t)keep[k].parent]; }
     }
     parts.swap(keep);
+    /* purge fuel links whose endpoint died with the subtree */
+    std::vector<FuelLink> liveLinks;
+    for(size_t i = 0; i < fuelLinks.size(); i++) {
+        const FuelLink &fl = fuelLinks[i];
+        bool haveFrom = false, haveTo = false;
+        for(size_t k = 0; k < parts.size(); k++) {
+            if(parts[k].id == fl.from) { haveFrom = true; }
+            if(parts[k].id == fl.to)   { haveTo = true; }
+        }
+        if(haveFrom && haveTo) { liveLinks.push_back(fl); }
+    }
+    fuelLinks.swap(liveLinks);
     recomputePoses();
     return true;
 }

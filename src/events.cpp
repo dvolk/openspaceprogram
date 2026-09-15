@@ -342,8 +342,13 @@ static void vabKeyActions(Game &g, SDL_Scancode ksc, bool repeat) {
         vabDeleteSelected(g);
     }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
-        g.vab_armed.clear();   // disarm the palette part
-        g.vab_ghostRoll = 0.0;
+        if(g.vab_linkMode) {
+            g.vab_linkMode = false;   // the first Esc leaves link mode ...
+            g.vab_linkFromId.clear();
+        } else {
+            g.vab_armed.clear();      // ... the next disarms the palette part
+            g.vab_ghostRoll = 0.0;
+        }
     }
 }
 

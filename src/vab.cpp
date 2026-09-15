@@ -168,7 +168,8 @@ void vabUpdateHover(Game &g, int px, int py) {
     PickBodyHit hit;
     if(!pickVabPart(g, px, py, pi, hit)) { return; }
     g.vab_hover = pi;
-    if(g.vab_armed.empty()) { return; }   // inspecting only; no ghost
+    if(g.vab_linkMode) { return; }       // link picking: no placement ghost
+    if(g.vab_armed.empty()) { return; }  // inspecting only; no ghost
 
     const PartDef *childDef = g.ships.catalog().find(g.vab_armed);
     if(childDef == nullptr) { return; }
@@ -294,7 +295,68 @@ void vabRotate(Game &g, double deltaDeg) {
     g.vab.recomputePoses();
 }
 
+void vabLinkClick(Game &g) {
+    if(g.vab_hover < 0 || (size_t)g.vab_hover >= g.vab.parts.size()) {
+        return;   // empty space: stay in link mode, keep waiting
+    }
+    const BuildPart &bp = g.vab.parts[(size_t)g.vab_hover];
+    if(g.vab_linkFromId.empty()) {
+        g.vab_linkFromId = bp.id;
+        g.toast("Link source: %s -- now click the destination", bp.id.c_str());
+        return;
+    }
+    if(bp.id == g.vab_linkFromId) {
+        g.toast("Source and destination must differ");
+        return;
+    }
+    for(size_t i = 0; i < g.vab.fuelLinks.size(); i++) {
+        const BuildShip::FuelLink &fl = g.vab.fuelLinks[i];
+        if(fl.from == g.vab_linkFromId && fl.to == bp.id) {
+            g.toast("%s already feeds %s", fl.from.c_str(), fl.to.c_str());
+            g.vab_linkMode = false;
+            g.vab_linkFromId.clear();
+            return;
+        }
+    }
+    const PartDef *ld = g.ships.catalog().find("fuel_link");
+    if(ld == nullptr) {
+        g.toast("The catalog has no \"fuel_link\" part");
+        g.vab_linkMode = false;
+        g.vab_linkFromId.clear();
+        return;
+    }
+    BuildShip::FuelLink fl;
+    fl.def = ld;
+    int n = (int)g.vab.fuelLinks.size() + 1;
+    for(;;) {   // a unique "<part>_<n>" id among the existing links
+        fl.id = ld->name + "_" + std::to_string(n);
+        bool dup = false;
+        for(size_t i = 0; i < g.vab.fuelLinks.size(); i++) {
+            if(g.vab.fuelLinks[i].id == fl.id) { dup = true; break; }
+        }
+        if(!dup) { break; }
+        n++;
+    }
+    fl.from = g.vab_linkFromId;
+    fl.to = bp.id;
+    g.vab.fuelLinks.push_back(fl);
+    printf("[vab] fuel link %s: %s -> %s\n", fl.id.c_str(), fl.from.c_str(),
+           fl.to.c_str());
+    fflush(stdout);
+    g.toast("Fuel link: %s feeds %s", fl.from.c_str(), fl.to.c_str());
+    g.vab_linkMode = false;
+    g.vab_linkFromId.clear();
+}
+
 void vabDeleteSelected(Game &g) {
+    // a selected fuel link goes first (the two selections are exclusive)
+    if(g.vab_linkSel >= 0 && (size_t)g.vab_linkSel < g.vab.fuelLinks.size()) {
+        const std::string id = g.vab.fuelLinks[(size_t)g.vab_linkSel].id;
+        g.vab.fuelLinks.erase(g.vab.fuelLinks.begin() + g.vab_linkSel);
+        g.vab_linkSel = -1;
+        g.toast("Deleted fuel link %s", id.c_str());
+        return;
+    }
     const int sel = g.vab_selected;
     if(sel < 0 || (size_t)sel >= g.vab.parts.size()) { return; }
     if(sel == 0) { g.toast("Cannot delete the root part"); return; }

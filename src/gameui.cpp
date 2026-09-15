@@ -2186,6 +2186,9 @@ void drawMainMenu(Game &g) {
 void drawVabUI(Game &g) {
     if(!g.ui_visible) { return; }   // TAB hides the editor chrome
 
+    int hoveredLink = -1;   // the fuel-link list row under the mouse (the
+                            // overlay lines below read it for the highlight)
+
     /* Free-port gizmos: a green dot at every unconsumed stack node,
        projected to window pixels (vabProject). Screen-space like KSP's
        port markers, and drawn on the foreground layer (no depth test) so
@@ -2231,7 +2234,10 @@ void drawVabUI(Game &g) {
     for(size_t i = 0; i < g.vab.parts.size(); i++) {
         const BuildPart &bp = g.vab.parts[i];
         const bool sel = ((int)i == g.vab_selected);
-        if(ImGui::Selectable(bp.id.c_str(), sel)) { g.vab_selected = (int)i; }
+        if(ImGui::Selectable(bp.id.c_str(), sel)) {
+            g.vab_selected = (int)i;
+            g.vab_linkSel = -1;   // the two selections are exclusive
+        }
     }
     ImGui::Separator();
     if(g.vab_selected >= 0 && (size_t)g.vab_selected < g.vab.parts.size()) {
@@ -2260,8 +2266,41 @@ void drawVabUI(Game &g) {
             if(ImGui::Button("Delete (with subtree)")) { vabDeleteSelected(g); }
         }
     }
-    ImGui::TextDisabled("RMB-drag orbit, wheel zoom; LMB places the armed part");
-    ImGui::TextDisabled("Q/E roll; Del/X delete; Esc disarm; TAB hides the UI");
+    ImGui::Separator();
+    /* Fuel links: virtual from->to edges (no pose, no stage). Added with a
+       two-click 3D pick, drawn as overlay lines (end of this function),
+       managed from this list. */
+    if(ImGui::Button(g.vab_linkMode ? "Cancel fuel link" : "Add fuel link")) {
+        g.vab_linkMode = !g.vab_linkMode;
+        g.vab_linkFromId.clear();
+    }
+    if(g.vab_linkMode) {
+        if(g.vab_linkFromId.empty()) {
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f),
+                               "click the SOURCE part (fuel flows out of it)");
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f),
+                               "%s feeds ... click the DESTINATION",
+                               g.vab_linkFromId.c_str());
+        }
+    }
+    for(size_t i = 0; i < g.vab.fuelLinks.size(); i++) {
+        const BuildShip::FuelLink &fl = g.vab.fuelLinks[i];
+        char label[256];
+        snprintf(label, sizeof(label), "%s -> %s##fl%d", fl.from.c_str(),
+                 fl.to.c_str(), (int)i);
+        const bool sel = (g.vab_linkSel == (int)i);
+        if(ImGui::Selectable(label, sel)) {
+            g.vab_linkSel = sel ? -1 : (int)i;
+            g.vab_selected = -1;
+        }
+        if(ImGui::IsItemHovered()) { hoveredLink = (int)i; }
+    }
+    if(g.vab_linkSel >= 0 && (size_t)g.vab_linkSel < g.vab.fuelLinks.size()) {
+        if(ImGui::Button("Delete link")) { vabDeleteSelected(g); }
+    }
+    ImGui::TextDisabled("RMB-drag orbit, wheel zoom; LMB places/selects");
+    ImGui::TextDisabled("Q/E roll; Del/X delete; Esc cancel/disarm; TAB hides the UI");
     ImGui::End();
 
     // Palette: arm a catalog part, then hover the ship and LMB to place it
@@ -2315,4 +2354,48 @@ void drawVabUI(Game &g) {
         ImGui::TextDisabled("pick a part to arm");
     }
     ImGui::End();
+
+    /* Fuel-link overlay lines (drawn last, foreground layer: always on top,
+       no depth test). Source centre -> destination centre, with the flow
+       direction shown three ways: the source half dimmed, the destination
+       half bright, and an arrowhead at the midpoint. Highlighted while the
+       link is selected or hovered in the list. */
+    if(g.camera != nullptr && !g.vab.fuelLinks.empty()) {
+        ImDrawList *dl = ImGui::GetForegroundDrawList();
+        for(size_t i = 0; i < g.vab.fuelLinks.size(); i++) {
+            const BuildShip::FuelLink &fl = g.vab.fuelLinks[i];
+            const BuildPart *from = nullptr, *to = nullptr;
+            for(size_t k = 0; k < g.vab.parts.size(); k++) {
+                if(g.vab.parts[k].id == fl.from) { from = &g.vab.parts[k]; }
+                if(g.vab.parts[k].id == fl.to)   { to = &g.vab.parts[k]; }
+            }
+            if(from == nullptr || to == nullptr) { continue; }
+            double ax = 0, ay = 0, bx = 0, by = 0;
+            if(!vabProject(g, from->localPos, ax, ay)) { continue; }
+            if(!vabProject(g, to->localPos, bx, by)) { continue; }
+            const ImVec2 A((float)ax, (float)ay), B((float)bx, (float)by);
+            const ImVec2 mid((A.x + B.x) * 0.5f, (A.y + B.y) * 0.5f);
+            const float len = sqrtf((B.x - A.x) * (B.x - A.x)
+                                    + (B.y - A.y) * (B.y - A.y));
+            const bool hl = (g.vab_linkSel == (int)i) || (hoveredLink == (int)i);
+            const ImU32 dimC = hl ? IM_COL32(120, 200, 255, 130)
+                                  : IM_COL32(255, 190, 60, 80);
+            const ImU32 litC = hl ? IM_COL32(150, 215, 255, 255)
+                                  : IM_COL32(255, 200, 60, 220);
+            const float th = hl ? 3.0f : 2.0f;
+            dl->AddLine(A, mid, dimC, th);
+            dl->AddLine(mid, B, litC, th);
+            if(len > 24.0f) {
+                const ImVec2 d((B.x - A.x) / len, (B.y - A.y) / len);
+                const ImVec2 p(-d.y, d.x);
+                dl->AddTriangleFilled(
+                    ImVec2(mid.x + d.x * 10.0f, mid.y + d.y * 10.0f),
+                    ImVec2(mid.x - d.x * 2.0f + p.x * 6.0f,
+                           mid.y - d.y * 2.0f + p.y * 6.0f),
+                    ImVec2(mid.x - d.x * 2.0f - p.x * 6.0f,
+                           mid.y - d.y * 2.0f - p.y * 6.0f),
+                    litC);
+            }
+        }
+    }
 }

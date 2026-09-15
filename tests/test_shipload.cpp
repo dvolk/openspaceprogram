@@ -1012,6 +1012,10 @@ int main() {
         }
         CHECK(victim > 0);
         CHECK(hb.removePart(victim));
+        // the dead link is purged from the TREE immediately (not only at
+        // convert/save time), and the survivor stays
+        CHECK(hb.fuelLinks.size() == 1);
+        CHECK(hb.fuelLinks[0].id == "asparagus2");
         ShipDef trimmed = hb.toShipDef();
         size_t kept = 0;
         for(size_t i = 0; i < trimmed.parts.size(); i++) {

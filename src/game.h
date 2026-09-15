@@ -204,6 +204,12 @@ struct Game {
     // holding Alt bypasses BOTH snaps while pressed
     std::vector<SymClone> vab_ghostClones;   // the extra symmetric ghosts
                                              // (radialSymmetryClones output)
+    /* Fuel-link authoring (the VAB window's "Add fuel link"): link mode
+       arms a two-click pick -- the source part, then the destination --
+       which appends a BuildShip::FuelLink (fuel flows from -> to). */
+    bool vab_linkMode = false;
+    std::string vab_linkFromId;   // the clicked source ("" = not picked yet)
+    int vab_linkSel = -1;         // selected fuel-link index (-1 = none)
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------

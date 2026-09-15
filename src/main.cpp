@@ -792,7 +792,17 @@ int main(int argc, char **argv)
                 vabUpdateHover(game, mx, my);
             }
             const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
-            if(lmb && !game.vab_lmb_prev && !overUI) { vabPlace(game); }
+            if(lmb && !game.vab_lmb_prev && !overUI) {
+                if(game.vab_linkMode) {
+                    vabLinkClick(game);
+                } else if(!game.vab_armed.empty()) {
+                    vabPlace(game);
+                } else if(game.vab_hover >= 0) {
+                    // nothing armed: a plain click selects the hovered part
+                    game.vab_selected = game.vab_hover;
+                    game.vab_linkSel = -1;
+                }
+            }
             game.vab_lmb_prev = lmb;
             game.redraw = true;
         } else {
