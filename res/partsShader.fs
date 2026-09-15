@@ -8,6 +8,12 @@ out vec4 fragColor;
 uniform vec3 lightDirection;
 uniform float shadow;
 
+/* Authoring overrides (VAB): alpha < 1 draws a translucent ghost; tint
+   multiplies the lit color for selection highlighting. Defaults (1.0, white)
+   reproduce the plain opaque part. */
+uniform float alpha;
+uniform vec3 tint;
+
 uniform sampler2D mytexture;
 
 void main()
@@ -18,9 +24,9 @@ void main()
     const float min_light = 0.15;
     const float max_light = 1.0;
     float light = clamp(dot(-lightDirection, normal0), min_light, max_light);
-    // Opaque part: write alpha=1 explicitly. `tex_color * ...` would scale
-    // the alpha by the light (and shadow), leaking the scene's lighting
-    // into the framebuffer's alpha channel -- invisible in-game, but the
-    // F12 screenshot saved shaded parts as translucent.
-    fragColor = vec4(tex_color.rgb * light * shadow, 1.0);
+    // Alpha is written from the uniform, NOT from the lit color: scaling the
+    // framebuffer alpha by light/shadow leaks the scene's lighting into it
+    // (invisible in-game, but the F12 screenshot saved shaded parts as
+    // translucent). Opaque parts keep alpha = 1.
+    fragColor = vec4(tex_color.rgb * light * shadow * tint, alpha);
 }

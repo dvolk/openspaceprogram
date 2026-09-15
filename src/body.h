@@ -8,6 +8,29 @@
 #include "shader.h"
 #include "texture.h"
 
+/* Per-draw appearance overrides for the physics-free authoring path (VAB
+   ghost / selection highlight / palette preview). Defaults reproduce today's
+   plain opaque part. */
+struct DrawOpts {
+    float alpha = 1.0f;                 // 1 = opaque, <1 = translucent ghost
+    glm::vec3 tint = glm::vec3(1.0f);   // multiplies the lit color (selection)
+};
+
+/* Draw one part's render assets (mesh + shader + texture) at an explicit
+   model matrix -- NO rigid body required. This is the physics-free draw path
+   the VAB authoring preview, ghost and palette use; Body::DrawAt is a thin
+   wrapper around it for bodies that do carry one.
+   xform: extra world transform applied before the camera view (a body's
+   rigid-body coordinates live in whatever frame it was integrated in; when
+   that is not the frame the view is built in, the caller passes the
+   body-frame -> render-frame transform here).
+   When opts.alpha < 1 the draw enables alpha blending and disables depth
+   write for the translucent pass, restoring both afterwards. */
+void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *texture,
+                 const glm::dmat4 &modelMat, glm::vec3 &sunlightVec, float shadow,
+                 const glm::dmat4 &xform = glm::dmat4(1.0),
+                 const DrawOpts &opts = DrawOpts());
+
 struct Body {
     /* The render assets: SHARED (the get_mesh/get_texture registries own
        them, see mesh.h/texture.h), so ~Body must not free them -- every
@@ -95,29 +118,8 @@ struct Body {
     void DrawAt(const Camera* camera, glm::vec3 & sunlightVec, float shadow,
                 const glm::dmat4 &modelMat,
                 const glm::dmat4 &xform = glm::dmat4(1.0)) {
-        glm::dmat4 View = camera->GetView();
-        // The view is built in the render frame (origin = renderOrigin),
-        // so shift the geometry into that frame before the float32 cast.
-        const glm::dmat4 xf = glm::translate(-camera->GetRenderOrigin()) * xform;
-        // make sure View * Model happens with double precision
-        glm::dmat4 ModelView = View * xf * modelMat;
-        glm::mat4 ModelViewFloat = ModelView;
-        glm::mat4 Projection = camera->GetProjection();
-        glm::mat4 MVP = Projection * ModelViewFloat;
-        glm::mat4 ModelFloat = xf * modelMat;
-
-        shader->Bind();
-        shader->setUniform_mat4(0, MVP);
-        shader->setUniform_mat4(1, ModelFloat);
-        shader->setUniform_vec3(2, sunlightVec);
-        shader->setUniform_vec1(3, shadow);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture->id);
-
-        mesh->Draw();
-
-        glBindTexture(GL_TEXTURE_2D, 0);
+        DrawModelAt(camera, mesh, shader, texture, modelMat, sunlightVec,
+                    shadow, xform);
     }
 };
 

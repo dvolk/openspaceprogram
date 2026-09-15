@@ -135,7 +135,8 @@ int main(int argc, char **argv)
        shared, never deleted) */
     Shader *partsshader = get_shader("./res/partsShader",
                                      { "position", "uv", "normal" },
-                                     { "MVP", "Normal", "lightDirection", "shadow" });
+                                     { "MVP", "Normal", "lightDirection", "shadow",
+                                       "alpha", "tint" });
 
     Shader *terrainshader = get_shader("./res/terrainShader",
                                        { "position", "normal", "color" },

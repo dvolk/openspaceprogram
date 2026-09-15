@@ -409,6 +409,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
             g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
             g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
             g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+            // the plume is an unshadowed, untinted additive glow: pin the
+            // shadow/alpha/tint uniforms rather than inheriting the last
+            // part draw's values
+            g.partsshader->setUniform_vec1(3, 1.0f);
+            g.partsshader->setUniform_vec1(4, 1.0f);
+            g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
