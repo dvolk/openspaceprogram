@@ -1,0 +1,169 @@
+KSP PART ATTACHMENT MODEL — REFERENCE
+Compiled 2026-09-14. Primary sources: 351 stock part cfgs (KSP wiki raw),
+KAS re-impl of PartLoader.ParsePart, KJR source, real 1.0.4 + 1.12.5 .craft files.
+Local cached evidence: tmp/kspwiki/cfg/, tmp/crafts/, tmp/kas_probe/, tmp/kjr/, tmp/ro/
+Use this to compare the openspaceprogram attachment system against stock KSP.
+
+=====================================================================
+1. node_stack_* / node_attach SYNTAX
+=====================================================================
+Comma-separated, 6/7/9/10 fields (never 8):
+
+  node_<id> = px, py, pz, ox, oy, oz, [size], [method], [crossfeed], [rigid]
+
+  idx 0-2  position     part-local (model space) offset, metres. x rescaleFactor at load
+  idx 3-5  orientation  "up"/direction vector. NOT required normalized.
+                        node rotation = Quaternion.LookRotation(orientation)
+  idx 6    size         int index, DEFAULTS TO 1. Stock uses 0,1,2,3
+  idx 7    method       int -> AttachNodeMethod, default FIXED_JOINT
+  idx 8    crossfeed    int, >0 = resource cross-feed allowed through node
+  idx 9    rigid        int, >0 = rigid joint
+
+  Node id = cfg key minus "node_stack_" prefix (node_stack_bottom01 -> id "bottom01").
+  node_attach -> the part's single surface-attach node (Part.srfAttachNode).
+
+AttachNodeMethod enum (declaration order): FIXED_JOINT, HINGE_JOINT,
+LOCKED_JOINT, MERGED_PHYSICS, NO_PHYSICS, NONE.
+Constructor: AttachNode(string id, Transform transform, int size,
+                       AttachNodeMethod attachMethod, bool crossfeed, bool rigid)
+
+Size ladder = bulkheadProfiles: size0=0.625m, size1=1.25m, size2=2.5m, size3=3.75m.
+Not a strict gate (dockingPortJr has size-1 node but bulkheadProfiles=size0,srf).
+
+Stock examples:
+  node_stack_top    = 0.0, 0.981725, 0.0, 0.0, 1.0, 0.0          // size defaults 1
+  node_stack_bottom = 0.0, -0.981725, 0.0, 0.0, -1.0, 0.0
+  node_attach       = 0.625, 0.0, 0.0, 1.0, 0.0, 0.0, 1           // fuelTankT400.cfg
+  node_stack_top    = 0.0, 0.12236, 0.0, 0.0, 1.0, 0.0, 1, 0, 0, 1 // groundAnchor size1 method0 xfeed0 rigid1
+  node_stack_top    = 0.0, 0.4341492, 0.0, 0.0, 1.0, 0.0, 3, 1, 1  // Size3Decoupler size3 method1 xfeed1
+
+Other node-adjacent fields: NoCrossFeedNodeKey, stackSymmetry, mirrorRefAxis,
+mirrorSymmetry, CoMOffset/CoPOffset/CoLOffset, breakingForce, breakingTorque,
+fuelCrossFeed.
+
+=====================================================================
+2. STACK vs SURFACE ATTACH; attachRules
+=====================================================================
+attachRules = stack, srfAttach, allowStack, allowSrfAttach, allowCollision  (5 flags, 0/1)
+  stack           = this part may attach its own stack nodes to another part's nodes
+  srfAttach       = this part may be surface-attached (requires a node_attach)
+  allowStack      = other parts may stack onto this part
+  allowSrfAttach  = other parts may surface-attach to this part
+  allowCollision  = editor tolerates mesh overlap (struts, wings)
+Wheels/gears use 8-value form: 1,1,1,1,1,0,0,0
+
+Consistency evidence:
+  Decoupler_1.cfg : no node_attach, attachRules = 1,0,1,1,0
+  deltaWing.cfg   : only node_attach, attachRules = 0,1,0,1,1
+  strutConnector  : 0,1,0,0,1
+
+Runtime: AttachNode.NodeType = Stack | Surface | Dock.
+  Part.attachMode / Part.attachMethod record how part attaches to parent.
+  Craft: attm = 0 (stack) / 1 (surface).
+
+Surface attach uses the CHILD's node_attach only: child node position placed at
+raycast hit on parent collider, child rotated so node direction aligns to surface.
+(parent needs allowSrfAttach, child needs srfAttach). Node direction conventionally
+points from part body toward parent (radial decoupler node_attach = 0.01,0,0, 1,0,0).
+
+=====================================================================
+3. VESSEL HIERARCHY IN .craft FILE
+=====================================================================
+NO "parent = N" field. Tree encoded by cross-references between part keys
+(<partName>_<persistentId>). First PART block = root.
+
+  ship / version / type(VAB|SPH) / size / persistentId / rot / vesselType
+  PART {
+    part       = sputnik1_4294137778
+    partName   = Part
+    persistentId = 3946789974
+    pos        = world pos
+    attPos     = 0,0,0
+    attPos0    = offset from parent (root: = pos)
+    rot        = world rot
+    attRot     = 0,0,0,1
+    attRot0    = rotation relative to parent
+    mir        = 1,1,1            // component scale/flip
+    symMethod  = Radial|Mirror
+    autostrutMode = Off|Grandparent|Heaviest|Root
+    rigidAttachment = False
+    istg resPri dstg sidx sqor sepI   // staging
+    attm       = 0|1
+    sameVesselCollision = False
+    modCost modMass modSize
+    link = <childPartKey>          // one per attached part (parent side)
+    attN = <nodeId>,<partKey>[_<pos>_<orient>_<pos>_<orient>]   // part occupying node
+    srfN = srfAttach,<parentPartKey>,,<pos>,<orient>,<pos>      // surface attach
+    sym  = <counterpartPartKey>    // one per symmetry copy
+  }
+
+attN is BIDIRECTIONAL (both endpoints list each other). 1.11+ payload = node
+position+orientation in owning part's local frame, written twice.
+Staging: istg=inverse/activation stage (root=-1), dstg=decoupled-in stage,
+sepI=separation index (shared -> separate together), sqor=stage seq order,
+sidx=index within stage, resPri=resource priority.
+
+=====================================================================
+4. ORIENTATION, DIRECTION VECTORS, SYMMETRY
+=====================================================================
+Stack connection mates two nodes: child rotated so its node direction is
+ANTI-PARALLEL to parent's node direction; node positions coincide. Direction
+fixes rotation about 2 axes; ROLL about node axis unconstrained by vectors alone
+-> resolved via secondaryOrientation / Quaternion.LookRotation + editor roll-snap.
+
+Non-axial node directions are normal (4-way/6-way hubs): stationHub.cfg
+node_stack_left/right/front/back = +/-1,0,0 / 0,0,+/-1.
+
+Symmetry: symMethod = Radial (rotate about vessel longitudinal axis through root)
+| Mirror (SPH reflection). cfg fields mirrorSymmetry(int), mirrorRefAxis=0,0,1
+control flip when mirrored. Craft stores mir=1,1,1 + sym=<counterpartKey> lines.
+
+CoMOffset/CoPOffset/CoLOffset shift centre of mass/pressure/lift WITHOUT moving
+attach node (deltaWing: -1.2,0.4,0).
+
+=====================================================================
+5. DECOUPLERS, DOCKING, JOINTS, STRUTS
+=====================================================================
+Decouplers: MODULE { name=ModuleDecouple; ejectionForce=<N>;
+explosiveNodeID=<nodeId>; isOmniDecoupler=false }. explosiveNodeID names blown node
+(top for stack, srf for ModuleAnchoredDecoupler radial, which also has anchorName).
+Stage helpers: stageOffset=1, childStageOffset=1. Decoupling splits vessel: everything
+below explosive node -> new vessel; sepI/dstg record which stage each part separates at.
+
+Docking: ModuleDockingNode (decoupler subclass), referenceAttachNode=top,
+nodeType=size0|size1|size2 (ports only mate identical nodeType), stagingEnabled=False,
+canRotate/rotationTransformName/maxMotorOutput/rotationAxis. Connection -> Dock node.
+ModuleGrappleNode: nodeTransformName, nodeType, captureRange, captureMinFwdDot, captureMaxRvel.
+
+Joints: ONE Unity FixedJoint per attachment (Part.attachJoint / PartJoint), created
+only between parts with their own rigidbody. PHYSICS TREE IS A COLLAPSED VERSION OF
+PART TREE: massless parts (PhysicsSignificance=1, e.g. strutConnector,
+radialFlatSolarPanel) have no rigidbody; mass/inertia folded into nearest physical
+ancestor. breakingForce/breakingTorque = Unity FAILURE THRESHOLDS, not stiffness;
+joint is soft iterative constraint scaled from part size/mass -> long stacks "noodle".
+AttachNodeMethod selects joint kind; KJR forces LOCKED_JOINT for rigidity.
+
+Struts/fuel lines: module=CompoundPart, PhysicsSignificance=1, maxLength=10,
+MODULE{CModuleLinkedMesh} + MODULE{CModuleStrut; linearStrength=150;
+angularStrength=150; disconnectAction=true}. Strut is a surface-attached child of
+one part (attm=1, srfN); target part chosen at build time, stored in module runtime
+data. Strut adds an EXTRA joint between two parts already in same vessel; does NOT
+change the part tree.
+
+=====================================================================
+SOURCES
+=====================================================================
+Stock cfgs (wiki raw): fuelTankT400, Decoupler 1, decouplerRadialTT-38K,
+dockingPortJr, GrapplingDevice, delta(wing), groundAnchor, Size3Decoupler,
+strutConnector, stationHub.
+Docs: wiki/CFG_File_Documentation, wiki/API:AttachNode, wiki/API:Part,
+wiki/Massless_part, wiki/Craft_file.
+Code: github KAS AttachNodesUtilsImpl.cs, KSP-RO Kerbal-Joint-Reinforcement-Continued,
+RealismOverhaul craft files (1.3.1 + 1.12.5), kos_doc MyFirstRocket.craft (1.0.4),
+ksp-kos dockingport docs, Unity FixedJoint manual, anapid XML AttachNode.
+
+CAVEATS: (a) numeric AttachNodeMethod values inferred from enum declaration order,
+not decompiled source. (b) istg/dstg/sqor/sidx/sepI semantics = community-standard
+reading; values observed but no fetchable doc. (c) forum.kerbalspaceprogram.com and
+kerbalspaceprogram.com/api return 403/404; modern official API docs unreachable,
+wiki API:* pages are 1.0-era snapshot lacking size/rigid/crossfeed.
