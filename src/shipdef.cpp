@@ -645,6 +645,65 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
     return attachNodes(parentPos, parentRot, contact, childNode, rollDeg, offset);
 }
 
+double snapAngleDeg(double deg) {
+    return std::round(deg / kSnapAngDeg) * kSnapAngDeg;
+}
+
+double gridStepDeg(double cur, double delta) {
+    if(delta > 0.0) {
+        return std::floor(cur / kSnapAngDeg + 1e-9) * kSnapAngDeg + kSnapAngDeg;
+    }
+    return std::ceil(cur / kSnapAngDeg - 1e-9) * kSnapAngDeg - kSnapAngDeg;
+}
+
+/* degrees wrapped to [-180, 180) */
+static double wrap180Deg(double deg) {
+    double d = std::fmod(deg + 180.0, 360.0);
+    if(d < 0.0) { d += 360.0; }
+    return d - 180.0;
+}
+
+void snapSurfaceContact(glm::dvec3 &point, glm::dvec3 &normal,
+                        bool snapLen, bool snapAng)
+{
+    const glm::dvec3 Z(0.0, 0.0, 1.0);
+    if(snapLen) {
+        point.z = std::round(point.z / kSnapLenM) * kSnapLenM;
+    }
+    if(!snapAng) { return; }
+    const double r = std::hypot(point.x, point.y);
+    const bool havePt = (r > 1e-4);
+    double pa = 0.0, pa2 = 0.0;
+    if(havePt) {
+        pa = std::atan2(point.y, point.x);
+        pa2 = glm::radians(snapAngleDeg(glm::degrees(pa)));
+        point = glm::mat3_cast(glm::angleAxis(pa2 - pa, Z)) * point;
+    }
+    /* The normal's azimuth: the pick hull is faceted, so a flat facet's
+       normal stays constant while the hit POSITION sweeps several degrees
+       across it -- rotating the normal by the point's snap delta (or
+       snapping its raw facet angle) would cant the part against the
+       snapped position and make it counter-rotate between grid points.
+       Parts are surfaces of revolution about their own axis, where the
+       true normal azimuth equals the contact azimuth: when the two raw
+       azimuths agree (within a facet's span), the normal takes the
+       point's SNAPPED azimuth, keeping its polar tilt. Only a genuinely
+       non-revolution contact (azimuths divergent, e.g. a wing plate)
+       snaps the normal's own azimuth. */
+    const double rn = std::hypot(normal.x, normal.y);
+    if(rn > 1e-6) {
+        const double an = std::atan2(normal.y, normal.x);
+        double target;
+        if(havePt
+           && std::fabs(wrap180Deg(glm::degrees(an) - glm::degrees(pa))) < 20.0) {
+            target = pa2;
+        } else {
+            target = glm::radians(snapAngleDeg(glm::degrees(an)));
+        }
+        normal = glm::mat3_cast(glm::angleAxis(target - an, Z)) * normal;
+    }
+}
+
 std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
                                            const glm::dmat3 &parentRot,
                                            const Node &childNode,

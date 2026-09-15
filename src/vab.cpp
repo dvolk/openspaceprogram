@@ -21,11 +21,6 @@
 
 namespace {
 
-/* The placement snap grids: 10 cm along the parent's axis / 10 deg around
-   it (and for the part roll), per the editor's alignment convention. */
-const double kSnapLen = 0.1;    // m
-const double kSnapAng = 10.0;   // deg
-
 struct VabAsset {
     btConvexHullShape *hull = nullptr;
     btCollisionObject *obj = nullptr;
@@ -71,34 +66,6 @@ const Node *bestMatingChildNode(const PartDef &child, const glm::dvec3 &parentDi
 bool altHeld() {
     const bool *ks = SDL_GetKeyboardState(nullptr);   // SDL3: bool per scancode
     return ks[SDL_SCANCODE_LALT] || ks[SDL_SCANCODE_RALT];
-}
-
-double snapAngleDeg(double deg) {
-    return std::round(deg / kSnapAng) * kSnapAng;
-}
-
-/* The next 10-deg grid point in the direction of `delta` -- grid-aligned
-   even when the current value is off-grid (fine-tuned with snap off). */
-double gridStepDeg(double cur, double delta) {
-    if(delta > 0.0) { return std::floor(cur / kSnapAng + 1e-9) * kSnapAng + kSnapAng; }
-    return std::ceil(cur / kSnapAng - 1e-9) * kSnapAng - kSnapAng;
-}
-
-/* Snap a surface contact in the parent's local frame: the clock angle about
-   the parent's long Z to the 10 deg grid and the height to the 10 cm grid
-   (the radius is untouched, so the contact stays on a cylindrical side);
-   the normal rides the clock rotation to stay perpendicular. Near the axis
-   (r ~ 0, a cap hit) only the height snaps. */
-void snapSurfaceContact(glm::dvec3 &point, glm::dvec3 &normal) {
-    const double r = std::hypot(point.x, point.y);
-    point.z = std::round(point.z / kSnapLen) * kSnapLen;
-    if(r < 1e-4) { return; }
-    const double a = std::atan2(point.y, point.x);
-    const double a2 = glm::radians(snapAngleDeg(glm::degrees(a)));
-    const glm::dmat3 Rz = glm::mat3_cast(
-        glm::angleAxis(a2 - a, glm::dvec3(0.0, 0.0, 1.0)));
-    point = Rz * point;
-    normal = Rz * normal;
 }
 
 /* A placement id "<base>_<n>" not yet used in the tree, scanning n upward
@@ -209,14 +176,16 @@ void vabUpdateHover(Game &g, int px, int py) {
     if(pp.def == nullptr) { return; }
 
     const int node = pickVabNode(g, px, py, pi, 24.0);
-    const bool snap = g.vab_snap != altHeld();   // Alt bypasses while held
+    const bool alt = altHeld();                      // Alt bypasses while held
+    const bool snapL = g.vab_snapLen != alt;
+    const bool snapA = g.vab_snapAng != alt;
     if(node >= 0) {
         // stack attach onto the hovered port (symmetry does not apply: the
         // synthesized axial ports are singletons, clones would coincide)
         const Node &pn = pp.def->nodes[(size_t)node];
         const Node *cn = bestMatingChildNode(*childDef, pn.dir);
         if(cn == nullptr) { return; }
-        const double roll = snap ? snapAngleDeg(g.vab_ghostRoll) : g.vab_ghostRoll;
+        const double roll = snapA ? snapAngleDeg(g.vab_ghostRoll) : g.vab_ghostRoll;
         g.vab_ghostRollUsed = roll;
         const AttachPose ap = attachNodes(pp.localPos, pp.localRot, pn, *cn,
                                           roll, 0.0);
@@ -239,10 +208,8 @@ void vabUpdateHover(Game &g, int px, int py) {
     glm::dvec3 localPoint = invR * (pS - pp.localPos);
     glm::dvec3 localNormal = glm::normalize(invR * hit.normal);
     double roll = g.vab_ghostRoll;
-    if(snap) {
-        snapSurfaceContact(localPoint, localNormal);
-        roll = snapAngleDeg(roll);
-    }
+    if(snapA) { roll = snapAngleDeg(roll); }
+    snapSurfaceContact(localPoint, localNormal, snapL, snapA);
     g.vab_ghostRollUsed = roll;
     const AttachPose ap = attachSurface(pp.localPos, pp.localRot, localPoint,
                                         localNormal, *cs, roll, 0.0);
@@ -306,10 +273,11 @@ int vabPlace(Game &g) {
 }
 
 /* Q/E rotate: the ghost's pending roll, or the selected part's attach roll
-   (stack angle / surface roll) with its subtree re-solved. With snap on the
-   steps land exactly on the 10 deg grid; off, they are free 5 deg steps. */
+   (stack angle / surface roll) with its subtree re-solved. With the angle
+   snap on the steps land exactly on the 10 deg grid; off, they are free
+   5 deg steps. */
 void vabRotate(Game &g, double deltaDeg) {
-    const bool snap = g.vab_snap != altHeld();
+    const bool snap = g.vab_snapAng != altHeld();
     if(g.vab_ghostValid) {
         g.vab_ghostRoll = snap ? gridStepDeg(g.vab_ghostRoll, deltaDeg)
                                : g.vab_ghostRoll + deltaDeg;

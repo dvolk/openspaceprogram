@@ -2295,7 +2295,8 @@ void drawVabUI(Game &g) {
             g.vab_symmetry = n;
         }
     }
-    ImGui::Checkbox("Snap 10cm / 10deg (Alt bypasses)", &g.vab_snap);
+    ImGui::Checkbox("Snap distance 10cm (Alt bypasses)", &g.vab_snapLen);
+    ImGui::Checkbox("Snap angle 10deg (Alt bypasses)", &g.vab_snapAng);
     if(!g.vab_armed.empty()) {
         ImGui::Text("armed: %s", g.vab_armed.c_str());
         if(g.vab_ghostValid) {

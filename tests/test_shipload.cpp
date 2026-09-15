@@ -909,6 +909,57 @@ int main() {
             }
         }
     }
+    // --- placement snapping (snapSurfaceContact / gridStepDeg) ---------------
+    {
+        const double D2R = std::acos(-1.0) / 180.0;
+        // a revolution-surface side contact with a FACET-quantized normal
+        // (the normal azimuth leads the hit position by a few degrees, as on
+        // the pick hull's flat facets): both land on the POINT's snapped
+        // azimuth, the radius and the normal's tilt survive, the height snaps
+        glm::dvec3 p(1.5 * std::cos(7.0 * D2R), 1.5 * std::sin(7.0 * D2R), 0.37);
+        glm::dvec3 n = glm::normalize(glm::dvec3(std::cos(11.0 * D2R),
+                                                 std::sin(11.0 * D2R), 0.35));
+        const double nz = n.z;
+        snapSurfaceContact(p, n, true, true);
+        CHECK(near(glm::degrees(std::atan2(p.y, p.x)), 10.0));
+        CHECK(near(std::hypot(p.x, p.y), 1.5));
+        CHECK(near(p.z, 0.4));
+        CHECK(near(glm::degrees(std::atan2(n.y, n.x)), 10.0));
+        CHECK(near(n.z, nz));
+        // a non-revolution contact (normal azimuth diverges from the
+        // point's): each snaps its OWN azimuth
+        p = glm::dvec3(1.2 * std::cos(7.0 * D2R), 1.2 * std::sin(7.0 * D2R), 0.0);
+        n = glm::dvec3(std::cos(103.0 * D2R), std::sin(103.0 * D2R), 0.0);
+        snapSurfaceContact(p, n, true, true);
+        CHECK(near(glm::degrees(std::atan2(p.y, p.x)), 10.0));
+        CHECK(near(glm::degrees(std::atan2(n.y, n.x)), 100.0));
+        // a cap hit (on the axis): only the height snaps
+        p = glm::dvec3(1e-6, 2e-6, 0.62);
+        n = glm::dvec3(0, 0, 1);
+        snapSurfaceContact(p, n, true, true);
+        CHECK(near(p.z, 0.6));
+        CHECK(near(glm::degrees(std::atan2(p.y, p.x)),
+                   glm::degrees(std::atan2(2e-6, 1e-6))));
+        CHECK(near(n.z, 1.0));
+        // the toggles are independent
+        p = glm::dvec3(1.5 * std::cos(7.0 * D2R), 1.5 * std::sin(7.0 * D2R), 0.37);
+        n = glm::dvec3(std::cos(7.0 * D2R), std::sin(7.0 * D2R), 0.0);
+        snapSurfaceContact(p, n, true, false);   // distance only
+        CHECK(near(p.z, 0.4));
+        CHECK(near(glm::degrees(std::atan2(p.y, p.x)), 7.0));
+        snapSurfaceContact(p, n, false, true);   // angle only
+        CHECK(near(p.z, 0.4));                   // height untouched this time
+        CHECK(near(glm::degrees(std::atan2(p.y, p.x)), 10.0));
+        // the grids
+        CHECK(near(snapAngleDeg(23.0), 20.0));
+        CHECK(near(snapAngleDeg(-23.0), -20.0));
+        CHECK(near(gridStepDeg(17.0, +1.0), 20.0));
+        CHECK(near(gridStepDeg(17.0, -1.0), 10.0));
+        CHECK(near(gridStepDeg(20.0, +1.0), 30.0));   // on-grid steps onward
+        CHECK(near(gridStepDeg(20.0, -1.0), 10.0));
+        CHECK(near(gridStepDeg(-3.0, +1.0), 0.0));
+        CHECK(near(gridStepDeg(-3.0, -1.0), -10.0));
+    }
     // --- save_ship_def round trip -------------------------------------------
     {
         const char *rt = "/tmp/test_shipload_rt.json";

@@ -197,8 +197,11 @@ struct Game {
                                      // current ghost solves + placement stores
     int vab_symmetry = 1;   // radial copies for SURFACE placing (1 = single,
                             // up to 8): clones ring the hovered parent's axis
-    bool vab_snap = true;   // snap surface contacts (10 cm / 10 deg) + roll;
-                            // holding Alt bypasses while pressed
+    bool vab_snapLen = true;   // distance snap: the contact's height along
+                               // the parent axis (10 cm grid)
+    bool vab_snapAng = true;   // angle snap: the contact's clock angle + the
+                               // part roll (10 deg grid)
+    // holding Alt bypasses BOTH snaps while pressed
     std::vector<SymClone> vab_ghostClones;   // the extra symmetric ghosts
                                              // (radialSymmetryClones output)
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place

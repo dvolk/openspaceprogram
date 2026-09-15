@@ -641,6 +641,32 @@ struct SurfaceEdge {
     double rollDeg = 0.0;
 };
 
+/* The editor's placement snap grids (the VAB's Snap toggles): 10 cm along
+   the parent's axis, 10 deg around it and for the part roll. */
+static const double kSnapLenM = 0.1;     // m, contact height grid
+static const double kSnapAngDeg = 10.0;  // deg, clock angle + roll grid
+
+double snapAngleDeg(double deg);   // round onto the kSnapAngDeg grid
+
+/* The next kSnapAngDeg grid point in the direction of `delta` -- aligned
+   even when `cur` is off-grid (fine-tuned with snap off), so snapped
+   stepping never strands a value between grid points. */
+double gridStepDeg(double cur, double delta);
+
+/* Snap a surface contact in the PARENT's local frame (the VAB's snap
+   toggles; either may be off). Distance: the height along the parent's
+   long Z to the 10 cm grid (the radius is untouched, so the contact
+   stays on a cylindrical side). Angle: the clock angle about Z to the
+   10 deg grid -- for the contact point AND the normal, whose azimuths
+   are unified on parts (surfaces of revolution, where the true normal
+   azimuth equals the contact azimuth) so a hull facet's quantized
+   normal cannot cant the part against the snapped position; a normal
+   whose azimuth genuinely diverges from the point's (a non-revolution
+   surface, e.g. a wing plate) snaps its own azimuth instead, keeping
+   its polar tilt. Near the axis (a cap hit) only the height snaps. */
+void snapSurfaceContact(glm::dvec3 &point, glm::dvec3 &normal,
+                        bool snapLen, bool snapAng);
+
 /* One radial-symmetry copy: the sibling's edge data (what the tree stores)
    + its solved pose (what the ghost draws). */
 struct SymClone {
