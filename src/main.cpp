@@ -442,22 +442,13 @@ int main(int argc, char **argv)
 
     /* --vab: open the editor scene with a ship def loaded as a physics-free
        build tree. The flight ships still exist but the Vab scene skips tick
-       (frozen) and drawVab draws only the build tree, so they are invisible. */
+       (frozen) and drawVab draws only the build tree, so they are invisible.
+       vabOpen parks the (boot) camera and aims the orbit at the build. */
     if(!args.vab.empty()) {
         ShipDef vdef = load_ship_def(args.vab.c_str(), ships.catalog());
         game.vab = BuildShip::fromShipDef(vdef);
-        if(!game.vab.parts.empty()) {
-            glm::dvec3 lo(1e30), hi(-1e30);
-            for(const BuildPart &bp : game.vab.parts) {
-                lo = glm::min(lo, bp.localPos);
-                hi = glm::max(hi, bp.localPos);
-            }
-            game.vab_center = (lo + hi) * 0.5;
-            game.scene = Scene::Vab;
-            game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
-            cam->toOrbit(game.vab_center);
-            cam->distance = glm::length(hi - lo) * 1.2 + 10.0;
-        }
+        game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
+        vabOpen(game);
     }
 
     if(args.use_free_cam) {

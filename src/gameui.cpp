@@ -2154,6 +2154,10 @@ void drawMainMenu(Game &g) {
         if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
             ui::SetOpen("Main Menu", false);
         }
+        if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
+            ui::SetOpen("Main Menu", false);
+            vabOpen(g);   // the sim freezes in the editor (tick is skipped)
+        }
         if(ImGui::Button("Toggle windows", ImVec2(bw, 0.0f))) {
             g.toggle_windows();
         }
@@ -2217,6 +2221,7 @@ void drawVabUI(Game &g) {
                 (int)g.vab.parts.size());
     if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
     ImGui::SameLine();
+    if(ImGui::Button("Back to game##vab")) { vabClose(g); }
     {
         // the save path: seeded once from the build's name, editable
         static char savePath[512] = {0};
@@ -2394,7 +2399,11 @@ void drawVabUI(Game &g) {
                 }
             }
         }
-        ImGui::TextDisabled("hover a port/surface, LMB to place");
+        if(g.vab.parts.empty()) {
+            ImGui::TextDisabled("LMB: anchor the ROOT at the origin");
+        } else {
+            ImGui::TextDisabled("hover a port/surface, LMB to place");
+        }
     } else {
         ImGui::TextDisabled("pick a part to arm");
     }

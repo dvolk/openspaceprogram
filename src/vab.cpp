@@ -158,6 +158,7 @@ void vabClearHover(Game &g) {
     g.vab_hoverNode = -1;
     g.vab_hoverParent = -1;
     g.vab_ghostValid = false;
+    g.vab_ghostRoot = false;
     g.vab_ghostAssembly = -1;
     g.vab_ghostClones.clear();
 }
@@ -183,12 +184,27 @@ void vabUpdateHover(Game &g, int px, int py) {
 
     int pi = -1;
     PickBodyHit hit;
-    if(!pickVabPart(g, px, py, pi, hit)) { return; }
-    g.vab_hover = pi;
-    if(g.vab_linkMode) { return; }       // link picking: no placement ghost
+    const bool hitPart = pickVabPart(g, px, py, pi, hit);
+    if(hitPart) { g.vab_hover = pi; }
+    if(g.vab_linkMode) { return; }   // link picking: no placement ghost
     const BuildShip *asmShip = nullptr;
     const PartDef *childDef = armedChildDef(g, &asmShip);
     if(childDef == nullptr) { return; }  // inspecting only; no ghost
+    if(g.vab.parts.empty()) {
+        /* An empty build: the armed part/assembly becomes the ROOT,
+           anchored at the S origin (the frame's anchor -- KSP's "first
+           part" moment). The ghost sits at the origin wherever the
+           cursor is; a plain click commits it. */
+        g.vab_ghostRoot = true;
+        g.vab_ghostAssembly = asmShip ? g.vab_armedAsm : -1;
+        g.vab_ghostSurface = false;
+        g.vab_ghostPos = glm::dvec3(0.0);
+        g.vab_ghostRot = glm::dmat3(1.0);
+        g.vab_ghostRollUsed = 0.0;
+        g.vab_ghostValid = true;
+        return;
+    }
+    if(!hitPart) { return; }
     const BuildPart &pp = g.vab.parts[(size_t)pi];
     if(pp.def == nullptr) { return; }
 
@@ -248,7 +264,9 @@ void vabUpdateHover(Game &g, int px, int py) {
 }
 
 int vabPlace(Game &g) {
-    if(!g.vab_ghostValid || g.vab_hoverParent < 0) { return -1; }
+    if(!g.vab_ghostValid) { return -1; }
+    const int parent = g.vab_ghostRoot ? -1 : g.vab_hoverParent;
+    if(parent < 0) { return -1; }
 
     /* An armed SUBASSEMBLY: graft a copy under the resolved root edge (one
        graft per symmetry clone); the list entry is NOT consumed -- placing
@@ -260,7 +278,7 @@ int vabPlace(Game &g) {
         BuildPart root;
         root.def = sub.parts[0].def;
         root.id = sub.parts[0].id;   // graftTree uniquifies on collision
-        root.parent = g.vab_hoverParent;
+        root.parent = parent;
         if(g.vab_ghostSurface) {
             root.attach = AttachMode::Surface;
             root.contactPoint = g.vab_ghostPoint;
@@ -296,7 +314,7 @@ int vabPlace(Game &g) {
     BuildPart np;
     np.def = childDef;
     np.id = nextBuildId(g.vab, g.vab_armed, idn);
-    np.parent = g.vab_hoverParent;
+    np.parent = parent;
     if(g.vab_ghostSurface) {
         np.attach = AttachMode::Surface;
         np.contactPoint = g.vab_ghostPoint;
@@ -478,4 +496,76 @@ void vabLaunch(Game &g) {
         g.toast("%d subassemblies stayed in the VAB",
                 (int)g.vab_subassemblies.size());
     }
+}
+
+void vabOpen(Game &g) {
+    // park the flight camera (in EITHER mode -- free does not re-aim
+    // itself) for the duration of the VAB session
+    if(g.camera != nullptr && !g.vab_camSaved) {
+        g.vab_camSaved = true;
+        g.vab_camMode = g.camera->mode;
+        g.vab_camPos = g.camera->pos;
+        g.vab_camFwd = g.camera->forward;
+        g.vab_camUp = g.camera->up;
+        g.vab_camDistance = g.camera->distance;
+        g.vab_camYaw = g.camera->orbitYaw;
+        g.vab_camPitch = g.camera->orbitPitch;
+        g.vab_camFocusBody = g.focusBody;
+    }
+    // aim the orbit camera at the build tree (empty build -> the origin)
+    g.vab_center = glm::dvec3(0.0);
+    double dist = 30.0;
+    if(!g.vab.parts.empty()) {
+        glm::dvec3 lo(1e30), hi(-1e30);
+        for(size_t i = 0; i < g.vab.parts.size(); i++) {
+            lo = glm::min(lo, g.vab.parts[i].localPos);
+            hi = glm::max(hi, g.vab.parts[i].localPos);
+        }
+        g.vab_center = (lo + hi) * 0.5;
+        dist = glm::length(hi - lo) * 1.2 + 10.0;
+    }
+    vabClearHover(g);
+    g.vab_selected = -1;
+    g.vab_linkMode = false;
+    g.vab_linkFromId.clear();
+    g.scene = Scene::Vab;
+    if(g.camera != nullptr) {
+        g.camera->toOrbit(g.vab_center);   // also from Free mode
+        g.camera->distance = dist;
+    }
+    printf("[vab] entered the editor (sim paused)\n");
+    fflush(stdout);
+    g.toast("VAB -- the simulation is paused");
+}
+
+void vabClose(Game &g) {
+    g.scene = Scene::Flight;
+    vabClearHover(g);
+    g.vab_linkMode = false;
+    g.vab_linkFromId.clear();
+    if(g.camera != nullptr) {
+        if(g.vab_camSaved) {
+            // hand the parked flight camera back exactly as it was
+            g.vab_camSaved = false;
+            g.focusBody = g.vab_camFocusBody;
+            if(g.vab_camMode == CAM_FREE) {
+                g.camera->setFreePose(g.vab_camPos, g.vab_camFwd, g.vab_camUp);
+            } else {
+                g.camera->mode = CAM_ORBIT;
+                g.camera->orbitYaw = g.vab_camYaw;
+                g.camera->orbitPitch = g.vab_camPitch;
+                g.camera->distance = g.vab_camDistance;
+                g.camera->Follow(g.focusWorldPos(g.focusBody));
+                g.camera->ComputeView();   // sane pos/forward/up immediately
+            }
+        } else if(g.ship != nullptr && g.camera->mode == CAM_ORBIT) {
+            // no parked pose (a --vab boot): re-aim like select_ship does
+            g.focusBody = 0;
+            g.camera->Follow(g.ship->get_center_of_mass());
+            g.camera->distance = g.ship->isEva() ? 10.0 : 50.0;
+        }
+    }
+    printf("[vab] back to flight (sim resumed)\n");
+    fflush(stdout);
+    g.toast("Back to flight -- the simulation resumes");
 }

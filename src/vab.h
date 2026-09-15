@@ -75,3 +75,10 @@ void vabSave(Game &g, const char *path);
 // (with startup-style crew aboard), take control of it, and switch to the
 // Flight scene. Empty tree: toast, stay put.
 void vabLaunch(Game &g);
+
+// Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to
+// game"). The sim FREEZES in the Vab scene (tick is skipped), so entering
+// mid-flight is a pause. vabOpen parks the flight camera (in either mode)
+// and re-aims the orbit at the build tree; vabClose restores it exactly.
+void vabOpen(Game &g);
+void vabClose(Game &g);

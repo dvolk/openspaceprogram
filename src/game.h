@@ -223,6 +223,17 @@ struct Game {
     int vab_armedAsm = -1;       // armed subassembly (exclusive with vab_armed)
     int vab_ghostAssembly = -1;  // the assembly the current ghost previews
                                  // (-1 = the armed catalog part)
+    bool vab_ghostRoot = false;  // the ghost is the ROOT of an empty build
+                                 // (placed at the S origin by a plain click)
+    /* The camera parked across a VAB session: drawVab owns the camera
+       (forced orbit around vab_center), so the flight pose -- in EITHER
+       mode -- is snapshotted on vabOpen and restored on vabClose. */
+    bool vab_camSaved = false;
+    CameraMode vab_camMode = CAM_ORBIT;
+    glm::dvec3 vab_camPos, vab_camFwd, vab_camUp;
+    double vab_camDistance = 10.0;
+    double vab_camYaw = 0.0, vab_camPitch = 0.0;
+    int vab_camFocusBody = 0;
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------
