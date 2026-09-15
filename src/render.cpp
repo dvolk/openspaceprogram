@@ -619,7 +619,9 @@ void drawVab(Game &g) {
             Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
             Texture *gt = get_texture(std::string("./res/") + ad->texture);
             if(gm != nullptr && gt != nullptr) {
-                const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos - g.vab_center)
+                // unshifted S-frame pose: DrawModelAt applies the
+                // -renderOrigin (= -vab_center) shift like every model here
+                const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos)
                                         * glm::dmat4(g.vab_ghostRot);
                 DrawOpts go;
                 go.alpha = 0.4f;

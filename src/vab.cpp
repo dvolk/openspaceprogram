@@ -4,8 +4,9 @@
 // Picking reuses Bullet's own convex cast (pick.cpp castRay) against a
 // per-part-type convex hull built from the mesh -- the build tree has hull
 // shapes but NO rigid bodies, which is what keeps the authoring preview
-// cheap. The ray lives in the render frame (S shifted by -vab_center), the
-// same frame the parts are drawn in, so part transforms need no extra xform.
+// cheap. pickRay's unprojection already cancels the draw-side renderOrigin
+// shift (see pick.cpp), so the ray and every hit live directly in the build
+// frame S: hulls go at the parts' localPos as-is, no -vab_center shift.
 #include "vab.h"
 
 #include <map>
@@ -47,9 +48,11 @@ btTransform toBt(const glm::dmat4 &m) {
 // unprojection. false if behind the camera.
 bool project(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
     const Camera &cam = *g.camera;
-    const glm::dvec3 pRender = pS - g.vab_center;
+    // The view's camera sits at pos - renderOrigin and DrawModelAt shifts
+    // geometry by -renderOrigin; the two cancel, so S-frame points map
+    // straight as v = R * (pS - pos) (the same contract pickRay inverts).
     const glm::dmat3 R(cam.view);
-    const glm::dvec3 v = R * (pRender - cam.pos);
+    const glm::dvec3 v = R * (pS - cam.pos);
     if(v.z >= -1e-6) { return false; }
     const double fx = cam.projection[0][0];
     const double fy = cam.projection[1][1];
@@ -92,7 +95,7 @@ bool pickVabPart(Game &g, int px, int py, int &partIdx, PickBodyHit &hit) {
         if(bp.def == nullptr) { continue; }
         VabAsset &a = vabAsset(bp.def);
         if(a.hull == nullptr) { continue; }
-        const glm::dmat4 model = glm::translate(bp.localPos - g.vab_center)
+        const glm::dmat4 model = glm::translate(bp.localPos)
                                * glm::dmat4(bp.localRot);
         PickBodyHit h;
         if(!castRay(ray, a.obj, a.hull, toBt(model), h)) { continue; }
@@ -164,7 +167,7 @@ void vabUpdateHover(Game &g, int px, int py) {
     // no port nearby: surface-attach at the ray hit on the hovered parent
     const Node *cs = childDef->findSurfaceNode();
     if(cs == nullptr) { return; }
-    const glm::dvec3 pS = hit.point + g.vab_center;   // render frame -> S
+    const glm::dvec3 pS = hit.point;   // already S frame (pickVabPart)
     const glm::dmat3 invR = glm::transpose(pp.localRot);
     const glm::dvec3 localPoint = invR * (pS - pp.localPos);
     const glm::dvec3 localNormal = glm::normalize(invR * hit.normal);

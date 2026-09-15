@@ -16,8 +16,8 @@ class btCollisionShape;
 btCollisionShape *vabPartHull(const PartDef *def);
 btCollisionObject *vabPartObject(const PartDef *def);
 
-// Nearest build part under window pixel (px,py). hit is in the render frame
-// (add Game::vab_center for build-frame S). false = miss.
+// Nearest build part under window pixel (px,py). hit is in the build frame
+// S (the Game::vab poses), per the pickRay contract. false = miss.
 bool pickVabPart(Game &g, int px, int py, int &partIdx, PickBodyHit &hit);
 
 // Build-frame (S) position of node `nodeIdx` on build part `partIdx`.
