@@ -715,6 +715,15 @@ void BuildShip::recomputePoses() {
     }
 }
 
+bool BuildShip::nodeOccupied(int partIdx, const std::string &nodeId) const {
+    for(size_t i = 0; i < parts.size(); i++) {
+        const BuildPart &p = parts[i];
+        if(p.parent == partIdx && p.attach != AttachMode::Surface
+           && p.parentNode == nodeId) { return true; }
+    }
+    return false;
+}
+
 BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     BuildShip bs;
     bs.name = def.name;

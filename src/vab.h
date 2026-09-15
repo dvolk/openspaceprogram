@@ -25,7 +25,9 @@ glm::dvec3 vabNodePos(const Game &g, int partIdx, int nodeIdx);
 
 // Nearest STACK node of build part `partIdx` to the mouse within
 // `thresholdPx` (screen space); -1 if none. Stack ports are points, so
-// screen-space nearest is the natural grab test.
+// screen-space nearest is the natural grab test. Occupied ports
+// (BuildShip::nodeOccupied) are skipped, so hovering one falls through to
+// surface attach.
 int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx);
 
 // Per-frame editor update: hover part + node, and the ghost pose for the

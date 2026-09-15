@@ -121,6 +121,7 @@ int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx) {
     int bestI = -1;
     for(size_t i = 0; i < bp.def->nodes.size(); i++) {
         if(bp.def->nodes[i].surface) { continue; }   // stack ports only
+        if(g.vab.nodeOccupied(partIdx, bp.def->nodes[i].id)) { continue; }
         double sx = 0, sy = 0;
         if(!project(g, vabNodePos(g, partIdx, (int)i), sx, sy)) { continue; }
         const double d = glm::length(glm::dvec2(sx - (double)px, sy - (double)py));
