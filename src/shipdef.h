@@ -565,6 +565,27 @@ struct BuildShip {
        invalid indices refuse too. true = the tree changed. */
     bool removePart(int idx);
 
+    /* Detach the subtree at `idx` as a standalone BuildShip (the VAB's
+       Subassemblies list -- the non-destructive delete): the detached part
+       becomes the new tree's root (its edge cleared -- the graft re-makes
+       it), descendants keep theirs, so the assembly re-solves to the same
+       relative shape. Fuel links with both endpoints inside MOVE into the
+       returned tree; boundary-crossing links are dropped from this one (a
+       detached pipe feeds nothing). An explicit controller follows its
+       part. The root refuses (returns an empty tree). Both trees come
+       back re-solved. */
+    BuildShip detachSubtree(int idx);
+
+    /* Append a COPY of `sub` (a subassembly): `root` is the new edge for
+       the assembly's root part (its `parent` must be set; the edge fields
+       come from the attach solve, like any placement). Every grafted part
+       keeps its id when free, else gets a unique "<id>_<n>" suffix (the
+       copy-paste case: the same assembly placed twice), descendants keep
+       their edges (parents remapped), and sub's fuel links follow with
+       their endpoints remapped to the new ids. Returns the grafted root's
+       part index; the tree comes back re-solved. */
+    size_t graftTree(const BuildShip &sub, const BuildPart &root);
+
     /* Spin part `idx` about its attach axis by deltaDeg (stack edge: the
        roll about the mating axis; surface edge: the roll about the contact
        normal) and re-solve the subtree poses. The root has no edge:

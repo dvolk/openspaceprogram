@@ -876,15 +876,21 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     return bs;
 }
 
+/* Mark part `idx` and all its descendants. Construction order puts every
+   parent before its children, so one forward pass suffices. */
+static std::vector<bool> subtreeMask(const std::vector<BuildPart> &parts,
+                                     int idx) {
+    std::vector<bool> sub(parts.size(), false);
+    sub[(size_t)idx] = true;
+    for(size_t i = 1; i < parts.size(); i++) {
+        if(parts[i].parent >= 0 && sub[(size_t)parts[i].parent]) { sub[i] = true; }
+    }
+    return sub;
+}
+
 bool BuildShip::removePart(int idx) {
     if(idx <= 0 || idx >= (int)parts.size()) { return false; }   // root stays
-    std::vector<bool> dead(parts.size(), false);
-    dead[(size_t)idx] = true;
-    /* construction order puts every parent before its children, so one
-       forward pass marks the whole subtree. */
-    for(size_t i = 1; i < parts.size(); i++) {
-        if(parts[i].parent >= 0 && dead[(size_t)parts[i].parent]) { dead[i] = true; }
-    }
+    const std::vector<bool> dead = subtreeMask(parts, idx);
     std::vector<int> remap(parts.size(), -1);
     std::vector<BuildPart> keep;
     keep.reserve(parts.size());
@@ -911,6 +917,144 @@ bool BuildShip::removePart(int idx) {
     fuelLinks.swap(liveLinks);
     recomputePoses();
     return true;
+}
+
+BuildShip BuildShip::detachSubtree(int idx) {
+    BuildShip out;
+    if(idx <= 0 || idx >= (int)parts.size()) { return out; }   // root stays
+    const std::vector<bool> sub = subtreeMask(parts, idx);
+
+    /* the detached tree, in construction order (idx is the subtree's
+       ancestor, so it comes first and becomes the new root) */
+    out.name = name;
+    out.hull_margin = hull_margin;
+    std::map<size_t, size_t> toNew;   // old index -> out index
+    for(size_t i = 0; i < parts.size(); i++) {
+        if(!sub[i]) { continue; }
+        toNew[i] = out.parts.size();
+        BuildPart bp = parts[i];
+        if((int)i == idx) {
+            bp.parent = -1;   // the new root: its edge is re-made at graft
+            bp.attach = AttachMode::Down;
+            bp.parentNode.clear();
+            bp.childNode.clear();
+            bp.contactPoint = glm::dvec3(0.0);
+            bp.contactNormal = glm::dvec3(0.0);
+            bp.angle = 0.0;
+            bp.roll = 0.0;
+            bp.offset = 0.0;
+        } else {
+            bp.parent = (int)toNew[(size_t)parts[i].parent];
+        }
+        out.parts.push_back(bp);
+    }
+
+    /* fuel links: both endpoints inside -> move with the assembly;
+       boundary-crossing -> dropped (a detached pipe feeds nothing) */
+    std::vector<FuelLink> stay;
+    for(size_t i = 0; i < fuelLinks.size(); i++) {
+        const FuelLink &fl = fuelLinks[i];
+        bool fromIn = false, toIn = false, fromKnown = false, toKnown = false;
+        for(size_t k = 0; k < parts.size(); k++) {
+            if(parts[k].id == fl.from) { fromKnown = true; fromIn = sub[k]; }
+            if(parts[k].id == fl.to)   { toKnown = true;   toIn = sub[k]; }
+        }
+        if(fromIn && toIn) { out.fuelLinks.push_back(fl); }
+        else if(fromKnown && toKnown && !fromIn && !toIn) { stay.push_back(fl); }
+    }
+    fuelLinks.swap(stay);
+
+    // the explicit controller follows its part
+    if(!controllerId.empty()) {
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(parts[i].id == controllerId && sub[i]) {
+                out.controllerId = controllerId;
+                controllerId.clear();
+                break;
+            }
+        }
+    }
+
+    /* the survivors: remove the subtree + remap (same pass removePart does) */
+    std::vector<int> remap(parts.size(), -1);
+    std::vector<BuildPart> keep;
+    keep.reserve(parts.size());
+    for(size_t i = 0; i < parts.size(); i++) {
+        if(sub[i]) { continue; }
+        remap[i] = (int)keep.size();
+        keep.push_back(parts[i]);
+    }
+    for(size_t k = 0; k < keep.size(); k++) {
+        if(keep[k].parent >= 0) { keep[k].parent = remap[(size_t)keep[k].parent]; }
+    }
+    parts.swap(keep);
+    recomputePoses();
+    out.recomputePoses();
+    return out;
+}
+
+namespace {
+/* An id free among the parts: the base when unused, else "<base>_<n>". */
+std::string uniquePartId(const std::vector<BuildPart> &parts,
+                         const std::string &base) {
+    std::string id = base;
+    for(int n = 2;; n++) {
+        bool dup = false;
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(parts[i].id == id) { dup = true; break; }
+        }
+        if(!dup) { return id; }
+        id = base + "_" + std::to_string(n);
+    }
+}
+std::string uniqueLinkId(const std::vector<BuildShip::FuelLink> &links,
+                         const std::string &base) {
+    std::string id = base;
+    for(int n = 2;; n++) {
+        bool dup = false;
+        for(size_t i = 0; i < links.size(); i++) {
+            if(links[i].id == id) { dup = true; break; }
+        }
+        if(!dup) { return id; }
+        id = base + "_" + std::to_string(n);
+    }
+}
+} // namespace
+
+size_t BuildShip::graftTree(const BuildShip &sub, const BuildPart &root) {
+    if(sub.parts.empty()) { return (size_t)-1; }
+    std::map<std::string, std::string> idMap;   // sub id -> grafted id
+    const size_t rootIdx = parts.size();
+
+    BuildPart rp = root;
+    rp.id = uniquePartId(parts, root.id.empty()
+                         ? std::string(sub.parts[0].def != nullptr
+                                       ? sub.parts[0].def->name : "part")
+                         : root.id);
+    idMap[sub.parts[0].id] = rp.id;
+    parts.push_back(rp);
+    for(size_t i = 1; i < sub.parts.size(); i++) {
+        BuildPart bp = sub.parts[i];
+        const std::string newId = uniquePartId(parts, bp.id);
+        idMap[bp.id] = newId;
+        bp.id = newId;
+        // sub is in construction order, so every parent index maps by the
+        // same offset (the assembly root lands on rootIdx)
+        bp.parent = (int)(rootIdx + (size_t)bp.parent);
+        parts.push_back(bp);
+    }
+    for(size_t i = 0; i < sub.fuelLinks.size(); i++) {
+        const FuelLink &fl = sub.fuelLinks[i];
+        FuelLink nl = fl;
+        nl.id = uniqueLinkId(fuelLinks, fl.id);
+        std::map<std::string, std::string>::const_iterator f = idMap.find(fl.from);
+        std::map<std::string, std::string>::const_iterator t = idMap.find(fl.to);
+        nl.from = (f != idMap.end()) ? f->second : fl.from;
+        nl.to   = (t != idMap.end()) ? t->second : fl.to;
+        fuelLinks.push_back(nl);
+    }
+    recomputePoses();
+    return rootIdx;
 }
 
 void BuildShip::rotatePart(int idx, double deltaDeg) {

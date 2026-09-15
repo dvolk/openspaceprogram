@@ -837,6 +837,150 @@ int main() {
         CHECK(near(bs.parts[3].roll, rollBefore - 45.0));
         CHECK(bs.parts[3].attach == AttachMode::Surface);
     }
+    // --- detachSubtree / graftTree (the subassembly model ops) ---------------
+    {
+        // tanker: detaching the tank subtree and grafting it back with the
+        // SAME edge reproduces the original ship exactly (ids, order, poses)
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(tk2);
+        CHECK(bs.detachSubtree(0).parts.empty());       // the root refuses
+        std::vector<glm::dvec3> pos0;
+        std::vector<glm::dmat3> rot0;
+        std::vector<std::string> ids0;
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            pos0.push_back(bs.parts[i].localPos);
+            rot0.push_back(bs.parts[i].localRot);
+            ids0.push_back(bs.parts[i].id);
+        }
+        const BuildPart edge0 = bs.parts[1];   // the tank's original edge
+        const glm::dvec3 tankPos = bs.parts[1].localPos;
+        const glm::dmat3 tankRot = bs.parts[1].localRot;
+        BuildShip sub = bs.detachSubtree(1);
+        CHECK(bs.parts.size() == 1);
+        CHECK(sub.parts.size() == 6);
+        CHECK(sub.parts[0].id == "tank_r1.5h3_1");
+        CHECK(sub.parts[0].parent == -1);
+        CHECK(sub.parts[0].parentNode.empty());   // the edge was cleared
+        CHECK(vnear(sub.parts[0].localPos, glm::dvec3(0)));
+        CHECK(mnear(sub.parts[0].localRot, glm::dmat3(1.0)));
+        // the relative shape survives: the engine's sub-frame pose is its
+        // old S pose seen from the tank's frame
+        {
+            const glm::dmat3 invR = glm::transpose(tankRot);
+            bool found = false;
+            for(size_t i = 0; i < sub.parts.size(); i++) {
+                if(sub.parts[i].id != "engine_1") { continue; }
+                found = true;
+                CHECK(vnear(sub.parts[i].localPos, invR * (pos0[2] - tankPos)));
+                CHECK(mnear(sub.parts[i].localRot, invR * rot0[2]));
+            }
+            CHECK(found);
+        }
+        BuildPart rootT = edge0;
+        rootT.id = sub.parts[0].id;
+        CHECK(bs.graftTree(sub, rootT) == 1);
+        CHECK(bs.parts.size() == 7);
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            CHECK(bs.parts[i].id == ids0[i]);
+            CHECK(vnear(bs.parts[i].localPos, pos0[i]));
+            CHECK(mnear(bs.parts[i].localRot, rot0[i]));
+        }
+        // copy-paste: grafting again uniquifies the ids (the assembly is
+        // NOT consumed by placing)
+        CHECK(bs.graftTree(sub, rootT) == 7);
+        CHECK(bs.parts.size() == 13);
+        CHECK(bs.parts[7].id == "tank_r1.5h3_1_2");
+        CHECK(bs.parts[8].id == "engine_1_2");
+        bool unique = true;
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            for(size_t j = i + 1; j < bs.parts.size(); j++) {
+                if(bs.parts[i].id == bs.parts[j].id) { unique = false; }
+            }
+        }
+        CHECK(unique);
+    }
+    {
+        // a single surface part: detach + graft with its original contact
+        // lands it back at the same pose (appended at the tail this time)
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(tk2);
+        const BuildPart edgeP = bs.parts[3];
+        const glm::dvec3 podPos = bs.parts[3].localPos;
+        const glm::dmat3 podRot = bs.parts[3].localRot;
+        BuildShip sub = bs.detachSubtree(3);
+        CHECK(sub.parts.size() == 1);
+        CHECK(bs.parts.size() == 6);
+        BuildPart rootT = edgeP;
+        rootT.id = sub.parts[0].id;
+        bs.graftTree(sub, rootT);
+        CHECK(bs.parts.size() == 7);
+        CHECK(bs.parts[6].id == edgeP.id);
+        CHECK(vnear(bs.parts[6].localPos, podPos));
+        CHECK(mnear(bs.parts[6].localRot, podRot));
+    }
+    {
+        // heavy_two: interior links MOVE with the assembly, crossing links
+        // DROP, the controller follows its part, and the graft restores the
+        // exact ship (links included)
+        ShipDef h2 = load_ship_def("res/ships/heavy_two.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(h2);
+        CHECK(bs.fuelLinks.size() == 2);
+        std::vector<glm::dvec3> pos0;
+        std::vector<glm::dmat3> rot0;
+        std::vector<std::string> ids0;
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            pos0.push_back(bs.parts[i].localPos);
+            rot0.push_back(bs.parts[i].localRot);
+            ids0.push_back(bs.parts[i].id);
+        }
+        int t2 = -1, rt = -1;
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            if(bs.parts[i].id == "central_tank2") { t2 = (int)i; }
+            if(bs.parts[i].id == "rtank12") { rt = (int)i; }
+        }
+        CHECK(t2 > 0 && rt > 0);
+        const BuildPart edgeT2 = bs.parts[(size_t)t2];
+        BuildShip sub = bs.detachSubtree(t2);
+        CHECK(sub.parts.size() == 11);
+        CHECK(bs.parts.size() == 12);
+        CHECK(bs.fuelLinks.empty());            // both asparagus links moved
+        CHECK(sub.fuelLinks.size() == 2);
+        CHECK(bs.controllerId == "capsule_1");  // the controller stayed
+        CHECK(sub.controllerId.empty());
+        // a crossing link drops from BOTH trees
+        BuildShip b2 = BuildShip::fromShipDef(h2);
+        BuildShip s2 = b2.detachSubtree(rt);
+        CHECK(s2.parts.size() == 2);            // rtank12 + rengine1
+        CHECK(s2.fuelLinks.empty());
+        CHECK(b2.fuelLinks.size() == 1);
+        CHECK(b2.fuelLinks[0].id == "asparagus2");
+        // the controller follows its part into the assembly
+        BuildShip b3 = BuildShip::fromShipDef(h2);
+        b3.controllerId = "central_tank2";
+        BuildShip s3 = b3.detachSubtree(t2);
+        CHECK(b3.controllerId.empty());
+        CHECK(s3.controllerId == "central_tank2");
+        // graft back with the original edge: the exact original ship
+        BuildPart rootT = edgeT2;
+        rootT.id = sub.parts[0].id;
+        CHECK(bs.graftTree(sub, rootT) == (size_t)t2);
+        CHECK(bs.parts.size() == 23);
+        CHECK(bs.fuelLinks.size() == 2);
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            CHECK(bs.parts[i].id == ids0[i]);
+            CHECK(vnear(bs.parts[i].localPos, pos0[i]));
+            CHECK(mnear(bs.parts[i].localRot, rot0[i]));
+        }
+        for(size_t i = 0; i < bs.fuelLinks.size(); i++) {
+            bool haveFrom = false, haveTo = false;
+            for(size_t k = 0; k < bs.parts.size(); k++) {
+                if(bs.parts[k].id == bs.fuelLinks[i].from) { haveFrom = true; }
+                if(bs.parts[k].id == bs.fuelLinks[i].to)   { haveTo = true; }
+            }
+            CHECK(haveFrom);
+            CHECK(haveTo);
+        }
+    }
     // --- radialSymmetryClones: symmetric rings about the parent's axis ------
     {
         const PartDef *child = cat.find("tank_r1.5h3");   // the tanker's side pod
