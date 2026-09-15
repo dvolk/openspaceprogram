@@ -7,9 +7,9 @@
     { "part": "jet", "id": "jet_1", "parent": "jet_tank_1" },
     { "part": "wing", "id": "wing_1", "parent": "jet_tank_1", "attach": "surface", "angle": 0 },
     { "part": "wing", "id": "wing_2", "parent": "jet_tank_1", "attach": "surface", "angle": 180 },
-    { "part": "rudder", "id": "rudder_1", "parent": "jet_1", "attach": "surface", "angle": 0 },
-    { "part": "rudder", "id": "rudder_2", "parent": "jet_1", "attach": "surface", "angle": 180 },
-    { "part": "elevator", "id": "elevator_1", "parent": "jet_1", "attach": "surface", "angle": 90 },
-    { "part": "elevator", "id": "elevator_2", "parent": "jet_1", "attach": "surface", "angle": 270 }
+    { "part": "rudder", "id": "rudder_1", "parent": "jet_1", "attach": "surface", "angle": 90 },
+    { "part": "rudder", "id": "rudder_2", "parent": "jet_1", "attach": "surface", "angle": 270 },
+    { "part": "elevator", "id": "elevator_1", "parent": "jet_1", "attach": "surface", "angle": 0 },
+    { "part": "elevator", "id": "elevator_2", "parent": "jet_1", "attach": "surface", "angle": 180 }
   ]
 }
