@@ -14,6 +14,8 @@
 struct DrawOpts {
     float alpha = 1.0f;                 // 1 = opaque, <1 = translucent ghost
     glm::vec3 tint = glm::vec3(1.0f);   // multiplies the lit color (selection)
+    float flat = 0.0f;                  // 1 = uniform studio light (the VAB
+                                        // look), 0 = the scene's directional
 };
 
 /* Draw one part's render assets (mesh + shader + texture) at an explicit

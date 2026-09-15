@@ -137,7 +137,7 @@ int main(int argc, char **argv)
     Shader *partsshader = get_shader("./res/partsShader",
                                      { "position", "uv", "normal" },
                                      { "MVP", "Normal", "lightDirection", "shadow",
-                                       "alpha", "tint" });
+                                       "alpha", "tint", "flatLight" });
 
     Shader *terrainshader = get_shader("./res/terrainShader",
                                        { "position", "normal", "color" },
@@ -829,7 +829,13 @@ int main(int argc, char **argv)
             }
 
             postfx->Begin();  // no-op unless --postfx effects are active
-            display.Clear(0, 0, 0, 1);
+            // The VAB gets a light-gray studio backdrop (no skybox is drawn
+            // there); flight clears to black under the skybox.
+            if(game.scene == Scene::Vab) {
+                display.Clear(0.72f, 0.73f, 0.75f, 1.0f);
+            } else {
+                display.Clear(0, 0, 0, 1);
+            }
 
             // The 3D pass: the world + active ship (flight), or the
             // physics-free build tree (Vab).

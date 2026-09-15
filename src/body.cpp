@@ -22,6 +22,7 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
     shader->setUniform_vec1(3, shadow);
     shader->setUniform_vec1(4, opts.alpha);
     shader->setUniform_vec3(5, opts.tint);
+    shader->setUniform_vec1(6, opts.flat);
 
     /* Translucent (ghost) pass: blend over what is behind and don't write
        depth, so a ghost previews without occluding the ship under it.

@@ -9,10 +9,12 @@ uniform vec3 lightDirection;
 uniform float shadow;
 
 /* Authoring overrides (VAB): alpha < 1 draws a translucent ghost; tint
-   multiplies the lit color for selection highlighting. Defaults (1.0, white)
-   reproduce the plain opaque part. */
+   multiplies the lit color for selection highlighting; flat = 1 replaces
+   the directional light with uniform studio lighting (the editor look).
+   Defaults (1.0, white, 0.0) reproduce the plain opaque flight part. */
 uniform float alpha;
 uniform vec3 tint;
+uniform float flatLight;   // "flat" is a reserved GLSL interpolation keyword
 
 uniform sampler2D mytexture;
 
@@ -24,6 +26,7 @@ void main()
     const float min_light = 0.15;
     const float max_light = 1.0;
     float light = clamp(dot(-lightDirection, normal0), min_light, max_light);
+    light = mix(light, max_light, flatLight);
     // Alpha is written from the uniform, NOT from the lit color: scaling the
     // framebuffer alpha by light/shadow leaks the scene's lighting into it
     // (invisible in-game, but the F12 screenshot saved shaded parts as

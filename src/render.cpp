@@ -410,11 +410,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
             g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
             g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
             // the plume is an unshadowed, untinted additive glow: pin the
-            // shadow/alpha/tint uniforms rather than inheriting the last
+            // shadow/alpha/tint/flat uniforms rather than inheriting the last
             // part draw's values
             g.partsshader->setUniform_vec1(3, 1.0f);
             g.partsshader->setUniform_vec1(4, 1.0f);
             g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
+            g.partsshader->setUniform_vec1(6, 0.0f);
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
@@ -458,6 +459,12 @@ void draw3d(Game &g, TransferPlanner &planner) {
         g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
         g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
         g.partsshader->setUniform_vec3(2, glm::vec3(1, 1, 1));
+        // pin the authoring uniforms like the engine plume does (a VAB
+        // ghost draw would otherwise leak alpha/tint/flat into the puff)
+        g.partsshader->setUniform_vec1(3, 1.0f);
+        g.partsshader->setUniform_vec1(4, 1.0f);
+        g.partsshader->setUniform_vec3(5, glm::vec3(1, 1, 1));
+        g.partsshader->setUniform_vec1(6, 0.0f);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
@@ -606,6 +613,7 @@ void drawVab(Game &g) {
         const glm::dmat4 model = glm::translate(bp.localPos)
                                * glm::dmat4(bp.localRot);
         DrawOpts opts;
+        opts.flat = 1.0f;   // uniform studio light (the editor look)
         if((int)i == g.vab_selected) { opts.tint = glm::vec3(1.0f, 0.75f, 0.2f); }
         else if((int)i == g.vab_hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
@@ -617,6 +625,7 @@ void drawVab(Game &g) {
     if(g.vab_ghostValid) {
         DrawOpts go;
         go.alpha = 0.4f;
+        go.flat = 1.0f;   // the ghosts share the studio light
         if(g.vab_ghostAssembly >= 0
            && (size_t)g.vab_ghostAssembly < g.vab_subassemblies.size()) {
             /* an assembly ghost: the whole tree rides the solved root pose
