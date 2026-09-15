@@ -188,6 +188,11 @@ struct Game {
     glm::dmat3 vab_ghostRot;
     glm::dvec3 vab_ghostPoint, vab_ghostNormal; // parent-local surface contact
     std::string vab_ghostParentNode, vab_ghostChildNode; // stack ghost's mated ids
+    /* Pending roll for the armed part (deg): Q/E spin it about the attach
+       axis while the ghost previews (stack edge: the mating axis; surface:
+       the contact normal). Stored on the placed part's angle/roll, then
+       reset to 0. */
+    double vab_ghostRoll = 0.0;
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------

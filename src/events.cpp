@@ -15,6 +15,7 @@
 #include "eva.h"        // Kerbal (the space-key jump edge)
 #include "siminput.h"   // SimKeyPress, SimMouseAction
 #include "gldebug.h"    // check_gl_error()
+#include "vab.h"        // vabRotate / vabDeleteSelected (the editor keys)
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/imgui/backends/imgui_impl_sdl3.h"
@@ -142,6 +143,210 @@ void emit_sim_events(Game &g) {
     }
 }
 
+/* The flight-scene one-shot key actions (the rebindable slots). Extracted
+   from poll_events so the VAB scene can route its own keys instead: with no
+   sim running the flight slots are meaningless -- and firing them would
+   silently poke the parked ships (staging, warping, switching). */
+static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+    if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
+        // Warp up one step (10x), capped at 100000 (ladder top).
+        // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
+        // requires every ship to be rail-eligible: the active ship
+        // coasts (or freezes on the ground) and the physics world
+        // stops stepping; if any ship is not eligible the step is
+        // refused and the current warp stays.
+        const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
+        if(next > 100000) {
+            g.toast("Max warp reached");
+        } else if(next < kRailsWarp || g.enter_rails_warp()) {
+            // enter_rails_warp toasted the refusal reason itself.
+            g.time_accel = next;
+            if(next >= kRailsWarp) {
+                printf("Rails warp: time accel %d (ships on rails)\n", next);
+                g.toast("Time accel: %dx (rails)", next);
+            } else {
+                g.toast("Time accel: %dx", next);
+            }
+        }
+    }
+    if(slotFired(Slot::WarpDown, ksc, kmod, g.binds)) {
+        if(g.time_accel > 1) {
+            const bool leaving_rails_warp =
+                (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
+            g.time_accel /= 10;
+            if(leaving_rails_warp) {
+                // dropped out of rails warp: the active ship
+                // re-enters physics (idle ships stay parked)
+                g.ship->leaveRails();
+                printf("Rails warp: exited, time accel %d\n", g.time_accel);
+            }
+            g.toast("Time accel: %dx", g.time_accel);
+        }
+        else if(g.time_accel == 1) {
+            g.time_accel = 0;
+            g.toast("Time accel: paused");
+        }
+    }
+    if(slotFired(Slot::CamSpeedUp, ksc, kmod, g.binds)) {
+        if(g.cam_speed < 10000000) {
+            g.cam_speed *= 4;
+        }
+    }
+    if(slotFired(Slot::CamSpeedDown, ksc, kmod, g.binds)) {
+        if(g.cam_speed > 1) {
+            g.cam_speed /= 4;
+        }
+    }
+    if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds)) {
+        // Toggle between the body-orbit camera and free flight.
+        // Zero the cam shake first: toFree() keeps the live pos
+        // (shake baked in) and toOrbit() derives the distance
+        // from it, so a mid-burn toggle would otherwise freeze a
+        // live offset into the pose (and the orbit radius).
+        g.shake_off = glm::dvec3(0.0);
+        g.shake_ang = glm::dvec3(0.0);
+        if(g.camera->mode == CAM_ORBIT) {
+            g.camera->toFree();
+        } else {
+            g.camera->toOrbit(g.focusWorldPos(g.focusBody));
+            printf("Camera: orbiting %s (G = switch body, C = free)\n",
+                   g.focusTargets[g.focusBody].name);
+        }
+    }
+    if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds)) {
+        // Cycle the orbit camera's target body.
+        if(g.camera->mode == CAM_ORBIT) {
+            g.focusBody = (g.focusBody + 1) % g.numFocusTargets;
+            g.camera->Follow(g.focusWorldPos(g.focusBody));
+            double d = (g.focusTargets[g.focusBody].body == nullptr)
+                ? 50.0
+                : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
+            g.camera->distance = d;
+            printf("Orbit camera targeting %s\n", g.focusTargets[g.focusBody].name);
+        } else {
+            printf("In free flight; press C to go to orbit, then G to switch body.\n");
+        }
+    }
+    if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
+        // advance to the next selectable ship in the fleet, wrapping
+        // around (one-shot; auto-repeat would keep cycling). Crew
+        // characters aboard a capsule are skipped: they are not
+        // controllable (EVA them from the capsule window first).
+        if(!repeat) {
+            std::vector<Vehicle *> all = collectVehicles(g.sys);
+            if(all.size() > 1) {
+                // the active ship's position in the canonical order
+                int cur = -1;
+                for(size_t i = 0; i < all.size(); i++) {
+                    if(all[i] == g.ship) { cur = (int)i; break; }
+                }
+                if(cur >= 0) {
+                    const int n = (int)all.size();
+                    for(int step = 1; step < n; step++) {
+                        Vehicle *v = all[(cur + step) % n];
+                        if(v->isCrewAboard()) { continue; }
+                        g.select_ship(v);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if(slotFired(Slot::ToggleEva, ksc, kmod, g.binds)) {
+        // toggle EVA: spawn/re-select the kerbal, or hand control
+        // back to the ship (game.cpp). One-shot.
+        if(!repeat) {
+            g.toggle_eva();
+        }
+    }
+    if(slotFired(Slot::Space, ksc, kmod, g.binds)) {
+        // EVA: space is the jump key -- the KEYDOWN edge arms it
+        // (evaArmCommands consumes the request on the next tick;
+        // an event edge, because a quick tap can end before any
+        // tick polls the key state).
+        if(!repeat && g.ship->isEva()) {
+            static_cast<Kerbal *>(g.ship)->jumpPressed = true;
+        }
+        // separate the active stage (one-shot; auto-repeat would
+        // keep dropping stages). Only while flying a ship with
+        // time running (a paused separation would leave the
+        // survivors frozen mid-air).
+        if(!repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+           && !g.ship->isEva()) {
+            // separate the active stage (one-shot; auto-repeat would
+            // keep dropping stages). Game::stage() handles the rails
+            // wake, the crew guard and the split -- the dropped
+            // stages come off as separate ships (see game.cpp).
+            g.stage();
+        }
+    }
+    if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {
+        // split the most recent docked seam off the active ship
+        // (Game::undock handles the rails wake; one-shot)
+        if(!repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+           && !g.ship->isEva()) {
+            g.undock();
+        }
+    }
+    if(slotFired(Slot::Porkchop, ksc, kmod, g.binds)) {
+        // Compute the porkchop plot for the current transfer target
+        // (one-shot; auto-repeat would just recompute it). The render
+        // pass consumes the flag and runs the (expensive) grid.
+        if(!repeat) {
+            g.porkchop_compute_requested = true;
+        }
+    }
+    if(slotFired(Slot::SurfaceMap, ksc, kmod, g.binds)) {
+        // Compute the surface map (one-shot, same pattern as P).
+        if(!repeat) {
+            g.surfmap_compute_requested = true;
+        }
+    }
+    if(slotFired(Slot::ResetWindows, ksc, kmod, g.binds)) {
+        // Reset the window layout to defaults (same as the
+        // main menu's "Reset windows" button).
+        ui::ResetGui();
+    }
+    if(slotFired(Slot::Menu, ksc, kmod, g.binds)) {
+        // Toggle the main menu.
+        ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
+    }
+    // Thrust latch: the ThrustLatch slot (default LShift+T) toggles
+    // it; while engaged, tick.cpp keeps the active ship's engines
+    // lit even with the thrust key released. A plain thrust-key press
+    // takes manual control and clears the latch (the held thrust then
+    // drives it while the key is down). One-shot: guard against the
+    // OS key auto-repeat re-firing the edge.
+    if(slotFired(Slot::ThrustLatch, ksc, kmod, g.binds)) {
+        if(!repeat) {
+            g.thrust_latched = !g.thrust_latched;
+            printf("Thrust latch: %s\n", g.thrust_latched ? "engaged" : "off");
+            g.toast("Thrust latch %s", g.thrust_latched ? "engaged" : "off");
+        }
+    } else if(slotFired(Slot::Thrust, ksc, kmod, g.binds)
+              && !repeat && g.thrust_latched) {
+        g.thrust_latched = false;
+        printf("Thrust latch: off (manual thrust)\n");
+        g.toast("Thrust latch off");
+    }
+}
+
+/* The VAB scene's keys: fixed scancodes, not flight bindings (they are
+   editor-local and the flight slots are gated out of this scene). While an
+   imgui text field is focused the UI owns the keyboard. */
+static void vabKeyActions(Game &g, SDL_Scancode ksc, bool repeat) {
+    if(ImGui::GetIO().WantCaptureKeyboard) { return; }
+    if(ksc == SDL_SCANCODE_Q) { vabRotate(g, -5.0); }
+    if(ksc == SDL_SCANCODE_E) { vabRotate(g, +5.0); }
+    if((ksc == SDL_SCANCODE_DELETE || ksc == SDL_SCANCODE_X) && !repeat) {
+        vabDeleteSelected(g);
+    }
+    if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
+        g.vab_armed.clear();   // disarm the palette part
+        g.vab_ghostRoll = 0.0;
+    }
+}
+
 void poll_events(Game &g) {
     SDL_Event ev;
 
@@ -192,171 +397,9 @@ void poll_events(Game &g) {
             // table, so rebinding a control just re-points its slot.
             const SDL_Scancode ksc = ev.key.scancode;
             const Uint16 kmod = ev.key.mod;
-            if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
-                // Warp up one step (10x), capped at 100000 (ladder top).
-                // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
-                // requires every ship to be rail-eligible: the active ship
-                // coasts (or freezes on the ground) and the physics world
-                // stops stepping; if any ship is not eligible the step is
-                // refused and the current warp stays.
-                const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
-                if(next > 100000) {
-                    g.toast("Max warp reached");
-                } else if(next < kRailsWarp || g.enter_rails_warp()) {
-                    // enter_rails_warp toasted the refusal reason itself.
-                    g.time_accel = next;
-                    if(next >= kRailsWarp) {
-                        printf("Rails warp: time accel %d (ships on rails)\n",
-                               next);
-                        g.toast("Time accel: %dx (rails)", next);
-                    } else {
-                        g.toast("Time accel: %dx", next);
-                    }
-                }
-            }
-            if(slotFired(Slot::WarpDown, ksc, kmod, g.binds)) {
-                if(g.time_accel > 1) {
-                    const bool leaving_rails_warp =
-                        (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
-                    g.time_accel /= 10;
-                    if(leaving_rails_warp) {
-                        // dropped out of rails warp: the active ship
-                        // re-enters physics (idle ships stay parked)
-                        g.ship->leaveRails();
-                        printf("Rails warp: exited, time accel %d\n", g.time_accel);
-                    }
-                    g.toast("Time accel: %dx", g.time_accel);
-                }
-                else if(g.time_accel == 1) {
-                    g.time_accel = 0;
-                    g.toast("Time accel: paused");
-                }
-            }
-            if(slotFired(Slot::CamSpeedUp, ksc, kmod, g.binds)) {
-                if(g.cam_speed < 10000000) {
-                    g.cam_speed *= 4;
-                }
-            }
-            if(slotFired(Slot::CamSpeedDown, ksc, kmod, g.binds)) {
-                if(g.cam_speed > 1) {
-                    g.cam_speed /= 4;
-                }
-            }
-            if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds)) {
-                // Toggle between the body-orbit camera and free flight.
-                // Zero the cam shake first: toFree() keeps the live pos
-                // (shake baked in) and toOrbit() derives the distance
-                // from it, so a mid-burn toggle would otherwise freeze a
-                // live offset into the pose (and the orbit radius).
-                g.shake_off = glm::dvec3(0.0);
-                g.shake_ang = glm::dvec3(0.0);
-                if(g.camera->mode == CAM_ORBIT) {
-                    g.camera->toFree();
-                } else {
-                    g.camera->toOrbit(g.focusWorldPos(g.focusBody));
-                    printf("Camera: orbiting %s (G = switch body, C = free)\n",
-                           g.focusTargets[g.focusBody].name);
-                }
-            }
-            if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds)) {
-                // Cycle the orbit camera's target body.
-                if(g.camera->mode == CAM_ORBIT) {
-                    g.focusBody = (g.focusBody + 1) % g.numFocusTargets;
-                    g.camera->Follow(g.focusWorldPos(g.focusBody));
-                    double d = (g.focusTargets[g.focusBody].body == nullptr)
-                        ? 50.0
-                        : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
-                    g.camera->distance = d;
-                    printf("Orbit camera targeting %s\n",
-                           g.focusTargets[g.focusBody].name);
-                } else {
-                    printf("In free flight; press C to go to orbit, then G to switch body.\n");
-                }
-            }
-            if(slotFired(Slot::ToggleWindows, ksc, kmod, g.binds)) {
-                // toggle the info windows (one-shot; auto-repeat would
-                // just keep flipping)
-                if(!ev.key.repeat) {
-                    g.toggle_windows();
-                }
-            }
-            if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
-                // advance to the next selectable ship in the fleet, wrapping
-                // around (one-shot; auto-repeat would keep cycling). Crew
-                // characters aboard a capsule are skipped: they are not
-                // controllable (EVA them from the capsule window first).
-                if(!ev.key.repeat) {
-                    std::vector<Vehicle *> all = collectVehicles(g.sys);
-                    if(all.size() > 1) {
-                        // the active ship's position in the canonical order
-                        int cur = -1;
-                        for(size_t i = 0; i < all.size(); i++) {
-                            if(all[i] == g.ship) { cur = (int)i; break; }
-                        }
-                        if(cur >= 0) {
-                            const int n = (int)all.size();
-                            for(int step = 1; step < n; step++) {
-                                Vehicle *v = all[(cur + step) % n];
-                                if(v->isCrewAboard()) { continue; }
-                                g.select_ship(v);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if(slotFired(Slot::ToggleEva, ksc, kmod, g.binds)) {
-                // toggle EVA: spawn/re-select the kerbal, or hand control
-                // back to the ship (game.cpp). One-shot.
-                if(!ev.key.repeat) {
-                    g.toggle_eva();
-                }
-            }
-            if(slotFired(Slot::Space, ksc, kmod, g.binds)) {
-                // EVA: space is the jump key -- the KEYDOWN edge arms it
-                // (evaArmCommands consumes the request on the next tick;
-                // an event edge, because a quick tap can end before any
-                // tick polls the key state).
-                if(!ev.key.repeat && g.ship->isEva()) {
-                    static_cast<Kerbal *>(g.ship)->jumpPressed = true;
-                }
-                // separate the active stage (one-shot; auto-repeat would
-                // keep dropping stages). Only while flying a ship with
-                // time running (a paused separation would leave the
-                // survivors frozen mid-air).
-                if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
-                   && !g.ship->isEva()) {
-                    // separate the active stage (one-shot; auto-repeat would
-                    // keep dropping stages). Game::stage() handles the rails
-                    // wake, the crew guard and the split -- the dropped
-                    // stages come off as separate ships (see game.cpp).
-                    g.stage();
-                }
-            }
-            if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {
-                // split the most recent docked seam off the active ship
-                // (Game::undock handles the rails wake; one-shot)
-                if(!ev.key.repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
-                   && !g.ship->isEva()) {
-                    g.undock();
-                }
-            }
+            /* Scene-neutral slots: these work in flight AND in the editor. */
             if(slotFired(Slot::Screenshot, ksc, kmod, g.binds)) {
                 g.screenshot_requested = true;
-            }
-            if(slotFired(Slot::Porkchop, ksc, kmod, g.binds)) {
-                // Compute the porkchop plot for the current transfer target
-                // (one-shot; auto-repeat would just recompute it). The render
-                // pass consumes the flag and runs the (expensive) grid.
-                if(!ev.key.repeat) {
-                    g.porkchop_compute_requested = true;
-                }
-            }
-            if(slotFired(Slot::SurfaceMap, ksc, kmod, g.binds)) {
-                // Compute the surface map (one-shot, same pattern as P).
-                if(!ev.key.repeat) {
-                    g.surfmap_compute_requested = true;
-                }
             }
             if(slotFired(Slot::Wireframe, ksc, kmod, g.binds)) {
                 if(g.poly_mode == false) {
@@ -367,32 +410,22 @@ void poll_events(Game &g) {
                     g.poly_mode = false;
                 }
             }
-            if(slotFired(Slot::ResetWindows, ksc, kmod, g.binds)) {
-                // Reset the window layout to defaults (same as the
-                // main menu's "Reset windows" button).
-                ui::ResetGui();
-            }
-            if(slotFired(Slot::Menu, ksc, kmod, g.binds)) {
-                // Toggle the main menu.
-                ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
-            }
-            // Thrust latch: the ThrustLatch slot (default LShift+T) toggles
-            // it; while engaged, tick.cpp keeps the active ship's engines
-            // lit even with the thrust key released. A plain thrust-key press
-            // takes manual control and clears the latch (the held thrust then
-            // drives it while the key is down). One-shot: guard against the
-            // OS key auto-repeat re-firing the edge.
-            if(slotFired(Slot::ThrustLatch, ksc, kmod, g.binds)) {
+            if(slotFired(Slot::ToggleWindows, ksc, kmod, g.binds)) {
+                // toggle the info windows (one-shot; auto-repeat would
+                // just keep flipping). In the VAB scene this hides the
+                // editor chrome (drawVabUI gates on g.ui_visible).
                 if(!ev.key.repeat) {
-                    g.thrust_latched = !g.thrust_latched;
-                    printf("Thrust latch: %s\n", g.thrust_latched ? "engaged" : "off");
-                    g.toast("Thrust latch %s", g.thrust_latched ? "engaged" : "off");
+                    g.toggle_windows();
                 }
-            } else if(slotFired(Slot::Thrust, ksc, kmod, g.binds)
-                      && !ev.key.repeat && g.thrust_latched) {
-                g.thrust_latched = false;
-                printf("Thrust latch: off (manual thrust)\n");
-                g.toast("Thrust latch off");
+            }
+
+            // The scene split: in the editor the flight actions are dead
+            // (with no sim running they would silently poke the parked
+            // ships), and the editor keys take over instead.
+            if(g.scene == Scene::Vab) {
+                vabKeyActions(g, ksc, ev.key.repeat);
+            } else {
+                flightKeyActions(g, ksc, kmod, ev.key.repeat);
             }
         }
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -413,7 +446,10 @@ void poll_events(Game &g) {
                 // (pick the part under the cursor); a moved one was the
                 // camera drag. The camera already got its (sub-threshold)
                 // look for a jittery click -- at 6 px that is <1 deg.
-                if(!ImGui::GetIO().WantCaptureMouse
+                // Flight only: the VAB's RMB-drag orbits the build camera
+                // and its picking is the hover (vab.cpp), not a click.
+                if(g.scene == Scene::Flight
+                   && !ImGui::GetIO().WantCaptureMouse
                    && g.rmbMoved < kPickClickPx
                    && SDL_GetTicks() - g.rmbDownMs < kPickClickMs) {
                     pickAt(g, ev.button.x, ev.button.y);

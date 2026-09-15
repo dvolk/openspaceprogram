@@ -489,6 +489,7 @@ int main(int argc, char **argv)
     game.numFocusTargets = (int)game.focusTargets.size();
 
     int screenshot_count = 0;
+    bool vab_launch_fired = false;   // the --vab-launch hook fires once
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
@@ -764,16 +765,34 @@ int main(int argc, char **argv)
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
         // game's clock and marks the frame for a redraw. The Vab scene runs
         // no sim -- it redraws every frame instead.
+        /* --vab-launch: the headless LAUNCH hook, fired once at its loop
+           time (the e2e pin for toShipDef -> place_ship_def -> build_ship
+           -> select_ship -> the scene switch). The launch flips the scene
+           to Flight, so the same frame falls into tick() below. */
+        if(game.scene == Scene::Vab && args.vab_launch_ms >= 0 && !vab_launch_fired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_launch_ms) {
+            vab_launch_fired = true;
+            vabLaunch(game);
+        }
         if(game.scene == Scene::Vab) {
             // editor: hover-pick a part/port and preview the armed part's
-            // ghost; a fresh LMB press places it. No sim.
+            // ghost; a fresh LMB press places it. No sim. While the cursor
+            // is over an imgui window the UI owns the mouse: no pick, no
+            // place (WantCaptureMouse holds last frame's value -- imgui
+            // sets it in the NewFrame below -- so it is at most one frame
+            // stale, which the cursor cannot outrun in practice).
             int mx = 0, my = 0;
             float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
             const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
             mx = (int)fmx; my = (int)fmy;
-            vabUpdateHover(game, mx, my);
+            const bool overUI = ImGui::GetIO().WantCaptureMouse;
+            if(overUI) {
+                vabClearHover(game);
+            } else {
+                vabUpdateHover(game, mx, my);
+            }
             const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
-            if(lmb && !game.vab_lmb_prev) { vabPlace(game); }
+            if(lmb && !game.vab_lmb_prev && !overUI) { vabPlace(game); }
             game.vab_lmb_prev = lmb;
             game.redraw = true;
         } else {

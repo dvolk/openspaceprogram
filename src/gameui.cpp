@@ -25,6 +25,7 @@
 #include "orbitmap.h"    // OrbitMap + contrastingColor (the map)
 #include "surfmap.h"     // the lon/lat <-> pixel math + surfmapCompute
 #include "texture.h"     // make_texture_r8 (the Porkchop heatmap + Surface Map)
+#include "vab.h"         // the editor ops (drawVabUI: gizmos, save, launch)
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/implot/implot.h"   // the TELEMETRY plots
@@ -2183,10 +2184,49 @@ void drawMainMenu(Game &g) {
 }
 
 void drawVabUI(Game &g) {
+    if(!g.ui_visible) { return; }   // TAB hides the editor chrome
+
+    /* Free-port gizmos: a green dot at every unconsumed stack node,
+       projected to window pixels (vabProject). Screen-space like KSP's
+       port markers, and drawn on the foreground layer (no depth test) so
+       the far-side ports stay discoverable. */
+    if(g.camera != nullptr) {
+        ImDrawList *dl = ImGui::GetForegroundDrawList();
+        for(size_t i = 0; i < g.vab.parts.size(); i++) {
+            const BuildPart &bp = g.vab.parts[i];
+            if(bp.def == nullptr) { continue; }
+            for(size_t k = 0; k < bp.def->nodes.size(); k++) {
+                const Node &n = bp.def->nodes[k];
+                if(n.surface) { continue; }
+                if(g.vab.nodeOccupied((int)i, n.id)) { continue; }
+                double px = 0, py = 0;
+                if(!vabProject(g, vabNodePos(g, (int)i, (int)k), px, py)) { continue; }
+                const ImVec2 c((float)px, (float)py);
+                dl->AddCircleFilled(c, 4.0f, IM_COL32(90, 230, 140, 210));
+                dl->AddCircle(c, 4.0f, IM_COL32(15, 60, 30, 255), 0, 1.5f);
+            }
+        }
+    }
+
     ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
     ImGui::Begin("VAB", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.name.c_str(),
                 (int)g.vab.parts.size());
+    if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
+    ImGui::SameLine();
+    {
+        // the save path: seeded once from the build's name, editable
+        static char savePath[512] = {0};
+        if(savePath[0] == 0) {
+            const std::string nm = g.vab.name.empty()
+                ? std::string("untitled") : g.vab.name;
+            snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
+        }
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("##savepath", savePath, sizeof(savePath));
+        ImGui::SameLine();
+        if(ImGui::Button("Save")) { vabSave(g, savePath); }
+    }
     ImGui::Separator();
     for(size_t i = 0; i < g.vab.parts.size(); i++) {
         const BuildPart &bp = g.vab.parts[i];
@@ -2195,11 +2235,33 @@ void drawVabUI(Game &g) {
     }
     ImGui::Separator();
     if(g.vab_selected >= 0 && (size_t)g.vab_selected < g.vab.parts.size()) {
-        const BuildPart &bp = g.vab.parts[(size_t)g.vab_selected];
+        const int sel = g.vab_selected;
+        BuildPart &bp = g.vab.parts[(size_t)sel];
         ImGui::Text("selected: %s (%s)", bp.id.c_str(),
                     bp.def != nullptr ? bp.def->name.c_str() : "?");
+        if(sel == 0) {
+            ImGui::TextDisabled("root -- cannot rotate or delete");
+        } else {
+            const bool srf = (bp.attach == AttachMode::Surface);
+            if(ImGui::Button("-5##rot")) { g.vab.rotatePart(sel, -5.0); }
+            ImGui::SameLine();
+            if(ImGui::Button("+5##rot")) { g.vab.rotatePart(sel, +5.0); }
+            ImGui::SameLine();
+            ImGui::Text("%s roll: %.0f deg", srf ? "surface" : "stack",
+                        srf ? bp.roll : bp.angle);
+            int st = bp.stage;
+            ImGui::SetNextItemWidth(60);
+            if(ImGui::InputInt("stage##sel", &st, 1, 1)) {
+                if(st < 1) { st = 1; }
+                bp.stage = st;
+            }
+            // last: vabDeleteSelected swaps the parts vector (the bp
+            // reference dies with it)
+            if(ImGui::Button("Delete (with subtree)")) { vabDeleteSelected(g); }
+        }
     }
-    ImGui::TextDisabled("LMB-drag orbit, wheel zoom; click a part to select");
+    ImGui::TextDisabled("RMB-drag orbit, wheel zoom; LMB places the armed part");
+    ImGui::TextDisabled("Q/E roll; Del/X delete; Esc disarm; TAB hides the UI");
     ImGui::End();
 
     // Palette: arm a catalog part, then hover the ship and LMB to place it
@@ -2216,11 +2278,15 @@ void drawVabUI(Game &g) {
         const bool armed = (g.vab_armed == pd.name);
         if(ImGui::Selectable(pd.name.c_str(), armed)) {
             g.vab_armed = armed ? std::string("") : pd.name;
+            g.vab_ghostRoll = 0.0;   // a fresh part starts unrolled
         }
     }
     ImGui::EndChild();
     if(!g.vab_armed.empty()) {
         ImGui::Text("armed: %s", g.vab_armed.c_str());
+        if(g.vab_ghostValid) {
+            ImGui::Text("roll: %.0f deg (Q/E)", g.vab_ghostRoll);
+        }
         ImGui::TextDisabled("hover a port/surface, LMB to place");
     } else {
         ImGui::TextDisabled("pick a part to arm");

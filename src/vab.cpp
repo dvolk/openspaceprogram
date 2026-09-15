@@ -9,6 +9,7 @@
 // frame S: hulls go at the parts' localPos as-is, no -vab_center shift.
 #include "vab.h"
 
+#include <cstdio>
 #include <map>
 #include <string>
 
@@ -44,25 +45,6 @@ btTransform toBt(const glm::dmat4 &m) {
     return t;
 }
 
-// Build-frame (S) point -> window pixel, the inverse of pickRay's
-// unprojection. false if behind the camera.
-bool project(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
-    const Camera &cam = *g.camera;
-    // The view's camera sits at pos - renderOrigin and DrawModelAt shifts
-    // geometry by -renderOrigin; the two cancel, so S-frame points map
-    // straight as v = R * (pS - pos) (the same contract pickRay inverts).
-    const glm::dmat3 R(cam.view);
-    const glm::dvec3 v = R * (pS - cam.pos);
-    if(v.z >= -1e-6) { return false; }
-    const double fx = cam.projection[0][0];
-    const double fy = cam.projection[1][1];
-    const double nx = fx * v.x / (-v.z);
-    const double ny = fy * v.y / (-v.z);
-    px = (nx + 1.0) * 0.5 * (double)cam.viewport_w;
-    py = (1.0 - ny) * 0.5 * (double)cam.viewport_h;
-    return true;
-}
-
 // The child stack node that best mates a parent node: the non-surface child
 // node whose direction is most anti-parallel to the parent node's (so a
 // parent "top" grabs the child "bottom", etc.).
@@ -79,6 +61,25 @@ const Node *bestMatingChildNode(const PartDef &child, const glm::dvec3 &parentDi
 }
 
 } // namespace
+
+// Build-frame (S) point -> window pixel, the inverse of pickRay's
+// unprojection. false if behind the camera.
+bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
+    const Camera &cam = *g.camera;
+    // The view's camera sits at pos - renderOrigin and DrawModelAt shifts
+    // geometry by -renderOrigin; the two cancel, so S-frame points map
+    // straight as v = R * (pS - pos) (the same contract pickRay inverts).
+    const glm::dmat3 R(cam.view);
+    const glm::dvec3 v = R * (pS - cam.pos);
+    if(v.z >= -1e-6) { return false; }
+    const double fx = cam.projection[0][0];
+    const double fy = cam.projection[1][1];
+    const double nx = fx * v.x / (-v.z);
+    const double ny = fy * v.y / (-v.z);
+    px = (nx + 1.0) * 0.5 * (double)cam.viewport_w;
+    py = (1.0 - ny) * 0.5 * (double)cam.viewport_h;
+    return true;
+}
 
 btCollisionShape *vabPartHull(const PartDef *def) { return vabAsset(def).hull; }
 btCollisionObject *vabPartObject(const PartDef *def) { return vabAsset(def).obj; }
@@ -123,18 +124,22 @@ int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx) {
         if(bp.def->nodes[i].surface) { continue; }   // stack ports only
         if(g.vab.nodeOccupied(partIdx, bp.def->nodes[i].id)) { continue; }
         double sx = 0, sy = 0;
-        if(!project(g, vabNodePos(g, partIdx, (int)i), sx, sy)) { continue; }
+        if(!vabProject(g, vabNodePos(g, partIdx, (int)i), sx, sy)) { continue; }
         const double d = glm::length(glm::dvec2(sx - (double)px, sy - (double)py));
         if(d < best) { best = d; bestI = (int)i; }
     }
     return bestI;
 }
 
-void vabUpdateHover(Game &g, int px, int py) {
+void vabClearHover(Game &g) {
     g.vab_hover = -1;
     g.vab_hoverNode = -1;
     g.vab_hoverParent = -1;
     g.vab_ghostValid = false;
+}
+
+void vabUpdateHover(Game &g, int px, int py) {
+    vabClearHover(g);
 
     int pi = -1;
     PickBodyHit hit;
@@ -153,7 +158,8 @@ void vabUpdateHover(Game &g, int px, int py) {
         const Node &pn = pp.def->nodes[(size_t)node];
         const Node *cn = bestMatingChildNode(*childDef, pn.dir);
         if(cn == nullptr) { return; }
-        const AttachPose ap = attachNodes(pp.localPos, pp.localRot, pn, *cn, 0.0, 0.0);
+        const AttachPose ap = attachNodes(pp.localPos, pp.localRot, pn, *cn,
+                                          g.vab_ghostRoll, 0.0);
         g.vab_hoverParent = pi;
         g.vab_hoverNode = node;
         g.vab_ghostSurface = false;
@@ -173,7 +179,7 @@ void vabUpdateHover(Game &g, int px, int py) {
     const glm::dvec3 localPoint = invR * (pS - pp.localPos);
     const glm::dvec3 localNormal = glm::normalize(invR * hit.normal);
     const AttachPose ap = attachSurface(pp.localPos, pp.localRot, localPoint,
-                                        localNormal, *cs, 0.0, 0.0);
+                                        localNormal, *cs, g.vab_ghostRoll, 0.0);
     g.vab_hoverParent = pi;
     g.vab_hoverNode = -1;
     g.vab_ghostSurface = true;
@@ -192,19 +198,80 @@ int vabPlace(Game &g) {
 
     BuildPart np;
     np.def = childDef;
-    np.id = g.vab_armed + "_" + std::to_string(g.vab.parts.size() + 1);
+    /* unique instance id: "<part>_<n>", n bumped past any id the tree
+       already uses (deletes leave holes the size-based guess would hit) */
+    int n = (int)g.vab.parts.size() + 1;
+    for(;;) {
+        np.id = g.vab_armed + "_" + std::to_string(n);
+        bool dup = false;
+        for(size_t i = 0; i < g.vab.parts.size(); i++) {
+            if(g.vab.parts[i].id == np.id) { dup = true; break; }
+        }
+        if(!dup) { break; }
+        n++;
+    }
     np.parent = g.vab_hoverParent;
     if(g.vab_ghostSurface) {
         np.attach = AttachMode::Surface;
         np.contactPoint = g.vab_ghostPoint;
         np.contactNormal = g.vab_ghostNormal;
         np.childNode = g.vab_ghostChildNode;
+        np.roll = g.vab_ghostRoll;
     } else {
         np.attach = AttachMode::Down;   // a stack edge; the node ids carry the mating
         np.parentNode = g.vab_ghostParentNode;
         np.childNode = g.vab_ghostChildNode;
+        np.angle = g.vab_ghostRoll;
     }
     g.vab.parts.push_back(np);
     g.vab.recomputePoses();
+    g.vab_ghostRoll = 0.0;   // the next placement starts unrolled
     return (int)g.vab.parts.size() - 1;
+}
+
+void vabRotate(Game &g, double deltaDeg) {
+    if(g.vab_ghostValid) { g.vab_ghostRoll += deltaDeg; return; }
+    if(g.vab_selected >= 0) { g.vab.rotatePart(g.vab_selected, deltaDeg); }
+}
+
+void vabDeleteSelected(Game &g) {
+    const int sel = g.vab_selected;
+    if(sel < 0 || (size_t)sel >= g.vab.parts.size()) { return; }
+    if(sel == 0) { g.toast("Cannot delete the root part"); return; }
+    const std::string id = g.vab.parts[(size_t)sel].id;
+    if(g.vab.removePart(sel)) {
+        g.vab_selected = -1;
+        vabClearHover(g);
+        g.toast("Deleted %s", id.c_str());
+    }
+}
+
+void vabSave(Game &g, const char *path) {
+    if(save_ship_def(g.vab, path)) {
+        printf("[vab] saved %s (%d parts)\n", path, (int)g.vab.parts.size());
+        fflush(stdout);
+        g.toast("Saved %s", path);
+    } else {
+        g.toast("Save FAILED: %s", path);
+    }
+}
+
+void vabLaunch(Game &g) {
+    if(g.vab.parts.empty()) { g.toast("Nothing to launch"); return; }
+    ShipDef def = g.vab.toShipDef();
+    const ScenarioDef *sc = scenario_by_name("pad");
+    /* defPath "": the ship was built in memory -- there is no file to
+       respawn it from until it is saved (the Respawn button hides). */
+    Vehicle *v = g.ships.place_ship_def(def, "", def.name, g.home, sc, g.sys);
+    g.ships.spawn_crew(v, g.sys);   // crew aboard the capsules, like startup
+    g.select_ship(v);
+    vabClearHover(g);
+    g.vab_armed.clear();
+    g.vab_ghostRoll = 0.0;
+    g.vab_selected = -1;
+    g.scene = Scene::Flight;
+    printf("[vab] launched '%s' (%d parts)\n", v->name.c_str(),
+           (int)g.vab.parts.size());
+    fflush(stdout);
+    g.toast("Launched %s", v->name.c_str());
 }

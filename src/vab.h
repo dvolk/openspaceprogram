@@ -23,12 +23,20 @@ bool pickVabPart(Game &g, int px, int py, int &partIdx, PickBodyHit &hit);
 // Build-frame (S) position of node `nodeIdx` on build part `partIdx`.
 glm::dvec3 vabNodePos(const Game &g, int partIdx, int nodeIdx);
 
+// Build-frame (S) point -> window pixel (the pickRay unprojection's
+// inverse; false behind the camera). The port gizmos in drawVabUI draw
+// with it.
+bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py);
+
 // Nearest STACK node of build part `partIdx` to the mouse within
 // `thresholdPx` (screen space); -1 if none. Stack ports are points, so
 // screen-space nearest is the natural grab test. Occupied ports
 // (BuildShip::nodeOccupied) are skipped, so hovering one falls through to
 // surface attach.
 int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx);
+
+// Reset the hover + ghost state (no target under the mouse).
+void vabClearHover(Game &g);
 
 // Per-frame editor update: hover part + node, and the ghost pose for the
 // armed palette part at the hovered target (stack node, or a surface hit on
@@ -40,3 +48,19 @@ void vabUpdateHover(Game &g, int px, int py);
 // surface hit), appending to Game::vab and re-solving poses. Returns the new
 // part index, or -1 if nothing is armed/targeted.
 int vabPlace(Game &g);
+
+// Q/E: spin the ghost (while one previews) or the selected part about its
+// attach axis by deltaDeg. No ghost, no selection: no-op.
+void vabRotate(Game &g, double deltaDeg);
+
+// Delete/X: remove the selected part and its subtree. The root refuses
+// (toast); success clears the selection + hover.
+void vabDeleteSelected(Game &g);
+
+// Write the build tree to `path` (save_ship_def); toasts the outcome.
+void vabSave(Game &g, const char *path);
+
+// LAUNCH: convert the tree to a ShipDef, place it on the home body's pad
+// (with startup-style crew aboard), take control of it, and switch to the
+// Flight scene. Empty tree: toast, stay put.
+void vabLaunch(Game &g);

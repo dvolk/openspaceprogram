@@ -60,6 +60,13 @@ public:
     Vehicle *place_ship(const std::string &shipDefPath, const std::string &wantName,
                         TerrainBody *hb, const ScenarioDef *sc, System &sys);
 
+    // Same, from an already-loaded def (the VAB Launch builds one in
+    // memory); defPath is recorded on the ship ("" = built in memory, no
+    // file to respawn from).
+    Vehicle *place_ship_def(const ShipDef &def, const std::string &defPath,
+                            const std::string &wantName,
+                            TerrainBody *hb, const ScenarioDef *sc, System &sys);
+
     // Runtime spawn: place + apply the scenario + park on rails. Appended
     // at the end of the body's list, so it is never the active one.
     Vehicle *spawn_ship(const std::string &defPath, const std::string &wantName,

@@ -1,0 +1,13 @@
+# VAB launch: --vab loads tanker.json as a physics-free build tree;
+# --vab-launch fires the editor's LAUNCH once at 2 s. The tree converts to a
+# ShipDef in memory (toShipDef), builds a real Vehicle on the pad
+# (place_ship_def -> build_ship), crew boards (spawn_crew) and control
+# switches to it (select_ship + the scene flip to Flight). The rest of the
+# run ticks the launched ship standing on the pad, so exit 0 plus the [vab]
+# line pin the whole path -- a bad in-memory def would throw in build_ship.
+NAME vab-launch
+ARGS --vab res/ships/tanker.json --vab-launch 2000 --timeout 12
+EXPECT Main loop starting
+EXPECT [vab] launched 'tanker' (7 parts)
+FORBID GL_
+FORBID error:

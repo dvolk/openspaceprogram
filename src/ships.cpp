@@ -66,8 +66,14 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
 Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wantName,
                            TerrainBody *hb, const ScenarioDef *sc, System &sys)
 {
-    ShipDef def = load_ship_def(shipDefPath.c_str(), part_catalog);
+    return place_ship_def(load_ship_def(shipDefPath.c_str(), part_catalog),
+                          shipDefPath, wantName, hb, sc, sys);
+}
 
+Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
+                               const std::string &wantName,
+                               TerrainBody *hb, const ScenarioDef *sc, System &sys)
+{
     // slot = how many ships already sit on this (body, scenario)
     int slot = 0;
     for(auto *s : collectVehicles(sys)) {
@@ -96,7 +102,7 @@ Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wa
         && def.parts[0].def->type == "kerbal";
     Vehicle *v = is_kerbal ? static_cast<Vehicle *>(new Kerbal) : new Vehicle;
     v->name = nm;
-    v->defPath = shipDefPath;
+    v->defPath = defPath;
     v->home = hb;
     v->scenario = sc;
     v->slot = slot;
