@@ -539,9 +539,12 @@ struct BuildShip {
        order (root at identity). Call after any add/remove/re-orient. */
     void recomputePoses();
 
-    /* True when part `partIdx`'s stack node `nodeId` already has a child
-       mated to it -- an occupied port refuses new attachments (KSP
-       behaviour). Surface edges never occupy a stack port. */
+    /* True when part `partIdx`'s stack node `nodeId` is consumed by an
+       existing stack edge -- as the parent-side port a child mated to, OR
+       as the child-side port mated onto a parent (a mating consumes the
+       node on BOTH parts, KSP-style, so the child's mated node is not a
+       free port: attaching there would land inside the parent). Surface
+       edges never consume a stack port. */
     bool nodeOccupied(int partIdx, const std::string &nodeId) const;
 
     /* Copy the physical parts of a loaded ShipDef into a build tree (fuel

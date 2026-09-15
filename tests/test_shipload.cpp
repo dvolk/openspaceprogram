@@ -751,10 +751,12 @@ int main() {
     {
         ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
         BuildShip bs = BuildShip::fromShipDef(tk2);
-        // the real tanker: the capsule->tank stack edge occupies its parent port
+        // the real tanker: the capsule->tank stack edge consumes BOTH mated
+        // nodes (the parent's port and the child's)
         const BuildPart &c1 = bs.parts[1];
         CHECK(c1.attach == AttachMode::Down);
         CHECK(bs.nodeOccupied(c1.parent, c1.parentNode));
+        CHECK(bs.nodeOccupied(1, c1.childNode));
         // hand-built mini tree: deterministic occupancy as children are added
         BuildShip mini;
         BuildPart root; root.def = bs.parts[0].def; root.id = "root";
@@ -766,14 +768,17 @@ int main() {
         kid.parentNode = "top"; kid.childNode = "bottom";
         mini.parts.push_back(kid);
         CHECK(mini.nodeOccupied(0, "top"));
+        CHECK(mini.nodeOccupied(1, "bottom"));   // child side consumed too
         CHECK(!mini.nodeOccupied(0, "bottom"));
-        CHECK(!mini.nodeOccupied(1, "top"));
+        CHECK(!mini.nodeOccupied(1, "top"));     // kid's far port stays free
         BuildPart pod; pod.def = bs.parts[3].def; pod.id = "pod";
         pod.parent = 0; pod.attach = AttachMode::Surface;
         pod.childNode = pod.def->findSurfaceNode()->id;
         mini.parts.push_back(pod);
         CHECK(mini.nodeOccupied(0, "top"));       // unchanged by the surface child
         CHECK(!mini.nodeOccupied(0, "bottom"));
+        CHECK(!mini.nodeOccupied(2, "top"));      // surface-attached pod's
+        CHECK(!mini.nodeOccupied(2, "bottom"));   // stack ports stay free
     }
     // fuel links are dropped and parent indices remapped (heavy_two has links);
     // construction order means every non-root parent is an earlier part
