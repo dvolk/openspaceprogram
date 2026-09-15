@@ -74,29 +74,13 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         const ShipPart &pp = physical[(size_t)sp.parent];
         const glm::dvec3 &pPos = pos[(size_t)sp.parent];
         const glm::dmat3 &pRot = rot[(size_t)sp.parent];
-        AttachPose ap;
-        if(sp.isStackEdge()) {
-            const Node *pn = pp.def->findNode(sp.parentNode);
-            const Node *cn = sp.def->findNode(sp.childNode);
-            /* both validated at load (load_ship_def); guard against a part
-               whose explicit nodes were edited out from under a ship def */
-            if(pn == nullptr || cn == nullptr) {
-                throw std::runtime_error(std::string("build_ship: part '") + sp.id
-                                         + "' mates node '" + (cn ? sp.parentNode : sp.childNode)
-                                         + "' that its part does not have");
-            }
-            ap = attachNodes(pPos, pRot, *pn, *cn, sp.angle, sp.offset);
-        } else {
-            // surface edge: the child's surface node at the parent contact
-            const Node *cn = sp.def->findNode(sp.childNode);
-            if(cn == nullptr) {
-                throw std::runtime_error(std::string("build_ship: part '") + sp.id
-                                         + "' surface-attaches with node '" + sp.childNode
-                                         + "' that its part does not have");
-            }
-            ap = attachSurface(pPos, pRot, sp.contactPoint, sp.contactNormal,
-                               *cn, sp.roll, sp.offset);
-        }
+        /* one solver for both edge kinds (and for the VAB build tree), so
+           flight and the editor can never disagree; solveEdge throws on a
+           missing node (validated at load too). */
+        const AttachPose ap = solveEdge(pPos, pRot, *pp.def, *sp.def, sp.attach,
+                                        sp.parentNode, sp.childNode,
+                                        sp.contactPoint, sp.contactNormal,
+                                        sp.angle, sp.roll, sp.offset);
         pos[i] = ap.childPos;
         rot[i] = ap.childRot;
     }

@@ -511,6 +511,39 @@ struct ShipDef {
     }
 };
 
+/* ---- VAB build tree (physics-free authoring representation) -------------
+   The editor edits THIS, not the flight Vehicle: a mutable tree of part
+   instances with their attach edges and solved ship-local poses, no Bullet.
+   Launch converts it to a ShipDef/Vehicle via build_ship. Poses come from
+   solveEdge (the same solver flight uses), in the root part's frame S. */
+struct BuildPart {
+    const PartDef *def = nullptr;
+    std::string id;
+    int parent = -1;              // index into BuildShip::parts; -1 = root
+    AttachMode attach = AttachMode::Down;
+    std::string parentNode, childNode;          // stack edge node ids
+    glm::dvec3 contactPoint, contactNormal;     // surface edge contact (parent-local)
+    double angle = 0.0;   // stack edge: roll about the mating axis
+    double roll  = 0.0;   // surface edge: roll about the contact normal
+    double offset = 0.0;
+    int stage = 1;
+    glm::dvec3 localPos;  // solved, ship-local frame S (root frame)
+    glm::dmat3 localRot;
+};
+
+struct BuildShip {
+    std::string name;
+    std::vector<BuildPart> parts;   // construction order; parts[0] = root
+
+    /* Re-solve every part's localPos/localRot off its parent in construction
+       order (root at identity). Call after any add/remove/re-orient. */
+    void recomputePoses();
+
+    /* Copy the physical parts of a loaded ShipDef into a build tree (fuel
+       links are virtual and are dropped; parent indices are remapped). */
+    static BuildShip fromShipDef(const ShipDef &def);
+};
+
 /* The resolved child pose for one attachment (GL-free math; the same
    function the future VAB snap uses). attachPose is purely relative: the
    parent is given in some frame and the child pose comes back in that same
@@ -554,6 +587,21 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
                          const glm::dvec3 &point, const glm::dvec3 &normal,
                          const Node &childNode, double rollDeg = 0.0,
                          double offset = 0.0);
+
+/* Solve one parent->child edge into the child's pose in the parent's frame,
+   dispatching on the edge kind: a STACK edge (Down/Up) mates the named
+   parentNode/childNode via attachNodes (angleDeg is the roll about the mating
+   axis); a SURFACE edge places the child's childNode surface node at
+   contactPoint/contactNormal via attachSurface (rollDeg about the normal).
+   This is the single source of edge geometry -- build_ship and the VAB build
+   tree both use it, so the editor and flight can never disagree. Throws if a
+   referenced node is missing. */
+AttachPose solveEdge(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                     const PartDef &parentDef, const PartDef &childDef,
+                     AttachMode mode,
+                     const std::string &parentNode, const std::string &childNode,
+                     const glm::dvec3 &contactPoint, const glm::dvec3 &contactNormal,
+                     double angleDeg, double rollDeg, double offset);
 
 /* Collision hull margin (m) resolution: the ship def value wins over the
    part catalog value; either may be unset (-1), in which case the other

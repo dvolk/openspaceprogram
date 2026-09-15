@@ -711,6 +711,57 @@ int main() {
         CHECK(near(glm::dot(b.childRot * glm::dvec3(0, 0, 1), glm::dvec3(1, 0, 0)), 0.0));
     }
 
+    // --- VAB build tree: fromShipDef + recomputePoses ----------------------
+    // The physics-free build tree reproduces the flight solver's poses exactly
+    // (both go through solveEdge), keeps construction order, and puts the root
+    // at identity.
+    {
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(tk2);
+        CHECK(bs.parts.size() == tk2.parts.size());   // tanker has no fuel links
+        CHECK(bs.parts[0].parent == -1);
+        CHECK(vnear(bs.parts[0].localPos, glm::dvec3(0)));
+        CHECK(mnear(bs.parts[0].localRot, glm::dmat3(1.0)));
+        // a stack child (capsule -> tank, down) matches attachNodes
+        {
+            const BuildPart &c = bs.parts[1];
+            CHECK(c.attach == AttachMode::Down);
+            AttachPose want = attachNodes(bs.parts[0].localPos, bs.parts[0].localRot,
+                                          *bs.parts[0].def->findNode("bottom"),
+                                          *c.def->findNode("top"), c.angle, c.offset);
+            CHECK(vnear(c.localPos, want.childPos));
+            CHECK(mnear(c.localRot, want.childRot));
+        }
+        // a surface child (side pod) matches attachSurface
+        {
+            const BuildPart &p = bs.parts[3];
+            CHECK(p.attach == AttachMode::Surface);
+            const Node *cn = p.def->findSurfaceNode();
+            CHECK(cn != nullptr);
+            AttachPose want = attachSurface(bs.parts[(size_t)p.parent].localPos,
+                                            bs.parts[(size_t)p.parent].localRot,
+                                            p.contactPoint, p.contactNormal,
+                                            *cn, p.roll, p.offset);
+            CHECK(vnear(p.localPos, want.childPos));
+            CHECK(mnear(p.localRot, want.childRot));
+        }
+    }
+    // fuel links are dropped and parent indices remapped (heavy_two has links);
+    // construction order means every non-root parent is an earlier part
+    {
+        ShipDef h2 = load_ship_def("res/ships/heavy_two.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(h2);
+        size_t nphys = 0;
+        for(size_t i = 0; i < h2.parts.size(); i++) {
+            if(!h2.parts[i].isFuelLink()) { nphys++; }
+        }
+        CHECK(bs.parts.size() == nphys);
+        CHECK(bs.parts.size() < h2.parts.size());
+        for(size_t i = 1; i < bs.parts.size(); i++) {
+            CHECK(bs.parts[i].parent >= 0 && (size_t)bs.parts[i].parent < i);
+        }
+    }
+
     // --- error paths ---------------------------------------------------------
     CHECK(expect_throw([](){ load_parts_catalog("res/no_such_file.json"); }));
     CHECK(expect_throw([&](){ load_ship_def("res/no_such_file.json", cat); }));

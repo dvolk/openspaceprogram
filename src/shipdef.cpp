@@ -669,6 +669,84 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
     return attachNodes(parentPos, parentRot, *pn, *cn, angleDeg, offset);
 }
 
+AttachPose solveEdge(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                     const PartDef &parentDef, const PartDef &childDef,
+                     AttachMode mode,
+                     const std::string &parentNode, const std::string &childNode,
+                     const glm::dvec3 &contactPoint, const glm::dvec3 &contactNormal,
+                     double angleDeg, double rollDeg, double offset)
+{
+    if(mode == AttachMode::Down || mode == AttachMode::Up) {
+        const Node *pn = parentDef.findNode(parentNode);
+        const Node *cn = childDef.findNode(childNode);
+        if(pn == nullptr || cn == nullptr) {
+            throw std::runtime_error(std::string("solveEdge: stack edge references a "
+                                                 "missing node (parent '") + parentNode
+                                     + "' / child '" + childNode + "')");
+        }
+        return attachNodes(parentPos, parentRot, *pn, *cn, angleDeg, offset);
+    }
+    // surface edge
+    const Node *cn = childDef.findNode(childNode);
+    if(cn == nullptr) {
+        throw std::runtime_error(std::string("solveEdge: surface edge references a "
+                                             "missing child node '") + childNode + "'");
+    }
+    return attachSurface(parentPos, parentRot, contactPoint, contactNormal,
+                         *cn, rollDeg, offset);
+}
+
+void BuildShip::recomputePoses() {
+    for(size_t i = 0; i < parts.size(); i++) {
+        BuildPart &bp = parts[i];
+        if(bp.parent < 0) {
+            bp.localPos = glm::dvec3(0.0);
+            bp.localRot = glm::dmat3(1.0);
+            continue;
+        }
+        const BuildPart &pp = parts[(size_t)bp.parent];
+        const AttachPose ap = solveEdge(pp.localPos, pp.localRot,
+                                        *pp.def, *bp.def, bp.attach,
+                                        bp.parentNode, bp.childNode,
+                                        bp.contactPoint, bp.contactNormal,
+                                        bp.angle, bp.roll, bp.offset);
+        bp.localPos = ap.childPos;
+        bp.localRot = ap.childRot;
+    }
+}
+
+BuildShip BuildShip::fromShipDef(const ShipDef &def) {
+    BuildShip bs;
+    bs.name = def.name;
+    /* physical parts only; remap parent indices as fuel links are dropped
+       (same partition build_ship does). */
+    std::map<size_t, size_t> physIndex;   // def.parts index -> build index
+    for(size_t i = 0; i < def.parts.size(); i++) {
+        const ShipPart &sp = def.parts[i];
+        if(sp.isFuelLink()) { continue; }
+        physIndex[i] = bs.parts.size();
+        BuildPart bp;
+        bp.def = sp.def;
+        bp.id = sp.id;
+        bp.attach = sp.attach;
+        bp.parentNode = sp.parentNode;
+        bp.childNode = sp.childNode;
+        bp.contactPoint = sp.contactPoint;
+        bp.contactNormal = sp.contactNormal;
+        bp.angle = sp.angle;
+        bp.roll = sp.roll;
+        bp.offset = sp.offset;
+        bp.stage = sp.stage;
+        if(sp.parent >= 0) {
+            auto it = physIndex.find((size_t)sp.parent);
+            bp.parent = (it != physIndex.end()) ? (int)it->second : -1;
+        }
+        bs.parts.push_back(bp);
+    }
+    bs.recomputePoses();
+    return bs;
+}
+
 double resolveHullMargin(double shipMargin, double partMargin) {
     if(shipMargin >= 0.0) { return shipMargin; }
     if(partMargin >= 0.0) { return partMargin; }
