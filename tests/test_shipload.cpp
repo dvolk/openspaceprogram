@@ -780,6 +780,130 @@ int main() {
         CHECK(!mini.nodeOccupied(2, "top"));      // surface-attached pod's
         CHECK(!mini.nodeOccupied(2, "bottom"));   // stack ports stay free
     }
+    // --- VAB tree ops: removePart / rotatePart ------------------------------
+    {
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(tk2);
+        // the tanker's tank (parts[1]) carries the engine + all four side
+        // pods: deleting it takes the whole subtree, leaving the capsule
+        CHECK(bs.parts.size() == 7);
+        CHECK(bs.removePart(1));
+        CHECK(bs.parts.size() == 1);
+        CHECK(bs.parts[0].parent == -1);
+        CHECK(!bs.removePart(0));       // the root refuses
+        CHECK(!bs.removePart(5));       // out of range refuses
+        CHECK(bs.parts.size() == 1);
+    }
+    {
+        // remap: root + kid + grandkid + kid2; deleting kid takes grandkid,
+        // kid2 survives with its parent remapped and its pose re-solved
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip full = BuildShip::fromShipDef(tk2);
+        BuildShip mini;
+        for(int i = 0; i < 4; i++) {
+            BuildPart bp;
+            bp.def = full.parts[(size_t)(i == 2 ? 1 : (i == 3 ? 0 : i))].def;
+            bp.id = "p" + std::to_string(i);
+            bp.parent = (i == 0) ? -1 : (i == 2 ? 1 : 0);
+            bp.attach = AttachMode::Down;
+            bp.parentNode = (i == 0) ? "" : "bottom";
+            bp.childNode = (i == 0) ? "" : "top";
+            mini.parts.push_back(bp);
+        }
+        mini.recomputePoses();
+        const glm::dvec3 kid2Pos = mini.parts[3].localPos;
+        CHECK(mini.removePart(1));
+        CHECK(mini.parts.size() == 2);
+        CHECK(mini.parts[1].id == "p3");
+        CHECK(mini.parts[1].parent == 0);
+        CHECK(vnear(mini.parts[1].localPos, kid2Pos));   // pose unchanged
+    }
+    {
+        // rotatePart: a stack child's angle and a surface child's roll change
+        // and the poses re-solve; the root is a no-op
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(tk2);
+        const glm::dmat3 rootBefore = bs.parts[0].localRot;
+        bs.rotatePart(0, 90.0);
+        CHECK(mnear(bs.parts[0].localRot, rootBefore));
+        const glm::dmat3 kidBefore = bs.parts[1].localRot;
+        bs.rotatePart(1, 90.0);
+        CHECK(near(bs.parts[1].angle, 90.0));
+        CHECK(!mnear(bs.parts[1].localRot, kidBefore));
+        const double rollBefore = bs.parts[3].roll;
+        bs.rotatePart(3, -45.0);
+        CHECK(near(bs.parts[3].roll, rollBefore - 45.0));
+        CHECK(bs.parts[3].attach == AttachMode::Surface);
+    }
+    // --- save_ship_def round trip -------------------------------------------
+    {
+        const char *rt = "/tmp/test_shipload_rt.json";
+        // tanker: poses + ids + controller survive the round trip, including
+        // the surface pods (their load-resolved contacts are written as
+        // explicit point/normal)
+        ShipDef tk2 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs = BuildShip::fromShipDef(tk2);
+        CHECK(bs.controllerId == "capsule_1");
+        CHECK(save_ship_def(bs, rt));
+        ShipDef rl = load_ship_def(rt, cat);
+        BuildShip bs2 = BuildShip::fromShipDef(rl);
+        CHECK(bs2.parts.size() == bs.parts.size());
+        CHECK(bs2.controllerId == bs.controllerId);
+        for(size_t i = 0; i < bs.parts.size(); i++) {
+            CHECK(bs2.parts[i].id == bs.parts[i].id);
+            CHECK(bs2.parts[i].parent == bs.parts[i].parent);
+            CHECK(bs2.parts[i].attach == bs.parts[i].attach);
+            CHECK(vnear(bs2.parts[i].localPos, bs.parts[i].localPos));
+            CHECK(mnear(bs2.parts[i].localRot, bs.parts[i].localRot));
+        }
+        // heavy_two: fuel links + stages survive; deleting a link endpoint
+        // drops just that link
+        ShipDef h2 = load_ship_def("res/ships/heavy_two.json", cat);
+        BuildShip hb = BuildShip::fromShipDef(h2);
+        CHECK(hb.fuelLinks.size() == 2);
+        CHECK(save_ship_def(hb, rt));
+        BuildShip hb2 = BuildShip::fromShipDef(load_ship_def(rt, cat));
+        CHECK(hb2.parts.size() == hb.parts.size());
+        CHECK(hb2.fuelLinks.size() == 2);
+        CHECK(hb2.controllerId == "capsule_1");
+        CHECK(hb2.parts[0].stage == 4);
+        for(size_t i = 0; i < hb.parts.size(); i++) {
+            CHECK(hb2.parts[i].id == hb.parts[i].id);
+            CHECK(vnear(hb2.parts[i].localPos, hb.parts[i].localPos));
+            CHECK(mnear(hb2.parts[i].localRot, hb.parts[i].localRot));
+        }
+        // toShipDef: the controller resolves to its index, links re-append
+        ShipDef back = hb.toShipDef();
+        CHECK(back.controller == 0);
+        size_t nlink = 0;
+        for(size_t i = 0; i < back.parts.size(); i++) {
+            if(back.parts[i].isFuelLink()) { nlink++; }
+        }
+        CHECK(nlink == 2);
+        // delete rtank12 (asparagus1's source): that link drops, the other stays
+        int victim = -1;
+        for(size_t i = 0; i < hb.parts.size(); i++) {
+            if(hb.parts[i].id == "rtank12") { victim = (int)i; }
+        }
+        CHECK(victim > 0);
+        CHECK(hb.removePart(victim));
+        ShipDef trimmed = hb.toShipDef();
+        size_t kept = 0;
+        for(size_t i = 0; i < trimmed.parts.size(); i++) {
+            if(trimmed.parts[i].isFuelLink()) {
+                kept++;
+                CHECK(trimmed.parts[i].id == "asparagus2");
+            }
+        }
+        CHECK(kept == 1);
+        CHECK(save_ship_def(hb, rt));
+        BuildShip hb3 = BuildShip::fromShipDef(load_ship_def(rt, cat));
+        CHECK(hb3.fuelLinks.size() == 1);
+        // empty tree refuses to save
+        BuildShip empty;
+        CHECK(!save_ship_def(empty, rt));
+        std::remove(rt);
+    }
     // fuel links are dropped and parent indices remapped (heavy_two has links);
     // construction order means every non-root parent is an earlier part
     {

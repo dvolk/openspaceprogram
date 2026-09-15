@@ -535,6 +535,18 @@ struct BuildShip {
     std::string name;
     std::vector<BuildPart> parts;   // construction order; parts[0] = root
 
+    /* Round-trip extras the tree itself does not edit: fromShipDef keeps
+       them, save_ship_def writes them back, toShipDef re-appends them.
+       Fuel links are virtual parts (a catalog def for the "part" name +
+       the endpoint ids); a link whose endpoint part was deleted is
+       dropped at convert/save. controllerId is the explicit controller's
+       part id ("" = the default rule); if that part is deleted the
+       controller falls back to the default. */
+    struct FuelLink { const PartDef *def; std::string id, from, to; };
+    std::vector<FuelLink> fuelLinks;
+    std::string controllerId;
+    double hull_margin = -1.0;
+
     /* Re-solve every part's localPos/localRot off its parent in construction
        order (root at identity). Call after any add/remove/re-orient. */
     void recomputePoses();
@@ -547,10 +559,35 @@ struct BuildShip {
        edges never consume a stack port. */
     bool nodeOccupied(int partIdx, const std::string &nodeId) const;
 
+    /* Remove part `idx` AND its whole subtree (a KSP delete takes the
+       descendants with it), remap the surviving parent indices and
+       re-solve the poses. The root refuses (it is the S-frame anchor);
+       invalid indices refuse too. true = the tree changed. */
+    bool removePart(int idx);
+
+    /* Spin part `idx` about its attach axis by deltaDeg (stack edge: the
+       roll about the mating axis; surface edge: the roll about the contact
+       normal) and re-solve the subtree poses. The root has no edge:
+       no-op. */
+    void rotatePart(int idx, double deltaDeg);
+
+    /* The inverse of fromShipDef: a ShipDef build_ship can consume (fuel
+       links re-appended after the physical parts, the controller resolved
+       from its id). An empty tree converts to an empty def -- callers
+       check parts.empty(). */
+    ShipDef toShipDef() const;
+
     /* Copy the physical parts of a loaded ShipDef into a build tree (fuel
        links are virtual and are dropped; parent indices are remapped). */
     static BuildShip fromShipDef(const ShipDef &def);
 };
+
+/* Write the build tree as a ship-def JSON file that load_ship_def reads
+   back (the same schema: parent by id, explicit node ids, surface
+   contacts as point+normal arrays). Round-trip contract: loading a saved
+   tree reproduces its ids, edges and poses exactly. false = empty tree
+   or the file could not be written. */
+bool save_ship_def(const BuildShip &bs, const char *path);
 
 /* The resolved child pose for one attachment (GL-free math; the same
    function the future VAB snap uses). attachPose is purely relative: the

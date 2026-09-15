@@ -728,12 +728,20 @@ bool BuildShip::nodeOccupied(int partIdx, const std::string &nodeId) const {
 BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     BuildShip bs;
     bs.name = def.name;
+    bs.hull_margin = def.hull_margin;
+    if(def.controller >= 0 && (size_t)def.controller < def.parts.size()) {
+        bs.controllerId = def.parts[(size_t)def.controller].id;
+    }
     /* physical parts only; remap parent indices as fuel links are dropped
-       (same partition build_ship does). */
+       from the TREE (they are kept as FuelLink records for the round trip,
+       same partition build_ship does). */
     std::map<size_t, size_t> physIndex;   // def.parts index -> build index
     for(size_t i = 0; i < def.parts.size(); i++) {
         const ShipPart &sp = def.parts[i];
-        if(sp.isFuelLink()) { continue; }
+        if(sp.isFuelLink()) {
+            bs.fuelLinks.push_back(FuelLink{sp.def, sp.id, sp.from, sp.to});
+            continue;
+        }
         physIndex[i] = bs.parts.size();
         BuildPart bp;
         bp.def = sp.def;
@@ -755,6 +763,151 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
     }
     bs.recomputePoses();
     return bs;
+}
+
+bool BuildShip::removePart(int idx) {
+    if(idx <= 0 || idx >= (int)parts.size()) { return false; }   // root stays
+    std::vector<bool> dead(parts.size(), false);
+    dead[(size_t)idx] = true;
+    /* construction order puts every parent before its children, so one
+       forward pass marks the whole subtree. */
+    for(size_t i = 1; i < parts.size(); i++) {
+        if(parts[i].parent >= 0 && dead[(size_t)parts[i].parent]) { dead[i] = true; }
+    }
+    std::vector<int> remap(parts.size(), -1);
+    std::vector<BuildPart> keep;
+    keep.reserve(parts.size());
+    for(size_t i = 0; i < parts.size(); i++) {
+        if(dead[i]) { continue; }
+        remap[i] = (int)keep.size();
+        keep.push_back(parts[i]);
+    }
+    for(size_t k = 0; k < keep.size(); k++) {
+        if(keep[k].parent >= 0) { keep[k].parent = remap[(size_t)keep[k].parent]; }
+    }
+    parts.swap(keep);
+    recomputePoses();
+    return true;
+}
+
+void BuildShip::rotatePart(int idx, double deltaDeg) {
+    if(idx <= 0 || idx >= (int)parts.size()) { return; }   // root has no edge
+    BuildPart &bp = parts[(size_t)idx];
+    if(bp.parent < 0) { return; }
+    if(bp.attach == AttachMode::Surface) { bp.roll += deltaDeg; }
+    else { bp.angle += deltaDeg; }
+    recomputePoses();
+}
+
+ShipDef BuildShip::toShipDef() const {
+    ShipDef def;
+    def.name = name;
+    def.hull_margin = hull_margin;
+    def.controller = -1;
+    for(size_t i = 0; i < parts.size(); i++) {
+        const BuildPart &bp = parts[i];
+        ShipPart sp{};
+        sp.part = (bp.def != nullptr) ? bp.def->name : std::string("");
+        sp.id = bp.id;
+        sp.def = bp.def;
+        sp.parent = bp.parent;
+        sp.attach = bp.attach;
+        sp.angle = bp.angle;
+        sp.offset = bp.offset;
+        sp.parentNode = bp.parentNode;
+        sp.childNode = bp.childNode;
+        sp.contactPoint = bp.contactPoint;
+        sp.contactNormal = bp.contactNormal;
+        sp.roll = bp.roll;
+        sp.stage = bp.stage;
+        if(!controllerId.empty() && bp.id == controllerId) { def.controller = (int)i; }
+        def.parts.push_back(sp);
+    }
+    /* fuel links re-appended after the physical parts (they are virtual, so
+       their position is free; the tail keeps parent defaults sane). A link
+       whose endpoint part was deleted is dropped. */
+    for(size_t k = 0; k < fuelLinks.size(); k++) {
+        const FuelLink &fl = fuelLinks[k];
+        bool haveFrom = false, haveTo = false;
+        for(size_t i = 0; i < parts.size(); i++) {
+            if(parts[i].id == fl.from) { haveFrom = true; }
+            if(parts[i].id == fl.to)   { haveTo = true; }
+        }
+        if(!haveFrom || !haveTo) { continue; }
+        ShipPart sp{};
+        sp.part = (fl.def != nullptr) ? fl.def->name : std::string("fuel_link");
+        sp.id = fl.id;
+        sp.def = fl.def;
+        sp.parent = -1;
+        sp.attach = AttachMode::Down;   // ignored for a link
+        sp.stage = 1;
+        sp.from = fl.from;
+        sp.to = fl.to;
+        def.parts.push_back(sp);
+    }
+    return def;
+}
+
+/* degrees -> [0, 360), for tidy saved files (the solvers are wrap-agnostic) */
+static double wrap360(double deg) {
+    double a = std::fmod(deg, 360.0);
+    if(a < 0.0) { a += 360.0; }
+    return a;
+}
+
+bool save_ship_def(const BuildShip &bs, const char *path) {
+    if(bs.parts.empty()) { return false; }
+    const ShipDef def = bs.toShipDef();
+
+    nlohmann::ordered_json doc;
+    doc["name"] = def.name;
+    if(def.controller >= 0 && (size_t)def.controller < def.parts.size()) {
+        doc["controller"] = def.parts[(size_t)def.controller].id;
+    }
+    if(def.hull_margin >= 0.0) { doc["hull_margin"] = def.hull_margin; }
+    nlohmann::ordered_json arr = nlohmann::ordered_json::array();
+    for(size_t i = 0; i < def.parts.size(); i++) {
+        const ShipPart &sp = def.parts[i];
+        nlohmann::ordered_json pv;
+        pv["part"] = sp.part;
+        pv["id"] = sp.id;
+        if(sp.isFuelLink()) {
+            pv["from"] = sp.from;
+            pv["to"] = sp.to;
+            arr.push_back(pv);
+            continue;
+        }
+        // the root is part 0 (no "parent" key); every other part names its
+        // parent explicitly (the load default -- previous part -- is a trap
+        // for edited trees)
+        if(sp.parent >= 0 && (size_t)sp.parent < def.parts.size()) {
+            pv["parent"] = def.parts[(size_t)sp.parent].id;
+        }
+        pv["attach"] = (sp.attach == AttachMode::Surface) ? "surface"
+                     : (sp.attach == AttachMode::Up) ? "up" : "down";
+        if(sp.isStackEdge()) {
+            // the root's ids are empty (no edge); omit empty keys so the
+            // load defaults apply exactly as for a hand-written file
+            if(!sp.parentNode.empty()) { pv["parentNode"] = sp.parentNode; }
+            if(!sp.childNode.empty())  { pv["childNode"] = sp.childNode; }
+            pv["angle"] = wrap360(sp.angle);
+        } else {
+            pv["childNode"] = sp.childNode;
+            pv["point"] = { sp.contactPoint.x, sp.contactPoint.y, sp.contactPoint.z };
+            pv["normal"] = { sp.contactNormal.x, sp.contactNormal.y, sp.contactNormal.z };
+            pv["roll"] = wrap360(sp.roll);
+        }
+        if(sp.offset != 0.0) { pv["offset"] = sp.offset; }
+        if(sp.stage != 1) { pv["stage"] = sp.stage; }
+        arr.push_back(pv);
+    }
+    doc["parts"] = arr;
+
+    std::ofstream f(path);
+    if(!f.is_open()) { return false; }
+    f << doc.dump(2) << "\n";
+    f.flush();
+    return !f.fail();
 }
 
 double resolveHullMargin(double shipMargin, double partMargin) {
