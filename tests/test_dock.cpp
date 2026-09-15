@@ -89,6 +89,9 @@ static Part *mkPart(Ship &s, const char *name, double mass,
     d.radius       = (float)hx;
     d.height       = (float)(2.0 * hz);
     d.docking_port = port;
+    d.synthesizeNodes();   // hand-built def: give it the axial stack nodes
+                           // attachDown mates (a catalog part gets these from
+                           // load_parts_catalog)
 
     Part *p = new Part;
     p->body  = b;

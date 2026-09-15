@@ -615,6 +615,81 @@ int main() {
         CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), dir));
     }
 
+    // --- node schema: synthesis, attachNodes, node-ref parsing -------------
+    // a catalog part with no explicit nodes gets synthesized axial top/bottom
+    {
+        const Node *top = cap->findNode("top");
+        const Node *bot = cap->findNode("bottom");
+        CHECK(top != nullptr && bot != nullptr);
+        CHECK(vnear(top->pos, glm::dvec3(0, 0,  cap->height / 2.0)));
+        CHECK(vnear(top->dir, glm::dvec3(0, 0, 1)));
+        CHECK(vnear(bot->pos, glm::dvec3(0, 0, -cap->height / 2.0)));
+        CHECK(vnear(bot->dir, glm::dvec3(0, 0, -1)));
+    }
+    // attachNodes on the synthesized axial nodes reproduces attachPose(Down)
+    {
+        const Node *pb = cap->findNode("bottom");
+        const Node *ct = eng->findNode("top");
+        CHECK(pb != nullptr && ct != nullptr);
+        AttachPose vn = attachNodes(O, I, *pb, *ct, 0.0, 0.0);
+        AttachPose vm = attachPose(O, I, *cap, *eng, AttachMode::Down, 0.0, 0.0);
+        CHECK(vnear(vn.childPos, vm.childPos));
+        CHECK(mnear(vn.childRot, vm.childRot));
+    }
+    // roll spins the child about the mating axis without moving the node point
+    {
+        Node pn; pn.id = "bottom"; pn.pos = glm::dvec3(0, 0, -1); pn.dir = glm::dvec3(0, 0, -1);
+        Node cn; cn.id = "top";    cn.pos = glm::dvec3(0, 0,  1); cn.dir = glm::dvec3(0, 0,  1);
+        AttachPose r0  = attachNodes(O, I, pn, cn, 0.0, 0.0);
+        AttachPose r90 = attachNodes(O, I, pn, cn, 90.0, 0.0);
+        CHECK(mnear(r0.childRot, I));
+        CHECK(vnear(r90.childRot * glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0)));
+        CHECK(vnear(r0.childPos, r90.childPos));
+    }
+    // non-axial mating: a +X port taking a -Z stack node turns the child's
+    // axis onto +X (the hub case synthesis can't express)
+    {
+        Node pn; pn.id = "port";   pn.pos = glm::dvec3(1, 0, 0);  pn.dir = glm::dvec3(1, 0, 0);
+        Node cn; cn.id = "bottom"; cn.pos = glm::dvec3(0, 0, -1); cn.dir = glm::dvec3(0, 0, -1);
+        AttachPose p = attachNodes(O, I, pn, cn, 0.0, 0.0);
+        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1), glm::dvec3(1, 0, 0)));
+        CHECK(vnear(p.childPos + p.childRot * cn.pos, pn.pos));  // nodes coincide
+    }
+    // a ship-def stack edge with explicit node refs resolves and mates them
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"noderef\", \"parts\": ["
+             "{ \"part\": \"tank_r1.5h3\", \"id\": \"t\" },"
+             "{ \"part\": \"nose_cap_r1.5h0.75\", \"id\": \"c\", \"parent\": \"t\","
+             "  \"parentNode\": \"top\", \"childNode\": \"bottom\" } ] }";
+        f.close();
+        ShipDef nr = load_ship_def(mix, cat);
+        CHECK(nr.parts.size() == 2);
+        CHECK(nr.parts[1].isStackEdge());
+        CHECK(nr.parts[1].parentNode == "top");
+        CHECK(nr.parts[1].childNode == "bottom");
+        // explicit parent-top/child-bottom == an Up mating
+        AttachPose p = attachNodes(glm::dvec3(0.0), glm::dmat3(1.0),
+                                   *t153->findNode("top"), *nc15->findNode("bottom"),
+                                   0.0, 0.0);
+        AttachPose u = attachPose(glm::dvec3(0.0), glm::dmat3(1.0), *t153, *nc15,
+                                  AttachMode::Up, 0.0, 0.0);
+        CHECK(vnear(p.childPos, u.childPos));
+        CHECK(mnear(p.childRot, u.childRot));
+        std::remove(mix);
+    }
+    // a bad node id is a load error, not a build-time null deref
+    {
+        std::ofstream f(mix);
+        f << "{ \"name\": \"badnode\", \"parts\": ["
+             "{ \"part\": \"tank_r1.5h3\", \"id\": \"t\" },"
+             "{ \"part\": \"nose_cap_r1.5h0.75\", \"id\": \"c\", \"parent\": \"t\","
+             "  \"parentNode\": \"nonexistent\", \"childNode\": \"bottom\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_ship_def(mix, cat); }));
+        std::remove(mix);
+    }
+
     // --- error paths ---------------------------------------------------------
     CHECK(expect_throw([](){ load_parts_catalog("res/no_such_file.json"); }));
     CHECK(expect_throw([&](){ load_ship_def("res/no_such_file.json", cat); }));

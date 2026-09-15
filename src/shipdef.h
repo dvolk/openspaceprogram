@@ -182,6 +182,19 @@ inline const char *controlAxisName(ControlAxis axis) {
     return "?";
 }
 
+/* A named attachment node on a part (KSP-style stack node). `pos` is the
+   node position in part-local metres (+Z = stack axis, origin at the part
+   centre); `dir` is its outward direction (normalized at load). Two nodes
+   mate when their world directions are anti-parallel and their positions
+   coincide -- see attachNodes(). A part with no explicit nodes in JSON gets
+   `top`/`bottom` synthesized from radius/height (see load_parts_catalog), so
+   axis-aligned cylinder parts need no node authoring. */
+struct Node {
+    std::string id;
+    glm::dvec3 pos;
+    glm::dvec3 dir;
+};
+
 /* One part TYPE (a catalog entry; ship defs reference it by name).
    `type` is a free-form display label. Behavior comes from the optional
    fields below (see the header comment): torque makes it a reaction
@@ -198,11 +211,46 @@ struct PartDef {
     /* Physical size in metres; the .obj is authored to match (origin
        centered, +Z = stack axis): radius = cross-section (x/y extent 2r),
        height = extent along the stack axis (z extent h). Defaults are the
-       legacy 2 m cube, so pre-size parts keep working. attachPose welds
-       stack faces at +-h/2 and radial/side ports at r from the axis; a
-       future staging cut lands on a face. */
+       legacy 2 m cube, so pre-size parts keep working. These seed the
+       synthesized top/bottom stack nodes (at +-h/2) and still drive the
+       collision/aero extent and the procedural radial/side surface attach;
+       stack attachment itself is node-based (see `nodes`). */
     double radius;
     double height;
+
+    /* Attachment nodes (KSP-style). Empty in JSON -> load_parts_catalog
+       synthesizes `top` (+h/2, +Z) and `bottom` (-h/2, -Z) from the size
+       above, so an axis-aligned cylinder part needs no authoring. A part
+       declares explicit nodes only when its stack faces aren't at +-h/2 on
+       the axis (an off-axis hub port; a surface node -- Phase 2). */
+    std::vector<Node> nodes;
+
+    /* Look up a node by id; nullptr if absent. Ship-def stack edges name the
+       parent/child node ids they mate. */
+    const Node *findNode(const std::string &id) const {
+        for(size_t i = 0; i < nodes.size(); i++) {
+            if(nodes[i].id == id) { return &nodes[i]; }
+        }
+        return nullptr;
+    }
+
+    /* Fill the two axial stack nodes (top at +h/2, bottom at -h/2) from the
+       size above when `nodes` is empty. load_parts_catalog calls it for every
+       physical part, so a catalog part always has nodes; hand-built defs
+       (tests) call it directly. A part with explicit nodes is left alone. */
+    void synthesizeNodes() {
+        if(!nodes.empty()) { return; }
+        Node top;
+        top.id  = "top";
+        top.pos = glm::dvec3(0.0, 0.0,  height / 2.0);
+        top.dir = glm::dvec3(0.0, 0.0, 1.0);
+        Node bottom;
+        bottom.id  = "bottom";
+        bottom.pos = glm::dvec3(0.0, 0.0, -height / 2.0);
+        bottom.dir = glm::dvec3(0.0, 0.0, -1.0);
+        nodes.push_back(top);
+        nodes.push_back(bottom);
+    }
 
     double torque;            // N m; > 0 -> contributes as a reaction wheel
     double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
@@ -367,15 +415,29 @@ struct ShipPart {
     std::string part;      // catalog name
     std::string id;        // instance id (explicit, or auto "<name>_<n>")
     const PartDef *def;    // resolved at load time (points into the catalog)
-    int parent;            // part index of the weld parent; -1 = root (part 0)
-    AttachMode attach;     // how it is welded to the parent (root: unused)
-    double angle;          // degrees around the parent's stack axis (0 = parent +X)
+    int parent;            // part index of the attach parent; -1 = root (part 0)
+    AttachMode attach;     // down/up = stack edge (node mating); radial/side =
+                           // surface edge (procedural, interim until Phase 2)
+    double angle;          // surface edge: degrees around the parent's stack axis
+                           //   (0 = parent +X). stack edge: roll about the mating axis.
     double offset;         // m of gap along the attach axis, beyond touching faces
+    /* Stack edges (attach down/up) mate two named nodes rather than using the
+       procedural geometry. Resolved at load: an explicit "parentNode"/
+       "childNode" wins, else down defaults to parent "bottom" / child "top"
+       and up to parent "top" / child "bottom" (the synthesized cylinder
+       faces), so existing defs that just say attach:down keep working. */
+    std::string parentNode;
+    std::string childNode;
     int stage;             // reserved for staging; 1 = single stage
     std::string from;      // fuel link only: source part id (fuel flows out of)
     std::string to;        // fuel link only: destination part id (fuel flows into)
 
     bool isFuelLink() const { return def != nullptr && def->fuel_link; }
+    /* A stack edge mates nodes (down/up); a surface edge (radial/side) uses
+       the procedural path until Phase 2 surface attach replaces it. */
+    bool isStackEdge() const {
+        return attach == AttachMode::Down || attach == AttachMode::Up;
+    }
 };
 
 struct ShipDef {
@@ -422,6 +484,23 @@ struct AttachPose {
 AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       const PartDef &parentDef, const PartDef &childDef,
                       AttachMode mode, double angleDeg, double offset);
+
+/* Mate childNode (on the child) onto parentNode (on the already-posed parent):
+   the node positions coincide (pushed apart by `offset` along the parent node
+   direction) and the node directions are anti-parallel. This is the stack-edge
+   solver and the single source of stack-attach geometry -- attachPose(down/up)
+   is a shim over it. Purely relative, like attachPose.
+
+   Roll about the mating axis is unconstrained by the two direction vectors
+   alone (the KSP "secondaryOrientation" problem); it is resolved here by
+   taking the minimal arc that aligns the child node dir, then applying
+   `rollDeg` about the mating axis. For the synthesized axial top/bottom nodes
+   the minimal arc is the identity, so the child inherits the parent's full
+   orientation -- exactly the old attachPose(down/up) behaviour, which is what
+   makes the synthesis a drop-in migration. */
+AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                       const Node &parentNode, const Node &childNode,
+                       double rollDeg = 0.0, double offset = 0.0);
 
 /* Collision hull margin (m) resolution: the ship def value wins over the
    part catalog value; either may be unset (-1), in which case the other

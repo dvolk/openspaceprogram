@@ -60,17 +60,35 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     const size_t n = physical.size();
 
     /* 1) relative poses in a canonical frame: the root at the origin, +Z =
-       the stack axis, each child welded to its (earlier) parent by the
-       shared attachPose geometry (shipdef.cpp). */
+       the stack axis. Each child is placed off its (earlier) parent by the
+       shared attach geometry (shipdef.cpp): a STACK edge mates two named
+       nodes (attachNodes), a SURFACE edge (radial/side) uses the procedural
+       cylinder path (attachPose) until Phase 2. */
     std::vector<glm::dvec3> pos(n);
     std::vector<glm::dmat3> rot(n);
     pos[0] = glm::dvec3(0.0);
     rot[0] = glm::dmat3(1.0);
     for(size_t i = 1; i < n; i++) {
         const ShipPart &sp = physical[i];
-        AttachPose ap = attachPose(pos[(size_t)sp.parent], rot[(size_t)sp.parent],
-                                   *physical[(size_t)sp.parent].def, *sp.def,
-                                   sp.attach, sp.angle, sp.offset);
+        const ShipPart &pp = physical[(size_t)sp.parent];
+        const glm::dvec3 &pPos = pos[(size_t)sp.parent];
+        const glm::dmat3 &pRot = rot[(size_t)sp.parent];
+        AttachPose ap;
+        if(sp.isStackEdge()) {
+            const Node *pn = pp.def->findNode(sp.parentNode);
+            const Node *cn = sp.def->findNode(sp.childNode);
+            /* both validated at load (load_ship_def); guard against a part
+               whose explicit nodes were edited out from under a ship def */
+            if(pn == nullptr || cn == nullptr) {
+                throw std::runtime_error(std::string("build_ship: part '") + sp.id
+                                         + "' mates node '" + (cn ? sp.parentNode : sp.childNode)
+                                         + "' that its part does not have");
+            }
+            ap = attachNodes(pPos, pRot, *pn, *cn, sp.angle, sp.offset);
+        } else {
+            ap = attachPose(pPos, pRot, *pp.def, *sp.def,
+                            sp.attach, sp.angle, sp.offset);
+        }
         pos[i] = ap.childPos;
         rot[i] = ap.childRot;
     }

@@ -5,6 +5,7 @@
 #include <map>
 #include <stdexcept>
 
+#include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast (attachNodes)
 #include <nlohmann/json.hpp>
 
 PartDef::PartDef()
@@ -39,6 +40,23 @@ static int resource_index_from_string(const std::string &s, const std::string &c
     if(s == "jetfuel") { return (int)ResourceType::JetFuel; }
     throw std::runtime_error(ctx + ": unknown resource '" + s
                              + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)");
+}
+
+/* Read a 3-element numeric array (a node's pos/dir) or throw with context. */
+static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
+                             const std::string &ctx) {
+    if(!obj.contains(key) || !obj[key].is_array() || obj[key].size() != 3) {
+        throw std::runtime_error(ctx + std::string("\"") + key
+                                 + "\" must be a 3-element array [x, y, z]");
+    }
+    const nlohmann::json &a = obj[key];
+    for(int k = 0; k < 3; k++) {
+        if(!a[k].is_number()) {
+            throw std::runtime_error(ctx + std::string("\"") + key
+                                     + "\" must hold three numbers");
+        }
+    }
+    return glm::dvec3(a[0].get<double>(), a[1].get<double>(), a[2].get<double>());
 }
 
 PartsCatalog load_parts_catalog(const char *path) {
@@ -295,6 +313,42 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
         }
 
+        /* Attachment nodes. An explicit "nodes" array wins; otherwise (the
+           common case) synthesize the two axial stack faces from the size, so
+           an axis-aligned cylinder part needs no node authoring and existing
+           catalogs are unchanged. Fuel links are virtual (no geometry) and
+           get none. */
+        if(!d.fuel_link) {
+            if(pv.contains("nodes")) {
+                if(!pv["nodes"].is_array()) {
+                    throw std::runtime_error(ctx + "\"nodes\" must be an array");
+                }
+                const nlohmann::json &na = pv["nodes"];
+                for(size_t k = 0; k < na.size(); k++) {
+                    const nlohmann::json &nv = na[k];
+                    const std::string nctx = ctx + "node " + std::to_string(k) + ": ";
+                    Node nd;
+                    nd.id = nv.value("id", std::string(""));
+                    if(nd.id.empty()) {
+                        throw std::runtime_error(nctx + "missing \"id\"");
+                    }
+                    if(d.findNode(nd.id) != nullptr) {
+                        throw std::runtime_error(ctx + "duplicate node id \"" + nd.id + "\"");
+                    }
+                    nd.pos = parse_vec3(nv, "pos", ctx + "node \"" + nd.id + "\": ");
+                    nd.dir = parse_vec3(nv, "dir", ctx + "node \"" + nd.id + "\": ");
+                    const double len = glm::length(nd.dir);
+                    if(len < 1e-9) {
+                        throw std::runtime_error(ctx + "node \"" + nd.id
+                                                 + "\": \"dir\" must be non-zero");
+                    }
+                    nd.dir /= len;   // nodes mate by direction; keep them unit
+                    d.nodes.push_back(nd);
+                }
+            }
+            d.synthesizeNodes();   // no-op if explicit nodes were given
+        }
+
         cat.parts.push_back(d);
     }
     return cat;
@@ -414,6 +468,34 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
                                      + ": \"offset\" must be >= 0 (m)");
         }
 
+        /* Stack edges (down/up) mate two named nodes. An explicit
+           "parentNode"/"childNode" wins; otherwise default to the
+           synthesized axial faces (down: parent bottom / child top; up:
+           parent top / child bottom), so a bare attach:down keeps working.
+           Surface edges (radial/side) leave these empty and use angle; fuel
+           links are virtual and have none; the root has no parent edge. */
+        sp.parentNode = pv.value("parentNode", std::string(""));
+        sp.childNode  = pv.value("childNode", std::string(""));
+        if(!sp.isFuelLink() && sp.isStackEdge() && sp.parent >= 0) {
+            const bool down = (sp.attach == AttachMode::Down);
+            if(sp.parentNode.empty()) { sp.parentNode = down ? "bottom" : "top"; }
+            if(sp.childNode.empty())  { sp.childNode  = down ? "top" : "bottom"; }
+            /* Fail fast on a bad node id -- a typo would otherwise surface as
+               a null deref deep in build_ship. The parent is an earlier part
+               (construction order), so it is already in def.parts. */
+            const ShipPart &pp = def.parts[(size_t)sp.parent];
+            if(pp.def && !pp.def->findNode(sp.parentNode)) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": parentNode '" + sp.parentNode
+                                         + "' is not a node of parent part '" + pp.part + "'");
+            }
+            if(!sp.def->findNode(sp.childNode)) {
+                throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
+                                         + ": childNode '" + sp.childNode
+                                         + "' is not a node of part '" + sp.part + "'");
+            }
+        }
+
         /* stage: reserved for staging (separable stages); no runtime effect
            yet -- parsed and validated so the schema is settled. */
         sp.stage = pv.value("stage", 1);
@@ -465,12 +547,77 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
     return def;
 }
 
+/* The rotation taking unit direction `a` onto unit direction `b` by the
+   shortest arc. The roll about that arc is the caller's to resolve (see
+   attachNodes). The anti-parallel case picks a deterministic perpendicular so
+   the result never depends on floating-point whim. */
+static glm::dmat3 rotationFromTo(const glm::dvec3 &a, const glm::dvec3 &b) {
+    const double d = glm::clamp(glm::dot(a, b), -1.0, 1.0);
+    if(d > 1.0 - 1e-12) { return glm::dmat3(1.0); }   // already aligned
+    if(d < -1.0 + 1e-12) {                            // opposed: 180 about a perpendicular
+        const glm::dvec3 axis = glm::normalize(
+            (std::fabs(a.x) < 0.9) ? glm::cross(a, glm::dvec3(1.0, 0.0, 0.0))
+                                   : glm::cross(a, glm::dvec3(0.0, 1.0, 0.0)));
+        return glm::mat3_cast(glm::angleAxis(std::acos(-1.0), axis));
+    }
+    const glm::dvec3 axis = glm::normalize(glm::cross(a, b));
+    return glm::mat3_cast(glm::angleAxis(std::acos(d), axis));
+}
+
+AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                       const Node &parentNode, const Node &childNode,
+                       double rollDeg, double offset)
+{
+    const glm::dvec3 dP = glm::normalize(parentNode.dir);   // parent-local outward
+    const glm::dvec3 dC = glm::normalize(childNode.dir);    // child-local outward
+    const glm::dvec3 target = -dP;                          // child dir opposes parent's
+
+    /* Relative rotation (child frame w.r.t. the parent frame): the minimal
+       arc taking the child's node dir onto the opposed parent dir, then the
+       authored roll about that mating axis. For the synthesized axial nodes
+       the arc is the identity, so the child inherits the parent's full
+       orientation -- which is what makes this match the old procedural
+       Down/Up exactly. */
+    glm::dmat3 rrel = rotationFromTo(dC, target);
+    if(rollDeg != 0.0) {
+        rrel = glm::mat3_cast(glm::angleAxis(glm::radians(rollDeg), target)) * rrel;
+    }
+
+    AttachPose p;
+    p.childRot = parentRot * rrel;
+    /* Coincide the node positions, pushed apart by `offset` along the parent
+       node dir:  childPos + childRot*childNode.pos
+                  == parentPos + parentRot*(parentNode.pos + dP*offset). */
+    const glm::dvec3 contact = parentPos + parentRot * (parentNode.pos + dP * offset);
+    p.childPos = contact - p.childRot * childNode.pos;
+    return p;
+}
+
 AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       const PartDef &parentDef, const PartDef &childDef,
                       AttachMode mode, double angleDeg, double offset)
 {
-    const double rP = parentDef.radius, hP = parentDef.height;
-    const double rC = childDef.radius,  hC = childDef.height;
+    /* Stack modes mate the axial nodes -- attachNodes is the single source of
+       stack-attach geometry. `angleDeg` is the roll about the stack axis. */
+    if(mode == AttachMode::Down || mode == AttachMode::Up) {
+        const bool down = (mode == AttachMode::Down);
+        const Node *pn = parentDef.findNode(down ? "bottom" : "top");
+        const Node *cn = childDef.findNode(down ? "top" : "bottom");
+        if(pn == nullptr || cn == nullptr) {
+            throw std::runtime_error(std::string("attachPose: ")
+                                     + (pn == nullptr ? parentDef.name : childDef.name)
+                                     + " has no axial stack node (a part that declares "
+                                       "explicit nodes must include top/bottom to be "
+                                       "stacked with attach down/up)");
+        }
+        return attachNodes(parentPos, parentRot, *pn, *cn, angleDeg, offset);
+    }
+
+    /* Surface modes (radial/side): procedural cylinder attach -- the interim
+       surface path until Phase 2 replaces it with a raycast onto the parent
+       collider. `angleDeg` is the clock position around the parent's axis. */
+    const double rP = parentDef.radius;
+    const double rC = childDef.radius, hC = childDef.height;
 
     /* Rz(angle): maps parent-local +X to `dir`. Angle 0 = parent +X, so a
        radial/side part at angle a sits on the parent's side at clock
@@ -482,28 +629,14 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                         glm::dvec3(0.0, 0.0, 1.0));
     const glm::dvec3 dir = glm::dvec3(c, s, 0.0);
 
-    /* child +Z -> parent +X: columns are the images of X, Y, Z. */
-    const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
-                             glm::dvec3(0.0, 1.0, 0.0),
-                             glm::dvec3(1.0, 0.0, 0.0));
-
     AttachPose p;
-    if(mode == AttachMode::Down) {
-        /* face-to-face on the parent's -Z face, shared axis */
-        p.childPos = parentPos - parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
-        p.childRot = parentRot * rz;
-    }
-    else if(mode == AttachMode::Up) {
-        /* face-to-face on the parent's +Z face, shared axis: stacking
-           OUTWARD from a radially attached part (its +Z points away from
-           the ship), or a nose part above the root. The child's base face
-           (-hC/2) meets the parent's top face (+hP/2). */
-        p.childPos = parentPos + parentRot * glm::dvec3(0.0, 0.0, (hP + hC) / 2.0 + offset);
-        p.childRot = parentRot * rz;
-    }
-    else if(mode == AttachMode::Radial) {
+    if(mode == AttachMode::Radial) {
         /* child axis perpendicular: its base face (-hC/2) on the parent's
-           side at radius rP, in the `dir` clock position */
+           side at radius rP, in the `dir` clock position. child +Z -> parent
+           +X via rotZtoX (columns are the images of X, Y, Z). */
+        const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
+                                 glm::dvec3(0.0, 1.0, 0.0),
+                                 glm::dvec3(1.0, 0.0, 0.0));
         p.childPos = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
         p.childRot = parentRot * rz * rotZtoX;
     }
