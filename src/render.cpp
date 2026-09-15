@@ -585,3 +585,30 @@ void draw3d(Game &g, TransferPlanner &planner) {
 
     postfx->End();  // no-op unless --postfx effects are active
 }
+
+void drawVab(Game &g) {
+    /* The build tree lives in its own frame S; center the render frame on the
+       ship and orbit around it. ref = identity so screen-up is world +Z (the
+       ship stands nose-up, as on the pad). */
+    Camera *cam = g.camera;
+    cam->renderOrigin = g.vab_center;
+    cam->ref = glm::dmat3(1.0);
+    cam->Follow(g.vab_center);
+    cam->ComputeView();
+
+    glm::vec3 sunlight = glm::normalize(glm::vec3(0.4f, 0.8f, 0.35f));
+    for(size_t i = 0; i < g.vab.parts.size(); i++) {
+        const BuildPart &bp = g.vab.parts[i];
+        if(bp.def == nullptr) { continue; }
+        Mesh *m = get_mesh(std::string("./res/") + bp.def->mesh);
+        Texture *t = get_texture(std::string("./res/") + bp.def->texture);
+        if(m == nullptr || t == nullptr) { continue; }
+        const glm::dmat4 model = glm::translate(bp.localPos)
+                               * glm::dmat4(bp.localRot);
+        DrawOpts opts;
+        if((int)i == g.vab_selected) { opts.tint = glm::vec3(1.0f, 0.75f, 0.2f); }
+        else if((int)i == g.vab_hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
+        DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
+                    glm::dmat4(1.0), opts);
+    }
+}

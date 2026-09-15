@@ -74,6 +74,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "parallel | stacked | stacks | parstacks")
         ->check(CLI::IsMember({"parallel", "stacked", "stacks",
                                "parstacks"}));
+    app.add_option("--vab", args.vab,
+                   "Open the VAB editor scene with this ship def loaded "
+                   "(physics-free build tree) instead of flying");
 
     /* Docking pair: probe (active) + station, nose-to-nose in the same
        orbit (see src/docktest.cpp). near = inside the capture window,

@@ -2181,3 +2181,25 @@ void drawMainMenu(Game &g) {
         text_button(VERSION);
     });
 }
+
+void drawVabUI(Game &g) {
+    ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
+    ImGui::Begin("VAB", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Text("VAB -- %s (%d parts)", g.vab.name.c_str(),
+                (int)g.vab.parts.size());
+    ImGui::Separator();
+    for(size_t i = 0; i < g.vab.parts.size(); i++) {
+        const BuildPart &bp = g.vab.parts[i];
+        const bool sel = ((int)i == g.vab_selected);
+        if(ImGui::Selectable(bp.id.c_str(), sel)) { g.vab_selected = (int)i; }
+        if(ImGui::IsItemHovered()) { g.vab_hover = (int)i; }
+    }
+    ImGui::Separator();
+    if(g.vab_selected >= 0 && (size_t)g.vab_selected < g.vab.parts.size()) {
+        const BuildPart &bp = g.vab.parts[(size_t)g.vab_selected];
+        ImGui::Text("selected: %s (%s)", bp.id.c_str(),
+                    bp.def != nullptr ? bp.def->name.c_str() : "?");
+    }
+    ImGui::TextDisabled("LMB-drag orbit, wheel zoom; click a part to select");
+    ImGui::End();
+}

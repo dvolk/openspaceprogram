@@ -20,3 +20,9 @@
 // along the way. planner.update() runs inside the pass where it always
 // has (the burn indicator draws from its result).
 void draw3d(Game &g, TransferPlanner &planner);
+
+// The VAB scene's 3D pass: draw the physics-free build tree (Game::vab) at
+// its solved poses via DrawModelAt -- no Bullet bodies, no world/terrain.
+// The orbit camera is re-aimed at the build ship (Game::vab_center) and the
+// render frame is centered on it. Hovered/selected parts are tinted.
+void drawVab(Game &g);

@@ -31,6 +31,10 @@ void drawUIMap(Game &g, TransferPlanner &planner);
 // Draw the fixed main menu (Esc toggles it). Drawn last so it sits on top.
 void drawMainMenu(Game &g);
 
+// The VAB editor scene's widgets: the build-tree part list (select), and
+// hints. Drawn instead of the flight readouts when Game::scene == Vab.
+void drawVabUI(Game &g);
+
 // Draw the one-shot on-screen messages (g.toast): the last kToastVisible
 // that are still alive, stacked and centered on the screen. A bare
 // foreground-draw-list overlay (no imgui window): the messages are

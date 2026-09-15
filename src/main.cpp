@@ -438,6 +438,26 @@ int main(int argc, char **argv)
                              camFov, camAspect, camZNear, camZFar);
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
+
+    /* --vab: open the editor scene with a ship def loaded as a physics-free
+       build tree. The flight ships still exist but the Vab scene skips tick
+       (frozen) and drawVab draws only the build tree, so they are invisible. */
+    if(!args.vab.empty()) {
+        ShipDef vdef = load_ship_def(args.vab.c_str(), ships.catalog());
+        game.vab = BuildShip::fromShipDef(vdef);
+        if(!game.vab.parts.empty()) {
+            glm::dvec3 lo(1e30), hi(-1e30);
+            for(const BuildPart &bp : game.vab.parts) {
+                lo = glm::min(lo, bp.localPos);
+                hi = glm::max(hi, bp.localPos);
+            }
+            game.vab_center = (lo + hi) * 0.5;
+            game.scene = Scene::Vab;
+            cam->toOrbit(game.vab_center);
+            cam->distance = glm::length(hi - lo) * 1.2 + 10.0;
+        }
+    }
+
     if(args.use_free_cam) {
         // Default free pose = the orbit camera's current view, overridable
         // per-axis via --free-cam-pos / --free-cam-fwd / --free-cam-up.
@@ -740,8 +760,13 @@ int main(int argc, char **argv)
         */
         // The fixed-timestep loop (command arming, the substepped physics,
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
-        // game's clock and marks the frame for a redraw.
-        tick(game);
+        // game's clock and marks the frame for a redraw. The Vab scene runs
+        // no sim -- it redraws every frame instead.
+        if(game.scene == Scene::Vab) {
+            game.redraw = true;
+        } else {
+            tick(game);
+        }
         pf_b = std::chrono::steady_clock::now();
 
         // Background jobs (the porkchop grid, the surface map, and
@@ -774,9 +799,13 @@ int main(int argc, char **argv)
             postfx->Begin();  // no-op unless --postfx effects are active
             display.Clear(0, 0, 0, 1);
 
-            // The 3D pass (render.cpp): the world, the active ship's
-            // per-frame state (game.view) and the overlays.
-            draw3d(game, xferPlanner);
+            // The 3D pass: the world + active ship (flight), or the
+            // physics-free build tree (Vab).
+            if(game.scene == Scene::Vab) {
+                drawVab(game);
+            } else {
+                draw3d(game, xferPlanner);
+            }
 
             /*
               ImGui stuff below
@@ -788,20 +817,26 @@ int main(int argc, char **argv)
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // The readout windows (HUD .. RESOURCES) live in gameui.cpp.
-            drawUIReadouts(game, xferPlanner);
+            // The imgui pass: editor widgets (Vab) or the flight readouts /
+            // map / part windows / main menu.
+            if(game.scene == Scene::Vab) {
+                drawVabUI(game);
+            } else {
+                // The readout windows (HUD .. RESOURCES) live in gameui.cpp.
+                drawUIReadouts(game, xferPlanner);
 
-            // The orbital map (gameui.cpp): the transfer conic and
-            // the target highlight come from the planner. Drawn after
-            // the readouts, before the main menu.
-            drawUIMap(game, xferPlanner);
+                // The orbital map (gameui.cpp): the transfer conic and
+                // the target highlight come from the planner. Drawn after
+                // the readouts, before the main menu.
+                drawUIMap(game, xferPlanner);
 
-            // The open part windows (gameui.cpp): one per part the
-            // player right-clicked in the 3D view.
-            drawPartWindows(game);
+                // The open part windows (gameui.cpp): one per part the
+                // player right-clicked in the 3D view.
+                drawPartWindows(game);
 
-            // The main menu (gameui.cpp): drawn last so it sits on top.
-            drawMainMenu(game);
+                // The main menu (gameui.cpp): drawn last so it sits on top.
+                drawMainMenu(game);
+            }
 
             // One-shot messages (g.toast): above everything, including the
             // menu (drawToasts, gameui.cpp).

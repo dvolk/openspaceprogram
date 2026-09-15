@@ -130,6 +130,16 @@ struct ShipView {
     TimeSeries angmom_series;
 };
 
+/* Which top-level scene is live. The main loop switches on this for logic
+   (sim or not), the 3D pass (world or build tree) and the imgui pass (which
+   widgets). Switching scenes is one assignment to Game::scene -- the
+   lightweight stand-in for a "current UI" pointer. Flight is the default
+   (the game boots straight into gameplay, as today). */
+enum class Scene {
+    Flight,   // the sim: tick + world render + flight widgets
+    Vab       // the editor: no sim; physics-free BuildShip draw + editor widgets
+};
+
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
     Renderer &display;
@@ -158,6 +168,17 @@ struct Game {
     glm::dvec3 shake_off = glm::dvec3(0.0);
     glm::dvec3 shake_ang = glm::dvec3(0.0);
     Uint32 shake_last_ms = 0;
+
+    // --- scene + VAB editor state ------------------------------------------
+    Scene scene = Scene::Flight;
+    /* The physics-free build tree the VAB edits (shipdef.h BuildShip). Empty
+       unless --vab loaded a ship (or the editor started one). Poses are in the
+       build ship's own frame S; the VAB scene draws it and re-aims the orbit
+       camera at vab_center. */
+    BuildShip vab;
+    glm::dvec3 vab_center = glm::dvec3(0.0);   // bbox center of vab parts (S frame)
+    int vab_hover = -1;      // build-part index under the mouse; -1 = none
+    int vab_selected = -1;   // build-part index selected (click); -1 = none
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
