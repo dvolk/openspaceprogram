@@ -38,6 +38,7 @@ struct GameArgs {
 
     std::string radial_test;
     std::string vab;   // ship def to open in the VAB editor scene (empty = flight)
+    std::string vab_arm;   // catalog part to arm in the VAB palette at startup (test hook)
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // --start-time: the sim clock's t0 (s)

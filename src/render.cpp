@@ -611,4 +611,21 @@ void drawVab(Game &g) {
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
                     glm::dmat4(1.0), opts);
     }
+
+    // the armed part's translucent ghost at the hovered attach target
+    if(g.vab_ghostValid && !g.vab_armed.empty()) {
+        const PartDef *ad = g.ships.catalog().find(g.vab_armed);
+        if(ad != nullptr) {
+            Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
+            Texture *gt = get_texture(std::string("./res/") + ad->texture);
+            if(gm != nullptr && gt != nullptr) {
+                const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos - g.vab_center)
+                                        * glm::dmat4(g.vab_ghostRot);
+                DrawOpts go;
+                go.alpha = 0.4f;
+                DrawModelAt(cam, gm, g.partsshader, gt, gmodel, sunlight, 1.0f,
+                            glm::dmat4(1.0), go);
+            }
+        }
+    }
 }

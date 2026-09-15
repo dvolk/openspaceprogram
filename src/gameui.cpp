@@ -2192,7 +2192,6 @@ void drawVabUI(Game &g) {
         const BuildPart &bp = g.vab.parts[i];
         const bool sel = ((int)i == g.vab_selected);
         if(ImGui::Selectable(bp.id.c_str(), sel)) { g.vab_selected = (int)i; }
-        if(ImGui::IsItemHovered()) { g.vab_hover = (int)i; }
     }
     ImGui::Separator();
     if(g.vab_selected >= 0 && (size_t)g.vab_selected < g.vab.parts.size()) {
@@ -2201,5 +2200,30 @@ void drawVabUI(Game &g) {
                     bp.def != nullptr ? bp.def->name.c_str() : "?");
     }
     ImGui::TextDisabled("LMB-drag orbit, wheel zoom; click a part to select");
+    ImGui::End();
+
+    // Palette: arm a catalog part, then hover the ship and LMB to place it
+    // (snaps to the hovered stack port, or surface-attaches at the hover
+    // point). Hover/ghost targeting comes from the 3D pick (vab.cpp), not
+    // from this list, so list hover must not overwrite g.vab_hover.
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 260, 8),
+                            ImGuiCond_Once);
+    ImGui::Begin("Palette", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::BeginChild("palette_parts", ImVec2(230, 320), true);
+    for(size_t i = 0; i < g.ships.catalog().parts.size(); i++) {
+        const PartDef &pd = g.ships.catalog().parts[i];
+        if(pd.fuel_link) { continue; }
+        const bool armed = (g.vab_armed == pd.name);
+        if(ImGui::Selectable(pd.name.c_str(), armed)) {
+            g.vab_armed = armed ? std::string("") : pd.name;
+        }
+    }
+    ImGui::EndChild();
+    if(!g.vab_armed.empty()) {
+        ImGui::Text("armed: %s", g.vab_armed.c_str());
+        ImGui::TextDisabled("hover a port/surface, LMB to place");
+    } else {
+        ImGui::TextDisabled("pick a part to arm");
+    }
     ImGui::End();
 }

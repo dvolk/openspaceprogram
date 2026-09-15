@@ -77,6 +77,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab", args.vab,
                    "Open the VAB editor scene with this ship def loaded "
                    "(physics-free build tree) instead of flying");
+    app.add_option("--vab-arm", args.vab_arm,
+                   "Arm this catalog part in the VAB palette at startup "
+                   "(so sim-input can place it without clicking the palette)");
 
     /* Docking pair: probe (active) + station, nose-to-nose in the same
        orbit (see src/docktest.cpp). near = inside the capture window,

@@ -179,6 +179,16 @@ struct Game {
     glm::dvec3 vab_center = glm::dvec3(0.0);   // bbox center of vab parts (S frame)
     int vab_hover = -1;      // build-part index under the mouse; -1 = none
     int vab_selected = -1;   // build-part index selected (click); -1 = none
+    std::string vab_armed;   // catalog part name armed from the palette ("" = none)
+    int vab_hoverNode = -1;  // stack-node index on the hover parent under the mouse
+    int vab_hoverParent = -1;// build-part index the ghost would attach to
+    bool vab_ghostValid = false;
+    bool vab_ghostSurface = false;              // ghost = surface attach (vs stack node)
+    glm::dvec3 vab_ghostPos;                    // ghost pose (S frame) when valid
+    glm::dmat3 vab_ghostRot;
+    glm::dvec3 vab_ghostPoint, vab_ghostNormal; // parent-local surface contact
+    std::string vab_ghostParentNode, vab_ghostChildNode; // stack ghost's mated ids
+    bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;

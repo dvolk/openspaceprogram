@@ -57,6 +57,7 @@
 #include "tick.h"
 #include "render.h"
 #include "gameui.h"
+#include "vab.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -453,6 +454,7 @@ int main(int argc, char **argv)
             }
             game.vab_center = (lo + hi) * 0.5;
             game.scene = Scene::Vab;
+            game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
             cam->toOrbit(game.vab_center);
             cam->distance = glm::length(hi - lo) * 1.2 + 10.0;
         }
@@ -763,6 +765,16 @@ int main(int argc, char **argv)
         // game's clock and marks the frame for a redraw. The Vab scene runs
         // no sim -- it redraws every frame instead.
         if(game.scene == Scene::Vab) {
+            // editor: hover-pick a part/port and preview the armed part's
+            // ghost; a fresh LMB press places it. No sim.
+            int mx = 0, my = 0;
+            float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
+            const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
+            mx = (int)fmx; my = (int)fmy;
+            vabUpdateHover(game, mx, my);
+            const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
+            if(lmb && !game.vab_lmb_prev) { vabPlace(game); }
+            game.vab_lmb_prev = lmb;
             game.redraw = true;
         } else {
             tick(game);

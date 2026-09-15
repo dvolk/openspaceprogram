@@ -30,6 +30,9 @@ struct Camera;
 struct Body;
 struct Game;
 class Vehicle;
+class btCollisionObject;
+class btCollisionShape;
+class btTransform;
 
 // A ray in some frame (the frame the test bodies live in).
 struct PickRay {
@@ -51,6 +54,13 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py);
 // Ray vs one body's collision shape. ray must be in the SAME frame as
 // the body's world transform (callers transform it per ship). false = miss.
 bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit);
+
+// Ray vs ONE collision shape at ONE transform, no rigid body required --
+// the physics-free seam the VAB build tree picks against (its parts have
+// hull shapes but no btRigidBody). ray and xform in the same frame.
+bool castRay(const PickRay &ray, btCollisionObject *obj,
+             const btCollisionShape *shape, const btTransform &xform,
+             PickBodyHit &hit);
 
 // The nearest ship part under window pixel (px,py): every part of every
 // ship, nearest hit wins. false = nothing hit (ship/part/hit out-params

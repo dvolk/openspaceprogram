@@ -55,10 +55,11 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
 /* The cast itself: one ray against one collision shape at one transform.
    Takes the object/shape/transform apart rather than a Body, because a
    ship's parts are children of ONE compound rigid body -- the shape and
-   the pose come from the compound, not from a per-part body. */
-static bool castRay(const PickRay &ray, btCollisionObject *obj,
-                    const btCollisionShape *shape, const btTransform &xform,
-                    PickBodyHit &hit) {
+   the pose come from the compound, not from a per-part body. Also the
+   physics-free seam for the VAB build tree (no rigid body). */
+bool castRay(const PickRay &ray, btCollisionObject *obj,
+             const btCollisionShape *shape, const btTransform &xform,
+             PickBodyHit &hit) {
     // One long segment along the ray, in the body's frame (double
     // precision, so a scene-sized length is exact enough).
     const double L = 1e7;   // m
