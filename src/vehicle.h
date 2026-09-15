@@ -409,18 +409,15 @@ public:
                 const glm::dvec3 &localPos, const glm::dmat3 &localRot);
 
     /* Solve `part`'s ship-local pose off the part at `parentIdx` with the
-       shared attachPose() geometry and record the edge. For stack modes
-       (Down/Up) and the legacy procedural Radial; surface edges use
-       attachSurface() below. angle/offset default to the plain face-to-face
-       case. */
+       shared attachPose() geometry and record the edge. For the stack modes
+       (Down/Up); surface edges use attachSurface() below. angle/offset default
+       to the plain face-to-face case. */
     void attachMode(Part *part, size_t parentIdx, AttachMode mode,
                     double angleDeg = 0.0, double offset = 0.0);
 
     /* attachMode() against the most recently added part -- building a linear
        stack without tracking indices. */
     void attachDown(Part *part);
-
-    void attachRadial(Part *part);
 
     /* Surface-attach `part` (by its surface node) at a contact `point` with an
        outward `normal`, both in the parent's local frame; `rollDeg` spins it

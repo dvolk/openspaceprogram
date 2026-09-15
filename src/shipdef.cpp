@@ -447,11 +447,10 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
             std::string m = pv["attach"].get<std::string>();
             if(m == "down") { sp.attach = AttachMode::Down; }
             else if(m == "up") { sp.attach = AttachMode::Up; }
-            else if(m == "radial") { sp.attach = AttachMode::Radial; }
             else if(m == "surface") { sp.attach = AttachMode::Surface; }
             else {
                 throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
-                                         + ": \"attach\" must be 'down', 'up', 'radial', or 'surface' (got '"
+                                         + ": \"attach\" must be 'down', 'up', or 'surface' (got '"
                                          + m + "')");
             }
         }
@@ -651,51 +650,23 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       AttachMode mode, double angleDeg, double offset)
 {
     /* Stack modes mate the axial nodes -- attachNodes is the single source of
-       stack-attach geometry. `angleDeg` is the roll about the stack axis. */
-    if(mode == AttachMode::Down || mode == AttachMode::Up) {
-        const bool down = (mode == AttachMode::Down);
-        const Node *pn = parentDef.findNode(down ? "bottom" : "top");
-        const Node *cn = childDef.findNode(down ? "top" : "bottom");
-        if(pn == nullptr || cn == nullptr) {
-            throw std::runtime_error(std::string("attachPose: ")
-                                     + (pn == nullptr ? parentDef.name : childDef.name)
-                                     + " has no axial stack node (a part that declares "
-                                       "explicit nodes must include top/bottom to be "
-                                       "stacked with attach down/up)");
-        }
-        return attachNodes(parentPos, parentRot, *pn, *cn, angleDeg, offset);
+       stack-attach geometry. `angleDeg` is the roll about the stack axis.
+       Surface edges go through attachSurface (point + normal), not here. */
+    if(mode != AttachMode::Down && mode != AttachMode::Up) {
+        throw std::runtime_error("attachPose: only stack modes (down/up); a "
+                                 "surface edge uses attachSurface(point + normal)");
     }
-    if(mode == AttachMode::Surface) {
-        throw std::runtime_error("attachPose: a surface edge uses attachSurface "
-                                 "(point + normal), not attachPose");
+    const bool down = (mode == AttachMode::Down);
+    const Node *pn = parentDef.findNode(down ? "bottom" : "top");
+    const Node *cn = childDef.findNode(down ? "top" : "bottom");
+    if(pn == nullptr || cn == nullptr) {
+        throw std::runtime_error(std::string("attachPose: ")
+                                 + (pn == nullptr ? parentDef.name : childDef.name)
+                                 + " has no axial stack node (a part that declares "
+                                   "explicit nodes must include top/bottom to be "
+                                   "stacked with attach down/up)");
     }
-
-    /* Radial: LEGACY procedural cylinder attach (child axis turned perpendicular
-       onto the parent's side). The interim path for wings/radial decouplers
-       until Phase 2b replaces it with surface attach. `angleDeg` is the clock
-       position around the parent's axis. */
-    const double rP = parentDef.radius;
-    const double hC = childDef.height;
-
-    /* Rz(angle): maps parent-local +X to `dir`. Angle 0 = parent +X, so a
-       radial part at angle a sits on the parent's side at clock position a. */
-    const double a = glm::radians(angleDeg);
-    const double c = cos(a), s = sin(a);
-    const glm::dmat3 rz(glm::dvec3(c, s, 0.0),
-                        glm::dvec3(-s, c, 0.0),
-                        glm::dvec3(0.0, 0.0, 1.0));
-    const glm::dvec3 dir = glm::dvec3(c, s, 0.0);
-    /* child +Z -> parent +X: columns are the images of X, Y, Z. */
-    const glm::dmat3 rotZtoX(glm::dvec3(0.0, 0.0, -1.0),
-                             glm::dvec3(0.0, 1.0, 0.0),
-                             glm::dvec3(1.0, 0.0, 0.0));
-
-    AttachPose p;
-    /* child axis perpendicular: its base face (-hC/2) on the parent's side at
-       radius rP, in the `dir` clock position. */
-    p.childPos = parentPos + parentRot * (dir * (rP + hC / 2.0 + offset));
-    p.childRot = parentRot * rz * rotZtoX;
-    return p;
+    return attachNodes(parentPos, parentRot, *pn, *cn, angleDeg, offset);
 }
 
 double resolveHullMargin(double shipMargin, double partMargin) {

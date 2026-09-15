@@ -62,10 +62,9 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
     /* 1) relative poses in a canonical frame: the root at the origin, +Z =
        the stack axis. Each child is placed off its (earlier) parent by the
        shared attach geometry (shipdef.cpp): a STACK edge mates two named
-       nodes (attachNodes), a SURFACE edge places the child's surface node at
-       a contact point+normal on the parent (attachSurface), and the LEGACY
-       radial edge uses the procedural cylinder path (attachPose) until
-       Phase 2b folds it into surface attach. */
+       nodes (attachNodes); a SURFACE edge places the child's surface node at
+       a contact point+normal on the parent (attachSurface). Both funnel
+       through the one node solver. */
     std::vector<glm::dvec3> pos(n);
     std::vector<glm::dmat3> rot(n);
     pos[0] = glm::dvec3(0.0);
@@ -87,7 +86,8 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                                          + "' that its part does not have");
             }
             ap = attachNodes(pPos, pRot, *pn, *cn, sp.angle, sp.offset);
-        } else if(sp.isSurfaceEdge()) {
+        } else {
+            // surface edge: the child's surface node at the parent contact
             const Node *cn = sp.def->findNode(sp.childNode);
             if(cn == nullptr) {
                 throw std::runtime_error(std::string("build_ship: part '") + sp.id
@@ -96,22 +96,21 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
             }
             ap = attachSurface(pPos, pRot, sp.contactPoint, sp.contactNormal,
                                *cn, sp.roll, sp.offset);
-        } else {
-            ap = attachPose(pPos, pRot, *pp.def, *sp.def,
-                            sp.attach, sp.angle, sp.offset);
         }
         pos[i] = ap.childPos;
         rot[i] = ap.childRot;
     }
 
-    /* 2) the ship's lowest point along the stack axis: an axis-aligned part
-       (down/side) spans h/2 about its center, a radial part spans its
-       radius (its cross-section lies across the stack axis). */
+    /* 2) the ship's lowest point along the stack axis. Every part -- stack or
+       surface-attached -- keeps its own axis parallel to the ship's stack axis
+       under the synthesized-node attach (a side surface node mates by a
+       rotation about Z), so each spans height/2 about its center. (A part with
+       an explicit PERPENDICULAR surface node would span its radius instead --
+       revisit the pad heuristic when such parts exist.) */
     double lowest = 1e30;
     for(size_t i = 0; i < n; i++) {
         const ShipPart &sp = physical[i];
-        double extent = (i > 0 && sp.attach == AttachMode::Radial)
-                       ? sp.def->radius : sp.def->height / 2.0;
+        const double extent = sp.def->height / 2.0;
         lowest = std::min(lowest, pos[i].z - extent);
     }
 
@@ -799,10 +798,6 @@ void Vehicle::attachMode(Part *part, size_t parentIdx, AttachMode mode,
 
 void Vehicle::attachDown(Part *part) {
     attachMode(part, parts.size() - 1, AttachMode::Down);
-}
-
-void Vehicle::attachRadial(Part *part) {
-    attachMode(part, parts.size() - 1, AttachMode::Radial);
 }
 
 void Vehicle::attachSurface(Part *part, size_t parentIdx,

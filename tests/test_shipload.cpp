@@ -576,26 +576,6 @@ int main() {
         CHECK(vnear(p.childPos, glm::dvec3(0, 0, 2.0)));
         CHECK(mnear(p.childRot, I));
     }
-    // RADIAL at 0 deg: child axis -> parent +X, base face on the parent side
-    {
-        AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Radial, 0.0, 0.0);
-        // child center is r_parent + h_child/2 = 1 + 1 = 2 along +X
-        CHECK(vnear(p.childPos, glm::dvec3(2.0, 0.0, 0.0)));
-        // child +Z points along parent +X
-        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(1.0, 0.0, 0.0)));
-    }
-    // RADIAL at 90 deg: child at the parent's +Y side, axis -> +Y
-    {
-        AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Radial, 90.0, 0.0);
-        CHECK(vnear(p.childPos, glm::dvec3(0.0, 2.0, 0.0)));
-        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(0.0, 1.0, 0.0)));
-    }
-    // RADIAL at 180 deg + 0.5 gap: child at the parent's -X side, 0.5 out
-    {
-        AttachPose p = attachPose(O, I, *cap, *t152, AttachMode::Radial, 180.0, 0.5);
-        CHECK(vnear(p.childPos, glm::dvec3(-2.5, 0.0, 0.0)));
-        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), glm::dvec3(-1.0, 0.0, 0.0)));
-    }
     // SURFACE at clock 0: parallel axes, side by side along +X. This is the
     // old procedural Side, now expressed as surface attach -- the child's
     // synthesized surface node (-rC,0,0) lands on the parent's +X contact.
@@ -615,17 +595,16 @@ int main() {
         CHECK(vnear(p.childPos, glm::dvec3(-2.5, 0.0, 0.0)));
         CHECK(near((p.childRot * glm::dvec3(0, 0, 1.0)).z, 1.0));
     }
-    // a non-trivial parent frame: the same relations hold in the parent's frame
+    // a non-trivial parent frame: surface attach still lands the child's
+    // surface node on the contact and opposes the parent's outward normal
     {
         const glm::dmat3 rot = testOrient();
         const glm::dvec3 pp(3.0, -1.0, 7.0);
-        AttachPose p = attachPose(pp, rot, *cap, *t152, AttachMode::Radial, 45.0, 0.25);
-        // child offset from the parent is along the rotated attach direction
-        const double d = glm::radians(45.0);
-        const glm::dvec3 dir = rot * glm::dvec3(cos(d), sin(d), 0.0);
-        CHECK(vnear(p.childPos - pp, dir * (1.0 + 1.0 + 0.25)));
-        // child axis turned onto the attach direction
-        CHECK(vnear(p.childRot * glm::dvec3(0, 0, 1.0), dir));
+        const Node *cn = t152->findSurfaceNode();
+        const glm::dvec3 pt(cap->radius, 0.0, 0.0), nrm(1.0, 0.0, 0.0); // parent-local
+        AttachPose p = attachSurface(pp, rot, pt, nrm, *cn, 0.0, 0.0);
+        CHECK(vnear(p.childPos + p.childRot * cn->pos, pp + rot * pt));   // coincide
+        CHECK(vnear(p.childRot * cn->dir, -(rot * nrm)));                 // opposed
     }
 
     // --- node schema: synthesis, attachNodes, node-ref parsing -------------
@@ -830,7 +809,7 @@ int main() {
         std::remove(bad);
     }
 
-    // a valid ship: explicit ids, an angle, a spacer, a stage
+    // a valid ship: explicit ids, a surface angle, a spacer, a stage
     {
         const char *ok = "/tmp/test_shipload_ok.json";
         std::ofstream f(ok);
@@ -838,7 +817,7 @@ int main() {
              "\"parts\": [ "
              " { \"part\": \"capsule\", \"id\": \"nose\" }, "
              " { \"part\": \"engine\", \"attach\": \"down\", \"stage\": 1 }, "
-             " { \"part\": \"tank_r1.5h2\", \"attach\": \"radial\", "
+             " { \"part\": \"tank_r1.5h2\", \"attach\": \"surface\", "
              "   \"parent\": \"engine_1\", \"angle\": 30, \"offset\": 0.25 } ] }";
         f.close();
         bool threw = false;
@@ -852,10 +831,13 @@ int main() {
         if(!threw) {
             CHECK(okd.parts.size() == 3);
             CHECK(okd.controllerIndex() == 0);
-            CHECK(okd.parts[2].attach == AttachMode::Radial);
+            CHECK(okd.parts[2].attach == AttachMode::Surface);
             CHECK(okd.parts[2].parent == 1);
             CHECK(near(okd.parts[2].angle, 30.0));
             CHECK(near(okd.parts[2].offset, 0.25));
+            // the cylinder shorthand resolved the contact normal at clock 30
+            CHECK(vnear(okd.parts[2].contactNormal,
+                        glm::dvec3(cos(glm::radians(30.0)), sin(glm::radians(30.0)), 0.0)));
         }
         std::remove(ok);
     }

@@ -25,13 +25,15 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
        catalog (no JSON ship def). Passive tanks only -- no
        wheels, no thrusters -- so any spin is self-inflicted by
        the physics:
-       - "radial":  tank_r2.25h5 + a tank_r1.5h2 attached to its side
-       - "stacked": the same pair attached along the axis (baseline)
-       - "stacks":  two 2-part stacks attached side by side:
-                    [tank_r2.25h5 + tank_r1.5h2] beside
-                    [tank_r2.25h5 + tank_r1.5h2], the second stack's
-                    root attached radially to the first stack's
-                    root (the in-game way to build it). */
+       - "parallel": tank_r2.25h5 + a tank_r1.5h2 surface-attached side by
+                     side on its +X (parallel axes)
+       - "stacked":  the same pair attached along the axis (baseline)
+       - "stacks":   two 2-part stacks attached side by side:
+                     [tank_r2.25h5 + tank_r1.5h2] beside
+                     [tank_r2.25h5 + tank_r1.5h2], the second stack's
+                     root surface-attached to the first stack's root.
+       - "parstacks": like "stacks" but the second stack hangs below rather
+                     than outward. */
     const PartDef *defBig = part_catalog.find("tank_r2.25h5");
     const PartDef *defSml = part_catalog.find("tank_r1.5h2");
     if(defBig == nullptr || defSml == nullptr) {
@@ -75,14 +77,13 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
     };
 
     if(mode == "stacks") {
-        /* Two 2-part stacks, side by side. Pad normal = local +Z, radial
-           dir = local +X:
+        /* Two 2-part stacks, side by side. Pad normal = local +Z:
              stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2) below A1
-             stack 2: B1 (tank_r2.25h5) radial off A1's +X side (its axis
-                      turned onto X) + B2 (tank_r1.5h2) stacked outward
-                      beyond B1 along that axis.
-           Every edge goes through attachMode/attachPose, so the layout is
-           the solver's, not hand-written literals. */
+             stack 2: B1 (tank_r2.25h5) surface-attached off A1's +X side
+                      (parallel axes) + B2 (tank_r1.5h2) stacked outward
+                      beyond B1 (Up along the shared axis).
+           Every edge goes through the node solver (attachMode / attachSurface),
+           so the layout is the solver's, not hand-written literals. */
         v->name = "stacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);
@@ -91,7 +92,9 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
 
         v->setRoot(a1);
         v->attachMode(a2, 0, AttachMode::Down);    // A2 below A1
-        v->attachMode(b1, 0, AttachMode::Radial);  // B1 off A1's +X side
+        // B1 beside A1: surface-attach at clock 0 on A1's side (parallel axes)
+        v->attachSurface(b1, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
+                         glm::dvec3(1.0, 0.0, 0.0));
         v->attachMode(b2, 2, AttachMode::Up);      // B2 outward beyond B1
     }
     else if(mode == "parstacks") {
@@ -114,16 +117,11 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         v->attachMode(b2, 2, AttachMode::Down);   // B2 below B1
     }
     else {
-        v->name = (mode == "radial") ? "radial2"
-                   : (mode == "parallel") ? "parallel2" : "stack2";
+        v->name = (mode == "parallel") ? "parallel2" : "stack2";
         Part *a = makePart(defBig);
         Part *b = makePart(defSml);
         v->setRoot(a);
-        if(mode == "radial") {
-            /* B's bottom face (-hB/2) touches A's side at +rA */
-            v->attachRadial(b);
-        }
-        else if(mode == "parallel") {
+        if(mode == "parallel") {
             /* B's side touches A's side at +rA; both axes stay on the pad
                normal (parallel). Surface-attach B at clock 0 on A's side: its
                surface node (-rB,0,0) lands on the contact (rA,0,0), so B sits

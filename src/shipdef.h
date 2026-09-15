@@ -76,7 +76,7 @@
          { "part": "reaction_wheel" },
          { "part": "fuel_tank" },
          { "part": "engine" },
-         { "part": "tank_r1.5h2", "attach": "radial", "parent": "fuel_tank_1" },
+         { "part": "tank_r1.5h2", "attach": "surface", "parent": "fuel_tank_1", "angle": 0 },
          { "part": "engine_r2.25h4.5", "attach": "down", "parent": "tank_r1.5h2_1" }
        ]
      }
@@ -93,8 +93,6 @@
 
      attach   "down" (default)  stack edge on the parent's -Z face
               "up"              stack edge on the parent's +Z face
-              "radial"          LEGACY procedural radial (child axis
-                                perpendicular); retired in Phase 2b
               "surface"         surface edge: the child's surface node is
                                 placed at a contact point + normal on the
                                 parent (KSP srfAttach)
@@ -230,9 +228,9 @@ struct PartDef {
        centered, +Z = stack axis): radius = cross-section (x/y extent 2r),
        height = extent along the stack axis (z extent h). Defaults are the
        legacy 2 m cube, so pre-size parts keep working. These seed the
-       synthesized top/bottom stack nodes (at +-h/2) and still drive the
-       collision/aero extent and the procedural radial/side surface attach;
-       stack attachment itself is node-based (see `nodes`). */
+       synthesized nodes (top/bottom stack faces at +-h/2, and a side surface
+       node at -radius) and still drive the collision/aero extent; attachment
+       itself is node-based (see `nodes`). */
     double radius;
     double height;
 
@@ -429,15 +427,13 @@ struct PartDef {
     double fullThrust() const { return 2.0 * fuel_rate * exhaust_velocity; }
 };
 
-/* How a part is welded to its parent (see the header schema comment).
-   Down/Up are stack edges (node mating); Radial is the legacy procedural
-   radial (retired in Phase 2b); Surface places the child's surface node at a
-   contact point + normal on the parent. */
+/* How a part attaches to its parent (see the header schema comment).
+   Down/Up are stack edges (node mating); Surface places the child's surface
+   node at a contact point + normal on the parent. */
 enum class AttachMode {
     Down,    // stack edge: face-to-face on the parent's -Z face
     Up,      // stack edge: face-to-face on the parent's +Z face (stacking
              // OUTWARD from a surface-attached part, or a nose above the root)
-    Radial,  // LEGACY procedural radial (child axis perpendicular); Phase 2b
     Surface  // surface edge: child surface node at a parent contact point+normal
 };
 
@@ -453,8 +449,8 @@ struct ShipPart {
     std::string id;        // instance id (explicit, or auto "<name>_<n>")
     const PartDef *def;    // resolved at load time (points into the catalog)
     int parent;            // part index of the attach parent; -1 = root (part 0)
-    AttachMode attach;     // down/up = stack edge; surface = surface edge;
-                           // radial = legacy procedural radial (Phase 2b)
+    AttachMode attach;     // down/up = stack edge (node mating); surface =
+                           // surface edge (child surface node at a parent contact)
     double angle;          // stack edge: roll about the mating axis. surface
                            //   edge: consumed into contactNormal (cylinder shorthand).
     double offset;         // m of gap along the attach axis / contact normal
@@ -478,8 +474,7 @@ struct ShipPart {
 
     bool isFuelLink() const { return def != nullptr && def->fuel_link; }
     /* A stack edge mates two named nodes; a surface edge places the child's
-       surface node at a parent contact point. (Radial is the legacy procedural
-       path -- neither -- until Phase 2b folds it into surface.) */
+       surface node at a parent contact point. */
     bool isStackEdge() const {
         return attach == AttachMode::Down || attach == AttachMode::Up;
     }

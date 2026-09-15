@@ -62,18 +62,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     /* Spin-instrumentation mode: build a test ship (no JSON ship def)
        and log its spin + the internal contact torque each tick.
-       radial     = part B welded to part A's side, axes PERPENDICULAR
-       parallel   = part B welded to part A's side, axes PARALLEL
+       parallel   = part B surface-attached to part A's side, axes PARALLEL
                     (side by side, off-axis anchor)
-       stacked    = part B welded on A's axis (known-good baseline)
-       stacks     = two 2-part stacks side by side, 2nd stack PERPENDICULAR
-       parstacks  = two 2-part stacks side by side, ALL axes PARALLEL
+       stacked    = part B stacked on A's axis (known-good baseline)
+       stacks     = two 2-part stacks side by side, 2nd stack outward
+       parstacks  = two 2-part stacks side by side, 2nd stack below
        All parts are passive tanks (no wheels/thrusters), so any spin
        is self-inflicted. */
     app.add_option("--radial-test", args.radial_test,
                    "Build the spin-test ship(s) instead of a fleet: "
-                   "radial | parallel | stacked | stacks | parstacks")
-        ->check(CLI::IsMember({"radial", "parallel", "stacked", "stacks",
+                   "parallel | stacked | stacks | parstacks")
+        ->check(CLI::IsMember({"parallel", "stacked", "stacks",
                                "parstacks"}));
 
     /* Docking pair: probe (active) + station, nose-to-nose in the same
