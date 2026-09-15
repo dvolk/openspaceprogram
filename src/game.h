@@ -193,6 +193,14 @@ struct Game {
        the contact normal). Stored on the placed part's angle/roll, then
        reset to 0. */
     double vab_ghostRoll = 0.0;
+    double vab_ghostRollUsed = 0.0;  // the effective (snap-rounded) roll the
+                                     // current ghost solves + placement stores
+    int vab_symmetry = 1;   // radial copies for SURFACE placing (1 = single,
+                            // up to 8): clones ring the hovered parent's axis
+    bool vab_snap = true;   // snap surface contacts (10 cm / 10 deg) + roll;
+                            // holding Alt bypasses while pressed
+    std::vector<SymClone> vab_ghostClones;   // the extra symmetric ghosts
+                                             // (radialSymmetryClones output)
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------

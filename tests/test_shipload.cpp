@@ -18,6 +18,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast (the symmetry test)
+
 static int failures = 0;
 #define CHECK(cond) do { \
         if(!(cond)) { \
@@ -834,6 +836,78 @@ int main() {
         bs.rotatePart(3, -45.0);
         CHECK(near(bs.parts[3].roll, rollBefore - 45.0));
         CHECK(bs.parts[3].attach == AttachMode::Surface);
+    }
+    // --- radialSymmetryClones: symmetric rings about the parent's axis ------
+    {
+        const PartDef *child = cat.find("tank_r1.5h3");   // the tanker's side pod
+        CHECK(child != nullptr);
+        const Node *cn = child->findSurfaceNode();
+        CHECK(cn != nullptr);
+        const double PI = std::acos(-1.0);
+        // A) axis-aligned parent, radial contact + roll: each clone is the
+        //    primary rotated by k*360/N about the parent's Z, and its stored
+        //    edge data re-solves EXACTLY to the stored pose (what the tree's
+        //    recomputePoses will do)
+        {
+            const glm::dvec3 P(0, 0, 3);
+            const glm::dmat3 R(1.0);
+            const glm::dvec3 pt(1.5, 0, 0.5);
+            const glm::dvec3 nl(1, 0, 0);
+            const AttachPose primary = attachSurface(P, R, pt, nl, *cn, 25.0, 0.0);
+            for(int n = 2; n <= 8; n++) {
+                std::vector<SymClone> cl =
+                    radialSymmetryClones(P, R, *cn, pt, nl, 25.0, 0.0, n);
+                CHECK(cl.size() == (size_t)(n - 1));
+                for(int k = 1; k < n; k++) {
+                    const SymClone &c = cl[(size_t)k - 1];
+                    const double th = 2.0 * PI * (double)k / (double)n;
+                    const glm::dmat3 Rz = glm::mat3_cast(
+                        glm::angleAxis(th, glm::dvec3(0, 0, 1)));
+                    CHECK(vnear(c.pose.childPos, Rz * primary.childPos));
+                    CHECK(mnear(c.pose.childRot, Rz * primary.childRot));
+                    AttachPose re = attachSurface(P, R, c.edge.point,
+                                                  c.edge.normal, *cn,
+                                                  c.edge.rollDeg, 0.0);
+                    CHECK(vnear(re.childPos, c.pose.childPos));
+                    CHECK(mnear(re.childRot, c.pose.childRot));
+                }
+            }
+            CHECK(radialSymmetryClones(P, R, *cn, pt, nl, 25.0, 0.0, 1).empty());
+        }
+        // B) tilted parent pose + tilted (non-radial) normal: exercises the
+        //    minimal-arc holonomy correction -- the clones must still be
+        //    congruent about the parent's OWN axis
+        {
+            const glm::dvec3 P(0, 0, -2);
+            const glm::dmat3 R = glm::mat3_cast(
+                glm::angleAxis(0.7, glm::normalize(glm::dvec3(1, 2, 3))));
+            const glm::dvec3 pt(1.2, 0.3, -0.4);
+            const glm::dvec3 nl = glm::normalize(glm::dvec3(0.9, 0.15, 0.4));
+            const AttachPose primary = attachSurface(P, R, pt, nl, *cn, 0.0, 0.0);
+            const glm::dvec3 axisS = R * glm::dvec3(0, 0, 1);
+            const int ns[2] = { 3, 6 };
+            for(int ni = 0; ni < 2; ni++) {
+                const int n = ns[ni];
+                std::vector<SymClone> cl =
+                    radialSymmetryClones(P, R, *cn, pt, nl, 0.0, 0.0, n);
+                CHECK(cl.size() == (size_t)(n - 1));
+                for(int k = 1; k < n; k++) {
+                    const SymClone &c = cl[(size_t)k - 1];
+                    const double th = 2.0 * PI * (double)k / (double)n;
+                    const glm::dmat3 RzS = glm::mat3_cast(
+                        glm::angleAxis(th, axisS));
+                    const glm::dvec3 wantPos = P + RzS * (primary.childPos - P);
+                    const glm::dmat3 wantRot = RzS * primary.childRot;
+                    CHECK(vnear(c.pose.childPos, wantPos));
+                    CHECK(mnear(c.pose.childRot, wantRot));
+                    AttachPose re = attachSurface(P, R, c.edge.point,
+                                                  c.edge.normal, *cn,
+                                                  c.edge.rollDeg, 0.0);
+                    CHECK(vnear(re.childPos, c.pose.childPos));
+                    CHECK(mnear(re.childRot, c.pose.childRot));
+                }
+            }
+        }
     }
     // --- save_ship_def round trip -------------------------------------------
     {

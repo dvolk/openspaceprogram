@@ -619,14 +619,22 @@ void drawVab(Game &g) {
             Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
             Texture *gt = get_texture(std::string("./res/") + ad->texture);
             if(gm != nullptr && gt != nullptr) {
-                // unshifted S-frame pose: DrawModelAt applies the
-                // -renderOrigin (= -vab_center) shift like every model here
-                const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos)
-                                        * glm::dmat4(g.vab_ghostRot);
                 DrawOpts go;
                 go.alpha = 0.4f;
+                // the primary ghost + its radial-symmetry clones (all
+                // unshifted S-frame poses: DrawModelAt applies the
+                // -renderOrigin (= -vab_center) shift like every model here)
+                const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos)
+                                        * glm::dmat4(g.vab_ghostRot);
                 DrawModelAt(cam, gm, g.partsshader, gt, gmodel, sunlight, 1.0f,
                             glm::dmat4(1.0), go);
+                for(size_t k = 0; k < g.vab_ghostClones.size(); k++) {
+                    const AttachPose &cp = g.vab_ghostClones[k].pose;
+                    const glm::dmat4 cmodel = glm::translate(cp.childPos)
+                                            * glm::dmat4(cp.childRot);
+                    DrawModelAt(cam, gm, g.partsshader, gt, cmodel, sunlight,
+                                1.0f, glm::dmat4(1.0), go);
+                }
             }
         }
     }

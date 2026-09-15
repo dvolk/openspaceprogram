@@ -2282,10 +2282,32 @@ void drawVabUI(Game &g) {
         }
     }
     ImGui::EndChild();
+    ImGui::Separator();
+    // Radial symmetry for SURFACE placing: N evenly-spaced copies ringing
+    // the hovered parent's own long axis (1 = single part). Stack ports are
+    // singletons, so symmetry does not apply there.
+    ImGui::Text("Symmetry");
+    for(int n = 1; n <= 8; n++) {
+        if(n > 1) { ImGui::SameLine(0, 3); }
+        char lbl[12];
+        snprintf(lbl, sizeof(lbl), "%d##sym", n);
+        if(ImGui::Selectable(lbl, g.vab_symmetry == n, 0, ImVec2(21, 0))) {
+            g.vab_symmetry = n;
+        }
+    }
+    ImGui::Checkbox("Snap 10cm / 10deg (Alt bypasses)", &g.vab_snap);
     if(!g.vab_armed.empty()) {
         ImGui::Text("armed: %s", g.vab_armed.c_str());
         if(g.vab_ghostValid) {
-            ImGui::Text("roll: %.0f deg (Q/E)", g.vab_ghostRoll);
+            ImGui::Text("roll: %.0f deg (Q/E)", g.vab_ghostRollUsed);
+            if(g.vab_symmetry > 1) {
+                if(g.vab_ghostSurface) {
+                    ImGui::Text("placing x%d around the parent axis",
+                                1 + (int)g.vab_ghostClones.size());
+                } else {
+                    ImGui::TextDisabled("stack port: symmetry n/a");
+                }
+            }
         }
         ImGui::TextDisabled("hover a port/surface, LMB to place");
     } else {

@@ -633,6 +633,37 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
                          const Node &childNode, double rollDeg = 0.0,
                          double offset = 0.0);
 
+/* A surface edge's authoring data: the contact in the PARENT's local frame
+   plus the child's roll about it (the fields a BuildPart/ShipPart stores). */
+struct SurfaceEdge {
+    glm::dvec3 point;
+    glm::dvec3 normal;
+    double rollDeg = 0.0;
+};
+
+/* One radial-symmetry copy: the sibling's edge data (what the tree stores)
+   + its solved pose (what the ghost draws). */
+struct SymClone {
+    SurfaceEdge edge;
+    AttachPose pose;
+};
+
+/* The N-1 radial-symmetry clones of a surface attachment (the VAB's
+   symmetry placing): each is the primary placement rotated by k*360/N
+   about the parent's own long axis (its local +Z through its position),
+   expressed as edge data attachSurface re-solves EXACTLY to that rotated
+   pose -- the clone's roll absorbs the minimal-arc holonomy, which is
+   zero for purely radial contacts (the booster case) and nonzero on
+   tilted ones. Rotating about the parent's own axis keeps every clone's
+   contact on the parent's surface, whatever the parent's pose. */
+std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
+                                           const glm::dmat3 &parentRot,
+                                           const Node &childNode,
+                                           const glm::dvec3 &point,
+                                           const glm::dvec3 &normal,
+                                           double rollDeg, double offset,
+                                           int n);
+
 /* Solve one parent->child edge into the child's pose in the parent's frame,
    dispatching on the edge kind: a STACK edge (Down/Up) mates the named
    parentNode/childNode via attachNodes (angleDeg is the roll about the mating

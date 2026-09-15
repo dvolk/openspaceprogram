@@ -645,6 +645,58 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
     return attachNodes(parentPos, parentRot, contact, childNode, rollDeg, offset);
 }
 
+std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
+                                           const glm::dmat3 &parentRot,
+                                           const Node &childNode,
+                                           const glm::dvec3 &point,
+                                           const glm::dvec3 &normal,
+                                           double rollDeg, double offset,
+                                           int n)
+{
+    std::vector<SymClone> out;
+    if(n <= 1) { return out; }
+    const AttachPose primary = attachSurface(parentPos, parentRot, point,
+                                             normal, childNode, rollDeg, offset);
+    const glm::dvec3 axisL(0.0, 0.0, 1.0);          // the parent's long axis
+    const glm::dvec3 axisS = parentRot * axisL;     // ... in the shared frame
+    const glm::dvec3 nS = parentRot * glm::normalize(normal);
+    const double step = 2.0 * std::acos(-1.0) / (double)n;
+    for(int k = 1; k < n; k++) {
+        const double th = step * (double)k;
+        const glm::dmat3 RzL = glm::mat3_cast(glm::angleAxis(th, axisL));
+        SymClone c;
+        c.edge.point  = RzL * point;
+        c.edge.normal = RzL * normal;
+        c.edge.rollDeg = rollDeg;
+        /* The congruent target is the primary's pose rotated about the
+           parent's axis. Solving the rotated contact with the SAME roll
+           lands there only when the minimal arc to the rotated normal
+           equals the rotated minimal arc (true for radial contacts);
+           in general the two differ by a roll about the mating axis, so
+           measure that residual and fold it into the clone's roll. */
+        const glm::dmat3 RzS = glm::mat3_cast(glm::angleAxis(th, axisS));
+        const glm::dmat3 wantRot = RzS * primary.childRot;
+        const AttachPose guess = attachSurface(parentPos, parentRot,
+                                               c.edge.point, c.edge.normal,
+                                               childNode, rollDeg, offset);
+        // childRot(roll + d) == Rot(-nS_k, d) * childRot(roll), so the
+        // residual D = wantRot * guess^T is exactly Rot(axis, psi).
+        const glm::dvec3 axis = -(RzS * nS);
+        const glm::dmat3 D = wantRot * glm::transpose(guess.childRot);
+        glm::dvec3 u = glm::cross(axis, glm::dvec3(1.0, 0.0, 0.0));
+        if(glm::dot(u, u) < 1e-12) { u = glm::cross(axis, glm::dvec3(0.0, 1.0, 0.0)); }
+        u = glm::normalize(u);
+        const glm::dvec3 Du = D * u;
+        const double psi = std::atan2(glm::dot(glm::cross(axis, u), Du),
+                                      glm::dot(u, Du));
+        c.edge.rollDeg = rollDeg + glm::degrees(psi);
+        c.pose = attachSurface(parentPos, parentRot, c.edge.point,
+                               c.edge.normal, childNode, c.edge.rollDeg, offset);
+        out.push_back(c);
+    }
+    return out;
+}
+
 AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       const PartDef &parentDef, const PartDef &childDef,
                       AttachMode mode, double angleDeg, double offset)
