@@ -1,5 +1,6 @@
 # Build artifacts
 obj/
+obj_test/
 obj_asan/
 osp
 osp_asan

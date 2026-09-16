@@ -11,8 +11,10 @@ TARGET=osp
 # program. Bytecode is compiler-version-locked: a compiler upgrade means a
 # bootstrap re-run. A `make clean` is required after toggling this (bytecode
 # objects are not interchangeable with machine-code ones).
-# -flto=N runs the final codegen on N threads; plain -flto uses 1.
-LTO=-flto
+# -flto=N runs the final codegen on N threads; plain -flto uses 1. N only
+# schedules the link -- the bytecode is unchanged, so a different N needs
+# no clean (toggling LTO on/off does).
+LTO=-flto=$(shell nproc)
 
 # -march: target ISA. Default native (code for the machine you build on:
 # AVX2 etc.); MARCH=x86-64-v3 for a portable-but-modern ISA, MARCH= (empty)
@@ -202,201 +204,283 @@ $(OBJDIR)/gameui.o: src/version.h
 	@mkdir -p ./obj/implot
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Unit tests for the pure-math core (reference frames, orbital math).
-# These link against src/frame.cpp directly, so they need no rendering/Bullet.
-test:
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
-	    tests/test_frames.cpp src/frame.cpp -o test_frames
+# Unit tests. Every binary is its own file target, so make builds the stale
+# ones in parallel (MAKEFLAGS -j$(nproc)) and skips the fresh ones -- the
+# old single phony recipe recompiled + relinked all ~30 serially on every
+# run. `test` builds whatever is stale, then runs every binary (always,
+# even when fresh, so runtime inputs like res/ get re-checked).
+#
+# All TUs -- the test files and the shared src files -- compile once into
+# obj_test/ with -MMD (a changed header rebuilds every dependent test).
+# obj_test/ is separate from obj/: the game's objects are LTO bytecode,
+# the tests' are machine code, and the two must not mix.
+#
+# The heavy tests link the static libs' LTO bytecode, so their link line
+# carries $(LTO) (-flto=$(nproc)): the per-object LTRANS jobs run on N
+# threads instead of serially (measured ~53 s -> ~8 s here).
+#
+# The two pattern rules are order-sensitive: if a stem ever exists in both
+# src/ and tests/ (none do today), the src/ rule wins -- keep it first.
+# If you delete a test source but keep its target, make reuses the stale
+# obj_test object and binary happily -- run `make clean` after removing one.
+
+TCC   = -O2 -std=c++11
+TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
+        -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl3/include \
+        -I./middleware/sdl3-image/include -I./middleware/glew/include
+TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
+# The real-Bullet tests share these TUs (compiled once, not once per test).
+TCOMMON_OBJS = obj_test/physics.o obj_test/body.o obj_test/vehicle.o \
+               obj_test/shipdef.o obj_test/frame.o obj_test/terrain.o \
+               obj_test/shader.o obj_test/camera.o obj_test/mesh.o \
+               obj_test/texture.o obj_test/gldebug.o
+
+obj_test/%.o: src/%.cpp
+	@mkdir -p obj_test
+	$(CXX) $(TCC) -MMD -MP $(TINC) -c $< -o $@
+
+obj_test/%.o: tests/%.cpp
+	@mkdir -p obj_test
+	$(CXX) $(TCC) -MMD -MP $(TINC) -c $< -o $@
+
+# reference frames + orbital spawn math (src/frame.cpp): pure math, no
+# rendering/Bullet needed at runtime.
+test_frames: obj_test/test_frames.o obj_test/frame.o
+	$(CXX) -o $@ $^
+
+test_spawn: obj_test/test_spawn.o obj_test/frame.o
+	$(CXX) -o $@ $^
+
+# attitude law (pure C, no Bullet): the per-substep braking law
+# main.cpp runs, pinned across the authority/warp grid.
+test_attitude: obj_test/test_attitude.o
+	$(CXX) -o $@ $^
+
+# slew law in 3 DOF (pure C++, no Bullet/GL): the full-transverse law
+# damps the "third-axis" spin the old slew-axis-only law left undamped
+# (the prograde wobble), across spin magnitudes and warps; pins the
+# non-vacuous guard (the old law must wobble) + the authority bound.
+test_slew3d: obj_test/test_slew3d.o
+	$(CXX) -o $@ $^
+
+# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
+# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
+test_thrust: obj_test/test_thrust.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# fuel drain (the real Vehicle::consumeResourceMass from src/vehicle.cpp
+# + the real SetMass): pro-rata across the active stage's tanks (not
+# first-tank-first), stage gating, no stranded fuel, no partial drain.
+test_fuel: obj_test/test_fuel.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# electrical (KSP-style EC): the powerTick gate (wheels need power
+# left over after life support; no-EC ships ungated) + the pool balance
+# (RTG charges, life support + active wheels drain, clamped) + EC has
+# no mass. Calls powerTick/drainEC/chargeEC directly, so headless.
+test_power: obj_test/test_power.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# staging topology (Vehicle::droppedPartsAtStage from src/vehicle.cpp): a
+# decoupler drops itself + its whole child-side subtree, a sibling branch
+# sharing the stage NUMBER survives (the heavy_two rule), and nested /
+# same-stage decouplers compose. Pure graph logic over Part::parent -- it
+# reads no Bullet state -- but it links like test_fuel because ~Vehicle
+# (src/vehicle.cpp) references the physics teardown symbols.
+test_staging: obj_test/test_staging.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# docking merge/split (Vehicle::absorbShip + extractSubtreeAsShip from
+# src/vehicle.cpp): absorbShip is a rigid merge -- every absorbed part keeps
+# its exact world pose, the seam is recorded, the absorbed root rehangs off
+# the survivor's port -- and extractSubtreeAsShip is its exact inverse (the
+# undock round-trip restores both ships' geometry). This is the same general
+# primitive a future "dropped stage becomes a ship" will call. Headless:
+# init() runs rebuildCompound (the one hull body) but NOT enterWorld, and
+# extractSubtreeAsShip leaves enterWorld to its caller, so no physics world.
+test_dock: obj_test/test_dock.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# ship mass properties (Vehicle::get_center_of_mass / getInertia from
+# src/vehicle.cpp): golden values against an independent analytic
+# parallel-axis assembly, incl. the products of inertia and rotated
+# non-cubic parts. This is the tensor a reaction wheel's authority and
+# the autopilot slew law divide by; nothing else pins it (test_attitude
+# and test_slew3d simulate their own hardcoded Ix/Iz, and e2e 22 only
+# checks ratios). Also pins the ship's single compound rigid body
+# (Vehicle::rebuildCompound): the principal-axis transform's COM origin,
+# its diagonalized inertia against that same analytic reference, the
+# re-based child poses, and the part poses derived back out of the body
+# at an arbitrary world pose. Headless: no world, no GL context.
+test_inertia: obj_test/test_inertia.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# rotation model (physical wheel torque, per-substep law, torque
+# delivery).
+test_rotation: obj_test/test_rotation.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# ship/part JSON data model (GL-free: catalog + ship-def parse/validate,
+# part resolution, aggregates). Runs from the repo root (needs res/).
+test_shipload: obj_test/test_shipload.o obj_test/shipdef.o
+	$(CXX) -o $@ $^
+
+# crew_capacity on the part catalog (GL-free: which parts are capsules
+# and their seat count, the default-0 for everything else, error path).
+test_crew: obj_test/test_crew.o obj_test/shipdef.o
+	$(CXX) -o $@ $^
+
+# fleet JSON (GL-free: entry parse + defaults + error paths).
+test_fleet: obj_test/test_fleet.o obj_test/fleet.o
+	$(CXX) -o $@ $^
+
+# home-planet calendar (src/calendar.h, header-only pure math): day/year
+# from spin/orbit rates, 427-day snapped year, months, epoch year,
+# tidally-locked + star edge cases. Pinned to the Eerbon JSON rates.
+test_calendar: obj_test/test_calendar.o
+	$(CXX) -o $@ $^
+
+# two-body orbital elements + time-to-apsis (src/orbit.h, header-only
+# pure math): elements, anomaly conversions, the ApT/PeT countdown fix,
+# hyperbolic/parabolic handling, degenerate-plane guards.
+test_orbit: obj_test/test_orbit.o
+	$(CXX) -o $@ $^
+
+# orbit-sampling cache (src/orbitsample.h, header-only pure math): the
+# map's per-orbit points, cached on the elements so coasting orbits are
+# propagated once. Circular/eccentric radii, cache hit + invalidation,
+# hyperbolic -> empty.
+test_orbitsample: obj_test/test_orbitsample.o
+	$(CXX) -o $@ $^
+
+# Lambert solver + min-dv planner (src/transfer.h, header-only pure
+# math): Hohmann analytic reference, round-trip, hyperbolic leg.
+test_transfer: obj_test/test_transfer.o
+	$(CXX) -o $@ $^
+
+# porkchop 2-D sweep (src/transfer.h, header-only pure math): pinned to
+# planTransfer (t_dep = 0 row) + the Hohmann analytic min + the no-
+# solution (all-NaN) path + grid bookkeeping.
+test_porkchop: obj_test/test_porkchop.o
+	$(CXX) -o $@ $^
+
+# surface map projection + terminator (src/surfmap.h, header-only pure
+# math): the equirectangular pixel <-> direction round-trip, the
+# lon/lat convention (lon 0 = +Z, north = +Y -- the same atan2(x, z) /
+# asin(y) render.cpp uses), the shade range, the antimeridian wrap.
+test_surfmap: obj_test/test_surfmap.o
+	$(CXX) -o $@ $^
+
+# EVA control-law geometry (src/evamath.h, header-only pure math): the
+# Rodrigues rotation + axis-angle round-trip (incl. the 180-deg
+# fallback), the camera/upright target bases, the screen-axis helpers.
+test_eva: obj_test/test_eva.o
+	$(CXX) -o $@ $^
+
+# terrain core (src/terragen.h, header-only pure math): the height
+# model (bounds, sea floor, the LOD band-limit fade), the surface
+# color (sea, palette, gas-giant bands), and the grid builder
+# (vertex/index counts, band-limited on-surface vertices, the skirt
+# ring below the terrain).
+test_terrain: obj_test/test_terrain.o
+	$(CXX) -o $@ $^
+
+# atmospheric drag law (src/drag.h, header-only pure math): the
+# exponential density (rho(H)=rho0/e, monotone, below-surface -> 0,
+# degenerate atmo -> 0) and the force (opposite v, |F|=0.5 rho cd A v^2,
+# 4x at 2x speed, zero on any degenerate input).
+test_drag: obj_test/test_drag.o
+	$(CXX) -o $@ $^
+
+# jet engine thrust factor (src/drag.h, header-only pure math): the
+# air-breathing multiplier -- the speed ramp (the VTOL floor: f0 at
+# rest, linear to 1 at v_rated, saturating above) times the density
+# falloff (linear in rho/rho_sea, ZERO in vacuum, clamped at 1),
+# degenerate inputs -> 0 (or the clamped floor).
+test_jet: obj_test/test_jet.o
+	$(CXX) -o $@ $^
+
+# background job runner (src/job.cpp): the worker/main-thread handoff --
+# the body runs off the calling thread, the returned continuation runs on
+# the poll() thread, jobs land in posted order, a throwing body does not
+# kill the worker, busy()/poll() report the state + the running label.
+test_jobs: obj_test/test_jobs.o obj_test/job.o
+	$(CXX) -o $@ $^
+
+# orbital map projection (src/orbitmap.h, pure-math part): project() drops
+# the map normal (+Y) and scales XZ by meters-per-pixel. Header-only, so
+# the imgui include is headers-only (no imgui/Bullet/GL link needed).
+test_orbitmap: obj_test/test_orbitmap.o
+	$(CXX) -o $@ $^
+
+# orbit camera (src/camera.cpp, pure math): pitching past the pole must
+# keep the up vector continuous (no sudden roll) and the view NaN-free.
+test_orbitcam: obj_test/test_orbitcam.o obj_test/camera.o
+	$(CXX) -o $@ $^
+
+# picking (src/pick.cpp): pixel->ray round-trip through the camera's
+# own view/projection (a point on the ray projects back to the pixel),
+# then the real Bullet convex-cast hull ray-test (hit point/distance,
+# a miss, translated + rotated bodies). pick.cpp includes game.h (the
+# fleet), so the imgui include dir is needed for ui.h; and pickShipPart
+# casts against a ship's compound children through Vehicle's pose
+# accessors, so vehicle.cpp + physics.cpp + body.cpp + shipdef.cpp link in.
+test_pick: obj_test/test_pick.o obj_test/pick.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# settings.json mapping (src/settings.cpp, nlohmann): the
+# SettingsData <-> JSON round trip, absent-key tolerance (a field the
+# file does not mention keeps the current value), mistyped-key
+# tolerance, and the window-mode name mapping.
+test_settings: obj_test/test_settings.o obj_test/settings.o obj_test/keys.o
+	$(CXX) -o $@ $^
+
+# key map (src/keys.cpp): the exact-modifier lookup (a plain binding
+# fires only with no Shift/Ctrl/Alt held; a combo only with exactly its
+# modifiers), the default map (the previously-hardcoded keys, cam/eva
+# up-down on R/F), --sim-press plain-key compatibility, naming.
+# Pure logic -- no SDL link (no SDL calls).
+test_keys: obj_test/test_keys.o obj_test/keys.o
+	$(CXX) -o $@ $^
+
+TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
+        test_power test_staging test_dock test_inertia test_rotation \
+        test_shipload test_crew test_fleet test_calendar test_orbit \
+        test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
+        test_terrain test_drag test_jet test_jobs test_orbitmap test_orbitcam \
+        test_pick test_settings test_keys
+
+.PHONY: test
+test: $(TESTS)
 	./test_frames
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
-	    tests/test_spawn.cpp src/frame.cpp -o test_spawn
 	./test_spawn
-	# attitude law (pure C, no Bullet): the per-substep braking law
-	# main.cpp runs, pinned across the authority/warp grid.
-	$(CXX) -O2 -std=c++11 tests/test_attitude.cpp -o test_attitude
 	./test_attitude
-	# slew law in 3 DOF (pure C++, no Bullet/GL): the full-transverse law
-	# damps the "third-axis" spin the old slew-axis-only law left undamped
-	# (the prograde wobble), across spin magnitudes and warps; pins the
-	# non-vacuous guard (the old law must wobble) + the authority bound.
-	$(CXX) -O2 -std=c++11 tests/test_slew3d.cpp -o test_slew3d
 	./test_slew3d
-	# thrust fixes (substep delivery, fuel flow, SetMass inertia): links the
-	# real src/physics.cpp, so it pulls in the render chain + Bullet + GL libs.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_thrust.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_thrust
 	./test_thrust
-	# fuel drain (the real Vehicle::consumeResourceMass from src/vehicle.cpp
-	# + the real SetMass): pro-rata across the active stage's tanks (not
-	# first-tank-first), stage gating, no stranded fuel, no partial drain.
-	# Same real-Bullet link as test_thrust (no GL context needed).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_fuel.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_fuel
 	./test_fuel
-	# electrical (KSP-style EC): the powerTick gate (wheels need power
-	# left over after life support; no-EC ships ungated) + the pool balance
-	# (RTG charges, life support + active wheels drain, clamped) + EC has
-	# no mass. Calls powerTick/drainEC/chargeEC directly, so headless.
-	# Same real-Bullet link as test_fuel (no GL context needed).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_power.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_power
 	./test_power
-	# staging topology (Vehicle::droppedPartsAtStage from src/vehicle.cpp): a
-	# decoupler drops itself + its whole child-side subtree, a sibling branch
-	# sharing the stage NUMBER survives (the heavy_two rule), and nested /
-	# same-stage decouplers compose. Pure graph logic over Part::parent -- it
-	# reads no Bullet state -- but it links like test_fuel because ~Vehicle
-	# (src/vehicle.cpp) references the physics teardown symbols.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_staging.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_staging
 	./test_staging
-	# docking merge/split (Vehicle::absorbShip + extractSubtreeAsShip from
-	# src/vehicle.cpp): absorbShip is a rigid merge -- every absorbed part keeps
-	# its exact world pose, the seam is recorded, the absorbed root rehangs off
-	# the survivor's port -- and extractSubtreeAsShip is its exact inverse (the
-	# undock round-trip restores both ships' geometry). This is the same general
-	# primitive a future "dropped stage becomes a ship" will call. Headless:
-	# init() runs rebuildCompound (the one hull body) but NOT enterWorld, and
-	# extractSubtreeAsShip leaves enterWorld to its caller, so no physics world.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_dock.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_dock
 	./test_dock
-	# ship mass properties (Vehicle::get_center_of_mass / getInertia from
-	# src/vehicle.cpp): golden values against an independent analytic
-	# parallel-axis assembly, incl. the products of inertia and rotated
-	# non-cubic parts. This is the tensor a reaction wheel's authority and
-	# the autopilot slew law divide by; nothing else pins it (test_attitude
-	# and test_slew3d simulate their own hardcoded Ix/Iz, and e2e 22 only
-	# checks ratios). Also pins the ship's single compound rigid body
-	# (Vehicle::rebuildCompound): the principal-axis transform's COM origin,
-	# its diagonalized inertia against that same analytic reference, the
-	# re-based child poses, and the part poses derived back out of the body
-	# at an arbitrary world pose. Headless: no world, no GL context.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_inertia.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_inertia
 	./test_inertia
-	# rotation model (physical wheel torque, per-substep law, torque
-	# delivery): same real-Bullet link as test_thrust.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_rotation.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/camera.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_rotation
 	./test_rotation
-	# ship/part JSON data model (GL-free: catalog + ship-def parse/validate,
-	# part resolution, aggregates). Runs from the repo root (needs res/).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
-	    tests/test_shipload.cpp src/shipdef.cpp -o test_shipload
 	./test_shipload
-	# crew_capacity on the part catalog (GL-free: which parts are capsules
-	# and their seat count, the default-0 for everything else, error path).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
-	    tests/test_crew.cpp src/shipdef.cpp -o test_crew
 	./test_crew
-	# fleet JSON (GL-free: entry parse + defaults + error paths).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/ \
-	    tests/test_fleet.cpp src/fleet.cpp -o test_fleet
 	./test_fleet
-	# home-planet calendar (src/calendar.h, header-only pure math): day/year
-	# from spin/orbit rates, 427-day snapped year, months, epoch year,
-	# tidally-locked + star edge cases. Pinned to the Eerbon JSON rates.
-	$(CXX) -O2 -std=c++11 -I./src tests/test_calendar.cpp -o test_calendar
 	./test_calendar
-	# two-body orbital elements + time-to-apsis (src/orbit.h, header-only
-	# pure math): elements, anomaly conversions, the ApT/PeT countdown fix,
-	# hyperbolic/parabolic handling, degenerate-plane guards.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit
 	./test_orbit
-	# orbit-sampling cache (src/orbitsample.h, header-only pure math): the
-	# map's per-orbit points, cached on the elements so coasting orbits are
-	# propagated once. Circular/eccentric radii, cache hit + invalidation,
-	# hyperbolic -> empty.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbitsample.cpp -o test_orbitsample
 	./test_orbitsample
-	# Lambert solver + min-dv planner (src/transfer.h, header-only pure
-	# math): Hohmann analytic reference, round-trip, hyperbolic leg.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_transfer.cpp -o test_transfer
 	./test_transfer
-	# porkchop 2-D sweep (src/transfer.h, header-only pure math): pinned to
-	# planTransfer (t_dep = 0 row) + the Hohmann analytic min + the no-
-	# solution (all-NaN) path + grid bookkeeping.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_porkchop.cpp -o test_porkchop
 	./test_porkchop
-	# surface map projection + terminator (src/surfmap.h, header-only pure
-	# math): the equirectangular pixel <-> direction round-trip, the
-	# lon/lat convention (lon 0 = +Z, north = +Y -- the same atan2(x, z) /
-	# asin(y) render.cpp uses), the shade range, the antimeridian wrap.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_surfmap.cpp -o test_surfmap
 	./test_surfmap
-	# EVA control-law geometry (src/evamath.h, header-only pure math): the
-	# Rodrigues rotation + axis-angle round-trip (incl. the 180-deg
-	# fallback), the camera/upright target bases, the screen-axis helpers.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_eva.cpp -o test_eva
 	./test_eva
-	# terrain core (src/terragen.h, header-only pure math): the height
-	# model (bounds, sea floor, the LOD band-limit fade), the surface
-	# color (sea, palette, gas-giant bands), and the grid builder
-	# (vertex/index counts, band-limited on-surface vertices, the skirt
-	# ring below the terrain).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_terrain.cpp -o test_terrain
 	./test_terrain
-	# atmospheric drag law (src/drag.h, header-only pure math): the
-	# exponential density (rho(H)=rho0/e, monotone, below-surface -> 0,
-	# degenerate atmo -> 0) and the force (opposite v, |F|=0.5 rho cd A v^2,
-	# 4x at 2x speed, zero on any degenerate input).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_drag.cpp -o test_drag
 	./test_drag
-	# jet engine thrust factor (src/drag.h, header-only pure math): the
-	# air-breathing multiplier -- the speed ramp (the VTOL floor: f0 at
-	# rest, linear to 1 at v_rated, saturating above) times the density
-	# falloff (linear in rho/rho_sea, ZERO in vacuum, clamped at 1),
-	# degenerate inputs -> 0 (or the clamped floor).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_jet.cpp -o test_jet
 	./test_jet
-	# background job runner (src/job.cpp): the worker/main-thread handoff --
-	# the body runs off the calling thread, the returned continuation runs on
-	# the poll() thread, jobs land in posted order, a throwing body does not
-	# kill the worker, busy()/poll() report the state + the running label.
-	$(CXX) -O2 -std=c++11 -I./src tests/test_jobs.cpp src/job.cpp -o test_jobs
 	./test_jobs
-	# orbital map projection (src/orbitmap.h, pure-math part): project() drops
-	# the map normal (+Y) and scales XZ by meters-per-pixel. Header-only, so
-	# the imgui include is headers-only (no imgui/Bullet/GL link needed).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/imgui/ tests/test_orbitmap.cpp -o test_orbitmap
 	./test_orbitmap
-	# orbit camera (src/camera.cpp, pure math): pitching past the pole must
-	# keep the up vector continuous (no sudden roll) and the view NaN-free.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp src/camera.cpp -o test_orbitcam
 	./test_orbitcam
-	# picking (src/pick.cpp): pixel->ray round-trip through the camera's
-	# own view/projection (a point on the ray projects back to the pixel),
-	# then the real Bullet convex-cast hull ray-test (hit point/distance,
-	# a miss, translated + rotated bodies). pick.cpp includes game.h (the
-	# fleet), so the imgui include dir is needed for ui.h; and pickShipPart
-	# casts against a ship's compound children through Vehicle's pose
-	# accessors, so vehicle.cpp + physics.cpp + body.cpp + shipdef.cpp link in.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_pick.cpp src/pick.cpp src/physics.cpp src/body.cpp src/vehicle.cpp src/shipdef.cpp src/camera.cpp src/frame.cpp src/terrain.cpp src/shader.cpp src/mesh.cpp src/texture.cpp src/gldebug.cpp \
-	    $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB) -o test_pick
 	./test_pick
-	# settings.json mapping (src/settings.cpp, nlohmann): the
-	# SettingsData <-> JSON round trip, absent-key tolerance (a field the
-	# file does not mention keeps the current value), mistyped-key
-	# tolerance, and the window-mode name mapping.
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_settings.cpp src/settings.cpp src/keys.cpp -o test_settings
 	./test_settings
-	# key map (src/keys.cpp): the exact-modifier lookup (a plain binding
-	# fires only with no Shift/Ctrl/Alt held; a combo only with exactly its
-	# modifiers), the default map (the previously-hardcoded keys, cam/eva
-	# up-down on R/F), --sim-press plain-key compatibility, naming.
-	# Pure logic -- no SDL link (no SDL calls).
-	$(CXX) -O2 -std=c++11 -I./src -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include \
-	    tests/test_keys.cpp src/keys.cpp -o test_keys
 	./test_keys
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
@@ -416,21 +500,27 @@ e2e: $(TARGET)
 # must happen inside a real glGenVertexArrays VAO (even an empty one for a
 # vertex-less gl_VertexID quad). Needs an X display:
 #     DISPLAY=:99 make test-gl
+.PHONY: test-gl
 test-gl:
-	$(CXX) -O2 -std=c++11 -I./middleware/sdl3/include tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
+	$(CXX) -O2 -std=c++11 -I./middleware/sdl3/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
 	./test_gl_vao
 
 .PHONY: clean
-# Only the src/ objects: imgui/implot are pinned submodules you rarely touch,
-# so keeping their .o files across a clean keeps the rebuild cycle fast.
-# (After a CXXFLAGS/LTO/SECT change, delete obj/ by hand once to force them.)
+# Only the src/ objects + the test objects: imgui/implot are pinned
+# submodules you rarely touch, so keeping their .o files across a clean
+# keeps the rebuild cycle fast. (After a CXXFLAGS/LTO/SECT change, delete
+# obj/ by hand once to force them.)
 clean:
 	$(rm) $(OBJECTS) $(OBJECTS:.o=.d)
+	rm -rf obj_test
 
 .PHONY: remove
 remove: clean
 	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_drag test_jet test_jobs test_settings test_eva test_keys test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
-# .d files don't exist yet (fresh checkout / first build).
+# .d files don't exist yet (fresh checkout / first build). The obj_test/
+# objects (the unit tests' shared TUs) use the same -MMD mechanism; a
+# wildcard keeps this list in sync with whatever has been compiled.
 -include $(DEPS)
+-include $(wildcard obj_test/*.d)
