@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,14 @@
                                           //   optional; empty -> fall back to name
            "mesh": "engine.obj",          // file in res/
            "texture": "engine.png",       // file in res/
+           "shroud": "engine_shroud.obj",          // optional, file in res/;
+           "shroud_texture": "engine_shroud.png",  //   an OPEN-cylinder wrap
+                                                   //   drawn OVER the part when
+                                                   //   a part is attached on its
+                                                   //   exhaust face (a child
+                                                   //   below) -- hides an
+                                                   //   engine's nozzle (see
+                                                   //   PartDef.shroud)
            "mass": 12500,                 // kg (dry mass of the part)
            "radius": 5.0,                 // optional, m; cross-section (x/y extent 2r), default 1.0
            "height": 2.0,                 // optional, m; stack-axis length (z extent), default 2.0
@@ -223,6 +232,15 @@ struct PartDef {
     std::string display_name; // human-readable name (display only); empty -> fall back to name
     std::string mesh;     // file in res/
     std::string texture;  // file in res/
+    /* Engine shroud (optional; empty = none, most parts): an open-cylinder
+       mesh + texture drawn OVER the part when a part is attached on its
+       exhaust face (a child below) -- a plain light-gray wrap that hides an
+       engine's nozzle under the part (Vehicle::Draw / the VAB draw). Both
+       fields must be set. Author it at the part's height and just inside
+       its radius (0.98x here), so its rim never sits coplanar with the part
+       above or the engine's top disc edge -- no z-fighting. */
+    std::string shroud;          // shroud mesh file in res/
+    std::string shroud_texture;  // shroud texture file in res/
     double mass;          // kg
 
     /* Physical size in metres; the .obj is authored to match (origin
@@ -427,6 +445,20 @@ struct PartDef {
        propellants end up in the plume, so the flow is 2 tanks */
     double fullThrust() const { return 2.0 * fuel_rate * exhaust_velocity; }
 };
+
+/* Engine-shroud condition, shared by the flight draw (Vehicle::
+   hasChildBelow) and the VAB draw: `child` sits on `parent`'s exhaust face
+   -- below its centre in the PARENT'S own frame (so it follows a rotated
+   parent) AND on the parent's axis. A down-stack edge is exactly axial
+   (rel.xy = 0); a surface-attached child lands at the summed radii laterally,
+   so it never shrouds no matter where on the wall it is attached. */
+inline bool childBelow(double parentRadius,
+                       const glm::dvec3 &parentPos,
+                       const glm::dmat3 &parentRot,
+                       const glm::dvec3 &childPos) {
+    const glm::dvec3 rel = glm::transpose(parentRot) * (childPos - parentPos);
+    return rel.z < 0.0 && std::hypot(rel.x, rel.y) <= parentRadius * 0.5;
+}
 
 /* How a part attaches to its parent (see the header schema comment).
    Down/Up are stack edges (node mating); Surface places the child's surface

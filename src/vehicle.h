@@ -260,6 +260,14 @@ public:
        ship, which staging refuses). */
     Part *rootPart() const;
 
+    /* The shroud condition (see PartDef.shroud): true when a part is
+       attached on p's EXHAUST face -- a child whose center sits below p's
+       center in p's OWN frame (a down-stack edge, gap included). A child
+       above (up edge) or on the side (surface edge) does not count.
+       Read live, not cached: staging drops the child below and the
+       shroud must go with it (the draw checks this every frame). */
+    bool hasChildBelow(const Part *p) const;
+
     /* --- part state accessors -------------------------------------------
 
        The one route to a part's pose, axes and velocity, and the only place

@@ -593,6 +593,20 @@ void draw3d(Game &g, TransferPlanner &planner) {
     postfx->End();  // no-op unless --postfx effects are active
 }
 
+/* The shroud condition for the VAB build tree: the same shared test as
+   Vehicle::hasChildBelow (childBelow in shipdef.h) -- a child on the part's
+   exhaust face (below, in the part's own frame) and axial, so a surface
+   child never counts. */
+static bool vabChildBelow(const BuildShip &bs, size_t i) {
+    const BuildPart &bp = bs.parts[i];
+    for(size_t j = 0; j < bs.parts.size(); j++) {
+        if(j == i || bs.parts[j].parent != (int)i) { continue; }
+        if(childBelow(bp.def->radius, bp.localPos, bp.localRot,
+                      bs.parts[j].localPos)) { return true; }
+    }
+    return false;
+}
+
 void drawVab(Game &g) {
     /* The build tree lives in its own frame S; center the render frame on the
        ship and orbit around it. ref = identity so screen-up is world +Z (the
@@ -618,6 +632,20 @@ void drawVab(Game &g) {
         else if((int)i == g.vab_hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
                     glm::dmat4(1.0), opts);
+
+        /* Engine shroud (see PartDef.shroud): same as flight -- while a
+           part is attached on the part's exhaust face, the plain cylinder
+           hides the engine. It shares the part's editor opts (studio
+           light + the hover/selection tint), so the wrap highlights with
+           its part. */
+        if(!bp.def->shroud.empty() && vabChildBelow(g.vab, i)) {
+            Mesh *sm = get_mesh(std::string("./res/") + bp.def->shroud);
+            Texture *st = get_texture(std::string("./res/") + bp.def->shroud_texture);
+            if(sm != nullptr && st != nullptr) {
+                DrawModelAt(cam, sm, g.partsshader, st, model, sunlight,
+                            1.0f, glm::dmat4(1.0), opts);
+            }
+        }
     }
 
     // the armed part's (or subassembly's) translucent ghost at the hovered

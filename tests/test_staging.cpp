@@ -224,6 +224,75 @@ static void test_deep_chain() {
     destroyShip(s);
 }
 
+/* The shroud condition (Vehicle::hasChildBelow): a child on the part's
+   EXHAUST face (below, in the part's OWN frame) shrouds it; a child above
+   or on the side does not. The rotated case pins that "below" is judged
+   in the part's axes, not the ship frame. */
+static void test_child_below() {
+    {   // a child below (a down-stack edge)
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, NULL, 1, false, "engine");
+        Part *dec = addPart(s, eng, 1, false, "decoupler");
+        dec->localPos = glm::dvec3(0, 0, -3);
+        CHECK_TRUE(s.v->hasChildBelow(eng), "child below shrouds");
+        CHECK_TRUE(!s.v->hasChildBelow(dec), "the child has no child of its own");
+        destroyShip(s);
+    }
+    {   // a child above (an up-stack edge)
+        Ship s; s.v = new Vehicle;
+        Part *eng  = addPart(s, NULL, 1, false, "engine");
+        Part *tank = addPart(s, eng, 1, false, "tank");
+        tank->localPos = glm::dvec3(0, 0, 3);
+        CHECK_TRUE(!s.v->hasChildBelow(eng), "child above does not shroud");
+        destroyShip(s);
+    }
+    {   // a child on the side (a surface edge)
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, NULL, 1, false, "engine");
+        Part *w   = addPart(s, eng, 1, false, "wheel");
+        w->localPos = glm::dvec3(2, 0, 0);
+        CHECK_TRUE(!s.v->hasChildBelow(eng), "side child does not shroud");
+        destroyShip(s);
+    }
+    {   // a surface child on the LOWER half of the side: its center is below
+        // the parent's midplane, but it is on the wall, not the exhaust
+        // face -- the axial guard keeps the shroud off
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, NULL, 1, false, "engine");
+        Part *w   = addPart(s, eng, 1, false, "wheel");
+        w->localPos = glm::dvec3(2, 0, -0.5);
+        CHECK_TRUE(!s.v->hasChildBelow(eng),
+                   "side-below-midplane does not shroud");
+        destroyShip(s);
+    }
+    {   // above AND below: the below child shrouds
+        Ship s; s.v = new Vehicle;
+        Part *eng   = addPart(s, NULL, 1, false, "engine");
+        Part *upper = addPart(s, eng, 1, false, "tank_upper");
+        upper->localPos = glm::dvec3(0, 0, 3);
+        Part *dec = addPart(s, eng, 1, false, "decoupler");
+        dec->localPos = glm::dvec3(0, 0, -3);
+        CHECK_TRUE(s.v->hasChildBelow(eng), "above + below: the below shrouds");
+        destroyShip(s);
+    }
+    {   // rotated parent: "below" is in the part's OWN frame (a +90 deg
+        // roll about X sends the exhaust face, local -Z, to world +Y)
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, NULL, 1, false, "engine");
+        eng->localRot = glm::dmat3(1.0, 0.0, 0.0,
+                                   0.0, 0.0, -1.0,
+                                   0.0, 1.0, 0.0);
+        Part *dec   = addPart(s, eng, 1, false, "decoupler");
+        dec->localPos = eng->localRot * glm::dvec3(0, 0, -3);
+        Part *upper = addPart(s, eng, 1, false, "tank_upper");
+        upper->localPos = eng->localRot * glm::dvec3(0, 0, +3);
+        CHECK_TRUE(s.v->hasChildBelow(eng),
+                   "rotated: the own-frame-below child shrouds");
+        CHECK_TRUE(!s.v->hasChildBelow(upper), "rotated: the up child is bare");
+        destroyShip(s);
+    }
+}
+
 int main() {
     printf("== droppedPartsAtStage (src/vehicle.h) ==\n");
     test_no_decoupler();
@@ -232,6 +301,7 @@ int main() {
     test_different_stages();
     test_two_on_one_stage();
     test_deep_chain();
+    test_child_below();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }

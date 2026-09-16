@@ -105,6 +105,16 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
         part->id    = physical[i].id;
         part->stage = physical[i].stage;
 
+        /* Engine shroud (optional, see PartDef.shroud): the open-cylinder
+           wrap drawn OVER this part while a part is attached below it
+           (Vehicle::Draw / the VAB draw). Registry-shared like the part
+           assets -- one import per shroud file. */
+        if(!pd.shroud.empty()) {
+            part->shroud = get_mesh(std::string("./res/") + pd.shroud);
+            part->shroud_texture =
+                get_texture(std::string("./res/") + pd.shroud_texture);
+        }
+
         if(i == 0) {
             ship->setRoot(part);
         } else {
@@ -117,6 +127,19 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
             ship->attach(part, (size_t)sp.parent, pos[i], rot[i]);
         }
     }
+    /* One-shot shroud snapshot (e2e anchor + debug): each part that
+       declares a shroud, and whether it is shrouded as built (a part
+       attached below). The state is LIVE -- staging can drop the child
+       below and the shroud goes with it; this is the built state. */
+    for(size_t i = 0; i < n; i++) {
+        Part *p = ship->parts[i];
+        if(p->shroud == nullptr) { continue; }
+        printf("[shroud] %s: %s (%s over %s)\n", p->id.c_str(),
+               ship->hasChildBelow(p) ? "shrouded" : "bare",
+               p->def->shroud.c_str(), p->def->mesh.c_str());
+        fflush(stdout);
+    }
+
     ship->controller = ship->parts[cit->second];
 
     /* 4) resolve the fuel links (from/to ids -> Part*). The ids reference
@@ -698,6 +721,18 @@ Part * Vehicle::rootPart() const {
         if(parts[i]->parent == nullptr) { return parts[i]; }
     }
     return parts.empty() ? nullptr : parts[0];
+}
+
+bool Vehicle::hasChildBelow(const Part *p) const {
+    /* childBelow (shipdef.h) is the shared flight/VAB test: the child is on
+       p's exhaust face (below, in p's own frame) and axial, so a child
+       glued to the side never counts. */
+    for(Part *c : parts) {
+        if(c->parent != p) { continue; }
+        if(childBelow(p->def->radius, p->localPos, p->localRot,
+                      c->localPos)) { return true; }
+    }
+    return false;
 }
 
 void Vehicle::partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
@@ -2060,8 +2095,18 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
            same way.) */
         glm::dvec3 pp; glm::dmat3 pr;
         partWorldPose(p, pp, pr);
-        p->body->DrawAt(camera, sunlightVec, shadow,
-                        glm::translate(pp) * glm::dmat4(pr), xform);
+        const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
+        p->body->DrawAt(camera, sunlightVec, shadow, model, xform);
+
+        /* Engine shroud (see PartDef.shroud): while a part is attached
+           on the part's exhaust face (a child below), the plain open
+           cylinder hides the engine underneath -- the part's own pose,
+           shader and terrain shadow, drawn right after the part so it
+           depth-tests against it. */
+        if(p->shroud != nullptr && hasChildBelow(p)) {
+            DrawModelAt(camera, p->shroud, p->body->shader,
+                        p->shroud_texture, model, sunlightVec, shadow, xform);
+        }
     }
 }
 

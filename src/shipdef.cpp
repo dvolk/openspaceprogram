@@ -109,6 +109,15 @@ PartsCatalog load_parts_catalog(const char *path) {
             if(d.mesh.empty() || d.texture.empty()) {
                 throw std::runtime_error(ctx + "missing \"mesh\"/\"texture\"");
             }
+            /* Engine shroud (optional, see PartDef.shroud): the pair is
+               all-or-nothing -- a half-set shroud is a catalog bug, not a
+               configuration. */
+            d.shroud = pv.value("shroud", std::string(""));
+            d.shroud_texture = pv.value("shroud_texture", std::string(""));
+            if((d.shroud.empty()) != (d.shroud_texture.empty())) {
+                throw std::runtime_error(ctx
+                                         + "\"shroud\" and \"shroud_texture\" must be set together");
+            }
             d.mass = pv.value("mass", -1.0);
             if(d.mass <= 0.0) {
                 throw std::runtime_error(ctx + "\"mass\" must be > 0 (kg)");

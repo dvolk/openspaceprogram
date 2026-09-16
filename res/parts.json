@@ -166,7 +166,9 @@
       "radius": 1.0,
       "height": 2.0,
       "fuel_rate": 5.68,
-      "exhaust_velocity": 4400.0
+      "exhaust_velocity": 4400.0,
+      "shroud": "engine_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "engine_r1.5h3",
@@ -178,7 +180,9 @@
       "radius": 1.5,
       "height": 3.0,
       "fuel_rate": 12.78,
-      "exhaust_velocity": 4400.0
+      "exhaust_velocity": 4400.0,
+      "shroud": "engine_r1.5h3_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "engine_r2.25h4.5",
@@ -190,7 +194,9 @@
       "radius": 2.25,
       "height": 4.5,
       "fuel_rate": 28.76,
-      "exhaust_velocity": 4400.0
+      "exhaust_velocity": 4400.0,
+      "shroud": "engine_r2.25h4.5_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "orbital_engine",
@@ -202,7 +208,9 @@
       "radius": 1.0,
       "height": 1.0,
       "fuel_rate": 1.89,
-      "exhaust_velocity": 4400.0
+      "exhaust_velocity": 4400.0,
+      "shroud": "orbital_engine_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "orbital_engine_r1.5h1.5",
@@ -214,7 +222,9 @@
       "radius": 1.5,
       "height": 1.5,
       "fuel_rate": 4.26,
-      "exhaust_velocity": 4400.0
+      "exhaust_velocity": 4400.0,
+      "shroud": "orbital_engine_r1.5h1.5_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "orbital_engine_r2.25h2.25",
@@ -226,7 +236,9 @@
       "radius": 2.25,
       "height": 2.25,
       "fuel_rate": 9.59,
-      "exhaust_velocity": 4400.0
+      "exhaust_velocity": 4400.0,
+      "shroud": "orbital_engine_r2.25h2.25_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "jet",
@@ -241,7 +253,9 @@
       "exhaust_velocity": 550.0,
       "jet": true,
       "jet_fan_thrust": 32000,
-      "jet_intake_area": 0.9
+      "jet_intake_area": 0.9,
+      "shroud": "engine_shroud.obj",
+      "shroud_texture": "engine_shroud.png"
     },
     {
       "name": "jet_tank_r1h1",

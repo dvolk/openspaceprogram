@@ -46,8 +46,9 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   just the fuel_link flag (EXTRA_FIELDS)
   extras (EXTRA_FIELDS)
                   crew seats, the kerbal's RCS propellant, the decouplers'
-                  declared mass + staging flags -- per-part values that
-                  don't derive from geometry, applied on top
+                  declared mass + staging flags, the engine shrouds --
+                  per-part values that don't derive from geometry, applied
+                  on top
 
 Radial sizes are 1.0 / 1.5 / 2.25 m (see PARTS).
 
@@ -258,7 +259,7 @@ PARTS = [
 
 # per-part extra fields that do NOT derive from the geometry: crew seats,
 # the kerbal's RCS propellant, the decouplers'/docking ports' mass + flags,
-# and the fuel_link's flag.
+# the engine shrouds, and the fuel_link's flag.
 # Applied on top of the generated entry so the catalog stays fully
 # reproducible (no hand-edits to parts.json). The kerbal mass is declared
 # (not mesh-derived) to preserve the hand-set value; the decouplers'/docking
@@ -266,6 +267,24 @@ PARTS = [
 # are declared because mesh_geom rounds the 0.5625 m mesh span to 0.562
 # (round-3, as the wheel's entry).
 EXTRA_FIELDS = {
+    # Engine shrouds (src/shipdef.h PartDef.shroud): the open-cylinder
+    # wrap drawn over the engine while a part is attached below it
+    # (utils/gen_engine_shroud.py). One shared light-gray texture.
+    "engine":                {"shroud": "engine_shroud.obj",
+                              "shroud_texture": "engine_shroud.png"},
+    "engine_r1.5h3":         {"shroud": "engine_r1.5h3_shroud.obj",
+                              "shroud_texture": "engine_shroud.png"},
+    "engine_r2.25h4.5":      {"shroud": "engine_r2.25h4.5_shroud.obj",
+                              "shroud_texture": "engine_shroud.png"},
+    "orbital_engine":        {"shroud": "orbital_engine_shroud.obj",
+                              "shroud_texture": "engine_shroud.png"},
+    "orbital_engine_r1.5h1.5":  {"shroud": "orbital_engine_r1.5h1.5_shroud.obj",
+                                 "shroud_texture": "engine_shroud.png"},
+    "orbital_engine_r2.25h2.25":  {"shroud": "orbital_engine_r2.25h2.25_shroud.obj",
+                                   "shroud_texture": "engine_shroud.png"},
+    # the jet reuses the engine mesh, so it gets the engine's shroud too
+    "jet":                   {"shroud": "engine_shroud.obj",
+                              "shroud_texture": "engine_shroud.png"},
     "capsule":           {"crew_capacity": 1},
     "capsule_r1.5h3":    {"crew_capacity": 3},
     "capsule_r2.25h4.5": {"crew_capacity": 6},

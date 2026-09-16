@@ -28,6 +28,13 @@
 struct Part {
     Body *body;                 // OWNED (the rigid body + hull shape; the render assets it holds are registry-shared)
     const PartDef *def;         // non-owning; points into the PartsCatalog
+    /* The engine shroud (see PartDef.shroud): the open-cylinder wrap drawn
+       OVER this part when a part is attached on its exhaust face (a child
+       below). NON-OWNING (the get_mesh/get_texture registries own them,
+       shared by every part of the same size) and null for parts without a
+       shroud declared in the catalog. */
+    Mesh *shroud = nullptr;
+    Texture *shroud_texture = nullptr;
     std::string id;             // the instance id from the ship def (stable for the ship's
                                 // lifetime; the key save/load, the fuel links and the dock
                                 // seams use to name this part). Set in build_ship.
