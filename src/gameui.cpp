@@ -68,7 +68,7 @@ unsigned int ramp_color(float t) {
 static std::map<const void *, OrbitSampleCache> orbit_caches;
 
 // Format a sim-clock time (s) on the home body's calendar, the same
-// "Year ... Day d/N ... HH:MM:SS" the top bar (HUD) shows, so a planned
+// "Year ... Day d/N ... HH:MM" the top bar (HUD) shows, so a planned
 // departure time (a porkchop "Send best") can be read off against it.
 // Empty when there is no home calendar or t < 0.
 static std::string fmt_cal_time(const Calendar &cal, double t) {
@@ -80,11 +80,11 @@ static std::string fmt_cal_time(const Calendar &cal, double t) {
         // day + the days in the earlier months.
         int doy = ct.day;
         for(int m = 0; m < ct.month - 1; m++) { doy += cal.month_days[m]; }
-        snprintf(line, sizeof(line), "Year %04d   Day %d/%d   %02d:%02d:%02d",
-                 ct.year, doy, cal.days_per_year, ct.hh, ct.mm, ct.ss);
+        snprintf(line, sizeof(line), "Year %04d   Day %d/%d   %02d:%02d",
+                 ct.year, doy, cal.days_per_year, ct.hh, ct.mm);
     } else {
-        snprintf(line, sizeof(line), "Day %d   %02d:%02d:%02d",
-                 ct.day, ct.hh, ct.mm, ct.ss);
+        snprintf(line, sizeof(line), "Day %d   %02d:%02d",
+                 ct.day, ct.hh, ct.mm);
     }
     return line;
 }
