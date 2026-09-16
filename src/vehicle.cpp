@@ -437,13 +437,6 @@ void spin_log(Vehicle *ship, double time) {
 
 /* --- Vehicle method definitions (moved out of vehicle.h, same order) --- */
 
-/* C++11: a constexpr static data member needs an out-of-class definition
-   the moment it is odr-used anywhere; define them once here so every use
-   is valid (C++17 would make them inline and these unnecessary). */
-constexpr double Vehicle::kComRebuildTol;
-constexpr double Vehicle::kMassRebuildFrac;
-constexpr double Vehicle::kRcsIsp;
-
 bool Vehicle::hullInWorld() const {
     return hull != nullptr && hull->btBody != nullptr
         && hull->btBody->getBroadphaseHandle() != nullptr;

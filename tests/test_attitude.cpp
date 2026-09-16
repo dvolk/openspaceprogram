@@ -58,7 +58,7 @@
 //
 // Build & run (from repo root) -- also part of `make test` (pure C, no
 // Bullet link needed):
-//   g++ -O2 -std=c++11 tests/test_attitude.cpp -o test_attitude && ./test_attitude
+//   g++ -O2 -std=c++20 tests/test_attitude.cpp -o test_attitude && ./test_attitude
 
 #include <cmath>
 #include <cstdio>

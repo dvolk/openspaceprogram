@@ -39,8 +39,7 @@
 namespace ui {
 
 // Set to true from anywhere to request a full UI reset; consumed by the
-// next Window() call of the frame. (static local: C++11 has no inline
-// variables)
+// next Window() call of the frame.
 inline bool& ResetFlag() { static bool f = false; return f; }
 inline void  ResetGui() { ResetFlag() = true; }
 

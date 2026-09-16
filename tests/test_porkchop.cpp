@@ -1,6 +1,6 @@
 // test_porkchop: porkchopGrid (src/transfer.h).
 // Runs from the repo root:
-//   make test   (or: g++ -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_porkchop.cpp -o test_porkchop && ./test_porkchop)
+//   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_porkchop.cpp -o test_porkchop && ./test_porkchop)
 //
 // Pins the 2-D porkchop sweep against (a) planTransfer itself (at
 // t_dep = 0 the two are the same computation cell for cell) and (b) the

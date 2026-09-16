@@ -91,8 +91,8 @@ void surfmapCompute(Game &g) {
         // Worker thread: build the pixel buffer. No game-state WRITE, GL
         // or imgui here. The result is handed to the main thread through
         // the returned continuation; a shared_ptr lets it outlive this
-        // body (a C++11-safe way to move a large result across the thread
-        // handoff -- lambda capture initializers are C++14).
+        // body (the continuation is a std::function, so its capture must
+        // be copyable -- the payload has to be shared, not moved).
         const size_t npx = (size_t)w * (size_t)h;
         std::vector<unsigned char> px(npx * 4);
         double ar = 0.0, ag = 0.0, ab = 0.0;   // albedo (unshaded) means

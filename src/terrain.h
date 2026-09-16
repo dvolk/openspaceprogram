@@ -300,8 +300,8 @@ struct TerrainBody {
             }
             // Main-thread continuation (JobRunner::poll): upload to the
             // texture the deck already draws. The shared_ptr lets the
-            // buffer outlive this body (the C++11-safe move across the
-            // thread handoff -- the same idiom as the surface map job).
+            // buffer outlive this body (std::function needs copyable
+            // captures -- the same idiom as the surface map job).
             std::shared_ptr<std::vector<unsigned char> > ppx =
                 std::make_shared<std::vector<unsigned char> >(std::move(px));
             return [tex, W, H, ppx]() {

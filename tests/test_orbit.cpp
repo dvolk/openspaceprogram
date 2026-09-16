@@ -1,6 +1,6 @@
 // test_orbit: two-body orbital elements + time-to-apsis (src/orbit.h).
 // Runs from the repo root:
-//   make test   (or: g++ -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit && ./test_orbit)
+//   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit && ./test_orbit)
 //
 // Pins the ApT/PeT fix: the OLD HUD math printed time-SINCE-periapsis as
 // "PeT" and time-to-next-PERIAPSIS as "ApT". The contract now:

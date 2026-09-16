@@ -4,7 +4,7 @@
 // degenerate-hint guards), and the screen-axis helpers.
 //
 // Build & run (from repo root):
-//   g++ -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_eva.cpp \
+//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_eva.cpp \
 //       -o test_eva
 //   ./test_eva
 

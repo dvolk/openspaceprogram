@@ -255,9 +255,9 @@ void TransferPlanner::porkchopCompute() {
         // Worker thread: PURE. Sweep the grid (porkchopGrid is header-only
         // math) and fire the log; no game state, GL or imgui is touched
         // here. The result is handed to the main thread through the returned
-        // continuation; a shared_ptr lets it outlive this body (a C++11-safe
-        // way to move a large result across the thread handoff -- lambda
-        // capture initializers are C++14).
+        // continuation; a shared_ptr lets it outlive this body (the
+        // continuation is a std::function, so its capture must be copyable
+        // -- the payload has to be shared, not moved).
         std::shared_ptr<PorkchopResult> res =
             std::make_shared<PorkchopResult>(porkchopGrid(
                 r1,v1,r2,v2,mu_p,mu_t,r_cap,

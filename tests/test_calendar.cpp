@@ -1,6 +1,6 @@
 // test_calendar: the home-planet calendar (src/calendar.h).
 // Runs from the repo root:
-//   make test   (or: g++ -O2 -std=c++11 -I./src tests/test_calendar.cpp -o test_calendar && ./test_calendar)
+//   make test   (or: g++ -O2 -std=c++20 -I./src tests/test_calendar.cpp -o test_calendar && ./test_calendar)
 //
 // Pinned against the Eerbon system data (system.json), whose home planet's
 // rates are the same as KSP's Kerbin:

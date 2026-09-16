@@ -13,7 +13,7 @@
 // resolve + velocity-conversion formulas used by spawn_vehicle.
 //
 // Build & run (from repo root):
-//   g++ -O2 -std=c++11 -I./src -I./middleware/glm/ \
+//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ \
 //       tests/test_spawn.cpp src/frame.cpp -o test_spawn && ./test_spawn
 
 #include <cmath>

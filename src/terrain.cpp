@@ -118,7 +118,8 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
         // Worker thread: pure math (terragen.h). No game state, GL or
         // imgui here. The result is handed to the main thread through
         // the returned continuation; the shared_ptr lets it outlive this
-        // body (a C++11-safe handoff, like the surfmap's pixel buffer).
+        // body (std::function needs copyable captures, like the surfmap's
+        // pixel buffer).
         glm::vec3 quad[4][4];
         subdivideCorners(v0, v1, v2, v3, quad);
         std::shared_ptr<std::array<GridGeom, 4> > geoms =

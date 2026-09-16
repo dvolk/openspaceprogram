@@ -400,7 +400,6 @@ struct Game {
         const char *label;
         ui::Options opts;
         // false: out of the Windows list (toggled from its own context).
-        // No default: C++11 aggregate (no in-class initializers allowed).
         bool in_windows_list;
     };
     std::vector<UiWin> ui_windows;

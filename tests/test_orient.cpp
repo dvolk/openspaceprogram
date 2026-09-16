@@ -11,7 +11,7 @@
 //
 // Build & run (from repo root):
 //   B=middleware/bullet3/build/src
-//   g++ -O2 -std=c++11 -DBT_USE_DOUBLE_PRECISION \
+//   g++ -O2 -std=c++20 -DBT_USE_DOUBLE_PRECISION \
 //       -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
 //       tests/test_orient.cpp -o test_orient \
 //       $B/BulletDynamics/libBulletDynamics.a $B/BulletCollision/libBulletCollision.a \

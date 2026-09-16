@@ -12,7 +12,7 @@
 // Exits nonzero on a jump, a NaN, a non-closing loop, or a holonomy roll.
 //
 // Build & run (from repo root):
-//   g++ -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp \
+//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp \
 //       src/camera.cpp -o test_orbitcam
 //   ./test_orbitcam
 

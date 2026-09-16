@@ -1,6 +1,6 @@
 // test_jobs: the background JobRunner (src/job.cpp).
 // Runs from the repo root:
-//   make test   (or: g++ -O2 -std=c++11 -I./src tests/test_jobs.cpp src/job.cpp -o test_jobs && ./test_jobs)
+//   make test   (or: g++ -O2 -std=c++20 -I./src tests/test_jobs.cpp src/job.cpp -o test_jobs && ./test_jobs)
 //
 // Pins the worker / main-thread handoff: the job BODY runs off the calling
 // thread, its returned continuation runs on the thread that calls poll(),

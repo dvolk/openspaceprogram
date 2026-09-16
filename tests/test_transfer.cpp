@@ -1,6 +1,6 @@
 // test_transfer: Lambert solver + planTransfer (src/transfer.h).
 // Runs from the repo root:
-//   make test   (or: g++ -O2 -std=c++11 -I./src -I./middleware/glm/ tests/test_transfer.cpp -o test_transfer && ./test_transfer)
+//   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_transfer.cpp -o test_transfer && ./test_transfer)
 //
 // Pins the Hohmann transfer as the analytic reference case.
 #include "transfer.h"

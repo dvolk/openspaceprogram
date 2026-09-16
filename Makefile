@@ -70,7 +70,7 @@ CXX= g++
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++11 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include
+CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -231,7 +231,7 @@ $(OBJDIR)/gameui.o: src/version.h
 # If you delete a test source but keep its target, make reuses the stale
 # obj_test object and binary happily -- run `make clean` after removing one.
 
-TCC   = -O2 -std=c++11
+TCC   = -O2 -std=c++20
 TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
         -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl3/include \
         -I./middleware/sdl3-image/include -I./middleware/glew/include
@@ -516,7 +516,7 @@ e2e: $(TARGET)
 #     DISPLAY=:99 make test-gl
 .PHONY: test-gl
 test-gl:
-	$(CXX) -O2 -std=c++11 -I./middleware/sdl3/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
+	$(CXX) -O2 -std=c++20 -I./middleware/sdl3/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
 	./test_gl_vao
 
 .PHONY: clean
