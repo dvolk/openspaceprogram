@@ -4,6 +4,9 @@
 [submodule "middleware/bullet3"]
 	path = middleware/bullet3
 	url = https://github.com/bulletphysics/bullet3
+	# bootstrap.sh adds a bullet -> src symlink (untracked, needed for the
+	# <bullet/...> includes) -- keep it out of the superproject's status.
+	ignore = untracked
 [submodule "middleware/imgui"]
 	path = middleware/imgui
 	url = https://github.com/ocornut/imgui
