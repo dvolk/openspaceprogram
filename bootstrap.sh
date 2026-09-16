@@ -43,9 +43,13 @@ for tool in g++ cmake make; do
     fi
 done
 
-# check the submodules out at their pinned commits (a no-op if the clone
-# already used --recurse-submodules)
-git submodule update --init --recursive
+# check the top-level submodules out at their pinned commits (a no-op if the
+# clone already used --recurse-submodules), plus the two nested submodules
+# the PNG build uses (libpng + zlib). No other nested submodules are
+# initialised: sdl3-image's remaining ones (aom/dav1d/libavif/libtiff/
+# libwebp/jpeg/libjxl) back formats the PNG-only build never compiles.
+git submodule update --init
+git -C middleware/sdl3-image submodule update --init external/libpng external/zlib
 
 # the game includes bullet3's headers as <bullet/...>, so bullet3/ has a
 # symlink bullet -> src
@@ -99,14 +103,16 @@ cmake --build middleware/sdl3/build -j"$JOBS"
 
 echo "=== building SDL_image3 (static, PNG-only) ==="
 # The game only loads/saves PNG (textures, skybox, screenshots), so build
-# just the PNG loader + saver (like the OBJ-only assimp build). Links the
-# system libpng + the SDL3 we built above (SDL3_DIR -> its build dir, so
-# find_package picks ours even if the system SDL3 dev files exist).
+# just the PNG loader + saver (like the OBJ-only assimp build). PNG goes
+# through the vendored libpng + zlib (sdl3-image's nested submodules), so
+# no system libpng/zlib packages are needed. Links the SDL3 we built above
+# (SDL3_DIR -> its build dir, so find_package picks ours even if the system
+# SDL3 dev files exist).
 cmake -S middleware/sdl3-image -B middleware/sdl3-image/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DSDL3_DIR="$PWD/middleware/sdl3/build" \
-    -DSDLIMAGE_DEPS_SHARED=OFF -DSDLIMAGE_VENDORED=OFF \
+    -DSDLIMAGE_DEPS_SHARED=OFF -DSDLIMAGE_VENDORED=ON \
     -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF -DSDLIMAGE_BACKEND_STB=OFF \
     -DSDLIMAGE_PNG=ON -DSDLIMAGE_PNG_SAVE=ON \
     -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_BMP=OFF -DSDLIMAGE_GIF=OFF \
@@ -117,6 +123,10 @@ cmake -S middleware/sdl3-image -B middleware/sdl3-image/build \
     -DSDLIMAGE_XCF=OFF -DSDLIMAGE_XPM=OFF -DSDLIMAGE_XV=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/sdl3-image/build -j"$JOBS"
+# zlib's CMake renames the in-tree zconf.h -> zconf.h.included for
+# out-of-source builds (it generates its own in the build dir, which is
+# what gets compiled) -- restore it so the submodule stays clean.
+git -C middleware/sdl3-image/external/zlib checkout -- zconf.h
 
 echo "=== building GLEW (static, 2.2.0) ==="
 # GLEW's git repo contains only the generator (src/glew.c is generated from

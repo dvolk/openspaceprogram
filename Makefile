@@ -92,16 +92,23 @@ IMPLLOT_DIR=./middleware/implot
 IMPLLOT_OBJS=./obj/implot/implot.o ./obj/implot/implot_items.o
 # assimp submodule (pinned to a tagged release), built static via cmake like
 # bullet3 (assimp 6 defaults to shared, so force -DBUILD_SHARED_LIBS=OFF).
-# The static lib references zlib (uncompress), so -lz rides along.
+# Two assimp objects (Compression.cpp, unzip.c) reference zlib -- compressed
+# textures / zip-packed formats we never load, so plain-text .obj pulls
+# neither in and no -lz is needed (verified by linking without it).
 # $(ASSIMP_A) is the archive file (used as a relink prerequisite); ASSIMP_LIB
-# is what goes on the link line (archive + -lz).
+# is what goes on the link line.
 ASSIMP_A=./middleware/assimp/build/lib/libassimp.a
-ASSIMP_LIB=$(ASSIMP_A) -lz
+ASSIMP_LIB=$(ASSIMP_A)
 # SDL3 + SDL_image + GLEW: vendored in middleware/ like bullet3/assimp
 # (bootstrap.sh builds them static; GLEW from the official 2.2.0 tarball --
 # its git repo ships only the generator, see bootstrap.sh).
 SDL3_A=./middleware/sdl3/build/libSDL3.a
 SDLIMG_A=./middleware/sdl3-image/build/libSDL3_image.a
+# SDL_image's PNG loader/saver use the vendored libpng + zlib (sdl3-image's
+# nested submodules, built under sdl3-image/build/external/ -- no system
+# libpng/zlib packages needed).
+PNG_A=./middleware/sdl3-image/build/external/libpng-build/libpng16.a
+ZLIB_A=./middleware/sdl3-image/build/external/zlib-build/libz.a
 GLEW_A=./middleware/glew/build-cmake/lib/libGLEW.a
 # SDL3 is built with the X11 driver linked in (not dlopen'd), so the X11
 # stack rides along. SDL3 also compiles the audio (alsa/pulse/sndio) and
@@ -109,8 +116,8 @@ GLEW_A=./middleware/glew/build-cmake/lib/libGLEW.a
 # drops the unused .so's, but the linker still needs them resolvable.
 SDL3_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXss -lasound -lpulse -lsndio -lgbm -ldrm -ldl -lm -lpthread
 # Static link order matters (dependents before dependencies):
-# SDL_image -> SDL3, GLEW -> GL, SDL_image's PNG loader/saver -> libpng.
-GL_LIBS=$(SDLIMG_A) $(SDL3_A) $(GLEW_A) -lGL -lpng $(SDL3_SYS)
+# SDL_image -> SDL3, GLEW -> GL, PNG loader/saver -> libpng -> zlib.
+GL_LIBS=$(SDLIMG_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(SDL3_SYS)
 # clone bullet3 in ./middleware
 # cd ./middleware/bullet3
 # ln -s bullet src

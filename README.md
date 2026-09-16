@@ -17,7 +17,7 @@ Lately, some of the code is written by qwen code.
 
 ## Build from source/run
 
-    sudo apt-get install g++ cmake make zlib1g-dev libpng-dev libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev --no-install-recommends
+    sudo apt-get install g++ cmake make libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev --no-install-recommends
 
     git clone https://github.com/dvolk/openspaceprogram
     cd openspaceprogram
