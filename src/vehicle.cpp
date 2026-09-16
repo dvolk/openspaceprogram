@@ -18,8 +18,7 @@
    GL is needed here (shader binding); the JSON parse/validate and the
    attach geometry (attachPose) are GL-free (shipdef.cpp). The catalog must
    outlive the ship (the partDefs point into it). */
-void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
-                       const glm::dvec3 &base, const glm::dmat3 &orient)
+void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader)
 {
     printf("Building ship '%s' (%d parts)\n", def.name.c_str(), (int)def.parts.size());
 
@@ -85,25 +84,6 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         rot[i] = ap.childRot;
     }
 
-    /* 2) the ship's lowest point along the stack axis. Every part -- stack or
-       surface-attached -- keeps its own axis parallel to the ship's stack axis
-       under the synthesized-node attach (a side surface node mates by a
-       rotation about Z), so each spans height/2 about its center. (A part with
-       an explicit PERPENDICULAR surface node would span its radius instead --
-       revisit the pad heuristic when such parts exist.) */
-    double lowest = 1e30;
-    for(size_t i = 0; i < n; i++) {
-        const ShipPart &sp = physical[i];
-        const double extent = sp.def->height / 2.0;
-        lowest = std::min(lowest, pos[i].z - extent);
-    }
-
-    /* 3) place it on the pad: the lowest point at the pad top, lifted by
-       the collision margins (terrain 0.5 + hull 0.1) so the inflated
-       shapes just touch instead of popping apart on the first solve. For
-       orbit scenarios this is only staging -- spawn_vehicle repositions. */
-    const glm::dvec3 shift = glm::dvec3(0.0, 0.0, -lowest + 0.6);
-
     for(size_t i = 0; i < n; i++) {
         const PartDef &pd = *physical[i].def;
 
@@ -122,6 +102,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         Part *part = new Part;
         part->body  = b;
         part->def   = &pd;
+        part->id    = physical[i].id;
         part->stage = physical[i].stage;
 
         if(i == 0) {
@@ -199,12 +180,28 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         }
     }
 
+}
+
+void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
+                       const glm::dvec3 &base, const glm::dmat3 &orient)
+{
+    build_ship_structure(ship, def, partsshader);
+    /* Seed the tanks full (init) -- a pad ship lifts off with a full load. */
     ship->init();
-    /* Place the whole ship. init() built the single rigid body at the origin;
-       this puts frame S where the pad staging wants it -- S's origin at
-       base + orient*shift and S's axes at `orient` -- and every part's world
-       pose then follows from its authored local pose. One write, not one per
-       part. */
+    /* Place it on the pad: the lowest point at the pad top, lifted by the
+       collision margins (terrain 0.5 + hull 0.1) so the inflated shapes just
+       touch instead of popping apart on the first solve. For orbit scenarios
+       this is only staging -- spawn_vehicle repositions. */
+    double lowest = 1e30;
+    for(size_t i = 0; i < ship->parts.size(); i++) {
+        const Part *p = ship->parts[i];
+        lowest = std::min(lowest, p->localPos.z - p->def->height / 2.0);
+    }
+    const glm::dvec3 shift = glm::dvec3(0.0, 0.0, -lowest + 0.6);
+    /* init() built the single rigid body at the origin; this puts frame S
+       where the pad staging wants it -- S's origin at base + orient*shift and
+       S's axes at `orient` -- and every part's world pose then follows from
+       its authored local pose. One write, not one per part. */
     ship->placeShip(base + orient * shift, orient);
     ship->enterWorld();
 }

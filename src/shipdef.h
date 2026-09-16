@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <nlohmann/json.hpp>
 
 /* Ship/part data model: the JSON-backed description of what a ship is made
    of. This file is GL-free (no rendering, no Bullet) so the parse/validate
@@ -744,3 +745,10 @@ struct PartsCatalog {
    catalog must outlive any ShipDef (the parts point into it). */
 PartsCatalog load_parts_catalog(const char *path);
 ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
+
+/* Parse a ship def from an already-parsed JSON document (the body of
+   load_ship_def, split out so the save/load code can build a ShipDef from
+   in-memory data -- a loaded ship's parts + hull_margin -- without a file).
+   Same contract as load_ship_def: throws std::runtime_error on bad data. */
+ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
+                        const std::string &path);

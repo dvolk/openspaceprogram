@@ -36,6 +36,15 @@ struct GameArgs {
     std::vector<std::string> ship_files;
     std::string fleet_file;
 
+    /* Save/Load (the live fleet + crew + clock). --save captures the game
+       into a directory when the --timeout budget is spent (saves + exits --
+       the headless/e2e path); --load replaces the fleet at startup by
+       loading a saved directory instead of building one. Mutually
+       exclusive (a run either loads a save or builds a fresh fleet to
+       save). */
+    std::string save_name;
+    std::string load_name;
+
     std::string radial_test;
     std::string vab;   // ship def to open in the VAB editor scene (empty = flight)
     std::string vab_arm;   // catalog part to arm in the VAB palette at startup (test hook)

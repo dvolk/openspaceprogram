@@ -332,6 +332,12 @@ test_rotation: obj_test/test_rotation.o $(TCOMMON_OBJS)
 test_shipload: obj_test/test_shipload.o obj_test/shipdef.o
 	$(CXX) -o $@ $^
 
+# save/load JSON (de)serialization (src/save.h, header-only): the
+# SaveMeta + SaveShip round trip (every field), permissive reads (an
+# absent/wrong-typed key keeps the default), mat3/vec3 serialization.
+test_save: obj_test/test_save.o
+	$(CXX) -o $@ $^
+
 # crew_capacity on the part catalog (GL-free: which parts are capsules
 # and their seat count, the default-0 for everything else, error path).
 test_crew: obj_test/test_crew.o obj_test/shipdef.o
@@ -452,7 +458,7 @@ test_keys: obj_test/test_keys.o obj_test/keys.o
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_dock test_inertia test_rotation \
-        test_shipload test_crew test_fleet test_calendar test_orbit \
+        test_shipload test_save test_crew test_fleet test_calendar test_orbit \
         test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys
@@ -471,6 +477,7 @@ test: $(TESTS)
 	./test_inertia
 	./test_rotation
 	./test_shipload
+	./test_save
 	./test_crew
 	./test_fleet
 	./test_calendar

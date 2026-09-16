@@ -1,0 +1,16 @@
+# Load: start from a committed save (e2e/fixtures/save_racer, produced by
+# save_game) instead of building a fleet (load_game in save.cpp). The clock
+# restores to the saved time and the ship resumes on the same orbit -- assert
+# the load line, that the orbit resumes at the saved range/speed, and a clean
+# exit. Self-contained -- the fixture is committed, so it does not depend on
+# the save case's output (the battery runs cases in parallel).
+NAME save-load
+ARGS --load e2e/fixtures/save_racer --time-accel 1 --timeout 5
+ARGS --orbit-log --orbit-interval 0.5
+EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)
+EXPECT [orbitlog]
+CHECK len(orbit) >= 2
+CHECK first(orbit)["r"] > 6e5 and first(orbit)["r"] < 7.2e5
+CHECK first(orbit)["v"] > 2000 and first(orbit)["v"] < 3000
+FORBID GL_
+FORBID error:

@@ -60,6 +60,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "--body/--scenario. Ships sharing a body+scenario get "
                    "their own pad slot / orbit slot. Try res/fleet.json");
 
+    app.add_option("--save", args.save_name,
+                   "Save the game (the live fleet + crew + clock) into this "
+                   "directory when the --timeout budget is spent, then exit "
+                   "(the headless/e2e path). Mutually exclusive with --load");
+    app.add_option("--load", args.load_name,
+                   "Load the game from this saved directory at startup "
+                   "instead of building a fleet (--ship/--fleet are ignored). "
+                   "Mutually exclusive with --save");
+
     /* Spin-instrumentation mode: build a test ship (no JSON ship def)
        and log its spin + the internal contact torque each tick.
        parallel   = part B surface-attached to part A's side, axes PARALLEL
@@ -653,6 +662,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         app.get_option("--exhaust-scale")->count() > 0;
     args.cli_given.cam_shake =
         app.get_option("--cam-shake")->count() > 0;
+
+    if(!args.save_name.empty() && !args.load_name.empty()) {
+        printf("error: --save and --load are mutually exclusive\n");
+        *exit_code = 1;
+        return false;
+    }
+    if(!args.save_name.empty() && args.timeout_seconds <= 0.0) {
+        printf("error: --save needs --timeout (the save is taken when the "
+               "wall-clock budget is spent)\n");
+        *exit_code = 1;
+        return false;
+    }
 
     return true;
 }

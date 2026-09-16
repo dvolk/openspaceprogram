@@ -58,6 +58,7 @@
 #include "render.h"
 #include "gameui.h"
 #include "vab.h"
+#include "save.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -327,7 +328,18 @@ int main(int argc, char **argv)
     }
 
     Vehicle *first = nullptr;
-    if(!args.radial_test.empty()) {
+    if(!args.load_name.empty()) {
+        // --load: the saved fleet replaces the one that would be built.
+        // load_game builds every ship + kerbal, resolves the active ship,
+        // and puts each ship in the world state it was saved in (live or
+        // railed) -- so the scenario reposition and the park-on-rails below
+        // are both skipped.
+        game.partsshader = partsshader;   // load_game builds parts with it
+        load_game(game, args.load_name);
+        first = game.ship;
+        check_gl_error();
+        ship = first;
+    } else if(!args.radial_test.empty()) {
         RadialTestShip rts = build_radial_test_ship(
             args.radial_test, args.scenario_given, args.scenario,
             ships.catalog(), home, sun, partsshader);
@@ -348,28 +360,36 @@ int main(int argc, char **argv)
     } else {
         first = ships.build_fleet(fleet_entries, sys, home, args.scenario);
     }
-    check_gl_error();
 
-    /* Apply each ship's scenario (before the camera is constructed,
-       so the camera focuses on the spawn point). Ships sharing a
-       body+scenario group get their own orbit slot (20 m apart along the
-       orbit binormal) so they don't spawn on top of each other. */
-    ships.apply_scenarios(sys);
+    if(args.load_name.empty()) {
+        check_gl_error();
+        /* Apply each ship's scenario (before the camera is constructed,
+           so the camera focuses on the spawn point). Ships sharing a
+           body+scenario group get their own orbit slot (20 m apart along
+           the orbit binormal) so they don't spawn on top of each other. */
+        ships.apply_scenarios(sys);
 
-    /* the active (player-controlled) ship: the first one built; Tab / the
-       SHIPS window switch it. game.ship always points at it, so the HUD,
-       camera, input and draw code follow the active ship without special
-       cases. */
-    ship = first;
+        /* the active (player-controlled) ship: the first one built; Tab /
+           the SHIPS window switch it. game.ship always points at it, so
+           the HUD, camera, input and draw code follow the active ship
+           without special cases. */
+        ship = first;
 
-    /* Idle ships park on rails: flying ones coast on their conic, pad
-       ships freeze in the surface frame (their pose rides the planet's
-       spin via the render transform). Ships that are neither in free
-       fall nor grounded refuse and stay in the physics world. */
-    for(auto *b : sys.bodies) {
-        for(auto *s : b->ships) {
-            if(s != ship) { s->goOnRails(); }
+        /* Idle ships park on rails: flying ones coast on their conic, pad
+           ships freeze in the surface frame (their pose rides the planet's
+           spin via the render transform). Ships that are neither in free
+           fall nor grounded refuse and stay in the physics world. */
+        for(auto *b : sys.bodies) {
+            for(auto *s : b->ships) {
+                if(s != ship) { s->goOnRails(); }
+            }
         }
+    } else {
+        // --load: load_game set the clock to the saved time, but the frames
+        // were propagated to args.start_time (0) above. Re-propagate them to
+        // the saved clock so a paused load (time_accel 0, where no tick runs)
+        // renders the system at the right moment instead of t=0.
+        sun->frame->UpdateOrbitRails(game.time);
     }
 
     Mesh *engine_plume_mesh = get_mesh("./res/engine_plume.obj");
@@ -484,7 +504,12 @@ int main(int argc, char **argv)
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
-    time_accel = args.initial_time_accel;
+    // A fresh start takes the CLI warp; a --load keeps the save's warp
+    // (load_game restored it) -- the warp is part of the saved state, and
+    // the CLI --time-accel is only a default for the fleet that was built.
+    if(args.load_name.empty()) {
+        time_accel = args.initial_time_accel;
+    }
 
     /* Starting the game directly in rails warp (accel > 10): the active
        ship parks too (works on the pad -- that is the frozen mode),
@@ -724,6 +749,12 @@ int main(int argc, char **argv)
             if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
+                // --save: capture the live game state (the fleet + crew +
+                // clock) into the save directory before the loop exits.
+                if(!args.save_name.empty()) {
+                    save_game(game, args.save_name);
+                    fflush(stdout);
+                }
                 running = false;
             }
         }
@@ -874,6 +905,10 @@ int main(int argc, char **argv)
 
                 // The main menu (gameui.cpp): drawn last so it sits on top.
                 drawMainMenu(game);
+
+                // The in-game Save/Load window (gameui.cpp): opened from the
+                // main menu; saves/loads the live fleet + clock.
+                drawSaveLoad(game);
             }
 
             // One-shot messages (g.toast): above everything, including the

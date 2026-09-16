@@ -26,6 +26,7 @@
 #include "surfmap.h"     // the lon/lat <-> pixel math + surfmapCompute
 #include "texture.h"     // make_texture_r8 (the Porkchop heatmap + Surface Map)
 #include "vab.h"         // the editor ops (drawVabUI: gizmos, save, launch)
+#include "save.h"        // save_game / load_game / list_saves / delete_save
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/implot/implot.h"   // the TELEMETRY plots
@@ -2158,6 +2159,9 @@ void drawMainMenu(Game &g) {
             ui::SetOpen("Main Menu", false);
             vabOpen(g);   // the sim freezes in the editor (tick is skipped)
         }
+        if(ImGui::Button("Save/Load", ImVec2(bw, 0.0f))) {
+            ui::SetOpen("Save/Load", !ui::IsOpen("Save/Load"));
+        }
         if(ImGui::Button("Toggle windows", ImVec2(bw, 0.0f))) {
             g.toggle_windows();
         }
@@ -2184,6 +2188,97 @@ void drawMainMenu(Game &g) {
         ImGui::PopFont();
         // The build's git version (src/version.h, `make version`).
         text_button(VERSION);
+    });
+}
+
+// A save-slot name is a single directory under saves/; reject a path
+// separator or a dot-name so a typo can't escape the base dir (the CLI
+// --save/--load take full paths by design; this is the user-facing slot
+// picker, so it stays inside saves/).
+static bool safeSlotName(const std::string &n) {
+    if(n.empty()) { return false; }
+    if(n.find('/') != std::string::npos) { return false; }
+    if(n.find('\\') != std::string::npos) { return false; }
+    if(n == "." || n == "..") { return false; }
+    return true;
+}
+
+void drawSaveLoad(Game &g) {
+    if(!g.ui_visible) { return; }   // TAB hides it
+
+    // The slot name to save into and the selected slot are both persistent
+    // (static): the name so the player does not retype it, and `selected` so
+    // the Load/Delete button -- read on the frame the click lands, after the
+    // Selectable that set it -- acts on the row the player actually chose.
+    static char nameBuf[256] = "save1";
+    static int selected = 0;   // index into the save list (the Load/Delete target)
+
+    ui::Window("Save/Load", g.o_saveload, [&] {
+        // The save list is a directory scan, so read it only while the window
+        // is open, and clamp `selected` if the list shrank (a delete).
+        std::vector<std::string> saves = list_saves("saves");
+        if(selected >= (int)saves.size()) { selected = (int)saves.size() - 1; }
+
+        // --- save-as: capture the live fleet + crew + clock ----------------
+        ImGui::TextWrapped(
+            "Save the current game -- the live fleet, crew and clock -- into a slot.");
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
+        ImGui::SameLine();
+        if(ImGui::Button("Save##saveload") && safeSlotName(nameBuf)) {
+            const std::string dir = std::string("saves/") + nameBuf;
+            try {
+                save_game(g, dir);
+                g.toast("Saved to %s", nameBuf);
+                saves = list_saves("saves");
+            } catch(const std::exception &e) {
+                g.toast("Save failed: %s", e.what());
+            }
+        }
+        if(!safeSlotName(nameBuf)) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(name: no '/' or '\\')");
+        }
+
+        ImGui::Separator();
+
+        // --- load / delete from an existing slot ---------------------------
+        ImGui::Text("Existing saves:");
+        if(saves.empty()) {
+            ImGui::TextDisabled("(none yet)");
+        } else {
+            for(size_t i = 0; i < saves.size(); i++) {
+                if(ImGui::Selectable(saves[i].c_str(), (int)i == selected)) {
+                    selected = (int)i;
+                }
+            }
+            ImGui::Spacing();
+            if(ImGui::Button("Load##saveload")) {
+                const std::string dir = std::string("saves/") + saves[selected];
+                try {
+                    load_game(g, dir);
+                    g.toast("Loaded %s", saves[selected].c_str());
+                    ui::SetOpen("Save/Load", false);
+                    saves = list_saves("saves");
+                } catch(const std::exception &e) {
+                    g.toast("Load failed: %s", e.what());
+                }
+            }
+            ImGui::SameLine();
+            if(ImGui::Button("Delete##saveload")) {
+                const std::string dir = std::string("saves/") + saves[selected];
+                try {
+                    delete_save(dir, "saves");
+                    g.toast("Deleted %s", saves[selected].c_str());
+                    saves = list_saves("saves");
+                    if(selected >= (int)saves.size()) {
+                        selected = (int)saves.size() - 1;
+                    }
+                } catch(const std::exception &e) {
+                    g.toast("Delete failed: %s", e.what());
+                }
+            }
+        }
     });
 }
 

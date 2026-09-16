@@ -31,6 +31,12 @@ void drawUIMap(Game &g, TransferPlanner &planner);
 // Draw the fixed main menu (Esc toggles it). Drawn last so it sits on top.
 void drawMainMenu(Game &g);
 
+// Draw the in-game Save/Load window (a name to save into + the list of
+// existing saves to load / delete). Opened from the main menu; drawn with
+// the other UI (main-menu group). Saving/loading the live fleet + clock is
+// the save_game / load_game pair in save.cpp.
+void drawSaveLoad(Game &g);
+
 // The VAB editor scene's widgets: the build-tree part list (select), and
 // hints. Drawn instead of the flight readouts when Game::scene == Vab.
 void drawVabUI(Game &g);

@@ -427,6 +427,7 @@ struct Game {
     ui::Options o_transfer;
     ui::Options o_porkchop;
     ui::Options o_surfmap;
+    ui::Options o_saveload;
     ui::Options o_mainmenu;
 
     // The big face (2x the UI font), created by main at ImGui init.

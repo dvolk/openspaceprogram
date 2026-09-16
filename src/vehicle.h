@@ -1064,10 +1064,20 @@ public:
 // home body's SOI through the system's frame tree.
 struct System;
 
-/* Instantiate a ship def: one rigid body per part (mesh + texture from
-   the catalog entry), welded parent-first in the def's construction
-   order. GL is needed here (shader binding); the catalog must outlive
-   the ship (the partDefs point into it). */
+/* Instantiate a ship def on a pad: build the part tree (structure only),
+   seed the tanks full, place the ship's lowest point on the pad top, and
+   enter the physics world. */
+/* Build a ship's part tree (structure only): create the physical parts
+   (mesh + texture from the catalog entry) + the attach edges + the
+   controller + the fuel links, each part's Body created and its mass set
+   to the catalog value. Does NOT seed the tanks, place the ship, or enter
+   the physics world -- init() + placeShip + enterWorld are the caller's
+   job. build_ship is the pad path (seed full + place on the pad + enter
+   the world); the save/load path places the ship where the save says and
+   overwrites the part masses + tank contents with the saved values. GL is
+   needed (shader binding); the catalog must outlive the ship. */
+void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader);
+
 void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                 const glm::dvec3 &base, const glm::dmat3 &orient);
 

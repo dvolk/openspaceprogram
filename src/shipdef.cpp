@@ -354,18 +354,8 @@ PartsCatalog load_parts_catalog(const char *path) {
     return cat;
 }
 
-ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
-    std::ifstream f(path);
-    if(!f.is_open()) {
-        throw std::runtime_error(std::string("ship: cannot open ") + path);
-    }
-    nlohmann::json doc;
-    try {
-        doc = nlohmann::json::parse(f, nullptr, true);
-    } catch(const std::exception &e) {
-        throw std::runtime_error(std::string("ship: bad JSON in ") + path
-                                 + std::string(": ") + e.what());
-    }
+ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
+                        const std::string &path) {
     if(!doc.is_object() || !doc.contains("parts") || !doc["parts"].is_array()
        || doc["parts"].empty()) {
         throw std::runtime_error(std::string("ship: no parts in ") + path);
@@ -581,6 +571,21 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
         def.controller = (int)it->second;
     }
     return def;
+}
+
+ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
+    std::ifstream f(path);
+    if(!f.is_open()) {
+        throw std::runtime_error(std::string("ship: cannot open ") + path);
+    }
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(f, nullptr, true);
+    } catch(const std::exception &e) {
+        throw std::runtime_error(std::string("ship: bad JSON in ") + path
+                                 + std::string(": ") + e.what());
+    }
+    return shipDefFromJson(doc, catalog, path);
 }
 
 /* The rotation taking unit direction `a` onto unit direction `b` by the

@@ -95,6 +95,12 @@ void Game::setup_ui_windows() {
     o_surfmap.default_open = false;
     // --surfmap-noshade (CLI) mirrors the window's "Sun shading" box.
     surfmap_shade = !args.surfmap_noshade;
+    // Save/Load: the in-game save slots (a name to save into + the list of
+    // existing saves to load / delete). Centered, closed by default, opened
+    // from the main menu. initial_size fits the name row + a reasonable list.
+    o_saveload = info_opts(ui::Slot::Center);
+    o_saveload.default_open = false;
+    o_saveload.initial_size = ImVec2(380.0f, 360.0f);
     o_hud.fixed = true;
     o_hud.default_open = false;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
@@ -136,6 +142,8 @@ void Game::setup_ui_windows() {
     add_ui_window_hidden("Controls", "Controls", o_controls);
     add_ui_window_hidden("Game Debug Info", "Game Debug Info", o_debug);
     add_ui_window_hidden("Telemetry", "Telemetry", o_telemetry);
+    // Save/Load: the in-game save slots, opened from the main menu.
+    add_ui_window_hidden("Save/Load", "Save / Load", o_saveload);
     // The TAB toggle + the main-menu "Toggle windows" button call
     // toggle_windows(), which flips ui_visible and re-opens every registry
     // window (plus the HUD) from their defaults.

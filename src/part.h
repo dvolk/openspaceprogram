@@ -28,6 +28,9 @@
 struct Part {
     Body *body;                 // OWNED (the rigid body + hull shape; the render assets it holds are registry-shared)
     const PartDef *def;         // non-owning; points into the PartsCatalog
+    std::string id;             // the instance id from the ship def (stable for the ship's
+                                // lifetime; the key save/load, the fuel links and the dock
+                                // seams use to name this part). Set in build_ship.
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group
