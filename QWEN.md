@@ -1,8 +1,8 @@
 - Project is kerbal space program-like game.
 - Using simple C++
-- Very early development, don't worry about breaking changes if it improves the game.
+- Very early development, don't worry about breaking changes if it improves the game. We don't need any backward compatibility- it's just you and me working on and running the game!
 - Look for opportunities to simplify.
-- Flag any code that looks odd.
+- Flag any code that looks odd or poorly designed.
 - Libraries: SDL2, bullet3, glm, imgui, implot, assimp, CLI11, nlohmann/json.hpp.
 - Performance is very important as we might scale up the game a lot later.
 - Feel free to concisely comment on bits of code that took a lot of investigation, but don't compare it to how it used to be.
@@ -20,3 +20,4 @@
 - Save ALL temporary files in ./tmp/. Don't overwrite or delete files, as I'm quite nosy.
 - Written reports in ./reports/<subject>_YYYY_MM_DD are immutable snapshots of how the project was. Avoid reading and never edit after writing. Supporting code, logs, graphics, figures are welcome in reports.
 - For visual confirmation ask me to check, unless I specifically ask you to iterate with screenshots as this bloats context.
+- Keep references to other intellectual property minimal lest we get into trouble.
