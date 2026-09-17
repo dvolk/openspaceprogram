@@ -2228,9 +2228,14 @@ void drawSaveLoad(Game &g) {
 
     ui::Window("Save/Load", g.o_saveload, [&] {
         // The save list is a directory scan, so read it only while the window
-        // is open, and clamp `selected` if the list shrank (a delete).
+        // is open, and clamp `selected` if the list grew or shrank (a save /
+        // delete). Clamp BOTH bounds: a frame with an empty list parks
+        // `selected` at -1, and a later `saves[-1]` is an out-of-bounds read
+        // (garbage slot -> bad_alloc on the click).
         std::vector<std::string> saves = list_saves("saves");
-        if(selected >= (int)saves.size()) { selected = (int)saves.size() - 1; }
+        if(selected < 0 || selected >= (int)saves.size()) {
+            selected = (int)saves.size() - 1;
+        }
 
         // --- save-as: capture the live fleet + crew + clock ----------------
         ImGui::TextWrapped(
@@ -2284,7 +2289,7 @@ void drawSaveLoad(Game &g) {
                     delete_save(dir, "saves");
                     g.toast("Deleted %s", saves[selected].c_str());
                     saves = list_saves("saves");
-                    if(selected >= (int)saves.size()) {
+                    if(selected < 0 || selected >= (int)saves.size()) {
                         selected = (int)saves.size() - 1;
                     }
                 } catch(const std::exception &e) {
