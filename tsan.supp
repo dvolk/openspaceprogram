@@ -1,0 +1,31 @@
+# ThreadSanitizer suppressions for ./osp_tsan (built by `make tsan`).
+#
+# Use:
+#     TSAN_OPTIONS=suppressions=$PWD/tsan.supp ./osp_tsan [game args]
+# or `make tsan-run GAME_ARGS="--timeout 10"`, which sets that and picks a
+# display (real one if DISPLAY is set, xvfb-run otherwise).
+#
+# Rules here cover noise we have OBSERVED, never anything speculative -- a
+# suppression that hides a real race is worse than no suppression at all.
+# Before adding a rule, confirm every frame of both racing stacks is outside
+# src/, and record what you saw in a comment above the rule.
+
+# Mesa's software rasterizer.
+#
+# A headless run (xvfb-run, so also the whole e2e battery) has no GPU, so GL
+# goes through llvmpipe, which keeps a pool of worker threads named
+# "llvmpipe-N". At GL teardown the main thread destroys the driver's
+# per-context mutex and condvar while those workers may still touch them.
+#
+# The first ./osp_tsan smoke boot reported 8 races of exactly this shape --
+# four on the mutex, four on the condvar -- and in every one BOTH stacks were
+# entirely inside libgallium (plus the libtsan interceptor frame on top): no
+# frame in src/. Our code appears only as the caller that provoked the GL work
+# (Skybox::init, Renderer::Renderer, a texture load), which is not a party to
+# the race. The only libraries named anywhere in the reports were libtsan.so.2
+# and libgallium, and the only threads involved were llvmpipe-4/-11/-13/-14.
+#
+# Matching is by substring, so this survives the distro's version suffix
+# (observed: libgallium-26.0.3-1ubuntu1.so). If a Mesa rename ever breaks it,
+# `thread:llvmpipe` is the equivalent rule keyed on the worker threads' name.
+called_from_lib:libgallium

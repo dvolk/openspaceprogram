@@ -530,6 +530,8 @@ test-gl:
 # ASan aborts on the first error. LeakSanitizer also runs at exit and reports
 # the intentional leaks (the shader/mesh/texture registries are never freed),
 # so ASAN_OPTIONS=detect_leaks=0 keeps the output to real memory errors.
+# TSan needs ./tsan.supp to be usable at all (Mesa's software renderer is
+# noisy under it) -- use `make tsan-run` rather than remembering the env var.
 SAN_ASAN = -g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
 SAN_TSAN = -g3 -fsanitize=thread -fsanitize=undefined
 
@@ -542,6 +544,17 @@ asan:
 tsan:
 	@$(MAKE) --no-print-directory TARGET=osp_tsan OBJDIR=obj_tsan \
 	    SANITIZE='$(SAN_TSAN)' $(BINDIR)/osp_tsan
+
+# Build and run the TSan variant with tsan.supp applied (see that file for
+# what it suppresses and why). Uses the real display when there is one and
+# xvfb-run when there is not. Pass game args through GAME_ARGS:
+#     make tsan-run GAME_ARGS="--timeout 10 --ship res/ships/racer.json"
+# The exit code is TSan's: 0 = clean, 66 = it reported a race.
+GAME_ARGS ?=
+.PHONY: tsan-run
+tsan-run: tsan
+	@XVFB=""; if [ -z "$$DISPLAY" ]; then XVFB="xvfb-run -a"; fi; \
+	 TSAN_OPTIONS="suppressions=$(CURDIR)/tsan.supp" $$XVFB ./osp_tsan $(GAME_ARGS)
 
 # Drop both variants entirely -- objects, middleware objects and binaries.
 # This is the multi-obj-dir version of the "delete obj/ by hand" note on
