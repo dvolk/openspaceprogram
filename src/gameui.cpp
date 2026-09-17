@@ -2310,6 +2310,28 @@ void drawVabUI(Game &g) {
         }
     }
 
+    // the save path: seeded once from the build's name, editable
+    static char savePath[512] = {0};
+    if(savePath[0] == 0) {
+        const std::string nm = g.vab.name.empty()
+            ? std::string("untitled") : g.vab.name;
+        snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
+    }
+
+    /* Top bar: the launch / back / save row in a fixed top-center window
+       (no titlebar, not movable, not resizable) mirroring the HUD. One
+       horizontal line: LAUNCH, Back to game, the save-path input, Save. */
+    ui::Window("VAB TopBar", g.o_vabbar, [&] {
+        if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
+        ImGui::SameLine();
+        if(ImGui::Button("Back to game##vab")) { vabClose(g); }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("##savepath", savePath, sizeof(savePath));
+        ImGui::SameLine();
+        if(ImGui::Button("Save")) { vabSave(g, savePath); }
+    });
+
     ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
     // Resizable: default size at creation (window ini is disabled, so
     // FirstUseEver == first Begin of the window's lifetime), then the
@@ -2319,22 +2341,6 @@ void drawVabUI(Game &g) {
     ImGui::Begin("VAB", nullptr);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.name.c_str(),
                 (int)g.vab.parts.size());
-    if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
-    ImGui::SameLine();
-    if(ImGui::Button("Back to game##vab")) { vabClose(g); }
-    {
-        // the save path: seeded once from the build's name, editable
-        static char savePath[512] = {0};
-        if(savePath[0] == 0) {
-            const std::string nm = g.vab.name.empty()
-                ? std::string("untitled") : g.vab.name;
-            snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
-        }
-        ImGui::SetNextItemWidth(220);
-        ImGui::InputText("##savepath", savePath, sizeof(savePath));
-        ImGui::SameLine();
-        if(ImGui::Button("Save")) { vabSave(g, savePath); }
-    }
     ImGui::Separator();
     for(size_t i = 0; i < g.vab.parts.size(); i++) {
         const BuildPart &bp = g.vab.parts[i];

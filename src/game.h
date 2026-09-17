@@ -404,6 +404,7 @@ struct Game {
     };
     std::vector<UiWin> ui_windows;
     ui::Options o_hud;
+    ui::Options o_vabbar;   // the VAB top bar (fixed, top-center, no titlebar)
     bool ui_visible = true;
 
     // --- UI window options (gameui.cpp draws with them) ---------------------

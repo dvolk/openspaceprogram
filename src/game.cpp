@@ -105,6 +105,13 @@ void Game::setup_ui_windows() {
     o_hud.default_open = false;
     o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
     o_hud.slot = ui::Slot::TopCenter;
+    // The VAB top bar: the same fixed / top-center / no-titlebar treatment
+    // as the HUD, but it is core editor chrome (hidden only by the TAB
+    // early-return in drawVabUI), so it opens by default.
+    o_vabbar.fixed = true;
+    o_vabbar.default_open = true;
+    o_vabbar.flags |= ImGuiWindowFlags_NoTitleBar;
+    o_vabbar.slot = ui::Slot::TopCenter;
     o_mainmenu = info_opts(ui::Slot::Center);
     o_mainmenu.fixed = true;
     o_mainmenu.default_open = false;
