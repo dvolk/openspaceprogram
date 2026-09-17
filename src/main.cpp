@@ -554,6 +554,7 @@ int main(int argc, char **argv)
     bool vab_place_fired = false;    // the --vab-place hook fires once
     bool vab_load_fired = false;     // the --vab-load hook fires once
     bool vab_launch_fired = false;   // the --vab-launch hook fires once
+    bool vab_close_fired = false;    // the --vab-close hook fires once
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
@@ -853,7 +854,7 @@ int main(int argc, char **argv)
         // game's clock and marks the frame for a redraw. The Vab scene runs
         // no sim -- it redraws every frame instead.
         /* --vab-load: the headless load hook, fired once at its loop time
-           (the e2e pin for load_ship_def -> fromShipDef -> vabOpen, i.e.
+           (the e2e pin for load_ship_def -> fromShipDef -> vabAimCamera, i.e.
            loading a ship def into the build tree -- the VAB's Load button).
            Fires before --vab-launch so a loaded tree can then be launched. */
         if(game.scene == Scene::Vab && !args.vab_load.empty()
@@ -870,6 +871,15 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_launch_ms) {
             vab_launch_fired = true;
             vabLaunch(game);
+        }
+        /* --vab-close: the headless "Back to game" hook, fired once at its
+           loop time (the e2e pin for vabClose -> Game::restoreCamera, i.e.
+           the parked flight camera coming back). Last of the three so a case
+           can load, launch and close in one run. */
+        if(game.scene == Scene::Vab && args.vab_close_ms >= 0 && !vab_close_fired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_close_ms) {
+            vab_close_fired = true;
+            vabClose(game);
         }
         if(game.scene == Scene::Vab) {
             // editor: hover-pick a part/port and preview the armed part's

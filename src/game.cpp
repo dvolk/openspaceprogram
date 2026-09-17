@@ -437,6 +437,14 @@ void Game::parkCamera() {
         (focusBody >= 0 && focusBody < (int)focusTargets.size())
         ? focusTargets[focusBody].body
         : (ship != nullptr ? nullptr : home);
+    // The park/restore pair is the e2e anchor for a scene handing the camera
+    // back: the two lines must agree, or the viewpoint came home wrong (a
+    // silent failure -- nothing crashes, the camera is just somewhere else).
+    printf("[cam] parked: %s focus=%s dist=%.1f m\n",
+           parkedCam.mode == CAM_FREE ? "free" : "orbit",
+           parkedCam.focusBody ? parkedCam.focusBody->name.c_str() : "ship",
+           parkedCam.distance);
+    fflush(stdout);
 }
 
 /* Hand the parked pose back exactly and drop the park. The saved body is
@@ -457,6 +465,11 @@ void Game::restoreCamera() {
         camera->Follow(focusWorldPos(focusBody));
         camera->ComputeView();   // sane pos/forward/up immediately
     }
+    printf("[cam] restored: %s focus=%s dist=%.1f m\n",
+           parkedCam.mode == CAM_FREE ? "free" : "orbit",
+           parkedCam.focusBody ? parkedCam.focusBody->name.c_str() : "ship",
+           camera->distance);
+    fflush(stdout);
 }
 
 void Game::select_ship(Vehicle *v) {

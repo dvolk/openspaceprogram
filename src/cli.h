@@ -59,6 +59,10 @@ struct GameArgs {
                             // this loop time in ms (headless test hook; -1 = never)
     int vab_launch_ms = -1;  // --vab-launch: fire the VAB's LAUNCH once at
                              // this loop time in ms (headless test hook; -1 = never)
+    int vab_close_ms = -1;   // --vab-close: fire the VAB's "Back to game"
+                             // (vabClose) once at this loop time in ms. The
+                             // headless path into the camera park/restore
+                             // round trip (headless test hook; -1 = never)
     std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario
                                // (the top-bar dropdown; empty = "pad")
     std::string vab_body;      // --vab-body: seed the VAB launch body

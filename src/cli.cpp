@@ -104,6 +104,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-launch", args.vab_launch_ms,
                    "Fire the VAB's LAUNCH once at this loop time in ms "
                    "(headless test hook for the launch path; -1 = never)");
+    app.add_option("--vab-close", args.vab_close_ms,
+                   "Fire the VAB's \"Back to game\" (vabClose) once at this loop "
+                   "time in ms -- the headless path into the camera "
+                   "park/restore round trip (test hook; -1 = never)");
     app.add_option("--vab-scenario", args.vab_scenario,
                    "Seed the VAB's launch scenario (the top-bar dropdown's "
                    "value; empty = \"pad\")");
