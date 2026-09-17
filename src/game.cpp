@@ -123,14 +123,14 @@ void Game::setup_ui_windows() {
     // "Toggle windows" read it.
     auto add_ui_window = [&](const char *name, const char *label,
                              const ui::Options &o) {
-        ui_windows.push_back(UiWin{name, label, o, true});
+        ui_windows.push_back(UiWin{name, label, &o, true});
     };
     // In the registry (the TAB toggle covers it) but out of the Windows
     // list: it's toggled from its own context (the Transfer window, the
     // main menu) instead.
     auto add_ui_window_hidden = [&](const char *name, const char *label,
                                     const ui::Options &o) {
-        ui_windows.push_back(UiWin{name, label, o, false});
+        ui_windows.push_back(UiWin{name, label, &o, false});
     };
     add_ui_window("Resources", "Resources", o_resources);
     add_ui_window("Orbital", "Orbit Info", o_orbit);
@@ -162,7 +162,7 @@ void Game::setup_ui_windows() {
 void Game::toggle_windows() {
     ui_visible = !ui_visible;
     for(auto &w : ui_windows) {
-        ui::SetOpen(w.name, ui_visible && w.opts.default_open);
+        ui::SetOpen(w.name, ui_visible && w.opts->default_open);
     }
     ui::SetOpen("HUD", ui_visible && o_hud.default_open);
 }
@@ -400,7 +400,6 @@ void Game::syncShipFocus() {
             if(focusTargets[i].body == home) { focusBody = i; break; }
         }
     }
-    numFocusTargets = (int)focusTargets.size();
     // camera is null on a --load boot (main.cpp creates it after
     // load_game), and a free camera is the pilot's own pose.
     if(camera != nullptr && camera->mode == CAM_ORBIT) {

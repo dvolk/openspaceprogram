@@ -537,10 +537,9 @@ int main(int argc, char **argv)
     for (TerrainBody *b : sys.bodies) {
         game.focusTargets.push_back({ b->name.c_str(), b });
     }
-    game.numFocusTargets = (int)game.focusTargets.size();
     // Default focus: the ship (index 0) when there is one, else the home body.
     if(game.ship == nullptr) {
-        for(int i = 0; i < game.numFocusTargets; i++) {
+        for(int i = 0; i < (int)game.focusTargets.size(); i++) {
             if(game.focusTargets[i].body == game.home) { game.focusBody = i; break; }
         }
         // The orbit-view state: the world runs, the camera orbits the home

@@ -401,13 +401,17 @@ struct Game {
     struct FocusTarget { const char *name; TerrainBody *body; };
     std::vector<FocusTarget> focusTargets;
     int focusBody = 0;             // index into focusTargets
-    int numFocusTargets = 0;
 
     // --- UI window registry (the TAB toggle + the main-menu button) --------
     struct UiWin {
         const char *name;
         const char *label;
-        ui::Options opts;
+        // POINTS AT the authoritative o_* block below, not a copy of it: the
+        // draw pass (gameui.cpp) hands that same object to ui::Window every
+        // frame, so a copy here could silently drift from the one actually in
+        // use. The o_* are Game members, so the addresses live as long as we
+        // do. (Only default_open is read -- by toggle_windows.)
+        const ui::Options *opts;
         // false: out of the Windows list (toggled from its own context).
         bool in_windows_list;
     };

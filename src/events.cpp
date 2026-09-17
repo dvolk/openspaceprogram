@@ -219,7 +219,7 @@ static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat
     if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds)) {
         // Cycle the orbit camera's target body.
         if(g.camera->mode == CAM_ORBIT) {
-            g.focusBody = (g.focusBody + 1) % g.numFocusTargets;
+            g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();
             g.camera->Follow(g.focusWorldPos(g.focusBody));
             double d = (g.focusTargets[g.focusBody].body == nullptr)
                 ? 50.0

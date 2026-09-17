@@ -610,7 +610,7 @@ void vabClose(Game &g) {
             // saved focus is a body -- resolve it to the (possibly shifted)
             // index; null is the "ship" entry)
             g.vab_camSaved = false;
-            for(int i = 0; i < g.numFocusTargets; i++) {
+            for(int i = 0; i < (int)g.focusTargets.size(); i++) {
                 if(g.focusTargets[i].body == g.vab_camFocusBody) {
                     g.focusBody = i; break;
                 }
