@@ -86,9 +86,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab", args.vab,
                    "Open the VAB editor scene with this ship def loaded "
                    "(physics-free build tree) instead of flying");
+    app.add_flag("--vab-empty", args.vab_empty,
+                 "Open the VAB editor scene with an EMPTY build (the main "
+                 "menu's \"Go to VAB\") instead of flying (test hook)");
     app.add_option("--vab-arm", args.vab_arm,
                    "Arm this catalog part in the VAB palette at startup "
                    "(so sim-input can place it without clicking the palette)");
+    app.add_option("--vab-place", args.vab_place_ms,
+                   "Fire the VAB's place (vabPlace) once at this loop time in "
+                   "ms (headless test hook; -1 = never)");
     app.add_option("--vab-launch", args.vab_launch_ms,
                    "Fire the VAB's LAUNCH once at this loop time in ms "
                    "(headless test hook for the launch path; -1 = never)");
@@ -665,6 +671,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     if(!args.save_name.empty() && !args.load_name.empty()) {
         printf("error: --save and --load are mutually exclusive\n");
+        *exit_code = 1;
+        return false;
+    }
+    if(!args.vab.empty() && args.vab_empty) {
+        printf("error: --vab and --vab-empty are mutually exclusive\n");
         *exit_code = 1;
         return false;
     }

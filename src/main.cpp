@@ -469,6 +469,12 @@ int main(int argc, char **argv)
         game.vab = BuildShip::fromShipDef(vdef);
         game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
+    } else if(args.vab_empty) {
+        // --vab-empty: the main menu's "Go to VAB" (an empty build) -- the
+        // headless entry to the same editor, so e2e can build a ship from
+        // nothing without driving the menu click.
+        game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
+        vabOpen(game);
     }
 
     if(args.use_free_cam) {
@@ -500,6 +506,7 @@ int main(int argc, char **argv)
     game.numFocusTargets = (int)game.focusTargets.size();
 
     int screenshot_count = 0;
+    bool vab_place_fired = false;    // the --vab-place hook fires once
     bool vab_launch_fired = false;   // the --vab-launch hook fires once
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
@@ -812,6 +819,20 @@ int main(int argc, char **argv)
                 vabClearHover(game);
             } else {
                 vabUpdateHover(game, mx, my);
+            }
+            /* --vab-place: the headless placement hook, fired once at its
+               loop time. It exercises vabPlace (root / stack / surface)
+               without a mouse -- sim-mouse button events do not update
+               SDL_GetMouseState, so the LMB edge above can't be driven
+               headless. Fires AFTER vabUpdateHover, so the ghost (and
+               root flag) it places from is this frame's. */
+            if(!overUI && args.vab_place_ms >= 0 && !vab_place_fired
+               && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_place_ms) {
+                vab_place_fired = true;
+                const int placed = vabPlace(game);   // -1 = no ghost/armed part
+                printf("[vab] place hook: %d\n",
+                       placed >= 0 ? (int)game.vab.parts.size() : -1);
+                fflush(stdout);
             }
             const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
             if(lmb && !game.vab_lmb_prev && !overUI) {

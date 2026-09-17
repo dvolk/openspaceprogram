@@ -47,7 +47,11 @@ struct GameArgs {
 
     std::string radial_test;
     std::string vab;   // ship def to open in the VAB editor scene (empty = flight)
+    bool vab_empty = false;  // --vab-empty: open the VAB with an EMPTY build
+                             // (the main menu's "Go to VAB") instead of flying
     std::string vab_arm;   // catalog part to arm in the VAB palette at startup (test hook)
+    int vab_place_ms = -1; // --vab-place: fire the VAB's place (vabPlace) once
+                           // at this loop time in ms (headless test hook; -1 = never)
     int vab_launch_ms = -1;  // --vab-launch: fire the VAB's LAUNCH once at
                              // this loop time in ms (headless test hook; -1 = never)
     std::string dock_test;

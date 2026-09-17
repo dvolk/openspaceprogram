@@ -2311,7 +2311,12 @@ void drawVabUI(Game &g) {
     }
 
     ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
-    ImGui::Begin("VAB", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    // Resizable: default size at creation (window ini is disabled, so
+    // FirstUseEver == first Begin of the window's lifetime), then the
+    // user owns the size; a scrollbar appears when it shrinks below the
+    // content.
+    ImGui::SetNextWindowSize(ImVec2(320, 480), ImGuiCond_FirstUseEver);
+    ImGui::Begin("VAB", nullptr);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.name.c_str(),
                 (int)g.vab.parts.size());
     if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
@@ -2449,8 +2454,22 @@ void drawVabUI(Game &g) {
     // from this list, so list hover must not overwrite g.vab_hover.
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 260, 8),
                             ImGuiCond_Once);
-    ImGui::Begin("Palette", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-    ImGui::BeginChild("palette_parts", ImVec2(230, 320), true);
+    // Resizable: default size at creation (window ini is disabled, so
+    // FirstUseEver == first Begin of the window's lifetime), then the
+    // user owns the size. The part list takes the top and resizes with
+    // the window: a negative child height is an offset from the bottom
+    // edge, leaving room for the symmetry/snap/status block below.
+    // Reserved at its max (armed + ghost + symmetry>1: separator, the
+    // "Symmetry" label + selector row, the two snap checkboxes, and the
+    // 4 status lines = 9 items -> 9 item spacings), so the window's own
+    // content never needs a scrollbar.
+    ImGui::SetNextWindowSize(ImVec2(250, 560), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Palette", nullptr);
+    const float below = ImGui::GetStyle().ItemSpacing.y * 9.0f + 1.0f
+        + ImGui::GetTextLineHeight()
+        + ImGui::GetFrameHeight() * 3.0f
+        + ImGui::GetTextLineHeight() * 4.0f;
+    ImGui::BeginChild("palette_parts", ImVec2(0.0f, -below), true);
     for(size_t i = 0; i < g.ships.catalog().parts.size(); i++) {
         const PartDef &pd = g.ships.catalog().parts[i];
         if(pd.fuel_link) { continue; }

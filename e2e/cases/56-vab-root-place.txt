@@ -1,0 +1,17 @@
+# VAB root placement: --vab-empty boots the empty build (the main menu's
+# "Go to VAB"); --vab-arm arms a palette part; --vab-place fires vabPlace
+# once (the headless stand-in for the LMB click -- sim-mouse button events
+# do not update SDL_GetMouseState, so the LMB edge can't be driven headless);
+# --vab-launch converts the 1-part tree to a ShipDef and builds a real
+# Vehicle on the pad. The bug: an empty build's armed part becomes the ROOT
+# (parent -1), which vabPlace's `parent < 0` guard used to reject -- so a
+# ship could not be built from nothing (only attached onto a loaded one).
+# This pins that the root now places and the result launches.
+NAME vab-root-place
+ARGS --vab-empty --vab-arm capsule --timeout 8
+ARGS --vab-place 1500 --vab-launch 2500
+EXPECT Main loop starting
+EXPECT [vab] entered the editor (sim paused)
+CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)
+FORBID GL_
+FORBID error:

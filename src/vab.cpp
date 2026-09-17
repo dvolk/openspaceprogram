@@ -266,7 +266,9 @@ void vabUpdateHover(Game &g, int px, int py) {
 int vabPlace(Game &g) {
     if(!g.vab_ghostValid) { return -1; }
     const int parent = g.vab_ghostRoot ? -1 : g.vab_hoverParent;
-    if(parent < 0) { return -1; }
+    // parent -1 is the valid ROOT placement (empty build); only a
+    // non-root ghost with no resolved parent is a rejection.
+    if(!g.vab_ghostRoot && parent < 0) { return -1; }
 
     /* An armed SUBASSEMBLY: graft a copy under the resolved root edge (one
        graft per symmetry clone); the list entry is NOT consumed -- placing

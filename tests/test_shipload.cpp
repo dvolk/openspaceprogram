@@ -981,6 +981,35 @@ int main() {
             CHECK(haveTo);
         }
     }
+    // --- grafting a subassembly as the ROOT of an empty build: the VAB's
+    //     "build a ship from nothing" with an armed subassembly. The grafted
+    //     root (parent -1) anchors at the S origin and the assembly's relative
+    //     shape is preserved (e2e 56 pins the single-part root; this pins the
+    //     subassembly root at the model level)
+    {
+        ShipDef tk3 = load_ship_def("res/ships/tanker.json", cat);
+        BuildShip bs3 = BuildShip::fromShipDef(tk3);
+        BuildShip sub3 = bs3.detachSubtree(1);   // the tank subtree
+        CHECK(sub3.parts.size() == 6);
+        CHECK(sub3.parts[0].parent == -1);
+        // the root edge the VAB stores for a subassembly-as-root
+        BuildPart root3;
+        root3.def = sub3.parts[0].def;
+        root3.id = sub3.parts[0].id;
+        root3.parent = -1;                        // the ROOT of the new build
+        root3.attach = AttachMode::Down;
+        BuildShip empty;                          // the --vab-empty state
+        const size_t ri = empty.graftTree(sub3, root3);
+        CHECK(ri == 0);                           // the root lands at index 0
+        CHECK(empty.parts.size() == 6);
+        CHECK(empty.parts[0].parent == -1);
+        CHECK(vnear(empty.parts[0].localPos, glm::dvec3(0)));    // S origin
+        CHECK(mnear(empty.parts[0].localRot, glm::dmat3(1.0)));
+        // the relative shape survives: a descendant's S-frame pose equals its
+        // pose in the sub tree (both re-solved off the identity root)
+        CHECK(vnear(empty.parts[2].localPos, sub3.parts[2].localPos));
+        CHECK(mnear(empty.parts[2].localRot, sub3.parts[2].localRot));
+    }
     // --- radialSymmetryClones: symmetric rings about the parent's axis ------
     {
         const PartDef *child = cat.find("tank_r1.5h3");   // the tanker's side pod
