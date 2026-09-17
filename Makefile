@@ -83,13 +83,18 @@ LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
 MAKEFLAGS += -j$(shell nproc)
 
 # imgui submodule (pinned to a tagged release), built like everything else
-# (the build rules are near the bottom, after the main target)
+# (the build rules are near the bottom, after the main target). Their objects
+# live under $(OBJDIR), not a hardcoded obj/, so every build variant (plain,
+# asan, tsan -- see those targets at the bottom) compiles its own copy with
+# its own flags instead of clobbering the shared one. Recursive (=)
+# assignment: $(OBJDIR) is defined further down, and a command-line
+# OBJDIR=... must win over it.
 IMGUI_DIR=./middleware/imgui
-IMGUI_OBJS=./obj/imgui/imgui.o ./obj/imgui/imgui_draw.o ./obj/imgui/imgui_widgets.o ./obj/imgui/imgui_tables.o ./obj/imgui/imgui_impl_sdl3.o ./obj/imgui/imgui_impl_opengl3.o
+IMGUI_OBJS=$(OBJDIR)/imgui/imgui.o $(OBJDIR)/imgui/imgui_draw.o $(OBJDIR)/imgui/imgui_widgets.o $(OBJDIR)/imgui/imgui_tables.o $(OBJDIR)/imgui/imgui_impl_sdl3.o $(OBJDIR)/imgui/imgui_impl_opengl3.o
 # implot submodule (pinned to a tagged release): plotting plugin that draws
 # through the existing imgui renderer, so only its two .cpp files are built.
 IMPLLOT_DIR=./middleware/implot
-IMPLLOT_OBJS=./obj/implot/implot.o ./obj/implot/implot_items.o
+IMPLLOT_OBJS=$(OBJDIR)/implot/implot.o $(OBJDIR)/implot/implot_items.o
 # assimp submodule (pinned to a tagged release), built static via cmake like
 # bullet3 (assimp 6 defaults to shared, so force -DBUILD_SHARED_LIBS=OFF).
 # Two assimp objects (Compression.cpp, unzip.c) reference zlib -- compressed
@@ -179,36 +184,21 @@ src/version.h: version
 
 $(OBJDIR)/gameui.o: src/version.h
 
-./obj/imgui/imgui.o: $(IMGUI_DIR)/imgui.cpp
-	@mkdir -p ./obj/imgui
+# imgui / implot objects (the paths come from IMGUI_OBJS / IMPLLOT_OBJS, so
+# they follow $(OBJDIR) and each variant builds its own). Three pattern rules
+# replace the eight per-file ones; the two imgui rules are order-insensitive
+# because make picks the rule whose prerequisite exists -- the backend files
+# live in backends/, the core ones in the submodule root.
+$(OBJDIR)/imgui/%.o: $(IMGUI_DIR)/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-./obj/imgui/imgui_draw.o: $(IMGUI_DIR)/imgui_draw.cpp
-	@mkdir -p ./obj/imgui
+$(OBJDIR)/imgui/%.o: $(IMGUI_DIR)/backends/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-./obj/imgui/imgui_widgets.o: $(IMGUI_DIR)/imgui_widgets.cpp
-	@mkdir -p ./obj/imgui
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-./obj/imgui/imgui_tables.o: $(IMGUI_DIR)/imgui_tables.cpp
-	@mkdir -p ./obj/imgui
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-./obj/imgui/imgui_impl_sdl3.o: $(IMGUI_DIR)/backends/imgui_impl_sdl3.cpp
-	@mkdir -p ./obj/imgui
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-./obj/imgui/imgui_impl_opengl3.o: $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
-	@mkdir -p ./obj/imgui
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-./obj/implot/implot.o: $(IMPLLOT_DIR)/implot.cpp
-	@mkdir -p ./obj/implot
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-./obj/implot/implot_items.o: $(IMPLLOT_DIR)/implot_items.cpp
-	@mkdir -p ./obj/implot
+$(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Unit tests. Every binary is its own file target, so make builds the stale
@@ -518,6 +508,49 @@ e2e: $(TARGET)
 test-gl:
 	$(CXX) -O2 -std=c++20 -I./middleware/sdl3/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
 	./test_gl_vao
+
+# Sanitizer variants. Each is a separate recursive make with its own OBJDIR
+# and its own binary, so the three builds share no file at all:
+#
+#     make        -> ./osp        from obj/        (the default: O2 + LTO)
+#     make asan   -> ./osp_asan   from obj_asan/   (+ AddressSanitizer)
+#     make tsan   -> ./osp_tsan   from obj_tsan/   (+ ThreadSanitizer)
+#
+# No `make clean` is needed between them, and they can run concurrently in
+# separate shells. The imgui/implot objects follow OBJDIR as well, so a
+# variant's middleware TUs are instrumented like its src/ ones -- TSan only
+# reports races in instrumented code, so an uninstrumented imgui would hide
+# the UI side of any race.
+# NOT per-variant: the cmake-built static libs (bullet3, assimp, SDL3,
+# SDL_image, GLEW). bootstrap.sh builds them once, uninstrumented, and every
+# variant links the same archives.
+#
+# Run a variant exactly like ./osp, e.g.
+#     xvfb-run -a ./osp_asan --selftest-spawn --timeout 5
+# ASan aborts on the first error. LeakSanitizer also runs at exit and reports
+# the intentional leaks (the shader/mesh/texture registries are never freed),
+# so ASAN_OPTIONS=detect_leaks=0 keeps the output to real memory errors.
+SAN_ASAN = -g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
+SAN_TSAN = -g3 -fsanitize=thread -fsanitize=undefined
+
+.PHONY: asan
+asan:
+	@$(MAKE) --no-print-directory TARGET=osp_asan OBJDIR=obj_asan \
+	    SANITIZE='$(SAN_ASAN)' $(BINDIR)/osp_asan
+
+.PHONY: tsan
+tsan:
+	@$(MAKE) --no-print-directory TARGET=osp_tsan OBJDIR=obj_tsan \
+	    SANITIZE='$(SAN_TSAN)' $(BINDIR)/osp_tsan
+
+# Drop both variants entirely -- objects, middleware objects and binaries.
+# This is the multi-obj-dir version of the "delete obj/ by hand" note on
+# `clean` below: required after changing LTO / MARCH / CXX_OPT, whose
+# objects are not interchangeable with the ones already on disk.
+.PHONY: san-clean
+san-clean:
+	rm -rf obj_asan obj_tsan
+	$(rm) $(BINDIR)/osp_asan $(BINDIR)/osp_tsan
 
 .PHONY: clean
 # Only the src/ objects + the test objects: imgui/implot are pinned
