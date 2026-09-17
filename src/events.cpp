@@ -345,17 +345,17 @@ static void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         /* Del DETACHES the selected subtree into the Subassemblies list --
            the non-destructive default delete; Shift+Del truly deletes it.
            A selected fuel link has no subtree: it just deletes. */
-        if((kmod & SDL_KMOD_SHIFT) || g.vab_linkSel >= 0) { vabDeleteSelected(g); }
+        if((kmod & SDL_KMOD_SHIFT) || g.vab.linkSel >= 0) { vabDeleteSelected(g); }
         else { vabDetachSelected(g); }
     }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
-        if(g.vab_linkMode) {
-            g.vab_linkMode = false;   // the first Esc leaves link mode ...
-            g.vab_linkFromId.clear();
+        if(g.vab.linkMode) {
+            g.vab.linkMode = false;   // the first Esc leaves link mode ...
+            g.vab.linkFromId.clear();
         } else {
-            g.vab_armed.clear();      // ... the next disarms whatever is armed
-            g.vab_armedAsm = -1;
-            g.vab_ghostRoll = 0.0;
+            g.vab.armed.clear();      // ... the next disarms whatever is armed
+            g.vab.armedAsm = -1;
+            g.vab.ghostRoll = 0.0;
         }
     }
 }

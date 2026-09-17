@@ -649,14 +649,14 @@ void drawVab(Game &g) {
        ship and orbit around it. ref = identity so screen-up is world +Z (the
        ship stands nose-up, as on the pad). */
     Camera *cam = g.camera;
-    cam->renderOrigin = g.vab_center;
+    cam->renderOrigin = g.vab.center;
     cam->ref = glm::dmat3(1.0);
-    cam->Follow(g.vab_center);
+    cam->Follow(g.vab.center);
     cam->ComputeView();
 
     glm::vec3 sunlight = glm::normalize(glm::vec3(0.4f, 0.8f, 0.35f));
-    for(size_t i = 0; i < g.vab.parts.size(); i++) {
-        const BuildPart &bp = g.vab.parts[i];
+    for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+        const BuildPart &bp = g.vab.build.parts[i];
         if(bp.def == nullptr) { continue; }
         Mesh *m = get_mesh(std::string("./res/") + bp.def->mesh);
         Texture *t = get_texture(std::string("./res/") + bp.def->texture);
@@ -665,8 +665,8 @@ void drawVab(Game &g) {
                                * glm::dmat4(bp.localRot);
         DrawOpts opts;
         opts.flat = 1.0f;   // uniform studio light (the editor look)
-        if((int)i == g.vab_selected) { opts.tint = glm::vec3(1.0f, 0.75f, 0.2f); }
-        else if((int)i == g.vab_hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
+        if((int)i == g.vab.selected) { opts.tint = glm::vec3(1.0f, 0.75f, 0.2f); }
+        else if((int)i == g.vab.hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
                     glm::dmat4(1.0), opts);
 
@@ -675,7 +675,7 @@ void drawVab(Game &g) {
            hides the engine. It shares the part's editor opts (studio
            light + the hover/selection tint), so the wrap highlights with
            its part. */
-        if(!bp.def->shroud.empty() && vabChildBelow(g.vab, i)) {
+        if(!bp.def->shroud.empty() && vabChildBelow(g.vab.build, i)) {
             Mesh *sm = get_mesh(std::string("./res/") + bp.def->shroud);
             Texture *st = get_texture(std::string("./res/") + bp.def->shroud_texture);
             if(sm != nullptr && st != nullptr) {
@@ -687,23 +687,23 @@ void drawVab(Game &g) {
 
     // the armed part's (or subassembly's) translucent ghost at the hovered
     // attach target
-    if(g.vab_ghostValid) {
+    if(g.vab.ghostValid) {
         DrawOpts go;
         go.alpha = 0.4f;
         go.flat = 1.0f;   // the ghosts share the studio light
-        if(g.vab_ghostAssembly >= 0
-           && (size_t)g.vab_ghostAssembly < g.vab_subassemblies.size()) {
+        if(g.vab.ghostAssembly >= 0
+           && (size_t)g.vab.ghostAssembly < g.vab.subassemblies.size()) {
             /* an assembly ghost: the whole tree rides the solved root pose
                (the parts' local poses are the assembly-frame solve), once
                per root pose -- the primary plus each symmetry clone. All
                unshifted S-frame poses: DrawModelAt applies the -renderOrigin
-               (= -vab_center) shift like every model here. */
-            const BuildShip &sub = g.vab_subassemblies[(size_t)g.vab_ghostAssembly].ship;
-            for(size_t pass = 0; pass < 1 + g.vab_ghostClones.size(); pass++) {
+               (= -vab.center) shift like every model here. */
+            const BuildShip &sub = g.vab.subassemblies[(size_t)g.vab.ghostAssembly].ship;
+            for(size_t pass = 0; pass < 1 + g.vab.ghostClones.size(); pass++) {
                 const glm::dvec3 rp = (pass == 0)
-                    ? g.vab_ghostPos : g.vab_ghostClones[pass - 1].pose.childPos;
+                    ? g.vab.ghostPos : g.vab.ghostClones[pass - 1].pose.childPos;
                 const glm::dmat3 rr = (pass == 0)
-                    ? g.vab_ghostRot : g.vab_ghostClones[pass - 1].pose.childRot;
+                    ? g.vab.ghostRot : g.vab.ghostClones[pass - 1].pose.childRot;
                 for(size_t i = 0; i < sub.parts.size(); i++) {
                     const BuildPart &bp = sub.parts[i];
                     if(bp.def == nullptr) { continue; }
@@ -717,18 +717,18 @@ void drawVab(Game &g) {
                                 glm::dmat4(1.0), go);
                 }
             }
-        } else if(!g.vab_armed.empty()) {
-            const PartDef *ad = g.ships.catalog().find(g.vab_armed);
+        } else if(!g.vab.armed.empty()) {
+            const PartDef *ad = g.ships.catalog().find(g.vab.armed);
             if(ad != nullptr) {
                 Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
                 Texture *gt = get_texture(std::string("./res/") + ad->texture);
                 if(gm != nullptr && gt != nullptr) {
-                    const glm::dmat4 gmodel = glm::translate(g.vab_ghostPos)
-                                            * glm::dmat4(g.vab_ghostRot);
+                    const glm::dmat4 gmodel = glm::translate(g.vab.ghostPos)
+                                            * glm::dmat4(g.vab.ghostRot);
                     DrawModelAt(cam, gm, g.partsshader, gt, gmodel, sunlight,
                                 1.0f, glm::dmat4(1.0), go);
-                    for(size_t k = 0; k < g.vab_ghostClones.size(); k++) {
-                        const AttachPose &cp = g.vab_ghostClones[k].pose;
+                    for(size_t k = 0; k < g.vab.ghostClones.size(); k++) {
+                        const AttachPose &cp = g.vab.ghostClones[k].pose;
                         const glm::dmat4 cmodel = glm::translate(cp.childPos)
                                                 * glm::dmat4(cp.childRot);
                         DrawModelAt(cam, gm, g.partsshader, gt, cmodel, sunlight,

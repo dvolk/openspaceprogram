@@ -490,21 +490,21 @@ int main(int argc, char **argv)
        vabOpen parks the (boot) camera and aims the orbit at the build. */
     if(!args.vab.empty()) {
         ShipDef vdef = load_ship_def(args.vab.c_str(), ships.catalog());
-        game.vab = BuildShip::fromShipDef(vdef);
-        game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
+        game.vab.build = BuildShip::fromShipDef(vdef);
+        game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     } else if(args.vab_empty) {
         // --vab-empty: the main menu's "Go to VAB" (an empty build) -- the
         // headless entry to the same editor, so e2e can build a ship from
         // nothing without driving the menu click.
-        game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
+        game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     }
     if(game.scene == Scene::Vab) {
         // --vab-scenario / --vab-body: override the launch config the top-bar
         // dropdowns show (vabOpen already seeded the defaults: home + pad).
-        if(!args.vab_scenario.empty()) { game.vab_scenarioName = args.vab_scenario; }
-        if(!args.vab_body.empty())     { game.vab_bodyName = args.vab_body; }
+        if(!args.vab_scenario.empty()) { game.vab.scenarioName = args.vab_scenario; }
+        if(!args.vab_body.empty())     { game.vab.bodyName = args.vab_body; }
     }
 
     if(args.use_free_cam) {
@@ -899,22 +899,22 @@ int main(int argc, char **argv)
                 vab_place_fired = true;
                 const int placed = vabPlace(game);   // -1 = no ghost/armed part
                 printf("[vab] place hook: %d\n",
-                       placed >= 0 ? (int)game.vab.parts.size() : -1);
+                       placed >= 0 ? (int)game.vab.build.parts.size() : -1);
                 fflush(stdout);
             }
             const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
-            if(lmb && !game.vab_lmb_prev && !overUI) {
-                if(game.vab_linkMode) {
+            if(lmb && !game.vab.lmbPrev && !overUI) {
+                if(game.vab.linkMode) {
                     vabLinkClick(game);
-                } else if(!game.vab_armed.empty() || game.vab_armedAsm >= 0) {
+                } else if(!game.vab.armed.empty() || game.vab.armedAsm >= 0) {
                     vabPlace(game);
-                } else if(game.vab_hover >= 0) {
+                } else if(game.vab.hover >= 0) {
                     // nothing armed: a plain click selects the hovered part
-                    game.vab_selected = game.vab_hover;
-                    game.vab_linkSel = -1;
+                    game.vab.selected = game.vab.hover;
+                    game.vab.linkSel = -1;
                 }
             }
-            game.vab_lmb_prev = lmb;
+            game.vab.lmbPrev = lmb;
             game.redraw = true;
         } else {
             tick(game);

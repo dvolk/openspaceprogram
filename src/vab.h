@@ -1,7 +1,7 @@
 // vab.h -- the VAB editor's interaction layer: physics-free picking of the
 // build tree (parts and their attach nodes), the ghost preview pose, and
 // placing a part into the tree. All in the build ship's frame S (Game::vab
-// poses); the render frame is S shifted by -Game::vab_center.
+// poses); the render frame is S shifted by -Game::vab.center.
 #pragma once
 
 #include "game.h"   // Game (vab BuildShip, camera)
@@ -40,8 +40,8 @@ void vabClearHover(Game &g);
 
 // Per-frame editor update: hover part + node, and the ghost pose for the
 // armed palette part at the hovered target (stack node, or a surface hit on
-// the hovered parent when no node is near). Sets Game::vab_hover,
-// vab_hoverNode, vab_ghost*.
+// the hovered parent when no node is near). Sets Game::vab.hover,
+// vab.hoverNode, vab.ghost*.
 void vabUpdateHover(Game &g, int px, int py);
 
 // Place the armed palette part at the current hover target (stack node or
@@ -54,7 +54,7 @@ int vabPlace(Game &g);
 void vabRotate(Game &g, double deltaDeg);
 
 // Link-mode click: the first hovered part becomes the fuel link's SOURCE
-// (Game::vab_linkFromId), the second the DESTINATION -- appending the link
+// (Game::vab.linkFromId), the second the DESTINATION -- appending the link
 // to Game::vab.fuelLinks and leaving link mode. Refuses a self-link or a
 // duplicate from->to; a click on empty space is ignored (the mode stays).
 void vabLinkClick(Game &g);

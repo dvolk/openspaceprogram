@@ -2312,13 +2312,13 @@ void drawVabUI(Game &g) {
        the far-side ports stay discoverable. */
     if(g.camera != nullptr) {
         ImDrawList *dl = ImGui::GetForegroundDrawList();
-        for(size_t i = 0; i < g.vab.parts.size(); i++) {
-            const BuildPart &bp = g.vab.parts[i];
+        for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+            const BuildPart &bp = g.vab.build.parts[i];
             if(bp.def == nullptr) { continue; }
             for(size_t k = 0; k < bp.def->nodes.size(); k++) {
                 const Node &n = bp.def->nodes[k];
                 if(n.surface) { continue; }
-                if(g.vab.nodeOccupied((int)i, n.id)) { continue; }
+                if(g.vab.build.nodeOccupied((int)i, n.id)) { continue; }
                 double px = 0, py = 0;
                 if(!vabProject(g, vabNodePos(g, (int)i, (int)k), px, py)) { continue; }
                 const ImVec2 c((float)px, (float)py);
@@ -2331,8 +2331,8 @@ void drawVabUI(Game &g) {
     // the save path: seeded once from the build's name, editable
     static char savePath[512] = {0};
     if(savePath[0] == 0) {
-        const std::string nm = g.vab.name.empty()
-            ? std::string("untitled") : g.vab.name;
+        const std::string nm = g.vab.build.name.empty()
+            ? std::string("untitled") : g.vab.build.name;
         snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
     }
 
@@ -2396,19 +2396,19 @@ void drawVabUI(Game &g) {
 
         // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
         ImGui::SetNextItemWidth(160);
-        if(ImGui::BeginCombo("##vabbody", g.vab_bodyName.c_str())) {
+        if(ImGui::BeginCombo("##vabbody", g.vab.bodyName.c_str())) {
             for(size_t i = 0; i < g.sys.bodies.size(); i++) {
                 const char *nm = g.sys.bodies[i]->name.c_str();
-                if(ImGui::Selectable(nm, g.vab_bodyName == nm)) { g.vab_bodyName = nm; }
+                if(ImGui::Selectable(nm, g.vab.bodyName == nm)) { g.vab.bodyName = nm; }
             }
             ImGui::EndCombo();
         }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160);
-        if(ImGui::BeginCombo("##vabscn", g.vab_scenarioName.c_str())) {
+        if(ImGui::BeginCombo("##vabscn", g.vab.scenarioName.c_str())) {
             for(size_t i = 0; i < scenario_count(); i++) {
                 const char *nm = scenario_name_at(i);
-                if(ImGui::Selectable(nm, g.vab_scenarioName == nm)) { g.vab_scenarioName = nm; }
+                if(ImGui::Selectable(nm, g.vab.scenarioName == nm)) { g.vab.scenarioName = nm; }
             }
             ImGui::EndCombo();
         }
@@ -2423,30 +2423,30 @@ void drawVabUI(Game &g) {
     // content.
     ImGui::SetNextWindowSize(ImVec2(320, 480), ImGuiCond_FirstUseEver);
     ImGui::Begin("VAB", nullptr);
-    ImGui::Text("VAB -- %s (%d parts)", g.vab.name.c_str(),
-                (int)g.vab.parts.size());
+    ImGui::Text("VAB -- %s (%d parts)", g.vab.build.name.c_str(),
+                (int)g.vab.build.parts.size());
     ImGui::Separator();
-    for(size_t i = 0; i < g.vab.parts.size(); i++) {
-        const BuildPart &bp = g.vab.parts[i];
-        const bool sel = ((int)i == g.vab_selected);
+    for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+        const BuildPart &bp = g.vab.build.parts[i];
+        const bool sel = ((int)i == g.vab.selected);
         if(ImGui::Selectable(bp.id.c_str(), sel)) {
-            g.vab_selected = (int)i;
-            g.vab_linkSel = -1;   // the two selections are exclusive
+            g.vab.selected = (int)i;
+            g.vab.linkSel = -1;   // the two selections are exclusive
         }
     }
-    if(g.vab_selected >= 0 && (size_t)g.vab_selected < g.vab.parts.size()) {
+    if(g.vab.selected >= 0 && (size_t)g.vab.selected < g.vab.build.parts.size()) {
         ImGui::Separator();
-        const int sel = g.vab_selected;
-        BuildPart &bp = g.vab.parts[(size_t)sel];
+        const int sel = g.vab.selected;
+        BuildPart &bp = g.vab.build.parts[(size_t)sel];
         ImGui::Text("selected: %s (%s)", bp.id.c_str(),
                     bp.def != nullptr ? bp.def->name.c_str() : "?");
         if(sel == 0) {
             ImGui::TextDisabled("root -- cannot rotate or delete");
         } else {
             const bool srf = (bp.attach == AttachMode::Surface);
-            if(ImGui::Button("-5##rot")) { g.vab.rotatePart(sel, -5.0); }
+            if(ImGui::Button("-5##rot")) { g.vab.build.rotatePart(sel, -5.0); }
             ImGui::SameLine();
-            if(ImGui::Button("+5##rot")) { g.vab.rotatePart(sel, +5.0); }
+            if(ImGui::Button("+5##rot")) { g.vab.build.rotatePart(sel, +5.0); }
             ImGui::SameLine();
             ImGui::Text("%s roll: %.0f deg", srf ? "surface" : "stack",
                         srf ? bp.roll : bp.angle);
@@ -2467,33 +2467,33 @@ void drawVabUI(Game &g) {
     /* Fuel links: virtual from->to edges (no pose, no stage). Added with a
        two-click 3D pick, drawn as overlay lines (end of this function),
        managed from this list. */
-    if(ImGui::Button(g.vab_linkMode ? "Cancel fuel link" : "Add fuel link")) {
-        g.vab_linkMode = !g.vab_linkMode;
-        g.vab_linkFromId.clear();
+    if(ImGui::Button(g.vab.linkMode ? "Cancel fuel link" : "Add fuel link")) {
+        g.vab.linkMode = !g.vab.linkMode;
+        g.vab.linkFromId.clear();
     }
-    if(g.vab_linkMode) {
-        if(g.vab_linkFromId.empty()) {
+    if(g.vab.linkMode) {
+        if(g.vab.linkFromId.empty()) {
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f),
                                "click the SOURCE part (fuel flows out of it)");
         } else {
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f),
                                "%s feeds ... click the DESTINATION",
-                               g.vab_linkFromId.c_str());
+                               g.vab.linkFromId.c_str());
         }
     }
-    for(size_t i = 0; i < g.vab.fuelLinks.size(); i++) {
-        const BuildShip::FuelLink &fl = g.vab.fuelLinks[i];
+    for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {
+        const BuildShip::FuelLink &fl = g.vab.build.fuelLinks[i];
         char label[256];
         snprintf(label, sizeof(label), "%s -> %s##fl%d", fl.from.c_str(),
                  fl.to.c_str(), (int)i);
-        const bool sel = (g.vab_linkSel == (int)i);
+        const bool sel = (g.vab.linkSel == (int)i);
         if(ImGui::Selectable(label, sel)) {
-            g.vab_linkSel = sel ? -1 : (int)i;
-            g.vab_selected = -1;
+            g.vab.linkSel = sel ? -1 : (int)i;
+            g.vab.selected = -1;
         }
         if(ImGui::IsItemHovered()) { hoveredLink = (int)i; }
     }
-    if(g.vab_linkSel >= 0 && (size_t)g.vab_linkSel < g.vab.fuelLinks.size()) {
+    if(g.vab.linkSel >= 0 && (size_t)g.vab.linkSel < g.vab.build.fuelLinks.size()) {
         if(ImGui::Button("Delete link")) { vabDeleteSelected(g); }
     }
     ImGui::Separator();
@@ -2503,19 +2503,19 @@ void drawVabUI(Game &g) {
        files land. */
     ImGui::Text("Subassemblies");
     int dropAsm = -1;
-    for(size_t i = 0; i < g.vab_subassemblies.size(); i++) {
-        const Game::VabSubassembly &sa = g.vab_subassemblies[i];
+    for(size_t i = 0; i < g.vab.subassemblies.size(); i++) {
+        const VabState::Subassembly &sa = g.vab.subassemblies[i];
         char label[256];
         snprintf(label, sizeof(label), "%s (%d parts)##asm%zu", sa.name.c_str(),
                  (int)sa.ship.parts.size(), i);
-        const bool armed = (g.vab_armedAsm == (int)i);
+        const bool armed = (g.vab.armedAsm == (int)i);
         if(ImGui::Selectable(label, armed)) {
             if(armed) {
-                g.vab_armedAsm = -1;
+                g.vab.armedAsm = -1;
             } else {
-                g.vab_armedAsm = (int)i;
-                g.vab_armed.clear();      // exclusive with a catalog part
-                g.vab_ghostRoll = 0.0;
+                g.vab.armedAsm = (int)i;
+                g.vab.armed.clear();      // exclusive with a catalog part
+                g.vab.ghostRoll = 0.0;
             }
         }
         ImGui::SameLine();
@@ -2524,13 +2524,13 @@ void drawVabUI(Game &g) {
         if(ImGui::SmallButton(xl)) { dropAsm = (int)i; }
     }
     if(dropAsm >= 0) {   // erase AFTER the loop (indices drive the widgets)
-        g.vab_subassemblies.erase(g.vab_subassemblies.begin() + dropAsm);
-        if(g.vab_armedAsm == dropAsm) { g.vab_armedAsm = -1; }
-        else if(g.vab_armedAsm > dropAsm) { g.vab_armedAsm--; }
+        g.vab.subassemblies.erase(g.vab.subassemblies.begin() + dropAsm);
+        if(g.vab.armedAsm == dropAsm) { g.vab.armedAsm = -1; }
+        else if(g.vab.armedAsm > dropAsm) { g.vab.armedAsm--; }
     }
-    if(g.vab_subassemblies.empty()) {
+    if(g.vab.subassemblies.empty()) {
         ImGui::TextDisabled("select a part -> Detach subtree (Del)");
-    } else if(g.vab_armedAsm >= 0) {
+    } else if(g.vab.armedAsm >= 0) {
         ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.6f, 1.0f),
                            "placing copies -- hover a port/surface, LMB; Esc stops");
     }
@@ -2541,7 +2541,7 @@ void drawVabUI(Game &g) {
     // Palette: arm a catalog part, then hover the ship and LMB to place it
     // (snaps to the hovered stack port, or surface-attaches at the hover
     // point). Hover/ghost targeting comes from the 3D pick (vab.cpp), not
-    // from this list, so list hover must not overwrite g.vab_hover.
+    // from this list, so list hover must not overwrite g.vab.hover.
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 260, 8),
                             ImGuiCond_Once);
     // Resizable: default size at creation (window ini is disabled, so
@@ -2563,11 +2563,11 @@ void drawVabUI(Game &g) {
     for(size_t i = 0; i < g.ships.catalog().parts.size(); i++) {
         const PartDef &pd = g.ships.catalog().parts[i];
         if(pd.fuel_link) { continue; }
-        const bool armed = (g.vab_armed == pd.name);
+        const bool armed = (g.vab.armed == pd.name);
         if(ImGui::Selectable(pd.name.c_str(), armed)) {
-            g.vab_armed = armed ? std::string("") : pd.name;
-            g.vab_armedAsm = -1;     // exclusive with a subassembly
-            g.vab_ghostRoll = 0.0;   // a fresh part starts unrolled
+            g.vab.armed = armed ? std::string("") : pd.name;
+            g.vab.armedAsm = -1;     // exclusive with a subassembly
+            g.vab.ghostRoll = 0.0;   // a fresh part starts unrolled
         }
     }
     ImGui::EndChild();
@@ -2580,30 +2580,30 @@ void drawVabUI(Game &g) {
         if(n > 1) { ImGui::SameLine(0, 3); }
         char lbl[12];
         snprintf(lbl, sizeof(lbl), "%d##sym", n);
-        if(ImGui::Selectable(lbl, g.vab_symmetry == n, 0, ImVec2(21, 0))) {
-            g.vab_symmetry = n;
+        if(ImGui::Selectable(lbl, g.vab.symmetry == n, 0, ImVec2(21, 0))) {
+            g.vab.symmetry = n;
         }
     }
-    ImGui::Checkbox("Snap distance 10cm (Alt bypasses)", &g.vab_snapLen);
-    ImGui::Checkbox("Snap angle 10deg (Alt bypasses)", &g.vab_snapAng);
-    const bool asmArmed = g.vab_armedAsm >= 0
-        && (size_t)g.vab_armedAsm < g.vab_subassemblies.size();
-    if(asmArmed || !g.vab_armed.empty()) {
+    ImGui::Checkbox("Snap distance 10cm (Alt bypasses)", &g.vab.snapLen);
+    ImGui::Checkbox("Snap angle 10deg (Alt bypasses)", &g.vab.snapAng);
+    const bool asmArmed = g.vab.armedAsm >= 0
+        && (size_t)g.vab.armedAsm < g.vab.subassemblies.size();
+    if(asmArmed || !g.vab.armed.empty()) {
         ImGui::Text("armed: %s", asmArmed
-                    ? g.vab_subassemblies[(size_t)g.vab_armedAsm].name.c_str()
-                    : g.vab_armed.c_str());
-        if(g.vab_ghostValid) {
-            ImGui::Text("roll: %.0f deg (Q/E)", g.vab_ghostRollUsed);
-            if(g.vab_symmetry > 1) {
-                if(g.vab_ghostSurface) {
+                    ? g.vab.subassemblies[(size_t)g.vab.armedAsm].name.c_str()
+                    : g.vab.armed.c_str());
+        if(g.vab.ghostValid) {
+            ImGui::Text("roll: %.0f deg (Q/E)", g.vab.ghostRollUsed);
+            if(g.vab.symmetry > 1) {
+                if(g.vab.ghostSurface) {
                     ImGui::Text("placing x%d around the parent axis",
-                                1 + (int)g.vab_ghostClones.size());
+                                1 + (int)g.vab.ghostClones.size());
                 } else {
                     ImGui::TextDisabled("stack port: symmetry n/a");
                 }
             }
         }
-        if(g.vab.parts.empty()) {
+        if(g.vab.build.parts.empty()) {
             ImGui::TextDisabled("LMB: anchor the ROOT at the origin");
         } else {
             ImGui::TextDisabled("hover a port/surface, LMB to place");
@@ -2618,14 +2618,14 @@ void drawVabUI(Game &g) {
        direction shown three ways: the source half dimmed, the destination
        half bright, and an arrowhead at the midpoint. Highlighted while the
        link is selected or hovered in the list. */
-    if(g.camera != nullptr && !g.vab.fuelLinks.empty()) {
+    if(g.camera != nullptr && !g.vab.build.fuelLinks.empty()) {
         ImDrawList *dl = ImGui::GetForegroundDrawList();
-        for(size_t i = 0; i < g.vab.fuelLinks.size(); i++) {
-            const BuildShip::FuelLink &fl = g.vab.fuelLinks[i];
+        for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {
+            const BuildShip::FuelLink &fl = g.vab.build.fuelLinks[i];
             const BuildPart *from = nullptr, *to = nullptr;
-            for(size_t k = 0; k < g.vab.parts.size(); k++) {
-                if(g.vab.parts[k].id == fl.from) { from = &g.vab.parts[k]; }
-                if(g.vab.parts[k].id == fl.to)   { to = &g.vab.parts[k]; }
+            for(size_t k = 0; k < g.vab.build.parts.size(); k++) {
+                if(g.vab.build.parts[k].id == fl.from) { from = &g.vab.build.parts[k]; }
+                if(g.vab.build.parts[k].id == fl.to)   { to = &g.vab.build.parts[k]; }
             }
             if(from == nullptr || to == nullptr) { continue; }
             double ax = 0, ay = 0, bx = 0, by = 0;
@@ -2635,7 +2635,7 @@ void drawVabUI(Game &g) {
             const ImVec2 mid((A.x + B.x) * 0.5f, (A.y + B.y) * 0.5f);
             const float len = sqrtf((B.x - A.x) * (B.x - A.x)
                                     + (B.y - A.y) * (B.y - A.y));
-            const bool hl = (g.vab_linkSel == (int)i) || (hoveredLink == (int)i);
+            const bool hl = (g.vab.linkSel == (int)i) || (hoveredLink == (int)i);
             const ImU32 dimC = hl ? IM_COL32(120, 200, 255, 130)
                                   : IM_COL32(255, 190, 60, 80);
             const ImU32 litC = hl ? IM_COL32(150, 215, 255, 255)

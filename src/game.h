@@ -140,6 +140,91 @@ enum class Scene {
     Vab       // the editor: no sim; physics-free BuildShip draw + editor widgets
 };
 
+/* The VAB editor's session state: the physics-free build tree, the LAUNCH
+   config, the hover/selection, the placement ghost, the symmetry + snap
+   modifiers, the fuel-link authoring and the detached subassemblies. Was ~30
+   loose vab_* fields on Game; grouped so the editor's state has one home
+   (Game::vab) and the scene work can hand it over wholesale.
+
+   All of it is EDITOR SESSION state, not save state: the build tree
+   round-trips through the ship-def files (vabSave / vabLoad), and the
+   subassemblies deliberately outlive the build they came from. The camera
+   parked across a VAB session is NOT here -- that is transition state, not
+   editor state (Game::vab_cam*). */
+struct VabState {
+    /* The physics-free build tree the editor edits (shipdef.h BuildShip).
+       Empty unless --vab loaded a ship (or the editor started one). Poses are
+       in the build ship's own frame S; the VAB scene draws it and re-aims the
+       orbit camera at `center`. */
+    BuildShip build;
+    glm::dvec3 center = glm::dvec3(0.0);   // bbox center of the parts (S frame)
+
+    /* LAUNCH config (the VAB top bar's body/scenario dropdowns). Names, not
+       pointers, so they survive and are easy to inspect; vabOpen seeds the
+       body to g.home and the scenario to "pad". vabLaunch resolves them
+       (g.sys.find / scenario_by_name), falling back to those defaults. */
+    std::string bodyName;      // body to launch from ("" -> g.home)
+    std::string scenarioName;  // scenario to launch ("" -> "pad")
+
+    int hover = -1;        // build-part index under the mouse; -1 = none
+    int selected = -1;     // build-part index selected (click); -1 = none
+    std::string armed;     // catalog part name armed from the palette ("" = none)
+    int hoverNode = -1;    // stack-node index on the hover parent under the mouse
+    int hoverParent = -1;  // build-part index the ghost would attach to
+
+    // --- the placement ghost (the armed part / subassembly's preview) ------
+    bool ghostValid = false;
+    bool ghostSurface = false;              // ghost = surface attach (vs stack node)
+    glm::dvec3 ghostPos;                    // ghost pose (S frame) when valid
+    glm::dmat3 ghostRot;
+    glm::dvec3 ghostPoint, ghostNormal;     // parent-local surface contact
+    std::string ghostParentNode, ghostChildNode;   // stack ghost's mated ids
+    /* Pending roll for the armed part (deg): Q/E spin it about the attach
+       axis while the ghost previews (stack edge: the mating axis; surface:
+       the contact normal). Stored on the placed part's angle/roll, then
+       reset to 0. */
+    double ghostRoll = 0.0;
+    double ghostRollUsed = 0.0;  // the effective (snap-rounded) roll the
+                                 // current ghost solves + placement stores
+    bool ghostRoot = false;      // the ghost is the ROOT of an empty build
+                                 // (placed at the S origin by a plain click)
+    int ghostAssembly = -1;      // the subassembly the current ghost previews
+                                 // (-1 = the armed catalog part)
+    std::vector<SymClone> ghostClones;   // the extra symmetric ghosts
+                                         // (radialSymmetryClones output)
+
+    // --- placement modifiers ---------------------------------------------
+    int symmetry = 1;   // radial copies for SURFACE placing (1 = single,
+                        // up to 8): clones ring the hovered parent's axis
+    bool snapLen = true;   // distance snap: the contact's height along
+                           // the parent axis (10 cm grid)
+    bool snapAng = true;   // angle snap: the contact's clock angle + the
+                           // part roll (10 deg grid)
+    // holding Alt bypasses BOTH snaps while pressed
+
+    /* Fuel-link authoring (the VAB window's "Add fuel link"): link mode
+       arms a two-click pick -- the source part, then the destination --
+       which appends a BuildShip::FuelLink (fuel flows from -> to). */
+    bool linkMode = false;
+    std::string linkFromId;   // the clicked source ("" = not picked yet)
+    int linkSel = -1;         // selected fuel-link index (-1 = none)
+
+    /* Detached subtrees (the VAB window's Subassemblies list): session
+       editor state -- NOT part of the ship file, and they outlive the
+       build they came from (usable across ships). Arming one makes the
+       placement ghost solve its ROOT like any part; placing grafts a
+       COPY and does not consume the entry (copy-paste). */
+    struct Subassembly {
+        std::string name;   // display: "<ship> > <root part id>"
+        BuildShip ship;     // its own tree, root at its own frame's identity
+    };
+    std::vector<Subassembly> subassemblies;
+    int armedAsm = -1;       // armed subassembly (exclusive with `armed`)
+
+    bool lmbPrev = false;    // LMB edge detect for click-to-place
+};
+
+
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
     Renderer &display;
@@ -171,68 +256,12 @@ struct Game {
 
     // --- scene + VAB editor state ------------------------------------------
     Scene scene = Scene::Flight;
-    /* The physics-free build tree the VAB edits (shipdef.h BuildShip). Empty
-       unless --vab loaded a ship (or the editor started one). Poses are in the
-       build ship's own frame S; the VAB scene draws it and re-aims the orbit
-       camera at vab_center. */
-    BuildShip vab;
-    glm::dvec3 vab_center = glm::dvec3(0.0);   // bbox center of vab parts (S frame)
-    /* LAUNCH config (the VAB top bar's body/scenario dropdowns). Names, not
-       pointers, so they survive and are easy to inspect; vabOpen seeds the
-       body to g.home and the scenario to "pad". vabLaunch resolves them
-       (g.sys.find / scenario_by_name), falling back to those defaults. */
-    std::string vab_bodyName;      // body to launch from ("" -> g.home)
-    std::string vab_scenarioName;  // scenario to launch ("" -> "pad")
-    int vab_hover = -1;      // build-part index under the mouse; -1 = none
-    int vab_selected = -1;   // build-part index selected (click); -1 = none
-    std::string vab_armed;   // catalog part name armed from the palette ("" = none)
-    int vab_hoverNode = -1;  // stack-node index on the hover parent under the mouse
-    int vab_hoverParent = -1;// build-part index the ghost would attach to
-    bool vab_ghostValid = false;
-    bool vab_ghostSurface = false;              // ghost = surface attach (vs stack node)
-    glm::dvec3 vab_ghostPos;                    // ghost pose (S frame) when valid
-    glm::dmat3 vab_ghostRot;
-    glm::dvec3 vab_ghostPoint, vab_ghostNormal; // parent-local surface contact
-    std::string vab_ghostParentNode, vab_ghostChildNode; // stack ghost's mated ids
-    /* Pending roll for the armed part (deg): Q/E spin it about the attach
-       axis while the ghost previews (stack edge: the mating axis; surface:
-       the contact normal). Stored on the placed part's angle/roll, then
-       reset to 0. */
-    double vab_ghostRoll = 0.0;
-    double vab_ghostRollUsed = 0.0;  // the effective (snap-rounded) roll the
-                                     // current ghost solves + placement stores
-    int vab_symmetry = 1;   // radial copies for SURFACE placing (1 = single,
-                            // up to 8): clones ring the hovered parent's axis
-    bool vab_snapLen = true;   // distance snap: the contact's height along
-                               // the parent axis (10 cm grid)
-    bool vab_snapAng = true;   // angle snap: the contact's clock angle + the
-                               // part roll (10 deg grid)
-    // holding Alt bypasses BOTH snaps while pressed
-    std::vector<SymClone> vab_ghostClones;   // the extra symmetric ghosts
-                                             // (radialSymmetryClones output)
-    /* Fuel-link authoring (the VAB window's "Add fuel link"): link mode
-       arms a two-click pick -- the source part, then the destination --
-       which appends a BuildShip::FuelLink (fuel flows from -> to). */
-    bool vab_linkMode = false;
-    std::string vab_linkFromId;   // the clicked source ("" = not picked yet)
-    int vab_linkSel = -1;         // selected fuel-link index (-1 = none)
-    /* Detached subtrees (the VAB window's Subassemblies list): session
-       editor state -- NOT part of the ship file, and they outlive the
-       build they came from (usable across ships). Arming one makes the
-       placement ghost solve its ROOT like any part; placing grafts a
-       COPY and does not consume the entry (copy-paste). */
-    struct VabSubassembly {
-        std::string name;   // display: "<ship> > <root part id>"
-        BuildShip ship;     // its own tree, root at its own frame's identity
-    };
-    std::vector<VabSubassembly> vab_subassemblies;
-    int vab_armedAsm = -1;       // armed subassembly (exclusive with vab_armed)
-    int vab_ghostAssembly = -1;  // the assembly the current ghost previews
-                                 // (-1 = the armed catalog part)
-    bool vab_ghostRoot = false;  // the ghost is the ROOT of an empty build
-                                 // (placed at the S origin by a plain click)
+    /* The VAB editor's session state (VabState, above): `vab.build` is the
+       physics-free tree, plus the hover / ghost / snap / link / subassembly
+       state that goes with it. */
+    VabState vab;
     /* The camera parked across a VAB session: drawVab owns the camera
-       (forced orbit around vab_center), so the flight pose -- in EITHER
+       (forced orbit around vab.center), so the flight pose -- in EITHER
        mode -- is snapshotted on vabOpen and restored on vabClose. */
     bool vab_camSaved = false;
     CameraMode vab_camMode = CAM_ORBIT;
@@ -243,7 +272,6 @@ struct Game {
     // INDEX into focusTargets, and that list shifts when the "ship" entry is
     // inserted around a VAB launch, so a saved index would go stale.
     TerrainBody *vab_camFocusBody = nullptr;
-    bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
