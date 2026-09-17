@@ -1054,8 +1054,11 @@ void Game::remove_ship(Vehicle *v) {
         bool seen = false;
         for(size_t i = 0; i < all.size(); i++) {
             Vehicle *x = all[i];
-            if(x->isCrewAboard()) { continue; }
+            // The pointer compare MUST come first: v was deleted above and
+            // `all` still holds it, and isCrewAboard() is virtual -- calling
+            // it on the freed entry reads its vptr out of freed memory.
             if(x == v) { seen = true; continue; }
+            if(x->isCrewAboard()) { continue; }
             if(seen) { next = x; break; }
         }
         if(next == nullptr) {
@@ -1087,6 +1090,18 @@ void Game::remove_ship(Vehicle *v) {
             }
             printf("Removed '%s'; active ship %d of %d: %s\n",
                    removedName.c_str(), i, n, ship->name.c_str());
+        } else {
+            /* Nothing left to control. Unreachable with today's fleet model
+               (a surviving ship or a free kerbal is selectable, and an
+               aboard crew character's carrier ship is always in `all` too),
+               but the guard above means `ship` would otherwise keep pointing
+               at the deleted vehicle: enter the no-ship state instead (the
+               same one load_game enters -- syncShipFocus drops the "ship"
+               focus entry and re-aims the orbit camera at home). */
+            ship = nullptr;
+            syncShipFocus();
+            printf("Removed '%s'; nothing left to control -- no active vessel\n",
+                   removedName.c_str());
         }
     } else {
         printf("Removed '%s' (active unchanged: %s)\n",

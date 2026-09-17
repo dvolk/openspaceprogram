@@ -688,8 +688,15 @@ int main(int argc, char **argv)
                    ship->name.c_str(), collectVehicles(sys).size());
             if(ship != sp2) { ok = false; }
             game.remove_ship(sp2);
+            /* The handoff must be checked BEFORE the printf below reads
+               ship->name: sp2 is deleted, so a failed handoff would leave
+               `ship` pointing at freed memory (remove_ship's handoff loop
+               used to dereference sp2 itself while looking for a successor
+               -- a use-after-free ASan caught here). */
+            if(ship == sp2 || ship == nullptr) { ok = false; }
             printf("remove 2 (active): active=%s size=%zu\n",
-                   ship->name.c_str(), collectVehicles(sys).size());
+                   ship ? ship->name.c_str() : "(none)",
+                   collectVehicles(sys).size());
             if(collectVehicles(sys).size() != base) { ok = false; }
 
             if(ok) {
