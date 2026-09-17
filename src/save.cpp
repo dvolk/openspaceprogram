@@ -105,6 +105,14 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         Kerbal *k = static_cast<Kerbal *>(v);
         s.aboard = (k->aboard != nullptr) ? k->aboard->name : "";
         s.aboard_part = (int)k->aboardPart;
+        // a free (EVA) kerbal lives in the world -- save its pose like a
+        // ship's (an aboard one's pose is unused on load).
+        s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
+        s.pose.rotating = v->frame->isRotFrame();
+        v->frameS(s.pose.pos, s.pose.rot);
+        s.pose.vel = v->GetVel();
+        s.pose.angvel = GetAngVelocity(v->hull);
+        s.onRails = v->onRails;
         return s;
     }
     s.home = (v->home != nullptr) ? v->home->name : "";
@@ -285,6 +293,9 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->setVelocity(s.pose.vel);
         SetAngVelocity(k->hull, s.pose.angvel);
         body->ships.push_back(k);
+        // a free kerbal saved on the rails (coasting at high warp) stays
+        // parked -- the ships' phase-2 pass skips crew.
+        if(s.onRails) { k->goOnRails(); }
     } else {
         std::map<std::string, Vehicle *>::const_iterator it = byName.find(s.aboard);
         if(it == byName.end()) {

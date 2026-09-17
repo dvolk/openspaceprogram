@@ -165,6 +165,33 @@ int main() {
     CHECK(crewOut.aboard_part == 0);
     CHECK(crewOut.parts.empty());   // the ship fields are not written for a crew
 
+    // a free (EVA) kerbal carries its pose (the load restores it)
+    SaveShip eva;
+    eva.name = "kerbal";
+    eva.defPath = "./res/ships/kerbal.json";
+    eva.is_crew = true;
+    eva.aboard = "";
+    eva.pose.body = "Duna";
+    eva.pose.rotating = true;
+    eva.pose.pos = glm::dvec3(2500.0, -32000.0, 1500.0);
+    eva.pose.rot = glm::dmat3(
+        0.999, 0.0, 0.043,
+        0.0, 1.0, 0.0,
+        -0.043, 0.0, 0.999);
+    eva.pose.vel = glm::dvec3(1.5, -2.25, 0.75);
+    eva.pose.angvel = glm::dvec3(0.01, -0.02, 0.03);
+    eva.onRails = true;   // coasting on the rails (the load re-parks it)
+    SaveShip evaOut = saveShipFromJson(saveShipToJson(eva));
+    CHECK(evaOut.is_crew == true);
+    CHECK(evaOut.aboard.empty());
+    CHECK(evaOut.pose.body == "Duna");
+    CHECK(evaOut.pose.rotating == true);
+    CHECK(vnear(evaOut.pose.pos, eva.pose.pos));
+    CHECK(mnear(evaOut.pose.rot, eva.pose.rot));
+    CHECK(vnear(evaOut.pose.vel, eva.pose.vel));
+    CHECK(vnear(evaOut.pose.angvel, eva.pose.angvel));
+    CHECK(evaOut.onRails == true);
+
     // --- the meta ----------------------------------------------------------
     SaveMeta meta;
     meta.format = 1;

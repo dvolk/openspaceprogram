@@ -337,8 +337,23 @@ int main(int argc, char **argv)
         // and puts each ship in the world state it was saved in (live or
         // railed) -- so the scenario reposition and the park-on-rails below
         // are both skipped.
+        //
+        // A bare slot name (a UI save, e.g. "save1") is meant for
+        // saves/<slot>; if the given path has no save.json but that slot
+        // does, use the slot (the CLI otherwise takes a full path).
+        std::string load_dir = args.load_name;
+        if(access((load_dir + "/save.json").c_str(), F_OK) != 0 &&
+           access(("saves/" + load_dir + "/save.json").c_str(), F_OK) == 0) {
+            load_dir = "saves/" + load_dir;
+            printf("Load: using saves slot '%s'\n", load_dir.c_str());
+        }
         game.partsshader = partsshader;   // load_game builds parts with it
-        load_game(game, args.load_name);
+        try {
+            load_game(game, load_dir);
+        } catch(const std::exception &e) {
+            printf("Load failed: %s\n", e.what());
+            exit(1);
+        }
         first = game.ship;
         check_gl_error();
         ship = first;
@@ -791,7 +806,12 @@ int main(int argc, char **argv)
                 // --save: capture the live game state (the fleet + crew +
                 // clock) into the save directory before the loop exits.
                 if(!args.save_name.empty()) {
-                    save_game(game, args.save_name);
+                    try {
+                        save_game(game, args.save_name);
+                    } catch(const std::exception &e) {
+                        printf("Save failed: %s\n", e.what());
+                        exit(1);
+                    }
                     fflush(stdout);
                 }
                 running = false;

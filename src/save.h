@@ -92,11 +92,13 @@ struct SaveDock {
 };
 
 // One vehicle: a ship (is_crew false) or a kerbal (is_crew true). The ship
-// fields are empty for a kerbal; the crew fields for a ship.
+// fields are empty for a kerbal; the crew fields for a ship. `pose` is
+// shared: a free (EVA) kerbal's world pose (an aboard one's is unused).
 struct SaveShip {
     std::string name;
     std::string defPath;
     bool is_crew = false;
+    SavePose pose;
 
     // ship (is_crew false)
     std::string home;         // home body name
@@ -105,8 +107,7 @@ struct SaveShip {
     std::vector<SavePart> parts;
     std::vector<SaveFuelLink> fuel_links;
     std::string controller;   // part id ("" = the default rule)
-    SavePose pose;
-    bool onRails = false;
+    bool onRails = false;     // coasting on the rails (ships; also a free kerbal)
     float throttle = 0.0f;
     int active_stage = 1;
     int total_stages = 1;
@@ -220,6 +221,9 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     if(s.is_crew) {
         if(!s.aboard.empty()) { j["aboard"] = s.aboard; }
         j["aboard_part"] = s.aboard_part;
+        // a free (EVA) kerbal's pose (an aboard one's is unused on load)
+        j["pose"] = savePoseToJson(s.pose);
+        j["onRails"] = s.onRails;
         return j;
     }
     j["home"]         = s.home;
@@ -265,6 +269,8 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(s.is_crew) {
         if(j.contains("aboard") && j["aboard"].is_string()) { s.aboard = j["aboard"].get<std::string>(); }
         if(j.contains("aboard_part") && j["aboard_part"].is_number()) { s.aboard_part = j["aboard_part"].get<int>(); }
+        if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
+        if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
         return s;
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }
