@@ -504,6 +504,11 @@ bool vabLoad(Game &g, const char *path) {
     g.vab.selected = -1;
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
+    // linkSel indexes the tree that was just replaced. It is bounds-checked
+    // wherever it is read, so a stale one cannot overrun -- but it would still
+    // flip the Del key from "detach" to a destructive "delete" with nothing
+    // visibly selected.
+    g.vab.linkSel = -1;
     printf("[vab] loaded %s (%d parts)\n", path, (int)g.vab.build.parts.size());
     fflush(stdout);
     g.toast("Loaded %s (%d parts)", path, (int)g.vab.build.parts.size());
@@ -533,6 +538,12 @@ void vabLaunch(Game &g) {
     // capsule's final (orbit) pose, not the pad's.
     g.ships.spawn_crew(v, g.sys);   // crew aboard the capsules, like startup
     g.select_ship(v);
+    /* The parked flight pose is dead: the launched ship is the active one now
+       and select_ship has just aimed the camera at it, so there is nothing to
+       go back to. Leaving the park set would make the NEXT vabOpen skip
+       parking (parkCamera no-ops when a pose is already parked) and the
+       "Back to game" after that restore a pose from before this launch. */
+    g.camParked = false;
     vabClearHover(g);
     g.vab.armed.clear();
     g.vab.ghostRoll = 0.0;
@@ -592,6 +603,7 @@ void vabOpen(Game &g) {
     g.vab.selected = -1;
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
+    g.vab.linkSel = -1;      // no link selected on a fresh entry
     g.scene = Scene::Vab;
     vabAimCamera(g);
     printf("[vab] entered the editor (sim paused)\n");
