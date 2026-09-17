@@ -102,6 +102,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // The pass body is verbatim from main's render section; its globals
     // are Game members (aliased so the body reads the same).
     Vehicle *ship = g.ship;
+    // Render frame: the active ship's frame, or the home body's frame when
+    // there is no ship (the orbit-view state). Every Draw site transforms
+    // world geometry into this frame, so it must be a live frame either way.
+    Frame *rf = ship ? ship->frame : g.home->frame;
+    // The body "we're on" (the one pads cull to + the one drawn at origin):
+    // the ship's body, or the home body when there is no ship.
+    TerrainBody *localBody = ship ? ship->m_parent : g.home;
     const std::vector<TerrainBody *> &planets = g.sys.bodies;
     TerrainBody *sun = g.sun;
     Camera *camera = g.camera;
@@ -136,7 +143,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
     TimeSeries &energy_series = view.energy_series;
     TimeSeries &angmom_series = view.angmom_series;
 
-    const glm::dvec3 com = ship->get_center_of_mass();
+    const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
     if(g.camera->mode == CAM_ORBIT) {
         camera->Follow(g.focusWorldPos(g.focusBody));
         // The orientation the orbit offset lives in: the ship's attitude
@@ -191,7 +198,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
             }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
-            camera->ref = (b == ship->m_parent && ship->frame->isRotFrame())
+            camera->ref = (b == localBody && rf->isRotFrame())
                 ? glm::dmat3(1.0)
                 : glm::dmat3(b->frame->getRotFrame()->orient);
         }
@@ -203,8 +210,8 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // orbit basis. The chase cam follows both, so the whole view shakes
     // with the ship (KSP's engine-rumble feel); a body focus and the
     // free cam stay rock-steady.
-    camShakeStep(g, ship);
-    if(g.camera->mode == CAM_ORBIT &&
+    if(ship) { camShakeStep(g, ship); }
+    if(g.camera->mode == CAM_ORBIT && ship &&
        g.focusTargets[g.focusBody].body == nullptr) {
         camera->focusPoint += g.shake_off;
         camera->ref = shakeRot(g.shake_ang) * camera->ref;
@@ -231,7 +238,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
     if(g.draw_starfield) {
         glDepthMask(GL_FALSE);
         glDisable(GL_DEPTH_TEST);
-        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(ship->frame));
+        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(rf));
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
     }
@@ -241,7 +248,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
         // the active ship is not on that body
         for(auto *b : planets) {
             for(auto *p : b->pads) {
-                p->Draw(camera, ship->m_parent, ship->frame);
+                p->Draw(camera, localBody, rf);
             }
         }
         // render frame = the active ship's frame; idle ships in a
@@ -250,16 +257,16 @@ void draw3d(Game &g, TransferPlanner &planner) {
         // crew live on their ship, not here), so no aboard-skip is needed.
         for(auto *b : planets) {
             for(auto *s : b->ships) {
-                s->Draw(camera, ship->frame);
+                s->Draw(camera, rf);
             }
         }
     }
 
     for(auto&& planet : planets) {
-        if(planet == ship->m_parent) {
+        if(planet == localBody) {
             //this is the planet we're on. This means its position is always 0, 0, 0
 
-            if(ship->frame->isRotFrame()) {
+            if(rf->isRotFrame()) {
                 // we're in its rotational frame
                 planet->transform = glm::dmat4(1.0);
             }
@@ -270,7 +277,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
         }
         else {
             // other planets
-            glm::dvec3 translate = planet->frame->GetPositionRelTo(ship->frame);
+            glm::dvec3 translate = planet->frame->GetPositionRelTo(rf);
             planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
         }
     }
@@ -281,7 +288,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
         // pass draws, so new children are attached before the render.
         planet->Update(camera, g.args.terrain_px, g.jobs);
         if(g.world_drawing == true) {
-            planet->Draw(camera, sun, ship->frame);
+            planet->Draw(camera, sun, rf);
         }
     }
 
@@ -289,6 +296,10 @@ void draw3d(Game &g, TransferPlanner &planner) {
       end 3d stuff drawn here
     */
 
+    // Ship telemetry (the ShipView the HUD / VESSEL / orbital map read):
+    // defined only with a ship. In the orbit-view state (no ship) the
+    // windows that read it are hidden, so it stays at its boot defaults.
+    if(ship) {
     mu = ship->m_parent->mu;
 
     // surf pos??
@@ -370,6 +381,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
 
     longitude = atan2(dir.x, dir.z);
     latitude = asin(dir.y);
+    }
 
     // Atmosphere rims: transparent Fresnel shells, drawn over the opaque
     // bodies (and the starfield background, which was drawn first) so the
@@ -381,13 +393,13 @@ void draw3d(Game &g, TransferPlanner &planner) {
     if(g.world_drawing == true) {
         for(auto&& planet : planets) {
             if(!g.args.no_ocean) {
-                planet->DrawOcean(camera, sun, ship->frame, g.time);
+                planet->DrawOcean(camera, sun, rf, g.time);
             }
             if(!g.args.no_clouds) {
-                planet->DrawClouds(camera, sun, ship->frame, g.time);
+                planet->DrawClouds(camera, sun, rf, g.time);
             }
             if(!g.args.no_atmosphere) {
-                planet->DrawAtmosphere(camera, sun, ship->frame);
+                planet->DrawAtmosphere(camera, sun, rf);
             }
         }
     }
@@ -395,7 +407,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
     /* draw engine plume */
     glm::dmat4 View = camera->GetView();
     glm::mat4 Projection = camera->GetProjection();
-    if(ship->m_thrust > 0) {
+    if(ship && ship->m_thrust > 0) {
         for(Part *p : ship->parts) {
             if(!p->isThruster()) { continue; }
             /* an air-breathing engine has no rocket plume (its exhaust is a
@@ -457,7 +469,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
        exhaust direction and the camera axis LEAST aligned with it, so
        the flat strip stays near screen-facing for every RCS direction
        (edge-on it would vanish). */
-    if(ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12) {
+    if(ship && ship->rcsFiring && glm::length2(ship->rcsDir) > 1e-12) {
         const glm::dvec3 z = ship->rcsWorldDir();  // thrust dir; the mesh extends toward -z
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
         const glm::dvec3 seed = (std::abs(glm::dot(camR, z)) < std::abs(glm::dot(g.camera->up, z)))
@@ -523,6 +535,10 @@ void draw3d(Game &g, TransferPlanner &planner) {
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // The flight reference markers (nose / prograde / retrograde / radial /
+    // normal) and the transfer / docking markers are all ship-relative:
+    // drawn only with a ship. The orbit-view state has nothing to frame on.
+    if(ship) {
     g.front_indicator->pos = facing;
     // Fixed-orientation nose marker: the orbit camera already tracks the
     // ship's roll (up = the nose), so the billboard is roll-invariant and
@@ -585,6 +601,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
             g.relvel_retro_indicator->pos = relvel;
             g.relvel_retro_indicator->Draw(camera, M_PI);
         }
+    }
     }
     // horizon_indicator->pos = groundHed;
     // horizon_indicator->Draw(camera, M_PI);

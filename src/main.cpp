@@ -318,7 +318,10 @@ int main(int argc, char **argv)
     std::vector<FleetEntry> fleet_entries;
     if(!args.fleet_file.empty()) {
         fleet_entries = load_fleet(args.fleet_file.c_str()).ships;
-    } else {
+    } else if(!args.ship_files.empty() || !args.body_name.empty()) {
+        // --ship names the ship; a lone --body implies the default racer on
+        // it. Neither -> no ship: the "orbit view" state (main menu + home
+        // planet), entered by booting with neither --ship nor --body.
         if(args.ship_files.empty()) { args.ship_files.push_back("res/ships/racer.json"); }
         for(size_t i = 0; i < args.ship_files.size(); i++) {
             FleetEntry e;
@@ -453,12 +456,18 @@ int main(int argc, char **argv)
     const float camZFar = 1e13;
 
     // One camera, two modes (orbit + free): starts in Orbit mode focused on
-    // the ship; --free-cam-* / use_free_cam drops it into free flight at the
-    // (possibly overridden) pose. The terrain LOD reads the live one.
-    Camera *cam = new Camera(ship->partPos(ship->controller),
-                             camFov, camAspect, camZNear, camZFar);
+    // the ship (or the home body when there is no ship); --free-cam-* /
+    // use_free_cam drops it into free flight at the (possibly overridden)
+    // pose. The terrain LOD reads the live one.
+    const glm::dvec3 camFocus = ship ? ship->partPos(ship->controller)
+                                     : home->frame->root_pos;
+    Camera *cam = new Camera(camFocus, camFov, camAspect, camZNear, camZFar);
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
+    if(ship == nullptr) {
+        // The orbit-view state (no ship): a few radii out on the home planet.
+        cam->distance = 3.0 * home->radius;
+    }
 
     /* --vab: open the editor scene with a ship def loaded as a physics-free
        build tree. The flight ships still exist but the Vab scene skips tick
@@ -501,15 +510,29 @@ int main(int argc, char **argv)
         cam->setFreePose(p, f, u);
     }
 
-    // Bodies the orbit camera can target (the ship is the default). Built from
-    // the loaded system: the ship, then every body in the system (in file
-    // order), so G cycles through all of them. game.focusWorldPos() resolves
-    // one to a ship-frame position.
-    game.focusTargets.push_back({ "ship", nullptr });
+    // Bodies the orbit camera can target. With a ship, the ship is the
+    // default (index 0); with no ship (the orbit-view state) the bodies start
+    // at index 0 and the home body is the default. game.focusWorldPos()
+    // resolves one to a render-frame position.
+    if(game.ship != nullptr) {
+        game.focusTargets.push_back({ "ship", nullptr });
+    }
     for (TerrainBody *b : sys.bodies) {
         game.focusTargets.push_back({ b->name.c_str(), b });
     }
     game.numFocusTargets = (int)game.focusTargets.size();
+    // Default focus: the ship (index 0) when there is one, else the home body.
+    if(game.ship == nullptr) {
+        for(int i = 0; i < game.numFocusTargets; i++) {
+            if(game.focusTargets[i].body == game.home) { game.focusBody = i; break; }
+        }
+        // The orbit-view state: the world runs, the camera orbits the home
+        // planet, and the main menu is up so the entry points (Go to VAB,
+        // Save/Load, ...) are visible. The [boot] line is the e2e anchor.
+        ui::SetOpen("Main Menu", true);
+        printf("[boot] no ship: orbit view of %s\n", home->name.c_str());
+        fflush(stdout);
+    }
 
     int screenshot_count = 0;
     bool vab_place_fired = false;    // the --vab-place hook fires once

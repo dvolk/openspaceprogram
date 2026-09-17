@@ -19,10 +19,13 @@
 #include "shipdef.h"  // PartDef (crew_capacity)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
+    // Render frame: the ship's frame, or the home body's frame when there is
+    // no ship (the orbit-view state). A body focus resolves into it.
+    Frame *rf = ship ? ship->frame : home->frame;
     if (focusTargets[i].body == nullptr) {
-        return ship->get_center_of_mass();
+        return ship->get_center_of_mass();   // the "ship" target only exists with a ship
     }
-    return focusTargets[i].body->frame->GetPositionRelTo(ship->frame);
+    return focusTargets[i].body->frame->GetPositionRelTo(rf);
 }
 
 /* Build the per-window UI options + the window registry. This was a block
@@ -383,8 +386,12 @@ void Game::select_ship(Vehicle *v) {
               v->name.c_str());
         return;
     }
-    ship->releaseControl();
-    ship->goOnRails();
+    // The old active ship (null when launching from the orbit-view state,
+    // where there was no ship to release).
+    if(ship != nullptr) {
+        ship->releaseControl();
+        ship->goOnRails();
+    }
     v->leaveRails();
     ship = v;
     // The thrust latch is per-active-ship: a new ship starts with thrust
@@ -393,6 +400,13 @@ void Game::select_ship(Vehicle *v) {
     if(time_accel >= kRailsWarp) {
         time_accel = 10;
         toast("Active ship: %s, warp 10x", ship->name.c_str());
+    }
+    // A ship is active now. The "ship" focus target is absent after an
+    // orbit-view boot (no ship then), so put it back at index 0 before the
+    // focus below -- otherwise focusBody 0 would land on a body.
+    if(focusTargets.empty() || focusTargets[0].body != nullptr) {
+        focusTargets.insert(focusTargets.begin(), { "ship", nullptr });
+        numFocusTargets = (int)focusTargets.size();
     }
     focusBody = 0;   // back to the "ship" focus target
     if(camera->mode == CAM_ORBIT) {
@@ -587,6 +601,11 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
    through select_ship, so the old controller parks on rails and the new
    one re-enters physics. */
 void Game::toggle_eva() {
+    if(ship == nullptr) {
+        // orbit-view state: there is no ship (hence no kerbal) to EVA.
+        toast("EVA: no active ship");
+        return;
+    }
     if(ship->isEva()) {
         if(lastShip != nullptr && !lastShip->isEva()) {
             select_ship(lastShip);

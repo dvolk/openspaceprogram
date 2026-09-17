@@ -175,10 +175,13 @@ static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat
                 (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
             g.time_accel /= 10;
             if(leaving_rails_warp) {
-                // dropped out of rails warp: the active ship
-                // re-enters physics (idle ships stay parked)
-                g.ship->leaveRails();
-                printf("Rails warp: exited, time accel %d\n", g.time_accel);
+                // dropped out of rails warp: the active ship re-enters physics
+                // (idle ships stay parked). No ship (orbit-view state) -> just
+                // the clock speed changes.
+                if(g.ship != nullptr) {
+                    g.ship->leaveRails();
+                    printf("Rails warp: exited, time accel %d\n", g.time_accel);
+                }
             }
             g.toast("Time accel: %dx", g.time_accel);
         }
@@ -264,14 +267,14 @@ static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat
         // (evaArmCommands consumes the request on the next tick;
         // an event edge, because a quick tap can end before any
         // tick polls the key state).
-        if(!repeat && g.ship->isEva()) {
+        if(!repeat && g.ship && g.ship->isEva()) {
             static_cast<Kerbal *>(g.ship)->jumpPressed = true;
         }
         // separate the active stage (one-shot; auto-repeat would
         // keep dropping stages). Only while flying a ship with
         // time running (a paused separation would leave the
         // survivors frozen mid-air).
-        if(!repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+        if(!repeat && g.ship && g.camera->mode == CAM_ORBIT && g.time_accel > 0
            && !g.ship->isEva()) {
             // separate the active stage (one-shot; auto-repeat would
             // keep dropping stages). Game::stage() handles the rails
@@ -283,7 +286,7 @@ static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat
     if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {
         // split the most recent docked seam off the active ship
         // (Game::undock handles the rails wake; one-shot)
-        if(!repeat && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+        if(!repeat && g.ship && g.camera->mode == CAM_ORBIT && g.time_accel > 0
            && !g.ship->isEva()) {
             g.undock();
         }

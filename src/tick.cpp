@@ -48,10 +48,13 @@ void tick(Game &g) {
         // held, below) and then re-applied before every substep; clear
         // them first so a tick without the keys doesn't keep pushing or
         // slewing from the last one. RCS translation is armed the same way
-        // (the Rcs* Commands below) and consumed in applyRcsForce.
-        g.ship->clearThrust();
-        g.ship->clearRotCmd();
-        g.ship->clearRcs();
+        // (the Rcs* Commands below) and consumed in applyRcsForce. No ship
+        // (orbit-view state) -> nothing to clear; the world still ticks below.
+        if(g.ship) {
+            g.ship->clearThrust();
+            g.ship->clearRotCmd();
+            g.ship->clearRcs();
+        }
 
         const bool *key = SDL_GetKeyboardState(nullptr);
         const Uint16 modState = SDL_GetModState();
@@ -87,6 +90,9 @@ void tick(Game &g) {
 
         if (g.camera->mode == CAM_ORBIT) {
             bool game_running = (g.time_accel > 0);
+            // The active-ship controls (rails-wake, EVA, slew, stick, RCS):
+            // only with a ship. The orbit-view state has nothing to steer.
+            if(g.ship) {
             /* touching the controls wakes a railed active ship: it
                re-enters physics (you cannot maneuver on rails). A rails
                warp (accel > 10) drops to 1x on the way out; a ship railed
@@ -176,6 +182,7 @@ void tick(Game &g) {
             if (slotActive(Slot::RcsLeft))    { g.ship->Command(ShipCmd(RcsRight, -1.0f), game_running); }
             if (slotActive(Slot::RcsRight))   { g.ship->Command(ShipCmd(RcsRight, +1.0f), game_running); }
             }
+            }
         }
 
         // Advance the analytic sim clock by exactly the physics timestep
@@ -203,8 +210,9 @@ void tick(Game &g) {
 
             // The active ship's SOI owner before this tick's frame
             // bookkeeping (checked after the branch, below): crossing into
-            // a different body's SOI drops warp to 1x.
-            TerrainBody *soiOwner = g.ship->m_parent;
+            // a different body's SOI drops warp to 1x. Null when there is no
+            // ship (orbit-view state), so the handoff check below no-ops.
+            TerrainBody *soiOwner = g.ship ? g.ship->m_parent : nullptr;
 
             // Proximity: wake ships near the active ship (and, on a close
             // approach, wake the active ship + cap the warp). Runs before the
@@ -314,7 +322,7 @@ void tick(Game &g) {
                SOI (or back out to the parent's) -- drop warp to 1x so the
                encounter is playable instead of warped straight through.
                A pause (0) is the player's call and stays put. */
-            if(soiOwner != g.ship->m_parent && g.time_accel > 1) {
+            if(g.ship && soiOwner != g.ship->m_parent && g.time_accel > 1) {
                 printf("SOI switch: '%s' now around %s (was %s), warp -> 1\n",
                        g.ship->name.c_str(), g.ship->m_parent->name.c_str(),
                        soiOwner->name.c_str());

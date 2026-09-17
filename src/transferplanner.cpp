@@ -80,6 +80,14 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     /* Rebuild the target list, then recompute the solution on input
        change or every 30 frames. */
     xferTargets.clear();
+    if(g.ship == nullptr) {
+        // No active ship: nothing to transfer from. Drop any stale target /
+        // plan so the window shows an empty state (orbit-view boot).
+        xfer_target = -1;
+        xfer.valid = false;
+        xfer.burn_dir = glm::dvec3(0.0);
+        return;
+    }
     {
         TerrainBody *pb = g.ship->frame->body;
         for(auto *b : g.sys.bodies) {

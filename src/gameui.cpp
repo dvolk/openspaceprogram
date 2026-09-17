@@ -214,14 +214,16 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
        altitude + ground speed) in the rotating frame.
        Row 2: Kerbin clock (regular font, centered). */
     ui::Window("HUD", g.o_hud, [&] {
-        const double asl = distance - ship->m_parent->radius;
-        const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
-        const bool surface_mode = ship->frame->isRotFrame() && asl < 30000.0;
-        const double alt = surface_mode ? agl : asl;
-        const double spd = surface_mode ? glm::length(surf_vel) : speed;
-        ImGui::PushFont(g.bigger);
-        ImGui::Text("%06dm/s   %08dm", (int)spd, (int)alt);
-        ImGui::PopFont();
+        if(ship) {
+            const double asl = distance - ship->m_parent->radius;
+            const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
+            const bool surface_mode = ship->frame->isRotFrame() && asl < 30000.0;
+            const double alt = surface_mode ? agl : asl;
+            const double spd = surface_mode ? glm::length(surf_vel) : speed;
+            ImGui::PushFont(g.bigger);
+            ImGui::Text("%06dm/s   %08dm", (int)spd, (int)alt);
+            ImGui::PopFont();
+        }
         if(sys.home) {
             const std::string line = fmt_cal_time(sys.home->cal, time);
             if(!line.empty()) {
@@ -1083,6 +1085,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Game Debug Info", g.o_debug, [&] {
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         ImGui::Text("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
             CalTime ct = sys.home->cal.at(time);
@@ -1189,6 +1192,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // Labels are abbreviated to <= 3 chars and right-padded to the
     // same width so the values start at a tidy column.
     ui::Window("Orbital", g.o_orbit, [&] {
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         ImGui::Text("Bod: %s", ship->m_parent->name.c_str());
         ImGui::Text("Vel: %.1fm/s", speed);
         ImGui::Text("Alt: %.1fm", distance);
@@ -1248,6 +1252,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
     // Labels right-padded to 3 chars, same as ORBITAL.
     ui::Window("Surface", g.o_surface, [&] {
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         ImGui::Text("Alt: %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
         ImGui::Text("ASL: %.1fm", distance - ship->m_parent->radius);
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
@@ -1310,7 +1315,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     }
     ImGui::Separator();
     if(ImGui::Button("Spawn a copy of the active ship")) {
-        if(!ship->defPath.empty()) {
+        if(ship && !ship->defPath.empty()) {
             ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys);
         } else {
             printf("Spawn: active ship has no def (test ship)\n");
@@ -1320,6 +1325,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Vessel Info", g.o_vessel, [&] {
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         ImGui::Text("Ship: %s", ship->name.c_str());
         ImGui::Text("Stage: %d / %d  (SPACE to drop)",
                     ship->activeStage(), ship->numStages());
@@ -1442,6 +1448,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Resources", g.o_resources, [&] {
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         // aggregate across the active ship's parts (any ship layout); only
         // the resource types the ship has capacity for are shown, so the
         // window never lists a bar it can't hold
@@ -1691,6 +1698,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         g.o_map.flags = 0;
     }
     ui::Window("Orbital Map", g.o_map, [&] {
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         // Right-click anywhere in the window cycles the chrome:
         // full window -> bare map -> no window -> full window.
         // Over the map this is safe: imgui owns the mouse here, so
