@@ -379,7 +379,12 @@ void pickAt(Game &g, int px, int py) {
 /* Keep the "ship" focus entry in sync with the active ship and point the
    camera focus at it -- or at home (the orbit view) when there is none.
    select_ship enters the ship state; load_game can enter OR leave it (a
-   save may carry no active ship), so both route through this. */
+   save may carry no active ship), so both route through this.
+
+   The orbit camera follows the state change: it keeps its old distance,
+   so re-centering must re-scale too (50 m around a planet centre is
+   inside the planet; 3 radii around a ship is space). Home sits at its
+   own frame's origin, which is the render frame in the no-ship state. */
 void Game::syncShipFocus() {
     if(ship != nullptr) {
         if(focusTargets.empty() || focusTargets[0].body != nullptr) {
@@ -396,6 +401,19 @@ void Game::syncShipFocus() {
         }
     }
     numFocusTargets = (int)focusTargets.size();
+    // camera is null on a --load boot (main.cpp creates it after
+    // load_game), and a free camera is the pilot's own pose.
+    if(camera != nullptr && camera->mode == CAM_ORBIT) {
+        if(ship != nullptr) {
+            camera->Follow(ship->get_center_of_mass());
+            // a kerbal is 0.75 m tall; 50 m would lose it
+            camera->distance = ship->isEva() ? 5.0 : 50.0;
+        } else {
+            camera->Follow(glm::dvec3(0.0));
+            // the orbit-view default (the no-ship boot parks 3 radii out)
+            camera->distance = 3.0 * home->radius;
+        }
+    }
 }
 
 void Game::select_ship(Vehicle *v) {
@@ -425,13 +443,9 @@ void Game::select_ship(Vehicle *v) {
         toast("Active ship: %s, warp 10x", ship->name.c_str());
     }
     // A ship is active now: the "ship" focus target may be absent (an
-    // orbit-view boot), so sync it in at index 0 before focusing.
+    // orbit-view boot), so sync it in at index 0 -- and re-center + re-scale
+    // the orbit camera onto the new ship.
     syncShipFocus();
-    if(camera->mode == CAM_ORBIT) {
-        camera->Follow(ship->get_center_of_mass());
-        // a kerbal is 0.75 m tall; 50 m would lose it
-        camera->distance = ship->isEva() ? 5.0 : 50.0;
-    }
     // "N of M" in the canonical order (collectVehicles, ships.h) -- the
     // same order F6 and the Ship List window walk. N = v's position, M = the
     // whole fleet (ships + aboard crew).
