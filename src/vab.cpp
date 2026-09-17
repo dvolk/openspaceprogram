@@ -493,11 +493,17 @@ bool vabLoad(Game &g, const char *path) {
         return false;
     }
     /* Replace the current build, then re-aim the editor at the new tree.
-       vabOpen is already idempotent here (vab_camSaved is set), so it
-       re-aims the orbit camera at the new build without re-parking the
-       flight camera or re-seeding the (already set) launch config. */
+       This is NOT a scene entry -- the editor is already live -- so it is
+       vabAimCamera, not vabOpen: no re-park of the flight camera, no re-seed
+       of the (already set) launch config, and no "entered the editor" toast.
+       The interaction state is dropped because it indexes the tree that was
+       just replaced (vabOpen did all of this as a side effect). */
     g.vab.build = BuildShip::fromShipDef(def);
-    vabOpen(g);
+    vabAimCamera(g);
+    vabClearHover(g);
+    g.vab.selected = -1;
+    g.vab.linkMode = false;
+    g.vab.linkFromId.clear();
     printf("[vab] loaded %s (%d parts)\n", path, (int)g.vab.build.parts.size());
     fflush(stdout);
     g.toast("Loaded %s (%d parts)", path, (int)g.vab.build.parts.size());
@@ -542,33 +548,12 @@ void vabLaunch(Game &g) {
     }
 }
 
-void vabOpen(Game &g) {
-    // seed the launch config once (the dropdowns' initial selection): the
-    // home body + the pad. Left alone afterwards, so a body/scenario chosen
-    // in a prior VAB session is kept when the editor is re-entered.
-    if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
-    if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
-    // park the flight camera (in EITHER mode -- free does not re-aim
-    // itself) for the duration of the VAB session
-    if(g.camera != nullptr && !g.vab_camSaved) {
-        g.vab_camSaved = true;
-        g.vab_camMode = g.camera->mode;
-        g.vab_camPos = g.camera->pos;
-        g.vab_camFwd = g.camera->forward;
-        g.vab_camUp = g.camera->up;
-        g.vab_camDistance = g.camera->distance;
-        g.vab_camYaw = g.camera->orbitYaw;
-        g.vab_camPitch = g.camera->orbitPitch;
-        // The current focus as a body (null = the "ship" entry). On a
-        // --vab boot the focus list is not built yet (it comes after the
-        // scene entry in main.cpp), so fall back to the default focus:
-        // the ship, or home when there is none.
-        g.vab_camFocusBody =
-            (g.focusBody >= 0 && g.focusBody < (int)g.focusTargets.size())
-            ? g.focusTargets[g.focusBody].body
-            : (g.ship != nullptr ? nullptr : g.home);
-    }
-    // aim the orbit camera at the build tree (empty build -> the origin)
+/* Aim the editor's orbit camera at the build tree: the parts' bbox centre
+   becomes vab.center (the render frame is S shifted by -center) and the
+   distance fits the build -- an empty build sits 30 m from the S origin.
+   This is the camera half of entering the editor, split out because it is
+   also what a replaced tree needs (vabLoad) with no scene transition at all. */
+void vabAimCamera(Game &g) {
     g.vab.center = glm::dvec3(0.0);
     double dist = 30.0;
     if(!g.vab.build.parts.empty()) {
@@ -580,23 +565,38 @@ void vabOpen(Game &g) {
         g.vab.center = (lo + hi) * 0.5;
         dist = glm::length(hi - lo) * 1.2 + 10.0;
     }
-    vabClearHover(g);
-    g.vab.selected = -1;
-    g.vab.linkMode = false;
-    g.vab.linkFromId.clear();
-    const bool entering = (g.scene != Scene::Vab);   // false when a load re-aims
-    g.scene = Scene::Vab;
     if(g.camera != nullptr) {
         g.camera->toOrbit(g.vab.center);   // also from Free mode
         g.camera->distance = dist;
     }
-    // A load (vabLoad) already sits in the editor: re-aiming is not a fresh
-    // entry, so the "just entered / sim paused" line would be noise there.
-    if(entering) {
-        printf("[vab] entered the editor (sim paused)\n");
-        fflush(stdout);
-        g.toast("VAB -- the simulation is paused");
-    }
+    // The e2e anchor for "the editor camera followed the tree" -- a vabLoad
+    // that stopped re-aiming would otherwise pass its cases silently.
+    printf("[vab] camera aimed at the build: %d part(s), %.1f m out\n",
+           (int)g.vab.build.parts.size(), dist);
+    fflush(stdout);
+}
+
+/* Enter the editor scene: seed the launch config, park the flight camera,
+   drop the interaction state, aim at the build. vabAimCamera is the re-aim
+   without the transition (vabLoad). */
+void vabOpen(Game &g) {
+    // seed the launch config once (the dropdowns' initial selection): the
+    // home body + the pad. Left alone afterwards, so a body/scenario chosen
+    // in a prior VAB session is kept when the editor is re-entered.
+    if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
+    if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
+    // park the flight camera (in EITHER mode -- free does not re-aim itself)
+    // for the duration of the VAB session
+    g.parkCamera();
+    vabClearHover(g);
+    g.vab.selected = -1;
+    g.vab.linkMode = false;
+    g.vab.linkFromId.clear();
+    g.scene = Scene::Vab;
+    vabAimCamera(g);
+    printf("[vab] entered the editor (sim paused)\n");
+    fflush(stdout);
+    g.toast("VAB -- the simulation is paused");
 }
 
 void vabClose(Game &g) {
@@ -604,34 +604,11 @@ void vabClose(Game &g) {
     vabClearHover(g);
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
-    if(g.camera != nullptr) {
-        if(g.vab_camSaved) {
-            // hand the parked flight camera back exactly as it was (the
-            // saved focus is a body -- resolve it to the (possibly shifted)
-            // index; null is the "ship" entry)
-            g.vab_camSaved = false;
-            for(int i = 0; i < (int)g.focusTargets.size(); i++) {
-                if(g.focusTargets[i].body == g.vab_camFocusBody) {
-                    g.focusBody = i; break;
-                }
-            }
-            if(g.vab_camMode == CAM_FREE) {
-                g.camera->setFreePose(g.vab_camPos, g.vab_camFwd, g.vab_camUp);
-            } else {
-                g.camera->mode = CAM_ORBIT;
-                g.camera->orbitYaw = g.vab_camYaw;
-                g.camera->orbitPitch = g.vab_camPitch;
-                g.camera->distance = g.vab_camDistance;
-                g.camera->Follow(g.focusWorldPos(g.focusBody));
-                g.camera->ComputeView();   // sane pos/forward/up immediately
-            }
-        } else if(g.ship != nullptr && g.camera->mode == CAM_ORBIT) {
-            // no parked pose (a --vab boot): re-aim like select_ship does
-            g.focusBody = 0;
-            g.camera->Follow(g.ship->get_center_of_mass());
-            g.camera->distance = g.ship->isEva() ? 10.0 : 50.0;
-        }
-    }
+    // hand the parked flight camera back exactly as vabOpen left it. There is
+    // always a park to restore: the camera exists before vabOpen can run (main
+    // creates it before the --vab scene entry, and the menu button is later
+    // still), and vabOpen parks unconditionally in that case.
+    g.restoreCamera();
     printf("[vab] back to flight (sim resumed)\n");
     fflush(stdout);
     g.toast("Back to flight -- the simulation resumes");

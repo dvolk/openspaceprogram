@@ -415,6 +415,50 @@ void Game::syncShipFocus() {
     }
 }
 
+/* Park the camera pose (both modes -- a free camera does not re-aim itself)
+   for the duration of another scene's ownership. An already-parked pose is
+   left alone: vabLoad re-aims the editor camera mid-session, and that must
+   not overwrite the flight pose with the editor's. */
+void Game::parkCamera() {
+    if(camera == nullptr || camParked) { return; }
+    camParked = true;
+    parkedCam.mode = camera->mode;
+    parkedCam.pos = camera->pos;
+    parkedCam.fwd = camera->forward;
+    parkedCam.up = camera->up;
+    parkedCam.distance = camera->distance;
+    parkedCam.yaw = camera->orbitYaw;
+    parkedCam.pitch = camera->orbitPitch;
+    // The focus as a BODY, not an index: focusTargets shifts when the "ship"
+    // entry is inserted or dropped, so an index saved now would be stale by
+    // restore time. On a --vab boot the list is not built yet (main.cpp builds
+    // it after the scene entry), so fall back to the default focus.
+    parkedCam.focusBody =
+        (focusBody >= 0 && focusBody < (int)focusTargets.size())
+        ? focusTargets[focusBody].body
+        : (ship != nullptr ? nullptr : home);
+}
+
+/* Hand the parked pose back exactly and drop the park. The saved body is
+   resolved to its current focusTargets index (null = the "ship" entry). */
+void Game::restoreCamera() {
+    if(camera == nullptr || !camParked) { return; }
+    camParked = false;
+    for(int i = 0; i < (int)focusTargets.size(); i++) {
+        if(focusTargets[i].body == parkedCam.focusBody) { focusBody = i; break; }
+    }
+    if(parkedCam.mode == CAM_FREE) {
+        camera->setFreePose(parkedCam.pos, parkedCam.fwd, parkedCam.up);
+    } else {
+        camera->mode = CAM_ORBIT;
+        camera->orbitYaw = parkedCam.yaw;
+        camera->orbitPitch = parkedCam.pitch;
+        camera->distance = parkedCam.distance;
+        camera->Follow(focusWorldPos(focusBody));
+        camera->ComputeView();   // sane pos/forward/up immediately
+    }
+}
+
 void Game::select_ship(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
     // An EVA character aboard a ship is not directly controllable: it is

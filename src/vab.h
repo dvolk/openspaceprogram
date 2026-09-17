@@ -84,9 +84,17 @@ bool vabLoad(Game &g, const char *path);
 // Flight scene. Empty tree: toast, stay put.
 void vabLaunch(Game &g);
 
+// Aim the editor's orbit camera at the build tree: the parts' bbox centre
+// becomes Game::vab.center (the render frame is S shifted by -center) and the
+// distance fits the build. vabOpen calls it on entry; vabLoad calls it on its
+// own when a loaded tree REPLACES the build, which is a re-aim and not a
+// scene transition (no camera park, no launch-config re-seed, no toast).
+void vabAimCamera(Game &g);
+
 // Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to
 // game"). The sim FREEZES in the Vab scene (tick is skipped), so entering
-// mid-flight is a pause. vabOpen parks the flight camera (in either mode)
-// and re-aims the orbit at the build tree; vabClose restores it exactly.
+// mid-flight is a pause. vabOpen parks the flight camera (in either mode,
+// Game::parkCamera) and aims the orbit at the build tree; vabClose hands the
+// parked pose back exactly (Game::restoreCamera).
 void vabOpen(Game &g);
 void vabClose(Game &g);

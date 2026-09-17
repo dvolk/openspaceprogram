@@ -140,6 +140,23 @@ enum class Scene {
     Vab       // the editor: no sim; physics-free BuildShip draw + editor widgets
 };
 
+/* A camera pose, captured so one scene can hand the camera to another and get
+   it back exactly (Game::parkCamera / Game::restoreCamera). Both camera modes
+   ride in here: orbit needs the yaw/pitch/distance and the focus, free needs
+   the explicit pose.
+
+   `focusBody` is the orbit target as a BODY, not an index into
+   Game::focusTargets: that list shifts when the "ship" entry is inserted or
+   dropped (syncShipFocus), so a saved index would go stale. null = the "ship"
+   entry. */
+struct CameraSnapshot {
+    CameraMode mode = CAM_ORBIT;
+    glm::dvec3 pos, fwd, up;          // the free-mode pose
+    double distance = 10.0;           // orbit radius
+    double yaw = 0.0, pitch = 0.0;    // orbit angles
+    TerrainBody *focusBody = nullptr;
+};
+
 /* The VAB editor's session state: the physics-free build tree, the LAUNCH
    config, the hover/selection, the placement ghost, the symmetry + snap
    modifiers, the fuel-link authoring and the detached subassemblies. Was ~30
@@ -150,7 +167,7 @@ enum class Scene {
    round-trips through the ship-def files (vabSave / vabLoad), and the
    subassemblies deliberately outlive the build they came from. The camera
    parked across a VAB session is NOT here -- that is transition state, not
-   editor state (Game::vab_cam*). */
+   editor state (Game::parkedCam). */
 struct VabState {
     /* The physics-free build tree the editor edits (shipdef.h BuildShip).
        Empty unless --vab loaded a ship (or the editor started one). Poses are
@@ -260,18 +277,12 @@ struct Game {
        physics-free tree, plus the hover / ghost / snap / link / subassembly
        state that goes with it. */
     VabState vab;
-    /* The camera parked across a VAB session: drawVab owns the camera
-       (forced orbit around vab.center), so the flight pose -- in EITHER
-       mode -- is snapshotted on vabOpen and restored on vabClose. */
-    bool vab_camSaved = false;
-    CameraMode vab_camMode = CAM_ORBIT;
-    glm::dvec3 vab_camPos, vab_camFwd, vab_camUp;
-    double vab_camDistance = 10.0;
-    double vab_camYaw = 0.0, vab_camPitch = 0.0;
-    // The focus target as a body (null = the "ship" entry): focusBody is an
-    // INDEX into focusTargets, and that list shifts when the "ship" entry is
-    // inserted around a VAB launch, so a saved index would go stale.
-    TerrainBody *vab_camFocusBody = nullptr;
+    /* The camera pose parked while another scene owns the camera: the VAB
+       forces an orbit around vab.center for the session (drawVab), so the
+       flight pose -- in EITHER camera mode -- is snapshotted on the way in
+       (parkCamera) and handed back on the way out (restoreCamera). */
+    bool camParked = false;
+    CameraSnapshot parkedCam;
 
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
@@ -561,6 +572,15 @@ struct Game {
     // the camera focus at it -- or at home (the orbit view) when there is
     // none. select_ship and load_game both enter/leave the no-ship state.
     void syncShipFocus();
+    // Park the live camera pose (into parkedCam) so another scene can take the
+    // camera over -- the VAB forces an orbit around the build tree for the
+    // session -- and hand it back exactly. parkCamera is a no-op when a pose
+    // is already parked (a re-aim within the session must not overwrite the
+    // flight pose with the editor's) or when there is no camera yet (main
+    // creates it after load_game); restoreCamera is a no-op when nothing is
+    // parked.
+    void parkCamera();
+    void restoreCamera();
     // Enter rails warp (park every ship); false + keeps the accel if any
     // ship is not rail-eligible.
     bool enter_rails_warp();
