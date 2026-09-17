@@ -2419,8 +2419,8 @@ void drawVabUI(Game &g) {
             g.vab_linkSel = -1;   // the two selections are exclusive
         }
     }
-    ImGui::Separator();
     if(g.vab_selected >= 0 && (size_t)g.vab_selected < g.vab.parts.size()) {
+        ImGui::Separator();
         const int sel = g.vab_selected;
         BuildPart &bp = g.vab.parts[(size_t)sel];
         ImGui::Text("selected: %s (%s)", bp.id.c_str(),
