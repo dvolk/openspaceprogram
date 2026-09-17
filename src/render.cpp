@@ -146,13 +146,33 @@ void draw3d(Game &g, TransferPlanner &planner) {
         // transforms below.
         if(g.focusTargets[g.focusBody].body == nullptr) {
             if(ship->isEva()) {
-                // The kerbal slews to face the camera (src/eva.cpp), so
-                // chasing its attitude would be a feedback loop. Orbit in
-                // the surface frame instead: up = local vertical, the
-                // mouse orbits around the kerbal.
-                camera->ref = (ship->frame->isRotFrame())
-                    ? glm::dmat3(1.0)
-                    : glm::dmat3(ship->frame->getRotFrame()->orient);
+                // North-up on the body's local vertical: screen-up (column
+                // 2) = the kerbal's radial, which the control law (src/eva.cpp)
+                // drives its nose to -- so the kerbal stands upright at any
+                // surface position (an identity ref locked screen-up to the
+                // body's +Z, matching the local vertical only at the +Z pole).
+                // The tangent plane (columns 0/1) is built from the WORLD axes,
+                // the same identity convention the body camera uses below, NOT
+                // from the frame's orient (which spins with the planet and fed
+                // a moving target into the space-mode attitude law, wobbling the
+                // kerbal in yaw on Minmus) and NOT from the kerbal's own axes
+                // (which lock the camera to its yaw, so the camera-relative
+                // walk fed back into the attitude and made it orbit). A world
+                // reference is stable against both, and at the +Z pole (the pad)
+                // this reduces exactly to the identity basis. As with any
+                // north-up frame there is a tangent seam (|radial.y| = 0.9)
+                // where the "north" axis flips; it sits near the +/-Y poles,
+                // far from the +Z default pad.
+                const glm::dvec3 radial = glm::normalize(com);
+                // Tangent "north": prefer +Y (the identity's right axis); fall
+                // back to +X when radial is near +/-Y so the projection never
+                // vanishes.
+                const glm::dvec3 ref_dir = (std::fabs(radial.y) > 0.9)
+                    ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 1.0, 0.0);
+                const glm::dvec3 right = glm::normalize(
+                    ref_dir - radial * glm::dot(ref_dir, radial));
+                const glm::dvec3 back = glm::cross(right, radial);
+                camera->ref = glm::dmat3(back, right, radial);
             } else {
             // The orbit camera builds its basis from ref as
             //   back (offset) = ref * x̂   (column 0)

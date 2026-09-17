@@ -36,8 +36,9 @@ CHECK namespace (parsed from the game's stdout):
           w (3-tuple), wnorm (|w|), wroll (the nose-axis component of w),
           awroll (abs of wroll)
   eva     list of dicts, one per [evalog] line: t, mode ("ground"/"space"),
-          grounded (0/1), pos (3-tuple), vel (3-tuple), alt (m above the
-          analytic terrain), mass (kg; None if the binary predates the field)
+          grounded (0/1), pos (3-tuple), vel (3-tuple), face (3-tuple,
+          the kerbal's face axis), alt (m above the analytic terrain),
+          mass (kg; None if the binary predates the field)
   fuel    list of dicts, one per [fuel] line: t, ship, groups
           (group id -> {resource: (current, capacity, per-tank currents)}),
           links (a list of (from_group, to_group) fuel-link pairs)
@@ -108,7 +109,8 @@ ATT_RE = re.compile(
 EVA_RE = re.compile(
     r"\[evalog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+grounded=(\d)\s+"
     r"pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
-    r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
+    r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
+    r"face=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
     r"(?:\s+mass=([-\d.]+)kg)?"
 )
 DRAINLOG_RE = re.compile(
@@ -284,11 +286,13 @@ def parse_att(out):
 def parse_eva(out):
     rows = []
     for m in EVA_RE.finditer(out):
-        (t, mode, grounded, px, py, pz, vx, vy, vz, alt, mass) = m.groups()
+        (t, mode, grounded, px, py, pz, vx, vy, vz,
+         fx, fy, fz, alt, mass) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "grounded": int(grounded),
             "pos": (float(px), float(py), float(pz)),
             "vel": (float(vx), float(vy), float(vz)),
+            "face": (float(fx), float(fy), float(fz)),
             "alt": float(alt),
             "mass": float(mass) if mass is not None else None,
         })
