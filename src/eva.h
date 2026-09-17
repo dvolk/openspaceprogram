@@ -39,7 +39,7 @@ struct Kerbal : Vehicle {
     EvaMode mode = EVA_GROUND;
     bool grounded = true;
     bool jumping = false;        // post-jump: ignore grounded until the
-                                 // contact-margin band is clear
+                                 // floor contact clears (evaArmCommands)
     bool jumpPressed = false;    // space KEYDOWN edge (events.cpp); armed
                                  // on the next tick
     bool jumpRequested = false;  // armed this tick; the first substep fires it

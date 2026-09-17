@@ -3,9 +3,10 @@
 
 A green "cucumber" -- a capsule on the part convention (origin centered,
 long axis = +Z): radius RADIUS, cylindrical section CYL_HEIGHT, hemispherical
-caps (total height CYL_HEIGHT + 2*RADIUS). The catalog entry is derived from
-the mesh by utils/gen_parts.py like any other part; the ship def that builds
-a kerbal is res/ships/kerbal.json.
+caps (total height CYL_HEIGHT + 2*RADIUS). A kerbal stands ~0.75 m tall;
+the cross-section is a stubby 0.4 m, the broad-in-suit silhouette. The
+catalog entry is derived from the mesh by utils/gen_parts.py like any other
+part; the ship def that builds a kerbal is res/ships/kerbal.json.
 
     python3 utils/gen_kerbal.py            # writes res/kerbal.obj + .png
     python3 utils/gen_kerbal.py --dry-run  # print the geometry, write nothing
@@ -19,8 +20,9 @@ import trimesh
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-RADIUS = 0.35        # m, cross-section
-CYL_HEIGHT = 1.0     # m, cylindrical section (total = CYL_HEIGHT + 2*RADIUS)
+RADIUS = 0.2         # m, cross-section (0.4 m wide in suit)
+CYL_HEIGHT = 0.35    # m, cylindrical section (total = CYL_HEIGHT + 2*RADIUS
+                     # = 0.75 m, the kerbal's standing height)
 SEGMENTS = 16        # around; the caps use the same count
 
 # bright placeholder green; the parts shader samples the flat texture

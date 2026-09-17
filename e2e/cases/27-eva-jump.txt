@@ -9,4 +9,6 @@ FORBID error:
 CHECK len(eva) > 20
 CHECK any(e["mode"] == "space" for e in eva if e["t"] > 1.5)
 CHECK all(e["mode"] == "ground" for e in eva if e["t"] > 4.0)
-CHECK max(e["alt"] for e in eva) > 6.15
+# on the pad (5 m above the analytic terrain) plus the standing band
+# (half the kerbal's height + margins) -- height-agnostic, any kerbal size
+CHECK max(e["alt"] for e in eva) > 5.5

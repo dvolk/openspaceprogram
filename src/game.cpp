@@ -390,8 +390,8 @@ void Game::select_ship(Vehicle *v) {
     focusBody = 0;   // back to the "ship" focus target
     if(camera->mode == CAM_ORBIT) {
         camera->Follow(ship->get_center_of_mass());
-        // a kerbal is 1.7 m tall; 50 m would lose it
-        camera->distance = ship->isEva() ? 10.0 : 50.0;
+        // a kerbal is 0.75 m tall; 50 m would lose it
+        camera->distance = ship->isEva() ? 5.0 : 50.0;
     }
     // "N of M" in the canonical order (collectVehicles, ships.h) -- the
     // same order F6 and the Ship List window walk. N = v's position, M = the

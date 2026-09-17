@@ -114,7 +114,6 @@ MASS_DENSITY = {
     "reaction_wheel": 128.0,     # flywheel
     "adapter":        15.0,      # thin coupler ring, mostly air
     "nose_cap":       192.0,     # thin fairing
-    "kerbal":         160.0,     # one crew member (mesh by gen_kerbal.py)
     "rcs":            40.0,      # mostly structure + small thrusters (light)
 }
 
@@ -514,6 +513,13 @@ def generate(name, ptype, mesh, texture):
         e["drag_area"] = clean(radius * height)
         e["cd"] = RUDDER_CD
         e["k_drag"] = RUDDER_K_DRAG
+    elif ptype == "kerbal":
+        # A character, not hardware: the mass (~94 kg full-EVA-gear, its
+        # RCS hydrazine included) is declared in EXTRA_FIELDS, like the
+        # decouplers' -- the mesh only supplies the shape (visual + hull).
+        e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
+        e["radius"] = radius
+        e["height"] = height
     else:  # capsule / reaction_wheel / adapter / nose_cap
         e["mass"] = clean(volume * MASS_DENSITY[ptype])
         e["radius"] = radius

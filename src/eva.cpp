@@ -28,7 +28,6 @@ static const double kGroundTorque = 300.0;  // N m attitude authority (ground)
 static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
 static const double kYawRate     = 1.5;     // rad/s QE yaw about the view axis
 static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
-static const double kClearBand   = 0.7;     // m a jump must clear (contact margins)
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
 
 void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
@@ -52,9 +51,13 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     const double rest = k->restAlt();
     k->grounded = BodyInContact(k->hull) || alt < rest + kGroundBand;
     if(k->jumping) {
-        // still rising through the contact-margin band: stay ungrounded
-        if(alt > rest + kClearBand) { k->jumping = false; }
-        else { k->grounded = false; }
+        // post-jump: the hull may still report contact while it is leaving
+        // the floor -- stay ungrounded until the contact itself clears
+        // (releasing on altitude above the band never fires when the jump
+        // apex is below it, as on high-gravity terrain: the latch stuck
+        // and the kerbal never left space mode)
+        if(BodyInContact(k->hull)) { k->grounded = false; }
+        else { k->jumping = false; }
     }
     k->mode = k->grounded ? EVA_GROUND : EVA_SPACE;
 
