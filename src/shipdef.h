@@ -1,9 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <dirent.h>
 
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
@@ -784,3 +787,27 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
    Same contract as load_ship_def: throws std::runtime_error on bad data. */
 ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                         const std::string &path);
+
+/* List the ship-def slugs in `dir` (e.g. "res/ships") -- the file base names
+   with the ".json" extension stripped -- sorted; empty if the directory is
+   missing or holds no .json files. Only the .json entries are kept, so the
+   VAB's Load picker offers exactly the files the VAB Save writes and --vab
+   loads (res/ships/<slug>.json). Header-only (plain POSIX file-system ops),
+   so it is unit-testable headless -- the analog of list_saves in save.h. */
+inline std::vector<std::string> list_ship_defs(const std::string &dir) {
+    std::vector<std::string> names;
+    DIR *d = opendir(dir.c_str());
+    if(d == nullptr) { return names; }
+    struct dirent *e;
+    while((e = readdir(d)) != nullptr) {
+        const std::string name = e->d_name;
+        // strictly longer than ".json" (a bare ".json" would give an empty slug)
+        if(name.size() <= 5 || name.compare(name.size() - 5, 5, ".json") != 0) {
+            continue;
+        }
+        names.push_back(name.substr(0, name.size() - 5));
+    }
+    closedir(d);
+    std::sort(names.begin(), names.end());
+    return names;
+}

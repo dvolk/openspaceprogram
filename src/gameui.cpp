@@ -17,6 +17,8 @@
 #include <map>
 #include <vector>
 
+#include <sys/stat.h>   // stat (the load picker's res/ships mtime gate)
+
 #include "calendar.h"    // CalTime (the HUD + Game Debug Info clocks)
 #include "version.h"     // VERSION (the main menu)
 #include "physics.h"     // GetAngVelocity (the VESSEL window)
@@ -25,7 +27,8 @@
 #include "orbitmap.h"    // OrbitMap + contrastingColor (the map)
 #include "surfmap.h"     // the lon/lat <-> pixel math + surfmapCompute
 #include "texture.h"     // make_texture_r8 (the Porkchop heatmap + Surface Map)
-#include "vab.h"         // the editor ops (drawVabUI: gizmos, save, launch)
+#include "vab.h"         // the editor ops (drawVabUI: gizmos, save, load, launch)
+#include "shipdef.h"     // list_ship_defs (the VAB Load picker's ship list)
 #include "save.h"        // save_game / load_game / list_saves / delete_save
 
 #include "../middleware/imgui/imgui.h"
@@ -2318,18 +2321,63 @@ void drawVabUI(Game &g) {
         snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
     }
 
+    // the load picker: the ship-def slugs in res/ships (the files the VAB
+    // Save writes and --vab loads), with a persistent selection so the Load
+    // button -- read on the frame the click lands -- acts on the chosen row.
+    // The list is cached and re-read only when the directory's mtime changes
+    // (a Save adds/renames a file): re-scanning it every frame would be ~3
+    // syscalls/frame for a list that only ever changes on a Save.
+    static std::vector<std::string> ships;
+    static time_t shipDirMtime = -1;   // -1 = not scanned yet
+    {
+        struct stat st;
+        if(stat("res/ships", &st) == 0 && st.st_mtime != shipDirMtime) {
+            ships = list_ship_defs("res/ships");
+            shipDirMtime = st.st_mtime;
+        }
+    }
+    static int loadSel = 0;
+    if(loadSel >= (int)ships.size()) { loadSel = (int)ships.size() - 1; }
+    if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
+
     /* Top bar: a fixed top-center window (no titlebar, not movable, not
        resizable) mirroring the HUD, in two lines:
-         line 1 -- Back to game, the save-path input, Save
+         line 1 -- Back to game, the save-path input, Save, the ship picker
+                   + Load (load a saved ship into the build, replacing it)
          line 2 -- the launch body + scenario dropdowns, then LAUNCH */
     ui::Window("VAB TopBar", g.o_vabbar, [&] {
-        // line 1: back to the game / save the build
+        // line 1: back to the game / save the build / load a saved ship
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##savepath", savePath, sizeof(savePath));
         ImGui::SameLine();
         if(ImGui::Button("Save")) { vabSave(g, savePath); }
+        // Load: pick a saved ship, replace the build with it, and point the
+        // save path at the same file so a following Save round-trips it.
+        if(!ships.empty()) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(160);
+            const char *cur = ships[(size_t)loadSel].c_str();
+            if(ImGui::BeginCombo("##vabload", cur)) {
+                for(size_t i = 0; i < ships.size(); i++) {
+                    if(ImGui::Selectable(ships[i].c_str(), (int)i == loadSel)) {
+                        loadSel = (int)i;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if(ImGui::Button("Load")) {
+                const std::string p = "res/ships/" + ships[(size_t)loadSel] + ".json";
+                if(vabLoad(g, p.c_str())) {
+                    snprintf(savePath, sizeof(savePath), "%s", p.c_str());
+                }
+            }
+        } else {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(no ships in res/ships)");
+        }
 
         // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
         ImGui::SetNextItemWidth(160);

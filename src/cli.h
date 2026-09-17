@@ -52,6 +52,11 @@ struct GameArgs {
     std::string vab_arm;   // catalog part to arm in the VAB palette at startup (test hook)
     int vab_place_ms = -1; // --vab-place: fire the VAB's place (vabPlace) once
                            // at this loop time in ms (headless test hook; -1 = never)
+    std::string vab_load;   // --vab-load: the ship def to load into the VAB
+                            // build tree (vabLoad) -- replacing the current
+                            // build (headless test hook; empty = never)
+    int vab_load_ms = -1;   // --vab-load-at: fire the --vab-load hook once at
+                            // this loop time in ms (headless test hook; -1 = never)
     int vab_launch_ms = -1;  // --vab-launch: fire the VAB's LAUNCH once at
                              // this loop time in ms (headless test hook; -1 = never)
     std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario

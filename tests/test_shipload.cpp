@@ -12,11 +12,15 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <dirent.h>
 #include <stdexcept>
 #include <string>
+#include <vector>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast (the symmetry test)
 
@@ -1560,6 +1564,46 @@ int main() {
             closedir(ships);
             printf("  swept %d ship defs in res/ships/\n", swept);
             CHECK(swept > 0);   // a silent empty sweep would pass vacuously
+        }
+    }
+
+    // list_ship_defs: keep only the .json entries, return their sorted slugs
+    // (extension stripped). A temp dir gives a deterministic set so the
+    // filter + ordering are checked, not just whatever res/ships holds.
+    {
+        const std::string dir = "/tmp/test_list_ship_defs";
+        CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
+        CHECK(mkdir(dir.c_str(), 0755) == 0 || access(dir.c_str(), F_OK) == 0);
+        // two .json files (created in reverse-alphabetical order) + a
+        // non-.json file + a subdirectory, which must all be excluded.
+        { std::ofstream f((dir + "/zzz.json").c_str()); f << "{}"; }
+        { std::ofstream f((dir + "/aaa.json").c_str()); f << "{}"; }
+        { std::ofstream f((dir + "/notes.txt").c_str()); f << "x"; }
+        CHECK(mkdir((dir + "/adir").c_str(), 0755) == 0 || true);
+        const std::vector<std::string> got = list_ship_defs(dir);
+        CHECK(got.size() == 2);
+        CHECK(got.size() >= 1 && got[0] == "aaa");
+        CHECK(got.size() >= 2 && got[1] == "zzz");
+        // a missing directory yields an empty list (no throw)
+        CHECK(list_ship_defs("/tmp/test_list_ship_defs_no_such_dir").empty());
+        CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
+    }
+
+    // list_ship_defs on the real res/ships: sorted, and every slug resolves
+    // to a file that load_ship_def can parse (the Load picker offers only
+    // loadable ships).
+    {
+        const std::vector<std::string> slugs = list_ship_defs("res/ships");
+        CHECK(!slugs.empty());
+        for(size_t i = 1; i < slugs.size(); i++) {
+            CHECK(slugs[i - 1] < slugs[i]);   // strictly sorted (unique names)
+        }
+        for(size_t i = 0; i < slugs.size(); i++) {
+            const std::string path = "res/ships/" + slugs[i] + ".json";
+            bool ok = false;
+            try { ok = !load_ship_def(path.c_str(), cat).parts.empty(); }
+            catch(const std::exception &) { ok = false; }
+            CHECK(ok);
         }
     }
 

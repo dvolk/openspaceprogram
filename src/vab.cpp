@@ -476,6 +476,34 @@ void vabSave(Game &g, const char *path) {
     }
 }
 
+bool vabLoad(Game &g, const char *path) {
+    ShipDef def;
+    try {
+        def = load_ship_def(path, g.ships.catalog());
+    } catch(const std::exception &e) {
+        printf("[vab] load failed %s: %s\n", path, e.what());
+        fflush(stdout);
+        g.toast("Load failed: %s", e.what());
+        return false;
+    }
+    if(def.parts.empty()) {
+        printf("[vab] load failed %s: no parts\n", path);
+        fflush(stdout);
+        g.toast("Load failed: %s (no parts)", path);
+        return false;
+    }
+    /* Replace the current build, then re-aim the editor at the new tree.
+       vabOpen is already idempotent here (vab_camSaved is set), so it
+       re-aims the orbit camera at the new build without re-parking the
+       flight camera or re-seeding the (already set) launch config. */
+    g.vab = BuildShip::fromShipDef(def);
+    vabOpen(g);
+    printf("[vab] loaded %s (%d parts)\n", path, (int)g.vab.parts.size());
+    fflush(stdout);
+    g.toast("Loaded %s (%d parts)", path, (int)g.vab.parts.size());
+    return true;
+}
+
 void vabLaunch(Game &g) {
     if(g.vab.parts.empty()) { g.toast("Nothing to launch"); return; }
     ShipDef def = g.vab.toShipDef();
@@ -549,14 +577,19 @@ void vabOpen(Game &g) {
     g.vab_selected = -1;
     g.vab_linkMode = false;
     g.vab_linkFromId.clear();
+    const bool entering = (g.scene != Scene::Vab);   // false when a load re-aims
     g.scene = Scene::Vab;
     if(g.camera != nullptr) {
         g.camera->toOrbit(g.vab_center);   // also from Free mode
         g.camera->distance = dist;
     }
-    printf("[vab] entered the editor (sim paused)\n");
-    fflush(stdout);
-    g.toast("VAB -- the simulation is paused");
+    // A load (vabLoad) already sits in the editor: re-aiming is not a fresh
+    // entry, so the "just entered / sim paused" line would be noise there.
+    if(entering) {
+        printf("[vab] entered the editor (sim paused)\n");
+        fflush(stdout);
+        g.toast("VAB -- the simulation is paused");
+    }
 }
 
 void vabClose(Game &g) {

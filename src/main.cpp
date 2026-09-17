@@ -513,6 +513,7 @@ int main(int argc, char **argv)
 
     int screenshot_count = 0;
     bool vab_place_fired = false;    // the --vab-place hook fires once
+    bool vab_load_fired = false;     // the --vab-load hook fires once
     bool vab_launch_fired = false;   // the --vab-launch hook fires once
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
@@ -800,6 +801,16 @@ int main(int argc, char **argv)
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
         // game's clock and marks the frame for a redraw. The Vab scene runs
         // no sim -- it redraws every frame instead.
+        /* --vab-load: the headless load hook, fired once at its loop time
+           (the e2e pin for load_ship_def -> fromShipDef -> vabOpen, i.e.
+           loading a ship def into the build tree -- the VAB's Load button).
+           Fires before --vab-launch so a loaded tree can then be launched. */
+        if(game.scene == Scene::Vab && !args.vab_load.empty()
+           && args.vab_load_ms >= 0 && !vab_load_fired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_load_ms) {
+            vab_load_fired = true;
+            vabLoad(game, args.vab_load.c_str());
+        }
         /* --vab-launch: the headless LAUNCH hook, fired once at its loop
            time (the e2e pin for toShipDef -> place_ship_def -> build_ship
            -> select_ship -> the scene switch). The launch flips the scene
