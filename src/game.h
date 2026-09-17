@@ -239,7 +239,10 @@ struct Game {
     glm::dvec3 vab_camPos, vab_camFwd, vab_camUp;
     double vab_camDistance = 10.0;
     double vab_camYaw = 0.0, vab_camPitch = 0.0;
-    int vab_camFocusBody = 0;
+    // The focus target as a body (null = the "ship" entry): focusBody is an
+    // INDEX into focusTargets, and that list shifts when the "ship" entry is
+    // inserted around a VAB launch, so a saved index would go stale.
+    TerrainBody *vab_camFocusBody = nullptr;
     bool vab_lmb_prev = false;   // LMB edge detect for click-to-place
 
     // --- the clock ----------------------------------------------------------
@@ -522,6 +525,10 @@ struct Game {
     // Take control of `v` (release + park the current one, recenter the
     // orbit camera, drop rails warp).
     void select_ship(Vehicle *v);
+    // Keep the "ship" focus entry in sync with the active ship and point
+    // the camera focus at it -- or at home (the orbit view) when there is
+    // none. select_ship and load_game both enter/leave the no-ship state.
+    void syncShipFocus();
     // Enter rails warp (park every ship); false + keeps the accel if any
     // ship is not rail-eligible.
     bool enter_rails_warp();

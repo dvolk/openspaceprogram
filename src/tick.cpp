@@ -334,7 +334,7 @@ void tick(Game &g) {
             /* --spin-log (or --radial-test): spin diagnostics, once per
                0.5 s of sim time (after the last substep's solve, so the
                reported impulses are that solve's). */
-            if(g.args.spin_log_enabled || !g.args.radial_test.empty()) {
+            if(g.ship && (g.args.spin_log_enabled || !g.args.radial_test.empty())) {
                 static double last_spin_log = -1e30;
                 if(g.time - last_spin_log >= 0.5) {
                     last_spin_log = g.time;
@@ -345,7 +345,7 @@ void tick(Game &g) {
             /* --fuel-log: each fuel group's fuel mass + the fuel links,
                once per 0.5 s of sim time (the heavy_two radial drain
                instrument: the symmetric radial groups must stay equal). */
-            if(g.args.fuel_log) {
+            if(g.ship && g.args.fuel_log) {
                 static double last_fuel_log = -1e30;
                 if(g.time - last_fuel_log >= 0.5) {
                     last_fuel_log = g.time;
@@ -356,7 +356,7 @@ void tick(Game &g) {
             /* --drain-log: each fuel group's drain rate (kg/s), once per
                0.5 s of sim time -- the "how is the fuel flowing"
                instrument: the outer groups drain, the inner stay at 0. */
-            if(g.args.drain_log) {
+            if(g.ship && g.args.drain_log) {
                 static double last_drain_log = -1e30;
                 if(g.time - last_drain_log >= 0.5) {
                     last_drain_log = g.time;
@@ -367,7 +367,7 @@ void tick(Game &g) {
             /* --power-log: the ship's power balance (generation, constant
                draw, stored charge, and the wheel gate) once per 0.5 s of
                sim time -- the "is the ship losing power?" instrument. */
-            if(g.args.power_log) {
+            if(g.ship && g.args.power_log) {
                 static double last_power_log = -1e30;
                 if(g.time - last_power_log >= 0.5) {
                     last_power_log = g.time;
@@ -378,7 +378,7 @@ void tick(Game &g) {
             /* --slew-log: autopilot (prograde/retrograde/kill-rot) state,
                once per 0.1 s of sim time -- fine enough to resolve the
                slew's ~1 s timescale and any oscillation around the target. */
-            if(g.args.slew_log_enabled) {
+            if(g.ship && g.args.slew_log_enabled) {
                 static double last_slew_log = -1e30;
                 if(g.time - last_slew_log >= 0.1) {
                     last_slew_log = g.time;
@@ -389,7 +389,7 @@ void tick(Game &g) {
 
         // --orbit-log: orbital elements, fit in the body's inertial
         // frame, where the ship's trajectory is a Kepler conic.
-        if(g.args.orbit_log) {
+        if(g.ship && g.args.orbit_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.orbit_log_last_ms >= g.orbit_log_interval_ms) {
                 g.orbit_log_last_ms = now_ms;
@@ -420,7 +420,7 @@ void tick(Game &g) {
         }
 
         // --dbg-log: ship pos/alt/vel in its own frame
-        if(g.args.dbg_log) {
+        if(g.ship && g.args.dbg_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.dbg_log_last_ms >= g.orbit_log_interval_ms) {
                 g.dbg_log_last_ms = now_ms;
@@ -443,7 +443,7 @@ void tick(Game &g) {
            means the ship is moving through the air, |L|>0 means a wing is
            generating lift, |tau|>0 means the aero is torquing the ship
            (weathervane / pitch stability). */
-        if(g.args.drag_log) {
+        if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.drag_log_last_ms >= g.orbit_log_interval_ms) {
                 g.drag_log_last_ms = now_ms;
@@ -478,7 +478,7 @@ void tick(Game &g) {
         }
 
         // --att-log: the ship's nose + angular velocity (attitude-physics e2e)
-        if(g.args.att_log) {
+        if(g.ship && g.args.att_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.att_log_last_ms >= g.orbit_log_interval_ms) {
                 g.att_log_last_ms = now_ms;
@@ -490,7 +490,7 @@ void tick(Game &g) {
         // interval gate): the per-tick quantity is the point, and the bug
         // it hunts was a per-tick dcom x F that a per-second log would
         // average out.
-        if(g.args.tq_log && !g.ship->onRails) {
+        if(g.ship && g.args.tq_log && !g.ship->onRails) {
             g.ship->tq_log(g.time);
         }
 
@@ -508,7 +508,7 @@ void tick(Game &g) {
         }
 
         // --eva-log: the kerbal's mode + state (the EVA e2e assertions)
-        if(g.args.eva_log && g.ship->isEva()) {
+        if(g.ship && g.args.eva_log && g.ship->isEva()) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.eva_log_last_ms >= g.orbit_log_interval_ms) {
                 g.eva_log_last_ms = now_ms;

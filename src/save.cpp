@@ -416,7 +416,9 @@ void load_game(Game &g, const std::string &dir) {
     g.ship = active;
     g.kerbal = (active != nullptr && active->isEva()) ? static_cast<Kerbal *>(active) : nullptr;
     g.lastShip = nullptr;
-    g.focusBody = 0;
+    // The save may enter OR leave the no-ship state: keep the "ship" focus
+    // entry in sync and point the camera at the ship, or home if none.
+    g.syncShipFocus();
     printf("Loaded game from %s (active: %s)\n", dir.c_str(),
            (active != nullptr) ? active->name.c_str() : "(none)");
 }

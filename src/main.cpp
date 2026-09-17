@@ -513,8 +513,10 @@ int main(int argc, char **argv)
     // Bodies the orbit camera can target. With a ship, the ship is the
     // default (index 0); with no ship (the orbit-view state) the bodies start
     // at index 0 and the home body is the default. game.focusWorldPos()
-    // resolves one to a render-frame position.
-    if(game.ship != nullptr) {
+    // resolves one to a render-frame position. A --load boot already ran
+    // load_game (which syncs the "ship" entry), so insert only when absent.
+    if(game.ship != nullptr &&
+       (game.focusTargets.empty() || game.focusTargets[0].body != nullptr)) {
         game.focusTargets.push_back({ "ship", nullptr });
     }
     for (TerrainBody *b : sys.bodies) {

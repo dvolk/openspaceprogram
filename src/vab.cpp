@@ -559,7 +559,14 @@ void vabOpen(Game &g) {
         g.vab_camDistance = g.camera->distance;
         g.vab_camYaw = g.camera->orbitYaw;
         g.vab_camPitch = g.camera->orbitPitch;
-        g.vab_camFocusBody = g.focusBody;
+        // The current focus as a body (null = the "ship" entry). On a
+        // --vab boot the focus list is not built yet (it comes after the
+        // scene entry in main.cpp), so fall back to the default focus:
+        // the ship, or home when there is none.
+        g.vab_camFocusBody =
+            (g.focusBody >= 0 && g.focusBody < (int)g.focusTargets.size())
+            ? g.focusTargets[g.focusBody].body
+            : (g.ship != nullptr ? nullptr : g.home);
     }
     // aim the orbit camera at the build tree (empty build -> the origin)
     g.vab_center = glm::dvec3(0.0);
@@ -599,9 +606,15 @@ void vabClose(Game &g) {
     g.vab_linkFromId.clear();
     if(g.camera != nullptr) {
         if(g.vab_camSaved) {
-            // hand the parked flight camera back exactly as it was
+            // hand the parked flight camera back exactly as it was (the
+            // saved focus is a body -- resolve it to the (possibly shifted)
+            // index; null is the "ship" entry)
             g.vab_camSaved = false;
-            g.focusBody = g.vab_camFocusBody;
+            for(int i = 0; i < g.numFocusTargets; i++) {
+                if(g.focusTargets[i].body == g.vab_camFocusBody) {
+                    g.focusBody = i; break;
+                }
+            }
             if(g.vab_camMode == CAM_FREE) {
                 g.camera->setFreePose(g.vab_camPos, g.vab_camFwd, g.vab_camUp);
             } else {

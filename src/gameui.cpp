@@ -1315,7 +1315,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     }
     ImGui::Separator();
     if(ImGui::Button("Spawn a copy of the active ship")) {
-        if(ship && !ship->defPath.empty()) {
+        if(ship == nullptr) {
+            g.toast("Spawn: no active ship");
+        } else if(!ship->defPath.empty()) {
             ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys);
         } else {
             printf("Spawn: active ship has no def (test ship)\n");
@@ -1415,7 +1417,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     ui::Window("Autopilot", g.o_autopilot, [&] {
-        if(ship == nullptr) { return; }
+        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         // Toggle the autopilot: click a mode to engage it -- the nose slews
         // toward the target and holds there -- and click it again to release.
         // The modes are mutually exclusive, like a navball; the engaged one

@@ -375,6 +375,29 @@ void pickAt(Game &g, int px, int py) {
    physics. Taking control during rails warp drops the warp to 10 (the top
    physics warp -- anything above is a rails warp) so the active ship is
    integrated. The orbit camera recenters on the ship being taken. */
+
+/* Keep the "ship" focus entry in sync with the active ship and point the
+   camera focus at it -- or at home (the orbit view) when there is none.
+   select_ship enters the ship state; load_game can enter OR leave it (a
+   save may carry no active ship), so both route through this. */
+void Game::syncShipFocus() {
+    if(ship != nullptr) {
+        if(focusTargets.empty() || focusTargets[0].body != nullptr) {
+            focusTargets.insert(focusTargets.begin(), { "ship", nullptr });
+        }
+        focusBody = 0;   // the "ship" focus target
+    } else {
+        if(!focusTargets.empty() && focusTargets[0].body == nullptr) {
+            focusTargets.erase(focusTargets.begin());
+        }
+        focusBody = 0;
+        for(int i = 0; i < (int)focusTargets.size(); i++) {
+            if(focusTargets[i].body == home) { focusBody = i; break; }
+        }
+    }
+    numFocusTargets = (int)focusTargets.size();
+}
+
 void Game::select_ship(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
     // An EVA character aboard a ship is not directly controllable: it is
@@ -401,14 +424,9 @@ void Game::select_ship(Vehicle *v) {
         time_accel = 10;
         toast("Active ship: %s, warp 10x", ship->name.c_str());
     }
-    // A ship is active now. The "ship" focus target is absent after an
-    // orbit-view boot (no ship then), so put it back at index 0 before the
-    // focus below -- otherwise focusBody 0 would land on a body.
-    if(focusTargets.empty() || focusTargets[0].body != nullptr) {
-        focusTargets.insert(focusTargets.begin(), { "ship", nullptr });
-        numFocusTargets = (int)focusTargets.size();
-    }
-    focusBody = 0;   // back to the "ship" focus target
+    // A ship is active now: the "ship" focus target may be absent (an
+    // orbit-view boot), so sync it in at index 0 before focusing.
+    syncShipFocus();
     if(camera->mode == CAM_ORBIT) {
         camera->Follow(ship->get_center_of_mass());
         // a kerbal is 0.75 m tall; 50 m would lose it
