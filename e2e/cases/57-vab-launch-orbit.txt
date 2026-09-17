@@ -1,0 +1,16 @@
+# VAB non-pad launch: --vab loads tanker.json as a build tree; --vab-scenario
+# rot-orbit seeds the top-bar scenario dropdown; --vab-launch fires LAUNCH at
+# 2 s. The tree converts to a ShipDef and is placed on the (home) body, and --
+# because the scenario is NOT a pad one -- is repositioned into orbit via
+# spawn_vehicle BEFORE the crew boards, so the kerbal parks at the capsule's
+# orbit pose (not the pad's). The "Spawn 'rot-orbit' around ..." line is the
+# pin: only spawn_vehicle prints it (it names the scenario, sc.name), so its
+# presence proves the non-pad path ran -- the pad path (case 52) skips it and
+# stays on the surface.
+NAME vab-launch-orbit
+ARGS --vab res/ships/tanker.json --vab-scenario rot-orbit --vab-launch 2000 --timeout 12
+EXPECT Main loop starting
+EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT Spawn 'rot-orbit' around
+FORBID GL_
+FORBID error:

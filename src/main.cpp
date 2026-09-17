@@ -476,6 +476,12 @@ int main(int argc, char **argv)
         game.vab_armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     }
+    if(game.scene == Scene::Vab) {
+        // --vab-scenario / --vab-body: override the launch config the top-bar
+        // dropdowns show (vabOpen already seeded the defaults: home + pad).
+        if(!args.vab_scenario.empty()) { game.vab_scenarioName = args.vab_scenario; }
+        if(!args.vab_body.empty())     { game.vab_bodyName = args.vab_body; }
+    }
 
     if(args.use_free_cam) {
         // Default free pose = the orbit camera's current view, overridable

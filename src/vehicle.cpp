@@ -301,6 +301,14 @@ const ScenarioDef *scenario_by_name(const std::string &name) {
                              + "' (available: " + avail + ")");
 }
 
+size_t scenario_count() {
+    return sizeof(kScenarios) / sizeof(kScenarios[0]);
+}
+
+const char *scenario_name_at(size_t i) {
+    return kScenarios[i].name;   // caller bounds-checks against scenario_count()
+}
+
 // Orientation with the nose (local +Z) along `dir`; the roll axis is the
 // coordinate axis most orthogonal to dir (never singular for a unit dir).
 glm::dmat3 faceAlong(const glm::dvec3 &dir)

@@ -2318,18 +2318,39 @@ void drawVabUI(Game &g) {
         snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
     }
 
-    /* Top bar: the launch / back / save row in a fixed top-center window
-       (no titlebar, not movable, not resizable) mirroring the HUD. One
-       horizontal line: LAUNCH, Back to game, the save-path input, Save. */
+    /* Top bar: a fixed top-center window (no titlebar, not movable, not
+       resizable) mirroring the HUD, in two lines:
+         line 1 -- Back to game, the save-path input, Save
+         line 2 -- the launch body + scenario dropdowns, then LAUNCH */
     ui::Window("VAB TopBar", g.o_vabbar, [&] {
-        if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
-        ImGui::SameLine();
+        // line 1: back to the game / save the build
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##savepath", savePath, sizeof(savePath));
         ImGui::SameLine();
         if(ImGui::Button("Save")) { vabSave(g, savePath); }
+
+        // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
+        ImGui::SetNextItemWidth(160);
+        if(ImGui::BeginCombo("##vabbody", g.vab_bodyName.c_str())) {
+            for(size_t i = 0; i < g.sys.bodies.size(); i++) {
+                const char *nm = g.sys.bodies[i]->name.c_str();
+                if(ImGui::Selectable(nm, g.vab_bodyName == nm)) { g.vab_bodyName = nm; }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(160);
+        if(ImGui::BeginCombo("##vabscn", g.vab_scenarioName.c_str())) {
+            for(size_t i = 0; i < scenario_count(); i++) {
+                const char *nm = scenario_name_at(i);
+                if(ImGui::Selectable(nm, g.vab_scenarioName == nm)) { g.vab_scenarioName = nm; }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("LAUNCH")) { vabLaunch(g); }
     });
 
     ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);

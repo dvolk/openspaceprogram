@@ -479,10 +479,24 @@ void vabSave(Game &g, const char *path) {
 void vabLaunch(Game &g) {
     if(g.vab.parts.empty()) { g.toast("Nothing to launch"); return; }
     ShipDef def = g.vab.toShipDef();
-    const ScenarioDef *sc = scenario_by_name("pad");
+    // Launch config from the top bar dropdowns, with the startup defaults
+    // (the home body + the pad) as fallback.
+    TerrainBody *hb = g.home;
+    if(!g.vab_bodyName.empty()) {
+        TerrainBody *b = g.sys.find(g.vab_bodyName);
+        if(b != nullptr) { hb = b; }
+    }
+    const std::string scName = g.vab_scenarioName.empty() ? "pad" : g.vab_scenarioName;
+    const ScenarioDef *sc = scenario_by_name(scName);
     /* defPath "": the ship was built in memory -- there is no file to
        respawn it from until it is saved (the Respawn button hides). */
-    Vehicle *v = g.ships.place_ship_def(def, "", def.name, g.home, sc, g.sys);
+    Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys);
+    // Non-pad scenarios place the ship in orbit (position + orbit velocity),
+    // like the fleet spawn. Left live (NOT on rails) so it is
+    // player-controlled -- the VAB's model.
+    if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0); }
+    // Crew ABOARD after the reposition: each kerbal then parks at the
+    // capsule's final (orbit) pose, not the pad's.
     g.ships.spawn_crew(v, g.sys);   // crew aboard the capsules, like startup
     g.select_ship(v);
     vabClearHover(g);
@@ -501,6 +515,11 @@ void vabLaunch(Game &g) {
 }
 
 void vabOpen(Game &g) {
+    // seed the launch config once (the dropdowns' initial selection): the
+    // home body + the pad. Left alone afterwards, so a body/scenario chosen
+    // in a prior VAB session is kept when the editor is re-entered.
+    if(g.vab_bodyName.empty() && g.home != nullptr) { g.vab_bodyName = g.home->name; }
+    if(g.vab_scenarioName.empty()) { g.vab_scenarioName = "pad"; }
     // park the flight camera (in EITHER mode -- free does not re-aim
     // itself) for the duration of the VAB session
     if(g.camera != nullptr && !g.vab_camSaved) {

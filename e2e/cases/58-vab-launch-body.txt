@@ -1,0 +1,13 @@
+# VAB body selection: --vab-body Duna seeds the top-bar body dropdown (the
+# home body is Kerbin); --vab-scenario rot-orbit the scenario. --vab-launch
+# fires LAUNCH at 2 s. The launch must place the ship around the SELECTED
+# body, not the home body -- the pin is "Spawn 'rot-orbit' around Duna"
+# (Duna's orbital radius r = 405 km, vs Kerbin's 685 km), proving the body
+# dropdown drives the launch site.
+NAME vab-launch-body
+ARGS --vab res/ships/tanker.json --vab-body Duna --vab-scenario rot-orbit --vab-launch 2000 --timeout 12
+EXPECT Main loop starting
+EXPECT [vab] launched 'tanker' (7 parts)
+EXPECT Spawn 'rot-orbit' around Duna
+FORBID GL_
+FORBID error:

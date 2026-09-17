@@ -1133,6 +1133,11 @@ struct ScenarioDef {
    unknown. */
 const ScenarioDef *scenario_by_name(const std::string &name);
 
+// Enumerate the scenario table (the VAB's scenario dropdown). Names are
+// stable C strings valid for the process lifetime; index < scenario_count().
+size_t scenario_count();
+const char *scenario_name_at(size_t i);
+
 // Orientation with the nose (local +Z) along `dir`; the roll axis is the
 // coordinate axis most orthogonal to dir (never singular for a unit dir).
 glm::dmat3 faceAlong(const glm::dvec3 &dir);

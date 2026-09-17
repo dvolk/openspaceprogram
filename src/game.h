@@ -177,6 +177,12 @@ struct Game {
        camera at vab_center. */
     BuildShip vab;
     glm::dvec3 vab_center = glm::dvec3(0.0);   // bbox center of vab parts (S frame)
+    /* LAUNCH config (the VAB top bar's body/scenario dropdowns). Names, not
+       pointers, so they survive and are easy to inspect; vabOpen seeds the
+       body to g.home and the scenario to "pad". vabLaunch resolves them
+       (g.sys.find / scenario_by_name), falling back to those defaults. */
+    std::string vab_bodyName;      // body to launch from ("" -> g.home)
+    std::string vab_scenarioName;  // scenario to launch ("" -> "pad")
     int vab_hover = -1;      // build-part index under the mouse; -1 = none
     int vab_selected = -1;   // build-part index selected (click); -1 = none
     std::string vab_armed;   // catalog part name armed from the palette ("" = none)
