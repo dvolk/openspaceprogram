@@ -1,0 +1,20 @@
+# Quit to title from a running game: --quit-title fires Game::quitToTitle at
+# 2 s -- the flight pause menu's "Quit to title" button without the click, and
+# the inverse of case 62's New Game. unloadGame tears the whole fleet down
+# (~Vehicle does the per-ship physics, weld and aboard-crew cleanup) and
+# enterTitle collapses the stack to the shipless floor.
+#
+# "Timeout reached" is the assertion that matters: the fleet is deleted
+# mid-flight and the sim keeps running afterwards (the title scene ticks the
+# bodies), so a dangling ref or a double free in the teardown would abort
+# before the 8 s and this line would never print. The --load boot path starts
+# shipless, so it cannot show a teardown of a LIVE fleet; this can.
+NAME quit-title
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --quit-title 2000
+EXPECT [game] unloaded: fleet torn down
+EXPECT [scene] flight -> title (enterTitle)
+EXPECT Timeout reached (8.0 s)
+FORBID Segmentation
+FORBID GL_
+FORBID error:

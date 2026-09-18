@@ -284,6 +284,12 @@ struct Game {
     int reloadMs = -1;
     bool reloadFired = false;
 
+    // --quit-title MS: the headless hook for the flight pause menu's "Quit to
+    // title" (Game::quitToTitle). The only automated cover for unloadGame
+    // tearing down a LIVE fleet and landing on the title screen.
+    int quitTitleMs = -1;
+    bool quitTitleFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
@@ -557,6 +563,17 @@ struct Game {
        Shared by the Save/Load window and the --reload hook, so the headless
        path exercises the real one rather than a parallel implementation. */
     bool loadFrom(const std::string &dir);
+    /* Tear the running game down to the shipless-boot state: delete the fleet,
+       drop part_sels and the active ship/kerbal/lastShip refs, and re-aim the
+       camera at home (orbit view). ~Vehicle does the physics/weld/crew cleanup
+       per ship, so walking the bodies' ship lists is the whole teardown. No
+       job drain: no background continuation dereferences the fleet. Leaves the
+       game exactly as a no-vessel boot does. */
+    void unloadGame();
+    /* unloadGame + enterTitle: the flight pause menu's "Quit to title" and the
+       --quit-title hook, shared so the headless path exercises the real
+       teardown. */
+    void quitToTitle();
     // Keep the "ship" focus entry in sync with the active ship and point
     // the camera focus at it -- or at home (the orbit view) when there is
     // none. select_ship and load_game both enter/leave the no-ship state.

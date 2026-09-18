@@ -2219,6 +2219,15 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
         if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
             setWinOpen(W_Controls, !winOpen(W_Controls));
         }
+        if(!isTitle) {
+            // Abandon the running game for the title screen. Close the menu
+            // first: it is Transient and enterTitle does not close windows, so
+            // leaving it latched open would resurface over the next New Game.
+            if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
+                setWinOpen(win, false);
+                g.quitToTitle();
+            }
+        }
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;
         }

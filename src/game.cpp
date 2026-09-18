@@ -338,6 +338,41 @@ bool Game::loadFrom(const std::string &dir) {
     return true;
 }
 
+void Game::unloadGame() {
+    /* Tear the running fleet down to the shipless-boot state. ~Vehicle
+       detaches the welds, unregisters the physics bodies and deletes the crew
+       aboard, so walking each body's ship list and deleting is the whole
+       teardown -- the same pattern load_game's commit path uses. Aboard crew
+       are NOT in those lists (their ship owns them), so there is no double
+       free; a free EVA kerbal IS a top-level entry and is deleted like any
+       other vehicle. part_sels holds Part* into the fleet, so it goes first.
+
+       No job drain is needed: every background continuation (surface map,
+       porkchop grid, terrain) publishes into Game- or body-level state and
+       none dereferences the fleet, and the bodies and the Game both outlive
+       this -- so tearing the fleet down cannot dangle an in-flight job. */
+    part_sels.clear();
+    for(TerrainBody *b : sys.bodies) {
+        for(Vehicle *v : b->ships) { delete v; }
+        b->ships.clear();
+    }
+    ship = nullptr;
+    kerbal = nullptr;
+    lastShip = nullptr;
+    // The title screen is the orbit view of home: force orbit mode (a pilot
+    // quitting from free-cam would otherwise keep the free pose) before
+    // syncShipFocus drops the "ship" focus entry and re-aims at home.
+    if(camera != nullptr) { camera->mode = CAM_ORBIT; }
+    syncShipFocus();
+    printf("[game] unloaded: fleet torn down, no active vessel\n");
+    fflush(stdout);
+}
+
+void Game::quitToTitle() {
+    unloadGame();
+    enterTitle(*this);
+}
+
 void Game::settleFleet(Vehicle *active) {
     /* Apply each ship's scenario. Ships sharing a body+scenario group get
        their own slot (20 m apart along the orbit binormal for an orbit start,

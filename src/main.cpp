@@ -710,6 +710,7 @@ int main(int argc, char **argv)
     game.newGameMs = args.new_game_ms;
     game.reloadDir = args.reload_dir;
     game.reloadMs = args.reload_ms;
+    game.quitTitleMs = args.quit_title_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -876,6 +877,14 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.newGameMs) {
             game.newGameFired = true;
             game.newGame();
+        }
+        /* --quit-title: the headless hook for the flight pause menu's "Quit to
+           title". Before the scene is read, since it decides the scene (it
+           tears the fleet down and lands on Title). */
+        if(game.quitTitleMs >= 0 && !game.quitTitleFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.quitTitleMs) {
+            game.quitTitleFired = true;
+            game.quitToTitle();
         }
         vabFireHooks(game);
         {
