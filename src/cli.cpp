@@ -108,6 +108,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the VAB's \"Back to game\" (vabClose) once at this loop "
                    "time in ms -- the headless path into the camera "
                    "park/restore round trip (test hook; -1 = never)");
+    app.add_option("--reload", args.reload_dir,
+                   "Load this save dir over the running game at --reload-at "
+                   "(the Save/Load window's Load button, headless)");
+    app.add_option("--reload-at", args.reload_ms,
+                   "Loop time in ms at which --reload fires (-1 = never)");
     app.add_option("--new-game", args.new_game_ms,
                    "Fire the title screen's New Game once at this loop time in "
                    "ms (headless test hook; -1 = never)");

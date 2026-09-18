@@ -15,6 +15,7 @@
 #include "eva.h"      // Kerbal (the crew characters)
 #include "physics.h"  // AddPhysicsBody, RemoveBody, setPosRot
 #include "pick.h"     // pickShipPart (pickAt)
+#include "save.h"     // load_game (Game::loadFrom)
 #include "settings.h" // SettingsData + the settings.json JSON mapping
 #include "shipdef.h"  // PartDef (crew_capacity)
 
@@ -299,24 +300,59 @@ bool Game::newGame() {
         toast("A game is already running");
         return false;
     }
-    // The CLI boot's default vessel (a lone --body implies the same one).
-    static const char *kDefaultShip = "res/ships/racer.json";
     std::vector<FleetEntry> entries(1);
-    entries[0].ship = kDefaultShip;
+    entries[0].ship = kDefaultShipDef;
     Vehicle *first = ships.build_fleet(entries, sys, home, args.scenario);
     if(first == nullptr) {
-        printf("[game] new game failed: could not build %s\n", kDefaultShip);
+        printf("[game] new game failed: could not build %s\n", kDefaultShipDef);
         fflush(stdout);
-        toast("New Game failed: %s", kDefaultShip);
+        toast("New Game failed: %s", kDefaultShipDef);
         return false;
     }
-    ships.apply_scenarios(sys);
-    select_ship(first);   // aims the camera + inserts the "ship" focus entry
+    // The same settle the CLI boot does, then activate through select_ship so
+    // the camera follows and the "ship" focus entry appears.
+    settleFleet(first);
+    select_ship(first);
     enterFlight(*this);
     printf("[game] new game: %s on %s\n", first->name.c_str(), home->name.c_str());
     fflush(stdout);
     toast("New game -- %s", first->name.c_str());
     return true;
+}
+
+bool Game::loadFrom(const std::string &dir) {
+    try {
+        load_game(*this, dir);
+    } catch(const std::exception &e) {
+        printf("[load] refused %s: %s\n", dir.c_str(), e.what());
+        fflush(stdout);
+        toast("Load failed: %s", e.what());
+        // load_game is transactional, so the fleet is intact and there is
+        // nothing to do but stay put. The test is belt and braces: if a future
+        // change ever lets a load fail after the fleet is gone, this routes to
+        // the title screen instead of leaving a Flight scene with no vessel.
+        if(ship == nullptr) { enterTitle(*this); }
+        return false;
+    }
+    if(ship != nullptr) { enterFlight(*this); } else { enterTitle(*this); }
+    return true;
+}
+
+void Game::settleFleet(Vehicle *active) {
+    /* Apply each ship's scenario. Ships sharing a body+scenario group get
+       their own slot (20 m apart along the orbit binormal for an orbit start,
+       along the pad for a ground one) so they do not spawn on top of each
+       other; ships placed with a null scenario are skipped. */
+    ships.apply_scenarios(sys);
+    /* Idle ships park on rails: flying ones coast on their conic, pad ships
+       freeze in the surface frame (their pose rides the planet's spin via the
+       render transform). Ships that are neither in free fall nor grounded
+       refuse and stay in the physics world. */
+    for(auto *b : sys.bodies) {
+        for(auto *s : b->ships) {
+            if(s != active) { s->goOnRails(); }
+        }
+    }
 }
 
 void Game::select_ship(Vehicle *v) {

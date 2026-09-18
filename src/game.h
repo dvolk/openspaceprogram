@@ -276,6 +276,14 @@ struct Game {
     int newGameMs = -1;
     bool newGameFired = false;
 
+    // --reload DIR / --reload-at MS: the headless runtime-load hook, i.e. the
+    // Save/Load window's Load button without the click. It is the only
+    // automated cover for load_game running against a LIVE game (the --load
+    // boot path starts from nothing, so it cannot show a load preserving one).
+    std::string reloadDir;
+    int reloadMs = -1;
+    bool reloadFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
@@ -531,6 +539,24 @@ struct Game {
        (reports/ui-scenes2026_09_17 stage 4), which is why it stays small
        instead of growing fleet/scenario options of its own. */
     bool newGame();
+    /* Settle a freshly built fleet into the world: apply every ship's
+       scenario (which is what positions them), then park on rails every ship
+       except `active`. Does NOT make `active` the player's ship -- the caller
+       does, because the two callers need different things: main assigns
+       Game::ship directly at boot (the camera does not exist yet and there is
+       no previous ship to hand off from), while newGame goes through
+       select_ship so the camera follows.
+
+       --load skips all of this: a save records each ship's live-or-railed
+       state and the clock, so re-scenarioing would move them. */
+    void settleFleet(Vehicle *active);
+    /* Load a save over the running game, then move to the scene the result
+       implies: Flight when it has a vessel, Title when it does not. False if
+       the load was refused, in which case the running game is untouched --
+       load_game reads and builds everything before it clears the fleet.
+       Shared by the Save/Load window and the --reload hook, so the headless
+       path exercises the real one rather than a parallel implementation. */
+    bool loadFrom(const std::string &dir);
     // Keep the "ship" focus entry in sync with the active ship and point
     // the camera focus at it -- or at home (the orbit view) when there is
     // none. select_ship and load_game both enter/leave the no-ship state.

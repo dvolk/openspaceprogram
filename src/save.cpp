@@ -21,6 +21,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <utility>   // std::pair (the detached per-body fleet lists)
 
 #include "body.h"      // Body, create_part_body
 #include "eva.h"       // Kerbal
@@ -77,22 +78,6 @@ const ScenarioDef *resolveScenario(const std::string &name) {
     return scenario_by_name(name);
 }
 
-// Delete the whole fleet: every ship (and its crew -- ~Vehicle deletes the
-// Kerbals aboard) out of every body's list, and the dangling references.
-void clearFleet(Game &g) {
-    g.ship = nullptr;
-    g.kerbal = nullptr;
-    g.lastShip = nullptr;
-    for(size_t b = 0; b < g.sys.bodies.size(); b++) {
-        TerrainBody *body = g.sys.bodies[b];
-        for(size_t i = 0; i < body->ships.size(); i++) {
-            delete body->ships[i];
-        }
-        body->ships.clear();
-    }
-    g.part_sels.clear();
-    g.focusBody = 0;
-}
 
 // ---- capture (Game -> SaveShip) --------------------------------------------
 
@@ -358,20 +343,94 @@ void load_game(Game &g, const std::string &dir) {
     g.time = meta.time;
     g.time_accel = meta.time_accel;
 
-    clearFleet(g);
+    /* Transactional: everything that can fail is reading or building, and
+       neither needs the old fleet DELETED first -- only out of the bodies'
+       ship lists, which the detach below does. So a load that throws leaves
+       the running game exactly as it was. It used to delete the fleet first
+       and discover the failure afterwards, which left the player with nothing
+       to fly and no way back. */
 
-    // phase 1: build every vehicle in the save's order. collectVehicles
-    // orders a ship before its crew, so a crew's aboard ship already exists
-    // (in byName) when the crew is built.
-    std::map<std::string, Vehicle *> byName;
+    // Read every ship file. A truncated or missing ships/<name>.json is what a
+    // crash or a full disk mid-save actually produces.
     std::vector<SaveShip> saves;
+    saves.reserve(meta.ships.size());
     for(size_t i = 0; i < meta.ships.size(); i++) {
-        SaveShip s = saveShipFromJson(readJsonFile(dir + "/ships/" + meta.ships[i] + ".json"));
-        saves.push_back(s);
-        Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, byName)
-                               : buildShipFromSaveParts(g, s);
-        byName[v->name] = v;
+        saves.push_back(saveShipFromJson(
+            readJsonFile(dir + "/ships/" + meta.ships[i] + ".json")));
     }
+
+    /* Detach the running fleet from the bodies but keep it ALIVE until the
+       load commits. It has to be out of the way first because the builders
+       append the new vehicles to those same lists (buildShipFromSaveParts ends
+       in `v->m_parent->ships.push_back(v)`), and it has to stay alive because
+       deleting it here is exactly what used to make a failed load
+       unrecoverable.
+
+       Detaching rather than clearing also means nothing else needs saving:
+       g.ship, g.kerbal, g.lastShip and g.part_sels all still point at live
+       vehicles throughout the build, so a refusal can put the lists back and
+       the game carries on untouched. (The builders read the catalog, the
+       shader, the system and the home body -- never the active ship.) */
+    std::vector<std::pair<TerrainBody *, std::vector<Vehicle *>>> detached;
+    for(TerrainBody *b : g.sys.bodies) {
+        detached.emplace_back(b, b->ships);
+        b->ships.clear();
+    }
+
+    /* Build every vehicle. The other realistic failure is a save naming a part
+       the catalog no longer has -- the parts catalog moves and nothing here is
+       versioned -- which buildShipFromSaveParts throws for.
+
+       collectVehicles orders a ship before its crew, so a crew's aboard ship
+       is already in byName when the crew is built -- the same invariant the
+       cleanup below relies on. */
+    std::map<std::string, Vehicle *> byName;
+    std::vector<Vehicle *> built;
+    built.reserve(saves.size());
+    try {
+        for(size_t i = 0; i < saves.size(); i++) {
+            const SaveShip &s = saves[i];
+            Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, byName)
+                                   : buildShipFromSaveParts(g, s);
+            built.push_back(v);
+            byName[v->name] = v;
+        }
+    } catch(...) {
+        /* Put the body lists back BEFORE deleting anything, so no list ever
+           holds a freed pointer: the new vehicles are in those lists too
+           (the builders put them there), and ~Vehicle does not unlink itself.
+
+           Then delete what was built -- but not an aboard crew character,
+           because ~Vehicle owns its crew and deleting both the ship and its
+           kerbals would be a double free. A free (EVA) kerbal is not aboard
+           anything and is deleted here like any other vehicle.
+
+           The ownership test is a SEPARATE pass, because isCrewAboard() is
+           virtual and the answer has to be read while everything is still
+           alive: deleting a ship frees the kerbals aboard it, so testing them
+           afterwards would call a virtual function through freed memory. (The
+           same trap remove_ship had -- see its handoff loop.) */
+        for(auto &d : detached) { d.first->ships = d.second; }
+        std::vector<char> ownedByShip(built.size(), 0);
+        for(size_t i = 0; i < built.size(); i++) {
+            if(built[i]->isCrewAboard()) { ownedByShip[i] = 1; }
+        }
+        for(size_t i = 0; i < built.size(); i++) {
+            if(!ownedByShip[i]) { delete built[i]; }
+        }
+        throw;
+    }
+
+    // The load committed, so the old fleet goes -- the deletion that the
+    // detach above deferred. part_sels holds Part* into it, so that goes first.
+    g.part_sels.clear();     // Part* into the old fleet -- drop before deleting
+    for(auto &d : detached) {
+        for(Vehicle *v : d.second) { delete v; }
+    }
+    g.ship = nullptr;
+    g.kerbal = nullptr;
+    g.lastShip = nullptr;
+    g.focusBody = 0;
 
     // phase 2: resolve the cross-references + the world state, now that
     // every vehicle exists. The dock target was saved by NAME (its port by

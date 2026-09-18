@@ -319,10 +319,9 @@ int main(int argc, char **argv)
     if(!args.fleet_file.empty()) {
         fleet_entries = load_fleet(args.fleet_file.c_str()).ships;
     } else if(!args.ship_files.empty() || !args.body_name.empty()) {
-        // --ship names the ship; a lone --body implies the default racer on
-        // it. Neither -> no ship: the "orbit view" state (main menu + home
-        // planet), entered by booting with neither --ship nor --body.
-        if(args.ship_files.empty()) { args.ship_files.push_back("res/ships/racer.json"); }
+        // --ship names the ship; a lone --body implies the default vessel on
+        // it. Neither -> no vessel at all, which boots to the title screen.
+        if(args.ship_files.empty()) { args.ship_files.push_back(kDefaultShipDef); }
         for(size_t i = 0; i < args.ship_files.size(); i++) {
             FleetEntry e;
             e.ship = args.ship_files[i];
@@ -381,27 +380,17 @@ int main(int argc, char **argv)
 
     if(args.load_name.empty()) {
         check_gl_error();
-        /* Apply each ship's scenario (before the camera is constructed,
-           so the camera focuses on the spawn point). Ships sharing a
-           body+scenario group get their own orbit slot (20 m apart along
-           the orbit binormal) so they don't spawn on top of each other. */
-        ships.apply_scenarios(sys);
-
-        /* the active (player-controlled) ship: the first one built; Tab /
-           the SHIPS window switch it. game.ship always points at it, so
-           the HUD, camera, input and draw code follow the active ship
-           without special cases. */
+        // Scenarios first (they are what position the ships), then park the
+        // idle ones -- both before the camera is constructed, so it focuses on
+        // the spawn point. Shared with the title screen's New Game.
+        game.settleFleet(first);
+        /* The active (player-controlled) ship: the first one built; F6 / the
+           SHIPS window switch it. game.ship always points at it, so the HUD,
+           camera, input and draw code follow the active ship without special
+           cases. Assigned directly rather than through select_ship: the camera
+           does not exist yet here, and there is no previous ship to hand off
+           from. */
         ship = first;
-
-        /* Idle ships park on rails: flying ones coast on their conic, pad
-           ships freeze in the surface frame (their pose rides the planet's
-           spin via the render transform). Ships that are neither in free
-           fall nor grounded refuse and stay in the physics world. */
-        for(auto *b : sys.bodies) {
-            for(auto *s : b->ships) {
-                if(s != ship) { s->goOnRails(); }
-            }
-        }
     } else {
         // --load: load_game set the clock to the saved time, but the frames
         // were propagated to args.start_time (0) above. Re-propagate them to
@@ -719,6 +708,8 @@ int main(int argc, char **argv)
     // fires them lives with the editor (vabFireHooks / vabUpdate) rather than
     // in this loop.
     game.newGameMs = args.new_game_ms;
+    game.reloadDir = args.reload_dir;
+    game.reloadMs = args.reload_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -870,6 +861,14 @@ int main(int argc, char **argv)
            read after them -- the launching frame falls through to tick().
            (vabFireHooks is the one scene-specific name left in this loop: it
            is test scaffolding, and it no-ops unless the editor is live.) */
+        /* --reload: the headless runtime load, the Save/Load window's Load
+           button without the click. Before the scene is read, since a load
+           decides the scene (Flight with a vessel, Title without). */
+        if(!game.reloadDir.empty() && game.reloadMs >= 0 && !game.reloadFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.reloadMs) {
+            game.reloadFired = true;
+            game.loadFrom(game.reloadDir);
+        }
         /* --new-game: the headless hook for the title screen's New Game
            button. Before the scene is read, so the frame that starts a game
            runs the flight scene's update. */

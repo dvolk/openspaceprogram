@@ -63,6 +63,10 @@ struct GameArgs {
                              // (vabClose) once at this loop time in ms. The
                              // headless path into the camera park/restore
                              // round trip (headless test hook; -1 = never)
+    std::string reload_dir; // --reload: the save dir to load over the running
+                            // game, at --reload-at (headless test hook)
+    int reload_ms = -1;     // --reload-at: loop time in ms for --reload
+                            // (-1 = never)
     int new_game_ms = -1;   // --new-game: fire the title screen's New Game
                             // (Game::newGame) once at this loop time in ms
                             // (headless test hook; -1 = never)

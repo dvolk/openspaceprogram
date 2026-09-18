@@ -36,6 +36,11 @@ struct Fleet {
     std::vector<FleetEntry> ships;
 };
 
+/* The vessel a start with no --ship and no --fleet gets: a lone --body implies
+   it, a fleet entry with no "ship" defaults to it, and the title screen's New
+   Game builds it. Named once here so those three cannot drift. */
+extern const char *const kDefaultShipDef;
+
 /* Parse + validate, in the load_system() style: throws std::runtime_error
    naming the file and the offending entry on any bad/missing data. */
 Fleet load_fleet(const char *path);

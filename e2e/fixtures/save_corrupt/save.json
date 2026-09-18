@@ -1,0 +1,15 @@
+{
+ "active_ship": "racer",
+ "format": 1,
+ "parts": "res/parts.json",
+ "saved_at": "2026-09-16T06:39:55",
+ "scene": "flight",
+ "ships": [
+  "v0",
+  "v1",
+  "v2"
+ ],
+ "system": "res/ksp_system.json",
+ "time": 3.0800000000000023,
+ "time_accel": 1
+}

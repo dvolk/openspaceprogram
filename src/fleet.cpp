@@ -5,6 +5,8 @@
 
 #include <nlohmann/json.hpp>
 
+const char *const kDefaultShipDef = "res/ships/racer.json";
+
 Fleet load_fleet(const char *path) {
     std::ifstream f(path);
     if(!f.is_open()) {

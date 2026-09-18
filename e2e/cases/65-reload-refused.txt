@@ -1,0 +1,25 @@
+# A REFUSED runtime load must leave the running game intact.
+#
+# e2e/fixtures/save_corrupt is save_racer plus a third vessel whose first part
+# is not in the catalog, so buildShipFromSaveParts throws -- and it throws on
+# the THIRD entry, after the ship (v0) and the kerbal aboard it (v1) were
+# already built. That ordering is the point: the cleanup deletes what it built,
+# and ~Vehicle owns its crew, so deleting the kerbal as well as its ship would
+# be a double free. A crash here is that bug.
+#
+# load_game reads and builds everything before it deletes the old fleet, so
+# the refusal happens with the old fleet still in place -- before this it
+# cleared first and discovered the failure afterwards, leaving nothing to fly.
+# "Timeout reached" is the assertion: the game is still flying 6 s later.
+NAME reload-refused
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --reload e2e/fixtures/save_corrupt --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+EXPECT [load] refused e2e/fixtures/save_corrupt
+EXPECT no_such_part_in_the_catalog
+EXPECT Timeout reached (8.0 s)
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID Segmentation
+FORBID GL_
+FORBID error:

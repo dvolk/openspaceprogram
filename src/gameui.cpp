@@ -2303,27 +2303,14 @@ void drawSaveLoad(Game &g) {
             ImGui::Spacing();
             if(ImGui::Button("Load##saveload")) {
                 const std::string dir = std::string("saves/") + saves[selected];
-                try {
-                    load_game(g, dir);
+                // loadFrom does the load, the scene decision and the failure
+                // toast; it is shared with the --reload hook so the headless
+                // path tests this one.
+                if(g.loadFrom(dir)) {
                     g.toast("Loaded %s", saves[selected].c_str());
                     setWinOpen(W_SaveLoad, false);
-                    saves = list_saves("saves");
-                    /* load_game cannot drive a transition itself -- at boot it
-                       runs before the camera and the focus list exist -- so the
-                       caller decides where the loaded game lands: Flight when
-                       it has a vessel, the title screen when it does not. */
-                    if(g.ship != nullptr) { enterFlight(g); } else { enterTitle(g); }
-                } catch(const std::exception &e) {
-                    g.toast("Load failed: %s", e.what());
-                    // load_game clears the fleet BEFORE the per-ship reads that
-                    // can throw, so a late failure leaves nothing to fly. An
-                    // early one (a missing or corrupt save.json) leaves the
-                    // running game intact -- hence the ship test rather than an
-                    // unconditional jump to the title screen. (Making load_game
-                    // parse-everything-then-clear is the real fix; it is noted
-                    // as C4 in reports/ui-scenes2026_09_17/addendum.md.)
-                    if(g.ship == nullptr) { enterTitle(g); }
                 }
+                saves = list_saves("saves");
             }
             ImGui::SameLine();
             if(ImGui::Button("Delete##saveload")) {
