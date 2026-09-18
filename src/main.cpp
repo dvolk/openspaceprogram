@@ -551,10 +551,6 @@ int main(int argc, char **argv)
     }
 
     int screenshot_count = 0;
-    bool vab_place_fired = false;    // the --vab-place hook fires once
-    bool vab_load_fired = false;     // the --vab-load hook fires once
-    bool vab_launch_fired = false;   // the --vab-launch hook fires once
-    bool vab_close_fired = false;    // the --vab-close hook fires once
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
@@ -713,6 +709,15 @@ int main(int argc, char **argv)
     // Stamped on the game: the sim-event emitter (events.cpp) and the
     // timeout check below both measure "ms since the loop started" from it.
     game.loop_start_ms = SDL_GetTicks();
+
+    // The headless VAB hooks are stamped on the game too, so the code that
+    // fires them lives with the editor (vabFireHooks / vabUpdate) rather than
+    // in this loop.
+    game.vabHooks.placeMs = args.vab_place_ms;
+    game.vabHooks.loadMs = args.vab_load_ms;
+    game.vabHooks.loadPath = args.vab_load;
+    game.vabHooks.launchMs = args.vab_launch_ms;
+    game.vabHooks.closeMs = args.vab_close_ms;
     const double startup_s =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - prog_start).count();
     printf("Main loop starting: startup took %.3f s", startup_s);
@@ -853,79 +858,16 @@ int main(int argc, char **argv)
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
         // game's clock and marks the frame for a redraw. The Vab scene runs
         // no sim -- it redraws every frame instead.
-        /* --vab-load: the headless load hook, fired once at its loop time
-           (the e2e pin for load_ship_def -> fromShipDef -> vabAimCamera, i.e.
-           loading a ship def into the build tree -- the VAB's Load button).
-           Fires before --vab-launch so a loaded tree can then be launched. */
-        if(game.scene == Scene::Vab && !args.vab_load.empty()
-           && args.vab_load_ms >= 0 && !vab_load_fired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_load_ms) {
-            vab_load_fired = true;
-            vabLoad(game, args.vab_load.c_str());
-        }
-        /* --vab-launch: the headless LAUNCH hook, fired once at its loop
-           time (the e2e pin for toShipDef -> place_ship_def -> build_ship
-           -> select_ship -> the scene switch). The launch flips the scene
-           to Flight, so the same frame falls into tick() below. */
-        if(game.scene == Scene::Vab && args.vab_launch_ms >= 0 && !vab_launch_fired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_launch_ms) {
-            vab_launch_fired = true;
-            vabLaunch(game);
-        }
-        /* --vab-close: the headless "Back to game" hook, fired once at its
-           loop time (the e2e pin for vabClose -> Game::restoreCamera, i.e.
-           the parked flight camera coming back). Last of the three so a case
-           can load, launch and close in one run. */
-        if(game.scene == Scene::Vab && args.vab_close_ms >= 0 && !vab_close_fired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_close_ms) {
-            vab_close_fired = true;
-            vabClose(game);
-        }
+        /* The VAB's headless transition hooks (--vab-load / --vab-launch /
+           --vab-close), then the editor's per-frame step. The hooks run first
+           and a launch flips the scene to Flight, so the scene is re-checked
+           before the update -- the launching frame falls through to tick().
+           Everything VAB-specific lives in vab.cpp now: this loop only knows
+           "the editor is live" vs "the sim runs". */
+        vabFireHooks(game);
         if(game.scene == Scene::Vab) {
-            // editor: hover-pick a part/port and preview the armed part's
-            // ghost; a fresh LMB press places it. No sim. While the cursor
-            // is over an imgui window the UI owns the mouse: no pick, no
-            // place (WantCaptureMouse holds last frame's value -- imgui
-            // sets it in the NewFrame below -- so it is at most one frame
-            // stale, which the cursor cannot outrun in practice).
-            int mx = 0, my = 0;
-            float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
-            const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
-            mx = (int)fmx; my = (int)fmy;
-            const bool overUI = ImGui::GetIO().WantCaptureMouse;
-            if(overUI) {
-                vabClearHover(game);
-            } else {
-                vabUpdateHover(game, mx, my);
-            }
-            /* --vab-place: the headless placement hook, fired once at its
-               loop time. It exercises vabPlace (root / stack / surface)
-               without a mouse -- sim-mouse button events do not update
-               SDL_GetMouseState, so the LMB edge above can't be driven
-               headless. Fires AFTER vabUpdateHover, so the ghost (and
-               root flag) it places from is this frame's. */
-            if(!overUI && args.vab_place_ms >= 0 && !vab_place_fired
-               && (int)(SDL_GetTicks() - game.loop_start_ms) >= args.vab_place_ms) {
-                vab_place_fired = true;
-                const int placed = vabPlace(game);   // -1 = no ghost/armed part
-                printf("[vab] place hook: %d\n",
-                       placed >= 0 ? (int)game.vab.build.parts.size() : -1);
-                fflush(stdout);
-            }
-            const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
-            if(lmb && !game.vab.lmbPrev && !overUI) {
-                if(game.vab.linkMode) {
-                    vabLinkClick(game);
-                } else if(!game.vab.armed.empty() || game.vab.armedAsm >= 0) {
-                    vabPlace(game);
-                } else if(game.vab.hover >= 0) {
-                    // nothing armed: a plain click selects the hovered part
-                    game.vab.selected = game.vab.hover;
-                    game.vab.linkSel = -1;
-                }
-            }
-            game.vab.lmbPrev = lmb;
-            game.redraw = true;
+            vabUpdate(game);
+            game.redraw = true;   // a frozen scene has no tick to mark it
         } else {
             tick(game);
         }

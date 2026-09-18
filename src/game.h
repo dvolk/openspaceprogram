@@ -284,6 +284,21 @@ struct Game {
     bool camParked = false;
     CameraSnapshot parkedCam;
 
+    /* One-shot headless test hooks (the cli.h --vab-* options). The timings
+       are copied from GameArgs at boot so the code that FIRES them can live
+       next to the code it drives -- the place hook inside vabUpdate, the three
+       transition hooks in vabFireHooks -- instead of in main's loop, and so
+       both keep the uniform Game&-only signature the scene table needs.
+       A negative time means "never"; each `fired` latches so a hook fires at
+       most once per run. */
+    struct VabHooks {
+        int placeMs = -1, loadMs = -1, launchMs = -1, closeMs = -1;
+        std::string loadPath;
+        bool placeFired = false, loadFired = false, launchFired = false,
+             closeFired = false;
+    };
+    VabHooks vabHooks;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick

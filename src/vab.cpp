@@ -16,6 +16,8 @@
 
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast (the snap + symmetry)
 
+#include "../middleware/imgui/imgui.h"   // ImGui::GetIO().WantCaptureMouse
+
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
 #include "ships.h"    // Ships::catalog (resolve the armed palette name)
 
@@ -624,4 +626,73 @@ void vabClose(Game &g) {
     printf("[vab] back to flight (sim resumed)\n");
     fflush(stdout);
     g.toast("Back to flight -- the simulation resumes");
+}
+
+/* The headless transition hooks (--vab-load, --vab-launch, --vab-close), each
+   fired at most once at its loop time and only while the editor is the live
+   scene. The scene is re-checked between them: a launch flips it to Flight,
+   and the caller re-checks too so the same frame falls through to tick(). */
+void vabFireHooks(Game &g) {
+    if(g.scene != Scene::Vab) { return; }
+    const int ms = (int)(SDL_GetTicks() - g.loop_start_ms);
+    if(!g.vabHooks.loadPath.empty() && g.vabHooks.loadMs >= 0
+       && !g.vabHooks.loadFired && ms >= g.vabHooks.loadMs) {
+        g.vabHooks.loadFired = true;
+        vabLoad(g, g.vabHooks.loadPath.c_str());
+    }
+    if(g.scene == Scene::Vab && g.vabHooks.launchMs >= 0
+       && !g.vabHooks.launchFired && ms >= g.vabHooks.launchMs) {
+        g.vabHooks.launchFired = true;
+        vabLaunch(g);
+    }
+    if(g.scene == Scene::Vab && g.vabHooks.closeMs >= 0
+       && !g.vabHooks.closeFired && ms >= g.vabHooks.closeMs) {
+        g.vabHooks.closeFired = true;
+        vabClose(g);
+    }
+}
+
+/* The editor's mouse half: hover-pick a part/port and preview the armed
+   part's ghost; a fresh LMB press places, links, or selects.
+
+   While the cursor is over an imgui window the UI owns the mouse, so there is
+   no pick and no place. WantCaptureMouse holds LAST frame's value -- imgui
+   sets it in the NewFrame that follows this phase -- so it is at most one
+   frame stale, which the cursor cannot outrun in practice. */
+void vabUpdate(Game &g) {
+    float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
+    const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
+    const int mx = (int)fmx, my = (int)fmy;
+    const bool overUI = ImGui::GetIO().WantCaptureMouse;
+    if(overUI) {
+        vabClearHover(g);
+    } else {
+        vabUpdateHover(g, mx, my);
+    }
+    /* --vab-place: the headless placement hook, fired once at its loop time.
+       It exercises vabPlace (root / stack / surface) without a mouse --
+       sim-mouse button events do not update SDL_GetMouseState, so the LMB
+       edge below can't be driven headless. Fires AFTER vabUpdateHover, so the
+       ghost (and root flag) it places from is this frame's. */
+    if(!overUI && g.vabHooks.placeMs >= 0 && !g.vabHooks.placeFired
+       && (int)(SDL_GetTicks() - g.loop_start_ms) >= g.vabHooks.placeMs) {
+        g.vabHooks.placeFired = true;
+        const int placed = vabPlace(g);   // -1 = no ghost/armed part
+        printf("[vab] place hook: %d\n",
+               placed >= 0 ? (int)g.vab.build.parts.size() : -1);
+        fflush(stdout);
+    }
+    const bool lmb = (mb & SDL_BUTTON_LMASK) != 0;
+    if(lmb && !g.vab.lmbPrev && !overUI) {
+        if(g.vab.linkMode) {
+            vabLinkClick(g);
+        } else if(!g.vab.armed.empty() || g.vab.armedAsm >= 0) {
+            vabPlace(g);
+        } else if(g.vab.hover >= 0) {
+            // nothing armed: a plain click selects the hovered part
+            g.vab.selected = g.vab.hover;
+            g.vab.linkSel = -1;
+        }
+    }
+    g.vab.lmbPrev = lmb;
 }

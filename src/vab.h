@@ -91,6 +91,16 @@ void vabLaunch(Game &g);
 // scene transition (no camera park, no launch-config re-seed, no toast).
 void vabAimCamera(Game &g);
 
+/* The editor's per-frame step, called from the loop's LOGIC phase while the
+   Vab scene is live (the sim does not tick). vabFireHooks fires the headless
+   transition hooks (--vab-load / --vab-launch / --vab-close) and must run
+   FIRST: a launch flips the scene to Flight, and the caller re-checks the
+   scene afterwards so the same frame falls through to tick(). vabUpdate is
+   the mouse half -- hover-pick, the armed ghost, and the fresh-LMB press that
+   places / links / selects -- plus the --vab-place hook. */
+void vabFireHooks(Game &g);
+void vabUpdate(Game &g);
+
 // Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to
 // game"). The sim FREEZES in the Vab scene (tick is skipped), so entering
 // mid-flight is a pause. vabOpen parks the flight camera (in either mode,
