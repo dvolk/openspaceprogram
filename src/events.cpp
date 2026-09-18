@@ -305,6 +305,21 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.surfmap_compute_requested = true;
         }
     }
+    /* F1 / F2: the two diagnostic overlays. Keys rather than menu items or
+       Windows-panel rows -- the menus list what you DO, and these are
+       overlays you flip on while flying. Gated on the scene owning the
+       window, so the title screen (which has neither) cannot latch open
+       state that nothing would ever draw. */
+    if(slotFired(Slot::DebugInfo, ksc, kmod, g.binds)) {
+        if(!repeat && winInScene(g, W_Debug)) {
+            setWinOpen(W_Debug, !winOpen(W_Debug));
+        }
+    }
+    if(slotFired(Slot::Telemetry, ksc, kmod, g.binds)) {
+        if(!repeat && winInScene(g, W_Telemetry)) {
+            setWinOpen(W_Telemetry, !winOpen(W_Telemetry));
+        }
+    }
     if(slotFired(Slot::ResetWindows, ksc, kmod, g.binds)) {
         // Reset the window layout to defaults (same as the
         // main menu's "Reset windows" button).

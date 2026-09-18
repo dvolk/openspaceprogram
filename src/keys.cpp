@@ -31,6 +31,8 @@ void KeyBindings::resetDefaults() {
     add(Slot::ToggleCamMode, SDL_SCANCODE_C);
     add(Slot::CycleTarget,   SDL_SCANCODE_G);
     add(Slot::ToggleWindows, SDL_SCANCODE_TAB);
+    add(Slot::DebugInfo,     SDL_SCANCODE_F1);
+    add(Slot::Telemetry,     SDL_SCANCODE_F2);
     add(Slot::NextShip,      SDL_SCANCODE_F6);
     add(Slot::ToggleEva,     SDL_SCANCODE_V);
     add(Slot::Space,         SDL_SCANCODE_SPACE);
@@ -136,6 +138,8 @@ const char *slotName(Slot s) {
         case Slot::ToggleCamMode:  return "toggle_cam_mode";
         case Slot::CycleTarget:    return "cycle_target";
         case Slot::ToggleWindows:  return "toggle_windows";
+        case Slot::DebugInfo:      return "debug_info";
+        case Slot::Telemetry:      return "telemetry";
         case Slot::NextShip:       return "next_ship";
         case Slot::ToggleEva:      return "toggle_eva";
         case Slot::Space:          return "space";
@@ -202,6 +206,8 @@ const char *slotLabel(Slot s) {
         case Slot::ToggleCamMode:  return "Toggle camera mode";
         case Slot::CycleTarget:    return "Cycle orbit target";
         case Slot::ToggleWindows:  return "Toggle windows";
+        case Slot::DebugInfo:      return "Debug info";
+        case Slot::Telemetry:      return "Telemetry plots";
         case Slot::NextShip:       return "Next ship";
         case Slot::ToggleEva:      return "Toggle EVA";
         case Slot::Space:          return "Stage / jump";
@@ -255,6 +261,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::WarpUp: case Slot::WarpDown:
         case Slot::CamSpeedUp: case Slot::CamSpeedDown:
         case Slot::ToggleCamMode: case Slot::CycleTarget: case Slot::ToggleWindows:
+        case Slot::DebugInfo: case Slot::Telemetry:
         case Slot::NextShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
         case Slot::Screenshot: case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:

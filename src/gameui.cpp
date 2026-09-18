@@ -157,8 +157,8 @@ static void draw_telemetry_cell(Game &g, int idx) {
    routes its defensive arm to the title screen too), and LAUNCH / New Game
    create one before enterFlight. The per-window "No active ship." guards went
    with the state they covered -- shipless is a scene now, not a leak into this
-   one. Game Debug Info keeps its guard because it IS in the title scene's set,
-   and so is drawn with no vessel. */
+   one. No window in this function keeps a guard: every one of them is in the
+   flight scene's set only, and the title screen has its own (uiwins.cpp). */
 void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // The window bodies are verbatim from main's ImGui pass; their locals
     // are Game members (aliased so the bodies read the same).
@@ -1096,7 +1096,6 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     drawWin(g, W_Debug, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         ImGui::Text("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
             CalTime ct = sys.home->cal.at(time);
@@ -2186,23 +2185,31 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
         };
         ImGui::PushFont(g.bigger);
         text_button("Open Space Program");
+        /* The two menus differ in their first items only: the title screen
+           starts a game and offers no editor (there is nothing to launch
+           into yet), the pause menu resumes or goes to the VAB. Everything
+           below is shared.
+
+           Not here, and deliberately -- each of the four removed items has a
+           key, and a menu that duplicates a binding is a menu with noise in
+           it: "Toggle windows" is TAB, "Reset windows" is F10, Game Debug
+           Info is F1 and Telemetry is F2 (Slot::DebugInfo / Slot::Telemetry,
+           handled in flightKeyActions). They are not Windows-panel rows
+           either: the panel lists the flight readouts you arrange, these are
+           overlays you flip on. All four are rebindable from Controls. */
         if(isTitle) {
             if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) { g.newGame(); }
-        } else if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
-            setWinOpen(win, false);
-        }
-        if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
-            setWinOpen(win, false);
-            vabOpen(g);   // the sim freezes in the editor (tick is skipped)
+        } else {
+            if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
+                setWinOpen(win, false);
+            }
+            if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
+                setWinOpen(win, false);
+                vabOpen(g);   // the sim freezes in the editor (tick is skipped)
+            }
         }
         if(ImGui::Button("Save/Load", ImVec2(bw, 0.0f))) {
             setWinOpen(W_SaveLoad, !winOpen(W_SaveLoad));
-        }
-        if(ImGui::Button("Toggle windows", ImVec2(bw, 0.0f))) {
-            g.toggle_windows();
-        }
-        if(ImGui::Button("Reset windows", ImVec2(bw, 0.0f))) {
-            ui::ResetGui();
         }
         // Toggles (not just open): a quick way to open or close these
         // (besides their X / Back).
@@ -2211,12 +2218,6 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
         }
         if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
             setWinOpen(W_Controls, !winOpen(W_Controls));
-        }
-        if(ImGui::Button("Game Debug Info", ImVec2(bw, 0.0f))) {
-            setWinOpen(W_Debug, !winOpen(W_Debug));
-        }
-        if(ImGui::Button("Telemetry", ImVec2(bw, 0.0f))) {
-            setWinOpen(W_Telemetry, !winOpen(W_Telemetry));
         }
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;

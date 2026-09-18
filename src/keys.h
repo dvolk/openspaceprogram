@@ -48,6 +48,8 @@ enum class Slot {
     ToggleCamMode, // 'c'  orbit (flying) <-> free (exploring)
     CycleTarget,   // 'g'  orbit mode: cycle the target body/ship
     ToggleWindows, // TAB  toggle the info windows
+    DebugInfo,     // F1   toggle the Game Debug Info window
+    Telemetry,     // F2   toggle the TELEMETRY plots
     NextShip,      // F6   advance to the next selectable ship
     ToggleEva,     // 'v'  EVA out of the ship / back in
     Space,         // SPACE stage (ship) / jump (EVA)

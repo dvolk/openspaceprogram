@@ -47,6 +47,8 @@ const WinDef kWins[W_Count] = {
         .name = "Game Debug Info", .label = "Game Debug Info",
         .opts = { .slot = ui::Slot::TopCenter, .closable = true,
                   .default_open = false },
+        // Neither a menu item nor a panel row: F1 (Slot::DebugInfo). It is
+        // flight-only diagnostics, an overlay you flip on while flying.
         .role = WinRole::Persistent, .inList = false,
     },
     [W_Telemetry] = {
@@ -55,6 +57,9 @@ const WinDef kWins[W_Count] = {
         // the two columns have room (each cell is ~half this width).
         .opts = { .slot = ui::Slot::MiddleLeft, .initial_size = ImVec2(880.0f, 620.0f),
                   .closable = true, .default_open = false },
+        // Neither a menu item nor a panel row: F2 (Slot::Telemetry), the
+        // same reasoning as Game Debug Info -- it plots the active vessel's
+        // series, so it is a flight overlay.
         .role = WinRole::Persistent, .inList = false,
     },
     [W_SaveLoad] = {
@@ -200,7 +205,7 @@ static const Win kFlightWinIds[] = {
 // no flight readouts, which is the whole point: there is no vessel, and the
 // set is what says so rather than a guard in each window's body.
 static const Win kTitleWinIds[] = {
-    W_TitleMenu, W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
+    W_TitleMenu, W_Settings, W_Controls, W_SaveLoad,
 };
 static const Win kVabWinIds[] = {
     W_VabTopBar,
