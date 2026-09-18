@@ -147,7 +147,7 @@ void emit_sim_events(Game &g) {
    from poll_events so the VAB scene can route its own keys instead: with no
    sim running the flight slots are meaningless -- and firing them would
    silently poke the parked ships (staging, warping, switching). */
-static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
         // Warp up one step (10x), capped at 100000 (ladder top).
         // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
@@ -337,7 +337,7 @@ static void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat
 /* The VAB scene's keys: fixed scancodes, not flight bindings (they are
    editor-local and the flight slots are gated out of this scene). While an
    imgui text field is focused the UI owns the keyboard. */
-static void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_Q) { vabRotate(g, -5.0); }
     if(ksc == SDL_SCANCODE_E) { vabRotate(g, +5.0); }
@@ -432,14 +432,10 @@ void poll_events(Game &g) {
                 }
             }
 
-            // The scene split: in the editor the flight actions are dead
-            // (with no sim running they would silently poke the parked
-            // ships), and the editor keys take over instead.
-            if(sceneIs(g, SceneId::Vab)) {
-                vabKeyActions(g, ksc, kmod, ev.key.repeat);
-            } else {
-                flightKeyActions(g, ksc, kmod, ev.key.repeat);
-            }
+            // The live scene owns the key map: in the editor the flight
+            // actions are dead (with no sim running they would silently poke
+            // the parked ships), and the editor keys take over instead.
+            curScene(g).keys(g, ksc, kmod, ev.key.repeat);
         }
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             // holding RMB over 3D (not over a UI window) moves the camera.

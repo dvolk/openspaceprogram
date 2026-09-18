@@ -22,12 +22,15 @@
 
 #include <cstddef>
 
+#include <SDL3/SDL.h>   // SDL_Scancode, Uint16 (the keys hook)
+
 #include <glm/glm.hpp>
 
 #include "camera.h"    // CameraMode
 #include "terrain.h"   // TerrainBody
 
 struct Game;
+class TransferPlanner;
 
 enum class SceneId : int {
     Flight,   // the sim: tick + world render + flight widgets
@@ -68,15 +71,24 @@ struct SceneFrame {
     bool camValid = false;
 };
 
-/* What a scene IS. The data half plus its lifecycle; the per-frame half
-   (update / draw3d / drawUi / keys) is added by the next step, which is what
-   lets main.cpp and events.cpp stop branching on the scene at all. */
+/* What a scene IS: its data, its lifecycle, and its per-frame half. This is
+   the whole point of the table -- adding a mode means adding a row and its
+   four functions, not finding the places that branch on an enum. */
 struct SceneDef {
     const char *name;
     bool sim;             // does the clock advance while this scene is on top
     Backdrop backdrop;
     void (*enter)(Game &);   // pushed on top: the camera is already captured
     void (*exit)(Game &);    // popped, or unwound by enterFlight
+    /* The per-frame half. Only the TOP scene's are called; the frames below
+       are suspended and neither update nor draw. `update` is the loop's LOGIC
+       phase (tick for flight, the editor's mouse step for the VAB); a scene
+       with sim == false must still get a redraw, which the loop does with
+       `if(!sc.sim) redraw = true` since there is no tick to mark the frame. */
+    void (*update)(Game &);
+    void (*draw3d)(Game &, TransferPlanner &);   // the world / build-tree pass
+    void (*drawUi)(Game &, TransferPlanner &);   // this scene's imgui windows
+    void (*keys)(Game &, SDL_Scancode, Uint16 mod, bool repeat);
 };
 
 extern const SceneDef kScenes[(size_t)SceneId::COUNT];

@@ -5,8 +5,13 @@
 
 #include <cstdio>
 
+#include "events.h"    // flightKeyActions / vabKeyActions
 #include "game.h"
-#include "vab.h"   // vabEnter / vabExit
+#include "gameui.h"    // the flight widget set + drawVabUI
+#include "render.h"    // draw3d / drawVab
+#include "tick.h"      // tick
+#include "transferplanner.h"
+#include "vab.h"       // vabEnter / vabExit / vabUpdate
 
 namespace {
 
@@ -15,12 +20,31 @@ namespace {
 void flightEnter(Game &) {}
 void flightExit(Game &) {}
 
+/* The flight scene's widget set, in draw order: the readout windows (HUD ..
+   RESOURCES), then the orbital map, then the user-placed part windows, then
+   the main menu and Save/Load on top. This is the list stage 3 turns into a
+   per-scene window table. */
+void flightDrawUi(Game &g, TransferPlanner &p) {
+    drawUIReadouts(g, p);
+    drawUIMap(g, p);
+    drawPartWindows(g);
+    drawMainMenu(g);
+    drawSaveLoad(g);
+}
+
+// The two draw signatures that do not line up with the table's.
+void vabDraw3d(Game &g, TransferPlanner &) { drawVab(g); }
+void vabDrawUi(Game &g, TransferPlanner &) { drawVabUI(g); }
+
 }   // namespace
 
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
-    // name      sim    backdrop           enter        exit
-    { "flight", true,  Backdrop::Sky,    flightEnter, flightExit },
-    { "vab",    false, Backdrop::Studio, vabEnter,    vabExit    },
+    // name      sim    backdrop            enter        exit
+    { "flight", true,  Backdrop::Sky,    flightEnter, flightExit,
+      tick,       draw3d,    flightDrawUi, flightKeyActions },
+    // The editor draws no skybox, so it clears to a flat studio gray.
+    { "vab",    false, Backdrop::Studio, vabEnter,    vabExit,
+      vabUpdate,  vabDraw3d, vabDrawUi,    vabKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

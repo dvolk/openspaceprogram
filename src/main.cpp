@@ -859,17 +859,18 @@ int main(int argc, char **argv)
         // game's clock and marks the frame for a redraw. The Vab scene runs
         // no sim -- it redraws every frame instead.
         /* The VAB's headless transition hooks (--vab-load / --vab-launch /
-           --vab-close), then the editor's per-frame step. The hooks run first
-           and a launch flips the scene to Flight, so the scene is re-checked
-           before the update -- the launching frame falls through to tick().
-           Everything VAB-specific lives in vab.cpp now: this loop only knows
-           "the editor is live" vs "the sim runs". */
+           --vab-close), then the LIVE scene's per-frame step. The hooks run
+           first and a launch collapses the stack to Flight, so the scene is
+           read after them -- the launching frame falls through to tick().
+           (vabFireHooks is the one scene-specific name left in this loop: it
+           is test scaffolding, and it no-ops unless the editor is live.) */
         vabFireHooks(game);
-        if(sceneIs(game, SceneId::Vab)) {
-            vabUpdate(game);
-            game.redraw = true;   // a frozen scene has no tick to mark it
-        } else {
-            tick(game);
+        {
+            const SceneDef &sc = curScene(game);
+            sc.update(game);
+            // A scene that does not simulate has no tick to mark the frame, so
+            // the loop marks it -- the editor animates on its own.
+            if(!sc.sim) { game.redraw = true; }
         }
         pf_b = std::chrono::steady_clock::now();
 
@@ -901,9 +902,11 @@ int main(int argc, char **argv)
             }
 
             postfx->Begin();  // no-op unless --postfx effects are active
+            // The scene cannot change inside the render block, so read it once.
+            const SceneDef &sc = curScene(game);
             // The VAB gets a light-gray studio backdrop (no skybox is drawn
             // there); flight clears to black under the skybox.
-            if(curScene(game).backdrop == Backdrop::Studio) {
+            if(sc.backdrop == Backdrop::Studio) {
                 display.Clear(0.72f, 0.73f, 0.75f, 1.0f);
             } else {
                 display.Clear(0, 0, 0, 1);
@@ -911,11 +914,7 @@ int main(int argc, char **argv)
 
             // The 3D pass: the world + active ship (flight), or the
             // physics-free build tree (Vab).
-            if(sceneIs(game, SceneId::Vab)) {
-                drawVab(game);
-            } else {
-                draw3d(game, xferPlanner);
-            }
+            sc.draw3d(game, xferPlanner);
 
             /*
               ImGui stuff below
@@ -927,30 +926,10 @@ int main(int argc, char **argv)
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // The imgui pass: editor widgets (Vab) or the flight readouts /
-            // map / part windows / main menu.
-            if(sceneIs(game, SceneId::Vab)) {
-                drawVabUI(game);
-            } else {
-                // The readout windows (HUD .. RESOURCES) live in gameui.cpp.
-                drawUIReadouts(game, xferPlanner);
-
-                // The orbital map (gameui.cpp): the transfer conic and
-                // the target highlight come from the planner. Drawn after
-                // the readouts, before the main menu.
-                drawUIMap(game, xferPlanner);
-
-                // The open part windows (gameui.cpp): one per part the
-                // player right-clicked in the 3D view.
-                drawPartWindows(game);
-
-                // The main menu (gameui.cpp): drawn last so it sits on top.
-                drawMainMenu(game);
-
-                // The in-game Save/Load window (gameui.cpp): opened from the
-                // main menu; saves/loads the live fleet + clock.
-                drawSaveLoad(game);
-            }
+            // The imgui pass: the live scene's widget set. The flight one is
+            // scene.cpp's flightDrawUi, which lists it in draw order; the
+            // editor's is drawVabUI.
+            sc.drawUi(game, xferPlanner);
 
             // One-shot messages (g.toast): above everything, including the
             // menu (drawToasts, gameui.cpp).
