@@ -379,6 +379,16 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     }
 }
 
+/* The Space Center hub's keys. The ship is live below but the sim is paused
+   and you are in a menu, so there is no vessel control here -- Esc resumes the
+   flight (the same as the hub's "Resume Flight" button) and the menu buttons do
+   the rest. The stack is at least [flight, spacecenter] here, so the pop always
+   has a frame to return to. */
+void spaceCenterKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+    if(ImGui::GetIO().WantCaptureKeyboard) { return; }
+    if(ksc == SDL_SCANCODE_ESCAPE && !repeat) { popScene(g); }
+}
+
 void poll_events(Game &g) {
     SDL_Event ev;
 

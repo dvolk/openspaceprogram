@@ -47,6 +47,33 @@ void titleDrawUi(Game &g, TransferPlanner &p) {
     drawSaveLoad(g);
 }
 
+/* The Space Center hub's enter: aim the orbit camera at the home planet for
+   the menu backdrop. pushScene already parked the flight camera onto the
+   frame, so "Resume Flight" (popScene) hands it back exactly; the ship stays
+   alive below, but the sim is paused so it neither drifts nor steers. */
+void spaceCenterEnter(Game &g) {
+    if(g.camera != nullptr && g.home != nullptr) {
+        g.camera->mode = CAM_ORBIT;
+        for(int i = 0; i < (int)g.focusTargets.size(); i++) {
+            if(g.focusTargets[i].body == g.home) { g.focusBody = i; break; }
+        }
+        g.camera->Follow(g.focusWorldPos(g.focusBody));
+        g.camera->distance = 3.0 * g.home->radius;
+        g.camera->ComputeView();   // a sane pose immediately, not next frame
+    }
+    printf("[spacecenter] entered (sim paused)\n");
+    fflush(stdout);
+    g.toast("Space Center");
+}
+
+// No sim, no per-frame logic: the hub is a menu over a static backdrop, and the
+// loop's `if(!sc.sim) redraw = true` keeps it painting.
+void spaceCenterUpdate(Game &) {}
+
+void spaceCenterDrawUi(Game &g, TransferPlanner &) {
+    drawSpaceCenterMenu(g);
+}
+
 }   // namespace
 
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
@@ -66,6 +93,14 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     { "vab",    false, Backdrop::Studio, kVabWins,
       vabEnter,    vabExit,
       vabUpdate,   vabDraw3d, vabDrawUi,    vabKeyActions },
+    /* The hub. sim is false on purpose: tick reads the vessel-control keys
+       straight from the key state (gated only on `ship`), so a live sim would
+       let the flight keys steer the ship you left below while you sit in a
+       menu. Paused, the planet is a static backdrop and the only input is the
+       hub's own key map (Esc resumes) + its menu buttons. */
+    { "spacecenter", false, Backdrop::Sky, kSpaceCenterWins,
+      spaceCenterEnter, floorExit,
+      spaceCenterUpdate, draw3d, spaceCenterDrawUi, spaceCenterKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

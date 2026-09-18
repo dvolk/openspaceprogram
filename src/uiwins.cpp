@@ -180,6 +180,16 @@ const WinDef kWins[W_Count] = {
         .role = WinRole::Root, .inList = false,
     },
 
+    // --- space center hub ------------------------------------------------
+    [W_SpaceCenterMenu] = {
+        .name = "Space Center", .label = "Space Center",
+        // Root: the hub IS this window -- forced open by spaceCenterDrawUi, no
+        // X, and no bulk operation may close it (the title menu's contract).
+        // Its buttons (VAB, Resume Flight) are the only way onward.
+        .opts = { .slot = ui::Slot::Center, .fixed = true, .default_open = true },
+        .role = WinRole::Root, .inList = false,
+    },
+
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
         .name = "VAB TopBar", .label = "VAB TopBar",
@@ -210,10 +220,18 @@ static const Win kTitleWinIds[] = {
 static const Win kVabWinIds[] = {
     W_VabTopBar,
 };
+// The Space Center hub: just its root menu. The ship is live below but the sim
+// is paused, so no flight readouts belong here (and none would have a vessel to
+// read once you are hub-side).
+static const Win kSpaceCenterWinIds[] = {
+    W_SpaceCenterMenu,
+};
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };
 const WinSet kTitleWins  = { kTitleWinIds,  sizeof(kTitleWinIds)  / sizeof(Win) };
 const WinSet kVabWins    = { kVabWinIds,    sizeof(kVabWinIds)    / sizeof(Win) };
+const WinSet kSpaceCenterWins = { kSpaceCenterWinIds,
+                                  sizeof(kSpaceCenterWinIds) / sizeof(Win) };
 
 bool winInScene(const Game &g, Win w) {
     const WinSet &set = curScene(g).wins;

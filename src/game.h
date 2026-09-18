@@ -290,6 +290,12 @@ struct Game {
     int quitTitleMs = -1;
     bool quitTitleFired = false;
 
+    // --space-center MS: the headless hook for the flight pause menu's "Space
+    // Center" (pushes SceneId::SpaceCenter over the running flight). Mirrors
+    // --quit-title; the only automated way into the hub.
+    int spaceCenterMs = -1;
+    bool spaceCenterFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick

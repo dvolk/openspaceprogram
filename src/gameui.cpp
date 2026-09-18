@@ -2207,6 +2207,12 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
                 setWinOpen(win, false);
                 vabOpen(g);   // the sim freezes in the editor (tick is skipped)
             }
+            if(ImGui::Button("Space Center", ImVec2(bw, 0.0f))) {
+                // Transient: close the menu before the push, or it rides along
+                // and reappears over the flight when the hub is popped.
+                setWinOpen(win, false);
+                pushScene(g, SceneId::SpaceCenter);
+            }
         }
         if(ImGui::Button("Save/Load", ImVec2(bw, 0.0f))) {
             setWinOpen(W_SaveLoad, !winOpen(W_SaveLoad));
@@ -2241,6 +2247,40 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
 void drawPauseMenu(Game &g) { drawMenuWindow(g, W_PauseMenu, false); }
 
 void drawTitleMenu(Game &g) { drawMenuWindow(g, W_TitleMenu, true); }
+
+/* The Space Center hub's root menu -- a window like the main menu, but a
+   navigation hub: onward to the VAB (and, later, the Tracking Station), or
+   "Resume Flight" pops back to the flight it was pushed from. Root, so it is
+   forced open every frame and no bulk operation can leave the hub with no UI.
+   The scaffolding (font, one column width, the plain-text heading + version
+   footer) mirrors drawMenuWindow; the three menus are likely to diverge, so it
+   is duplicated rather than shared for now. */
+void drawSpaceCenterMenu(Game &g) {
+    setWinOpen(W_SpaceCenterMenu, true);   // Root: re-opened every frame
+    drawWin(g, W_SpaceCenterMenu, [&] {
+        ImGui::PushFont(g.bigger);
+        const float bw = ImMax(240.0f,
+                               ImGui::CalcTextSize("Open Space Program").x
+                               + ImGui::GetStyle().FramePadding.x * 2.0f);
+        ImGui::PopFont();
+        const ImVec4 invisible = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+        auto text_button = [&](const char *label) {
+            ImGui::PushStyleColor(ImGuiCol_Button, invisible);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, invisible);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, invisible);
+            ImGui::Button(label, ImVec2(bw, 0.0f));
+            ImGui::PopStyleColor(3);
+        };
+        ImGui::PushFont(g.bigger);
+        text_button("Space Center");
+        // Push the editor on top of the hub; the VAB's "Back to game" pops
+        // back here (not to the flight), which is the stack doing its job.
+        if(ImGui::Button("VAB", ImVec2(bw, 0.0f))) { vabOpen(g); }
+        if(ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) { popScene(g); }
+        ImGui::PopFont();
+        text_button(VERSION);
+    });
+}
 
 // A save-slot name is a single directory under saves/; reject a path
 // separator or a dot-name so a typo can't escape the base dir (the CLI

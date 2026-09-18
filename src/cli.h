@@ -73,6 +73,9 @@ struct GameArgs {
     int quit_title_ms = -1; // --quit-title: fire the flight pause menu's "Quit
                             // to title" (Game::quitToTitle) once at this loop
                             // time in ms (headless test hook; -1 = never)
+    int space_center_ms = -1; // --space-center: push the Space Center hub once
+                            // at this loop time in ms (headless test hook;
+                            // -1 = never)
     std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario
                                // (the top-bar dropdown; empty = "pad")
     std::string vab_body;      // --vab-body: seed the VAB launch body

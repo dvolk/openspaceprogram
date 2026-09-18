@@ -45,6 +45,9 @@ enum class SceneId : int {
               // vessel is the invariant here -- see enterTitle for the
               // shipless case.
     Vab,      // the editor: no sim; physics-free BuildShip draw + editor widgets
+    SpaceCenter, // the hub: no sim; the planet as a static backdrop and a root
+              // menu onward to the VAB / (later) the Tracking Station, or back
+              // to the flight it was pushed from ("Resume Flight").
     COUNT
 };
 

@@ -711,6 +711,7 @@ int main(int argc, char **argv)
     game.reloadDir = args.reload_dir;
     game.reloadMs = args.reload_ms;
     game.quitTitleMs = args.quit_title_ms;
+    game.spaceCenterMs = args.space_center_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -885,6 +886,14 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.quitTitleMs) {
             game.quitTitleFired = true;
             game.quitToTitle();
+        }
+        /* --space-center: the headless hook for the pause menu's "Space
+           Center". Before the scene is read; only from Flight, since the hub is
+           an excursion above a running game (its "Resume Flight" pops back). */
+        if(game.spaceCenterMs >= 0 && !game.spaceCenterFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.spaceCenterMs) {
+            game.spaceCenterFired = true;
+            if(sceneIs(game, SceneId::Flight)) { pushScene(game, SceneId::SpaceCenter); }
         }
         vabFireHooks(game);
         {

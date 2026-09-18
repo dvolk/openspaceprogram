@@ -36,6 +36,12 @@ void drawUIMap(Game &g, TransferPlanner &planner);
 void drawPauseMenu(Game &g);
 void drawTitleMenu(Game &g);
 
+/* The Space Center hub's root menu (SceneId::SpaceCenter): a window like the
+   main menu, but a navigation hub -- onward to the VAB and (later) the
+   Tracking Station, or "Resume Flight" back to the flight it was pushed from.
+   Forced open every frame (Root), so the hub always has its UI. */
+void drawSpaceCenterMenu(Game &g);
+
 // Draw the in-game Save/Load window (a name to save into + the list of
 // existing saves to load / delete). Opened from the main menu; drawn with
 // the other UI (main-menu group). Saving/loading the live fleet + clock is

@@ -23,6 +23,9 @@ void poll_events(Game &g);
    flightKeyActions is the sim's map (throttle, staging, SAS, the map and
    camera keys); vabKeyActions is the editor's (rotate, symmetry, snap, the
    link-mode and delete chain). Both run only after the scene-neutral slots
-   (screenshot, wireframe, toggle-windows) have had a chance at the key. */
+   (screenshot, wireframe, toggle-windows) have had a chance at the key.
+   spaceCenterKeyActions is the hub's: no vessel control (the ship is live
+   below but the sim is paused), Esc resumes the flight. */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
+void spaceCenterKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);

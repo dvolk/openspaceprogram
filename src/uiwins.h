@@ -56,6 +56,8 @@ enum Win : int {
     W_Porkchop, W_PauseMenu,
     // title
     W_TitleMenu,
+    // space center hub
+    W_SpaceCenterMenu,
     // editor
     W_VabTopBar,
     W_Count
@@ -78,7 +80,7 @@ extern const WinDef kWins[W_Count];
    cannot be given two conflicting layouts. */
 struct WinSet { const Win *ids; size_t n; };
 
-extern const WinSet kFlightWins, kTitleWins, kVabWins;
+extern const WinSet kFlightWins, kTitleWins, kVabWins, kSpaceCenterWins;
 
 // Does `w` belong to the live scene's window set?
 bool winInScene(const Game &g, Win w);

@@ -119,6 +119,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--quit-title", args.quit_title_ms,
                    "Fire the flight pause menu's \"Quit to title\" once at this "
                    "loop time in ms (headless test hook; -1 = never)");
+    app.add_option("--space-center", args.space_center_ms,
+                   "Push the Space Center hub once at this loop time in ms "
+                   "(the flight pause menu's \"Space Center\", headless; "
+                   "-1 = never)");
     app.add_option("--vab-scenario", args.vab_scenario,
                    "Seed the VAB's launch scenario (the top-bar dropdown's "
                    "value; empty = \"pad\")");
