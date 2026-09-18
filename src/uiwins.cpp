@@ -223,6 +223,10 @@ bool winInScene(const Game &g, Win w) {
     return false;
 }
 
+bool hiddenByTab(const Game &g, Win w) {
+    return !g.ui_visible && kWins[w].role != WinRole::Root;
+}
+
 bool winOpen(Win w) { return ui::IsOpen(kWins[w].name); }
 
 void setWinOpen(Win w, bool open) { ui::SetOpen(kWins[w].name, open); }

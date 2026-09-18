@@ -2246,7 +2246,8 @@ static bool safeSlotName(const std::string &n) {
 }
 
 void drawSaveLoad(Game &g) {
-    if(!g.ui_visible) { return; }   // TAB hides it
+    // No TAB gate here: Save/Load is a Transient window and drawWin suppresses
+    // it (uiwins.h hiddenByTab), same as every other registered window.
 
     // The slot name to save into and the selected slot are both persistent
     // (static): the name so the player does not retype it, and `selected` so
@@ -2343,7 +2344,11 @@ void drawSaveLoad(Game &g) {
 }
 
 void drawVabUI(Game &g) {
-    if(!g.ui_visible) { return; }   // TAB hides the editor chrome
+    /* TAB. The top bar is a registered window and drawWin already suppresses
+       it, but the two panels below are raw ImGui::Begin calls -- they predate
+       the window table and are not in it -- so this is the only gate they
+       have. Bringing them into the table would let this go too. */
+    if(!g.ui_visible) { return; }
 
     int hoveredLink = -1;   // the fuel-link list row under the mouse (the
                             // overlay lines below read it for the highlight)

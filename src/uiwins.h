@@ -83,12 +83,23 @@ extern const WinSet kFlightWins, kTitleWins, kVabWins;
 // Does `w` belong to the live scene's window set?
 bool winInScene(const Game &g, Win w);
 
+/* Is `w` suppressed by TAB (Game::ui_visible)? Everything goes except a
+   scene's Root window -- that is the whole point of TAB, a clean screenshot in
+   one key, and a title screen whose only UI can be hidden is the original bug
+   back again. Centralised here rather than as an early-return in each draw
+   function, which is how two of them (Save/Load, the editor) came to honour
+   TAB while the flight windows did not. Note the open STATE of a hidden
+   window is untouched: toggle_windows only flips Persistent ones, so Chrome
+   and Transient come back exactly as they were. */
+bool hiddenByTab(const Game &g, Win w);   // defined in uiwins.cpp (Game is
+                                           // incomplete in this header)
+
 /* Draw window `w` under its own name and options, iff the live scene owns it.
    Returns false (and draws nothing) when the window is not in this scene's set
    or the player has closed it. */
 template<class F>
 inline bool drawWin(const Game &g, Win w, F &&body) {
-    if(!winInScene(g, w)) { return false; }
+    if(!winInScene(g, w) || hiddenByTab(g, w)) { return false; }
     return ui::Window(kWins[w].name, kWins[w].opts, std::forward<F>(body));
 }
 
@@ -97,7 +108,7 @@ inline bool drawWin(const Game &g, Win w, F &&body) {
    mode 2). The table stays const and shared; the caller copies and adjusts. */
 template<class F>
 inline bool drawWin(const Game &g, Win w, const ui::Options &opts, F &&body) {
-    if(!winInScene(g, w)) { return false; }
+    if(!winInScene(g, w) || hiddenByTab(g, w)) { return false; }
     return ui::Window(kWins[w].name, opts, std::forward<F>(body));
 }
 
