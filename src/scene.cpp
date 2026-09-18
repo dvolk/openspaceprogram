@@ -66,12 +66,30 @@ void spaceCenterEnter(Game &g) {
     g.toast("Space Center");
 }
 
-// No sim, no per-frame logic: the hub is a menu over a static backdrop, and the
-// loop's `if(!sc.sim) redraw = true` keeps it painting.
-void spaceCenterUpdate(Game &) {}
+// Shared no-op LOGIC step for the paused menu scenes (Space Center, the Tracking
+// Station): no sim, no per-frame work -- the loop's `if(!sc.sim) redraw = true`
+// keeps them painting.
+void stillUpdate(Game &) {}
 
 void spaceCenterDrawUi(Game &g, TransferPlanner &) {
     drawSpaceCenterMenu(g);
+}
+
+/* The Tracking Station renders no 3D world: its map window covers the viewport,
+   so drawing the planet behind it is wasted work -- the user sees only the map.
+   g.view (the ship-orbit snapshot the map reads) was computed by the scene this
+   was pushed from -- flight and the hub both run the real draw3d -- and the sim
+   is paused here, so that snapshot stays accurate with no refresh. The loop still
+   clears to the Sky backdrop (black) under the opaque, full-screen map. */
+void trackingDraw3d(Game &, TransferPlanner &) {}
+
+/* The Tracking Station: the full-screen map is the scene's identity, so force it
+   open (Root), then overlay the ship list. Both are this scene's own copies of
+   the flight windows; the map fills the view and the list sits beside it. */
+void trackingDrawUi(Game &g, TransferPlanner &p) {
+    setWinOpen(W_TrackingMap, true);
+    drawTrackingMap(g, p);
+    drawTrackingShipList(g);
 }
 
 }   // namespace
@@ -100,7 +118,13 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
        hub's own key map (Esc resumes) + its menu buttons. */
     { "spacecenter", false, Backdrop::Sky, kSpaceCenterWins,
       spaceCenterEnter, floorExit,
-      spaceCenterUpdate, draw3d, spaceCenterDrawUi, spaceCenterKeyActions },
+      stillUpdate, draw3d, spaceCenterDrawUi, hubKeyActions },
+    // The Tracking Station: the same paused/menu shape, reached from the hub.
+    // No 3D pass -- the full-screen map covers the viewport, so rendering the
+    // world behind it would be wasted (see trackingDraw3d).
+    { "tracking", false, Backdrop::Sky, kTrackingWins,
+      floorEnter, floorExit,
+      stillUpdate, trackingDraw3d, trackingDrawUi, hubKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

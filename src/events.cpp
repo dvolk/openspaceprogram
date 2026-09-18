@@ -379,12 +379,13 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     }
 }
 
-/* The Space Center hub's keys. The ship is live below but the sim is paused
-   and you are in a menu, so there is no vessel control here -- Esc resumes the
-   flight (the same as the hub's "Resume Flight" button) and the menu buttons do
-   the rest. The stack is at least [flight, spacecenter] here, so the pop always
-   has a frame to return to. */
-void spaceCenterKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+/* The paused overlay scenes' keys (the Space Center hub and the Tracking
+   Station it opens). The ship is live below but the sim is paused and you are
+   in a menu/map, so there is no vessel control here -- Esc pops back (to the
+   flight from the hub, to the hub from the Tracking Station), the same as the
+   on-screen "back" button. The stack always has a frame below here (both are
+   pushed on top of something), so the pop succeeds. */
+void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) { popScene(g); }
 }

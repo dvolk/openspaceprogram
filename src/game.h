@@ -296,6 +296,11 @@ struct Game {
     int spaceCenterMs = -1;
     bool spaceCenterFired = false;
 
+    // --tracking MS: the headless hook for the Space Center hub's "Tracking
+    // Station" (pushes SceneId::TrackingStation). Mirrors --space-center.
+    int trackingMs = -1;
+    bool trackingFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick

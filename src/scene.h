@@ -48,6 +48,8 @@ enum class SceneId : int {
     SpaceCenter, // the hub: no sim; the planet as a static backdrop and a root
               // menu onward to the VAB / (later) the Tracking Station, or back
               // to the flight it was pushed from ("Resume Flight").
+    TrackingStation, // no sim; a full-screen chrome-less orbital map + ship list
+              // over the paused world, reached from the Space Center hub.
     COUNT
 };
 

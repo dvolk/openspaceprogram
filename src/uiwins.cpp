@@ -190,6 +190,26 @@ const WinDef kWins[W_Count] = {
         .role = WinRole::Root, .inList = false,
     },
 
+    // --- tracking station ------------------------------------------------
+    [W_TrackingMap] = {
+        .name = "Tracking Map", .label = "Tracking Map",
+        // Root: the map IS the Tracking Station view. drawTrackingMap overrides
+        // these options per frame (full-screen, chrome-less, fixed); the entry
+        // exists for the role + scene-set membership, and so TAB cannot hide
+        // the one window the scene is.
+        .opts = { .slot = ui::Slot::TopLeft, .fixed = true, .default_open = true,
+                  .flags = ImGuiWindowFlags_NoDecoration },
+        .role = WinRole::Root, .inList = false,
+    },
+    [W_TrackingShipList] = {
+        .name = "Tracking Ship List", .label = "Tracking Ship List",
+        // A copy of the flight Ship List, overlaid on the map's right side (the
+        // map square fills the shorter viewport edge, leaving room beside it).
+        .opts = { .slot = ui::Slot::TopRight, .closable = true,
+                  .default_open = true },
+        .role = WinRole::Persistent, .inList = false,
+    },
+
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
         .name = "VAB TopBar", .label = "VAB TopBar",
@@ -226,12 +246,19 @@ static const Win kVabWinIds[] = {
 static const Win kSpaceCenterWinIds[] = {
     W_SpaceCenterMenu,
 };
+// The Tracking Station: its own full-screen map + ship list (copies of the
+// flight windows, free to diverge -- see drawTrackingMap / drawTrackingShipList).
+static const Win kTrackingWinIds[] = {
+    W_TrackingMap, W_TrackingShipList,
+};
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };
 const WinSet kTitleWins  = { kTitleWinIds,  sizeof(kTitleWinIds)  / sizeof(Win) };
 const WinSet kVabWins    = { kVabWinIds,    sizeof(kVabWinIds)    / sizeof(Win) };
 const WinSet kSpaceCenterWins = { kSpaceCenterWinIds,
                                   sizeof(kSpaceCenterWinIds) / sizeof(Win) };
+const WinSet kTrackingWins = { kTrackingWinIds,
+                               sizeof(kTrackingWinIds) / sizeof(Win) };
 
 bool winInScene(const Game &g, Win w) {
     const WinSet &set = curScene(g).wins;

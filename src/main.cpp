@@ -712,6 +712,7 @@ int main(int argc, char **argv)
     game.reloadMs = args.reload_ms;
     game.quitTitleMs = args.quit_title_ms;
     game.spaceCenterMs = args.space_center_ms;
+    game.trackingMs = args.tracking_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -894,6 +895,14 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.spaceCenterMs) {
             game.spaceCenterFired = true;
             if(sceneIs(game, SceneId::Flight)) { pushScene(game, SceneId::SpaceCenter); }
+        }
+        /* --tracking: the headless hook for the hub's "Tracking Station". Fired
+           after --space-center, so --space-center A --tracking B drives the
+           real flight -> hub -> tracking path. pushScene guards the re-push. */
+        if(game.trackingMs >= 0 && !game.trackingFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingMs) {
+            game.trackingFired = true;
+            pushScene(game, SceneId::TrackingStation);
         }
         vabFireHooks(game);
         {

@@ -42,6 +42,14 @@ void drawTitleMenu(Game &g);
    Forced open every frame (Root), so the hub always has its UI. */
 void drawSpaceCenterMenu(Game &g);
 
+/* The Tracking Station's widgets: a full-screen, chrome-less orbital map and a
+   ship list, each a COPY of the flight window's draw code into its own window id
+   (W_TrackingMap / W_TrackingShipList) so the two scenes' versions can diverge
+   without touching each other. drawTrackingMap takes the planner for the same
+   transfer-conic overlay the flight map draws. */
+void drawTrackingMap(Game &g, TransferPlanner &planner);
+void drawTrackingShipList(Game &g);
+
 // Draw the in-game Save/Load window (a name to save into + the list of
 // existing saves to load / delete). Opened from the main menu; drawn with
 // the other UI (main-menu group). Saving/loading the live fleet + clock is
