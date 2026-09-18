@@ -2,11 +2,16 @@
 """E2E battery: launch ./osp under Xvfb and check the result.
 
 Usage:
-  python3 e2e/run.py            run all cases
   python3 e2e/run.py orbit      run only cases matching "orbit"
   python3 e2e/run.py smoke 02   run cases matching "smoke" or "02"
+  python3 e2e/run.py --force    run all cases (needs --force; see below)
   python3 e2e/run.py --jobs 4   run up to 4 cases in parallel
                                 (default: 2; --jobs 1 = serial)
+
+A full battery (no selectors) or --jobs > 2 is refused without --force:
+a full battery takes a LONG time, and e2e runs under software GL, so a
+single case already uses ~500% CPU. A targeted selector and the default
+2 jobs usually cover what a change needs; use --force to run it anyway.
 
 Each test is a case file in e2e/cases/*.txt with these keys (one per line,
 `#` starts a comment):
@@ -392,7 +397,7 @@ def run_case(case):
     """Return (passed, diagnostics-lines)."""
     game = os.path.join(REPO_ROOT, "osp")
     if not os.path.exists(game):
-        return False, ["./osp not found; run `make` (or `make e2e`) first."]
+        return False, ["./osp not found; run `make` first."]
     # Start each case from a clean ImGui layout (window positions persist in
     # imgui.ini otherwise, which would make UI clicks non-deterministic).
     # And from no saved settings: a locally saved settings.json (display
@@ -538,10 +543,30 @@ def main():
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                         help="max cases to run in parallel (1 = serial; "
                              "default: 2)")
+    parser.add_argument("--force", action="store_true",
+                        help="run even when heavy (full battery, or "
+                             "--jobs > 2), despite the warning above")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
     selectors = args.selectors
+
+    # A full battery and --jobs > 2 are both expensive (software GL: one
+    # case is already ~500% CPU), so neither runs without an explicit
+    # --force -- the message is the nudge to pick a selector / fewer jobs.
+    reasons = []
+    if not selectors:
+        reasons.append("a full battery takes a LONG time")
+    if args.jobs > 2:
+        reasons.append("e2e runs under software GL, so each case already "
+                       "uses ~500% CPU -- more parallelism is overkill")
+    if reasons and not args.force:
+        print("Refusing to run: " + "; ".join(reasons) + ".")
+        print("Consider whether you really need it -- a targeted selector "
+              "(e.g. `python3 e2e/run.py orbit`) and the default 2 jobs "
+              "usually cover what a change needs.")
+        print("Run it anyway with --force.")
+        return 1
 
     all_files = sorted(glob.glob(os.path.join(CASES_DIR, "*.txt")))
     if not all_files:
