@@ -28,12 +28,22 @@
 
 #include "camera.h"    // CameraMode
 #include "terrain.h"   // TerrainBody
+#include "uiwins.h"    // WinSet (the windows a scene owns)
 
 struct Game;
 class TransferPlanner;
 
 enum class SceneId : int {
-    Flight,   // the sim: tick + world render + flight widgets
+    /* The floor is either Title or Flight, and the editor is pushed on top of
+       whichever is live. */
+    Title,    // the game-start screen: no vessel; the world as a backdrop and
+              // the title menu as the only chrome. Its own scene rather than
+              // "Flight with no ship", which is what made the flight readouts
+              // render empty behind the menu and the menu closable with no game
+              // to go back to.
+    Flight,   // the sim: tick + world render + flight widgets. An active
+              // vessel is the invariant here -- see enterTitle for the
+              // shipless case.
     Vab,      // the editor: no sim; physics-free BuildShip draw + editor widgets
     COUNT
 };
@@ -78,6 +88,7 @@ struct SceneDef {
     const char *name;
     bool sim;             // does the clock advance while this scene is on top
     Backdrop backdrop;
+    WinSet wins;             // the windows this scene owns (uiwins.h)
     void (*enter)(Game &);   // pushed on top: the camera is already captured
     void (*exit)(Game &);    // popped, or unwound by enterFlight
     /* The per-frame half. Only the TOP scene's are called; the frames below
@@ -112,6 +123,11 @@ void popScene(Game &g);
    Load -- because there is nothing meaningful to pop back to: the ship the
    excursion started from is not the ship you are flying now. */
 void enterFlight(Game &g);
+/* Collapse to [Title] the same way. This is where a shipless state goes -- a
+   bare boot, a save with no vessels, the (defensive) "nothing left to
+   control" arm of remove_ship -- and it is what keeps Flight's "there is an
+   active vessel" invariant true instead of merely usual. */
+void enterTitle(Game &g);
 
 // Capture / apply a camera pose. Free functions rather than Game methods: they
 // are transition mechanics belonging to the stack, and the snapshot lives on

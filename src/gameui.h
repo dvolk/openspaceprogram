@@ -1,5 +1,5 @@
 // gameui.h -- the ImGui UI pass: the readout windows (drawUIReadouts),
-// the orbital map (drawUIMap) and the fixed main menu (drawMainMenu),
+// the orbital map (drawUIMap) and the menu windows (drawPauseMenu /
 // drawn in main's loop after the 3D pass (render.cpp) in that order.
 //
 // This was the ImGui section of main's loop. It moved out verbatim: main's
@@ -28,8 +28,13 @@ void drawPartWindows(Game &g);
 // conic + the selected target's highlight).
 void drawUIMap(Game &g, TransferPlanner &planner);
 
-// Draw the fixed main menu (Esc toggles it). Drawn last so it sits on top.
-void drawMainMenu(Game &g);
+/* The menu window in its two forms (one body: gameui.cpp drawMenuWindow).
+   Flight's pause menu is Esc-toggled and closable; the title screen's is that
+   scene's Root window -- forced open, no X, and "New Game" where the pause
+   menu has "Back to game". Each scene's drawUi calls its own, last, so it sits
+   on top. */
+void drawPauseMenu(Game &g);
+void drawTitleMenu(Game &g);
 
 // Draw the in-game Save/Load window (a name to save into + the list of
 // existing saves to load / delete). Opened from the main menu; drawn with
@@ -45,5 +50,5 @@ void drawVabUI(Game &g);
 // that are still alive, stacked and centered on the screen. A bare
 // foreground-draw-list overlay (no imgui window): the messages are
 // non-interactive and must float above everything, so main draws this
-// after drawMainMenu.
+// after the scene's menu.
 void drawToasts(Game &g);

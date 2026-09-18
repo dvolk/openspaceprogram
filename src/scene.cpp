@@ -15,10 +15,10 @@
 
 namespace {
 
-// The floor scene needs no lifecycle of its own: it is what the stack is
+// Neither floor scene has a lifecycle of its own: it is what the stack is
 // seeded with at boot, and arriving back in it is just "the excursion ended".
-void flightEnter(Game &) {}
-void flightExit(Game &) {}
+void floorEnter(Game &) {}
+void floorExit(Game &) {}
 
 /* The flight scene's widget set, in draw order: the readout windows (HUD ..
    RESOURCES), then the orbital map, then the user-placed part windows, then
@@ -28,7 +28,7 @@ void flightDrawUi(Game &g, TransferPlanner &p) {
     drawUIReadouts(g, p);
     drawUIMap(g, p);
     drawPartWindows(g);
-    drawMainMenu(g);
+    drawPauseMenu(g);
     drawSaveLoad(g);
 }
 
@@ -36,15 +36,36 @@ void flightDrawUi(Game &g, TransferPlanner &p) {
 void vabDraw3d(Game &g, TransferPlanner &) { drawVab(g); }
 void vabDrawUi(Game &g, TransferPlanner &) { drawVabUI(g); }
 
+/* The title screen's widgets. drawUIReadouts is shared with flight and draws
+   every window it owns -- but each call goes through drawWin, which checks the
+   live scene's set, so only the shared ones (Settings, Controls, Game Debug
+   Info, Telemetry) actually appear here. The flight readouts are not "hidden
+   because there is no ship", they are not this scene's windows at all. */
+void titleDrawUi(Game &g, TransferPlanner &p) {
+    drawUIReadouts(g, p);
+    drawTitleMenu(g);
+    drawSaveLoad(g);
+}
+
 }   // namespace
 
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
-    // name      sim    backdrop            enter        exit
-    { "flight", true,  Backdrop::Sky,    flightEnter, flightExit,
-      tick,       draw3d,    flightDrawUi, flightKeyActions },
+    // name      sim    backdrop           wins          enter      exit
+    /* The title screen runs the sim and draws the world: with no vessel that
+       is O(bodies) and it is what makes the backdrop alive -- the home planet
+       turns behind the menu instead of hanging frozen. Its key map is the
+       flight one, so the orbit/map camera keys still work for looking around
+       the system; the vessel keys no-op with nothing to control. */
+    { "title",  true,  Backdrop::Sky,    kTitleWins,
+      floorEnter,  floorExit,
+      tick,        draw3d,    titleDrawUi,  flightKeyActions },
+    { "flight", true,  Backdrop::Sky,    kFlightWins,
+      floorEnter,  floorExit,
+      tick,        draw3d,    flightDrawUi, flightKeyActions },
     // The editor draws no skybox, so it clears to a flat studio gray.
-    { "vab",    false, Backdrop::Studio, vabEnter,    vabExit,
-      vabUpdate,  vabDraw3d, vabDrawUi,    vabKeyActions },
+    { "vab",    false, Backdrop::Studio, kVabWins,
+      vabEnter,    vabExit,
+      vabUpdate,   vabDraw3d, vabDrawUi,    vabKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }
@@ -144,7 +165,10 @@ void popScene(Game &g) {
     fflush(stdout);
 }
 
-void enterFlight(Game &g) {
+/* Collapse the stack to a single floor scene. Shared by enterFlight and
+   enterTitle: both mean "a different game state is now in charge", so every
+   excursion above the floor is unwound and its parked camera discarded. */
+static void setBaseScene(Game &g, SceneId id, const char *verb) {
     if(g.sceneStack.empty()) { return; }
     const SceneId from = curSceneId(g);
     const size_t depth = g.sceneStack.size();
@@ -159,15 +183,19 @@ void enterFlight(Game &g) {
         kScenes[(size_t)top].exit(g);
     }
     g.sceneStack.back().camValid = false;
-    if(curSceneId(g) != SceneId::Flight) {
+    if(curSceneId(g) != id) {
         const SceneId floorId = curSceneId(g);
         kScenes[(size_t)floorId].exit(g);
-        g.sceneStack.back().id = SceneId::Flight;
-        kScenes[(size_t)SceneId::Flight].enter(g);
+        g.sceneStack.back().id = id;
+        kScenes[(size_t)id].enter(g);
     }
     // Logged only when something actually moved, so a redundant call is quiet.
-    if(depth > 1 || from != SceneId::Flight) {
-        printf("[scene] %s -> flight (enterFlight)\n", sceneName(from));
+    if(depth > 1 || from != id) {
+        printf("[scene] %s -> %s (%s)\n", sceneName(from), sceneName(id), verb);
         fflush(stdout);
     }
 }
+
+void enterFlight(Game &g) { setBaseScene(g, SceneId::Flight, "enterFlight"); }
+
+void enterTitle(Game &g) { setBaseScene(g, SceneId::Title, "enterTitle"); }

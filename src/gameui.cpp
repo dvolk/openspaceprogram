@@ -151,6 +151,14 @@ static void draw_telemetry_cell(Game &g, int idx) {
     }
 }
 
+/* The flight windows below assume there IS an active vessel, and they are
+   right to: Flight is only the live scene when there is one. A shipless boot
+   or load lands on the title screen, remove_ship refuses the last vessel (and
+   routes its defensive arm to the title screen too), and LAUNCH / New Game
+   create one before enterFlight. The per-window "No active ship." guards went
+   with the state they covered -- shipless is a scene now, not a leak into this
+   one. Game Debug Info keeps its guard because it IS in the title scene's set,
+   and so is drawn with no vessel. */
 void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // The window bodies are verbatim from main's ImGui pass; their locals
     // are Game members (aliased so the bodies read the same).
@@ -213,7 +221,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
        inertial frame or above 30km ASL, else surface (terrain
        altitude + ground speed) in the rotating frame.
        Row 2: Kerbin clock (regular font, centered). */
-    ui::Window("HUD", g.o_hud, [&] {
+    drawWin(g, W_Hud, [&] {
         if(ship) {
             const double asl = distance - ship->m_parent->radius;
             const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
@@ -234,27 +242,30 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
     });
 
-    /* Window list (single source of truth: the ui_windows table; entries
-       with in_windows_list=false, e.g. the Porkchop, are toggled from
-       their parent window instead) plus the Top-HUD group switch. */
-    ui::Window("Windows", g.o_menu, [&] {
+    /* Window list: the LIVE scene's own windows, straight from the table in
+       uiwins.cpp -- so the panel can never offer a toggle for a window that
+       is not drawn here. Entries with inList=false (the Porkchop, the menus)
+       are toggled from their parent window instead, and Root/Chrome are not
+       rows at all: a panel that could close itself, or close the scene's root
+       window, is a dead end. The HUD is an ordinary row now and no longer
+       needs the separate "Top HUD" switch it had. */
+    drawWin(g, W_Windows, [&] {
         ImGui::Spacing();
-        for(auto &w : g.ui_windows) {
-            if(!w.in_windows_list) { continue; }
-            bool open = ui::IsOpen(w.name);
-            if(ImGui::Checkbox(w.label, &open)) {
-                ui::SetOpen(w.name, open);
+        const WinSet &set = curScene(g).wins;
+        for(size_t i = 0; i < set.n; i++) {
+            const Win w = set.ids[i];
+            const WinDef &wd = kWins[w];
+            if(!wd.inList) { continue; }
+            bool open = winOpen(w);
+            if(ImGui::Checkbox(wd.label, &open)) {
+                setWinOpen(w, open);
             }
-        }
-        bool hud = ui::IsOpen("HUD");
-        if(ImGui::Checkbox("Top HUD", &hud)) {
-            ui::SetOpen("HUD", hud);
         }
     });
 
     // Settings: the render/physics debug toggles (moved out of
     // Game Debug Info, which is now read-only diagnostics).
-    ui::Window("Settings", g.o_settings, [&] {
+    drawWin(g, W_Settings, [&] {
         // Display: the window mode + the resolution it runs at. Both
         // apply immediately (Renderer::setWindowMode; the SIZE_CHANGED
         // event in events.cpp finishes the resize: the viewport, postfx,
@@ -479,14 +490,14 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             }
         }
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
-            ui::SetOpen("Settings", false);
+            setWinOpen(W_Settings, false);
         }
     });
 
     // Transfer planner: parent->child body transfers (with capture)
     // and same-body ship intercepts. The solution is computed in the
     // render pass (xfer), so this window is pure readout + inputs.
-    ui::Window("Transfer", g.o_transfer, [&] {
+    drawWin(g, W_Transfer, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
             return;
@@ -505,9 +516,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         // The Porkchop window (the launch-window heatmap) hangs off this
         // window rather than the Windows list: pick a target, then open
         // the plot for it.
-        bool pc_open = ui::IsOpen("Porkchop");
+        bool pc_open = winOpen(W_Porkchop);
         if(ImGui::Checkbox("Porkchop", &pc_open)) {
-            ui::SetOpen("Porkchop", pc_open);
+            setWinOpen(W_Porkchop, pc_open);
         }
         if(xfer_target < 0) {
             ImGui::Text("Select a target body or ship.");
@@ -585,7 +596,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
        delay x time of flight). The grid is computed on demand -- the button
        or the P key -- and cached until the next compute (the MechJeb model),
        so the window is cheap to leave open. */
-    ui::Window("Porkchop", g.o_porkchop, [&] {
+    drawWin(g, W_Porkchop, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies or ships here.");
             return;
@@ -697,7 +708,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             planner.xfer_t_dep = planner.pc_computed_at + pc.t_dep_min;
             planner.xfer_plan_target = xfer_target;
             planner.xfer_from_porkchop = true;
-            ui::SetOpen("Transfer", true);
+            setWinOpen(W_Transfer, true);
         }
         if(pc_busy) { ImGui::EndDisabled(); }
 
@@ -789,7 +800,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
        the M key -- on the background worker, and cached until the next
        compute (the same pattern as the Porkchop), so the window is
        cheap to leave open and a sweep never stalls the frame. */
-    ui::Window("Surface Map", g.o_surfmap, [&] {
+    drawWin(g, W_SurfaceMap, [&] {
         // Body to map: item 0 = "active ship's body" (surfmap_body =
         // nullptr, so the map follows the ship's SOI); the rest are
         // sys.bodies in order (the star maps itself, fully lit).
@@ -1084,7 +1095,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                             g.surfmap_computed_at);
     });
 
-    ui::Window("Game Debug Info", g.o_debug, [&] {
+    drawWin(g, W_Debug, [&] {
         if(ship == nullptr) { ImGui::Text("No active ship."); return; }
         ImGui::Text("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
@@ -1191,8 +1202,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
     // Labels are abbreviated to <= 3 chars and right-padded to the
     // same width so the values start at a tidy column.
-    ui::Window("Orbital", g.o_orbit, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
+    drawWin(g, W_Orbital, [&] {
         ImGui::Text("Bod: %s", ship->m_parent->name.c_str());
         ImGui::Text("Vel: %.1fm/s", speed);
         ImGui::Text("Alt: %.1fm", distance);
@@ -1226,7 +1236,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
     // Initial size comes from o_telemetry.initial_size (a 2x2 grid of plots
     // needs real estate; content-fit would clip them).
-    ui::Window("Telemetry", g.o_telemetry, [&] {
+    drawWin(g, W_Telemetry, [&] {
         // A 2x2 grid of plots. Each cell is a child region with a dropdown to
         // pick which series to show, then the plot. Positioned explicitly
         // (SetCursorPos) so the grid stays a clean 2x2 regardless of how the
@@ -1251,8 +1261,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     });
 
     // Labels right-padded to 3 chars, same as ORBITAL.
-    ui::Window("Surface", g.o_surface, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
+    drawWin(g, W_Surface, [&] {
         ImGui::Text("Alt: %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
         ImGui::Text("ASL: %.1fm", distance - ship->m_parent->radius);
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
@@ -1273,7 +1282,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Acc: %.1fm/s2", felt);
     });
 
-    ui::Window("Ship List", g.o_ships, [&] {
+    drawWin(g, W_ShipList, [&] {
     // Buttons (natural width) + SameLine, the same pattern as the
     // map controls: a full-width Selectable in this auto-resize window
     // would swallow the line and push the "x" off it (or collapse the
@@ -1326,8 +1335,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     ImGui::Text("click name - select    x - remove");
     });
 
-    ui::Window("Vessel Info", g.o_vessel, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
+    drawWin(g, W_VesselInfo, [&] {
         ImGui::Text("Ship: %s", ship->name.c_str());
         ImGui::Text("Stage: %d / %d  (SPACE to drop)",
                     ship->activeStage(), ship->numStages());
@@ -1343,7 +1351,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Angular rate: %.2fdeg/s",
                     glm::degrees(glm::length(ship->partAngVel(ship->controller))));
     });
-    ui::Window("Controls", g.o_controls, [&] {
+    drawWin(g, W_Controls, [&] {
         // Interactive rebind (replaces the old read-only key reference).
         // Click "rebind", then press a key -- or a Shift/Ctrl/Alt combo -- to
         // bind it to that control (the press is captured in events.cpp, which
@@ -1411,13 +1419,12 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
         ImGui::Spacing();
         if(ImGui::Button("Back", ImVec2(240.0f, 0.0f))) {
-            ui::SetOpen("Controls", false);
+            setWinOpen(W_Controls, false);
             g.rebind_capture_slot = -1;
         }
     });
 
-    ui::Window("Autopilot", g.o_autopilot, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
+    drawWin(g, W_Autopilot, [&] {
         // Toggle the autopilot: click a mode to engage it -- the nose slews
         // toward the target and holds there -- and click it again to release.
         // The modes are mutually exclusive, like a navball; the engaged one
@@ -1449,8 +1456,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         toggle(SlewKillRot, "Kill rotation");
     });
 
-    ui::Window("Resources", g.o_resources, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
+    drawWin(g, W_Resources, [&] {
         // aggregate across the active ship's parts (any ship layout); only
         // the resource types the ship has capacity for are shown, so the
         // window never lists a bar it can't hold
@@ -1692,15 +1698,16 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
 
     // Mode 2 strips the window chrome entirely (see map_mode): the
     // window is invisible but still hit-tested, so the map below
-    // keeps pan/zoom and the right-click cycle.
+    // keeps pan/zoom and the right-click cycle. The table's options
+    // are const, so this one window draws from a per-frame copy --
+    // which also retires the old `flags = 0` reset that existed only
+    // to undo the accumulation on the shared struct.
+    ui::Options mapOpts = kWins[W_OrbitalMap].opts;
     if(map_mode == 2) {
-        g.o_map.flags |= ImGuiWindowFlags_NoDecoration |
-                            ImGuiWindowFlags_NoBackground;
-    } else {
-        g.o_map.flags = 0;
+        mapOpts.flags |= ImGuiWindowFlags_NoDecoration |
+                         ImGuiWindowFlags_NoBackground;
     }
-    ui::Window("Orbital Map", g.o_map, [&] {
-        if(ship == nullptr) { ImGui::Text("No active ship."); return; }
+    drawWin(g, W_OrbitalMap, mapOpts, [&] {
         // Right-click anywhere in the window cycles the chrome:
         // full window -> bare map -> no window -> full window.
         // Over the map this is safe: imgui owns the mouse here, so
@@ -2130,20 +2137,34 @@ void drawToasts(Game &g) {
     ImGui::PopFont();
 }
 
-void drawMainMenu(Game &g) {
-    bool &running = g.running;
+/* The menu window, shared by the two scenes that have one.
 
-    // Main menu: Esc toggles it. Fixed, so it stays centered and
-    // tracks viewport resizes. Drawn last so it sits on top.
-    //
-    // Every item is a fixed-width button: the window is
-    // AlwaysAutoResize, and imgui measures its size from the PREVIOUS
-    // frame's content, so a Text item placed by hand (centered against
-    // the window width) feeds back into the measurement and the fit
-    // converges over several frames on first open. A button's width is
-    // explicit and imgui centers its label (ButtonTextAlign), so the
-    // layout is settled from the first visible frame.
-    ui::Window("Main Menu", g.o_mainmenu, [&] {
+   Every item is a fixed-width button: the window is AlwaysAutoResize, and
+   imgui measures its size from the PREVIOUS frame's content, so a Text item
+   placed by hand (centered against the window width) feeds back into the
+   measurement and the fit converges over several frames on first open. A
+   button's width is explicit and imgui centers its label (ButtonTextAlign), so
+   the layout is settled from the first visible frame.
+
+   The two variants differ in one row and in whether the window may be closed:
+
+     Title   the scene's Root window: forced open every frame, no X, and "New
+             Game" instead of "Back to game" -- there is no game to go back to.
+             That is the whole reason the title screen became a scene rather
+             than a window in the flight one.
+     Flight  the pause menu: Esc-toggled, closable, and Transient, so pushing
+             the VAB from here cannot leave it open to reappear over a running
+             sim on the way back. */
+static void drawMenuWindow(Game &g, Win win, bool isTitle) {
+    if(isTitle) {
+        // Root: re-opened every frame, so TAB, "Reset windows" and any stray
+        // SetOpen cannot leave the title screen with no UI at all. Note that
+        // ui::Options::closable = false is NOT enough on its own -- it only
+        // hides the X button, ui::SetOpen still closes the window.
+        setWinOpen(win, true);
+    }
+    drawWin(g, win, [&] {
+        bool &running = g.running;
         // One width for the whole column: the widest label (the title,
         // in the bigger font, plus its frame padding so the clipped
         // label fits). Every button fills the content width, so the
@@ -2165,15 +2186,17 @@ void drawMainMenu(Game &g) {
         };
         ImGui::PushFont(g.bigger);
         text_button("Open Space Program");
-        if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Main Menu", false);
+        if(isTitle) {
+            if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) { g.newGame(); }
+        } else if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
+            setWinOpen(win, false);
         }
         if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Main Menu", false);
+            setWinOpen(win, false);
             vabOpen(g);   // the sim freezes in the editor (tick is skipped)
         }
         if(ImGui::Button("Save/Load", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Save/Load", !ui::IsOpen("Save/Load"));
+            setWinOpen(W_SaveLoad, !winOpen(W_SaveLoad));
         }
         if(ImGui::Button("Toggle windows", ImVec2(bw, 0.0f))) {
             g.toggle_windows();
@@ -2184,16 +2207,16 @@ void drawMainMenu(Game &g) {
         // Toggles (not just open): a quick way to open or close these
         // (besides their X / Back).
         if(ImGui::Button("Settings", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Settings", !ui::IsOpen("Settings"));
+            setWinOpen(W_Settings, !winOpen(W_Settings));
         }
         if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Controls", !ui::IsOpen("Controls"));
+            setWinOpen(W_Controls, !winOpen(W_Controls));
         }
         if(ImGui::Button("Game Debug Info", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Game Debug Info", !ui::IsOpen("Game Debug Info"));
+            setWinOpen(W_Debug, !winOpen(W_Debug));
         }
         if(ImGui::Button("Telemetry", ImVec2(bw, 0.0f))) {
-            ui::SetOpen("Telemetry", !ui::IsOpen("Telemetry"));
+            setWinOpen(W_Telemetry, !winOpen(W_Telemetry));
         }
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;
@@ -2203,6 +2226,11 @@ void drawMainMenu(Game &g) {
         text_button(VERSION);
     });
 }
+
+// Flight's Esc menu (closable) and the title screen's root menu (not).
+void drawPauseMenu(Game &g) { drawMenuWindow(g, W_PauseMenu, false); }
+
+void drawTitleMenu(Game &g) { drawMenuWindow(g, W_TitleMenu, true); }
 
 // A save-slot name is a single directory under saves/; reject a path
 // separator or a dot-name so a typo can't escape the base dir (the CLI
@@ -2226,7 +2254,7 @@ void drawSaveLoad(Game &g) {
     static char nameBuf[256] = "save1";
     static int selected = 0;   // index into the save list (the Load/Delete target)
 
-    ui::Window("Save/Load", g.o_saveload, [&] {
+    drawWin(g, W_SaveLoad, [&] {
         // The save list is a directory scan, so read it only while the window
         // is open, and clamp `selected` if the list grew or shrank (a save /
         // delete). Clamp BOTH bounds: a frame with an empty list parks
@@ -2276,10 +2304,23 @@ void drawSaveLoad(Game &g) {
                 try {
                     load_game(g, dir);
                     g.toast("Loaded %s", saves[selected].c_str());
-                    ui::SetOpen("Save/Load", false);
+                    setWinOpen(W_SaveLoad, false);
                     saves = list_saves("saves");
+                    /* load_game cannot drive a transition itself -- at boot it
+                       runs before the camera and the focus list exist -- so the
+                       caller decides where the loaded game lands: Flight when
+                       it has a vessel, the title screen when it does not. */
+                    if(g.ship != nullptr) { enterFlight(g); } else { enterTitle(g); }
                 } catch(const std::exception &e) {
                     g.toast("Load failed: %s", e.what());
+                    // load_game clears the fleet BEFORE the per-ship reads that
+                    // can throw, so a late failure leaves nothing to fly. An
+                    // early one (a missing or corrupt save.json) leaves the
+                    // running game intact -- hence the ship test rather than an
+                    // unconditional jump to the title screen. (Making load_game
+                    // parse-everything-then-clear is the real fix; it is noted
+                    // as C4 in reports/ui-scenes2026_09_17/addendum.md.)
+                    if(g.ship == nullptr) { enterTitle(g); }
                 }
             }
             ImGui::SameLine();
@@ -2360,7 +2401,7 @@ void drawVabUI(Game &g) {
          line 1 -- Back to game, the save-path input, Save, the ship picker
                    + Load (load a saved ship into the build, replacing it)
          line 2 -- the launch body + scenario dropdowns, then LAUNCH */
-    ui::Window("VAB TopBar", g.o_vabbar, [&] {
+    drawWin(g, W_VabTopBar, [&] {
         // line 1: back to the game / save the build / load a saved ship
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();

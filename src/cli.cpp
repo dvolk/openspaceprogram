@@ -108,6 +108,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the VAB's \"Back to game\" (vabClose) once at this loop "
                    "time in ms -- the headless path into the camera "
                    "park/restore round trip (test hook; -1 = never)");
+    app.add_option("--new-game", args.new_game_ms,
+                   "Fire the title screen's New Game once at this loop time in "
+                   "ms (headless test hook; -1 = never)");
     app.add_option("--vab-scenario", args.vab_scenario,
                    "Seed the VAB's launch scenario (the top-bar dropdown's "
                    "value; empty = \"pad\")");

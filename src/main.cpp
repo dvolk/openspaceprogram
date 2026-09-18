@@ -480,8 +480,16 @@ int main(int argc, char **argv)
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
     if(ship == nullptr) {
-        // The orbit-view state (no ship): a few radii out on the home planet.
+        /* No vessel: the camera sits a few radii out on the home planet and
+           the floor scene is the TITLE screen, not an empty flight one.
+           Decided before the --vab entry below so an editor opened with
+           nothing to fly sits on [title, vab] -- its "Back to game" then pops
+           to the title screen instead of dropping into a flight scene with no
+           vessel in it (which is what the old single-scene model did). */
         cam->distance = 3.0 * home->radius;
+        enterTitle(game);
+        printf("[boot] no vessel: title screen over %s\n", home->name.c_str());
+        fflush(stdout);
     }
 
     /* --vab: open the editor scene with a ship def loaded as a physics-free
@@ -542,12 +550,10 @@ int main(int argc, char **argv)
         for(int i = 0; i < (int)game.focusTargets.size(); i++) {
             if(game.focusTargets[i].body == game.home) { game.focusBody = i; break; }
         }
-        // The orbit-view state: the world runs, the camera orbits the home
-        // planet, and the main menu is up so the entry points (Go to VAB,
-        // Save/Load, ...) are visible. The [boot] line is the e2e anchor.
-        ui::SetOpen("Main Menu", true);
-        printf("[boot] no ship: orbit view of %s\n", home->name.c_str());
-        fflush(stdout);
+        // The title screen (the shipless floor, chosen above) keeps the world
+        // running with the camera on home. Its menu is a Root window forced
+        // open every frame, so nothing here has to open it -- that forced
+        // SetOpen was the old model papering over the menu being just a window.
     }
 
     int screenshot_count = 0;
@@ -587,7 +593,6 @@ int main(int argc, char **argv)
     // The per-window UI options + the window registry (game.cpp): the
     // layout slots, the default-open states and the TAB-toggle table all
     // live on the game; the UI pass (gameui.cpp) draws with them.
-    game.setup_ui_windows();
 
     // Transfer planner (the TRANSFER window + the map's transfer conic +
     // the blue burn-direction icon): the state (targets, selection, solver
@@ -713,6 +718,7 @@ int main(int argc, char **argv)
     // The headless VAB hooks are stamped on the game too, so the code that
     // fires them lives with the editor (vabFireHooks / vabUpdate) rather than
     // in this loop.
+    game.newGameMs = args.new_game_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -864,6 +870,14 @@ int main(int argc, char **argv)
            read after them -- the launching frame falls through to tick().
            (vabFireHooks is the one scene-specific name left in this loop: it
            is test scaffolding, and it no-ops unless the editor is live.) */
+        /* --new-game: the headless hook for the title screen's New Game
+           button. Before the scene is read, so the frame that starts a game
+           runs the flight scene's update. */
+        if(game.newGameMs >= 0 && !game.newGameFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.newGameMs) {
+            game.newGameFired = true;
+            game.newGame();
+        }
         vabFireHooks(game);
         {
             const SceneDef &sc = curScene(game);

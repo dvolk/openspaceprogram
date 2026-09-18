@@ -28,143 +28,22 @@ glm::dvec3 Game::focusWorldPos(int i) const {
     return focusTargets[i].body->frame->GetPositionRelTo(rf);
 }
 
-/* Build the per-window UI options + the window registry. This was a block
-   in main(): one options block per window (src/ui.h) plus the table the
-   main-menu checkboxes, the F10 toggle and a UI reset all share. The main
-   menu itself and the HUD (one "Top HUD" checkbox) are handled
-   separately. Slots/offsets: left column stacks under the menu, right
-   column under ORBITAL, the rest spread over the edges so the center
-   stays clear for the 3D view. */
-void Game::setup_ui_windows() {
-    auto info_opts = [](ui::Slot slot) {
-        ui::Options o;
-        o.slot = slot;
-        o.closable = true;   // X close button on the title bar
-        return o;
-    };
-    // Layout: top left ORBITAL + SURFACE, top right RESOURCES,
-    // middle right the menu, bottom right VESSEL, bottom left Orbital map.
-    o_orbit     = info_opts(ui::Slot::TopLeft);
-    o_surface   = info_opts(ui::Slot::TopLeft);
-    o_surface.right_of = "Orbital";
-    o_resources = info_opts(ui::Slot::TopRight);
-    // bars have no width of their own; pin it to a 7-resource column so
-    // the width doesn't shrink with the number of resources shown (in
-    // font-size units, so it tracks the font size and the DPI scale)
-    o_resources.fixed_width = 2.0f * 7.0f;
-    o_menu      = info_opts(ui::Slot::MiddleRight);
-    // Docked panel (like the HUD and the Main Menu): no title bar, not
-    // user-movable / not user-resizable; it still re-fits and re-places
-    // on a relayout (F10 / "Reset windows").
-    o_menu.flags |= ImGuiWindowFlags_NoTitleBar;
-    o_menu.fixed = true;
-    o_vessel    = info_opts(ui::Slot::BottomRight);
-    o_map = info_opts(ui::Slot::BottomLeft);
-    o_map.default_open = true;
-    o_map.initial_size = ImVec2(480.0f, 480.0f); // orbit drawn at (200,200)
-    // The rest stay out of the way of the above (all closed by default).
-    o_ships = info_opts(ui::Slot::TopCenter);
-    o_ships.default_open = false;
-    o_autopilot = info_opts(ui::Slot::Center);
-    o_autopilot.default_open = false;
-    o_autopilot.left_of = "Windows";  // docked left of the window list
-    o_controls  = info_opts(ui::Slot::BottomCenter);
-    o_controls.default_open = false;
-    o_debug     = info_opts(ui::Slot::TopCenter);
-    o_debug.default_open = false;
-    o_telemetry = info_opts(ui::Slot::MiddleLeft);
-    o_telemetry.default_open = false;
-    // 2x2 grid of plots: wider than the old two-stacked-plots layout so the
-    // two columns have room (each cell is ~half this width).
-    o_telemetry.initial_size = ImVec2(880.0f, 620.0f);
-    o_settings  = info_opts(ui::Slot::BottomCenter);
-    o_settings.default_open = false;
-    // Transfer planner: target selection + dv readouts.
-    o_transfer = info_opts(ui::Slot::Center);
-    o_transfer.default_open = false;
-    // Porkchop plot: the 2-D launch-window heatmap (on-demand compute).
-    // initial_size fits the full content (420px heatmap + colorbar + the
-    // readouts + captions) so the image isn't clipped; the window stays
-    // user-movable/resizable (a refit-on-content-change would let it auto-
-    // fit the short pre-compute state too -- noted for later).
-    o_porkchop = info_opts(ui::Slot::Center);
-    o_porkchop.initial_size = ImVec2(520.0f, 660.0f);
-    o_porkchop.default_open = false;
-    // Surface Map: the body's 2-D surface (equirectangular) with the ship's
-    // position + orbit overlaid and (optionally) the terminator baked in.
-    // 256 x 128 default map + the combo + readouts fits in 520 x 430.
-    o_surfmap = info_opts(ui::Slot::Center);
-    o_surfmap.initial_size = ImVec2(520.0f, 430.0f);
-    o_surfmap.default_open = false;
-    // --surfmap-noshade (CLI) mirrors the window's "Sun shading" box.
-    surfmap_shade = !args.surfmap_noshade;
-    // Save/Load: the in-game save slots (a name to save into + the list of
-    // existing saves to load / delete). Centered, closed by default, opened
-    // from the main menu. initial_size fits the name row + a reasonable list.
-    o_saveload = info_opts(ui::Slot::Center);
-    o_saveload.default_open = false;
-    o_saveload.initial_size = ImVec2(380.0f, 360.0f);
-    o_hud.fixed = true;
-    o_hud.default_open = false;
-    o_hud.flags |= ImGuiWindowFlags_NoTitleBar;
-    o_hud.slot = ui::Slot::TopCenter;
-    // The VAB top bar: the same fixed / top-center / no-titlebar treatment
-    // as the HUD, but it is core editor chrome (hidden only by the TAB
-    // early-return in drawVabUI), so it opens by default.
-    o_vabbar.fixed = true;
-    o_vabbar.default_open = true;
-    o_vabbar.flags |= ImGuiWindowFlags_NoTitleBar;
-    o_vabbar.slot = ui::Slot::TopCenter;
-    o_mainmenu = info_opts(ui::Slot::Center);
-    o_mainmenu.fixed = true;
-    o_mainmenu.default_open = false;
-
-    // The registry (ui_windows): the TAB toggle and the main-menu
-    // "Toggle windows" read it.
-    auto add_ui_window = [&](const char *name, const char *label,
-                             const ui::Options &o) {
-        ui_windows.push_back(UiWin{name, label, &o, true});
-    };
-    // In the registry (the TAB toggle covers it) but out of the Windows
-    // list: it's toggled from its own context (the Transfer window, the
-    // main menu) instead.
-    auto add_ui_window_hidden = [&](const char *name, const char *label,
-                                    const ui::Options &o) {
-        ui_windows.push_back(UiWin{name, label, &o, false});
-    };
-    add_ui_window("Resources", "Resources", o_resources);
-    add_ui_window("Orbital", "Orbit Info", o_orbit);
-    add_ui_window("Orbital Map", "Orbit Map", o_map);
-    add_ui_window("Surface", "Surface Info", o_surface);
-    // Surface Map sits under Surface Info, mirroring Orbit Info -> Orbit Map.
-    add_ui_window("Surface Map", "Surface Map", o_surfmap);
-    add_ui_window("Vessel Info", "Vessel Info", o_vessel);
-    // Registered regardless of fleet size: the window (ship list + spawn)
-    // is always drawn, so it always needs the toggle + checkbox.
-    add_ui_window("Ship List", "Ship List", o_ships);
-    add_ui_window("Autopilot", "Autopilot", o_autopilot);
-    add_ui_window("Transfer", "Transfer", o_transfer);
-    // Porkchop: toggled from the Transfer window (pick a target, then
-    // open the plot for it).
-    add_ui_window_hidden("Porkchop", "Porkchop", o_porkchop);
-    // Settings, Controls, Game Debug Info and Telemetry: main-menu only.
-    add_ui_window_hidden("Settings", "Settings", o_settings);
-    add_ui_window_hidden("Controls", "Controls", o_controls);
-    add_ui_window_hidden("Game Debug Info", "Game Debug Info", o_debug);
-    add_ui_window_hidden("Telemetry", "Telemetry", o_telemetry);
-    // Save/Load: the in-game save slots, opened from the main menu.
-    add_ui_window_hidden("Save/Load", "Save / Load", o_saveload);
-    // The TAB toggle + the main-menu "Toggle windows" button call
-    // toggle_windows(), which flips ui_visible and re-opens every registry
-    // window (plus the HUD) from their defaults.
-}
-
+/* TAB (and the pause menu's "Toggle windows"): hide the chrome for a clean
+   screenshot, then put it back. Only the LIVE scene's Persistent windows are
+   touched. Root is left alone -- that is what stops TAB blanking the title
+   screen, which ui::Options::closable alone would not do, since it only hides
+   the X button while ui::SetOpen still closes the window. Chrome and Transient
+   are skipped here and hidden by ui_visible at draw time instead, so their open
+   state survives the toggle. The HUD is an ordinary Persistent entry now and
+   no longer needs the special case it had. */
 void Game::toggle_windows() {
     ui_visible = !ui_visible;
-    for(auto &w : ui_windows) {
-        ui::SetOpen(w.name, ui_visible && w.opts->default_open);
+    const WinSet &set = curScene(*this).wins;
+    for(size_t i = 0; i < set.n; i++) {
+        const WinDef &w = kWins[set.ids[i]];
+        if(w.role != WinRole::Persistent) { continue; }
+        ui::SetOpen(w.name, ui_visible && w.opts.default_open);
     }
-    ui::SetOpen("HUD", ui_visible && o_hud.default_open);
 }
 
 /* Rebuild the imgui style from the Settings window state. A fresh
@@ -413,6 +292,31 @@ void Game::syncShipFocus() {
             camera->distance = 3.0 * home->radius;
         }
     }
+}
+
+bool Game::newGame() {
+    if(ship != nullptr) {
+        toast("A game is already running");
+        return false;
+    }
+    // The CLI boot's default vessel (a lone --body implies the same one).
+    static const char *kDefaultShip = "res/ships/racer.json";
+    std::vector<FleetEntry> entries(1);
+    entries[0].ship = kDefaultShip;
+    Vehicle *first = ships.build_fleet(entries, sys, home, args.scenario);
+    if(first == nullptr) {
+        printf("[game] new game failed: could not build %s\n", kDefaultShip);
+        fflush(stdout);
+        toast("New Game failed: %s", kDefaultShip);
+        return false;
+    }
+    ships.apply_scenarios(sys);
+    select_ship(first);   // aims the camera + inserts the "ship" focus entry
+    enterFlight(*this);
+    printf("[game] new game: %s on %s\n", first->name.c_str(), home->name.c_str());
+    fflush(stdout);
+    toast("New game -- %s", first->name.c_str());
+    return true;
 }
 
 void Game::select_ship(Vehicle *v) {
@@ -1099,6 +1003,10 @@ void Game::remove_ship(Vehicle *v) {
                focus entry and re-aims the orbit camera at home). */
             ship = nullptr;
             syncShipFocus();
+            // Flight's "there is an active vessel" invariant: with nothing
+            // left to control the floor is the title screen, not an empty
+            // flight scene.
+            enterTitle(*this);
             printf("Removed '%s'; nothing left to control -- no active vessel\n",
                    removedName.c_str());
         }

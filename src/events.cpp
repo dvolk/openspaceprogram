@@ -311,8 +311,12 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         ui::ResetGui();
     }
     if(slotFired(Slot::Menu, ksc, kmod, g.binds)) {
-        // Toggle the main menu.
-        ui::SetOpen("Main Menu", !ui::IsOpen("Main Menu"));
+        /* Toggle the pause menu -- in a scene that has one. The title screen's
+           menu is its Root window (forced open every frame), so Esc there does
+           nothing rather than appearing to dismiss the only UI on screen. */
+        if(winInScene(g, W_PauseMenu)) {
+            setWinOpen(W_PauseMenu, !winOpen(W_PauseMenu));
+        }
     }
     // Thrust latch: the ThrustLatch slot (default LShift+T) toggles
     // it; while engaged, tick.cpp keeps the active ship's engines

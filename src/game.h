@@ -271,6 +271,11 @@ struct Game {
     };
     VabHooks vabHooks;
 
+    // --new-game: the headless hook for the title screen's New Game button
+    // (Game::newGame). Same shape as the VAB hooks: a loop time, a latch.
+    int newGameMs = -1;
+    bool newGameFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
@@ -428,46 +433,11 @@ struct Game {
     std::vector<FocusTarget> focusTargets;
     int focusBody = 0;             // index into focusTargets
 
-    // --- UI window registry (the TAB toggle + the main-menu button) --------
-    struct UiWin {
-        const char *name;
-        const char *label;
-        // POINTS AT the authoritative o_* block below, not a copy of it: the
-        // draw pass (gameui.cpp) hands that same object to ui::Window every
-        // frame, so a copy here could silently drift from the one actually in
-        // use. The o_* are Game members, so the addresses live as long as we
-        // do. (Only default_open is read -- by toggle_windows.)
-        const ui::Options *opts;
-        // false: out of the Windows list (toggled from its own context).
-        bool in_windows_list;
-    };
-    std::vector<UiWin> ui_windows;
-    ui::Options o_hud;
-    ui::Options o_vabbar;   // the VAB top bar (fixed, top-center, no titlebar)
+    /* TAB hides the chrome for a clean screenshot. The window table itself
+       -- names, layout, roles, and which scene owns which -- lives in
+       uiwins.h; it used to be 19 loose option fields here plus a parallel
+       registry that copied them and could silently drift. */
     bool ui_visible = true;
-
-    // --- UI window options (gameui.cpp draws with them) ---------------------
-    // The per-window layout blocks (slot, the sibling anchor (left_of /
-    // right_of / below), size, default-open state), set up once by
-    // setup_ui_windows(); the registry above copies the ones the TAB
-    // toggle controls.
-    ui::Options o_orbit;
-    ui::Options o_surface;
-    ui::Options o_resources;
-    ui::Options o_menu;
-    ui::Options o_vessel;
-    ui::Options o_map;
-    ui::Options o_ships;
-    ui::Options o_autopilot;
-    ui::Options o_controls;
-    ui::Options o_debug;
-    ui::Options o_telemetry;
-    ui::Options o_settings;
-    ui::Options o_transfer;
-    ui::Options o_porkchop;
-    ui::Options o_surfmap;
-    ui::Options o_saveload;
-    ui::Options o_mainmenu;
 
     // The big face (2x the UI font), created by main at ImGui init.
     ImFont *bigger = nullptr;
@@ -536,9 +506,8 @@ struct Game {
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;
-    // Build the per-window UI options + the window registry (game.cpp).
-    void setup_ui_windows();
-    // TAB: toggle the info windows (the main menu's "Toggle windows" too).
+    // TAB: hide / restore the live scene's Persistent windows (the pause
+    // menu's "Toggle windows" button calls this too).
     void toggle_windows();
     // Rebuild the imgui style from the Settings state (theme, DPI scale,
     // rounding, transparency).
@@ -555,6 +524,13 @@ struct Game {
     // Take control of `v` (release + park the current one, recenter the
     // orbit camera, drop rails warp).
     void select_ship(Vehicle *v);
+    /* Start a fresh game from the title screen: the default vessel on the home
+       body's pad, then hand over to Flight. False (plus a toast) if a game is
+       already running or the def fails to build. This is the runtime twin of
+       main's CLI boot path; the two should merge into one startGame()
+       (reports/ui-scenes2026_09_17 stage 4), which is why it stays small
+       instead of growing fleet/scenario options of its own. */
+    bool newGame();
     // Keep the "ship" focus entry in sync with the active ship and point
     // the camera focus at it -- or at home (the orbit view) when there is
     // none. select_ship and load_game both enter/leave the no-ship state.
@@ -606,9 +582,14 @@ struct Game {
     {
         // The stack is never empty: Flight is the floor scene that every
         // excursion returns to. Seeded here rather than in main so no code
-        // path can observe it empty (curSceneId reads back() unguarded).
+        // path can observe it empty (curSceneId reads back() unguarded). A
+        // shipless boot replaces it with Title (main.cpp).
         sceneStack.reserve(4);
         sceneStack.push_back(SceneFrame{});   // Flight, no parked camera
+        // --surfmap-noshade (CLI) mirrors the Surface Map window's "Sun
+        // shading" box. This used to be set in setup_ui_windows(), which the
+        // window table replaced -- it is game state, not window layout.
+        surfmap_shade = !args.surfmap_noshade;
     }
 };
 

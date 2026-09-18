@@ -630,9 +630,11 @@ void vabExit(Game &g) {
    editor means there is a frame below to return to. */
 void vabClose(Game &g) {
     popScene(g);
-    printf("[vab] back to flight (sim resumed)\n");
+    // Named from the stack, not hardcoded: an editor opened with nothing to
+    // fly sits on [title, vab] and pops back to the TITLE screen.
+    printf("[vab] back to %s (sim resumed)\n", sceneName(curSceneId(g)));
     fflush(stdout);
-    g.toast("Back to flight -- the simulation resumes");
+    g.toast("Back from the VAB -- the simulation resumes");
 }
 
 /* The headless transition hooks (--vab-load, --vab-launch, --vab-close), each

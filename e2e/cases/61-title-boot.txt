@@ -1,0 +1,14 @@
+# The game-start screen is its own scene now, not "flight with no ship".
+#
+# A bare boot has no vessel, so the floor is Title. The world still renders and
+# the clock still runs (the planet turns behind the menu instead of hanging
+# frozen), but none of the flight windows are drawn -- they are not in the title
+# scene's window set, so there is nothing left to print "No active ship." into.
+# That is the fix for the empty readouts showing through behind the menu.
+NAME title-boot
+ARGS --timeout 4
+EXPECT [boot] no vessel: title screen over Kerbin
+EXPECT [scene] flight -> title (enterTitle)
+EXPECT Main loop starting
+FORBID GL_
+FORBID error:

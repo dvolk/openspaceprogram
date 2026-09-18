@@ -1,0 +1,14 @@
+# New Game from the title screen. Game::newGame builds the default vessel on the
+# home body's pad and collapses the stack to [Flight]; --new-game is the
+# headless hook for the button.
+#
+# "Active ship 1 of 2" is the racer plus the kerbal aboard it -- collectVehicles
+# counts a ship's crew as fleet entries, so a single-ship start is 2.
+NAME title-newgame
+ARGS --new-game 2000 --timeout 8
+EXPECT [scene] flight -> title (enterTitle)
+EXPECT Active ship 1 of 2: racer
+EXPECT [scene] title -> flight (enterFlight)
+EXPECT [game] new game: racer on Kerbin
+FORBID GL_
+FORBID error:
