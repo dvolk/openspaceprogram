@@ -944,10 +944,10 @@ int main(int argc, char **argv)
             postfx->Begin();  // no-op unless --postfx effects are active
             // The scene cannot change inside the render block, so read it once.
             const SceneDef &sc = curScene(game);
-            // The VAB gets a light-gray studio backdrop (no skybox is drawn
-            // there); flight clears to black under the skybox.
+            // The VAB gets a desaturated steel-blue studio backdrop (no
+            // skybox is drawn there); flight clears to black under the skybox.
             if(sc.backdrop == Backdrop::Studio) {
-                display.Clear(0.72f, 0.73f, 0.75f, 1.0f);
+                display.Clear(0.55f, 0.62f, 0.68f, 1.0f);
             } else {
                 display.Clear(0, 0, 0, 1);
             }
