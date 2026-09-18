@@ -500,7 +500,7 @@ int main(int argc, char **argv)
         game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     }
-    if(game.scene == Scene::Vab) {
+    if(sceneIs(game, SceneId::Vab)) {
         // --vab-scenario / --vab-body: override the launch config the top-bar
         // dropdowns show (vabOpen already seeded the defaults: home + pad).
         if(!args.vab_scenario.empty()) { game.vab.scenarioName = args.vab_scenario; }
@@ -865,7 +865,7 @@ int main(int argc, char **argv)
            Everything VAB-specific lives in vab.cpp now: this loop only knows
            "the editor is live" vs "the sim runs". */
         vabFireHooks(game);
-        if(game.scene == Scene::Vab) {
+        if(sceneIs(game, SceneId::Vab)) {
             vabUpdate(game);
             game.redraw = true;   // a frozen scene has no tick to mark it
         } else {
@@ -903,7 +903,7 @@ int main(int argc, char **argv)
             postfx->Begin();  // no-op unless --postfx effects are active
             // The VAB gets a light-gray studio backdrop (no skybox is drawn
             // there); flight clears to black under the skybox.
-            if(game.scene == Scene::Vab) {
+            if(curScene(game).backdrop == Backdrop::Studio) {
                 display.Clear(0.72f, 0.73f, 0.75f, 1.0f);
             } else {
                 display.Clear(0, 0, 0, 1);
@@ -911,7 +911,7 @@ int main(int argc, char **argv)
 
             // The 3D pass: the world + active ship (flight), or the
             // physics-free build tree (Vab).
-            if(game.scene == Scene::Vab) {
+            if(sceneIs(game, SceneId::Vab)) {
                 drawVab(game);
             } else {
                 draw3d(game, xferPlanner);
@@ -929,7 +929,7 @@ int main(int argc, char **argv)
 
             // The imgui pass: editor widgets (Vab) or the flight readouts /
             // map / part windows / main menu.
-            if(game.scene == Scene::Vab) {
+            if(sceneIs(game, SceneId::Vab)) {
                 drawVabUI(game);
             } else {
                 // The readout windows (HUD .. RESOURCES) live in gameui.cpp.

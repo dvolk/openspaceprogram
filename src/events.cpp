@@ -435,7 +435,7 @@ void poll_events(Game &g) {
             // The scene split: in the editor the flight actions are dead
             // (with no sim running they would silently poke the parked
             // ships), and the editor keys take over instead.
-            if(g.scene == Scene::Vab) {
+            if(sceneIs(g, SceneId::Vab)) {
                 vabKeyActions(g, ksc, kmod, ev.key.repeat);
             } else {
                 flightKeyActions(g, ksc, kmod, ev.key.repeat);
@@ -461,7 +461,7 @@ void poll_events(Game &g) {
                 // look for a jittery click -- at 6 px that is <1 deg.
                 // Flight only: the VAB's RMB-drag orbits the build camera
                 // and its picking is the hover (vab.cpp), not a click.
-                if(g.scene == Scene::Flight
+                if(sceneIs(g, SceneId::Flight)
                    && !ImGui::GetIO().WantCaptureMouse
                    && g.rmbMoved < kPickClickPx
                    && SDL_GetTicks() - g.rmbDownMs < kPickClickMs) {

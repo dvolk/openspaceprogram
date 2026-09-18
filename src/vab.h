@@ -101,10 +101,17 @@ void vabAimCamera(Game &g);
 void vabFireHooks(Game &g);
 void vabUpdate(Game &g);
 
-// Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to
-// game"). The sim FREEZES in the Vab scene (tick is skipped), so entering
-// mid-flight is a pause. vabOpen parks the flight camera (in either mode,
-// Game::parkCamera) and aims the orbit at the build tree; vabClose hands the
-// parked pose back exactly (Game::restoreCamera).
+/* Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to game").
+   The sim FREEZES in the Vab scene -- SceneDef::sim is false, so the loop
+   skips tick() -- which makes entering mid-flight a pause.
+
+   vabOpen / vabClose are the player-facing pair: they push and pop the scene
+   stack, and the push/pop is what captures and restores the camera pose the
+   editor takes over (scene.h). vabEnter / vabExit are the scene table's
+   lifecycle hooks that pushScene / popScene call -- vabEnter seeds the launch
+   config and aims the camera at the build, vabExit drops the state that is
+   meaningless with the tree off screen. Call the pair, not the hooks. */
 void vabOpen(Game &g);
 void vabClose(Game &g);
+void vabEnter(Game &g);
+void vabExit(Game &g);

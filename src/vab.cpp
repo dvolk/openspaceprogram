@@ -540,17 +540,17 @@ void vabLaunch(Game &g) {
     // capsule's final (orbit) pose, not the pad's.
     g.ships.spawn_crew(v, g.sys);   // crew aboard the capsules, like startup
     g.select_ship(v);
-    /* The parked flight pose is dead: the launched ship is the active one now
-       and select_ship has just aimed the camera at it, so there is nothing to
-       go back to. Leaving the park set would make the NEXT vabOpen skip
-       parking (parkCamera no-ops when a pose is already parked) and the
-       "Back to game" after that restore a pose from before this launch. */
-    g.camParked = false;
     vabClearHover(g);
     g.vab.armed.clear();
     g.vab.ghostRoll = 0.0;
     g.vab.selected = -1;
-    g.scene = Scene::Flight;
+    /* Collapse the stack to [Flight]. That discards the editor scene AND the
+       camera pose it parked: the launched ship is the active one now and
+       select_ship has just aimed the camera at it, so there is nothing to go
+       back to. Leaving the pose on a frame would make the next vabOpen skip
+       capturing one, and the "Back to game" after that restore a viewpoint
+       from before this launch. */
+    enterFlight(g);
     printf("[vab] launched '%s' (%d parts)\n", v->name.c_str(),
            (int)g.vab.build.parts.size());
     fflush(stdout);
@@ -589,40 +589,47 @@ void vabAimCamera(Game &g) {
     fflush(stdout);
 }
 
-/* Enter the editor scene: seed the launch config, park the flight camera,
-   drop the interaction state, aim at the build. vabAimCamera is the re-aim
-   without the transition (vabLoad). */
-void vabOpen(Game &g) {
+/* Enter the editor: push the Vab scene on the stack. The push captures the
+   flight camera pose first (the editor takes the camera over for the
+   session), so vabEnter below is free to aim it at the build tree. */
+void vabOpen(Game &g) { pushScene(g, SceneId::Vab); }
+
+/* The scene table's enter hook for SceneId::Vab -- scene.cpp calls it from
+   pushScene, once the camera has been captured onto the new frame. */
+void vabEnter(Game &g) {
     // seed the launch config once (the dropdowns' initial selection): the
     // home body + the pad. Left alone afterwards, so a body/scenario chosen
     // in a prior VAB session is kept when the editor is re-entered.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
-    // park the flight camera (in EITHER mode -- free does not re-aim itself)
-    // for the duration of the VAB session
-    g.parkCamera();
     vabClearHover(g);
     g.vab.selected = -1;
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
     g.vab.linkSel = -1;      // no link selected on a fresh entry
-    g.scene = Scene::Vab;
     vabAimCamera(g);
     printf("[vab] entered the editor (sim paused)\n");
     fflush(stdout);
     g.toast("VAB -- the simulation is paused");
 }
 
-void vabClose(Game &g) {
-    g.scene = Scene::Flight;
+/* The scene table's exit hook: drop only the state that is meaningless once
+   the build tree is off screen. Deliberately NOT the armed part, the
+   selection or the ghost roll -- "Back to game" is a pause, and the editor
+   must be exactly as you left it when you come back. vabLaunch resets those
+   itself, because a launch is not a pause. */
+void vabExit(Game &g) {
     vabClearHover(g);
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
-    // hand the parked flight camera back exactly as vabOpen left it. There is
-    // always a park to restore: the camera exists before vabOpen can run (main
-    // creates it before the --vab scene entry, and the menu button is later
-    // still), and vabOpen parks unconditionally in that case.
-    g.restoreCamera();
+}
+
+/* Leave the editor the way the player does: pop the stack, which runs
+   vabExit and hands the parked flight camera back. The pop always succeeds
+   from here -- the stack is seeded with Flight at boot, so being in the
+   editor means there is a frame below to return to. */
+void vabClose(Game &g) {
+    popScene(g);
     printf("[vab] back to flight (sim resumed)\n");
     fflush(stdout);
     g.toast("Back to flight -- the simulation resumes");
@@ -633,19 +640,19 @@ void vabClose(Game &g) {
    scene. The scene is re-checked between them: a launch flips it to Flight,
    and the caller re-checks too so the same frame falls through to tick(). */
 void vabFireHooks(Game &g) {
-    if(g.scene != Scene::Vab) { return; }
+    if(!sceneIs(g, SceneId::Vab)) { return; }
     const int ms = (int)(SDL_GetTicks() - g.loop_start_ms);
     if(!g.vabHooks.loadPath.empty() && g.vabHooks.loadMs >= 0
        && !g.vabHooks.loadFired && ms >= g.vabHooks.loadMs) {
         g.vabHooks.loadFired = true;
         vabLoad(g, g.vabHooks.loadPath.c_str());
     }
-    if(g.scene == Scene::Vab && g.vabHooks.launchMs >= 0
+    if(sceneIs(g, SceneId::Vab) && g.vabHooks.launchMs >= 0
        && !g.vabHooks.launchFired && ms >= g.vabHooks.launchMs) {
         g.vabHooks.launchFired = true;
         vabLaunch(g);
     }
-    if(g.scene == Scene::Vab && g.vabHooks.closeMs >= 0
+    if(sceneIs(g, SceneId::Vab) && g.vabHooks.closeMs >= 0
        && !g.vabHooks.closeFired && ms >= g.vabHooks.closeMs) {
         g.vabHooks.closeFired = true;
         vabClose(g);

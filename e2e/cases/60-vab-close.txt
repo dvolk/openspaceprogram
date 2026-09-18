@@ -19,6 +19,10 @@ ARGS --ship res/ships/racer.json --scenario rot-orbit
 ARGS --vab res/ships/tanker.json --vab-close 2000 --timeout 10
 EXPECT [vab] entered the editor (sim paused)
 EXPECT [vab] back to flight (sim resumed)
+# the stack itself: the editor is an excursion pushed on top of flight, and
+# "back to game" pops it rather than assigning a scene
+EXPECT [scene] flight -> vab (push)
+EXPECT [scene] vab -> flight (pop)
 EXPECT [cam] parked: orbit focus=ship dist=
 EXPECT [cam] restored: orbit focus=ship dist=
 # both lines present (one park, one restore) ...

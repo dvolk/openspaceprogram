@@ -25,6 +25,7 @@
 #include "job.h"      // JobRunner (background jobs: the porkchop grid, ...)
 #include "orbit.h"    // OrbitElements (the ShipView state)
 #include "postfx.h"   // PostFX
+#include "scene.h"    // SceneId, SceneFrame (the scene stack), Backdrop
 #include "ships.h"    // Ships
 #include "siminput.h" // TimeSeries (the ShipView telemetry)
 #include "system.h"   // System
@@ -130,33 +131,6 @@ struct ShipView {
     TimeSeries angmom_series;
 };
 
-/* Which top-level scene is live. The main loop switches on this for logic
-   (sim or not), the 3D pass (world or build tree) and the imgui pass (which
-   widgets). Switching scenes is one assignment to Game::scene -- the
-   lightweight stand-in for a "current UI" pointer. Flight is the default
-   (the game boots straight into gameplay, as today). */
-enum class Scene {
-    Flight,   // the sim: tick + world render + flight widgets
-    Vab       // the editor: no sim; physics-free BuildShip draw + editor widgets
-};
-
-/* A camera pose, captured so one scene can hand the camera to another and get
-   it back exactly (Game::parkCamera / Game::restoreCamera). Both camera modes
-   ride in here: orbit needs the yaw/pitch/distance and the focus, free needs
-   the explicit pose.
-
-   `focusBody` is the orbit target as a BODY, not an index into
-   Game::focusTargets: that list shifts when the "ship" entry is inserted or
-   dropped (syncShipFocus), so a saved index would go stale. null = the "ship"
-   entry. */
-struct CameraSnapshot {
-    CameraMode mode = CAM_ORBIT;
-    glm::dvec3 pos, fwd, up;          // the free-mode pose
-    double distance = 10.0;           // orbit radius
-    double yaw = 0.0, pitch = 0.0;    // orbit angles
-    TerrainBody *focusBody = nullptr;
-};
-
 /* The VAB editor's session state: the physics-free build tree, the LAUNCH
    config, the hover/selection, the placement ghost, the symmetry + snap
    modifiers, the fuel-link authoring and the detached subassemblies. Was ~30
@@ -166,8 +140,8 @@ struct CameraSnapshot {
    All of it is EDITOR SESSION state, not save state: the build tree
    round-trips through the ship-def files (vabSave / vabLoad), and the
    subassemblies deliberately outlive the build they came from. The camera
-   parked across a VAB session is NOT here -- that is transition state, not
-   editor state (Game::parkedCam). */
+   parked across a VAB session is NOT here -- that is transition state, and it
+   rides on the scene stack's frame (scene.h SceneFrame). */
 struct VabState {
     /* The physics-free build tree the editor edits (shipdef.h BuildShip).
        Empty unless --vab loaded a ship (or the editor started one). Poses are
@@ -272,17 +246,15 @@ struct Game {
     Uint32 shake_last_ms = 0;
 
     // --- scene + VAB editor state ------------------------------------------
-    Scene scene = Scene::Flight;
+    /* The scene stack: back() is the live scene, the frames below are
+       suspended. Seeded with [Flight] at boot and never empty -- see scene.h
+       for the transitions and why this replaced a single Scene field. Each
+       frame carries the camera pose to hand back when it is popped. */
+    std::vector<SceneFrame> sceneStack;
     /* The VAB editor's session state (VabState, above): `vab.build` is the
        physics-free tree, plus the hover / ghost / snap / link / subassembly
        state that goes with it. */
     VabState vab;
-    /* The camera pose parked while another scene owns the camera: the VAB
-       forces an orbit around vab.center for the session (drawVab), so the
-       flight pose -- in EITHER camera mode -- is snapshotted on the way in
-       (parkCamera) and handed back on the way out (restoreCamera). */
-    bool camParked = false;
-    CameraSnapshot parkedCam;
 
     /* One-shot headless test hooks (the cli.h --vab-* options). The timings
        are copied from GameArgs at boot so the code that FIRES them can live
@@ -587,15 +559,6 @@ struct Game {
     // the camera focus at it -- or at home (the orbit view) when there is
     // none. select_ship and load_game both enter/leave the no-ship state.
     void syncShipFocus();
-    // Park the live camera pose (into parkedCam) so another scene can take the
-    // camera over -- the VAB forces an orbit around the build tree for the
-    // session -- and hand it back exactly. parkCamera is a no-op when a pose
-    // is already parked (a re-aim within the session must not overwrite the
-    // flight pose with the editor's) or when there is no camera yet (main
-    // creates it after load_game); restoreCamera is a no-op when nothing is
-    // parked.
-    void parkCamera();
-    void restoreCamera();
     // Enter rails warp (park every ship); false + keeps the accel if any
     // ship is not rail-eligible.
     bool enter_rails_warp();
@@ -639,7 +602,14 @@ struct Game {
          TerrainBody *sun, TerrainBody *home, GameArgs &args,
          Uint32 sim_win_id)
         : display(display), postfx(postfx), ships(ships), sys(sys),
-          sun(sun), home(home), args(args), sim_win_id(sim_win_id) {}
+          sun(sun), home(home), args(args), sim_win_id(sim_win_id)
+    {
+        // The stack is never empty: Flight is the floor scene that every
+        // excursion returns to. Seeded here rather than in main so no code
+        // path can observe it empty (curSceneId reads back() unguarded).
+        sceneStack.reserve(4);
+        sceneStack.push_back(SceneFrame{});   // Flight, no parked camera
+    }
 };
 
 // RMB-click entry point (events.cpp calls it when a short, still RMB

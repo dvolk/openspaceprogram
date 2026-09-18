@@ -200,7 +200,6 @@ int main() {
     meta.parts = "res/parts.json";
     meta.time = 4.459999999999993;
     meta.time_accel = 1;
-    meta.scene = "flight";
     meta.active_ship = "racer";
     meta.ships.push_back("v0");
     meta.ships.push_back("v1");
@@ -211,7 +210,6 @@ int main() {
     CHECK(metaOut.parts == meta.parts);
     CHECK(near(metaOut.time, meta.time));
     CHECK(metaOut.time_accel == meta.time_accel);
-    CHECK(metaOut.scene == meta.scene);
     CHECK(metaOut.active_ship == meta.active_ship);
     CHECK(metaOut.ships.size() == 2);
     CHECK(metaOut.ships[0] == "v0");

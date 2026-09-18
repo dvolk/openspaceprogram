@@ -340,7 +340,6 @@ void save_game(Game &g, const std::string &dir) {
     meta.parts = g.args.parts_file;
     meta.time = g.time;
     meta.time_accel = g.time_accel;
-    meta.scene = (g.scene == Scene::Vab) ? "vab" : "flight";
     meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";
     meta.saved_at = nowString();
 
@@ -358,7 +357,6 @@ void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     g.time = meta.time;
     g.time_accel = meta.time_accel;
-    g.scene = (meta.scene == "vab") ? Scene::Vab : Scene::Flight;
 
     clearFleet(g);
 

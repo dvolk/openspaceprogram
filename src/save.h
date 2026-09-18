@@ -131,7 +131,6 @@ struct SaveMeta {
     std::string parts;       // the parts catalog file (res/parts.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;
-    std::string scene;       // "flight" | "vab"
     std::string active_ship; // display name ("" = none)
     std::vector<std::string> ships;
 };
@@ -319,7 +318,6 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     j["parts"]       = m.parts;
     j["time"]        = m.time;
     j["time_accel"]  = m.time_accel;
-    j["scene"]       = m.scene;
     if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
     j["ships"]       = m.ships;
     return j;
@@ -333,7 +331,6 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("parts") && j["parts"].is_string()) { m.parts = j["parts"].get<std::string>(); }
     if(j.contains("time") && j["time"].is_number()) { m.time = j["time"].get<double>(); }
     if(j.contains("time_accel") && j["time_accel"].is_number()) { m.time_accel = j["time_accel"].get<int>(); }
-    if(j.contains("scene") && j["scene"].is_string()) { m.scene = j["scene"].get<std::string>(); }
     if(j.contains("active_ship") && j["active_ship"].is_string()) { m.active_ship = j["active_ship"].get<std::string>(); }
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }
