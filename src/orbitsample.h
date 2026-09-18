@@ -143,3 +143,79 @@ inline std::vector<glm::dvec3> sampleOpenTrajectory(const glm::dvec3 &pos,
     }
     return pts;
 }
+
+// Sample a TRANSFER CONIC arc -- the Kepler orbit from the departure state
+// (pos, vel) under mu, propagated over tof seconds (one Lambert leg) -- as
+// N+1 points from departure (i = 0) to arrival (i = N).
+//
+// The points are spread evenly in ANOMALY (eccentric for an elliptic leg,
+// hyperbolic for a hyperbolic one) -- the same even grid OrbitSampleCache
+// uses for a closed orbit -- NOT uniform in time. Uniform-in-time spaces
+// points by how fast the ship is: they crowd the slow end of the arc (near
+// its apoapsis) and starve the fast periapsis end, so a transfer leg draws
+// lopsided. Even-in-anomaly gives it an even outline.
+//
+// The arc spans anomaly [A1, A2] (departure to arrival); the anomaly
+// increases monotonically with time, so A2 >= A1. Sample i lands at
+// A_i = A1 + (A2 - A1) i / N. Its propagation time is (M(A_i) - M(A1)) / n,
+// where M is the mean anomaly (A - e sin A elliptic, e sinh A - A
+// hyperbolic) and n the mean motion; propagateKepler then carries the
+// departure state to that point, so the endpoints are EXACTLY the departure
+// (dt = 0) and arrival (dt = tof) states.
+//
+// A transfer leg spans less than one full orbit (you are going TO the
+// target, not orbiting), so at most one 2pi turn is unwrapped for the
+// elliptic case. A near-circular leg (e < 1e-3) has no well-defined anomaly
+// (the reference direction is degenerate, and the speed is ~constant), so
+// even-in-time is already even there and is used instead. A parabolic leg
+// (e = 1 exactly, no period -- measure zero in practice) falls back to
+// even-in-time as well.
+//
+// pos/vel are the departure state in the focus's inertial frame; the
+// returned points are in that same frame (like the other samplers).
+inline std::vector<glm::dvec3> sampleTransferArc(const glm::dvec3 &pos,
+                                                  const glm::dvec3 &vel,
+                                                  double mu, double tof,
+                                                  int N) {
+    std::vector<glm::dvec3> pts;
+    if(N < 1 || !(mu > 0.0) || tof < 0.0) { return pts; }
+    const OrbitElements o = computeOrbitElements(pos, vel, mu);
+    const double e = o.ecc;
+    const bool elliptic = (e >= 1e-3) && (e < 1.0);   // genuinely eccentric elliptic
+    const bool hyperbolic = (e > 1.0);
+    if(!elliptic && !hyperbolic) {   // near-circular (e < 1e-3) or parabolic (e = 1): even-in-time
+        pts.reserve(N + 1);
+        for(int i = 0; i <= N; i++) {
+            glm::dvec3 p, v;
+            propagateKepler(pos, vel, mu, tof * i / N, p, v);
+            pts.push_back(p);
+        }
+        return pts;
+    }
+    // The arrival state lies on the SAME conic; its anomaly is the arc's far
+    // end. For an elliptic leg the stored anomaly is wrapped to [0, 2pi), so
+    // if the arrival reads behind the departure the arc crossed the seam and
+    // the true arrival anomaly is one turn ahead. (A hyperbolic anomaly is
+    // unbounded and already ordered, so no unwrap is needed.)
+    glm::dvec3 arr_pos, arr_vel;
+    propagateKepler(pos, vel, mu, tof, arr_pos, arr_vel);
+    double A2 = computeOrbitElements(arr_pos, arr_vel, mu).ecc_anomaly;
+    const double A1 = o.ecc_anomaly;
+    if(elliptic && A2 < A1) { A2 += 2.0 * M_PI; }
+    // Seconds per radian of mean anomaly: period/(2pi) elliptic,
+    // sqrt(|a|^3/mu) hyperbolic (the t = M/n and t = M sqrt(a^3/mu) relations).
+    const double M1 = o.mean_anomaly;
+    const double a_abs = std::fabs(o.semi_major);
+    const double tau = elliptic
+        ? o.period / (2.0 * M_PI)
+        : std::sqrt(a_abs * a_abs * a_abs / mu);
+    pts.reserve(N + 1);
+    for(int i = 0; i <= N; i++) {
+        const double A = A1 + (A2 - A1) * (double)i / N;
+        const double M = hyperbolic ? e * std::sinh(A) - A : A - e * std::sin(A);
+        glm::dvec3 p, v;
+        propagateKepler(pos, vel, mu, (M - M1) * tau, p, v);
+        pts.push_back(p);
+    }
+    return pts;
+}

@@ -203,6 +203,127 @@ int main() {
         check(pts.empty(), "open: closed orbit -> empty");
     }
 
+    // 10. TRANSFER ARC (elliptic): a leg from periapsis to apoapsis. The
+    // endpoints must be exactly the departure and arrival states, and the
+    // points must be even in ECCENTRIC ANOMALY (radius r_i = a(1 - e cos
+    // E_i), E_i = pi i / N) -- NOT uniform in time, which would crowd the
+    // slow apoapsis end and starve the fast periapsis end.
+    {
+        const double e = 0.5;
+        const double peri = 7.0e6;
+        const double a = peri / (1.0 - e);
+        const double v_p = std::sqrt(mu * (1.0 + e) / peri);   // periapsis speed
+        const glm::dvec3 pos(peri, 0.0, 0.0), vel(0.0, v_p, 0.0); // periapsis
+        const double period = 2.0 * M_PI * std::sqrt(a * a * a / mu);
+        const double tof = 0.5 * period;   // periapsis -> apoapsis
+        std::vector<glm::dvec3> pts = sampleTransferArc(pos, vel, mu, tof, N);
+        check(pts.size() == (size_t)(N + 1), "xfer-ell: N+1 points");
+        check(glm::length(pts.front() - pos) < 1e-6 * peri,
+              "xfer-ell: departure exact");
+        glm::dvec3 arr_p, arr_v;
+        propagateKepler(pos, vel, mu, tof, arr_p, arr_v);
+        check(glm::length(pts.back() - arr_p) < 1e-6 * peri,
+              "xfer-ell: arrival exact");
+        bool even = true;
+        for(int i = 0; i <= N; i++) {
+            const double r_exp = a * (1.0 - e * std::cos(M_PI * i / N));
+            const double r_act = glm::length(pts[i]);
+            if(std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+        }
+        check(even, "xfer-ell: even-in-anomaly radii");
+    }
+
+    // 10b. TRANSFER ARC (high eccentricity, e = 0.9995): the most lopsided
+    // legs are the ones that most need even-in-anomaly. Pin the conic gate: a
+    // high-e elliptic leg must take the even-in-anomaly path, not the
+    // uniform-in-time fallback (which would crowd the slow apoapsis end).
+    {
+        const double e = 0.9995;
+        const double peri = 7.0e6;
+        const double a = peri / (1.0 - e);
+        const double v_p = std::sqrt(mu * (1.0 + e) / peri);   // periapsis speed
+        const glm::dvec3 pos(peri, 0.0, 0.0), vel(0.0, v_p, 0.0); // periapsis
+        const double period = 2.0 * M_PI * std::sqrt(a * a * a / mu);
+        const double tof = 0.5 * period;   // periapsis -> apoapsis
+        std::vector<glm::dvec3> pts = sampleTransferArc(pos, vel, mu, tof, N);
+        check(pts.size() == (size_t)(N + 1), "xfer-he: N+1 points");
+        check(glm::length(pts.front() - pos) < 1e-6 * peri, "xfer-he: dep exact");
+        glm::dvec3 arr_p, arr_v;
+        propagateKepler(pos, vel, mu, tof, arr_p, arr_v);
+        check(glm::length(pts.back() - arr_p) < 1e-6 * peri, "xfer-he: arr exact");
+        bool even = true;
+        for(int i = 0; i <= N; i++) {
+            const double r_exp = a * (1.0 - e * std::cos(M_PI * i / N));
+            const double r_act = glm::length(pts[i]);
+            if(std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+        }
+        check(even, "xfer-he: even-in-anomaly radii");
+    }
+
+    // 11. TRANSFER ARC (hyperbolic): a leg leaving periapsis. Endpoints exact
+    // and even in HYPERBOLIC ANOMALY (radius r_i = |a|(e cosh H_i - 1),
+    // H_i = H2 i / N).
+    {
+        const double e = 1.5;
+        const double rp = 7.0e6;
+        const double a_abs = rp / (e - 1.0);
+        const double v_p = std::sqrt(mu * (1.0 + e) / rp);      // periapsis speed
+        const glm::dvec3 pos(rp, 0.0, 0.0), vel(0.0, v_p, 0.0); // periapsis
+        const double tof = 600.0;
+        std::vector<glm::dvec3> pts = sampleTransferArc(pos, vel, mu, tof, N);
+        check(pts.size() == (size_t)(N + 1), "xfer-hyp: N+1 points");
+        check(glm::length(pts.front() - pos) < 1e-6 * rp,
+              "xfer-hyp: departure exact");
+        glm::dvec3 arr_p, arr_v;
+        propagateKepler(pos, vel, mu, tof, arr_p, arr_v);
+        check(glm::length(pts.back() - arr_p) < 1e-6 * rp,
+              "xfer-hyp: arrival exact");
+        const double H2 = computeOrbitElements(arr_p, arr_v, mu).ecc_anomaly;
+        bool even = true;
+        for(int i = 0; i <= N; i++) {
+            const double r_exp = a_abs * (e * std::cosh(H2 * i / N) - 1.0);
+            const double r_act = glm::length(pts[i]);
+            if(std::fabs(r_act - r_exp) > 1e-3 * r_exp) { even = false; break; }
+        }
+        check(even, "xfer-hyp: even-in-H radii");
+    }
+
+    // 12. TRANSFER ARC (near-circular): e < 1e-3 has no well-defined anomaly,
+    // so the even-in-time fallback is used -- which is already even for a
+    // circular orbit. All points sit at the orbit radius.
+    {
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        const glm::dvec3 pos(r, 0.0, 0.0), vel(0.0, v, 0.0);
+        std::vector<glm::dvec3> pts = sampleTransferArc(pos, vel, mu, 100.0, N);
+        check(pts.size() == (size_t)(N + 1), "xfer-circ: N+1 points");
+        check(glm::length(pts.front() - pos) < 1e-6 * r,
+              "xfer-circ: departure exact");
+        // The arc must SPREAD along the orbit (a nonzero ToF moves the ship),
+        // not collapse to the departure point (which the anomaly path would do
+        // for a degenerate e = 0 reference direction).
+        check(glm::length(pts.back() - pts.front()) > 1e-3 * r,
+              "xfer-circ: arc spans > 0");
+        bool on_circle = true;
+        for(const glm::dvec3 &p : pts) {
+            if(std::fabs(glm::length(p) - r) > 1e-3 * r) { on_circle = false; break; }
+        }
+        check(on_circle, "xfer-circ: points at radius");
+    }
+
+    // 13. TRANSFER ARC (zero ToF): the arc degenerates to the departure point.
+    {
+        const double e = 0.5, peri = 7.0e6;
+        const double v_p = std::sqrt(mu * (1.0 + e) / peri);
+        const glm::dvec3 pos(peri, 0.0, 0.0), vel(0.0, v_p, 0.0);
+        std::vector<glm::dvec3> pts = sampleTransferArc(pos, vel, mu, 0.0, N);
+        check(pts.size() == (size_t)(N + 1), "xfer-t0: N+1 points");
+        bool all_dep = true;
+        for(const glm::dvec3 &p : pts) {
+            if(glm::length(p - pos) > 1e-6 * peri) { all_dep = false; break; }
+        }
+        check(all_dep, "xfer-t0: all points at departure");
+    }
+
     if(g_failures == 0) {
         std::printf("test_orbitsample: all checks passed\n");
         return 0;

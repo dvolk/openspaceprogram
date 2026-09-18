@@ -2013,14 +2013,10 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         // point is the ship dot already drawn above.
         if(xfer.valid) {
             const TransferSolution &sol = xfer.sol;
-            std::vector<glm::dvec3> xfer_pts;
-            xfer_pts.reserve(N + 1);
-            for(int i = 0; i <= N; i++) {
-                glm::dvec3 p, v;
-                propagateKepler(orbit_pos, sol.v_departure, mu,
-                                sol.tof * i / N, p, v);
-                xfer_pts.push_back(p);
-            }
+            // Even-in-anomaly (not uniform-in-time) so the leg draws with an
+            // even outline, like the closed orbits (see sampleTransferArc).
+            std::vector<glm::dvec3> xfer_pts =
+                sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, N);
             map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
             const glm::dvec3 &arrival = xfer_pts.back();
             map.drawDot(dl, arrival, 4.0f, col_xfer);
@@ -3156,14 +3152,10 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
         // point is the ship dot already drawn above.
         if(xfer.valid) {
             const TransferSolution &sol = xfer.sol;
-            std::vector<glm::dvec3> xfer_pts;
-            xfer_pts.reserve(N + 1);
-            for(int i = 0; i <= N; i++) {
-                glm::dvec3 p, v;
-                propagateKepler(orbit_pos, sol.v_departure, mu,
-                                sol.tof * i / N, p, v);
-                xfer_pts.push_back(p);
-            }
+            // Even-in-anomaly (not uniform-in-time) so the leg draws with an
+            // even outline, like the closed orbits (see sampleTransferArc).
+            std::vector<glm::dvec3> xfer_pts =
+                sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, N);
             map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
             const glm::dvec3 &arrival = xfer_pts.back();
             map.drawDot(dl, arrival, 4.0f, col_xfer);
