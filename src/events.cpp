@@ -325,10 +325,12 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         // main menu's "Reset windows" button).
         ui::ResetGui();
     }
-    if(slotFired(Slot::Menu, ksc, kmod, g.binds)) {
+    if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
         /* Toggle the pause menu -- in a scene that has one. The title screen's
            menu is its Root window (forced open every frame), so Esc there does
-           nothing rather than appearing to dismiss the only UI on screen. */
+           nothing rather than appearing to dismiss the only UI on screen.
+           !repeat like every other one-shot slot: a held key must not flicker
+           the menu back and forth. */
         if(winInScene(g, W_PauseMenu)) {
             setWinOpen(W_PauseMenu, !winOpen(W_PauseMenu));
         }
@@ -371,20 +373,41 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         if(g.vab.linkMode) {
             g.vab.linkMode = false;   // the first Esc leaves link mode ...
             g.vab.linkFromId.clear();
-        } else {
-            g.vab.armed.clear();      // ... the next disarms whatever is armed
+        } else if(!g.vab.armed.empty() || g.vab.armedAsm >= 0) {
+            // ... the next disarms whatever is armed ...
+            g.vab.armed.clear();
             g.vab.armedAsm = -1;
             g.vab.ghostRoll = 0.0;
+        } else {
+            // ... and with nothing to cancel it toggles the main menu. A
+            // fixed Esc, not Slot::Menu -- the editor's keys are
+            // editor-local (see the function comment), unlike the tracking
+            // station's Slot::Menu toggle.
+            setWinOpen(W_VabMenu, !winOpen(W_VabMenu));
         }
     }
 }
 
-/* The paused overlay scenes' keys (the Space Center hub and the Tracking
-   Station it opens). The ship is live below but the sim is paused and you are
-   in a menu/map, so there is no vessel control here -- Esc pops back (to the
-   flight from the hub, to the hub from the Tracking Station), the same as the
-   on-screen "back" button. The stack always has a frame below here (both are
-   pushed on top of something), so the pop succeeds. */
+/* The Tracking Station's keys: the main-menu toggle on Slot::Menu (default
+   Esc), the same slot as flight's pause menu, so rebinding "Main menu" moves
+   both. The menu's "Back to Space Center" is the exit. No
+   WantCaptureKeyboard gate, like flight's Esc (the gate only bites while an
+   imgui text field is active); the full-screen map window does not capture
+   the keyboard just by being under the cursor. */
+void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+    if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
+        const bool now = !winOpen(W_TrackingMenu);
+        setWinOpen(W_TrackingMenu, now);
+        printf("Tracking menu: %s\n", now ? "open" : "closed");
+    }
+}
+
+/* The Space Center hub's keys. The ship is live below but the sim is paused
+   and the menu IS the scene (Root, always open), so Esc is the exit: pop back
+   to the flight, the same as the on-screen "Resume Flight". The stack always
+   has a frame below here (the hub is pushed on top of something), so the pop
+   succeeds. The Tracking Station above the hub has its own key map
+   (trackingKeyActions): its Esc toggles the menu like flight's does. */
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) { popScene(g); }

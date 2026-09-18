@@ -66,8 +66,9 @@ const WinDef kWins[W_Count] = {
         .name = "Save/Load", .label = "Save / Load",
         .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(380.0f, 360.0f),
                   .closable = true, .default_open = false },
-        // Transient: it captures the live fleet, so it must not survive a
-        // transition into a scene where that fleet is not what is on screen.
+        // Transient (not Root): its open state is the nav code's job (see
+        // WinRole), and it is in every scene's set with the fleet still live
+        // behind each, so an open Save/Load riding a transition is legal.
         .role = WinRole::Transient, .inList = false,
     },
 
@@ -209,6 +210,15 @@ const WinDef kWins[W_Count] = {
                   .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },
+    [W_TrackingMenu] = {
+        .name = "Tracking Menu", .label = "Tracking Menu",
+        // The same shape as the pause menu: the scene's main menu, toggled by
+        // Esc (trackingKeyActions) or the ship list's "Menu" button, Transient
+        // so it cannot ride along a scene transition.
+        .opts = { .slot = ui::Slot::Center, .fixed = true, .closable = true,
+                  .default_open = false },
+        .role = WinRole::Transient, .inList = false,
+    },
 
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
@@ -218,6 +228,15 @@ const WinDef kWins[W_Count] = {
         .opts = { .slot = ui::Slot::TopCenter, .fixed = true, .default_open = true,
                   .flags = ImGuiWindowFlags_NoTitleBar },
         .role = WinRole::Chrome, .inList = false,
+    },
+    [W_VabMenu] = {
+        .name = "VAB Menu", .label = "VAB Menu",
+        // The editor's main menu: the top bar's "Menu" button, and Esc when
+        // there is nothing armed to cancel (vabKeyActions). Transient like
+        // the pause menu.
+        .opts = { .slot = ui::Slot::Center, .fixed = true, .closable = true,
+                  .default_open = false },
+        .role = WinRole::Transient, .inList = false,
     },
 };
 #pragma GCC diagnostic pop
@@ -237,19 +256,25 @@ static const Win kFlightWinIds[] = {
 static const Win kTitleWinIds[] = {
     W_TitleMenu, W_Settings, W_Controls, W_SaveLoad,
 };
+// The editor: its chrome + main menu, plus the shared menu windows the menu's
+// buttons open (the Settings / Controls bodies are shipless-safe, so they draw
+// here as well as in flight).
 static const Win kVabWinIds[] = {
-    W_VabTopBar,
+    W_VabTopBar, W_VabMenu, W_Settings, W_Controls, W_SaveLoad,
 };
-// The Space Center hub: just its root menu. The ship is live below but the sim
-// is paused, so no flight readouts belong here (and none would have a vessel to
-// read once you are hub-side).
+// The Space Center hub: its root menu + the shared menu windows (same
+// reasoning as the editor). The ship is live below but the sim is paused, so
+// no flight readouts belong here (and none would have a vessel to read once
+// you are hub-side).
 static const Win kSpaceCenterWinIds[] = {
-    W_SpaceCenterMenu,
+    W_SpaceCenterMenu, W_Settings, W_Controls, W_SaveLoad,
 };
 // The Tracking Station: its own full-screen map + ship list (copies of the
-// flight windows, free to diverge -- see drawTrackingMap / drawTrackingShipList).
+// flight windows, free to diverge -- see drawTrackingMap /
+// drawTrackingShipList), its main menu, and the shared menu windows.
 static const Win kTrackingWinIds[] = {
-    W_TrackingMap, W_TrackingShipList,
+    W_TrackingMap, W_TrackingShipList, W_TrackingMenu, W_Settings, W_Controls,
+    W_SaveLoad,
 };
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };

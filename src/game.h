@@ -301,6 +301,11 @@ struct Game {
     int trackingMs = -1;
     bool trackingFired = false;
 
+    // --tracking-close MS: the headless hook for the Tracking Station menu's
+    // "Back to Space Center" (pops the scene). Mirrors --tracking.
+    int trackingCloseMs = -1;
+    bool trackingCloseFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick

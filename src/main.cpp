@@ -713,6 +713,7 @@ int main(int argc, char **argv)
     game.quitTitleMs = args.quit_title_ms;
     game.spaceCenterMs = args.space_center_ms;
     game.trackingMs = args.tracking_ms;
+    game.trackingCloseMs = args.tracking_close_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -903,6 +904,15 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingMs) {
             game.trackingFired = true;
             pushScene(game, SceneId::TrackingStation);
+        }
+        /* --tracking-close: the headless hook for the tracking menu's "Back
+           to Space Center" (popScene). Fired after --tracking, so
+           --tracking A --tracking-close B drives the push -> pop round trip. */
+        if(game.trackingCloseMs >= 0 && !game.trackingCloseFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingCloseMs) {
+            game.trackingCloseFired = true;
+            if(sceneIs(game, SceneId::TrackingStation)) { popScene(game); }
+            else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
         }
         vabFireHooks(game);
         {

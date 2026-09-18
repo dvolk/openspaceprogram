@@ -78,6 +78,10 @@ struct GameArgs {
                             // -1 = never)
     int tracking_ms = -1;   // --tracking: push the Tracking Station once at this
                             // loop time in ms (headless test hook; -1 = never)
+    int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station
+                                // back to the hub once at this loop time in ms
+                                // (the menu's "Back to Space Center", headless;
+                                // -1 = never)
     std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario
                                // (the top-bar dropdown; empty = "pad")
     std::string vab_body;      // --vab-body: seed the VAB launch body

@@ -28,19 +28,18 @@ void drawPartWindows(Game &g);
 // conic + the selected target's highlight).
 void drawUIMap(Game &g, TransferPlanner &planner);
 
-/* The menu window in its two forms (one body: gameui.cpp drawMenuWindow).
-   Flight's pause menu is Esc-toggled and closable; the title screen's is that
-   scene's Root window -- forced open, no X, and "New Game" where the pause
-   menu has "Back to game". Each scene's drawUi calls its own, last, so it sits
+/* The main menu, one shared shell (gameui.cpp drawMenuWindow) in five forms:
+   the heading + the scene's navigation block differ, the standard items
+   (Save/Load, Settings, Controls, Quit to title -- all but the title screen
+   -- Quit game) are shared. Title and Space Center are Root windows -- forced
+   open, no X; the other three are Transient overlays (closable, opened from a
+   "Menu" button or Esc). Each scene's drawUi calls its own, last, so it sits
    on top. */
 void drawPauseMenu(Game &g);
 void drawTitleMenu(Game &g);
-
-/* The Space Center hub's root menu (SceneId::SpaceCenter): a window like the
-   main menu, but a navigation hub -- onward to the VAB and (later) the
-   Tracking Station, or "Resume Flight" back to the flight it was pushed from.
-   Forced open every frame (Root), so the hub always has its UI. */
 void drawSpaceCenterMenu(Game &g);
+void drawVabMenu(Game &g);
+void drawTrackingMenu(Game &g);
 
 /* The Tracking Station's widgets: a full-screen, chrome-less orbital map and a
    ship list, each a COPY of the flight window's draw code into its own window id

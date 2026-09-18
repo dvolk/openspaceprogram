@@ -1,0 +1,15 @@
+# The VAB's main menu has the standard items the pause menu has, "Quit to
+# title" included: --quit-title is that button without the click, fired while
+# the editor is live. quitToTitle tears the fleet down (none here -- a
+# --vab-empty boot is shipless) and enterTitle unwinds the [title, vab]
+# stack, running vabExit on the way. Pins that a menu transition from the
+# editor is a clean unwind (case 63 pins the pop, this pins the collapse).
+NAME vab-quit-title
+ARGS --vab-empty --timeout 8
+ARGS --quit-title 2000
+EXPECT [boot] no vessel: title screen over Kerbin
+EXPECT [scene] title -> vab (push)
+EXPECT [game] unloaded: fleet torn down
+EXPECT [scene] vab -> title (enterTitle)
+FORBID GL_
+FORBID error:

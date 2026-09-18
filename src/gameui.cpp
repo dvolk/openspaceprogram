@@ -2132,7 +2132,10 @@ void drawToasts(Game &g) {
     ImGui::PopFont();
 }
 
-/* The menu window, shared by the two scenes that have one.
+/* The main menu, one shared shell for every scene: the heading, the
+   scene's navigation block (nav), and the standard items every menu shares
+   (Save/Load, Settings, Controls, Quit game) + the version footer. Only the
+   heading and nav differ per scene.
 
    Every item is a fixed-width button: the window is AlwaysAutoResize, and
    imgui measures its size from the PREVIOUS frame's content, so a Text item
@@ -2141,23 +2144,30 @@ void drawToasts(Game &g) {
    button's width is explicit and imgui centers its label (ButtonTextAlign), so
    the layout is settled from the first visible frame.
 
-   The two variants differ in one row and in whether the window may be closed:
+   `isRoot` marks the scenes whose menu IS the scene (the title screen, the
+   Space Center hub): forced open every frame, so TAB, "Reset windows" and any
+   stray SetOpen cannot leave the scene with no UI at all. Note that
+   ui::Options::closable = false is NOT enough on its own -- it only hides the
+   X button, ui::SetOpen still closes the window. The other menus are
+   Transient overlays (opened from a "Menu" button or Esc): closable, and each
+   nav item closes its menu before the transition it starts -- push / pop /
+   enterTitle do not close windows, so a latched-open menu would resurface
+   over the scene it landed on.
 
-     Title   the scene's Root window: forced open every frame, no X, and "New
-             Game" instead of "Back to game" -- there is no game to go back to.
-             That is the whole reason the title screen became a scene rather
-             than a window in the flight one.
-     Flight  the pause menu: Esc-toggled, closable, and Transient, so pushing
-             the VAB from here cannot leave it open to reappear over a running
-             sim on the way back. */
-static void drawMenuWindow(Game &g, Win win, bool isTitle) {
-    if(isTitle) {
-        // Root: re-opened every frame, so TAB, "Reset windows" and any stray
-        // SetOpen cannot leave the title screen with no UI at all. Note that
-        // ui::Options::closable = false is NOT enough on its own -- it only
-        // hides the X button, ui::SetOpen still closes the window.
-        setWinOpen(win, true);
-    }
+   Quit to title is a NAV item, not a shared one: every scene has it except
+   the title screen itself (there is no game to quit to), and nav is where
+   the scene-specific rows live.
+
+   Deliberately NOT in the menu -- each of these has a key, and a menu that
+   duplicates a binding is a menu with noise in it: "Toggle windows" is TAB,
+   "Reset windows" is F10, Game Debug Info is F1 and Telemetry is F2
+   (Slot::DebugInfo / Slot::Telemetry, handled in flightKeyActions). They are
+   not Windows-panel rows either: the panel lists the flight readouts you
+   arrange, these are overlays you flip on. All four are rebindable from
+   Controls. */
+static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
+                           void (*nav)(Game &, float)) {
+    if(isRoot) { setWinOpen(win, true); }
     drawWin(g, win, [&] {
         bool &running = g.running;
         // One width for the whole column: the widest label (the title,
@@ -2180,36 +2190,8 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
             ImGui::PopStyleColor(3);
         };
         ImGui::PushFont(g.bigger);
-        text_button("Open Space Program");
-        /* The two menus differ in their first items only: the title screen
-           starts a game and offers no editor (there is nothing to launch
-           into yet), the pause menu resumes or goes to the VAB. Everything
-           below is shared.
-
-           Not here, and deliberately -- each of the four removed items has a
-           key, and a menu that duplicates a binding is a menu with noise in
-           it: "Toggle windows" is TAB, "Reset windows" is F10, Game Debug
-           Info is F1 and Telemetry is F2 (Slot::DebugInfo / Slot::Telemetry,
-           handled in flightKeyActions). They are not Windows-panel rows
-           either: the panel lists the flight readouts you arrange, these are
-           overlays you flip on. All four are rebindable from Controls. */
-        if(isTitle) {
-            if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) { g.newGame(); }
-        } else {
-            if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
-                setWinOpen(win, false);
-            }
-            if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
-                setWinOpen(win, false);
-                vabOpen(g);   // the sim freezes in the editor (tick is skipped)
-            }
-            if(ImGui::Button("Space Center", ImVec2(bw, 0.0f))) {
-                // Transient: close the menu before the push, or it rides along
-                // and reappears over the flight when the hub is popped.
-                setWinOpen(win, false);
-                pushScene(g, SceneId::SpaceCenter);
-            }
-        }
+        text_button(heading);
+        if(nav) { nav(g, bw); }
         if(ImGui::Button("Save/Load", ImVec2(bw, 0.0f))) {
             setWinOpen(W_SaveLoad, !winOpen(W_SaveLoad));
         }
@@ -2221,15 +2203,6 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
         if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
             setWinOpen(W_Controls, !winOpen(W_Controls));
         }
-        if(!isTitle) {
-            // Abandon the running game for the title screen. Close the menu
-            // first: it is Transient and enterTitle does not close windows, so
-            // leaving it latched open would resurface over the next New Game.
-            if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
-                setWinOpen(win, false);
-                g.quitToTitle();
-            }
-        }
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;
         }
@@ -2239,48 +2212,96 @@ static void drawMenuWindow(Game &g, Win win, bool isTitle) {
     });
 }
 
-// Flight's Esc menu (closable) and the title screen's root menu (not).
-void drawPauseMenu(Game &g) { drawMenuWindow(g, W_PauseMenu, false); }
+/* The per-scene navigation blocks, drawn between the heading and the shared
+   items. Each closes its own menu before the transition it starts (see the
+   shell's isRoot note); the title screen's has no such rows to close. */
+static void navTitle(Game &g, float bw) {
+    // Starts a game; there is no game to go back to yet (no "Quit to title"
+    // either) and no editor to offer (nothing to launch into).
+    if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) { g.newGame(); }
+}
+static void navFlight(Game &g, float bw) {
+    if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_PauseMenu, false);
+    }
+    if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_PauseMenu, false);
+        vabOpen(g);   // the sim freezes in the editor (tick is skipped)
+    }
+    if(ImGui::Button("Space Center", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_PauseMenu, false);
+        pushScene(g, SceneId::SpaceCenter);
+    }
+    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_PauseMenu, false);
+        g.quitToTitle();
+    }
+}
+static void navSpaceCenter(Game &g, float bw) {
+    // Push the editor on top of the hub; the VAB's "Back to game" pops back
+    // here (not to the flight), which is the stack doing its job. (The hub's
+    // menu is Root -- re-opened every frame -- so the closes below are a
+    // formality, kept for the same reason as in the Transient menus.)
+    if(ImGui::Button("VAB", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        vabOpen(g);
+    }
+    // The Tracking Station is another excursion on top of the hub; its "Back"
+    // (menu or Esc) pops back here.
+    if(ImGui::Button("Tracking Station", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        pushScene(g, SceneId::TrackingStation);
+    }
+    if(ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        popScene(g);
+    }
+    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        g.quitToTitle();
+    }
+}
+static void navVab(Game &g, float bw) {
+    if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_VabMenu, false);
+        vabClose(g);   // pops: to the flight, or the title on a --vab boot
+    }
+    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_VabMenu, false);
+        g.quitToTitle();
+    }
+}
+static void navTracking(Game &g, float bw) {
+    if(ImGui::Button("Back to Space Center", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_TrackingMenu, false);
+        popScene(g);   // the hub is always the frame below
+    }
+    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_TrackingMenu, false);
+        g.quitToTitle();
+    }
+}
 
-void drawTitleMenu(Game &g) { drawMenuWindow(g, W_TitleMenu, true); }
+// The five menus: one shell, one heading + navigation block each. Root for
+// the scenes that ARE their menu (title, hub); Transient overlays elsewhere.
+void drawTitleMenu(Game &g) {
+    drawMenuWindow(g, W_TitleMenu, true, "Open Space Program", navTitle);
+}
 
-/* The Space Center hub's root menu -- a window like the main menu, but a
-   navigation hub: onward to the VAB (and, later, the Tracking Station), or
-   "Resume Flight" pops back to the flight it was pushed from. Root, so it is
-   forced open every frame and no bulk operation can leave the hub with no UI.
-   The scaffolding (font, one column width, the plain-text heading + version
-   footer) mirrors drawMenuWindow; the three menus are likely to diverge, so it
-   is duplicated rather than shared for now. */
+void drawPauseMenu(Game &g) {
+    drawMenuWindow(g, W_PauseMenu, false, "Open Space Program", navFlight);
+}
+
 void drawSpaceCenterMenu(Game &g) {
-    setWinOpen(W_SpaceCenterMenu, true);   // Root: re-opened every frame
-    drawWin(g, W_SpaceCenterMenu, [&] {
-        ImGui::PushFont(g.bigger);
-        const float bw = ImMax(240.0f,
-                               ImGui::CalcTextSize("Open Space Program").x
-                               + ImGui::GetStyle().FramePadding.x * 2.0f);
-        ImGui::PopFont();
-        const ImVec4 invisible = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-        auto text_button = [&](const char *label) {
-            ImGui::PushStyleColor(ImGuiCol_Button, invisible);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, invisible);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, invisible);
-            ImGui::Button(label, ImVec2(bw, 0.0f));
-            ImGui::PopStyleColor(3);
-        };
-        ImGui::PushFont(g.bigger);
-        text_button("Space Center");
-        // Push the editor on top of the hub; the VAB's "Back to game" pops
-        // back here (not to the flight), which is the stack doing its job.
-        if(ImGui::Button("VAB", ImVec2(bw, 0.0f))) { vabOpen(g); }
-        // The Tracking Station is another excursion on top of the hub; its Esc
-        // (hubKeyActions) pops back here.
-        if(ImGui::Button("Tracking Station", ImVec2(bw, 0.0f))) {
-            pushScene(g, SceneId::TrackingStation);
-        }
-        if(ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) { popScene(g); }
-        ImGui::PopFont();
-        text_button(VERSION);
-    });
+    drawMenuWindow(g, W_SpaceCenterMenu, true, "Space Center", navSpaceCenter);
+}
+
+void drawVabMenu(Game &g) {
+    drawMenuWindow(g, W_VabMenu, false, "VAB", navVab);
+}
+
+void drawTrackingMenu(Game &g) {
+    drawMenuWindow(g, W_TrackingMenu, false, "Tracking Station", navTracking);
 }
 
 // A save-slot name is a single directory under saves/; reject a path
@@ -2476,6 +2497,12 @@ void drawVabUI(Game &g) {
         } else {
             ImGui::SameLine();
             ImGui::TextDisabled("(no ships in res/ships)");
+        }
+        // The scene's main menu (Save/Load, Settings, Controls, Quit). Esc
+        // toggles it too, but only with nothing armed to cancel (vabKeyActions).
+        ImGui::SameLine();
+        if(ImGui::Button("Menu##vabmenu")) {
+            setWinOpen(W_VabMenu, !winOpen(W_VabMenu));
         }
 
         // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
@@ -2753,6 +2780,12 @@ void drawTrackingShipList(Game &g) {
     Ships &ships = g.ships;
     System &sys = g.sys;
     drawWin(g, W_TrackingShipList, [&] {
+    // The scene's main menu (Save/Load, Settings, Controls, Quit). Esc
+    // toggles it too (trackingKeyActions); the button is for the mouse.
+    if(ImGui::Button("Menu##trackingmenu")) {
+        setWinOpen(W_TrackingMenu, !winOpen(W_TrackingMenu));
+    }
+    ImGui::Separator();
     // Buttons (natural width) + SameLine, the same pattern as the
     // map controls: a full-width Selectable in this auto-resize window
     // would swallow the line and push the "x" off it (or collapse the

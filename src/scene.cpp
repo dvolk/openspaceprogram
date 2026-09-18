@@ -34,13 +34,22 @@ void flightDrawUi(Game &g, TransferPlanner &p) {
 
 // The two draw signatures that do not line up with the table's.
 void vabDraw3d(Game &g, TransferPlanner &) { drawVab(g); }
-void vabDrawUi(Game &g, TransferPlanner &) { drawVabUI(g); }
+/* The editor's widgets: the build tree + top bar, then the shared menu
+   windows (the Settings / Controls bodies draw here; winInScene keeps every
+   flight readout out), then the main menu and Save/Load on top -- the same
+   order as flight's pause menu. */
+void vabDrawUi(Game &g, TransferPlanner &p) {
+    drawVabUI(g);
+    drawUIReadouts(g, p);
+    drawVabMenu(g);
+    drawSaveLoad(g);
+}
 
 /* The title screen's widgets. drawUIReadouts is shared with flight and draws
    every window it owns -- but each call goes through drawWin, which checks the
-   live scene's set, so only the shared ones (Settings, Controls, Game Debug
-   Info, Telemetry) actually appear here. The flight readouts are not "hidden
-   because there is no ship", they are not this scene's windows at all. */
+   live scene's set, so only the shared ones (Settings, Controls, Save/Load)
+   actually appear here. The flight readouts are not "hidden because there is
+   no ship", they are not this scene's windows at all. */
 void titleDrawUi(Game &g, TransferPlanner &p) {
     drawUIReadouts(g, p);
     drawTitleMenu(g);
@@ -71,8 +80,12 @@ void spaceCenterEnter(Game &g) {
 // keeps them painting.
 void stillUpdate(Game &) {}
 
-void spaceCenterDrawUi(Game &g, TransferPlanner &) {
+/* The hub's widgets: its root menu, then the shared menu windows (Settings /
+   Controls / Save-Load, opened from the menu) on top of it. */
+void spaceCenterDrawUi(Game &g, TransferPlanner &p) {
     drawSpaceCenterMenu(g);
+    drawUIReadouts(g, p);
+    drawSaveLoad(g);
 }
 
 /* The Tracking Station renders no 3D world: its map window covers the viewport,
@@ -84,12 +97,17 @@ void spaceCenterDrawUi(Game &g, TransferPlanner &) {
 void trackingDraw3d(Game &, TransferPlanner &) {}
 
 /* The Tracking Station: the full-screen map is the scene's identity, so force it
-   open (Root), then overlay the ship list. Both are this scene's own copies of
-   the flight windows; the map fills the view and the list sits beside it. */
+   open (Root), then overlay the ship list (whose "Menu" button opens the main
+   menu). Both are this scene's own copies of the flight windows; the map fills
+   the view and the list sits beside it. The shared menu windows + the main
+   menu + Save/Load come last, on top. */
 void trackingDrawUi(Game &g, TransferPlanner &p) {
     setWinOpen(W_TrackingMap, true);
     drawTrackingMap(g, p);
     drawTrackingShipList(g);
+    drawUIReadouts(g, p);
+    drawTrackingMenu(g);
+    drawSaveLoad(g);
 }
 
 }   // namespace
@@ -121,10 +139,11 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
       stillUpdate, draw3d, spaceCenterDrawUi, hubKeyActions },
     // The Tracking Station: the same paused/menu shape, reached from the hub.
     // No 3D pass -- the full-screen map covers the viewport, so rendering the
-    // world behind it would be wasted (see trackingDraw3d).
+    // world behind it would be wasted (see trackingDraw3d). Esc toggles its
+    // main menu (trackingKeyActions) like flight's pause menu, not a pop.
     { "tracking", false, Backdrop::Sky, kTrackingWins,
       floorEnter, floorExit,
-      stillUpdate, trackingDraw3d, trackingDrawUi, hubKeyActions },
+      stillUpdate, trackingDraw3d, trackingDrawUi, trackingKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

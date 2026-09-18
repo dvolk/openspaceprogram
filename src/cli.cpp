@@ -127,6 +127,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Push the Tracking Station once at this loop time in ms "
                    "(the Space Center hub's \"Tracking Station\", headless; "
                    "-1 = never)");
+    app.add_option("--tracking-close", args.tracking_close_ms,
+                   "Pop the Tracking Station back to the hub once at this "
+                   "loop time in ms (its menu's \"Back to Space Center\", "
+                   "headless; -1 = never)");
     app.add_option("--vab-scenario", args.vab_scenario,
                    "Seed the VAB's launch scenario (the top-bar dropdown's "
                    "value; empty = \"pad\")");

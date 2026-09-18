@@ -1,0 +1,15 @@
+# "Back to Space Center" from the Tracking Station: --tracking-close is the
+# menu's button without the click (popScene), fired while the station is
+# live. Esc here does NOT pop -- it toggles the station's own main menu like
+# flight's pause menu (trackingKeyActions) -- so the hook is the headless
+# entry. The ship below stays live and paused the whole time; the pop hands
+# the parked camera back to the hub.
+NAME tracking-back
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
+ARGS --space-center 1000 --tracking 2000 --tracking-close 3000
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> tracking (push)
+EXPECT [scene] tracking -> spacecenter (pop)
+EXPECT Timeout reached (10.0 s)
+FORBID GL_
+FORBID error:

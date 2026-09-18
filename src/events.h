@@ -24,9 +24,10 @@ void poll_events(Game &g);
    camera keys); vabKeyActions is the editor's (rotate, symmetry, snap, the
    link-mode and delete chain). Both run only after the scene-neutral slots
    (screenshot, wireframe, toggle-windows) have had a chance at the key.
-   hubKeyActions is the paused overlay scenes' (Space Center, the Tracking
-   Station): no vessel control -- the ship is live below but the sim is paused
-   -- and Esc pops back (Resume Flight / back to the hub). */
+   The paused overlay scenes: hubKeyActions is the Space Center's (Esc pops
+   back to the flight), trackingKeyActions is the Tracking Station's (Esc
+   toggles its main menu, like flight's pause menu). */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
+void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);

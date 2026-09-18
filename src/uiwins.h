@@ -24,21 +24,25 @@
 
 struct Game;
 
-/* What the bulk operations (TAB, the Windows panel, a scene transition, a
-   layout reset) are allowed to do to a window.
+/* What the bulk operations (TAB, the Windows panel, a layout reset) are
+   allowed to do to a window. Scene transitions close NOTHING -- push/pop/
+   enterTitle never touch open state; what keeps a scene's menus honest is the
+   nav code closing its own menu before it transitions (gameui.cpp's nav*
+   callbacks), and the WinSet gate (winInScene) keeping a stale one from
+   drawing where it is not owned.
 
-   Root        the scene's identity -- the title screen's menu. Forced open
-               every frame by the scene's drawUi, and excluded from TAB, the
-               panel and transitions, so no key combination can leave a scene
-               with no UI at all. ui::Options::closable alone does NOT give
-               this: it only hides the X button, ui::SetOpen still closes the
-               window and ui::Window then early-returns.
+   Root        the scene's identity -- the title and hub menus, the tracking
+               map. Forced open every frame by the scene's drawUi, and
+               excluded from TAB and the panel, so no key combination can
+               leave a scene with no UI at all. ui::Options::closable alone
+               does NOT give this: it only hides the X button, ui::SetOpen
+               still closes the window and ui::Window then early-returns.
    Chrome      scene furniture -- the Windows panel, the VAB top bar. Drawn
                with the scene and hidden by TAB, but not a TAB toggle and not
                a panel row (a panel that can close itself is a dead end).
-   Transient   modal-ish -- the pause menu, Save/Load. Closed by ANY scene
-               transition, so pushing the VAB from the pause menu cannot leave
-               you to pop back onto a running sim with the menu still up.
+   Transient   modal-ish -- the pause menu, the VAB/tracking menus, Save/Load.
+               Not a TAB toggle and not a panel row; its open state is the
+               nav code's responsibility (see above).
    Persistent  everything else. TAB and the panel toggle it; a transition
                leaves its open state alone, so an excursion to the VAB and
                back restores the flight layout exactly as you left it. */
@@ -60,9 +64,9 @@ enum Win : int {
     W_SpaceCenterMenu,
     // tracking station (its own copies of the map + ship list, so they can
     // diverge from the flight ones)
-    W_TrackingMap, W_TrackingShipList,
+    W_TrackingMap, W_TrackingShipList, W_TrackingMenu,
     // editor
-    W_VabTopBar,
+    W_VabTopBar, W_VabMenu,
     W_Count
 };
 

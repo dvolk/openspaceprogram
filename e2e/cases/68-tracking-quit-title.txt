@@ -1,0 +1,17 @@
+# "Quit to title" from the Tracking Station: the deepest scene in the game,
+# three frames up ([flight, spacecenter, tracking]). --quit-title is the
+# menu's button without the click; enterTitle must unwind BOTH excursions
+# (tracking + hub exit hooks, their parked cameras discarded) and tear the
+# live fleet down while the map scene is on top. A dangling reference in the
+# teardown would abort before the 10 s, so the timeout line is the real
+# assertion.
+NAME tracking-quit-title
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
+ARGS --space-center 1000 --tracking 2000 --quit-title 3000
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> tracking (push)
+EXPECT [game] unloaded: fleet torn down
+EXPECT [scene] tracking -> title (enterTitle)
+EXPECT Timeout reached (10.0 s)
+FORBID GL_
+FORBID error:
