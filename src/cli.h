@@ -63,6 +63,12 @@ struct GameArgs {
                              // (vabClose) once at this loop time in ms. The
                              // headless path into the camera park/restore
                              // round trip (headless test hook; -1 = never)
+    int vab_detach_idx = -1; // --vab-detach: select this build part (index)
+                             // and fire the VAB's detach (vabDetachSelected)
+                             // once (headless test hook; -1 = never)
+    int vab_detach_ms = -1;  // --vab-detach-at: fire the --vab-detach hook
+                             // once at this loop time in ms (headless test
+                             // hook; -1 = never)
     std::string reload_dir; // --reload: the save dir to load over the running
                             // game, at --reload-at (headless test hook)
     int reload_ms = -1;     // --reload-at: loop time in ms for --reload

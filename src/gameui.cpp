@@ -2581,10 +2581,11 @@ void drawVabUI(Game &g) {
         if(ImGui::Button("Delete link")) { vabDeleteSelected(g); }
     }
     ImGui::Separator();
-    /* Subassemblies: subtrees detached instead of deleted (Del). Arming one
-       places COPIES of the whole tree (root snaps like any part); the entry
-       survives placing -- copy & paste. Session-only until subassembly
-       files land. */
+    /* Subassemblies: multi-part subtrees detached instead of deleted (Del);
+       a lone part just deletes (it is already one click away in the
+       palette). Arming one places COPIES of the whole tree (root snaps like
+       any part); the entry survives placing -- copy & paste. Session-only
+       until subassembly files land. */
     ImGui::Text("Subassemblies");
     int dropAsm = -1;
     for(size_t i = 0; i < g.vab.subassemblies.size(); i++) {
@@ -2613,13 +2614,13 @@ void drawVabUI(Game &g) {
         else if(g.vab.armedAsm > dropAsm) { g.vab.armedAsm--; }
     }
     if(g.vab.subassemblies.empty()) {
-        ImGui::TextDisabled("select a part -> Detach subtree (Del)");
+        ImGui::TextDisabled("select a part with children -> Detach (Del)");
     } else if(g.vab.armedAsm >= 0) {
         ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.6f, 1.0f),
                            "placing copies -- hover a port/surface, LMB; Esc stops");
     }
     ImGui::TextDisabled("RMB-drag orbit, wheel zoom; LMB places/selects");
-    ImGui::TextDisabled("Q/E roll; Del detach; Shift+Del delete; TAB hides the UI");
+    ImGui::TextDisabled("Q/E roll; Del detach (lone part deletes); Shift+Del delete; TAB hides the UI");
     ImGui::End();
 
     // Palette: arm a catalog part, then hover the ship and LMB to place it

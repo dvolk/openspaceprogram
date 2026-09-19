@@ -455,14 +455,22 @@ void vabDetachSelected(Game &g) {
     const std::string rootId = g.vab.build.parts[(size_t)sel].id;
     BuildShip sub = g.vab.build.detachSubtree(sel);
     if(sub.parts.empty()) { return; }
+    g.vab.selected = -1;
+    vabClearHover(g);
+    // A lone part is not a subassembly -- it is always one click away in the
+    // palette, so stashing it is just clutter. Detaching one deletes it.
+    if(sub.parts.size() == 1) {
+        printf("[vab] deleted %s (single part, not stashed)\n", rootId.c_str());
+        fflush(stdout);
+        g.toast("Deleted %s", rootId.c_str());
+        return;
+    }
     VabState::Subassembly sa;
     sa.name = (g.vab.build.name.empty() ? std::string("ship") : g.vab.build.name)
               + " > " + rootId;
     sa.ship = sub;
     const int n = (int)sa.ship.parts.size();
     g.vab.subassemblies.push_back(sa);
-    g.vab.selected = -1;
-    vabClearHover(g);
     printf("[vab] detached %s (%d parts)\n", rootId.c_str(), n);
     fflush(stdout);
     g.toast("Detached %s (+%d) to Subassemblies", rootId.c_str(), n - 1);
@@ -649,6 +657,20 @@ void vabFireHooks(Game &g) {
        && !g.vabHooks.loadFired && ms >= g.vabHooks.loadMs) {
         g.vabHooks.loadFired = true;
         vabLoad(g, g.vabHooks.loadPath.c_str());
+    }
+    /* --vab-detach: the headless stand-in for Del/X on a selected part. It
+       selects the named build part (the mouse-click path can't be driven
+       headless) and runs the same vabDetachSelected the key would. */
+    if(sceneIs(g, SceneId::Vab) && g.vabHooks.detachMs >= 0
+       && g.vabHooks.detachIdx >= 0 && !g.vabHooks.detachFired
+       && ms >= g.vabHooks.detachMs) {
+        g.vabHooks.detachFired = true;
+        g.vab.selected = g.vabHooks.detachIdx;
+        g.vab.linkSel = -1;   // a part detach, not a fuel-link delete
+        vabDetachSelected(g);
+        printf("[vab] detach hook: build %d parts, %d subassemblies\n",
+               (int)g.vab.build.parts.size(), (int)g.vab.subassemblies.size());
+        fflush(stdout);
     }
     if(sceneIs(g, SceneId::Vab) && g.vabHooks.launchMs >= 0
        && !g.vabHooks.launchFired && ms >= g.vabHooks.launchMs) {

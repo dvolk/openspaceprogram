@@ -265,9 +265,10 @@ struct Game {
        most once per run. */
     struct VabHooks {
         int placeMs = -1, loadMs = -1, launchMs = -1, closeMs = -1;
+        int detachIdx = -1, detachMs = -1;   // --vab-detach part index + time
         std::string loadPath;
         bool placeFired = false, loadFired = false, launchFired = false,
-             closeFired = false;
+             closeFired = false, detachFired = false;
     };
     VabHooks vabHooks;
 

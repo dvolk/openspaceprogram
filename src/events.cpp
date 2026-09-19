@@ -326,7 +326,8 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if((ksc == SDL_SCANCODE_DELETE || ksc == SDL_SCANCODE_X) && !repeat) {
         /* Del DETACHES the selected subtree into the Subassemblies list --
            the non-destructive default delete; Shift+Del truly deletes it.
-           A selected fuel link has no subtree: it just deletes. */
+           A lone part is not a subassembly, so Del deletes it too. A
+           selected fuel link has no subtree: it just deletes. */
         if((kmod & SDL_KMOD_SHIFT) || g.vab.linkSel >= 0) { vabDeleteSelected(g); }
         else { vabDetachSelected(g); }
     }

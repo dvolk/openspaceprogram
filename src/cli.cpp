@@ -108,6 +108,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the VAB's \"Back to game\" (vabClose) once at this loop "
                    "time in ms -- the headless path into the camera "
                    "park/restore round trip (test hook; -1 = never)");
+    app.add_option("--vab-detach", args.vab_detach_idx,
+                   "Select this build part (index) and fire the VAB's detach "
+                   "(vabDetachSelected) once -- the headless stand-in for "
+                   "Del/X on a selected part (test hook; -1 = never)");
+    app.add_option("--vab-detach-at", args.vab_detach_ms,
+                   "Fire the --vab-detach hook once at this loop time in ms "
+                   "(test hook; -1 = never)");
     app.add_option("--reload", args.reload_dir,
                    "Load this save dir over the running game at --reload-at "
                    "(the Save/Load window's Load button, headless)");

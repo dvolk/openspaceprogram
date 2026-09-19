@@ -1,0 +1,13 @@
+# VAB detach a MULTI-PART subtree: --vab boots tanker.json (7 parts); the
+# --vab-detach hook selects part index 1 (tank_r1.5h3_1, which carries 5 child
+# parts) and fires vabDetachSelected at 1500 ms. A multi-part subtree IS a
+# subassembly, so it detaches into the session Subassemblies list (copy-paste)
+# instead of deleting: build 7 -> 1 part (just the capsule root), and one 6-part
+# subassembly. This pins the branch the lone-part change must not disturb.
+NAME vab-detach-asm
+ARGS --vab res/ships/tanker.json --vab-detach 1 --vab-detach-at 1500 --timeout 8
+EXPECT Main loop starting
+CHECK re.search(r"\[vab\] detached tank_r1\.5h3_1 \(6 parts\)", out)
+CHECK re.search(r"\[vab\] detach hook: build 1 parts, 1 subassemblies", out)
+FORBID GL_
+FORBID error:

@@ -1,0 +1,14 @@
+# VAB detach a LONE part: --vab boots tanker.json (7 parts) into the editor;
+# the --vab-detach hook selects part index 2 (engine_1, a childless part) and
+# fires vabDetachSelected at 1500 ms -- the headless stand-in for Del/X on a
+# selected part (a mouse click can't be driven headless). A lone part is not
+# a subassembly (the palette already has it), so detach DELETES it: build
+# 7 -> 6 parts, zero subassemblies. Before this change the part was stashed
+# as a 1-part subassembly entry instead.
+NAME vab-detach-lone
+ARGS --vab res/ships/tanker.json --vab-detach 2 --vab-detach-at 1500 --timeout 8
+EXPECT Main loop starting
+CHECK re.search(r"\[vab\] deleted engine_1 \(single part, not stashed\)", out)
+CHECK re.search(r"\[vab\] detach hook: build 6 parts, 0 subassemblies", out)
+FORBID GL_
+FORBID error:

@@ -65,7 +65,9 @@ void vabDeleteSelected(Game &g);
 
 // Del/X (the default "delete"): detach the selected part's subtree into
 // the session Subassemblies list instead of destroying it (the root
-// refuses). Shift+Del/X remains the destructive vabDeleteSelected.
+// refuses). A lone part is not a subassembly (the palette already has it),
+// so detaching one just deletes it. Shift+Del/X remains the destructive
+// vabDeleteSelected for multi-part subtrees.
 void vabDetachSelected(Game &g);
 
 // Write the build tree to `path` (save_ship_def); toasts the outcome.
