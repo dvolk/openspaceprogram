@@ -1,0 +1,21 @@
+# Esc as the VAB's "back to game" (vabKeyActions -- a fixed Esc, the editor's
+# keys are editor-local rather than Slot::Menu): with nothing armed it pops
+# the stack to the flight, the same pop the "Back" button makes (vabClose ->
+# popScene). The camera park/restore round trip and the stack pop must both
+# come out right -- a pop that loses the parked pose is the same silent
+# failure case 60 guards against (60 pins the hook, this pins the key).
+NAME esc-vab-back
+ARGS --ship res/ships/racer.json --scenario rot-orbit --timeout 10
+ARGS --vab res/ships/tanker.json --sim-press 3000,0,ESCAPE
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] back to flight (sim keeps coasting)
+EXPECT [scene] flight -> vab (push)
+EXPECT [scene] vab -> flight (pop)
+EXPECT [cam] parked: orbit focus=ship dist=
+EXPECT [cam] restored: orbit focus=ship dist=
+# both lines present (one park, one restore) ...
+CHECK len(re.findall(r"\[cam\] (?:parked|restored): orbit focus=ship dist=([\d.]+) m", out)) == 2
+# ... and the distance came back identical
+CHECK len(set(re.findall(r"\[cam\] (?:parked|restored): orbit focus=ship dist=([\d.]+) m", out))) == 1
+FORBID GL_
+FORBID error:

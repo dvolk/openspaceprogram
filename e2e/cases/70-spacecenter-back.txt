@@ -1,8 +1,8 @@
 # "Resume Flight" from the Space Center hub: the menu's button and Esc both
-# pop (hubKeyActions), so Esc drives the same transition headless. The hub
-# is the one scene that can sit on [flight, spacecenter] with the sim paused
-# below -- the pop must hand the parked camera back to the flight and let
-# the ship keep coasting (orbit still advancing at the end).
+# pop (hubKeyActions), so Esc drives the same transition headless. The hub is
+# a live view of the running sim (the ship coasts beneath it) -- the pop must
+# hand the parked camera back to the flight and let the ship keep coasting
+# (orbit still advancing at the end).
 NAME spacecenter-back
 ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
 ARGS --space-center 1000

@@ -2468,12 +2468,6 @@ void drawVabUI(Game &g) {
             ImGui::SameLine();
             ImGui::TextDisabled("(no ships in res/ships)");
         }
-        // Back to the hub (vabClose pops: to the flight, or the title on a
-        // --vab boot). Esc does the same once nothing is armed to cancel.
-        ImGui::SameLine();
-        if(ImGui::Button("Back##vabback")) {
-            vabClose(g);
-        }
 
         // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
         ImGui::SetNextItemWidth(160);
@@ -2792,17 +2786,16 @@ void drawTrackingShipList(Game &g) {
                 removed = true;   // the ship was deleted; stop iterating
             }
             if(active && !removed) {
-                // Fly: take control of the active ship -- the map is a view,
-                // this is the way back into the cockpit. Collapses the stack
-                // to the live flight (enterFlight unwinds the excursions).
-                // select_ship recenters the camera on a ship SWITCH, but
-                // no-ops when this is already the active ship (the single-ship
-                // Fly case), and enterFlight skips its enter when the base is
-                // already Flight -- so recenter here to guarantee the cockpit,
-                // not the hub's parked planet backdrop.
+                // Fly: back to the cockpit of this (already-active) ship -- the
+                // map is a view, this is the way back into it. Fly is only drawn
+                // for the active ship (switch ships by clicking a name above,
+                // which is where select_ship does its work), so enterFlight just
+                // collapses the stack to the live flight. It skips its enter when
+                // the base is already Flight, so syncShipFocus does the
+                // re-centering -- guaranteeing the cockpit, not the hub's parked
+                // planet backdrop.
                 ImGui::SameLine();
                 if(ImGui::SmallButton("Fly")) {
-                    g.select_ship(v);
                     enterFlight(g);
                     g.syncShipFocus();
                 }

@@ -144,11 +144,11 @@ void emit_sim_events(Game &g) {
 }
 
 /* The flight-scene one-shot key actions (the rebindable slots). Extracted
-   from poll_events so the VAB scene can route its own keys instead: with no
-   sim running the flight slots are meaningless -- and firing them would
-   silently poke the parked ships (staging, switching). The time-warp slots
-   are NOT here -- they are a global clock, dispatched scene-neutral in
-   poll_events so every scene (the live hub / tracking / VAB) can pause. */
+   from poll_events so the VAB scene can route its own keys instead -- the
+   editor's (rotate, symmetry, snap) rather than the flight's (staging,
+   switching), which don't apply to a build tree. The time-warp slots are NOT
+   here -- they are a global clock, dispatched scene-neutral in poll_events so
+   every scene (flight, hub, tracking, VAB) can pause/accelerate. */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::CamSpeedUp, ksc, kmod, g.binds)) {
         if(g.cam_speed < 10000000) {
@@ -341,10 +341,11 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.vab.ghostRoll = 0.0;
         } else {
             // ... and with nothing to cancel it walks up the tree: back to
-            // the hub, or the title on a --vab boot. A fixed Esc, not
-            // Slot::Menu -- the editor's keys are editor-local (see the
-            // function comment).
-            popScene(g);
+            // the hub, or the title on a --vab boot. vabClose (not a bare
+            // popScene) so the Esc path logs + toasts exactly like the "Back"
+            // button and the --vab-close hook. A fixed Esc, not Slot::Menu --
+            // the editor's keys are editor-local (see the function comment).
+            vabClose(g);
         }
     }
 }
@@ -493,8 +494,8 @@ void poll_events(Game &g) {
             }
 
             // The live scene owns the key map: in the editor the flight
-            // actions are dead (with no sim running they would silently poke
-            // the parked ships), and the editor keys take over instead.
+            // actions don't apply (staging, switching a build tree makes no
+            // sense), and the editor keys take over instead.
             curScene(g).keys(g, ksc, kmod, ev.key.repeat);
         }
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {

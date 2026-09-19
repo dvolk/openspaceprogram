@@ -308,7 +308,10 @@ void Game::syncShipFocus() {
 }
 
 bool Game::newGame() {
-    if(ship != nullptr) {
+    // Any vehicle in the world (not just the active one) means a game is
+    // running: a spawned-but-unselected ship, or a crew member aboard a
+    // capsule, would otherwise linger in the fresh world.
+    if(!collectVehicles(sys).empty()) {
         toast("A game is already running");
         return false;
     }
@@ -337,6 +340,10 @@ bool Game::loadFrom(const std::string &dir) {
         if(ship == nullptr) { enterTitle(*this); }
         return false;
     }
+    // A load is a fresh game: the thrust latch is per-active-ship and is not in
+    // the save, so clear it -- a latch engaged elsewhere (the Title shares the
+    // flight key map) must not light the loaded ship's engine on the first tick.
+    thrust_latched = false;
     if(ship != nullptr) { enterFlight(*this); } else { enterTitle(*this); }
     return true;
 }

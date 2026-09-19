@@ -482,9 +482,9 @@ int main(int argc, char **argv)
     }
 
     /* --vab: open the editor scene with a ship def loaded as a physics-free
-       build tree. The flight ships still exist but the Vab scene skips tick
-       (frozen) and drawVab draws only the build tree, so they are invisible.
-       vabOpen parks the (boot) camera and aims the orbit at the build. */
+       build tree. The flight ships still exist in the world but drawVab draws
+       only the build tree (the editor view), so they are invisible. vabOpen
+       parks the (boot) camera and aims the orbit at the build. */
     if(!args.vab.empty()) {
         ShipDef vdef = load_ship_def(args.vab.c_str(), ships.catalog());
         game.vab.build = BuildShip::fromShipDef(vdef);
@@ -857,8 +857,7 @@ int main(int argc, char **argv)
         */
         // The fixed-timestep loop (command arming, the substepped physics,
         // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
-        // game's clock and marks the frame for a redraw. The Vab scene runs
-        // no sim -- it redraws every frame instead.
+        // game's clock and marks the frame for a redraw.
         /* The VAB's headless transition hooks (--vab-load / --vab-launch /
            --vab-close), then the LIVE scene's per-frame step. The hooks run
            first and a launch collapses the stack to Flight, so the scene is
@@ -918,9 +917,6 @@ int main(int argc, char **argv)
         {
             const SceneDef &sc = curScene(game);
             sc.update(game);
-            // A scene that does not simulate has no tick to mark the frame, so
-            // the loop marks it -- the editor animates on its own.
-            if(!sc.sim) { game.redraw = true; }
         }
         pf_b = std::chrono::steady_clock::now();
 

@@ -102,8 +102,8 @@ void vabFireHooks(Game &g);
 void vabUpdate(Game &g);
 
 /* Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to game").
-   The sim FREEZES in the Vab scene -- SceneDef::sim is false, so the loop
-   skips tick() -- which makes entering mid-flight a pause.
+   The Vab is a LIVE scene -- SceneDef::sim is true, so the sim keeps coasting
+   while you build -- and entering mid-flight just hands the camera over.
 
    vabOpen / vabClose are the player-facing pair: they push and pop the scene
    stack, and the push/pop is what captures and restores the camera pose the

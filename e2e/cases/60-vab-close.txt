@@ -17,8 +17,8 @@
 NAME vab-close
 ARGS --ship res/ships/racer.json --scenario rot-orbit
 ARGS --vab res/ships/tanker.json --vab-close 2000 --timeout 10
-EXPECT [vab] entered the editor (sim paused)
-EXPECT [vab] back to flight (sim resumed)
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] back to flight (sim keeps coasting)
 # the stack itself: the editor is an excursion pushed on top of flight, and
 # "back to game" pops it rather than assigning a scene
 EXPECT [scene] flight -> vab (push)

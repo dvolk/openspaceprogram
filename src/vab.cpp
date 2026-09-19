@@ -608,16 +608,17 @@ void vabEnter(Game &g) {
     g.vab.linkFromId.clear();
     g.vab.linkSel = -1;      // no link selected on a fresh entry
     vabAimCamera(g);
-    printf("[vab] entered the editor (sim paused)\n");
+    printf("[vab] entered the editor (sim keeps coasting)\n");
     fflush(stdout);
-    g.toast("VAB -- the simulation is paused");
+    g.toast("VAB -- the sim keeps running");
 }
 
 /* The scene table's exit hook: drop only the state that is meaningless once
    the build tree is off screen. Deliberately NOT the armed part, the
-   selection or the ghost roll -- "Back to game" is a pause, and the editor
-   must be exactly as you left it when you come back. vabLaunch resets those
-   itself, because a launch is not a pause. */
+   selection or the ghost roll -- "Back to game" just hands the camera back to
+   the live world (the sim never stopped), so the editor must be exactly as
+   you left it when you come back. vabLaunch resets those itself, because a
+   launch is a fresh start. */
 void vabExit(Game &g) {
     vabClearHover(g);
     g.vab.linkMode = false;
@@ -632,9 +633,9 @@ void vabClose(Game &g) {
     popScene(g);
     // Named from the stack, not hardcoded: an editor opened with nothing to
     // fly sits on [title, vab] and pops back to the TITLE screen.
-    printf("[vab] back to %s (sim resumed)\n", sceneName(curSceneId(g)));
+    printf("[vab] back to %s (sim keeps coasting)\n", sceneName(curSceneId(g)));
     fflush(stdout);
-    g.toast("Back from the VAB -- the simulation resumes");
+    g.toast("Back from the VAB -- the sim keeps running");
 }
 
 /* The headless transition hooks (--vab-load, --vab-launch, --vab-close), each

@@ -11,7 +11,7 @@ NAME vab-root-place
 ARGS --vab-empty --vab-arm capsule --timeout 8
 ARGS --vab-place 1500 --vab-launch 2500
 EXPECT Main loop starting
-EXPECT [vab] entered the editor (sim paused)
+EXPECT [vab] entered the editor (sim keeps coasting)
 CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)
 FORBID GL_
 FORBID error:

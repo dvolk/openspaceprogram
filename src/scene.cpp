@@ -88,6 +88,10 @@ void spaceCenterEnter(Game &g) {
     printf("[spacecenter] entered (live sim)\n");
     fflush(stdout);
     g.toast("Space Center");
+    // A fresh hub view: drop any armed "Return to title" confirm from a
+    // previous visit -- arming used to leak across excursions (leave the hub
+    // to the VAB/tracking, come back still one click from discarding the game).
+    g.returnTitleArmed = false;
 }
 
 /* The hub's widgets: its root menu, then the shared menu windows (Settings /
@@ -152,7 +156,7 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     // The Tracking Station: a live view of the running sim, reached from the
     // hub. No world draw (the full-screen map covers the viewport) but tick
     // advances the world and trackingDraw3d refreshes the map's snapshot. Esc
-    // toggles its menu (trackingKeyActions) like flight's pause menu, not a pop.
+    // pops back to the hub (trackingKeyActions).
     { "tracking", true, false, Backdrop::Sky, kTrackingWins,
       floorEnter, floorExit,
       tick, trackingDraw3d, trackingDrawUi, trackingKeyActions },

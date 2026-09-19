@@ -1,0 +1,14 @@
+# Esc at the Tracking Station walks up the tree to the Space Center hub
+# (trackingKeyActions, Slot::Menu -- the same rebindable slot as the
+# flight's Esc). The hub pop is the only exit; there is no menu to toggle.
+# (The full walk-down from the deepest scene, including the floor refusal,
+# is case 73.)
+NAME tracking-esc-back
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
+ARGS --space-center 1000 --tracking 2000 --sim-press 3000,0,ESCAPE
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> tracking (push)
+EXPECT [scene] tracking -> spacecenter (pop)
+EXPECT Timeout reached (10.0 s)
+FORBID GL_
+FORBID error:
