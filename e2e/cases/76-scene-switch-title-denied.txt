@@ -1,0 +1,14 @@
+# The scene-switch shortcuts (1/2/3/4) are in-game navigation: on the title
+# (no game running) they are all denied, and GoFlight is additionally denied
+# whenever there is no ship to fly -- entering flight with none crashed the
+# HUD's ship readouts (the title is the canonical no-ship case). So pressing
+# all four on the title must be a no-op: the stack stays [title], no
+# "title ->" transition is logged, and the game runs to the timeout without
+# crashing. The digits are decimal SDL keycodes (49..52 = '1'..'4').
+NAME scene-switch-title-denied
+ARGS --timeout 6
+ARGS --sim-press 800,0,49 --sim-press 1200,0,50 --sim-press 1600,0,51 --sim-press 2000,0,52
+EXPECT Timeout reached (6.0 s)
+FORBID title ->
+FORBID Segmentation
+FORBID error:

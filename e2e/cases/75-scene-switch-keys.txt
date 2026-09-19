@@ -1,0 +1,16 @@
+# 1/2/3/4 are the scene-switch shortcuts (Slot::GoSpaceCenter / GoFlight /
+# GoTracking / GoVab, default '1'..'4'): each jumps straight to that scene
+# from wherever you are, via the same entry points the menus use (pushScene /
+# enterFlight / vabOpen). The digit keys are sent as decimal SDL keycodes --
+# sim_parse_key tries a decimal first, so the digit NAMES would parse as the
+# small SDLK values 1..4, not SDLK_1..4 (=49..52). Pressed in turn they walk
+# flight -> hub -> flight -> tracking -> vab.
+NAME scene-switch-keys
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --sim-press 800,0,49 --sim-press 1600,0,50 --sim-press 2400,0,51 --sim-press 3200,0,52
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> flight (enterFlight)
+EXPECT [scene] flight -> tracking (push)
+EXPECT [scene] tracking -> vab (push)
+FORBID GL_
+FORBID error:

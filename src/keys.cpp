@@ -43,6 +43,12 @@ void KeyBindings::resetDefaults() {
     add(Slot::Wireframe,     SDL_SCANCODE_F11);
     add(Slot::ResetWindows,  SDL_SCANCODE_F10);
     add(Slot::Menu,          SDL_SCANCODE_ESCAPE);
+    // Scene-switch shortcuts: 1/2/3/4 jump straight to the Space Center /
+    // flight / Tracking Station / VAB from any scene (events.cpp).
+    add(Slot::GoSpaceCenter, SDL_SCANCODE_1);
+    add(Slot::GoFlight,      SDL_SCANCODE_2);
+    add(Slot::GoTracking,    SDL_SCANCODE_3);
+    add(Slot::GoVab,         SDL_SCANCODE_4);
 
     // Flight (orbit mode, tick.cpp)
     add(Slot::PitchUp,       SDL_SCANCODE_W);
@@ -150,6 +156,10 @@ const char *slotName(Slot s) {
         case Slot::Wireframe:      return "wireframe";
         case Slot::ResetWindows:   return "reset_windows";
         case Slot::Menu:           return "menu";
+        case Slot::GoSpaceCenter:  return "go_space_center";
+        case Slot::GoFlight:       return "go_flight";
+        case Slot::GoTracking:     return "go_tracking";
+        case Slot::GoVab:          return "go_vab";
         case Slot::PitchUp:        return "pitch_up";
         case Slot::PitchDown:      return "pitch_down";
         case Slot::YawLeft:        return "yaw_left";
@@ -218,6 +228,10 @@ const char *slotLabel(Slot s) {
         case Slot::Wireframe:      return "Toggle wireframe";
         case Slot::ResetWindows:   return "Reset windows";
         case Slot::Menu:           return "Main menu";
+        case Slot::GoSpaceCenter:  return "Go to Space Center";
+        case Slot::GoFlight:       return "Go to flight";
+        case Slot::GoTracking:     return "Go to Tracking Station";
+        case Slot::GoVab:          return "Go to VAB";
         case Slot::PitchUp:        return "Pitch up";
         case Slot::PitchDown:      return "Pitch down";
         case Slot::YawLeft:        return "Yaw left";
@@ -265,6 +279,8 @@ SlotGroup slotGroup(Slot s) {
         case Slot::NextShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
         case Slot::Screenshot: case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:
+        case Slot::GoSpaceCenter: case Slot::GoFlight:
+        case Slot::GoTracking: case Slot::GoVab:
             return SlotGroup::Game;
         case Slot::PitchUp: case Slot::PitchDown:
         case Slot::YawLeft: case Slot::YawRight:

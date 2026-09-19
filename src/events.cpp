@@ -493,6 +493,35 @@ void poll_events(Game &g) {
                 }
             }
 
+            /* Scene-switch shortcuts (1/2/3/4): jump straight to the Space
+               Center / flight / Tracking Station / VAB via the same entry
+               points the menus use. In-game navigation only: denied on the
+               title (no game to navigate within), and GoFlight additionally
+               needs a ship to fly -- entering flight with none crashes the
+               HUD's ship readouts. pushScene / vabOpen refuse a re-push of the
+               live scene; enterFlight collapses the stack to the cockpit and
+               syncShipFocus recenters on the ship (enterFlight skips its enter
+               when the base is already Flight, so without it the camera stays
+               on the hub's parked planet backdrop). One-shot (auto-repeat
+               would just keep jumping). */
+            if(!ev.key.repeat) {
+                const bool onTitle = sceneIs(g, SceneId::Title);
+                if(!onTitle && slotFired(Slot::GoSpaceCenter, ksc, kmod, g.binds)) {
+                    pushScene(g, SceneId::SpaceCenter);
+                }
+                if(!onTitle && g.ship != nullptr
+                        && slotFired(Slot::GoFlight, ksc, kmod, g.binds)) {
+                    enterFlight(g);
+                    g.syncShipFocus();
+                }
+                if(!onTitle && slotFired(Slot::GoTracking, ksc, kmod, g.binds)) {
+                    pushScene(g, SceneId::TrackingStation);
+                }
+                if(!onTitle && slotFired(Slot::GoVab, ksc, kmod, g.binds)) {
+                    vabOpen(g);
+                }
+            }
+
             // The live scene owns the key map: in the editor the flight
             // actions don't apply (staging, switching a build tree makes no
             // sense), and the editor keys take over instead.

@@ -60,6 +60,10 @@ enum class Slot {
     Wireframe,     // F11  toggle wireframe
     ResetWindows,  // F10  reset the window layout
     Menu,          // ESC  toggle the main menu
+    GoSpaceCenter, // '1'  jump to the Space Center hub (the in-game menu)
+    GoFlight,      // '2'  jump to the flight (the cockpit)
+    GoTracking,    // '3'  jump to the Tracking Station
+    GoVab,         // '4'  jump to the VAB (the editor)
     // --- Flight: held commands in orbit mode (tick.cpp) ------------------
     PitchUp,       // 'w'
     PitchDown,     // 's'
