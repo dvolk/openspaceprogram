@@ -3092,9 +3092,15 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
             const ImU32 ccol = selected ? col_sel : col_child;
             map.drawOrbit(dl, cpts, ccol, selected ? 2.0f : 1.0f);
             const ImVec2 cpx = map.px(cpos_f);
-            dl->AddCircleFilled(cpx, selected ? 5.0f : 3.0f, ccol);
-            if(selected) { dl->AddCircle(cpx, 8.0f, ccol, 0, 1.0f); }
-            dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - 12.0f), ink,
+            // A disk at the body's TRUE radius (like the focus at the
+            // centre), floored at the old dot size so it stays visible when
+            // zoomed out to where the true radius is sub-pixel. Label and
+            // selection ring sit just outside the disk, so they follow it.
+            const float min_r = selected ? 5.0f : 3.0f;
+            const float body_r_px = map.bodyRadiusPx(b->radius, min_r);
+            map.drawBody(dl, cpos_f, b->radius, ccol, min_r);
+            if(selected) { dl->AddCircle(cpx, body_r_px + 4.0f, ccol, 0, 1.0f); }
+            dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - body_r_px - 8.0f), ink,
                         b->name.c_str());
             draw_soi(cpos_f, b->frame->soi);
         }
@@ -3103,8 +3109,9 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
         // home's).
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi);
 
-        // The focus body's disk at the centre (home when there is no ship).
-        map.drawBody(dl, focus->radius, col_body);
+        // The focus body's disk at the centre (home when there is no ship),
+        // with the same visibility floor as the looped bodies.
+        map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
 
         // The ship itself, absent with no ship: its orbit (closed loop, or an
         // open arc -- closed=false so a chord does not close it), a bright dot

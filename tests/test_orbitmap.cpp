@@ -47,6 +47,18 @@ int main() {
         expect_near(q.y, 197.0, "px y");
     }
 
+    // bodyRadiusPx(): a world radius in pixels (radius/scale), floored at
+    // min_px so a body stays a visible dot at system scale.
+    {
+        expect_near(m.bodyRadiusPx(1000.0, 0.0f), 20.0, "bodyRadiusPx exact");
+        expect_near(m.bodyRadiusPx(100.0, 0.0f), 2.0, "bodyRadiusPx no floor");
+        expect_near(m.bodyRadiusPx(100.0, 3.0f), 3.0, "bodyRadiusPx below floor");
+        expect_near(m.bodyRadiusPx(150.0, 3.0f), 3.0, "bodyRadiusPx at floor");
+        expect_near(m.bodyRadiusPx(1000.0, 3.0f), 20.0, "bodyRadiusPx above floor");
+        expect_near(m.bodyRadiusPx(0.0, 3.0f), 3.0, "bodyRadiusPx zero radius");
+        expect_near(m.bodyRadiusPx(-100.0, 3.0f), 3.0, "bodyRadiusPx negative radius");
+    }
+
     // contrastingColor(): a light background yields dark ink and vice versa,
     // so the orbit stays visible in both the light and dark ImGui styles.
     {

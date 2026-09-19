@@ -88,10 +88,25 @@ struct OrbitMap {
         dl->AddCircleFilled(px(p), r_px, col);
     }
 
+    // Pixel radius for a world-radius circle, floored at min_px so a body
+    // stays visible as a dot when zoomed out to where its true radius is
+    // sub-pixel. Pure math, so it is unit-testable without rendering.
+    float bodyRadiusPx(double radius_m, float min_px) const {
+        return fmaxf(min_px, (float)(radius_m / scale));
+    }
+
     // The focus body: a circle of its true radius (meters) at the center.
     void drawBody(ImDrawList *dl, double radius_m, ImU32 col) const {
         dl->AddCircleFilled(ImVec2(float(cx), float(cy)),
                             float(radius_m / scale), col);
+    }
+
+    // Any body on the map: a disk of its true radius (meters) at a 3D
+    // position (the planets/moons around the focus, not just the focus
+    // itself), floored at min_px pixels.
+    void drawBody(ImDrawList *dl, const glm::dvec3 &pos, double radius_m,
+                  ImU32 col, float min_px = 0.0f) const {
+        dl->AddCircleFilled(px(pos), bodyRadiusPx(radius_m, min_px), col);
     }
 
     // A stroked circle of world radius (meters) centered on a 3D position --
