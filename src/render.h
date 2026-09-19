@@ -21,6 +21,14 @@
 // has (the burn indicator draws from its result).
 void draw3d(Game &g, TransferPlanner &planner);
 
+// Compute the active ship's per-frame state snapshot (Game::view, the
+// ShipView the HUD / VESSEL / orbital map / Tracking Station read) from the
+// ship's live physics + frame state. Split out of draw3d so a scene that runs
+// the sim WITHOUT drawing the world (the live Tracking Station) can still
+// refresh it each frame; draw3d calls it in the same place the pass always
+// has. No-op when there is no ship (the orbit-view state).
+void updateShipView(Game &g);
+
 // The VAB scene's 3D pass: draw the physics-free build tree (Game::vab) at
 // its solved poses via DrawModelAt -- no Bullet bodies, no world/terrain.
 // The orbit camera is re-aimed at the build ship (Game::vab.center) and the

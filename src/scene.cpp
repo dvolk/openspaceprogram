@@ -20,6 +20,12 @@ namespace {
 void floorEnter(Game &) {}
 void floorExit(Game &) {}
 
+/* The flight scene has no enter of its own: re-centering onto the active ship
+   happens at the caller (vabLaunch / select_ship on a switch, the Fly button,
+   load_game), not here. An enter hook could not do it reliably -- setBaseScene
+   skips the enter when the base is already Flight (the Fly case). "Resume
+   Flight" (popScene) restores the parked camera instead. */
+
 /* The flight scene's widget set, in draw order: the readout windows (HUD ..
    RESOURCES), then the orbital map, then the user-placed part windows, then
    the main menu and Save/Load on top. This is the list stage 3 turns into a
@@ -28,20 +34,28 @@ void flightDrawUi(Game &g, TransferPlanner &p) {
     drawUIReadouts(g, p);
     drawUIMap(g, p);
     drawPartWindows(g);
-    drawPauseMenu(g);
     drawSaveLoad(g);
 }
 
 // The two draw signatures that do not line up with the table's.
 void vabDraw3d(Game &g, TransferPlanner &) { drawVab(g); }
-/* The editor's widgets: the build tree + top bar, then the shared menu
-   windows (the Settings / Controls bodies draw here; winInScene keeps every
-   flight readout out), then the main menu and Save/Load on top -- the same
-   order as flight's pause menu. */
+/* The VAB's per-frame step: the editor's mouse half (hover/ghost/place), then
+   the world tick -- the VAB is a live scene (time passes while you build and
+   the warp keys pause/accelerate it); the build tree itself is physics-free
+   and static. The launch case is the caller's: vabFireHooks runs before
+   sc.update and a launch collapses the stack to Flight, so this is only
+   reached on a frame where no launch flipped the scene. */
+void vabUpdateLive(Game &g) {
+    vabUpdate(g);
+    tick(g);
+}
+/* The editor's widgets: the build tree + top bar, then the shared windows
+   (the Settings / Controls / Save-Load bodies draw here; winInScene keeps every
+   flight readout out). The VAB has no menu of its own: its top bar's "Back"
+   button + Esc walk up the tree to the hub. */
 void vabDrawUi(Game &g, TransferPlanner &p) {
     drawVabUI(g);
     drawUIReadouts(g, p);
-    drawVabMenu(g);
     drawSaveLoad(g);
 }
 
@@ -58,8 +72,9 @@ void titleDrawUi(Game &g, TransferPlanner &p) {
 
 /* The Space Center hub's enter: aim the orbit camera at the home planet for
    the menu backdrop. pushScene already parked the flight camera onto the
-   frame, so "Resume Flight" (popScene) hands it back exactly; the ship stays
-   alive below, but the sim is paused so it neither drifts nor steers. */
+   frame, so "Resume Flight" (popScene) hands it back exactly. The hub is a
+   live scene: the sim keeps running (the planet turns, the ship coasts) but
+   is not steered here (SceneDef::pilot is false). */
 void spaceCenterEnter(Game &g) {
     if(g.camera != nullptr && g.home != nullptr) {
         g.camera->mode = CAM_ORBIT;
@@ -70,15 +85,10 @@ void spaceCenterEnter(Game &g) {
         g.camera->distance = 3.0 * g.home->radius;
         g.camera->ComputeView();   // a sane pose immediately, not next frame
     }
-    printf("[spacecenter] entered (sim paused)\n");
+    printf("[spacecenter] entered (live sim)\n");
     fflush(stdout);
     g.toast("Space Center");
 }
-
-// Shared no-op LOGIC step for the paused menu scenes (Space Center, the Tracking
-// Station): no sim, no per-frame work -- the loop's `if(!sc.sim) redraw = true`
-// keeps them painting.
-void stillUpdate(Game &) {}
 
 /* The hub's widgets: its root menu, then the shared menu windows (Settings /
    Controls / Save-Load, opened from the menu) on top of it. */
@@ -88,62 +98,64 @@ void spaceCenterDrawUi(Game &g, TransferPlanner &p) {
     drawSaveLoad(g);
 }
 
-/* The Tracking Station renders no 3D world: its map window covers the viewport,
-   so drawing the planet behind it is wasted work -- the user sees only the map.
-   g.view (the ship-orbit snapshot the map reads) was computed by the scene this
-   was pushed from -- flight and the hub both run the real draw3d -- and the sim
-   is paused here, so that snapshot stays accurate with no refresh. The loop still
-   clears to the Sky backdrop (black) under the opaque, full-screen map. */
-void trackingDraw3d(Game &, TransferPlanner &) {}
+/* The Tracking Station renders no 3D world (its map covers the viewport), but
+   it MUST refresh the ship snapshot (g.view) the map reads: the live sim coasts
+   the ships, so the snapshot has to track them (updateShipView, render.cpp) --
+   this is the render-phase half of "the world advances", the logic half being
+   tick. The loop still clears to the Sky backdrop (black) under the opaque map. */
+void trackingDraw3d(Game &g, TransferPlanner &) {
+    updateShipView(g);
+}
 
 /* The Tracking Station: the full-screen map is the scene's identity, so force it
-   open (Root), then overlay the ship list (whose "Menu" button opens the main
-   menu). Both are this scene's own copies of the flight windows; the map fills
-   the view and the list sits beside it. The shared menu windows + the main
-   menu + Save/Load come last, on top. */
+   open (Root), then overlay the ship list (whose "Back" + "Fly" buttons are the
+   navigation). Both are this scene's own copies of the flight windows; the map
+   fills the view and the list sits beside it. The shared windows + Save/Load
+   come last, on top. The Tracking Station has no menu of its own: Esc / "Back"
+   walk up the tree to the hub. */
 void trackingDrawUi(Game &g, TransferPlanner &p) {
     setWinOpen(W_TrackingMap, true);
     drawTrackingMap(g, p);
     drawTrackingShipList(g);
     drawUIReadouts(g, p);
-    drawTrackingMenu(g);
     drawSaveLoad(g);
 }
 
 }   // namespace
 
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
-    // name      sim    backdrop           wins          enter      exit
+    // name      sim    pilot backdrop     wins          enter      exit
     /* The title screen runs the sim and draws the world: with no vessel that
        is O(bodies) and it is what makes the backdrop alive -- the home planet
        turns behind the menu instead of hanging frozen. Its key map is the
        flight one, so the orbit/map camera keys still work for looking around
        the system; the vessel keys no-op with nothing to control. */
-    { "title",  true,  Backdrop::Sky,    kTitleWins,
+    { "title",  true,  false, Backdrop::Sky,    kTitleWins,
       floorEnter,  floorExit,
       tick,        draw3d,    titleDrawUi,  flightKeyActions },
-    { "flight", true,  Backdrop::Sky,    kFlightWins,
+    { "flight", true,  true,  Backdrop::Sky,    kFlightWins,
       floorEnter,  floorExit,
       tick,        draw3d,    flightDrawUi, flightKeyActions },
-    // The editor draws no skybox, so it clears to a flat studio gray.
-    { "vab",    false, Backdrop::Studio, kVabWins,
+    /* The editor draws no skybox, so it clears to a flat studio gray. It is a
+       live scene: time passes while you build (the world coasts) and the warp
+       keys pause/accelerate it; the build tree itself is physics-free. */
+    { "vab",    true, false, Backdrop::Studio, kVabWins,
       vabEnter,    vabExit,
-      vabUpdate,   vabDraw3d, vabDrawUi,    vabKeyActions },
-    /* The hub. sim is false on purpose: tick reads the vessel-control keys
-       straight from the key state (gated only on `ship`), so a live sim would
-       let the flight keys steer the ship you left below while you sit in a
-       menu. Paused, the planet is a static backdrop and the only input is the
-       hub's own key map (Esc resumes) + its menu buttons. */
-    { "spacecenter", false, Backdrop::Sky, kSpaceCenterWins,
+      vabUpdateLive, vabDraw3d, vabDrawUi, vabKeyActions },
+    /* The hub: a live view of the running sim (the planet turns, the active
+       ship coasts) with the root menu on top. tick advances the world and
+       draw3d draws it; the ship is not steered here (SceneDef::pilot is
+       false, so held keys are inert). */
+    { "spacecenter", true, false, Backdrop::Sky, kSpaceCenterWins,
       spaceCenterEnter, floorExit,
-      stillUpdate, draw3d, spaceCenterDrawUi, hubKeyActions },
-    // The Tracking Station: the same paused/menu shape, reached from the hub.
-    // No 3D pass -- the full-screen map covers the viewport, so rendering the
-    // world behind it would be wasted (see trackingDraw3d). Esc toggles its
-    // main menu (trackingKeyActions) like flight's pause menu, not a pop.
-    { "tracking", false, Backdrop::Sky, kTrackingWins,
+      tick, draw3d, spaceCenterDrawUi, hubKeyActions },
+    // The Tracking Station: a live view of the running sim, reached from the
+    // hub. No world draw (the full-screen map covers the viewport) but tick
+    // advances the world and trackingDraw3d refreshes the map's snapshot. Esc
+    // toggles its menu (trackingKeyActions) like flight's pause menu, not a pop.
+    { "tracking", true, false, Backdrop::Sky, kTrackingWins,
       floorEnter, floorExit,
-      stillUpdate, trackingDraw3d, trackingDrawUi, trackingKeyActions },
+      tick, trackingDraw3d, trackingDrawUi, trackingKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

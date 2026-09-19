@@ -98,6 +98,114 @@ static void camShakeStep(Game &g, Vehicle *ship) {
     }
 }
 
+// The active ship's per-frame state snapshot (Game::view). Verbatim the
+// `if(ship){...}` block draw3d used to run inline (same order, same math);
+// split out because it reads only ship + frame state -- no camera or render
+// frame -- so a sim-running, world-drawing-free scene (the live Tracking
+// Station) can refresh it each frame without the GL pass.
+void updateShipView(Game &g) {
+    Vehicle *ship = g.ship;
+    if(ship == nullptr) { return; }
+    ShipView &view = g.view;
+    double &mu = view.mu;
+    glm::dvec3 &pos = view.pos;
+    glm::dvec3 &vel = view.vel;
+    glm::dvec3 &orbit_pos = view.orbit_pos;
+    glm::dvec3 &orbit_vel = view.orbit_vel;
+    glm::dvec3 &surf_pos = view.surf_pos;
+    glm::dvec3 &surf_vel = view.surf_vel;
+    OrbitElements &o = view.o;
+    double &distance = view.distance;
+    double &speed = view.speed;
+    glm::dvec3 &up = view.up;
+    glm::dvec3 &facing = view.facing;
+    glm::dvec3 &other = view.other;
+    glm::dvec3 &facing_dir = view.facing_dir;
+    glm::dvec3 &vel_dir = view.vel_dir;
+    double &ver_speed = view.ver_speed;
+    double &hor_speed2 = view.hor_speed2;
+    double &heading = view.heading;
+    double &pitch = view.pitch;
+    double &roll = view.roll;
+    double &latitude = view.latitude;
+    double &longitude = view.longitude;
+    TimeSeries &energy_series = view.energy_series;
+    TimeSeries &angmom_series = view.angmom_series;
+
+    const glm::dvec3 com = ship->get_center_of_mass();
+
+    // surf pos??
+    mu = ship->m_parent->mu;
+    pos = com;
+    /* orbital velocity */
+    vel = ship->GetVel();
+
+    // The orbit is a Kepler conic in the body's INERTIAL (non-rotating)
+    // frame — that is the frame the spawn/switching code targets and
+    // the frame in which the ship's trajectory is a conic.
+    orbit_pos = pos;
+    orbit_vel = vel;
+    if(ship->frame->isRotFrame() == true) {
+        Frame *inertial = ship->frame->getNonRotFrame();
+        orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
+        orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
+        orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos + ship->frame->GetPositionRelTo(inertial);
+    }
+
+    // Surface-relative state: the ship's position/velocity in the
+    // ROTATING frame (i.e. relative to the ground).
+    surf_pos = pos;
+    surf_vel = vel;
+
+    if(ship->frame->isRotFrame() == false and
+       ship->frame->hasRotFrame() == true) {
+        Frame *rot = ship->frame->getRotFrame();
+        surf_pos = ship->frame->GetOrientRelTo(rot) * pos;
+        surf_vel = ship->frame->GetOrientRelTo(rot) * vel
+                 - rot->GetStasisVelocity(surf_pos);
+    }
+
+    o = computeOrbitElements(orbit_pos, orbit_vel, mu);
+    distance = o.distance;
+    speed = o.speed;
+
+    // Telemetry: e and |h| are the two conserved 2-body constants,
+    // so a drifting plot = integrator drift; steps = burns/staging.
+    energy_series.push(g.time, o.energy);
+    angmom_series.push(g.time, o.ang_momentum);
+
+    up = ship->partAxis(ship->controller, 1);
+    facing = ship->partAxis(ship->controller, 2);
+    other = ship->partAxis(ship->controller, 0);
+
+    facing_dir = glm::normalize(facing);
+    vel_dir = glm::normalize(vel);
+
+    const glm::dvec3 _up = glm::normalize(pos);
+    const glm::dvec3 _north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), _up));
+    const glm::dvec3 _east = glm::cross(_up, _north);
+
+    ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
+    hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, _up)); // m/s
+
+    const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
+
+    const double hedNorth = glm::dot(groundHed, _north);
+    const double hedEast = glm::dot(groundHed, _east);
+    heading = wrapAngleToPositive(atan2(hedEast, hedNorth));
+
+    pitch = asin(glm::dot(_up, facing));
+    roll =
+        glm::orientedAngle(glm::normalize(projectVecOntoPlane(-pos, glm::normalize(facing))),
+                           glm::normalize(-up),
+                           glm::normalize(facing));
+
+    const glm::dvec3 dir = glm::normalize(surf_pos);
+
+    longitude = atan2(dir.x, dir.z);
+    latitude = asin(dir.y);
+}
+
 void draw3d(Game &g, TransferPlanner &planner) {
     // The pass body is verbatim from main's render section; its globals
     // are Game members (aliased so the body reads the same).
@@ -296,92 +404,11 @@ void draw3d(Game &g, TransferPlanner &planner) {
       end 3d stuff drawn here
     */
 
-    // Ship telemetry (the ShipView the HUD / VESSEL / orbital map read):
-    // defined only with a ship. In the orbit-view state (no ship) the
-    // windows that read it are hidden, so it stays at its boot defaults.
-    if(ship) {
-    mu = ship->m_parent->mu;
-
-    // surf pos??
-    pos = com;
-    /* orbital velocity */
-    vel = ship->GetVel();
-
-    // The orbit is a Kepler conic in the body's INERTIAL (non-rotating)
-    // frame — that is the frame the spawn/switching code targets and
-    // the frame in which the ship's trajectory is a conic.
-    orbit_pos = pos;
-    orbit_vel = vel;
-    if(ship->frame->isRotFrame() == true) {
-        Frame *inertial = ship->frame->getNonRotFrame();
-        orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
-        orbit_vel = ship->frame->GetOrientRelTo(inertial) * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
-        orbit_pos = ship->frame->GetOrientRelTo(inertial) * orbit_pos + ship->frame->GetPositionRelTo(inertial);
-    }
-
-    // Surface-relative state: the ship's position/velocity in the
-    // ROTATING frame (i.e. relative to the ground).
-    surf_pos = pos;
-    surf_vel = vel;
-
-    if(ship->frame->isRotFrame() == false and
-       ship->frame->hasRotFrame() == true) {
-        Frame *rot = ship->frame->getRotFrame();
-        surf_pos = ship->frame->GetOrientRelTo(rot) * pos;
-        surf_vel = ship->frame->GetOrientRelTo(rot) * vel
-                 - rot->GetStasisVelocity(surf_pos);
-    }
-
-    o = computeOrbitElements(orbit_pos, orbit_vel, mu);
-    distance = o.distance;
-    speed = o.speed;
-
-    // Telemetry: e and |h| are the two conserved 2-body constants,
-    // so a drifting plot = integrator drift; steps = burns/staging.
-    energy_series.push(g.time, o.energy);
-    angmom_series.push(g.time, o.ang_momentum);
-
-    up = ship->partAxis(ship->controller, 1);
-    facing = ship->partAxis(ship->controller, 2);
-    other = ship->partAxis(ship->controller, 0);
-
-    facing_dir = glm::normalize(facing);
-    vel_dir = glm::normalize(vel);
-
-    const glm::dvec3 _up = glm::normalize(pos);
-    const glm::dvec3 _north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), _up));
-    const glm::dvec3 _east = glm::cross(_up, _north);
-
-    ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
-    hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, _up)); // m/s
-
-    const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
-
-    const double hedNorth = glm::dot(groundHed, _north);
-    const double hedEast = glm::dot(groundHed, _east);
-    heading = wrapAngleToPositive(atan2(hedEast, hedNorth));
-
-    pitch = asin(glm::dot(_up, facing));
-    roll =
-        glm::orientedAngle(glm::normalize(projectVecOntoPlane(-pos, glm::normalize(facing))),
-                           glm::normalize(-up),
-                           glm::normalize(facing));
-
-    // ImGui::Text("pos: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
-    // ImGui::Text("facing: %.2f %.2f %.2f", facing.x, facing.y, facing.z);
-    // ImGui::Text("up: %.2f %.2f %.2f", up.x, up.y, up.z);
-    // ImGui::Text("other: %.2f %.2f %.2f", other.x, other.y, other.z);
-    // ImGui::Text("Ground hed: %.2f %.2f %.2f", groundHed.x, groundHed.y, groundHed.z);
-    // ImGui::Text("Pitch: %.2f", glm::degrees(pitch));
-    // ImGui::Text("Heading: %.2f", glm::degrees(heading));
-    // ImGui::Text("up: %.2f, %.2f, %.2f", up.x, up.y, up.z);
-    // ImGui::Text("facing: %.2f, %.2f, %.2f", facing.x, facing.y, facing.z);
-
-    const glm::dvec3 dir = glm::normalize(surf_pos);
-
-    longitude = atan2(dir.x, dir.z);
-    latitude = asin(dir.y);
-    }
+    // The active ship's per-frame state snapshot (Game::view): computed here
+    // where it always ran (between the world draw and the atmosphere rims).
+    // Split into updateShipView (above) so the live Tracking Station -- which
+    // runs the sim but draws no world -- refreshes it the same way.
+    updateShipView(g);
 
     // Atmosphere rims: transparent Fresnel shells, drawn over the opaque
     // bodies (and the starfield background, which was drawn first) so the

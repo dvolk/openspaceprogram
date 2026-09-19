@@ -146,50 +146,10 @@ void emit_sim_events(Game &g) {
 /* The flight-scene one-shot key actions (the rebindable slots). Extracted
    from poll_events so the VAB scene can route its own keys instead: with no
    sim running the flight slots are meaningless -- and firing them would
-   silently poke the parked ships (staging, warping, switching). */
+   silently poke the parked ships (staging, switching). The time-warp slots
+   are NOT here -- they are a global clock, dispatched scene-neutral in
+   poll_events so every scene (the live hub / tracking / VAB) can pause. */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
-    if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
-        // Warp up one step (10x), capped at 100000 (ladder top).
-        // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
-        // requires every ship to be rail-eligible: the active ship
-        // coasts (or freezes on the ground) and the physics world
-        // stops stepping; if any ship is not eligible the step is
-        // refused and the current warp stays.
-        const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
-        if(next > 100000) {
-            g.toast("Max warp reached");
-        } else if(next < kRailsWarp || g.enter_rails_warp()) {
-            // enter_rails_warp toasted the refusal reason itself.
-            g.time_accel = next;
-            if(next >= kRailsWarp) {
-                printf("Rails warp: time accel %d (ships on rails)\n", next);
-                g.toast("Time accel: %dx (rails)", next);
-            } else {
-                g.toast("Time accel: %dx", next);
-            }
-        }
-    }
-    if(slotFired(Slot::WarpDown, ksc, kmod, g.binds)) {
-        if(g.time_accel > 1) {
-            const bool leaving_rails_warp =
-                (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
-            g.time_accel /= 10;
-            if(leaving_rails_warp) {
-                // dropped out of rails warp: the active ship re-enters physics
-                // (idle ships stay parked). No ship (orbit-view state) -> just
-                // the clock speed changes.
-                if(g.ship != nullptr) {
-                    g.ship->leaveRails();
-                    printf("Rails warp: exited, time accel %d\n", g.time_accel);
-                }
-            }
-            g.toast("Time accel: %dx", g.time_accel);
-        }
-        else if(g.time_accel == 1) {
-            g.time_accel = 0;
-            g.toast("Time accel: paused");
-        }
-    }
     if(slotFired(Slot::CamSpeedUp, ksc, kmod, g.binds)) {
         if(g.cam_speed < 10000000) {
             g.cam_speed *= 4;
@@ -326,13 +286,14 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         ui::ResetGui();
     }
     if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
-        /* Toggle the pause menu -- in a scene that has one. The title screen's
-           menu is its Root window (forced open every frame), so Esc there does
-           nothing rather than appearing to dismiss the only UI on screen.
-           !repeat like every other one-shot slot: a held key must not flicker
-           the menu back and forth. */
-        if(winInScene(g, W_PauseMenu)) {
-            setWinOpen(W_PauseMenu, !winOpen(W_PauseMenu));
+        // Esc walks up the tree: flight -> the Space Center hub (the in-game
+        // menu), the same as the old pause menu's "Space Center" row. The
+        // title screen shares this key map but is already at the top (nothing
+        // above it to walk up to), so gate on being in the flight scene.
+        // !repeat like every other one-shot slot: a held key must not push
+        // the hub repeatedly.
+        if(sceneIs(g, SceneId::Flight)) {
+            pushScene(g, SceneId::SpaceCenter);
         }
     }
     // Thrust latch: the ThrustLatch slot (default LShift+T) toggles
@@ -379,38 +340,38 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.vab.armedAsm = -1;
             g.vab.ghostRoll = 0.0;
         } else {
-            // ... and with nothing to cancel it toggles the main menu. A
-            // fixed Esc, not Slot::Menu -- the editor's keys are
-            // editor-local (see the function comment), unlike the tracking
-            // station's Slot::Menu toggle.
-            setWinOpen(W_VabMenu, !winOpen(W_VabMenu));
+            // ... and with nothing to cancel it walks up the tree: back to
+            // the hub, or the title on a --vab boot. A fixed Esc, not
+            // Slot::Menu -- the editor's keys are editor-local (see the
+            // function comment).
+            popScene(g);
         }
     }
 }
 
-/* The Tracking Station's keys: the main-menu toggle on Slot::Menu (default
-   Esc), the same slot as flight's pause menu, so rebinding "Main menu" moves
-   both. The menu's "Back to Space Center" is the exit. No
-   WantCaptureKeyboard gate, like flight's Esc (the gate only bites while an
-   imgui text field is active); the full-screen map window does not capture
-   the keyboard just by being under the cursor. */
+/* The Tracking Station's keys: Esc on Slot::Menu (default Esc) walks up the
+   tree to the hub, the same slot as the flight's Esc so rebinding "Main
+   menu" moves both. No WantCaptureKeyboard gate, like the flight's Esc (the
+   gate only bites while an imgui text field is active); the full-screen map
+   window does not capture the keyboard just by being under the cursor. */
 void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
-        const bool now = !winOpen(W_TrackingMenu);
-        setWinOpen(W_TrackingMenu, now);
-        printf("Tracking menu: %s\n", now ? "open" : "closed");
+        popScene(g);   // the hub is the frame below
     }
 }
 
-/* The Space Center hub's keys. The ship is live below but the sim is paused
-   and the menu IS the scene (Root, always open), so Esc is the exit: pop back
-   to the flight, the same as the on-screen "Resume Flight". The stack always
-   has a frame below here (the hub is pushed on top of something), so the pop
-   succeeds. The Tracking Station above the hub has its own key map
-   (trackingKeyActions): its Esc toggles the menu like flight's does. */
+/* The Space Center hub's keys. The menu IS the scene (Root, always open), so
+   Esc is the exit: up the tree. When the hub sits on top of a live flight
+   (reached by Esc from flight) the pop hands back to the flight, the same as
+   the on-screen "Resume Flight". When the hub IS the floor (a new game, no
+   ship below) there is nothing to pop back to, so Esc goes to the title, the
+   only scene above it. */
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
-    if(ksc == SDL_SCANCODE_ESCAPE && !repeat) { popScene(g); }
+    if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
+        if(g.sceneStack.size() <= 1) { enterTitle(g); }
+        else { popScene(g); }
+    }
 }
 
 void poll_events(Game &g) {
@@ -482,6 +443,52 @@ void poll_events(Game &g) {
                 // editor chrome (drawVabUI gates on g.ui_visible).
                 if(!ev.key.repeat) {
                     g.toggle_windows();
+                }
+            }
+            /* Time warp is a GLOBAL clock, not a flight control: it works in
+               every scene (the live hub / tracking / VAB all advance the sim),
+               so "pause" (WarpDown to 0) and resume are reachable anywhere.
+               Moved here from flightKeyActions so it is scene-neutral. */
+            if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
+                // Warp up one step (10x), capped at 100000 (ladder top).
+                // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
+                // requires every ship to be rail-eligible: the active ship
+                // coasts (or freezes on the ground) and the physics world
+                // stops stepping; if any ship is not eligible the step is
+                // refused and the current warp stays.
+                const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
+                if(next > 100000) {
+                    g.toast("Max warp reached");
+                } else if(next < kRailsWarp || g.enter_rails_warp()) {
+                    // enter_rails_warp toasted the refusal reason itself.
+                    g.time_accel = next;
+                    if(next >= kRailsWarp) {
+                        printf("Rails warp: time accel %d (ships on rails)\n", next);
+                        g.toast("Time accel: %dx (rails)", next);
+                    } else {
+                        g.toast("Time accel: %dx", next);
+                    }
+                }
+            }
+            if(slotFired(Slot::WarpDown, ksc, kmod, g.binds)) {
+                if(g.time_accel > 1) {
+                    const bool leaving_rails_warp =
+                        (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
+                    g.time_accel /= 10;
+                    if(leaving_rails_warp) {
+                        // dropped out of rails warp: the active ship re-enters physics
+                        // (idle ships stay parked). No ship (orbit-view state) -> just
+                        // the clock speed changes.
+                        if(g.ship != nullptr) {
+                            g.ship->leaveRails();
+                            printf("Rails warp: exited, time accel %d\n", g.time_accel);
+                        }
+                    }
+                    g.toast("Time accel: %dx", g.time_accel);
+                }
+                else if(g.time_accel == 1) {
+                    g.time_accel = 0;
+                    g.toast("Time accel: paused");
                 }
             }
 

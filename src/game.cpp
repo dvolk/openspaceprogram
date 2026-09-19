@@ -42,11 +42,10 @@ void Game::apply_ui_visible() {
    LIVE scene's Persistent windows are touched. Root is left alone -- that is
    what stops TAB blanking the title screen, which ui::Options::closable alone
    would not do, since it only hides the X button while ui::SetOpen still
-   closes the window. Chrome, and the Transient windows that are not noTab,
-   are skipped here and hidden by ui_visible at draw time instead, so their
-   open state survives the toggle; the main menus (noTab) are not hidden at
-   draw time either. The HUD is an ordinary Persistent entry now and no longer
-   needs the special case it had. */
+   closes the window. Chrome and the Transient windows are skipped here and
+   hidden by ui_visible at draw time instead, so their open state survives the
+   toggle; the Root menus are not hidden at draw time either. The HUD is an
+   ordinary Persistent entry now and no longer needs the special case it had. */
 void Game::toggle_windows() {
     ui_visible = !ui_visible;
     apply_ui_visible();

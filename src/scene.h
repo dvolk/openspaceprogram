@@ -94,6 +94,10 @@ struct SceneFrame {
 struct SceneDef {
     const char *name;
     bool sim;             // does the clock advance while this scene is on top
+    bool pilot;           // does the live ship take WASD/T/RCS this scene
+                          // (tick.cpp gates the control block on this, so a
+                          // running sim in a non-pilot scene coasts instead
+                          // of being steered by stale keys)
     Backdrop backdrop;
     WinSet wins;             // the windows this scene owns (uiwins.h)
     void (*enter)(Game &);   // pushed on top: the camera is already captured

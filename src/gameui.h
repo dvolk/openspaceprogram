@@ -1,6 +1,6 @@
 // gameui.h -- the ImGui UI pass: the readout windows (drawUIReadouts),
-// the orbital map (drawUIMap) and the menu windows (drawPauseMenu /
-// drawn in main's loop after the 3D pass (render.cpp) in that order.
+// the orbital map (drawUIMap) and the two menus (drawTitleMenu /
+// drawSpaceCenterMenu), drawn in main's loop after the 3D pass (render.cpp).
 //
 // This was the ImGui section of main's loop. It moved out verbatim: main's
 // locals became Game members (the per-window options, the Settings state,
@@ -28,18 +28,15 @@ void drawPartWindows(Game &g);
 // conic + the selected target's highlight).
 void drawUIMap(Game &g, TransferPlanner &planner);
 
-/* The main menu, one shared shell (gameui.cpp drawMenuWindow) in five forms:
-   the heading + the scene's navigation block differ, the standard items
-   (Save/Load, Settings, Controls, Quit to title -- all but the title screen
-   -- Quit game) are shared. Title and Space Center are Root windows -- forced
-   open, no X; the other three are Transient overlays (closable, opened from a
-   "Menu" button or Esc). Each scene's drawUi calls its own, last, so it sits
-   on top. */
-void drawPauseMenu(Game &g);
+/* The two menus, one shared shell (gameui.cpp drawMenuWindow): the heading +
+   the navigation block differ, the standard items (Save/Load, Settings,
+   Controls, Quit game) are shared, and the hub adds a confirmed "Return to
+   title". Both are Root windows -- forced open, no X -- because the title
+   screen and the Space Center hub ARE their menus; the other scenes (flight,
+   VAB, tracking) have no menu of their own (Esc walks up the tree to the hub).
+   Each scene's drawUi calls its own, last, so it sits on top. */
 void drawTitleMenu(Game &g);
 void drawSpaceCenterMenu(Game &g);
-void drawVabMenu(Game &g);
-void drawTrackingMenu(Game &g);
 
 /* The Tracking Station's widgets: a full-screen, chrome-less orbital map and a
    ship list, each a COPY of the flight window's draw code into its own window id

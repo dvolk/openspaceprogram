@@ -91,8 +91,10 @@ void tick(Game &g) {
         if (g.camera->mode == CAM_ORBIT) {
             bool game_running = (g.time_accel > 0);
             // The active-ship controls (rails-wake, EVA, slew, stick, RCS):
-            // only with a ship. The orbit-view state has nothing to steer.
-            if(g.ship) {
+            // only with a ship AND in a pilot scene (Flight). A running sim in
+            // a non-pilot scene (the live hub / tracking) coasts -- held keys
+            // there must not steer the ship you left behind.
+            if(g.ship && curScene(g).pilot) {
             /* touching the controls wakes a railed active ship: it
                re-enters physics (you cannot maneuver on rails). A rails
                warp (accel > 10) drops to 1x on the way out; a ship railed

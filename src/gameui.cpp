@@ -2220,23 +2220,6 @@ static void navTitle(Game &g, float bw) {
     // either) and no editor to offer (nothing to launch into).
     if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) { g.newGame(); }
 }
-static void navFlight(Game &g, float bw) {
-    if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_PauseMenu, false);
-    }
-    if(ImGui::Button("Go to VAB", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_PauseMenu, false);
-        vabOpen(g);   // the sim freezes in the editor (tick is skipped)
-    }
-    if(ImGui::Button("Space Center", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_PauseMenu, false);
-        pushScene(g, SceneId::SpaceCenter);
-    }
-    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_PauseMenu, false);
-        g.quitToTitle();
-    }
-}
 static void navSpaceCenter(Game &g, float bw) {
     // Push the editor on top of the hub; the VAB's "Back to game" pops back
     // here (not to the flight), which is the stack doing its job. (The hub's
@@ -2262,52 +2245,33 @@ static void navSpaceCenter(Game &g, float bw) {
         setWinOpen(W_SpaceCenterMenu, false);
         popScene(g);
     }
-    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_SpaceCenterMenu, false);
-        g.quitToTitle();
-    }
-}
-static void navVab(Game &g, float bw) {
-    if(ImGui::Button("Back to game", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_VabMenu, false);
-        vabClose(g);   // pops: to the flight, or the title on a --vab boot
-    }
-    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_VabMenu, false);
-        g.quitToTitle();
-    }
-}
-static void navTracking(Game &g, float bw) {
-    if(ImGui::Button("Back to Space Center", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_TrackingMenu, false);
-        popScene(g);   // the hub is always the frame below
-    }
-    if(ImGui::Button("Quit to title", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_TrackingMenu, false);
-        g.quitToTitle();
+    // Return to title discards the fleet and is one Esc from a live flight,
+    // so it arms on the first click and confirms on the second (a Cancel
+    // clears the arm). "Quit game" (the shell's row) exits the app instead.
+    if(g.returnTitleArmed) {
+        if(ImGui::Button("Discard game? Confirm", ImVec2(bw, 0.0f))) {
+            g.returnTitleArmed = false;
+            setWinOpen(W_SpaceCenterMenu, false);
+            g.quitToTitle();
+        }
+        if(ImGui::Button("Cancel", ImVec2(bw, 0.0f))) {
+            g.returnTitleArmed = false;
+        }
+    } else if(ImGui::Button("Return to title", ImVec2(bw, 0.0f))) {
+        g.returnTitleArmed = true;
     }
 }
 
-// The five menus: one shell, one heading + navigation block each. Root for
-// the scenes that ARE their menu (title, hub); Transient overlays elsewhere.
+// The two menus: one shell, one heading + navigation block each, both Root --
+// the title screen and the Space Center hub ARE their menus (forced open every
+// frame). The other scenes (flight, VAB, tracking) have no menu of their own:
+// Esc walks up the tree and the hub is the only in-game menu.
 void drawTitleMenu(Game &g) {
     drawMenuWindow(g, W_TitleMenu, true, "Open Space Program", navTitle);
 }
 
-void drawPauseMenu(Game &g) {
-    drawMenuWindow(g, W_PauseMenu, false, "Open Space Program", navFlight);
-}
-
 void drawSpaceCenterMenu(Game &g) {
     drawMenuWindow(g, W_SpaceCenterMenu, true, "Space Center", navSpaceCenter);
-}
-
-void drawVabMenu(Game &g) {
-    drawMenuWindow(g, W_VabMenu, false, "VAB", navVab);
-}
-
-void drawTrackingMenu(Game &g) {
-    drawMenuWindow(g, W_TrackingMenu, false, "Tracking Station", navTracking);
 }
 
 // A save-slot name is a single directory under saves/; reject a path
@@ -2504,11 +2468,11 @@ void drawVabUI(Game &g) {
             ImGui::SameLine();
             ImGui::TextDisabled("(no ships in res/ships)");
         }
-        // The scene's main menu (Save/Load, Settings, Controls, Quit). Esc
-        // toggles it too, but only with nothing armed to cancel (vabKeyActions).
+        // Back to the hub (vabClose pops: to the flight, or the title on a
+        // --vab boot). Esc does the same once nothing is armed to cancel.
         ImGui::SameLine();
-        if(ImGui::Button("Menu##vabmenu")) {
-            setWinOpen(W_VabMenu, !winOpen(W_VabMenu));
+        if(ImGui::Button("Back##vabback")) {
+            vabClose(g);
         }
 
         // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
@@ -2786,10 +2750,9 @@ void drawTrackingShipList(Game &g) {
     Ships &ships = g.ships;
     System &sys = g.sys;
     drawWin(g, W_TrackingShipList, [&] {
-    // The scene's main menu (Save/Load, Settings, Controls, Quit). Esc
-    // toggles it too (trackingKeyActions); the button is for the mouse.
-    if(ImGui::Button("Menu##trackingmenu")) {
-        setWinOpen(W_TrackingMenu, !winOpen(W_TrackingMenu));
+    // Back to the hub (the frame below); Esc does the same (trackingKeyActions).
+    if(ImGui::Button("Back to Space Center")) {
+        popScene(g);
     }
     ImGui::Separator();
     // Buttons (natural width) + SameLine, the same pattern as the
@@ -2827,6 +2790,22 @@ void drawTrackingShipList(Game &g) {
             if(ImGui::SmallButton("x")) {
                 g.remove_ship(v);
                 removed = true;   // the ship was deleted; stop iterating
+            }
+            if(active && !removed) {
+                // Fly: take control of the active ship -- the map is a view,
+                // this is the way back into the cockpit. Collapses the stack
+                // to the live flight (enterFlight unwinds the excursions).
+                // select_ship recenters the camera on a ship SWITCH, but
+                // no-ops when this is already the active ship (the single-ship
+                // Fly case), and enterFlight skips its enter when the base is
+                // already Flight -- so recenter here to guarantee the cockpit,
+                // not the hub's parked planet backdrop.
+                ImGui::SameLine();
+                if(ImGui::SmallButton("Fly")) {
+                    g.select_ship(v);
+                    enterFlight(g);
+                    g.syncShipFocus();
+                }
             }
         }
         ImGui::PopID();
