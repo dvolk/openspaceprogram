@@ -225,6 +225,7 @@ void pushScene(Game &g, SceneId id) {
     }
     g.sceneStack.push_back(f);
     kScenes[(size_t)id].enter(g);
+    g.ensure_ui_visible();
     printf("[scene] %s -> %s (push)\n", sceneName(from), sceneName(id));
     fflush(stdout);
 }
@@ -239,6 +240,7 @@ void popScene(Game &g) {
     g.sceneStack.pop_back();
     kScenes[(size_t)f.id].exit(g);
     if(f.camValid) { restoreCamera(g, f.cam); }
+    g.ensure_ui_visible();
     printf("[scene] %s -> %s (pop)\n", sceneName(f.id), sceneName(curSceneId(g)));
     fflush(stdout);
 }
@@ -269,6 +271,7 @@ static void setBaseScene(Game &g, SceneId id, const char *verb) {
     }
     // Logged only when something actually moved, so a redundant call is quiet.
     if(depth > 1 || from != id) {
+        g.ensure_ui_visible();
         printf("[scene] %s -> %s (%s)\n", sceneName(from), sceneName(id), verb);
         fflush(stdout);
     }
@@ -277,3 +280,7 @@ static void setBaseScene(Game &g, SceneId id, const char *verb) {
 void enterFlight(Game &g) { setBaseScene(g, SceneId::Flight, "enterFlight"); }
 
 void enterTitle(Game &g) { setBaseScene(g, SceneId::Title, "enterTitle"); }
+
+void enterSpaceCenter(Game &g) {
+    setBaseScene(g, SceneId::SpaceCenter, "enterSpaceCenter");
+}

@@ -26,7 +26,10 @@ struct Game;
 
 /* What the bulk operations (TAB, the Windows panel, a layout reset) are
    allowed to do to a window. Scene transitions close NOTHING -- push/pop/
-   enterTitle never touch open state; what keeps a scene's menus honest is the
+   enterTitle never touch open state, with one exception: a TAB-hide
+   (ui_visible=false) does not survive a transition, every scene entry
+   restores visibility (Game::ensure_ui_visible), so a hidden flight scene
+   cannot hand the player a blue VAB. What keeps a scene's menus honest is the
    nav code closing its own menu before it transitions (gameui.cpp's nav*
    callbacks), and the WinSet gate (winInScene) keeping a stale one from
    drawing where it is not owned.
@@ -42,9 +45,12 @@ struct Game;
                a panel row (a panel that can close itself is a dead end).
    Transient   modal-ish -- the pause menu, the VAB/tracking menus, Save/Load.
                Not a TAB toggle and not a panel row; its open state is the
-               nav code's responsibility (see above).
+               nav code's responsibility (see above). The three main menus
+               carry noTab: hiding a main menu would leave it open-but-invisible
+               and the next Esc would close it (see hiddenByTab).
    Persistent  everything else. TAB and the panel toggle it; a transition
-               leaves its open state alone, so an excursion to the VAB and
+               leaves its open state alone (a TAB-hide is the one state a
+               scene entry resets, see above), so an excursion to the VAB and
                back restores the flight layout exactly as you left it. */
 enum class WinRole : unsigned char { Root, Chrome, Transient, Persistent };
 
@@ -75,6 +81,7 @@ struct WinDef {
     const char *label;    // the Windows-panel row (unused when !inList)
     ui::Options opts;     // THE layout: one home, nothing copies it
     WinRole role;
+    bool noTab = false;   // TAB hides the UI but not this (the main menus)
     bool inList;          // a checkbox row in the Windows panel
 };
 
@@ -94,13 +101,16 @@ extern const WinSet kFlightWins, kTitleWins, kVabWins, kSpaceCenterWins,
 bool winInScene(const Game &g, Win w);
 
 /* Is `w` suppressed by TAB (Game::ui_visible)? Everything goes except a
-   scene's Root window -- that is the whole point of TAB, a clean screenshot in
-   one key, and a title screen whose only UI can be hidden is the original bug
-   back again. Centralised here rather than as an early-return in each draw
-   function, which is how two of them (Save/Load, the editor) came to honour
-   TAB while the flight windows did not. Note the open STATE of a hidden
-   window is untouched: toggle_windows only flips Persistent ones, so Chrome
-   and Transient come back exactly as they were. */
+   scene's Root window and the main menus (noTab) -- that is the whole point of
+   TAB, a clean screenshot in one key, and a title screen whose only UI can be
+   hidden is the original bug back again. The menus are exempt for the same
+   reason: a hidden-but-still-open menu would make the next Esc CLOSE it
+   (toggle of open state, which TAB does not touch), so the player would
+   press Esc twice and see nothing. Centralised here rather than as an
+   early-return in each draw function, which is how two of them (Save/Load,
+   the editor) came to honour TAB while the flight windows did not. Note the
+   open STATE of a hidden window is untouched: toggle_windows only flips
+   Persistent ones, so Chrome and Transient come back exactly as they were. */
 bool hiddenByTab(const Game &g, Win w);   // defined in uiwins.cpp (Game is
                                            // incomplete in this header)
 

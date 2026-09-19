@@ -34,8 +34,9 @@ struct Game;
 class TransferPlanner;
 
 enum class SceneId : int {
-    /* The floor is either Title or Flight, and the editor is pushed on top of
-       whichever is live. */
+    /* The floor is one of Title, SpaceCenter (a new game, no ship yet) or
+       Flight, and the editor / hub excursions are pushed on top of whichever
+       is live. */
     Title,    // the game-start screen: no vessel; the world as a backdrop and
               // the title menu as the only chrome. Its own scene rather than
               // "Flight with no ship", which is what made the flight readouts
@@ -46,8 +47,9 @@ enum class SceneId : int {
               // shipless case.
     Vab,      // the editor: no sim; physics-free BuildShip draw + editor widgets
     SpaceCenter, // the hub: no sim; the planet as a static backdrop and a root
-              // menu onward to the VAB / (later) the Tracking Station, or back
-              // to the flight it was pushed from ("Resume Flight").
+              // menu onward to the VAB / the Tracking Station. A NEW game
+              // starts here as the floor (no ship yet); "Resume Flight" is
+              // offered only when it was pushed on top of a live flight.
     TrackingStation, // no sim; a full-screen chrome-less orbital map + ship list
               // over the paused world, reached from the Space Center hub.
     COUNT
@@ -124,15 +126,21 @@ bool sceneIs(const Game &g, SceneId id);
 void pushScene(Game &g, SceneId id);
 void popScene(Game &g);
 /* Collapse the whole stack to [Flight], discarding every parked camera pose.
-   This is what an action that establishes a new game does -- LAUNCH, New Game,
-   Load -- because there is nothing meaningful to pop back to: the ship the
-   excursion started from is not the ship you are flying now. */
+   This is what an action that establishes a live flight does -- LAUNCH, or a
+   Load of a save with vessels -- because there is nothing meaningful to pop
+   back to: the ship the excursion started from is not the ship you are flying
+   now. */
 void enterFlight(Game &g);
 /* Collapse to [Title] the same way. This is where a shipless state goes -- a
    bare boot, a save with no vessels, the (defensive) "nothing left to
    control" arm of remove_ship -- and it is what keeps Flight's "there is an
    active vessel" invariant true instead of merely usual. */
 void enterTitle(Game &g);
+/* Collapse to [SpaceCenter] the same way: the floor of a NEW game, which has
+   no ship yet -- the player goes to the VAB to build and launch the first
+   vessel (vabLaunch -> enterFlight). "Resume Flight" is hidden there because
+   there is no flight to pop back to. */
+void enterSpaceCenter(Game &g);
 
 // Capture / apply a camera pose. Free functions rather than Game methods: they
 // are transition mechanics belonging to the stack, and the snapshot lives on

@@ -168,7 +168,7 @@ const WinDef kWins[W_Count] = {
         // here cannot leave it open to reappear over a running sim.
         .opts = { .slot = ui::Slot::Center, .fixed = true, .closable = true,
                   .default_open = false },
-        .role = WinRole::Transient, .inList = false,
+        .role = WinRole::Transient, .noTab = true, .inList = false,
     },
 
     // --- title -----------------------------------------------------------
@@ -217,7 +217,7 @@ const WinDef kWins[W_Count] = {
         // so it cannot ride along a scene transition.
         .opts = { .slot = ui::Slot::Center, .fixed = true, .closable = true,
                   .default_open = false },
-        .role = WinRole::Transient, .inList = false,
+        .role = WinRole::Transient, .noTab = true, .inList = false,
     },
 
     // --- editor ----------------------------------------------------------
@@ -236,7 +236,7 @@ const WinDef kWins[W_Count] = {
         // the pause menu.
         .opts = { .slot = ui::Slot::Center, .fixed = true, .closable = true,
                   .default_open = false },
-        .role = WinRole::Transient, .inList = false,
+        .role = WinRole::Transient, .noTab = true, .inList = false,
     },
 };
 #pragma GCC diagnostic pop
@@ -294,7 +294,7 @@ bool winInScene(const Game &g, Win w) {
 }
 
 bool hiddenByTab(const Game &g, Win w) {
-    return !g.ui_visible && kWins[w].role != WinRole::Root;
+    return !g.ui_visible && kWins[w].role != WinRole::Root && !kWins[w].noTab;
 }
 
 bool winOpen(Win w) { return ui::IsOpen(kWins[w].name); }

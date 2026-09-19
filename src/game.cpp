@@ -29,22 +29,35 @@ glm::dvec3 Game::focusWorldPos(int i) const {
     return focusTargets[i].body->frame->GetPositionRelTo(rf);
 }
 
-/* TAB (and the pause menu's "Toggle windows"): hide the chrome for a clean
-   screenshot, then put it back. Only the LIVE scene's Persistent windows are
-   touched. Root is left alone -- that is what stops TAB blanking the title
-   screen, which ui::Options::closable alone would not do, since it only hides
-   the X button while ui::SetOpen still closes the window. Chrome and Transient
-   are skipped here and hidden by ui_visible at draw time instead, so their open
-   state survives the toggle. The HUD is an ordinary Persistent entry now and
-   no longer needs the special case it had. */
-void Game::toggle_windows() {
-    ui_visible = !ui_visible;
+void Game::apply_ui_visible() {
     const WinSet &set = curScene(*this).wins;
     for(size_t i = 0; i < set.n; i++) {
         const WinDef &w = kWins[set.ids[i]];
         if(w.role != WinRole::Persistent) { continue; }
         ui::SetOpen(w.name, ui_visible && w.opts.default_open);
     }
+}
+
+/* TAB: hide the chrome for a clean screenshot, then put it back. Only the
+   LIVE scene's Persistent windows are touched. Root is left alone -- that is
+   what stops TAB blanking the title screen, which ui::Options::closable alone
+   would not do, since it only hides the X button while ui::SetOpen still
+   closes the window. Chrome, and the Transient windows that are not noTab,
+   are skipped here and hidden by ui_visible at draw time instead, so their
+   open state survives the toggle; the main menus (noTab) are not hidden at
+   draw time either. The HUD is an ordinary Persistent entry now and no longer
+   needs the special case it had. */
+void Game::toggle_windows() {
+    ui_visible = !ui_visible;
+    apply_ui_visible();
+}
+
+void Game::ensure_ui_visible() {
+    if(ui_visible) { return; }
+    ui_visible = true;
+    printf("[ui] TAB-hide dropped at scene entry\n");
+    fflush(stdout);
+    apply_ui_visible();
 }
 
 /* Rebuild the imgui style from the Settings window state. A fresh
@@ -300,23 +313,14 @@ bool Game::newGame() {
         toast("A game is already running");
         return false;
     }
-    std::vector<FleetEntry> entries(1);
-    entries[0].ship = kDefaultShipDef;
-    Vehicle *first = ships.build_fleet(entries, sys, home, args.scenario);
-    if(first == nullptr) {
-        printf("[game] new game failed: could not build %s\n", kDefaultShipDef);
-        fflush(stdout);
-        toast("New Game failed: %s", kDefaultShipDef);
-        return false;
-    }
-    // The same settle the CLI boot does, then activate through select_ship so
-    // the camera follows and the "ship" focus entry appears.
-    settleFleet(first);
-    select_ship(first);
-    enterFlight(*this);
-    printf("[game] new game: %s on %s\n", first->name.c_str(), home->name.c_str());
+    // A new game starts in the Space Center with NO ship: the player then goes
+    // to the VAB to build and launch the first vessel (vabLaunch ->
+    // enterFlight). Nothing to build here -- the fleet stays empty until that
+    // launch -- so this is just "the Space Center is now the floor".
+    enterSpaceCenter(*this);
+    printf("[game] new game: Space Center, no ship\n");
     fflush(stdout);
-    toast("New game -- %s", first->name.c_str());
+    toast("New game -- Space Center");
     return true;
 }
 

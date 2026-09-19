@@ -2247,12 +2247,18 @@ static void navSpaceCenter(Game &g, float bw) {
         vabOpen(g);
     }
     // The Tracking Station is another excursion on top of the hub; its "Back"
-    // (menu or Esc) pops back here.
+    // (menu or Esc) pops back here. It is open even with no ship yet (a new
+    // game before the first launch): the map then shows the system around
+    // home, with no orbit to track (drawTrackingMap handles that).
     if(ImGui::Button("Tracking Station", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         pushScene(g, SceneId::TrackingStation);
     }
-    if(ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) {
+    // "Resume Flight" pops back to the flight below -- offered only when the
+    // hub sits ON TOP of a live flight (a ship is active). When the hub IS the
+    // floor (a new game, no ship yet) there is nothing to pop back to, so the
+    // button is hidden rather than a no-op that refuses the pop.
+    if(g.ship != nullptr && ImGui::Button("Resume Flight", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         popScene(g);
     }
@@ -2318,7 +2324,7 @@ static bool safeSlotName(const std::string &n) {
 
 void drawSaveLoad(Game &g) {
     // No TAB gate here: Save/Load is a Transient window and drawWin suppresses
-    // it (uiwins.h hiddenByTab), same as every other registered window.
+    // it (uiwins.h hiddenByTab), like every non-menu window.
 
     // The slot name to save into and the selected slot are both persistent
     // (static): the name so the player does not retype it, and `selected` so
@@ -2853,7 +2859,6 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
     bool &map_show_vel = g.map_show_vel;
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
-    auto &xfer = planner.xfer;
     // (orbit_caches, the per-orbit sampling cache, is file-scope --
     // shared with the Surface Map's orbit overlay.)
 
@@ -2891,83 +2896,87 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
     drawWin(g, W_TrackingMap, mapOpts, [&] {
-        // The ship's trajectory around the focus: a closed ellipse
-        // (a coasting Kepler orbit) or, when the ship is escaping or
-        // flying by (ecc >= 1 -- e.g. right after switching SOI to a
-        // body you are approaching), an open hyperbolic/parabolic arc.
-        // Both draw the same way (a projected polyline); only the
-        // sampling differs. Top-down view in the focus's inertial
-        // frame, so the trajectory's true 3D orientation shows through
-        // the projection.
+        // The focus body: the ship's parent when there is one, else the home
+        // body (a new game before its first launch has no ship, and the
+        // station still shows the system around home). Everything ship-specific
+        // -- the orbit, apsides, dot, the other ships, the transfer -- is
+        // guarded on `ship` and simply absent then.
+        TerrainBody *focus = ship ? ship->m_parent : g.home;
         const int N = 64;
-        const bool closed = (o.ecc < 1.0);
+
+        // The ship's trajectory around the focus: a closed ellipse (a coasting
+        // Kepler orbit) or, when the ship is escaping or flying by (ecc >= 1 --
+        // e.g. right after switching SOI to a body you are approaching), an open
+        // hyperbolic/parabolic arc. Both draw the same way (a projected
+        // polyline); only the sampling differs. Empty with no ship.
+        bool closed = false;
         std::vector<glm::dvec3> traj_pts;
-        if(closed) {
-            // Sampled through a per-ship cache, trusted only while the
-            // ship is on rails (coasting on its Keplerian conic). Off
-            // rails -- Bullet-integrated, or right after a burn /
-            // staging / SOI switch / crash (all of which clear onRails)
-            // -- the orbit is moving, so re-sample every frame. See
-            // OrbitSampleCache.
-            traj_pts = orbit_caches[(const void *)ship].sample(
-                orbit_pos, orbit_vel, mu, N, ship->onRails);
-        } else {
-            // Open trajectory: an arc around periapsis, truncated where
-            // it would run off to infinity. r_cap is the current view
-            // extent (the map square's width in world units) so the
-            // curve reaches the edge of the view, but never smaller
-            // than a few periapsis radii or the ship's current radius
-            // (so the ship itself lies on the arc).
-            const double r_cap = std::max<double>(
-                (double)std::max(mapW, mapH) * map_scale,
-                std::max(4.0 * o.periapsis, o.distance));
-            traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
-        }
-    
-        // Periapsis (both cases) and apoapsis (closed only). A closed
-        // orbit propagates to each apsis (exact); an open arc has no
-        // apoapsis, and its periapsis point is radius o.periapsis
-        // along the eccentricity vector (which points to periapsis) --
-        // no propagation needed.
         glm::dvec3 peri_p, apo_p, tmp;
         bool have_peri = false, have_apo = false;
-        if(closed) {
-            if(o.time_to_peri > 0.0) {
-                propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
-                have_peri = true;
+        if(ship) {
+            closed = (o.ecc < 1.0);
+            if(closed) {
+                // Sampled through a per-ship cache, trusted only while the ship
+                // is on rails (coasting on its Keplerian conic). Off rails --
+                // Bullet-integrated, or right after a burn / staging / SOI
+                // switch / crash (all of which clear onRails) -- the orbit is
+                // moving, so re-sample every frame. See OrbitSampleCache.
+                traj_pts = orbit_caches[(const void *)ship].sample(
+                    orbit_pos, orbit_vel, mu, N, ship->onRails);
+            } else {
+                // Open trajectory: an arc around periapsis, truncated where it
+                // would run off to infinity. r_cap is the current view extent
+                // (the map square's width in world units) so the curve reaches
+                // the edge of the view, but never smaller than a few periapsis
+                // radii or the ship's current radius (so the ship itself lies
+                // on the arc).
+                const double r_cap = std::max<double>(
+                    (double)std::max(mapW, mapH) * map_scale,
+                    std::max(4.0 * o.periapsis, o.distance));
+                traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
             }
-            if(o.time_to_apo > 0.0) {
-                propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
-                have_apo = true;
-            }
-        } else {
-            const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
-            const double hl = glm::length(h);
-            if(hl > 1e-9) {
-                const glm::dvec3 evec =
-                    glm::cross(orbit_vel, h)/mu - orbit_pos/o.distance;
-                const double el = glm::length(evec);
-                if(el > 1e-9) {
-                    peri_p = (o.periapsis / el) * evec;
+            // Periapsis (both cases) and apoapsis (closed only). A closed orbit
+            // propagates to each apsis (exact); an open arc has no apoapsis,
+            // and its periapsis point is radius o.periapsis along the
+            // eccentricity vector (which points to periapsis) -- no propagation
+            // needed.
+            if(closed) {
+                if(o.time_to_peri > 0.0) {
+                    propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_peri, peri_p, tmp);
                     have_peri = true;
+                }
+                if(o.time_to_apo > 0.0) {
+                    propagateKepler(orbit_pos, orbit_vel, mu, o.time_to_apo, apo_p, tmp);
+                    have_apo = true;
+                }
+            } else {
+                const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
+                const double hl = glm::length(h);
+                if(hl > 1e-9) {
+                    const glm::dvec3 evec =
+                        glm::cross(orbit_vel, h)/mu - orbit_pos/o.distance;
+                    const double el = glm::length(evec);
+                    if(el > 1e-9) {
+                        peri_p = (o.periapsis / el) * evec;
+                        have_peri = true;
+                    }
                 }
             }
         }
-    
-        // The focus body (the ship's parent) and the map plane.
-        // The plane is a normal in the focus's inertial frame;
-        // OrbitMap derives an in-plane basis from it. All three
-        // candidates live in that frame:
+
+        // The map plane: a normal in the focus's inertial frame; OrbitMap
+        // derives an in-plane basis from it. All three candidates live in that
+        // frame:
         //   equatorial = the focus's reference plane (normal +Y);
-        //   ecliptic   = the system reference plane (root XZ) expressed
-        //                in the focus's frame;
-        //   orbital    = the ship's own orbital plane (h = r x v).
-        TerrainBody *focus = ship->m_parent;
+        //   ecliptic   = the system reference plane (root XZ) expressed in the
+        //                focus's frame;
+        //   orbital    = the ship's own orbital plane (h = r x v) -- needs a
+        //                ship, so without one it stays on the equatorial plane.
         glm::dvec3 plane_n(0.0, 1.0, 0.0);
         if(map_plane == 1) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);
-        } else if(map_plane == 2) {
+        } else if(map_plane == 2 && ship) {
             const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
             const double hl = glm::length(h);
             if(hl > 1e-9) { plane_n = h / hl; }
@@ -3118,86 +3127,85 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
             draw_soi(cpos_f, b->frame->soi);
         }
         // The focus body's own SOI -- the boundary of the current
-        // gravitational regime the ship is inside.
+        // gravitational regime (with a ship: the one it is inside; without:
+        // home's).
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi);
-    
-        // closed=true for the ellipse (it is a closed loop); false for
-        // the open arc (a chord would otherwise close it).
-        map.drawOrbit(dl, traj_pts, col_ship, 1.0f, closed);
-        map.drawBody(dl, ship->m_parent->radius, col_body);
-        // The ship: a bright dot (you are here) with a green ring, on
-        // the line from the focus.
-        const ImVec2 ship_px = map.px(orbit_pos);
-        dl->AddLine(focus_px, ship_px, ink, 1.0f);
-        dl->AddCircleFilled(ship_px, 5.0f, ink);
-        dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
-        // Prograde (velocity) arrow, along the ship's velocity.
-        if(map_show_vel) {
-            map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
-        }
-        // Apside markers are only meaningful for a non-circular orbit;
-        // an open arc has periapsis but no apoapsis.
-        if(o.ecc > 1e-3) {
-            if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
-            if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
-        }
-    
-        // Every other ship in this body: its orbit (when closed) plus
-        // a dot + label at its current position, so the whole traffic
-        // pattern shows, not just you and the target. The player's own
-        // ship is already drawn above in green (skipped here). Ships
-        // on an escape trajectory (ecc >= 1) have no closed orbit to
-        // draw -- sample() returns empty -- so only their position
-        // marker shows.
-        {
-            Frame *inertial = ship->frame->getNonRotFrame();
-            for(auto *s : focus->ships) {
-                if(s == ship || !s->frame || s->frame->body != focus) {
-                    continue;
+
+        // The focus body's disk at the centre (home when there is no ship).
+        map.drawBody(dl, focus->radius, col_body);
+
+        // The ship itself, absent with no ship: its orbit (closed loop, or an
+        // open arc -- closed=false so a chord does not close it), a bright dot
+        // (you are here) with a green ring on the line from the focus, the
+        // prograde arrow and the apside markers.
+        if(ship) {
+            map.drawOrbit(dl, traj_pts, col_ship, 1.0f, closed);
+            const ImVec2 ship_px = map.px(orbit_pos);
+            dl->AddLine(focus_px, ship_px, ink, 1.0f);
+            dl->AddCircleFilled(ship_px, 5.0f, ink);
+            dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
+            // Prograde (velocity) arrow, along the ship's velocity.
+            if(map_show_vel) {
+                map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
+            }
+            // Apside markers are only meaningful for a non-circular orbit; an
+            // open arc has periapsis but no apoapsis.
+            if(o.ecc > 1e-3) {
+                if(have_peri) { map.drawDot(dl, peri_p, 4.0f, col_apsis); }
+                if(have_apo)  { map.drawDot(dl, apo_p,  4.0f, col_apsis); }
+            }
+
+            // Every ship in the system -- any SOI, not just the focus's: its
+            // orbit (a Kepler conic around its OWN central body) projected
+            // into the focus's frame, plus a dot + label at its position.
+            // The player's own ship is already drawn above in green (skipped
+            // here). Each ship's conic is sampled in its central body's
+            // inertial frame (where its elements are constant while coasting
+            // -- the cache is keyed on them), then the whole ellipse is
+            // rotated/translated into the focus's frame (the central body
+            // moves relative to the focus, so that transform is per-frame).
+            // A ship on an escape trajectory (ecc >= 1) has no closed orbit
+            // to draw -- sample() returns empty -- so only its marker shows.
+            for(auto *b : planets) {
+                for(auto *s : b->ships) {
+                    if(s == ship || !s->frame) { continue; }
+                    Frame *inertial = s->frame->getNonRotFrame();
+                    const double mu_c = inertial ? inertial->body->mu : 0.0;
+                    if(!inertial || mu_c <= 0.0) { continue; }
+                    // The ship's state in its central body's inertial frame.
+                    const glm::dvec3 tcom = s->get_center_of_mass();
+                    const glm::dmat3 Oc = s->frame->GetOrientRelTo(inertial);
+                    const glm::dvec3 r2 = Oc * tcom
+                                         + s->frame->GetPositionRelTo(inertial);
+                    const glm::dvec3 v2 = Oc * (s->GetVel()
+                                               + s->frame->GetStasisVelocity(tcom))
+                                         + s->frame->GetVelocityRelTo(inertial);
+                    const std::vector<glm::dvec3> &tpts_c =
+                        orbit_caches[(const void *)s].sample(
+                            r2, v2, mu_c, N, s->onRails);
+                    // Into the focus's frame (central body -> focus).
+                    const glm::dmat3 O = inertial->GetOrientRelTo(focus->frame);
+                    const glm::dvec3 P = inertial->GetPositionRelTo(focus->frame);
+                    if(!tpts_c.empty()) {
+                        std::vector<glm::dvec3> tpts_f;
+                        tpts_f.reserve(tpts_c.size());
+                        for(const glm::dvec3 &pt : tpts_c) {
+                            tpts_f.push_back(O * pt + P);
+                        }
+                        map.drawOrbit(dl, tpts_f, col_vessel, 1.0f);
+                    }
+                    const ImVec2 tpx = map.px(O * r2 + P);
+                    dl->AddCircleFilled(tpx, 3.0f, col_vessel);
+                    dl->AddText(ImVec2(tpx.x + 4.0f, tpx.y - 11.0f),
+                                col_vessel, s->name.c_str());
                 }
-                Frame *tsf = s->frame;
-                const glm::dvec3 tcom = s->get_center_of_mass();
-                const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
-                const glm::dvec3 r2 = O * tcom + tsf->GetPositionRelTo(inertial);
-                const glm::dvec3 v2 = O * (s->GetVel()
-                                          + tsf->GetStasisVelocity(tcom))
-                                    + tsf->GetVelocityRelTo(inertial);
-                const std::vector<glm::dvec3> &tpts =
-                    orbit_caches[(const void *)s].sample(
-                        r2, v2, mu, N, s->onRails);
-                if(!tpts.empty()) {
-                    map.drawOrbit(dl, tpts, col_vessel, 1.0f);
-                }
-                const ImVec2 tpx = map.px(r2);
-                dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                dl->AddText(ImVec2(tpx.x + 4.0f, tpx.y - 11.0f),
-                            col_vessel, s->name.c_str());
             }
         }
-    
-        // P3: the transfer conic to the selected target (planner has a
-        // valid solution). It is a Kepler orbit under the focus's mu,
-        // starting at the ship (r1 = orbit_pos) with velocity
-        // sol.v_departure and propagated over sol.tof -- the same
-        // frame as the rest of the map, so it projects through the
-        // same plane. The arc's end is the arrival / intercept point
-        // (where the ship meets the target at t + tof); the departure
-        // point is the ship dot already drawn above.
-        if(xfer.valid) {
-            const TransferSolution &sol = xfer.sol;
-            // Even-in-anomaly (not uniform-in-time) so the leg draws with an
-            // even outline, like the closed orbits (see sampleTransferArc).
-            std::vector<glm::dvec3> xfer_pts =
-                sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, N);
-            map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
-            const glm::dvec3 &arrival = xfer_pts.back();
-            map.drawDot(dl, arrival, 4.0f, col_xfer);
-            char xfer_label[96];
-            snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
-                     xferTargets[xfer_target].name, sol.total_dv);
-            const ImVec2 apx = map.px(arrival);
-            dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
-                        xfer_label);
+
+        // No ship yet: the map shows the system around home, but there is no
+        // orbit to track -- say so (the ship list beside it is already empty).
+        if(!ship) {
+            ImGui::Text("No ships yet -- launch one from the VAB.");
         }
 
     });

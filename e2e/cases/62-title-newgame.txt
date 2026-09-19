@@ -1,14 +1,12 @@
-# New Game from the title screen. Game::newGame builds the default vessel on the
-# home body's pad and collapses the stack to [Flight]; --new-game is the
-# headless hook for the button.
-#
-# "Active ship 1 of 2" is the racer plus the kerbal aboard it -- collectVehicles
-# counts a ship's crew as fleet entries, so a single-ship start is 2.
+# New Game from the title screen: the floor becomes the Space Center hub with
+# NO ship (the player then goes to the VAB to build and launch the first
+# vessel; vabLaunch -> enterFlight). --new-game is the headless hook for the
+# button. Boot is shipless (no --ship): the constructor seeds [Flight], then
+# the shipless boot collapses it to Title.
 NAME title-newgame
 ARGS --new-game 2000 --timeout 8
 EXPECT [scene] flight -> title (enterTitle)
-EXPECT Active ship 1 of 2: racer
-EXPECT [scene] title -> flight (enterFlight)
-EXPECT [game] new game: racer on Kerbin
+EXPECT [scene] title -> spacecenter (enterSpaceCenter)
+EXPECT [game] new game: Space Center, no ship
 FORBID GL_
 FORBID error:

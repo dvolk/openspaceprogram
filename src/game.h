@@ -536,9 +536,15 @@ struct Game {
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;
-    // TAB: hide / restore the live scene's Persistent windows (the pause
-    // menu's "Toggle windows" button calls this too).
+    // TAB: hide / restore the live scene's Persistent windows.
     void toggle_windows();
+    // Set the live scene's Persistent windows to match ui_visible (hidden =
+    // closed, visible = default-open). The shared restore loop.
+    void apply_ui_visible();
+    // A scene entry always shows the UI: a TAB-hide left behind in the
+    // previous scene must not carry over (a VAB whose top bar is hidden is a
+    // blue screen). No-op when the UI is already visible.
+    void ensure_ui_visible();
     // Rebuild the imgui style from the Settings state (theme, DPI scale,
     // rounding, transparency).
     void apply_ui_style();
@@ -554,12 +560,11 @@ struct Game {
     // Take control of `v` (release + park the current one, recenter the
     // orbit camera, drop rails warp).
     void select_ship(Vehicle *v);
-    /* Start a fresh game from the title screen: the default vessel on the home
-       body's pad, then hand over to Flight. False (plus a toast) if a game is
-       already running or the def fails to build. This is the runtime twin of
-       main's CLI boot path; the two should merge into one startGame()
-       (reports/ui-scenes2026_09_17 stage 4), which is why it stays small
-       instead of growing fleet/scenario options of its own. */
+    /* Start a fresh game from the title screen: make the Space Center the
+       floor, with NO ship -- the player then goes to the VAB to build and
+       launch the first vessel (vabLaunch -> enterFlight). There is no fleet to
+       build here (the ship comes from the VAB launch), so this is just a scene
+       transition. False (plus a toast) if a game is already running. */
     bool newGame();
     /* Settle a freshly built fleet into the world: apply every ship's
        scenario (which is what positions them), then park on rails every ship
