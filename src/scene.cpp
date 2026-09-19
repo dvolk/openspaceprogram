@@ -300,3 +300,23 @@ void enterTitle(Game &g) { setBaseScene(g, SceneId::Title, "enterTitle"); }
 void enterSpaceCenter(Game &g) {
     setBaseScene(g, SceneId::SpaceCenter, "enterSpaceCenter");
 }
+
+void goScene(Game &g, SceneId id) {
+    if(g.sceneStack.empty()) { return; }
+    int top = -1;
+    for(int i = (int)g.sceneStack.size() - 1; i >= 0; i--) {
+        if(g.sceneStack[i].id == id) { top = i; break; }
+    }
+    if(top < 0) {
+        pushScene(g, id);   // not on the stack: jump forward
+        return;
+    }
+    // Pop down to the topmost instance (popScene restores its camera as we go).
+    while((int)g.sceneStack.size() - 1 > top) {
+        popScene(g);
+    }
+}
+
+bool gameRunning(const Game &g) {
+    return !g.sceneStack.empty() && g.sceneStack.front().id != SceneId::Title;
+}

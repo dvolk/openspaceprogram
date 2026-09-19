@@ -1372,7 +1372,7 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             for(size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
                 if(slotGroup((Slot)i) != grp) { continue; }
                 // Unique per-row ID: the button labels ("rebind"/"clear")
-                // repeat on all 42 rows, so without this every row's buttons
+                // repeat on every row, so without this all rows' buttons
                 // share one window ID and ImGui rejects them ("N visible
                 // items with conflicting ID").
                 ImGui::PushID((int)i);

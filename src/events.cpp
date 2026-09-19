@@ -493,32 +493,36 @@ void poll_events(Game &g) {
                 }
             }
 
-            /* Scene-switch shortcuts (1/2/3/4): jump straight to the Space
-               Center / flight / Tracking Station / VAB via the same entry
-               points the menus use. In-game navigation only: denied on the
-               title (no game to navigate within), and GoFlight additionally
-               needs a ship to fly -- entering flight with none crashes the
-               HUD's ship readouts. pushScene / vabOpen refuse a re-push of the
-               live scene; enterFlight collapses the stack to the cockpit and
-               syncShipFocus recenters on the ship (enterFlight skips its enter
-               when the base is already Flight, so without it the camera stays
-               on the hub's parked planet backdrop). One-shot (auto-repeat
-               would just keep jumping). */
-            if(!ev.key.repeat) {
-                const bool onTitle = sceneIs(g, SceneId::Title);
-                if(!onTitle && slotFired(Slot::GoSpaceCenter, ksc, kmod, g.binds)) {
-                    pushScene(g, SceneId::SpaceCenter);
+            /* Scene-switch shortcuts (1/2/3/4): jump to the Space Center /
+               flight / Tracking Station / VAB. Gated three ways:
+               - gameRunning: in-game navigation only -- the stack floor is the
+                 Title exactly in the no-game states (a bare boot, --vab with no
+                 vessel, quitToTitle), where there is nothing to navigate.
+               - !WantCaptureKeyboard: digits are the first scene-neutral keys
+                 people actually type, so a focused text field (the Save/Load
+                 name, the stage selector, the VAB save path) must win.
+               - GoFlight needs an active ship -- entering flight with none
+                 crashes the HUD's ship readouts -- and syncShipFocus, because
+                 enterFlight skips its enter when the base is already Flight
+                 (without it the camera stays on the hub's parked planet).
+               goScene pops down to the scene if it is already on the stack,
+               else pushes it, so the shortcuts never nest a duplicate;
+               enterFlight collapses instead (a launch changed the ship).
+               One-shot (auto-repeat would just keep jumping). */
+            if(!ev.key.repeat && !ImGui::GetIO().WantCaptureKeyboard
+                    && gameRunning(g)) {
+                if(slotFired(Slot::GoSpaceCenter, ksc, kmod, g.binds)) {
+                    goScene(g, SceneId::SpaceCenter);
                 }
-                if(!onTitle && g.ship != nullptr
-                        && slotFired(Slot::GoFlight, ksc, kmod, g.binds)) {
+                if(g.ship != nullptr && slotFired(Slot::GoFlight, ksc, kmod, g.binds)) {
                     enterFlight(g);
                     g.syncShipFocus();
                 }
-                if(!onTitle && slotFired(Slot::GoTracking, ksc, kmod, g.binds)) {
-                    pushScene(g, SceneId::TrackingStation);
+                if(slotFired(Slot::GoTracking, ksc, kmod, g.binds)) {
+                    goScene(g, SceneId::TrackingStation);
                 }
-                if(!onTitle && slotFired(Slot::GoVab, ksc, kmod, g.binds)) {
-                    vabOpen(g);
+                if(slotFired(Slot::GoVab, ksc, kmod, g.binds)) {
+                    goScene(g, SceneId::Vab);
                 }
             }
 

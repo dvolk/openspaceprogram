@@ -145,6 +145,17 @@ void enterTitle(Game &g);
    vessel (vabLaunch -> enterFlight). "Resume Flight" is hidden there because
    there is no flight to pop back to. */
 void enterSpaceCenter(Game &g);
+/* Jump to a scene without collapsing the stack: pop down to the topmost
+   instance if it is already on the stack (a "back"), else push it (a
+   "forward"). Walks top-down, so a duplicated scene (a double-VAB) resolves
+   to the nearest copy, and each pop restores that scene's parked camera. This
+   is the "go to" semantic the 1/2/3/4 shortcuts use (enterFlight, by contrast,
+   collapses the stack because a launch changed the ship you are flying). */
+void goScene(Game &g, SceneId id);
+/* True when a game is in charge of the world: the stack floor is not the
+   Title. The floor is Title only in the no-game states (a bare boot, --vab
+   with no vessel, quitToTitle) and SpaceCenter/Flight otherwise. */
+bool gameRunning(const Game &g);
 
 // Capture / apply a camera pose. Free functions rather than Game methods: they
 // are transition mechanics belonging to the stack, and the snapshot lives on
