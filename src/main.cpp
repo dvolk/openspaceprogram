@@ -475,7 +475,7 @@ int main(int argc, char **argv)
            nothing to fly sits on [title, vab] -- its "Back to game" then pops
            to the title screen instead of dropping into a flight scene with no
            vessel in it (which is what the old single-scene model did). */
-        cam->distance = 3.0 * home->radius;
+        cam->distance = 2.0 * home->radius;
         enterTitle(game);
         printf("[boot] no vessel: title screen over %s\n", home->name.c_str());
         fflush(stdout);

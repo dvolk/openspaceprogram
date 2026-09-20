@@ -275,7 +275,7 @@ void pickAt(Game &g, int px, int py) {
 
    The orbit camera follows the state change: it keeps its old distance,
    so re-centering must re-scale too (50 m around a planet centre is
-   inside the planet; 3 radii around a ship is space). Home sits at its
+   inside the planet; 2 radii around a ship is space). Home sits at its
    own frame's origin, which is the render frame in the no-ship state. */
 void Game::syncShipFocus() {
     if(ship != nullptr) {
@@ -301,8 +301,8 @@ void Game::syncShipFocus() {
             camera->distance = ship->isEva() ? 5.0 : 50.0;
         } else {
             camera->Follow(glm::dvec3(0.0));
-            // the orbit-view default (the no-ship boot parks 3 radii out)
-            camera->distance = 3.0 * home->radius;
+            // the orbit-view default (the no-ship boot parks 2 radii out)
+            camera->distance = 2.0 * home->radius;
         }
     }
 }

@@ -82,7 +82,7 @@ void spaceCenterEnter(Game &g) {
             if(g.focusTargets[i].body == g.home) { g.focusBody = i; break; }
         }
         g.camera->Follow(g.focusWorldPos(g.focusBody));
-        g.camera->distance = 3.0 * g.home->radius;
+        g.camera->distance = 2.0 * g.home->radius;
         g.camera->ComputeView();   // a sane pose immediately, not next frame
     }
     printf("[spacecenter] entered (live sim)\n");
