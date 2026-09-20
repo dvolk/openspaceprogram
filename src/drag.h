@@ -14,6 +14,7 @@
 // the ship's frame velocity IS the air-relative velocity -- no stasis /
 // frame-conversion term is needed. See reports/atmospheric-drag.
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -214,82 +215,75 @@ inline glm::dvec3 partDrag(double q, const glm::dvec3 &vhat, double offAxis,
     return -vhat * (q * a);
 }
 
-/* One face of a part's convex hull, in the PART-LOCAL frame: its outward
-   unit normal and its (planar) area [m^2]. The set of faces of a convex
-   body completely determines its silhouette -- see projectedArea. */
-struct AeroFace {
-    glm::dvec3 normal = glm::dvec3(0.0);  // unit, part-local frame
-    double area = 0.0;                    // face area [m^2]
-};
-
-/* The projected (silhouette) area of a closed surface seen along `dir`:
-   the sum of the areas of the faces that turn toward the flow, each
-   weighted by how directly it faces it.
-     A_proj(dir) = SUM_f  area_f * max(0, normal_f . dir)
-   For a CONVEX body this is exactly the area of its silhouette (the shadow
-   it casts on a plane perpendicular to dir): the front-facing faces tile
-   the silhouette without overlap, and each contributes area_f * (normal_f .
-   dir) to it. The result is symmetric in dir (a convex body's silhouette
-   is the same seen from either side), so the sign convention of `dir` is
-   irrelevant. `dir` need not be unit -- it is normalized here (a zero or
-   degenerate dir, or an empty face list, gives 0). The normals must be
-   unit; the face areas must be the true planar areas (fan-triangulated for
-   non-triangular faces). */
-inline double projectedArea(const std::vector<AeroFace> &faces,
-                            const glm::dvec3 &dir) {
-    const double len = glm::length(dir);
-    if(len <= 0.0) { return 0.0; }
-    const glm::dvec3 d = dir / len;
-    double a = 0.0;
-    for(size_t i = 0; i < faces.size(); i++) {
-        const double n = glm::dot(faces[i].normal, d);
-        if(n > 0.0) { a += faces[i].area * n; }
-    }
-    return a;
+/* The 2-D cross product (z-component) of (b-a) x (c-a). */
+inline double cross2(const glm::dvec2 &a, const glm::dvec2 &b,
+                     const glm::dvec2 &c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-/* The (outward normal, area) list of a convex mesh's triangles, from its raw
-   vertex/index arrays (vs: num_vertices * 3 doubles; is: 3 indices per
-   triangle). Each triangle becomes one AeroFace: for projectedArea a "face"
-   is just a (normal, area) pair, and summing over the triangles of a CONVEX
-   mesh gives its silhouette exactly (the triangles tile the hull, and each
-   coplanar group shares a normal, so the face-sum and the triangle-sum agree).
-   The normals are made OUTWARD: for a convex mesh the vertex centroid lies
-   inside the body, so the direction from it to a triangle's centroid is
-   outward -- any triangle whose winding normal points the wrong way is
-   flipped. That makes the result independent of the mesh's winding. Pure math
-   (glm) so tests/ can pin it without GL/Bullet; a degenerate triangle (zero
-   area) is skipped. */
-inline std::vector<AeroFace> extractAeroFaces(const double *vs,
-                                              unsigned int num_vertices,
-                                              const int *is,
-                                              unsigned int num_indices) {
-    std::vector<AeroFace> faces;
-    if(vs == nullptr || is == nullptr || num_vertices < 3 || num_indices < 3) {
-        return faces;
+/* The projected (silhouette) area of a body seen along `dir`, from the
+   vertices of its CONVEX HULL (part-local frame). The silhouette of a convex
+   body is exactly the convex hull of its projected vertices, so this is the
+   area of that 2-D hull:
+     A_proj(dir) = area(conv({ (v.u, v.w) : v in hullVerts }))
+   where (u, w) is a 2-D basis of the plane perpendicular to dir. Computed
+   with Andrew's monotone chain (O(n log n)) + the shoelace area.
+   Using the HULL's vertices -- not the raw mesh's triangles -- is what makes
+   it exact for a NON-convex mesh too (the engine is a hollow tube with a
+   nozzle: its triangle sum is the wrong silhouette). The hull is convex by
+   construction and is the SAME shape the collision uses (BuildPartHull), so
+   the drag area and the collision silhouette agree by construction. The
+   result is symmetric in dir (a convex body's silhouette is the same seen
+   from either side), so the sign of `dir` is irrelevant. `dir` need not be
+   unit -- it is normalized here; a zero dir or fewer than 3 (non-collinear)
+   vertices gives 0. Pure math (glm + <algorithm>) so tests/ can pin it
+   without GL/Bullet. */
+inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
+                            const glm::dvec3 &dir) {
+    const double len = glm::length(dir);
+    if(len <= 0.0 || hullVerts.size() < 3) { return 0.0; }
+    const glm::dvec3 d = dir / len;
+    // A 2-D basis (u, w) of the plane perpendicular to d (ref chosen off d
+    // so cross(d, ref) is not degenerate).
+    const glm::dvec3 ref = (std::fabs(d.x) < 0.9) ? glm::dvec3(1, 0, 0)
+                                                  : glm::dvec3(0, 1, 0);
+    const glm::dvec3 u = glm::normalize(glm::cross(d, ref));
+    const glm::dvec3 w = glm::cross(d, u);
+    // Project the hull vertices onto (u, w).
+    std::vector<glm::dvec2> p(hullVerts.size());
+    for(size_t i = 0; i < hullVerts.size(); i++) {
+        p[i] = glm::dvec2(glm::dot(hullVerts[i], u), glm::dot(hullVerts[i], w));
     }
-    // The vertex centroid: inside the body for a convex mesh, so the
-    // direction to any triangle is outward.
-    glm::dvec3 centroid(0.0);
-    for(unsigned int i = 0; i < num_vertices; i++) {
-        centroid += glm::dvec3(vs[3 * i], vs[3 * i + 1], vs[3 * i + 2]);
+    // Andrew's monotone chain: the convex hull of p (CCW, collinear dropped).
+    // (glm::dvec2 has no operator<, so an explicit x-then-y comparator.)
+    std::sort(p.begin(), p.end(), [](const glm::dvec2 &a, const glm::dvec2 &b) {
+        return (a.x < b.x) || (a.x == b.x && a.y < b.y);
+    });
+    std::vector<glm::dvec2> h;
+    for(size_t i = 0; i < p.size(); i++) {
+        while(h.size() >= 2
+              && cross2(h[h.size() - 2], h[h.size() - 1], p[i]) <= 0.0) {
+            h.pop_back();
+        }
+        h.push_back(p[i]);
     }
-    centroid /= (double)num_vertices;
-
-    for(unsigned int i = 0; i + 2 < num_indices; i += 3) {
-        const glm::dvec3 a(vs[3 * is[i]],     vs[3 * is[i] + 1],     vs[3 * is[i] + 2]);
-        const glm::dvec3 b(vs[3 * is[i + 1]], vs[3 * is[i + 1] + 1], vs[3 * is[i + 1] + 2]);
-        const glm::dvec3 c(vs[3 * is[i + 2]], vs[3 * is[i + 2] + 1], vs[3 * is[i + 2] + 2]);
-        const glm::dvec3 cr = glm::cross(b - a, c - a);
-        const double len = glm::length(cr);
-        if(len <= 0.0) { continue; }            // degenerate triangle
-        const double area = 0.5 * len;
-        glm::dvec3 normal = cr / len;
-        const glm::dvec3 outward = (a + b + c) / 3.0 - centroid;
-        if(glm::dot(normal, outward) < 0.0) { normal = -normal; }
-        faces.push_back(AeroFace{normal, area});
+    const size_t lowerSize = h.size() + 1;
+    for(int i = (int)p.size() - 1; i >= 0; i--) {
+        while(h.size() >= lowerSize
+              && cross2(h[h.size() - 2], h[h.size() - 1], p[i]) <= 0.0) {
+            h.pop_back();
+        }
+        h.push_back(p[i]);
     }
-    return faces;
+    h.pop_back();                              // drop the duplicated start point
+    if(h.size() < 3) { return 0.0; }           // degenerate (collinear) hull
+    // Shoelace area of the hull polygon.
+    double a = 0.0;
+    for(size_t i = 0; i < h.size(); i++) {
+        const size_t j = (i + 1) % h.size();
+        a += h[i].x * h[j].y - h[j].x * h[i].y;
+    }
+    return 0.5 * std::fabs(a);
 }
 
 /* The force on one DEFLECTED control surface (an elevator / rudder /

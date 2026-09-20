@@ -73,13 +73,25 @@ Body *create_part_body(Mesh *mesh, Shader *shader, Texture *texture,
     body->mass = mass;
     body->hull_margin = hull_margin;
     BuildPartHull(body);
-    /* The aerodynamic faces, from the same mesh the hull is built from (the
-       part-local frame). Computed here -- the one place every part-creation
-       path goes through -- so flight, the VAB, saves and the dock/radial
-       tests all get them without each having to remember. A failed import
-       leaves the mesh empty and this yields an empty list (no drag). */
-    body->aeroFaces = extractAeroFaces(mesh->vs, mesh->num_vertices,
-                                       mesh->is, mesh->num_indices);
+    /* The collision hull's vertices (part-local frame) for the projected-area
+       drag (drag.h projectedArea). Read from body->shape -- the SAME
+       btConvexHullShape the collision uses -- so the drag silhouette matches
+       the collision shape by construction, even for a non-convex mesh (the
+       engine's hollow nozzle). Computed here -- the one place every
+       part-creation path goes through -- so flight, the VAB, saves and the
+       dock/radial tests all get it. A failed import leaves the hull with < 3
+       vertices and projectedArea reads 0 (no drag). */
+    if(const btConvexHullShape *hull =
+           static_cast<const btConvexHullShape *>(body->shape)) {
+        const int n = hull->getNumVertices();
+        body->hullVerts.reserve(n);
+        for(int i = 0; i < n; i++) {
+            btVector3 v;
+            hull->getVertex(i, v);
+            body->hullVerts.push_back(
+                glm::dvec3(v.getX(), v.getY(), v.getZ()));
+        }
+    }
     return body;
 }
 

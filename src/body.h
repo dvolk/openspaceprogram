@@ -4,7 +4,6 @@
 #include <bullet/btBulletDynamicsCommon.h>
 
 #include "camera.h"
-#include "drag.h"
 #include "mesh.h"
 #include "shader.h"
 #include "texture.h"
@@ -64,15 +63,17 @@ struct Body {
        against it. Freed after btBody, which points at it. */
     btCollisionShape *shape = nullptr;
 
-    /* The part's aerodynamic faces: the (outward normal, area) list of its
-       mesh's triangles, in the PART-LOCAL frame, extracted once at build
-       time from the same geometry the collision hull is built from (see
-       extractAeroFaces, drag.h). The drag area facing the flow is
-       projectedArea(aeroFaces, v̂) -- the silhouette, so a part drags more
-       as it turns broadside to the velocity (Phase 2 of the projected-drag
-       work, reports/projected-drag). Empty for a body with no mesh (a
-       point) -- projectedArea of an empty list is 0. */
-    std::vector<AeroFace> aeroFaces;
+    /* The part's collision hull's VERTICES (part-local frame), captured once
+       at build time from body->shape (the same btConvexHullShape the
+       collision uses). The drag area facing the flow is
+       projectedArea(hullVerts, v̂) -- the body's silhouette (drag.h), so a
+       part drags more as it turns broadside to the velocity (Phase 2 of the
+       projected-drag work, reports/projected-drag). Storing the HULL's
+       vertices (not the mesh's triangles) is what keeps the silhouette exact
+       for a non-convex mesh (the engine's hollow nozzle) and makes the drag
+       area match the collision shape by construction. Empty for a body with
+       no hull -- projectedArea of < 3 vertices is 0. */
+    std::vector<glm::dvec3> hullVerts;
 
     /* The shape's inertia diagonal per kilogram, and whether it has been
        worked out yet. A fixed shape's inertia is exactly LINEAR in its mass
