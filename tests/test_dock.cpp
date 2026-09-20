@@ -16,6 +16,12 @@
 //     BOTH ships' parts to their original world poses -- the split is the
 //     exact inverse of the merge on geometry. This is the invariant the
 //     future "dropped stage becomes a ship" relies on.
+//   - IDENTITY: Part::uid is minted per instance and stays distinct across a
+//     merge of two ships whose Part::ids collide on EVERY part -- the case
+//     two ships built from one def produce, since absorbShip does not rename.
+//     `id` is provably ambiguous there (asserted, not assumed) and uid is
+//     not, which is what makes uid the key save/load resolves by. Also pins
+//     that a split neither remints nor reuses a uid.
 //
 // No physics world and no GL context: ships are built with init() (which
 // runs rebuildCompound -- the one hull rigid body -- but NOT enterWorld) and
@@ -35,6 +41,7 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -242,9 +249,121 @@ static void test_roundtrip() {
     destroyShip(A.v);
 }
 
+/* --- uid: identity that survives a merge which collides every id ---------- */
+
+/* A two-part ship: tank + docking port, stacked face to face. `portIsRoot`
+   picks which end is the root, so the caller can build the mated pair (one
+   ship port-first, the other tank-first) that test_absorb docks.
+
+   Part::id is set to the SAME strings for every ship built here -- which is
+   exactly what two ships built from one def look like, since shipdef.cpp
+   auto-generates "<catalog name>_<n>" per file and absorbShip never renames. */
+static Part *mkTankPort(Ship &s, const char *shipName, double z, bool portIsRoot,
+                        Part **tankOut, Part **portOut) {
+    s.v = new Vehicle;
+    s.v->name = shipName;
+    Part *tank = mkPart(s, "fuel_tank", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *port = mkPart(s, "docking_port", 50.0, 1.0, 1.0, kPortHz, true);
+    tank->id = "fuel_tank_1";
+    port->id = "docking_port";
+    if(portIsRoot) {
+        s.v->setRoot(port);
+        s.v->attachDown(tank);
+        s.v->controller = port;
+    } else {
+        s.v->setRoot(tank);
+        s.v->attachDown(port);
+        s.v->controller = tank;
+    }
+    s.v->init();
+    s.v->placeShip(glm::dvec3(0.0, 0.0, z), glm::dmat3(1.0));
+    *tankOut = tank;
+    *portOut = port;
+    return port;
+}
+
+/* True when every part in `v` has a nonzero uid and no two share one. */
+static bool uidsUnique(const Vehicle *v) {
+    std::set<uint64_t> seen;
+    for(const Part *p : v->parts) {
+        if(p->uid == 0) { return false; }
+        if(!seen.insert(p->uid).second) { return false; }
+    }
+    return true;
+}
+
+/* True when at least two parts in `v` share a Part::id -- the collision that
+   makes `id` unusable as a key once ships merge. */
+static bool idsCollide(const Vehicle *v) {
+    std::set<std::string> seen;
+    for(const Part *p : v->parts) {
+        if(!seen.insert(p->id).second) { return true; }
+    }
+    return false;
+}
+
+static void test_uid() {
+    printf("== uid: unique per instance, distinct across an id-colliding merge ==\n");
+
+    /* Same geometry as test_absorb: A tank-first at the origin, B port-first
+       mated onto A's port face (A's port rear face is at z = -1.75, B's port
+       front face is its origin + 0.125, so B sits at z = -1.875). */
+    Ship A, B;
+    Part *tankA = nullptr, *portA = nullptr, *tankB = nullptr, *portB = nullptr;
+    mkTankPort(A, "A", 0.0,     false, &tankA, &portA);
+    mkTankPort(B, "B", -1.875,  true,  &tankB, &portB);
+
+    /* Minted, nonzero, and distinct before anything merges -- the two ships
+       are independent builds, so a per-ship counter would pass the first and
+       fail this one. */
+    CHECK_TRUE(uidsUnique(A.v), "uid: ship A's parts are all distinct and nonzero");
+    CHECK_TRUE(uidsUnique(B.v), "uid: ship B's parts are all distinct and nonzero");
+    {
+        std::set<uint64_t> both;
+        for(const Part *p : A.v->parts) { both.insert(p->uid); }
+        for(const Part *p : B.v->parts) { both.insert(p->uid); }
+        CHECK_TRUE(both.size() == A.v->parts.size() + B.v->parts.size(),
+                   "uid: distinct ACROSS two independently built ships");
+    }
+
+    /* Both ships were authored with the same ids, so the collision is present
+       before the merge too -- assert it, or the check below proves nothing. */
+    CHECK_TRUE(portA->id == portB->id, "uid: the two ships' port ids collide by construction");
+    CHECK_TRUE(tankA->id == tankB->id, "uid: the two ships' tank ids collide by construction");
+
+    A.v->absorbShip(B.v, portA);
+
+    /* The property save/load resolution depends on: after the merge the
+       string ids are ambiguous but the uids are not. */
+    CHECK_TRUE(A.v->parts.size() == 4, "uid: merged ship holds all four parts");
+    CHECK_TRUE(idsCollide(A.v), "uid: merged ship's string ids DO collide (the bug uid avoids)");
+    CHECK_TRUE(uidsUnique(A.v), "uid: merged ship's uids are still all distinct");
+
+    /* A split must not remint or reuse: the parts keep the uids they had. */
+    const uint64_t portBuid = portB->uid;
+    const uint64_t tankBuid = tankB->uid;
+    Vehicle *out = A.v->extractSubtreeAsShip(portB, "B");
+    CHECK_TRUE(out != nullptr, "uid: split succeeded");
+    if(out != nullptr) {
+        CHECK_TRUE(portB->uid == portBuid, "uid: split does not remint the root's uid");
+        CHECK_TRUE(tankB->uid == tankBuid, "uid: split does not remint a child's uid");
+        CHECK_TRUE(uidsUnique(out), "uid: split-off ship's uids are distinct and nonzero");
+        CHECK_TRUE(uidsUnique(A.v), "uid: survivor's uids are distinct and nonzero");
+        std::set<uint64_t> both;
+        for(const Part *p : A.v->parts) { both.insert(p->uid); }
+        for(const Part *p : out->parts) { both.insert(p->uid); }
+        CHECK_TRUE(both.size() == 4, "uid: survivor and split-off share no uid");
+        destroyShip(out);
+    }
+
+    destroyShip(B.v);   /* the empty shell absorbShip left behind */
+    destroyShip(A.v);
+}
+
 int main() {
     test_absorb();
     test_roundtrip();
+    test_uid();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }

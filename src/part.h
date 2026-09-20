@@ -8,8 +8,12 @@
 //   - the propellant tank contents (ResourceContent),
 //   - the stage number (from the ship def, not the catalog),
 //   - the transient per-tick armed thrust,
-//   - the part-tree edge (parent) and the authored ship-local pose,
-//   - the parked (rails) pose relative to the cluster COM.
+//   - the part-tree edge (parent) and the authored ship-local pose.
+//
+// A Part also carries its own globally unique identity (uid, minted by the
+// constructor). Unlike the def-authored `id` -- unique only within one ship
+// def -- a uid stays unique when ships merge, which is what makes it usable
+// as the key for cross-part references.
 //
 // Behavior (thruster / reaction wheel / RCS / capsule) is DERIVED from the
 // PartDef, not stored: a Part is a thruster iff its def has
@@ -22,8 +26,20 @@
 // non-owning (the catalog outlives the ship). Vehicle owns the Part (deletes
 // each Part in ~Vehicle).
 
+#include <cstdint>
+
 #include "body.h"      // Body (complete type -- ~Part deletes it)
 #include "shipdef.h"   // PartDef, ResourceContent
+
+/* Process-wide monotonic counter for Part::uid. A function-local static in an
+   inline function is ONE counter across every translation unit, and wrapping
+   it keeps the value unforgeable -- callers can mint a uid, not edit the
+   sequence. Never reused, never renumbered, so a Part* and its uid identify
+   the same part for the whole run. */
+inline uint64_t nextPartUid() {
+    static uint64_t n = 0;
+    return ++n;
+}
 
 struct Part {
     Body *body;                 // OWNED (the rigid body + hull shape; the render assets it holds are registry-shared)
@@ -35,9 +51,20 @@ struct Part {
        shroud declared in the catalog. */
     Mesh *shroud = nullptr;
     Texture *shroud_texture = nullptr;
-    std::string id;             // the instance id from the ship def (stable for the ship's
-                                // lifetime; the key save/load, the fuel links and the dock
-                                // seams use to name this part). Set in build_ship.
+    /* The GLOBALLY unique instance identity, minted by the constructor from
+       nextPartUid(). Distinct across every part of every ship in the process,
+       and stable for the part's lifetime -- which `id` below is NOT, so this
+       is the key that cross-part references (save/load, fuel links, dock
+       seams, the containment edge) should name a part by. Never 0. */
+    uint64_t uid;
+
+    /* The instance id from the ship def. Unique only WITHIN one ship def
+       (shipdef.cpp enforces that and auto-generates "<catalog name>_<n>"),
+       so it is NOT a key once ships merge: absorbShip moves another ship's
+       parts in without renaming them, and two ships built from the same def
+       collide on every id. Authoring-facing (the def file, the VAB, the
+       diagnostics); use `uid` to identify a part. */
+    std::string id;
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group
@@ -59,11 +86,7 @@ struct Part {
     glm::dvec3 localPos = glm::dvec3(0.0);
     glm::dmat3 localRot = glm::dmat3(1.0);
 
-    /* parked (rails) pose relative to the cluster COM, in cluster axes.
-       Written by goOnRails(), read by writeRailPose(); identity/zero for a
-       part not currently railed. */
-
-    Part() : body(nullptr), def(nullptr) { }
+    Part() : body(nullptr), def(nullptr), uid(nextPartUid()) { }
     ~Part() { delete body; }
 
     /* --- derived behavior (see the header comment): field-driven, so the

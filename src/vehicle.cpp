@@ -1030,7 +1030,7 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
     return true;
 }
 
-float Vehicle::getFuelMass(const std::vector <enum ResourceType>& types) {
+float Vehicle::getFuelMass(const std::vector<enum ResourceType>& types) {
     float fuel = 0;
     for(auto&& type : types) {
         for(Part *p : parts) {

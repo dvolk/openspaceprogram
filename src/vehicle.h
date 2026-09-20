@@ -514,7 +514,7 @@ public:
        caller scales the kg/s flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */, Part *engine);
 
-    float getFuelMass(const std::vector /* eh */ <enum ResourceType>& types);
+    float getFuelMass(const std::vector<enum ResourceType>& types);
 
     float getDeltaV();
 
