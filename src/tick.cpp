@@ -39,7 +39,6 @@ void tick(Game &g) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
         s->drag_cd = g.args.drag_cd;
-        s->drag_k = g.args.drag_k;
     }
 
     while (g.accumulator >= g.dt) {
@@ -452,13 +451,13 @@ void tick(Game &g) {
                 const glm::dvec3 v = g.ship->GetVel();
                 printf("[drag] t=%.1fs alt=%.1f m rho=%.5g kg/m3 "
                        "|v|=%.2f m/s |F|=%.2f N |L|=%.2f N |tau|=%.2f Nm "
-                       "Cd=%.3f K=%.3f AoA=%.1f deg\n",
+                       "Cd=%.3f A=%.2f m2 AoA=%.1f deg\n",
                        g.time, g.ship->lastDragAlt, g.ship->lastDragRho,
                        glm::length(v),
                        glm::length(g.ship->lastAeroForce),
                        glm::length(g.ship->lastLiftForce),
                        glm::length(g.ship->lastAeroTorque),
-                       g.ship->drag_cd, g.ship->drag_k,
+                       g.ship->drag_cd, g.ship->lastDragArea,
                        glm::degrees(g.ship->lastDragAlpha));
                 // The control surfaces' applied deflections (the "what is the
                 // pilot steering right now?" telemetry): one per surface --

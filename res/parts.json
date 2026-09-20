@@ -720,10 +720,7 @@
       "height": 2.0,
       "lift_area": 2,
       "cl": 6.0,
-      "stall_angle": 0.35,
-      "drag_area": 2,
-      "cd": 0.04,
-      "k_drag": 0.8
+      "stall_angle": 0.35
     },
     {
       "name": "rudder",
@@ -737,10 +734,7 @@
       "control_area": 2,
       "control_axis": "yaw",
       "cl_control": 6.0,
-      "max_deflection": 0.35,
-      "drag_area": 2,
-      "cd": 0.04,
-      "k_drag": 0.8
+      "max_deflection": 0.35
     },
     {
       "name": "elevator",
@@ -754,10 +748,7 @@
       "control_area": 2,
       "control_axis": "pitch",
       "cl_control": 6.0,
-      "max_deflection": 0.35,
-      "drag_area": 2,
-      "cd": 0.04,
-      "k_drag": 0.8
+      "max_deflection": 0.35
     },
     {
       "name": "aileron",
@@ -771,10 +762,7 @@
       "control_area": 2,
       "control_axis": "roll",
       "cl_control": 6.0,
-      "max_deflection": 0.35,
-      "drag_area": 2,
-      "cd": 0.04,
-      "k_drag": 0.8
+      "max_deflection": 0.35
     },
     {
       "name": "fuel_link",

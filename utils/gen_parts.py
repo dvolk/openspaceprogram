@@ -151,25 +151,24 @@ CAPSULE_BATTERY_WH_PER_CREW     = 2000.0  # Wh per crew (~20 laptop batteries; b
 # design values (not geometry-derived). lift_area is the planform (delta)
 # area = radius * height (a 2 m x 2 m triangle = 2 m^2). cl is the
 # lift-curve slope (per radian, ~ the thin-airfoil 2*pi); stall_angle is
-# where the lift peaks and the flow separates (see src/drag.h liftCurve);
-# cd / k_drag are the parasite + weathervane drag coefficients.
+# where the lift peaks and the flow separates (see src/drag.h liftCurve).
+# The wing's DRAG comes from the ship's convex-hull silhouette (src/drag.h,
+# reports/projected-drag) -- a thin plate is nearly edge-on to the flow, so
+# it drags little -- and the global --drag-cd; there is no per-part drag knob.
 WING_DENSITY       = 50.0     # kg/m^3, wing structure (skin + spars)
 WING_CL            = 6.0      # lift-curve slope (per radian)
 WING_STALL_ANGLE   = 0.35     # rad (~20 deg), where lift peaks + the flow stalls
-WING_CD            = 0.04     # parasite drag coefficient (a thin wing, prograde)
-WING_K_DRAG        = 0.8      # weathervane drag coefficient (off-axis area)
 
 # rudder (a control surface): a deflection-driven steering surface (an
 # elevator / rudder). Reuses the wing mesh (a flat plate) + texture. The
 # control_area is the planform area = radius * height; cl_control is the
 # deflection effectiveness (per radian, the same thin-airfoil 2*pi as the
 # wing's lift-curve slope); max_deflection is the travel limit (rad).
-# cd / k_drag are the parasite + weathervane drag coefficients (a thin plate).
+# Its drag, like the wing's, comes from the ship's hull silhouette + the
+# global --drag-cd (no per-part drag knob).
 RUDDER_DENSITY        = 50.0  # kg/m^3, control-surface structure (skin + spars)
 RUDDER_CL             = 6.0   # deflection effectiveness (per radian)
 RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
-RUDDER_CD             = 0.04  # parasite drag coefficient (a thin plate, prograde)
-RUDDER_K_DRAG         = 0.8   # weathervane drag coefficient (off-axis area)
 
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual: mesh/texture are None and generate() skips the
@@ -476,28 +475,24 @@ def generate(name, ptype, mesh, texture):
         e["power_gen"] = clean(volume * RTG_WATTS_PER_M3)
     elif ptype == "wing":
         # a lifting surface: the wing's flat plate (radius * height = the
-        # triangular plate's bounding box) is both its LIFT area and its
-        # DRAG area. Lift curve slope (cl) and stall angle are declared
-        # constants (not geometry-derived); the weathervane drag (k_drag)
-        # turns the flat plate into an off-axis drag area, the same way the
-        # v1 rocket parts use their radius*height as an area.
+        # triangular plate's bounding box) is its LIFT area. Lift curve slope
+        # (cl) and stall angle are declared constants (not geometry-derived).
+        # Its drag comes from the ship's hull silhouette (a thin plate is
+        # nearly edge-on, so it drags little) + the global --drag-cd.
         e["mass"] = clean(volume * WING_DENSITY)
         e["radius"] = radius
         e["height"] = height
         e["lift_area"] = clean(radius * height)
         e["cl"] = WING_CL
         e["stall_angle"] = WING_STALL_ANGLE
-        e["drag_area"] = clean(radius * height)
-        e["cd"] = WING_CD
-        e["k_drag"] = WING_K_DRAG
     elif ptype in ("rudder", "elevator", "aileron"):
         # a control surface: the plate's area (radius * height) is its
         # CONTROL area. The deflection effectiveness (cl_control) and travel
-        # limit (max_deflection) are declared constants (not geometry-derived);
-        # the weathervane drag (k_drag) turns the flat plate into an
-        # off-axis drag area, the same way the wing does. Each type is ONE
-        # steering axis, like the real control surfaces: a rudder yaws (A/D),
-        # an elevator pitches (W/S), an aileron rolls (Q/E).
+        # limit (max_deflection) are declared constants (not geometry-derived).
+        # Each type is ONE steering axis, like the real control surfaces: a
+        # rudder yaws (A/D), an elevator pitches (W/S), an aileron rolls (Q/E).
+        # Its drag, like the wing's, comes from the ship's hull silhouette +
+        # the global --drag-cd (no per-part drag knob).
         e["mass"] = clean(volume * RUDDER_DENSITY)
         e["radius"] = radius
         e["height"] = height
@@ -510,9 +505,6 @@ def generate(name, ptype, mesh, texture):
         # the two "cl"s are no longer overloaded).
         e["cl_control"] = RUDDER_CL
         e["max_deflection"] = RUDDER_MAX_DEFLECTION
-        e["drag_area"] = clean(radius * height)
-        e["cd"] = RUDDER_CD
-        e["k_drag"] = RUDDER_K_DRAG
     elif ptype == "kerbal":
         # A character, not hardware: the mass (~94 kg full-EVA-gear, its
         # RCS hydrazine included) is declared in EXTRA_FIELDS, like the
@@ -546,10 +538,10 @@ def summary_line(e):
     if "fuel_link" in e:
         return "  %-24s virtual one-way fuel link" % n
     if "lift_area" in e:
-        # a wing: its lift area + lift curve, and the weathervane drag it
-        # also provides (k_drag is the off-axis drag coefficient).
-        return "  %-24s S=%5s  cl=%4s  A_stall=%s  K=%3s  mass=%7s" % (
-            n, e["lift_area"], e["cl"], e["stall_angle"], e.get("k_drag", 0), e["mass"])
+        # a wing: its lift area + lift curve. (Its drag is the ship's hull
+        # silhouette x the global --drag-cd, so no per-part drag to show.)
+        return "  %-24s S=%5s  cl=%4s  A_stall=%s  mass=%7s" % (
+            n, e["lift_area"], e["cl"], e["stall_angle"], e["mass"])
     if "control_area" in e:
         # a control surface: its control area + deflection effectiveness,
         # and the weathervane drag it also provides.

@@ -386,18 +386,14 @@ struct PartDef {
        overrides this when set (see resolveHullMargin). */
     double hull_margin;
 
-    /* Aerodynamics (src/drag.h, reports/aerodynamics2026_09_11). All
-       optional. Drag terms: 0 = "use the ship's global default for that
-       term" (a part that sets none keeps exactly the v1 behaviour). Lift
-       terms: 0 = no lift (a rocket stays a rocket). A part sets one to
-       override the global for itself:
-         drag_area  m^2; the part's drag cross-section. 0 = fall back to the
-                    silhouette 2*radius*height (the v1 area).
-         cd         the part's baseline (parasite) drag coefficient. 0 = use
-                    the ship's global --drag-cd.
-         k_drag     the part's off-axis (weathervane) coefficient: the part's
-                    drag grows by k* (1 - (v^nose)^2) as the ship turns off
-                    its nose. 0 = use the ship's global --drag-k.
+    /* Aerodynamics (src/drag.h, reports/projected-drag). All optional.
+       Drag: the ship's facing area is its convex-hull SILHOUETTE (the hull
+       of all parts' collision vertices, see Body::hullVerts) -- a stacked
+       rocket presents its true end face, a long body more side-on than
+       end-on. The drag coefficient is the ship's global --drag-cd (a single
+       knob; no per-part area or coefficient to author). Lift terms:
+       0 = no lift (a rocket stays a rocket). A part sets one to override
+       the global for itself:
          lift_area  m^2; the part's lift reference area. 0 = no lift (the
                     default; a lifting surface -- a wing/fin, added with its
                     part asset -- sets this).
@@ -431,9 +427,6 @@ struct PartDef {
    (Vehicle::applyAeroForce): a tail behind the CG pitches/yaws the ship, a
    canard ahead pitches it the other way. Air gives the authority --
    zero in vacuum. */
-    double drag_area;
-    double cd;
-    double k_drag;
     double lift_area;
     double cl;
     double stall_angle;

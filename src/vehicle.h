@@ -354,21 +354,19 @@ public:
                                  // + fuel + ram); synced per tick
     double drag_cd = 1.2;        // test knob (--drag-cd): the drag coefficient
                                  // (src/drag.h); 0 = no drag; synced per tick
-    double drag_k = 1.0;         // test knob (--drag-k): the off-axis
-                                 // (weathervane) coefficient; 0 = the v1
-                                 // attitude-independent drag; synced per tick
 
     /* The last substep's aero (applyAeroForce): the total force (lift +
        drag), the lift part of it, and the moment about the COM (the
-       weathervane / pitch-stability torque), plus the altitude / density /
-       angle-of-attack they came from. Written every substep, read once per
-       tick by the --drag-log instrument (tick.cpp). */
+       pitch-stability torque), plus the altitude / density / angle-of-attack
+       / total facing area they came from. Written every substep, read once
+       per tick by the --drag-log instrument (tick.cpp). */
     glm::dvec3 lastAeroForce = glm::dvec3(0.0);   // total (lift + drag)
     glm::dvec3 lastLiftForce = glm::dvec3(0.0);   // the lift part
     glm::dvec3 lastAeroTorque = glm::dvec3(0.0);  // moment about the COM
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // pitch angle of attack (rad) of the last substep
+    double lastDragArea = 0.0;  // the ship's total silhouette facing the flow (m^2)
 
     /* The last substep's control-surface deflections (applyAeroForce): one
        entry per control surface -- the part type (name + the axis it steers),
@@ -641,15 +639,23 @@ public:
                            distance from the centre, not local terrain
          q     = 0.5 * rho * v²   the dynamic pressure (src/drag.h)
          alpha = the pitch angle of attack (src/drag.h aeroFrame)
-       Per part i (area = drag_area or silhouette 2·r·h; cd/k fall back to
-       the ship globals; lift_area/cl to 0 = no lift):
-         drag_i = -v̂ · q · (area·cd + area·k · (1-(v̂·n̂)²))   (the v1 law,
-                    per part -- the AK=0 / prograde case is exactly v1)
+       DRAG is SHIP-LEVEL (one force): the ship's convex-hull silhouette
+       facing the flow (the hull of ALL parts' collision vertices, projected
+       onto the plane perpendicular to v̂ -- src/drag.h projectedArea), times
+       the ship's global --drag-cd:
+         drag   = -v̂ · q · cd · A_ship, applied at the center of pressure
+                  (the silhouette-area-weighted centroid of the parts)
+       A_ship is the ship's OWN silhouette, so a stacked rocket presents its
+       true end face (one circle), not N of them, and a long body drags much
+       more side-on than end-on -- the weathervane behaviour comes from the
+       geometry (reports/projected-drag). Applying the drag at the center of
+       pressure keeps the pitch-stability (weathervane) torque a banked ship
+       feels.
+       LIFT is per part i (each lifting surface acts on its own area at its
+       own position; lift_area/cl to 0 = no lift, a rocket stays a rocket):
          lift_i = liftDir · q · (lift_area·cl · alpha)        (Phase 2)
-         F_i    = drag_i + lift_i, applied at partPos(i) (ApplyForce)
-       The net force sums to v1's composite drag when no part lifts, and the
-       moment (Σ (partPos−com) × F_i) is the weathervane / pitch-stability
-       torque a deflected or winged ship feels. No-op when m_parent has no
+         applied at partPos(i), so its OFFSET from the COM is the moment.
+       No-op when m_parent has no
        physical atmosphere, the ship is at or below the surface, or it has
        no speed. Like thrust, re-applied before EVERY substep (Bullet clears
        forces per stepSimulation). Returns the total force (also stored in

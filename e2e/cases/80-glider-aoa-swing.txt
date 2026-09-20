@@ -1,0 +1,29 @@
+# Glider AoA swing (ship-level silhouette drag): on Duna (thin air, low
+# gravity so the glider lifts off), ramp throttle (R), fire (T), then pitch
+# the nose over (W) while the ship is still moving. As the nose rotates past
+# the velocity vector the wings go from edge-on to broadside, so the ship's
+# projected silhouette area -- the drag model's whole point -- must GROW with
+# AoA. A fixed side-area approximation can't do this; only the hull silhouette
+# does. The fuel tank dominates the hull, so the total swing is modest (~25%),
+# but it must be present and attitude-dependent.
+#
+# The two assertions are paired: (1) the nose actually rotated to a broadside
+# attitude (AoA swung well past 0), and (2) the silhouette area grew with it
+# (broadside A > edge-on A). Either failing means the attitude-dependent
+# silhouette is broken.
+NAME glider-aoa-swing
+ARGS --body Duna --scenario pad --ship res/ships/glider.json --time-accel 1
+ARGS --timeout 10 --drag-log
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 1500,3000,T
+ARGS --sim-press 5500,2500,W
+EXPECT [drag]
+CHECK len(drag) >= 2
+# The engine fired and the ship moved through the air (drag is live).
+CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
+# The nose actually rotated (AoA swung well past 0 -> broadside attitude).
+CHECK max(abs(d.get("aoa", 0.0)) for d in drag) > 30
+# ...and the silhouette area grew with it (broadside > edge-on).
+CHECK max(d.get("a", 0.0) for d in drag) > min(d.get("a", 0.0) for d in drag) * 1.05
+FORBID GL_
+FORBID error:

@@ -128,7 +128,7 @@ DRAG_RE = re.compile(
     r"(?:\s+\|L\|=([-\d.]+) N)?"
     r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
     r"\s+Cd=([-\d.]+)"
-    r"(?:\s+K=([-\d.]+))?(?:\s+AoA=([-\d.e+]+) deg)?"
+    r"(?:\s+A=([-\d.]+) m2)?(?:\s+AoA=([-\d.e+]+) deg)?"
 )
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
@@ -356,7 +356,7 @@ def parse_shake(out):
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
-        (t, alt, rho, v, F, L, tau, cd, k, aoa) = m.groups()
+        (t, alt, rho, v, F, L, tau, cd, a, aoa) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
@@ -365,8 +365,8 @@ def parse_drag(out):
             row["L"] = float(L)
         if tau is not None:
             row["tau"] = float(tau)
-        if k is not None:
-            row["k"] = float(k)
+        if a is not None:
+            row["a"] = float(a)
         if aoa is not None:
             row["aoa"] = float(aoa)
         rows.append(row)

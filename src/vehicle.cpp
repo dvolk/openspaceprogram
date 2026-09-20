@@ -1333,11 +1333,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
     lastDragAlpha = 0.0;
+    lastDragArea = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
 
     // --drag-cd 0 = no aero at all (the master off switch, the v1 contract).
-    // The weathervane and the lift terms are gated on it too, so "0 disables
-    // aero entirely" holds even with --drag-k set or a part that lifts.
+    // The lift term is gated on it too, so "0 disables aero entirely" holds
+    // even for a part that lifts.
     if(drag_cd <= 0.0) { return lastAeroForce; }
 
     // Only a body with a PHYSICAL atmosphere (a density model) produces
@@ -1389,46 +1390,67 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                                : glm::dvec3(0.0, 1.0, 0.0);
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
-    const double offAxis = fr.valid ? fr.offAxis : 0.0;
     lastDragAlpha = alpha;
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     const glm::dvec3 liftDir = liftDirection(vrel, right, nose);
     const double q = 0.5 * rho * v2;  // dynamic pressure (shared by all parts)
 
-    // Per-part aero, applied AT each part's position: the force and the
-    // moment (about the COM) come from the parts' distribution, exactly as
-    // an off-axis engine torques the ship (applyThrustForce). A part at the
-    // COM adds no moment; parts spread out (a rocket's fins, a wing) add
-    // the weathervane / pitch-stability torque. `com` doubles as the hull
-    // origin the lever is measured from (get_center_of_mass == comPos).
     glm::dvec3 ftotal(0.0);
     glm::dvec3 lift_total(0.0);
     glm::dvec3 moment(0.0);
+
+    // DRAG (ship-level): the ship's SILHOUETTE facing the flow -- the convex
+    // hull of ALL parts' hull vertices, projected onto the plane perpendicular
+    // to the flow (drag.h projectedArea). One area for the whole ship, so a
+    // stacked rocket presents its true end face (one circle), not N of them,
+    // and the prograde->side swing is honest (a long body's side area is N x
+    // its end area). The force is applied at the center of pressure (the
+    // silhouette-area-weighted centroid of the parts), so a banked ship still
+    // weathervanes the nose into the flow (the moment about the COM). `com`
+    // doubles as the hull origin the lever is measured from (comPos).
+    {
+        std::vector<glm::dvec3> shipVerts;
+        glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
+        double cpArea = 0.0;
+        for(Part *p : parts) {
+            if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
+            const glm::dmat3 R = partRot(p);
+            const glm::dvec3 pos = partPos(p);
+            for(const glm::dvec3 &v : p->body->hullVerts) {
+                shipVerts.push_back(R * v + pos);
+            }
+            const double a = projectedArea(p->body->hullVerts,
+                                           glm::transpose(R) * vhat);
+            cp += a * pos;
+            cpArea += a;
+        }
+        const double A_ship = projectedArea(shipVerts, vhat);
+        lastDragArea = A_ship;
+        if(cpArea > 0.0) { cp /= cpArea; }
+        const glm::dvec3 fdrag = dragForce(da, drag_cd, A_ship, alt, vrel);
+        if(glm::length2(fdrag) > 0.0) {
+            const glm::dvec3 rcp = cp - com;
+            ApplyForce(hull, rcp, fdrag);        // translation + (rcp x fdrag)
+            moment += glm::cross(rcp, fdrag);
+            ftotal += fdrag;
+        }
+    }
+
+    // LIFT (per part): each lifting surface generates lift on its OWN area at
+    // its own position, so the moment (pitch/yaw stability) comes from the
+    // surfaces' distribution (a wing ahead pitches one way, behind the other).
+    // 0 for a part with no lift_area / cl (a rocket stays a rocket); the soft
+    // stall collapses it past the part's stall_angle.
     for(Part *p : parts) {
         if(p->def == nullptr) { continue; }
         const PartDef *d = p->def;
-        // area: the part's authored drag_area, or its silhouette (2·r·h) --
-        // the v1 area, so a part that sets nothing is unchanged.
-        const double area = (d->drag_area > 0.0)
-            ? d->drag_area
-            : 2.0 * d->radius * d->height;
-        // coefficient: the part's authored value, or the ship's global
-        // default for that term (so an unset part keeps the v1 behaviour).
-        const double cd = (d->cd > 0.0) ? d->cd : drag_cd;
-        const double k  = (d->k_drag > 0.0) ? d->k_drag : drag_k;
-        // drag (the Phase 1 law, per part): opposite the flow.
-        const glm::dvec3 fdrag = partDrag(q, vhat, offAxis, area, cd, k);
-        // lift (Phase 2, per part): out of the flow, ∝ the pitch AoA; 0 for
-        // a part with no lift_area / cl (a rocket stays a rocket). The soft
-        // stall (Phase 3) collapses it past the part's stall_angle.
         const glm::dvec3 flift = liftForce(q, d->lift_area, d->cl, alpha,
                                            liftDir, d->stall_angle);
-        const glm::dvec3 fi = fdrag + flift;
-        if(glm::length2(fi) <= 0.0) { continue; }
-        const glm::dvec3 ri = partPos(p) - com;  // part's offset from the COM
-        ApplyForce(hull, ri, fi);                // translation + (ri × fi) torque
-        moment += glm::cross(ri, fi);
-        ftotal += fi;
+        if(glm::length2(flift) <= 0.0) { continue; }
+        const glm::dvec3 ri = partPos(p) - com;  // surface's offset from the COM
+        ApplyForce(hull, ri, flift);             // translation + (ri x flift)
+        moment += glm::cross(ri, flift);
+        ftotal += flift;
         lift_total += flift;
     }
 

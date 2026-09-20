@@ -117,38 +117,8 @@ static void test_force() {
                "no atmosphere -> zero force");
 }
 
-static void test_offAxis() {
-    printf("== offAxisFactor: 1 - (v*nose)^2 ==\n");
-    const glm::dvec3 nose(0.0, 0.0, 1.0);   // +Z nose
-
-    // Prograde (v along the nose) and retrograde (anti-parallel): no penalty.
-    CHECK_NEAR(offAxisFactor(glm::dvec3(0.0, 0.0, 200.0), nose), 0.0, 1e-12,
-               "prograde -> 0");
-    CHECK_NEAR(offAxisFactor(glm::dvec3(0.0, 0.0, -200.0), nose), 0.0, 1e-12,
-               "retrograde (anti-parallel) -> 0");
-
-    // Sideways (v perpendicular to the nose): the full penalty.
-    CHECK_NEAR(offAxisFactor(glm::dvec3(200.0, 0.0, 0.0), nose), 1.0, 1e-12,
-               "sideways (+X) -> 1");
-    CHECK_NEAR(offAxisFactor(glm::dvec3(0.0, 200.0, 0.0), nose), 1.0, 1e-12,
-               "sideways (+Y) -> 1");
-
-    // 45 degrees: cos^2 = 0.5, so the off-axis factor is 0.5.
-    const glm::dvec3 v45(200.0, 0.0, 200.0);
-    CHECK_NEAR(offAxisFactor(v45, nose), 0.5, 1e-12, "45 deg -> 0.5");
-
-    // A ratio: invariant under independent scaling of v and nose.
-    CHECK_NEAR(offAxisFactor(v45 * 3.0, nose * 2.0), offAxisFactor(v45, nose),
-               1e-12, "scale-invariant");
-
-    // Degenerate inputs -> 0.
-    CHECK_NEAR(offAxisFactor(glm::dvec3(0.0), nose), 0.0, 0.0, "zero v -> 0");
-    CHECK_NEAR(offAxisFactor(glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0)), 0.0, 0.0,
-               "zero nose -> 0");
-}
-
 static void test_aeroFrame() {
-    printf("== aeroFrame: alpha, beta, off-axis ==\n");
+    printf("== aeroFrame: alpha (pitch AoA), beta (sideslip) ==\n");
     // Ship axes in world: right=+X, up=+Y, nose=+Z (identity orientation).
     const glm::dvec3 right(1.0, 0.0, 0.0), up(0.0, 1.0, 0.0), nose(0.0, 0.0, 1.0);
 
@@ -158,13 +128,11 @@ static void test_aeroFrame() {
     CHECK_NEAR(f0.v, 300.0, 1e-12, "speed = |v|");
     CHECK_NEAR(f0.alpha, 0.0, 1e-12, "alpha 0 (prograde)");
     CHECK_NEAR(f0.beta, 0.0, 1e-12, "beta 0 (prograde)");
-    CHECK_NEAR(f0.offAxis, 0.0, 1e-12, "off-axis 0 (prograde)");
 
     // Pure pitch: v has a +Y component -> alpha = atan2(vy, vz) = 45 deg.
     AeroFrame fp = aeroFrame(glm::dvec3(0.0, 300.0, 300.0), right, up, nose);
     CHECK_NEAR(fp.alpha, M_PI / 4.0, 1e-12, "alpha = 45 deg for (0,300,300)");
     CHECK_NEAR(fp.beta, 0.0, 1e-12, "beta 0 (pure pitch)");
-    CHECK_NEAR(fp.offAxis, 0.5, 1e-12, "off-axis 0.5 (45 deg pitch)");
 
     // Pure bank: v has a +X component -> beta = atan2(vx, vz) = 45 deg.
     AeroFrame fb = aeroFrame(glm::dvec3(300.0, 0.0, 300.0), right, up, nose);
@@ -174,71 +142,6 @@ static void test_aeroFrame() {
     // Degenerate: zero velocity -> not valid, all zero.
     AeroFrame fn = aeroFrame(glm::dvec3(0.0), right, up, nose);
     CHECK_TRUE(!fn.valid, "zero v -> not valid");
-    CHECK_NEAR(fn.offAxis, 0.0, 0.0, "zero v -> off-axis 0");
-}
-
-static void test_dragForceAOA() {
-    printf("== dragForceAOA: parasite (A0) + weathervane (AK) ==\n");
-    const DragAtmosphere a { 1.225, 5500.0 };
-    const double alt = 100.0;
-    const double rho = airDensity(a, alt);
-    const glm::dvec3 nose(0.0, 0.0, 1.0);
-    const double A0 = 4.8;    // parasite area (e.g. cd 1.2 x area 4.0)
-    const double AK = 2.0;    // weathervane area
-    const double v = 300.0;
-
-    // AK = 0 reproduces the v1 law exactly (the parasite-only special case).
-    {
-        const glm::dvec3 vel(0.0, 0.0, v);
-        const glm::dvec3 f_aoa = dragForceAOA(a, A0, 0.0, alt, vel, nose);
-        const glm::dvec3 f_v1  = dragForce(a, 1.2, A0 / 1.2, alt, vel);
-        CHECK_TRUE(glm::length(f_aoa - f_v1) < 1e-9, "AK=0 == v1 dragForce");
-    }
-
-    // Prograde (nose along v): off-axis 0 -> the parasite term only.
-    {
-        const double F = glm::length(dragForceAOA(a, A0, AK, alt,
-                                                  glm::dvec3(0.0, 0.0, v), nose));
-        CHECK_NEAR(F, 0.5 * rho * A0 * v * v, 1e-12, "prograde -> A0 only");
-    }
-
-    // Sideways (nose perpendicular to v): the full weathervane term.
-    {
-        const double F = glm::length(dragForceAOA(a, A0, AK, alt,
-                                                  glm::dvec3(v, 0.0, 0.0), nose));
-        CHECK_NEAR(F, 0.5 * rho * (A0 + AK) * v * v, 1e-12, "sideways -> A0 + AK");
-    }
-
-    // Monotone in deflection at EQUAL speed (so only the off-axis factor
-    // differs): prograde (0) < 45 deg (0.5) < sideways (1).
-    {
-        const double s = v / std::sqrt(2.0);   // (s,0,s) has |v| = v, 45 deg
-        const double Fp  = glm::length(dragForceAOA(a, A0, AK, alt,
-                                                    glm::dvec3(0.0, 0.0, v), nose));
-        const double F45 = glm::length(dragForceAOA(a, A0, AK, alt,
-                                                    glm::dvec3(s, 0.0, s), nose));
-        const double Fs  = glm::length(dragForceAOA(a, A0, AK, alt,
-                                                    glm::dvec3(v, 0.0, 0.0), nose));
-        CHECK_TRUE(Fp < F45 && F45 < Fs, "drag grows with deflection");
-    }
-
-    // Still exactly opposite the motion, for any deflection.
-    {
-        const glm::dvec3 vel(300.0, 200.0, 100.0);
-        const glm::dvec3 f = dragForceAOA(a, A0, AK, alt, vel, nose);
-        CHECK_TRUE(glm::dot(f, vel) < 0.0, "F opposes v (deflected)");
-        CHECK_TRUE(glm::length(glm::cross(f, vel)) < 1e-6 * glm::length(f),
-                   "F anti-parallel to v (deflected)");
-    }
-
-    // Degenerate inputs -> zero.
-    CHECK_TRUE(dragForceAOA(a, A0, AK, alt, glm::dvec3(0.0), nose) == glm::dvec3(0.0),
-               "zero v -> zero");
-    CHECK_TRUE(dragForceAOA(a, 0.0, 0.0, alt, glm::dvec3(0.0, 0.0, v), nose) == glm::dvec3(0.0),
-               "no area (A0=AK=0) -> zero");
-    CHECK_TRUE(dragForceAOA(DragAtmosphere(0.0, 5500.0), A0, AK, alt,
-                            glm::dvec3(0.0, 0.0, v), nose) == glm::dvec3(0.0),
-               "no atmosphere -> zero");
 }
 
 static void test_liftDirection() {
@@ -372,54 +275,6 @@ static void test_liftCurve() {
     // Degenerate: no slope -> no lift.
     CHECK_NEAR(liftCurve(0.0, 0.1, A), 0.0, 0.0, "cl = 0 -> 0");
     CHECK_NEAR(liftCurve(-1.0, 0.1, A), 0.0, 0.0, "cl < 0 -> 0");
-}
-
-static void test_partDrag() {
-    printf("== partDrag: per-part, sums to the composite dragForceAOA ==\n");
-    const DragAtmosphere a { 1.225, 5500.0 };
-    const double alt = 100.0;
-    const glm::dvec3 vrel(200.0, 50.0, 300.0);
-    const glm::dvec3 nose(0.0, 0.0, 1.0);
-    const double q = dynamicPressure(a, alt, vrel);
-    const double offAxis = offAxisFactor(vrel, nose);
-    const glm::dvec3 vhat = glm::normalize(vrel);
-
-    // Two parts: the per-part drags sum to the composite (same area x cd and
-    // area x k) -- so the v1 law is preserved, just distributed per part.
-    {
-        const double area1 = 2.0, cd1 = 1.0, k1 = 0.5;
-        const double area2 = 3.0, cd2 = 2.0, k2 = 1.0;
-        const glm::dvec3 fsum =
-            partDrag(q, vhat, offAxis, area1, cd1, k1) +
-            partDrag(q, vhat, offAxis, area2, cd2, k2);
-        const double A0 = area1 * cd1 + area2 * cd2;
-        const double AK = area1 * k1 + area2 * k2;
-        const glm::dvec3 fcomp = dragForceAOA(a, A0, AK, alt, vrel, nose);
-        CHECK_TRUE(glm::length(fsum - fcomp) < 1e-9,
-                   "sum of partDrag == composite dragForceAOA");
-    }
-
-    // A single part with k = 0 is exactly the v1 dragForce (cd * area).
-    {
-        const double area = 4.0, cd = 1.2;
-        const glm::dvec3 f = partDrag(q, vhat, offAxis, area, cd, 0.0);
-        const glm::dvec3 f_v1 = dragForce(a, cd, area, alt, vrel);
-        CHECK_TRUE(glm::length(f - f_v1) < 1e-9, "k=0 part == v1 dragForce");
-    }
-
-    // Opposite the flow, always (for any off-axis factor).
-    {
-        const glm::dvec3 f = partDrag(q, vhat, offAxis, 4.0, 1.2, 1.0);
-        CHECK_TRUE(glm::dot(f, vrel) < 0.0, "partDrag opposes v");
-        CHECK_TRUE(glm::length(glm::cross(f, vrel)) < 1e-6 * glm::length(f),
-                   "partDrag anti-parallel to v");
-    }
-
-    // Degenerate inputs -> zero.
-    CHECK_TRUE(partDrag(0.0, vhat, offAxis, 4.0, 1.2, 1.0) == glm::dvec3(0.0),
-               "no q -> zero");
-    CHECK_TRUE(partDrag(q, vhat, offAxis, 0.0, 1.2, 1.0) == glm::dvec3(0.0),
-               "no area -> zero");
 }
 
 static void test_controlForce() {
@@ -647,6 +502,34 @@ static void test_projectedArea() {
     CHECK_NEAR(projectedArea(wing, glm::dvec3(0.0, 0.0, 1.0)), 0.2, 1e-9,
                "wing edge-on (z) == thickness * span (0.2)");
 
+    // A STACK of coaxial parts (a rocket: 3 boxes end-to-end along Z) is ONE
+    // body: its silhouette prograde is a single end face (2x2=4), not 3 end
+    // faces (the per-part sum would give 3x4=12 -- the stacking over-count
+    // this model removes). Side-on the stack's length adds up (2 * 9 = 18),
+    // which is correct for a long body seen from the side. This is why the
+    // drag AREA is computed over the ship's combined vertices, not summed
+    // per part (reports/projected-drag).
+    {
+        std::vector<glm::dvec3> stack;
+        for(int i = -1; i <= 1; i++) {          // 3 boxes, each 3 long, along Z
+            const double z0 = 3.0 * i;
+            for(int k = 0; k < 8; k++) {
+                stack.push_back(glm::dvec3((k & 1) ?  1.0 : -1.0,
+                                           (k & 2) ?  1.0 : -1.0,
+                                           z0 + ((k & 4) ? 1.5 : -1.5)));
+            }
+        }
+        CHECK_NEAR(projectedArea(stack, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-9,
+                   "stacked rocket: ONE end face prograde (4), not 3 (12)");
+        CHECK_NEAR(projectedArea(stack, glm::dvec3(1.0, 0.0, 0.0)), 18.0, 1e-9,
+                   "stacked rocket: full side length side-on (18)");
+        // The prograde->side swing is the honest ~4.5x (18/4), not the ~1x a
+        // per-part sum would give for a prograde stack.
+        CHECK_TRUE(projectedArea(stack, glm::dvec3(1.0,0,0))
+                   > 2.0 * projectedArea(stack, glm::dvec3(0,0,1)),
+                   "stack: side-on drags >2x prograde (attitude matters)");
+    }
+
     // Degenerate inputs -> 0.
     CHECK_NEAR(projectedArea(std::vector<glm::dvec3>(), glm::dvec3(0.0, 0.0, 1.0)),
                0.0, 0.0, "empty vertex list -> 0");
@@ -671,19 +554,13 @@ int main() {
     printf("\n");
     test_force();
     printf("\n");
-    test_offAxis();
-    printf("\n");
     test_aeroFrame();
-    printf("\n");
-    test_dragForceAOA();
     printf("\n");
     test_liftDirection();
     printf("\n");
     test_liftForce();
     printf("\n");
     test_liftCurve();
-    printf("\n");
-    test_partDrag();
     printf("\n");
     test_projectedArea();
     printf("\n");
