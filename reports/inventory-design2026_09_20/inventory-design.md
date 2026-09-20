@@ -1,7 +1,8 @@
 # Inventory for kerbals and parts — design review
 
 Date: 2026-09-20
-Status: design snapshot + work plan. No code changed.
+Status: design + work plan. Phase 1 (identity + the two live bugs) is built;
+see `addendum.md` for what landed. Phases 2-5 remain.
 Rev 2: corrected after a full fact-check pass against the source. Changelog in §8.
 
 ## 0. What was asked

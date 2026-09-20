@@ -1,8 +1,9 @@
-# Addendum: phases 0, 1.1, 1.2 and 1.3 as built
+# Addendum: phases 0, 1.1, 1.2, 1.3 and 1.4 as built
 
 Date: 2026-09-20. Companion to `inventory-design.md` (rev 2) in this directory.
-Records what implementing the first four steps actually turned up — including
-one finding materially worse than the review predicted.
+Records what implementing the Phase 1 steps actually turned up — including
+one finding materially worse than the review predicted, and (in §7) the
+seam-maintenance work that closed out Phase 1.
 
 ## 1. The duplicate-id bug was a crash, not a wrong controller
 
@@ -195,3 +196,59 @@ to the ship named beside it, and `updateDocking` assumes it does.
   `git stash pop`. `src/part.h` (phase 1.1, already committed) was left in
   place for the "before" run; its `uid` field is unread by the old save code,
   so the comparison is clean.
+
+## 7. Step 1.4: seams are now maintained through merge and split
+
+Phase 1's last step. The two topology primitives moved parts, fuel links and
+crew but never `seams`, which left two dangling-pointer paths the review
+flagged (§1.7b/c) and one live crash the §1.7(b) repro hits.
+
+The model that landed: a seam is the same containment edge as a fuel link — a
+record of a joint between its `port` and the docked ship's `root`, valid only
+while both ends live in ONE ship. Concretely:
+
+- **`absorbShip`** now moves `B->seams` into the survivor (inserted before the
+  new seam, so `seams.back()` — the undock selection — peels the outermost dock
+  first). Before: the joint B recorded was orphaned when B was deleted as a
+  shell.
+- **`extractSubtreeAsShip`** now maintains seams exactly like the adjacent fuel
+  links: both ends in the split-off subtree → moves with it; both ends in the
+  survivor → stays; split across the cut (the undock case: the port stays, the
+  docked ship leaves) → dropped, because the joint no longer exists.
+- **`Game::undock`** drops its `seams.pop_back()`: the split already removes
+  the undocked seam, so popping would have dropped the wrong one (the one just
+  before it).
+
+The direct-child invariant (`root->parent == port`, set only in `absorbShip`)
+means the only reachable split-across case is the undock one; the code handles
+all four combinations defensively, mirroring the fuel-link block.
+
+### Coverage
+
+Three new `test_dock` cases, each confirmed to fail when its fix is disabled
+(not a vacuous pass):
+
+- **`test_seam_staging`** — the §1.7(b) repro: capsule → decoupler → port, dock
+  B, stage the decoupler, delete the split-off, assert the survivor holds no
+  dangling seam. Clean under ASan (`-fsanitize=address,leak,undefined`); the
+  dereference loop after the delete is where the old code UAF'd.
+- **`test_seam_nested_dock`** — the §1.7(c) case the addendum §5 said had no CLI
+  hook: B docks C, A absorbs B, both seams survive, undock B peels the outer and
+  leaves the B-C seam on the split-off ship.
+- **`test_seam_kept_across_stage`** — the one branch the other two never
+  exercise: a seam whose both ends stay in the survivor is *kept* (not dropped)
+  when a stage drops only its far end, and is still undockable afterwards.
+
+### Verification
+
+- `make test`: green. `test_dock` 71 checks (was 35), `test_inertia` 959,
+  `test_crew` 333, `test_save` OK, `test_staging` pass.
+- `test_dock` clean under ASan (built the shared TUs with the sanitizer flags).
+- e2e `45-dock`, `46-undock`, `79-dock-save-load` pass.
+- A quality pass over the change found no Critical issue; the fixes it
+  surfaced were the stale "undock pops the last" comments in `vehicle.h`,
+  `save.h` and the `79` e2e case (corrected) and the keep-branch test gap
+  (closed by `test_seam_kept_across_stage`).
+
+Phase 1 (identity + the two live bugs) is now complete. Phase 2 (containment,
+§4 of the main report) is the next step.
