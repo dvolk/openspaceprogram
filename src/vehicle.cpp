@@ -1405,11 +1405,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // stacked rocket presents its true end face (one circle), not N of them,
     // and the prograde->side swing is honest (a long body's side area is N x
     // its end area). The force is applied at the center of pressure (the
-    // silhouette-area-weighted centroid of the parts), so a banked ship still
+    // parts' centroid, weighted by each part's own projected area -- not the
+    // silhouette polygon's centroid), so a banked ship still
     // weathervanes the nose into the flow (the moment about the COM). `com`
     // doubles as the hull origin the lever is measured from (comPos).
     {
         std::vector<glm::dvec3> shipVerts;
+        {   // reserve the exact size so the push_backs below don't realloc
+            size_t cap = 0;
+            for(Part *p : parts) {
+                if(p->body != nullptr && !p->body->hullVerts.empty()) {
+                    cap += p->body->hullVerts.size();
+                }
+            }
+            shipVerts.reserve(cap);
+        }
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         for(Part *p : parts) {
@@ -1427,6 +1437,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const double A_ship = projectedArea(shipVerts, vhat);
         lastDragArea = A_ship;
         if(cpArea > 0.0) { cp /= cpArea; }
+        else { cp = com; }  // degenerate: no per-part area -> act through the COM
         const glm::dvec3 fdrag = dragForce(da, drag_cd, A_ship, alt, vrel);
         if(glm::length2(fdrag) > 0.0) {
             const glm::dvec3 rcp = cp - com;
