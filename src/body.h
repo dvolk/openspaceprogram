@@ -4,6 +4,7 @@
 #include <bullet/btBulletDynamicsCommon.h>
 
 #include "camera.h"
+#include "drag.h"
 #include "mesh.h"
 #include "shader.h"
 #include "texture.h"
@@ -62,6 +63,16 @@ struct Body {
        because the ship's compound references it as a child and picking casts
        against it. Freed after btBody, which points at it. */
     btCollisionShape *shape = nullptr;
+
+    /* The part's aerodynamic faces: the (outward normal, area) list of its
+       mesh's triangles, in the PART-LOCAL frame, extracted once at build
+       time from the same geometry the collision hull is built from (see
+       extractAeroFaces, drag.h). The drag area facing the flow is
+       projectedArea(aeroFaces, v̂) -- the silhouette, so a part drags more
+       as it turns broadside to the velocity (Phase 2 of the projected-drag
+       work, reports/projected-drag). Empty for a body with no mesh (a
+       point) -- projectedArea of an empty list is 0. */
+    std::vector<AeroFace> aeroFaces;
 
     /* The shape's inertia diagonal per kilogram, and whether it has been
        worked out yet. A fixed shape's inertia is exactly LINEAR in its mass

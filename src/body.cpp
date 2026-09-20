@@ -73,6 +73,13 @@ Body *create_part_body(Mesh *mesh, Shader *shader, Texture *texture,
     body->mass = mass;
     body->hull_margin = hull_margin;
     BuildPartHull(body);
+    /* The aerodynamic faces, from the same mesh the hull is built from (the
+       part-local frame). Computed here -- the one place every part-creation
+       path goes through -- so flight, the VAB, saves and the dock/radial
+       tests all get them without each having to remember. A failed import
+       leaves the mesh empty and this yields an empty list (no drag). */
+    body->aeroFaces = extractAeroFaces(mesh->vs, mesh->num_vertices,
+                                       mesh->is, mesh->num_indices);
     return body;
 }
 

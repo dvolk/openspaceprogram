@@ -557,6 +557,184 @@ static void test_controlCl() {
     CHECK_TRUE(controlCl(0.0, 0.0) == 0.0, "neither set -> 0");
 }
 
+// --- Stage-A geometry: the projected (silhouette) area of a closed surface.
+//
+// projectedArea(faces, dir) = SUM_f area_f * max(0, normal_f . dir), the sum
+// of the front-facing faces' contributions. For a convex body that is exactly
+// the silhouette (the shadow on a plane perpendicular to dir). These tests
+// pin it against hand-computed values for three shapes: a flat plate (a
+// single face + its back), a cube, and a 32-gon prism (the "cylinder limit"
+// the game's tanks are built from). All face lists are built by hand -- no
+// Bullet, no mesh -- so the law is pinned independently of the extraction.
+
+static std::vector<AeroFace> plateFaces() {
+    // A 2 x 4 flat plate, normal +Z (front) and -Z (back), area 8 each.
+    std::vector<AeroFace> f;
+    f.push_back({glm::dvec3(0.0, 0.0, 1.0), 8.0});
+    f.push_back({glm::dvec3(0.0, 0.0, -1.0), 8.0});
+    return f;
+}
+
+static std::vector<AeroFace> cubeFaces() {
+    // A side-2 cube: six faces, each area 4, normals along +/- the axes.
+    std::vector<AeroFace> f;
+    f.push_back({glm::dvec3(1.0, 0.0, 0.0), 4.0});
+    f.push_back({glm::dvec3(-1.0, 0.0, 0.0), 4.0});
+    f.push_back({glm::dvec3(0.0, 1.0, 0.0), 4.0});
+    f.push_back({glm::dvec3(0.0, -1.0, 0.0), 4.0});
+    f.push_back({glm::dvec3(0.0, 0.0, 1.0), 4.0});
+    f.push_back({glm::dvec3(0.0, 0.0, -1.0), 4.0});
+    return f;
+}
+
+static std::vector<AeroFace> prismFaces(int n = 32, double r = 1.0,
+                                        double h = 3.0) {
+    // A regular n-gon prism (a faceted cylinder): two end n-gons + n side
+    // rectangles. End area = 0.5 * n * r^2 * sin(2 pi / n); side area = h *
+    // chord, chord = 2 r sin(pi / n); the side-face normals point radially at
+    // angles (2k + 1) * pi / n.
+    std::vector<AeroFace> f;
+    const double endArea = 0.5 * n * r * r * std::sin(2.0 * M_PI / n);
+    f.push_back({glm::dvec3(0.0, 0.0, 1.0), endArea});
+    f.push_back({glm::dvec3(0.0, 0.0, -1.0), endArea});
+    const double sideArea = h * (2.0 * r * std::sin(M_PI / n));
+    for(int k = 0; k < n; k++) {
+        const double phi = M_PI * (2 * k + 1) / n;
+        f.push_back({glm::dvec3(std::cos(phi), std::sin(phi), 0.0), sideArea});
+    }
+    return f;
+}
+
+static void test_projectedArea() {
+    printf("== projectedArea: silhouette = sum of front-facing faces ==\n");
+
+    // Plate: face-on = the area, edge-on = 0, 45 deg = area / sqrt(2).
+    const std::vector<AeroFace> plate = plateFaces();
+    CHECK_NEAR(projectedArea(plate, glm::dvec3(0.0, 0.0, 1.0)), 8.0, 1e-12,
+               "plate face-on == area");
+    CHECK_NEAR(projectedArea(plate, glm::dvec3(1.0, 0.0, 0.0)), 0.0, 0.0,
+               "plate edge-on == 0");
+    CHECK_NEAR(projectedArea(plate, glm::dvec3(1.0, 0.0, 1.0)),
+               8.0 / std::sqrt(2.0), 1e-12, "plate at 45 deg == area / sqrt(2)");
+
+    // Cube: axis-on = one face (4); the body-diagonal-ish (1,0,1) shows two
+    // faces at 45 deg -> 4 / sqrt(2) each -> 8 / sqrt(2) = 4 sqrt(2).
+    const std::vector<AeroFace> cube = cubeFaces();
+    CHECK_NEAR(projectedArea(cube, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-12,
+               "cube axis-on == one face");
+    CHECK_NEAR(projectedArea(cube, glm::dvec3(1.0, 0.0, 1.0)),
+               8.0 / std::sqrt(2.0), 1e-12, "cube (1,0,1) == 4 sqrt(2)");
+
+    // Symmetry: a convex body's silhouette is the same from either side.
+    CHECK_NEAR(projectedArea(cube, glm::dvec3(0.3, -0.5, 0.8)),
+               projectedArea(cube, glm::dvec3(-0.3, 0.5, -0.8)), 1e-12,
+               "silhouette symmetric in dir (cube)");
+    CHECK_NEAR(projectedArea(plate, glm::dvec3(0.2, 0.3, -0.9)),
+               projectedArea(plate, glm::dvec3(-0.2, -0.3, 0.9)), 1e-12,
+               "silhouette symmetric in dir (plate)");
+
+    // 32-gon prism (the "cylinder limit"): end-on ~ pi (the circle the 32-gon
+    // approximates, within 1%), side-on ~ 2 r h (the flat 2 x 3 silhouette,
+    // within 1%). This pins that the face-sum reproduces the analytic
+    // cylinder areas the game's tanks are built from.
+    const std::vector<AeroFace> prism = prismFaces(32, 1.0, 3.0);
+    const double end = projectedArea(prism, glm::dvec3(0.0, 0.0, 1.0));
+    CHECK_NEAR(end, 16.0 * std::sin(M_PI / 16.0), 1e-12,
+               "prism end-on == the 32-gon area (exact)");
+    CHECK_TRUE(std::fabs(end - M_PI) < 0.01 * M_PI,
+               "prism end-on within 1% of pi (cylinder limit)");
+    const double side = projectedArea(prism, glm::dvec3(1.0, 0.0, 0.0));
+    CHECK_TRUE(std::fabs(side - 6.0) < 0.01 * 6.0,
+               "prism side-on within 1% of 2 r h (cylinder limit)");
+
+    // More sides -> closer to the cylinder: 6-gon is coarser, 32-gon tighter.
+    const double end6 = projectedArea(prismFaces(6, 1.0, 3.0),
+                                      glm::dvec3(0.0, 0.0, 1.0));
+    CHECK_TRUE(std::fabs(end - M_PI) < std::fabs(end6 - M_PI),
+               "32-gon end-on closer to pi than the 6-gon");
+
+    // Degenerate inputs -> 0.
+    CHECK_NEAR(projectedArea(std::vector<AeroFace>(), glm::dvec3(0.0, 0.0, 1.0)),
+               0.0, 0.0, "empty face list -> 0");
+    CHECK_NEAR(projectedArea(plate, glm::dvec3(0.0)), 0.0, 0.0,
+               "zero dir -> 0");
+    // A face with a zero area contributes nothing.
+    {
+        std::vector<AeroFace> bad;
+        bad.push_back({glm::dvec3(0.0, 0.0, 1.0), 0.0});
+        CHECK_NEAR(projectedArea(bad, glm::dvec3(0.0, 0.0, 1.0)), 0.0, 0.0,
+                   "zero-area face -> 0");
+    }
+}
+
+// extractAeroFaces: the raw vertex/index -> (normal, area) list. Pinned with
+// a side-2 cube (8 vertices, 12 triangles): all triangles extracted, unit
+// normals, positive areas, the total surface area (24), and -- the key
+// property -- the extracted faces reproduce the cube's silhouette. Also pins
+// the winding independence (reversing every triangle's winding must give the
+// same faces, because the normals are made outward, not taken from the
+// winding) and the degenerate-input guards.
+
+static void test_extractAeroFaces() {
+    printf("== extractAeroFaces: cube mesh -> faces, silhouette preserved ==\n");
+
+    // Side-2 cube, centred at the origin: 8 vertices, 12 triangles (6 faces).
+    static const double vs[] = {
+        -1, -1, -1,   1, -1, -1,   1, 1, -1,  -1, 1, -1,   // z = -1
+        -1, -1,  1,   1, -1,  1,   1, 1,  1,  -1, 1,  1,   // z = +1
+    };
+    static const int is[] = {
+        0, 1, 2,  0, 2, 3,   // z = -1
+        4, 5, 6,  4, 6, 7,   // z = +1
+        0, 1, 5,  0, 5, 4,   // y = -1
+        2, 3, 7,  2, 7, 6,   // y = +1
+        0, 3, 7,  0, 7, 4,   // x = -1
+        1, 2, 6,  1, 6, 5,   // x = +1
+    };
+    const std::vector<AeroFace> faces = extractAeroFaces(vs, 8, is, 36);
+
+    CHECK_TRUE(faces.size() == 12, "cube: all 12 triangles extracted");
+
+    bool normals_ok = true;
+    double totalArea = 0.0;
+    for(const AeroFace &f : faces) {
+        if(std::fabs(glm::length(f.normal) - 1.0) > 1e-12) { normals_ok = false; }
+        if(f.area <= 0.0) { normals_ok = false; }
+        totalArea += f.area;
+    }
+    CHECK_TRUE(normals_ok, "cube: unit normals, positive areas");
+    CHECK_NEAR(totalArea, 24.0, 1e-12, "cube: total surface area == 24");
+
+    // The extracted faces reproduce the cube's silhouette (the same values the
+    // hand-built face list pinned in test_projectedArea).
+    CHECK_NEAR(projectedArea(faces, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-9,
+               "cube: silhouette axis-on == 4");
+    CHECK_NEAR(projectedArea(faces, glm::dvec3(1.0, 0.0, 1.0)),
+               8.0 / std::sqrt(2.0), 1e-9, "cube: silhouette (1,0,1) == 4 sqrt(2)");
+
+    // Winding independence: reverse every triangle's winding (swap the last
+    // two indices) -- the faces must be unchanged, because the normals are
+    // made outward (toward the vertex centroid), not taken from the winding.
+    static const int isRev[] = {
+        2, 1, 0,  3, 2, 0,
+        6, 5, 4,  7, 6, 4,
+        5, 1, 0,  4, 5, 0,
+        7, 3, 2,  6, 7, 2,
+        7, 3, 0,  4, 7, 0,
+        6, 2, 1,  5, 6, 1,
+    };
+    const std::vector<AeroFace> facesRev = extractAeroFaces(vs, 8, isRev, 36);
+    CHECK_TRUE(facesRev.size() == faces.size(), "winding: same face count");
+    CHECK_NEAR(projectedArea(facesRev, glm::dvec3(0.4, 0.6, 0.3)),
+               projectedArea(faces, glm::dvec3(0.4, 0.6, 0.3)), 1e-9,
+               "winding: silhouette is winding-independent");
+
+    // Degenerate inputs -> empty (no crash, no partial list).
+    CHECK_TRUE(extractAeroFaces(nullptr, 8, is, 36).empty(), "null vs -> empty");
+    CHECK_TRUE(extractAeroFaces(vs, 8, nullptr, 36).empty(), "null is -> empty");
+    CHECK_TRUE(extractAeroFaces(vs, 2, is, 36).empty(), "too few verts -> empty");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -575,6 +753,10 @@ int main() {
     test_liftCurve();
     printf("\n");
     test_partDrag();
+    printf("\n");
+    test_projectedArea();
+    printf("\n");
+    test_extractAeroFaces();
     printf("\n");
     test_controlForce();
     printf("\n");
