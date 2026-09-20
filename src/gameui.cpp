@@ -1822,8 +1822,8 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
-            // Clamp to the same range the Scale slider spans (10^3..10^9.5).
-            const float min_scale = 1000.0f;
+            // Clamp to the same range the Scale slider spans (10^2..10^9.5).
+            const float min_scale = 100.0f;
             const float max_scale = powf(10.0f, 9.5f);
             if(new_scale < min_scale) { new_scale = min_scale; }
             if(new_scale > max_scale) { new_scale = max_scale; }
@@ -2056,7 +2056,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         // the coarse control, and "Reset view" restores the default.
         {
             float log_scale = log10f(map_scale);
-            if(ImGui::SliderFloat("Scale", &log_scale, 3.0f, 9.5f, "%.1f")) {
+            if(ImGui::SliderFloat("Scale", &log_scale, 2.0f, 9.5f, "%.1f")) {
                 map_scale = powf(10.0f, log_scale);
             }
             ImGui::SameLine();
@@ -2985,8 +2985,8 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
-            // Clamp to the same range the Scale slider spans (10^3..10^9.5).
-            const float min_scale = 1000.0f;
+            // Clamp to the same range the Scale slider spans (10^2..10^9.5).
+            const float min_scale = 100.0f;
             const float max_scale = powf(10.0f, 9.5f);
             if(new_scale < min_scale) { new_scale = min_scale; }
             if(new_scale > max_scale) { new_scale = max_scale; }
