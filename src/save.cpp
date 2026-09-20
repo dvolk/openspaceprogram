@@ -107,8 +107,9 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         Part *p = v->parts[i];
         SavePart sp;
         sp.part = p->def->name;
+        sp.uid = p->uid;
         sp.id = p->id;
-        sp.parent = (p->parent != nullptr) ? p->parent->id : "";
+        sp.parent = (p->parent != nullptr) ? p->parent->uid : 0;
         sp.stage = p->stage;
         sp.pos = p->localPos;
         sp.rot = p->localRot;
@@ -121,11 +122,11 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
     }
     for(size_t k = 0; k < v->fuelLinks.size(); k++) {
         SaveFuelLink lk;
-        lk.from = v->fuelLinks[k].from->id;
-        lk.to = v->fuelLinks[k].to->id;
+        lk.from = v->fuelLinks[k].from->uid;
+        lk.to = v->fuelLinks[k].to->uid;
         s.fuel_links.push_back(lk);
     }
-    if(v->controller != nullptr) { s.controller = v->controller->id; }
+    if(v->controller != nullptr) { s.controller = v->controller->uid; }
 
     // the pose in the ship's CURRENT frame (the SOI body's inertial frame
     // for a coasting ship, its rotating surface frame for a grounded one)
@@ -143,14 +144,14 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
 
     for(size_t k = 0; k < v->seams.size(); k++) {
         SaveDock dk;
-        dk.port = v->seams[k].port->id;
-        dk.root = v->seams[k].root->id;
+        dk.port = v->seams[k].port->uid;
+        dk.root = v->seams[k].root->uid;
         dk.name = v->seams[k].name;
         s.docks.push_back(dk);
     }
     s.dock_target_ship = (v->dockTargetShip != nullptr) ? v->dockTargetShip->name : "";
-    s.dock_target_port = (v->dockTargetPort != nullptr) ? v->dockTargetPort->id : "";
-    s.dock_arm_port = (v->dockArmPort != nullptr) ? v->dockArmPort->id : "";
+    s.dock_target_port = (v->dockTargetPort != nullptr) ? v->dockTargetPort->uid : 0;
+    s.dock_arm_port = (v->dockArmPort != nullptr) ? v->dockArmPort->uid : 0;
     return s;
 }
 
@@ -162,15 +163,38 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
 // an attach spec, so the save carries the geometry it actually is). finalize()
 // then re-derives the fuel groups + the compound body; the saved stage
 // bookkeeping (a ship may have staged) is restored over finalize's defaults.
-Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s) {
+//
+// `savedUidToPart` (optional) receives this SAVE's uid -> the rebuilt Part.
+// It is the caller's, not a local, because it has to span every ship file --
+// a dock target's port lives in another ship. The rebuilt Parts keep the fresh
+// uids their own constructors minted; the saved uids are only this file's keys
+// (see save.h).
+Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
+                                std::map<uint64_t, Part *> *savedUidToPart) {
     const PartsCatalog &cat = g.ships.catalog();
     Vehicle *v = new Vehicle;
     v->name = s.name;
     v->defPath = s.defPath;
-    std::map<std::string, size_t> idToIndex;
-    std::map<std::string, Part *> idToPart;
+    std::map<uint64_t, size_t> uidToIndex;
+    std::map<uint64_t, Part *> uidToPart;
     for(size_t i = 0; i < s.parts.size(); i++) {
         const SavePart &sp = s.parts[i];
+        /* Refuse an unidentified or doubly-identified part rather than guess.
+           uid 0 means a save written before parts carried identity, so none
+           of its references can be resolved at all; a repeated uid is a
+           corrupt or hand-edited file. Both are exactly the ambiguity that
+           made id-keyed resolution silently pick the wrong part, so they are
+           errors here instead of a last-writer-wins overwrite. */
+        if(sp.uid == 0) {
+            delete v;
+            throw std::runtime_error("load: saved ship '" + s.name + "' part '" + sp.id
+                                     + "' has no uid (save predates part identity)");
+        }
+        if(uidToPart.find(sp.uid) != uidToPart.end()) {
+            delete v;
+            throw std::runtime_error("load: saved ship '" + s.name + "' has two parts "
+                                     "with uid " + std::to_string(sp.uid));
+        }
         const PartDef *pd = cat.find(sp.part);
         if(pd == nullptr) {
             delete v;
@@ -193,26 +217,46 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s) {
         if(i == 0) {
             v->setRoot(p);
         } else {
-            std::map<std::string, size_t>::const_iterator it = idToIndex.find(sp.parent);
-            if(it == idToIndex.end()) {
+            std::map<uint64_t, size_t>::const_iterator it = uidToIndex.find(sp.parent);
+            if(it == uidToIndex.end()) {
                 delete p;   // not yet attached to v->parts (so ~Vehicle won't take it); ~Part drops the Body
                 delete v;
                 throw std::runtime_error("load: saved ship '" + s.name + "' part '" +
-                                         sp.id + "' has an unknown parent '" + sp.parent + "'");
+                                         sp.id + "' has an unknown parent uid " +
+                                         std::to_string(sp.parent));
             }
             v->attach(p, it->second, sp.pos, sp.rot);
         }
-        idToIndex[sp.id] = i;
-        idToPart[sp.id] = p;
+        uidToIndex[sp.uid] = i;
+        uidToPart[sp.uid] = p;
+        if(savedUidToPart != nullptr
+           && !savedUidToPart->insert(std::make_pair(sp.uid, p)).second) {
+            /* p is attached now, so ~Vehicle frees it. Two ship files claiming
+               one uid cannot come from a save this game wrote: every part in
+               the fleet had a distinct process-wide uid when it was captured. */
+            delete v;
+            throw std::runtime_error("load: two ships claim part uid "
+                                     + std::to_string(sp.uid));
+        }
     }
-    if(!s.controller.empty()) {
-        std::map<std::string, Part *>::const_iterator it = idToPart.find(s.controller);
-        if(it != idToPart.end()) { v->controller = it->second; }
+    /* A named controller that is not in the ship is corruption, not something
+       to paper over with finalize()'s default: the controller is what the
+       camera basis and the stick frame are built from, so a silent fallback
+       flies the ship from the wrong part's axes. */
+    if(s.controller != 0) {
+        std::map<uint64_t, Part *>::const_iterator it = uidToPart.find(s.controller);
+        if(it == uidToPart.end()) {
+            delete v;
+            throw std::runtime_error("load: saved ship '" + s.name
+                                     + "' names a controller uid "
+                                     + std::to_string(s.controller) + " it does not have");
+        }
+        v->controller = it->second;
     }
     for(size_t k = 0; k < s.fuel_links.size(); k++) {
-        std::map<std::string, Part *>::const_iterator f = idToPart.find(s.fuel_links[k].from);
-        std::map<std::string, Part *>::const_iterator t = idToPart.find(s.fuel_links[k].to);
-        if(f == idToPart.end() || t == idToPart.end()) {
+        std::map<uint64_t, Part *>::const_iterator f = uidToPart.find(s.fuel_links[k].from);
+        std::map<uint64_t, Part *>::const_iterator t = uidToPart.find(s.fuel_links[k].to);
+        if(f == uidToPart.end() || t == uidToPart.end()) {
             delete v;
             throw std::runtime_error("load: saved ship '" + s.name + "' has a fuel link "
                                      "to an unknown part");
@@ -238,10 +282,19 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s) {
     v->thruster_util = s.throttle;   // restore the throttle (was saved from thruster_util)
     v->setSlewRequest((SlewMode)s.slew_request);
 
+    /* A seam names two of THIS ship's parts, and both must be present. This
+       used to `continue` past a seam it could not resolve, which is worse than
+       a loud failure: the joint stays physically docked while the record that
+       would undock it is gone, so the ship becomes permanently un-undockable
+       (undock finds nothing to pop and reports "Cannot undock" forever). */
     for(size_t k = 0; k < s.docks.size(); k++) {
-        std::map<std::string, Part *>::const_iterator portIt = idToPart.find(s.docks[k].port);
-        std::map<std::string, Part *>::const_iterator rootIt = idToPart.find(s.docks[k].root);
-        if(portIt == idToPart.end() || rootIt == idToPart.end()) { continue; }
+        std::map<uint64_t, Part *>::const_iterator portIt = uidToPart.find(s.docks[k].port);
+        std::map<uint64_t, Part *>::const_iterator rootIt = uidToPart.find(s.docks[k].root);
+        if(portIt == uidToPart.end() || rootIt == uidToPart.end()) {
+            delete v;
+            throw std::runtime_error("load: saved ship '" + s.name + "' has a dock seam ("
+                                     + s.docks[k].name + ") naming a part it does not have");
+        }
         v->seams.push_back(Vehicle::DockSeam{ portIt->second, rootIt->second, s.docks[k].name });
     }
     v->m_parent->ships.push_back(v);
@@ -338,6 +391,21 @@ void save_game(Game &g, const std::string &dir) {
     printf("Saved %zu ship(s) to %s\n", fleet.size(), dir.c_str());
 }
 
+/* The live Part a saved uid names, but only if it is one of `owner`'s. The
+   uid map spans the whole save, so the uid alone does not prove the part
+   belongs to the ship named alongside it -- and updateDocking assumes a dock
+   target's port really is on the target. 0 or a miss gives nullptr. */
+static Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
+                           const Vehicle *owner) {
+    if(uid == 0 || owner == nullptr) { return nullptr; }
+    std::map<uint64_t, Part *>::const_iterator it = byUid.find(uid);
+    if(it == byUid.end()) { return nullptr; }
+    for(size_t i = 0; i < owner->parts.size(); i++) {
+        if(owner->parts[i] == it->second) { return it->second; }
+    }
+    return nullptr;
+}
+
 void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     g.time = meta.time;
@@ -385,13 +453,21 @@ void load_game(Game &g, const std::string &dir) {
        is already in byName when the crew is built -- the same invariant the
        cleanup below relies on. */
     std::map<std::string, Vehicle *> byName;
+    /* The save's uid -> the rebuilt Part, spanning EVERY ship file: a dock
+       target's port lives in another ship, so phase 2 cannot resolve it from
+       one ship's local map. Keyed by the saved uid -- the rebuilt Part carries
+       a fresh uid of its own and is not addressable by the saved one anywhere
+       else. Distinct across files because the whole fleet was live in one
+       process when it was captured; a collision is a corrupt save and
+       buildShipFromSaveParts throws for it. */
+    std::map<uint64_t, Part *> savedUidToPart;
     std::vector<Vehicle *> built;
     built.reserve(saves.size());
     try {
         for(size_t i = 0; i < saves.size(); i++) {
             const SaveShip &s = saves[i];
             Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, byName)
-                                   : buildShipFromSaveParts(g, s);
+                                   : buildShipFromSaveParts(g, s, &savedUidToPart);
             built.push_back(v);
             byName[v->name] = v;
         }
@@ -433,9 +509,15 @@ void load_game(Game &g, const std::string &dir) {
     g.focusBody = 0;
 
     // phase 2: resolve the cross-references + the world state, now that
-    // every vehicle exists. The dock target was saved by NAME (its port by
-    // id on the target), so it is resolved here; the kerbal's aboard ship
-    // was resolved at build time.
+    // every vehicle exists. The dock target was saved by NAME with its port by
+    // uid, so it is resolved here; the kerbal's aboard ship was resolved at
+    // build time.
+    //
+    // A dock INTENT that names a part which is gone stays lenient (the target
+    // just is not restored), unlike the dock SEAM in buildShipFromSaveParts
+    // which throws: a stale target is an ordinary runtime state --
+    // updateDocking already validates and drops one whose ship or port went
+    // away -- whereas a dropped seam silently strands a real joint.
     for(size_t i = 0; i < saves.size(); i++) {
         const SaveShip &s = saves[i];
         if(s.is_crew) { continue; }
@@ -444,21 +526,11 @@ void load_game(Game &g, const std::string &dir) {
             std::map<std::string, Vehicle *>::const_iterator t = byName.find(s.dock_target_ship);
             if(t != byName.end()) {
                 v->dockTargetShip = t->second;
-                if(!s.dock_target_port.empty()) {
-                    for(size_t p = 0; p < t->second->parts.size(); p++) {
-                        if(t->second->parts[p]->id == s.dock_target_port) {
-                            v->dockTargetPort = t->second->parts[p];
-                            break;
-                        }
-                    }
-                }
+                v->dockTargetPort = findSavedPart(savedUidToPart, s.dock_target_port,
+                                                  t->second);
             }
         }
-        if(!s.dock_arm_port.empty()) {
-            for(size_t p = 0; p < v->parts.size(); p++) {
-                if(v->parts[p]->id == s.dock_arm_port) { v->dockArmPort = v->parts[p]; break; }
-            }
-        }
+        v->dockArmPort = findSavedPart(savedUidToPart, s.dock_arm_port, v);
         // the world state the ship was saved in: railed ships park (coast
         // or freeze), live ships enter the physics world.
         // buildShipFromSaveParts left the hull out of the world, so this is

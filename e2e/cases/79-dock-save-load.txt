@@ -1,0 +1,32 @@
+# A DOCKED ship must survive a save/load round-trip -- this is the case that
+# broke part identity. absorbShip moves the absorbed ship's parts into the
+# survivor without renaming them, so a docked ship's Part::ids are ambiguous;
+# and --dock-test builds both halves straight from the catalog with no id at
+# all, so all 14 parts of the merged ship saved as "". Resolving parent /
+# controller / fuel-link / seam references through an id-keyed map therefore
+# picked whichever duplicate was inserted last: the part tree came back as a
+# flat 14-part chain and the seam pointed at the wrong part. On the pre-uid
+# format this did not merely load wrong -- it segfaulted in partWorldPose.
+#
+# References are keyed by Part::uid now (see save.h). Two assertions pin the
+# round-trip:
+#   - TWO fuel groups. The docking ports are fuel barriers, so a correctly
+#     rebuilt tree puts the probe's tanks in one group and the station's in
+#     another. A flattened chain would place both barriers in series and give
+#     three conducting segments, i.e. three groups.
+#   - undock works and splits off the ship the seam names. A seam that resolved
+#     to the wrong part either extracts the wrong subtree or, finding nothing
+#     to extract, reports "Cannot undock" and returns before popping -- so the
+#     stale seam is never cleared and the ship is permanently un-undockable.
+NAME dock-save-load
+ARGS --load e2e/fixtures/save_docked --time-accel 1 --timeout 5
+ARGS --sim-press 500,0,U --fuel-log
+EXPECT Loaded game from e2e/fixtures/save_docked (active: dockprobe)
+EXPECT [undock] t=
+EXPECT a="dockprobe" b="dockstation"
+CHECK out.count("[undock]") == 1
+CHECK len(fuel) >= 1 and len(first(fuel)["groups"]) == 2
+FORBID Cannot undock
+FORBID Segmentation
+FORBID GL_
+FORBID error:

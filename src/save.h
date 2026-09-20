@@ -29,6 +29,7 @@
 // The Game-coupled capture/restore (save_game / load_game) lives in save.cpp.
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -46,8 +47,28 @@
 struct Game;   // save_game / load_game take one; forward-declared so this
                // header stays free of game.h (and the unit test stays light)
 
-// A part instance in a saved ship. `part` is the catalog (def) name, `id` the
-// instance id, `parent` the parent's id ("" for the root). `pos`/`rot` are
+/* Cross-part references are keyed by Part::uid, NOT by the def-authored
+   instance id. `id` is unique only within one ship def, and a docked ship
+   carries two ships' parts in one list without renaming either -- so two ships
+   built from the same def collide on EVERY id, and resolving through an
+   id-keyed map silently picked whichever duplicate was inserted last: a wrong
+   controller after a round-trip, and a seam that reconstructed as the wrong
+   part so undock failed and left the ship permanently un-undockable. A uid is
+   minted per instance and distinct process-wide, so it stays a key across a
+   merge.
+
+   A saved uid is THIS SAVE's key for the part, not a value to restore: on load
+   the rebuilt Part keeps the fresh uid its constructor minted, and the file's
+   uids are used only to wire the references back up. That keeps the live uid
+   sequence monotonic with no restore-and-bump-the-counter dance. Every part in
+   one save has a distinct uid because they were all live in one process when
+   it was written -- which is what lets the CROSS-ship references (a dock
+   target's port) resolve through a single map. */
+
+// A part instance in a saved ship. `part` is the catalog (def) name, `uid` the
+// identity every reference names it by (0 = absent, which is a load error),
+// `id` the def-authored instance id (kept: authoring, the VAB, diagnostics)
+// and `parent` the parent's uid (0 for the root). `pos`/`rot` are
 // the part's ship-local frame-S pose (the root is identity -- setRoot forces
 // it -- so they are the no-op defaults for part 0). `mass` is the part's
 // authoritative mass (kg; the capsule's includes any aboard crew), `fuel` the
@@ -57,8 +78,9 @@ struct Game;   // save_game / load_game take one; forward-declared so this
 // matches the one that was saved.
 struct SavePart {
     std::string part;
-    std::string id;
-    std::string parent;      // "" for the root
+    uint64_t uid = 0;        // the key every cross-part reference uses; 0 = absent
+    std::string id;          // def-authored instance id; NOT unique across a merge
+    uint64_t parent = 0;     // the parent's uid; 0 for the root
     int stage = 1;
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dmat3 rot = glm::dmat3(1.0);
@@ -67,10 +89,10 @@ struct SavePart {
     std::vector<double> fuel;   // one entry per ResourceType (Num)
 };
 
-// A one-way fuel link between two parts' fuel groups (from -> to).
+// A one-way fuel link between two parts' fuel groups (from -> to), by uid.
 struct SaveFuelLink {
-    std::string from;
-    std::string to;
+    uint64_t from = 0;
+    uint64_t to = 0;
 };
 
 // A ship's pose in its CURRENT frame (see the header). `body` is the SOI
@@ -86,9 +108,9 @@ struct SavePose {
 
 // One dock seam (the joint of a ship this one absorbed; undock pops the last).
 struct SaveDock {
-    std::string port;   // this ship's port part id
-    std::string root;   // the absorbed ship's root part id
-    std::string name;   // the absorbed ship's display name (restored on undock)
+    uint64_t port = 0;      // this ship's port part uid
+    uint64_t root = 0;      // the absorbed ship's root part uid
+    std::string name;       // the absorbed ship's display name (restored on undock)
 };
 
 // One vehicle: a ship (is_crew false) or a kerbal (is_crew true). The ship
@@ -106,16 +128,21 @@ struct SaveShip {
     int slot = 0;
     std::vector<SavePart> parts;
     std::vector<SaveFuelLink> fuel_links;
-    std::string controller;   // part id ("" = the default rule)
+    uint64_t controller = 0;  // part uid (0 = the default rule)
     bool onRails = false;     // coasting on the rails (ships; also a free kerbal)
     float throttle = 0.0f;
     int active_stage = 1;
     int total_stages = 1;
     int slew_request = 0;     // SlewMode (vehicle.h)
     std::vector<SaveDock> docks;
-    std::string dock_target_ship;   // "" = no target
-    std::string dock_target_port;   // part id on the target ship
-    std::string dock_arm_port;      // this ship's port part id ("" = none)
+    /* The dock target is named by SHIP NAME, its port by uid: the target is a
+       separate save file, so there is no shared part scope to name it in, and
+       ship names are the fleet's key (dedupName keeps them unique). The port
+       resolves through the load's one uid->Part map, which spans every file
+       because the uids were minted in one process. */
+    std::string dock_target_ship;    // "" = no target
+    uint64_t dock_target_port = 0;   // part uid on the target ship (0 = none)
+    uint64_t dock_arm_port = 0;      // this ship's own port part uid (0 = none)
 
     // crew (is_crew true)
     std::string aboard;       // the ship's name ("" = free / on EVA)
@@ -163,8 +190,9 @@ inline glm::dvec3 vec3FromJson(const nlohmann::json &j) {
 inline nlohmann::json savePartToJson(const SavePart &p) {
     nlohmann::json j;
     j["part"]   = p.part;
+    j["uid"]    = p.uid;
     j["id"]     = p.id;
-    if(!p.parent.empty()) { j["parent"] = p.parent; }
+    if(p.parent != 0) { j["parent"] = p.parent; }
     j["stage"]  = p.stage;
     if(p.pos != glm::dvec3(0.0)) { j["pos"] = std::vector<double>({p.pos.x, p.pos.y, p.pos.z}); }
     if(p.rot != glm::dmat3(1.0)) { j["rot"] = mat3ToVec(p.rot); }
@@ -177,8 +205,9 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
 inline SavePart savePartFromJson(const nlohmann::json &j) {
     SavePart p;
     if(j.contains("part") && j["part"].is_string()) { p.part = j["part"].get<std::string>(); }
+    if(j.contains("uid") && j["uid"].is_number()) { p.uid = j["uid"].get<uint64_t>(); }
     if(j.contains("id") && j["id"].is_string()) { p.id = j["id"].get<std::string>(); }
-    if(j.contains("parent") && j["parent"].is_string()) { p.parent = j["parent"].get<std::string>(); }
+    if(j.contains("parent") && j["parent"].is_number()) { p.parent = j["parent"].get<uint64_t>(); }
     if(j.contains("stage") && j["stage"].is_number()) { p.stage = j["stage"].get<int>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
@@ -239,7 +268,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         }
         j["fuel_links"] = links;
     }
-    if(!s.controller.empty()) { j["controller"] = s.controller; }
+    if(s.controller != 0) { j["controller"] = s.controller; }
     j["pose"]         = savePoseToJson(s.pose);
     j["onRails"]      = s.onRails;
     j["throttle"]     = s.throttle;
@@ -255,8 +284,8 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         j["docks"] = docks;
     }
     if(!s.dock_target_ship.empty()) { j["dock_target_ship"] = s.dock_target_ship; }
-    if(!s.dock_target_port.empty()) { j["dock_target_port"] = s.dock_target_port; }
-    if(!s.dock_arm_port.empty()) { j["dock_arm_port"] = s.dock_arm_port; }
+    if(s.dock_target_port != 0) { j["dock_target_port"] = s.dock_target_port; }
+    if(s.dock_arm_port != 0) { j["dock_arm_port"] = s.dock_arm_port; }
     return j;
 }
 
@@ -282,12 +311,12 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         for(auto &&l : j["fuel_links"]) {
             if(!l.is_object()) { continue; }
             SaveFuelLink lk;
-            if(l.contains("from") && l["from"].is_string()) { lk.from = l["from"].get<std::string>(); }
-            if(l.contains("to") && l["to"].is_string()) { lk.to = l["to"].get<std::string>(); }
+            if(l.contains("from") && l["from"].is_number()) { lk.from = l["from"].get<uint64_t>(); }
+            if(l.contains("to") && l["to"].is_number()) { lk.to = l["to"].get<uint64_t>(); }
             s.fuel_links.push_back(lk);
         }
     }
-    if(j.contains("controller") && j["controller"].is_string()) { s.controller = j["controller"].get<std::string>(); }
+    if(j.contains("controller") && j["controller"].is_number()) { s.controller = j["controller"].get<uint64_t>(); }
     if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
     if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
     if(j.contains("throttle") && j["throttle"].is_number()) { s.throttle = j["throttle"].get<float>(); }
@@ -298,15 +327,15 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         for(auto &&d : j["docks"]) {
             if(!d.is_object()) { continue; }
             SaveDock dk;
-            if(d.contains("port") && d["port"].is_string()) { dk.port = d["port"].get<std::string>(); }
-            if(d.contains("root") && d["root"].is_string()) { dk.root = d["root"].get<std::string>(); }
+            if(d.contains("port") && d["port"].is_number()) { dk.port = d["port"].get<uint64_t>(); }
+            if(d.contains("root") && d["root"].is_number()) { dk.root = d["root"].get<uint64_t>(); }
             if(d.contains("name") && d["name"].is_string()) { dk.name = d["name"].get<std::string>(); }
             s.docks.push_back(dk);
         }
     }
     if(j.contains("dock_target_ship") && j["dock_target_ship"].is_string()) { s.dock_target_ship = j["dock_target_ship"].get<std::string>(); }
-    if(j.contains("dock_target_port") && j["dock_target_port"].is_string()) { s.dock_target_port = j["dock_target_port"].get<std::string>(); }
-    if(j.contains("dock_arm_port") && j["dock_arm_port"].is_string()) { s.dock_arm_port = j["dock_arm_port"].get<std::string>(); }
+    if(j.contains("dock_target_port") && j["dock_target_port"].is_number()) { s.dock_target_port = j["dock_target_port"].get<uint64_t>(); }
+    if(j.contains("dock_arm_port") && j["dock_arm_port"].is_number()) { s.dock_arm_port = j["dock_arm_port"].get<uint64_t>(); }
     return s;
 }
 

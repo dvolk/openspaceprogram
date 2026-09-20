@@ -6,6 +6,12 @@
 // permissive reads (an absent/unknown key keeps the struct's default, an
 // older/newer file never crashes), and the mat3/vec3 serialization.
 //
+// Also the uid keying of the cross-part references (see save.h): two parts
+// sharing an `id` -- the shape a docked pair of same-def ships saves as --
+// still round-trip as two distinguishable parts, and a string where a uid is
+// expected reads back as 0, the "absent" value load refuses outright rather
+// than resolving by guesswork.
+//
 // The Game-coupled capture/restore (save_game / load_game in save.cpp) needs
 // Game / Ships / Bullet, so it is NOT covered here (the e2e save-load case
 // exercises it headless through the game).
@@ -48,8 +54,9 @@ int main() {
     // part 0: the root (identity pose -- the save omits pos/rot for it)
     SavePart root;
     root.part = "capsule";
+    root.uid = 101;          // the key every cross-part reference uses
     root.id = "capsule_1";
-    root.parent = "";
+    root.parent = 0;         // 0 = the root
     root.stage = 1;
     root.pos = glm::dvec3(0.0);
     root.rot = glm::dmat3(1.0);
@@ -63,8 +70,9 @@ int main() {
     // part 1: a child with a non-identity pose + fuel
     SavePart tank;
     tank.part = "fuel_tank";
+    tank.uid = 102;
     tank.id = "fuel_tank_1";
-    tank.parent = "capsule_1";
+    tank.parent = 101;       // the capsule, by uid
     tank.stage = 2;
     tank.pos = glm::dvec3(0.0, 0.0, -2.25);
     tank.rot = glm::dmat3(1.0);
@@ -75,8 +83,8 @@ int main() {
     }
     ship.parts.push_back(tank);
 
-    ship.fuel_links.push_back(SaveFuelLink{ "fuel_tank_1", "capsule_1" });
-    ship.controller = "capsule_1";
+    ship.fuel_links.push_back(SaveFuelLink{ 102, 101 });
+    ship.controller = 101;
 
     // a non-trivial pose in a rotating frame
     ship.pose.body = "Kerbin";
@@ -94,10 +102,10 @@ int main() {
     ship.active_stage = 2;
     ship.total_stages = 3;
     ship.slew_request = 1;   // SlewMode SlewPrograde (vehicle.h); the int is what saves
-    ship.docks.push_back(SaveDock{ "capsule_1", "capsule_1", "station" });
+    ship.docks.push_back(SaveDock{ 101, 101, "station" });
     ship.dock_target_ship = "station";
-    ship.dock_target_port = "port_1";
-    ship.dock_arm_port = "capsule_1";
+    ship.dock_target_port = 103;   // a part uid on the TARGET ship
+    ship.dock_arm_port = 101;
 
     nlohmann::json j = saveShipToJson(ship);
     SaveShip out = saveShipFromJson(j);
@@ -112,6 +120,7 @@ int main() {
         const SavePart &a = out.parts[i];
         const SavePart &b = ship.parts[i];
         CHECK(a.part == b.part);
+        CHECK(a.uid == b.uid);
         CHECK(a.id == b.id);
         CHECK(a.parent == b.parent);
         CHECK(a.stage == b.stage);
@@ -242,11 +251,59 @@ int main() {
     SavePart partOut = savePartFromJson(part);
     CHECK(partOut.part == "engine");
     CHECK(partOut.id == "engine_1");
-    CHECK(partOut.parent.empty());
+    CHECK(partOut.uid == 0);          // absent -- load refuses a part with no uid
+    CHECK(partOut.parent == 0);       // 0 = the root
     CHECK(partOut.stage == 1);
     CHECK(vnear(partOut.pos, glm::dvec3(0.0)));
     CHECK(mnear(partOut.rot, glm::dmat3(1.0)));
     CHECK(near(partOut.hull_margin, -1.0));
+
+    /* A reference keyed by STRING where a uid is expected reads back as 0 --
+       which is what an old-format save looks like, and why load treats 0 as a
+       hard error rather than a miss to paper over. */
+    nlohmann::json oldFmt = nlohmann::json::object();
+    oldFmt["part"] = "engine";
+    oldFmt["uid"] = "engine_1";
+    oldFmt["parent"] = "capsule_1";
+    SavePart oldOut = savePartFromJson(oldFmt);
+    CHECK(oldOut.uid == 0);
+    CHECK(oldOut.parent == 0);
+
+    /* Two parts with the SAME id must still round-trip as two distinguishable
+       parts. This is the shape a docked pair of same-def ships saves as, and
+       the case that made id-keyed resolution silently pick one of them; uid
+       is what keeps them apart. */
+    {
+        SaveShip dup;
+        dup.name = "docked";
+        dup.is_crew = false;
+        SavePart a; a.part = "fuel_tank"; a.uid = 7; a.id = "fuel_tank_1"; a.parent = 0;
+        SavePart b; b.part = "fuel_tank"; b.uid = 8; b.id = "fuel_tank_1"; b.parent = 7;
+        dup.parts.push_back(a);
+        dup.parts.push_back(b);
+        dup.controller = 8;                                  // the SECOND one
+        dup.fuel_links.push_back(SaveFuelLink{ 7, 8 });
+        dup.docks.push_back(SaveDock{ 7, 8, "docked" });
+        SaveShip dupOut = saveShipFromJson(saveShipToJson(dup));
+        CHECK(dupOut.parts.size() == 2);
+        if(dupOut.parts.size() == 2) {
+            CHECK(dupOut.parts[0].id == dupOut.parts[1].id);   // ids DO collide
+            CHECK(dupOut.parts[0].uid == 7);
+            CHECK(dupOut.parts[1].uid == 8);                   // uids do not
+            CHECK(dupOut.parts[1].parent == 7);
+        }
+        CHECK(dupOut.controller == 8);
+        CHECK(dupOut.fuel_links.size() == 1);
+        if(dupOut.fuel_links.size() == 1) {
+            CHECK(dupOut.fuel_links[0].from == 7);
+            CHECK(dupOut.fuel_links[0].to == 8);
+        }
+        CHECK(dupOut.docks.size() == 1);
+        if(dupOut.docks.size() == 1) {
+            CHECK(dupOut.docks[0].port == 7);
+            CHECK(dupOut.docks[0].root == 8);
+        }
+    }
 
     // the mat3/vec3 helpers round-trip
     nlohmann::json mvec = mat3ToVec(ship.pose.rot);
