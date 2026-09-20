@@ -25,5 +25,11 @@ CHECK any(d["F"] > 0 and d["rho"] > 0 for d in drag)
 CHECK max(abs(d.get("aoa", 0.0)) for d in drag) > 30
 # ...and the silhouette area grew with it (broadside > edge-on).
 CHECK max(d.get("a", 0.0) for d in drag) > min(d.get("a", 0.0) for d in drag) * 1.05
+# The cd FOLLOWS the attitude (the directional-drag SIGN convention): at the
+# lowest |AoA| the capsule's sleek nose + edge-on wings keep cd LOW, and at
+# the broadside attitude the blunt base + flat-plate wings push cd UP. A
+# flipped nose-axis/flow sign would reverse this -- making every cone sleek
+# the wrong way -- so this pins that dot(nose, flow) = +1 means nose-in.
+CHECK (lambda ds: (ds and max(ds, key=lambda d: abs(d["aoa"]))["cd"] > min(ds, key=lambda d: abs(d["aoa"]))["cd"] * 1.05))([d for d in drag if d.get("aoa") is not None and d.get("cd") is not None])
 FORBID GL_
 FORBID error:

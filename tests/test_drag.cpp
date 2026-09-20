@@ -549,6 +549,74 @@ static void test_projectedArea() {
     }
 }
 
+static void test_partCd() {
+    printf("== partCd: 3-anchor directional blend (nose / side / base) ==\n");
+
+    // A cone-like part (the capsule): sleek nose (0.35), blunt side (0.8),
+    // blunt base (1.3) -- the flat heat shield does the re-entry braking.
+    const double fwd = 0.35, side = 0.80, bwd = 1.30;
+
+    // Each anchor is hit EXACTLY at its angle (c = cos of nose-axis vs flow):
+    //   c = +1  -> nose into the flow  -> drag_forward
+    //   c =  0  -> broadside           -> drag_side
+    //   c = -1  -> base into the flow  -> drag_backward
+    CHECK_NEAR(partCd(fwd, side, bwd,  1.0), fwd,  1e-12, "c=+1 -> forward anchor");
+    CHECK_NEAR(partCd(fwd, side, bwd,  0.0), side, 1e-12, "c=0 -> side anchor");
+    CHECK_NEAR(partCd(fwd, side, bwd, -1.0), bwd,  1e-12, "c=-1 -> backward anchor");
+
+    // CONVEX blend: the weights (side(1-c^2), fwd(max(c,0)^2), bwd(max(-c,0)^2))
+    // are non-negative and sum to 1, so cd stays within the anchor range for
+    // every angle -- no overshoot, no dip below the sleekest anchor.
+    const double mn = 0.35, mx = 1.30;
+    for(double c = -1.0; c <= 1.0 + 1e-9; c += 0.05) {
+        const double cd = partCd(fwd, side, bwd, c);
+        CHECK_TRUE(cd >= mn - 1e-12 && cd <= mx + 1e-12,
+                   "cd in [min,max] anchor range (sweep)");
+    }
+
+    // The weights sum to 1 (a true convex combination, not scaled/offset) --
+    // pin the exact value at two 45 deg angles:
+    //   c = +1/sqrt2 (nose-in):  side*0.5 + fwd*0.5 + bwd*0
+    //   c = -1/sqrt2 (base-in):  side*0.5 + fwd*0 + bwd*0.5
+    CHECK_NEAR(partCd(fwd, side, bwd,  1.0 / std::sqrt(2.0)),
+               0.5 * side + 0.5 * fwd, 1e-12, "c=+1/sqrt2 -> .5 side + .5 fwd");
+    CHECK_NEAR(partCd(fwd, side, bwd, -1.0 / std::sqrt(2.0)),
+               0.5 * side + 0.5 * bwd, 1e-12, "c=-1/sqrt2 -> .5 side + .5 bwd");
+
+    // With fwd < side < bwd the blend eases nose->base and is monotone up as
+    // the part turns from nose-first to base-first (the weathervane asymmetry).
+    CHECK_TRUE(partCd(fwd, side, bwd,  1.0) < partCd(fwd, side, bwd, 0.0),
+               "forward < side (sleeker nose than broadside)");
+    CHECK_TRUE(partCd(fwd, side, bwd, 0.0) < partCd(fwd, side, bwd, -1.0),
+               "side < backward (broadside blunter than the base)");
+    CHECK_TRUE(partCd(fwd, side, bwd, 0.5) < partCd(fwd, side, bwd, -0.5),
+               "nose-in cd < base-in cd (fwd < bwd)");
+
+    // A SYMMETRIC part (all three anchors equal -- the shared `drag` fallback
+    // path) is that value at EVERY angle.
+    {
+        const double s = 1.0;
+        for(double c = -1.0; c <= 1.0 + 1e-9; c += 0.1) {
+            CHECK_NEAR(partCd(s, s, s, c), s, 1e-12, "symmetric part -> s");
+        }
+    }
+
+    // A thin DISC: the opposite asymmetry to a cone -- sleek edge-on
+    // (fwd/bwd low), blunt face-on (side high).
+    {
+        const double df = 0.2, ds = 1.1, db = 0.2;
+        CHECK_TRUE(partCd(df, ds, db, 0.0) > partCd(df, ds, db, 1.0),
+                   "disc: face-on > edge-on");
+        CHECK_TRUE(partCd(df, ds, db, 1.0) < partCd(df, ds, db, 0.5),
+                   "disc: edge (c=1) < 45 deg");
+    }
+
+    // Robustness: a slightly-out-of-range cosine (a non-unit axis or flow) is
+    // clamped, not amplified -- c=+1.5 behaves like the forward anchor.
+    CHECK_NEAR(partCd(fwd, side, bwd,  1.5), fwd, 1e-12, "c>1 clamps to forward");
+    CHECK_NEAR(partCd(fwd, side, bwd, -1.5), bwd, 1e-12, "c<-1 clamps to backward");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -563,6 +631,8 @@ int main() {
     test_liftCurve();
     printf("\n");
     test_projectedArea();
+    printf("\n");
+    test_partCd();
     printf("\n");
     test_controlForce();
     printf("\n");

@@ -393,10 +393,11 @@ struct PartDef {
        ship's drag is 0.5 * rho * v^2 * A_ship * cd_ship (opposite the flow),
        where A_ship is the ship's convex-hull silhouette facing the flow
        (the prograde -> side swing: a rocket is sleek nose-first, heavy
-       broadside) and cd_ship is the parts' `drag` cds blended by the area
-       each shows to the flow (the area-weighted mean -- a blunt part raises
-       it, a sleek one lowers it). Applied at the silhouette's center of
-       pressure, so the weathervaning torque about the COM is preserved.
+       broadside) and cd_ship is the parts' cds -- each part's 3-anchor
+       blend (src/drag.h partCd) as it faces the flow -- area-weighted (a
+       blunt part raises it, a sleek one lowers it). Applied at the
+       silhouette's center of pressure, so the weathervaning torque about
+       the COM is preserved.
        `drag` 0 = maximally sleek: its area still counts in the silhouette
        and pulls the cd mean toward 0. The global --drag-cd is a master
        scale on the whole (0 = off). Lift terms:
@@ -436,11 +437,26 @@ struct PartDef {
    canard ahead pitches it the other way. Air gives the authority --
    zero in vacuum. */
     double drag;          // the part's drag COEFFICIENT (dimensionless, its
-                          //   shape's bluntness). 0 = maximally sleek: its
-                          //   area still counts in the silhouette and pulls
-                          //   the cd mean toward 0. The ship's drag is the
-                          //   silhouette x the area-weighted mean of these
-                          //   (see the aero comment above).
+                          //   shape's bluntness) -- the SYMMETRIC default,
+                          //   used for every orientation unless the three
+                          //   directional cds below override it.
+                          //   0 = maximally sleek (its area still counts in
+                          //   the silhouette and pulls the cd mean toward 0).
+    double drag_forward;  // cd with the part's NOSE (its +stack axis, local
+                          //   +Z) into the flow. Defaults to `drag`. A cone
+                          //   is sleek here (a capsule nose-first).
+    double drag_side;     // cd broadside (the part's axis perpendicular to
+                          //   the flow). Defaults to `drag`. A thin disc is
+                          //   blunt here (face-on) though sleek edge-on.
+    double drag_backward; // cd with the part's BASE into the flow. Defaults
+                          //   to `drag`. A cone is blunt here (a capsule
+                          //   base-first -- its flat face brakes the ship
+                          //   on the way down).
+    // applyAeroForce blends these three by the axis-flow angle (drag.h
+    // partCd): cd = side(1-c^2) + forward(max(c,0)^2) +
+    // backward(max(-c,0)^2), where c = dot(nose_axis, flow) -- +1 nose-in,
+    // 0 broadside, -1 base-in (a convex blend, so the result stays within
+    // the part's own min..max cd).
     double lift_area;
     double cl;
     double stall_angle;

@@ -367,7 +367,8 @@ public:
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // pitch angle of attack (rad) of the last substep
     double lastDragArea = 0.0;  // the ship's silhouette facing the flow (m^2)
-    double lastDragCd = 0.0;  // the area-weighted mean of the parts' drag cds
+    double lastDragCd = 0.0;  // area-weighted mean of the parts' cds, each as
+                              // it faces the flow (orientation-dependent)
 
     /* The last substep's control-surface deflections (applyAeroForce): one
        entry per control surface -- the part type (name + the axis it steers),
@@ -644,11 +645,18 @@ public:
        DRAG is SHIP-LEVEL (one force): the ship's convex-hull silhouette
        facing the flow (the hull of ALL parts' collision vertices, projected
        onto the plane perpendicular to v̂ -- src/drag.h projectedArea), times
-       the area-weighted mean of the parts' `drag` coefficients (cd_ship),
+       the area-weighted mean of the parts' drag coefficients (cd_ship),
        times the global --drag-cd master scale:
          drag   = -v̂ · q · (--drag-cd x cd_ship) · A_ship, applied at the
                   center of pressure (the silhouette-area-weighted centroid
                   of the parts)
+       cd_ship is NOT a per-part constant: each part's coefficient is the
+       3-anchor blend (src/drag.h partCd) of its drag_forward / drag_side /
+       drag_backward, weighted by the angle between the part's nose axis and
+       the flow. So a cone is sleek nose-first and blunt base-first, a thin
+       disc is blunt face-on and sleek edge-on, and a cylinder is blunt both
+       ways -- the silhouette alone (identical either way) can't tell those
+       apart, only the directional cd can.
        A_ship is the ship's OWN silhouette, so a stacked rocket presents its
        true end face (one circle), not N of them, and a long body drags much
        more side-on than end-on -- the weathervane behaviour comes from the

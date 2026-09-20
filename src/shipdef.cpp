@@ -15,7 +15,8 @@ PartDef::PartDef()
       power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
-      drag(0.0), lift_area(0.0), cl(0.0), stall_angle(0.0),
+      drag(0.0), drag_forward(0.0), drag_side(0.0), drag_backward(0.0),
+      lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
@@ -268,7 +269,10 @@ PartsCatalog load_parts_catalog(const char *path) {
 
         /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0.
            Drag (R2: silhouette area x per-part shape): `drag` is the part's
-           drag COEFFICIENT (dimensionless, its shape's bluntness); the
+           drag COEFFICIENT (dimensionless, its shape's bluntness) -- the
+           symmetric default. `drag_forward` / `drag_side` / `drag_backward`
+           override it for the three ways the part can face the flow (nose /
+           broadside / base into the flow; each defaults to `drag`). The
            ship's drag blends the parts' cds by the area each shows to the
            flow, over the ship's hull silhouette (Vehicle::applyAeroForce).
            Lift terms: 0 = no lift (a rocket stays a rocket); a lifting
@@ -277,6 +281,21 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.drag < 0.0) {
             throw std::runtime_error(ctx +
                 "\"drag\" must be >= 0 (dimensionless drag coefficient)");
+        }
+        d.drag_forward = pv.value("drag_forward", d.drag);
+        if(d.drag_forward < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag_forward\" must be >= 0 (dimensionless)");
+        }
+        d.drag_side = pv.value("drag_side", d.drag);
+        if(d.drag_side < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag_side\" must be >= 0 (dimensionless)");
+        }
+        d.drag_backward = pv.value("drag_backward", d.drag);
+        if(d.drag_backward < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag_backward\" must be >= 0 (dimensionless)");
         }
         d.lift_area = pv.value("lift_area", 0.0);
         if(d.lift_area < 0.0) {

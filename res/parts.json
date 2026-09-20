@@ -15,7 +15,10 @@
         "ec": 2000
       },
       "crew_capacity": 1,
-      "drag": 1.0
+      "drag": 1.0,
+      "drag_forward": 0.35,
+      "drag_side": 0.8,
+      "drag_backward": 1.3
     },
     {
       "name": "capsule_r1.5h3",
@@ -32,7 +35,10 @@
         "ec": 6000
       },
       "crew_capacity": 3,
-      "drag": 1.0
+      "drag": 1.0,
+      "drag_forward": 0.35,
+      "drag_side": 0.8,
+      "drag_backward": 1.3
     },
     {
       "name": "capsule_r2.25h4.5",
@@ -49,7 +55,10 @@
         "ec": 12000
       },
       "crew_capacity": 6,
-      "drag": 1.0
+      "drag": 1.0,
+      "drag_forward": 0.35,
+      "drag_side": 0.8,
+      "drag_backward": 1.3
     },
     {
       "name": "reaction_wheel",
@@ -62,7 +71,10 @@
       "height": 0.25,
       "torque": 2000,
       "power_draw": 1000,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "reaction_wheel_r1.5h0.375",
@@ -75,7 +87,10 @@
       "height": 0.375,
       "torque": 3000,
       "power_draw": 1500,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "reaction_wheel_r2.25h0.5625",
@@ -88,7 +103,10 @@
       "height": 0.562,
       "torque": 4500,
       "power_draw": 2250,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "battery",
@@ -102,7 +120,10 @@
       "capacity": {
         "ec": 157079.63
       },
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "battery_r1.5h0.375",
@@ -116,7 +137,10 @@
       "capacity": {
         "ec": 530143.76
       },
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "battery_r2.25h0.5625",
@@ -130,7 +154,10 @@
       "capacity": {
         "ec": 1789235.19
       },
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "rtg",
@@ -142,7 +169,10 @@
       "radius": 1.0,
       "height": 0.25,
       "power_gen": 298.45,
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "rtg_r1.5h0.375",
@@ -154,7 +184,10 @@
       "radius": 1.5,
       "height": 0.375,
       "power_gen": 1007.27,
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "rtg_r2.25h0.5625",
@@ -166,7 +199,10 @@
       "radius": 2.25,
       "height": 0.562,
       "power_gen": 3399.55,
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 0.2,
+      "drag_side": 1.1,
+      "drag_backward": 0.2
     },
     {
       "name": "engine",
@@ -181,7 +217,10 @@
       "exhaust_velocity": 4400.0,
       "shroud": "engine_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "engine_r1.5h3",
@@ -196,7 +235,10 @@
       "exhaust_velocity": 4400.0,
       "shroud": "engine_r1.5h3_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "engine_r2.25h4.5",
@@ -211,7 +253,10 @@
       "exhaust_velocity": 4400.0,
       "shroud": "engine_r2.25h4.5_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "orbital_engine",
@@ -226,7 +271,10 @@
       "exhaust_velocity": 4400.0,
       "shroud": "orbital_engine_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "orbital_engine_r1.5h1.5",
@@ -241,7 +289,10 @@
       "exhaust_velocity": 4400.0,
       "shroud": "orbital_engine_r1.5h1.5_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "orbital_engine_r2.25h2.25",
@@ -256,7 +307,10 @@
       "exhaust_velocity": 4400.0,
       "shroud": "orbital_engine_r2.25h2.25_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "jet",
@@ -274,7 +328,10 @@
       "jet_intake_area": 0.9,
       "shroud": "engine_shroud.obj",
       "shroud_texture": "engine_shroud.png",
-      "drag": 0.6
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "jet_tank_r1h1",
@@ -288,7 +345,10 @@
       "capacity": {
         "jetfuel": 219.91
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "jet_tank_r1h3",
@@ -302,7 +362,10 @@
       "capacity": {
         "jetfuel": 659.73
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "jet_tank_r1h5",
@@ -316,7 +379,10 @@
       "capacity": {
         "jetfuel": 1099.56
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "fuel_tank",
@@ -331,7 +397,10 @@
         "hydrogen": 417.83,
         "lox": 417.83
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1h1",
@@ -346,7 +415,10 @@
         "hydrogen": 208.92,
         "lox": 208.92
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1h3",
@@ -361,7 +433,10 @@
         "hydrogen": 626.75,
         "lox": 626.75
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1h5",
@@ -376,7 +451,10 @@
         "hydrogen": 1044.58,
         "lox": 1044.58
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1.5h1",
@@ -391,7 +469,10 @@
         "hydrogen": 470.06,
         "lox": 470.06
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1.5h2",
@@ -406,7 +487,10 @@
         "hydrogen": 940.12,
         "lox": 940.12
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1.5h3",
@@ -421,7 +505,10 @@
         "hydrogen": 1410.18,
         "lox": 1410.18
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r1.5h5",
@@ -436,7 +523,10 @@
         "hydrogen": 2350.3,
         "lox": 2350.3
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r2.25h1",
@@ -451,7 +541,10 @@
         "hydrogen": 1057.64,
         "lox": 1057.64
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r2.25h3",
@@ -466,7 +559,10 @@
         "hydrogen": 3172.91,
         "lox": 3172.91
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "tank_r2.25h5",
@@ -481,7 +577,10 @@
         "hydrogen": 5288.18,
         "lox": 5288.18
       },
-      "drag": 0.7
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "mono_tank_r1",
@@ -495,7 +594,10 @@
       "capacity": {
         "hydrazine": 78.54
       },
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "mono_tank_r1.5",
@@ -509,7 +611,10 @@
       "capacity": {
         "hydrazine": 265.07
       },
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "mono_tank_r2.25",
@@ -523,7 +628,10 @@
       "capacity": {
         "hydrazine": 894.62
       },
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "rcs_r1",
@@ -535,7 +643,10 @@
       "radius": 1.0,
       "height": 0.25,
       "rcs_thrust": 200,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "rcs_r1.5",
@@ -547,7 +658,10 @@
       "radius": 1.5,
       "height": 0.375,
       "rcs_thrust": 450,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "rcs_r2.25",
@@ -559,7 +673,10 @@
       "radius": 2.25,
       "height": 0.562,
       "rcs_thrust": 1012.5,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "adapter_r1to1.5",
@@ -570,7 +687,10 @@
       "mass": 55.6,
       "radius": 1.5,
       "height": 0.75,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "adapter_r1to2.25",
@@ -581,7 +701,10 @@
       "mass": 145.95,
       "radius": 2.25,
       "height": 1.125,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "adapter_r1.5to1",
@@ -592,7 +715,10 @@
       "mass": 55.6,
       "radius": 1.5,
       "height": 0.75,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "adapter_r1.5to2.25",
@@ -603,7 +729,10 @@
       "mass": 187.65,
       "radius": 2.25,
       "height": 1.125,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "adapter_r2.25to1",
@@ -614,7 +743,10 @@
       "mass": 145.95,
       "radius": 2.25,
       "height": 1.125,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "adapter_r2.25to1.5",
@@ -625,7 +757,10 @@
       "mass": 187.65,
       "radius": 2.25,
       "height": 1.125,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
     },
     {
       "name": "decoupler_r1",
@@ -638,7 +773,10 @@
       "height": 0.25,
       "decoupler": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "decoupler_r1.5",
@@ -651,7 +789,10 @@
       "height": 0.375,
       "decoupler": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "decoupler_r2.25",
@@ -664,7 +805,10 @@
       "height": 0.5625,
       "decoupler": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "decoupler_radial",
@@ -677,7 +821,10 @@
       "height": 0.5,
       "decoupler": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "docking_port_r1",
@@ -690,7 +837,10 @@
       "height": 0.25,
       "docking_port": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.3,
+      "drag_side": 0.9,
+      "drag_backward": 0.3
     },
     {
       "name": "docking_port_r1.5",
@@ -703,7 +853,10 @@
       "height": 0.375,
       "docking_port": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.3,
+      "drag_side": 0.9,
+      "drag_backward": 0.3
     },
     {
       "name": "docking_port_r2.25",
@@ -716,7 +869,10 @@
       "height": 0.5625,
       "docking_port": true,
       "fuel_barrier": true,
-      "drag": 0.2
+      "drag": 0.2,
+      "drag_forward": 0.3,
+      "drag_side": 0.9,
+      "drag_backward": 0.3
     },
     {
       "name": "nose_cap",
@@ -727,7 +883,10 @@
       "mass": 99.89,
       "radius": 1.0,
       "height": 0.5,
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.3
     },
     {
       "name": "nose_cap_r1.5h0.75",
@@ -738,7 +897,10 @@
       "mass": 337.12,
       "radius": 1.5,
       "height": 0.75,
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.3
     },
     {
       "name": "nose_cap_r2.25h1.125",
@@ -749,7 +911,10 @@
       "mass": 1137.77,
       "radius": 2.25,
       "height": 1.125,
-      "drag": 0.3
+      "drag": 0.3,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.3
     },
     {
       "name": "kerbal",
@@ -763,7 +928,10 @@
       "capacity": {
         "hydrazine": 10.0
       },
-      "drag": 0.5
+      "drag": 0.5,
+      "drag_forward": 0.5,
+      "drag_side": 0.9,
+      "drag_backward": 0.9
     },
     {
       "name": "wing",
@@ -777,7 +945,10 @@
       "lift_area": 2,
       "cl": 6.0,
       "stall_angle": 0.35,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "rudder",
@@ -792,7 +963,10 @@
       "control_axis": "yaw",
       "cl_control": 6.0,
       "max_deflection": 0.35,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "elevator",
@@ -807,7 +981,10 @@
       "control_axis": "pitch",
       "cl_control": 6.0,
       "max_deflection": 0.35,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "aileron",
@@ -822,7 +999,10 @@
       "control_axis": "roll",
       "cl_control": 6.0,
       "max_deflection": 0.35,
-      "drag": 0.1
+      "drag": 0.1,
+      "drag_forward": 0.2,
+      "drag_side": 1.0,
+      "drag_backward": 0.2
     },
     {
       "name": "fuel_link",

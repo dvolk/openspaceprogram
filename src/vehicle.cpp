@@ -1410,9 +1410,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // projectedArea). One area for the whole ship, so a stacked rocket
     // presents its true end face (one circle), not N of them, and the
     // prograde->side swing is honest (a long body's side is N x its end).
-    // The COEFFICIENT is the parts' `drag` values (their per-shape cds)
-    // blended by how much area each shows to the flow -- the area-weighted
-    // mean (a blunt heat shield raises it, a sleek nose cone lowers it).
+    // The COEFFICIENT is each part's 3-anchor cd (drag.h partCd: its
+    // forward/side/backward anchors blended by the angle its nose axis makes
+    // with the flow) -- so a cone is sleek nose-first and blunt base-first,
+    // the silhouette alone can't say -- area-weighted by how much area each
+    // shows to the flow (a blunt heat shield raises it, a sleek nose lowers it).
     // drag_cd is the global master scale (--drag-cd; 0 = off, handled above).
     // Applied at the center of pressure (the parts' centroid, weighted by
     // each part's projected area -- NOT the silhouette polygon's centroid),
@@ -1445,8 +1447,19 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                                            glm::transpose(R) * vhat);
             cp += a * pos;
             cpArea += a;
-            if(p->def != nullptr && p->def->drag > 0.0) {
-                cdNum += a * p->def->drag;   // the part's cd, weighted by its area
+            // The part's cd AS IT FACES THE FLOW (drag.h partCd): the angle
+            // between the part's nose axis and the flow selects the forward /
+            // side / backward anchor (a cone is sleek nose-first, blunt
+            // base-first; a thin disc is blunt face-on, sleek edge-on). A
+            // part with only the shared `drag` set is symmetric.
+            if(p->def != nullptr) {
+                // R[2] is the part's nose (local +Z) in world -- same as
+                // partAxis(p,2) but reuses the R already computed above.
+                const double c = glm::dot(R[2], vhat);
+                const double cd = partCd(p->def->drag_forward,
+                                         p->def->drag_side,
+                                         p->def->drag_backward, c);
+                if(cd > 0.0) { cdNum += a * cd; }
             }
         }
         const double A_ship = projectedArea(shipVerts, vhat);

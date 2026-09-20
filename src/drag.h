@@ -233,6 +233,34 @@ inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
     return 0.5 * std::fabs(a);
 }
 
+/* The per-part DRAG COEFFICIENT as the part faces the flow -- the
+   "bluntness" that, times the silhouette area, gives the drag. A part
+   declares one cd for each of the three ways it can present to the flow:
+     drag_forward   its NOSE (the +stack axis) into the flow   (c = +1)
+     drag_side      its SIDE, axis perpendicular to the flow   (c = 0)
+     drag_backward  its BASE into the flow                     (c = -1)
+   and this blends them by the angle between the part's nose axis and the
+   flow. c = cos of that angle (the dot of the unit nose axis and the unit
+   flow), so:
+     cd(c) = drag_side·(1−c²) + drag_forward·(max(c,0)²)
+            + drag_backward·(max(−c,0)²)
+   The three weights (1−c², max(c,0)², max(−c,0)²) are non-negative and sum
+   to 1, so cd is a CONVEX blend: it hits each anchor exactly at its angle
+   (nose / broadside / base) and eases between them, always staying within
+   the part's own min..max cd. A symmetric part (all three equal, or just
+   the shared `drag` set) returns that value for every angle. Pure math
+   (no glm) so tests/ can pin it without GL/Bullet. */
+inline double partCd(double cdForward, double cdSide, double cdBackward,
+                     double cosAxisFlow) {
+    double c = cosAxisFlow;
+    if(c > 1.0) { c = 1.0; }
+    else if(c < -1.0) { c = -1.0; }
+    const double c2 = c * c;
+    const double cw = (c > 0.0) ? c2 : 0.0;   // forward weight (nose-in)
+    const double bw = (c < 0.0) ? c2 : 0.0;   // backward weight (base-in)
+    return cdSide * (1.0 - c2) + cdForward * cw + cdBackward * bw;
+}
+
 /* The force on one DEFLECTED control surface (an elevator / rudder /
    aileron): the lift law with the DEFLECTION in place of the angle of
    attack --
