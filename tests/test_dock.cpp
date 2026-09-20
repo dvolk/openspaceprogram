@@ -258,8 +258,8 @@ static void test_roundtrip() {
    Part::id is set to the SAME strings for every ship built here -- which is
    exactly what two ships built from one def look like, since shipdef.cpp
    auto-generates "<catalog name>_<n>" per file and absorbShip never renames. */
-static Part *mkTankPort(Ship &s, const char *shipName, double z, bool portIsRoot,
-                        Part **tankOut, Part **portOut) {
+static void mkTankPort(Ship &s, const char *shipName, double z, bool portIsRoot,
+                       Part **tankOut, Part **portOut) {
     s.v = new Vehicle;
     s.v->name = shipName;
     Part *tank = mkPart(s, "fuel_tank", 1000.0, 1.0, 1.0, kTankHz, false);
@@ -279,7 +279,6 @@ static Part *mkTankPort(Ship &s, const char *shipName, double z, bool portIsRoot
     s.v->placeShip(glm::dvec3(0.0, 0.0, z), glm::dmat3(1.0));
     *tankOut = tank;
     *portOut = port;
-    return port;
 }
 
 /* True when every part in `v` has a nonzero uid and no two share one. */

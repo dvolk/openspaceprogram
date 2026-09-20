@@ -65,10 +65,14 @@ struct Game;   // save_game / load_game take one; forward-declared so this
    it was written -- which is what lets the CROSS-ship references (a dock
    target's port) resolve through a single map. */
 
-// A part instance in a saved ship. `part` is the catalog (def) name, `uid` the
-// identity every reference names it by (0 = absent, which is a load error),
-// `id` the def-authored instance id (kept: authoring, the VAB, diagnostics)
-// and `parent` the parent's uid (0 for the root). `pos`/`rot` are
+// A part instance in a saved ship. `part` is the catalog (def) name, `uid`
+// the identity every reference names it by (must be nonzero -- a part with no
+// uid is a save that predates part identity and is refused on load), `id` the
+// def-authored instance id (kept: authoring, the VAB, diagnostics) and
+// `parent` the parent's uid (0 = this is the root, which is legitimate).
+// Note the two different meanings of 0: for a part's own `uid` it is a load
+// error, but for a *reference* (parent, controller, dock ports) it is the
+// legitimate "absent" default that load accepts. `pos`/`rot` are
 // the part's ship-local frame-S pose (the root is identity -- setRoot forces
 // it -- so they are the no-op defaults for part 0). `mass` is the part's
 // authoritative mass (kg; the capsule's includes any aboard crew), `fuel` the
@@ -187,6 +191,26 @@ inline glm::dvec3 vec3FromJson(const nlohmann::json &j) {
     return glm::dvec3(j[0].get<double>(), j[1].get<double>(), j[2].get<double>());
 }
 
+/* Read a saved part uid. A uid is only ever a non-negative integer (the writer
+   emits unsigned integers, and >2^63 round-trips exactly via number_unsigned),
+   so that is the only accepted form. Everything else -- a float (truncates:
+   5.9 would silently become uid 5, a VALID key, mis-resolving to the wrong
+   part), a negative (wraps to a huge unsigned, never 0, so it sails past the
+   "absent" sentinel and the duplicate check), or a non-number -- is returned
+   as `absent` (0 by default) and refused loudly on load. This is what keeps
+   the strict loader's "0 means absent" invariant from being defeated by a
+   corrupt value that `is_number()` would have happily admitted. */
+inline uint64_t readUid(const nlohmann::json &j, const char *key, uint64_t absent = 0) {
+    if(!j.contains(key)) { return absent; }
+    const nlohmann::json &v = j.at(key);
+    if(v.is_number_unsigned()) { return v.get<uint64_t>(); }
+    if(v.is_number_integer()) {
+        int64_t i = v.get<int64_t>();
+        return i >= 0 ? (uint64_t)i : absent;
+    }
+    return absent;
+}
+
 inline nlohmann::json savePartToJson(const SavePart &p) {
     nlohmann::json j;
     j["part"]   = p.part;
@@ -205,9 +229,9 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
 inline SavePart savePartFromJson(const nlohmann::json &j) {
     SavePart p;
     if(j.contains("part") && j["part"].is_string()) { p.part = j["part"].get<std::string>(); }
-    if(j.contains("uid") && j["uid"].is_number()) { p.uid = j["uid"].get<uint64_t>(); }
+    p.uid = readUid(j, "uid");
     if(j.contains("id") && j["id"].is_string()) { p.id = j["id"].get<std::string>(); }
-    if(j.contains("parent") && j["parent"].is_number()) { p.parent = j["parent"].get<uint64_t>(); }
+    p.parent = readUid(j, "parent");
     if(j.contains("stage") && j["stage"].is_number()) { p.stage = j["stage"].get<int>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
@@ -311,12 +335,12 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         for(auto &&l : j["fuel_links"]) {
             if(!l.is_object()) { continue; }
             SaveFuelLink lk;
-            if(l.contains("from") && l["from"].is_number()) { lk.from = l["from"].get<uint64_t>(); }
-            if(l.contains("to") && l["to"].is_number()) { lk.to = l["to"].get<uint64_t>(); }
+            lk.from = readUid(l, "from");
+            lk.to = readUid(l, "to");
             s.fuel_links.push_back(lk);
         }
     }
-    if(j.contains("controller") && j["controller"].is_number()) { s.controller = j["controller"].get<uint64_t>(); }
+    s.controller = readUid(j, "controller");
     if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
     if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
     if(j.contains("throttle") && j["throttle"].is_number()) { s.throttle = j["throttle"].get<float>(); }
@@ -327,15 +351,15 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         for(auto &&d : j["docks"]) {
             if(!d.is_object()) { continue; }
             SaveDock dk;
-            if(d.contains("port") && d["port"].is_number()) { dk.port = d["port"].get<uint64_t>(); }
-            if(d.contains("root") && d["root"].is_number()) { dk.root = d["root"].get<uint64_t>(); }
+            dk.port = readUid(d, "port");
+            dk.root = readUid(d, "root");
             if(d.contains("name") && d["name"].is_string()) { dk.name = d["name"].get<std::string>(); }
             s.docks.push_back(dk);
         }
     }
     if(j.contains("dock_target_ship") && j["dock_target_ship"].is_string()) { s.dock_target_ship = j["dock_target_ship"].get<std::string>(); }
-    if(j.contains("dock_target_port") && j["dock_target_port"].is_number()) { s.dock_target_port = j["dock_target_port"].get<uint64_t>(); }
-    if(j.contains("dock_arm_port") && j["dock_arm_port"].is_number()) { s.dock_arm_port = j["dock_arm_port"].get<uint64_t>(); }
+    s.dock_target_port = readUid(j, "dock_target_port");
+    s.dock_arm_port = readUid(j, "dock_arm_port");
     return s;
 }
 

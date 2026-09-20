@@ -172,6 +172,12 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
 Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
                                 std::map<uint64_t, Part *> *savedUidToPart) {
     const PartsCatalog &cat = g.ships.catalog();
+    /* Resolve the scenario BEFORE constructing the vehicle: it throws on an
+       unknown name, and doing it first is what keeps a refused load from
+       leaking -- a throw after `new Vehicle` (and before this ship is in the
+       load's `built` list) would free nothing, since the rollback only walks
+       `built`. The scenario needs only s.scenario, no built state. */
+    const ScenarioDef *scn = resolveScenario(s.scenario);
     Vehicle *v = new Vehicle;
     v->name = s.name;
     v->defPath = s.defPath;
@@ -269,7 +275,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 
     v->home = g.sys.find(s.home);
     if(v->home == nullptr) { v->home = g.home; }
-    v->scenario = resolveScenario(s.scenario);
+    v->scenario = scn;   // resolved before `new Vehicle` (see top of this fn)
     v->slot = s.slot;
     v->sun = g.sun;
     v->m_parent = g.sys.find(s.pose.body);
@@ -319,7 +325,17 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     k->m_parent = g.home;
     k->sun = g.sun;
     k->frame = g.home->rot_frame;
-    build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0));
+    /* build_ship can throw (a bad parent / controller / fuel link in the def)
+       after some parts are attached to k. k is not in the load's `built` list
+       yet, so the rollback would not free it -- delete it here. ~Vehicle drops
+       the partially-attached parts; hull is null at this point (finalize has
+       not run) and ~Vehicle handles that. */
+    try {
+        build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0));
+    } catch(...) {
+        delete k;
+        throw;
+    }
     if(s.aboard.empty()) {
         // free (on EVA): live in the world, at its saved pose
         TerrainBody *body = g.sys.find(s.pose.body);

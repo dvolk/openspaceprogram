@@ -26,6 +26,7 @@
 // non-owning (the catalog outlives the ship). Vehicle owns the Part (deletes
 // each Part in ~Vehicle).
 
+#include <atomic>
 #include <cstdint>
 
 #include "body.h"      // Body (complete type -- ~Part deletes it)
@@ -35,9 +36,15 @@
    inline function is ONE counter across every translation unit, and wrapping
    it keeps the value unforgeable -- callers can mint a uid, not edit the
    sequence. Never reused, never renumbered, so a Part* and its uid identify
-   the same part for the whole run. */
+   the same part for the whole run.
+
+   Atomic, not because a Part is built off-thread today (the JobRunner is the
+   only worker thread and its job bodies are pure math, and every `new Part`
+   is on the main thread -- verified), but so that a part-level job becoming a
+   thing later is a one-line non-bug rather than a silent data race + possible
+   uid collision. The uncontended fetch_add is effectively free. */
 inline uint64_t nextPartUid() {
-    static uint64_t n = 0;
+    static std::atomic<uint64_t> n{0};
     return ++n;
 }
 
