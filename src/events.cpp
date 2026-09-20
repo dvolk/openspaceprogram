@@ -90,13 +90,25 @@ void emit_sim_events(Game &g) {
             if(!a.started && now >= a.time_ms) {
                 if(a.button == 4 || a.button == 5) {
                     // wheel notch (4 = up = zoom in, 5 = down = zoom out):
-                    // one SDL_MOUSEWHEEL event, X,Y / duration ignored
+                    // one SDL_MOUSEWHEEL event. SDL3 wheel events carry the
+                    // SCROLL AMOUNT in x/y (the cursor position lives in
+                    // mouse_x/mouse_y) -- a position in .x reads as a
+                    // horizontal scroll delta and shoves the hovered
+                    // window's content sideways.
                     SDL_Event wev = {0};
                     wev.type = SDL_EVENT_MOUSE_WHEEL;
                     wev.wheel.windowID = g.sim_win_id;
                     wev.wheel.which = 0;
-                    wev.wheel.x = a.x;
+                    wev.wheel.x = 0.0f;
                     wev.wheel.y = (a.button == 4) ? 1 : -1;
+                    wev.wheel.mouse_x = a.x;
+                    wev.wheel.mouse_y = a.y;
+                    // The SDL3 backend updates the imgui mouse position
+                    // from motion events only, so park the cursor at the
+                    // action's position first (the click path does the
+                    // same) -- otherwise a wheel over the map zooms at
+                    // wherever the cursor last moved.
+                    push_motion(a.x, a.y);
                     SDL_PushEvent(&wev);
                     a.started = true;
                     a.released = true;   // complete: skip the button-release path

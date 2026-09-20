@@ -1716,7 +1716,28 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
            ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             map_mode = (map_mode + 1) % 3;
         }
-        const float kMapSize = 360.0f;   // the map square (layout below)
+        // The map fills the window: the whole content width, and the
+        // remaining height after the controls below (mode 0 only). Both
+        // track the window's live size, so the nav button (below) covers
+        // the whole map in any size the user resizes the window to.
+        const float avail_w = ImGui::GetContentRegionAvail().x;
+        const float avail_h = ImGui::GetContentRegionAvail().y;
+        // The controls block's height (mode 0 only), from the same style
+        // the rows below use: combo / scale / checkbox (three framed
+        // rows), the elements text row, Spacing() (a bare ItemSpacing),
+        // the legend row (a 16 px dummy, but the row is at least a text
+        // line tall when the font is) -- imgui advances ItemSpacing.y
+        // after each row, including the last one.
+        const float isp = ImGui::GetStyle().ItemSpacing.y;
+        const float legend_h = std::max(16.0f, ImGui::GetTextLineHeight());
+        const float controls_h = (map_mode == 0)
+            ? 3.0f * (ImGui::GetFrameHeight() + isp)
+              + (ImGui::GetTextLineHeight() + isp)
+              + isp
+              + (legend_h + isp)
+            : 0.0f;
+        const float map_w = std::max(0.0f, avail_w);
+        const float map_h = std::max(0.0f, avail_h - controls_h);
         // The ship's trajectory around the focus: a closed ellipse
         // (a coasting Kepler orbit) or, when the ship is escaping or
         // flying by (ecc >= 1 -- e.g. right after switching SOI to a
@@ -1740,12 +1761,12 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         } else {
             // Open trajectory: an arc around periapsis, truncated where
             // it would run off to infinity. r_cap is the current view
-            // extent (the map square's width in world units) so the
+            // extent (the map's larger dimension in world units) so the
             // curve reaches the edge of the view, but never smaller
             // than a few periapsis radii or the ship's current radius
             // (so the ship itself lies on the arc).
             const double r_cap = std::max<double>(
-                kMapSize * (double)map_scale,
+                std::max(map_w, map_h) * (double)map_scale,
                 std::max(4.0 * o.periapsis, o.distance));
             traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
         }
@@ -1799,20 +1820,21 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
             if(hl > 1e-9) { plane_n = h / hl; }
         }
     
-        // The map is a kMapSize square at the top of the window; the
-        // focus (parent body) sits at its center plus the pan offset;
-        // the controls go below. (kMapSize is defined at the top of
-        // the block, where the open-trajectory radius cap uses it.)
+        // The map fills the window (map_w x map_h, defined at the top
+        // of the block, where the open-trajectory radius cap uses
+        // them); the focus (parent body) sits at its center plus the
+        // pan offset; the controls go below.
         const ImVec2 p0 = ImGui::GetCursorScreenPos();
-        const float center_x = p0.x + kMapSize * 0.5f;
-        const float center_y = p0.y + kMapSize * 0.5f;
-    
-        // Reserve the map square with an invisible button. It captures
-        // the mouse, so a left-drag over the map pans the map instead
-        // of moving the window (imgui otherwise treats a drag on the
-        // window background as a window move). Wheel-zoom and drag-pan
-        // both apply only while the mouse is over this square.
-        ImGui::InvisibleButton("##mapnav", ImVec2(kMapSize, kMapSize));
+        const float center_x = p0.x + map_w * 0.5f;
+        const float center_y = p0.y + map_h * 0.5f;
+
+        // Reserve the map area with an invisible button, sized to the
+        // window (map_w x map_h). It captures the mouse, so a left-drag
+        // over the map pans the map instead of moving the window (imgui
+        // otherwise treats a drag on the window background as a window
+        // move). Wheel-zoom and drag-pan both apply only while the
+        // mouse is over the map.
+        ImGui::InvisibleButton("##mapnav", ImVec2(map_w, map_h));
         const bool over_map = ImGui::IsItemHovered();
         const ImGuiIO &g_io = ImGui::GetIO();
         if(over_map && g_io.MouseWheel != 0.0f) {
@@ -2038,7 +2060,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         }
     
         // (The invisible map-nav button above already reserved the map
-        // square, so the controls land below it.)
+        // area, so the controls land below it.)
         // Bare-map (mode 1) and chrome-less (mode 2) draws only the
         // map -- the controls below are skipped in both.
         if(map_mode != 0) {

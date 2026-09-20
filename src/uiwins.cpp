@@ -115,7 +115,7 @@ const WinDef kWins[W_Count] = {
     [W_OrbitalMap] = {
         .name = "Orbital Map", .label = "Orbit Map",
         .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(480.0f, 480.0f),
-                  .closable = true },   // orbit drawn at (200,200)
+                  .closable = true },   // the map fills the window
         .role = WinRole::Persistent, .inList = true,
     },
     [W_SurfaceMap] = {
