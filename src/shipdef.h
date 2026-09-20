@@ -387,11 +387,19 @@ struct PartDef {
     double hull_margin;
 
     /* Aerodynamics (src/drag.h, reports/projected-drag). All optional.
-       Drag: the ship's facing area is its convex-hull SILHOUETTE (the hull
-       of all parts' collision vertices, see Body::hullVerts) -- a stacked
-       rocket presents its true end face, a long body more side-on than
-       end-on. The drag coefficient is the ship's global --drag-cd (a single
-       knob; no per-part area or coefficient to author). Lift terms:
+       Drag (R2: silhouette area x per-part shape): `drag` is the part's
+       DRAG COEFFICIENT (dimensionless, its shape's bluntness) -- a nose cone
+       is low (sleek), a flat heat shield high (blunt), a tank mid. The
+       ship's drag is 0.5 * rho * v^2 * A_ship * cd_ship (opposite the flow),
+       where A_ship is the ship's convex-hull silhouette facing the flow
+       (the prograde -> side swing: a rocket is sleek nose-first, heavy
+       broadside) and cd_ship is the parts' `drag` cds blended by the area
+       each shows to the flow (the area-weighted mean -- a blunt part raises
+       it, a sleek one lowers it). Applied at the silhouette's center of
+       pressure, so the weathervaning torque about the COM is preserved.
+       `drag` 0 = maximally sleek: its area still counts in the silhouette
+       and pulls the cd mean toward 0. The global --drag-cd is a master
+       scale on the whole (0 = off). Lift terms:
        0 = no lift (a rocket stays a rocket). A part sets one to override
        the global for itself:
          lift_area  m^2; the part's lift reference area. 0 = no lift (the
@@ -427,6 +435,12 @@ struct PartDef {
    (Vehicle::applyAeroForce): a tail behind the CG pitches/yaws the ship, a
    canard ahead pitches it the other way. Air gives the authority --
    zero in vacuum. */
+    double drag;          // the part's drag COEFFICIENT (dimensionless, its
+                          //   shape's bluntness). 0 = maximally sleek: its
+                          //   area still counts in the silhouette and pulls
+                          //   the cd mean toward 0. The ship's drag is the
+                          //   silhouette x the area-weighted mean of these
+                          //   (see the aero comment above).
     double lift_area;
     double cl;
     double stall_angle;

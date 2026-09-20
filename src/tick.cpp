@@ -457,7 +457,7 @@ void tick(Game &g) {
                        glm::length(g.ship->lastAeroForce),
                        glm::length(g.ship->lastLiftForce),
                        glm::length(g.ship->lastAeroTorque),
-                       g.ship->drag_cd, g.ship->lastDragArea,
+                       g.ship->lastDragCd, g.ship->lastDragArea,
                        glm::degrees(g.ship->lastDragAlpha));
                 // The control surfaces' applied deflections (the "what is the
                 // pilot steering right now?" telemetry): one per surface --

@@ -15,7 +15,7 @@ PartDef::PartDef()
       power_draw_constant(0.0), power_gen(0.0),
       crew_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
-      lift_area(0.0), cl(0.0), stall_angle(0.0),
+      drag(0.0), lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
@@ -267,11 +267,17 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0.
-           The drag area is the ship's convex-hull silhouette (computed from
-           the collision hull) and its coefficient is the global --drag-cd,
-           so there is no per-part drag to author. Lift terms: 0 = no lift
-           (a rocket stays a rocket); a lifting surface sets lift_area and
-           cl. */
+           Drag (R2: silhouette area x per-part shape): `drag` is the part's
+           drag COEFFICIENT (dimensionless, its shape's bluntness); the
+           ship's drag blends the parts' cds by the area each shows to the
+           flow, over the ship's hull silhouette (Vehicle::applyAeroForce).
+           Lift terms: 0 = no lift (a rocket stays a rocket); a lifting
+           surface sets lift_area and cl. */
+        d.drag = pv.value("drag", 0.0);
+        if(d.drag < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag\" must be >= 0 (dimensionless drag coefficient)");
+        }
         d.lift_area = pv.value("lift_area", 0.0);
         if(d.lift_area < 0.0) {
             throw std::runtime_error(ctx + "\"lift_area\" must be >= 0 (m^2)");

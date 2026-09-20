@@ -14,7 +14,8 @@
       "capacity": {
         "ec": 2000
       },
-      "crew_capacity": 1
+      "crew_capacity": 1,
+      "drag": 1.0
     },
     {
       "name": "capsule_r1.5h3",
@@ -30,7 +31,8 @@
       "capacity": {
         "ec": 6000
       },
-      "crew_capacity": 3
+      "crew_capacity": 3,
+      "drag": 1.0
     },
     {
       "name": "capsule_r2.25h4.5",
@@ -46,7 +48,8 @@
       "capacity": {
         "ec": 12000
       },
-      "crew_capacity": 6
+      "crew_capacity": 6,
+      "drag": 1.0
     },
     {
       "name": "reaction_wheel",
@@ -58,7 +61,8 @@
       "radius": 1.0,
       "height": 0.25,
       "torque": 2000,
-      "power_draw": 1000
+      "power_draw": 1000,
+      "drag": 0.2
     },
     {
       "name": "reaction_wheel_r1.5h0.375",
@@ -70,7 +74,8 @@
       "radius": 1.5,
       "height": 0.375,
       "torque": 3000,
-      "power_draw": 1500
+      "power_draw": 1500,
+      "drag": 0.2
     },
     {
       "name": "reaction_wheel_r2.25h0.5625",
@@ -82,7 +87,8 @@
       "radius": 2.25,
       "height": 0.562,
       "torque": 4500,
-      "power_draw": 2250
+      "power_draw": 2250,
+      "drag": 0.2
     },
     {
       "name": "battery",
@@ -95,7 +101,8 @@
       "height": 0.25,
       "capacity": {
         "ec": 157079.63
-      }
+      },
+      "drag": 0.2
     },
     {
       "name": "battery_r1.5h0.375",
@@ -108,7 +115,8 @@
       "height": 0.375,
       "capacity": {
         "ec": 530143.76
-      }
+      },
+      "drag": 0.2
     },
     {
       "name": "battery_r2.25h0.5625",
@@ -121,7 +129,8 @@
       "height": 0.562,
       "capacity": {
         "ec": 1789235.19
-      }
+      },
+      "drag": 0.2
     },
     {
       "name": "rtg",
@@ -132,7 +141,8 @@
       "mass": 117.81,
       "radius": 1.0,
       "height": 0.25,
-      "power_gen": 298.45
+      "power_gen": 298.45,
+      "drag": 0.3
     },
     {
       "name": "rtg_r1.5h0.375",
@@ -143,7 +153,8 @@
       "mass": 397.61,
       "radius": 1.5,
       "height": 0.375,
-      "power_gen": 1007.27
+      "power_gen": 1007.27,
+      "drag": 0.3
     },
     {
       "name": "rtg_r2.25h0.5625",
@@ -154,7 +165,8 @@
       "mass": 1341.93,
       "radius": 2.25,
       "height": 0.562,
-      "power_gen": 3399.55
+      "power_gen": 3399.55,
+      "drag": 0.3
     },
     {
       "name": "engine",
@@ -168,7 +180,8 @@
       "fuel_rate": 5.68,
       "exhaust_velocity": 4400.0,
       "shroud": "engine_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "engine_r1.5h3",
@@ -182,7 +195,8 @@
       "fuel_rate": 12.78,
       "exhaust_velocity": 4400.0,
       "shroud": "engine_r1.5h3_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "engine_r2.25h4.5",
@@ -196,7 +210,8 @@
       "fuel_rate": 28.76,
       "exhaust_velocity": 4400.0,
       "shroud": "engine_r2.25h4.5_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "orbital_engine",
@@ -210,7 +225,8 @@
       "fuel_rate": 1.89,
       "exhaust_velocity": 4400.0,
       "shroud": "orbital_engine_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "orbital_engine_r1.5h1.5",
@@ -224,7 +240,8 @@
       "fuel_rate": 4.26,
       "exhaust_velocity": 4400.0,
       "shroud": "orbital_engine_r1.5h1.5_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "orbital_engine_r2.25h2.25",
@@ -238,7 +255,8 @@
       "fuel_rate": 9.59,
       "exhaust_velocity": 4400.0,
       "shroud": "orbital_engine_r2.25h2.25_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "jet",
@@ -255,7 +273,8 @@
       "jet_fan_thrust": 32000,
       "jet_intake_area": 0.9,
       "shroud": "engine_shroud.obj",
-      "shroud_texture": "engine_shroud.png"
+      "shroud_texture": "engine_shroud.png",
+      "drag": 0.6
     },
     {
       "name": "jet_tank_r1h1",
@@ -268,7 +287,8 @@
       "height": 1.0,
       "capacity": {
         "jetfuel": 219.91
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "jet_tank_r1h3",
@@ -281,7 +301,8 @@
       "height": 3.0,
       "capacity": {
         "jetfuel": 659.73
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "jet_tank_r1h5",
@@ -294,7 +315,8 @@
       "height": 5.0,
       "capacity": {
         "jetfuel": 1099.56
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "fuel_tank",
@@ -308,7 +330,8 @@
       "capacity": {
         "hydrogen": 417.83,
         "lox": 417.83
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1h1",
@@ -322,7 +345,8 @@
       "capacity": {
         "hydrogen": 208.92,
         "lox": 208.92
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1h3",
@@ -336,7 +360,8 @@
       "capacity": {
         "hydrogen": 626.75,
         "lox": 626.75
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1h5",
@@ -350,7 +375,8 @@
       "capacity": {
         "hydrogen": 1044.58,
         "lox": 1044.58
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1.5h1",
@@ -364,7 +390,8 @@
       "capacity": {
         "hydrogen": 470.06,
         "lox": 470.06
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1.5h2",
@@ -378,7 +405,8 @@
       "capacity": {
         "hydrogen": 940.12,
         "lox": 940.12
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1.5h3",
@@ -392,7 +420,8 @@
       "capacity": {
         "hydrogen": 1410.18,
         "lox": 1410.18
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r1.5h5",
@@ -406,7 +435,8 @@
       "capacity": {
         "hydrogen": 2350.3,
         "lox": 2350.3
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r2.25h1",
@@ -420,7 +450,8 @@
       "capacity": {
         "hydrogen": 1057.64,
         "lox": 1057.64
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r2.25h3",
@@ -434,7 +465,8 @@
       "capacity": {
         "hydrogen": 3172.91,
         "lox": 3172.91
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "tank_r2.25h5",
@@ -448,7 +480,8 @@
       "capacity": {
         "hydrogen": 5288.18,
         "lox": 5288.18
-      }
+      },
+      "drag": 0.7
     },
     {
       "name": "mono_tank_r1",
@@ -461,7 +494,8 @@
       "height": 0.25,
       "capacity": {
         "hydrazine": 78.54
-      }
+      },
+      "drag": 0.3
     },
     {
       "name": "mono_tank_r1.5",
@@ -474,7 +508,8 @@
       "height": 0.375,
       "capacity": {
         "hydrazine": 265.07
-      }
+      },
+      "drag": 0.3
     },
     {
       "name": "mono_tank_r2.25",
@@ -487,7 +522,8 @@
       "height": 0.562,
       "capacity": {
         "hydrazine": 894.62
-      }
+      },
+      "drag": 0.3
     },
     {
       "name": "rcs_r1",
@@ -498,7 +534,8 @@
       "mass": 31.42,
       "radius": 1.0,
       "height": 0.25,
-      "rcs_thrust": 200
+      "rcs_thrust": 200,
+      "drag": 0.1
     },
     {
       "name": "rcs_r1.5",
@@ -509,7 +546,8 @@
       "mass": 106.03,
       "radius": 1.5,
       "height": 0.375,
-      "rcs_thrust": 450
+      "rcs_thrust": 450,
+      "drag": 0.1
     },
     {
       "name": "rcs_r2.25",
@@ -520,7 +558,8 @@
       "mass": 357.85,
       "radius": 2.25,
       "height": 0.562,
-      "rcs_thrust": 1012.5
+      "rcs_thrust": 1012.5,
+      "drag": 0.1
     },
     {
       "name": "adapter_r1to1.5",
@@ -530,7 +569,8 @@
       "texture": "adapter.png",
       "mass": 55.6,
       "radius": 1.5,
-      "height": 0.75
+      "height": 0.75,
+      "drag": 0.2
     },
     {
       "name": "adapter_r1to2.25",
@@ -540,7 +580,8 @@
       "texture": "adapter.png",
       "mass": 145.95,
       "radius": 2.25,
-      "height": 1.125
+      "height": 1.125,
+      "drag": 0.2
     },
     {
       "name": "adapter_r1.5to1",
@@ -550,7 +591,8 @@
       "texture": "adapter.png",
       "mass": 55.6,
       "radius": 1.5,
-      "height": 0.75
+      "height": 0.75,
+      "drag": 0.2
     },
     {
       "name": "adapter_r1.5to2.25",
@@ -560,7 +602,8 @@
       "texture": "adapter.png",
       "mass": 187.65,
       "radius": 2.25,
-      "height": 1.125
+      "height": 1.125,
+      "drag": 0.2
     },
     {
       "name": "adapter_r2.25to1",
@@ -570,7 +613,8 @@
       "texture": "adapter.png",
       "mass": 145.95,
       "radius": 2.25,
-      "height": 1.125
+      "height": 1.125,
+      "drag": 0.2
     },
     {
       "name": "adapter_r2.25to1.5",
@@ -580,7 +624,8 @@
       "texture": "adapter.png",
       "mass": 187.65,
       "radius": 2.25,
-      "height": 1.125
+      "height": 1.125,
+      "drag": 0.2
     },
     {
       "name": "decoupler_r1",
@@ -592,7 +637,8 @@
       "radius": 1.0,
       "height": 0.25,
       "decoupler": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "decoupler_r1.5",
@@ -604,7 +650,8 @@
       "radius": 1.5,
       "height": 0.375,
       "decoupler": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "decoupler_r2.25",
@@ -616,7 +663,8 @@
       "radius": 2.25,
       "height": 0.5625,
       "decoupler": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "decoupler_radial",
@@ -628,7 +676,8 @@
       "radius": 0.05,
       "height": 0.5,
       "decoupler": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "docking_port_r1",
@@ -640,7 +689,8 @@
       "radius": 1.0,
       "height": 0.25,
       "docking_port": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "docking_port_r1.5",
@@ -652,7 +702,8 @@
       "radius": 1.5,
       "height": 0.375,
       "docking_port": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "docking_port_r2.25",
@@ -664,7 +715,8 @@
       "radius": 2.25,
       "height": 0.5625,
       "docking_port": true,
-      "fuel_barrier": true
+      "fuel_barrier": true,
+      "drag": 0.2
     },
     {
       "name": "nose_cap",
@@ -674,7 +726,8 @@
       "texture": "nose_cap.png",
       "mass": 99.89,
       "radius": 1.0,
-      "height": 0.5
+      "height": 0.5,
+      "drag": 0.3
     },
     {
       "name": "nose_cap_r1.5h0.75",
@@ -684,7 +737,8 @@
       "texture": "nose_cap.png",
       "mass": 337.12,
       "radius": 1.5,
-      "height": 0.75
+      "height": 0.75,
+      "drag": 0.3
     },
     {
       "name": "nose_cap_r2.25h1.125",
@@ -694,7 +748,8 @@
       "texture": "nose_cap.png",
       "mass": 1137.77,
       "radius": 2.25,
-      "height": 1.125
+      "height": 1.125,
+      "drag": 0.3
     },
     {
       "name": "kerbal",
@@ -707,7 +762,8 @@
       "height": 0.75,
       "capacity": {
         "hydrazine": 10.0
-      }
+      },
+      "drag": 0.5
     },
     {
       "name": "wing",
@@ -720,7 +776,8 @@
       "height": 2.0,
       "lift_area": 2,
       "cl": 6.0,
-      "stall_angle": 0.35
+      "stall_angle": 0.35,
+      "drag": 0.1
     },
     {
       "name": "rudder",
@@ -734,7 +791,8 @@
       "control_area": 2,
       "control_axis": "yaw",
       "cl_control": 6.0,
-      "max_deflection": 0.35
+      "max_deflection": 0.35,
+      "drag": 0.1
     },
     {
       "name": "elevator",
@@ -748,7 +806,8 @@
       "control_area": 2,
       "control_axis": "pitch",
       "cl_control": 6.0,
-      "max_deflection": 0.35
+      "max_deflection": 0.35,
+      "drag": 0.1
     },
     {
       "name": "aileron",
@@ -762,7 +821,8 @@
       "control_area": 2,
       "control_axis": "roll",
       "cl_control": 6.0,
-      "max_deflection": 0.35
+      "max_deflection": 0.35,
+      "drag": 0.1
     },
     {
       "name": "fuel_link",

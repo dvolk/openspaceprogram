@@ -366,7 +366,8 @@ public:
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
     double lastDragAlpha = 0.0;  // pitch angle of attack (rad) of the last substep
-    double lastDragArea = 0.0;  // the ship's total silhouette facing the flow (m^2)
+    double lastDragArea = 0.0;  // the ship's silhouette facing the flow (m^2)
+    double lastDragCd = 0.0;  // the area-weighted mean of the parts' drag cds
 
     /* The last substep's control-surface deflections (applyAeroForce): one
        entry per control surface -- the part type (name + the axis it steers),
@@ -627,9 +628,10 @@ public:
     void applyThrustForce();
 
     /* Aero (v2, reports/aerodynamics2026_09_11): the lift + drag the air
-       exerts on the ship, applied PART BY PART at each part's position --
-       so the force and the moment (about the COM) come from the parts'
-       distribution, exactly as an off-axis engine torques the ship.
+       exerts on the ship. LIFT acts PART BY PART at each part's position
+       and DRAG acts SHIP-LEVEL at the center of pressure -- so the force
+       and the moment (about the COM) come from the parts' distribution,
+       exactly as an off-axis engine torques the ship.
          v_rel = GetVel()     (the ship is in the atmosphere body's rot
                            frame, so this IS air-relative -- the air
                            co-rotates with the planet; see drag.h)
@@ -642,9 +644,11 @@ public:
        DRAG is SHIP-LEVEL (one force): the ship's convex-hull silhouette
        facing the flow (the hull of ALL parts' collision vertices, projected
        onto the plane perpendicular to v̂ -- src/drag.h projectedArea), times
-       the ship's global --drag-cd:
-         drag   = -v̂ · q · cd · A_ship, applied at the center of pressure
-                  (the silhouette-area-weighted centroid of the parts)
+       the area-weighted mean of the parts' `drag` coefficients (cd_ship),
+       times the global --drag-cd master scale:
+         drag   = -v̂ · q · (--drag-cd x cd_ship) · A_ship, applied at the
+                  center of pressure (the silhouette-area-weighted centroid
+                  of the parts)
        A_ship is the ship's OWN silhouette, so a stacked rocket presents its
        true end face (one circle), not N of them, and a long body drags much
        more side-on than end-on -- the weathervane behaviour comes from the

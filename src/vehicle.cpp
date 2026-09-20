@@ -1049,6 +1049,10 @@ float Vehicle::getDeltaV() {
                      // Jets are skipped: they are air-breathing, so they produce no
                      // thrust in vacuum and their exhaust velocity is not a delta-v.
     for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
+    // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry). getMass() is the FUELED
+    // mass (each tank's body mass is its fueled mass -- hull + propellant, and
+    // drainFuel subtracts burned propellant from it), and m_dry = getMass()
+    // - remaining_fuel (the empty hulls + dry parts).
     return (float)(ve * exhaust_scale)
          * log(getMass() / (getMass() - remaining_fuel));
 }
@@ -1334,6 +1338,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragRho = 0.0;
     lastDragAlpha = 0.0;
     lastDragArea = 0.0;
+    lastDragCd = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
 
     // --drag-cd 0 = no aero at all (the master off switch, the v1 contract).
@@ -1399,16 +1404,20 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     glm::dvec3 lift_total(0.0);
     glm::dvec3 moment(0.0);
 
-    // DRAG (ship-level): the ship's SILHOUETTE facing the flow -- the convex
-    // hull of ALL parts' hull vertices, projected onto the plane perpendicular
-    // to the flow (drag.h projectedArea). One area for the whole ship, so a
-    // stacked rocket presents its true end face (one circle), not N of them,
-    // and the prograde->side swing is honest (a long body's side area is N x
-    // its end area). The force is applied at the center of pressure (the
-    // parts' centroid, weighted by each part's own projected area -- not the
-    // silhouette polygon's centroid), so a banked ship still
-    // weathervanes the nose into the flow (the moment about the COM). `com`
-    // doubles as the hull origin the lever is measured from (comPos).
+    // DRAG (R2: silhouette area x per-part shape). The AREA is the ship's
+    // convex-hull silhouette facing the flow -- the convex hull of ALL parts'
+    // hull verts, projected onto the plane perpendicular to the flow (drag.h
+    // projectedArea). One area for the whole ship, so a stacked rocket
+    // presents its true end face (one circle), not N of them, and the
+    // prograde->side swing is honest (a long body's side is N x its end).
+    // The COEFFICIENT is the parts' `drag` values (their per-shape cds)
+    // blended by how much area each shows to the flow -- the area-weighted
+    // mean (a blunt heat shield raises it, a sleek nose cone lowers it).
+    // drag_cd is the global master scale (--drag-cd; 0 = off, handled above).
+    // Applied at the center of pressure (the parts' centroid, weighted by
+    // each part's projected area -- NOT the silhouette polygon's centroid),
+    // so a banked ship still weathervanes the nose into the flow (the moment
+    // about the COM). `com` is the hull origin the lever is measured from.
     {
         std::vector<glm::dvec3> shipVerts;
         {   // reserve the exact size so the push_backs below don't realloc
@@ -1422,6 +1431,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         }
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
+        double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
             const glm::dmat3 R = partRot(p);
@@ -1429,16 +1439,23 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             for(const glm::dvec3 &v : p->body->hullVerts) {
                 shipVerts.push_back(R * v + pos);
             }
+            // The part's own silhouette facing the flow: the weight it shows
+            // in the center of pressure AND in the area-weighted cd mean.
             const double a = projectedArea(p->body->hullVerts,
                                            glm::transpose(R) * vhat);
             cp += a * pos;
             cpArea += a;
+            if(p->def != nullptr && p->def->drag > 0.0) {
+                cdNum += a * p->def->drag;   // the part's cd, weighted by its area
+            }
         }
         const double A_ship = projectedArea(shipVerts, vhat);
         lastDragArea = A_ship;
+        lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
         if(cpArea > 0.0) { cp /= cpArea; }
         else { cp = com; }  // degenerate: no per-part area -> act through the COM
-        const glm::dvec3 fdrag = dragForce(da, drag_cd, A_ship, alt, vrel);
+        const glm::dvec3 fdrag = dragForce(da, drag_cd * lastDragCd, A_ship,
+                                           alt, vrel);
         if(glm::length2(fdrag) > 0.0) {
             const glm::dvec3 rcp = cp - com;
             ApplyForce(hull, rcp, fdrag);        // translation + (rcp x fdrag)

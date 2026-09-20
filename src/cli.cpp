@@ -86,6 +86,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "parallel | stacked | stacks | parstacks")
         ->check(CLI::IsMember({"parallel", "stacked", "stacks",
                                "parstacks"}));
+    app.add_option("--autopilot", args.autopilot,
+                   "Engage a slew mode on the active ship at startup: "
+                   "prograde | retrograde | radial-out | radial-in | normal | "
+                   "anti-normal | kill-rot. A test hook -- the Autopilot "
+                   "window is the only in-game way to engage these, and it "
+                   "can't be clicked headless (default: none)")
+        ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
+                               "radial-in", "normal", "anti-normal",
+                               "kill-rot"}));
     app.add_option("--vab", args.vab,
                    "Open the VAB editor scene with this ship def loaded "
                    "(physics-free build tree) instead of flying");

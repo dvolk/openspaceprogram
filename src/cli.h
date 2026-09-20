@@ -49,6 +49,13 @@ struct GameArgs {
     std::string load_name;
 
     std::string radial_test;
+    std::string autopilot;  // --autopilot: engage a slew mode on the active
+                             // ship at startup (prograde | retrograde |
+                             // radial-out | radial-in | normal | anti-normal
+                             // | kill-rot). A test hook: the Autopilot window
+                             // is the only in-game way to engage these, and
+                             // headless flights (e2e, aero_quant) can't click
+                             // it. Empty = no autopilot (the default).
     std::string vab;   // ship def to open in the VAB editor scene (empty = flight)
     bool vab_empty = false;  // --vab-empty: open the VAB with an EMPTY build
                              // (the main menu's "Go to VAB") instead of flying

@@ -391,6 +391,27 @@ int main(int argc, char **argv)
            does not exist yet here, and there is no previous ship to hand off
            from. */
         ship = first;
+        if(first != nullptr) {
+            printf("[dbg-dv] getMass=%.2f kg  getDeltaV=%.1f m/s\n",
+                   (double)first->getMass(), (double)first->getDeltaV());
+        }
+        /* --autopilot: engage a slew mode on the active ship (a test hook;
+           the Autopilot window is the only in-game way to engage these and
+           it can't be clicked headless). slewRequest is applied every tick
+           (tick.cpp) and held until toggled, so setting it once here is
+           enough for a whole headless flight. */
+        if(!args.autopilot.empty() && first != nullptr) {
+            int m = 0;  // SlewMode (vehicle.h)
+            if(args.autopilot == "prograde")        { m = 1; }
+            else if(args.autopilot == "retrograde") { m = 2; }
+            else if(args.autopilot == "radial-out") { m = 3; }
+            else if(args.autopilot == "radial-in")  { m = 4; }
+            else if(args.autopilot == "normal")     { m = 5; }
+            else if(args.autopilot == "anti-normal"){ m = 6; }
+            else if(args.autopilot == "kill-rot")   { m = 7; }
+            first->setSlewRequest((SlewMode)m);
+            printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
+        }
     } else {
         // --load: load_game set the clock to the saved time, but the frames
         // were propagated to args.start_time (0) above. Re-propagate them to
