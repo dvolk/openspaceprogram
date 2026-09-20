@@ -16,8 +16,9 @@
 #     three conducting segments, i.e. three groups.
 #   - undock works and splits off the ship the seam names. A seam that resolved
 #     to the wrong part either extracts the wrong subtree or, finding nothing
-#     to extract, reports "Cannot undock" and returns before popping -- so the
-#     stale seam is never cleared and the ship is permanently un-undockable.
+#     to extract, reports "Cannot undock" and leaves the ship permanently
+#     un-undockable (the joint's record points at a part that is no longer its
+#     mate).
 NAME dock-save-load
 ARGS --load e2e/fixtures/save_docked --time-accel 1 --timeout 5
 ARGS --sim-press 500,0,U --fuel-log

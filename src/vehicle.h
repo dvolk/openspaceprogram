@@ -845,7 +845,13 @@ public:
         Part *root;
         std::string name;
     };
-    /* The docks this ship has absorbed, in order (undock pops the last). */
+    /* The docks this ship has absorbed, innermost first, so the most recent
+       (outermost) dock is last -- the one undock selects. A seam stays on the
+       ship whose parts hold BOTH its port and root: a merge moves the absorbed
+       ship's seams in (absorbShip), and a split keeps a seam on whichever side
+       holds both ends, dropping it when the cut splits the joint apart
+       (extractSubtreeAsShip) -- so a seam never dangles at a part it no longer
+       owns. */
     std::vector<DockSeam> seams;
 
     /* Docking INTENT (held PER SHIP, not on Game, so a future AI-controlled
@@ -881,12 +887,15 @@ public:
        survivors, rebuilt.
 
        Returns nullptr if `root` is not part of this ship or would drop the
-       whole ship (callers refuse that). The new ship is NOT yet in the
-       fleet list NOR the physics world -- the caller enters it into the
-       world (enterWorld) and adds it to the SoI body's ships and, if it
-       came from a seam, pops that seam. Keeping the world registration in
-       the caller lets the split run headless (no physics world), like the
-       fuel/power tests build ships without enterWorld.
+       whole ship (callers refuse that). Seams are maintained like fuel links:
+       a seam whose port and root both go with the split moves to the new ship,
+       one whose both ends stay is kept here, and one the cut splits across is
+       dropped -- which is the undock case, so the caller has nothing to pop.
+       The new ship is NOT yet in the fleet list NOR the physics world -- the
+       caller enters it into the world (enterWorld) and adds it to the SoI
+       body's ships. Keeping the world registration in the caller lets the
+       split run headless (no physics world), like the fuel/power tests build
+       ships without enterWorld.
 
        Undock (Game::undock) is the first user: the dropped side is the
        subtree under the most recent seam's root. Staging's "dropped stage

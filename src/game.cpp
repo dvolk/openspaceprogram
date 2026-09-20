@@ -868,7 +868,10 @@ void Game::undock() {
         return;
     }
     out->enterWorld();   // the split leaves world registration to the caller
-    a->seams.pop_back();
+    /* The undocked seam is already gone: extractSubtreeAsShip drops a seam
+       split across the cut (the port stays on this ship, the docked ship
+       leaves), so there is nothing left to pop -- popping here would drop the
+       WRONG seam (the one just before it). */
     /* part windows on the survivor address parts by index, which just
        shifted -- drop them rather than dangle. */
     dropPartWindowsFor(a);

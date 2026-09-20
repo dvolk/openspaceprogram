@@ -110,7 +110,8 @@ struct SavePose {
     glm::dvec3 angvel = glm::dvec3(0.0);
 };
 
-// One dock seam (the joint of a ship this one absorbed; undock pops the last).
+// One dock seam (the joint of a ship this one absorbed; the last is the
+// most recent / outermost dock, which undock selects).
 struct SaveDock {
     uint64_t port = 0;      // this ship's port part uid
     uint64_t root = 0;      // the absorbed ship's root part uid

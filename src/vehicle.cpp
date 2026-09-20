@@ -1913,6 +1913,12 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     clearThrust();
     clearRotCmd();
 
+    /* B's own seams (it may have docked things of its own) move in too; they
+       are inserted BEFORE the new seam so the undock order -- pop the last --
+       peels the outermost dock (B) first, then B's inner docks. Without this
+       the joint B recorded is orphaned when B is deleted as a shell. */
+    seams.insert(seams.end(), B->seams.begin(), B->seams.end());
+    B->seams.clear();
     seams.push_back(DockSeam{ portA, bRoot, B->name });
 
     /* Rebuild as the union (carries frame S + the velocity, which the
@@ -2013,6 +2019,25 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
     }
     nv->fuelLinks = nvLinks;
     fuelLinks = keepLinks;
+
+    /* seams: the same containment edge as fuel links. A seam records a
+       joint between its port and the docked ship's root, so it stays valid
+       only while both ends live in ONE ship. Both ends staged off together
+       -> the joint moves with the split-off ship (it can still undock). Both
+       ends in the survivor -> stays. Split across the cut (the undock case:
+       the port stays, the docked ship leaves) -> the joint no longer exists,
+       so the seam is dropped. This is what stops the survivor from dangling a
+       seam at a part that has been staged away -- the use-after-free the
+       save path hit in the inventory design report (section 1.7b). */
+    std::vector<DockSeam> nvSeams, keepSeams;
+    for(size_t k = 0; k < seams.size(); k++) {
+        const bool portIn = droppedSet.count(seams[k].port) > 0;
+        const bool rootIn = droppedSet.count(seams[k].root) > 0;
+        if(portIn && rootIn) { nvSeams.push_back(seams[k]); }
+        else if(!portIn && !rootIn) { keepSeams.push_back(seams[k]); }
+    }
+    nv->seams = nvSeams;
+    seams = keepSeams;
 
     /* crew: a kerbal follows its capsule (crewRebase tells which side
        it is on); the survivors' slots reindex too, because erasing the

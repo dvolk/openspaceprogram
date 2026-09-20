@@ -359,10 +359,235 @@ static void test_uid() {
     destroyShip(A.v);
 }
 
+/* --- seam maintenance across a stage (the 1.7b use-after-free) ----------- */
+/* A: capsule (root) -> decoupler -> docking port P. Dock B onto P, then
+   stage the decoupler: everything below it (the decoupler, P, and all of B)
+   comes off as a separate ship. The seam {P, B.root} has BOTH ends in that
+   split-off subtree, so it must move with it -- leaving the survivor with no
+   seam. Before the fix the survivor kept {P, B.root}, both now owned by the
+   split-off ship; deleting that ship and then saving the survivor read a
+   freed Part (the use-after-free in the report, section 1.7b). */
+static void test_seam_staging() {
+    printf("== seam maintenance across a stage (1.7b use-after-free) ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *capsule = mkPart(A, "capsule",   400.0, 1.0, 1.0, kTankHz, false);
+    Part *decop   = mkPart(A, "decoupler",  50.0, 1.0, 1.0, kPortHz, false);
+    Part *portA   = mkPart(A, "portA",      50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(capsule);
+    A.v->attachDown(decop);
+    A.v->attachDown(portA);
+    A.v->controller = capsule;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -2.5), glm::dmat3(1.0));
+
+    A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(A.v->seams.size() == 1, "staging: one seam after the dock");
+    CHECK_TRUE(A.v->seams[0].port == portA, "staging: seam port is A's port");
+    CHECK_TRUE(A.v->seams[0].root == portB, "staging: seam root is B's root");
+
+    /* Stage the decoupler: the decoupler, the port, and all of B come off. */
+    Vehicle *out = A.v->extractSubtreeAsShip(decop, "staged");
+    CHECK_TRUE(out != nullptr, "staging: the split succeeded");
+    if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
+
+    /* The fix: both ends of the seam are in the split-off subtree, so the
+       seam moved WITH it and the survivor is left with none. */
+    CHECK_TRUE(A.v->seams.empty(), "staging: survivor holds no seam (both ends left with the split)");
+    CHECK_TRUE(out->seams.size() == 1, "staging: the seam followed the split-off ship");
+    if(out->seams.size() == 1) {
+        CHECK_TRUE(out->seams[0].port == portA, "staging: split-off seam's port");
+        CHECK_TRUE(out->seams[0].root == portB, "staging: split-off seam's root");
+    }
+
+    /* The survivor keeps only its capsule. */
+    CHECK_TRUE(A.v->parts.size() == 1, "staging: survivor keeps only the capsule");
+    CHECK_TRUE(A.v->parts[0] == capsule, "staging: that part is the capsule");
+
+    /* Delete the split-off ship (the report's step 4): this frees portA and
+       portB. Any seam the survivor still held would now dangle at them. */
+    destroyShip(out);
+
+    /* With the fix the survivor's seam list is empty, so this dereference
+       touches nothing; without it, this is the use-after-free (step 5 of the
+       report) -- ASan reports it here. */
+    for(const Vehicle::DockSeam &s : A.v->seams) {
+        (void)s.port->uid;
+        (void)s.root->uid;
+    }
+    CHECK_TRUE(A.v->seams.empty(), "staging: no dangling seam after the split-off is deleted");
+
+    destroyShip(B.v);   /* the empty shell absorbShip left behind */
+    destroyShip(A.v);
+}
+
+/* --- seam maintenance across an absorb of an already-docked ship --------- */
+/* B docks C (so B->seams = {B.port, C.root}). Then A absorbs B. Before the
+   fix the joint B recorded was orphaned when B was deleted as a shell (report
+   section 1.7c). Now it moves into A, ahead of the new {A.port, B.root} seam,
+   so the undock order (pop the last) peels B first; undocking B then takes C
+   with it and leaves the B-C seam on the split-off ship. */
+static void test_seam_nested_dock() {
+    printf("== seam maintenance across an absorb of a docked ship ==\n");
+
+    /* C: port (root) + tank. */
+    Ship C; C.v = new Vehicle; C.v->name = "C";
+    Part *portC = mkPart(C, "portC",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankC = mkPart(C, "tankC", 1000.0, 1.0, 1.0, kTankHz, false);
+    C.v->setRoot(portC);
+    C.v->attachDown(tankC);
+    C.v->controller = portC;
+    C.v->init();
+    C.v->placeShip(glm::dvec3(0.0, 0.0, 2.0), glm::dmat3(1.0));
+
+    /* B: tank (root) + port, docks C. B is the survivor, so B->seams =
+       {B.port, C.root, "C"}. */
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    B.v->setRoot(tankB);
+    B.v->attachDown(portB);
+    B.v->controller = tankB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, 1.0), glm::dmat3(1.0));
+
+    B.v->absorbShip(C.v, portB);
+    CHECK_TRUE(B.v->seams.size() == 1, "nested: B holds the C seam after the dock");
+    CHECK_TRUE(B.v->seams[0].port == portB, "nested: B-C seam port is B's port");
+    CHECK_TRUE(B.v->seams[0].root == portC, "nested: B-C seam root is C's root");
+
+    /* A: tank (root) + port, absorbs B (which already holds C). */
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    A.v->absorbShip(B.v, portA);
+
+    /* All six parts in A now. */
+    CHECK_TRUE(A.v->parts.size() == 6, "nested: A holds all six parts after the merge");
+
+    /* Both seams survive the merge, with the outer (A-B) last so an undock
+       peels B first. */
+    CHECK_TRUE(A.v->seams.size() == 2, "nested: both seams moved into A");
+    if(A.v->seams.size() == 2) {
+        CHECK_TRUE(A.v->seams[1].port == portA && A.v->seams[1].root == tankB,
+                   "nested: the A-B seam is the outer one (last)");
+        CHECK_TRUE(A.v->seams[0].port == portB && A.v->seams[0].root == portC,
+                   "nested: the B-C seam was moved in, not orphaned");
+    }
+
+    /* Undock B: B and its docked C come off together; the B-C seam follows,
+       and the A-B seam (split across the cut) is dropped. */
+    Vehicle *out = A.v->extractSubtreeAsShip(tankB, "B");
+    CHECK_TRUE(out != nullptr, "nested: undock B succeeded");
+    if(out != nullptr) {
+        CHECK_TRUE(A.v->seams.empty(), "nested: A holds no seam after undocking B");
+        CHECK_TRUE(out->seams.size() == 1, "nested: the B-C seam followed B");
+        if(out->seams.size() == 1) {
+            CHECK_TRUE(out->seams[0].port == portB && out->seams[0].root == portC,
+                       "nested: B can still undock C");
+        }
+        CHECK_TRUE(A.v->parts.size() == 2, "nested: A keeps its two parts");
+        CHECK_TRUE(out->parts.size() == 4, "nested: B+C come off as four parts");
+        destroyShip(out);
+    }
+
+    destroyShip(C.v);   /* empty shells left by the two absorbs */
+    destroyShip(B.v);
+    destroyShip(A.v);
+}
+
+/* --- seam KEPT on the survivor when a stage drops only its far end -------- */
+/* A: capsule -> port P. B: bRoot -> decoupler -> tank, docked onto P. Staging
+   the decoupler drops only {decoupler, tank}; the seam {P, bRoot} has BOTH
+   ends in the survivor, so it must be KEPT on A (the joint is intact -- bRoot
+   is still mated to P). This is the one seam branch (both ends kept) the other
+   cases never exercise with a non-empty result: a regression that drops kept
+   seams would strand the joint -- A toasts "Nothing docked to undock" forever
+   while bRoot still hangs off P -- and nothing in the suite would catch it.
+   The follow-up undock then drops the seam (now split across the cut). */
+static void test_seam_kept_across_stage() {
+    printf("== seam kept on the survivor when a stage drops only its far end ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *capsule = mkPart(A, "capsule",   400.0, 1.0, 1.0, kTankHz, false);
+    Part *portA   = mkPart(A, "portA",      50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(capsule);
+    A.v->attachDown(portA);
+    A.v->controller = capsule;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *bRoot   = mkPart(B, "bRoot",      50.0, 1.0, 1.0, kPortHz, true);
+    Part *decop   = mkPart(B, "decoupler",  50.0, 1.0, 1.0, kPortHz, false);
+    Part *tankB   = mkPart(B, "tankB",   1000.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(bRoot);
+    B.v->attachDown(decop);
+    B.v->attachDown(tankB);
+    B.v->controller = bRoot;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -2.0), glm::dmat3(1.0));
+
+    A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(A.v->seams.size() == 1, "kept: one seam after the dock");
+    CHECK_TRUE(A.v->seams[0].port == portA && A.v->seams[0].root == bRoot,
+               "kept: seam is {P, bRoot}");
+
+    /* Stage the decoupler: drops only {decoupler, tank}. bRoot (and the joint
+       {P, bRoot}) stays with A. */
+    Vehicle *out = A.v->extractSubtreeAsShip(decop, "staged");
+    CHECK_TRUE(out != nullptr, "kept: the split succeeded");
+    if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
+
+    /* THE keep branch: both seam ends are in the survivor, so the seam stays. */
+    CHECK_TRUE(A.v->seams.size() == 1, "kept: the seam is KEPT on the survivor");
+    if(A.v->seams.size() == 1) {
+        CHECK_TRUE(A.v->seams[0].port == portA && A.v->seams[0].root == bRoot,
+                   "kept: the kept seam is still {P, bRoot}");
+    }
+    CHECK_TRUE(out->seams.empty(), "kept: the split-off ship holds no seam");
+    CHECK_TRUE(A.v->parts.size() == 3, "kept: survivor keeps capsule, port, bRoot");
+    CHECK_TRUE(out->parts.size() == 2, "kept: split-off holds decoupler + tank");
+
+    destroyShip(out);
+
+    /* The joint is still intact, so undocking bRoot still works: the seam is
+       now split across the cut (P stays, bRoot goes) and is dropped. */
+    Vehicle *out2 = A.v->extractSubtreeAsShip(bRoot, "B");
+    CHECK_TRUE(out2 != nullptr, "kept: undock after the stage still works");
+    if(out2 != nullptr) {
+        CHECK_TRUE(A.v->seams.empty(), "kept: the undock dropped the seam");
+        CHECK_TRUE(A.v->parts.size() == 2, "kept: survivor keeps capsule + port");
+        CHECK_TRUE(out2->parts.size() == 1, "kept: bRoot comes off alone (the stage already took the rest)");
+        destroyShip(out2);
+    }
+
+    destroyShip(B.v);   /* the empty shell absorbShip left behind */
+    destroyShip(A.v);
+}
+
 int main() {
     test_absorb();
     test_roundtrip();
     test_uid();
+    test_seam_staging();
+    test_seam_nested_dock();
+    test_seam_kept_across_stage();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
