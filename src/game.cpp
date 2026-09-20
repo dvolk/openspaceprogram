@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <random>
 #include <string>
 
 #include "eva.h"      // Kerbal (the crew characters)
@@ -269,42 +270,95 @@ void pickAt(Game &g, int px, int py) {
    integrated. The orbit camera recenters on the ship being taken. */
 
 /* Keep the "ship" focus entry in sync with the active ship and point the
-   camera focus at it -- or at home (the orbit view) when there is none.
-   select_ship enters the ship state; load_game can enter OR leave it (a
-   save may carry no active ship), so both route through this.
+   camera focus at it -- or at a random non-star body (the title backdrop)
+   when there is none. select_ship enters the ship state; load_game can enter
+   OR leave it (a save may carry no active ship), so both route through this.
 
    The orbit camera follows the state change: it keeps its old distance,
-   so re-centering must re-scale too (50 m around a planet centre is
-   inside the planet; 2 radii around a ship is space). Home sits at its
-   own frame's origin, which is the render frame in the no-ship state. */
+   so re-centering must re-scale too (50 m around a ship is space; 2 radii
+   around a planet centre frames the title backdrop). Home sits at its own
+   frame's origin -- the render frame in the no-ship state -- so a backdrop
+   body resolves into it via focusWorldPos. */
 void Game::syncShipFocus() {
     if(ship != nullptr) {
         if(focusTargets.empty() || focusTargets[0].body != nullptr) {
             focusTargets.insert(focusTargets.begin(), { "ship", nullptr });
         }
         focusBody = 0;   // the "ship" focus target
+        // camera is null on a --load boot (main.cpp creates it after
+        // load_game), and a free camera is the pilot's own pose.
+        if(camera != nullptr && camera->mode == CAM_ORBIT) {
+            camera->Follow(ship->get_center_of_mass());
+            // a kerbal is 0.75 m tall; 50 m would lose it
+            camera->distance = ship->isEva() ? 5.0 : 50.0;
+        }
     } else {
         if(!focusTargets.empty() && focusTargets[0].body == nullptr) {
             focusTargets.erase(focusTargets.begin());
         }
-        focusBody = 0;
+        // The shipless orbit view (the title backdrop): a random non-star
+        // body, not the home planet.
+        parkTitleCamera();
+    }
+}
+
+/* The title-screen backdrop: park the orbit camera on a random non-star
+   body, 2 radii out. Purely the menu backdrop -- the gameplay home (ship
+   spawn, HUD time, saves) still anchors to `home`. focusTargets must be
+   seeded; at every real call site it is (boot after the list is built, and
+   at runtime after load_game), but a --load no-ship pass through load_game
+   can reach it first, so an empty list is a no-op and the boot call parks
+   it for real. */
+void Game::parkTitleCamera() {
+    if(focusTargets.empty()) { return; }
+    int idx = -1;
+    bool pinned = false;
+    // A --title-body pin selects that body deterministically (a test /
+    // visual-regression hook); otherwise the pick is a random non-star body.
+    if(!args.title_body.empty()) {
         for(int i = 0; i < (int)focusTargets.size(); i++) {
-            if(focusTargets[i].body == home) { focusBody = i; break; }
+            if(focusTargets[i].body != nullptr &&
+               focusTargets[i].body->name == args.title_body) {
+                idx = i; pinned = true; break;
+            }
+        }
+        if(idx < 0) {
+            printf("[title] backdrop pin '%s' not found; picking randomly\n",
+                   args.title_body.c_str());
+            fflush(stdout);
         }
     }
-    // camera is null on a --load boot (main.cpp creates it after
-    // load_game), and a free camera is the pilot's own pose.
-    if(camera != nullptr && camera->mode == CAM_ORBIT) {
-        if(ship != nullptr) {
-            camera->Follow(ship->get_center_of_mass());
-            // a kerbal is 0.75 m tall; 50 m would lose it
-            camera->distance = ship->isEva() ? 5.0 : 50.0;
-        } else {
-            camera->Follow(glm::dvec3(0.0));
-            // the orbit-view default (the no-ship boot parks 2 radii out)
-            camera->distance = 2.0 * home->radius;
+    if(idx < 0) {
+        std::vector<int> cand;
+        for(int i = 0; i < (int)focusTargets.size(); i++) {
+            TerrainBody *b = focusTargets[i].body;
+            if(b != nullptr && b != sys.root) { cand.push_back(i); }
         }
+        if(cand.empty()) {   // degenerate: no non-star body -- fall back to any
+            for(int i = 0; i < (int)focusTargets.size(); i++) {
+                if(focusTargets[i].body != nullptr) { cand.push_back(i); break; }
+            }
+            if(cand.empty()) { return; }   // no body at all: nothing to park on
+        }
+        static std::mt19937 rng(std::random_device{}());
+        std::uniform_int_distribution<size_t> pick(0, cand.size() - 1);
+        idx = cand[pick(rng)];
     }
+    focusBody = idx;
+    TerrainBody *b = focusTargets[idx].body;
+    if(camera != nullptr) {
+        // Deliberate: the title backdrop is always an orbit view, so this
+        // overrides a free-cam pose (same as quitToTitle does for the ship).
+        camera->mode = CAM_ORBIT;
+        camera->Follow(focusWorldPos(idx));
+        // 2 radii from the centre frames the body at ~53 deg for ANY size
+        // (Kerbin and Pol look the same scale) -- don't "scale" it further.
+        camera->distance = 2.0 * (double)b->radius;
+        camera->ComputeView();
+    }
+    printf("[title] backdrop: %s%s, %.0f m out\n", b->name.c_str(),
+           pinned ? " (pinned)" : "", 2.0 * (double)b->radius);
+    fflush(stdout);
 }
 
 bool Game::newGame() {
@@ -369,9 +423,10 @@ void Game::unloadGame() {
     ship = nullptr;
     kerbal = nullptr;
     lastShip = nullptr;
-    // The title screen is the orbit view of home: force orbit mode (a pilot
-    // quitting from free-cam would otherwise keep the free pose) before
-    // syncShipFocus drops the "ship" focus entry and re-aims at home.
+    // The title screen is an orbit view: force orbit mode (a pilot quitting
+    // from free-cam would otherwise keep the free pose) before syncShipFocus
+    // drops the "ship" focus entry and re-aims at the title backdrop (a
+    // random non-star body).
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
     syncShipFocus();
     printf("[game] unloaded: fleet torn down, no active vessel\n");
@@ -1084,7 +1139,8 @@ void Game::remove_ship(Vehicle *v) {
                but the guard above means `ship` would otherwise keep pointing
                at the deleted vehicle: enter the no-ship state instead (the
                same one load_game enters -- syncShipFocus drops the "ship"
-               focus entry and re-aims the orbit camera at home). */
+               focus entry and re-aims the orbit camera at the title backdrop,
+               a random non-star body). */
             ship = nullptr;
             syncShipFocus();
             // Flight's "there is an active vessel" invariant: with nothing

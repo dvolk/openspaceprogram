@@ -468,16 +468,33 @@ int main(int argc, char **argv)
     Camera *cam = new Camera(camFocus, camFov, camAspect, camZNear, camZFar);
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
+    // Bodies the orbit camera can target. Seeded BEFORE the --vab / --free-cam
+    // framing below, so the shipless title-backdrop park can resolve a focus
+    // target AND that framing stays the LAST word on the camera (a park after
+    // vabOpen would throw the editor's build out to the backdrop distance).
+    // With a ship the ship is index 0; with no ship the bodies start at index
+    // 0 (the title parks on a random non-star body, not the home planet). A
+    // --load boot already ran load_game (which syncs the "ship" entry), so
+    // insert only when absent.
+    if(game.ship != nullptr &&
+       (game.focusTargets.empty() || game.focusTargets[0].body != nullptr)) {
+        game.focusTargets.push_back({ "ship", nullptr });
+    }
+    for (TerrainBody *b : sys.bodies) {
+        game.focusTargets.push_back({ b->name.c_str(), b });
+    }
     if(ship == nullptr) {
-        /* No vessel: the camera sits a few radii out on the home planet and
-           the floor scene is the TITLE screen, not an empty flight one.
-           Decided before the --vab entry below so an editor opened with
+        /* No vessel: the floor scene is the TITLE screen, not an empty flight
+           one. Decided before the --vab entry below so an editor opened with
            nothing to fly sits on [title, vab] -- its "Back to game" then pops
            to the title screen instead of dropping into a flight scene with no
-           vessel in it (which is what the old single-scene model did). */
-        cam->distance = 2.0 * home->radius;
+           vessel in it (which is what the old single-scene model did). The
+           backdrop camera parks on a random non-star body now, before the
+           --vab / --free-cam framing below (which is the last word on the
+           camera when one of those is active). */
         enterTitle(game);
-        printf("[boot] no vessel: title screen over %s\n", home->name.c_str());
+        game.parkTitleCamera();
+        printf("[boot] no vessel: title screen\n");
         fflush(stdout);
     }
 
@@ -520,29 +537,6 @@ int main(int argc, char **argv)
             u = glm::dvec3(args.free_cam_up[0], args.free_cam_up[1], args.free_cam_up[2]);
         }
         cam->setFreePose(p, f, u);
-    }
-
-    // Bodies the orbit camera can target. With a ship, the ship is the
-    // default (index 0); with no ship (the orbit-view state) the bodies start
-    // at index 0 and the home body is the default. game.focusWorldPos()
-    // resolves one to a render-frame position. A --load boot already ran
-    // load_game (which syncs the "ship" entry), so insert only when absent.
-    if(game.ship != nullptr &&
-       (game.focusTargets.empty() || game.focusTargets[0].body != nullptr)) {
-        game.focusTargets.push_back({ "ship", nullptr });
-    }
-    for (TerrainBody *b : sys.bodies) {
-        game.focusTargets.push_back({ b->name.c_str(), b });
-    }
-    // Default focus: the ship (index 0) when there is one, else the home body.
-    if(game.ship == nullptr) {
-        for(int i = 0; i < (int)game.focusTargets.size(); i++) {
-            if(game.focusTargets[i].body == game.home) { game.focusBody = i; break; }
-        }
-        // The title screen (the shipless floor, chosen above) keeps the world
-        // running with the camera on home. Its menu is a Root window forced
-        // open every frame, so nothing here has to open it -- that forced
-        // SetOpen was the old model papering over the menu being just a window.
     }
 
     int screenshot_count = 0;

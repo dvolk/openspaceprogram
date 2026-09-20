@@ -7,7 +7,8 @@
 # That is the fix for the empty readouts showing through behind the menu.
 NAME title-boot
 ARGS --timeout 4
-EXPECT [boot] no vessel: title screen over Kerbin
+EXPECT [boot] no vessel: title screen
+EXPECT [title] backdrop:
 EXPECT [scene] flight -> title (enterTitle)
 EXPECT Main loop starting
 FORBID GL_

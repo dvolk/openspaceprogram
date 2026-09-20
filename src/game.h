@@ -542,6 +542,10 @@ struct Game {
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;
+    // Title-screen backdrop: park the orbit camera on a random non-star
+    // body, 2 radii out. Purely the menu backdrop -- the gameplay home is
+    // untouched. A no-op until focusTargets is seeded.
+    void parkTitleCamera();
     // TAB: hide / restore the live scene's Persistent windows.
     void toggle_windows();
     // Set the live scene's Persistent windows to match ui_visible (hidden =
@@ -602,8 +606,9 @@ struct Game {
        teardown. */
     void quitToTitle();
     // Keep the "ship" focus entry in sync with the active ship and point
-    // the camera focus at it -- or at home (the orbit view) when there is
-    // none. select_ship and load_game both enter/leave the no-ship state.
+    // the camera focus at it -- or at a random non-star body (the title
+    // backdrop) when there is none. select_ship and load_game both
+    // enter/leave the no-ship state.
     void syncShipFocus();
     // Enter rails warp (park every ship); false + keeps the accel if any
     // ship is not rail-eligible.

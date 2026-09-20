@@ -130,10 +130,11 @@ void trackingDrawUi(Game &g, TransferPlanner &p) {
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     // name      sim    pilot backdrop     wins          enter      exit
     /* The title screen runs the sim and draws the world: with no vessel that
-       is O(bodies) and it is what makes the backdrop alive -- the home planet
-       turns behind the menu instead of hanging frozen. Its key map is the
-       flight one, so the orbit/map camera keys still work for looking around
-       the system; the vessel keys no-op with nothing to control. */
+       is O(bodies) and it is what makes the backdrop alive -- a random
+       non-star body (parked by parkTitleCamera) turns behind the menu
+       instead of hanging frozen. Its key map is the flight one, so the
+       orbit/map camera keys still work for looking around the system; the
+       vessel keys no-op with nothing to control. */
     { "title",  true,  false, Backdrop::Sky,    kTitleWins,
       floorEnter,  floorExit,
       tick,        draw3d,    titleDrawUi,  flightKeyActions },

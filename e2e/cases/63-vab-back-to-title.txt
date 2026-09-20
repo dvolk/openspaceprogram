@@ -4,14 +4,17 @@
 # flight readouts were reachable with nothing to read out.
 #
 # The camera round trip is asserted the same way case 60 does: the parked and
-# restored lines must name the same target and distance (3 radii out on Kerbin,
-# the shipless default).
+# restored lines must name the same target and distance. The shipless default
+# is a random non-star body, so --title-body pins Kerbin to make the framing
+# deterministic: the round trip must restore the title backdrop exactly
+# (Kerbin at 2 radii = 1200000 m), not the 10 m construction default.
 NAME vab-back-to-title
-ARGS --vab-empty --vab-close 2000 --timeout 8
+ARGS --vab-empty --title-body Kerbin --vab-close 2000 --timeout 8
 EXPECT [scene] title -> vab (push)
 EXPECT [scene] vab -> title (pop)
-EXPECT [cam] parked: orbit focus=Kerbin dist=
-EXPECT [cam] restored: orbit focus=Kerbin dist=
+EXPECT [title] backdrop: Kerbin (pinned), 1200000 m out
+EXPECT [cam] parked: orbit focus=Kerbin dist=1200000.0 m
+EXPECT [cam] restored: orbit focus=Kerbin dist=1200000.0 m
 CHECK len(re.findall(r"\[cam\] (?:parked|restored): orbit focus=Kerbin dist=([\d.]+) m", out)) == 2
 CHECK len(set(re.findall(r"\[cam\] (?:parked|restored): orbit focus=Kerbin dist=([\d.]+) m", out))) == 1
 FORBID GL_

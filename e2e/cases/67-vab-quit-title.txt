@@ -7,7 +7,8 @@
 NAME vab-quit-title
 ARGS --vab-empty --timeout 8
 ARGS --quit-title 2000
-EXPECT [boot] no vessel: title screen over Kerbin
+EXPECT [boot] no vessel: title screen
+EXPECT [title] backdrop:
 EXPECT [scene] title -> vab (push)
 EXPECT [game] unloaded: fleet torn down
 EXPECT [scene] vab -> title (enterTitle)

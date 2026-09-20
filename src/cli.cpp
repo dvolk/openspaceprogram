@@ -16,6 +16,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--body", args.body_name,
         "Body the ship starts on / orbits (default: the system's home body)");
+    app.add_option("--title-body", args.title_body,
+        "Pin the title-screen backdrop to this body instead of a random "
+        "non-star one (a test / visual-regression hook; default: random)");
 
     /* The name list is duplicated below (the help text and the IsMember
        validator) and again in vehicle.cpp's kScenarios, which is the real

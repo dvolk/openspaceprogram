@@ -14,6 +14,9 @@ struct GameArgs {
     std::string body_name;
     std::string scenario = "pad";
     bool scenario_given = false;    // --scenario was passed explicitly
+    std::string title_body;   // --title-body: pin the title-screen backdrop to
+                               // this body (a test / visual-regression hook);
+                               // empty = a random non-star body
 
     // The settings (Settings window) the command line set explicitly
     // (filled in parse_cli from CLI11 ->count()): Game::load_settings()
