@@ -55,10 +55,13 @@ static int g_checks = 0;
     } while (0)
 
 /* The stand-in for Kerbal (see the header). One part, isEva true -- the
-   shape of every character vehicle. */
+   shape of every character vehicle. `cap` is what Kerbal::aboardPart is:
+   the capsule it sits in (set by the test the way board/EVA would). */
 struct TestCrew : Vehicle {
+    Part *cap = nullptr;   // the capsule it is parked in; nullptr = free
     bool isEva() const override { return true; }
-    bool isCrewAboard() const override { return true; }
+    bool isCrewAboard() const override { return (cap != nullptr); }
+    Part *capsulePart() const override { return cap; }
 };
 
 /* A hand-built part. `defs` is a deque, not a vector: push_back on a vector
@@ -236,6 +239,76 @@ int main() {
             nv->onRails = true;
             delete nv;
         }
+    }
+
+    /* --- the crew list follows its capsule across merge and split -------- */
+    /* The board->dock->EVA seam step 2.2 calls out: a kerbal aboard a ship
+       that then docks (absorbShip) moves with the ship's crew list, and when
+       the docked side splits back off (extractSubtreeAsShip) the kerbal
+       follows its capsule to the split-off ship. The capsule is a Part*
+       (stable through both), so the crew block reads the side straight off
+       capsulePart()->owner -- no reindex. A TestCrew stand-in (capsulePart()
+       overridden) plays the Kerbal; the real one is unreachable from a
+       headless link (eva.cpp drags in game.h). */
+    {
+        printf("== crew follows its capsule across absorb + split ==\n");
+        /* P: capsule + docking port (the survivor). Q: capsule + tank (the
+           docked side carrying the crew). */
+        Ship P; P.v = new Vehicle; P.v->name = "P";
+        Part *pCap  = mkPart(P, "pCapsule", 100.0, 1.0, 1.0, 0.5, 2, false);
+        Part *portP = mkPart(P, "portP", 50.0, 1.0, 1.0, 0.125, 0, true);
+        P.v->setRoot(pCap);
+        P.v->attachDown(portP);
+        P.v->controller = pCap;
+        P.v->init();
+        P.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+        Ship Q; Q.v = new Vehicle; Q.v->name = "Q";
+        Part *qCap  = mkPart(Q, "qCapsule", 100.0, 1.0, 1.0, 0.5, 2, false);
+        Part *qTank = mkPart(Q, "qTank", 500.0, 1.0, 1.0, 1.0, 0, false);
+        Q.v->setRoot(qCap);
+        Q.v->attachDown(qTank);
+        Q.v->controller = qCap;
+        Q.v->init();
+        Q.v->placeShip(glm::dvec3(0.0, 0.0, -5.0), glm::dmat3(1.0));
+
+        /* the kerbal: parked in Q's capsule, on Q's crew list (as board does) */
+        Ship T; T.v = new TestCrew; T.v->name = "T";
+        Part *tSuit = mkPart(T, "suit", 97.05, 0.2, 0.2, 0.375, 0, false);
+        T.v->setRoot(tSuit);
+        T.v->controller = tSuit;
+        T.v->init();
+        T.v->placeShip(glm::dvec3(20.0), glm::dmat3(1.0));
+        static_cast<TestCrew *>(T.v)->cap = qCap;
+        Q.v->crew.push_back(T.v);
+
+        CHECK_TRUE(Q.v->crew.size() == 1, "Q starts with the kerbal aboard");
+
+        /* dock Q into P: the kerbal moves with Q's crew list */
+        P.v->absorbShip(Q.v, portP);
+        delete Q.v;
+        CHECK_TRUE(P.v->crew.size() == 1, "after absorb, the kerbal is on P's crew");
+        CHECK_TRUE(P.v->crew[0] == T.v, "it is the same kerbal");
+        CHECK_TRUE(static_cast<TestCrew *>(T.v)->capsulePart() == qCap,
+                   "its capsule still names Q's capsule");
+        CHECK_TRUE(qCap->owner == P.v, "the capsule re-pointed to P");
+
+        /* split the docked side (Q's capsule + tank) back off: the kerbal
+           must follow its capsule to the split-off ship */
+        Vehicle *nv = P.v->extractSubtreeAsShip(qCap, "Q");
+        CHECK_TRUE(nv != nullptr, "the split succeeds");
+        if(nv != nullptr) {
+            CHECK_TRUE(nv->crew.size() == 1,
+                       "the kerbal followed its capsule to the split-off");
+            CHECK_TRUE(nv->crew[0] == T.v, "it is the same kerbal");
+            CHECK_TRUE(P.v->crew.empty(), "P no longer holds the kerbal");
+            CHECK_TRUE(qCap->owner == nv, "the capsule re-pointed to the split-off");
+            CHECK_TRUE(nv->checkPartInvariants(), "the split-off passes the invariant");
+            CHECK_TRUE(P.v->checkPartInvariants(), "P passes the invariant");
+            nv->onRails = true;
+            delete nv;   // frees the kerbal (it is in nv->crew now)
+        }
+        destroyVehicle(P.v);   // frees P's parts; the kerbal is already freed
     }
 
     /* teardown: delete the crew first, as ~Vehicle does for its own crew --

@@ -555,6 +555,14 @@ void Vehicle::rebuildCompound() {
     principal = btTransform::getIdentity();
     if(parts.empty()) { return; }
 
+    /* ownership back-pointers (part.h): the parts list is the ownership list,
+       so every part in it points back at this vehicle. The attach primitives
+       (setRoot/attach) and the merge/split set this as parts move; wiring it
+       here too keeps the invariant well-defined for ships assembled without
+       them (the headless tests build parts by hand), so the assert below
+       passes on a correctly-owned ship and fails where ownership is broken. */
+    for(Part *p : parts) { p->owner = this; }
+
     btCompoundShape *inS = new btCompoundShape(true, (int)parts.size());
     std::vector<btScalar> masses(parts.size());
     btScalar total = 0;
@@ -941,9 +949,7 @@ bool Vehicle::isEva() const { return false; }
 
 bool Vehicle::isCrewAboard() const { return false; }
 
-bool Vehicle::crewRebase(Vehicle *dest, const std::map<size_t, size_t> &reindex) {
-    return false;
-}
+Part *Vehicle::capsulePart() const { return nullptr; }
 
 void Vehicle::buildFuelGroups() {
     for(Part *p : parts) { p->fuelGroup = -1; }
@@ -2006,24 +2012,23 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     /* Topology: B's root hangs off this ship's port part -- one tree
        edge, the two port parts being the joint. The part lists, fuel
        links and crew move into this ship; B is left an empty shell. */
-    const size_t aSize = parts.size();
     Part *bRoot = B->rootPart();
     bRoot->parent = portA;
-
-    /* crew: their capsules are B's parts, now at aSize + (old index). */
-    std::map<size_t, size_t> reindex;
-    for(size_t i = 0; i < B->parts.size(); i++) { reindex[i] = aSize + i; }
-    for(size_t i = 0; i < B->crew.size(); i++) {
-        B->crew[i]->crewRebase(this, reindex);
-        crew.push_back(B->crew[i]);
-    }
-    B->crew.clear();
 
     for(Part *q : B->parts) { q->owner = this; }   // they are OUR parts now
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();
+
+    /* crew: their capsules just moved in and re-pointed to us, and a
+       kerbal's capsule is a Part* -- stable through the move -- so the
+       kerbals simply join this ship's crew list; each kerbal's
+       `aboardPart` already names the right part. */
+    for(size_t i = 0; i < B->crew.size(); i++) {
+        crew.push_back(B->crew[i]);
+    }
+    B->crew.clear();
 
     /* stage counters: the union (the parts keep their baked-in numbers). */
     if(B->totalStages_ > totalStages_) { totalStages_ = B->totalStages_; }
@@ -2106,17 +2111,18 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
     nv->sun = sun;
     nv->scenario = nullptr;
 
-    /* Part list in the original order (stable indices for the crew
-       reindex below); rebase the poses into S'. */
+    /* Part list in the original order: parent before child -- the save
+       format resolves each part's parent by reference, so a child must
+       never precede its parent. (The crew no longer index their capsule:
+       a Part* is stable, so the old "stable indices" reason is gone.)
+       Rebase the poses into S'. */
     std::vector<Part *> nvParts;
-    std::map<size_t, size_t> goReindex;   // old index -> new ship index
     for(size_t i = 0; i < parts.size(); i++) {
         if(!droppedSet.count(parts[i])) { continue; }
         Part *q = parts[i];
         q->localPos = glm::transpose(RR) * (q->localPos - pR);
         q->localRot = glm::transpose(RR) * q->localRot;
         nvParts.push_back(q);
-        goReindex[i] = nvParts.size() - 1;
     }
     root->parent = nullptr;   // root of the new ship
     nv->parts = nvParts;
@@ -2159,30 +2165,21 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
     nv->seams = nvSeams;
     seams = keepSeams;
 
-    /* crew: a kerbal follows its capsule (crewRebase tells which side
-       it is on); the survivors' slots reindex too, because erasing the
-       dropped parts shifts the indices before them. */
-    std::map<size_t, size_t> stayReindex;
+    /* crew: a kerbal follows its capsule. The capsules' owners were just
+       re-pointed (or kept), and each kerbal's capsule is a Part* that was
+       stable through the move -- so the side is read straight off the
+       capsule's owner; nothing to reindex. capsulePart() is virtual
+       (Kerbal returns its aboardPart; a ship returns null), so no cast and
+       a headless test can stand in for a Kerbal. */
     {
-        size_t j = 0;
-        for(size_t i = 0; i < parts.size(); i++) {
-            if(!droppedSet.count(parts[i])) { stayReindex[i] = j++; }
-        }
-    }
-    std::vector<Vehicle *> movedCrew;
-    for(size_t i = 0; i < crew.size(); i++) {
-        Vehicle *k = crew[i];
-        if(k->crewRebase(nv, goReindex)) { movedCrew.push_back(k); }
-        else { k->crewRebase(this, stayReindex); }
-    }
-    for(size_t i = 0; i < movedCrew.size(); i++) { nv->crew.push_back(movedCrew[i]); }
-    {
-        std::vector<Vehicle *> keepCrew;
+        std::vector<Vehicle *> movedCrew, keepCrew;
         for(size_t i = 0; i < crew.size(); i++) {
-            bool gone = false;
-            for(size_t j = 0; j < movedCrew.size(); j++) { if(crew[i] == movedCrew[j]) { gone = true; break; } }
-            if(!gone) { keepCrew.push_back(crew[i]); }
+            Vehicle *k = crew[i];
+            Part *cap = k->capsulePart();
+            if(cap != nullptr && cap->owner == nv) { movedCrew.push_back(k); }
+            else { keepCrew.push_back(k); }
         }
+        for(size_t i = 0; i < movedCrew.size(); i++) { nv->crew.push_back(movedCrew[i]); }
         crew = keepCrew;
     }
 

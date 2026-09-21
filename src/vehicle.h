@@ -471,13 +471,13 @@ public:
        ship never carries this, so it is false by default. */
     virtual bool isCrewAboard() const;
 
-    /* The crew's capsule slot is an index into the ship's part list, and a
-       merge (absorbShip) or a split (extractSubtreeAsShip) reindexes the
-       list. A crew member whose capsule moved with `dest` applies the
-       old->new index map to its slot and returns true (so the caller moves
-       it into dest's crew); one whose capsule stayed returns false. Only a
-       Kerbal (eva.h) has a slot to reindex, so the base is a no-op. */
-    virtual bool crewRebase(Vehicle *dest, const std::map<size_t, size_t> &reindex);
+    /* The capsule Part this vehicle is parked in (its single source of
+       truth for WHERE an aboard character sits). A regular ship parks
+       nothing, so it is null by default; Kerbal overrides it (src/eva.h)
+       to return its aboardPart. The merge/split crew bookkeeping reads this
+       (virtual, so no Kerbal cast -- and a headless test can stand in for a
+       Kerbal by overriding it) instead of casting the crew list. */
+    virtual Part *capsulePart() const;
 
     /* Assign each part a fuel-group id (Part::fuelGroup). A fuel group is a
        connected component of the part tree across the parts that CONDUCT

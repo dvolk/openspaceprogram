@@ -695,8 +695,8 @@ void load_settings_args(GameArgs &args);
 // (Vehicle::crew), so these read it directly; the free kerbals are the
 // isEva ships in the bodies' lists.
 //   shipCrew    every kerbal aboard `ship` (any capsule)
-//   partCrew    the kerbals sitting in the specific capsule (ship, part)
+//   partCrew    the kerbals sitting in the specific capsule part
 //   freeKerbals every kerbal not aboard any ship (on EVA)
 std::vector<Kerbal *> shipCrew(Vehicle *ship);
-std::vector<Kerbal *> partCrew(Vehicle *ship, size_t part);
+std::vector<Kerbal *> partCrew(Vehicle *ship, Part *capPart);
 std::vector<Kerbal *> freeKerbals(System &sys);

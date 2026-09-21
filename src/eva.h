@@ -50,25 +50,22 @@ struct Kerbal : Vehicle {
 
     bool isEva() const override { return true; }
     bool isCrewAboard() const override { return isAboard(); }
+    Part *capsulePart() const override { return aboardPart; }
 
     /* --- crew: where this character is (set by the transitions in game.cpp)
        Aboard a ship = parked inside one of its capsule parts (its body is
        out of the physics world and its mass is folded into that part);
-       free = on EVA, a live body in the world. `aboard` is the single source
-       of truth -- the ship keeps no per-part occupant list. */
-    Vehicle *aboard = nullptr;  // the ship it sits in; nullptr = free (on EVA)
-    size_t aboardPart = 0;      // index into aboard->parts (the capsule)
-    bool isAboard() const { return aboard != nullptr; }
-
-    /* The capsule-slot reindex (Vehicle::crewRebase): a merge/split moved
-       the ship's part list, so if `reindex` covers this kerbal's current
-       slot, its capsule is on `dest`'s side -- move there and reindex. */
-    bool crewRebase(Vehicle *dest, const std::map<size_t, size_t> &reindex) override {
-        std::map<size_t, size_t>::const_iterator it = reindex.find(aboardPart);
-        if(it == reindex.end()) { return false; }
-        aboard = dest;
-        aboardPart = it->second;
-        return true;
+       free = on EVA, a live body in the world. `aboardPart` -- the capsule
+       Part itself -- is the single source of truth: a Part* is stable
+       across a merge (absorbShip) and a split (extractSubtreeAsShip), so
+       no reindex machinery is needed (the old size_t index + crewRebase
+       maps are gone). `aboard` derives from the part's owner back-pointer
+       (part.h). Step 2.4 adds the capsule-side `contents` edge; until then
+       this pointer is the only direction of the edge. */
+    Part *aboardPart = nullptr;  // the capsule Part it sits in; nullptr = free (on EVA)
+    bool isAboard() const { return aboardPart != nullptr; }
+    Vehicle *aboard() const {
+        return (aboardPart != nullptr) ? aboardPart->owner : nullptr;
     }
 
     /* The capsule-center altitude above the analytic surface when standing

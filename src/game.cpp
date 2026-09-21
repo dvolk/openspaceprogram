@@ -519,11 +519,11 @@ std::vector<Kerbal *> shipCrew(Vehicle *ship) {
     return out;
 }
 
-std::vector<Kerbal *> partCrew(Vehicle *ship, size_t part) {
+std::vector<Kerbal *> partCrew(Vehicle *ship, Part *capPart) {
     std::vector<Kerbal *> out;
     for(auto *k : ship->crew) {
         Kerbal *kb = static_cast<Kerbal *>(k);
-        if(kb->aboardPart == part) { out.push_back(kb); }
+        if(kb->aboardPart == capPart) { out.push_back(kb); }
     }
     return out;
 }
@@ -533,7 +533,7 @@ std::vector<Kerbal *> freeKerbals(System &sys) {
     for(auto *s : collectVehicles(sys)) {
         if(!s->isEva()) { continue; }
         Kerbal *k = static_cast<Kerbal *>(s);
-        if(k->aboard == nullptr) { out.push_back(k); }
+        if(k->aboard() == nullptr) { out.push_back(k); }
     }
     return out;
 }
@@ -551,11 +551,9 @@ void Game::kerbalEVA(Kerbal *k) {
         toast("EVA: %s is not aboard a ship", k->name.c_str());
         return;
     }
-    Vehicle *ship = k->aboard;
-    const size_t part = k->aboardPart;
-    if(part >= ship->parts.size()) { return; }
-    const PartDef *capDef = ship->parts[part]->def;
-    Part *capPart = ship->parts[part];
+    Part *capPart = k->aboardPart;
+    Vehicle *ship = capPart->owner;
+    const PartDef *capDef = capPart->def;
     Body *kb = k->hull;
     const double kerbalMass = kb->mass;
 
@@ -597,7 +595,7 @@ void Game::kerbalEVA(Kerbal *k) {
         if(*it == k) { ship->crew.erase(it); break; }
     }
     if(ship->m_parent != nullptr) { ship->m_parent->ships.push_back(k); }
-    k->aboard = nullptr;
+    k->aboardPart = nullptr;
 
     /* back into the physics world (it was parked while aboard) */
     AddPhysicsBody(kb);
@@ -608,8 +606,14 @@ void Game::kerbalEVA(Kerbal *k) {
     lastShip = ship;
     select_ship(k);
     toast("EVA: %s", k->name.c_str());
-    printf("[crew] t=%.1f EVA: '%s' out of '%s' part %zu\n",
-           time, k->name.c_str(), ship->name.c_str(), part);
+    /* log the capsule's slot in the ship's part list (e2e 29 pins "part 0"):
+       the state is a Part* now, so map it back to its index for the line. */
+    int capIdx = 0;
+    for(size_t i = 0; i < ship->parts.size(); i++) {
+        if(ship->parts[i] == capPart) { capIdx = (int)i; break; }
+    }
+    printf("[crew] t=%.1f EVA: '%s' out of '%s' part %d\n",
+           time, k->name.c_str(), ship->name.c_str(), capIdx);
 }
 
 /* Put a free kerbal `k` into the capsule (ship, part): move its mass
@@ -625,16 +629,16 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         return;
     }
     if(part >= ship->parts.size()) { return; }
-    const PartDef *capDef = ship->parts[part]->def;
+    Part *capPart = ship->parts[part];
+    const PartDef *capDef = capPart->def;
     if(capDef->crew_capacity <= 0) {
         toast("Board: part %zu is not a capsule", part);
         return;
     }
-    if((int)partCrew(ship, part).size() >= capDef->crew_capacity) {
+    if((int)partCrew(ship, capPart).size() >= capDef->crew_capacity) {
         toast("Board: capsule full (%d)", capDef->crew_capacity);
         return;
     }
-    Part *capPart = ship->parts[part];
     Body *kb = k->hull;
     const double kerbalMass = kb->mass;
 
@@ -658,8 +662,7 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     }
     k->frame = ship->frame;
     k->m_parent = ship->m_parent;
-    k->aboard = ship;
-    k->aboardPart = part;
+    k->aboardPart = capPart;
     ship->crew.push_back(k);
     if(kerbal == k) { kerbal = nullptr; }
     toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
@@ -981,9 +984,7 @@ void Game::stage() {
     bool crewOnStage = false;
     for(Part *p : dropped) {
         if(p->def == nullptr || p->def->crew_capacity <= 0) { continue; }
-        for(size_t i = 0; i < a->parts.size(); i++) {
-            if(a->parts[i] == p && !partCrew(a, i).empty()) { crewOnStage = true; }
-        }
+        if(!partCrew(a, p).empty()) { crewOnStage = true; }
     }
     if(crewOnStage) {
         printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");

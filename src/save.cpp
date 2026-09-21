@@ -88,8 +88,15 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
     s.is_crew = v->isEva();
     if(s.is_crew) {
         Kerbal *k = static_cast<Kerbal *>(v);
-        s.aboard = (k->aboard != nullptr) ? k->aboard->name : "";
-        s.aboard_part = (int)k->aboardPart;
+        Vehicle *ship = k->aboard();
+        s.aboard = (ship != nullptr) ? ship->name : "";
+        // the format still stores the capsule's index in the ship's part
+        // list (2.3 switches to the part's uid): map the pointer back.
+        int idx = 0;
+        for(size_t i = 0; ship != nullptr && i < ship->parts.size(); i++) {
+            if(ship->parts[i] == k->aboardPart) { idx = (int)i; break; }
+        }
+        s.aboard_part = idx;
         // a free (EVA) kerbal lives in the world -- save its pose like a
         // ship's (an aboard one's pose is unused on load).
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
@@ -373,8 +380,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         RemoveBody(k->hull);
         k->onRails = true;
         k->railFrozen = true;
-        k->aboard = ship;
-        k->aboardPart = s.aboard_part;
+        k->aboardPart = cap;
         ship->crew.push_back(k);
     }
     return k;

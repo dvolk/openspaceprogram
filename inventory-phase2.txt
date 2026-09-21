@@ -40,7 +40,7 @@ Plan (design report §4): 2.1 containment edge (unused) → 2.2 aboardPart
 index→pointer → 2.3 save the edge by uid + capsule check → 2.4 register crew
 in contents. One commit per step, make test + relevant e2e before each.
 
-### 2.1 — containment edge, unused  (in progress)
+### 2.1 — containment edge, unused  (done, committed cf28065)
 
 Decisions (report left them open):
 
@@ -72,7 +72,20 @@ Decisions (report left them open):
   drags the whole game into a headless test link. The invariant is keyed on
   the isEva() virtual, so the stand-in exercises the same code path.
 
-### 2.2 — aboardPart: index → pointer  (pending)
+BUG found while running 2.2 (was latent in the 2.1 commit): the owner
+wiring only happened in setRoot/attach, but the pre-existing hand-built-ship
+tests (test_fuel, test_inertia, ...) add parts via `parts.push_back` and never
+go through the attach primitives, so their parts had `owner == nullptr` and
+`rebuildCompound`'s `assert(checkPartInvariants())` aborted the whole `make
+test` at test_fuel. (So 2.1 was committed with a red `make test` — the
+"green" claim in the phase-1 verification above was for the OTHER suites;
+test_fuel onward never ran.) Fix: `rebuildCompound()` now wires
+`p->owner = this` for every part (the parts list is the ownership list) right
+before the assert — one place, covers init→finalize, direct calls (test_
+inertia), and the merge/split paths. The attach primitives' owner-setting is
+redundant now but harmless (idempotent). `make test` is fully green again.
+
+### 2.2 — aboardPart: index → pointer  (done)
 
 Decision: keep `aboardPart` as a `Part*` FIELD in this step (the report's
 literal step), drop the `aboard` field (derived as `aboardPart->owner`),
@@ -80,6 +93,51 @@ delete crewRebase + both reindex maps + the dispatch. The containment edge
 stays null until 2.4; the invariant still passes (nothing contained).
 Save stays in the old int format for this commit (save.cpp maps the pointer
 to an index on write and back on read); 2.3 swaps the format.
+
+What actually changed:
+- eva.h: `aboardPart` is now `Part *` (was `size_t`); `aboard` field gone,
+  replaced by `Vehicle *aboard() const { return aboardPart->owner; }`.
+  `crewRebase` override removed.
+- vehicle.cpp absorbShip: the crew block no longer builds a reindex map —
+  a kerbal's capsule is a Part* (stable through the merge), so the kerbals
+  simply join the survivor's crew list (their `aboardPart` already names the
+  right part, now re-pointed to the survivor by the owner move).
+- vehicle.cpp extractSubtreeAsShip: the crew block no longer builds goReindex
+  + stayReindex. It reads each kerbal's side straight off `capsulePart()->
+  owner` (nv or this). The part-list ordering comment now cites the save
+  format's parent-before-child rule (the old "stable indices for crew"
+  reason is gone).
+- partCrew(ship, part-index) → partCrew(ship, Part *capPart) (game.h/game.cpp/
+  gameui.cpp). kerbalEVA/kerbalBoard/ships.cpp spawn/save all key on the
+  Part*.
+- The stage guard (game.cpp stage()) drops a redundant inner loop now that
+  partCrew takes the Part* directly.
+
+Findings / decisions the report didn't pin down:
+- The crew block did `static_cast<Kerbal *>(k)->aboardPart`, which is
+  untestable headless (Kerbal lives in eva.h→game.h). Replaced with a new
+  virtual `Vehicle::capsulePart()` (null for a ship, the aboard Part* for a
+  Kerbal) — no cast, and a test can stand in for a Kerbal by overriding it.
+  This is the SAME shape as the existing `isCrewAboard()` virtual.
+- e2e 29-eva-spawn pins BOTH the spawn line (`Crew: 'kerbal' aboard 'racer'
+  part 0`) AND the EVA line (`EVA: 'kerbal' out of 'racer' part 0`). The
+  plan said the [crew] EVA/Board lines were "free to change to uid" — they are
+  NOT: e2e 29 pins the EVA line to the index. So both printfs keep the index
+  (kerbalEVA maps the Part* back to its slot for the line; kerbalBoard uses
+  its `part` param; ships.cpp spawn already had it). Board is not pinned by
+  any case but stays on the index for consistency.
+- Coverage: the board→dock→EVA seam (crew block) was NOT exercised by any
+  test (test_dock has no crew; the e2e dock cases don't spawn crew). Added a
+  focused section to tests/test_contain.cpp: a TestCrew (capsulePart()
+  overridden) aboard ship Q, dock Q into P (crew moves to P), split Q's
+  capsule off (crew follows it to the split-off). 41 checks, all pass. This
+  is the unit-level equivalent of the board→dock→EVA e2e; the e2e itself is
+  left for the 2.4 board/EVA transition wiring (a clean scripted case needs
+  the Board/EVA buttons, which are UI clicks).
+
+Verification: `make test` green (exit 0, all suites incl. test_contain 41,
+test_dock 71, test_fuel 86, test_inertia 959). e2e 26/29/30/45/46/53/54/79
+all PASS (8/8).
 
 ### 2.3 — save the containment edge by uid  (pending)
 

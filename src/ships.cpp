@@ -192,13 +192,12 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     k->onRails = true;
     k->railFrozen = true;
     ship->addPartMass(capPart, kb->mass);
-    k->aboard = ship;
-    k->aboardPart = part;
+    k->aboardPart = capPart;
 
     ship->crew.push_back(k);
     int aboard = 0;
     for(auto *c : ship->crew) {
-        if(static_cast<Kerbal *>(c)->aboardPart == part) { aboard++; }
+        if(static_cast<Kerbal *>(c)->aboardPart == capPart) { aboard++; }
     }
     printf("Crew: '%s' aboard '%s' part %zu (%d/%d)\n",
            k->name.c_str(), ship->name.c_str(), part,

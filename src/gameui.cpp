@@ -1644,7 +1644,7 @@ void drawPartWindows(Game &g) {
             // kerbal's mass onto/off the capsule and park/restore its body.
             if(def->crew_capacity > 0) {
                 ImGui::Separator();
-                std::vector<Kerbal *> aboard = partCrew(ship, part);
+                std::vector<Kerbal *> aboard = partCrew(ship, ship->parts[part]);
                 ImGui::Text("Crew: %d / %d", (int)aboard.size(), def->crew_capacity);
                 for(size_t ci = 0; ci < aboard.size(); ci++) {
                     Kerbal *k = aboard[ci];
