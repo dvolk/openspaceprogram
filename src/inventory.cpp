@@ -50,6 +50,10 @@ bool inventoryTransfer(Part *item, Part *dest) {
     return addToContainer(item, dest);
 }
 
+bool inventoryAdd(Part *item, Part *dest) {
+    return addToContainer(item, dest);
+}
+
 void inventoryRemove(Part *item) {
     if(item == nullptr) { return; }
     removeFromContainer(item);

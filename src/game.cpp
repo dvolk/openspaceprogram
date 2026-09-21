@@ -14,6 +14,7 @@
 #include <string>
 
 #include "eva.h"      // Kerbal (the crew characters)
+#include "inventory.h" // inventoryRemove / inventoryAdd (phase 4.3/4.4)
 #include "physics.h"  // AddPhysicsBody, RemoveBody, setPosRot
 #include "pick.h"     // pickShipPart (pickAt)
 #include "save.h"     // load_game (Game::loadFrom)
@@ -693,6 +694,73 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         lastShip = ship;
         select_ship(ship);
     }
+}
+
+/* phase 4.4: drop an inventory item -- it becomes a free 1-part ship. */
+Vehicle *Game::dropItem(Part *item) {
+    if(item == nullptr || item->container == nullptr) { return nullptr; }
+    Vehicle *carrier = item->container->owner;
+    if(carrier == nullptr) { return nullptr; }
+
+    /* the item's world pose = its container's pose (it sits at the
+       container's COM). Rigid velocity: v + w x r (the same derivation
+       as extractSubtreeAsShip's vOut, for a 1-part drop where root == COM). */
+    glm::dvec3 itemPos; glm::dmat3 itemRot;
+    carrier->partWorldPose(item->container, itemPos, itemRot);
+    const glm::dvec3 com = carrier->comPos();
+    const glm::dvec3 v = GetVelocity(carrier->hull)
+                       + glm::cross(GetAngVelocity(carrier->hull),
+                                   itemPos - com);
+
+    /* remove from the container (ownership + traversal) */
+    inventoryRemove(item);
+
+    /* build the 1-part ship */
+    Vehicle *nv = new Vehicle();
+    nv->name = item->def->display_name.empty() ? item->def->name : item->def->display_name;
+    nv->defPath = "";
+    nv->m_parent = carrier->m_parent;
+    nv->frame = carrier->frame;
+    nv->home = carrier->home;
+    nv->sun = carrier->sun;
+    nv->parts.push_back(item);
+    item->owner = nv;
+    nv->finalize();
+    nv->placeShip(itemPos, itemRot);
+    nv->setVelocity(v);
+    SetAngVelocity(nv->hull, GetAngVelocity(carrier->hull));
+    nv->enterWorld();
+    if(nv->m_parent != nullptr) { nv->m_parent->ships.push_back(nv); }
+    toast("Dropped %s", item->def->name.c_str());
+    return nv;
+}
+
+/* phase 4.4: pick up a dropped item -- re-parent it into the container. */
+bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
+    if(itemShip == nullptr || dest == nullptr) { return false; }
+    if(itemShip->parts.size() != 1) { return false; }
+    Part *item = itemShip->parts[0];
+    if(!dest->isContainer()) { return false; }
+
+    /* re-parent into the destination container */
+    if(!inventoryAdd(item, dest)) {
+        toast("Pick up: %s is full", dest->def->name.c_str());
+        return false;
+    }
+
+    /* remove the item ship from the fleet + destroy it */
+    if(itemShip->m_parent != nullptr) {
+        for(auto it = itemShip->m_parent->ships.begin();
+            it != itemShip->m_parent->ships.end(); it++) {
+            if(*it == itemShip) { itemShip->m_parent->ships.erase(it); break; }
+        }
+    }
+    RemoveBody(itemShip->hull);
+    delete itemShip;   // ~Vehicle deletes parts (but item is now in dest's ownedContents)
+    /* phase 3: the carrier's compound gains the item's mass */
+    if(dest->owner != nullptr) { dest->owner->rebuildCompound(); }
+    toast("Picked up %s", item->def->name.c_str());
+    return true;
 }
 
 /* V: toggle EVA. From a ship: EVA one of its aboard kerbals (the first) and

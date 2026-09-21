@@ -548,6 +548,14 @@ struct Game {
     //                a full capsule.
     void kerbalEVA(Kerbal *k);
     void kerbalBoard(Kerbal *k, Vehicle *ship, size_t part);
+    // Inventory drop/pickup (phase 4.4):
+    //   dropItem    remove `item` from its container, build a 1-part Vehicle
+    //                at the container's world pose with the rigid velocity,
+    //                enterWorld + push to the fleet.
+    //   pickUpItem  remove the item ship from the fleet, destroy its Vehicle,
+    //                re-parent the item into `dest`.
+    Vehicle *dropItem(Part *item);
+    bool pickUpItem(Vehicle *itemShip, Part *dest);
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;

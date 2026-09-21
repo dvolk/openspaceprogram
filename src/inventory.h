@@ -19,6 +19,11 @@ struct Part;   // forward-declared to keep this header light
 // success, false if dest is full or item has no current container.
 bool inventoryTransfer(Part *item, Part *dest);
 
+// Add `item` to `dest`'s inventory (ownership + traversal). Enforces
+// capacity. Returns true on success, false if dest is full or not a
+// container. Used by pickup (4.4) to re-parent a dropped item.
+bool inventoryAdd(Part *item, Part *dest);
+
 // Remove `item` from its container (ownership + traversal). The item is NOT
 // freed -- it is returned to the caller (for drop/pickup in 4.4).
 void inventoryRemove(Part *item);
