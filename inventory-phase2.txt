@@ -269,9 +269,53 @@ Net state of the containment subsystem:
   edge on every build/stage/refresh, so crew and contents cannot desync.
 
 Verification baseline for the finished phase: make test green (all suites,
-test_contain 43); e2e 29/45/46/54/65/79/81 all PASS; ASan clean on
+test_contain 43); e2e 29/45/46/54/65/79/81/82 all PASS; ASan clean on
 test_contain incl. the delete-crewed-ship double-free section.
 
+## Quality pass over phase 2 (2026-09-21)
+
+A subagent did a full review of the four commits (ownership/double-free,
+invariant soundness, board/EVA/spawn/load edge cases, save/load symmetry,
+partCrew, performance, QoL). Verdict: NO BUGS -- every write to
+owner/container/contents/crew traced (all five mutation sites move crew and
+edge together), ~Vehicle/~Part teardown order correct, load-rollback avoids
+double-free, save round-trips uid-stable across merge/split.
+
+Findings and how they were handled:
+- RISK (fixed): load validated the capsule (crew_capacity > 0) but not the
+  COUNT -- two hand-edited kerbals naming the same 1-seat capsule both
+  loaded, a state a live board refuses (game.cpp kerbalBoard). Added the
+  matching capacity check to buildKerbalFromSave (save.cpp) that throws like
+  the other branches; the already-built first kerbal rolls back (verified the
+  ownedByShip rollback pass). New e2e 82-crew-overcapacity + fixture
+  save_racer_overcrew (a second "kerbal #2" in the same capsule) pins it.
+- QoL (fixed): eva.h aboardPart comment said "step 2.4 adds the contents
+  edge; until then this pointer is the only direction" -- 2.4 is landed;
+  rewritten to say the two directions are kept in lockstep.
+- QoL (fixed): ~Vehicle comment cited the deleted `aboard` field; rewritten
+  to cite the real hazard (crew sole owner; the edge points into this ship's
+  parts, so delete crew before parts).
+- QoL (fixed): partCrew's `ship` param was dead (the body reads
+  capPart->contents). Dropped it from the decl (game.h) + def (game.cpp) +
+  3 call sites (game.cpp board/stage, gameui.cpp). Less surface, and the
+  "ship" was only needed by the old index-scan.
+- QoL (fixed): the load diagnostic for a uid on a DIFFERENT ship said
+  "…which does not have it" (true but misleading -- the part exists, on ship
+  B). Now distinguishes "belongs to a different ship" from "unknown uid".
+- QoL (NOT changed): Game::kerbal is write-only (set/cleared in several
+  places, never read; toggle_eva uses lastShip). Pre-existing since before
+  phase 2 and out of scope; deleting it is a non-trivial change to a live
+  system, so it is flagged for a future pass rather than touched here.
+
+Watch item for phase 4 (not a bug): checkPartInvariants does not cross-check
+Vehicle::crew against contents (a kerbal in A->crew but contained in B's
+capsule would pass all checks). Unreachable with the current write paths
+(they move crew and edge together), but phase 4 inventory items in contents
+won't have a crew list at all -- re-check the invariant's scope then.
+
+Re-verification after the fixes: make test green (all suites); e2e
+29/45/46/54/65/79/81/82 all PASS (serial; a parallel run of 81 flaked once
+on the "Timeout reached" marker under CPU contention and passed on re-run).
+
 Next (not started, per the report): phase 3 -- derived mass
-(3.1 Part::effectiveMass(), unwired). A quality pass over phase 2 is
-running separately (see the task that spawned this review).
+(3.1 Part::effectiveMass(), unwired).

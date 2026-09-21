@@ -1,0 +1,28 @@
+# A save that parks MORE kerbals in a capsule than it has seats must be
+# refused on load, not committed to a state the game can't otherwise reach.
+# A live board refuses a full capsule (game.cpp kerbalBoard), and a load must
+# match it -- otherwise a hand-edited save can overfill a seat, a state no
+# other path produces. (Quality pass over phase 2: the crew_capacity > 0
+# check from step 2.3 did not also bound the COUNT.)
+#
+# e2e/fixtures/save_racer_overcrew is save_racer with a SECOND kerbal ("kerbal
+# #2") in the SAME 1-seat capsule (both aboard_part 1). The first loads
+# (0 < 1); the second overflows (1 >= 1) and is refused -- that is the branch
+# this pins. The load is atomic: the already-built first kerbal rolls back.
+#
+# Same vehicle as 81: the runtime --reload path (loadFrom) reports a refused
+# load and stays put, exit 0. The startup --load path exits 1 for the same
+# throw, but the harness requires exit 0.
+NAME save-load-crew-overcapacity
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --reload e2e/fixtures/save_racer_overcrew --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+EXPECT [load] refused e2e/fixtures/save_racer_overcrew
+EXPECT is full
+EXPECT would exceed it
+EXPECT Timeout reached (8.0 s)
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID Segmentation
+FORBID GL_
+FORBID error:

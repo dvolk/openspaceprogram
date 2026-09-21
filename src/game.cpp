@@ -519,12 +519,10 @@ std::vector<Kerbal *> shipCrew(Vehicle *ship) {
     return out;
 }
 
-std::vector<Kerbal *> partCrew(Vehicle *ship, Part *capPart) {
+std::vector<Kerbal *> partCrew(Part *capPart) {
     /* step 2.4: read the containment edge (capPart->contents) instead of
-       scanning ship->crew by aboardPart. A contained part's owner is the
-       character (checkPartInvariants guarantees isEva), so the cast is safe.
-       The `ship` param is kept for the call site's clarity (capPart is one of
-       its parts); the edge is the source of the crew list now. */
+       scanning the ship's crew by aboardPart. A contained part's owner is the
+       character (checkPartInvariants guarantees isEva), so the cast is safe. */
     std::vector<Kerbal *> out;
     for(Part *p : capPart->contents) {
         out.push_back(static_cast<Kerbal *>(p->owner));
@@ -645,7 +643,7 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         toast("Board: part %zu is not a capsule", part);
         return;
     }
-    if((int)partCrew(ship, capPart).size() >= capDef->crew_capacity) {
+    if((int)partCrew(capPart).size() >= capDef->crew_capacity) {
         toast("Board: capsule full (%d)", capDef->crew_capacity);
         return;
     }
@@ -999,7 +997,7 @@ void Game::stage() {
     bool crewOnStage = false;
     for(Part *p : dropped) {
         if(p->def == nullptr || p->def->crew_capacity <= 0) { continue; }
-        if(!partCrew(a, p).empty()) { crewOnStage = true; }
+        if(!partCrew(p).empty()) { crewOnStage = true; }
     }
     if(crewOnStage) {
         printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");

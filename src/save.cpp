@@ -397,15 +397,35 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         Part *cap = findSavedPart(savedUidToPart, s.aboard_part, ship);
         if(cap == nullptr) {
             delete k;
+            /* Distinguish the two failure modes: a uid no ship has (unknown /
+               mistyped) vs a uid that IS in the save but on a different ship
+               (reordered crew). The second is the reorder-corruption case. */
+            const bool knownUid =
+                savedUidToPart.find(s.aboard_part) != savedUidToPart.end();
+            const std::string where = knownUid
+                ? " but that uid belongs to a different ship"
+                : ", which no ship in this save has (unknown uid)";
             throw std::runtime_error("load: crew '" + s.name + "' is parked in part "
                                      "uid " + std::to_string(s.aboard_part) +
-                                     " of ship '" + s.aboard + "', which does not have it");
+                                     " of ship '" + s.aboard + "'" + where);
         }
         if(cap->def->crew_capacity <= 0) {
             delete k;
             throw std::runtime_error("load: crew '" + s.name + "' is parked in '"
                                      + cap->def->name + "' of ship '" + s.aboard
                                      + "', which is not a capsule (crew_capacity 0)");
+        }
+        /* A live board refuses a full capsule (game.cpp kerbalBoard); a load
+           must too, or a hand-edited save can park more kerbals in a seat than
+           the capsule has -- a state the game can't otherwise reach. The count
+           is the capsule's contents (every contained part is a kerbal), built
+           up one save entry at a time, so this fires on the one that overflows. */
+        if((int)cap->contents.size() >= cap->def->crew_capacity) {
+            delete k;
+            throw std::runtime_error("load: capsule '" + cap->def->name
+                                     + "' of ship '" + s.aboard + "' is full ("
+                                     + std::to_string(cap->def->crew_capacity)
+                                     + " seat(s)); crew '" + s.name + "' would exceed it");
         }
         const glm::dvec3 capCom = ship->partPos(cap);
         const glm::dmat3 capOrient = ship->partRot(cap);

@@ -60,8 +60,9 @@ struct Kerbal : Vehicle {
        across a merge (absorbShip) and a split (extractSubtreeAsShip), so
        no reindex machinery is needed (the old size_t index + crewRebase
        maps are gone). `aboard` derives from the part's owner back-pointer
-       (part.h). Step 2.4 adds the capsule-side `contents` edge; until then
-       this pointer is the only direction of the edge. */
+       (part.h). This pointer is one direction of the containment edge; the
+       capsule-side `contents` list (step 2.4) is the other, and every
+       boarding path keeps the two in lockstep. */
     Part *aboardPart = nullptr;  // the capsule Part it sits in; nullptr = free (on EVA)
     bool isAboard() const { return aboardPart != nullptr; }
     Vehicle *aboard() const {

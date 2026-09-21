@@ -1332,8 +1332,11 @@ glm::dvec3 Vehicle::applyGravity() {
 Vehicle::Vehicle() { }
 
 Vehicle::~Vehicle() {
-    // The crew aboard (Kerbals, eva.h) are owned by this ship: delete
-    // them before their parts would outlive their `aboard` target.
+    // The crew aboard (Kerbals, eva.h) are owned by this ship: Vehicle::crew
+    // is the sole owner (the capsule's contents list is a non-owning
+    // back-reference, part.h). Delete them before the parts -- each kerbal's
+    // container/contents edge points into this ship's capsule part, so the
+    // parts must still be alive when the kerbal's edge is torn down.
     for(auto&& k : crew) { delete k; }
     crew.clear();
     if(hullInWorld()) { RemoveBody(hull); }
