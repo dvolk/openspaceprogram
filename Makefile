@@ -122,10 +122,11 @@ PNG_A=./middleware/sdl3-image/build/external/libpng-build/libpng16.a
 ZLIB_A=./middleware/sdl3-image/build/external/zlib-build/libz.a
 GLEW_A=./middleware/glew/build-cmake/lib/libGLEW.a
 # SDL3 is built with the X11 driver linked in (not dlopen'd), so the X11
-# stack rides along. SDL3 also compiles the audio (alsa/pulse/sndio) and
-# KMS/DRM (gbm/drm) backends; SDL3_mixer uses the audio one (the rest are
-# dropped by -Wl,--as-needed), but the linker still needs them resolvable.
-SDL3_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXss -lasound -lpulse -lsndio -lgbm -ldrm -ldl -lm -lpthread
+# stack rides along. Audio: PulseAudio (primary) + ALSA (fallback) -- see
+# bootstrap.sh for why we ended up here (direct ALSA cracks the engine track;
+# the server's queue absorbs the callback jitter). SDL3_mixer uses them
+# through SDL3's audio API.
+SDL3_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXss -lasound -lpulse -ldl -lm -lpthread
 # Static link order matters (dependents before dependencies):
 # SDL_image -> SDL3, GLEW -> GL, PNG loader/saver -> libpng -> zlib.
 GL_LIBS=$(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(SDL3_SYS)

@@ -25,10 +25,14 @@ bool Audio::init() {
     if(savedErr != -1 && devnull != -1) { dup2(devnull, 2); }
     if(devnull != -1) { close(devnull); }
 
-    // A larger device buffer gives the real-time callback more headroom
-    // before an underrun (stutter) if it is briefly delayed. 4096 frames at
-    // 48 kHz is ~85 ms of slack -- comfortably above a frame or two of jank.
-    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "4096");
+    // A generous device buffer gives the real-time callback headroom before an
+    // underrun. The ALSA backend allocates a 2-period double buffer whose period
+    // size is this hint, and -- unlike PulseAudio -- it is not forgiving of a
+    // callback that is briefly delayed: the "crack" the moment the engine track
+    // starts mixing is exactly that hiccup. 8192 frames/period (16384 total,
+    // ~340 ms at 48 kHz) absorbs it. A little extra audio latency is an
+    // acceptable trade-off for ambient game SFX/music.
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "8192");
 
     // spec = NULL: take the device's native format; the mixer converts.
     MIX_Mixer *m = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
@@ -46,18 +50,27 @@ bool Audio::init() {
     if(dbg_) {
         SDL_AudioSpec spec;
         if(MIX_GetMixerFormat(mixer_, &spec)) {
-            printf("[aud] init: device OK %dHz/%dch/%s  mixerGain=%.2f\n",
+            printf("[aud] init: driver=%s device OK %dHz/%dch/%s  mixerGain=%.2f\n",
+                   SDL_GetCurrentAudioDriver(),
                    (int)spec.freq, (int)spec.channels,
                    spec.format == SDL_AUDIO_F32 ? "F32"
                    : (spec.format == SDL_AUDIO_S16 ? "S16"
                    : (spec.format == SDL_AUDIO_S32 ? "S32" : "?")),
                    (double)MIX_GetMixerGain(mixer_));
         } else {
-            printf("[aud] init: device OK (format query failed: %s)\n", SDL_GetError());
+            printf("[aud] init: driver=%s device OK (format query failed: %s)\n",
+                   SDL_GetCurrentAudioDriver(), SDL_GetError());
         }
         fflush(stdout);
     }
     return true;
+}
+
+int Audio::deviceRate() const {
+    if(mixer_ == nullptr) { return 0; }
+    SDL_AudioSpec spec;
+    if(!MIX_GetMixerFormat(mixer_, &spec)) { return 0; }
+    return (int)spec.freq;
 }
 
 void Audio::shutdown() {
@@ -127,14 +140,24 @@ void Audio::playOnce(const std::string &path, float balance) {
     oneShots_.push_back(s);
 }
 
+void Audio::primeTrack(MIX_Track *t) {
+    SDL_PropertiesID o = SDL_CreateProperties();
+    SDL_SetNumberProperty(o, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
+    const bool ok = MIX_PlayTrack(t, o);
+    SDL_DestroyProperties(o);
+    if(!ok) { return; }
+    MIX_StopTrack(t, 0);   // the callback ran at least once: buffers are grown
+}
+
 void Audio::setLoop(const std::string &path, bool active, float gain) {
     if(mixer_ == nullptr) { return; }
     if(!active) {
         // Engine off: fade out (no mid-wave cut = no "clipping" artifact).
         // The fade is armed exactly ONCE: MIX_StopTrack(fade) leaves the track
         // "playing" until the fade drains, so re-arming it every frame would
-        // never let it complete (the old "sticky engine"). update() reaps the
-        // track when the fade finishes.
+        // never let it complete (the old "sticky engine"). update() clears the
+        // flag when the fade finishes; the track is kept (warm buffers) for
+        // the next ignition.
         loopActive_ = false;
         if(loop_ == nullptr) { return; }
         if(!loopStopping_) {
@@ -158,7 +181,7 @@ void Audio::setLoop(const std::string &path, bool active, float gain) {
         loop_ = MIX_CreateTrack(mixer_);
         if(loop_ == nullptr) { return; }
         if(!MIX_SetTrackAudio(loop_, a)) { MIX_DestroyTrack(loop_); loop_ = nullptr; return; }
-        MIX_SetTrackLoops(loop_, -1);
+        primeTrack(loop_);   // warm the buffers off the real-time thread
         loopPath_ = path;
         loopActive_ = false;
     }
@@ -166,7 +189,13 @@ void Audio::setLoop(const std::string &path, bool active, float gain) {
     if(!MIX_TrackPlaying(loop_)) {
         // A fresh track starts at the gain set below; a fade-in from zero is
         // what reads as a "click", so light it at full level instead.
-        if(!MIX_PlayTrack(loop_, 0)) {
+        // loops=-1 in the options: PlayTrack with no options would reset the
+        // loop count to 0 and the engine would cut out after one pass.
+        SDL_PropertiesID o = SDL_CreateProperties();
+        SDL_SetNumberProperty(o, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
+        const bool ok = MIX_PlayTrack(loop_, o);
+        SDL_DestroyProperties(o);
+        if(!ok) {
             MIX_DestroyTrack(loop_);
             loop_ = nullptr;
             return;
@@ -240,12 +269,12 @@ void Audio::update() {
             oneShots_.erase(oneShots_.begin() + (int)i);
         }
     }
-    // A stop-fade finished (the track left the "playing" state): reclaim it.
+    // A stop-fade finished (the track left the "playing" state). Keep the
+    // track: a re-ignition then reuses it, and its internal mix buffers are
+    // already grown -- a fresh track would reallocate them inside the
+    // real-time callback on its first period (the "crack on a tap").
     if(loopStopping_ && loop_ != nullptr && !MIX_TrackPlaying(loop_)) {
-        if(dbg_) { printf("[aud] loop fade done -> destroyed\n"); fflush(stdout); }
-        MIX_DestroyTrack(loop_);
-        loop_ = nullptr;
-        loopPath_.clear();
+        if(dbg_) { printf("[aud] loop fade done -> kept warm\n"); fflush(stdout); }
         loopStopping_ = false;
     }
 }

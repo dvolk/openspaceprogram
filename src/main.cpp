@@ -980,8 +980,18 @@ int main(int argc, char **argv)
                     fflush(stdout);
                     lastFiring = firing;
                 }
-                game.audio.setLoop("res/rocket_engine.001.wav", firing,
-                                   ship->thruster_util);
+                // Match the engine loop to the device's sample rate so the
+                // real-time callback never has to resample: the backends
+                // negotiate differently (Pulse/PipeWire ~48 kHz, ALSA the
+                // hardware's 44.1 kHz), and a rate-mismatched loop is
+                // resampled every period inside the audio thread.
+                static const char *engineFile = nullptr;
+                if(engineFile == nullptr) {
+                    engineFile = (game.audio.deviceRate() == 48000)
+                        ? "res/rocket_engine.001.wav"    // 48 kHz original
+                        : "res/rocket_engine_44k.wav";   // converted for 44.1 kHz
+                }
+                game.audio.setLoop(engineFile, firing, ship->thruster_util);
             } else {
                 game.audio.setLoop("", false, 0.0f);
             }

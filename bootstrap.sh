@@ -97,6 +97,15 @@ cmake -S middleware/sdl3 -B middleware/sdl3/build \
     -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
     -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
     -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
+    # Audio: PulseAudio (primary) + ALSA (fallback). We tried ALSA-only to
+    # slim the dynamic dep tree (Pulse pulls libsystemd/libapparmor/
+    # libsndfile + the codec family), but direct ALSA gives the real-time
+    # mix callback no slack: the engine track cracked on start/tap even with
+    # pre-resampled files and warm buffers. Pulse/PipeWire's server-side
+    # queue absorbs that jitter, which is exactly why the platform moved to
+    # audio servers. sndio/JACK stay off. The dummy driver stays built-in
+    # for headless (e2e under Xvfb).
+    -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
     -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build middleware/sdl3/build -j"$JOBS"

@@ -55,6 +55,11 @@ public:
 
     bool enabled() const { return mixer_ != nullptr; }
 
+    /* The device sample rate (0 when disabled). Backends negotiate
+       differently -- Pulse/PipeWire usually 48 kHz, ALSA the hardware's
+       44.1 kHz -- so callers can pick a matching asset. */
+    int deviceRate() const;
+
     /* One-shot SFX (the decoupler pop). Capped at MAX_ONESHOTS concurrent;
        finished tracks are reaped on update(). `balance` (default 1.0) is a
        per-sound level trim relative to the SFX master: a full-scale transient
@@ -85,6 +90,14 @@ private:
     static const size_t MAX_ONESHOTS = 8;
 
     MIX_Audio *loadAudio(const std::string &path);   // cached per path; null on miss
+
+    /* Grow the track's internal mix buffers on the MAIN thread (a brief
+       play/stop) so the real-time callback never hits its first
+       SDL_realloc. A track created right before its first play allocates
+       those buffers inside the audio callback -- on a thread that must
+       never block -- which underruns on ALSA (the "crack" a tap produced).
+       A reused track is already warm and needs no priming. */
+    void primeTrack(MIX_Track *t);
 
     struct Shot {
         MIX_Track *t;
