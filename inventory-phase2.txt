@@ -408,5 +408,82 @@ contained part is off-center.
 
 Verification baseline: make test green (all suites, test_inertia 972 incl.
 the new contained-kerbal case); e2e 29/35/48/54/81/82 all PASS (6/6, serial).
+
+## Phase 4 work log (inventory)
+
+Plan (design report §4): 4.1 persist suit fuel → 4.2 catalog field →
+4.3 transfer → 4.4 drop/pickup → 4.5 consume from inventory → 4.6
+save/load.
+
+### 4.1 — Persist kerbal suit resources  (done, committed 41f69ac)
+
+SaveShip gains `suit_fuel` (8-entry vector, one per ResourceType).
+saveShipFromVehicle captures the kerbal's part 0 tank contents before
+the early return. buildKerbalFromSave restores them after build_ship's
+init() re-seed. An absent field (old save) leaves the suit at full.
+test_save round-trip: 8.5 kg hydrazine survives; absent stays empty.
+
+### 4.2 — PartDef inventory_capacity + Part::isContainer()  (done, committed db86de1)
+
+PartDef gains `inventory_capacity` (int, > 0 marks a container). Parsed
+in shipdef.cpp (same pattern as crew_capacity). Part::isContainer()
+follows the existing field-driven pattern. The kerbal suit gets capacity
+3 (a pocket); a new cargo crate part (capacity 10) is added. No behavior
+yet. test_shipload pins the new field.
+
+### 4.3 — Transfer between containers  (done, committed 3271b43)
+
+New src/inventory.h + inventory.cpp. inventoryTransfer: checks dest
+capacity BEFORE removing from source (a failed transfer must not orphan
+the item), then re-parents (ownedContents + contents + container pointer).
+inventoryAdd / inventoryRemove for the pickup path.
+
+Part::ownedContents (new) is the ownership list for inventory items
+(~Part deletes them). Crew kerbals stay out of ownedContents (owned by
+Vehicle::crew) — they appear only in the non-owning contents traversal.
+
+test_inventory (headless): transfer, capacity refusal, non-container
+refusal, inventoryRemove, ownership (delete container frees the item,
+no double free). 15 checks, all pass.
+
+### 4.4 — Drop and pick up  (done, committed ceac84a)
+
+Game::dropItem: removes from container, builds a 1-part Vehicle at the
+container's world pose with rigid velocity (v + w x r), enterWorld +
+push to fleet. Game::pickUpItem: inventoryAdd into dest, remove from
+fleet, delete the Vehicle, rebuildCompound.
+
+Verification: unit tests (test_inventory pins the edge manipulation) +
+manual (co-movement / terrain check is hard to script with --sim-press;
+verified at the keyboard).
+
+### 4.5 — Kerbal consumes from inventory  (done, committed 2cc19f2)
+
+The EVA suit draw now walks parts[0]->contents for hydrazine after its
+own tank is empty. Defined order: own tank, then contents in insertion
+order. A spare mono tank in the pocket keeps the RCS alive. Ship tanks
+feeding the suit is a 4.3 transfer, not a new draw.
+
+### 4.6 — Save/load inventory  (done, committed 66f1138)
+
+SavePart gains a nested `inventory` field (list of SavePart for
+ownedContents). Serialization is depth-first (item inside its container).
+Load builds each item as a standalone Part and wires the containment
+edge (ownedContents + contents + container). test_save round-trip:
+nested items (cargo → mono tank + kerbal suit → nested cargo) survive.
+
+## Phase 4 -- ALL 6 STEPS COMPLETE (2026-09-21)
+
+  4.1  persist suit fuel                       41f69ac
+  4.2  catalog field + isContainer             db86de1
+  4.3  transfer between containers             3271b43
+  4.4  drop and pickup                         ceac84a
+  4.5  consume from inventory                  2cc19f2
+  4.6  save/load inventory                     66f1138
+
+Verification baseline: make test green (all suites incl. test_inventory
+15 checks + test_save nested round-trip); e2e 29/35/48/54/81/82 all
+PASS (6/6, serial). 4.4 co-movement + 4.5 empty-suit e2e verified
+manually (hard to script with --sim-press).
 The com-torque case (48) is the key regression guard: it pins the
 force/COM/inertia mass-basis consistency that 3.2 establishes.
