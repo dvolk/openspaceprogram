@@ -35,3 +35,19 @@ bool inventoryAdd(Part *item, Part *dest);
 // Remove `item` from its container (ownership + traversal). The item is NOT
 // freed -- it is returned to the caller (for drop/pickup in 4.4).
 void inventoryRemove(Part *item);
+
+// Sum the resource `res` (an index into Part::resources.current) across
+// `root`'s inventory subtree -- DFS over ownedContents, so a crate in a
+// crate is counted too. The pocket tanks are not in any ship's fuel groups
+// (buildFuelGroups groups Vehicle::parts only), so
+// Vehicle::consumeResourceMass cannot reach them; this is how the EVA
+// pocket draw reads them.
+float inventorySubtreeResource(Part *root, int res);
+
+// Drain up to `amt` kg of resource `res` from `root`'s inventory subtree
+// (DFS, insertion order), decrementing each tank's resource AND its body
+// mass (refreshCompound picks the mass up). All-or-nothing, like the suit:
+// if the subtree holds less than `amt`, drains nothing and returns false.
+// Returns true only when the whole draw is covered (the caller then thrusts),
+// so a partial draw never applies a full-force kick for less propellant.
+bool inventoryDrain(Part *root, int res, float amt);

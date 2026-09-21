@@ -499,6 +499,7 @@ test: $(TESTS)
 	./test_dock
 	./test_contain
 	./test_inertia
+	./test_inventory
 	./test_rotation
 	./test_shipload
 	./test_save

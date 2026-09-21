@@ -25,6 +25,12 @@
 //   - absorbShip / extractSubtreeAsShip re-point every item in the moved
 //     containers to the destination ship (the owner is the container's
 //     vehicle; a stale one would dangle when the shell is deleted).
+//   - inventoryDrain: the pocket draw drains the inventory subtree, DFS (a
+//     tank nested in a pocket crate is found) and all-or-nothing (a draw the
+//     pocket can't cover drains nothing).
+//   - a containment cycle is refused WITHOUT orphaning the item (the cycle
+//     is pre-checked, so a refused transfer moves nothing), and the cycle
+//     guard sees the crew edge (contents holds crew too).
 //
 // Headless (no Game / physics world), like test_contain: ships are built
 // with init() (runs rebuildCompound -- which asserts the containment
@@ -346,6 +352,113 @@ int main() {
             destroyVehicle(nv);
         }
         destroyVehicle(DA.v);
+    }
+
+    /* --- inventoryDrain: the pocket draw (phase 4.5) --------------------
+       The pocket tanks are not in the ship's fuel groups, so
+       consumeResourceMass can't reach them. inventoryDrain drains the
+       inventory subtree, DFS (a tank nested in a pocket crate is found --
+       the quality-pass BUG: the old flat loop read only direct children's
+       OWN fuel, so a nested tank was invisible and the kerbal could not
+       thrust at all) and all-or-nothing (a draw the pocket can't cover
+       thrusts nothing, so a partial draw never applies a full-force kick
+       for less propellant -- the #3 inconsistency with the suit). */
+    {
+        printf("== inventoryDrain: DFS + all-or-nothing ==\n");
+        const int res = (int)ResourceType::Hydrazine;
+
+        // (flat) a tank directly in the pocket
+        Ship S6; S6.v = new Vehicle; S6.v->name = "S6";
+        Part *H = mkPart(S6, "host", 100.0, 1.0, 1.0, 1.0, 1, false);
+        S6.v->setRoot(H);
+        S6.v->controller = H;
+        Part *FT = mkPart(I, "flat", 88.99, 1.0, 1.0, 1.0, 0, false, 78.54f);
+        FT->resources.current[res] = 78.54f;   // seed the instance fuel (the def sets only capacity)
+        CHECK_TRUE(inventoryAdd(FT, H), "flat tank into the pocket");
+        const double ftMass0 = FT->body->mass;
+        CHECK_TRUE(inventoryDrain(H, res, 5.0f), "a flat pocket tank covers the draw");
+        CHECK_NEAR(FT->resources.current[res], 73.54f, 1e-5,
+                   "the flat tank shed 5 kg of fuel");
+        CHECK_NEAR(FT->body->mass, ftMass0 - 5.0, 1e-9,
+                   "the flat tank shed 5 kg of mass");
+        destroyVehicle(S6.v);   // frees H -> FT
+
+        // (nested) a tank inside a crate in the pocket
+        Ship S6b; S6b.v = new Vehicle; S6b.v->name = "S6b";
+        Part *H2 = mkPart(S6b, "host2", 100.0, 1.0, 1.0, 1.0, 1, false);
+        S6b.v->setRoot(H2);
+        S6b.v->controller = H2;
+        Part *PC = mkPart(I, "pocketcrate", 20.0, 1.0, 1.0, 1.0, 1, false);
+        Part *PT = mkPart(I, "pockettank", 50.0, 1.0, 1.0, 1.0, 0, false, 50.0f);
+        PT->resources.current[res] = 50.0f;   // seed the instance fuel
+        CHECK_TRUE(inventoryAdd(PT, PC), "tank into the pocket crate");
+        CHECK_TRUE(inventoryAdd(PC, H2), "the pocket crate into the pocket");
+        CHECK_NEAR(inventorySubtreeResource(H2, res), 50.0f, 1e-6,
+                   "the pocket sees the nested tank's fuel");
+        const double ptMass0 = PT->body->mass;
+        CHECK_TRUE(inventoryDrain(H2, res, 7.0f), "the nested pocket tank covers the draw");
+        CHECK_NEAR(PT->resources.current[res], 43.0f, 1e-6,
+                   "the nested tank shed 7 kg of fuel");
+        CHECK_NEAR(PT->body->mass, ptMass0 - 7.0, 1e-9,
+                   "the nested tank shed 7 kg of mass");
+        destroyVehicle(S6b.v);   // frees H2 -> PC -> PT
+
+        // (all-or-nothing) a 2 kg pocket cannot cover a 5 kg draw: it drains
+        // nothing (the old flat loop drained 2 kg AND applied the full force)
+        Part *PE = mkPart(I, "pockempty", 10.0, 1.0, 1.0, 1.0, 1, false);
+        Part *PN = mkPart(I, "pinny", 30.0, 1.0, 1.0, 1.0, 0, false, 2.0f);
+        PN->resources.current[res] = 2.0f;    // seed the instance fuel
+        CHECK_TRUE(inventoryAdd(PN, PE), "a 2 kg tank into a lone crate");
+        CHECK_TRUE(!inventoryDrain(PE, res, 5.0f),
+                   "a 2 kg pocket cannot cover a 5 kg draw");
+        CHECK_NEAR(PN->resources.current[res], 2.0f, 1e-6,
+                   "the refused draw drained nothing");
+        CHECK_NEAR(PN->body->mass, 30.0, 1e-9, "the refused draw shed no mass");
+        CHECK_TRUE(inventoryDrain(PE, res, 2.0f), "the same pocket covers a 2 kg draw");
+        CHECK_NEAR(PN->resources.current[res], 0.0f, 1e-6, "the 2 kg draw empties the tank");
+        delete PE;   // standalone: frees PN
+    }
+
+    /* --- transfer: a cycle is refused BEFORE the item is removed ---------
+       The old order (remove, then addToContainer's cycle check) left the
+       item orphaned when the cycle fired: no container, owner nulled, and
+       its whole subtree leaked. The cycle is now pre-checked, so a refused
+       transfer moves nothing. */
+    {
+        printf("== inventoryTransfer: a cycle is refused without orphaning ==\n");
+        Ship S7; S7.v = new Vehicle; S7.v->name = "S7";
+        Part *C = mkPart(S7, "outer", 250.0, 1.0, 1.0, 1.0, 3, false);
+        S7.v->setRoot(C);
+        S7.v->controller = C;
+        Part *A = mkPart(I, "mid",   20.0, 1.0, 1.0, 1.0, 2, false);
+        Part *B = mkPart(I, "inner", 20.0, 1.0, 1.0, 1.0, 1, false);
+        CHECK_TRUE(inventoryAdd(A, C), "mid crate into the outer");
+        CHECK_TRUE(inventoryAdd(B, A), "inner crate into the mid");
+        // B is inside A: moving A into B would close a cycle
+        CHECK_TRUE(!inventoryTransfer(A, B), "moving A into its own descendant B: refused");
+        CHECK_TRUE(A->container == C, "A is still in C (not orphaned)");
+        CHECK_TRUE(B->container == A, "B is still in A (not orphaned)");
+        CHECK_TRUE(A->owner == S7.v, "A still rides the ship");
+        destroyVehicle(S7.v);   // frees C -> A -> B
+    }
+
+    /* --- the cycle guard sees the crew edge ------------------------------
+       contents holds crew too (non-owning), and a kerbal's suit is itself a
+       container. inSubtree must walk contents (not just ownedContents), or
+       a capsule added into its own crew kerbal closes a cycle the guard
+       misses. Wired by hand (a headless test has no real Kerbal): KP is in
+       C's contents but not its ownedContents -- exactly the crew edge. */
+    {
+        printf("== inSubtree sees the crew edge (cycle guard) ==\n");
+        Part *CAP = mkPart(I, "capsule", 100.0, 1.0, 1.0, 1.0, 3, false);
+        Part *KP  = mkPart(I, "kerbal",  90.0, 1.0, 1.0, 1.0, 3, false);
+        CAP->contents.push_back(KP);   // the crew edge (non-owning)
+        KP->container = CAP;
+        CHECK_TRUE(!inventoryAdd(CAP, KP),
+                   "adding the capsule into its crew kerbal: refused (cycle)");
+        CHECK_TRUE(CAP->container == nullptr, "the capsule is still free (not orphaned)");
+        delete CAP;   // CAP owns nothing (KP is crew, non-owning)
+        delete KP;
     }
 
     if(g_failures == 0) {

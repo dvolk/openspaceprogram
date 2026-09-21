@@ -584,3 +584,87 @@ ACTUAL wall time at exit, which drifts (8.0/8.1 s) with frame timing --
 "still flying at the timeout, not crashed") with a comment. Note: the same
 fragile exact-elapsed EXPECT exists in 64/65/66/68/69/71/72/73/76; left
 untouched (not in this pass's relevant set) but worth the same relaxation.
+
+====================================================================
+Quality pass over phase 4 (SECOND review, 2026-09-21)
+====================================================================
+The user asked for a fresh review subagent over the whole phase. It read
+every phase-4 touchpoint and returned 9 findings: 5 actionable (fixed
+here), 4 watch-items left documented. The 5 fixes are all in code that
+the first pass had NOT yet touched (the pocket draw path, the transfer
+order, and two edge cases the first pass missed).
+
+BUGS (fixed):
+
+#1 [High] A tank NESTED in a pocket crate was invisible to the pocket
+   draw. eva.cpp read `kerbal->contents` -- one level only -- so a tank in
+   a crate in a pocket was never found. Fixed with inventoryDrain(): a DFS
+   over ownedContents (a crate in a crate is found), decrementing each
+   tank's resource AND body mass, mirroring consumeResourceMass. eva.cpp's
+   pocket draw now calls it instead of the flat loop.
+
+#2 [High] A refused transfer orphaned the item. inventoryTransfer did
+   removeFromContainer() FIRST, then addToContainer's cycle/capacity
+   checks -- so a cycle or a full dest left the item with no container,
+   owner nulled, its whole subtree leaking. Fixed by pre-checking dest's
+   validity, capacity, AND the cycle in inventoryTransfer BEFORE removing,
+   so a refused transfer moves nothing.
+
+#3 [High] A partial pocket draw applied a full-force RCS kick. The old
+   loop drained whatever it found and returned true, so a 2 kg pocket
+   against a 5 kg substep drained 2 kg AND applied the full force.
+   inventoryDrain is all-or-nothing like the suit: it only succeeds (and
+   only then does eva thrust) if the subtree covers the whole draw.
+
+#4 [Medium] The cycle guard was blind to the crew edge. inSubtree walked
+   ownedContents, but the dangerous cycle runs through `contents` (crew):
+   a kerbal's suit is itself a container, so a capsule holding a crewed
+   kerbal could be added into the kerbal's suit, closing a cycle that
+   effectiveMass (which walks contents) would recurse on forever.
+   inSubtree now walks contents.
+
+#5 [Medium] pickUpItem deleted a ship that was still live. Deleting a
+   ship that was g.ship / g.kerbal / g.lastShip (or someone's dock
+   target, or holding an open part window) left dangling pointers.
+   Game::pickUpItem now does the same cleanup remove_ship does:
+   nulls g.ship/g.lastShip/g/kerbal if they point at the picked-up ship,
+   drops its part windows, and clears any ship's dockTargetShip.
+
+WATCH-ITEMS (documented, not changed -- QoL / by-design):
+- #6: no UI reaches inventoryTransfer/inventoryAdd/inventoryRemove yet
+      (only save/load and the pocket draw use the API). Phase 4.4's
+      drop/pickup is the intended consumer; the API is ready for it.
+- #7: Game::kerbal is write-only (only assigned, never read) -- the
+      active kerbal is reachable via g.ship. Dead field; harmless.
+- #8: dropItem has no name dedup and no log line (remove_ship logs).
+      Cosmetic; a dropped item just re-enters the fleet.
+- #9: inventorySetOwner re-points owner on add/remove/transfer, but a
+      container whose OWN owner changes (e.g. its container is picked up)
+      relies on the caller to re-point its subtree. Verified the current
+      call sites (dropItem, pickUpItem, addToContainer, removeFromContainer)
+      all re-point correctly; adding a new owner-changing path must too.
+
+Tests added (tests/test_inventory.cpp):
+- "inventoryDrain: DFS + all-or-nothing": a flat pocket tank is found and
+  drained (fuel + mass both shed); a tank nested in a crate in a pocket is
+  found by the DFS; a 2 kg pocket against a 5 kg draw is refused and drains
+  nothing (the #3 regression).
+- "inventoryTransfer: a cycle is refused without orphaning": moving a
+  crate into its own descendant is refused and the item keeps its
+  container + owner (the #2 regression).
+- "inSubtree sees the crew edge": a capsule with a crewed kerbal cannot be
+  added into the kerbal's suit (the #4 regression).
+All three seed the part's instance fuel explicitly -- mkPart sets the
+def's capacity but not the instance fuel (resources.current starts at 0),
+so a drain test must seed it.
+
+Makefile fix (found while re-running make test): test_inventory was in
+the TESTS build list but the `test:` recipe ran ./test_inertia then jumped
+to ./test_rotation -- the 87-check inventory suite was BUILT but NEVER
+RUN by `make test`. Added ./test_inventory to the recipe. (This is why the
+first pass's `make test` looked green while test_inventory was only run
+manually.)
+
+Verification: make clean + full rebuild; make test 18/18 suites green
+(including test_inventory 87/87, now actually run); e2e
+save/eva/crew/contain/inventory 12/12 PASS (serial).

@@ -7,9 +7,10 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>      // length2
 
-#include "camera.h"   // Camera (the arm reads the view basis)
-#include "game.h"     // Game (the active kerbal, the clock)
-#include "physics.h"  // BodyInContact, ApplyCentralForce, ApplyTorque, ...
+#include "camera.h"    // Camera (the arm reads the view basis)
+#include "game.h"      // Game (the active kerbal, the clock)
+#include "inventory.h" // inventoryDrain (the pocket draw, phase 4.5)
+#include "physics.h"   // BodyInContact, ApplyCentralForce, ApplyTorque, ...
 
 // --- tuning (debug scope; see the design notes) ------------------------
 static const double kWalkSpeed   = 2.5;     // m/s
@@ -151,26 +152,17 @@ void Kerbal::applyEva(double h) {
         if(glm::length2(rcsDir) > 0.0) {
             const float flow = (float)(kRcsFlow * h);
             /* phase 4.5: the kerbal draws its RCS hydrazine from its own
-               suit tank first, then from any inventory items that carry the
-               resource (a spare mono tank in the suit pocket). Defined order:
-               own tank, then contents in insertion order. The pocket tanks
-               are not in this ship's fuel groups (buildFuelGroups groups
-               Vehicle::parts only), so consumeResourceMass cannot reach
-               them -- the draw is the same per-tank decrement it makes
-               (contents + body mass; refreshCompound picks the mass up). */
+               suit tank first, then from its pocket's inventory. The pocket
+               tanks are not in this ship's fuel groups (buildFuelGroups
+               groups Vehicle::parts only), so consumeResourceMass cannot
+               reach them -- inventoryDrain does the same per-tank decrement
+               (contents + body mass; refreshCompound picks the mass up),
+               DFS so a tank nested in a pocket crate is found, and
+               all-or-nothing like the suit so a partial draw never applies
+               a full-force kick for less propellant. */
             bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]);
             if(!haveFuel) {
-                for(Part *c : parts[0]->contents) {
-                    if(!c->ownedBy(parts[0])) { continue; }
-                    const float have =
-                        c->resources.current[(int)ResourceType::Hydrazine];
-                    if(have <= 0.0f) { continue; }
-                    const float take = (flow < have) ? flow : have;
-                    c->resources.current[(int)ResourceType::Hydrazine] = have - take;
-                    c->body->mass -= (double)take;
-                    haveFuel = true;
-                    break;
-                }
+                haveFuel = inventoryDrain(parts[0], (int)ResourceType::Hydrazine, flow);
             }
             if(haveFuel) {
                 ApplyCentralForce(b, kRcsForce * rcsDir);

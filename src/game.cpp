@@ -770,6 +770,17 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
             if(*it == itemShip) { itemShip->m_parent->ships.erase(it); break; }
         }
     }
+    // Clear every bookkeeping reference that points at the doomed ship so the
+    // next tick doesn't dereference it (mirror remove_ship's pre-delete
+    // guards). Picking up the ship you are flying leaves orbit-view; handing
+    // control to the carrier is the pickup UI's job (4.4 wiring).
+    if(ship == itemShip) { ship->releaseControl(); ship = nullptr; }
+    if(lastShip == itemShip) { lastShip = nullptr; }
+    if(kerbal == itemShip) { kerbal = nullptr; }
+    dropPartWindowsFor(itemShip);
+    for(auto *s : collectVehicles(sys)) {
+        if(s->dockTargetShip == itemShip) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
+    }
     itemShip->parts.clear();
     RemoveBody(itemShip->hull);
     delete itemShip;
