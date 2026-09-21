@@ -348,6 +348,13 @@ struct PartDef {
        body (the "capsule weight changes with crew" rule). */
     int crew_capacity;
 
+    /* Inventory capacity: how many inventory items this part can hold.
+       > 0 -> a container (Part::isContainer); 0 -> not one. A kerbal's suit
+       has a small capacity (a pocket); a cargo part has a larger one.
+       Phase 4.2 adds the field + the derived check; phase 4.3 wires the
+       transfer. */
+    int inventory_capacity;
+
     /* true -> a decoupler: a staging boundary. When the ship's stage
        counter reaches this part's stage, the weld to its parent is cut and
        the decoupler plus its child-side subtree (the parts attached below

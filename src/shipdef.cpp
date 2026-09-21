@@ -13,7 +13,7 @@ PartDef::PartDef()
       exhaust_velocity(0.0), jet(false), jet_fan_thrust(0.0),
       jet_intake_area(0.0), rcs_thrust(0.0), power_draw(0.0),
       power_draw_constant(0.0), power_gen(0.0),
-      crew_capacity(0), decoupler(false), docking_port(false),
+      crew_capacity(0), inventory_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
       drag(0.0), drag_forward(0.0), drag_side(0.0), drag_backward(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
@@ -229,6 +229,16 @@ PartsCatalog load_parts_catalog(const char *path) {
             if(d.crew_capacity < 0) {
                 throw std::runtime_error(std::string(ctx)
                                          + "\"crew_capacity\" must be >= 0");
+            }
+        }
+
+        /* inventory capacity (int); > 0 marks a container (holds that many
+           inventory items, see PartDef.inventory_capacity); omitted -> 0 */
+        if(pv.contains("inventory_capacity")) {
+            d.inventory_capacity = pv["inventory_capacity"].get<int>();
+            if(d.inventory_capacity < 0) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"inventory_capacity\" must be >= 0");
             }
         }
 

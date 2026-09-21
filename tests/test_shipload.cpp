@@ -112,6 +112,14 @@ int main() {
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] > 0.0f); // the suit's RCS propellant
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] < 100.0f); // a suit load, not a tank
     CHECK(kb->mass > kb->capacity[(int)ResourceType::Hydrazine]); // mass includes the fuel
+    CHECK(kb->inventory_capacity > 0); // the suit pocket (phase 4.2)
+
+    // a cargo crate: a container (inventory_capacity > 0), no other behavior
+    const PartDef *cg = cat.find("cargo");
+    CHECK(cg != nullptr);
+    CHECK(cg->inventory_capacity > 0);
+    CHECK(cg->crew_capacity == 0);
+    CHECK(cg->torque == 0.0 && cg->fuel_rate == 0.0);
 
     // decouplers are fuel barriers: propellant does not flow across one, so
     // it splits fuel groups (an engine can't draw from the other side).

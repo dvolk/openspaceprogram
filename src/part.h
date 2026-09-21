@@ -148,6 +148,7 @@ struct Part {
     bool isDockingPort() const { return def != nullptr && def->docking_port; }
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
+    bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
     bool isTank() const {
         if(def == nullptr) { return false; }
         for(size_t i = 0; i < def->capacity.size(); i++) {

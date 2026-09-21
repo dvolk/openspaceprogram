@@ -928,10 +928,26 @@
       "capacity": {
         "hydrazine": 10.0
       },
+      "inventory_capacity": 3,
       "drag": 0.5,
       "drag_forward": 0.5,
       "drag_side": 0.9,
       "drag_backward": 0.9
+    },
+    {
+      "name": "cargo",
+      "type": "cargo",
+      "display_name": "Cargo Crate (2m)",
+      "mesh": "fuel_tank.obj",
+      "texture": "fuel_tank.png",
+      "mass": 250.0,
+      "radius": 1.0,
+      "height": 1.0,
+      "inventory_capacity": 10,
+      "drag": 0.7,
+      "drag_forward": 1.0,
+      "drag_side": 1.1,
+      "drag_backward": 1.0
     },
     {
       "name": "wing",
