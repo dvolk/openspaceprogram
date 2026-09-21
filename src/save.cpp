@@ -78,6 +78,23 @@ const ScenarioDef *resolveScenario(const std::string &name) {
     return scenario_by_name(name);
 }
 
+// The live Part a saved uid names, but only if it is one of `owner`'s. The
+// uid map spans the whole save, so the uid alone does not prove the part
+// belongs to the ship named alongside it -- and updateDocking assumes a dock
+// target's port really is on the target, and an aboard kerbal's capsule
+// really is on the ship it names. 0 or a miss gives nullptr. (Declared in the
+// namespace, before the crew builder, so both load paths resolve through it.)
+Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
+                    const Vehicle *owner) {
+    if(uid == 0 || owner == nullptr) { return nullptr; }
+    std::map<uint64_t, Part *>::const_iterator it = byUid.find(uid);
+    if(it == byUid.end()) { return nullptr; }
+    for(size_t i = 0; i < owner->parts.size(); i++) {
+        if(owner->parts[i] == it->second) { return it->second; }
+    }
+    return nullptr;
+}
+
 
 // ---- capture (Game -> SaveShip) --------------------------------------------
 
@@ -90,13 +107,9 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         Kerbal *k = static_cast<Kerbal *>(v);
         Vehicle *ship = k->aboard();
         s.aboard = (ship != nullptr) ? ship->name : "";
-        // the format still stores the capsule's index in the ship's part
-        // list (2.3 switches to the part's uid): map the pointer back.
-        int idx = 0;
-        for(size_t i = 0; ship != nullptr && i < ship->parts.size(); i++) {
-            if(ship->parts[i] == k->aboardPart) { idx = (int)i; break; }
-        }
-        s.aboard_part = idx;
+        // the capsule is named by uid (not its index in the ship's part list):
+        // stable across a merge/split and order-independent on load. 0 = free.
+        s.aboard_part = (k->aboardPart != nullptr) ? k->aboardPart->uid : 0;
         // a free (EVA) kerbal lives in the world -- save its pose like a
         // ship's (an aboard one's pose is unused on load).
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
@@ -319,9 +332,12 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 // like the startup spawn_crew_kerbal. An aboard kerbal is parked inside its
 // capsule (out of the world); its mass is ALREADY in the capsule part's
 // saved mass, so addPartMass is deliberately NOT called (that would double-
-// count the crew).
+// count the crew). `savedUidToPart` spans every ship file (built before the
+// crew, which always follows its ship) and is what the aboard capsule's uid
+// resolves through.
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
-                            std::map<std::string, Vehicle *> &byName) {
+                            std::map<std::string, Vehicle *> &byName,
+                            const std::map<uint64_t, Part *> &savedUidToPart) {
     const PartsCatalog &cat = g.ships.catalog();
     ShipDef def = load_ship_def(s.defPath.c_str(), cat);
     Kerbal *k = new Kerbal;
@@ -365,12 +381,32 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                                      "ship '" + s.aboard + "'");
         }
         Vehicle *ship = it->second;
-        if(s.aboard_part >= (int)ship->parts.size()) {
+        /* The capsule is named by uid, not index. aboard_part 0 is the "absent"
+           sentinel -- a save that predates uid-keyed crew -- so it is refused
+           rather than silently parked in part 0. A nonzero uid must name one of
+           THIS ship's parts (a reordered/foreign save is corruption, not a miss
+           to paper over), and that part must actually be a capsule: the old
+           index format had no such check, so a reordered save could park a
+           kerbal in a fuel tank (report 1.4). */
+        if(s.aboard_part == 0) {
             delete k;
-            throw std::runtime_error("load: crew '" + s.name + "' aboard part " +
-                                     std::to_string(s.aboard_part) + " out of range");
+            throw std::runtime_error("load: crew '" + s.name + "' is aboard ship '"
+                                     + s.aboard + "' without a capsule uid (save "
+                                     "predates uid-keyed crew)");
         }
-        Part *cap = ship->parts[s.aboard_part];
+        Part *cap = findSavedPart(savedUidToPart, s.aboard_part, ship);
+        if(cap == nullptr) {
+            delete k;
+            throw std::runtime_error("load: crew '" + s.name + "' is parked in part "
+                                     "uid " + std::to_string(s.aboard_part) +
+                                     " of ship '" + s.aboard + "', which does not have it");
+        }
+        if(cap->def->crew_capacity <= 0) {
+            delete k;
+            throw std::runtime_error("load: crew '" + s.name + "' is parked in '"
+                                     + cap->def->name + "' of ship '" + s.aboard
+                                     + "', which is not a capsule (crew_capacity 0)");
+        }
         const glm::dvec3 capCom = ship->partPos(cap);
         const glm::dmat3 capOrient = ship->partRot(cap);
         k->home = ship->home;
@@ -411,21 +447,6 @@ void save_game(Game &g, const std::string &dir) {
     }
     writeJson(dir + "/save.json", saveMetaToJson(meta));
     printf("Saved %zu ship(s) to %s\n", fleet.size(), dir.c_str());
-}
-
-/* The live Part a saved uid names, but only if it is one of `owner`'s. The
-   uid map spans the whole save, so the uid alone does not prove the part
-   belongs to the ship named alongside it -- and updateDocking assumes a dock
-   target's port really is on the target. 0 or a miss gives nullptr. */
-static Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
-                           const Vehicle *owner) {
-    if(uid == 0 || owner == nullptr) { return nullptr; }
-    std::map<uint64_t, Part *>::const_iterator it = byUid.find(uid);
-    if(it == byUid.end()) { return nullptr; }
-    for(size_t i = 0; i < owner->parts.size(); i++) {
-        if(owner->parts[i] == it->second) { return it->second; }
-    }
-    return nullptr;
 }
 
 void load_game(Game &g, const std::string &dir) {
@@ -488,7 +509,7 @@ void load_game(Game &g, const std::string &dir) {
     try {
         for(size_t i = 0; i < saves.size(); i++) {
             const SaveShip &s = saves[i];
-            Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, byName)
+            Vehicle *v = s.is_crew ? buildKerbalFromSave(g, s, byName, savedUidToPart)
                                    : buildShipFromSaveParts(g, s, &savedUidToPart);
             built.push_back(v);
             byName[v->name] = v;

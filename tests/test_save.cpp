@@ -161,17 +161,20 @@ int main() {
     CHECK(out.dock_arm_port == ship.dock_arm_port);
 
     // --- a crew member (the ship fields are empty) -------------------------
+    // aboard_part is the CAPSULE'S uid (not an index into the ship's part
+    // list): 101 is the capsule's uid in the ship above, so this is a valid
+    // "aboard the capsule" reference. 0 would be the "absent / free" sentinel.
     SaveShip crew;
     crew.name = "kerbal";
     crew.defPath = "./res/ships/kerbal.json";
     crew.is_crew = true;
     crew.aboard = "racer";
-    crew.aboard_part = 0;
+    crew.aboard_part = 101;
     SaveShip crewOut = saveShipFromJson(saveShipToJson(crew));
     CHECK(crewOut.is_crew == true);
     CHECK(crewOut.name == "kerbal");
     CHECK(crewOut.aboard == "racer");
-    CHECK(crewOut.aboard_part == 0);
+    CHECK(crewOut.aboard_part == 101);
     CHECK(crewOut.parts.empty());   // the ship fields are not written for a crew
 
     // a free (EVA) kerbal carries its pose (the load restores it)
@@ -268,6 +271,22 @@ int main() {
     SavePart oldOut = savePartFromJson(oldFmt);
     CHECK(oldOut.uid == 0);
     CHECK(oldOut.parent == 0);
+
+    /* The crew's container is uid-keyed too: a non-uid value (a string -- the
+       shape an index-era / hand-edited file could have) reads back as the
+       "absent" 0, which load refuses instead of silently parking the kerbal
+       in part 0. A float would truncate to a valid uid and mis-resolve, so it
+       is refused the same way. */
+    nlohmann::json badCrew = nlohmann::json::object();
+    badCrew["is_crew"] = true;
+    badCrew["aboard"] = "racer";
+    badCrew["aboard_part"] = "capsule_1";   // a string, not a uid
+    CHECK(saveShipFromJson(badCrew).aboard_part == 0);
+    nlohmann::json floatCrew = nlohmann::json::object();
+    floatCrew["is_crew"] = true;
+    floatCrew["aboard"] = "racer";
+    floatCrew["aboard_part"] = 5.9;         // a float (would truncate to uid 5)
+    CHECK(saveShipFromJson(floatCrew).aboard_part == 0);
 
     /* Two parts with the SAME id must still round-trip as two distinguishable
        parts. This is the shape a docked pair of same-def ships saves as, and

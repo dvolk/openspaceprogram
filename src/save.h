@@ -151,7 +151,14 @@ struct SaveShip {
 
     // crew (is_crew true)
     std::string aboard;       // the ship's name ("" = free / on EVA)
-    int aboard_part = 0;      // index into the aboard ship's parts
+    // the capsule Part the kerbal sits in, named by uid (NOT by index into the
+    // ship's part list). A uid is stable across a merge/split and, unlike an
+    // index, names the exact part regardless of the list's order -- and 0 is
+    // the "absent" sentinel, so a save that predates uid-keyed crew is refused
+    // on load rather than silently parked in part 0. Load also validates the
+    // target is a capsule (crew_capacity > 0); the index format had no such
+    // check, so a reordered save could park a kerbal in any part.
+    uint64_t aboard_part = 0; // the aboard ship's container part uid (0 = free / on EVA)
 };
 
 // The global save state (dir/save.json). `ships` is the ordered list of
@@ -321,7 +328,10 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("is_crew") && j["is_crew"].is_boolean()) { s.is_crew = j["is_crew"].get<bool>(); }
     if(s.is_crew) {
         if(j.contains("aboard") && j["aboard"].is_string()) { s.aboard = j["aboard"].get<std::string>(); }
-        if(j.contains("aboard_part") && j["aboard_part"].is_number()) { s.aboard_part = j["aboard_part"].get<int>(); }
+        // uid-keyed (not an index): a string/float/negative reads as 0, the
+        // "absent" sentinel load refuses -- the same strict handling as every
+        // other part reference (controller, dock ports, fuel links).
+        s.aboard_part = readUid(j, "aboard_part");
         if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
         if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
         return s;

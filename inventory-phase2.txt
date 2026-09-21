@@ -139,6 +139,48 @@ Verification: `make test` green (exit 0, all suites incl. test_contain 41,
 test_dock 71, test_fuel 86, test_inertia 959). e2e 26/29/30/45/46/53/54/79
 all PASS (8/8).
 
-### 2.3 — save the containment edge by uid  (pending)
+### 2.3 — save the containment edge by uid  (done)
+
+What changed:
+- save.h: `SaveShip::aboard_part` is now `uint64_t` (the capsule's uid), not
+  an `int` index into the aboard ship's part list. The reader uses the strict
+  `readUid` helper (a string/float/negative reads as the "absent" 0 sentinel,
+  same handling as controller / dock ports / fuel links) instead of a bare
+  `.get<int>()`. The struct comment documents why: a uid is stable across a
+  merge/split and order-independent, and 0 = absent/free.
+- save.cpp writer: `s.aboard_part = k->aboardPart->uid` (was a loop mapping
+  the Part* back to an index). 0 for a free (EVA) kerbal.
+- save.cpp reader (buildKerbalFromSave): now takes the load's
+  `savedUidToPart` map (populated before the crew, which always follows its
+  ship) and validates THREE things, throwing a clean load error for each:
+  (1) aboard_part 0 = a save predating uid-keyed crew -> refused (not parked in
+  part 0); (2) the uid must name one of THIS ship's parts (findSavedPart
+  membership) -> a reordered/foreign save is refused; (3) the part must be a
+  capsule (def->crew_capacity > 0) -> the check report 1.4 notes did not exist
+  (a reordered save could park a kerbal in a fuel tank). findSavedPart moved
+  into the anonymous namespace (it was after save_game, too late for the crew
+  builder); both load paths now resolve through it.
+
+Format migration (the breaking change the report expects, per QWEN.md no
+back-compat): the two committed crew fixtures were in the old index format
+(aboard_part 0 = the capsule). Migrated both to the capsule's uid (1):
+e2e/fixtures/save_racer/ships/v1.json and e2e/fixtures/save_corrupt/ships/v1.json.
+save_docked has no crew. This is why 54-save-load and 65-reload-refused still
+pass -- the 65 case's failure still lands on v2 (the bad part), not v1 (the
+kerbal now builds fine).
+
+New e2e 81-crew-noncapsule: e2e/fixtures/save_racer_badcrew (a copy of
+save_racer with the kerbal's aboard_part pointed at the racer's FUEL TANK,
+uid 3, instead of the capsule, uid 1). The uid resolves (it IS on racer), so
+the rejection comes from the crew_capacity check, not a miss -- the branch this
+pins. Uses the runtime --reload path (loadFrom reports "[load] refused ..." and
+stays put, exit 0) because the harness requires exit 0 whereas the startup
+--load path exits 1 for the same throw.
+
+Verification: make test green (test_save round-trips the uid + a
+string/float aboard_part reads as absent). e2e 54/65/79/29 + NEW 81 all PASS.
+Manual round-trip: boot a crewed racer -> --save -> the kerbal saves
+aboard_part 1 (= the capsule's uid in the same save) -> --load accepts it
+("Loaded game", no refusal).
 
 ### 2.4 — register crew in capsulePart->contents  (pending)

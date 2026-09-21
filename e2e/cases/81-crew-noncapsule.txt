@@ -1,0 +1,30 @@
+# A crew reference that names a NON-CAPSULE must be refused on load, not
+# silently parked in the wrong part. Step 2.3 of the inventory design report
+# (reports/inventory-design2026_09_20/): the save's aboard_part used to be an
+# index into the ship's part list with NO validation, so a reordered or
+# hand-edited save could park a kerbal in a fuel tank (report 1.4). It is now
+# the capsule's uid, and load validates the target is really a capsule
+# (crew_capacity > 0).
+#
+# e2e/fixtures/save_racer_badcrew is save_racer with the kerbal's aboard_part
+# pointed at the racer's fuel tank (uid 3) instead of the capsule (uid 1). The
+# uid resolves (it IS a part of racer), so the rejection comes from the
+# crew_capacity check, not a miss -- that is the branch this pins.
+#
+# The runtime --reload path (loadFrom) reports a refused load and stays put,
+# so the game still flies at the timeout: a "clean load error, not silent
+# corruption," exit 0. The startup --load path exits 1 for the same throw, but
+# the harness requires exit 0, so --reload is the vehicle.
+NAME save-load-crew-noncapsule
+ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --reload e2e/fixtures/save_racer_badcrew --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+EXPECT [load] refused e2e/fixtures/save_racer_badcrew
+EXPECT is parked in 'fuel_tank'
+EXPECT not a capsule
+EXPECT Timeout reached (8.0 s)
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID Segmentation
+FORBID GL_
+FORBID error:
