@@ -146,6 +146,21 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             sp.fuel.push_back((double)p->resources.current[r]);
         }
+        /* phase 4.6: nested inventory items (depth-first: the item is
+           emitted inside its container, so load reconstructs the
+           container before its items). */
+        for(Part *c : p->ownedContents) {
+            SavePart si;
+            si.part = c->def->name;
+            si.uid = c->uid;
+            si.id = c->id;
+            si.mass = c->body->mass;
+            si.hull_margin = c->body->hull_margin;
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                si.fuel.push_back((double)c->resources.current[r]);
+            }
+            sp.inventory.push_back(si);
+        }
         s.parts.push_back(sp);
     }
     for(size_t k = 0; k < v->fuelLinks.size(); k++) {
@@ -271,6 +286,36 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             delete v;
             throw std::runtime_error("load: two ships claim part uid "
                                      + std::to_string(sp.uid));
+        }
+        /* phase 4.6: reconstruct the nested inventory items (the container
+           is built now, so its items can be wired to it). Each item is a
+           standalone Part (not attached to the ship's part tree) that the
+           container OWNS (ownedContents) and traverses (contents). */
+        for(size_t ii = 0; ii < sp.inventory.size(); ii++) {
+            const SavePart &si = sp.inventory[ii];
+            const PartDef *id = cat.find(si.part);
+            if(id == nullptr) {
+                delete v;
+                throw std::runtime_error("load: saved ship '" + s.name
+                                         + "' inventory item '" + si.part
+                                         + "' is not in the parts file");
+            }
+            Mesh *im = get_mesh("./res/" + id->mesh);
+            Texture *it2 = get_texture("./res/" + id->texture);
+            Body *ib = create_part_body(im, g.partsshader, it2,
+                                        (float)si.mass, si.hull_margin);
+            Part *item = new Part;
+            item->body = ib;
+            item->def = id;
+            item->id = si.id;
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                item->resources.capacity[r] = id->capacity[r];
+                item->resources.current[r] = (r < (int)si.fuel.size()) ? (float)si.fuel[r] : 0.0f;
+            }
+            /* wire the containment edge (ownership + traversal) */
+            p->ownedContents.push_back(item);
+            p->contents.push_back(item);
+            item->container = p;
         }
     }
     /* A named controller that is not in the ship is corruption, not something

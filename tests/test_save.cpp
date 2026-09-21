@@ -17,6 +17,7 @@
 // exercises it headless through the game).
 
 #include "save.h"
+#include "shipdef.h"   // ResourceType (phase 4.6 inventory fuel index)
 
 #include <cmath>
 #include <cstdio>
@@ -207,6 +208,62 @@ int main() {
     crewOld.aboard_part = 101;
     SaveShip crewOldOut = saveShipFromJson(saveShipToJson(crewOld));
     CHECK(crewOldOut.suit_fuel.empty());
+
+    // phase 4.6: nested inventory round-trip (a container holding items,
+    // one of which holds a third -- depth-first serialization)
+    {
+        SavePart container;
+        container.part = "cargo";
+        container.uid = 201;
+        container.id = "cargo_1";
+        container.mass = 250.0;
+        container.fuel = std::vector<double>(8, 0.0);
+
+        // item 1: a mono tank (directly in the container)
+        SavePart item1;
+        item1.part = "mono_tank_r1";
+        item1.uid = 202;
+        item1.id = "mono_1";
+        item1.mass = 88.99;
+        item1.fuel = std::vector<double>(8, 0.0);
+        item1.fuel[(int)ResourceType::Hydrazine] = 42.5;
+        container.inventory.push_back(item1);
+
+        // item 2: a kerbal suit (directly in the container), holding item 3
+        SavePart item2;
+        item2.part = "kerbal";
+        item2.uid = 203;
+        item2.id = "suit_1";
+        item2.mass = 97.05;
+        item2.fuel = std::vector<double>(8, 0.0);
+        item2.fuel[(int)ResourceType::Hydrazine] = 3.0;
+        // item 3: a small part nested inside item2
+        SavePart item3;
+        item3.part = "cargo";
+        item3.uid = 204;
+        item3.id = "nested_cargo_1";
+        item3.mass = 250.0;
+        item3.fuel = std::vector<double>(8, 0.0);
+        item2.inventory.push_back(item3);
+        container.inventory.push_back(item2);
+
+        SavePart containerOut = savePartFromJson(savePartToJson(container));
+        CHECK(containerOut.inventory.size() == 2);
+        CHECK(containerOut.inventory[0].part == "mono_tank_r1");
+        CHECK(containerOut.inventory[0].fuel[(int)ResourceType::Hydrazine] == 42.5);
+        CHECK(containerOut.inventory[1].part == "kerbal");
+        CHECK(containerOut.inventory[1].inventory.size() == 1);
+        CHECK(containerOut.inventory[1].inventory[0].part == "cargo");
+        CHECK(containerOut.inventory[1].inventory[0].uid == 204);
+
+        // an absent inventory (a save that predates the field) stays empty
+        SavePart noInv;
+        noInv.part = "cargo";
+        noInv.uid = 205;
+        noInv.fuel = std::vector<double>(8, 0.0);
+        SavePart noInvOut = savePartFromJson(savePartToJson(noInv));
+        CHECK(noInvOut.inventory.empty());
+    }
 
     // a free (EVA) kerbal carries its pose (the load restores it)
     SaveShip eva;

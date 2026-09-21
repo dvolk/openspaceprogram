@@ -94,6 +94,11 @@ struct SavePart {
     double mass = 0.0;
     double hull_margin = -1.0;
     std::vector<double> fuel;   // one entry per ResourceType (Num)
+    /* Nested inventory items (phase 4.6): the parts parked in this part's
+       inventory (Part::ownedContents). Serialized depth-first (a contained
+       item is emitted inside its container, so load reconstructs the
+       container before its items). Empty for parts with no inventory. */
+    std::vector<SavePart> inventory;
 };
 
 // A one-way fuel link between two parts' fuel groups (from -> to), by uid.
@@ -239,6 +244,11 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     j["mass"]   = p.mass;
     if(p.hull_margin >= 0.0) { j["hull_margin"] = p.hull_margin; }
     j["fuel"]   = p.fuel;
+    if(!p.inventory.empty()) {
+        nlohmann::json inv = nlohmann::json::array();
+        for(auto &&sp : p.inventory) { inv.push_back(savePartToJson(sp)); }
+        j["inventory"] = inv;
+    }
     return j;
 }
 
@@ -255,6 +265,9 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     if(j.contains("hull_margin") && j["hull_margin"].is_number()) { p.hull_margin = j["hull_margin"].get<double>(); }
     if(j.contains("fuel") && j["fuel"].is_array()) {
         for(auto &&f : j["fuel"]) { if(f.is_number()) { p.fuel.push_back(f.get<double>()); } }
+    }
+    if(j.contains("inventory") && j["inventory"].is_array()) {
+        for(auto &&sp : j["inventory"]) { if(sp.is_object()) { p.inventory.push_back(savePartFromJson(sp)); } }
     }
     return p;
 }
