@@ -272,6 +272,14 @@ int main(int argc, char **argv)
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
 
+    // Sound (audio.h): a silent no-op when there is no playback device
+    // (headless, the e2e battery under Xvfb) or the assets are missing.
+    // The music starts here -- title screen included -- and loops for
+    // the whole session.
+    if(game.audio.init()) {
+        game.audio.setMusic("res/ville_seppanen-1_g.ogg");
+    }
+
     // Build the atmosphere rim + cloud deck shells now that the bodies,
     // the shaders and the job runner exist. Bodies without either are
     // no-ops (no mesh, no cost). BuildClouds posts its coverage bake to
@@ -945,6 +953,9 @@ int main(int argc, char **argv)
         // state lives in the window that owns the job, e.g. the Porkchop's
         // "sweeping ..." -- not a global HUD line.)
         game.jobs.poll();
+        // Audio: reap finished one-shots, reposition the loop (the
+        // listener is the live camera). No-op when audio is unavailable.
+        game.audio.update(*game.camera);
         // pf_swap defaults to pf_c so a frame that skips the render block
         // (redraw false) records render = present = 0, not a stale window.
         pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c;
@@ -1096,6 +1107,8 @@ int main(int argc, char **argv)
     delete burn_indicator;
     delete relvel_indicator;
     delete relvel_retro_indicator;
+
+    game.audio.shutdown();
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();

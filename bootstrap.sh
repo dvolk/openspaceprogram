@@ -82,8 +82,8 @@ echo "=== building SDL3 (static, X11) ==="
 # touches. The 2D renderer is the big one -- its software blit/blend backend
 # (~1 MB) is pure dead weight here. Joystick/haptic/HIDAPI/sensor/power/GPU,
 # camera, native dialogs, tray, KMSDRM (X11-only), and the offscreen + dummy
-# drivers are likewise unused. Audio and GLES stay on -- both are coming
-# later (desktop GL, SDL_OPENGL, stays too).
+# drivers are likewise unused. Audio stays on -- SDL3_mixer (the game's
+# sound) uses it. GLES + desktop GL (SDL_OPENGL) stay too.
 cmake -S middleware/sdl3 -B middleware/sdl3/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_DEPS_SHARED=OFF \
@@ -127,6 +127,38 @@ cmake --build middleware/sdl3-image/build -j"$JOBS"
 # out-of-source builds (it generates its own in the build dir, which is
 # what gets compiled) -- restore it so the submodule stays clean.
 git -C middleware/sdl3-image/external/zlib checkout -- zconf.h
+
+echo "=== building SDL3_mixer (static, WAV + stb_vorbis only) ==="
+# The game needs exactly two decoders: WAV (the short SFX chunks --
+# Mix_Chunk is WAV-only and plays on the regular mixer channels) and
+# OGG Vorbis (the long ambient music, streamed on the music channel).
+# Both are bundled -- WAV is built in, vorbis goes through the
+# public-domain stb_vorbis (src/stb_vorbis) -- so every OTHER format is
+# switched off: with none of them on, nothing external (libmpg123,
+# libvorbisfile, libFLAC, libxmp, ...) is ever looked for. Links the
+# SDL3 we built above (SDL3_DIR -> its build dir, the SDL_image trick).
+cmake -S middleware/sdl-mixer -B middleware/sdl-mixer/build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DSDL3_DIR="$PWD/middleware/sdl3/build" \
+    -DSDLMIXER_DEPS_SHARED=OFF \
+    -DSDLMIXER_AIFF=OFF \
+    -DSDLMIXER_AU=OFF \
+    -DSDLMIXER_VOC=OFF \
+    -DSDLMIXER_FLAC=OFF \
+    -DSDLMIXER_GME=OFF \
+    -DSDLMIXER_MOD=OFF \
+    -DSDLMIXER_MP3=OFF \
+    -DSDLMIXER_MIDI=OFF \
+    -DSDLMIXER_OPUS=OFF \
+    -DSDLMIXER_WAVPACK=OFF \
+    -DSDLMIXER_VORBIS_VORBISFILE=OFF \
+    -DSDLMIXER_VORBIS_STB=ON \
+    -DSDLMIXER_TESTS=OFF \
+    -DSDLMIXER_EXAMPLES=OFF \
+    -DSDLMIXER_INSTALL=OFF \
+    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
+cmake --build middleware/sdl-mixer/build -j"$JOBS"
 
 echo "=== building GLEW (static, 2.2.0) ==="
 # GLEW's git repo contains only the generator (src/glew.c is generated from

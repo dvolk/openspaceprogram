@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "audio.h"    // Audio (the sound; silent when there is no device)
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
 #include "display.h"  // Renderer
@@ -228,6 +229,9 @@ struct Game {
     GameArgs &args;
     Uint32 sim_win_id;
     Uint32 loop_start_ms = 0;   // set once the main loop is about to start
+
+    // --- sound (audio.h; a silent no-op without a device) -------------------
+    Audio audio;
 
     // --- cameras -----------------------------------------------------------
     Camera *camera = nullptr;   // one object: orbit + free, `camera->mode` picks

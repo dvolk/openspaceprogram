@@ -22,3 +22,6 @@
 [submodule "middleware/sdl3-image"]
 	path = middleware/sdl3-image
 	url = https://github.com/libsdl-org/SDL_image
+[submodule "middleware/sdl-mixer"]
+	path = middleware/sdl-mixer
+	url = https://github.com/libsdl-org/SDL_mixer

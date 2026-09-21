@@ -70,7 +70,7 @@ CXX= g++
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/glew/include
+CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
 LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -109,6 +109,12 @@ ASSIMP_LIB=$(ASSIMP_A)
 # its git repo ships only the generator, see bootstrap.sh).
 SDL3_A=./middleware/sdl3/build/libSDL3.a
 SDLIMG_A=./middleware/sdl3-image/build/libSDL3_image.a
+# SDL3_mixer (vendored like SDL_image; bootstrap.sh builds it static with
+# WAV + the bundled stb_vorbis only): the short SFX chunks play on the
+# regular mixer channels (Mix_Chunk is WAV-only), the OGG ambient music
+# streams on the music channel. A dependent of SDL3, so it links BEFORE
+# it (static link order: dependents first).
+SDLMIXER_A=./middleware/sdl-mixer/build/libSDL3_mixer.a
 # SDL_image's PNG loader/saver use the vendored libpng + zlib (sdl3-image's
 # nested submodules, built under sdl3-image/build/external/ -- no system
 # libpng/zlib packages needed).
@@ -117,12 +123,12 @@ ZLIB_A=./middleware/sdl3-image/build/external/zlib-build/libz.a
 GLEW_A=./middleware/glew/build-cmake/lib/libGLEW.a
 # SDL3 is built with the X11 driver linked in (not dlopen'd), so the X11
 # stack rides along. SDL3 also compiles the audio (alsa/pulse/sndio) and
-# KMS/DRM (gbm/drm) backends; the game never uses them, so -Wl,--as-needed
-# drops the unused .so's, but the linker still needs them resolvable.
+# KMS/DRM (gbm/drm) backends; SDL3_mixer uses the audio one (the rest are
+# dropped by -Wl,--as-needed), but the linker still needs them resolvable.
 SDL3_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXss -lasound -lpulse -lsndio -lgbm -ldrm -ldl -lm -lpthread
 # Static link order matters (dependents before dependencies):
 # SDL_image -> SDL3, GLEW -> GL, PNG loader/saver -> libpng -> zlib.
-GL_LIBS=$(SDLIMG_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(SDL3_SYS)
+GL_LIBS=$(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(SDL3_SYS)
 # clone bullet3 in ./middleware
 # cd ./middleware/bullet3
 # ln -s bullet src
@@ -153,7 +159,7 @@ rm = rm -f
 # as a changed .o -- listing the .a files makes make relink when they're
 # newer than the binary. (On a fresh checkout before bootstrap, make reports
 # the missing .a instead of failing at the link.)
-$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(ASSIMP_A) $(SDL3_A) $(SDLIMG_A) $(GLEW_A) $(BULLET3_OBJS)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(ASSIMP_A) $(SDL3_A) $(SDLIMG_A) $(SDLMIXER_A) $(GLEW_A) $(BULLET3_OBJS)
 	$(LINKER) $@ $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(OBJECTS) $(LFLAGS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
@@ -224,7 +230,7 @@ $(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
 TCC   = -O2 -std=c++20
 TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
         -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl3/include \
-        -I./middleware/sdl3-image/include -I./middleware/glew/include
+        -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
 # The real-Bullet tests share these TUs (compiled once, not once per test).
 TCOMMON_OBJS = obj_test/physics.o obj_test/body.o obj_test/vehicle.o \
