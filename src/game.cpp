@@ -19,6 +19,7 @@
 #include "pick.h"     // pickShipPart (pickAt)
 #include "save.h"     // load_game (Game::loadFrom)
 #include "settings.h" // SettingsData + the settings.json JSON mapping
+#include "datadir.h"  // settings.json's location (the data directory)
 #include "shipdef.h"  // PartDef (crew_capacity)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
@@ -189,11 +190,12 @@ void load_settings_args(GameArgs &args) {
 }
 
 /* "Save" (the Settings window): the current Settings state to
-   ./settings.json. */
+   settings.json in the data directory (datadir.h). */
 bool Game::save_settings() {
     nlohmann::json j;
     settings_write(collect_settings(*this), j);
-    std::ofstream f(kSettingsFile);
+    datadir::make_dir(datadir::dir());   // a --data-dir whose parents are missing
+    std::ofstream f(datadir::settings_file());
     if(!f) { return false; }
     f << j.dump(2) << "\n";
     f.flush();

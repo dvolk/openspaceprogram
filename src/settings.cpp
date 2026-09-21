@@ -3,6 +3,7 @@
 // present AND of the expected type, so an absent (newer/older file) or
 // mistyped (hand-edited) field leaves s's current value in place.
 #include "settings.h"
+#include "datadir.h"
 
 #include <cstdio>
 #include <fstream>
@@ -212,7 +213,8 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
 }
 
 bool settings_load_file(SettingsData &s) {
-    std::ifstream f(kSettingsFile);
+    const std::string path = datadir::settings_file();
+    std::ifstream f(path);
     if(!f) { return false; }   // no settings.json: the caller's values stand
     std::string text((std::istreambuf_iterator<char>(f)),
                      std::istreambuf_iterator<char>());
@@ -220,7 +222,7 @@ bool settings_load_file(SettingsData &s) {
     try {
         j = nlohmann::json::parse(text);
     } catch(const std::exception &e) {
-        printf("settings.json: %s (ignored)\n", e.what());
+        printf("%s: %s (ignored)\n", path.c_str(), e.what());
         return false;
     }
     settings_read(j, s);

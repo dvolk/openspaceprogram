@@ -42,11 +42,15 @@ struct GameArgs {
     /* Save/Load (the live fleet + crew + clock). --save captures the game
        into a directory when the --timeout budget is spent (saves + exits --
        the headless/e2e path); --load replaces the fleet at startup by
-       loading a saved directory instead of building one. Mutually
-       exclusive (a run either loads a save or builds a fresh fleet to
-       save). */
+       loading a saved directory instead of building one. A bare name (no
+       '/') is a slot under the data dir's saves/ (the Save/Load window's
+       slots); a path is used as-is. Mutually exclusive (a run either loads
+       a save or builds a fresh fleet to save). */
     std::string save_name;
     std::string load_name;
+    std::string data_dir;   // --data-dir: the user data directory (saves +
+                            // settings); empty = the per-OS user data
+                            // directory (datadir.h)
 
     std::string radial_test;
     std::string autopilot;  // --autopilot: engage a slew mode on the active

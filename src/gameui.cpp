@@ -30,6 +30,7 @@
 #include "vab.h"         // the editor ops (drawVabUI: gizmos, save, load, launch)
 #include "shipdef.h"     // list_ship_defs (the VAB Load picker's ship list)
 #include "save.h"        // save_game / load_game / list_saves / delete_save
+#include "datadir.h"     // the saves/ directory's location (the data directory)
 
 #include "../middleware/imgui/imgui.h"
 #include "../middleware/implot/implot.h"   // the TELEMETRY plots
@@ -2323,15 +2324,19 @@ void drawSpaceCenterMenu(Game &g) {
     drawMenuWindow(g, W_SpaceCenterMenu, true, "Space Center", navSpaceCenter);
 }
 
-// A save-slot name is a single directory under saves/; reject a path
-// separator or a dot-name so a typo can't escape the base dir (the CLI
-// --save/--load take full paths by design; this is the user-facing slot
-// picker, so it stays inside saves/).
+// A save-slot name is a single directory under saves/. Whitelist to letters,
+// digits, - _ . so a name can never carry a path separator, a dot-name, or
+// shell metacharacters: delete_save shells out (rm -rf), and this is the
+// only free-text input that reaches it. (The CLI --save/--load take full
+// paths by design; this is the user-facing slot picker, so it stays inside
+// saves/.)
 static bool safeSlotName(const std::string &n) {
-    if(n.empty()) { return false; }
-    if(n.find('/') != std::string::npos) { return false; }
-    if(n.find('\\') != std::string::npos) { return false; }
-    if(n == "." || n == "..") { return false; }
+    if(n.empty() || n == "." || n == "..") { return false; }
+    for(unsigned char c : n) {
+        bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                     (c >= '0' && c <= '9');
+        if(!alnum && c != '-' && c != '_' && c != '.') { return false; }
+    }
     return true;
 }
 
@@ -2352,7 +2357,7 @@ void drawSaveLoad(Game &g) {
         // delete). Clamp BOTH bounds: a frame with an empty list parks
         // `selected` at -1, and a later `saves[-1]` is an out-of-bounds read
         // (garbage slot -> bad_alloc on the click).
-        std::vector<std::string> saves = list_saves("saves");
+        std::vector<std::string> saves = list_saves(datadir::saves());
         if(selected < 0 || selected >= (int)saves.size()) {
             selected = (int)saves.size() - 1;
         }
@@ -2364,18 +2369,18 @@ void drawSaveLoad(Game &g) {
         ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
         if(ImGui::Button("Save##saveload") && safeSlotName(nameBuf)) {
-            const std::string dir = std::string("saves/") + nameBuf;
+            const std::string dir = datadir::saves() + "/" + nameBuf;
             try {
                 save_game(g, dir);
                 g.toast("Saved to %s", nameBuf);
-                saves = list_saves("saves");
+                saves = list_saves(datadir::saves());
             } catch(const std::exception &e) {
                 g.toast("Save failed: %s", e.what());
             }
         }
         if(!safeSlotName(nameBuf)) {
             ImGui::SameLine();
-            ImGui::TextDisabled("(name: no '/' or '\\')");
+            ImGui::TextDisabled("(name: letters, digits, - _ . only)");
         }
 
         ImGui::Separator();
@@ -2392,7 +2397,7 @@ void drawSaveLoad(Game &g) {
             }
             ImGui::Spacing();
             if(ImGui::Button("Load##saveload")) {
-                const std::string dir = std::string("saves/") + saves[selected];
+                const std::string dir = datadir::saves() + "/" + saves[selected];
                 // loadFrom does the load, the scene decision and the failure
                 // toast; it is shared with the --reload hook so the headless
                 // path tests this one.
@@ -2400,15 +2405,15 @@ void drawSaveLoad(Game &g) {
                     g.toast("Loaded %s", saves[selected].c_str());
                     setWinOpen(W_SaveLoad, false);
                 }
-                saves = list_saves("saves");
+                saves = list_saves(datadir::saves());
             }
             ImGui::SameLine();
             if(ImGui::Button("Delete##saveload")) {
-                const std::string dir = std::string("saves/") + saves[selected];
+                const std::string dir = datadir::saves() + "/" + saves[selected];
                 try {
-                    delete_save(dir, "saves");
+                    delete_save(dir, datadir::saves());
                     g.toast("Deleted %s", saves[selected].c_str());
-                    saves = list_saves("saves");
+                    saves = list_saves(datadir::saves());
                     if(selected < 0 || selected >= (int)saves.size()) {
                         selected = (int)saves.size() - 1;
                     }

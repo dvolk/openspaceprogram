@@ -576,7 +576,8 @@ struct Game {
     // rounding, transparency).
     void apply_ui_style();
     // Settings persistence (settings.h): the window's "Save" button writes
-    // the current Settings state to ./settings.json; startup (main.cpp)
+    // the current Settings state to settings.json in the data directory
+    // (datadir.h); startup (main.cpp)
     // restores it in two phases, split by what must exist to apply it --
     // the args fields before the Renderer (the display mode/size + the
     // MSAA count are fixed at window creation) and the Game + PostFX

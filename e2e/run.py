@@ -23,9 +23,11 @@ Each test is a case file in e2e/cases/*.txt with these keys (one per line,
   CHECK <python expression>    must be truthy (repeat); see the namespace below
   LIMIT <seconds>              runner hard timeout for this case (default 120)
   WRITE <path> <content>       write <content> to <path> (REPO_ROOT-relative)
-                               before the game launches, after the imgui.ini /
-                               settings.json cleanup -- stage a custom
-                               settings.json (e.g. a rebind) for just this case
+                               before the game launches -- stage a file for
+                               just this case. "settings.json" is special:
+                               it lands in the case's scratch data directory
+                               (each case runs with --data-dir tmp/e2e/data/
+                               <name>), where the game reads it (datadir.h)
 
 A case PASSES iff: the process exits 0, every EXPECT is found, no FORBID is
 found, and every CHECK is truthy.
@@ -400,22 +402,35 @@ def run_case(case):
         return False, ["./osp not found; run `make` first."]
     # Start each case from a clean ImGui layout (window positions persist in
     # imgui.ini otherwise, which would make UI clicks non-deterministic).
-    # And from no saved settings: a locally saved settings.json (display
-    # mode, postfx, the UI knobs) would leak into every case otherwise.
-    for f in ("imgui.ini", "settings.json"):
-        try:
-            os.remove(os.path.join(REPO_ROOT, f))
-        except FileNotFoundError:
-            pass
+    try:
+        os.remove(os.path.join(REPO_ROOT, "imgui.ini"))
+    except FileNotFoundError:
+        pass
+
+    # The game keeps settings.json + saves/ in its data directory
+    # (datadir.h), not the repo root. Give the case a scratch one via
+    # --data-dir, so a locally saved settings.json (display mode, postfx,
+    # the UI knobs) or a fixture from a prior run can't leak in.
+    data_dir = os.path.join(REPO_ROOT, "tmp", "e2e", "data", case["name"])
+    os.makedirs(data_dir, exist_ok=True)
+    try:
+        os.remove(os.path.join(data_dir, "settings.json"))
+    except FileNotFoundError:
+        pass
 
     # Stage any files the case declares (WRITE): written after the cleanup
     # above, so a fixture (e.g. a rebind settings.json) is live for exactly
-    # this case and the next case's cleanup removes it again.
+    # this case and the next case's cleanup removes it again. settings.json
+    # goes into the scratch data directory -- that is where the game reads
+    # it (datadir.h); any other path is REPO_ROOT-relative as before.
     for wpath, wcontent in case.get("writes", []):
-        with open(os.path.join(REPO_ROOT, wpath), "w") as wf:
+        target = (os.path.join(data_dir, "settings.json")
+                  if wpath == "settings.json"
+                  else os.path.join(REPO_ROOT, wpath))
+        with open(target, "w") as wf:
             wf.write(wcontent)
 
-    cmd = build_cmd(game, case["args"])
+    cmd = build_cmd(game, case["args"] + ["--data-dir", data_dir])
     diag = []
     timed_out = False
     exit_code = None

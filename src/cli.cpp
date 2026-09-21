@@ -66,11 +66,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--save", args.save_name,
                    "Save the game (the live fleet + crew + clock) into this "
                    "directory when the --timeout budget is spent, then exit "
-                   "(the headless/e2e path). Mutually exclusive with --load");
+                   "(the headless/e2e path). A bare name is a slot under the "
+                   "data dir's saves/; a path is used as-is. Mutually "
+                   "exclusive with --load");
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "
                    "instead of building a fleet (--ship/--fleet are ignored). "
+                   "A bare name is a slot under the data dir's saves/. "
                    "Mutually exclusive with --save");
+    app.add_option("--data-dir", args.data_dir,
+                   "User data directory (saves/ + settings.json). Default: "
+                   "the per-OS user data directory (on Linux: "
+                   "~/.local/share/openspaceprogram/)");
 
     /* Spin-instrumentation mode: build a test ship (no JSON ship def)
        and log its spin + the internal contact torque each tick.

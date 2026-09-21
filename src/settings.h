@@ -14,9 +14,8 @@
 
 #include "keys.h"   // KeyBindings (the rebindable key map)
 
-// The settings file (relative to the working directory; the game runs
-// from the repo root).
-static const char *kSettingsFile = "settings.json";
+// The settings file is settings.json under the data directory (datadir.h;
+// --data-dir overrides it) -- see datadir::settings_file() there.
 
 // One field per Settings window control. Defaults mirror the launch
 // defaults (GameArgs + Game). The load path starts a SettingsData from
@@ -67,7 +66,8 @@ struct SettingsData {
 void settings_write(const SettingsData &s, nlohmann::json &j);
 void settings_read(const nlohmann::json &j, SettingsData &s);
 
-// Read kSettingsFile (if it exists and parses) over s -- so a field the
-// file does not mention keeps s's value; false (and s untouched) when
-// the file is missing, unreadable, or not valid JSON.
+// Read the settings file (settings.json under the data directory,
+// datadir.h) over s if it exists and parses -- so a field the file does
+// not mention keeps s's value; false (and s untouched) when the file is
+// missing, unreadable, or not valid JSON.
 bool settings_load_file(SettingsData &s);

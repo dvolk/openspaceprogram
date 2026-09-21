@@ -7,6 +7,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <sys/stat.h>
+#include <unistd.h>   // access() (the --load slot fallback)
 #include <vector>
 #include <string>
 #include <cmath>
@@ -59,6 +60,7 @@
 #include "gameui.h"
 #include "vab.h"
 #include "save.h"
+#include "datadir.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -83,6 +85,11 @@ int main(int argc, char **argv)
     GameArgs args;
     int exit_code = 1;
     if(!parse_cli(argc, argv, args, &exit_code)) { return exit_code; }
+
+    // Data directory (datadir.h): saves/ + settings.json live in the per-OS
+    // user data directory (--data-dir overrides). Must run before the
+    // settings load below, which reads from there.
+    datadir::init(args.data_dir);
 
     // settings.json (the Settings window's "Save") phase 1: the file's
     // args fields must reach the window creation -- the display mode/size
@@ -345,13 +352,18 @@ int main(int argc, char **argv)
         // railed) -- so the scenario reposition and the park-on-rails below
         // are both skipped.
         //
-        // A bare slot name (a UI save, e.g. "save1") is meant for
-        // saves/<slot>; if the given path has no save.json but that slot
-        // does, use the slot (the CLI otherwise takes a full path).
+        // A bare slot name (a UI save, e.g. "save1") is meant for the data
+        // dir's saves/<slot>; if the given path has no save.json but that
+        // slot does, use the slot (the CLI otherwise takes a full path).
+        // Precedence: the given path as-is first, then the data-dir slot --
+        // so --save (which always writes a bare name to the data dir) and
+        // --load agree, and an explicit path still wins over a same-named
+        // slot.
         std::string load_dir = args.load_name;
         if(access((load_dir + "/save.json").c_str(), F_OK) != 0 &&
-           access(("saves/" + load_dir + "/save.json").c_str(), F_OK) == 0) {
-            load_dir = "saves/" + load_dir;
+           access((datadir::saves() + "/" + load_dir + "/save.json").c_str(),
+                  F_OK) == 0) {
+            load_dir = datadir::saves() + "/" + load_dir;
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
         game.partsshader = partsshader;   // load_game builds parts with it
@@ -842,10 +854,16 @@ int main(int argc, char **argv)
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
                 // --save: capture the live game state (the fleet + crew +
-                // clock) into the save directory before the loop exits.
+                // clock) into the save directory before the loop exits. A
+                // bare name is a slot under the data dir's saves/ (like the
+                // Save/Load window); a path is used as-is.
                 if(!args.save_name.empty()) {
+                    std::string save_dir = args.save_name;
+                    if(save_dir.find('/') == std::string::npos) {
+                        save_dir = datadir::saves() + "/" + save_dir;
+                    }
                     try {
-                        save_game(game, args.save_name);
+                        save_game(game, save_dir);
                     } catch(const std::exception &e) {
                         printf("Save failed: %s\n", e.what());
                         exit(1);
