@@ -953,9 +953,42 @@ int main(int argc, char **argv)
         // state lives in the window that owns the job, e.g. the Porkchop's
         // "sweeping ..." -- not a global HUD line.)
         game.jobs.poll();
-        // Audio: reap finished one-shots, reposition the loop (the
-        // listener is the live camera). No-op when audio is unavailable.
-        game.audio.update(*game.camera);
+        // The engine hum: the active ship's thrust state, pilot scenes
+        // only (the others coast with the ship disarmed). Gain is the
+        // throttle itself (already clamped to [0,1]); the sound is ON
+        // only while the ship actually produces thrust (fuel, jet air).
+        {
+            const SceneDef &sc = curScene(game);
+            if(sc.pilot && ship != nullptr) {
+                // Firing = an engine armed THIS tick: the tick clears
+                // armedThrust, and ApplyThrust re-arms only on a
+                // held/latched thrust key with fuel (and jet air).
+                // getThrust() alone is the POTENTIAL at the current
+                // throttle -- it would hum at the default 100% with the
+                // thrust key never touched.
+                bool firing = false;
+                int armedN = 0;
+                for(const Part *p : ship->parts) {
+                    if(p->armedThrust > 0.0f) { firing = true; armedN++; }
+                }
+                static const bool audDbg = (getenv("AUDIO_DEBUG") != nullptr);
+                static bool lastFiring = false;
+                if(audDbg && firing != lastFiring) {
+                    printf("[hook] firing %d -> %d (armed=%d, thrust=%.0f N, throttle=%.2f)\n",
+                           (int)lastFiring, (int)firing, armedN,
+                           (double)ship->getThrust(), (double)ship->thruster_util);
+                    fflush(stdout);
+                    lastFiring = firing;
+                }
+                game.audio.setLoop("res/rocket_engine.001.wav", firing,
+                                   ship->thruster_util);
+            } else {
+                game.audio.setLoop("", false, 0.0f);
+            }
+        }
+        // Audio: reap finished one-shots and complete any engine stop-fade.
+        // No-op when audio is unavailable.
+        game.audio.update();
         // pf_swap defaults to pf_c so a frame that skips the render block
         // (redraw false) records render = present = 0, not a stale window.
         pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c;

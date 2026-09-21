@@ -401,6 +401,13 @@ test_terrain: obj_test/test_terrain.o
 test_drag: obj_test/test_drag.o
 	$(CXX) -o $@ $^
 
+# audio positional math (src/audio.h, inline pure math): the world->listener
+# frame conversion (listener at the origin, looking down -z, +x right, +y up)
+# for axis-aligned, offset, yawed and tilted listeners; the up||forward
+# degenerate case stays finite; the rotation preserves length.
+test_audio: obj_test/test_audio.o
+	$(CXX) -o $@ $^
+
 # jet engine thrust factor (src/drag.h, header-only pure math): the
 # air-breathing multiplier -- the speed ramp (the VTOL floor: f0 at
 # rest, linear to 1 at v_rated, saturating above) times the density
@@ -456,7 +463,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_dock test_inertia test_rotation \
         test_shipload test_save test_crew test_fleet test_calendar test_orbit \
         test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
-        test_terrain test_drag test_jet test_jobs test_orbitmap test_orbitcam \
+        test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys
 
 .PHONY: test
@@ -485,6 +492,7 @@ test: $(TESTS)
 	./test_eva
 	./test_terrain
 	./test_drag
+	./test_audio
 	./test_jet
 	./test_jobs
 	./test_orbitmap
@@ -582,7 +590,7 @@ clean:
 
 .PHONY: remove
 remove: clean
-	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_drag test_jet test_jobs test_settings test_eva test_keys test_gl_vao
+	$(rm) $(BINDIR)/$(TARGET) test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel test_power test_staging test_dock test_inertia test_rotation test_shipload test_crew test_fleet test_calendar test_orbit test_orbitsample test_transfer test_porkchop test_orbitmap test_orbitcam test_pick test_surfmap test_terrain test_drag test_audio test_jet test_jobs test_settings test_eva test_keys test_gl_vao
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build). The obj_test/

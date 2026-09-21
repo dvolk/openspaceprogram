@@ -1023,8 +1023,13 @@ void Game::stage() {
         const std::string qual =
             d->def->display_name.empty() ? d->def->name : d->def->display_name;
         if(!qual.empty()) { base += " " + qual; }
+        // The pop: a one-shot "slam" as the part separates. balance 0.4
+        // pulls the file's full-scale transient down to sit with the engine
+        // hum (the file peaks at 0 dB, and a transient reads louder than a
+        // steady loop at the same gain).
         Vehicle *out = a->extractSubtreeAsShip(d, dedup(base));
         if(out == nullptr) { continue; }   // already absorbed into an outer ship
+        audio.playOnce("res/qubodup-crash.wav", 0.4f);
         out->enterWorld();
         if(out->m_parent != nullptr) { out->m_parent->ships.push_back(out); }
         ships++;

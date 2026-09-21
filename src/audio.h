@@ -1,21 +1,22 @@
 // audio.h -- the game's sound, over SDL_mixer:
 //
 //   one-shots  a track per fire (capped, reaped when done) -- the
-//              decoupler pop; positional (the listener is the camera)
+//              decoupler pop
 //   the loop   one persistent track, infinite loops -- the engine hum;
-//              gain tracks the throttle, repositioned every frame
-//   the music  one persistent track, infinite loops -- ambient, and
-//              deliberately NOT positional (it would duck with distance)
+//              gain tracks the throttle
+//   the music  one persistent track, infinite loops -- ambient
+//
+// Everything plays at FULL level (no positional audio): in a tracking
+// camera the ship sits at a fixed distance, so attenuation would be a
+// constant, and there is no air in space to carry a sound by anyway.
+// listenerRelative() below is kept as the pure-math utility for if we
+// ever want positional playback (the mixer's OpenAL-style listener frame,
+// +x right / +y up / -z forward) -- the game does not use it today.
 //
 // Everything degrades to SILENCE: no audio device (headless, the e2e
 // battery under Xvfb) or a missing file just means that sound never
 // happens -- init() / loadAudio() report it once and every call after
 // is a no-op, so the game runs exactly as it did before audio existed.
-//
-// The mixer's positional system (like OpenAL's) is right-handed with the
-// listener at the origin: +x right, +y up, -z forward. It does distance
-// attenuation + spatialization; no doppler, no rolloff curve of our
-// choosing (the library's "good enough" 3D, per its own docs).
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -26,8 +27,6 @@
 #include <vector>
 
 #include <glm/glm.hpp>
-
-class Camera;   // update() reads the live one as the listener
 
 /* A source's WORLD position converted to the mixer's listener frame
    (the listener at the origin, looking down -z). The camera supplies
@@ -56,14 +55,18 @@ public:
 
     bool enabled() const { return mixer_ != nullptr; }
 
-    /* One-shot SFX at a world position (the decoupler pop). Capped at
-       MAX_ONESHOTS concurrent; finished tracks are reaped on update(). */
-    void playOnce(const std::string &path, const glm::dvec3 &worldPos);
+    /* One-shot SFX (the decoupler pop). Capped at MAX_ONESHOTS concurrent;
+       finished tracks are reaped on update(). `balance` (default 1.0) is a
+       per-sound level trim relative to the SFX master: a full-scale transient
+       (peak 0 dB) reads far louder than a steady loop at the same gain, so a
+       hot one-shot is pulled down here (the decoupler uses 0.4). */
+    void playOnce(const std::string &path, float balance = 1.0f);
 
-    /* The looping SFX (the engine hum). active starts/stops it (a short
-       fade on the stop so the cutoff doesn't click), gain in [0,1]
-       (the throttle), worldPos repositioned every frame while active. */
-    void setLoop(const std::string &path, bool active, float gain, const glm::dvec3 &worldPos);
+    /* The looping SFX (the engine hum). active starts/stops it (a 150 ms
+       fade on the stop so the cutoff doesn't clip); gain in [0,1] is the
+       throttle. Full level -- the ship's own engine, no distance falloff
+       (there is no air to carry it in space). */
+    void setLoop(const std::string &path, bool active, float gain);
 
     /* Ambient music: load once (decoded on playback, not pre-expanded),
        loop forever. A missing file is a logged no-op. */
@@ -74,20 +77,21 @@ public:
     void setSfxVolume(float v);
     void setMusicVolume(float v);
 
-    /* Per frame, with the live camera as listener: reaps finished
-       one-shots and repositions the loop. No-op when disabled/idle. */
-    void update(const Camera &cam);
+    /* Per frame: reaps finished one-shots and completes any engine
+       stop-fade. No-op when disabled/idle. */
+    void update();
 
 private:
     static const size_t MAX_ONESHOTS = 8;
 
     MIX_Audio *loadAudio(const std::string &path);   // cached per path; null on miss
-    void setMixerPos(MIX_Track *t, const glm::dvec3 &world, const Camera &cam);
 
     struct Shot {
         MIX_Track *t;
-        glm::dvec3 world;
+        Uint32 born_ms = 0;   // for the debug log: how long the pop actually lived
     };
+
+    bool dbg_ = false;   // AUDIO_DEBUG=1: trace every audio event (headless debugging)
 
     MIX_Mixer *mixer_ = nullptr;
 
@@ -101,8 +105,12 @@ private:
     MIX_Track *loop_ = nullptr;
     std::string loopPath_;
     bool loopActive_ = false;
-    float loopGain_ = 0.0f;
-    glm::dvec3 loopWorld_ = glm::dvec3(0.0);   // repositioned in update()
+    float loopGain_ = 0.0f;   // the throttle; the gain applied is gain*sfxVol_
+    // A stop-fade is in flight: MIX_StopTrack(fade) leaves the track "playing"
+    // until the fade drains, so this flag arms the fade exactly once (a
+    // re-armed fade never completed -- the old "sticky engine"); update()
+    // reaps the track when the fade finishes.
+    bool loopStopping_ = false;
 
     MIX_Track *music_ = nullptr;
     std::string musicPath_;

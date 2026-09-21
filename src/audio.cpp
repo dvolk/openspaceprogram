@@ -1,8 +1,8 @@
 // audio.cpp -- see audio.h for the module contract (three kinds of
-// tracks, silent degradation, the camera as listener).
+// tracks, silent degradation, full-level SFX (no positional audio -- there
+// is no air to carry it in space).
 
 #include "audio.h"
-#include "camera.h"
 
 #include <cstdio>
 #include <fcntl.h>
@@ -10,6 +10,7 @@
 
 bool Audio::init() {
     if(mixer_ != nullptr) { return true; }
+    dbg_ = (getenv("AUDIO_DEBUG") != nullptr);
     if(!MIX_Init()) {
         printf("audio: unavailable (%s) -- running silent\n", SDL_GetError());
         return false;
@@ -24,6 +25,11 @@ bool Audio::init() {
     if(savedErr != -1 && devnull != -1) { dup2(devnull, 2); }
     if(devnull != -1) { close(devnull); }
 
+    // A larger device buffer gives the real-time callback more headroom
+    // before an underrun (stutter) if it is briefly delayed. 4096 frames at
+    // 48 kHz is ~85 ms of slack -- comfortably above a frame or two of jank.
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "4096");
+
     // spec = NULL: take the device's native format; the mixer converts.
     MIX_Mixer *m = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
 
@@ -37,6 +43,20 @@ bool Audio::init() {
         return false;
     }
     mixer_ = m;
+    if(dbg_) {
+        SDL_AudioSpec spec;
+        if(MIX_GetMixerFormat(mixer_, &spec)) {
+            printf("[aud] init: device OK %dHz/%dch/%s  mixerGain=%.2f\n",
+                   (int)spec.freq, (int)spec.channels,
+                   spec.format == SDL_AUDIO_F32 ? "F32"
+                   : (spec.format == SDL_AUDIO_S16 ? "S16"
+                   : (spec.format == SDL_AUDIO_S32 ? "S32" : "?")),
+                   (double)MIX_GetMixerGain(mixer_));
+        } else {
+            printf("[aud] init: device OK (format query failed: %s)\n", SDL_GetError());
+        }
+        fflush(stdout);
+    }
     return true;
 }
 
@@ -56,24 +76,36 @@ void Audio::shutdown() {
 MIX_Audio *Audio::loadAudio(const std::string &path) {
     auto it = audios_.find(path);
     if(it != audios_.end()) { return it->second; }
-    // predecode = false: keep the (compressed) file data in RAM and decode
-    // on playback -- the 10-minute music track stays ~9 MB, not ~50.
-    MIX_Audio *a = MIX_LoadAudio(mixer_, path.c_str(), false);
+    // predecode = true: decode the whole file into PCM at load time so the
+    // real-time audio callback only COPIES samples. With predecode=false the
+    // OGG is decoded on the fly inside the callback, and whenever that thread
+    // is briefly delayed (OS scheduling, a physics/terrain spike) the buffer
+    // underruns and the music stutters -- the "choppy at moments". The cost
+    // is ~100 MB of RAM for the 10-minute track, which is worth the smooth
+    // playback (the SFX are tiny either way).
+    MIX_Audio *a = MIX_LoadAudio(mixer_, path.c_str(), true);
     if(a == nullptr) {
         printf("audio: cannot load %s: %s\n", path.c_str(), SDL_GetError());
         return nullptr;
     }
     audios_[path] = a;
+    if(dbg_) {
+        SDL_AudioSpec spec;
+        const char *fmt = "?";
+        if(MIX_GetAudioFormat(a, &spec)) {
+            fmt = (spec.format == SDL_AUDIO_F32) ? "F32"
+                 : (spec.format == SDL_AUDIO_S16) ? "S16"
+                 : (spec.format == SDL_AUDIO_S32) ? "S32" : "?";
+            printf("[aud] load: %s  %dHz/%dch/%s  dur=%lldms\n",
+                   path.c_str(), (int)spec.freq, (int)spec.channels, fmt,
+                   (long long)MIX_GetAudioDuration(a));
+        }
+        fflush(stdout);
+    }
     return a;
 }
 
-void Audio::setMixerPos(MIX_Track *t, const glm::dvec3 &world, const Camera &cam) {
-    const glm::dvec3 p = listenerRelative(cam.pos, cam.up, cam.forward, world);
-    MIX_Point3D mp = { (float)p.x, (float)p.y, (float)p.z };
-    MIX_SetTrack3DPosition(t, &mp);
-}
-
-void Audio::playOnce(const std::string &path, const glm::dvec3 &worldPos) {
+void Audio::playOnce(const std::string &path, float balance) {
     if(mixer_ == nullptr) { return; }
     MIX_Audio *a = loadAudio(path);
     if(a == nullptr) { return; }
@@ -81,13 +113,43 @@ void Audio::playOnce(const std::string &path, const glm::dvec3 &worldPos) {
     MIX_Track *t = MIX_CreateTrack(mixer_);
     if(t == nullptr) { return; }
     if(!MIX_SetTrackAudio(t, a)) { MIX_DestroyTrack(t); return; }
-    MIX_SetTrackGain(t, sfxVol_);
-    if(!MIX_PlayTrack(t, 0)) { MIX_DestroyTrack(t); return; }
-    oneShots_.push_back({ t, worldPos });
+    const float gain = sfxVol_ * balance;   // balance trims a hot one-shot down
+    MIX_SetTrackGain(t, gain);
+    const bool ok = MIX_PlayTrack(t, 0);
+    if(dbg_) {
+        printf("[aud] playOnce: %s gain=%.2f (balance=%.2f) playing=%d\n",
+               path.c_str(), (double)gain, (double)balance,
+               (int)MIX_TrackPlaying(t));
+        fflush(stdout);
+    }
+    if(!ok) { MIX_DestroyTrack(t); return; }
+    Shot s; s.t = t; s.born_ms = SDL_GetTicks();
+    oneShots_.push_back(s);
 }
 
-void Audio::setLoop(const std::string &path, bool active, float gain, const glm::dvec3 &worldPos) {
+void Audio::setLoop(const std::string &path, bool active, float gain) {
     if(mixer_ == nullptr) { return; }
+    if(!active) {
+        // Engine off: fade out (no mid-wave cut = no "clipping" artifact).
+        // The fade is armed exactly ONCE: MIX_StopTrack(fade) leaves the track
+        // "playing" until the fade drains, so re-arming it every frame would
+        // never let it complete (the old "sticky engine"). update() reaps the
+        // track when the fade finishes.
+        loopActive_ = false;
+        if(loop_ == nullptr) { return; }
+        if(!loopStopping_) {
+            loopStopping_ = true;
+            if(dbg_) { printf("[aud] setLoop: STOP (fading out)\n"); fflush(stdout); }
+            MIX_StopTrack(loop_, MIX_TrackMSToFrames(loop_, 150));
+        }
+        return;
+    }
+    // A re-ignition during a stop-fade: start fresh (the clean way to cancel
+    // the fade and relight at full level).
+    if(loopStopping_) {
+        if(loop_ != nullptr) { MIX_DestroyTrack(loop_); loop_ = nullptr; loopPath_.clear(); }
+        loopStopping_ = false;
+    }
     if(loop_ == nullptr || loopPath_ != path) {
         // A different loop: retire the old track (its audio stays cached).
         if(loop_ != nullptr) { MIX_DestroyTrack(loop_); }
@@ -101,25 +163,22 @@ void Audio::setLoop(const std::string &path, bool active, float gain, const glm:
         loopActive_ = false;
     }
     loopGain_ = gain;
-    loopWorld_ = worldPos;
-    if(!active) {
-        if(MIX_TrackPlaying(loop_)) {
-            const Sint64 fade = MIX_TrackMSToFrames(loop_, 120);
-            MIX_StopTrack(loop_, fade);
-        }
-        loopActive_ = false;
-        return;
-    }
     if(!MIX_TrackPlaying(loop_)) {
-        // a short fade-in so ignition doesn't pop
-        SDL_PropertiesID o = SDL_CreateProperties();
-        SDL_SetNumberProperty(o, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
-        SDL_SetNumberProperty(o, MIX_PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, 60);
-        MIX_PlayTrack(loop_, o);
-        SDL_DestroyProperties(o);
+        // A fresh track starts at the gain set below; a fade-in from zero is
+        // what reads as a "click", so light it at full level instead.
+        if(!MIX_PlayTrack(loop_, 0)) {
+            MIX_DestroyTrack(loop_);
+            loop_ = nullptr;
+            return;
+        }
     }
     MIX_SetTrackGain(loop_, gain * sfxVol_);
     loopActive_ = true;
+    if(dbg_) {
+        printf("[aud] setLoop: active gain=%.2f playing=%d\n",
+               (double)gain, (int)MIX_TrackPlaying(loop_));
+        fflush(stdout);
+    }
 }
 
 void Audio::setMusic(const std::string &path) {
@@ -132,12 +191,12 @@ void Audio::setMusic(const std::string &path) {
         if(music_ == nullptr) { return; }
         if(!MIX_SetTrackAudio(music_, a)) { MIX_DestroyTrack(music_); music_ = nullptr; return; }
         MIX_SetTrackLoops(music_, -1);
-        musicPath_ = path;
     } else if(!MIX_SetTrackAudio(music_, a)) {
         MIX_DestroyTrack(music_);
         music_ = nullptr;
         return;
     }
+    musicPath_ = path;   // keep the guard above honest on a path swap
     if(MIX_TrackPlaying(music_)) { MIX_StopTrack(music_, 0); }
     SDL_PropertiesID o = SDL_CreateProperties();
     SDL_SetNumberProperty(o, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
@@ -166,18 +225,27 @@ void Audio::setMusicVolume(float v) {
     }
 }
 
-void Audio::update(const Camera &cam) {
+void Audio::update() {
     if(mixer_ == nullptr) { return; }
     for(size_t i = oneShots_.size(); i-- > 0;) {
         Shot &s = oneShots_[i];
         if(!MIX_TrackPlaying(s.t)) {
+            if(dbg_) {
+                printf("[aud] reap: one-shot %p lived %d ms\n",
+                       (void *)s.t,
+                       (int)(SDL_GetTicks() - s.born_ms));
+                fflush(stdout);
+            }
             MIX_DestroyTrack(s.t);
             oneShots_.erase(oneShots_.begin() + (int)i);
-            continue;
         }
-        setMixerPos(s.t, s.world, cam);
     }
-    if(loopActive_ && loop_ != nullptr && MIX_TrackPlaying(loop_)) {
-        setMixerPos(loop_, loopWorld_, cam);
+    // A stop-fade finished (the track left the "playing" state): reclaim it.
+    if(loopStopping_ && loop_ != nullptr && !MIX_TrackPlaying(loop_)) {
+        if(dbg_) { printf("[aud] loop fade done -> destroyed\n"); fflush(stdout); }
+        MIX_DestroyTrack(loop_);
+        loop_ = nullptr;
+        loopPath_.clear();
+        loopStopping_ = false;
     }
 }
