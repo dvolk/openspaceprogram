@@ -6,8 +6,7 @@
 #include <chrono>
 #include <ctime>
 #include <cstdlib>
-#include <sys/stat.h>
-#include <unistd.h>   // access() (the --load slot fallback)
+#include <filesystem>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -360,9 +359,8 @@ int main(int argc, char **argv)
         // --load agree, and an explicit path still wins over a same-named
         // slot.
         std::string load_dir = args.load_name;
-        if(access((load_dir + "/save.json").c_str(), F_OK) != 0 &&
-           access((datadir::saves() + "/" + load_dir + "/save.json").c_str(),
-                  F_OK) == 0) {
+        if(!std::filesystem::exists(load_dir + "/save.json") &&
+           std::filesystem::exists(datadir::saves() + "/" + load_dir + "/save.json")) {
             load_dir = datadir::saves() + "/" + load_dir;
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
@@ -1081,7 +1079,10 @@ int main(int argc, char **argv)
                 char stamp[32];
                 strftime(stamp, sizeof(stamp), "%Y_%m_%d_%H_%M_%S", &tm);
                 snprintf(fname, sizeof(fname), "./tmp/osp_%s.png", stamp);
-                mkdir("./tmp", 0755);
+                {
+                    std::error_code ec;   // non-throwing: a failure just fails the shot
+                    std::filesystem::create_directories("./tmp", ec);
+                }
                 if(display.SaveScreenshot(fname)) {
                     screenshot_count++;
                 }

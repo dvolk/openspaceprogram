@@ -24,7 +24,7 @@
 //
 // The pure JSON (de)serialization below (SaveMeta / SaveShip <-> nlohmann) is
 // header-only, as are the save-directory helpers (ensure_dir / list_saves /
-// delete_save -- plain POSIX file-system ops, no game state): both are
+// delete_save -- std::filesystem ops, no game state): both are
 // unit-testable headless (tests/test_save.cpp) with no Game / Bullet link.
 // The Game-coupled capture/restore (save_game / load_game) lives in save.cpp.
 
@@ -32,14 +32,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <dirent.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
@@ -442,63 +438,60 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
 }
 
 // ---- the save-directory helpers (inline: pure file-system, no game state) --
+// All std::filesystem, so portable: the create/list/delete ops that used to
+// be POSIX (dirent + `rm -rf` via a shell) are now cross-platform calls, and
+// deleting no longer shells out at all.
 
 // Create dir (and any missing parents) if it does not exist. No-op if it does.
+// Non-throwing: a creation failure (e.g. an unwritable data dir) surfaces at
+// the subsequent file write, which names the actual file -- matching the old
+// mkdir(2) behavior of ignoring the mkdir error.
 inline void ensure_dir(const std::string &dir) {
     if(dir.empty()) { return; }
-    std::string cur;
-    for(size_t i = 0; i < dir.size(); i++) {
-        cur += dir[i];
-        if(dir[i] == '/' && cur.size() > 1) { mkdir(cur.c_str(), 0755); }
-    }
-    mkdir(dir.c_str(), 0755);
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
 }
 
 // List the save names under base (e.g. "saves"), sorted; empty if base is
 // missing or empty. A name is a subdirectory that holds a save.json.
 inline std::vector<std::string> list_saves(const std::string &base) {
     std::vector<std::string> names;
-    DIR *d = opendir(base.c_str());
-    if(d == nullptr) { return names; }
-    struct dirent *e;
-    while((e = readdir(d)) != nullptr) {
-        std::string name = e->d_name;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto it = fs::directory_iterator(base, ec);
+    if(ec) { return names; }   // base missing or not a directory
+    for(const auto &entry : it) {
+        const std::string name = entry.path().filename().string();
         if(name == "." || name == "..") { continue; }
-        if(access((base + "/" + name + "/save.json").c_str(), F_OK) == 0) {
+        if(fs::is_directory(entry) && fs::exists(entry.path() / "save.json")) {
             names.push_back(name);
         }
     }
-    closedir(d);
     std::sort(names.begin(), names.end());
     return names;
 }
 
-// Delete the save at dir (rm -rf). Refuses a path not under the given base
-// (a guard against a typo'd delete wiping something else). The prefix check
-// is string-based, so it would still pass "base/../evil" (rm -rf follows the
-// ".." and escapes the base) -- a path component of ".." is rejected too.
+// Delete the save at dir (recursive, no shell). Refuses a path not strictly
+// under the given base (a guard against a typo'd delete wiping something
+// else): the lexical relative path must be non-empty, not "." (dir == base),
+// have no root (a different drive / absolute escape), and contain no ".."
+// component at any depth (a ".." anywhere would climb out of the base).
 inline void delete_save(const std::string &dir, const std::string &base) {
-    std::string prefix = base;
-    if(!prefix.empty() && prefix.back() != '/') { prefix += "/"; }
-    if(dir.size() <= prefix.size() || dir.compare(0, prefix.size(), prefix) != 0) {
+    namespace fs = std::filesystem;
+    const fs::path rel = fs::path(dir).lexically_relative(fs::path(base));
+    const bool escapes = rel.empty() || rel == fs::path(".") ||
+                         rel.has_root_path() ||
+                         std::any_of(rel.begin(), rel.end(),
+                                     [](const fs::path &e) { return e == ".."; });
+    if(escapes) {
         throw std::runtime_error("delete_save: refusing to delete '" + dir
                                  + "' (not under '" + base + "/')");
     }
-    size_t i = prefix.size();
-    while(i < dir.size()) {
-        size_t slash = dir.find('/', i);
-        std::string comp = dir.substr(i, (slash == std::string::npos)
-                                          ? std::string::npos : slash - i);
-        if(comp == "..") {
-            throw std::runtime_error("delete_save: refusing to delete '" + dir
-                                     + "' ('..' would escape '" + base + "/')");
-        }
-        if(slash == std::string::npos) { break; }
-        i = slash + 1;
-    }
-    std::string cmd = "rm -rf '" + dir + "'";
-    if(system(cmd.c_str()) != 0) {
-        throw std::runtime_error("delete_save: failed to delete '" + dir + "'");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    if(ec) {
+        throw std::runtime_error("delete_save: failed to delete '" + dir
+                                 + "': " + ec.message());
     }
 }
 

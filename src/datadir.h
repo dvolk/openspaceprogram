@@ -12,18 +12,16 @@
 // A --data-dir override (empty = default) redirects it -- portable installs,
 // tests, CI.
 //
-// The path resolution is portable; the file-ops layer around it (save.h,
-// this make_dir) is POSIX, so the game itself runs on Linux today.
-//
 // Header-only, no game state: the same "plain file-system ops" stance as
-// save.h's directory helpers.
+// save.h's directory helpers. Both use std::filesystem, so this whole layer
+// is portable (the path resolution via SDL_GetPrefPath and the directory
+// ops alike).
 
 #include <SDL3/SDL.h>
 
+#include <filesystem>
 #include <cstdio>
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 namespace datadir {
 
@@ -31,16 +29,14 @@ namespace datadir {
 static const char *kAppName = "openspaceprogram";
 
 // Create dir (and any missing parents) if it does not exist. No-op if it
-// does. (The same mkdir -p as save.h's ensure_dir, kept local so this header
-// stays light.)
+// does. (std::filesystem, so portable -- the same as save.h's ensure_dir.)
+// Non-throwing: a creation failure surfaces later at the settings save or
+// the first write (which names the file), not as an uncaught exception at
+// startup -- matching the old mkdir(2) behavior of ignoring the error.
 inline void make_dir(const std::string &dir) {
     if(dir.empty()) { return; }
-    std::string cur;
-    for(size_t i = 0; i < dir.size(); i++) {
-        cur += dir[i];
-        if(dir[i] == '/' && cur.size() > 1) { mkdir(cur.c_str(), 0755); }
-    }
-    mkdir(dir.c_str(), 0755);
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
 }
 
 // The data directory (trailing '/'). Empty until init() runs; the accessors

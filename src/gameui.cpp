@@ -14,10 +14,9 @@
 #include <climits>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>   // last_write_time (the load picker's res/ships mtime gate)
 #include <map>
 #include <vector>
-
-#include <sys/stat.h>   // stat (the load picker's res/ships mtime gate)
 
 #include "calendar.h"    // CalTime (the HUD + Game Debug Info clocks)
 #include "version.h"     // VERSION (the main menu)
@@ -2325,11 +2324,10 @@ void drawSpaceCenterMenu(Game &g) {
 }
 
 // A save-slot name is a single directory under saves/. Whitelist to letters,
-// digits, - _ . so a name can never carry a path separator, a dot-name, or
-// shell metacharacters: delete_save shells out (rm -rf), and this is the
-// only free-text input that reaches it. (The CLI --save/--load take full
-// paths by design; this is the user-facing slot picker, so it stays inside
-// saves/.)
+// digits, - _ . so a name can never carry a path separator or be a dot-name --
+// it must stay a single component under saves/. (Defense-in-depth: delete_save
+// also guards its base, and the CLI --save/--load take full paths by design;
+// this is the user-facing slot picker, so it stays inside saves/.)
 static bool safeSlotName(const std::string &n) {
     if(n.empty() || n == "." || n == "..") { return false; }
     for(unsigned char c : n) {
@@ -2472,12 +2470,15 @@ void drawVabUI(Game &g) {
     // (a Save adds/renames a file): re-scanning it every frame would be ~3
     // syscalls/frame for a list that only ever changes on a Save.
     static std::vector<std::string> ships;
-    static time_t shipDirMtime = -1;   // -1 = not scanned yet
+    static bool shipsScanned = false;   // a real mtime could be the epoch; don't rely on that
+    static std::filesystem::file_time_type shipDirMtime;
     {
-        struct stat st;
-        if(stat("res/ships", &st) == 0 && st.st_mtime != shipDirMtime) {
+        std::error_code ec;
+        const auto mtime = std::filesystem::last_write_time("res/ships", ec);
+        if(!ec && (!shipsScanned || mtime != shipDirMtime)) {
             ships = list_ship_defs("res/ships");
-            shipDirMtime = st.st_mtime;
+            shipDirMtime = mtime;
+            shipsScanned = true;
         }
     }
     static int loadSel = 0;

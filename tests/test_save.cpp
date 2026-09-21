@@ -21,6 +21,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 static int failures = 0;
@@ -474,21 +476,27 @@ int main() {
 
     // --- the save-directory helpers (pure file-system, no game) -----------
     // Work in a scratch dir under tmp/ so we never touch a real saves/.
+    // Setup + assertions use std::filesystem too, like the code under test.
+    namespace fs = std::filesystem;
+    auto write_file = [](const std::string &p) {
+        fs::create_directories(fs::path(p).parent_path());
+        std::ofstream(p) << "{}";
+    };
     const std::string base = "tmp/test_save_dir";
-    system(("rm -rf '" + base + "'").c_str());
+    fs::remove_all(base);
 
     // ensure_dir: creates the dir and any missing parents (no-op if exists).
     ensure_dir(base + "/a/b/c");
-    CHECK(access((base + "/a/b/c").c_str(), F_OK) == 0);
+    CHECK(fs::exists(base + "/a/b/c"));
     ensure_dir(base + "/a/b/c");   // again: no throw, still there
-    CHECK(access((base + "/a/b/c").c_str(), F_OK) == 0);
+    CHECK(fs::exists(base + "/a/b/c"));
 
     // list_saves: a subdir WITH a save.json is listed (sorted); one without
     // is skipped, and so is a plain file at the top level.
-    system(("mkdir -p '" + base + "/bravo'").c_str());   // no save.json -> skip
-    system(("touch '" + base + "/note.txt'").c_str());   // a file, not a dir
-    system(("mkdir -p '" + base + "/alpha' && echo '{}' > '" + base + "/alpha/save.json'").c_str());
-    system(("mkdir -p '" + base + "/charlie' && echo '{}' > '" + base + "/charlie/save.json'").c_str());
+    fs::create_directories(base + "/bravo");   // no save.json -> skip
+    write_file(base + "/note.txt");            // a file, not a dir
+    write_file(base + "/alpha/save.json");
+    write_file(base + "/charlie/save.json");
     std::vector<std::string> saves = list_saves(base);
     CHECK(saves.size() == 2);
     if(saves.size() == 2) {
@@ -496,24 +504,36 @@ int main() {
         CHECK(saves[1] == "charlie");
     }
 
-    // delete_save: refuses a path not under base, and a ".." component that
-    // would escape base; deletes a valid in-base path and leaves the rest.
+    // delete_save: refuses anything not STRICTLY under base -- a sibling that
+    // shares the prefix, a leading "..", a nested ".." that climbs out, and
+    // base itself (which would wipe the whole saves dir) -- and deletes a
+    // valid in-base path, leaving the rest.
     bool refused = false;
     try { delete_save("tmp/otherplace", base); }
     catch(const std::exception &) { refused = true; }
     CHECK(refused);
 
-    bool refusedDot = false;
+    refused = false;
     try { delete_save(base + "/../evil", base); }
-    catch(const std::exception &) { refusedDot = true; }
-    CHECK(refusedDot);
-    CHECK(access("tmp/evil", F_OK) != 0);   // the ".." escape never happened
+    catch(const std::exception &) { refused = true; }
+    CHECK(refused);
+
+    refused = false;
+    try { delete_save(base + "/alpha/../../evil", base); }
+    catch(const std::exception &) { refused = true; }
+    CHECK(refused);   // a nested ".." that escapes base
+
+    refused = false;
+    try { delete_save(base, base); }
+    catch(const std::exception &) { refused = true; }
+    CHECK(refused);   // dir == base
+    CHECK(!fs::exists("tmp/evil"));   // none of the escapes happened
 
     delete_save(base + "/alpha", base);
-    CHECK(access((base + "/alpha").c_str(), F_OK) != 0);   // alpha is gone
-    CHECK(access((base + "/charlie/save.json").c_str(), F_OK) == 0);  // charlie stays
+    CHECK(!fs::exists(base + "/alpha"));   // alpha is gone
+    CHECK(fs::exists(base + "/charlie/save.json"));  // charlie stays
 
-    system(("rm -rf '" + base + "'").c_str());   // clean up the scratch dir
+    fs::remove_all(base);   // clean up the scratch dir
 
     if(failures) {
         printf("test_save: %d FAILURE(S)\n", failures);
