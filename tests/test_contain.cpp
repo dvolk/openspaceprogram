@@ -311,6 +311,47 @@ int main() {
         destroyVehicle(P.v);   // frees P's parts; the kerbal is already freed
     }
 
+    /* --- delete a ship with crew aboard, edge wired (the 2.1 double-free) -- */
+    /* The exact scenario 2.1 warns about, now that 2.4 wires the edge: the
+       kerbal is in S->crew (sole owner) AND its root part is in cap->contents
+       (non-owning back-reference). ~Vehicle deletes crew first (vehicle.cpp:
+       1337-1338) then parts (:1342); if contents were owning, ~Part(cap) would
+       free the already-freed kerbal root part a second time -- deterministic,
+       because the crew-first ordering always precedes it. The non-owning
+       contents only frees its pointer array on teardown, so a clean exit under
+       ASan (tmp/test_contain_asan) is the proof. */
+    {
+        printf("== delete ship with crew aboard (edge wired, non-owning) ==\n");
+        Ship S; S.v = new Vehicle; S.v->name = "S";
+        Part *sTank = mkPart(S, "sTank", 500.0, 1.0, 1.0, 1.0, 0, false);
+        Part *sCap  = mkPart(S, "sCapsule", 100.0, 1.0, 1.0, 0.5, 1, false);
+        S.v->setRoot(sCap);
+        S.v->attachDown(sTank);
+        S.v->controller = sCap;
+        S.v->init();
+        S.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+        Ship K; K.v = new TestCrew; K.v->name = "K";
+        Part *kSuit = mkPart(K, "kSuit", 97.05, 0.2, 0.2, 0.375, 0, false);
+        K.v->setRoot(kSuit);
+        K.v->controller = kSuit;
+        K.v->init();
+        K.v->placeShip(glm::dvec3(30.0), glm::dmat3(1.0));
+        static_cast<TestCrew *>(K.v)->cap = sCap;
+
+        /* board, exactly as kerbalBoard does: ownership + edge, both ways */
+        S.v->crew.push_back(K.v);
+        sCap->contents.push_back(kSuit);
+        kSuit->container = sCap;
+
+        CHECK_TRUE(S.v->checkPartInvariants(), "S passes with the crew wired");
+        CHECK_TRUE(K.v->checkPartInvariants(), "K passes with the crew wired");
+
+        /* the double-free check: crew freed before parts; the non-owning
+           contents must not free the (now dangling) suit a second time. */
+        destroyVehicle(S.v);   // deletes K (in S.v->crew) then S's parts
+    }
+
     /* teardown: delete the crew first, as ~Vehicle does for its own crew --
        the ordering the non-owning contents edge must tolerate. */
     destroyVehicle(C.v);

@@ -195,6 +195,11 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     k->aboardPart = capPart;
 
     ship->crew.push_back(k);
+    /* step 2.4: register the containment edge (the kerbal's part is parked in
+       the capsule, both directions). Vehicle::crew stays the sole owner;
+       contents is a non-owning back-reference (2.1). */
+    capPart->contents.push_back(k->parts[0]);
+    k->parts[0]->container = capPart;
     int aboard = 0;
     for(auto *c : ship->crew) {
         if(static_cast<Kerbal *>(c)->aboardPart == capPart) { aboard++; }

@@ -418,6 +418,11 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->railFrozen = true;
         k->aboardPart = cap;
         ship->crew.push_back(k);
+        /* step 2.4: register the containment edge (the kerbal's part is
+           parked in the capsule, both directions). Vehicle::crew stays the
+           sole owner; contents is a non-owning back-reference (2.1). */
+        cap->contents.push_back(k->parts[0]);
+        k->parts[0]->container = cap;
     }
     return k;
 }

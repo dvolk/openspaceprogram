@@ -183,4 +183,63 @@ Manual round-trip: boot a crewed racer -> --save -> the kerbal saves
 aboard_part 1 (= the capsule's uid in the same save) -> --load accepts it
 ("Loaded game", no refusal).
 
-### 2.4 — register crew in capsulePart->contents  (pending)
+### 2.4 — register crew in capsulePart->contents  (done)
+
+What changed (the report's file list: game.cpp / ships.cpp / save.cpp):
+- game.cpp kerbalBoard: after `ship->crew.push_back(k)`, set the containment
+  edge both ways -- `capPart->contents.push_back(k->parts[0]);
+  k->parts[0]->container = capPart;`.
+- game.cpp kerbalEVA: after `k->aboardPart = nullptr`, clear it -- erase
+  `k->parts[0]` from `capPart->contents` and set `k->parts[0]->container =
+  nullptr;`.
+- ships.cpp spawn_crew_kerbal: after `ship->crew.push_back(k)`, same edge as
+  board (the startup-crew path is a third boarding site the report's
+  board/EVA pair doesn't name). The e2e-29-pinned aboard-count printf stays.
+- save.cpp buildKerbalFromSave: after `ship->crew.push_back(k)`, same edge as
+  board -- a loaded kerbal is aboard, so it must be registered in the
+  capsule's contents the same way a live board would. (The reader already
+  validated the capsule in 2.3, so this is safe.)
+- game.cpp partCrew(ship, capPart): now reads `capPart->contents` (the
+  non-owning edge) instead of scanning the ship's crew by the part's index --
+  exactly the report's "read contents instead of scanning by index". The
+  invariant guarantees each contained part's owner isEva, so the Kerbal cast
+  is sound. `ship` param kept (caller gameui.cpp:1647 unchanged).
+
+What did NOT change (and why):
+- Merge/split (absorbShip / extractSubtreeAsShip) need NO edge work. The
+  kerbal's root Part* is stable through both (2.2 proved it), so the
+  container pointer and the capsule's contents entry keep naming the same
+  objects; only owner re-points, which the invariant already checks. No
+  reindex, no edge move.
+- Vehicle::crew stays the SOLE owner of aboard Kerbals (report §1.10 item 8:
+  teardown + load_game rollback both depend on it). contents is a
+  non-owning back-reference per 2.1 -- an owning ~Part would double-free an
+  aboard kerbal, because ~Vehicle deletes crew (vehicle.cpp:1337-1338) before
+  parts (:1342). The aboardPart field stays (the report's 2.4 file list is
+  game.cpp/ships.cpp/save.cpp, NOT eva.h -- collapsing it to an accessor was
+  out of scope).
+
+New test (tests/test_contain.cpp): "delete ship with crew aboard (edge
+wired, non-owning)". The exact 2.1 double-free scenario: kerbal in ship->crew
+(sole owner) AND its root part in cap->contents (edge wired both ways), then
+destroyVehicle(ship) -- crew freed before parts, non-owning contents must not
+free the now-dangling suit a second time. 43 checks, all pass. This is the
+unit-level twin of the report's "ASan run of delete ship with crew aboard".
+
+Verification:
+- make test green (test_contain 43, test_save round-trip OK, all suites PASS).
+- e2e 29/54/65/79/81/45/46 all PASS (7/7) -- covers spawn+EVA (29), the
+  round-tripped uid save (54), the non-capsule refusal (81), dock (45/46),
+  board->dock->EVA seam (79).
+- ASan: built tests/test_contain.cpp + the TCOMMON sources with
+  -fsanitize=address,undefined (tmp/build_test_contain_asan.sh ->
+  tmp/test_contain_asan), ASAN_OPTIONS=detect_leaks=0 (the shader/mesh/texture
+  registries are intentional leaks). Clean exit, no double-free, no UBSan
+  error -- the new "delete ship with crew aboard (edge wired)" section is the
+  2.1 scenario under the sanitizer. RESULT: clean, all 43 checks passed, no
+  double-free, no UBSan hit (confirmed 2026-09-21).
+- Manual board/EVA/re-board/F6-cycle: the scripted e2e covers spawn->EVA (29)
+  and board->dock->EVA (79). Re-board and F6-cycle-skip-aboard-crew are UI
+  clicks (Board/EVA buttons + F6), left as a manual check per the report's
+  "manual:" wording -- select_ship already refuses isCrewAboard(), so F6
+  cycling skips aboard crew by construction.

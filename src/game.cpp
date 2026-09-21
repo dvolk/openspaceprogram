@@ -520,10 +520,14 @@ std::vector<Kerbal *> shipCrew(Vehicle *ship) {
 }
 
 std::vector<Kerbal *> partCrew(Vehicle *ship, Part *capPart) {
+    /* step 2.4: read the containment edge (capPart->contents) instead of
+       scanning ship->crew by aboardPart. A contained part's owner is the
+       character (checkPartInvariants guarantees isEva), so the cast is safe.
+       The `ship` param is kept for the call site's clarity (capPart is one of
+       its parts); the edge is the source of the crew list now. */
     std::vector<Kerbal *> out;
-    for(auto *k : ship->crew) {
-        Kerbal *kb = static_cast<Kerbal *>(k);
-        if(kb->aboardPart == capPart) { out.push_back(kb); }
+    for(Part *p : capPart->contents) {
+        out.push_back(static_cast<Kerbal *>(p->owner));
     }
     return out;
 }
@@ -596,6 +600,12 @@ void Game::kerbalEVA(Kerbal *k) {
     }
     if(ship->m_parent != nullptr) { ship->m_parent->ships.push_back(k); }
     k->aboardPart = nullptr;
+    /* step 2.4: clear the containment edge (the kerbal leaves the capsule) --
+       both directions, so checkPartInvariants still holds. */
+    for(auto it = capPart->contents.begin(); it != capPart->contents.end(); it++) {
+        if(*it == k->parts[0]) { capPart->contents.erase(it); break; }
+    }
+    k->parts[0]->container = nullptr;
 
     /* back into the physics world (it was parked while aboard) */
     AddPhysicsBody(kb);
@@ -664,6 +674,11 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     k->m_parent = ship->m_parent;
     k->aboardPart = capPart;
     ship->crew.push_back(k);
+    /* step 2.4: register the containment edge (the kerbal's part is parked in
+       the capsule, both directions). Vehicle::crew stays the sole owner;
+       contents is a non-owning back-reference (2.1). */
+    capPart->contents.push_back(k->parts[0]);
+    k->parts[0]->container = capPart;
     if(kerbal == k) { kerbal = nullptr; }
     toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
     printf("[crew] t=%.1f Board: '%s' into '%s' part %zu\n",
