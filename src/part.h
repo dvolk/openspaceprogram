@@ -24,13 +24,19 @@
 //
 // Ownership: Part OWNS its Body (deletes it in ~Part). The PartDef is
 // non-owning (the catalog outlives the ship). Vehicle owns the Part (deletes
-// each Part in ~Vehicle).
+// each Part in ~Vehicle). The containment edge (container/contents, below)
+// is NON-OWNING in both directions: ~Part must never delete contents -- a
+// contained kerbal is owned by its Kerbal vehicle (Vehicle::crew), and
+// ~Vehicle deletes crew BEFORE its parts, so an owning ~Part would double
+// free it deterministically.
 
 #include <atomic>
 #include <cstdint>
 
 #include "body.h"      // Body (complete type -- ~Part deletes it)
 #include "shipdef.h"   // PartDef, ResourceContent
+
+class Vehicle;   // Part::owner (the parts list it is attached to)
 
 /* Process-wide monotonic counter for Part::uid. A function-local static in an
    inline function is ONE counter across every translation unit, and wrapping
@@ -83,6 +89,32 @@ struct Part {
        authoritative source for the tree; a Part* is stable for the ship's
        lifetime, so staging needs no index remapping. */
     Part *parent = nullptr;
+
+    /* --- the containment edge (inventory design report, phase 2) --------
+       Every Part is attached to exactly one Vehicle (its `owner`) and is
+       contained in at most one Part. Aboard, a kerbal's part is contained
+       in its capsule: it rides in `container`'s `contents` instead of being
+       simulated in its own right. Phase 4's inventory items are the SAME
+       edge under a suit or cargo part -- one mechanism, two features.
+
+       `owner` is the back-pointer to the Vehicle::parts list (which stays
+       the ownership list): setRoot/attach set it, absorbShip re-points the
+       absorbed ship's parts to the survivor, extractSubtreeAsShip re-points
+       the dropped side to the new ship. A Part* is stable through both, so
+       only this pointer moves.
+
+       `container`/`contents` are NON-OWNING (see the header): the contained
+       kerbal's Part is owned by its Kerbal vehicle (Vehicle::crew), and the
+       owner for inventory items is deliberately deferred to phase 5 -- until
+       a contained kerbal stops being a Vehicle, contents is a traversal
+       list, never a lifetime.
+
+       Vehicle::checkPartInvariants enforces this on every build, stage and
+       burn-triggered refresh (rebuildCompound), next to
+       checkCompoundInvariants. */
+    Vehicle *owner = nullptr;      // attached: the Vehicle whose parts list holds this
+    Part *container = nullptr;     // contained: the part this one is parked in (a capsule)
+    std::vector<Part *> contents;  // contained: the parts parked in this one (non-owning)
 
     /* Authored pose in the SHIP-LOCAL frame S, where S is the root part's
        frame at build time: the root gets zero/identity and every other part

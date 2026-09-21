@@ -305,6 +305,19 @@ test_staging: obj_test/test_staging.o $(TCOMMON_OBJS)
 test_dock: obj_test/test_dock.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
+# containment edge (Part::owner/container/contents, part.h) + the invariant
+# check (Vehicle::checkPartInvariants, src/vehicle.cpp): owner is wired by
+# the attach primitives and re-pointed by merge/split; the container/
+# contents back-references hold and only a character's part (isEva) may be
+# contained, in a real capsule. The game populates no containment yet (step
+# 2.4 does), so this test wires a chain by hand -- the way the transitions
+# will -- and checks the invariant passes, and fails where it must fail.
+# A local TestCrew : Vehicle stands in for Kerbal (eva.cpp links game.h,
+# too heavy for a headless test); the invariant is keyed on the isEva()
+# virtual, so the stand-in exercises the same path.
+test_contain: obj_test/test_contain.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
 # ship mass properties (Vehicle::get_center_of_mass / getInertia from
 # src/vehicle.cpp): golden values against an independent analytic
 # parallel-axis assembly, incl. the products of inertia and rotated
@@ -461,7 +474,7 @@ test_keys: obj_test/test_keys.o obj_test/keys.o
 	$(CXX) -o $@ $^
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
-        test_power test_staging test_dock test_inertia test_rotation \
+        test_power test_staging test_dock test_contain test_inertia test_rotation \
         test_shipload test_save test_crew test_fleet test_calendar test_orbit \
         test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
@@ -478,6 +491,7 @@ test: $(TESTS)
 	./test_power
 	./test_staging
 	./test_dock
+	./test_contain
 	./test_inertia
 	./test_rotation
 	./test_shipload

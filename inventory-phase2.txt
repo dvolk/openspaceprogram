@@ -1,0 +1,86 @@
+# Inventory phase 2 — progress & findings
+
+Worklog for phase 2 (containment) of reports/inventory-design2026_09_20/.
+Living file: updated as each step lands. The design report + addendum are the
+contract; this file records what actually happened, decisions the report left
+open, and anything that looked odd.
+
+## Phase 1 verification (done 2026-09-21, before touching phase 2)
+
+Claim: "Phase 1 (identity + the two live bugs) is now complete" (addendum §7).
+Verified against the tree at c032d07:
+
+- [x] 1.1 Part::uid — part.h:35-46 (process-wide atomic counter, minted in
+      the Part ctor, part.h:96). All `new Part` sites covered: vehicle.cpp:102
+      (build), save.cpp:214 (load), docktest.cpp / radialtest.cpp (scaffolding
+      — they use the default ctor too, so they mint uids as well).
+- [x] 1.2 save is uid-keyed — save.h documents it; save.cpp writes uid for
+      parts/parent/controller/fuel links/seams/dock-target (110-154), load
+      resolves by uid with hard errors: uid==0 refused (194-198), duplicate
+      uid in one ship refused (199-202), two ships claiming one uid refused
+      (238-245), unknown controller refused (253-257), unknown fuel link /
+      seam endpoint refused (263-266, 297-300). findSavedPart adds the
+      membership check (410-419).
+- [x] 1.3 e2e 79-dock-save-load + fixture e2e/fixtures/save_docked present;
+      the two assertions (two fuel groups; undock names dockstation) are the
+      Repro A/B discriminators.
+- [x] 1.4 seams maintained — absorbShip moves B->seams before the new seam
+      (vehicle.cpp:1979-1985); extractSubtreeAsShip splits seams like fuel
+      links, dropping the cross-cut joint (vehicle.cpp:2086-2103); undock
+      relies on the split removing the seam (no pop in game.cpp).
+- [x] make test: green (exit 0, all suites).
+- [x] e2e: 45-dock, 46-undock, 53-save, 54-save-load, 79-dock-save-load —
+      5/5 PASS on the current tree.
+
+Conclusion: phase 1 is done; phase 2 starts from a clean state.
+
+## Phase 2 work log
+
+Plan (design report §4): 2.1 containment edge (unused) → 2.2 aboardPart
+index→pointer → 2.3 save the edge by uid + capsule check → 2.4 register crew
+in contents. One commit per step, make test + relevant e2e before each.
+
+### 2.1 — containment edge, unused  (in progress)
+
+Decisions (report left them open):
+
+- Ownership: `contents` is NON-OWNING through phases 2-4, and the owner for
+  inventory items is DEFERRED TO PHASE 5 (report step 2.1's second option).
+  Rationale: an owning ~Part would double-free an aboard kerbal
+  deterministically — ~Vehicle deletes crew (vehicle.cpp:1274-1276) BEFORE
+  its parts (:1279). Documented in part.h where the fields live.
+- The XOR invariant has a phase-2 exception: an aboard kerbal's part is BOTH
+  attached (owner = its Kerbal vehicle shell) and contained (container = the
+  capsule). The report's "never both" is the phase-5 end state. So the check
+  is: every part's owner back-reference holds; a contained part's owner MUST
+  be a character (isEva()); a capsule may only hold character parts; the
+  container/contents back-references agree. Enforced via
+  Vehicle::checkPartInvariants(), asserted from rebuildCompound (every
+  build/stage/refresh) next to checkCompoundInvariants.
+- checkPartInvariants RETURNS a bool (with a [part] diagnostic) instead of
+  asserting itself: rebuildCompound asserts it (same hard-fail style as
+  checkCompoundInvariants), and the headless test can call it directly and
+  check the negative cases. assert() is uncatchable, which would make the
+  "check actually fires" test impossible.
+- `owner` is wired in the two attach primitives (setRoot/attach — covers
+  build, load, docktest/radialtest and the hand-built test ships), then
+  re-pointed in absorbShip (B's parts → survivor) and extractSubtreeAsShip
+  (dropped side → new ship). A Part* is stable across both, so only the
+  owner pointer moves.
+- Test (tests/test_contain.cpp) uses a local `struct TestCrew : Vehicle`
+  overriding isEva(), NOT the real Kerbal: eva.cpp includes game.h, which
+  drags the whole game into a headless test link. The invariant is keyed on
+  the isEva() virtual, so the stand-in exercises the same code path.
+
+### 2.2 — aboardPart: index → pointer  (pending)
+
+Decision: keep `aboardPart` as a `Part*` FIELD in this step (the report's
+literal step), drop the `aboard` field (derived as `aboardPart->owner`),
+delete crewRebase + both reindex maps + the dispatch. The containment edge
+stays null until 2.4; the invariant still passes (nothing contained).
+Save stays in the old int format for this commit (save.cpp maps the pointer
+to an index on write and back on read); 2.3 swaps the format.
+
+### 2.3 — save the containment edge by uid  (pending)
+
+### 2.4 — register crew in capsulePart->contents  (pending)

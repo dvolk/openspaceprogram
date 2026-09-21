@@ -607,6 +607,59 @@ void Vehicle::rebuildCompound() {
     if(wasInWorld) { AddPhysicsBody(hull); }
 
     checkCompoundInvariants();
+    assert(checkPartInvariants() && "containment invariant broken (see [part] above)");
+}
+
+bool Vehicle::checkPartInvariants() const {
+    for(Part *p : parts) {
+        if(p->owner != this) {
+            printf("[part] '%s': part '%s' (uid %llu) is attached to the wrong "
+                   "vehicle\n", name.c_str(), p->id.c_str(),
+                   (unsigned long long)p->uid);
+            return false;
+        }
+        if(p->container != nullptr) {
+            /* phases 2-4: the only part that may be contained is a
+               character's own -- its owner is the character vehicle (isEva).
+               Phase 5 drops the exception when a contained kerbal stops
+               being a Vehicle (design report §2.6/§2.7). */
+            if(!isEva()) {
+                printf("[part] '%s': part '%s' (uid %llu) is contained, but "
+                       "this vehicle is not a character\n",
+                       name.c_str(), p->id.c_str(), (unsigned long long)p->uid);
+                return false;
+            }
+            const Part *cap = p->container;
+            if(cap->def == nullptr || cap->def->crew_capacity <= 0) {
+                printf("[part] '%s': a character is contained in a "
+                       "non-capsule part (uid %llu)\n", name.c_str(),
+                       (unsigned long long)cap->uid);
+                return false;
+            }
+            bool listed = false;
+            for(Part *c : cap->contents) { if(c == p) { listed = true; break; } }
+            if(!listed) {
+                printf("[part] '%s': part '%s' claims container uid %llu, "
+                       "but that part does not list it\n", name.c_str(),
+                       p->id.c_str(), (unsigned long long)cap->uid);
+                return false;
+            }
+        }
+        for(Part *c : p->contents) {
+            if(c->container != p) {
+                printf("[part] '%s': contents lists part uid %llu, but its "
+                       "container points elsewhere\n", name.c_str(),
+                       (unsigned long long)c->uid);
+                return false;
+            }
+            if(c->owner == nullptr || !c->owner->isEva()) {
+                printf("[part] '%s': part uid %llu in contents is not a "
+                       "character's\n", name.c_str(), (unsigned long long)c->uid);
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 glm::dvec3 Vehicle::compoundCom() const {
@@ -793,6 +846,7 @@ void Vehicle::setRoot(Part *part) {
     part->parent   = nullptr;
     part->localPos = glm::dvec3(0.0);
     part->localRot = glm::dmat3(1.0);
+    part->owner    = this;   // containment edge (part.h): parts list is the ownership list
     parts.push_back(part);
 }
 
@@ -800,6 +854,7 @@ void Vehicle::attach(Part *part, size_t parentIdx, const glm::dvec3 &localPos, c
     part->parent   = parts[parentIdx];
     part->localPos = localPos;
     part->localRot = localRot;
+    part->owner    = this;   // containment edge (part.h): parts list is the ownership list
     parts.push_back(part);
 }
 
@@ -1964,6 +2019,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     }
     B->crew.clear();
 
+    for(Part *q : B->parts) { q->owner = this; }   // they are OUR parts now
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
@@ -2064,6 +2120,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
     }
     root->parent = nullptr;   // root of the new ship
     nv->parts = nvParts;
+    for(Part *q : nvParts) { q->owner = nv; }   // the dropped side is ITS ship now
     /* controller: the build rule (the first wheel, else the root). */
     nv->controller = nullptr;
     for(size_t i = 0; i < nvParts.size(); i++) {
