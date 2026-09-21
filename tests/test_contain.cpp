@@ -365,11 +365,10 @@ int main() {
     }
 
     /* --- effectiveMass: a part carries what is parked inside it (3.1) --- */
-    /* The derived value phase 3 wires into the compound: a part's mass plus
-       the effectiveMass of every contained part, recursively. Unwired here
-       (the compound still reads body->mass), so this only pins the derived
-       value itself. A capsule with one kerbal is body + suit; a part with
-       nothing in it is just its body mass. */
+    /* The derived value phase 3 wires into the compound (3.2): a part's mass
+       plus the effectiveMass of every contained part, recursively. A capsule
+       with one kerbal is body + suit; a part with nothing in it is just its
+       body mass. */
     {
         printf("== effectiveMass: a part carries what is parked inside it ==\n");
         Ship M; M.v = new Vehicle; M.v->name = "M";

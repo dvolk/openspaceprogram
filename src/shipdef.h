@@ -343,8 +343,9 @@ struct PartDef {
     /* Crew capacity: how many EVA characters (src/eva.h) this part can hold
        aboard. > 0 -> a capsule (a character can EVA out of it and board it,
        see the crew transitions in game.cpp); 0 -> not a capsule. The
-       occupant's mass is added to / removed from this part's mass as they
-       board / leave (the "capsule weight changes with crew" rule). */
+       occupant's mass is DERIVED (Part::effectiveMass, phase 3) -- a
+       capsule's compound mass carries its crew without baking it into the
+       body (the "capsule weight changes with crew" rule). */
     int crew_capacity;
 
     /* true -> a decoupler: a staging boundary. When the ship's stage

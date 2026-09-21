@@ -684,6 +684,7 @@ static void test_contained_kerbal() {
     const glm::dvec3 capPos(0.0, 0.0, 2.0);
     Part *cap = addBox(s, "capsule", mCap, 2.0, 1.0, 1.0, capPos,
                        glm::dmat3(1.0));
+    s.defs.back().crew_capacity = 1;   // a real capsule (checkPartInvariants)
 
     // the kerbal: a one-part character parked inside the capsule (at its
     // center). Its mass rides the capsule through the containment edge, so

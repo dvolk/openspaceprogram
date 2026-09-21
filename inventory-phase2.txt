@@ -319,3 +319,94 @@ on the "Timeout reached" marker under CPU contention and passed on re-run).
 
 Next (not started, per the report): phase 3 -- derived mass
 (3.1 Part::effectiveMass(), unwired).
+
+## Phase 3 work log (derived mass)
+
+Plan (design report §4): 3.1 Part::effectiveMass (unwired) → 3.2 wire
+effectiveMass into the compound (rebuildCompound / compoundCom /
+checkCompoundInvariants) and delete addPartMass → 3.3 point-mass at local
+pose + parallel-axis (deferrable polish).
+
+### 3.1 — Part::effectiveMass, unwired  (done, committed 11bbaee)
+
+Added `Part::effectiveMass()`: its own body mass plus the effectiveMass of
+every contained part, recursively. The header documents it as a pure
+derived value, non-owning (the traversal only reads), acyclic by
+checkPartInvariants (each contained part has at most one container).
+
+New tests (tests/test_contain.cpp, +12 checks): effectiveMass on a part
+with no contents = body->mass; on a part with two contained parts = body +
+both; on a nested containment = the full sum. 48 checks total, all pass.
+
+### 3.2 — wire effectiveMass into the compound  (done, committed e6f8ad7)
+
+What changed:
+- vehicle.cpp rebuildCompound: `masses[i] = p->effectiveMass()` (was
+  `p->body->mass`). The compound now carries the crew's mass without baking
+  it into the body.
+- vehicle.cpp compoundCom: `m = parts[i]->effectiveMass()` (was `body->mass`)
+  — so the COM includes the crew.
+- vehicle.cpp checkCompoundInvariants: `m = parts[i]->effectiveMass()` +
+  the inertia tensor is scaled from the body mass up to the effective mass
+  (inertia is linear in mass for a fixed shape) + the parallel-axis term
+  uses the effective mass. This matches what Bullet does in
+  calculatePrincipalAxisTransform (it scales the shape's inertia to the
+  reported mass).
+- vehicle.cpp applyGravity + fictitious + getMass: `p->effectiveMass()` (was
+  `p->body->mass`). CRITICAL: the force must carry the same mass as the COM
+  and the inertia (both derived from effectiveMass), or the net force misses
+  the crew and acts off the true COM, adding a spurious dcom x F torque.
+  This was the root cause of the com-torque e2e regression (48) that appeared
+  when 3.2 was first applied — the force paths were still on body->mass.
+- vehicle.h: `addPartMass` declaration DELETED.
+- game.cpp: the EVA/board paths now call `ship->rebuildCompound()` after the
+  containment edge mutates (the crew's mass changes the compound). The
+  select_ship/remove_ship guards (isCrewAboard) are KEPT with an updated
+  comment (they're about ownership, not mass).
+- ships.cpp / ships.h / eva.h: spawn_crew_kerbal sets the containment edge +
+  calls rebuildCompound; comment updates.
+- save.h / save.cpp: SavePart.mass contract documented as "own body mass"
+  (not effective); buildKerbalFromSave calls rebuildCompound after the edge.
+- tests/test_inertia.cpp: new `test_contained_kerbal()` case — a TestCrew
+  (isEva override) with one part contained in a capsule. Asserts the
+  compound mass = capsule + kerbal, the COM = the capsule's center, and the
+  inertia tensor = the capsule's inertia scaled to the effective mass + the
+  parallel-axis term. Teardown: `delete crew` only (the ship's ~Vehicle
+  deletes crew BEFORE parts, so the kerbal's part is freed by the crew's
+  ~Vehicle, not by a double `delete k`). 972 checks, all pass.
+
+BUG found + fixed (the com-torque regression): the first 3.2 commit (with
+rebuildCompound/compoundCom/checkCompoundInvariants on effectiveMass, but
+applyGravity/getMass still on body->mass) made e2e 48 FAIL with a |w| ramp
+(~1.3e-3/s) even though tq_log showed |dcom|=0 and |dxF|=0. Root cause: the
+force (body->mass, no crew) acts at a lever arm from the COM (which includes
+the crew), so there's a constant spurious torque dcom x F. Fix: the force
+paths (applyGravity, fictitious, getMass) must use effectiveMass too — the
+net force must carry the same mass as the COM and the inertia. After the
+fix, e2e 48 passes (|w| flat < 1e-3) and the full suite (29/35/48/54/81/82)
+is green.
+
+### 3.3 — point-mass at local pose (DEFERRED, optional polish)
+
+The report's step 3.3 ("a contained part's mass is a point mass at its local
+pose, with the parallel-axis term") is the refinement that moves the crew's
+mass from the capsule's hull shape to the kerbal's own position. This is
+deferred: it is a NO-OP for the current game (kerbals sit at the capsule's
+COM, so the point-mass and the smeared-hull give the same COM and inertia).
+It becomes a live concern only when phase 4 introduces off-center cargo (a
+crate in a bay, a kerbal in a suit that's not at the COM). The current
+smearing is correct for the center-of-mass and the inertia tensor; 3.3
+would refine the inertia tensor's distribution, which matters only when the
+contained part is off-center.
+
+## Phase 3 -- 3.1 + 3.2 COMPLETE, 3.3 DEFERRED (2026-09-21)
+
+  3.1  Part::effectiveMass (unwired)                 11bbaee
+  3.2  wire effectiveMass into the compound          e6f8ad7
+  3.3  point-mass at local pose                      deferred (no-op until
+                                                       phase-4 off-center cargo)
+
+Verification baseline: make test green (all suites, test_inertia 972 incl.
+the new contained-kerbal case); e2e 29/35/48/54/81/82 all PASS (6/6, serial).
+The com-torque case (48) is the key regression guard: it pins the
+force/COM/inertia mass-basis consistency that 3.2 establishes.

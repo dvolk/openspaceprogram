@@ -1564,7 +1564,9 @@ void drawPartWindows(Game &g) {
             if(!def->type.empty()) {
                 ImGui::Text("Type: %s", def->type.c_str());
             }
-            ImGui::Text("Mass: %.3fkg", partBody->mass);
+            /* phase 3: effectiveMass -- a capsule with crew shows the total
+               (body + crew), matching the ship HUD (getMass). */
+            ImGui::Text("Mass: %.3fkg", ship->parts[part]->effectiveMass());
             ImGui::Text("Size: %.1fm dia x %.1fm",
                         def->radius * 2.0, def->height);
             if(def->torque > 0.0) {

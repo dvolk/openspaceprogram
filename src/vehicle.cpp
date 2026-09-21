@@ -459,7 +459,8 @@ void spin_log(Vehicle *ship, double time) {
     for(size_t i = 0; i < ship->parts.size(); i++) {
         const glm::dvec3 p = ship->partPos(ship->parts[i]);
         const double r = glm::length(p);
-        const glm::dvec3 F = -G * M * ship->parts[i]->body->mass * p / (r * r * r);
+        /* phase 3: effectiveMass -- same mass basis as applyGravity. */
+        const glm::dvec3 F = -G * M * ship->parts[i]->effectiveMass() * p / (r * r * r);
         tau += glm::cross(p - com, F);
     }
     printf("[spin]   tidal gravity torque |tau|=%.3e\n", glm::length(tau));
@@ -1818,14 +1819,17 @@ void Vehicle::tq_log(double time) {
     const double G = 6.674e-11;
     const double& parent_mass = m_parent->mass;
     glm::dvec3 F(0.0);
+    /* phase 3: effectiveMass -- this probe re-derives the SAME force that
+       applyGravity applies, so it must use the same mass basis, or it
+       under-reports |F| and |dcom x F| on a crewed ship. */
     for(Part *p : parts) {
-        if(p->body->mass == 0) { continue; }
+        const double m = p->effectiveMass();
+        if(m == 0) { continue; }
         const glm::dvec3 b1b2 = partPos(p);
         const double r2 = glm::length2(b1b2);
-        F += G * p->body->mass * parent_mass * (-b1b2) / (r2 * sqrt(r2));
+        F += G * m * parent_mass * (-b1b2) / (r2 * sqrt(r2));
         if(frame->isRotFrame()) {
-            F += p->body->mass *
-                 frame->GetFictitiousAccel(b1b2, partVel(p));
+            F += m * frame->GetFictitiousAccel(b1b2, partVel(p));
         }
     }
     for(Part *p : parts) {
@@ -2119,7 +2123,14 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
        partPos needs the current hull). */
     double M = 0.0;
     glm::dvec3 comDropped(0.0);
-    for(Part *q : dropped) { M += q->body->mass; comDropped += q->body->mass * partPos(q); }
+    /* phase 3: effectiveMass -- the dropped side's COM velocity must carry
+       the same mass basis as the rest of the simulation (a crewed capsule
+       undocked out of this ship carries its crew). */
+    for(Part *q : dropped) {
+        const double m = q->effectiveMass();
+        M += m;
+        comDropped += m * partPos(q);
+    }
     comDropped /= M;
     const glm::dvec3 vOut = GetVelocity(hull)
                           + glm::cross(GetAngVelocity(hull), comDropped - comPos());
