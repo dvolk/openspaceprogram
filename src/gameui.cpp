@@ -174,6 +174,8 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     float &window_rounding = g.window_rounding;
     float &ui_alpha = g.ui_alpha;
     float &ui_scale = g.ui_scale;
+    float &sfx_volume = g.sfx_volume;
+    float &music_volume = g.music_volume;
     // The DPI slider edits this; "Apply DPI" commits it to ui_scale.
     // (1.0f matches the default ui_scale; only the Apply button changes
     // ui_scale, so they can't drift apart after that.)
@@ -405,6 +407,20 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                     g.postfx->SetParam(fx, p.name, v);
                 }
             }
+        }
+        // Audio: the master levels apply live (a drag is heard
+        // immediately) and persist with "Save". No-op while audio is
+        // disabled (headless) -- the values still save for next time.
+        // (0..1 like "Window transparency" -- a %.0f%% label would only
+        // ever print "0%" or "1%".)
+        ImGui::Separator();
+        ImGui::Text("Audio");
+        if(ImGui::SliderFloat("SFX volume", &sfx_volume, 0.0f, 1.0f, "%.2f")) {
+            g.audio.setSfxVolume(sfx_volume);
+        }
+        if(ImGui::SliderFloat("Music volume", &music_volume, 0.0f, 1.0f,
+                             "%.2f")) {
+            g.audio.setMusicVolume(music_volume);
         }
         if(ImGui::Combo("UI style", &ui_style, "Dark\0Light\0Classic\0")) {
             g.apply_ui_style();

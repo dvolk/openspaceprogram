@@ -109,6 +109,8 @@ static SettingsData collect_settings(Game &g) {
     s.window_rounding = g.window_rounding;
     s.ui_alpha = g.ui_alpha;
     s.ui_scale = g.ui_scale;
+    s.sfx_volume = g.sfx_volume;
+    s.music_volume = g.music_volume;
     s.camFovDeg = g.args.camFovDeg;
     s.terrain_px = g.args.terrain_px;
     s.exhaust_scale = g.args.exhaust_scale;
@@ -160,6 +162,13 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     g.window_rounding = s.window_rounding;
     g.ui_alpha = s.ui_alpha;
     g.ui_scale = s.ui_scale;
+    g.sfx_volume = s.sfx_volume;
+    g.music_volume = s.music_volume;
+    // Push to the Audio module (no-op while it is disabled). Runs at boot,
+    // after audio.init() + setMusic(): the music track starts at the saved
+    // level instead of the default 0.5 and then fading to it.
+    g.audio.setSfxVolume(s.sfx_volume);
+    g.audio.setMusicVolume(s.music_volume);
     g.flip_pitch = s.flip_pitch;
     g.flip_yaw = s.flip_yaw;
     g.flip_roll = s.flip_roll;

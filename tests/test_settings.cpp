@@ -28,6 +28,8 @@ int main() {
     s.window_rounding = 12.0f;
     s.ui_alpha = 0.5f;
     s.ui_scale = 1.5f;
+    s.sfx_volume = 0.75f;
+    s.music_volume = 0.33f;
     s.camFovDeg = 77.0f;
     s.terrain_px = 256;
     s.exhaust_scale = 2.5f;
@@ -61,6 +63,8 @@ int main() {
     assert(r.window_rounding == 12.0f);
     assert(r.ui_alpha == 0.5f);
     assert(r.ui_scale == 1.5f);
+    assert(r.sfx_volume == 0.75f);
+    assert(r.music_volume == 0.33f);
     assert(r.camFovDeg == 77.0f);
     assert(r.terrain_px == 256);
     assert(r.exhaust_scale == 2.5f);

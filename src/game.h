@@ -489,6 +489,11 @@ struct Game {
     float ui_alpha = 1.0f;         // global imgui alpha (window transparency)
     float ui_scale = 1.0f;         // DPI scale: fonts + style sizes
 
+    // Audio master levels in [0,1] (Settings window sliders; the Audio
+    // module applies them live, and load_settings() pushes them at boot).
+    float sfx_volume = 1.0f;       // one-shots + the engine loop
+    float music_volume = 0.5f;     // ambient music (background, not the star)
+
     // --- Orbital map state (gameui.cpp draws with them) ---------------------
     // Orbital map: meters per pixel (the "Scale" slider) + the chosen map
     // plane (0 = equatorial, 1 = ecliptic, 2 = orbital).

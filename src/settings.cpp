@@ -43,6 +43,8 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["window_rounding"] = s.window_rounding;
     j["ui_alpha"] = s.ui_alpha;
     j["ui_scale"] = s.ui_scale;
+    j["sfx_volume"] = s.sfx_volume;
+    j["music_volume"] = s.music_volume;
     j["fov"] = s.camFovDeg;
     j["terrain_px"] = s.terrain_px;
     j["exhaust_scale"] = s.exhaust_scale;
@@ -139,6 +141,12 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     }
     if(j.contains("ui_scale") && j["ui_scale"].is_number()) {
         s.ui_scale = j["ui_scale"].get<float>();
+    }
+    if(j.contains("sfx_volume") && j["sfx_volume"].is_number()) {
+        s.sfx_volume = j["sfx_volume"].get<float>();
+    }
+    if(j.contains("music_volume") && j["music_volume"].is_number()) {
+        s.music_volume = j["music_volume"].get<float>();
     }
     if(j.contains("fov") && j["fov"].is_number()) {
         s.camFovDeg = j["fov"].get<float>();

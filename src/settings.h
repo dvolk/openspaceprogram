@@ -43,6 +43,10 @@ struct SettingsData {
     float window_rounding = 0.0f;
     float ui_alpha = 1.0f;
     float ui_scale = 1.0f;
+    // audio (Game -> Audio): master levels in [0,1]; defaults match
+    // Audio's own (sfx 1.0, music 0.5 -- ambient, not the star)
+    float sfx_volume = 1.0f;
+    float music_volume = 0.5f;
     // camera / terrain / test knobs (GameArgs)
     float camFovDeg = 60.0f;
     int terrain_px = 512;
