@@ -243,3 +243,35 @@ Verification:
   clicks (Board/EVA buttons + F6), left as a manual check per the report's
   "manual:" wording -- select_ship already refuses isCrewAboard(), so F6
   cycling skips aboard crew by construction.
+
+## Phase 2 -- COMPLETE (2026-09-21)
+
+All four sub-steps landed, one commit each, make test + relevant e2e green
+before every commit:
+
+  2.1  containment edge on Part + owner back-pointer   cf28065
+  2.2  aboardPart becomes a capsule Part*              65b41a5
+  2.3  save the containment edge by capsule uid        d6f0830
+  2.4  register crew in the capsule's contents         2664c3d
+
+Net state of the containment subsystem:
+- A part's owner (its vehicle) is wired by the attach primitives and
+  re-pointed by merge/split; Part* is stable through both.
+- The containment edge (capsule->contents + kerbal part->container) is set
+  in ALL FOUR boarding paths (board, EVA-clear, spawn, load) and is
+  non-owning throughout (Vehicle::crew stays the sole owner of aboard
+  Kerbals) -- the 2.1 double-free is pinned by a dedicated ASan test.
+- partCrew reads the edge (not an index scan).
+- The save is uid-keyed and validates the target is a real capsule on load;
+  the two crew fixtures migrated to the uid format; e2e 81 pins the
+  non-capsule refusal.
+- checkPartInvariants (asserted from rebuildCompound) enforces the whole
+  edge on every build/stage/refresh, so crew and contents cannot desync.
+
+Verification baseline for the finished phase: make test green (all suites,
+test_contain 43); e2e 29/45/46/54/65/79/81 all PASS; ASan clean on
+test_contain incl. the delete-crewed-ship double-free section.
+
+Next (not started, per the report): phase 3 -- derived mass
+(3.1 Part::effectiveMass(), unwired). A quality pass over phase 2 is
+running separately (see the task that spawned this review).
