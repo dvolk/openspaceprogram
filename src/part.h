@@ -104,10 +104,9 @@ struct Part {
        only this pointer moves.
 
        `container`/`contents` are NON-OWNING (see the header): the contained
-       kerbal's Part is owned by its Kerbal vehicle (Vehicle::crew), and the
-       owner for inventory items is deliberately deferred to phase 5 -- until
-       a contained kerbal stops being a Vehicle, contents is a traversal
-       list, never a lifetime.
+       kerbal's Part is owned by its Kerbal vehicle (Vehicle::crew). For
+       inventory items (phase 4), the container part OWNS them via
+       `ownedContents` (below) -- they have no other owner.
 
        Vehicle::checkPartInvariants enforces this on every build, stage and
        burn-triggered refresh (rebuildCompound), next to
@@ -115,6 +114,14 @@ struct Part {
     Vehicle *owner = nullptr;      // attached: the Vehicle whose parts list holds this
     Part *container = nullptr;     // contained: the part this one is parked in (a capsule)
     std::vector<Part *> contents;  // contained: the parts parked in this one (non-owning)
+    /* OWNED inventory items (phase 4.3): the parts this one holds in its
+       inventory (a cargo crate, a spare tank). ~Part deletes them. Crew
+       kerbals are NOT here (they are owned by Vehicle::crew); this is for
+       items that have no other owner. An item in ownedContents is ALSO in
+       `contents` (the non-owning traversal list that effectiveMass() and
+       the UI walk) -- two pointers to the same Part, one for lifetime and
+       one for traversal. */
+    std::vector<Part *> ownedContents;
 
     /* Authored pose in the SHIP-LOCAL frame S, where S is the root part's
        frame at build time: the root gets zero/identity and every other part
@@ -126,7 +133,10 @@ struct Part {
     glm::dmat3 localRot = glm::dmat3(1.0);
 
     Part() : body(nullptr), def(nullptr), uid(nextPartUid()) { }
-    ~Part() { delete body; }
+    ~Part() {
+        for(Part *c : ownedContents) { delete c; }  // owned inventory items
+        delete body;
+    }
 
     /* --- derived behavior (see the header comment): field-driven, so the
        checks are independent and a part may carry any combination --- */

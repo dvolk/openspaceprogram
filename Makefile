@@ -332,6 +332,12 @@ test_contain: obj_test/test_contain.o $(TCOMMON_OBJS)
 test_inertia: obj_test/test_inertia.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
+# inventory transfer (phase 4.3): re-parenting between containers,
+# capacity enforcement, ownership (~Part deletes ownedContents).
+# Headless: no Game / GL (links Body + Bullet for the ~Part -> ~Body chain).
+test_inventory: obj_test/test_inventory.o obj_test/inventory.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
 # rotation model (physical wheel torque, per-substep law, torque
 # delivery).
 test_rotation: obj_test/test_rotation.o $(TCOMMON_OBJS)
@@ -474,8 +480,8 @@ test_keys: obj_test/test_keys.o obj_test/keys.o
 	$(CXX) -o $@ $^
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
-        test_power test_staging test_dock test_contain test_inertia test_rotation \
-        test_shipload test_save test_crew test_fleet test_calendar test_orbit \
+        test_power test_staging test_dock test_contain test_inertia test_inventory \
+        test_rotation test_shipload test_save test_crew test_fleet test_calendar \
         test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys
