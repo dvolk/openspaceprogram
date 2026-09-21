@@ -150,9 +150,21 @@ void Kerbal::applyEva(double h) {
         // whose draw the pool can't cover doesn't thrust.
         if(glm::length2(rcsDir) > 0.0) {
             const float flow = (float)(kRcsFlow * h);
-            /* the kerbal is a one-part ship and its own tank; draw its RCS
-               hydrazine from its own (single) fuel group */
-            if(consumeResourceMass(ResourceType::Hydrazine, flow, parts[0])) {
+            /* phase 4.5: the kerbal draws its RCS hydrazine from its own
+               suit tank first, then from any inventory items that carry the
+               resource (a spare mono tank in the suit pocket). Defined order:
+               own tank, then contents in insertion order. */
+            bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]);
+            if(!haveFuel) {
+                for(Part *c : parts[0]->contents) {
+                    if(c->resources.current[(int)ResourceType::Hydrazine] > 0.0f
+                       && consumeResourceMass(ResourceType::Hydrazine, flow, c)) {
+                        haveFuel = true;
+                        break;
+                    }
+                }
+            }
+            if(haveFuel) {
                 ApplyCentralForce(b, kRcsForce * rcsDir);
             }
         }
