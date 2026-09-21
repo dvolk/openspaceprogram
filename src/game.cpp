@@ -467,9 +467,12 @@ void Game::settleFleet(Vehicle *active) {
 void Game::select_ship(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
     // An EVA character aboard a ship is not directly controllable: it is
-    // parked inside a capsule (out of physics) with its mass folded into that
-    // part, so un-parking it here would double-count its mass. EVA it from
-    // the capsule part window (or the V key) first.
+    // parked inside a capsule (out of the physics world, rail-frozen) and is
+    // owned by that ship (its Vehicle::crew), so it is not a free vehicle to
+    // drive. EVA it from the capsule part window (or the V key) first.
+    // (phase 3: the old "its mass is folded into that part" reason is gone --
+    // the mass is derived through the containment edge -- but a parked,
+    // ship-owned kerbal still cannot be selected directly.)
     if(v->isCrewAboard()) {
         toast("%s is aboard -- EVA it from its capsule first",
               v->name.c_str());
@@ -557,10 +560,6 @@ void Game::kerbalEVA(Kerbal *k) {
     Vehicle *ship = capPart->owner;
     const PartDef *capDef = capPart->def;
     Body *kb = k->hull;
-    const double kerbalMass = kb->mass;
-
-    /* move the crew mass off the capsule (the ship gets lighter) */
-    ship->addPartMass(capPart, -kerbalMass);
 
     /* the standing / hover pose beside the capsule: on a surface stand on
        the same floor (the capsule's bottom) just outside its side, in free
@@ -604,6 +603,12 @@ void Game::kerbalEVA(Kerbal *k) {
         if(*it == k->parts[0]) { capPart->contents.erase(it); break; }
     }
     k->parts[0]->container = nullptr;
+    /* phase 3: the ship's mass no longer comes from a baked capsule body
+       (addPartMass is gone) -- it is the capsule's effectiveMass, which just
+       lost the kerbal through the edge. Rebuild now (one-off, large) so the
+       next physics step sees the lighter ship; the edge is cleared first, so
+       checkPartInvariants inside the rebuild still holds. */
+    ship->rebuildCompound();
 
     /* back into the physics world (it was parked while aboard) */
     AddPhysicsBody(kb);
@@ -648,10 +653,6 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
         return;
     }
     Body *kb = k->hull;
-    const double kerbalMass = kb->mass;
-
-    /* move the crew mass onto the capsule (the ship gets heavier) */
-    ship->addPartMass(capPart, kerbalMass);
 
     /* park the kerbal inside the capsule (at its COM, out of the world) */
     glm::dvec3 capPos; glm::dmat3 capRot;
@@ -677,6 +678,10 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
        contents is a non-owning back-reference (2.1). */
     capPart->contents.push_back(k->parts[0]);
     k->parts[0]->container = capPart;
+    /* phase 3: the ship's mass is the capsule's effectiveMass, which just
+       gained the kerbal through the edge (no more addPartMass bake). Rebuild
+       now (one-off, large) so the next physics step sees the heavier ship. */
+    ship->rebuildCompound();
     if(kerbal == k) { kerbal = nullptr; }
     toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
     printf("[crew] t=%.1f Board: '%s' into '%s' part %zu\n",
@@ -1083,10 +1088,15 @@ void Game::remove_ship(Vehicle *v) {
         printf("Refusing to remove the last ship\n");
         return;
     }
-    // A ship that still carries crew (or the crew themselves, whose mass is
-    // folded into a capsule part) can't be removed cleanly: deleting it would
-    // dangle their `aboard` pointer or leak the folded mass. EVA the crew
-    // out first.
+    // A ship that still carries crew -- or a crew member themselves -- can't
+    // be removed here: an aboard kerbal is owned by its ship (its
+    // Vehicle::crew) and parked out of the world, not in this body's ship
+    // list, so the removal below would not find it and delete would leave the
+    // ship's crew + the capsule's contents dangling; and a crewed ship owns
+    // its crew, so deleting it would delete the crew too (kill them) -- a
+    // game action we don't support. EVA the crew out first.
+    // (phase 3: the old "folded mass / aboard pointer" reasons are gone; the
+    // ownership rule above is what keeps this guard.)
     if(v->isCrewAboard() || !shipCrew(v).empty()) {
         toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
         return;

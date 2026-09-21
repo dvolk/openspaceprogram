@@ -156,12 +156,13 @@ std::string Ships::dedupName(System &sys, const std::string &nm)
 }
 
 /* One crew kerbal aboard (ship, part): build a kerbal, park it inside the
-   capsule (out of the physics world), fold its mass into the capsule part
-   (the ship is heavier with crew aboard), set its aboard state and store
-   it on the ship (Vehicle::crew). The parked position is bookkeeping only
-   -- the transitions (game.cpp) recompute the kerbal's pose when it EVAs,
-   so a later scenario reposition of the ship (apply_scenarios) does not
-   need to touch it. */
+   capsule (out of the physics world), register it in the capsule's
+   containment edge so the ship's mass carries it (the ship is heavier with
+   crew aboard -- phase 3's effectiveMass, not a mass folded into the part),
+   set its aboard state and store it on the ship (Vehicle::crew). The parked
+   position is bookkeeping only -- the transitions (game.cpp) recompute the
+   kerbal's pose when it EVAs, so a later scenario reposition of the ship
+   (apply_scenarios) does not need to touch it. */
 Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     if(part >= ship->parts.size()) { return nullptr; }
     const PartDef *capDef = ship->parts[part]->def;
@@ -184,14 +185,15 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     build_ship(k, def, partsshader, capCom, capOrient);
     SetFriction(k->hull, 0.0);   // frictionless feet (see place_ship)
 
-    // park inside the capsule (out of the physics world) + fold its mass
-    // into the capsule part (the ship is heavier with crew aboard)
+    // park inside the capsule (out of the physics world). phase 3: the ship
+    // is heavier with crew aboard through the containment edge (the capsule's
+    // effectiveMass), not a mass folded into the capsule body (addPartMass,
+    // gone) -- the edge is registered just below.
     Body *kb = k->hull;
     k->placeShipAtCom(capCom, capOrient);
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
-    ship->addPartMass(capPart, kb->mass);
     k->aboardPart = capPart;
 
     ship->crew.push_back(k);
@@ -200,6 +202,9 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
        contents is a non-owning back-reference (2.1). */
     capPart->contents.push_back(k->parts[0]);
     k->parts[0]->container = capPart;
+    /* phase 3: the ship's mass is the capsule's effectiveMass, which just
+       gained the kerbal through the edge. Rebuild so the compound carries it. */
+    ship->rebuildCompound();
     int aboard = 0;
     for(auto *c : ship->crew) {
         if(static_cast<Kerbal *>(c)->aboardPart == capPart) { aboard++; }

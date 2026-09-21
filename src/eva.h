@@ -54,7 +54,8 @@ struct Kerbal : Vehicle {
 
     /* --- crew: where this character is (set by the transitions in game.cpp)
        Aboard a ship = parked inside one of its capsule parts (its body is
-       out of the physics world and its mass is folded into that part);
+       out of the physics world and its mass is carried by the capsule's
+       effectiveMass through the containment edge -- phase 3);
        free = on EVA, a live body in the world. `aboardPart` -- the capsule
        Part itself -- is the single source of truth: a Part* is stable
        across a merge (absorbShip) and a split (extractSubtreeAsShip), so

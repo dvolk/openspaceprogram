@@ -105,6 +105,13 @@ struct TestVehicle : Vehicle {
     using Vehicle::getInertia;
 };
 
+/* A stand-in for the Kerbal (the character whose part may be contained):
+   one part, isEva true -- checkPartInvariants keys the containment rule on
+   that virtual, so the stand-in exercises it the way a real crew does. */
+struct TestCrew : Vehicle {
+    bool isEva() const override { return true; }
+};
+
 struct Ship {
     TestVehicle *v;
     std::deque<PartDef> defs;   // deque: push_back never invalidates Part::def
@@ -661,6 +668,68 @@ static void test_refresh() {
     destroyShip(s);
 }
 
+/* --- a contained kerbal (phase 3's effectiveMass) ------------------------
+
+   The compound's mass is the sum of each part's effectiveMass -- its own
+   body mass plus whatever is parked inside it (the containment edge). The
+   crew's mass is smeared onto the capsule hull (the capsule's shape carries
+   the effective mass), not added as a separate point mass, so a kerbal parked
+   at the capsule center makes the compound heavier and more inertial but
+   does not move the COM. This pins that the compound actually carries the
+   crew -- the regression the old addPartMass bake (now gone) used to paper
+   over by writing the crew mass into the capsule body directly. */
+static void test_contained_kerbal() {
+    const double mCap = 100.0, mKer = 97.05;
+    Ship s; s.v = new TestVehicle;
+    const glm::dvec3 capPos(0.0, 0.0, 2.0);
+    Part *cap = addBox(s, "capsule", mCap, 2.0, 1.0, 1.0, capPos,
+                       glm::dmat3(1.0));
+
+    // the kerbal: a one-part character parked inside the capsule (at its
+    // center). Its mass rides the capsule through the containment edge, so
+    // the capsule's effective mass -- and hence the compound -- carry it.
+    TestCrew *crew = new TestCrew;
+    Part *k = new Part;
+    k->body = new Body;
+    k->body->btBody = nullptr;
+    k->body->shape = new btBoxShape(btVector3(0.4, 0.5, 0.4));
+    k->body->mass = mKer;
+    k->localPos = capPos - s.sPos;   // the capsule center, in frame S (== 0)
+    crew->parts.push_back(k);
+    k->owner = crew;                 // a character owns the contained part
+    cap->contents.push_back(k);
+    k->container = cap;
+
+    finishShip(s);
+    const double m = cap->effectiveMass();   // mCap + mKer
+    CHECK_NEAR(s.v->hull->btBody->getMass(), m, 1e-9,
+               "contained: the compound carries the kerbal's mass");
+    const glm::dvec3 com = s.v->get_center_of_mass();
+    CHECK_NEAR(com.x, capPos.x, 1e-9, "contained: com x");
+    CHECK_NEAR(com.y, capPos.y, 1e-9, "contained: com y");
+    CHECK_NEAR(com.z, capPos.z, 1e-9, "contained: com z (no shift)");
+    // the capsule hull scaled to (mCap+mKer); the kerbal at the COM adds none.
+    // s.il[0] is the box's diagonal inertia (a dvec3); axis-aligned, so the
+    // world tensor is that diagonal scaled up to the effective mass.
+    const glm::dvec3 wantDiag = s.il[0] * (m / mCap);
+    const glm::dmat3 got = s.v->getInertia();
+    double trace = 0.0;
+    for(int c = 0; c < 3; c++) { trace += std::fabs(wantDiag[c]); }
+    const double tol = 1e-5 * std::max(1.0, trace);
+    for(int c = 0; c < 3; c++) for(int r = 0; r < 3; r++) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "contained: inertia [%d][%d]", c, r);
+        const double want = (c == r) ? wantDiag[c] : 0.0;
+        CHECK_NEAR(got[c][r], want, tol, buf);
+    }
+    // the kerbal (and its part) are owned by the crew vehicle, not the ship:
+    // ~Vehicle(TestCrew) deletes its parts, and ~Part frees each body. The
+    // ship's ~Vehicle (destroyShip) frees the capsule, which is the container
+    // (non-owning) -- it does NOT touch the kerbal.
+    delete crew;
+    destroyShip(s);
+}
+
 int main() {
     printf("== ship mass properties + the compound body (src/vehicle.h) ==\n");
     test_single();
@@ -668,6 +737,7 @@ int main() {
     test_unequal_masses();
     test_rotated_part();
     test_general_assembly();
+    test_contained_kerbal();
     test_refresh();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);

@@ -74,8 +74,11 @@ struct Game;   // save_game / load_game take one; forward-declared so this
 // error, but for a *reference* (parent, controller, dock ports) it is the
 // legitimate "absent" default that load accepts. `pos`/`rot` are
 // the part's ship-local frame-S pose (the root is identity -- setRoot forces
-// it -- so they are the no-op defaults for part 0). `mass` is the part's
-// authoritative mass (kg; the capsule's includes any aboard crew), `fuel` the
+// it -- so they are the no-op defaults for part 0). `mass` is the part's OWN
+// body mass (kg) -- a capsule's saved mass is just its own; aboard crew are
+// separate SaveShips (is_crew) tracked through the containment edge, so their
+// mass is NOT baked into the capsule here (phase 3 dropped the addPartMass
+// bake; the compound derives it from the edge on load). `fuel` the
 // per-ResourceType current tank contents (kg; the capacity is the def's), and
 // `hull_margin` the part's resolved collision margin (the ship-level override
 // already applied, read from Part::body->hull_margin) so the rebuilt hull

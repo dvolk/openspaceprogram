@@ -74,8 +74,9 @@ public:
 
     // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts
     // (parts[i]->def->crew_capacity > 0) -- parked inside (out of the
-    // physics world, the railFrozen convention), its mass folded into the
-    // capsule part (the ship is heavier with crew aboard), aboard state
+    // physics world, the railFrozen convention), registered in the
+    // capsule's containment edge so the ship's mass carries it (the ship is
+    // heavier with crew aboard -- phase 3's effectiveMass), aboard state
     // set, and stored on the ship (Vehicle::crew). Called from build_fleet
     // after each ship is placed; runtime copies (spawn_ship) deliberately
     // do NOT get crew.

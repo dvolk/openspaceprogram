@@ -330,11 +330,12 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 // Rebuild one kerbal (a one-part Vehicle) from its ship def + aboard state.
 // The kerbal's fuel (its RCS suit) is NOT saved -- it seeds full on load,
 // like the startup spawn_crew_kerbal. An aboard kerbal is parked inside its
-// capsule (out of the world); its mass is ALREADY in the capsule part's
-// saved mass, so addPartMass is deliberately NOT called (that would double-
-// count the crew). `savedUidToPart` spans every ship file (built before the
-// crew, which always follows its ship) and is what the aboard capsule's uid
-// resolves through.
+// capsule (out of the world). phase 3: its mass is NOT in the capsule's
+// saved body mass (that bake is gone) -- it is carried by the containment
+// edge, so the capsule's compound is rebuilt AFTER the edge is set below
+// (rebuildCompound), which is what puts the kerbal's mass into the ship.
+// `savedUidToPart` spans every ship file (built before the crew, which always
+// follows its ship) and is what the aboard capsule's uid resolves through.
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                             std::map<std::string, Vehicle *> &byName,
                             const std::map<uint64_t, Part *> &savedUidToPart) {
@@ -443,6 +444,12 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
            sole owner; contents is a non-owning back-reference (2.1). */
         cap->contents.push_back(k->parts[0]);
         k->parts[0]->container = cap;
+        /* phase 3: the ship's compound was built when the ship loaded (before
+           this kerbal existed), so it does not yet carry the crew's mass. The
+           capsule's effectiveMass now includes the kerbal through the edge --
+           rebuild so the compound does. (No addPartMass: the mass is derived
+           from the edge, not baked into the capsule body.) */
+        ship->rebuildCompound();
     }
     return k;
 }

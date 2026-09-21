@@ -569,7 +569,13 @@ void Vehicle::rebuildCompound() {
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
         inS->addChildShape(toBt(p->localPos, p->localRot), p->body->shape);
-        masses[i] = (btScalar)p->body->mass;
+        /* phase 3: the mass a part reports to the compound is its
+           effectiveMass -- its own body mass plus whatever is parked inside
+           it (the containment edge). A capsule thus carries its crew without
+           the crew mass being baked into its body (addPartMass, now gone).
+           The crew's mass is smeared over the capsule hull's shape (see
+           checkCompoundInvariants); 3.3 refines it to a point mass. */
+        masses[i] = (btScalar)p->effectiveMass();
         total += masses[i];
         compoundParts.push_back(p);
     }
@@ -674,7 +680,10 @@ glm::dvec3 Vehicle::compoundCom() const {
     double total = 0.0;
     glm::dvec3 com(0.0);
     for(size_t i = 0; i < parts.size(); i++) {
-        const double m = parts[i]->body->mass;
+        /* phase 3: effectiveMass (body + contained crew), matching
+           rebuildCompound -- so refreshCompound's COM comparison sees the
+           crew's contribution. */
+        const double m = parts[i]->effectiveMass();
         total += m;
         com += m * parts[i]->localPos;
     }
@@ -705,7 +714,9 @@ void Vehicle::checkCompoundInvariants() const {
     double total = 0.0, extent = 0.0;
     glm::dvec3 com(0.0);
     for(size_t i = 0; i < parts.size(); i++) {
-        const double m = parts[i]->body->mass;
+        /* phase 3: effectiveMass (body + contained crew), matching
+           rebuildCompound -- the compound's mass/COM carry the crew. */
+        const double m = parts[i]->effectiveMass();
         total += m;
         com += m * parts[i]->localPos;
         extent = std::max(extent, glm::length(parts[i]->localPos));
@@ -713,17 +724,28 @@ void Vehicle::checkCompoundInvariants() const {
     if(total <= 0.0) { return; }
     com /= total;
 
-    /* the analytic tensor about the authored COM, in S axes */
+    /* the analytic tensor about the authored COM, in S axes. phase 3: each
+       part's SHAPE carries its effectiveMass (rebuildCompound passes that
+       to calculatePrincipalAxisTransform), so the shape's inertia is scaled
+       from the body mass up to the effective mass (inertia is linear in mass
+       for a fixed shape -- getInertiaDiag is per-kg mass times body->mass, so
+       the ratio restores it at the larger mass) and the parallel-axis term
+       uses the effective mass. A part with body mass but crew in it thus
+       reports the crew's mass smeared over its own hull; 3.3 moves it to a
+       point mass at the child's pose instead. */
     glm::dmat3 want(0.0);
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
+        const double m = p->effectiveMass();
+        const double bm = p->body->mass;
+        const double scale = (bm > 0.0) ? m / bm : 0.0;
         const glm::dvec3 il = getInertiaDiag(p->body);
-        const glm::dmat3 d(il.x, 0.0, 0.0,
-                           0.0, il.y, 0.0,
-                           0.0, 0.0, il.z);
+        const glm::dmat3 d(il.x * scale, 0.0, 0.0,
+                           0.0, il.y * scale, 0.0,
+                           0.0, 0.0, il.z * scale);
         want += p->localRot * d * glm::transpose(p->localRot);
         const glm::dvec3 o = p->localPos - com;
-        want += p->body->mass
+        want += m
               * (glm::dot(o, o) * glm::dmat3(1.0) - glm::outerProduct(o, o));
     }
 
@@ -1119,9 +1141,11 @@ float Vehicle::getDeltaV() {
 }
 
 float Vehicle::getMass() {
+    /* phase 3: effectiveMass -- the ship's mass includes what is parked in
+       it (the containment edge), so a capsule's crew counts here too. */
     float r = 0;
     for(Part *p : parts) {
-        r += p->body->mass;
+        r += (float)p->effectiveMass();
     }
     return r;
 }
@@ -1277,11 +1301,6 @@ void Vehicle::setVelocity(glm::dvec3 vel) {
     SetVelocity(hull, vel);
 }
 
-void Vehicle::addPartMass(Part *p, double delta) {
-    p->body->mass += delta;
-    rebuildCompound();
-}
-
 const glm::dvec3& Vehicle::get_center_of_mass(void) {
     m_com = comPos();
     return m_com;
@@ -1294,9 +1313,14 @@ glm::dvec3 Vehicle::applyGravity() {
     glm::dvec3 gf(0.0);
     glm::dvec3 ff_total(0.0);
     for(Part *p : parts) {
-        if(p->body->mass == 0) { continue; }
+        /* phase 3: effectiveMass -- the force must carry the same mass as the
+           COM and the inertia (both derived from effectiveMass), else the net
+           force misses the crew parked in the capsule and acts off the true
+           COM, adding a spurious dcom x F torque (the com-torque regression). */
+        const double m = p->effectiveMass();
+        if(m == 0) { continue; }
         const glm::dvec3 b1b2 = partPos(p);
-        const double m1m2 = p->body->mass * parent_mass;
+        const double m1m2 = m * parent_mass;
         const double invrsqr = 1.0 / glm::length2(b1b2);
         const double mag = G * m1m2 * invrsqr;
         const glm::dvec3 f = mag * sqrt(invrsqr) * -b1b2;
@@ -1312,7 +1336,7 @@ glm::dvec3 Vehicle::applyGravity() {
             // orbit is perturbed for as long as it spends in the rotating
             // frame (see GetFictitiousAccel in frame.h).
             const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, partVel(p));
-            const glm::dvec3 ff = p->body->mass * a_fict;
+            const glm::dvec3 ff = m * a_fict;
             ApplyForce(hull, b1b2 - com, ff);
             ff_total += ff;
         }

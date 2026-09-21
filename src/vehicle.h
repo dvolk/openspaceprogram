@@ -604,11 +604,6 @@ public:
 
     void setVelocity(glm::dvec3 vel);
 
-    /* A part's mass changed OUTSIDE a burn (crew aboard, crew out). The burn
-       path is picked up by refreshCompound's per-tick threshold; these are
-       one-off and large, so rebuild now rather than wait for it. */
-    void addPartMass(Part *p, double delta);
-
     /* The COM is the hull's transform origin -- a rigid body's transform IS
        its centre-of-mass transform -- so this is O(1), and it is exactly the
        point Bullet rotates the ship about. */
