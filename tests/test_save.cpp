@@ -177,6 +177,37 @@ int main() {
     CHECK(crewOut.aboard_part == 101);
     CHECK(crewOut.parts.empty());   // the ship fields are not written for a crew
 
+    // phase 4.1: the suit tank contents round-trip (a kerbal that burned some
+    // EVA propellant does not get a free re-seed on load)
+    SaveShip crewFuel;
+    crewFuel.name = "kerbal";
+    crewFuel.defPath = "./res/ships/kerbal.json";
+    crewFuel.is_crew = true;
+    crewFuel.aboard = "racer";
+    crewFuel.aboard_part = 101;
+    // 8.5 kg of hydrazine (was 10.0 full) -- the rest are 0
+    crewFuel.suit_fuel.push_back(0.0);   // Hydrogen
+    crewFuel.suit_fuel.push_back(0.0);   // LOX
+    crewFuel.suit_fuel.push_back(0.0);   // EC
+    crewFuel.suit_fuel.push_back(0.0);   // Oxygen
+    crewFuel.suit_fuel.push_back(0.0);   // Water
+    crewFuel.suit_fuel.push_back(0.0);   // Food
+    crewFuel.suit_fuel.push_back(8.5);   // Hydrazine
+    crewFuel.suit_fuel.push_back(0.0);   // JetFuel
+    SaveShip crewFuelOut = saveShipFromJson(saveShipToJson(crewFuel));
+    CHECK(crewFuelOut.suit_fuel.size() == 8);
+    CHECK(near(crewFuelOut.suit_fuel[6], 8.5));   // Hydrazine
+    CHECK(crewFuelOut.suit_fuel[0] == 0.0);       // Hydrogen
+    // an absent suit_fuel (a save that predates the field) stays empty
+    SaveShip crewOld;
+    crewOld.name = "kerbal";
+    crewOld.defPath = "./res/ships/kerbal.json";
+    crewOld.is_crew = true;
+    crewOld.aboard = "racer";
+    crewOld.aboard_part = 101;
+    SaveShip crewOldOut = saveShipFromJson(saveShipToJson(crewOld));
+    CHECK(crewOldOut.suit_fuel.empty());
+
     // a free (EVA) kerbal carries its pose (the load restores it)
     SaveShip eva;
     eva.name = "kerbal";

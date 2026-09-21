@@ -162,6 +162,11 @@ struct SaveShip {
     // target is a capsule (crew_capacity > 0); the index format had no such
     // check, so a reordered save could park a kerbal in any part.
     uint64_t aboard_part = 0; // the aboard ship's container part uid (0 = free / on EVA)
+    /* The kerbal's suit tank contents (kg per ResourceType, one entry per
+       type). Saved so a kerbal that burned some EVA propellant does not get a
+       free re-seed on load (phase 4.1). Empty = the save predates this field
+       and the suit is left at its init() re-seed (full). */
+    std::vector<double> suit_fuel;
 };
 
 // The global save state (dir/save.json). `ships` is the ordered list of
@@ -287,6 +292,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         // a free (EVA) kerbal's pose (an aboard one's is unused on load)
         j["pose"] = savePoseToJson(s.pose);
         j["onRails"] = s.onRails;
+        if(!s.suit_fuel.empty()) { j["suit_fuel"] = s.suit_fuel; }
         return j;
     }
     j["home"]         = s.home;
@@ -337,6 +343,9 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         s.aboard_part = readUid(j, "aboard_part");
         if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
         if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
+        if(j.contains("suit_fuel") && j["suit_fuel"].is_array()) {
+            for(auto &&f : j["suit_fuel"]) { if(f.is_number()) { s.suit_fuel.push_back(f.get<double>()); } }
+        }
         return s;
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }

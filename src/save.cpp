@@ -118,6 +118,14 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         s.pose.vel = v->GetVel();
         s.pose.angvel = GetAngVelocity(v->hull);
         s.onRails = v->onRails;
+        /* phase 4.1: the suit tank contents (the kerbal's part 0 is the
+           suit; its resources are the EVA propellant). Saved so a kerbal
+           that burned some does not get a free re-seed on load. */
+        if(!v->parts.empty()) {
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                s.suit_fuel.push_back((double)v->parts[0]->resources.current[r]);
+            }
+        }
         return s;
     }
     s.home = (v->home != nullptr) ? v->home->name : "";
@@ -359,6 +367,14 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     } catch(...) {
         delete k;
         throw;
+    }
+    /* phase 4.1: restore the suit tank contents (build_ship's init() re-seeded
+       them full; this overwrites with the saved amount, so a kerbal that
+       burned some EVA propellant does not get a free re-seed on load). */
+    if(!s.suit_fuel.empty() && !k->parts.empty()) {
+        for(size_t r = 0; r < s.suit_fuel.size() && r < (size_t)ResourceType::Num; r++) {
+            k->parts[0]->resources.current[r] = (float)s.suit_fuel[r];
+        }
     }
     if(s.aboard.empty()) {
         // free (on EVA): live in the world, at its saved pose
