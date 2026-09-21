@@ -1,0 +1,13 @@
+# Load: start from a committed save (e2e/fixtures/save_inventory) that carries
+# inventory items -- a cargo part on the racer holding TWO items (a mono tank
+# and a nested cargo, which itself holds a third mono tank), plus a free kerbal
+# with a pocket tank. The load must restore every item depth-first (the
+# quality pass found capture and load both went only one level deep, silently
+# dropping nested items) and print the BUILT count, so a restore that drops an
+# item fails this EXPECT instead of loading green.
+NAME inventory-load
+ARGS --load e2e/fixtures/save_inventory --timeout 5
+EXPECT Loaded 4 inventory item(s) with the fleet
+EXPECT Loaded game from e2e/fixtures/save_inventory (active: kerbal)
+FORBID GL_
+FORBID error:

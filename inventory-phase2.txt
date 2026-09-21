@@ -487,3 +487,100 @@ PASS (6/6, serial). 4.4 co-movement + 4.5 empty-suit e2e verified
 manually (hard to script with --sim-press).
 The com-torque case (48) is the key regression guard: it pins the
 force/COM/inertia mass-basis consistency that 3.2 establishes.
+
+## Quality pass over phase 4 (2026-09-21)
+
+A subagent did a full review of the six phase-4 commits: ownership /
+double-free, the pocket-draw path, the containment invariant, save/load
+symmetry, the cycle / double-add guards, performance, QoL. Findings
+(verified against the code, then fixed -- the fixes are the uncommitted
+delta at the bottom of this log, one commit per step was NOT done for the
+pass; it lands as a single "quality pass" commit):
+
+BUGs (each reproduced against the tree, then fixed):
+- pickUpItem double-free (game.cpp): after inventoryAdd the item is owned
+  by dest (in its ownedContents) but was STILL in itemShip->parts, so
+  `delete itemShip` (~Vehicle) freed it AND ~Part(dest) freed it again.
+  Fix: `itemShip->parts.clear()` before the delete.
+- nested-item owner went stale (inventory.cpp/h, game.cpp): moving an item
+  that is itself a container (a crate holding a crate) re-pointed only the
+  top item's owner; its own inventory subtree kept pointing at the old
+  vehicle, so effectiveMass() and teardown used the wrong owner. Fix: a
+  recursive inventorySetOwner (item + every nested item), called from
+  addToContainer / removeFromContainer / dropItem.
+- the pocket draw was dead weight (eva.cpp): phase 4.5 routed the suit's
+  RCS through parts[0]->contents, but consumeResourceMass only reaches
+  parts in Vehicle::parts (buildFuelGroups groups those), so a pocket tank
+  could never be drained -- an empty-suit kerbal with a full pocket still
+  could not thrust. Fix: the pocket branch now does the same per-tank
+  decrement consumeResourceMass makes (contents resource + body mass;
+  refreshCompound picks the mass up).
+- partCrew mis-cast inventory items (game.cpp): contents now holds BOTH
+  crew and inventory items, and the old body did a blind
+  static_cast<Kerbal *>(p->owner) over every entry. Fix: skip any
+  p->ownedBy(capPart) (the new Part::ownedBy, part.h -- membership in the
+  container's ownedContents is exactly what separates an item from a crew
+  member).
+- dropItem from a parked carrier (game.cpp): a carrier on rails (or a
+  frozen aboard hull) has a stale pose that may sit inside another ship,
+  so the item would spawn in collision with the wrong velocity. Fix:
+  `if(carrier->onRails) return nullptr;`.
+
+RISKS (hardening, not live crashes):
+- containment cycle (inventory.cpp): adding a container into its OWN
+  subtree (a crate into a crate it holds) closed a cycle -- effectiveMass()
+  recursed forever and ~Part double-freed. Fix: an inSubtree guard in
+  addToContainer (refuses dest == item or anywhere under it).
+- double add (inventory.cpp): re-adding an already-contained item listed it
+  twice in ownedContents, so ~Part freed it twice. Fix: addToContainer
+  refuses item->container != nullptr (inventoryTransfer removes first).
+- invariant gap: "owned but not listed" (vehicle.cpp checkPartInvariants):
+  an item in ownedContents but missing from contents was silently dropped
+  from effectiveMass while ~Part still freed it. Fix: a new loop asserting
+  every ownedContents entry is listed in contents AND that its container
+  pointer agrees. The contents loop now branches on ownedBy: a crew member
+  (not ownedBy) must be isEva; an item (ownedBy) must be in a real
+  container. The vehicle.h doc comment was rewritten to state both legal
+  kinds.
+- save/load depth (save.cpp/h): capture and load both went only one level
+  deep, silently dropping a crate's own cargo. Fix: depth-first -- SavePart
+  carries a nested inventory list of SaveParts, load rebuilds it
+  recursively (buildInventoryItems sets each item's owner to the
+  container's owner and recurses).
+
+Tests + e2e added by the pass:
+- tests/test_inventory.cpp rewritten to 63 checks: add + edges + owner +
+  the cycle / double-add / self / non-container / capacity refusals,
+  transfer re-points owner both ways, remove clears edges + owner, nested
+  effectiveMass, init()+checkPartInvariants PASS with items (pins the
+  invariant), the invariant FAILS on (a) item in a non-container, (b) item
+  owned by a non-container, (c) owned-but-not-listed; absorbShip /
+  extractSubtreeAsShip re-point item owners; teardown frees nested items
+  exactly once.
+- tests/test_save.cpp: a suit_inventory round-trip (a pocket mono tank + a
+  nested cargo holding a third tank) survives save/load; an old save without
+  the field stays empty.
+- e2e/fixtures/save_inventory + 83-inventory-load: a committed save with a
+  cargo part holding a mono tank AND a nested cargo (holding a third tank),
+  plus a free kerbal with a pocket tank -- 4 items, all restored
+  depth-first (the load prints "Loaded 4 inventory item(s)").
+- e2e 84-inventory-pocket: an empty-suit kerbal whose pocket holds a full
+  tank holds W; the mass must fall as the pocket tank burns (pins the dead
+  pocket-draw BUG). The case needed `--prox-warp 10`: the fixture's racer is
+  ~500 m from the kerbal, inside the fly engage radius (2000 m), so it is
+  engaged and the warp caps to prox_warp (default 1.0) -- at 1x the burn is
+  ~1 kg and the mass never crosses the 170 kg gate. (Discovered while making
+  the case deterministic: --load keeps the save's time_accel, so the CLI
+  --time-accel is ignored; the fixture carries time_accel 10.)
+
+Verification: make test green (all suites; test_inventory 63, test_save
+nested round-trip, test_contain 48); e2e save/eva/crew/contain/inventory
+12/12 PASS (serial + --jobs 2).
+
+Also fixed while running the battery (pre-existing, not a phase-4 bug):
+e2e 81/82 hard-coded `Timeout reached (8.0 s)`, but the game prints the
+ACTUAL wall time at exit, which drifts (8.0/8.1 s) with frame timing --
+81 flaked 2 of 3 runs. Relaxed to `Timeout reached` (the intent is only
+"still flying at the timeout, not crashed") with a comment. Note: the same
+fragile exact-elapsed EXPECT exists in 64/65/66/68/69/71/72/73/76; left
+untouched (not in this pass's relevant set) but worth the same relaxation.

@@ -13,6 +13,14 @@
 // item's container pointer. No physics, no Assembly, no Trajectory.
 
 struct Part;   // forward-declared to keep this header light
+class Vehicle;
+
+/* Re-point `item`'s owner AND the owner of every item in its inventory
+   subtree (a crate in a crate). The item rides the vehicle of its
+   OUTERMOST container, so moving that container -- or dropping the item
+   (dropItem) -- moves every nested owner with it. nullptr when the
+   subtree leaves every vehicle. */
+void inventorySetOwner(Part *item, Vehicle *owner);
 
 // Transfer `item` (currently in its container's inventory) into `dest`.
 // Enforces dest's capacity (dest->def->inventory_capacity). Returns true on

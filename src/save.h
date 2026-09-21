@@ -172,6 +172,12 @@ struct SaveShip {
        free re-seed on load (phase 4.1). Empty = the save predates this field
        and the suit is left at its init() re-seed (full). */
     std::vector<double> suit_fuel;
+    /* The kerbal's suit inventory (phase 4.6): the items parked in the suit
+       (Part::ownedContents), serialized the same depth-first way as a ship
+       part's `inventory`. Empty = no items (or a save that predates the
+       field). The suit's OWN fuel is suit_fuel; the suit part itself is
+       rebuilt from its def, so only its contents are saved here. */
+    std::vector<SavePart> suit_inventory;
 };
 
 // The global save state (dir/save.json). `ships` is the ordered list of
@@ -306,6 +312,11 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         j["pose"] = savePoseToJson(s.pose);
         j["onRails"] = s.onRails;
         if(!s.suit_fuel.empty()) { j["suit_fuel"] = s.suit_fuel; }
+        if(!s.suit_inventory.empty()) {
+            nlohmann::json inv = nlohmann::json::array();
+            for(auto &&sp : s.suit_inventory) { inv.push_back(savePartToJson(sp)); }
+            j["suit_inventory"] = inv;
+        }
         return j;
     }
     j["home"]         = s.home;
@@ -358,6 +369,9 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
         if(j.contains("suit_fuel") && j["suit_fuel"].is_array()) {
             for(auto &&f : j["suit_fuel"]) { if(f.is_number()) { s.suit_fuel.push_back(f.get<double>()); } }
+        }
+        if(j.contains("suit_inventory") && j["suit_inventory"].is_array()) {
+            for(auto &&sp : j["suit_inventory"]) { if(sp.is_object()) { s.suit_inventory.push_back(savePartFromJson(sp)); } }
         }
         return s;
     }

@@ -265,6 +265,61 @@ int main() {
         CHECK(noInvOut.inventory.empty());
     }
 
+    // phase 4.6: the SUIT inventory round-trips on the crew ship (the pocket
+    // items a kerbal carries free), alongside the suit's own fuel
+    {
+        SaveShip crewInv;
+        crewInv.name = "kerbal";
+        crewInv.defPath = "./res/ships/kerbal.json";
+        crewInv.is_crew = true;
+        crewInv.aboard = "racer";
+        crewInv.aboard_part = 101;
+        for(int r = 0; r < 8; r++) {
+            crewInv.suit_fuel.push_back(r == (int)ResourceType::Hydrazine ? 8.5 : 0.0);
+        }
+        SavePart pocket;
+        pocket.part = "mono_tank_r1";
+        pocket.uid = 301;
+        pocket.id = "pocket_tank_1";
+        pocket.mass = 88.99;
+        pocket.fuel = std::vector<double>(8, 0.0);
+        pocket.fuel[(int)ResourceType::Hydrazine] = 78.54;
+        // and a nested item, depth-first like a ship part's inventory
+        SavePart nested;
+        nested.part = "cargo";
+        nested.uid = 302;
+        nested.id = "pocket_cargo_1";
+        nested.mass = 250.0;
+        nested.fuel = std::vector<double>(8, 0.0);
+        pocket.inventory.push_back(nested);
+        crewInv.suit_inventory.push_back(pocket);
+
+        SaveShip crewInvOut = saveShipFromJson(saveShipToJson(crewInv));
+        CHECK(crewInvOut.suit_inventory.size() == 1);
+        if(crewInvOut.suit_inventory.size() == 1) {
+            CHECK(crewInvOut.suit_inventory[0].part == "mono_tank_r1");
+            CHECK(crewInvOut.suit_inventory[0].uid == 301);
+            CHECK(near(crewInvOut.suit_inventory[0].fuel[(int)ResourceType::Hydrazine],
+                       78.54));
+            CHECK(crewInvOut.suit_inventory[0].inventory.size() == 1);
+            if(crewInvOut.suit_inventory[0].inventory.size() == 1) {
+                CHECK(crewInvOut.suit_inventory[0].inventory[0].uid == 302);
+            }
+        }
+        CHECK(crewInvOut.suit_fuel.size() == 8);
+        CHECK(near(crewInvOut.suit_fuel[6], 8.5));   // the suit's own fuel
+
+        // a crew save without the field (predates it) stays empty
+        SaveShip crewNoInv;
+        crewNoInv.name = "kerbal";
+        crewNoInv.defPath = "./res/ships/kerbal.json";
+        crewNoInv.is_crew = true;
+        crewNoInv.aboard = "racer";
+        crewNoInv.aboard_part = 101;
+        SaveShip crewNoInvOut = saveShipFromJson(saveShipToJson(crewNoInv));
+        CHECK(crewNoInvOut.suit_inventory.empty());
+    }
+
     // a free (EVA) kerbal carries its pose (the load restores it)
     SaveShip eva;
     eva.name = "kerbal";

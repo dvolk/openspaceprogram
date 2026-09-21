@@ -1,148 +1,357 @@
-// test_inventory: phase 4.3 -- transfer between containers.
+// test_inventory: phase 4.3 + the phase-4 quality pass -- inventory items in
+// containers, via the public transfer API (src/inventory.h).
+//
+// What is pinned:
+//   - ADD: inventoryAdd wires the ownership edge (ownedContents), the
+//     traversal edge (contents) and the back-reference (container), and
+//     the item rides the container's vehicle (item->owner).
+//   - GUARDS: an already-contained item cannot be added again (double add),
+//     a non-container cannot hold an item, capacity is enforced, and a
+//     containment cycle (X holds Y, then X into Y) is refused -- every
+//     refusal leaves the item exactly where it was (no orphan).
+//   - TRANSFER: re-parents and re-points the owner to the new container's
+//     vehicle; a failed transfer (full / non-container / free item) moves
+//     nothing.
+//   - REMOVE: clears all three edges and the owner; a free item is a no-op.
+//   - effectiveMass recurses through nested items.
+//   - Vehicle::init() (rebuildCompound) and checkPartInvariants PASS with
+//     items in a container -- the quality pass found the invariant rejected
+//     them, which would have aborted load of any save holding inventory.
+//   - checkPartInvariants FAILS where the edge is broken: an item listed in
+//     a non-container's contents, and an item owned by a part with
+//     inventory_capacity 0.
+//   - OWNERSHIP: deleting the ship frees its container's items (and their
+//     nested items) exactly once (~Part deletes ownedContents).
+//   - absorbShip / extractSubtreeAsShip re-point every item in the moved
+//     containers to the destination ship (the owner is the container's
+//     vehicle; a stale one would dangle when the shell is deleted).
+//
+// Headless (no Game / physics world), like test_contain: ships are built
+// with init() (runs rebuildCompound -- which asserts the containment
+// invariant -- but not enterWorld).
+//
 // Runs from the repo root:
 //   make test   (or: ./test_inventory)
-//
-// Headless (no Game / Bullet): builds Part + PartDef directly and exercises
-// the inventoryTransfer / inventoryRemove / ownership logic.
 
-#include "part.h"
+#define BT_USE_DOUBLE_PRECISION true
+#include <bullet/btBulletDynamicsCommon.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <deque>
+
+#include "vehicle.h"   // Vehicle + Part (inline)
 #include "inventory.h"
 
-#include <cstdio>
+static int g_failures = 0;
+static int g_checks = 0;
 
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#define CHECK_TRUE(cond, msg)                                                  \
+    do {                                                                       \
+        g_checks++;                                                            \
+        if (!(cond)) {                                                         \
+            g_failures++;                                                      \
+            printf("FAIL: %s\n", msg);                                         \
+        }                                                                      \
+    } while (0)
+
+#define CHECK_NEAR(actual, expected, tol, msg)                                 \
+    do {                                                                       \
+        g_checks++;                                                            \
+        double _a = (actual), _e = (expected);                                 \
+        if (!std::isfinite(_a) || std::fabs(_a - _e) > (tol)) {                \
+            g_failures++;                                                      \
+            printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
+                   msg, _a, _e, (double)(tol));                                \
+        }                                                                      \
+    } while (0)
+
+/* A hand-built part. `defs` is a deque, not a vector: push_back on a vector
+   reallocates and would dangle every Part::def handed out so far. `invCap`
+   is inventory_capacity (> 0 -> a container); `tankHz` > 0 makes it a
+   hydrazine tank (the def's capacity vector, seeded like the catalog does).
+   A `Ship` with v == nullptr is just a def bag for standalone items. */
+struct Ship {
+    Vehicle *v;
+    std::deque<PartDef> defs;
+};
+
+static Part *mkPart(Ship &s, const char *name, double mass, double hx,
+                    double hy, double hz, int invCap, bool dockingPort,
+                    float tankHz = 0.0f) {
+    Body *b = new Body;
+    b->btBody = nullptr;                 // a part is not simulated on its own
+    b->shape  = new btBoxShape(btVector3(hx, hy, hz));
+    b->mass   = mass;
+
+    s.defs.push_back(PartDef());
+    PartDef &d = s.defs.back();
+    d.name             = name;
+    d.mass             = (float)mass;
+    d.radius           = (float)hx;
+    d.height           = (float)(2.0 * hz);
+    d.inventory_capacity = invCap;
+    d.docking_port     = dockingPort;
+    if(tankHz > 0.0f) {
+        d.capacity.resize((int)ResourceType::Num, 0.0f);
+        d.capacity[(int)ResourceType::Hydrazine] = tankHz;
+    }
+    d.synthesizeNodes();   // axial stack nodes (attachDown mates them)
+
+    Part *p = new Part;
+    p->body  = b;
+    p->def   = &d;
+    p->stage = 1;
+    return p;
+}
+
+/* onRails keeps ~Vehicle off RemoveBody: nothing here was ever added to a
+   physics world (there is none in this test). */
+static void destroyVehicle(Vehicle *v) {
+    v->onRails = true;
+    delete v;
+}
 
 int main() {
-    // --- build two containers + one item ----------------------------------
-    // container A: capacity 2
-    PartDef defA;
-    defA.name = "crateA";
-    defA.mass = 100.0f;
-    defA.inventory_capacity = 2;
-    Body *bodyA = new Body;
-    bodyA->mass = 100.0;
-    Part *A = new Part;
-    A->body = bodyA;
-    A->def = &defA;
+    Ship S1; S1.v = new Vehicle; S1.v->name = "S1";
+    Part *C  = mkPart(S1, "crate", 250.0, 1.0, 1.0, 1.0, 2, false);
+    S1.v->setRoot(C);
+    S1.v->controller = C;
 
-    // container B: capacity 1
-    PartDef defB;
-    defB.name = "crateB";
-    defB.mass = 50.0f;
-    defB.inventory_capacity = 1;
-    Body *bodyB = new Body;
-    bodyB->mass = 50.0;
-    Part *B = new Part;
-    B->body = bodyB;
-    B->def = &defB;
+    Ship I; I.v = nullptr;              // def bag for standalone items
+    Part *T  = mkPart(I, "tankA", 88.99, 1.0, 1.0, 1.0, 0, false, 78.54f);
+    Part *N  = mkPart(I, "nut",   10.0,  1.0, 1.0, 1.0, 0, false);
 
-    // item: a small part (no container, no crew)
-    PartDef defItem;
-    defItem.name = "item1";
-    defItem.mass = 10.0f;
-    Body *bodyItem = new Body;
-    bodyItem->mass = 10.0;
-    Part *item = new Part;
-    item->body = bodyItem;
-    item->def = &defItem;
+    /* --- add: the three edges + the owner, and the guards ---------------- */
+    {
+        printf("== inventoryAdd: edges, owner, guards ==\n");
+        CHECK_TRUE(inventoryAdd(T, C), "the crate accepts the tank");
+        CHECK_TRUE(C->ownedContents.size() == 1 && C->ownedContents[0] == T,
+                   "ownership edge: T in C's ownedContents");
+        CHECK_TRUE(C->contents.size() == 1 && C->contents[0] == T,
+                   "traversal edge: T in C's contents");
+        CHECK_TRUE(T->container == C, "back-reference: T->container is C");
+        CHECK_TRUE(T->owner == S1.v, "the item rides the container's vehicle");
+        CHECK_NEAR(C->effectiveMass(), 338.99, 1e-12,
+                   "the crate carries the tank (250 + 88.99)");
 
-    // --- add item to A ------------------------------------------------------
-    // manually set up the containment (simulating a pickup into A)
-    A->ownedContents.push_back(item);
-    A->contents.push_back(item);
-    item->container = A;
+        /* the guards, each of which must leave the item exactly where it was */
+        CHECK_TRUE(!inventoryAdd(T, C), "double-add refused");
+        CHECK_TRUE(T->container == C && C->ownedContents.size() == 1,
+                   "refused double-add changes nothing");
+        CHECK_TRUE(!inventoryAdd(N, T), "a non-container cannot hold an item");
+        CHECK_TRUE(N->container == nullptr, "N is still free");
 
-    CHECK(A->ownedContents.size() == 1);
-    CHECK(A->contents.size() == 1);
-    CHECK(item->container == A);
+        CHECK_TRUE(inventoryAdd(N, C), "the second item fits (2/2)");
+        Part *M = mkPart(I, "crateM", 5.0, 1.0, 1.0, 1.0, 5, false);
+        CHECK_TRUE(!inventoryAdd(M, C), "at capacity: refused");
+        CHECK_TRUE(M->container == nullptr, "refused add leaves M free");
+        delete M;   // nobody will take it
 
-    // --- transfer item A -> B -----------------------------------------------
-    bool ok = inventoryTransfer(item, B);
-    CHECK(ok);
-    CHECK(A->ownedContents.empty());
-    CHECK(A->contents.empty());
-    CHECK(B->ownedContents.size() == 1);
-    CHECK(B->ownedContents[0] == item);
-    CHECK(B->contents.size() == 1);
-    CHECK(item->container == B);
+        /* a cycle: X holds Y, then X into Y would make effectiveMass
+           recurse forever and ~Part double-free */
+        Part *X = mkPart(I, "xcrate", 50.0, 1.0, 1.0, 1.0, 10, false);
+        Part *Y = mkPart(I, "ycrate", 50.0, 1.0, 1.0, 1.0, 10, false);
+        CHECK_TRUE(inventoryAdd(Y, X), "Y into X");
+        CHECK_TRUE(!inventoryAdd(X, Y), "X into Y refused (cycle)");
+        CHECK_TRUE(X->container == nullptr, "X is still free after the refusal");
+        CHECK_TRUE(!inventoryAdd(X, X), "self-add refused");
+        delete X;   // frees Y (ownedContents) -- the ownership path in action
+        (void)Y;
+    }
 
-    // --- capacity refusal: B is full (capacity 1, has 1 item) ---------------
-    PartDef defItem2;
-    defItem2.name = "item2";
-    defItem2.mass = 5.0f;
-    Body *bodyItem2 = new Body;
-    bodyItem2->mass = 5.0;
-    Part *item2 = new Part;
-    item2->body = bodyItem2;
-    item2->def = &defItem2;
+    /* --- transfer: re-parent + owner re-pointing ------------------------- */
+    {
+        printf("== inventoryTransfer: re-parent, owner follows the container ==\n");
+        Ship S2; S2.v = new Vehicle; S2.v->name = "S2";
+        Part *B  = mkPart(S2, "crateB", 100.0, 1.0, 1.0, 1.0, 1, false);
+        S2.v->setRoot(B);
+        S2.v->controller = B;
 
-    // try to add item2 to B (full) -- should fail
-    B->ownedContents.push_back(item2);
-    B->contents.push_back(item2);
-    item2->container = B;
-    // now B has 2 items, but capacity is 1 -- this is an invalid state.
-    // Let's reset and test capacity properly:
-    B->ownedContents.clear();
-    B->contents.clear();
-    item2->container = nullptr;
+        CHECK_TRUE(inventoryTransfer(T, B), "T moves C -> B");
+        CHECK_TRUE(T->container == B, "back-reference re-pointed");
+        CHECK_TRUE(T->owner == S2.v, "owner re-pointed to B's vehicle");
+        CHECK_TRUE(C->ownedContents.size() == 1 && C->ownedContents[0] == N,
+                   "C keeps only N");
 
-    // re-add item to B (capacity 1)
-    B->ownedContents.push_back(item);
-    B->contents.push_back(item);
-    item->container = B;
+        /* B is full (1/1): the failed transfer must not orphan N */
+        CHECK_TRUE(!inventoryTransfer(N, B), "into a full container: refused");
+        CHECK_TRUE(N->container == C, "N is still in C");
+        CHECK_TRUE(!inventoryTransfer(N, T), "into a non-container: refused");
+        CHECK_TRUE(N->container == C, "N is still in C");
 
-    // now try to transfer item2 into B (full)
-    // first, put item2 in A
-    A->ownedContents.push_back(item2);
-    A->contents.push_back(item2);
-    item2->container = A;
+        Part *F = mkPart(I, "free", 1.0, 1.0, 1.0, 1.0, 0, false);
+        CHECK_TRUE(!inventoryTransfer(F, B), "a free item has no source");
+        delete F;
 
-    bool full = inventoryTransfer(item2, B);
-    CHECK(!full);   // B is full (capacity 1, has item)
-    CHECK(item2->container == A);   // still in A
+        CHECK_TRUE(inventoryTransfer(T, C), "T moves back B -> C");
+        CHECK_TRUE(T->owner == S1.v, "owner back to S1");
+        CHECK_TRUE(B->ownedContents.empty() && B->contents.empty(), "B emptied");
+        destroyVehicle(S2.v);   // B empty -- frees nothing but B
+    }
 
-    // --- transfer to a non-container (should fail) --------------------------
-    PartDef defNonCont;
-    defNonCont.name = "plain";
-    defNonCont.mass = 1.0f;
-    Body *bodyNC = new Body;
-    bodyNC->mass = 1.0;
-    Part *nonCont = new Part;
-    nonCont->body = bodyNC;
-    nonCont->def = &defNonCont;
+    /* --- remove: all edges + the owner clear; a free item is a no-op ----- */
+    {
+        printf("== inventoryRemove: edges and owner cleared ==\n");
+        inventoryRemove(N);
+        CHECK_TRUE(N->container == nullptr, "back-reference cleared");
+        CHECK_TRUE(N->owner == nullptr, "owner cleared");
+        CHECK_TRUE(std::find(C->ownedContents.begin(), C->ownedContents.end(),
+                             N) == C->ownedContents.end(),
+                   "not in ownedContents");
+        CHECK_TRUE(std::find(C->contents.begin(), C->contents.end(),
+                             N) == C->contents.end(),
+                   "not in contents");
+        inventoryRemove(N);        // removing a free item: no-op, no crash
+        delete N;
+        CHECK_TRUE(C->ownedContents.size() == 1 && C->ownedContents[0] == T,
+                   "C keeps only T");
 
-    bool badDest = inventoryTransfer(item2, nonCont);
-    CHECK(!badDest);   // nonCont has inventory_capacity 0
+        Part *R = mkPart(I, "removeMe", 7.0, 1.0, 1.0, 1.0, 0, false);
+        CHECK_TRUE(inventoryAdd(R, C), "R into C (2/2 again)");
+        inventoryRemove(R);
+        CHECK_TRUE(R->container == nullptr && R->owner == nullptr,
+                   "R fully detached");
+        CHECK_TRUE(inventoryAdd(R, C), "R back into C");
+        CHECK_TRUE(C->ownedContents.size() == 2, "C holds T and R at the end");
+    }
 
-    // --- inventoryRemove ----------------------------------------------------
-    inventoryRemove(item);
-    CHECK(B->ownedContents.empty());
-    CHECK(B->contents.empty());
-    CHECK(item->container == nullptr);
+    /* --- effectiveMass recurses through nested items --------------------- */
+    {
+        printf("== effectiveMass: nested items ==\n");
+        Ship S5; S5.v = new Vehicle; S5.v->name = "S5";
+        Part *E  = mkPart(S5, "nesthost", 100.0, 1.0, 1.0, 1.0, 2, false);
+        S5.v->setRoot(E);
+        S5.v->controller = E;
 
-    // --- ownership: deleting the container frees the item -------------------
-    // item2 is still in A (the failed transfers above left it there).
-    // Delete A -- ~Part must free item2 (ownedContents) without a double free.
-    CHECK(item2->container == A);
-    CHECK(A->ownedContents.size() == 1);
-    delete A;   // ~Part deletes ownedContents (item2) + bodyA
-    // if we got here without a crash, ownership works
+        Part *NC = mkPart(I, "nestcrate", 20.0, 1.0, 1.0, 1.0, 5, false);
+        Part *NT = mkPart(I, "nesttank", 30.0, 1.0, 1.0, 1.0, 0, false, 50.0f);
+        CHECK_TRUE(inventoryAdd(NT, NC), "tank into the sub-crate");
+        CHECK_TRUE(inventoryAdd(NC, E), "sub-crate into the crate");
+        CHECK_NEAR(NC->effectiveMass(), 50.0, 1e-12,
+                   "the sub-crate carries its tank (20 + 30)");
+        CHECK_NEAR(E->effectiveMass(), 150.0, 1e-12,
+                   "the crate carries the sub-crate chain (100 + 50)");
+        CHECK_TRUE(NT->owner == S5.v, "the nested item rides the ship");
+        destroyVehicle(S5.v);   // frees E -> NC -> NT, one owner each
+    }
 
-    // clean up the rest
-    delete B;
-    delete nonCont;
-    delete item;
+    /* --- init() with items: the invariant must PASS (quality-pass bug) ---
+       The pre-fix invariant rejected items in contents (they are not a
+       character's part), so rebuildCompound -- asserted on every build,
+       stage and burn refresh, i.e. on load of any save with inventory --
+       would abort. A vehicle that inits with items in its crate is the
+       regression pin. */
+    {
+        printf("== init() + checkPartInvariants pass with items ==\n");
+        S1.v->init();
+        S1.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+        CHECK_TRUE(S1.v->checkPartInvariants(), "S1 passes with its items");
+        CHECK_NEAR(S1.v->getMass(), 345.99, 1e-3,
+                   "the ship's mass carries every item (250 + 88.99 + 7)");
+        destroyVehicle(S1.v);   // frees C -> T, R
+    }
 
-    if(failures == 0) {
-        printf("test_inventory: all checks passed\n");
+    /* --- the invariant must FAIL where the edge breaks -------------------- */
+    {
+        printf("== invariant violations are caught ==\n");
+        Ship S3; S3.v = new Vehicle; S3.v->name = "S3";
+        Part *P  = mkPart(S3, "plain", 100.0, 1.0, 1.0, 1.0, 0, false);
+        Part *K  = mkPart(S3, "kcrate", 60.0, 1.0, 1.0, 1.0, 1, false);
+        S3.v->setRoot(P);
+        S3.v->attachDown(K);
+        S3.v->controller = P;
+        S3.v->init();
+        S3.v->placeShip(glm::dvec3(20.0), glm::dmat3(1.0));
+        CHECK_TRUE(S3.v->checkPartInvariants(), "S3 passes unwired");
+
+        Part *IT = mkPart(I, "stray", 5.0, 1.0, 1.0, 1.0, 0, false);
+        /* (a) listed in a non-container's contents: not an owned item (not
+           in ownedContents), not a character's part (no owner) -> fail */
+        P->contents.push_back(IT);
+        IT->container = P;
+        CHECK_TRUE(!S3.v->checkPartInvariants(),
+                   "item in a non-container's contents: fails");
+        P->contents.pop_back();
+        IT->container = nullptr;
+        /* (b) owned by a part with inventory_capacity 0 -> fail */
+        P->ownedContents.push_back(IT);
+        P->contents.push_back(IT);
+        IT->container = P;
+        CHECK_TRUE(!S3.v->checkPartInvariants(),
+                   "item owned by a non-container: fails");
+        P->ownedContents.pop_back();
+        P->contents.pop_back();
+        IT->container = nullptr;
+        /* (c) owned by a container but not listed for traversal: the mass
+           would be freed in ~Part but silently absent from effectiveMass ->
+           fail */
+        K->ownedContents.push_back(IT);
+        IT->container = K;
+        CHECK_TRUE(!S3.v->checkPartInvariants(),
+                   "owned but not listed: fails");
+        K->ownedContents.pop_back();
+        IT->container = nullptr;
+        CHECK_TRUE(S3.v->checkPartInvariants(), "restored S3 passes");
+        destroyVehicle(S3.v);
+        delete IT;   // nobody owns it any more
+    }
+
+    /* --- absorb + split re-point the item owners --------------------------
+       The item's owner is its container's vehicle. A dock (absorbShip) or
+       a split (extractSubtreeAsShip) moves the container to a new ship; the
+       items in its inventory must follow, or they dangle when the caller
+       deletes the shell. */
+    {
+        printf("== item owners follow absorbShip / extractSubtreeAsShip ==\n");
+        Ship DA; DA.v = new Vehicle; DA.v->name = "DA";
+        Part *AC = mkPart(DA, "acrate", 250.0, 1.0, 1.0, 1.0, 2, false);
+        Part *AP = mkPart(DA, "aport",  50.0,  1.0, 1.0, 0.125, 0, true);
+        DA.v->setRoot(AC);
+        DA.v->attachDown(AP);
+        DA.v->controller = AC;
+
+        Ship DB; DB.v = new Vehicle; DB.v->name = "DB";
+        Part *BC = mkPart(DB, "bcrate", 120.0, 1.0, 1.0, 1.0, 2, false);
+        DB.v->setRoot(BC);
+        DB.v->controller = BC;
+
+        Part *AIT = mkPart(I, "ait", 40.0, 1.0, 1.0, 1.0, 0, false, 60.0f);
+        Part *BIT = mkPart(I, "bit", 40.0, 1.0, 1.0, 1.0, 0, false, 60.0f);
+        CHECK_TRUE(inventoryAdd(AIT, AC), "AIT into AC");
+        CHECK_TRUE(inventoryAdd(BIT, BC), "BIT into BC");
+        CHECK_TRUE(BIT->owner == DB.v, "BIT rides DB");
+
+        DA.v->init();
+        DA.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+        DB.v->init();
+        DB.v->placeShip(glm::dvec3(0.0, 0.0, -6.0), glm::dmat3(1.0));
+
+        DA.v->absorbShip(DB.v, AP);
+        CHECK_TRUE(BC->owner == DA.v, "the container re-pointed to DA");
+        CHECK_TRUE(BIT->owner == DA.v, "the item owner re-pointed to DA");
+        CHECK_TRUE(AIT->owner == DA.v, "the crate's own item unchanged");
+        CHECK_TRUE(DA.v->checkPartInvariants(), "DA passes after absorb");
+        delete DB.v;   // empty shell -- must not touch the item a second time
+
+        Vehicle *nv = DA.v->extractSubtreeAsShip(BC, "DB");
+        CHECK_TRUE(nv != nullptr, "the split succeeds");
+        if(nv != nullptr) {
+            CHECK_TRUE(BC->owner == nv, "the container re-pointed to the split");
+            CHECK_TRUE(BIT->owner == nv, "the item owner followed the split");
+            CHECK_TRUE(AIT->owner == DA.v, "AC's item stays with DA");
+            CHECK_TRUE(nv->checkPartInvariants(), "the split-off passes");
+            CHECK_TRUE(DA.v->checkPartInvariants(), "DA passes after the split");
+            destroyVehicle(nv);
+        }
+        destroyVehicle(DA.v);
+    }
+
+    if(g_failures == 0) {
+        printf("test_inventory: all %d checks passed\n", g_checks);
         return 0;
     }
-    printf("test_inventory: %d FAILURES\n", failures);
+    printf("test_inventory: %d/%d FAILED\n", g_failures, g_checks);
     return 1;
 }

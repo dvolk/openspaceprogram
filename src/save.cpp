@@ -96,6 +96,84 @@ Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
 }
 
 
+// ---- inventory items (phase 4.6) --------------------------------------------
+// An item is a standalone Part owned by its container (Part::ownedContents),
+// and a container may itself be an item -- so capture and restore are
+// recursive. Both paths walk the SAME depth-first order (the item is emitted
+// inside its container), which is what keeps a container-before-item save
+// reconstructable.
+
+// One item (and its nested items) from the live Part to SavePart.
+SavePart saveItemPart(Part *c) {
+    SavePart si;
+    si.part = c->def->name;
+    si.uid = c->uid;
+    si.id = c->id;
+    si.mass = c->body->mass;
+    si.hull_margin = c->body->hull_margin;
+    for(int r = 0; r < (int)ResourceType::Num; r++) {
+        si.fuel.push_back((double)c->resources.current[r]);
+    }
+    for(Part *n : c->ownedContents) { si.inventory.push_back(saveItemPart(n)); }
+    return si;
+}
+
+// Rebuild `saved` (and each entry's nested items) as items of `container`,
+// wiring ownership + traversal + back-reference and the item's owner (the
+// container's vehicle). Throws std::runtime_error on an unknown def or a
+// container over capacity; whatever was wired before the throw hangs off
+// `container`, so the caller frees it by deleting the owning vehicle.
+void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
+                         Part *container, const std::string &shipName) {
+    const PartsCatalog &cat = g.ships.catalog();
+    /* a live add refuses a full container (inventory.cpp); a load must too,
+       or a hand-edited save can exceed inventory_capacity -- a state the
+       game cannot otherwise reach. */
+    if((int)saved.size() > container->def->inventory_capacity) {
+        throw std::runtime_error("load: '" + shipName + "' part '"
+                                 + container->def->name + "' holds "
+                                 + std::to_string(saved.size())
+                                 + " inventory item(s), more than its "
+                                 + std::to_string(container->def->inventory_capacity)
+                                 + "-slot capacity");
+    }
+    for(size_t i = 0; i < saved.size(); i++) {
+        const SavePart &si = saved[i];
+        const PartDef *pd = cat.find(si.part);
+        if(pd == nullptr) {
+            throw std::runtime_error("load: '" + shipName + "' inventory item '"
+                                     + si.part + "' is not in the parts file");
+        }
+        Mesh *m = get_mesh("./res/" + pd->mesh);
+        Texture *t = get_texture("./res/" + pd->texture);
+        Body *b = create_part_body(m, g.partsshader, t,
+                                   (float)si.mass, si.hull_margin);
+        Part *item = new Part;
+        item->body = b;
+        item->def = pd;
+        item->id = si.id;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            item->resources.capacity[r] = pd->capacity[r];
+            item->resources.current[r] = (r < (int)si.fuel.size())
+                ? (float)si.fuel[r] : 0.0f;
+        }
+        container->ownedContents.push_back(item);
+        container->contents.push_back(item);
+        item->container = container;
+        item->owner = container->owner;   // the vehicle the container is on
+        buildInventoryItems(g, si.inventory, item, shipName);
+    }
+}
+
+// How many inventory items a part carries (itself counted as 1 per level):
+// the load summary line reports the BUILT count, so a restore that silently
+// drops a nested item shows up as a smaller number, not a green load.
+size_t countPartInventory(Part *p) {
+    size_t n = p->ownedContents.size();
+    for(Part *c : p->ownedContents) { n += countPartInventory(c); }
+    return n;
+}
+
 // ---- capture (Game -> SaveShip) --------------------------------------------
 
 SaveShip saveShipFromVehicle(Vehicle *v) {
@@ -125,6 +203,12 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 s.suit_fuel.push_back((double)v->parts[0]->resources.current[r]);
             }
+            /* phase 4.6: the suit's inventory items (depth-first). Without
+               this the suit -- the catalog's primary container -- would
+               silently lose its pocket on every save. */
+            for(Part *c : v->parts[0]->ownedContents) {
+                s.suit_inventory.push_back(saveItemPart(c));
+            }
         }
         return s;
     }
@@ -146,20 +230,11 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             sp.fuel.push_back((double)p->resources.current[r]);
         }
-        /* phase 4.6: nested inventory items (depth-first: the item is
-           emitted inside its container, so load reconstructs the
-           container before its items). */
+        /* phase 4.6: nested inventory items (depth-first: an item's own
+           items are emitted inside it, so load reconstructs the outermost
+           container before anything nested). */
         for(Part *c : p->ownedContents) {
-            SavePart si;
-            si.part = c->def->name;
-            si.uid = c->uid;
-            si.id = c->id;
-            si.mass = c->body->mass;
-            si.hull_margin = c->body->hull_margin;
-            for(int r = 0; r < (int)ResourceType::Num; r++) {
-                si.fuel.push_back((double)c->resources.current[r]);
-            }
-            sp.inventory.push_back(si);
+            sp.inventory.push_back(saveItemPart(c));
         }
         s.parts.push_back(sp);
     }
@@ -287,35 +362,17 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             throw std::runtime_error("load: two ships claim part uid "
                                      + std::to_string(sp.uid));
         }
-        /* phase 4.6: reconstruct the nested inventory items (the container
-           is built now, so its items can be wired to it). Each item is a
-           standalone Part (not attached to the ship's part tree) that the
-           container OWNS (ownedContents) and traverses (contents). */
-        for(size_t ii = 0; ii < sp.inventory.size(); ii++) {
-            const SavePart &si = sp.inventory[ii];
-            const PartDef *id = cat.find(si.part);
-            if(id == nullptr) {
-                delete v;
-                throw std::runtime_error("load: saved ship '" + s.name
-                                         + "' inventory item '" + si.part
-                                         + "' is not in the parts file");
-            }
-            Mesh *im = get_mesh("./res/" + id->mesh);
-            Texture *it2 = get_texture("./res/" + id->texture);
-            Body *ib = create_part_body(im, g.partsshader, it2,
-                                        (float)si.mass, si.hull_margin);
-            Part *item = new Part;
-            item->body = ib;
-            item->def = id;
-            item->id = si.id;
-            for(int r = 0; r < (int)ResourceType::Num; r++) {
-                item->resources.capacity[r] = id->capacity[r];
-                item->resources.current[r] = (r < (int)si.fuel.size()) ? (float)si.fuel[r] : 0.0f;
-            }
-            /* wire the containment edge (ownership + traversal) */
-            p->ownedContents.push_back(item);
-            p->contents.push_back(item);
-            item->container = p;
+        /* phase 4.6: reconstruct the inventory items (depth-first, nested
+           included): the container is built now, so its items can be wired
+           to it, and each item is a standalone Part (not in the ship's part
+           tree) that the container OWNS (ownedContents) and traverses
+           (contents). A refused item frees through `delete v` below -- the
+           items wired so far hang off p and go with it. */
+        try {
+            buildInventoryItems(g, sp.inventory, p, s.name);
+        } catch(const std::exception &) {
+            delete v;
+            throw;
         }
     }
     /* A named controller that is not in the ship is corruption, not something
@@ -415,11 +472,30 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     }
     /* phase 4.1: restore the suit tank contents (build_ship's init() re-seeded
        them full; this overwrites with the saved amount, so a kerbal that
-       burned some EVA propellant does not get a free re-seed on load). */
+       burned some EVA propellant does not get a free re-seed on load). The
+       def mass is WET (consumeResourceMass sheds the burned mass from the
+       body), so the body mass sheds the same amount. */
     if(!s.suit_fuel.empty() && !k->parts.empty()) {
+        Part *suit = k->parts[0];
         for(size_t r = 0; r < s.suit_fuel.size() && r < (size_t)ResourceType::Num; r++) {
-            k->parts[0]->resources.current[r] = (float)s.suit_fuel[r];
+            const float cur = (float)s.suit_fuel[r];
+            const float cap = suit->resources.capacity[r];
+            suit->resources.current[r] = cur;
+            if(cur < cap) { suit->body->mass -= (double)(cap - cur); }
         }
+    }
+    /* phase 4.6: the suit's inventory items (depth-first, nested included) --
+       without this the suit loses its pocket on every load. A refused item
+       frees through `delete k` (the items wired so far hang off the suit).
+       The compound was built before the items existed, so rebuild it. */
+    if(!s.suit_inventory.empty() && !k->parts.empty()) {
+        try {
+            buildInventoryItems(g, s.suit_inventory, k->parts[0], s.name);
+        } catch(const std::exception &) {
+            delete k;
+            throw;
+        }
+        k->rebuildCompound();
     }
     if(s.aboard.empty()) {
         // free (on EVA): live in the world, at its saved pose
@@ -480,9 +556,14 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         /* A live board refuses a full capsule (game.cpp kerbalBoard); a load
            must too, or a hand-edited save can park more kerbals in a seat than
            the capsule has -- a state the game can't otherwise reach. The count
-           is the capsule's contents (every contained part is a kerbal), built
-           up one save entry at a time, so this fires on the one that overflows. */
-        if((int)cap->contents.size() >= cap->def->crew_capacity) {
+           is the capsule's CREW (inventory items share contents but are not
+           seated), built up one save entry at a time, so this fires on the one
+           that overflows. */
+        int crewInCap = 0;
+        for(Part *c : cap->contents) {
+            if(!c->ownedBy(cap)) { crewInCap++; }
+        }
+        if(crewInCap >= cap->def->crew_capacity) {
             delete k;
             throw std::runtime_error("load: capsule '" + cap->def->name
                                      + "' of ship '" + s.aboard + "' is full ("
@@ -695,6 +776,17 @@ void load_game(Game &g, const std::string &dir) {
     // The save may enter OR leave the no-ship state: keep the "ship" focus
     // entry in sync and point the camera at the ship, or home if none.
     g.syncShipFocus();
+    // The BUILT inventory count (the fleet's parts and their nested items,
+    // a kerbal's pocket included): a restore that silently dropped a nested
+    // item would print a smaller number than the save carried, instead of
+    // failing the load's EXPECT.
+    size_t invItems = 0;
+    for(size_t i = 0; i < built.size(); i++) {
+        for(Part *p : built[i]->parts) { invItems += countPartInventory(p); }
+    }
+    if(invItems > 0) {
+        printf("Loaded %zu inventory item(s) with the fleet\n", invItems);
+    }
     printf("Loaded game from %s (active: %s)\n", dir.c_str(),
            (active != nullptr) ? active->name.c_str() : "(none)");
 }

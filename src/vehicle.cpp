@@ -634,10 +634,13 @@ bool Vehicle::checkPartInvariants() const {
             return false;
         }
         if(p->container != nullptr) {
-            /* phases 2-4: the only part that may be contained is a
-               character's own -- its owner is the character vehicle (isEva).
-               Phase 5 drops the exception when a contained kerbal stops
-               being a Vehicle (design report §2.6/§2.7). */
+            /* phases 2-4: a part in a parts list may only be contained as
+               a CREW member -- its owner is the character vehicle (isEva).
+               Inventory items are contained too, but they never appear in
+               any parts list (the container owns them via ownedContents),
+               so they are checked on the container side below. Phase 5
+               drops the exception when a contained kerbal stops being a
+               Vehicle (design report §2.6/§2.7). */
             if(!isEva()) {
                 printf("[part] '%s': part '%s' (uid %llu) is contained, but "
                        "this vehicle is not a character\n",
@@ -660,12 +663,44 @@ bool Vehicle::checkPartInvariants() const {
                 return false;
             }
         }
+        /* owned inventory items must be listed for traversal too --
+           ownership without traversal would free them in ~Part but silently
+           drop their mass from effectiveMass (the two lists must agree). */
+        for(Part *c : p->ownedContents) {
+            if(c->container != p) {
+                printf("[part] '%s': ownedContents holds part uid %llu, but "
+                       "its container points elsewhere\n", name.c_str(),
+                       (unsigned long long)c->uid);
+                return false;
+            }
+            bool listed = false;
+            for(Part *d : p->contents) { if(d == c) { listed = true; break; } }
+            if(!listed) {
+                printf("[part] '%s': ownedContents holds part uid %llu, but "
+                       "contents does not list it\n", name.c_str(),
+                       (unsigned long long)c->uid);
+                return false;
+            }
+        }
         for(Part *c : p->contents) {
             if(c->container != p) {
                 printf("[part] '%s': contents lists part uid %llu, but its "
                        "container points elsewhere\n", name.c_str(),
                        (unsigned long long)c->uid);
                 return false;
+            }
+            /* phase 4: contents holds BOTH crew members and inventory
+               items. An item is owned by the container itself (in its
+               ownedContents) and claims no vehicle; everything else in
+               contents must be a character's part. */
+            if(c->ownedBy(p)) {
+                if(p->def == nullptr || p->def->inventory_capacity <= 0) {
+                    printf("[part] '%s': part uid %llu is an inventory "
+                           "item, but this part is not a container\n",
+                           name.c_str(), (unsigned long long)c->uid);
+                    return false;
+                }
+                continue;
             }
             if(c->owner == nullptr || !c->owner->isEva()) {
                 printf("[part] '%s': part uid %llu in contents is not a "
@@ -2047,6 +2082,20 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     bRoot->parent = portA;
 
     for(Part *q : B->parts) { q->owner = this; }   // they are OUR parts now
+    /* phase 4: the inventory items in B's containers ride B's vehicle via
+       the container's owner (inventory.cpp) -- re-point them to this ship
+       too, or they dangle when the caller deletes B as a shell. */
+    {
+        std::vector<Part *> stack;
+        for(Part *q : B->parts) { stack.push_back(q); }
+        while(!stack.empty()) {
+            Part *p = stack.back(); stack.pop_back();
+            for(Part *it : p->ownedContents) {
+                it->owner = this;
+                stack.push_back(it);
+            }
+        }
+    }
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
@@ -2165,6 +2214,20 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
     root->parent = nullptr;   // root of the new ship
     nv->parts = nvParts;
     for(Part *q : nvParts) { q->owner = nv; }   // the dropped side is ITS ship now
+    /* phase 4: the inventory items in the dropped side's containers follow
+       their container to the new ship (they are owned by the container and
+       traverse its owner for the vehicle). */
+    {
+        std::vector<Part *> stack;
+        for(Part *q : nvParts) { stack.push_back(q); }
+        while(!stack.empty()) {
+            Part *p = stack.back(); stack.pop_back();
+            for(Part *it : p->ownedContents) {
+                it->owner = nv;
+                stack.push_back(it);
+            }
+        }
+    }
     /* controller: the build rule (the first wheel, else the root). */
     nv->controller = nullptr;
     for(size_t i = 0; i < nvParts.size(); i++) {

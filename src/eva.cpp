@@ -153,15 +153,23 @@ void Kerbal::applyEva(double h) {
             /* phase 4.5: the kerbal draws its RCS hydrazine from its own
                suit tank first, then from any inventory items that carry the
                resource (a spare mono tank in the suit pocket). Defined order:
-               own tank, then contents in insertion order. */
+               own tank, then contents in insertion order. The pocket tanks
+               are not in this ship's fuel groups (buildFuelGroups groups
+               Vehicle::parts only), so consumeResourceMass cannot reach
+               them -- the draw is the same per-tank decrement it makes
+               (contents + body mass; refreshCompound picks the mass up). */
             bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]);
             if(!haveFuel) {
                 for(Part *c : parts[0]->contents) {
-                    if(c->resources.current[(int)ResourceType::Hydrazine] > 0.0f
-                       && consumeResourceMass(ResourceType::Hydrazine, flow, c)) {
-                        haveFuel = true;
-                        break;
-                    }
+                    if(!c->ownedBy(parts[0])) { continue; }
+                    const float have =
+                        c->resources.current[(int)ResourceType::Hydrazine];
+                    if(have <= 0.0f) { continue; }
+                    const float take = (flow < have) ? flow : have;
+                    c->resources.current[(int)ResourceType::Hydrazine] = have - take;
+                    c->body->mass -= (double)take;
+                    haveFuel = true;
+                    break;
                 }
             }
             if(haveFuel) {

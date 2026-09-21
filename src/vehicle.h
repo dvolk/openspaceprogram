@@ -255,13 +255,16 @@ public:
     void checkCompoundInvariants() const;
 
     /* The containment invariant (part.h): every part of this vehicle is
-       attached to exactly this vehicle (its `owner` back-reference), the
-       container/contents back-references agree, and in phases 2-4 only a
-       character's own part (isEva) may be contained, in a real capsule
-       (crew_capacity > 0). False -- with a [part] diagnostic -- on any
-       violation. rebuildCompound asserts it where checkCompoundInvariants
-       is asserted; tests/test_contain.cpp checks it directly, including the
-       cases where it must fail. */
+       attached to exactly this vehicle (its `owner` back-reference), and
+       the container/contents/ownedContents edges agree. Two kinds of
+       contained part are legal in phases 2-4: a character's own part
+       (isEva), in a real capsule (crew_capacity > 0), and an inventory
+       item, owned by its container (in the container's ownedContents,
+       which requires inventory_capacity > 0) and listed in its contents.
+       False -- with a [part] diagnostic -- on any violation.
+       rebuildCompound asserts it where checkCompoundInvariants is asserted;
+       tests/test_contain.cpp and tests/test_inventory.cpp check it
+       directly, including the cases where it must fail. */
     bool checkPartInvariants() const;
 
     /* The part frame S is anchored to: the one with no parent edge. That is

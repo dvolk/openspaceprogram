@@ -112,7 +112,7 @@ struct Part {
        burn-triggered refresh (rebuildCompound), next to
        checkCompoundInvariants. */
     Vehicle *owner = nullptr;      // attached: the Vehicle whose parts list holds this
-    Part *container = nullptr;     // contained: the part this one is parked in (a capsule)
+    Part *container = nullptr;     // contained: the part this one is parked in (a capsule, or a container for an inventory item)
     std::vector<Part *> contents;  // contained: the parts parked in this one (non-owning)
     /* OWNED inventory items (phase 4.3): the parts this one holds in its
        inventory (a cargo crate, a spare tank). ~Part deletes them. Crew
@@ -159,6 +159,16 @@ struct Part {
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }
+    /* phase 4: is this part an inventory item of `container` -- i.e. listed
+       in its ownedContents? `contents` holds BOTH crew and items, so this is
+       what tells them apart: a crew member's part is contained but owned by
+       its character vehicle, an item is contained and owned by the
+       container itself. */
+    bool ownedBy(Part *container) const {
+        if(container == nullptr) { return false; }
+        for(Part *c : container->ownedContents) { if(c == this) { return true; } }
+        return false;
+    }
     bool isTank() const {
         if(def == nullptr) { return false; }
         for(size_t i = 0; i < def->capacity.size(); i++) {

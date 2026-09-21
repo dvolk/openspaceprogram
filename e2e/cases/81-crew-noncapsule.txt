@@ -22,7 +22,11 @@ ARGS --orbit-log --orbit-interval 0.5
 EXPECT [load] refused e2e/fixtures/save_racer_badcrew
 EXPECT is parked in 'fuel_tank'
 EXPECT not a capsule
-EXPECT Timeout reached (8.0 s)
+# "Timeout reached" without the elapsed figure: the game prints the ACTUAL
+# wall time at exit, which drifts (8.0/8.1 s) with frame timing, so the exact
+# number is flaky. The intent is only that the game still flew to the timeout
+# (refused the load cleanly) instead of crashing or exiting early.
+EXPECT Timeout reached
 EXPECT [orbitlog]
 CHECK len(orbit) >= 4
 FORBID Segmentation

@@ -525,10 +525,14 @@ std::vector<Kerbal *> shipCrew(Vehicle *ship) {
 
 std::vector<Kerbal *> partCrew(Part *capPart) {
     /* step 2.4: read the containment edge (capPart->contents) instead of
-       scanning the ship's crew by aboardPart. A contained part's owner is the
-       character (checkPartInvariants guarantees isEva), so the cast is safe. */
+       scanning the ship's crew by aboardPart. A crew member's owner is the
+       character (checkPartInvariants guarantees isEva), so the cast is safe.
+       phase 4: contents may also hold inventory items -- they are in the
+       container's ownedContents and their owner is the carrier, NOT a
+       Kerbal, so they are skipped. */
     std::vector<Kerbal *> out;
     for(Part *p : capPart->contents) {
+        if(p->ownedBy(capPart)) { continue; }
         out.push_back(static_cast<Kerbal *>(p->owner));
     }
     return out;
@@ -701,6 +705,11 @@ Vehicle *Game::dropItem(Part *item) {
     if(item == nullptr || item->container == nullptr) { return nullptr; }
     Vehicle *carrier = item->container->owner;
     if(carrier == nullptr) { return nullptr; }
+    /* a parked carrier (on rails, or an aboard kerbal's frozen hull) has a
+       stale hull state, and its pose may sit inside another ship's hull --
+       the item would spawn in collision or with the wrong velocity. Only a
+       live carrier can shed items. */
+    if(carrier->onRails) { return nullptr; }
 
     /* the item's world pose = its container's pose (it sits at the
        container's COM). Rigid velocity: v + w x r (the same derivation
@@ -724,7 +733,9 @@ Vehicle *Game::dropItem(Part *item) {
     nv->home = carrier->home;
     nv->sun = carrier->sun;
     nv->parts.push_back(item);
-    item->owner = nv;
+    /* the whole inventory subtree (a crate in a crate) now rides the new
+       ship, not just the top item */
+    inventorySetOwner(item, nv);
     nv->finalize();
     nv->placeShip(itemPos, itemRot);
     nv->setVelocity(v);
@@ -748,15 +759,20 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
         return false;
     }
 
-    /* remove the item ship from the fleet + destroy it */
+    /* remove the item ship from the fleet + destroy it. The item itself is
+       now owned by dest (in its ownedContents) and still in itemShip's
+       parts list -- so clear the list BEFORE the delete: ~Vehicle deletes
+       its parts, and leaving the item in would free it here AND again when
+       ~Part(dest) runs. */
     if(itemShip->m_parent != nullptr) {
         for(auto it = itemShip->m_parent->ships.begin();
             it != itemShip->m_parent->ships.end(); it++) {
             if(*it == itemShip) { itemShip->m_parent->ships.erase(it); break; }
         }
     }
+    itemShip->parts.clear();
     RemoveBody(itemShip->hull);
-    delete itemShip;   // ~Vehicle deletes parts (but item is now in dest's ownedContents)
+    delete itemShip;
     /* phase 3: the carrier's compound gains the item's mass */
     if(dest->owner != nullptr) { dest->owner->rebuildCompound(); }
     toast("Picked up %s", item->def->name.c_str());
