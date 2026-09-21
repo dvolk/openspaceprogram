@@ -36,6 +36,7 @@
 #define BT_USE_DOUBLE_PRECISION true
 #include <bullet/btBulletDynamicsCommon.h>
 
+#include <cmath>
 #include <cstdio>
 #include <deque>
 #include <vector>
@@ -51,6 +52,17 @@ static int g_checks = 0;
         if (!(cond)) {                                                         \
             g_failures++;                                                      \
             printf("FAIL: %s\n", msg);                                         \
+        }                                                                      \
+    } while (0)
+
+#define CHECK_NEAR(actual, expected, tol, msg)                                 \
+    do {                                                                       \
+        g_checks++;                                                            \
+        double _a = (actual), _e = (expected);                                 \
+        if (!std::isfinite(_a) || std::fabs(_a - _e) > (tol)) {                \
+            g_failures++;                                                      \
+            printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
+                   msg, _a, _e, (double)(tol));                                \
         }                                                                      \
     } while (0)
 
@@ -350,6 +362,54 @@ int main() {
         /* the double-free check: crew freed before parts; the non-owning
            contents must not free the (now dangling) suit a second time. */
         destroyVehicle(S.v);   // deletes K (in S.v->crew) then S's parts
+    }
+
+    /* --- effectiveMass: a part carries what is parked inside it (3.1) --- */
+    /* The derived value phase 3 wires into the compound: a part's mass plus
+       the effectiveMass of every contained part, recursively. Unwired here
+       (the compound still reads body->mass), so this only pins the derived
+       value itself. A capsule with one kerbal is body + suit; a part with
+       nothing in it is just its body mass. */
+    {
+        printf("== effectiveMass: a part carries what is parked inside it ==\n");
+        Ship M; M.v = new Vehicle; M.v->name = "M";
+        Part *mTank = mkPart(M, "mTank", 500.0, 1.0, 1.0, 1.0, 0, false);
+        Part *mCap  = mkPart(M, "mCapsule", 100.0, 1.0, 1.0, 0.5, 1, false);
+        M.v->setRoot(mCap);
+        M.v->attachDown(mTank);
+        M.v->controller = mCap;
+        M.v->init();
+        M.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+        /* empty: effectiveMass is just the body mass */
+        CHECK_NEAR(mTank->effectiveMass(), 500.0, 1e-12,
+                   "effectiveMass: an empty part is its body mass");
+        CHECK_NEAR(mCap->effectiveMass(), 100.0, 1e-12,
+                   "effectiveMass: an empty capsule is its body mass");
+
+        Ship N; N.v = new TestCrew; N.v->name = "N";
+        Part *nSuit = mkPart(N, "nSuit", 97.05, 0.2, 0.2, 0.375, 0, false);
+        N.v->setRoot(nSuit);
+        N.v->controller = nSuit;
+        N.v->init();
+        N.v->placeShip(glm::dvec3(40.0), glm::dmat3(1.0));
+
+        /* park the kerbal in the capsule (the containment edge, both ways) */
+        static_cast<TestCrew *>(N.v)->cap = mCap;
+        M.v->crew.push_back(N.v);
+        mCap->contents.push_back(nSuit);
+        nSuit->container = mCap;
+
+        CHECK_NEAR(mCap->effectiveMass(), 197.05, 1e-12,
+                   "effectiveMass: a capsule carries its kerbal (100 + 97.05)");
+        CHECK_NEAR(nSuit->effectiveMass(), 97.05, 1e-12,
+                   "effectiveMass: the contained kerbal is its own body mass");
+        CHECK_NEAR(M.v->parts[0]->effectiveMass() + mTank->effectiveMass(),
+                   697.05, 1e-12,
+                   "effectiveMass: the ship's parts sum to ship + kerbal");
+        /* M.v owns N.v (it is in M.v->crew): deleting the ship deletes the
+           crew via ~Vehicle -- do NOT delete N.v separately (double free). */
+        destroyVehicle(M.v);
     }
 
     /* teardown: delete the crew first, as ~Vehicle does for its own crew --

@@ -172,4 +172,21 @@ struct Part {
     double powerDraw() const { return def->power_draw; }          // W, only while active (a reaction wheel)
     double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time (capsule life support)
     double powerGen() const { return def->power_gen; }            // W, constant source (an RTG)
+
+    /* The part's mass INCLUDING what is parked inside it (the containment
+       edge, phase 2): its own body mass plus the effectiveMass of every
+       contained part, recursively. Phase 3 wires this into the compound
+       (rebuildCompound / compoundCom / checkCompoundInvariants) so a
+       capsule's mass carries its crew without baking it into the body mass
+       (the addPartMass mechanism it replaces); until then it is a pure
+       derived value. The traversal is non-owning -- the contained parts are
+       owned by their own vehicles (Vehicle::crew), so this only reads,
+       never frees. checkPartInvariants keeps the containment edge a tree
+       (each contained part has at most one container), so the recursion is
+       acyclic in every reachable state. */
+    double effectiveMass() const {
+        double m = body->mass;
+        for(Part *c : contents) { m += c->effectiveMass(); }
+        return m;
+    }
 };
