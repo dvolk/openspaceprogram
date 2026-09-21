@@ -5,8 +5,6 @@
 #include "audio.h"
 
 #include <cstdio>
-#include <fcntl.h>
-#include <unistd.h>
 
 bool Audio::init() {
     if(mixer_ != nullptr) { return true; }
@@ -15,16 +13,12 @@ bool Audio::init() {
         printf("audio: unavailable (%s) -- running silent\n", SDL_GetError());
         return false;
     }
-    // Open the device with stderr muted: on a machine without a sound
-    // card the ALSA backend dumps its own diagnostics to fd 2 (the e2e
-    // battery runs under Xvfb, and the smoke case forbids stray "error:"
-    // lines on boot). Restore stderr right after -- this only ever
-    // affects this process.
-    const int savedErr = dup(2);
-    const int devnull = open("/dev/null", O_WRONLY);
-    if(savedErr != -1 && devnull != -1) { dup2(devnull, 2); }
-    if(devnull != -1) { close(devnull); }
-
+    // Headless boxes: the ALSA backend (the fallback) spews diagnostics to
+    // stderr when no card is usable, which the smoke case forbids on boot.
+    // That is handled by running a PulseAudio null sink (Pulse is the primary
+    // backend) so this call routes to the sink and ALSA is never reached --
+    // point a box at a null sink rather than muting stderr here.
+    //
     // A generous device buffer gives the real-time callback headroom before an
     // underrun. The ALSA backend allocates a 2-period double buffer whose period
     // size is this hint, and -- unlike PulseAudio -- it is not forgiving of a
@@ -36,11 +30,6 @@ bool Audio::init() {
 
     // spec = NULL: take the device's native format; the mixer converts.
     MIX_Mixer *m = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
-
-    if(savedErr != -1) {
-        dup2(savedErr, 2);
-        close(savedErr);
-    }
     if(m == nullptr) {
         printf("audio: no playback device (%s) -- running silent\n", SDL_GetError());
         MIX_Quit();
