@@ -612,12 +612,21 @@ $(TESTDIR)/test_settings: $(TESTDIR)/obj/test_settings.o $(TESTDIR)/obj/settings
 $(TESTDIR)/test_keys: $(TESTDIR)/obj/test_keys.o $(TESTDIR)/obj/keys.o
 	$(CXX) -o $@ $^
 
+# cli (src/cli.cpp): the --version / --help short-circuits (exit 0,
+# correct output), a valid parse, and an invalid flag's nonzero exit.
+# cli.cpp includes version.h (the --version string), which is generated
+# by the phony version target -- wire it in like gameui.o's dep.
+# siminput.o: the --sim-press key/button name maps cli.cpp folds into.
+$(TESTDIR)/obj/cli.o: src/version.h
+$(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/obj/siminput.o
+	$(CXX) -o $@ $^
+
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_dock test_contain test_inertia test_inventory \
         test_rotation test_shipload test_save test_crew test_fleet test_calendar \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
-        test_pick test_settings test_keys
+        test_pick test_settings test_keys test_cli
 
 .PHONY: test
 test: $(addprefix $(TESTDIR)/,$(TESTS))
@@ -655,6 +664,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_pick
 	$(TESTDIR)/test_settings
 	$(TESTDIR)/test_keys
+	$(TESTDIR)/test_cli
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on
@@ -670,6 +680,65 @@ E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
 .PHONY: e2e
 e2e: all
 	python3 e2e/run.py $(E2E_JOBS) --force --game $(BINDIR)/$(TARGET)
+
+# Release artifacts (phase 2, reports/build-tree2026_09_22/phase2-artifacts.md):
+# per-OS archives + a combined one, in dist/ (gitignored, uploaded manually).
+# The per-OS trees are named by the same <os>-<march>-<mtune> tokens, so the
+# binary paths follow the ARCHDIR rule with the other OS substituted.
+DISTDIR=dist
+LINUX_BIN=$(BUILDROOT)/linux-$(MARCH_TOK)-$(MTUNE_TOK)/release/osp
+WINDOWS_BIN=$(BUILDROOT)/windows-$(MARCH_TOK)-$(MTUNE_TOK)/release/osp.exe
+# The wine gate is a parity smoke, not the full matrix (the native battery
+# above is the full gate -- 47 serial wine cases would take half an hour on
+# a desktop box). Default = the phase 1.4 acceptance set; extend with
+# WINE_CASES="...". run.py auto-serializes .exe games.
+WINE_CASES ?= smoke vab-launch vab-launch-orbit vab-launch-body
+
+# Fast path: build + package, NO test/e2e gates ("testing releases" mode).
+# The version string comes from the version target (same logic as the build's
+# embedded VERSION), so the archive name always matches the game's --version
+# output. A dirty tree is allowed but named as-is (-dirty) and warned.
+.PHONY: artifacts
+artifacts:
+	@$(MAKE) --no-print-directory version
+	@$(MAKE) --no-print-directory all
+	@$(MAKE) --no-print-directory OS=windows all
+	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
+	if [ -z "$$VER" ]; then \
+		echo "error: no version string (src/version.h missing?)" >&2; exit 1; \
+	fi; \
+	case "$$VER" in *-dirty*) \
+		echo "warning: version '$$VER' marks a dirty tree (tag it for a clean name)";; \
+	esac; \
+	STAGE=tmp/release; \
+	rm -rf "$$STAGE"; \
+	for layout in osp-$$VER-linux osp-$$VER-windows osp-$$VER-linux+windows; do \
+		mkdir -p "$$STAGE/$$layout"; \
+		cp -r res "$$STAGE/$$layout/"; \
+		cp LICENSE.md release/README.md "$$STAGE/$$layout/"; \
+	done; \
+	cp "$(LINUX_BIN)"   "$$STAGE/osp-$$VER-linux/"; \
+	cp "$(WINDOWS_BIN)" "$$STAGE/osp-$$VER-windows/"; \
+	cp "$(LINUX_BIN)"   "$$STAGE/osp-$$VER-linux+windows/"; \
+	cp "$(WINDOWS_BIN)" "$$STAGE/osp-$$VER-linux+windows/"; \
+	mkdir -p $(DISTDIR); \
+	(cd "$$STAGE" && tar -cJf ../../$(DISTDIR)/osp-$$VER-linux.tar.xz osp-$$VER-linux) && \
+	(cd "$$STAGE" && tar -cJf ../../$(DISTDIR)/osp-$$VER-linux+windows.tar.xz osp-$$VER-linux+windows) && \
+	(cd "$$STAGE" && zip -r -q ../../$(DISTDIR)/osp-$$VER-windows.zip osp-$$VER-windows) && \
+	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz > SHA256SUMS) && \
+	rm -rf "$$STAGE"; \
+	ls -lh $(DISTDIR)
+
+# Real-release path: full gates first (native unit tests + the full native
+# e2e battery + the wine parity set), then package. Any gate failing stops
+# the flow before dist/ is touched.
+.PHONY: release
+release:
+	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory e2e
+	@$(MAKE) --no-print-directory OS=windows all
+	@python3 e2e/run.py --force --game $(WINDOWS_BIN) $(WINE_CASES)
+	@$(MAKE) --no-print-directory artifacts
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
 # setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws

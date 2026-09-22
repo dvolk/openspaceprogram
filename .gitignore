@@ -1,5 +1,8 @@
 # Build artifacts
 build/
+# Release archives (the `make artifacts` / `make release` output; uploaded
+# manually, never committed)
+dist/
 # The repo-root ./osp is a live symlink: `make` refreshes it to the last
 # built config's binary (the Makefile's `all` target).
 osp

@@ -3,6 +3,7 @@
 // false with the process exit code in *exit_code otherwise (help, a
 // parse error, malformed sim input).
 #include "cli.h"
+#include "version.h"   // VERSION (the embedded build string, `make version`)
 
 #include <cctype>
 #include <cstdio>
@@ -13,6 +14,14 @@
 bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 {
     CLI::App app{"Open Space Program"};
+
+    /* --version: prints exactly this string and exits 0 (CLI11 throws
+       CallForVersion on parse; the catch below routes it through
+       app.exit()). The same VERSION the main menu footer shows, so a
+       user's `--version` output always matches what the game reports. */
+    app.set_version_flag("--version",
+                         std::string("Open Space Program ") + VERSION,
+                         "Prints the version and exits");
 
     app.add_option("--body", args.body_name,
         "Body the ship starts on / orbits (default: the system's home body)");
