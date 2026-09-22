@@ -315,7 +315,7 @@ $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 .PHONY: version
 version:
 	@( VERSION_STRING="$(VERSION)"; \
-       [ -e "./.git" ] && GITVERSION=$$( git describe --tags --always --dirty --match "[0-9A-Z]*.[0-9A-Z]*" ) && VERSION_STRING=$$GITVERSION ; \
+       [ -e "./.git" ] && GITVERSION=$$( git describe --tags --always --dirty --match "v*.*" ) && VERSION_STRING=$$GITVERSION ; \
        [ -e "src/version.h" ] && OLDVERSION=$$(grep VERSION src/version.h|cut -d '"' -f2) ; \
        if [ "x$$VERSION_STRING" != "x$$OLDVERSION" ]; then echo "#define VERSION \"$$VERSION_STRING\"" | tee src/version.h ; fi \
      )
