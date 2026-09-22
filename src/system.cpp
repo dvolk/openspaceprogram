@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
@@ -367,9 +368,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
         const double D = (b->rot_frame && b->rot_frame->rot_ang_speed > 0.0)
-                       ? 2.0 * M_PI / b->rot_frame->rot_ang_speed : 0.0;
+                       ? 2.0 * std::numbers::pi / b->rot_frame->rot_ang_speed : 0.0;
         const double Y = (b->frame && b->frame->orb_ang_speed > 0.0)
-                       ? 2.0 * M_PI / b->frame->orb_ang_speed : 0.0;
+                       ? 2.0 * std::numbers::pi / b->frame->orb_ang_speed : 0.0;
         b->cal = Calendar::make(D, Y, epoch_year);
     }
 

@@ -19,13 +19,14 @@
 // for a prograde spinner) to the right, lon 0 at the left edge.
 
 #include <cmath>
+#include <numbers>
 
 #include <glm/glm.hpp>
 
 // Unit surface direction at pixel (i, j) of a w x h map.
 inline glm::dvec3 surfmapDir(int i, int j, int w, int h) {
-    const double lon = 2.0 * M_PI * (double)i / (double)w;
-    const double lat = M_PI * 0.5 - M_PI * (double)j / (double)(h - 1);
+    const double lon = 2.0 * std::numbers::pi * (double)i / (double)w;
+    const double lat = std::numbers::pi * 0.5 - std::numbers::pi * (double)j / (double)(h - 1);
     const double cl = std::cos(lat);
     return glm::dvec3(cl * std::sin(lon), std::sin(lat), cl * std::cos(lon));
 }
@@ -37,7 +38,7 @@ inline glm::dvec3 surfmapDir(int i, int j, int w, int h) {
 inline void surfmapLonLat(const glm::dvec3 &d, double &lon, double &lat) {
     lat = std::asin(glm::clamp((double)d.y, -1.0, 1.0));
     lon = std::atan2((double)d.x, (double)d.z);
-    if(lon < 0.0) { lon += 2.0 * M_PI; }
+    if(lon < 0.0) { lon += 2.0 * std::numbers::pi; }
 }
 
 // (lon, lat) -> fractional pixel (u, v) of a w x h map: u in [0, w),
@@ -45,8 +46,8 @@ inline void surfmapLonLat(const glm::dvec3 &d, double &lon, double &lat) {
 // (u / w, v / (h-1)) into the image rect.
 inline void surfmapPixel(double lon, double lat, int w, int h,
                          double &u, double &v) {
-    u = lon / (2.0 * M_PI) * (double)w;
-    v = (M_PI * 0.5 - lat) / M_PI * (double)(h - 1);
+    u = lon / (2.0 * std::numbers::pi) * (double)w;
+    v = (std::numbers::pi * 0.5 - lat) / std::numbers::pi * (double)(h - 1);
 }
 
 // Terminator (the star's day/night shading): a light factor in [0.3, 1]
@@ -65,7 +66,7 @@ inline float surfmapShade(const glm::dvec3 &n, const glm::dvec3 &sun) {
 // the map's left and right edges are the same meridian, so an orbit line
 // must break there instead of sweeping across the whole map.
 inline bool surfmapWraps(double lon_prev, double lon_cur) {
-    return std::fabs(lon_prev - lon_cur) > M_PI;
+    return std::fabs(lon_prev - lon_cur) > std::numbers::pi;
 }
 
 // Request the surface map for g: snapshot the inputs on the calling

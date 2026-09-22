@@ -16,6 +16,7 @@
 // Header-only pure math (orbit.h + glm + <vector>) so tests/ can pin it
 // without rendering, imgui, Bullet, or GL.
 
+#include <numbers>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -71,9 +72,9 @@ struct OrbitSampleCache {
         // the N points are a fixed even grid on the ellipse -- identical for
         // every ship on it, and always including the exact periapsis (E = 0)
         // and apoapsis (E = pi) when N is even.
-        const double n_mean = 2.0 * M_PI / o.period;   // mean motion, rad/s
+        const double n_mean = 2.0 * std::numbers::pi / o.period;   // mean motion, rad/s
         for(int i = 0; i < N; i++) {
-            const double E = 2.0 * M_PI * i / N;
+            const double E = 2.0 * std::numbers::pi * i / N;
             const double M = E - o.ecc * std::sin(E);
             const double dt = (M - o.mean_anomaly) / n_mean;
             glm::dvec3 p, v;
@@ -201,13 +202,13 @@ inline std::vector<glm::dvec3> sampleTransferArc(const glm::dvec3 &pos,
     propagateKepler(pos, vel, mu, tof, arr_pos, arr_vel);
     double A2 = computeOrbitElements(arr_pos, arr_vel, mu).ecc_anomaly;
     const double A1 = o.ecc_anomaly;
-    if(elliptic && A2 < A1) { A2 += 2.0 * M_PI; }
+    if(elliptic && A2 < A1) { A2 += 2.0 * std::numbers::pi; }
     // Seconds per radian of mean anomaly: period/(2pi) elliptic,
     // sqrt(|a|^3/mu) hyperbolic (the t = M/n and t = M sqrt(a^3/mu) relations).
     const double M1 = o.mean_anomaly;
     const double a_abs = std::fabs(o.semi_major);
     const double tau = elliptic
-        ? o.period / (2.0 * M_PI)
+        ? o.period / (2.0 * std::numbers::pi)
         : std::sqrt(a_abs * a_abs * a_abs / mu);
     pts.reserve(N + 1);
     for(int i = 0; i <= N; i++) {

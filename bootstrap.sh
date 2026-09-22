@@ -251,6 +251,16 @@ echo "=== building assimp (static, OBJ-only) ==="
 # We only ever load .obj meshes, so build just the OBJ importer (and no
 # exporters). The default all-importers build pulls in ~30 format loaders
 # (FBX, glTF, STEP, IFC, ...) that add ~11 MB to the game binary.
+# windows: assimp's MINGW branch (CMakeLists.txt) force-adds -Wa,-mbig-obj
+# to CXX, and mingw g++ then emits pe-bigobj LTO objects whose symbol table
+# exports no globals -- `ar` can't index them, so the game link dies with
+# undefined Assimp::Importer references. Plain (non-LTO) objects index
+# fine; the game uses 4 assimp symbols, so losing LTO across them is a
+# wash. (linux g++ defaults to fat LTO objects, which are fine.)
+ASSIMP_LTO="$LTO"
+if [ "$OS" = windows ]; then
+    ASSIMP_LTO="-fno-lto"
+fi
 cmake -S middleware/assimp -B "$MWROOT/assimp" \
     $CROSS \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
@@ -258,7 +268,7 @@ cmake -S middleware/assimp -B "$MWROOT/assimp" \
     -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
     -DASSIMP_BUILD_OBJ_IMPORTER=ON \
     -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF \
-    -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
+    -DCMAKE_C_FLAGS="$SECT $ASSIMP_LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $ASSIMP_LTO $ARCH"
 cmake --build "$MWROOT/assimp" -j"$JOBS"
 
 echo

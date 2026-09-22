@@ -1,5 +1,6 @@
 // terrain.cpp -- GeoPatch + TerrainBody method implementations and the
 // terrain free helpers (see terrain.h for the class/data declarations).
+#include <numbers>
 #include "terrain.h"
 
 #include <array>
@@ -356,9 +357,9 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
     std::vector<PosNorColVertex> verts;
     verts.reserve((lat + 1) * (lon + 1));
     for(int i = 0; i <= lat; i++) {
-        float theta = (float)i / lat * M_PI;              // 0..pi (pole->pole)
+        float theta = (float)i / lat * std::numbers::pi;              // 0..pi (pole->pole)
         for(int j = 0; j <= lon; j++) {
-            float phi = (float)j / lon * 2.0f * M_PI;     // 0..2pi
+            float phi = (float)j / lon * 2.0f * std::numbers::pi;     // 0..2pi
             glm::vec3 dir = glm::vec3(
                 std::sin(theta) * std::cos(phi),
                 std::cos(theta),
@@ -369,8 +370,8 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
             // (an atan(position) there has a branch cut that smears one
             // meridian). The atmosphere shader ignores color.
             verts.push_back(PosNorColVertex(dir * radius, dir,
-                glm::vec3(phi / (2.0f * (float)M_PI),
-                          theta / (float)M_PI, 0.0f)));
+                glm::vec3(phi / (2.0f * (float)std::numbers::pi),
+                          theta / (float)std::numbers::pi, 0.0f)));
         }
     }
     std::vector<unsigned int> idx;

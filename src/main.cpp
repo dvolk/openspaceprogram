@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <numbers>
 #include <fstream>
 #include <map>
 #include <set>
@@ -638,7 +639,7 @@ int main(int argc, char **argv)
         PosInterface xzinterface;
         PosInterface xyinterface;
         for(int i = 1; i < 128; i++) {
-            const double a = (2 * M_PI) * float(i-1)/float(n);
+            const double a = (2 * std::numbers::pi) * float(i-1)/float(n);
             xzinterface.positions.push_back(glm::vec3(r * cos(a), 0, r * sin(a)));  // y=0 -> XZ plane
             xyinterface.positions.push_back(glm::vec3(r * cos(a), r * sin(a), 0));  // z=0 -> XY plane
         }

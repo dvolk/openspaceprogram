@@ -13,6 +13,7 @@
 #include "render.h"
 
 #include <cmath>
+#include <numbers>
 #include <cstdlib>
 #include <GL/glew.h>   // glBlendFunc / glLineWidth / the GL enums
 
@@ -570,24 +571,24 @@ void draw3d(Game &g, TransferPlanner &planner) {
     // Fixed-orientation nose marker: the orbit camera already tracks the
     // ship's roll (up = the nose), so the billboard is roll-invariant and
     // no explicit roll term is needed to keep it aligned with the ship.
-    g.front_indicator->Draw(camera, M_PI);
+    g.front_indicator->Draw(camera, std::numbers::pi);
     g.prograde_indicator->pos = vel;
-    g.prograde_indicator->Draw(camera, M_PI);
+    g.prograde_indicator->Draw(camera, std::numbers::pi);
     g.retrograde_indicator->pos = - vel;
-    g.retrograde_indicator->Draw(camera, M_PI);
+    g.retrograde_indicator->Draw(camera, std::numbers::pi);
     g.radial_in_indicator->pos = - pos;
-    g.radial_in_indicator->Draw(camera, M_PI);
+    g.radial_in_indicator->Draw(camera, std::numbers::pi);
     g.radial_out_indicator->pos = pos;
-    g.radial_out_indicator->Draw(camera, M_PI);
+    g.radial_out_indicator->Draw(camera, std::numbers::pi);
     g.normal_plus_indicator->pos = glm::cross(pos, vel);
-    g.normal_plus_indicator->Draw(camera, M_PI);
+    g.normal_plus_indicator->Draw(camera, std::numbers::pi);
     g.normal_minus_indicator->pos = -glm::cross(pos, vel);
-    g.normal_minus_indicator->Draw(camera, M_PI);
+    g.normal_minus_indicator->Draw(camera, std::numbers::pi);
     // Transfer burn direction (TRANSFER window target selected):
     // KSP-blue prograde icon pointing where the departure burn goes.
     if(planner.xfer.valid && glm::length(planner.xfer.burn_dir) > 0.0) {
         g.burn_indicator->pos = planner.xfer.burn_dir;
-        g.burn_indicator->Draw(camera, M_PI);
+        g.burn_indicator->Draw(camera, std::numbers::pi);
     }
     // Target ship's relative velocity: two pink markers, shown when a ship
     // is targeted in the TRANSFER window, or when a docking port on another
@@ -623,15 +624,15 @@ void draw3d(Game &g, TransferPlanner &planner) {
         if(glm::length(relvel) > 1e-9) {
             // you − target: the prograde (diamond) icon, on the opposite side.
             g.relvel_indicator->pos = -relvel;
-            g.relvel_indicator->Draw(camera, M_PI);
+            g.relvel_indicator->Draw(camera, std::numbers::pi);
             // target − you: the retrograde (X) icon.
             g.relvel_retro_indicator->pos = relvel;
-            g.relvel_retro_indicator->Draw(camera, M_PI);
+            g.relvel_retro_indicator->Draw(camera, std::numbers::pi);
         }
     }
     }
     // horizon_indicator->pos = groundHed;
-    // horizon_indicator->Draw(camera, M_PI);
+    // horizon_indicator->Draw(camera, std::numbers::pi);
 
     if(g.draw_skylines) {
         glLineWidth(4);

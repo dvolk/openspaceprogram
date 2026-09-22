@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <numbers>
 #include <memory>
 #include <set>
 #include <string>
@@ -285,12 +286,12 @@ struct TerrainBody {
             // Worker thread: pure math over the snapshots above.
             std::vector<unsigned char> px((size_t)W * H);
             for(int py = 0; py < H; py++) {
-                const float lat = (0.5f - (py + 0.5f) / (float)H) * (float)M_PI;
+                const float lat = (0.5f - (py + 0.5f) / (float)H) * (float)std::numbers::pi;
                 const float cl = (float)std::cos(lat);
                 const float sl = (float)std::sin(lat);
                 for(int pxi = 0; pxi < W; pxi++) {
                     const float lon = ((pxi + 0.5f) / (float)W)
-                                      * 2.0f * (float)M_PI - (float)M_PI;
+                                      * 2.0f * (float)std::numbers::pi - (float)std::numbers::pi;
                     const glm::vec3 dir(cl * std::sin(lon), sl,
                                         cl * std::cos(lon));
                     px[(size_t)py * W + pxi] =

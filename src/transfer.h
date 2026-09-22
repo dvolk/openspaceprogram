@@ -25,6 +25,7 @@
 #include "orbit.h"
 
 #include <cmath>
+#include <numbers>
 #include <algorithm>
 #include <limits>
 #include <vector>
@@ -77,7 +78,7 @@ inline bool solveLambert(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
         const double a = 0.5 * (r1l + r2l);
         // The conic is unique, so the ToF is fixed at half its period. Only
         // this ToF is solvable; any other is rejected (no conic fits).
-        const double T = 2.0 * M_PI * std::sqrt(a * a * a / mu);
+        const double T = 2.0 * std::numbers::pi * std::sqrt(a * a * a / mu);
         if(std::fabs(tof - 0.5 * T) > 1e-6 * T) { return false; }
         const double v1m = std::sqrt(mu * (2.0 / r1l - 1.0 / a));
         const double v2m = std::sqrt(mu * (2.0 / r2l - 1.0 / a));
@@ -108,8 +109,8 @@ inline bool solveLambert(const glm::dvec3 &r1, const glm::dvec3 &r2_in,
     // never be used for bracketing (a sign "change" against the sentinel is
     // the boundary of the physical domain, not a root). F is monotone in z on
     // the short-transfer branch, so the first real sign change is the root.
-    const double z_min = -4.0 * M_PI * M_PI;
-    const double z_max = 4.0 * M_PI * M_PI;
+    const double z_min = -4.0 * std::numbers::pi * std::numbers::pi;
+    const double z_max = 4.0 * std::numbers::pi * std::numbers::pi;
 
     double z_lo = 0.0, z_hi = 0.0, f_lo = 0.0;
     double z_prev = 0.0, f_prev = 0.0;
@@ -216,7 +217,7 @@ inline TransferSolution planTransfer(const glm::dvec3 &r1, const glm::dvec3 &v1,
             const double vc = std::sqrt(mu_target / r_cap);
             s.dv_capture = vc * (std::sqrt(2.0 + s.v_inf * s.v_inf * r_cap / mu_target) - 1.0);
             s.r_cap = r_cap;
-            s.capture_orbit_period = 2.0 * M_PI * std::sqrt(r_cap * r_cap * r_cap / mu_target);
+            s.capture_orbit_period = 2.0 * std::numbers::pi * std::sqrt(r_cap * r_cap * r_cap / mu_target);
         }
         s.total_dv = s.dv_departure + s.dv_capture;
         s.valid = true;

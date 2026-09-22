@@ -72,14 +72,29 @@ endif
 SECT=-ffunction-sections -fdata-sections -fvisibility=hidden
 LDFLAGS=-Wl,--gc-sections -Wl,--as-needed
 
+# OS: which platform we build (bootstrap.sh's OS, same default). windows =
+# cross-compile from Linux with mingw-w64 (see
+# reports/build-tree2026_09_22/phase1-windows.md). The game source is
+# platform-clean (all OS contact is SDL3/SDL_image/SDL_mixer), so this only
+# swaps the compiler, the link closure, the artifact name, and the ./osp
+# symlink (a linux convenience).
+OS ?= linux
+ifeq ($(OS),windows)
+CXX= x86_64-w64-mingw32-g++
+else
 CXX= g++
+endif
 # -MMD -MP emit a .d dependency file per object so a changed header (e.g. frame.h)
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+# assimp's include order: the BUILD dir (config.h is cmake-generated, never in
+# the source tree) before the source headers. (The linux build used to resolve
+# config.h from a system libassimp-dev install by accident -- the cross build
+# has no such system headers and exposed it.)
+CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
-LINKER=g++ $(CFGFLAGS) $(LD_OPT) -o
+LINKER=$(CXX) $(CFGFLAGS) $(LD_OPT) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
 
 # Default to all cores: a plain `make` runs parallel (verified: MAKEFLAGS
@@ -126,29 +141,64 @@ SDLMIXER_A=$(MWROOT)/sdl-mixer/libSDL3_mixer.a
 # nested submodules, built under its build dir's external/ -- no system
 # libpng/zlib packages needed).
 PNG_A=$(MWROOT)/sdl3-image/external/libpng-build/libpng16.a
+# zlib's and GLEW's static targets rename themselves per-OS (zlibstatic /
+# glew32 on windows) -- the archive NAME, not just its location, is
+# platform-dependent.
+ifeq ($(OS),windows)
+ZLIB_A=$(MWROOT)/sdl3-image/external/zlib-build/libzlibstatic.a
+GLEW_A=$(MWROOT)/glew/lib/libglew32.a
+else
 ZLIB_A=$(MWROOT)/sdl3-image/external/zlib-build/libz.a
 GLEW_A=$(MWROOT)/glew/lib/libGLEW.a
-# SDL3 is built with the X11 driver linked in (not dlopen'd), so the X11
-# stack rides along. Audio: PulseAudio (primary) + ALSA (fallback) -- see
-# bootstrap.sh for why we ended up here (direct ALSA cracks the engine track;
-# the server's queue absorbs the callback jitter). SDL3_mixer uses them
-# through SDL3's audio API.
+endif
+# The system closure behind the static SDL3 build (per-OS drivers:
+# bootstrap.sh's SDL3_DRIVERS).
+#  linux:   SDL3 is built with the X11 driver linked in (not dlopen'd), so
+#           the X11 stack rides along. Audio: PulseAudio (primary) + ALSA
+#           (fallback) -- see bootstrap.sh for why (direct ALSA cracks the
+#           engine track; the server's queue absorbs the callback jitter).
+#  windows: SDL3's static-link closure (the set its docs list for Windows)
+#           + opengl32 (backing GLEW's wgl) + what SDL3's own code actually
+#           references: uuid (the COM IIDs it uses live in uuid.lib, not
+#           ole32), imm32 (IME), setupapi (audio device enumeration). Audio
+#           is WASAPI (built into SDL3 on Windows, no extra lib).
+ifeq ($(OS),windows)
+SDL3_SYS=-lopengl32 -lwinmm -lversion -luser32 -lgdi32 -ladvapi32 -lshell32 -lole32 -luuid -limm32 -lsetupapi
+else
 SDL3_SYS=-lX11 -lXext -lXcursor -lXi -lXfixes -lXrandr -lXss -lasound -lpulse -ldl -lm -lpthread
+endif
 # Static link order matters (dependents before dependencies):
 # SDL_image -> SDL3, GLEW -> GL, PNG loader/saver -> libpng -> zlib.
+# GL: -lGL (libGL.so) on linux; windows' opengl32 is already in SDL3_SYS
+# (GLEW's + SDL3's wgl references resolve against it).
+ifeq ($(OS),windows)
+GL_LIBS=$(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) $(PNG_A) $(ZLIB_A) $(SDL3_SYS)
+else
 GL_LIBS=$(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(SDL3_SYS)
-# clone bullet3 in ./middleware
-# cd ./middleware/bullet3
-# ln -s bullet src
-# build it with cmake with double precision enabled
+endif
+# bullet3's cmake scatters its libs per-component on linux
+# (src/<Lib>/) but groups them into lib/ on windows -- per-OS layout.
+ifeq ($(OS),windows)
+BULLET3_OBJS=$(MWROOT)/bullet3/lib/libBulletDynamics.a $(MWROOT)/bullet3/lib/libBulletCollision.a $(MWROOT)/bullet3/lib/libBulletSoftBody.a $(MWROOT)/bullet3/lib/libBullet3Geometry.a $(MWROOT)/bullet3/lib/libBulletInverseDynamics.a $(MWROOT)/bullet3/lib/libBullet3Common.a $(MWROOT)/bullet3/lib/libBullet3Collision.a $(MWROOT)/bullet3/lib/libLinearMath.a $(MWROOT)/bullet3/lib/libBullet2FileLoader.a $(MWROOT)/bullet3/lib/libBullet3OpenCL_clew.a $(MWROOT)/bullet3/lib/libBullet3Dynamics.a
+else
 BULLET3_OBJS=$(MWROOT)/bullet3/src/BulletDynamics/libBulletDynamics.a $(MWROOT)/bullet3/src/BulletCollision/libBulletCollision.a $(MWROOT)/bullet3/src/BulletSoftBody/libBulletSoftBody.a $(MWROOT)/bullet3/src/Bullet3Geometry/libBullet3Geometry.a $(MWROOT)/bullet3/src/BulletInverseDynamics/libBulletInverseDynamics.a $(MWROOT)/bullet3/src/Bullet3Common/libBullet3Common.a $(MWROOT)/bullet3/src/Bullet3Collision/libBullet3Collision.a $(MWROOT)/bullet3/src/LinearMath/libLinearMath.a $(MWROOT)/bullet3/src/Bullet3Serialize/Bullet2FileLoader/libBullet2FileLoader.a $(MWROOT)/bullet3/src/Bullet3OpenCL/libBullet3OpenCL_clew.a $(MWROOT)/bullet3/src/Bullet3Dynamics/libBullet3Dynamics.a
+endif
+
+# windows: fully static (D5 in the phase 1 report) -- MinGW's libgcc/
+# libstdc++/winpthread go INTO the exe, so it ships as one portable file
+# with no runtime DLLs.
+ifeq ($(OS),windows)
+STATIC_LD=-static
+else
+STATIC_LD=
+endif
 
 # -Wno-lto-type-mismatch: SDL2's own EGL API (SDL_egl_c.h vs SDL_egl.c)
 # declares SDL_EGL_CreateSurface with mismatched types, and the LTO pass
 # here is the first thing to see both TUs together and warn. The game uses
 # the GLX/SDL_GL path, never the EGL API (bootstrap.sh silences the same
 # warning in SDL2's own compile).
-LFLAGS=$(CFGLTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
+LFLAGS=$(CFGLTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) $(STATIC_LD) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
 
 # Build tree (reports/build-tree2026_09_22): build/<os>-<march>-<mtune>/<config>/.
 # Each (march, mtune, config) combo gets its own dir with its own objects, so
@@ -157,7 +207,7 @@ LFLAGS=$(CFGLTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(L
 # Tokens: -march x86-64-v2 -> v2, native -> native, (empty) -> base;
 # MTUNE as-is (znver3), or untuned when empty.
 BUILDROOT=build
-OSTOK=linux
+OSTOK=$(OS)
 MARCH_TOK=$(if $(MARCH),$(subst x86-64-,,$(MARCH)),base)
 MTUNE_TOK=$(if $(MTUNE),$(MTUNE),untuned)
 CONFIG ?= release
@@ -181,6 +231,10 @@ else ifeq ($(CONFIG),tsan)
 TARGET=osp_tsan
 else
 TARGET=osp
+endif
+# windows artifacts are .exe (the dir already names the config)
+ifeq ($(OS),windows)
+TARGET:=$(TARGET).exe
 endif
 # Per-config flags. release: O2 + LTO (the old default). debug: O0 + debug
 # info, no LTO (plain per-file debugging). asan/tsan: keep O2 + LTO and add
@@ -209,14 +263,20 @@ OBJECTS  := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d) $(IMGUI_OBJS:.o=.d) $(IMPLLOT_OBJS:.o=.d)
 rm = rm -f
 
-# Default entry point: build this config's binary, then point ./osp at it.
-# `all` is phony, so the symlink refreshes on EVERY invocation even when the
-# binary is already up to date -- ./osp always tracks the last `make` you
-# ran, whatever config (release/debug/asan/tsan). The link target is
-# relative (resolved from the repo root), so the tree can be moved.
+# Default entry point: build this config's binary, then (linux only) point
+# ./osp at it. `all` is phony, so the symlink refreshes on EVERY invocation
+# even when the binary is already up to date -- ./osp always tracks the last
+# `make` you ran, whatever config (release/debug/asan/tsan). The link target
+# is relative (resolved from the repo root), so the tree can be moved. A
+# windows build must not touch the linux ./osp symlink: its entry point is
+# the .exe itself (run it with wine).
 .PHONY: all
 all: $(BINDIR)/$(TARGET)
+ifeq ($(OS),windows)
+	@echo "run: wine $(BINDIR)/$(TARGET)"
+else
 	ln -sfn $(BINDIR)/$(TARGET) osp
+endif
 
 # The static libs (assimp + bullet) are prerequisites too: they're built by
 # bootstrap.sh (cmake), not this make, so a middleware rebuild doesn't show up

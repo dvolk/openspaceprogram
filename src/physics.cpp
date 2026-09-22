@@ -158,7 +158,9 @@ void PhysicsEngine::Draw(const Camera * camera) {
 }
 
 PhysicsEngine::PhysicsEngine() {
-    printf("sizeof(btScalar): %lu\n", sizeof(btScalar));
+    // %zu: size_t is unsigned long on linux but unsigned long long on
+    // windows, so %lu (the old format) only ever matched one platform.
+    printf("sizeof(btScalar): %zu\n", sizeof(btScalar));
     assert(sizeof(btScalar) == 8);
 
     collisionConfiguration = new btDefaultCollisionConfiguration();

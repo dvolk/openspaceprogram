@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <filesystem>   // last_write_time (the load picker's res/ships mtime gate)
 #include <map>
@@ -934,8 +935,8 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         const ImU32 sm_ship =
             ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
         auto map_px = [&](double lon, double lat) {
-            const double u = lon / (2.0 * M_PI) * (double)sm_img_w;
-            const double v = (M_PI * 0.5 - lat) / M_PI * (double)sm_img_h;
+            const double u = lon / (2.0 * std::numbers::pi) * (double)sm_img_w;
+            const double v = (std::numbers::pi * 0.5 - lat) / std::numbers::pi * (double)sm_img_h;
             return ImVec2(sm_p0.x + (float)u, sm_p0.y + (float)v);
         };
 
@@ -946,14 +947,14 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         const ImU32 grat_eq =
             ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.25f));
         for(int deg = -60; deg <= 60; deg += 30) {
-            const ImVec2 a = map_px(0.0, (double)deg * M_PI / 180.0);
-            const ImVec2 b = map_px(2.0 * M_PI, (double)deg * M_PI / 180.0);
+            const ImVec2 a = map_px(0.0, (double)deg * std::numbers::pi / 180.0);
+            const ImVec2 b = map_px(2.0 * std::numbers::pi, (double)deg * std::numbers::pi / 180.0);
             dl->AddLine(a, b, deg == 0 ? grat_eq : grat_faint, 1.0f);
         }
         for(int deg = 0; deg < 360; deg += 45) {
-            const double lon = (double)deg * M_PI / 180.0;
-            const ImVec2 a = map_px(lon, M_PI * 0.5);
-            const ImVec2 b = map_px(lon, -M_PI * 0.5);
+            const double lon = (double)deg * std::numbers::pi / 180.0;
+            const ImVec2 a = map_px(lon, std::numbers::pi * 0.5);
+            const ImVec2 b = map_px(lon, -std::numbers::pi * 0.5);
             dl->AddLine(a, b, grat_faint, 1.0f);
         }
 
@@ -2112,7 +2113,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         ImGui::Checkbox("Velocity", &map_show_vel);
         ImGui::Text("nu %.2f   E %.2f   inc %.2f deg",
                     o.true_anomaly, o.ecc_anomaly,
-                    o.inclination * 180.0 / M_PI);
+                    o.inclination * 180.0 / std::numbers::pi);
         // Legend: a compact color key (one line).
         ImGui::Spacing();
         auto legend = [&](const char *label, ImU32 col, bool dot) {

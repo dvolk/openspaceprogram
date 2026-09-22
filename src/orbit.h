@@ -16,11 +16,8 @@
 //   once it has swung past periapsis there is no future periapsis either.
 
 #include <cmath>
+#include <numbers>
 #include <glm/glm.hpp>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 struct OrbitElements {
     double distance = 0.0;      // m, radius from focus
@@ -46,7 +43,7 @@ struct OrbitElements {
 };
 
 inline double wrapAngleToPositive(const double theta) {
-    return theta >= 0.0 ? theta : M_PI * 2 + theta;
+    return theta >= 0.0 ? theta : std::numbers::pi * 2 + theta;
 }
 
 // Project a vector onto the plane through the origin with the given
@@ -85,7 +82,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     if(node_len > 0.0 && o.ecc > 1e-9) {
         const double c = glm::dot(node, ecc_vec) / (node_len * o.ecc);
         o.arg_periapsis = acos(glm::clamp(c, -1.0, 1.0));
-        if(ecc_vec.z < 0.0) { o.arg_periapsis = M_PI * 2 - o.arg_periapsis; }
+        if(ecc_vec.z < 0.0) { o.arg_periapsis = std::numbers::pi * 2 - o.arg_periapsis; }
     }
 
     /* True anomaly from (cos, sin): cos from the eccentricity vector, sin
@@ -101,7 +98,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     if(o.ecc < 1.0) {
         /* Elliptic: closed orbit. */
         o.apoapsis = (1.0 + o.ecc) * o.semi_major;
-        o.period = 2.0 * M_PI * sqrt(o.semi_major * o.semi_major * o.semi_major / mu);
+        o.period = 2.0 * std::numbers::pi * sqrt(o.semi_major * o.semi_major * o.semi_major / mu);
         /* E = atan2(sqrt(1-e^2) sin nu, e + cos nu) is quadrant-safe, so
            no acos + branch flip. */
         o.ecc_anomaly = wrapAngleToPositive(
@@ -111,7 +108,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         /* Time since periapsis, then the countdowns to the next passage of
            each apsis. At an apsis the countdown reports the full period to
            the NEXT return of that apsis (never 0). */
-        const double t_since_peri = (o.mean_anomaly / (2.0 * M_PI)) * o.period;
+        const double t_since_peri = (o.mean_anomaly / (2.0 * std::numbers::pi)) * o.period;
         o.time_to_peri = o.period - t_since_peri;
         o.time_to_apo = 0.5 * o.period - t_since_peri;
         if(o.time_to_apo <= 0.0) { o.time_to_apo += o.period; }
@@ -130,7 +127,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         const double t_from_peri = o.mean_anomaly * sqrt(a_abs * a_abs * a_abs / mu);
         /* nu > pi (wrapped) is the inbound leg: radial velocity < 0, so
            periapsis is still ahead. Outbound, it is gone forever. */
-        o.time_to_peri = (o.true_anomaly > M_PI) ? -t_from_peri : -1.0;
+        o.time_to_peri = (o.true_anomaly > std::numbers::pi) ? -t_from_peri : -1.0;
         o.time_to_apo = -1.0;
     } else {
         /* Exactly parabolic (measure zero in practice): one periapsis, no
@@ -182,7 +179,7 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
        periods, and the iteration stalls on the multi-revolution equation). */
     if(alpha > 0.0) {
         const double a = 1.0 / alpha;
-        const double T = 2.0 * M_PI * sqrt(a * a * a / mu);
+        const double T = 2.0 * std::numbers::pi * sqrt(a * a * a / mu);
         dt = fmod(dt, T);
         if(dt == 0.0) { pos = pos0; vel = vel0; return; }
     }

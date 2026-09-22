@@ -11,6 +11,7 @@
 #include "transferplanner.h"
 
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <functional>   // std::function (the job's main-thread continuation)
 #include <memory>       // shared_ptr (the cross-thread result handoff)
@@ -59,7 +60,7 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         if(tf->orb_ang_speed > 0.0) {
             // 3 full target periods covers the min-dv point (near the
             // Hohmann ToF) with margin on both sides.
-            d.tof_max = 3.0 * (2.0 * M_PI / tf->orb_ang_speed);
+            d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);
         }
         d.capture = true;
     } else {

@@ -16,13 +16,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 #include <glm/glm.hpp>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 /* The physical half of a body's atmosphere (the render half -- colour,
    Fresnel power -- lives in AtmosphereParams, terragen.h). Both zero means
@@ -143,7 +140,7 @@ inline double liftCurve(double cl, double alpha, double stallAngle) {
         c = cl * a;                                          // linear (up to stall)
     } else {
         const double t = (a - A) / A;                        // 0 at A, 1 at 2A
-        c = (t >= 1.0) ? 0.0 : cl * A * std::cos(t * M_PI * 0.5);  // droop
+        c = (t >= 1.0) ? 0.0 : cl * A * std::cos(t * std::numbers::pi * 0.5);  // droop
     }
     return (alpha < 0.0) ? -c : c;                           // sign follows α
 }
