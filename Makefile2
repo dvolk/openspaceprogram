@@ -205,6 +205,15 @@ OBJECTS  := $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d) $(IMGUI_OBJS:.o=.d) $(IMPLLOT_OBJS:.o=.d)
 rm = rm -f
 
+# Default entry point: build this config's binary, then point ./osp at it.
+# `all` is phony, so the symlink refreshes on EVERY invocation even when the
+# binary is already up to date -- ./osp always tracks the last `make` you
+# ran, whatever config (release/debug/asan/tsan). The link target is
+# relative (resolved from the repo root), so the tree can be moved.
+.PHONY: all
+all: $(BINDIR)/$(TARGET)
+	ln -sfn $(BINDIR)/$(TARGET) osp
+
 # The static libs (assimp + bullet) are prerequisites too: they're built by
 # bootstrap.sh (cmake), not this make, so a middleware rebuild doesn't show up
 # as a changed .o -- listing the .a files makes make relink when they're
@@ -585,7 +594,7 @@ E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
 # into run.py's full-battery guard (a bare run.py refuses it as a safety
 # nudge; the original Makefile's e2e target predates that guard and lacks it).
 .PHONY: e2e
-e2e: $(BINDIR)/$(TARGET)
+e2e: all
 	python3 e2e/run.py $(E2E_JOBS) --force --game $(BINDIR)/$(TARGET)
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
@@ -629,17 +638,17 @@ test-gl:
 .PHONY: debug
 debug:
 	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) \
-	    CONFIG=debug $(ARCHDIR)/debug/osp
+	    CONFIG=debug all
 
 .PHONY: asan
 asan:
 	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) \
-	    CONFIG=asan $(ARCHDIR)/asan/osp_asan
+	    CONFIG=asan all
 
 .PHONY: tsan
 tsan:
 	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) \
-	    CONFIG=tsan $(ARCHDIR)/tsan/osp_tsan
+	    CONFIG=tsan all
 
 # Build and run the TSan variant with tsan.supp applied (see that file for
 # what it suppresses and why). Uses the real display when there is one and
@@ -671,6 +680,8 @@ clean:
 remove: clean
 	$(rm) $(BINDIR)/$(TARGET)
 	rm -rf $(TESTDIR)
+	# drop the ./osp symlink too (removing a link never touches its target)
+	$(rm) osp
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build). The $(TESTDIR)/obj/
