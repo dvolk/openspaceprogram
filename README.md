@@ -1,13 +1,8 @@
 # Open Space Program
 
-Open source space sim
+Open source space sim inspired by Pioneer and Kerbal Space Program.
 
-Written in C++ with SDL3, GLM, ImGui, Bullet physics, AssImp.
-
-Code licence: AGPL-3.0
-Content licence: CC-BY-SA 3.0
-
-Lately, some of the code is written by qwen code.
+Written in C++ using SDL3, GLM, ImGui, and Bullet physics.
 
 <img src="https://i.imgur.com/HM02Gd7.png"/>
 <img src="https://i.imgur.com/eKhFz34.png"/>
