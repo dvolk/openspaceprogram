@@ -89,7 +89,12 @@ public:
 private:
     static const size_t MAX_ONESHOTS = 8;
 
-    MIX_Audio *loadAudio(const std::string &path);   // cached per path; null on miss
+    /* Cached per path. `predecode` = decode the whole file into PCM at
+       load time (the real-time callback then only copies samples). The
+       SFX are tiny so that is free; the music is a 10-minute OGG whose
+       full decode costs ~1 s of CPU + ~200 MB of RAM at boot -- so it
+       streams instead (see audio.cpp). */
+    MIX_Audio *loadAudio(const std::string &path, bool predecode);   // cached per path; null on miss
 
     /* Grow the track's internal mix buffers on the MAIN thread (a brief
        play/stop) so the real-time callback never hits its first

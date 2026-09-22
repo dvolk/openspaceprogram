@@ -75,17 +75,16 @@ void Audio::shutdown() {
     MIX_Quit();
 }
 
-MIX_Audio *Audio::loadAudio(const std::string &path) {
+MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
     auto it = audios_.find(path);
     if(it != audios_.end()) { return it->second; }
-    // predecode = true: decode the whole file into PCM at load time so the
-    // real-time audio callback only COPIES samples. With predecode=false the
-    // OGG is decoded on the fly inside the callback, and whenever that thread
-    // is briefly delayed (OS scheduling, a physics/terrain spike) the buffer
-    // underruns and the music stutters -- the "choppy at moments". The cost
-    // is ~100 MB of RAM for the 10-minute track, which is worth the smooth
-    // playback (the SFX are tiny either way).
-    MIX_Audio *a = MIX_LoadAudio(mixer_, path.c_str(), true);
+    // predecode = true decodes the whole file into PCM at load time, so the
+    // real-time audio callback only COPIES samples. The SFX are tiny (WAVs,
+    // already PCM) so that costs nothing. The music is different: a full
+    // decode is ~1 s of CPU and ~200 MB of RAM, which dominated startup, so
+    // it streams -- Vorbis decodes on the fly inside the callback (a few ms
+    // per period, well inside the generous 8192-frame buffer).
+    MIX_Audio *a = MIX_LoadAudio(mixer_, path.c_str(), predecode);
     if(a == nullptr) {
         printf("audio: cannot load %s: %s\n", path.c_str(), SDL_GetError());
         return nullptr;
@@ -98,9 +97,14 @@ MIX_Audio *Audio::loadAudio(const std::string &path) {
             fmt = (spec.format == SDL_AUDIO_F32) ? "F32"
                  : (spec.format == SDL_AUDIO_S16) ? "S16"
                  : (spec.format == SDL_AUDIO_S32) ? "S32" : "?";
-            printf("[aud] load: %s  %dHz/%dch/%s  dur=%lldms\n",
+            // MIX_GetAudioDuration is in SAMPLE FRAMES (not ms): seconds =
+            // frames / rate.
+            const Sint64 frames = MIX_GetAudioDuration(a);
+            printf("[aud] load: %s  %dHz/%dch/%s  dur=%.1fs\n",
                    path.c_str(), (int)spec.freq, (int)spec.channels, fmt,
-                   (long long)MIX_GetAudioDuration(a));
+                   (frames >= 0 && spec.freq > 0)
+                       ? (double)frames / (double)spec.freq
+                       : -1.0);
         }
         fflush(stdout);
     }
@@ -109,7 +113,7 @@ MIX_Audio *Audio::loadAudio(const std::string &path) {
 
 void Audio::playOnce(const std::string &path, float balance) {
     if(mixer_ == nullptr) { return; }
-    MIX_Audio *a = loadAudio(path);
+    MIX_Audio *a = loadAudio(path, true);
     if(a == nullptr) { return; }
     if(oneShots_.size() >= MAX_ONESHOTS) { return; }
     MIX_Track *t = MIX_CreateTrack(mixer_);
@@ -165,7 +169,7 @@ void Audio::setLoop(const std::string &path, bool active, float gain) {
     if(loop_ == nullptr || loopPath_ != path) {
         // A different loop: retire the old track (its audio stays cached).
         if(loop_ != nullptr) { MIX_DestroyTrack(loop_); }
-        MIX_Audio *a = loadAudio(path);
+        MIX_Audio *a = loadAudio(path, true);   // engine hum: tiny WAV, predecode is free
         if(a == nullptr) { return; }
         loop_ = MIX_CreateTrack(mixer_);
         if(loop_ == nullptr) { return; }
@@ -202,7 +206,7 @@ void Audio::setLoop(const std::string &path, bool active, float gain) {
 void Audio::setMusic(const std::string &path) {
     if(mixer_ == nullptr) { return; }
     if(music_ != nullptr && musicPath_ == path && MIX_TrackPlaying(music_)) { return; }
-    MIX_Audio *a = loadAudio(path);
+    MIX_Audio *a = loadAudio(path, false);   // music: stream it (a full decode stalls boot)
     if(a == nullptr) { return; }
     if(music_ == nullptr) {
         music_ = MIX_CreateTrack(mixer_);
