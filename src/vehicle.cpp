@@ -870,6 +870,18 @@ void Vehicle::partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) con
     rot = sRot * p->localRot;
 }
 
+void Vehicle::partPoseRelCom(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const {
+    // principal's origin IS the COM in S (see vehicle.h), so the COM-
+    // relative pose is sRot * (localPos - pOrigin) -- small numbers only.
+    glm::dvec3 pOrigin; glm::dmat3 pBasis;
+    fromBt(principal, pOrigin, pBasis);
+    glm::dvec3 bodyPos; glm::dmat3 bodyRot;
+    fromBt(hull->btBody->getCenterOfMassTransform(), bodyPos, bodyRot);
+    const glm::dmat3 sRot = bodyRot * glm::transpose(pBasis);
+    pos = sRot * (p->localPos - pOrigin);
+    rot = sRot * p->localRot;
+}
+
 glm::dvec3 Vehicle::partPos(const Part *p) const {
     glm::dvec3 pos; glm::dmat3 rot;
     partWorldPose(p, pos, rot);
@@ -2335,20 +2347,28 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
 
     const glm::dmat4 xform = renderXform(renderFrame);
 
+    /* Precision: place the ship with ONE common shift (its absolute COM,
+       which DrawModelAt subtracts renderOrigin from -- exactly 0 for the
+       active ship, an exact small difference for the others) and build the
+       per-part models COM-relative in small coords. Going through absolute
+       per-part positions instead would round each part onto the ULP grid of
+       the huge coords (~0.125 m at oort, ~22 m at interstellar) and shake
+       the ship apart; see reports/precision-scaling2026_09_22. */
+    const glm::dmat4 xformShip = xform * glm::translate(get_center_of_mass());
+
     for(Part *p : parts) {
         // Per-part terrain shadow
         const float shadow =
             ComputeTerrainShadow(m_parent, frame, partPos(p), sun);
         /* Drawn at the part's world pose rather than at a matrix read
            off its own rigid body: a ship is ONE body, so a part's pose
-           is derived. (While partWorldPose still reads the per-part
-           body this is the same matrix Draw would have built itself --
-           measured to 1.7e-18 on the engine plume, which is built the
-           same way.) */
+           is derived. (While partPoseRelCom still reads the hull body
+           this is the same matrix Draw would have built itself, minus
+           the ULP rounding of the absolute coords.) */
         glm::dvec3 pp; glm::dmat3 pr;
-        partWorldPose(p, pp, pr);
+        partPoseRelCom(p, pp, pr);
         const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
-        p->body->DrawAt(camera, sunlightVec, shadow, model, xform);
+        p->body->DrawAt(camera, sunlightVec, shadow, model, xformShip);
 
         /* Engine shroud (see PartDef.shroud): while a part is attached
            on the part's exhaust face (a child below), the plain open
@@ -2357,7 +2377,7 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
            depth-tests against it. */
         if(p->shroud != nullptr && hasChildBelow(p)) {
             DrawModelAt(camera, p->shroud, p->body->shader,
-                        p->shroud_texture, model, sunlightVec, shadow, xform);
+                        p->shroud_texture, model, sunlightVec, shadow, xformShip);
         }
     }
 }

@@ -90,9 +90,11 @@ std::string nextBuildId(const BuildShip &bs, const std::string &base, int &n) {
 // unprojection. false if behind the camera.
 bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
     const Camera &cam = *g.camera;
-    // The view's camera sits at pos - renderOrigin and DrawModelAt shifts
-    // geometry by -renderOrigin; the two cancel, so S-frame points map
-    // straight as v = R * (pS - pos) (the same contract pickRay inverts).
+    // The view's camera sits at the render-frame eye (pos - renderOrigin,
+    // up to sub-ULP in Orbit mode -- irrelevant at VAB scale, see
+    // pick.cpp) and DrawModelAt shifts geometry by -renderOrigin; the two
+    // cancel, so S-frame points map straight as v = R * (pS - pos) (the
+    // same contract pickRay inverts).
     const glm::dmat3 R(cam.view);
     const glm::dvec3 v = R * (pS - cam.pos);
     if(v.z >= -1e-6) { return false; }

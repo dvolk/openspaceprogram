@@ -80,8 +80,9 @@ glm::dvec3 Camera::orbitOffset() const {
 
 void Camera::ComputeView() {
     if (mode == CAM_ORBIT) {
-        pos = focusPoint + ref * orbitOffset() * distance;
-        forward = glm::normalize(focusPoint - pos);
+        const glm::dvec3 off = ref * orbitOffset() * distance;
+        pos = focusPoint + off;
+        forward = glm::normalize(-off);
         // Up = the ref up (the ship's up) projected off the view direction,
         // so the screen-up is a pure function of the camera position -- not
         // of the yaw/pitch path taken to get there (no trackball holonomy).
@@ -93,7 +94,13 @@ void Camera::ComputeView() {
             up = (std::abs(forward.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
             up = up - forward * glm::dot(up, forward);
         }
-        buildView(-forward, up, pos - renderOrigin);
+        // Precision: the view translation is built as (focus - renderOrigin)
+        // + off -- an exact difference of neighbouring doubles plus a small
+        // offset -- instead of (focusPoint + off) - renderOrigin, whose
+        // intermediate sum rounds onto the ULP grid of the absolute coords
+        // and snapped the whole view by ~0.125 m per frame at 1e15 (oort
+        // jitter; see reports/precision-scaling2026_09_22).
+        buildView(-forward, up, (focusPoint - renderOrigin) + off);
         return;
     }
     // Free: pos is primary; up is the stored free-camera up.

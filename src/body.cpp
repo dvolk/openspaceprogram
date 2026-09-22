@@ -1,5 +1,8 @@
 #include "body.h"
 
+#include <cstdio>    // the PRECDBG precision instrument below
+#include <cstdlib>
+
 void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *texture,
                  const glm::dmat4 &modelMat, glm::vec3 &sunlightVec, float shadow,
                  const glm::dmat4 &xform, const DrawOpts &opts)
@@ -11,6 +14,21 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
     // make sure View * Model happens with double precision
     glm::dmat4 ModelView = View * xf * modelMat;
     glm::mat4 ModelViewFloat = ModelView;
+    // Precision instrument (PRECDBG=1): per-draw ModelView translation,
+    // double vs the float32 the GPU gets. Wobble in dbl == sim/frame
+    // quantization; wobble only in flt == the cast. Capped at 4000 lines.
+    {
+        static const bool on = getenv("PRECDBG") != nullptr;
+        static int s_n = 0;
+        if(on && s_n < 4000) {
+            s_n++;
+            const glm::dvec3 t = ModelView[3];
+            const glm::vec3 tf = ModelViewFloat[3];
+            printf("PRECDBG-MV n=%d mesh=%p dbl=(%.17g,%.17g,%.17g) flt=(%.9g,%.9g,%.9g) err=(%.3e,%.3e,%.3e)\n",
+                   s_n, (const void*)mesh, t.x, t.y, t.z, tf.x, tf.y, tf.z,
+                   t.x - tf.x, t.y - tf.y, t.z - tf.z);
+        }
+    }
     glm::mat4 Projection = camera->GetProjection();
     glm::mat4 MVP = Projection * ModelViewFloat;
     glm::mat4 ModelFloat = xf * modelMat;

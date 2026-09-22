@@ -290,6 +290,15 @@ public:
        omega x the offset, omega being the whole ship's, since a rigid body
        has one. Forces, mass and the render model still go through the Body. */
     void partWorldPose(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const;
+    /* The same pose, relative to the hull COM, computed purely from
+       ship-local quantities: pos = sRot * (localPos - comS), with comS
+       the COM in S (= principal's origin). It never materializes the
+       huge absolute frame coords, so it stays exact at any distance,
+       while partWorldPose's (sPos + sRot*localPos) rounds each part onto
+       the ULP grid of the absolute position (~0.125 m at 1e15, ~22 m at
+       1e17). The render path uses this + a single per-ship COM shift;
+       see reports/precision-scaling2026_09_22. */
+    void partPoseRelCom(const Part *p, glm::dvec3 &pos, glm::dmat3 &rot) const;
     glm::dvec3 partPos(const Part *p) const;
     glm::dmat3 partRot(const Part *p) const;
     /* the part's local axis n (0 = right, 1 = up, 2 = nose) in world axes */

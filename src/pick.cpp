@@ -39,12 +39,17 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
     const double C  = cam.projection[2][3];   // the w row's Z coefficient
     const glm::dvec3 dirView = glm::dvec3(-nx * C / fx, -ny * C / fy, -1.0);
 
-    // buildView() (camera.cpp) builds the view with cam = pos - renderOrigin,
-    // and the Draw sites shift geometry by -renderOrigin (body.h,
-    // terrain.cpp). The two shifts cancel, so a render-frame point p maps
-    // as p_view = R * (p - pos) -- renderOrigin only buys float precision
-    // in the MVP cast -- and the inverse (this unprojection) is
-    // p_render = R^T * p_view + pos.
+    // buildView() (camera.cpp) builds the view with the camera in the
+    // render frame, and the Draw sites shift geometry by -renderOrigin
+    // (body.h, terrain.cpp). The two shifts cancel, so a render-frame
+    // point p maps as p_view = R * (p - pos) -- renderOrigin only buys
+    // float precision in the MVP cast -- and the inverse (this
+    // unprojection) is p_render = R^T * p_view + pos. Caveat: in Orbit
+    // mode the rendered eye is the exact (focusPoint - renderOrigin) +
+    // off while pos is its rounded absolute form, so the pick ray origin
+    // diverges from the rendered eye by <= ULP(pos)/2 (~6 cm at 1e15,
+    // only relevant at interstellar ranges -- reports/precision-scaling
+    // 2026_09_22).
     const glm::dmat3 R(cam.view);
     return PickRay{
         cam.pos,

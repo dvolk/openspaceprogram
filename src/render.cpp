@@ -453,18 +453,23 @@ void draw3d(Game &g, TransferPlanner &planner) {
                size so the tail lands on the engine tail (-h/2) */
             const double radius = p->def->radius;
             const double height = p->def->height;
-            /* Built from the part's world pose rather than read off
-               Body::model_matrix: that field is a cache Body::Draw fills as
-               a side effect, so using it here made the plume depend on
+            /* Built from the part's COM-relative pose (partPoseRelCom)
+               rather than its absolute world pose: the plume is only ever
+               drawn on the ACTIVE ship, whose COM IS the renderOrigin, so
+               the small relative numbers are exactly what the view needs --
+               and no huge absolute coord is ever materialized (precision,
+               see reports/precision-scaling2026_09_22). Also independent
+               of Body::model_matrix: that field is a cache Body::Draw fills
+               as a side effect, so using it here made the plume depend on
                Vehicle::Draw having already run for this ship this frame. */
             glm::dvec3 plumePos; glm::dmat3 plumeRot;
-            ship->partWorldPose(p, plumePos, plumeRot);
+            ship->partPoseRelCom(p, plumePos, plumeRot);
             glm::dmat4 Model = glm::translate(plumePos) * glm::dmat4(plumeRot)
                 * glm::dmat4(glm::dmat3(radius, 0.0, 0.0,
                                          0.0, radius, 0.0,
                                          0.0, 0.0, height / 2.0));
-            // shifted into the render frame, like the view
-            glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
+            // already render-frame relative (COM == renderOrigin)
+            glm::mat4 ModelViewFloat = View * Model;
             g.partsshader->Bind();
             g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
             g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)
@@ -507,14 +512,17 @@ void draw3d(Game &g, TransferPlanner &planner) {
         /* 2 m wide, 3 m long off the COM (a radius-1 engine's plume is
            4 m long) -- long enough to clearly read as coming off the
            ship, since the tail starts at the COM inside the hull. The
-           translate offset puts the mesh tail (local z = -1) on the COM. */
+           translate offset puts the mesh tail (local z = -1) on the COM.
+           COM == renderOrigin here (active ship only), so the small
+           offset is the whole render-frame translation -- no huge coord
+           is materialized (precision, reports/precision-scaling2026_09_22). */
         const double sx = 0.5, sz = 0.75;
-        glm::dmat4 Model = glm::translate(com + z * sz)
+        glm::dmat4 Model = glm::translate(z * sz)
             * glm::dmat4(glm::dmat3(x, y, z))
             * glm::dmat4(glm::dmat3(sx, 0.0, 0.0,
                                          0.0, sx, 0.0,
                                          0.0, 0.0, sz));
-        glm::mat4 ModelViewFloat = View * glm::translate(-camera->GetRenderOrigin()) * Model;
+        glm::mat4 ModelViewFloat = View * Model;
         g.partsshader->Bind();
         g.partsshader->setUniform_mat4(0, Projection * ModelViewFloat);
         g.partsshader->setUniform_mat4(1, glm::mat4(1.0)); // identity (GLM 1.0.0+: default ctor is zero)

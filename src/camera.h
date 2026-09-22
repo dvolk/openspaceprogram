@@ -118,7 +118,10 @@ private:
     // Shared view-matrix construction -- the NaN-safe basis that was
     // copy-pasted across the two old subclasses. zAxis is the unit view
     // direction (-forward), upHint the intended up (exact for Orbit, the
-    // stored up for Free), and cam the camera position already in the
-    // render frame (pos - renderOrigin).
+    // stored up for Free), and cam the camera position in the render
+    // frame. Free passes pos - renderOrigin; Orbit passes the more exact
+    // (focusPoint - renderOrigin) + off, which differs from pos -
+    // renderOrigin only by the rounding of the absolute pos (<= ULP/2,
+    // only measurable at oort+ distances -- see ComputeView).
     void buildView(const glm::dvec3& zAxis, const glm::dvec3& upHint, const glm::dvec3& cam);
 };
