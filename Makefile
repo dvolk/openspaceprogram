@@ -361,10 +361,10 @@ $(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
 # If you delete a test source but keep its target, make reuses the stale
 # $(TESTDIR)/obj/ object and binary happily -- run `make clean` after removing one.
 
-TCC   = -O2 -std=c++20
+TCC   = -O2 -std=c++20 -DGLEW_STATIC
 TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
-        -I./middleware/imgui/ -I./middleware/ -I./middleware/sdl3/include \
-        -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+        -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ \
+        -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
 # The real-Bullet tests share these TUs (compiled once, not once per test).
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
@@ -747,7 +747,8 @@ release:
 #     DISPLAY=:99 make test-gl
 .PHONY: test-gl
 test-gl:
-	$(CXX) -O2 -std=c++20 -I./middleware/sdl3/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o $(TESTDIR)/test_gl_vao
+	@mkdir -p $(TESTDIR)
+	$(CXX) -O2 -std=c++20 -DGLEW_STATIC -I./middleware/sdl3/include -I./middleware/glew/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o $(TESTDIR)/test_gl_vao
 	$(TESTDIR)/test_gl_vao
 
 # Config variants. Each is a separate recursive make with its own config
