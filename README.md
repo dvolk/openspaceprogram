@@ -2,7 +2,7 @@
 
 Open source space sim
 
-Written in C++ with SDL2, GLM, ImGui, Bullet physics, AssImp.
+Written in C++ with SDL3, GLM, ImGui, Bullet physics, AssImp.
 
 Code licence: GPL 3
 Content licence: CC-BY-SA 3.0
@@ -24,9 +24,14 @@ Lately, some of the code is written by qwen code.
     ./bootstrap.sh
     make
 
-start OSP with
+`make` builds the release binary into `build/linux-v2-znver3/release/osp`;
+`./osp` is a symlink to it, so start OSP with
 
     ./osp
+
+Other configs: `make debug`, `make asan`, `make tsan` (each builds into its
+own directory and re-points `./osp` at the result). `make test` runs the
+unit tests; `make e2e` the e2e battery (Xvfb for headless machines).
 
 ## Cli options
 

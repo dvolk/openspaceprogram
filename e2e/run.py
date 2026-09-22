@@ -406,7 +406,7 @@ def run_case(case):
     """Return (passed, diagnostics-lines)."""
     game = GAME or os.path.join(REPO_ROOT, "osp")
     if not os.path.exists(game):
-        return False, ["%s not found; run `make` (or `make -f Makefile2`)"
+        return False, ["%s not found; run `make` first"
                        % os.path.relpath(game, REPO_ROOT)]
     # Start each case from a clean ImGui layout (window positions persist in
     # imgui.ini otherwise, which would make UI clicks non-deterministic).
