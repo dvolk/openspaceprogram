@@ -213,3 +213,4 @@ cmake --build middleware/assimp/build -j"$JOBS"
 
 echo
 echo "middleware ready. Now:  make   (then ./osp)"
+echo "  (or: make -f Makefile2  ->  build/linux-v2-znver3/release/osp)"

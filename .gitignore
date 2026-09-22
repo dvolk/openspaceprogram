@@ -1,4 +1,7 @@
 # Build artifacts
+build/
+# The entries below are the legacy (pre-build-tree) locations; they stay
+# until Makefile2 is promoted and the old root artifacts are removed.
 obj/
 obj_test/
 obj_asan/

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""E2E battery: launch ./osp under Xvfb and check the result.
+"""E2E battery: launch the game under Xvfb and check the result.
+
+The binary defaults to ./osp; point at another build with --game
+(e.g. the new tree: --game build/linux-v2-znver3/release/osp).
 
 Usage:
   python3 e2e/run.py orbit      run only cases matching "orbit"
@@ -77,6 +80,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
+# The game binary to launch: --game wins, else the legacy ./osp. (The new
+# build tree puts it under build/<os>-<march>-<mtune>/<config>/, so that
+# flow passes --game explicitly.)
+GAME = None
 DEFAULT_LIMIT = 120.0
 DEFAULT_JOBS = 2
 
@@ -397,9 +404,10 @@ def build_cmd(game, args):
 
 def run_case(case):
     """Return (passed, diagnostics-lines)."""
-    game = os.path.join(REPO_ROOT, "osp")
+    game = GAME or os.path.join(REPO_ROOT, "osp")
     if not os.path.exists(game):
-        return False, ["./osp not found; run `make` first."]
+        return False, ["%s not found; run `make` (or `make -f Makefile2`)"
+                       % os.path.relpath(game, REPO_ROOT)]
     # Start each case from a clean ImGui layout (window positions persist in
     # imgui.ini otherwise, which would make UI clicks non-deterministic).
     try:
@@ -561,9 +569,13 @@ def main():
     parser.add_argument("--force", action="store_true",
                         help="run even when heavy (full battery, or "
                              "--jobs > 2), despite the warning above")
+    parser.add_argument("--game", default=None,
+                        help="game binary to launch (default: ./osp)")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
+    global GAME
+    GAME = args.game
     selectors = args.selectors
 
     # A full battery and --jobs > 2 are both expensive (software GL: one

@@ -581,9 +581,12 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 # e.g. `make e2e JOBS=4` or `make e2e JOBS=1` for serial.
 JOBS ?=
 E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
+# --force: the e2e target IS the "run the whole battery" intent, so it opts
+# into run.py's full-battery guard (a bare run.py refuses it as a safety
+# nudge; the original Makefile's e2e target predates that guard and lacks it).
 .PHONY: e2e
 e2e: $(BINDIR)/$(TARGET)
-	python3 e2e/run.py $(E2E_JOBS)
+	python3 e2e/run.py $(E2E_JOBS) --force --game $(BINDIR)/$(TARGET)
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
 # setup) made in the default VAO 0 fails with GL_INVALID_OPERATION — draws
