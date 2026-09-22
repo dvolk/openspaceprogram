@@ -6,7 +6,13 @@
 
 void _check_gl_error(const char *file, int line) {
     GLenum err;
+    int drained = 0;
 
+    // Bounded drain: with no usable context (a call made before one exists,
+    // or a wedged driver) some stacks return the same error from EVERY
+    // glGetError -- wine's does -- and an unbounded loop here spins at 100%
+    // CPU while flooding stdout. A healthy core app never queues more than
+    // a couple of pending errors, so a cap of 16 is generous.
     while((err = glGetError()) != GL_NO_ERROR) {
         const char *error = "UNKNOWN_ERROR";
 
@@ -29,6 +35,14 @@ void _check_gl_error(const char *file, int line) {
         }
 
         fprintf(stdout, "GL_%s - %s:%d\n", error, file, line);
+        fflush(stdout);
+        if(++drained >= 16) {
+            fprintf(stdout,
+                    "error drain capped at %d (no usable context or "
+                    "misbehaving driver?) - %s:%d\n", drained, file, line);
+            fflush(stdout);
+            break;
+        }
         //exit(1);
     }
 }

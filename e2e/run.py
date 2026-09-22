@@ -3,6 +3,8 @@
 
 The binary defaults to ./osp; point at another build with --game
 (e.g. the new tree: --game build/linux-v2-znver3/release/osp).
+A windows artifact (--game build/windows-.../release/osp.exe) runs
+under Wine; the Xvfb path is unchanged (Wine renders to X).
 
 Usage:
   python3 e2e/run.py orbit      run only cases matching "orbit"
@@ -74,6 +76,7 @@ import glob
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -390,16 +393,26 @@ def last(seq):
     return seq[-1]
 
 
+def wine_for(game):
+    """windows artifacts (.exe) run under Wine (phase 1.4,
+    reports/build-tree2026_09_22/phase1-windows.md). Wine renders to X, so
+    the Xvfb path below is unchanged. Returns the wine binary, or None."""
+    if not game.endswith(".exe"):
+        return None
+    return shutil.which("wine64") or shutil.which("wine")
+
+
 def build_cmd(game, args):
+    wine = wine_for(game)
     if os.environ.get("DISPLAY") and shutil.which("xvfb-run") is None:
         # A real display is available and no Xvfb to fake one.
-        return [game] + args
+        return ([wine] if wine else []) + [game] + args
     xvfb = shutil.which("xvfb-run")
     if xvfb:
-        return [xvfb, "-a", game] + args
+        return [xvfb, "-a"] + ([wine] if wine else []) + [game] + args
     # No Xvfb and no display: run bare; it will fail to open a window, which
     # the case will report as a failure. (Headless envs should install Xvfb.)
-    return [game] + args
+    return ([wine] if wine else []) + [game] + args
 
 
 def run_case(case):
@@ -439,20 +452,49 @@ def run_case(case):
             wf.write(wcontent)
 
     cmd = build_cmd(game, case["args"] + ["--data-dir", data_dir])
+    env = None
+    if wine_for(game):
+        # Pin Wine's prefix in the tree (tmp/wine) so first-run init and
+        # per-run state stay out of the home dir. WINEDEBUG=-all silences
+        # wine's own fixme/err chatter on stderr -- one of those lines
+        # ("using GL_RENDERER ...") contains "GL_" and would trip the
+        # cases' FORBID GL_ checks, which are meant to catch the GAME's
+        # GL errors only.
+        prefix = os.path.join(REPO_ROOT, "tmp", "wine")
+        os.makedirs(prefix, exist_ok=True)
+        env = dict(os.environ)
+        env["WINEPREFIX"] = prefix
+        env["WINEDEBUG"] = "-all"
     diag = []
     timed_out = False
     exit_code = None
     out = ""
+    # The case runs in its own process group (start_new_session) so a
+    # timeout can kill the whole tree: the wine wrapper is only the
+    # direct child -- killing it leaves the game PE (a grandchild)
+    # orphaned, spinning at 100% CPU, and Xvfb behind it.
+    proc = subprocess.Popen(
+        cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, env=env, start_new_session=True,
+    )
     try:
-        proc = subprocess.run(
-            cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, timeout=case["limit"],
-        )
-        out = proc.stdout.decode("utf-8", "replace")
+        out_bytes, _ = proc.communicate(timeout=case["limit"])
+        out = out_bytes.decode("utf-8", "replace")
         exit_code = proc.returncode
     except subprocess.TimeoutExpired as e:
         timed_out = True
         out = (e.output or b"").decode("utf-8", "replace")
+    finally:
+        if proc.poll() is None:
+            # Timed out (or wedged): kill the whole group, then reap.
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
 
     # 1) exit code
     if timed_out:
@@ -576,6 +618,12 @@ def main():
         parser.error("--jobs must be >= 1")
     global GAME
     GAME = args.game
+    # Wine cases default to serial: two concurrent wine + Xvfb + llvmpipe
+    # instances (each software-rendering the whole game) overload a dev
+    # box and make the cases flaky (measured: parallel runs intermittently
+    # die mid-boot with exit 1; serial is stable). An explicit --jobs wins.
+    if args.jobs == DEFAULT_JOBS and GAME and wine_for(GAME):
+        args.jobs = 1
     selectors = args.selectors
 
     # A full battery and --jobs > 2 are both expensive (software GL: one

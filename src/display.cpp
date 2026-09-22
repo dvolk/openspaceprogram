@@ -43,38 +43,35 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     m_screen_width = width;
     m_screen_height = height;
   
+    // No check_gl_error() in this section: no GL context exists yet, so
+    // there is no GL error state to read. (SDL_GL_SetAttribute only sets
+    // creation hints.) Some stacks -- wine's WGL over llvmpipe -- answer
+    // glGetError with a fresh INVALID_OPERATION on EVERY call before a
+    // context exists, which the (now bounded) drain loop would print.
     // SDL3 dropped the SDL_INIT_TIMER flag: the timer is always available.
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    check_gl_error();
     // MSAA for geometry edges, when the stack has a multisample GLX
     // visual (window creation falls back below if it doesn't). Note the
     // --postfx path renders into a non-multisampled FBO, so only the
     // default path's 3D gets the window's MSAA.
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, msaa_samples > 0 ? 1 : 0);
-    check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
-    check_gl_error();
     // 24-bit window depth: enough for the current reverse-Z setup. 32-bit
     // float depth (GL_DEPTH_COMPONENT32F) is only available as an
     // FBO/renderbuffer attachment, not a window surface -- see
     // tmp/depth_migration_scope.txt (Option B) for the follow-up if
     // near-surface precision (launch-pad/terrain jitter) ever bites.
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, gl_major);
-    check_gl_error();
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, gl_minor);
-    check_gl_error();
     if(gl_core == true)
         {
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-            check_gl_error();
         }
     if(m_gl_debug == true)
         {
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
-            check_gl_error();
         }
 
     auto create_window = [&]() -> SDL_Window * {
@@ -83,8 +80,12 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         return SDL_CreateWindow(window_title, m_screen_width,
                                 m_screen_height, window_flags);
     };
+    // The check_gl_error() calls between here and SDL_GL_MakeCurrent are
+    // deliberately absent: no context is CURRENT yet, and a stack like
+    // wine's answers glGetError with a fresh INVALID_OPERATION on EVERY
+    // call until one is -- the bounded drain would just print 16 spurious
+    // lines. The first meaningful check is after MakeCurrent (below).
     m_window = create_window();
-    check_gl_error();
     if(m_window == NULL) {
         // e.g. Xvfb/llvmpipe: no multisample GLX visual. Retry without MSAA
         // so headless stacks still work.
@@ -92,12 +93,10 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
         m_window = create_window();
-        check_gl_error();
     }
     assert(m_window);
 
     SDL_GLContext glcontext = SDL_GL_CreateContext(m_window);
-    check_gl_error();
     assert(glcontext);
     SDL_GL_MakeCurrent(m_window, glcontext);
     check_gl_error();
