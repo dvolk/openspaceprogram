@@ -1,5 +1,3 @@
-TARGET=osp
-
 #CXX_OPT=-march=x86-64-v2 -mtune=znver3 -flto -O2 -fprofile-arcs -ftest-coverage -fprofile-dir=/home/dv/src/my/openspaceprogram/data/pgo -fprofile-generate=/home/dv/src/my/openspaceprogram/data/pgo
 #LD_OPT=-O2 -flto -fprofile-arcs
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
@@ -79,9 +77,9 @@ CXX= g++
 # forces a recompile of every TU that includes it. Without this, make only sees
 # the .cpp prerequisite and silently links stale .o files with a mismatched
 # struct layout -> heap corruption / segfault. The .d files are -included below.
-CXXFLAGS=-O2 -MMD -MP $(LTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) $(SANITIZE) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
-LINKER=g++ -O2 $(LD_OPT) $(SANITIZE) -o
+LINKER=g++ $(CFGFLAGS) $(LD_OPT) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
 
 # Default to all cores: a plain `make` runs parallel (verified: MAKEFLAGS
@@ -150,7 +148,7 @@ BULLET3_OBJS=./middleware/bullet3/build/src/BulletDynamics/libBulletDynamics.a .
 # here is the first thing to see both TUs together and warn. The game uses
 # the GLX/SDL_GL path, never the EGL API (bootstrap.sh silences the same
 # warning in SDL2's own compile).
-LFLAGS=$(LTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
+LFLAGS=$(CFGLTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
 
 # Build tree (reports/build-tree2026_09_22): build/<os>-<march>-<mtune>/<config>/.
 # Each (march, mtune, config) combo gets its own dir with its own objects, so
@@ -167,6 +165,34 @@ ARCHDIR=$(BUILDROOT)/$(OSTOK)-$(MARCH_TOK)-$(MTUNE_TOK)
 SRCDIR=src
 OBJDIR=$(ARCHDIR)/$(CONFIG)/obj
 BINDIR=$(ARCHDIR)/$(CONFIG)
+# Per-config binary name: the sanitizer builds keep their suffix (their dirs
+# are already separate, but the suffix keeps `ls` self-explanatory);
+# release/debug share the name osp, their dirs separate them.
+ifeq ($(CONFIG),asan)
+TARGET=osp_asan
+else ifeq ($(CONFIG),tsan)
+TARGET=osp_tsan
+else
+TARGET=osp
+endif
+# Per-config flags. release: O2 + LTO (the old default). debug: O0 + debug
+# info, no LTO (plain per-file debugging). asan/tsan: keep O2 + LTO and add
+# -g3 + the sanitizer (same flags as before, now selected by CONFIG). The
+# link line gets the same: LTO finalizes at the link, and the sanitizer must
+# be on the link line too.
+ifeq ($(CONFIG),debug)
+CFGFLAGS=-O0 -g3
+CFGLTO=
+else ifeq ($(CONFIG),asan)
+CFGFLAGS=-O2 -g3 -fsanitize=address,leak,undefined
+CFGLTO=$(LTO)
+else ifeq ($(CONFIG),tsan)
+CFGFLAGS=-O2 -g3 -fsanitize=thread,undefined
+CFGLTO=$(LTO)
+else
+CFGFLAGS=-O2
+CFGLTO=$(LTO)
+endif
 
 SOURCES := $(wildcard $(SRCDIR)/*.cpp)
 INCLUDES := $(wildcard $(SRCDIR)/*.h)
@@ -553,7 +579,7 @@ test: $(TESTS)
 JOBS ?=
 E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
 .PHONY: e2e
-e2e: $(TARGET)
+e2e: $(BINDIR)/$(TARGET)
 	python3 e2e/run.py $(E2E_JOBS)
 
 # GL-context probe: on this Mesa 26 stack any draw (or vertex-attribute
@@ -566,12 +592,13 @@ test-gl:
 	$(CXX) -O2 -std=c++20 -I./middleware/sdl3/include $(LTO) tests/test_vertexless.c $(GL_LIBS) -o test_gl_vao
 	./test_gl_vao
 
-# Sanitizer variants. Each is a separate recursive make with its own OBJDIR
-# and its own binary, so the three builds share no file at all:
+# Config variants. Each is a separate recursive make with its own config
+# dir (see OBJDIR/BINDIR above), so the builds share no file at all:
 #
-#     make        -> ./osp        from obj/        (the default: O2 + LTO)
-#     make asan   -> ./osp_asan   from obj_asan/   (+ AddressSanitizer)
-#     make tsan   -> ./osp_tsan   from obj_tsan/   (+ ThreadSanitizer)
+#     make          -> build/linux-v2-znver3/release/osp   (the default: O2 + LTO)
+#     make debug    -> build/linux-v2-znver3/debug/osp     (-O0 -g3, no LTO)
+#     make asan     -> build/linux-v2-znver3/asan/osp_asan (+ AddressSanitizer)
+#     make tsan     -> build/linux-v2-znver3/tsan/osp_tsan (+ ThreadSanitizer)
 #
 # No `make clean` is needed between them, and they can run concurrently in
 # separate shells. The imgui/implot objects follow OBJDIR as well, so a
@@ -582,25 +609,31 @@ test-gl:
 # SDL_image, GLEW). bootstrap.sh builds them once, uninstrumented, and every
 # variant links the same archives.
 #
-# Run a variant exactly like ./osp, e.g.
-#     xvfb-run -a ./osp_asan --selftest-spawn --timeout 5
+# Run a variant exactly like osp, e.g.
+#     xvfb-run -a build/linux-v2-znver3/asan/osp_asan --selftest-spawn --timeout 5
 # ASan aborts on the first error. LeakSanitizer also runs at exit and reports
 # the intentional leaks (the shader/mesh/texture registries are never freed),
 # so ASAN_OPTIONS=detect_leaks=0 keeps the output to real memory errors.
 # TSan needs ./tsan.supp to be usable at all (Mesa's software renderer is
 # noisy under it) -- use `make tsan-run` rather than remembering the env var.
-SAN_ASAN = -g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
-SAN_TSAN = -g3 -fsanitize=thread -fsanitize=undefined
+# -f $(firstword $(MAKEFILE_LIST)): a recursive make reads the DEFAULT
+# makefile (Makefile), not the one we're running in -- pass ours explicitly,
+# or the sub-make has no rule for the build/... path. (Once this file IS the
+# Makefile again, this is a harmless no-op.)
+.PHONY: debug
+debug:
+	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) \
+	    CONFIG=debug $(ARCHDIR)/debug/osp
 
 .PHONY: asan
 asan:
-	@$(MAKE) --no-print-directory TARGET=osp_asan OBJDIR=obj_asan \
-	    SANITIZE='$(SAN_ASAN)' $(BINDIR)/osp_asan
+	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) \
+	    CONFIG=asan $(ARCHDIR)/asan/osp_asan
 
 .PHONY: tsan
 tsan:
-	@$(MAKE) --no-print-directory TARGET=osp_tsan OBJDIR=obj_tsan \
-	    SANITIZE='$(SAN_TSAN)' $(BINDIR)/osp_tsan
+	@$(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) \
+	    CONFIG=tsan $(ARCHDIR)/tsan/osp_tsan
 
 # Build and run the TSan variant with tsan.supp applied (see that file for
 # what it suppresses and why). Uses the real display when there is one and
@@ -611,16 +644,12 @@ GAME_ARGS ?=
 .PHONY: tsan-run
 tsan-run: tsan
 	@XVFB=""; if [ -z "$$DISPLAY" ]; then XVFB="xvfb-run -a"; fi; \
-	 TSAN_OPTIONS="suppressions=$(CURDIR)/tsan.supp" $$XVFB ./osp_tsan $(GAME_ARGS)
+	 TSAN_OPTIONS="suppressions=$(CURDIR)/tsan.supp" $$XVFB $(ARCHDIR)/tsan/osp_tsan $(GAME_ARGS)
 
-# Drop both variants entirely -- objects, middleware objects and binaries.
-# This is the multi-obj-dir version of the "delete obj/ by hand" note on
-# `clean` below: required after changing LTO / MARCH / CXX_OPT, whose
-# objects are not interchangeable with the ones already on disk.
+# Drop both sanitizer variants entirely -- objects and binaries.
 .PHONY: san-clean
 san-clean:
-	rm -rf obj_asan obj_tsan
-	$(rm) $(BINDIR)/osp_asan $(BINDIR)/osp_tsan
+	rm -rf $(ARCHDIR)/asan $(ARCHDIR)/tsan
 
 .PHONY: clean
 # All objects (src/, imgui/implot, tests): imgui/implot are pinned submodules
