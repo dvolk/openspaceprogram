@@ -280,12 +280,13 @@ static const ScenarioDef kScenarios[] = {
     {"ellipse-mid",    false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
     {"escape",         false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
     /* the absolute-radius distance ladder (see ScenarioDef): anchored to
-       real solar-system distances, so a name means the same distance
+       real astronomical distances, so a name means the same distance
        around any body. Precision test beds -- neptune is comfortably
        inside double's range (~1 mm ULP), oort is where it starts to bite
-       (~0.22 m). */
+       (~0.22 m), interstellar is where it clearly breaks (~22 m). */
     {"neptune",        false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
     {"oort",           false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
+    {"interstellar",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e17},
 };
 
 const ScenarioDef *scenario_by_name(const std::string &name) {

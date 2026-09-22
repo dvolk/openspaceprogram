@@ -38,19 +38,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--scenario", args.scenario,
         "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
         "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid, "
-        "escape, neptune, oort (the ellipse-* scenarios are a 10x1000 km "
-        "ASL orbit started at periapsis, apoapsis, or halfway by angle "
-        "between them; escape is 2x escape velocity at the rot-orbit "
-        "radius, coasting out of the body's SOI on its own; neptune / oort "
-        "are circular orbits at an absolute 4.495e12 / 1e15 m from the body "
-        "centre -- real-solar-system distances, for precision testing; use "
-        "them with --body Kerbol, since around a planet the ship inherits "
-        "that planet's orbital velocity and is hyperbolic w.r.t. the star; "
-        "default: pad)")
+        "escape, neptune, oort, interstellar (the ellipse-* scenarios are a "
+        "10x1000 km ASL orbit started at periapsis, apoapsis, or halfway by "
+        "angle between them; escape is 2x escape velocity at the rot-orbit "
+        "radius, coasting out of the body's SOI on its own; neptune / oort / "
+        "interstellar are circular orbits at an absolute 4.495e12 / 1e15 / "
+        "1e17 m from the body centre -- real astronomical distances, for "
+        "precision testing; use them with --body Kerbol, since around a "
+        "planet the ship inherits that planet's orbital velocity and is "
+        "hyperbolic w.r.t. the star; default: pad)")
         ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
                                "inertial-orbit", "high-orbit", "high-polar",
                                "ellipse-peri", "ellipse-apo", "ellipse-mid",
-                               "escape", "neptune", "oort"}));
+                               "escape", "neptune", "oort", "interstellar"}));
 
     app.add_option("--system", args.system_file,
                    "Star-system JSON file to load (default: res/ksp_system.json; "
