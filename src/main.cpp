@@ -128,11 +128,23 @@ int main(int argc, char **argv)
     // the layout the code sets up each frame.
     io.IniFilename = nullptr;
     // Normal and big faces are the same font (the big one at 2x size), so
-    // the whole UI is one typeface; --font picks which.
-    io.Fonts->AddFontFromFileTTF(args.font_path.c_str(), args.font_size);
+    // the whole UI is one typeface; --font / --font-size pick which + how big.
+    //
+    // GlyphExtraAdvanceX is the letter-tracking knob (px of extra advance
+    // after each glyph): 0 = the font's natural spacing, >0 pushes the
+    // characters further apart. Map-label clearance from the body dots is
+    // a separate knob -- label_dx / label_gap in gameui.cpp
+    // (drawSystemBodyOrbits) and label_dx / label_dy on the vessel loops.
+    const float glyph_extra_advance_x = 0.0f;
+    ImFontConfig font_cfg;
+    font_cfg.GlyphExtraAdvanceX = glyph_extra_advance_x;
+    io.Fonts->AddFontFromFileTTF(args.font_path.c_str(), args.font_size,
+                                 &font_cfg);
     // The big face (2x size) for the HUD + main menu; the UI pass
     // (gameui.cpp) draws with it via the game.
-    ImFont *bigger = io.Fonts->AddFontFromFileTTF(args.font_path.c_str(), 2.0f * args.font_size);
+    ImFont *bigger = io.Fonts->AddFontFromFileTTF(args.font_path.c_str(),
+                                                  2.0f * args.font_size,
+                                                  &font_cfg);
     check_gl_error();
 
     // start bullet; see physics.cpp

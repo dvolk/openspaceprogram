@@ -324,6 +324,99 @@ int main() {
         check(all_dep, "xfer-t0: all points at departure");
     }
 
+    // 14. Cache survives coasting drift. railsTick / UpdateOrbitRails
+    // re-propagate the live state every step, which perturbs it in the last
+    // bits while leaving the conic unchanged; an exact == key used to miss
+    // every frame and re-run the Kepler solves (the map's cost center).
+    {
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        glm::dvec3 p(r, 0, 0), vel(0, v, 0);
+        const glm::dvec3 p0 = p, v0 = vel;
+        OrbitSampleCache c;
+        std::vector<glm::dvec3> first = c.sample(p0, v0, mu, N);
+        for(int i = 0; i < 2000; i++) {
+            propagateKepler(p, vel, mu, 0.016, p, vel);
+        }
+        // A further last-bit nudge of the kind a second propagator leaves.
+        p.x += 1e-4;
+        const std::vector<glm::dvec3> &later = c.sample(p, vel, mu, N);
+        bool same = (later.size() == first.size());
+        if(same) {
+            for(size_t i = 0; i < first.size(); i++) {
+                if(first[i] != later[i]) { same = false; break; }
+            }
+        }
+        check(same, "cache: coasting drift still hits");
+    }
+
+    // 15. N is part of the key: a LOD change of the sample count must not
+    // serve the previous grid.
+    {
+        OrbitSampleCache c;
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        const glm::dvec3 pos(r, 0, 0), vel(0, v, 0);
+        c.sample(pos, vel, mu, 16);
+        const std::vector<glm::dvec3> &b = c.sample(pos, vel, mu, 32);
+        check(b.size() == 32, "cache: N is part of the key");
+    }
+
+    // 16. A real orbit change (a different radius) still invalidates even
+    // with the tolerant key.
+    {
+        OrbitSampleCache c;
+        const double r1 = 7.0e6, v1 = std::sqrt(mu / r1);
+        const double r2 = 8.0e6, v2 = std::sqrt(mu / r2);
+        std::vector<glm::dvec3> a =
+            c.sample(glm::dvec3(r1, 0, 0), glm::dvec3(0, v1, 0), mu, N);
+        const std::vector<glm::dvec3> &b =
+            c.sample(glm::dvec3(r2, 0, 0), glm::dvec3(0, v2, 0), mu, N);
+        check(std::fabs(glm::length(b.front()) - r2) < 1e-3 * r2,
+              "cache: tolerant key still invalidates on a real change");
+        check(glm::length(a.front()) != glm::length(b.front()),
+              "cache: distinct radii after invalidation");
+    }
+
+    // 17. Near-circular: periapsis direction is noise and must NOT thrash
+    // the key (e_hat is ignored below e = 1e-2). Same plane (XY), just a
+    // rotated start phase -- a different plane must and does miss.
+    {
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        const glm::dvec3 pos(r, 0, 0), vel(0, v, 0);
+        OrbitSampleCache c;
+        std::vector<glm::dvec3> first = c.sample(pos, vel, mu, N);
+        // Same circle in the XY plane, rotated start phase.
+        const double ang = 0.37;
+        const glm::dvec3 pos2(r * std::cos(ang), r * std::sin(ang), 0.0);
+        const glm::dvec3 vel2(-v * std::sin(ang), v * std::cos(ang), 0.0);
+        const std::vector<glm::dvec3> &later = c.sample(pos2, vel2, mu, N);
+        bool same = (later.size() == first.size());
+        if(same) {
+            for(size_t i = 0; i < first.size(); i++) {
+                if(first[i] != later[i]) { same = false; break; }
+            }
+        }
+        check(same, "cache: near-circle ignores periapsis direction");
+    }
+
+    // 18. orbitConicSize: circular + eccentric apoapsis, and the open conic
+    // reports no closed size.
+    {
+        const double r = 7.0e6, v = std::sqrt(mu / r);
+        double a = 0.0, apo = -1.0;
+        orbitConicSize(glm::dvec3(r, 0, 0), glm::dvec3(0, v, 0), mu, a, apo);
+        check(std::fabs(a - r) < 1e-3 * r, "size: circular sma = r");
+        check(std::fabs(apo - r) < 1e-3 * r, "size: circular apo = r");
+        const double e = 0.5, peri = 7.0e6;
+        const double v_p = std::sqrt(mu * (1.0 + e) / peri);
+        orbitConicSize(glm::dvec3(peri, 0, 0), glm::dvec3(0, v_p, 0), mu, a, apo);
+        check(std::fabs(a - peri / (1.0 - e)) < 1e-2 * peri,
+              "size: eccentric sma");
+        check(std::fabs(apo - a * (1.0 + e)) < 1e-2 * peri,
+              "size: eccentric apo");
+        orbitConicSize(glm::dvec3(r, 0, 0), glm::dvec3(0, 1.5 * v, 0), mu, a, apo);
+        check(apo < 0.0, "size: hyperbolic -> no closed apo");
+    }
+
     if(g_failures == 0) {
         std::printf("test_orbitsample: all checks passed\n");
         return 0;

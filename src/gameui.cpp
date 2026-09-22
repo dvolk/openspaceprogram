@@ -72,6 +72,149 @@ unsigned int ramp_color(float t) {
 // share one cache (the same orbit sampled once, drawn on both).
 static std::map<const void *, OrbitSampleCache> orbit_caches;
 
+// Map content rect (screen px) for view culling.
+struct MapViewRect {
+    float l, t, r, b;
+    bool contains(float x, float y, float margin) const {
+        return x >= l - margin && x <= r + margin &&
+               y >= t - margin && y <= b + margin;
+    }
+    // Conservative: does a disc (cx,cy) of radius r_px intersect the rect?
+    bool hitsDisc(float cx, float cy, float r_px) const {
+        if(r_px < 0.0f) { return cx >= l && cx <= r && cy >= t && cy <= b; }
+        return cx + r_px >= l && cx - r_px <= r &&
+               cy + r_px >= t && cy - r_px <= b;
+    }
+};
+
+// Stroke one body's orbit so the polyline starts and ends at the body
+// marker: the equal-anomaly samples do not include the body, and the chord
+// near it otherwise visibly misses the marker when zoomed in. The body
+// lies between two consecutive samples; find the nearest (k) and its CLOSER
+// neighbour, then walk from that bracket all the way around to k and
+// prepend the body (see the old inline version -- walking forward from k
+// unconditionally ends at the wrong neighbour when the body sits just past
+// k). Nearest is a squared-length search in the PARENT frame (the samples
+// and the body already live there) -- no per-point mat3.
+static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
+                                 const std::vector<glm::dvec3> &cpts_p,
+                                 const glm::dmat3 &O, const glm::dvec3 &P,
+                                 const glm::dvec3 &cpos_p,
+                                 ImU32 col, float thickness) {
+    const size_t n = cpts_p.size();
+    if(n < 2) { return; }
+    size_t k = 0;
+    double best = 1e300;
+    for(size_t i = 0; i < n; i++) {
+        const glm::dvec3 d = cpts_p[i] - cpos_p;
+        const double d2 = glm::dot(d, d);
+        if(d2 < best) { best = d2; k = i; }
+    }
+    const glm::dvec3 dkm = cpts_p[(k + n - 1) % n] - cpos_p;
+    const glm::dvec3 dkp = cpts_p[(k + 1) % n] - cpos_p;
+    const size_t start = (glm::dot(dkp, dkp) < glm::dot(dkm, dkm))
+                             ? (k + 1) % n
+                             : k;
+    // Reused across bodies: one buffer for the whole map pass.
+    static thread_local std::vector<glm::dvec3> cpts;
+    cpts.clear();
+    cpts.reserve(n + 1);
+    cpts.push_back(cpos_p);
+    for(size_t j = 0; j < n; j++) { cpts.push_back(cpts_p[(start + j) % n]); }
+    // Transform parent -> focus in one pass into the draw buffer's space by
+    // going through drawOrbit's projection on the transformed points. Keep
+    // the prepend-body order: index 0 is the body, then the rotated walk.
+    static thread_local std::vector<glm::dvec3> cpts_f;
+    cpts_f.clear();
+    cpts_f.reserve(n + 1);
+    for(const glm::dvec3 &p : cpts) { cpts_f.push_back(O * p + P); }
+    map.drawOrbit(dl, cpts_f, col, thickness, /*closed=*/true, /*start=*/0);
+}
+
+// Every body's orbit (around its own parent) -- planets around the star,
+// moons around their planets -- projected into the focus's frame. Each
+// body's ellipse is sampled from its rail's IMMUTABLE epoch state in the
+// parent frame (where the Kepler conic is defined; orbit_pos0/orbit_vel0
+// never move, so the cache key is bit-stable and a coasting body
+// propagates once ever) and then rotated/translated into the focus's frame
+// at draw time. The star (no parent) and orbits whose parent SoI is under
+// 10 px are skipped (LOD); so is any orbit whose apoapsis disc misses the
+// view rect (with 200+ moons that is most of a wide system).
+static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
+                                 const OrbitMap &map, ImDrawList *dl,
+                                 const MapViewRect &view, double map_scale,
+                                 TerrainBody *sel_body,
+                                 ImU32 col_child, ImU32 col_sel, ImU32 ink,
+                                 ImU32 soi_col, bool map_show_soi) {
+    std::vector<TerrainBody *> &planets = g.sys.bodies;
+    for(auto *b : planets) {
+        Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
+        const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
+        if(!parent || mu_c <= 0.0) continue;                // star / non-orbiting
+        if(parent->soi / map_scale < 10.0) continue;        // LOD: orbit < 10 px
+        // The rail epoch is the fixed conic in the LOCAL orbital plane;
+        // `orient` carries the plane tilt into the parent frame (the same
+        // transform UpdateRootRelative / GetPositionRelTo apply). Sampling
+        // this -- not the live rail state -- is what makes the cache hit.
+        const glm::dmat3 &Rloc = b->frame->orient;
+        const glm::dvec3 epos_p = Rloc * b->frame->orbit_pos0;
+        const glm::dvec3 evel_p = Rloc * b->frame->orbit_vel0;
+        // Cheap size for cull + sample-count LOD, before any Kepler work.
+        double sma = 0.0, apo = -1.0;
+        orbitConicSize(epos_p, evel_p, mu_c, sma, apo);
+        const glm::dmat3 O = parent->GetOrientRelTo(focus->frame); // parent -> focus
+        const glm::dvec3 P = parent->GetPositionRelTo(focus->frame);
+        // Body + parent on the map (focus's frame). The ellipse sits within
+        // apoapsis of the parent, so a miss on that disc skips the whole body.
+        const glm::dvec3 cpos_p = b->frame->GetPositionRelTo(parent); // parent frame
+        const glm::dvec3 cpos_f = O * cpos_p + P;
+        const ImVec2 parent_px = map.px(P);
+        const ImVec2 body_px = map.px(cpos_f);
+        const float apo_px = (apo > 0.0) ? (float)(apo / map_scale) : 1e9f;
+        const bool selected = (b == sel_body);
+        if(!selected && !view.hitsDisc(parent_px.x, parent_px.y, apo_px)) {
+            continue;
+        }
+        const int N = orbitSamplesForRadius(apo_px);
+        const std::vector<glm::dvec3> &cpts_p =
+            orbit_caches[(const void *)b].sample(epos_p, evel_p, mu_c, N);
+        if(cpts_p.empty()) continue;
+        const ImU32 ccol = selected ? col_sel : col_child;
+        drawOrbitThroughBody(dl, map, cpts_p, O, P, cpos_p, ccol,
+                             selected ? 2.0f : 1.0f);
+        // A disk at the body's TRUE radius (floored so it stays visible when
+        // zoomed out to where the true radius is sub-pixel). Label only when
+        // the body is a real disk or selected -- 200 moon names on a wide
+        // system are unreadable and were pure ImGui text cost.
+        const float min_r = selected ? 5.0f : 3.0f;
+        const float body_r_px = map.bodyRadiusPx(b->radius, min_r);
+        map.drawBody(dl, cpos_f, b->radius, ccol, min_r);
+        if(selected) {
+            dl->AddCircle(body_px, body_r_px + 4.0f, ccol, 0, 1.0f);
+        }
+        // Label whenever the orbit is drawn and the marker is near the
+        // view -- the name is how you tell one moon's ellipse from
+        // another when zoomed out to a disk of a few pixels. (An earlier
+        // true-radius > 2 px gate dropped them too early and left a
+        // thicket of anonymous curves.)
+        if(view.contains(body_px.x, body_px.y, body_r_px + 16.0f)) {
+            // Label offset from the body marker (px): +x to the right,
+            // -(body_r + gap) above the disk. Raise label_dx / label_gap
+            // to push names further from the markers.
+            const float label_dx = 6.0f, label_gap = 12.0f;
+            dl->AddText(ImVec2(body_px.x + label_dx,
+                               body_px.y - body_r_px - label_gap),
+                        ink, b->name.c_str());
+        }
+        if(map_show_soi && b->frame->soi > 0.0) {
+            const float soi_px = (float)(b->frame->soi / map_scale);
+            if(soi_px >= 1.0f && soi_px <= 4000.0f) {
+                map.drawRing(dl, cpos_f, b->frame->soi, soi_col, 1.0f);
+            }
+        }
+    }
+}
+
 // Format a sim-clock time (s) on the home body's calendar, the same
 // "Year ... Day d/N ... HH:MM" the top bar (HUD) shows, so a planned
 // departure time (a porkchop "Send best") can be read off against it.
@@ -965,23 +1108,27 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             const double &mu = g.view.mu;
             const glm::dvec3 &orbit_pos = g.view.orbit_pos;
             const glm::dvec3 &orbit_vel = g.view.orbit_vel;
-            const int N = 128;
+            // N matches the Orbital Map's ship-orbit count: the cache is
+            // keyed on N, and both maps draw the same ship in one frame.
+            const int N = 64;
             const bool closed = (o.ecc < 1.0);
-            std::vector<glm::dvec3> pts;
+            std::vector<glm::dvec3> pts_local;
+            const std::vector<glm::dvec3> *pts = nullptr;
             if(closed) {
                 // Per-ship cache (shared with the Orbital Map), trusted
                 // only while the ship coasts on its Keplerian conic.
-                pts = orbit_caches[(const void *)ship].sample(
+                pts = &orbit_caches[(const void *)ship].sample(
                     orbit_pos, orbit_vel, mu, N, ship->onRails);
             } else {
                 // Open arc: the map spans the whole body, so cap the arc
                 // a couple of ship radii beyond the current radius.
                 const double r_cap =
                     std::max(4.0 * o.periapsis, o.distance) * 2.0;
-                pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N,
-                                           r_cap);
+                pts_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N,
+                                                 r_cap);
+                pts = &pts_local;
             }
-            if(!pts.empty()) {
+            if(pts && !pts->empty()) {
                 // The points live in the ship's non-rotating frame (the
                 // mapped body's inertial frame, sm_body == m_parent above);
                 // the map's pixel directions live in the body's ROTATING
@@ -1011,8 +1158,8 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 // detects the >half-turn jump between consecutive lons).
                 double prev_lon = -1.0e300;
                 std::vector<ImVec2> seg;
-                for(size_t i = 0; i < pts.size(); i++) {
-                    const glm::dvec3 pr = O * pts[i] + P;
+                for(size_t i = 0; i < pts->size(); i++) {
+                    const glm::dvec3 pr = O * (*pts)[i] + P;
                     const double l = glm::length(pr);
                     if(l < 1e-9) { continue; }
                     double lon, lat;
@@ -1765,17 +1912,22 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
         // sampling differs. Top-down view in the focus's inertial
         // frame, so the trajectory's true 3D orientation shows through
         // the projection.
-        const int N = 64;
         const bool closed = (o.ecc < 1.0);
-        std::vector<glm::dvec3> traj_pts;
+        // A reference into the cache (closed) or a local (open) -- never a
+        // copy of the cache's point list every frame.
+        std::vector<glm::dvec3> traj_local;
+        const std::vector<glm::dvec3> *traj_pts = nullptr;
         if(closed) {
             // Sampled through a per-ship cache, trusted only while the
             // ship is on rails (coasting on its Keplerian conic). Off
             // rails -- Bullet-integrated, or right after a burn /
             // staging / SOI switch / crash (all of which clear onRails)
             // -- the orbit is moving, so re-sample every frame. See
-            // OrbitSampleCache.
-            traj_pts = orbit_caches[(const void *)ship].sample(
+            // OrbitSampleCache. Fixed N (not the body-orbit LOD count):
+            // the Surface Map shares this cache entry and both may draw
+            // the ship in one frame.
+            const int N = 64;
+            traj_pts = &orbit_caches[(const void *)ship].sample(
                 orbit_pos, orbit_vel, mu, N, ship->onRails);
         } else {
             // Open trajectory: an arc around periapsis, truncated where
@@ -1787,7 +1939,9 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
             const double r_cap = std::max<double>(
                 std::max(map_w, map_h) * (double)map_scale,
                 std::max(4.0 * o.periapsis, o.distance));
-            traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
+            const int N = 64;
+            traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
+            traj_pts = &traj_local;
         }
     
         // Periapsis (both cases) and apoapsis (closed only). A closed
@@ -1923,74 +2077,15 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
             map.drawRing(dl, center, soi_m, soi_col, 1.0f);
         };
-    
-        // Every body's orbit (around its own parent) -- planets around the
-        // star, moons around their planets -- projected into the focus's
-        // frame, not just the focus's children. Each body's ellipse is
-        // sampled in its PARENT's inertial frame (where the Kepler conic is
-        // defined and its elements are constant while coasting -- the cache
-        // is keyed on them, so a coasting body propagates once) and then
-        // rotated/translated into the focus's frame at draw time (the parent
-        // moves relative to the focus, so that transform is per-frame). The
-        // star (no parent) and orbits whose parent SoI is under 10 px are
-        // skipped (LOD -- their moons would be an unresolvable smudge).
-        // Drawn before the ship's orbit, so the ship sits on top.
-        for(auto *b : planets) {
-            Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
-            const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
-            if(!parent || mu_c <= 0.0) continue;                // star / non-orbiting
-            if(parent->soi / (double)map_scale < 10.0) continue; // LOD: orbit < 10 px
-            const glm::dvec3 cpos_p = b->frame->GetPositionRelTo(parent); // parent's frame
-            const glm::dvec3 cvel_p = b->frame->GetVelocityRelTo(parent);
-            const std::vector<glm::dvec3> &cpts_p =
-                orbit_caches[(const void *)b].sample(cpos_p, cvel_p, mu_c, N);
-            if(cpts_p.empty()) continue;
-            const glm::dmat3 O = parent->GetOrientRelTo(focus->frame); // parent -> focus
-            const glm::dvec3 P = parent->GetPositionRelTo(focus->frame);
-            const glm::dvec3 cpos_f = b->frame->GetPositionRelTo(focus->frame); // body, focus frame
-            // Draw the orbit starting and ending at the body so the line passes
-            // exactly through its marker. The equal-mean-anomaly samples don't
-            // include the body's position, so the chord near it otherwise visibly
-            // misses the marker when zoomed in. The body lies on the orbit between
-            // two consecutive samples: find the nearest sample (k) and its CLOSER
-            // neighbour (k-1 or k+1) -- those two bracket the body -- then walk the
-            // samples from that bracket all the way around to k and prepend the
-            // body, so both chords touching the body are the short bracketing ones.
-            // (Walking forward from k unconditionally ends at the wrong neighbour
-            // when the body sits just past k, so the closing chord skips a sample
-            // and jumps across the orbit -- a faint out-of-order line that appears
-            // and disappears as the body crosses sample boundaries.)
-            const size_t n = cpts_p.size();
-            size_t k = 0;
-            double best_d = 1e300;
-            for(size_t i = 0; i < n; i++) {
-                const double d = glm::length(O * cpts_p[i] + P - cpos_f);
-                if(d < best_d) { best_d = d; k = i; }
-            }
-            const double d_km1 = glm::length(O * cpts_p[(k + n - 1) % n] + P - cpos_f);
-            const double d_kp1 = glm::length(O * cpts_p[(k + 1) % n] + P - cpos_f);
-            const size_t start = (d_kp1 < d_km1) ? (k + 1) % n : k;
-            std::vector<glm::dvec3> cpts;
-            cpts.reserve(n + 1);
-            cpts.push_back(cpos_f);
-            for(size_t j = 0; j < n; j++) {
-                cpts.push_back(O * cpts_p[(start + j) % n] + P);
-            }
-            const bool selected = (b == sel_body);
-            const ImU32 ccol = selected ? col_sel : col_child;
-            map.drawOrbit(dl, cpts, ccol, selected ? 2.0f : 1.0f);
-            const ImVec2 cpx = map.px(cpos_f);
-            // A disk at the body's TRUE radius (like the focus at the
-            // centre), floored at the old dot size so it stays visible when
-            // zoomed out to where the true radius is sub-pixel. Label and
-            // selection ring sit just outside the disk, so they follow it.
-            const float min_r = selected ? 5.0f : 3.0f;
-            const float body_r_px = map.bodyRadiusPx(b->radius, min_r);
-            map.drawBody(dl, cpos_f, b->radius, ccol, min_r);
-            if(selected) { dl->AddCircle(cpx, body_r_px + 4.0f, ccol, 0, 1.0f); }
-            dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - body_r_px - 8.0f), ink,
-                        b->name.c_str());
-            draw_soi(cpos_f, b->frame->soi);
+
+        // Every body's orbit (around its own parent), projected into the
+        // focus's frame -- see drawSystemBodyOrbits. Drawn before the
+        // ship's orbit, so the ship sits on top.
+        {
+            const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
+            drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
+                                 sel_body, col_child, col_sel, ink,
+                                 soi_col, map_show_soi);
         }
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime the ship is inside.
@@ -1998,7 +2093,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
     
         // closed=true for the ellipse (it is a closed loop); false for
         // the open arc (a chord would otherwise close it).
-        map.drawOrbit(dl, traj_pts, col_ship, 1.0f, closed);
+        map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
         // The focus body's disk at the centre, with the same visibility
         // floor as the looped bodies.
         map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), ship->m_parent->radius,
@@ -2040,6 +2135,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
                 const glm::dvec3 v2 = O * (s->GetVel()
                                           + tsf->GetStasisVelocity(tcom))
                                     + tsf->GetVelocityRelTo(inertial);
+                const int N = 64;
                 const std::vector<glm::dvec3> &tpts =
                     orbit_caches[(const void *)s].sample(
                         r2, v2, mu, N, s->onRails);
@@ -2048,11 +2144,14 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
                 }
                 const ImVec2 tpx = map.px(r2);
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                dl->AddText(ImVec2(tpx.x + 4.0f, tpx.y - 11.0f),
+                // Label offset from the marker (px): +x right, -y up.
+                // Raise label_dx / label_dy to push names further out.
+                const float label_dx = 6.0f, label_dy = 14.0f;
+                dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
                             col_vessel, s->name.c_str());
             }
         }
-    
+
         // P3: the transfer conic to the selected target (planner has a
         // valid solution). It is a Kepler orbit under the focus's mu,
         // starting at the ship (r1 = orbit_pos) with velocity
@@ -2066,7 +2165,7 @@ void drawUIMap(Game &g, TransferPlanner &planner) {
             // Even-in-anomaly (not uniform-in-time) so the leg draws with an
             // even outline, like the closed orbits (see sampleTransferArc).
             std::vector<glm::dvec3> xfer_pts =
-                sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, N);
+                sampleTransferArc(orbit_pos, sol.v_departure, mu, sol.tof, 64);
             map.drawOrbit(dl, xfer_pts, col_xfer, 1.5f, /*closed=*/false);
             const glm::dvec3 &arrival = xfer_pts.back();
             map.drawDot(dl, arrival, 4.0f, col_xfer);
@@ -2931,7 +3030,6 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
         // -- the orbit, apsides, dot, the other ships, the transfer -- is
         // guarded on `ship` and simply absent then.
         TerrainBody *focus = ship ? ship->m_parent : g.home;
-        const int N = 64;
 
         // The ship's trajectory around the focus: a closed ellipse (a coasting
         // Kepler orbit) or, when the ship is escaping or flying by (ecc >= 1 --
@@ -2939,7 +3037,8 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
         // hyperbolic/parabolic arc. Both draw the same way (a projected
         // polyline); only the sampling differs. Empty with no ship.
         bool closed = false;
-        std::vector<glm::dvec3> traj_pts;
+        std::vector<glm::dvec3> traj_local;
+        const std::vector<glm::dvec3> *traj_pts = nullptr;
         glm::dvec3 peri_p, apo_p, tmp;
         bool have_peri = false, have_apo = false;
         if(ship) {
@@ -2950,7 +3049,9 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
                 // Bullet-integrated, or right after a burn / staging / SOI
                 // switch / crash (all of which clear onRails) -- the orbit is
                 // moving, so re-sample every frame. See OrbitSampleCache.
-                traj_pts = orbit_caches[(const void *)ship].sample(
+                // Fixed N: shared with the Surface Map cache entry.
+                const int N = 64;
+                traj_pts = &orbit_caches[(const void *)ship].sample(
                     orbit_pos, orbit_vel, mu, N, ship->onRails);
             } else {
                 // Open trajectory: an arc around periapsis, truncated where it
@@ -2962,7 +3063,9 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
                 const double r_cap = std::max<double>(
                     (double)std::max(mapW, mapH) * map_scale,
                     std::max(4.0 * o.periapsis, o.distance));
-                traj_pts = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
+                const int N = 64;
+                traj_local = sampleOpenTrajectory(orbit_pos, orbit_vel, mu, N, r_cap);
+                traj_pts = &traj_local;
             }
             // Periapsis (both cases) and apoapsis (closed only). A closed orbit
             // propagates to each apsis (exact); an open arc has no apoapsis,
@@ -3092,74 +3195,15 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
             map.drawRing(dl, center, soi_m, soi_col, 1.0f);
         };
-    
-        // Every body's orbit (around its own parent) -- planets around the
-        // star, moons around their planets -- projected into the focus's
-        // frame, not just the focus's children. Each body's ellipse is
-        // sampled in its PARENT's inertial frame (where the Kepler conic is
-        // defined and its elements are constant while coasting -- the cache
-        // is keyed on them, so a coasting body propagates once) and then
-        // rotated/translated into the focus's frame at draw time (the parent
-        // moves relative to the focus, so that transform is per-frame). The
-        // star (no parent) and orbits whose parent SoI is under 10 px are
-        // skipped (LOD -- their moons would be an unresolvable smudge).
-        // Drawn before the ship's orbit, so the ship sits on top.
-        for(auto *b : planets) {
-            Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
-            const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
-            if(!parent || mu_c <= 0.0) continue;                // star / non-orbiting
-            if(parent->soi / (double)map_scale < 10.0) continue; // LOD: orbit < 10 px
-            const glm::dvec3 cpos_p = b->frame->GetPositionRelTo(parent); // parent's frame
-            const glm::dvec3 cvel_p = b->frame->GetVelocityRelTo(parent);
-            const std::vector<glm::dvec3> &cpts_p =
-                orbit_caches[(const void *)b].sample(cpos_p, cvel_p, mu_c, N);
-            if(cpts_p.empty()) continue;
-            const glm::dmat3 O = parent->GetOrientRelTo(focus->frame); // parent -> focus
-            const glm::dvec3 P = parent->GetPositionRelTo(focus->frame);
-            const glm::dvec3 cpos_f = b->frame->GetPositionRelTo(focus->frame); // body, focus frame
-            // Draw the orbit starting and ending at the body so the line passes
-            // exactly through its marker. The equal-mean-anomaly samples don't
-            // include the body's position, so the chord near it otherwise visibly
-            // misses the marker when zoomed in. The body lies on the orbit between
-            // two consecutive samples: find the nearest sample (k) and its CLOSER
-            // neighbour (k-1 or k+1) -- those two bracket the body -- then walk the
-            // samples from that bracket all the way around to k and prepend the
-            // body, so both chords touching the body are the short bracketing ones.
-            // (Walking forward from k unconditionally ends at the wrong neighbour
-            // when the body sits just past k, so the closing chord skips a sample
-            // and jumps across the orbit -- a faint out-of-order line that appears
-            // and disappears as the body crosses sample boundaries.)
-            const size_t n = cpts_p.size();
-            size_t k = 0;
-            double best_d = 1e300;
-            for(size_t i = 0; i < n; i++) {
-                const double d = glm::length(O * cpts_p[i] + P - cpos_f);
-                if(d < best_d) { best_d = d; k = i; }
-            }
-            const double d_km1 = glm::length(O * cpts_p[(k + n - 1) % n] + P - cpos_f);
-            const double d_kp1 = glm::length(O * cpts_p[(k + 1) % n] + P - cpos_f);
-            const size_t start = (d_kp1 < d_km1) ? (k + 1) % n : k;
-            std::vector<glm::dvec3> cpts;
-            cpts.reserve(n + 1);
-            cpts.push_back(cpos_f);
-            for(size_t j = 0; j < n; j++) {
-                cpts.push_back(O * cpts_p[(start + j) % n] + P);
-            }
-            const bool selected = (b == sel_body);
-            const ImU32 ccol = selected ? col_sel : col_child;
-            map.drawOrbit(dl, cpts, ccol, selected ? 2.0f : 1.0f);
-            const ImVec2 cpx = map.px(cpos_f);
-            // A disk at the body's TRUE radius (like the focus at the
-            // centre), floored at the old dot size so it stays visible when
-            // zoomed out to where the true radius is sub-pixel. Label and
-            // selection ring sit just outside the disk, so they follow it.
-            const float min_r = selected ? 5.0f : 3.0f;
-            const float body_r_px = map.bodyRadiusPx(b->radius, min_r);
-            map.drawBody(dl, cpos_f, b->radius, ccol, min_r);
-            if(selected) { dl->AddCircle(cpx, body_r_px + 4.0f, ccol, 0, 1.0f); }
-            dl->AddText(ImVec2(cpx.x + 4.0f, cpx.y - body_r_px - 8.0f), ink,
-                        b->name.c_str());
-            draw_soi(cpos_f, b->frame->soi);
+
+        // Every body's orbit (around its own parent), projected into the
+        // focus's frame -- see drawSystemBodyOrbits. Drawn before the
+        // ship's orbit, so the ship sits on top.
+        {
+            const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
+            drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
+                                 sel_body, col_child, col_sel, ink,
+                                 soi_col, map_show_soi);
         }
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime (with a ship: the one it is inside; without:
@@ -3175,7 +3219,7 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
         // (you are here) with a green ring on the line from the focus, the
         // prograde arrow and the apside markers.
         if(ship) {
-            map.drawOrbit(dl, traj_pts, col_ship, 1.0f, closed);
+            map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
             const ImVec2 ship_px = map.px(orbit_pos);
             dl->AddLine(focus_px, ship_px, ink, 1.0f);
             dl->AddCircleFilled(ship_px, 5.0f, ink);
@@ -3216,6 +3260,7 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
                     const glm::dvec3 v2 = Oc * (s->GetVel()
                                                + s->frame->GetStasisVelocity(tcom))
                                          + s->frame->GetVelocityRelTo(inertial);
+                    const int N = 64;
                     const std::vector<glm::dvec3> &tpts_c =
                         orbit_caches[(const void *)s].sample(
                             r2, v2, mu_c, N, s->onRails);
@@ -3223,7 +3268,8 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
                     const glm::dmat3 O = inertial->GetOrientRelTo(focus->frame);
                     const glm::dvec3 P = inertial->GetPositionRelTo(focus->frame);
                     if(!tpts_c.empty()) {
-                        std::vector<glm::dvec3> tpts_f;
+                        static thread_local std::vector<glm::dvec3> tpts_f;
+                        tpts_f.clear();
                         tpts_f.reserve(tpts_c.size());
                         for(const glm::dvec3 &pt : tpts_c) {
                             tpts_f.push_back(O * pt + P);
@@ -3232,7 +3278,10 @@ void drawTrackingMap(Game &g, TransferPlanner &planner) {
                     }
                     const ImVec2 tpx = map.px(O * r2 + P);
                     dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                    dl->AddText(ImVec2(tpx.x + 4.0f, tpx.y - 11.0f),
+                    // Label offset from the marker (px): +x right, -y up.
+                    // Raise label_dx / label_dy to push names further out.
+                    const float label_dx = 6.0f, label_dy = 14.0f;
+                    dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
                                 col_vessel, s->name.c_str());
                 }
             }

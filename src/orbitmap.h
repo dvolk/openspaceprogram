@@ -65,21 +65,26 @@ struct OrbitMap {
 
     // A path from sampled 3D points (focus's inertial frame). closed=true for
     // a full orbit; false for an open arc (the transfer conic, departure to
-    // arrival).
+    // arrival). `start` rotates the point order so a caller can begin/end at
+    // a marker that sits between two samples (the body-on-orbit chord fix).
     void drawOrbit(ImDrawList *dl, const std::vector<glm::dvec3> &pts,
-                   ImU32 col, float thickness = 1.0f, bool closed = true) const {
-        std::vector<ImVec2> sp;
-        sp.reserve(pts.size());
-        for(const glm::dvec3 &p : pts) { sp.push_back(px(p)); }
-        if(sp.size() >= 2) {
-            // imgui 1.92.8+ signature: (points, count, col, thickness, flags)
-            // -- 'closed' is no longer a bool param, it is the ImDrawFlags_Closed
-            // flag (the old (.., bool closed, float thickness) order now trips
-            // the "Did you swap thickness and flags?" assert).
-            const ImDrawFlags flags =
-                closed ? ImDrawFlags_Closed : ImDrawFlags_None;
-            dl->AddPolyline(sp.data(), (int)sp.size(), col, thickness, flags);
-        }
+                   ImU32 col, float thickness = 1.0f, bool closed = true,
+                   size_t start = 0) const {
+        const size_t n = pts.size();
+        if(n < 2) { return; }
+        // Reused across calls: with a few hundred orbits per frame the
+        // per-call vector was measurable allocator traffic.
+        thread_local std::vector<ImVec2> sp;
+        sp.clear();
+        sp.reserve(n);
+        for(size_t j = 0; j < n; j++) { sp.push_back(px(pts[(start + j) % n])); }
+        // imgui 1.92.8+ signature: (points, count, col, thickness, flags)
+        // -- 'closed' is no longer a bool param, it is the ImDrawFlags_Closed
+        // flag (the old (.., bool closed, float thickness) order now trips
+        // the "Did you swap thickness and flags?" assert).
+        const ImDrawFlags flags =
+            closed ? ImDrawFlags_Closed : ImDrawFlags_None;
+        dl->AddPolyline(sp.data(), (int)sp.size(), col, thickness, flags);
     }
 
     // Filled dot at a 3D position.
