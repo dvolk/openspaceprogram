@@ -1,0 +1,1395 @@
+{
+  "home": "Earth",
+  "bodies": [
+    {
+      "name": "Sun",
+      "type": "star",
+      "radius": 696340000.0,
+      "mass": 1.989e+30,
+      "g": 273.7652,
+      "seed": 0.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              1.0,
+              0.8,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              0.75
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 100000000000000.0,
+        "orb_ang_speed": 0.0
+      }
+    },
+    {
+      "name": "Mercury",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 2439700.0,
+      "mass": 3.301e+23,
+      "g": 3.7,
+      "seed": 1.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 3000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.45,
+              0.42,
+              0.4
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.65,
+              0.6
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 220656500.67685997,
+        "orb_ang_speed": 8.266781726111516e-07,
+        "ecc": 0.20563069,
+        "arg_peri": 0.508323304918994,
+        "orb_incl": 0.1222580451741752,
+        "lon_asc_node": 0.8435467744873678,
+        "true_anomaly0": 3.066221559647311
+      },
+      "rotating": {
+        "soi": 2539700.0,
+        "rot_ang_speed": 1.2399326882596827e-06,
+        "axial_tilt": 0.000593411945678072
+      }
+    },
+    {
+      "name": "Venus",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 6051800.0,
+      "mass": 4.8673e+24,
+      "g": 8.87,
+      "seed": 2.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 2000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.8,
+              0.65,
+              0.4
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.9,
+              0.8,
+              0.55
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 1011067053.0194923,
+        "orb_ang_speed": 3.2363920127827824e-07,
+        "ecc": 0.00677323,
+        "arg_peri": 0.9573530627587608,
+        "orb_incl": 0.0592488666503767,
+        "lon_asc_node": 1.3383305132010905,
+        "true_anomaly0": 0.8857068191701346
+      },
+      "rotating": {
+        "soi": 6151800.0,
+        "rot_ang_speed": 2.9923691869737844e-07,
+        "axial_tilt": 3.095515961337143
+      }
+    },
+    {
+      "name": "Earth",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 6371000.0,
+      "mass": 5.9722e+24,
+      "g": 9.82,
+      "seed": 3.0,
+      "has_sea": true,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 8000,
+        "sea_level": 0.0,
+        "sea_color": [
+          0.1,
+          0.2,
+          0.6
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.1,
+              0.4,
+              0.1
+            ]
+          ],
+          [
+            0.5,
+            [
+              0.3,
+              0.5,
+              0.2
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.8,
+              0.8
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 1496434606.3339677,
+        "orb_ang_speed": 1.9909885714794665e-07,
+        "ecc": 0.01671022,
+        "arg_peri": 1.9933026650579555,
+        "orb_incl": 8.726646259971648e-07,
+        "lon_asc_node": -0.1965352438817743,
+        "true_anomaly0": -0.04406991238140813
+      },
+      "rotating": {
+        "soi": 6471000.0,
+        "rot_ang_speed": 7.292106590880652e-05,
+        "axial_tilt": 0.40910517666747087
+      }
+    },
+    {
+      "name": "Mars",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 3389500.0,
+      "mass": 6.4169e+23,
+      "g": 3.73,
+      "seed": 4.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 5000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.3,
+              0.2
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.75,
+              0.5,
+              0.35
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 1083952029.4190319,
+        "orb_ang_speed": 1.0585759726109988e-07,
+        "ecc": 0.09341233,
+        "arg_peri": 4.999710317835753,
+        "orb_incl": 0.03229923767033226,
+        "lon_asc_node": 0.8653087613317094,
+        "true_anomaly0": 0.37283806523978624
+      },
+      "rotating": {
+        "soi": 3489500.0,
+        "rot_ang_speed": 7.088235959185674e-05,
+        "axial_tilt": 0.4396484385773716
+      }
+    },
+    {
+      "name": "Jupiter",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 69911000.0,
+      "mass": 1.89813e+27,
+      "g": 25.9192,
+      "seed": 5.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "bands": true,
+        "band_count": 11
+      },
+      "inertial": {
+        "soi": 53138059483.28794,
+        "orb_ang_speed": 1.678489516693838e-08,
+        "ecc": 0.04839266,
+        "arg_peri": -1.497532640783931,
+        "orb_incl": 0.022781782726281983,
+        "lon_asc_node": 1.7550359006292962,
+        "true_anomaly0": 0.36001459654301576
+      },
+      "rotating": {
+        "soi": 70011000.0,
+        "rot_ang_speed": 0.00017585181380295513,
+        "axial_tilt": 0.054628805587422516
+      },
+      "rings": [
+        {
+          "name": "Halo",
+          "inner": 89400000.0,
+          "outer": 123000000.0,
+          "thickness": 10000000.0,
+          "albedo": 0.0
+        },
+        {
+          "name": "Main",
+          "inner": 123000000.0,
+          "outer": 128940000.0,
+          "thickness": 100000.0,
+          "albedo": 0.015
+        },
+        {
+          "name": "Amalthea",
+          "inner": 128940000.0,
+          "outer": 181350000.0,
+          "thickness": 2600000.0,
+          "albedo": 0.0
+        },
+        {
+          "name": "Thebe",
+          "inner": 181350000.0,
+          "outer": 280000000.0,
+          "thickness": 8800000.0,
+          "albedo": 0.0
+        }
+      ]
+    },
+    {
+      "name": "Saturn",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 58232000.0,
+      "mass": 5.6832000000000005e+26,
+      "g": 11.1855,
+      "seed": 6.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "bands": true,
+        "band_count": 9
+      },
+      "inertial": {
+        "soi": 65156669782.51392,
+        "orb_ang_speed": 6.761257652006661e-09,
+        "ecc": 0.0541506,
+        "arg_peri": -0.37146017003120524,
+        "orb_incl": 0.04336200713409832,
+        "lon_asc_node": 1.9847018570370527,
+        "true_anomaly0": -0.7796171205854481
+      },
+      "rotating": {
+        "soi": 58332000.0,
+        "rot_ang_speed": 0.00016378840578024865,
+        "axial_tilt": 0.4665265090580843
+      }
+    },
+    {
+      "name": "Uranus",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 25362000.0,
+      "mass": 8.6811e+25,
+      "g": 9.0073,
+      "seed": 7.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "bands": true,
+        "band_count": 7
+      },
+      "inertial": {
+        "soi": 70087636040.95345,
+        "orb_ang_speed": 2.3699235521267574e-09,
+        "ecc": 0.04716771,
+        "arg_peri": 1.688333081809502,
+        "orb_incl": 0.013436591779403545,
+        "lon_asc_node": 1.2955558093602884,
+        "true_anomaly0": 2.510860479865436
+      },
+      "rotating": {
+        "soi": 25462000.0,
+        "rot_ang_speed": 0.00010123719559131843,
+        "axial_tilt": 1.706408409674856
+      }
+    },
+    {
+      "name": "Neptune",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 24622000.0,
+      "mass": 1.02409e+26,
+      "g": 11.274,
+      "seed": 8.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "bands": true,
+        "band_count": 7
+      },
+      "inertial": {
+        "soi": 116031902633.66919,
+        "orb_ang_speed": 1.2082279223500606e-09,
+        "ecc": 0.00858587,
+        "arg_peri": -1.5140790602245375,
+        "orb_incl": 0.03087784152750808,
+        "lon_asc_node": 2.2989771867912894,
+        "true_anomaly0": -1.7553631329024613
+      },
+      "rotating": {
+        "soi": 24722000.0,
+        "rot_ang_speed": 0.00010833825276190748,
+        "axial_tilt": 0.4942772441647941
+      }
+    },
+    {
+      "name": "Pluto",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 1188000.0,
+      "mass": 1.303e+22,
+      "g": 0.62,
+      "seed": 9.0,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 2000,
+        "palette": [
+          [
+            0.0,
+            [
+              0.6,
+              0.55,
+              0.5
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.75,
+              0.7
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 7662845774.166474,
+        "orb_ang_speed": 8.030261944172967e-10,
+        "ecc": 0.24880766,
+        "arg_peri": 1.9855439784011397,
+        "orb_incl": 0.29917997705373794,
+        "lon_asc_node": 1.9251587278747897,
+        "true_anomaly0": 0.34309033487997476
+      },
+      "rotating": {
+        "soi": 1288000.0,
+        "rot_ang_speed": 1.1385591834674098e-05,
+        "axial_tilt": 2.085842989058423
+      }
+    },
+    {
+      "name": "Moon",
+      "type": "moon",
+      "orbits": "Earth",
+      "radius": 1737400.0,
+      "mass": 7.3459999999999995e+22,
+      "g": 1.6242,
+      "seed": 1000,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 34748,
+        "palette": [
+          [
+            0.0,
+            [
+              0.5,
+              0.5,
+              0.5
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.7,
+              0.7
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 61524555.92366709,
+        "orb_ang_speed": 2.6616957278072153e-06,
+        "ecc": 0.0549,
+        "arg_peri": 0.0,
+        "orb_incl": 0.08979719001510825,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 0.0
+      },
+      "rotating": {
+        "soi": 1837400.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Phobos",
+      "type": "moon",
+      "orbits": "Mars",
+      "radius": 11166.666666666666,
+      "mass": 1.06e+16,
+      "g": 0.0057,
+      "seed": 1001,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 500,
+        "palette": [
+          [
+            0.0,
+            [
+              0.3,
+              0.25,
+              0.2
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.45,
+              0.4,
+              0.35
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 16560.11473654458,
+        "orb_ang_speed": 0.000228033150940486,
+        "ecc": 0.0151,
+        "arg_peri": 0.0,
+        "orb_incl": 0.01884955592153876,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 2.3999632297286535
+      },
+      "rotating": {
+        "soi": 13863.390701605622,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Deimos",
+      "type": "moon",
+      "orbits": "Mars",
+      "radius": 6300.0,
+      "mass": 2400000000000000.0,
+      "g": 0.004,
+      "seed": 1002,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 500,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.3,
+              0.25
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.5,
+              0.45,
+              0.4
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 25248.237520508817,
+        "orb_ang_speed": 5.760436311145907e-05,
+        "ecc": 0.0005,
+        "arg_peri": 0.0,
+        "orb_incl": 0.031241393610698498,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 4.799926459457307
+      },
+      "rotating": {
+        "soi": 15774.118760254409,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Io",
+      "type": "moon",
+      "orbits": "Jupiter",
+      "radius": 1821500.0,
+      "mass": 8.932e+22,
+      "g": 1.7967,
+      "seed": 1003,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 36430,
+        "palette": [
+          [
+            0.0,
+            [
+              0.7,
+              0.6,
+              0.2
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.75,
+              0.3
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 10558617.99287608,
+        "orb_ang_speed": 4.110592399599715e-05,
+        "ecc": 0.004,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0006981317007977319,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 0.9167043820063743
+      },
+      "rotating": {
+        "soi": 1921500.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Europa",
+      "type": "moon",
+      "orbits": "Jupiter",
+      "radius": 1560800.0,
+      "mass": 4.8e+22,
+      "g": 1.315,
+      "seed": 1004,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 31216,
+        "palette": [
+          [
+            0.0,
+            [
+              0.7,
+              0.7,
+              0.75
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.85,
+              0.85
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 13657941.512738269,
+        "orb_ang_speed": 2.0478272486372952e-05,
+        "ecc": 0.009,
+        "arg_peri": 0.0,
+        "orb_incl": 0.008203047484373348,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 3.3166676117350278
+      },
+      "rotating": {
+        "soi": 1660800.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Ganymede",
+      "type": "moon",
+      "orbits": "Jupiter",
+      "radius": 2631200.0,
+      "mass": 1.4819e+23,
+      "g": 1.4286,
+      "seed": 1005,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 52624,
+        "palette": [
+          [
+            0.0,
+            [
+              0.45,
+              0.42,
+              0.4
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.62,
+              0.58
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 31720254.54766447,
+        "orb_ang_speed": 1.0164443839668306e-05,
+        "ecc": 0.001,
+        "arg_peri": 0.0,
+        "orb_incl": 0.003141592653589793,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 5.716630841463681
+      },
+      "rotating": {
+        "soi": 2731200.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Callisto",
+      "type": "moon",
+      "orbits": "Jupiter",
+      "radius": 2410300.0,
+      "mass": 1.0759000000000001e+23,
+      "g": 1.236,
+      "seed": 1006,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 48206,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.33,
+              0.32
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.55,
+              0.52,
+              0.5
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 50144428.86093004,
+        "orb_ang_speed": 4.357479662608672e-06,
+        "ecc": 0.007,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0033161255787892262,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 1.8334087640127485
+      },
+      "rotating": {
+        "soi": 2510300.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Mimas",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 198666.66666666666,
+      "mass": 3.79e+19,
+      "g": 0.0641,
+      "seed": 1098,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 3973,
+        "palette": [
+          [
+            0.0,
+            [
+              0.6,
+              0.6,
+              0.62
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.8,
+              0.8
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 521633.8197353325,
+        "orb_ang_speed": 7.716507848866653e-05,
+        "ecc": 0.0202,
+        "arg_peri": 0.0,
+        "orb_incl": 0.026703537555513242,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 2.718540147763356
+      },
+      "rotating": {
+        "soi": 298666.6666666666,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Enceladus",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 252000.0,
+      "mass": 1.08e+20,
+      "g": 0.1135,
+      "seed": 1099,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 5040,
+        "palette": [
+          [
+            0.0,
+            [
+              0.8,
+              0.8,
+              0.85
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.95,
+              0.95,
+              0.95
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 948818.8508213679,
+        "orb_ang_speed": 5.3073344654960304e-05,
+        "ecc": 0.0045,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 5.1185033774920115
+      },
+      "rotating": {
+        "soi": 352000.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Tethys",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 530666.6666666666,
+      "mass": 6.18e+20,
+      "g": 0.1465,
+      "seed": 1100,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 10613,
+        "palette": [
+          [
+            0.0,
+            [
+              0.6,
+              0.6,
+              0.62
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.8,
+              0.82
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 2100934.9769545253,
+        "orb_ang_speed": 3.852207602620953e-05,
+        "ecc": 0.0,
+        "arg_peri": 0.0,
+        "orb_incl": 0.03246312408709453,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 1.2352813000410805
+      },
+      "rotating": {
+        "soi": 630666.6666666666,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Dione",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 561333.3333333334,
+      "mass": 1.1e+21,
+      "g": 0.233,
+      "seed": 1101,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 11226,
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.55,
+              0.58
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.75,
+              0.75,
+              0.78
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 3261079.5478173234,
+        "orb_ang_speed": 2.6570811357470143e-05,
+        "ecc": 0.0022,
+        "arg_peri": 0.0,
+        "orb_incl": 0.00034906585039886593,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 3.6352445297697358
+      },
+      "rotating": {
+        "soi": 661333.3333333334,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Rhea",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 763333.3333333334,
+      "mass": 2.3100000000000003e+21,
+      "g": 0.2646,
+      "seed": 1102,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 15266,
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.55,
+              0.58
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.78,
+              0.78,
+              0.8
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 5831892.446020057,
+        "orb_ang_speed": 1.6097853274251333e-05,
+        "ecc": 0.001,
+        "arg_peri": 0.0,
+        "orb_incl": 0.006108652381980153,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 6.035207759498391
+      },
+      "rotating": {
+        "soi": 863333.3333333334,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Titan",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 2575000.0,
+      "mass": 1.3455e+23,
+      "g": 1.3543,
+      "seed": 1103,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 51500,
+        "palette": [
+          [
+            0.0,
+            [
+              0.7,
+              0.5,
+              0.2
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.85,
+              0.65,
+              0.35
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 52410081.82950778,
+        "orb_ang_speed": 4.560685614160354e-06,
+        "ecc": 0.0292,
+        "arg_peri": 0.0,
+        "orb_incl": 0.005759586531581287,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 2.15198568204746
+      },
+      "rotating": {
+        "soi": 2675000.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Iapetus",
+      "type": "moon",
+      "orbits": "Saturn",
+      "radius": 734666.6666666666,
+      "mass": 1.8100000000000003e+21,
+      "g": 0.2238,
+      "seed": 1105,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 14693,
+        "palette": [
+          [
+            0.0,
+            [
+              0.25,
+              0.2,
+              0.15
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.55,
+              0.5,
+              0.45
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 36325238.37837553,
+        "orb_ang_speed": 9.167009253770458e-07,
+        "ecc": 0.0283,
+        "arg_peri": 0.0,
+        "orb_incl": 0.2569124658935653,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 0.668726834325156
+      },
+      "rotating": {
+        "soi": 834666.6666666666,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Miranda",
+      "type": "moon",
+      "orbits": "Uranus",
+      "radius": 235700.00000000003,
+      "mass": 6.6e+19,
+      "g": 0.0793,
+      "seed": 1181,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 4714,
+        "palette": [
+          [
+            0.0,
+            [
+              0.5,
+              0.55,
+              0.6
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.75,
+              0.8
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 822037.8064177888,
+        "orb_ang_speed": 5.144897955076121e-05,
+        "ecc": 0.0013,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0757472895365539,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 0.8535583854948143
+      },
+      "rotating": {
+        "soi": 335700.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Ariel",
+      "type": "moon",
+      "orbits": "Uranus",
+      "radius": 578900.0,
+      "mass": 1.29e+21,
+      "g": 0.2569,
+      "seed": 1182,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 11578,
+        "palette": [
+          [
+            0.0,
+            [
+              0.5,
+              0.55,
+              0.6
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.75,
+              0.8
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 3254146.948296335,
+        "orb_ang_speed": 2.885361771639519e-05,
+        "ecc": 0.0012,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0006981317007977319,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 3.2535216152234696
+      },
+      "rotating": {
+        "soi": 678900.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Umbriel",
+      "type": "moon",
+      "orbits": "Uranus",
+      "radius": 584700.0,
+      "mass": 1.22e+21,
+      "g": 0.2382,
+      "seed": 1183,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 11694,
+        "palette": [
+          [
+            0.0,
+            [
+              0.45,
+              0.5,
+              0.55
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.7,
+              0.75
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 4450781.172841618,
+        "orb_ang_speed": 1.7548012479786185e-05,
+        "ecc": 0.0039,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0022689280275926286,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 5.653484844952125
+      },
+      "rotating": {
+        "soi": 684700.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Titania",
+      "type": "moon",
+      "orbits": "Uranus",
+      "radius": 788900.0,
+      "mass": 3.4200000000000005e+21,
+      "g": 0.3667,
+      "seed": 1184,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 15778,
+        "palette": [
+          [
+            0.0,
+            [
+              0.5,
+              0.55,
+              0.6
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.75,
+              0.8
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 10293472.543373307,
+        "orb_ang_speed": 8.353223425815073e-06,
+        "ecc": 0.0011,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0013962634015954637,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 1.770262767501194
+      },
+      "rotating": {
+        "soi": 888900.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Oberon",
+      "type": "moon",
+      "orbits": "Uranus",
+      "radius": 761400.0,
+      "mass": 2.88e+21,
+      "g": 0.3316,
+      "seed": 1185,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 15228,
+        "palette": [
+          [
+            0.0,
+            [
+              0.48,
+              0.52,
+              0.57
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.68,
+              0.72,
+              0.77
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 12999890.226492913,
+        "orb_ang_speed": 5.401529243748597e-06,
+        "ecc": 0.0014,
+        "arg_peri": 0.0,
+        "orb_incl": 0.0012217304763960308,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 4.170225997229849
+      },
+      "rotating": {
+        "soi": 861400.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Triton",
+      "type": "moon",
+      "orbits": "Neptune",
+      "radius": 1353400.0,
+      "mass": 2.14e+22,
+      "g": 0.7797,
+      "seed": 1216,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 27068,
+        "palette": [
+          [
+            0.0,
+            [
+              0.6,
+              0.65,
+              0.7
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.8,
+              0.85,
+              0.88
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 14596635.9752536,
+        "orb_ang_speed": 1.2374316626962385e-05,
+        "ecc": 1.6e-05,
+        "arg_peri": 0.0,
+        "orb_incl": 2.746188311550478,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 3.170862432663128
+      },
+      "rotating": {
+        "soi": 1453400.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    },
+    {
+      "name": "Charon",
+      "type": "moon",
+      "orbits": "Pluto",
+      "radius": 606000.0,
+      "mass": 1.586e+21,
+      "g": 0.2882,
+      "seed": 1225,
+      "has_sea": false,
+      "power_scaler": 1,
+      "surface": {
+        "amplitude": 12120,
+        "palette": [
+          [
+            0.0,
+            [
+              0.5,
+              0.5,
+              0.5
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.7,
+              0.7,
+              0.72
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 6733588.952395998,
+        "orb_ang_speed": 1.1385591834674098e-05,
+        "ecc": 0.0,
+        "arg_peri": 0.0,
+        "orb_incl": 8.726646259971648e-07,
+        "lon_asc_node": 0.0,
+        "true_anomaly0": 5.920975578682153
+      },
+      "rotating": {
+        "soi": 706000.0,
+        "rot_ang_speed": 0.0,
+        "axial_tilt": 0.0
+      }
+    }
+  ]
+}
