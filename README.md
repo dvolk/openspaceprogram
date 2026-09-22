@@ -17,7 +17,7 @@ Lately, some of the code is written by qwen code.
 
 ## Build from source/run
 
-    sudo apt-get install g++ cmake make libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev --no-install-recommends
+    sudo apt-get install g++ cmake make curl libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev --no-install-recommends
 
     git clone https://github.com/dvolk/openspaceprogram
     cd openspaceprogram
@@ -32,6 +32,30 @@ Lately, some of the code is written by qwen code.
 Other configs: `make debug`, `make asan`, `make tsan` (each builds into its
 own directory and re-points `./osp` at the result). `make test` runs the
 unit tests; `make e2e` the e2e battery (Xvfb for headless machines).
+
+## Windows
+
+Cross-built from the same Linux box — no Windows toolchain needed:
+
+    sudo apt-get install g++-mingw-w64-x86-64 wine64
+    OS=windows ./bootstrap.sh   # the windows middleware (the plain ./bootstrap.sh is linux)
+    make OS=windows
+
+The result lands in `build/windows-v2-znver3/release/osp.exe` with all
+libraries statically linked (including the C runtime); copy it to a
+Windows machine and run it as-is. To try it without leaving the box:
+
+    wine build/windows-v2-znver3/release/osp.exe --timeout 5
+
+Linux-only bits (the Makefile refuses them with a message):
+
+- `make OS=windows asan` — this mingw cross package has no
+  AddressSanitizer runtime for the Windows target; use the linux asan
+  config, or validate on a real Windows box.
+- `tsan` — no ThreadSanitizer runtime for mingw at all.
+- `make test` — unit tests run native (linux).
+- `make e2e` — with the .exe it runs the battery under wine, serially
+  (two concurrent software-GL instances are flaky).
 
 ## Cli options
 
