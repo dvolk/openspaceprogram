@@ -6,31 +6,60 @@ Status: scoped, not started. Companion to precision-scaling.md (render-side fix,
 ## Why
 
 The render path is now exact at any distance, but the SIM still integrates
-ships in absolute in-frame metres. At oort (1e15) the hull `btTransform`
-quantizes to ~0.125 m and at interstellar (1e17) to ~22 m: thrusting
-integration, contacts, docking and rails handoff all degrade even though
-the picture looks right. Goal: keep Bullet-world coordinates small (< ~1e6 m)
-near the active ship at ANY system scale.
+ships in absolute in-frame metres. Note that for the Kerbol inertial frame,
+in-frame coords ARE root coords (Kerbol is the tree root, root_pos = 0):
+a ship between planets in the Kerbol SOI carries ~1e13-1e17 m into Bullet,
+and a ship deep inside any big SOI carries that SOI's scale. At oort (1e15)
+the hull `btTransform` quantizes to ~0.125 m and at interstellar (1e17) to
+~22 m: thrusting integration, contacts, docking and rails handoff all
+degrade even though the picture looks right. Goal: keep Bullet-world
+coordinates small (< ~1e6 m) near the active ship at ANY system scale.
 
-## Design: per-frame physics offset at the Bullet boundary
+## Design: per-body physics offset at the Bullet boundary
 
-`Frame::phys_offset` (dvec3, default 0). Contract:
+`phys_offset` (dvec3, default 0), keyed **per body** — shared by the body's
+inertial AND rotating frame nodes (a `Frame` accessor that walks to its
+body). Contract:
 
-    bullet_world_coord = frame_coord - phys_offset
+    bullet_world_coord = frame_coord - phys_offset(body)
+
+Per-body, not per-frame-node, because both nodes coexist in the one shared
+Bullet world and must stay aligned: flying ships sit in the INERTIAL node
+even inside the atmosphere (`inTerrainBand` only gates freezing,
+vehicle.cpp:2719-2730), while terrain collision bodies and pads are
+anchored in the ROTATING node's coords (which, per terrain.h:51-55 and
+physics.cpp:230-262, the collision world treats as body-fixed — the spin
+lives only in the render transform). An inertial-only offset would slide
+the ship off the terrain.
 
 - The offset is applied ONLY at the hull-transform read/write boundary
   (`setPosRot`, `placeShip`, `comPos`, `frameS`, `GetPosition`, velocity
   setters don't need it — velocities are differences). Everything that
   speaks frame coords (render, map view, conics, gravity, aero, EVA,
   switchFrames, save/load) is untouched and never learns the offset exists.
-- **Rebase**: when the active ship's Bullet coords exceed a threshold
-  (~1e6 m), `offset += delta` and every LIVE ship in the same frame gets its
-  hull shifted by `-delta` (one `setWorldTransform` + broadphase refresh
-  each; velocities unchanged — a pure translation). Railed ships: no-op
-  (their state is frame coords, written through the boundary on wake).
-  Terrain/pads: no-op — they live in ROTATING frames, which never get a
-  nonzero offset (their coords are body-radius-scale anyway).
-- Offset stays 0 for rotating frames and any frame nobody has flown far in.
+- **Rebase**: when the active ship's Bullet coords exceed a threshold,
+  `offset += delta` and EVERYTHING anchored in that body shifts by
+  `-delta` in Bullet storage: live ship hulls (one `setWorldTransform` +
+  broadphase refresh each; velocities unchanged — a pure translation) and
+  any loaded static bodies (terrain collision patches, pads/buildings).
+  Statics must move too: body radii can exceed the threshold (Eve ~7e6 m),
+  so a rebase can legitimately fire with terrain loaded. In practice
+  terrain is only loaded near a surface, and near-surface coords of normal
+  bodies stay below threshold, so the static-shift path is rare — but it
+  must be correct. Railed ships: no-op (their state is frame coords,
+  written through the boundary on wake).
+- Offset stays 0 for bodies nobody has flown far from. The main non-zero
+  case is exactly the between-planets one: the Kerbol inertial node while
+  the active ship cruises far from the sun (in-frame coords there ARE root
+  coords — Kerbol is the tree root). Gravity keeps working because
+  `partPos`/`comPos` add the offset back — every force is computed from
+  body-centred frame coords; only Bullet's internal storage (integrator,
+  broadphase, solver) sees the shifted small coords.
+- Caveat to verify in stage 2: if a rotating node's `orient` ever differs
+  from its inertial parent's inside physics (spin applied to collision),
+  the shared offset would need rotating by `GetOrientRelTo` per node. The
+  current code says the collision world does not spin — confirm and
+  document.
 
 ### Why not the alternatives
 
@@ -45,9 +74,9 @@ near the active ship at ANY system scale.
 
 ### Known wrinkles (accepted)
 
-- One shared Bullet world + per-frame offsets: two LIVE ships in DIFFERENT
-  frames would have skewed relative geometry inside Bullet. True today
-  already (they're in different frames), docking refuses cross-frame
+- One shared Bullet world + per-body offsets: two LIVE ships in DIFFERENT
+  bodies' frames would have skewed relative geometry inside Bullet. True
+  today already (they're in different frames), docking refuses cross-frame
   (game.cpp:961), and proximity converges live ships into one frame.
   Document, don't solve.
 - Pick rays cast against hull transforms inside Bullet (pickShipChild):
@@ -74,14 +103,19 @@ gate (make test + e2e battery) at the end.
 - Zero behavior change; verified by test + e2e battery.
 
 ### Stage 2 — add the offset plumbing (~1 session, still zero behavior)
-- `Frame::phys_offset` + apply ±offset inside the stage-1 primitives when
-  the body is a ship hull in that frame. Offset is never set nonzero yet.
+- `phys_offset` on TerrainBody (or Frame with a walk-to-body accessor) +
+  apply ±offset inside the stage-1 primitives when the body is a ship hull
+  in that frame, and in `AddTerrainCollision`/pad placement for statics.
+  Confirm the rotating-node orientation caveat from the design section.
+  Offset is never set nonzero yet.
 - Verify: test + e2e; PHYSDBG numbers unchanged.
 
 ### Stage 3 — the rebase trigger (~1 session, the actual feature)
 - In the tick, after `updateProximity` and BEFORE `UpdateOrbitRails`
   (epoch-ordering constraint, tick.cpp:222-253): if active ship is live and
-  `|com_bullet| > 1e6`, rebase as described above. One log line per rebase.
+  `|com_bullet| > threshold`, rebase: `offset += delta`, shift all LIVE
+  ships in the body's frames by `-delta`, and shift any loaded statics
+  (terrain patches, pads) the same way. One log line per rebase.
 - Careful: do NOT use `placeShip` for the shift (its `proceedToTransform`
   zeroes velocities) — `setWorldTransform` + broadphase refresh +
   `activate()`, keeping velocities as-is; copy the broadphase dance from
@@ -107,8 +141,16 @@ gate (make test + e2e battery) at the end.
       wireframe still wraps the ship (renderOrigin no longer cancels it).
 - [ ] Save/load: format is frame-relative already (save.cpp:252) →
       transparent; verify save-at-oort round-trip keeps the same conic.
+- [ ] Near-surface on a big-radius body (radius > threshold, Eve-like):
+      rebase can fire with terrain loaded — verify contacts survive the
+      static shift, or gate the threshold per body (e.g.
+      max(1e6, 4*radius)) and document.
+- [ ] Terrain LOD between rebases: patches added while offset ≠ 0 land at
+      `anchor - offset` (AddTerrainCollision applies the current offset);
+      collapsed patches removed cleanly.
 - [ ] Staging / compound rebuild mid-offset-frame.
-- [ ] Frozen grounded ships (rotating frame, offset 0): untouched.
+- [ ] Frozen grounded ships (rotating frame, that body's offset
+      practically 0): untouched.
 
 ### Stage 5 — threshold, tuning + a regression scenario (~½ session)
 - Threshold sanity: at 1 km/s a 1e6 m threshold rebases every ~17 min of
