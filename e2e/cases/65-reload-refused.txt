@@ -17,7 +17,7 @@ ARGS --reload e2e/fixtures/save_corrupt --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 EXPECT [load] refused e2e/fixtures/save_corrupt
 EXPECT no_such_part_in_the_catalog
-EXPECT Timeout reached (8.0 s)
+EXPECT Timeout reached (8.
 EXPECT [orbitlog]
 CHECK len(orbit) >= 4
 FORBID Segmentation

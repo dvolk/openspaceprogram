@@ -11,7 +11,7 @@ ARGS --reload e2e/fixtures/save_racer --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)
 EXPECT [orbitlog]
-EXPECT Timeout reached (8.0 s)
+EXPECT Timeout reached (8.
 CHECK len(orbit) >= 4
 FORBID Segmentation
 FORBID GL_

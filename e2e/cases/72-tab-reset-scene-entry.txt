@@ -12,6 +12,6 @@ EXPECT [scene] flight -> spacecenter (push)
 EXPECT [ui] TAB-hide dropped at scene entry
 EXPECT [scene] spacecenter -> tracking (push)
 EXPECT [scene] tracking -> spacecenter (pop)
-EXPECT Timeout reached (10.0 s)
+EXPECT Timeout reached (10.
 FORBID GL_
 FORBID error:

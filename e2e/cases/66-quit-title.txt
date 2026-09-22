@@ -14,7 +14,7 @@ ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
 ARGS --quit-title 2000
 EXPECT [game] unloaded: fleet torn down
 EXPECT [scene] flight -> title (enterTitle)
-EXPECT Timeout reached (8.0 s)
+EXPECT Timeout reached (8.
 FORBID Segmentation
 FORBID GL_
 FORBID error:

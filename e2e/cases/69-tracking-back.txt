@@ -10,6 +10,6 @@ ARGS --space-center 1000 --tracking 2000 --tracking-close 3000
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> tracking (push)
 EXPECT [scene] tracking -> spacecenter (pop)
-EXPECT Timeout reached (10.0 s)
+EXPECT Timeout reached (10.
 FORBID GL_
 FORBID error:

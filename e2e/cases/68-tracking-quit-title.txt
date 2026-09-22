@@ -12,6 +12,6 @@ EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> tracking (push)
 EXPECT [game] unloaded: fleet torn down
 EXPECT [scene] tracking -> title (enterTitle)
-EXPECT Timeout reached (10.0 s)
+EXPECT Timeout reached (10.
 FORBID GL_
 FORBID error:

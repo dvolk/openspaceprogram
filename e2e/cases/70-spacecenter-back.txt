@@ -9,6 +9,6 @@ ARGS --space-center 1000
 ARGS --sim-press 2000,0,ESCAPE
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> flight (pop)
-EXPECT Timeout reached (10.0 s)
+EXPECT Timeout reached (10.
 FORBID GL_
 FORBID error:

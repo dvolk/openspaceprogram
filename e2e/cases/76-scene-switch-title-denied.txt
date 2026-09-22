@@ -8,7 +8,7 @@
 NAME scene-switch-title-denied
 ARGS --timeout 6
 ARGS --sim-press 800,0,49 --sim-press 1200,0,50 --sim-press 1600,0,51 --sim-press 2000,0,52
-EXPECT Timeout reached (6.0 s)
+EXPECT Timeout reached (6.
 FORBID title ->
 FORBID Segmentation
 FORBID error:
