@@ -27,14 +27,20 @@ SECT="-ffunction-sections -fdata-sections -fvisibility=hidden"
 # cmake, which rebuilds the libs (bytecode objects are not interchangeable
 # with the old machine-code ones).
 LTO="-flto"
-# -march: target ISA (keep it the same as the Makefile's MARCH, same
-# default). Default native (AVX2 etc. on this machine); MARCH=x86-64-v3
-# for a portable-but-modern ISA, MARCH= (empty) for plain x86-64. The
-# binary is locked to the ISA it was built with (older CPU -> SIGILL).
-# Changing it re-runs cmake, which rebuilds all the libs.
-MARCH="${MARCH-native}"
+# -march: target ISA (the compatibility contract). Must match the Makefile's
+# MARCH (same default) so the libs are built at the same baseline as the
+# game -- otherwise the game is v2 but the libs are native and the whole
+# binary is not actually v2-portable (older CPU -> SIGILL). Default
+# x86-64-v2 (~2010+ CPUs); MARCH=x86-64-v3 for faster-but-less-portable,
+# MARCH=native for "my box only", MARCH= (empty) for plain x86-64.
+# -mtune: which core to SCHEDULE for without changing the ISA (matches the
+# Makefile's MTUNE default). Default znver3; MTUNE=generic for neutral.
+# Changing either re-runs cmake, which rebuilds all the libs.
+MARCH="${MARCH-x86-64-v2}"
+MTUNE="${MTUNE-znver3}"
 ARCH=""
 if [ -n "$MARCH" ]; then ARCH="-march=$MARCH"; fi
+if [ -n "$MTUNE" ]; then ARCH="${ARCH:+$ARCH }-mtune=$MTUNE"; fi
 
 for tool in g++ cmake make; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -84,6 +90,13 @@ echo "=== building SDL3 (static, X11) ==="
 # camera, native dialogs, tray, KMSDRM (X11-only), and the offscreen + dummy
 # drivers are likewise unused. Audio stays on -- SDL3_mixer (the game's
 # sound) uses it. GLES + desktop GL (SDL_OPENGL) stay too.
+# Audio: PulseAudio (primary) + ALSA (fallback). We tried ALSA-only to slim
+# the dynamic dep tree (Pulse pulls libsystemd/libapparmor/libsndfile + the
+# codec family), but direct ALSA gives the real-time mix callback no slack:
+# the engine track cracked on start/tap even with pre-resampled files and warm
+# buffers. Pulse/PipeWire's server-side queue absorbs that jitter -- exactly
+# why the platform moved to audio servers. sndio/JACK stay off; the dummy
+# driver stays built-in for headless (e2e under Xvfb).
 cmake -S middleware/sdl3 -B middleware/sdl3/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_DEPS_SHARED=OFF \
@@ -97,14 +110,6 @@ cmake -S middleware/sdl3 -B middleware/sdl3/build \
     -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
     -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
     -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
-    # Audio: PulseAudio (primary) + ALSA (fallback). We tried ALSA-only to
-    # slim the dynamic dep tree (Pulse pulls libsystemd/libapparmor/
-    # libsndfile + the codec family), but direct ALSA gives the real-time
-    # mix callback no slack: the engine track cracked on start/tap even with
-    # pre-resampled files and warm buffers. Pulse/PipeWire's server-side
-    # queue absorbs that jitter, which is exactly why the platform moved to
-    # audio servers. sndio/JACK stay off. The dummy driver stays built-in
-    # for headless (e2e under Xvfb).
     -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
     -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"

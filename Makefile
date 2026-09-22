@@ -1,6 +1,6 @@
 TARGET=osp
 
-#CXX_OPT=-march=native -flto -O2 -fprofile-arcs -ftest-coverage -fprofile-dir=/home/dv/src/my/openspaceprogram/data/pgo -fprofile-generate=/home/dv/src/my/openspaceprogram/data/pgo
+#CXX_OPT=-march=x86-64-v2 -mtune=znver3 -flto -O2 -fprofile-arcs -ftest-coverage -fprofile-dir=/home/dv/src/my/openspaceprogram/data/pgo -fprofile-generate=/home/dv/src/my/openspaceprogram/data/pgo
 #LD_OPT=-O2 -flto -fprofile-arcs
 #SANITIZE=-g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined
 
@@ -16,16 +16,25 @@ TARGET=osp
 # no clean (toggling LTO on/off does).
 LTO=-flto=$(shell nproc)
 
-# -march: target ISA. Default native (code for the machine you build on:
-# AVX2 etc.); MARCH=x86-64-v3 for a portable-but-modern ISA, MARCH= (empty)
-# for plain x86-64. The binary is locked to the ISA it was built with
-# (older CPU -> SIGILL). Keep it the same as bootstrap.sh's MARCH (same
-# default) so the whole binary targets one ISA. Changing it does NOT
-# auto-rebuild: make tracks file times, not recipe flags, and LTO bytecode
-# carries each function's target across relinks -- `make clean` is
-# required (same as for LTO).
-MARCH ?= native
-ARCH = $(if $(MARCH),-march=$(MARCH))
+# -march: target ISA (the compatibility contract). Default x86-64-v2 (runs
+# on ~2010+ CPUs); MARCH=x86-64-v3 for a faster-but-less-portable ISA,
+# MARCH=native for "my box only", MARCH= (empty) for plain x86-64.
+# -mtune: which core to SCHEDULE for, without changing the ISA (code still
+# runs on the -march baseline). Default znver3; MTUNE=generic for a
+# family-neutral tune, MTUNE= (empty) to skip it.
+# The binary is locked to the -march ISA (older CPU -> SIGILL). Both must
+# match bootstrap.sh (same defaults) so the MIDDLEWARE is built at the same
+# baseline -- otherwise the game is v2 but the libs are native and the
+# whole thing is not actually v2-portable. Each config (release/asan/tsan)
+# is a separate make invocation that applies these defaults independently,
+# so pass the same MARCH/MTUNE to every config you build. Changing either
+# does NOT auto-rebuild: make tracks file times, not recipe flags, and LTO
+# bytecode carries each function's target across relinks -- `make clean` is
+# required
+# (same as for LTO), and a bootstrap.sh re-run re-bases the middleware.
+MARCH ?= x86-64-v2
+MTUNE ?= znver3
+ARCH = $(if $(MARCH),-march=$(MARCH)) $(if $(MTUNE),-mtune=$(MTUNE))
 
 # PGO: profile-guided optimization (the "release build" lever), two phases:
 #   1. make clean && make PGO=gen     (instrumented build, a bit slower)
@@ -602,13 +611,14 @@ san-clean:
 	$(rm) $(BINDIR)/osp_asan $(BINDIR)/osp_tsan
 
 .PHONY: clean
-# Only the src/ objects + the test objects: imgui/implot are pinned
-# submodules you rarely touch, so keeping their .o files across a clean
-# keeps the rebuild cycle fast. (After a CXXFLAGS/LTO/SECT change, delete
-# obj/ by hand once to force them.)
+# All objects (src/, imgui/implot, tests): imgui/implot are pinned submodules
+# you rarely touch, but leaving their .o files across a clean is a trap -- an
+# ISA/LTO/PGO change then relinks stale bytecode, or the build looks "up to
+# date" and silently keeps the old ISA. Rebuilding them costs seconds, so
+# clean always drops them.
 clean:
 	$(rm) $(OBJECTS) $(OBJECTS:.o=.d)
-	rm -rf obj_test
+	rm -rf obj obj_test
 
 .PHONY: remove
 remove: clean
