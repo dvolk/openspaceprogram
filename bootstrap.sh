@@ -42,6 +42,38 @@ ARCH=""
 if [ -n "$MARCH" ]; then ARCH="-march=$MARCH"; fi
 if [ -n "$MTUNE" ]; then ARCH="${ARCH:+$ARCH }-mtune=$MTUNE"; fi
 
+# OS: which platform the middleware is for (the Makefile's OS, same
+# default). windows = cross-compile from Linux with mingw-w64 (see
+# reports/build-tree2026_09_22/phase1-windows.md).
+OS="${OS-linux}"
+# Cross-building for Windows: the target triplet + the mingw compilers
+# (without these CMake would configure the native gcc). Native Linux
+# adds nothing.
+CROSS=""
+if [ "$OS" = windows ]; then
+    CROSS="-DCMAKE_SYSTEM_NAME=Windows \
+           -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
+           -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++"
+fi
+
+# The per-OS video/audio drivers (SDL3's other options are platform-
+# neutral and shared in the invocation below):
+#  linux:   X11 (e2e under Xvfb) + PulseAudio/ALSA audio, GLES + desktop GL
+#  windows: built-in video, desktop GL via wgl, WASAPI audio (the platform
+#           default; SDL's dummy driver stays built-in as the headless
+#           fallback). No X11/Wayland/ALSA/Pulse -- those options are
+#           Linux-only.
+if [ "$OS" = windows ]; then
+    SDL3_DRIVERS="-DSDL_OPENGL=ON -DSDL_OPENGLES=OFF \
+                  -DSDL_X11=OFF -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF"
+else
+    SDL3_DRIVERS="-DSDL_OPENGL=ON -DSDL_OPENGLES=ON -DSDL_LIBUDEV=OFF \
+                  -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
+                  -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
+                  -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
+                  -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF"
+fi
+
 # Build tree (reports/build-tree2026_09_22): the cmake builds land under
 # build/<os>-<march>-<mtune>/middleware/<name>, mirroring the Makefile's
 # MWROOT (same token rules) so the submodules stay clean and the middleware
@@ -49,7 +81,7 @@ if [ -n "$MTUNE" ]; then ARCH="${ARCH:+$ARCH }-mtune=$MTUNE"; fi
 MARCH_TOK="${MARCH#x86-64-}"
 [ -z "$MARCH" ] && MARCH_TOK=base
 MTUNE_TOK="${MTUNE:-untuned}"
-MWROOT="build/linux-${MARCH_TOK}-${MTUNE_TOK}/middleware"
+MWROOT="build/${OS}-${MARCH_TOK}-${MTUNE_TOK}/middleware"
 
 for tool in g++ cmake make; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -57,6 +89,12 @@ for tool in g++ cmake make; do
         exit 1
     fi
 done
+if [ "$OS" = windows ]; then
+    command -v x86_64-w64-mingw32-g++ >/dev/null 2>&1 || {
+        echo "error: x86_64-w64-mingw32-g++ not found (apt install g++-mingw-w64-x86-64)" >&2
+        exit 1
+    }
+fi
 
 # check the top-level submodules out at their pinned commits (a no-op if the
 # clone already used --recurse-submodules), plus the two nested submodules
@@ -78,6 +116,7 @@ echo "=== building bullet3 (static, double precision, Release) ==="
 # Release, but set it explicitly like the other libs; the build type owns
 # the optimization flags, so nothing else is passed.
 cmake -S middleware/bullet3 -B "$MWROOT/bullet3" \
+    $CROSS \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DUSE_DOUBLE_PRECISION=ON \
     -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF \
@@ -85,10 +124,11 @@ cmake -S middleware/bullet3 -B "$MWROOT/bullet3" \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build "$MWROOT/bullet3" -j"$JOBS"
 
-echo "=== building SDL3 (static, X11) ==="
-# Static lib (SDL_SHARED=OFF), X11 video driver linked in (SDL_X11_SHARED=OFF,
-# so the game link carries the -lX11... libs). Wayland/Vulkan stay off:
-# the game runs on X11 (e2e under Xvfb) and uses GL 4.5 via GLEW.
+echo "=== building SDL3 (static, $OS drivers) ==="
+# Static lib (SDL_SHARED=OFF). The per-OS drivers come from $SDL3_DRIVERS
+# (above): linux = X11 linked in (SDL_X11_SHARED=OFF, so the game link
+# carries the -lX11... libs) + Pulse/ALSA; windows = built-in video +
+# WASAPI. The game uses GL 4.5 via GLEW on both.
 # SDL_TESTS defaults ON for the main project, so force it off (we never link
 # the testsuite). SDL3 ships a proper CMake config in the build dir that
 # SDL_image3's find_package(SDL3) consumes below.
@@ -99,14 +139,16 @@ echo "=== building SDL3 (static, X11) ==="
 # camera, native dialogs, tray, KMSDRM (X11-only), and the offscreen + dummy
 # drivers are likewise unused. Audio stays on -- SDL3_mixer (the game's
 # sound) uses it. GLES + desktop GL (SDL_OPENGL) stay too.
-# Audio: PulseAudio (primary) + ALSA (fallback). We tried ALSA-only to slim
-# the dynamic dep tree (Pulse pulls libsystemd/libapparmor/libsndfile + the
-# codec family), but direct ALSA gives the real-time mix callback no slack:
-# the engine track cracked on start/tap even with pre-resampled files and warm
-# buffers. Pulse/PipeWire's server-side queue absorbs that jitter -- exactly
-# why the platform moved to audio servers. sndio/JACK stay off; the dummy
-# driver stays built-in for headless (e2e under Xvfb).
+# Audio (linux): PulseAudio (primary) + ALSA (fallback). We tried
+# ALSA-only to slim the dynamic dep tree (Pulse pulls libsystemd/
+# libapparmor/libsndfile + the codec family), but direct ALSA gives the
+# real-time mix callback no slack: the engine track cracked on start/tap
+# even with pre-resampled files and warm buffers. Pulse/PipeWire's
+# server-side queue absorbs that jitter -- exactly why the platform moved
+# to audio servers. sndio/JACK stay off; the dummy driver stays built-in
+# for headless (e2e under Xvfb). (windows: WASAPI, the platform default.)
 cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
+    $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_DEPS_SHARED=OFF \
     -DSDL_TESTS=OFF \
@@ -115,11 +157,7 @@ cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
     -DSDL_SENSOR=OFF -DSDL_POWER=OFF \
     -DSDL_CAMERA=OFF -DSDL_DIALOG=OFF -DSDL_TRAY=OFF \
     -DSDL_KMSDRM=OFF -DSDL_OFFSCREEN=OFF \
-    -DSDL_OPENGL=ON -DSDL_OPENGLES=ON -DSDL_LIBUDEV=OFF \
-    -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
-    -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
-    -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
-    -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF \
+    $SDL3_DRIVERS \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
     -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build "$MWROOT/sdl3" -j"$JOBS"
@@ -132,6 +170,7 @@ echo "=== building SDL_image3 (static, PNG-only) ==="
 # (SDL3_DIR -> its build dir, so find_package picks ours even if the system
 # SDL3 dev files exist).
 cmake -S middleware/sdl3-image -B "$MWROOT/sdl3-image" \
+    $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DSDL3_DIR="$PWD/$MWROOT/sdl3" \
@@ -161,6 +200,7 @@ echo "=== building SDL3_mixer (static, WAV + stb_vorbis only) ==="
 # libvorbisfile, libFLAC, libxmp, ...) is ever looked for. Links the
 # SDL3 we built above (SDL3_DIR -> its build dir, the SDL_image trick).
 cmake -S middleware/sdl-mixer -B "$MWROOT/sdl-mixer" \
+    $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DSDL3_DIR="$PWD/$MWROOT/sdl3" \
@@ -200,6 +240,7 @@ fi
 # Release: GLEW's CMakeLists also defaults to it; set explicitly for
 # uniformity with the other libs.
 cmake -S middleware/glew/build/cmake -B "$MWROOT/glew" \
+    $CROSS \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_UTILS=OFF \
     -DCMAKE_BUILD_TYPE=Release \
@@ -211,6 +252,7 @@ echo "=== building assimp (static, OBJ-only) ==="
 # exporters). The default all-importers build pulls in ~30 format loaders
 # (FBX, glTF, STEP, IFC, ...) that add ~11 MB to the game binary.
 cmake -S middleware/assimp -B "$MWROOT/assimp" \
+    $CROSS \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
     -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_INSTALL=OFF \
     -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
@@ -220,5 +262,10 @@ cmake -S middleware/assimp -B "$MWROOT/assimp" \
 cmake --build "$MWROOT/assimp" -j"$JOBS"
 
 echo
-echo "middleware ready. Now:  make   (then ./osp)"
-echo "  (the binary is build/linux-v2-znver3/release/osp; ./osp is a symlink to it)"
+if [ "$OS" = windows ]; then
+    echo "windows middleware ready. Now:  make OS=windows   (then: wine .../release/osp.exe)"
+    echo "  (archives under $MWROOT/)"
+else
+    echo "middleware ready. Now:  make   (then ./osp)"
+    echo "  (the binary is ${MWROOT%/middleware}/release/osp; ./osp is a symlink to it)"
+fi
