@@ -45,5 +45,4 @@ Nothing in this directory is ever modified by the game.
 
 ## Licence
 
-Code: GPL-3.0; content: CC BY-SA 3.0 (see LICENSE.md; some textures
-and code are from Pioneer space sim).
+Code: AGPL-3.0; content: CC BY-SA 3.0 (see LICENSE.md).

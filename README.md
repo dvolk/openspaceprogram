@@ -4,10 +4,8 @@ Open source space sim
 
 Written in C++ with SDL3, GLM, ImGui, Bullet physics, AssImp.
 
-Code licence: GPL 3
+Code licence: AGPL-3.0
 Content licence: CC-BY-SA 3.0
-
-Some textures and code are from Pioneer space sim: https://github.com/pioneerspacesim/pioneer
 
 Lately, some of the code is written by qwen code.
 
