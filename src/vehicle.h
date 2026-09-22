@@ -1024,13 +1024,16 @@ protected:
        so the command never exceeds a maxed manual stick. */
     void slewToward(glm::dvec3 dir, double h);
 
-    /* Kill the spin within the wheel's authority: each axis' rate drops by
-       min(|w|, alpha*h) per substep -- monotonic, no sign flip, never more
-       forceful than a maxed manual stick. No deadband: the law is
-       proportional, so it converges to exact zero. A fixed |w| cutoff would
-       strand a residual spin whenever the per-substep authority alpha*h is
-       smaller than the cutoff -- heavy ships (e.g. docked stacks) damp
-       linearly into the cutoff and then keep drifting forever. */
+    /* Kill the spin within the wheel's authority: drive the full angular
+       velocity to zero in one substep (tau = I * (-w) / h), scaled down to
+       |tau| <= maxTorque() so the command never exceeds a maxed manual
+       stick. Monotonic, no sign flip. No deadband: the law is proportional,
+       so it converges to exact zero. A fixed |w| cutoff would strand a
+       residual spin whenever the per-substep authority is smaller than the
+       cutoff -- heavy ships (e.g. docked stacks) damp linearly into the
+       cutoff and then keep drifting forever. Must use the FULL inertia
+       tensor: the world-axis diagonal alone limit-cycles whenever the
+       principal basis is rotated relative to world. */
     void killRotStep(double h);
 
 public:

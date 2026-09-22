@@ -2585,14 +2585,17 @@ void Vehicle::killRotStep(double h) {
     const glm::dvec3 w = partAngVel(wheel);
     if(glm::length2(w) == 0.0) { return; } /* at rest: nothing to kill */
     const glm::dmat3 I = getInertia();
-    glm::dvec3 torque(0.0);
-    for(int i = 0; i < 3; i++) {
-        const double Iii = I[i][i];
-        if(Iii <= 0.0 || w[i] == 0.0) { continue; }
-        const double A = (maxTorque() / Iii) * h; /* max |dw| on this axis */
-        const double dw = -w[i] * std::min(1.0, A / std::fabs(w[i]));
-        torque[i] = Iii * dw / h; /* |torque[i]| <= maxTorque() */
-    }
+    /* Full-tensor cancel, same form as slewToward: tau = I * (-w) / h.
+       Scaling each world axis by I[i][i] alone is only valid when the
+       principal basis is world-aligned; with a rotated tensor the
+       under-cancel couples axes and the law settles into a period-2
+       limit cycle instead of reaching zero (the post-staging |w|
+       oscillation). Authority-bounded like slewToward, so the command
+       never exceeds a maxed manual stick. When the bound is active the
+       step is a pure scale of w toward 0 (monotonic, no sign flip). */
+    glm::dvec3 torque = I * (-w) / h;
+    const double tq = glm::length(torque);
+    if(tq > maxTorque()) { torque *= maxTorque() / tq; }
     ApplyTorque(hull, torque);
 }
 
