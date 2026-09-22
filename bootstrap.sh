@@ -42,6 +42,15 @@ ARCH=""
 if [ -n "$MARCH" ]; then ARCH="-march=$MARCH"; fi
 if [ -n "$MTUNE" ]; then ARCH="${ARCH:+$ARCH }-mtune=$MTUNE"; fi
 
+# Build tree (reports/build-tree2026_09_22): the cmake builds land under
+# build/<os>-<march>-<mtune>/middleware/<name>, mirroring the Makefile's
+# MWROOT (same token rules) so the submodules stay clean and the middleware
+# is shared by all the game's configs.
+MARCH_TOK="${MARCH#x86-64-}"
+[ -z "$MARCH" ] && MARCH_TOK=base
+MTUNE_TOK="${MTUNE:-untuned}"
+MWROOT="build/linux-${MARCH_TOK}-${MTUNE_TOK}/middleware"
+
 for tool in g++ cmake make; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: $tool not found -- install the system deps (see README) and re-run" >&2
@@ -68,13 +77,13 @@ echo "=== building bullet3 (static, double precision, Release) ==="
 # Release (-O3 -DNDEBUG): bullet3's own CMakeLists also defaults to
 # Release, but set it explicitly like the other libs; the build type owns
 # the optimization flags, so nothing else is passed.
-cmake -S middleware/bullet3 -B middleware/bullet3/build \
+cmake -S middleware/bullet3 -B "$MWROOT/bullet3" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DUSE_DOUBLE_PRECISION=ON \
     -DBUILD_BULLET2_DEMOS=OFF -DBUILD_EXTRAS=OFF -DBUILD_UNIT_TESTS=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/bullet3/build -j"$JOBS"
+cmake --build "$MWROOT/bullet3" -j"$JOBS"
 
 echo "=== building SDL3 (static, X11) ==="
 # Static lib (SDL_SHARED=OFF), X11 video driver linked in (SDL_X11_SHARED=OFF,
@@ -97,7 +106,7 @@ echo "=== building SDL3 (static, X11) ==="
 # buffers. Pulse/PipeWire's server-side queue absorbs that jitter -- exactly
 # why the platform moved to audio servers. sndio/JACK stay off; the dummy
 # driver stays built-in for headless (e2e under Xvfb).
-cmake -S middleware/sdl3 -B middleware/sdl3/build \
+cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_DEPS_SHARED=OFF \
     -DSDL_TESTS=OFF \
@@ -113,7 +122,7 @@ cmake -S middleware/sdl3 -B middleware/sdl3/build \
     -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
     -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/sdl3/build -j"$JOBS"
+cmake --build "$MWROOT/sdl3" -j"$JOBS"
 
 echo "=== building SDL_image3 (static, PNG-only) ==="
 # The game only loads/saves PNG (textures, skybox, screenshots), so build
@@ -122,10 +131,10 @@ echo "=== building SDL_image3 (static, PNG-only) ==="
 # no system libpng/zlib packages are needed. Links the SDL3 we built above
 # (SDL3_DIR -> its build dir, so find_package picks ours even if the system
 # SDL3 dev files exist).
-cmake -S middleware/sdl3-image -B middleware/sdl3-image/build \
+cmake -S middleware/sdl3-image -B "$MWROOT/sdl3-image" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
-    -DSDL3_DIR="$PWD/middleware/sdl3/build" \
+    -DSDL3_DIR="$PWD/$MWROOT/sdl3" \
     -DSDLIMAGE_DEPS_SHARED=OFF -DSDLIMAGE_VENDORED=ON \
     -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF -DSDLIMAGE_BACKEND_STB=OFF \
     -DSDLIMAGE_PNG=ON -DSDLIMAGE_PNG_SAVE=ON \
@@ -136,7 +145,7 @@ cmake -S middleware/sdl3-image -B middleware/sdl3-image/build \
     -DSDLIMAGE_TGA=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF \
     -DSDLIMAGE_XCF=OFF -DSDLIMAGE_XPM=OFF -DSDLIMAGE_XV=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/sdl3-image/build -j"$JOBS"
+cmake --build "$MWROOT/sdl3-image" -j"$JOBS"
 # zlib's CMake renames the in-tree zconf.h -> zconf.h.included for
 # out-of-source builds (it generates its own in the build dir, which is
 # what gets compiled) -- restore it so the submodule stays clean.
@@ -151,10 +160,10 @@ echo "=== building SDL3_mixer (static, WAV + stb_vorbis only) ==="
 # switched off: with none of them on, nothing external (libmpg123,
 # libvorbisfile, libFLAC, libxmp, ...) is ever looked for. Links the
 # SDL3 we built above (SDL3_DIR -> its build dir, the SDL_image trick).
-cmake -S middleware/sdl-mixer -B middleware/sdl-mixer/build \
+cmake -S middleware/sdl-mixer -B "$MWROOT/sdl-mixer" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
-    -DSDL3_DIR="$PWD/middleware/sdl3/build" \
+    -DSDL3_DIR="$PWD/$MWROOT/sdl3" \
     -DSDLMIXER_DEPS_SHARED=OFF \
     -DSDLMIXER_AIFF=OFF \
     -DSDLMIXER_AU=OFF \
@@ -172,7 +181,7 @@ cmake -S middleware/sdl-mixer -B middleware/sdl-mixer/build \
     -DSDLMIXER_EXAMPLES=OFF \
     -DSDLMIXER_INSTALL=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/sdl-mixer/build -j"$JOBS"
+cmake --build "$MWROOT/sdl-mixer" -j"$JOBS"
 
 echo "=== building GLEW (static, 2.2.0) ==="
 # GLEW's git repo contains only the generator (src/glew.c is generated from
@@ -186,30 +195,29 @@ if [ ! -f middleware/glew/src/glew.c ]; then
     mkdir -p middleware/glew
     tar xJf tmp/glew_2.2.0.orig.tar.xz -C middleware/glew --strip-components=1
 fi
-# The cmake project lives in build/cmake (there is no root CMakeLists.txt),
-# and the static target glew_s -> <builddir>/lib/libGLEW.a. The build dir is
-# build-cmake (NOT build/, which is a SOURCE directory of this tree).
+# The cmake project lives in the SOURCE dir build/cmake (there is no root
+# CMakeLists.txt), and the static target glew_s -> <builddir>/lib/libGLEW.a.
 # Release: GLEW's CMakeLists also defaults to it; set explicitly for
 # uniformity with the other libs.
-cmake -S middleware/glew/build/cmake -B middleware/glew/build-cmake \
+cmake -S middleware/glew/build/cmake -B "$MWROOT/glew" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_UTILS=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/glew/build-cmake -j"$JOBS"
+cmake --build "$MWROOT/glew" -j"$JOBS"
 
 echo "=== building assimp (static, OBJ-only) ==="
 # We only ever load .obj meshes, so build just the OBJ importer (and no
 # exporters). The default all-importers build pulls in ~30 format loaders
 # (FBX, glTF, STEP, IFC, ...) that add ~11 MB to the game binary.
-cmake -S middleware/assimp -B middleware/assimp/build \
+cmake -S middleware/assimp -B "$MWROOT/assimp" \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
     -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_INSTALL=OFF \
     -DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=OFF \
     -DASSIMP_BUILD_OBJ_IMPORTER=ON \
     -DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
-cmake --build middleware/assimp/build -j"$JOBS"
+cmake --build "$MWROOT/assimp" -j"$JOBS"
 
 echo
 echo "middleware ready. Now:  make   (then ./osp)"

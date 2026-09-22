@@ -10,7 +10,7 @@
 // quaternion round-trip that is immune to the row/col-major ambiguity.
 //
 // Build & run (from repo root):
-//   B=middleware/bullet3/build/src
+//   B=build/linux-v2-znver3/middleware/bullet3/src
 //   g++ -O2 -std=c++20 -DBT_USE_DOUBLE_PRECISION \
 //       -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
 //       tests/test_orient.cpp -o test_orient \

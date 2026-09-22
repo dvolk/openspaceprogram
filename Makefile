@@ -109,25 +109,25 @@ IMPLLOT_OBJS=$(OBJDIR)/implot/implot.o $(OBJDIR)/implot/implot_items.o
 # neither in and no -lz is needed (verified by linking without it).
 # $(ASSIMP_A) is the archive file (used as a relink prerequisite); ASSIMP_LIB
 # is what goes on the link line.
-ASSIMP_A=./middleware/assimp/build/lib/libassimp.a
+ASSIMP_A=$(MWROOT)/assimp/lib/libassimp.a
 ASSIMP_LIB=$(ASSIMP_A)
 # SDL3 + SDL_image + GLEW: vendored in middleware/ like bullet3/assimp
 # (bootstrap.sh builds them static; GLEW from the official 2.2.0 tarball --
 # its git repo ships only the generator, see bootstrap.sh).
-SDL3_A=./middleware/sdl3/build/libSDL3.a
-SDLIMG_A=./middleware/sdl3-image/build/libSDL3_image.a
+SDL3_A=$(MWROOT)/sdl3/libSDL3.a
+SDLIMG_A=$(MWROOT)/sdl3-image/libSDL3_image.a
 # SDL3_mixer (vendored like SDL_image; bootstrap.sh builds it static with
 # WAV + the bundled stb_vorbis only): the short SFX chunks play on the
 # regular mixer channels (Mix_Chunk is WAV-only), the OGG ambient music
 # streams on the music channel. A dependent of SDL3, so it links BEFORE
 # it (static link order: dependents first).
-SDLMIXER_A=./middleware/sdl-mixer/build/libSDL3_mixer.a
+SDLMIXER_A=$(MWROOT)/sdl-mixer/libSDL3_mixer.a
 # SDL_image's PNG loader/saver use the vendored libpng + zlib (sdl3-image's
-# nested submodules, built under sdl3-image/build/external/ -- no system
+# nested submodules, built under its build dir's external/ -- no system
 # libpng/zlib packages needed).
-PNG_A=./middleware/sdl3-image/build/external/libpng-build/libpng16.a
-ZLIB_A=./middleware/sdl3-image/build/external/zlib-build/libz.a
-GLEW_A=./middleware/glew/build-cmake/lib/libGLEW.a
+PNG_A=$(MWROOT)/sdl3-image/external/libpng-build/libpng16.a
+ZLIB_A=$(MWROOT)/sdl3-image/external/zlib-build/libz.a
+GLEW_A=$(MWROOT)/glew/lib/libGLEW.a
 # SDL3 is built with the X11 driver linked in (not dlopen'd), so the X11
 # stack rides along. Audio: PulseAudio (primary) + ALSA (fallback) -- see
 # bootstrap.sh for why we ended up here (direct ALSA cracks the engine track;
@@ -141,7 +141,7 @@ GL_LIBS=$(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(
 # cd ./middleware/bullet3
 # ln -s bullet src
 # build it with cmake with double precision enabled
-BULLET3_OBJS=./middleware/bullet3/build/src/BulletDynamics/libBulletDynamics.a ./middleware/bullet3/build/src/BulletCollision/libBulletCollision.a ./middleware/bullet3/build/src/BulletSoftBody/libBulletSoftBody.a ./middleware/bullet3/build/src/Bullet3Geometry/libBullet3Geometry.a ./middleware/bullet3/build/src/BulletInverseDynamics/libBulletInverseDynamics.a ./middleware/bullet3/build/src/Bullet3Common/libBullet3Common.a ./middleware/bullet3/build/src/Bullet3Collision/libBullet3Collision.a ./middleware/bullet3/build/src/LinearMath/libLinearMath.a ./middleware/bullet3/build/src/Bullet3Serialize/Bullet2FileLoader/libBullet2FileLoader.a ./middleware/bullet3/build/src/Bullet3OpenCL/libBullet3OpenCL_clew.a ./middleware/bullet3/build/src/Bullet3Dynamics/libBullet3Dynamics.a
+BULLET3_OBJS=$(MWROOT)/bullet3/src/BulletDynamics/libBulletDynamics.a $(MWROOT)/bullet3/src/BulletCollision/libBulletCollision.a $(MWROOT)/bullet3/src/BulletSoftBody/libBulletSoftBody.a $(MWROOT)/bullet3/src/Bullet3Geometry/libBullet3Geometry.a $(MWROOT)/bullet3/src/BulletInverseDynamics/libBulletInverseDynamics.a $(MWROOT)/bullet3/src/Bullet3Common/libBullet3Common.a $(MWROOT)/bullet3/src/Bullet3Collision/libBullet3Collision.a $(MWROOT)/bullet3/src/LinearMath/libLinearMath.a $(MWROOT)/bullet3/src/Bullet3Serialize/Bullet2FileLoader/libBullet2FileLoader.a $(MWROOT)/bullet3/src/Bullet3OpenCL/libBullet3OpenCL_clew.a $(MWROOT)/bullet3/src/Bullet3Dynamics/libBullet3Dynamics.a
 
 # -Wno-lto-type-mismatch: SDL2's own EGL API (SDL_egl_c.h vs SDL_egl.c)
 # declares SDL_EGL_CreateSurface with mismatched types, and the LTO pass
@@ -168,6 +168,10 @@ BINDIR=$(ARCHDIR)/$(CONFIG)
 # The unit tests are one -O2 build at the baseline level (like
 # middleware/): shared by every config, not a config of its own.
 TESTDIR=$(ARCHDIR)/tests
+# The cmake-built middleware (bootstrap.sh) is likewise shared at the
+# (os, march, mtune) level: each <name> is that library's cmake build dir
+# (the archives keep the layout each CMakeLists chooses inside it).
+MWROOT=$(ARCHDIR)/middleware
 # Per-config binary name: the sanitizer builds keep their suffix (their dirs
 # are already separate, but the suffix keeps `ls` self-explanatory);
 # release/debug share the name osp, their dirs separate them.
