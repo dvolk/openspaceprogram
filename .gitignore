@@ -1,21 +1,12 @@
 # Build artifacts
 build/
-# The entries below are the legacy (pre-build-tree) locations; they stay
-# until the old root artifacts are removed (the build-tree cleanup step).
-obj/
-obj_test/
-obj_asan/
+# The repo-root ./osp is a live symlink: `make` refreshes it to the last
+# built config's binary (the Makefile's `all` target).
 osp
-osp_asan
-obj_tsan/
-osp_tsan
 # GLEW: the official git repo ships only the code *generator* (glew.c is
 # generated from the Khronos registry), so bootstrap.sh fetches the
 # official 2.2.0 source tarball instead and extracts it here.
 middleware/glew/
-
-# Test binaries at repo root (the tests/ sources stay tracked)
-/test_*
 
 # Runtime-generated
 imgui.ini

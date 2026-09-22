@@ -1,9 +1,9 @@
-# ThreadSanitizer suppressions for ./osp_tsan (built by `make tsan`).
+# ThreadSanitizer suppressions for the tsan build (`make tsan`).
 #
 # Use:
-#     TSAN_OPTIONS=suppressions=$PWD/tsan.supp ./osp_tsan [game args]
-# or `make tsan-run GAME_ARGS="--timeout 10"`, which sets that and picks a
-# display (real one if DISPLAY is set, xvfb-run otherwise).
+#     make tsan-run GAME_ARGS="--timeout 10"
+# which sets TSAN_OPTIONS=suppressions=$PWD/tsan.supp and picks a display
+# (real one if DISPLAY is set, xvfb-run otherwise).
 #
 # Rules here cover noise we have OBSERVED, never anything speculative -- a
 # suppression that hides a real race is worse than no suppression at all.
