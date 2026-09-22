@@ -1072,13 +1072,15 @@ int main(int argc, char **argv)
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
             if(screenshot_requested == true) {
-                char fname[256];
+                // UTC stamp + the shot count: unique by construction (two shots
+                // in the same second no longer collide), and portable (gmtime is
+                // standard C, no POSIX _r / Windows _s fork). Main-thread only.
                 time_t now = ::time(nullptr);
-                struct tm tm;
-                localtime_r(&now, &tm);
-                char stamp[32];
-                strftime(stamp, sizeof(stamp), "%Y_%m_%d_%H_%M_%S", &tm);
-                snprintf(fname, sizeof(fname), "./tmp/osp_%s.png", stamp);
+                char stamp[40];
+                strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H-%M-%SZ", gmtime(&now));
+                char fname[256];
+                snprintf(fname, sizeof(fname), "./tmp/osp_%s_%03d.png", stamp,
+                         screenshot_count + 1);   // 1-indexed (count = shots so far)
                 {
                     std::error_code ec;   // non-throwing: a failure just fails the shot
                     std::filesystem::create_directories("./tmp", ec);

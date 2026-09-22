@@ -42,12 +42,13 @@ namespace {
 
 std::string slug(size_t i) { return "v" + std::to_string(i); }
 
+// The save's real-world timestamp: UTC (not local) so it is unambiguous and
+// portable across boxes/timezones. gmtime is standard C (no POSIX _r / Windows
+// _s fork) -- main-thread only, so its static buffer is fine.
 std::string nowString() {
     time_t t = time(nullptr);
     char buf[64];
-    struct tm lt;
-    localtime_r(&t, &lt);
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &lt);
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", gmtime(&t));
     return std::string(buf);
 }
 
