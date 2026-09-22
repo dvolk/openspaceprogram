@@ -1,11 +1,12 @@
 #pragma once
 
-// datadir.h -- where the game keeps its per-user data (saves/ + settings.json).
+// datadir.h -- where the game keeps its per-user data (saves/ + screenshots/
+// + settings.json).
 //
-// The game has historically dropped both in the working directory (the repo
-// root): fine on a dev box, but it assumes the cwd is writable and the same
-// on every machine, and it pollutes the source tree. The per-OS user data
-// directory is the portable home instead (SDL_GetPrefPath supplies it):
+// The game has historically dropped all of it in the working directory (the
+// repo root): fine on a dev box, but it assumes the cwd is writable and the
+// same on every machine, and it pollutes the source tree. The per-OS user
+// data directory is the portable home instead (SDL_GetPrefPath supplies it):
 //   Linux:   $XDG_DATA_HOME/openspaceprogram/   (default ~/.local/share/...)
 //   Windows: %APPDATA%\openspaceprogram  (the Roaming AppData folder)
 //   macOS:   ~/Library/Application Support/openspaceprogram
@@ -79,9 +80,11 @@ inline const std::string &init(const std::string &override) {
     return dir();
 }
 
-// The saves/ directory (slots live under it) and the settings.json path,
-// both under the data directory.
+// The saves/ directory (slots live under it), the screenshots/ directory
+// (F12 shots land there), and the settings.json path -- all under the data
+// directory.
 inline const std::string saves() { return dir() + "saves"; }
+inline const std::string screenshots() { return dir() + "screenshots"; }
 inline const std::string settings_file() { return dir() + "settings.json"; }
 
 }   // namespace datadir
