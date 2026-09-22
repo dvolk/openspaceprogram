@@ -92,7 +92,12 @@ endif
 # the source tree) before the source headers. (The linux build used to resolve
 # config.h from a system libassimp-dev install by accident -- the cross build
 # has no such system headers and exposed it.)
-CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+# GLEW_STATIC: we link GLEW as a static lib, so GLEWAPI must not mark its
+# symbols __declspec(dllimport) -- on windows that makes the compiler emit
+# __imp_ import-thunk references a real static archive can't satisfy (the
+# non-LTO debug config dies at link; LTO happens to resolve it, don't rely
+# on that). Linux ignores the declspec, so the define is a no-op there.
+CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -DGLEW_STATIC -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
 LINKER=$(CXX) $(CFGFLAGS) $(LD_OPT) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -245,7 +250,12 @@ ifeq ($(CONFIG),debug)
 CFGFLAGS=-O0 -g3
 CFGLTO=
 else ifeq ($(CONFIG),asan)
+ifeq ($(OS),windows)
+# mingw has no LeakSanitizer runtime; address+undefined are supported.
+CFGFLAGS=-O2 -g3 -fsanitize=address,undefined
+else
 CFGFLAGS=-O2 -g3 -fsanitize=address,leak,undefined
+endif
 CFGLTO=$(LTO)
 else ifeq ($(CONFIG),tsan)
 CFGFLAGS=-O2 -g3 -fsanitize=thread,undefined
@@ -699,13 +709,36 @@ test-gl:
 debug:
 	@$(MAKE) --no-print-directory CONFIG=debug all
 
+# windows asan: probe the toolchain first -- this Ubuntu mingw cross package
+# compiles -fsanitize= but ships NO ASan runtime for the Windows target (no
+# libsanitizer.spec, no libasan under /usr/lib/gcc/x86_64-w64-mingw32/), so
+# a real attempt dies at link after a full compile. The one-line probe
+# links in ~1s and says whether asan is possible here at all.
 .PHONY: asan
 asan:
+ifeq ($(OS),windows)
+	@printf 'int main() { return 0; }\n' > tmp/asan_probe.cpp && \
+	  x86_64-w64-mingw32-g++ -static -fsanitize=address tmp/asan_probe.cpp -o tmp/asan_probe.exe 2>tmp/asan_probe.err \
+	  && { rm -f tmp/asan_probe.cpp tmp/asan_probe.exe tmp/asan_probe.err; } \
+	  || { echo "error: windows asan unavailable here: this mingw toolchain has no ASan runtime for x86_64-w64-mingw32 (probe: $$(head -1 tmp/asan_probe.err 2>/dev/null))" >&2; \
+	       echo "       use the linux asan config, or a toolchain that ships a mingw ASan runtime (full asan validation was deferred to a real Windows box anyway -- phase 1, Risks)" >&2; \
+	       rm -f tmp/asan_probe.cpp tmp/asan_probe.err tmp/asan_probe.exe; exit 1; }
+	@rm -f tmp/asan_probe.exe
 	@$(MAKE) --no-print-directory CONFIG=asan all
+else
+	@$(MAKE) --no-print-directory CONFIG=asan all
+endif
 
+# tsan is linux-only: mingw has no ThreadSanitizer runtime (phase 1, D3 in
+# reports/build-tree2026_09_22/phase1-windows.md) -- refuse clearly instead
+# of dying deep in the cross-compile.
 .PHONY: tsan
 tsan:
+ifeq ($(OS),windows)
+	@echo "error: tsan is linux-only (mingw has no ThreadSanitizer runtime)" >&2; exit 1
+else
 	@$(MAKE) --no-print-directory CONFIG=tsan all
+endif
 
 # Build and run the TSan variant with tsan.supp applied (see that file for
 # what it suppresses and why). Uses the real display when there is one and
@@ -737,8 +770,14 @@ clean:
 remove: clean
 	$(rm) $(BINDIR)/$(TARGET)
 	rm -rf $(TESTDIR)
+ifeq ($(OS),windows)
+	# ./osp is the linux convenience symlink -- a windows remove leaves it
+	# (and its linux target) alone.
+	@echo "note: left the linux ./osp symlink alone"
+else
 	# drop the ./osp symlink too (removing a link never touches its target)
 	$(rm) osp
+endif
 
 # Pull in the generated header dependencies (see -MMD above). Silent if the
 # .d files don't exist yet (fresh checkout / first build). The $(TESTDIR)/obj/
