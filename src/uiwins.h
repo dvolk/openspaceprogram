@@ -72,6 +72,7 @@ enum Win : int {
     W_TrackingMap, W_TrackingShipList,
     // editor
     W_VabTopBar,
+    W_Staging,
     W_Count
 };
 

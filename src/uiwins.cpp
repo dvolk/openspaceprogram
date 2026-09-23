@@ -209,6 +209,14 @@ const WinDef kWins[W_Count] = {
                   .flags = ImGuiWindowFlags_NoTitleBar },
         .role = WinRole::Chrome, .inList = false,
     },
+    [W_Staging] = {
+        .name = "Staging", .label = "Staging",
+        // The VAB staging table (per-stage delta-v / TWR). Sits bottom-left
+        // under the build list; the table is 5 columns and fits ~400px.
+        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(420.0f, 280.0f),
+                  .closable = true, .default_open = true },
+        .role = WinRole::Persistent, .inList = false,
+    },
 };
 #pragma GCC diagnostic pop
 
@@ -231,7 +239,7 @@ static const Win kTitleWinIds[] = {
 // Controls / Save-Load bodies are shipless-safe, so they draw here as well as
 // in flight). The VAB has no menu of its own.
 static const Win kVabWinIds[] = {
-    W_VabTopBar, W_Settings, W_Controls, W_SaveLoad,
+    W_VabTopBar, W_Staging, W_Settings, W_Controls, W_SaveLoad,
 };
 // The Space Center hub: its root menu + the shared windows (same reasoning as
 // the editor). The ship is live below (the sim runs) but the hub shows the

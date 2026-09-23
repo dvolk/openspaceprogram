@@ -427,6 +427,12 @@ $(TESTDIR)/test_power: $(TESTDIR)/obj/test_power.o $(TCOMMON_OBJS)
 $(TESTDIR)/test_staging: $(TESTDIR)/obj/test_staging.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
+# VAB staging analysis (src/staging.cpp): per-stage vacuum delta-v + TWR,
+# with fuel links (asparagus) draining furthest-layer-first. Pure math
+# over BuildShip -- shipdef + staging only, no Bullet/GL.
+$(TESTDIR)/test_staging_dv: $(TESTDIR)/obj/test_staging_dv.o $(TESTDIR)/obj/staging.o $(TESTDIR)/obj/shipdef.o
+	$(CXX) -o $@ $^
+
 # docking merge/split (Vehicle::absorbShip + extractSubtreeAsShip from
 # src/vehicle.cpp): absorbShip is a rigid merge -- every absorbed part keeps
 # its exact world pose, the seam is recorded, the absorbed root rehangs off
@@ -622,7 +628,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 	$(CXX) -o $@ $^
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
-        test_power test_staging test_dock test_contain test_inertia test_inventory \
+        test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
         test_rotation test_shipload test_save test_crew test_fleet test_calendar \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
@@ -638,6 +644,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_fuel
 	$(TESTDIR)/test_power
 	$(TESTDIR)/test_staging
+	$(TESTDIR)/test_staging_dv
 	$(TESTDIR)/test_dock
 	$(TESTDIR)/test_contain
 	$(TESTDIR)/test_inertia

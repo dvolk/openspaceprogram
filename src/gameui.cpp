@@ -28,6 +28,7 @@
 #include "surfmap.h"     // the lon/lat <-> pixel math + surfmapCompute
 #include "texture.h"     // make_texture_r8 (the Porkchop heatmap + Surface Map)
 #include "vab.h"         // the editor ops (drawVabUI: gizmos, save, load, launch)
+#include "staging.h"     // computeStaging (the VAB staging table)
 #include "shipdef.h"     // list_ship_defs (the VAB Load picker's ship list)
 #include "save.h"        // save_game / load_game / list_saves / delete_save
 #include "datadir.h"     // the saves/ directory's location (the data directory)
@@ -2843,6 +2844,71 @@ void drawVabUI(Game &g) {
         ImGui::TextDisabled("pick a part to arm");
     }
     ImGui::End();
+
+    /* Staging table: one row per stage period (flight order -- the first
+       burn at the top), with vacuum delta-v and TWR against the home
+       body's surface gravity. Fuel links are honoured (asparagus: the
+       outer groups empty first via the drain layers), so the numbers
+       match what a launch will actually burn. Recomputed every frame --
+       the build is small and this is pure math. */
+    drawWin(g, W_Staging, [&] {
+        const double gHome = (g.sys.home != nullptr) ? g.sys.home->g : 9.81;
+        ImGui::Text("TWR on %s  (g = %.2f m/s^2)",
+                    g.sys.home != nullptr ? g.sys.home->name.c_str() : "?",
+                    gHome);
+        if(g.vab.build.parts.empty()) {
+            ImGui::TextDisabled("empty build -- place a part");
+            return;
+        }
+        const std::vector<StageRow> rows = computeStaging(g.vab.build, gHome);
+        if(rows.empty()) {
+            ImGui::TextDisabled("nothing to stage");
+            return;
+        }
+        if(ImGui::BeginTable("staging_table", 5,
+                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
+                             | ImGuiTableFlags_SizingStretchSame)) {
+            ImGui::TableSetupColumn("Stage", ImGuiTableColumnFlags_WidthFixed, 48.0f);
+            ImGui::TableSetupColumn("dv m/s", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("min TWR", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("max TWR", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("mass kg", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableHeadersRow();
+            double totalDv = 0.0;
+            for(size_t i = 0; i < rows.size(); i++) {
+                const StageRow &r = rows[i];
+                totalDv += r.deltaV;
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%d%s", r.stage, r.drops ? "" : " *");
+                ImGui::TableNextColumn();
+                ImGui::Text("%.0f", r.deltaV);
+                ImGui::TableNextColumn();
+                if(r.minTWR > 0.0) {
+                    // Red when the stack cannot lift off the pad.
+                    if(r.minTWR < 1.0) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
+                                           "%.2f", r.minTWR);
+                    } else {
+                        ImGui::Text("%.2f", r.minTWR);
+                    }
+                } else {
+                    ImGui::TextDisabled("--");
+                }
+                ImGui::TableNextColumn();
+                if(r.maxTWR > 0.0) {
+                    ImGui::Text("%.2f", r.maxTWR);
+                } else {
+                    ImGui::TextDisabled("--");
+                }
+                ImGui::TableNextColumn();
+                ImGui::Text("%.0f -> %.0f", r.massStart, r.massEnd);
+            }
+            ImGui::EndTable();
+            ImGui::Text("total dv: %.0f m/s", totalDv);
+            ImGui::TextDisabled("* final burn (no separation)");
+        }
+    });
 
     /* Fuel-link overlay lines (drawn last, foreground layer: always on top,
        no depth test). Source centre -> destination centre, with the flow
