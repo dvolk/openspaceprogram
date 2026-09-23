@@ -72,10 +72,15 @@ void surfmapCompute(Game &g) {
     // (g.jobs), like the porkchop grid: the frame stays responsive and
     // the last map stays on screen until the job lands. The worker calls
     // body->SurfaceColor per pixel: that state (the terrain params, the
-    // palette, the radius) is set once in load_system and never written
-    // after, and the bodies outlive every job (main.cpp joins g.jobs
-    // before freeing them), so the off-thread READ is safe -- the same
-    // const data buildGridGeom (terragen.h) baked into the mesh.
+    // palette, the radius) is set once in the light phase and the bodies
+    // outlive every job (main.cpp joins g.jobs before freeing them), so the
+    // off-thread READ is safe -- the same const data buildGridGeom
+    // (terragen.h) baked into the mesh. The one field written AFTER the
+    // light phase is surface.max_height (applied by AttachRoot on the main
+    // thread); a body is only surfaced once it is drawn, i.e. already
+    // ready, so in practice that write lands before this read -- the narrow
+    // window where it is still the 1.0f default would only mis-normalize the
+    // palette ramp (visual), not corrupt memory.
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
     const double t_now = g.time;

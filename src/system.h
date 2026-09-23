@@ -98,13 +98,18 @@ struct System {
   bodies must list parents before children is NOT required — the frame tree is
   wired in a second pass, so the order in the file does not matter.
 
-  Must be called after create_physics(), because Create() builds Bullet terrain
-  collision.
+  load_system does the LIGHT phase only: surface params + the frame tree
+  (orbital/physical values) + home/moon resolution. The heavy phase (max_height
+  + root terrain + the atmosphere/cloud/ocean shells) is deferred by the caller
+  to the JobRunner worker (TerrainBody::Finish) so the title can appear before
+  every body's terrain is built; a body simply isn't drawn until its heavy
+  phase lands (TerrainBody::ready). The caller must still run create_physics()
+  first, because the deferred heavy phase builds Bullet terrain collision.
 
   `progress` (optional) is called on the caller's thread after each body's
-  terrain + collision is built, with (index, total, body name). The game uses
-  it to keep drawing a "loading..." frame so a big system shows progress
-  instead of a frozen window. Pass nullptr (the default) to load silently.
+  light phase, with (index, total, body name). The game uses it to keep
+  drawing a "loading..." frame during the (now fast) light phase. Pass
+  nullptr (the default) to load silently.
 */
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,

@@ -102,7 +102,11 @@ struct GeoPatch {
 };
 
 struct TerrainBody {
-    GeoPatch *patches[6];
+    // Value-initialized so ~TerrainBody (which unconditionally deletes all
+    // six slots) is safe for a body whose AttachRoot never ran (e.g. an exit
+    // while its deferred heavy phase is still queued): unattached slots are
+    // nullptr, and deleting nullptr is a no-op.
+    GeoPatch *patches[6] = { nullptr };
     Shader *shader;
     /* A demand-built shell (the atmosphere rim, the cloud deck): a
        PROCEDURAL mesh (unique to the body) drawn with a shared shader, and
@@ -127,13 +131,17 @@ struct TerrainBody {
     float mass;
     std::string name;
     double seed = 0;   // noise-domain offset; 0 = legacy pattern
-    // Subdivision stop for this body's patch tree (set by Create() from
-    // the radius). The patch angular size at a given depth is the same on
-    // every body, so leaf-cell METRES scale with the radius: one extra
-    // level per radius doubling keeps mesh density per surface area
-    // comparable across bodies (the old constant 14 left big bodies with
-    // a sparse mesh and tiny ones over-subdivided). See Create().
+    // Subdivision stop for this body's patch tree (set by AttachRoot from
+    // the radius, via BuildRootGeoms). The patch angular size at a given
+    // depth is the same on every body, so leaf-cell METRES scale with the
+    // radius: one extra level per radius doubling keeps mesh density per
+    // surface area comparable across bodies (the old constant 14 left big
+    // bodies with a sparse mesh and tiny ones over-subdivided).
     int max_depth = 14;
+    // Root terrain attached (drawable). False until the heavy phase lands:
+    // the body still simulates (frames) but Draw/Update/CountPatches skip
+    // it, so a deferred body simply isn't drawn until its mesh is ready.
+    bool ready = false;
     Surface surface;
     Frame *frame; // owner
     Frame *rot_frame; // owner
@@ -192,19 +200,55 @@ struct TerrainBody {
     // mesh builders); res = latitude = longitude rings.
     Mesh *create_atmosphere_mesh(float radius, int res);
 
-    void Create(float radius, float mass) {
-        this->radius = radius;
-        this->mass = mass;
+    // The heavy per-load work, split so the CPU-bound part can run on the
+    // JobRunner worker and the GL/Bullet part on the main thread (the same
+    // pure-math/publish split as GeoPatch::requestSubdivide). radius/mass
+    // are already set by the light phase (load_system); `ready` flips on
+    // when AttachRoot lands.
+    struct RootGeoms {
+        int max_depth;
+        float max_height;
+        std::array<GridGeom, 6> geoms;
+    };
+
+    // Worker-safe (const, pure math): the subdivision stop, the highest
+    // relief, and the six root grids. No GL, no Bullet, no body-state write
+    // (the result is returned), so it runs on the JobRunner worker.
+    RootGeoms BuildRootGeoms() const {
         // Mesh density per surface area: one extra subdivision level per
         // radius doubling, anchored at 14 for a Kerbin-sized (600 km)
-        // body. Floor of 8 so tiny moons don't build useless depth.
-        max_depth = 14 + (int)llround(std::log2((double)radius / 600.0e3));
-        if (max_depth < 8) { max_depth = 8; }
-        // 12 is the current ceiling: the skirt geometry has a precision
-        // issue at deeper levels (depth >= 13) that needs investigating
-        // separately. The noise band-limiting smooths out most of the
-        // detail at those levels anyway, so the visual loss is small.
-        if (max_depth > 12) { max_depth = 12; }
+        // body. Floor of 8 so tiny moons don't build useless depth; 12 is
+        // the ceiling (the skirt has a precision issue at depth >= 13).
+        int md = 14 + (int)llround(std::log2((double)radius / 600.0e3));
+        if (md < 8) { md = 8; }
+        if (md > 12) { md = 12; }
+
+        // Highest relief above sea level (moved out of load_system): sizes
+        // the palette ramp + the atmosphere/cloud shells. terrainHeight
+        // does not read max_height, so this is self-contained.
+        float maxh;
+        if (surface.bands) {
+            maxh = 0.0f;   // gas giant: smooth sphere
+        } else {
+            const TerrainParams tp0 = params();
+            const int N = 2048;
+            const float golden = 2.39996322972865332f;   // golden angle
+            float hi = 0.0f;
+            for (int i = 0; i < N; i++) {
+                const float y = 1.0f - 2.0f * (i + 0.5f) / (float)N;
+                const float rr = std::sqrt(std::max(0.0f, 1.0f - y * y));
+                const glm::vec3 d(rr * std::cos(i * golden), y,
+                                  rr * std::sin(i * golden));
+                hi = std::max(hi, terrainHeight(d, tp0) - radius);
+            }
+            maxh = std::max(1.0f, (hi - surface.sea_level) * 1.05f);
+        }
+
+        // Bake the six root grids with the COMPUTED max_height (the palette
+        // ramp reads it); the body's surface.max_height is still its default
+        // until AttachRoot applies this result.
+        TerrainParams tp = params();
+        tp.surface.max_height = maxh;
         const glm::vec3 p1 = glm::normalize(glm::vec3( 1, 1, 1));
         const glm::vec3 p2 = glm::normalize(glm::vec3(-1, 1, 1));
         const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));
@@ -214,16 +258,38 @@ struct TerrainBody {
         const glm::vec3 p7 = glm::normalize(glm::vec3(-1,-1,-1));
         const glm::vec3 p8 = glm::normalize(glm::vec3( 1,-1,-1));
 
-        // The six root patches (depth 1) build synchronously at load time:
-        // before the main loop starts there is nothing else to draw, so
-        // blocking here is fine. Child patches are async (GeoPatch::
-        // requestSubdivide).
-        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, buildGridGeom(params(), true, 1, p1, p2, p3, p4));
-        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, buildGridGeom(params(), true, 1, p4, p3, p7, p8));
-        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, buildGridGeom(params(), true, 1, p1, p4, p8, p5));
-        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, buildGridGeom(params(), true, 1, p2, p1, p5, p6));
-        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, buildGridGeom(params(), true, 1, p3, p2, p6, p7));
-        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, buildGridGeom(params(), true, 1, p8, p7, p6, p5));
+        RootGeoms r;
+        r.max_depth = md;
+        r.max_height = maxh;
+        r.geoms[0] = buildGridGeom(tp, true, 1, p1, p2, p3, p4);
+        r.geoms[1] = buildGridGeom(tp, true, 1, p4, p3, p7, p8);
+        r.geoms[2] = buildGridGeom(tp, true, 1, p1, p4, p8, p5);
+        r.geoms[3] = buildGridGeom(tp, true, 1, p2, p1, p5, p6);
+        r.geoms[4] = buildGridGeom(tp, true, 1, p3, p2, p6, p7);
+        r.geoms[5] = buildGridGeom(tp, true, 1, p8, p7, p6, p5);
+        return r;
+    }
+
+    // Main thread: apply the worker-built root terrain (GL upload + Bullet
+    // collision) and flip `ready` so the body becomes drawable.
+    void AttachRoot(const RootGeoms &r) {
+        max_depth = r.max_depth;
+        surface.max_height = r.max_height;
+        const glm::vec3 p1 = glm::normalize(glm::vec3( 1, 1, 1));
+        const glm::vec3 p2 = glm::normalize(glm::vec3(-1, 1, 1));
+        const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));
+        const glm::vec3 p4 = glm::normalize(glm::vec3( 1,-1, 1));
+        const glm::vec3 p5 = glm::normalize(glm::vec3( 1, 1,-1));
+        const glm::vec3 p6 = glm::normalize(glm::vec3(-1, 1,-1));
+        const glm::vec3 p7 = glm::normalize(glm::vec3(-1,-1,-1));
+        const glm::vec3 p8 = glm::normalize(glm::vec3( 1,-1,-1));
+        patches[0] = new GeoPatch(this, shader, 1, p1, p2, p3, p4, r.geoms[0]);
+        patches[1] = new GeoPatch(this, shader, 1, p4, p3, p7, p8, r.geoms[1]);
+        patches[2] = new GeoPatch(this, shader, 1, p1, p4, p8, p5, r.geoms[2]);
+        patches[3] = new GeoPatch(this, shader, 1, p2, p1, p5, p6, r.geoms[3]);
+        patches[4] = new GeoPatch(this, shader, 1, p3, p2, p6, p7, r.geoms[4]);
+        patches[5] = new GeoPatch(this, shader, 1, p8, p7, p6, p5, r.geoms[5]);
+        ready = true;
     }
 
     // Build the atmosphere rim shell on demand. It sits just above the
@@ -326,6 +392,19 @@ struct TerrainBody {
         ocean->shader = oceanshader;
         ocean->texture = nullptr;
         ocean_radius = shell_radius;
+    }
+
+    // Main thread: the full heavy phase -- attach the worker-built root
+    // terrain (BuildRootGeoms) and the demand-built shells (atmosphere rim,
+    // cloud deck, ocean). Used synchronously for the boot-critical bodies
+    // (home, its moon, the star) and from the deferred bodies' JobRunner
+    // continuations.
+    void Finish(const RootGeoms &r, Shader *atmos, Shader *cloud, int cloudres,
+                Shader *ocean, JobRunner &jobs) {
+        AttachRoot(r);
+        BuildAtmosphere(atmos);
+        BuildClouds(cloud, cloudres, jobs);
+        BuildOcean(ocean);
     }
 
     void DrawOcean(const Camera *camera, TerrainBody *sun,
@@ -489,6 +568,7 @@ struct TerrainBody {
     }
 
     void Draw(const Camera* camera, TerrainBody *sun, Frame *renderFrame) {
+        if(!ready) return;   // root terrain not attached yet (deferred)
         sunlightVec = glm::vec3(SunlightDir(this, sun, renderFrame));
 
         // Body-constant uniforms upload once per pass; the MVP is per
@@ -521,12 +601,14 @@ struct TerrainBody {
     }
 
     void Update(const Camera* camera, int max_patch_px, JobRunner &jobs) {
+        if(!ready) return;
         for(auto&& patch : patches) {
             patch->Update(camera, transform, max_patch_px, jobs);
         }
     }
 
     int CountPatches() {
+        if(!ready) return 0;
         int ret = 0;
         for(auto&& patch : patches) {
             ret += patch->CountChildren();

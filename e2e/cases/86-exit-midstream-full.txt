@@ -1,0 +1,23 @@
+# Exit while the BIG system's terrain is still streaming.
+#
+# This guards the light/heavy split (TerrainBody::ready / BuildRootGeoms /
+# AttachRoot). On a 240-body system the heavy phase (root terrain + shells)
+# streams on the worker for ~6s. If the player quits early, shutdown runs
+# job.join() (drains the queued BuildRootGeoms) but the AttachRoot
+# CONTINUATIONS never run (poll() only happens in the main loop, which has
+# already exited) -- so most bodies are left unattached. ~TerrainBody then
+# deletes all six patch slots: they must be nullptr (value-initialized in
+# terrain.h) or this aborts with "free(): invalid pointer" / a segfault.
+# A short --timeout guarantees a large unattached set at exit.
+NAME exit-midstream-full
+ARGS --system res/solar_system_full.json --timeout 1
+EXPECT Loaded system 'res/solar_system_full.json'
+EXPECT Main loop starting
+FORBID free(): invalid pointer
+FORBID free(): corrupted
+FORBID double free
+FORBID invalid user data pointer
+FORBID Segmentation fault
+FORBID GL_
+FORBID error:
+LIMIT 90

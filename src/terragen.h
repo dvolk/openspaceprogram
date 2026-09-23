@@ -114,7 +114,9 @@ struct Surface {
     glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
     std::vector<PaletteStop> palette;  // empty => type-based default palette
     float max_height = 1.0f;     // [m] highest relief above sea level
-                                 // (measured numerically by load_system)
+                                 // (measured numerically by the heavy phase,
+                                 //  TerrainBody::BuildRootGeoms; the default
+                                 //  holds until AttachRoot applies it)
     // Per-body noise orientation (set by load_system from "seed"). A
     // rotation, not an additive offset: adding seed*100 to the sample
     // point pushed the high-octave noise coordinates into the float

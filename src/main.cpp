@@ -312,8 +312,10 @@ int main(int argc, char **argv)
     postfx->Resize(display.get_width(), display.get_height());
 
     // The progress hook redraws the "loading..." label (now with the body
-    // name + count) after each body's terrain/physics is built, so a big
-    // system shows visible progress instead of a frozen window.
+    // name + count) after each body's LIGHT phase (surface params + frames)
+    // is built; the heavy terrain/physics is deferred to the worker, so this
+    // now covers a fast pass and a big system shows progress instead of a
+    // frozen window.
     //
     // Throttled to ~10 fps: each draw ends in a SwapBuffers that blocks on
     // vsync (~16 ms at 60 Hz), so drawing all 240 bodies would add ~4 s of
@@ -381,15 +383,39 @@ int main(int argc, char **argv)
         game.audio.setMusic("res/ville_seppanen-1_g.ogg");
     }
 
-    // Build the atmosphere rim + cloud deck shells now that the bodies,
-    // the shaders and the job runner exist. Bodies without either are
-    // no-ops (no mesh, no cost). BuildClouds posts its coverage bake to
-    // the runner (the deck draws a solid placeholder until it lands), so
-    // the ~0.4s-per-body CPU cost no longer stalls startup.
-    for(auto&& b : sys.bodies) {
-        b->BuildAtmosphere(atmosphereshader);
-        b->BuildClouds(cloudshader, args.cloud_mesh, game.jobs);
-        b->BuildOcean(oceanshader);
+    // The heavy phase (max_height + root terrain + the atmosphere/cloud/
+    // ocean shells) is the part that made a big system take ~7s. Split it:
+    // build the boot-critical bodies (the ship's home, its moon, the star)
+    // synchronously so the title + ship are solid from the first frame, and
+    // defer the rest to the worker so they stream in while the game runs.
+    // A body simply isn't drawn until its heavy phase lands (ready).
+    //
+    // BuildClouds still posts its coverage bake to the runner (the deck
+    // draws a solid placeholder until it lands), so that ~0.4s-per-body cost
+    // never stalls anything.
+    {
+        const int cloudres = args.cloud_mesh;
+        for(TerrainBody *b : sys.bodies) {
+            if(b == home || b == sys.moon || b == sun) {
+                b->Finish(b->BuildRootGeoms(), atmosphereshader, cloudshader,
+                          cloudres, oceanshader, game.jobs);
+            } else {
+                const std::string label = std::string("Terrain (") + b->name + ")";
+                // The worker body only uses `b` (BuildRootGeoms is pure); the
+                // rest are carried so the main-thread continuation can capture
+                // them (the worker never dereferences them).
+                game.jobs.post(label,
+                    [b, atmosphereshader, cloudshader, cloudres, oceanshader,
+                     &game]() -> std::function<void()> {
+                    auto r = b->BuildRootGeoms();   // worker: pure math
+                    return [b, r, atmosphereshader, cloudshader, cloudres,
+                            oceanshader, &game]() {
+                        b->Finish(r, atmosphereshader, cloudshader, cloudres,
+                                  oceanshader, game.jobs);
+                    };
+                });
+            }
+        }
     }
 
     // settings.json phase 2 (the args fields were applied before the

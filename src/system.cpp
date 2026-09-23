@@ -153,26 +153,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             s.seed_rot = glm::mat3(ry * rx);
         }
 
-        // The highest relief above sea level, measured on the height
-        // function itself: normalizes the palette elevation ramp and
-        // sizes the atmosphere shell + the shadow-test bound. Fibonacci
-        // sphere spread, 5% margin over the sampled max.
-        if(s.bands) {
-            s.max_height = 0.0f;   // gas giant: smooth sphere
-        } else {
-            const TerrainParams tp{s, (float)radius, nullptr};
-            const int N = 2048;
-            const float golden = 2.39996322972865332f;   // golden angle
-            float hi = 0.0f;
-            for(int i = 0; i < N; i++) {
-                const float y = 1.0f - 2.0f * (i + 0.5f) / (float)N;
-                const float rr = std::sqrt(std::max(0.0f, 1.0f - y * y));
-                const glm::vec3 d(rr * std::cos(i * golden), y,
-                                  rr * std::sin(i * golden));
-                hi = std::max(hi, terrainHeight(d, tp) - (float)radius);
-            }
-            s.max_height = std::max(1.0f, (hi - s.sea_level) * 1.05f);
-        }
+        // max_height + the root terrain are the body's heavy phase (see
+        // TerrainBody::BuildRootGeoms / AttachRoot): built by the worker
+        // after the light phase so the title can appear before every body's
+        // terrain is in. surface.max_height keeps its default until then.
 
         // Shader + elevation palette by body type.
         if(type == "star") {
@@ -278,8 +262,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         f->has_rot_frame = true;
         f->children.push_back(rf);
 
-        // Build the terrain mesh + collision (needs shader/colour_func set).
-        body->Create((float)radius, (float)mass);
+        // The heavy phase (max_height + root terrain + shells) is NOT built
+        // here: it is deferred to the worker (TerrainBody::Finish) so the
+        // light phase above -- orbital/physical values only -- stays fast and
+        // the title can appear before every body's terrain is in. The body
+        // simulates fine without it; it just isn't drawn until ready.
 
         sys.bodies.push_back(body);
 
