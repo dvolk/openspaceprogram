@@ -420,13 +420,13 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g) {
     refreshFuel();
 
     for(size_t ei = 0; ei < sim.engines.size(); ei++) {
-        if(sim.parts[sim.engines[ei].part].stage <= minStage) {
+        if(sim.parts[sim.engines[ei].part].stage >= maxStage) {
             sim.engines[ei].lit = true;
         }
     }
 
-    for(int s = minStage; s <= maxStage; s++) {
-        if(s > minStage) {
+    for(int s = maxStage; s >= minStage; s--) {
+        if(s < maxStage) {
             for(size_t ei = 0; ei < sim.engines.size(); ei++) {
                 SimEngine &e = sim.engines[ei];
                 if(!e.lit && e.part >= 0 && sim.parts[e.part].alive
@@ -446,7 +446,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g) {
 
         // A stage that separates nothing and is not the last only lights
         // engines (the counter steps through it); no burn of its own.
-        const bool isFinal = (s == maxStage);
+        const bool isFinal = (s == minStage);
         if(!isFinal && drop.empty()) { continue; }
 
         StageRow row;

@@ -552,8 +552,9 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             }
         }
 
-        /* stage: reserved for staging (separable stages); no runtime effect
-           yet -- parsed and validated so the schema is settled. */
+        /* stage: the staging number. Gates ignition (an engine lights once
+           the stage counter reaches it and stays lit) and decoupling (a
+           decoupler fires when the counter is at its stage). */
         sp.stage = pv.value("stage", 1);
         if(sp.stage < 1) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path

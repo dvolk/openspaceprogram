@@ -989,16 +989,18 @@ void Vehicle::finalize() {
     if(parts.empty()) { return; }
     if(controller == nullptr) { controller = parts[0]; }
     /* stage bookkeeping: totalStages_ = the highest stage number (the
-       "stage X of N" readout); activeStage_ starts at the LOWEST stage
-       on the ship, so the lowest engines fire at t=0 (a ship whose first
-       engine is stage 2 still lifts off). Both computed once here. */
+       counter's start + the "stage X of N" N); minStage_ = the lowest (the
+       counter's floor); activeStage_ starts at the HIGHEST stage, so the
+       highest-numbered engines fire at t=0 and stage 1 fires last (a ship
+       whose first engine is stage N still lifts off). Computed once here. */
     totalStages_ = 1;
     int lowest = parts[0]->stage;
     for(size_t i = 1; i < parts.size(); i++) {
         if(parts[i]->stage > totalStages_) { totalStages_ = parts[i]->stage; }
         if(parts[i]->stage < lowest) { lowest = parts[i]->stage; }
     }
-    activeStage_ = lowest;
+    minStage_ = lowest;
+    activeStage_ = totalStages_;
     /* fuel groups: an engine draws from the tanks it's connected to
        (its fuel group), not by stage -- the weld links are known now. */
     buildFuelGroups();
@@ -1302,7 +1304,7 @@ void Vehicle::power_log(double time) {
 
 int Vehicle::activeStage() { return activeStage_; }
 
-void Vehicle::advanceStage() { if(activeStage_ < totalStages_) { activeStage_++; } }
+void Vehicle::advanceStage() { if(activeStage_ > minStage_) { activeStage_--; } }
 
 int Vehicle::numStages() { return totalStages_; }
 
@@ -1318,7 +1320,7 @@ float Vehicle::getThrust() {
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     double t = 0;
     for(Part *p : parts) {
-        if(!p->isThruster() || p->stage > as) { continue; }
+        if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
             t += jetThrust(v_air, rho, rho_sea, p->def->jet_fan_thrust,
                            p->def->fuel_rate, p->def->exhaust_velocity,
@@ -2123,9 +2125,13 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     }
     B->crew.clear();
 
-    /* stage counters: the union (the parts keep their baked-in numbers). */
+    /* stage counters: the union (the parts keep their baked-in numbers).
+       The counter walks down from totalStages_ to minStage_, so "further
+       along" is a LOWER counter; the more-advanced ship (the lower counter
+       and lower floor) governs the merge. */
     if(B->totalStages_ > totalStages_) { totalStages_ = B->totalStages_; }
-    if(B->activeStage_ > activeStage_) { activeStage_ = B->activeStage_; }
+    if(B->activeStage_ < activeStage_) { activeStage_ = B->activeStage_; }
+    if(B->minStage_ < minStage_) { minStage_ = B->minStage_; }
 
     clearThrust();
     clearRotCmd();
@@ -2450,7 +2456,7 @@ float Vehicle::GetActiveThrust() {
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     double t = 0;
     for(Part *p : parts) {
-        if(!p->isThruster() || p->stage > as) { continue; }
+        if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
             t += jetThrust(p->def->exhaust_velocity * 0.5, rho_sea, rho_sea,
                            p->def->jet_fan_thrust, p->def->fuel_rate,
@@ -2477,7 +2483,7 @@ void Vehicle::ApplyThrust(double step) {
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
-        if(p->stage > as) { continue; } /* not ignited yet */
+        if(p->stage < as) { continue; } /* not ignited yet */
         const float flow =
             (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
         if(p->isJet()) {

@@ -443,7 +443,7 @@ void draw3d(Game &g, TransferPlanner &planner) {
                Thrust feedback comes from the ship's acceleration + HUD. */
             if(p->isJet()) { continue; }
             /* only engines actually thrusting THIS tick (armed in
-               ApplyThrust: ignited = stage <= counter, AND drew propellant).
+               ApplyThrust: ignited = stage >= counter, AND drew propellant).
                m_thrust above is a coarse "something fired" flag, so without
                this check a lit stage would paint fake plumes on the engines
                of un-ignited higher stages. */

@@ -1176,7 +1176,7 @@ int main() {
         CHECK(hb2.parts.size() == hb.parts.size());
         CHECK(hb2.fuelLinks.size() == 2);
         CHECK(hb2.controllerId == "capsule_1");
-        CHECK(hb2.parts[0].stage == 4);
+        CHECK(hb2.parts[0].stage == 1);
         for(size_t i = 0; i < hb.parts.size(); i++) {
             CHECK(hb2.parts[i].id == hb.parts[i].id);
             CHECK(vnear(hb2.parts[i].localPos, hb.parts[i].localPos));

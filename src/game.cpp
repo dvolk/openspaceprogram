@@ -1068,7 +1068,7 @@ void Game::undock() {
    subtree comes off as a SEPARATE ship (the same extractSubtreeAsShip
    primitive undock uses -- not a delete) and is returned to the fleet, so
    the dropped stages keep flying rather than vanishing (like KSP). The
-   survivor stays the active ship and its stage counter advances so the
+   survivor stays the active ship and its stage counter steps down so the
    next stage's engines light. One-shot (the SPACE handler in events.cpp).
 
    A decoupler nested inside another's subtree on the same stage is absorbed
@@ -1111,57 +1111,59 @@ void Game::stage() {
        shallowest-first. */
     std::vector<Part *> decs;
     for(Part *p : dropped) { if(p->isDecoupler()) { decs.push_back(p); } }
-    if(decs.empty()) {
-        printf("Stage: nothing left to separate\n");
-        return;
-    }
-    auto depth = [&](Part *p) {
-        int d = 0;
-        while(p->parent != nullptr) { d++; p = p->parent; }
-        return d;
-    };
-    std::sort(decs.begin(), decs.end(),
-              [&](Part *x, Part *y) { return depth(x) < depth(y); });
-
-    /* De-duplicate a name against the live fleet (first keeps the bare name,
-       later ones get #2, #3 ..) -- the same rule Ships::dedupName uses,
-       inlined so the new ships register as they split. */
-    auto dedup = [&](const std::string &base) -> std::string {
-        std::string nm = base;
-        int n = 2;
-        for(;;) {
-            bool taken = false;
-            for(Vehicle *s : collectVehicles(sys)) {
-                if(s->name == nm) { taken = true; break; }
-            }
-            if(!taken) { return nm; }
-            nm = base + " #" + std::to_string(n);
-            n++;
-        }
-    };
-
     int ships = 0, parts = 0;
-    for(Part *d : decs) {
-        /* Name: the parent ship's name, qualified by the decoupler part so
-           several ships from one staging stay distinguishable. */
-        std::string base = a->name;
-        const std::string qual =
-            d->def->display_name.empty() ? d->def->name : d->def->display_name;
-        if(!qual.empty()) { base += " " + qual; }
-        // The pop: a one-shot "slam" as the part separates. balance 0.4
-        // pulls the file's full-scale transient down to sit with the engine
-        // hum (the file peaks at 0 dB, and a transient reads louder than a
-        // steady loop at the same gain).
-        Vehicle *out = a->extractSubtreeAsShip(d, dedup(base));
-        if(out == nullptr) { continue; }   // already absorbed into an outer ship
-        audio.playOnce("res/qubodup-crash.wav", 0.4f);
-        out->enterWorld();
-        if(out->m_parent != nullptr) { out->m_parent->ships.push_back(out); }
-        ships++;
-        parts += (int)out->parts.size();
+    if(!decs.empty()) {
+        auto depth = [&](Part *p) {
+            int d = 0;
+            while(p->parent != nullptr) { d++; p = p->parent; }
+            return d;
+        };
+        std::sort(decs.begin(), decs.end(),
+                  [&](Part *x, Part *y) { return depth(x) < depth(y); });
+
+        /* De-duplicate a name against the live fleet (first keeps the bare
+           name, later ones get #2, #3 ..) -- the same rule Ships::dedupName
+           uses, inlined so the new ships register as they split. */
+        auto dedup = [&](const std::string &base) -> std::string {
+            std::string nm = base;
+            int n = 2;
+            for(;;) {
+                bool taken = false;
+                for(Vehicle *s : collectVehicles(sys)) {
+                    if(s->name == nm) { taken = true; break; }
+                }
+                if(!taken) { return nm; }
+                nm = base + " #" + std::to_string(n);
+                n++;
+            }
+        };
+
+        for(Part *d : decs) {
+            /* Name: the parent ship's name, qualified by the decoupler part
+               so several ships from one staging stay distinguishable. */
+            std::string base = a->name;
+            const std::string qual =
+                d->def->display_name.empty() ? d->def->name : d->def->display_name;
+            if(!qual.empty()) { base += " " + qual; }
+            // The pop: a one-shot "slam" as the part separates. balance 0.4
+            // pulls the file's full-scale transient down to sit with the engine
+            // hum (the file peaks at 0 dB, and a transient reads louder than a
+            // steady loop at the same gain).
+            Vehicle *out = a->extractSubtreeAsShip(d, dedup(base));
+            if(out == nullptr) { continue; }   // already absorbed into an outer ship
+            audio.playOnce("res/qubodup-crash.wav", 0.4f);
+            out->enterWorld();
+            if(out->m_parent != nullptr) { out->m_parent->ships.push_back(out); }
+            ships++;
+            parts += (int)out->parts.size();
+        }
     }
+    /* Step the counter on every press, even a decoupler-less stage (KSP
+       semantics, and what the VAB table assumes): a stage number with no
+       decoupler must not wedge the lower decouplers out of reach.
+       advanceStage() clamps at the lowest stage. */
+    a->advanceStage();
     if(ships > 0) {
-        a->advanceStage();
         /* part windows on the survivor address parts by index, which just
            shifted -- drop them rather than dangle. */
         dropPartWindowsFor(a);

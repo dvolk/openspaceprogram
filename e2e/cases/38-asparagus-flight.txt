@@ -6,20 +6,21 @@
 # The ship is a double-asparagus (two radial arms, each a 3-stage chain
 # C->B->A and F->E->D, both feeding the central engine) riding on a
 # 3-stage central stack: core (2 x tank_r2.25h5 + the central engine),
-# mid (tank_r1.5h3 + engine_r1.5h3, stage 5), upper (tank_r1h1 + engine,
-# stage 6, with the capsule on top). The stage counter gates ignition
-# (an engine fires only from its stage on), so the phases are:
+# mid (tank_r1.5h3 + engine_r1.5h3, stage 2), upper (tank_r1h1 + engine,
+# stage 1, with the capsule on top). The stage counter gates ignition
+# (an engine lights once the counter reaches its stage and stays lit),
+# so the phases are:
 #
 #   phase 1   6 arm engines + central   C and F drain (the outermost groups)
-#   stage 1   the C and F arms fly off (10 parts)
+#   stage 6   the C and F arms fly off (10 parts)
 #   phase 2   4 arm engines + central   B and E drain
-#   stage 2   the B and E arms fly off
+#   stage 5   the B and E arms fly off
 #   phase 3   2 arm engines + central   A and D drain
-#   stage 3   the A and D arms fly off
+#   stage 4   the A and D arms fly off
 #   phase 4   the central engine alone  the core (2 x tank_r2.25h5) drains
-#   stage 4   the core flies off (6 parts, decoupler included)
+#   stage 3   the core flies off (6 parts, decoupler included)
 #   phase 5   engine_r1.5h3 alone       the mid tank (tank_r1.5h3) drains
-#   stage 5   the mid stage flies off (5 parts, decoupler included)
+#   stage 2   the mid stage flies off (5 parts, decoupler included)
 #   phase 6   the final engine alone    the upper tank (tank_r1h1) drains
 #
 # Every --drain-log sample carries the thrust delivered that tick (N) and
@@ -41,8 +42,8 @@
 #
 # The group counts 9 -> 7 -> 5 -> 3 -> 2 -> 1 pin the staging itself; the
 # EXPECT lines pin that each drop took exactly the right parts, and the
-# stage-order CHECK pins the SEQUENCE (1 -> 2 -> 3 -> 4 -> 5, not any
-# other order).
+# stage-order CHECK pins the SEQUENCE (5 -> 4 -> 3 -> 2 -> 1, the counter
+# counting down, not any other order).
 #
 # A sample's rate covers the interval since the previous sample. The game
 # re-baselines the drain log on every stage drop, so a rate never mixes
@@ -58,15 +59,16 @@ ARGS --drain-log --fuel-log --timeout 70
 ARGS --sim-press 500,65500,T,12000,0,SPACE,24000,0,SPACE,36000,0,SPACE,48000,0,SPACE,60000,0,SPACE
 EXPECT [drainlog]
 EXPECT [fuel]
-EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 2 of 6
+EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 5 of 6
 EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 3 of 6
 EXPECT Stage: dropped 2 ship(s) / 10 part(s); now on stage 4 of 6
-EXPECT Stage: dropped 1 ship(s) / 6 part(s); now on stage 5 of 6
-EXPECT Stage: dropped 1 ship(s) / 5 part(s); now on stage 6 of 6
+EXPECT Stage: dropped 1 ship(s) / 6 part(s); now on stage 2 of 6
+EXPECT Stage: dropped 1 ship(s) / 5 part(s); now on stage 1 of 6
 FORBID GL_
 FORBID error:
-# STAGE ORDER: the drops happen 1 -> 2 -> 3 -> 4 -> 5, in that order.
-CHECK out.index("now on stage 2 of 6") < out.index("now on stage 3 of 6") < out.index("now on stage 4 of 6") < out.index("now on stage 5 of 6") < out.index("now on stage 6 of 6")
+# STAGE ORDER: the counter now counts down, so the drops land on
+# 5 -> 4 -> 3 -> 2 -> 1 (stage 1 fires last), in that order.
+CHECK out.index("now on stage 5 of 6") < out.index("now on stage 4 of 6") < out.index("now on stage 3 of 6") < out.index("now on stage 2 of 6") < out.index("now on stage 1 of 6")
 # PHASE 1: all seven engines lit (927872 N = 6 x 112464 + 253088), nine
 # groups (6 arms + core + mid + upper), exactly the two outermost draining
 # at 105.44 kg/s each; the first sample is skipped in the rate checks

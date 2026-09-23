@@ -111,11 +111,13 @@ static void test_two_stage() {
     BuildShip bs;
     // Upper: dry 50 + fuel 50 = wet 100. Engine dry 10.
     // Lower: dry 50 + fuel 150 = wet 200. Engine dry 10. Decoupler 5.
-    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, 2);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "upEng", upTank, 2);
-    const int dec = addPart(bs, cat.decoupler(5), "dec", upTank, 1);
-    const int loTank = addPart(bs, cat.tank(50, 75, 75), "loTank", dec, 1);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, 1);
+    // Stage 1 is the LAST to fire (the upper); stage 2 (the lower) fires
+    // first and drops.
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "upEng", upTank, 1);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", upTank, 2);
+    const int loTank = addPart(bs, cat.tank(50, 75, 75), "loTank", dec, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, 2);
 
     // Wet: 100+10+5+200+10 = 325. Dry: 50+10+5+50+10 = 125.
     CHECK_NEAR(partDryMass(*bs.parts[0].def), 50.0, 1e-9, "upper dry");
@@ -126,21 +128,21 @@ static void test_two_stage() {
     CHECK_TRUE(rows.size() == 2, "two rows");
     if(rows.size() != 2) { return; }
 
-    // Stage 1 (lower): burns 150 kg of the 200-kg tank while the upper
+    // Stage 2 (lower): burns 150 kg of the 200-kg tank while the upper
     // is still attached. m0 = 325, m1 = 325 - 150 = 175 (the empty lower
     // tank dry + engines + upper still hang on until the drop).
     // dv = 1000 * ln(325/175).
-    CHECK_TRUE(rows[0].stage == 1, "row0 is stage 1");
-    CHECK_TRUE(rows[0].drops, "stage 1 drops");
+    CHECK_TRUE(rows[0].stage == 2, "row0 is stage 2");
+    CHECK_TRUE(rows[0].drops, "stage 2 drops");
     CHECK_NEAR(rows[0].massStart, 325.0, 1e-6, "s1 m0");
     CHECK_NEAR(rows[0].massEnd, 175.0, 1e-6, "s1 m1 (before drop)");
     CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(325.0 / 175.0), 1e-4, "s1 dv");
 
-    // Stage 2 (upper): after dropping dec+lower (5+50+10 = 65 kg dry),
+    // Stage 1 (upper): after dropping dec+lower (5+50+10 = 65 kg dry),
     // m0 = 175 - 65 = 110, burns 50 kg -> m1 = 60.
     // dv = 1000 * ln(110/60).
-    CHECK_TRUE(rows[1].stage == 2, "row1 is stage 2");
-    CHECK_TRUE(!rows[1].drops, "stage 2 does not drop");
+    CHECK_TRUE(rows[1].stage == 1, "row1 is stage 1");
+    CHECK_TRUE(!rows[1].drops, "stage 1 does not drop");
     CHECK_NEAR(rows[1].massStart, 110.0, 1e-6, "s2 m0");
     CHECK_NEAR(rows[1].massEnd, 60.0, 1e-6, "s2 m1");
     CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(110.0 / 60.0), 1e-4, "s2 dv");
@@ -199,20 +201,21 @@ static void test_inert_resources() {
 static void test_inert_drop() {
     Catalog cat;
     BuildShip bs;
-    // Upper: tank + engine (stage 2). Then an inert sep (stage 2) with a
-    // dummy block below it. Lower booster on stage 1 with its own engine.
-    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, 3);
+    // Upper: tank (stage 1, fires last) + engine (stage 2). Then an inert
+    // sep (stage 2) with a dummy block below it. Lower booster on stage 3
+    // (fires first) with its own engine.
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, 1);
     addPart(bs, cat.engine(10, 0.5, 1000.0), "upEng", upTank, 2);
     const int sep = addPart(bs, cat.decoupler(5), "sep", upTank, 2);
     addPart(bs, cat.tank(20, 0, 0), "dummy", sep, 2);
-    const int dec = addPart(bs, cat.decoupler(5), "dec", upTank, 1);
-    const int loTank = addPart(bs, cat.tank(50, 75, 75), "loTank", dec, 1);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, 1);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", upTank, 3);
+    const int loTank = addPart(bs, cat.tank(50, 75, 75), "loTank", dec, 3);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, 3);
 
-    // wet = 100+10+5+20+5+200+10 = 350. Stage 1 lights only the lower
-    // engine (upper is stage 2): burns the lower's 150 kg, m 350 -> 200.
-    // Drop 65 -> 135. Stage 2 lights the upper, drops the inert sep, and
-    // must still burn the upper's 50 kg: 135 -> 85.
+    // wet = 100+10+5+20+5+200+10 = 350. Stage 3 (the highest) lights the
+    // lower engine (the upper is stage 2): burns the lower's 150 kg,
+    // m 350 -> 200. Drop 65 -> 135. Stage 2 lights the upper, drops the
+    // inert sep, and must still burn the upper's 50 kg: 135 -> 85.
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
     CHECK_TRUE(rows.size() >= 2, "inert-drop: at least two rows");
     if(rows.size() < 2) { return; }
@@ -238,27 +241,26 @@ static void test_zero_g() {
 }
 
 // Asparagus pair: outer booster feeds the core (fuel link outer -> core).
-// Both engines light at stage 1; the outer drop is stage 1. The outer
-// tanks empty FIRST (they sit in the core engine's furthest drain layer
-// and also feed the outer engine), then the booster drops, then the core
-// keeps burning its own tank (stage 2 / final).
+// Both engines light at launch; the outer drop is on the same (highest)
+// stage. The outer tanks empty FIRST (they sit in the core engine's
+// furthest drain layer and also feed the outer engine), then the booster
+// drops, then the core keeps burning its own tank (stage 1 / final).
 //
-//   coreTank (stage 2) -- coreEng (stage 2)
-//   dec (stage 1) -- outerTank (stage 1) -- outerEng (stage 1)
+//   coreTank (stage 1) -- coreEng (stage 2)
+//   dec (stage 2) -- outerTank (stage 2) -- outerEng (stage 2)
 //   link: outerTank -> coreTank
 //
-// Engines both fire at launch (stage 1), including the core (stage 2
-// lights when the counter reaches 2 -- so for this test put BOTH engines
-// on stage 1 so they burn together through the asparagus phase).
+// Both engines sit on stage 2 (the highest, so they fire together from
+// launch through the asparagus phase); the core tank is stage 1 (final).
 static void test_asparagus() {
     Catalog cat;
     BuildShip bs;
-    const int coreTank = addPart(bs, cat.tank(50, 50, 50), "coreTank", -1, 2);
-    // Core engine on stage 1: lights at launch beside the booster.
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", coreTank, 1);
-    const int dec = addPart(bs, cat.decoupler(5), "dec", coreTank, 1);
-    const int outTank = addPart(bs, cat.tank(50, 50, 50), "outTank", dec, 1);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "outEng", outTank, 1);
+    const int coreTank = addPart(bs, cat.tank(50, 50, 50), "coreTank", -1, 1);
+    // Core engine on stage 2: lights at launch beside the booster.
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", coreTank, 2);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", coreTank, 2);
+    const int outTank = addPart(bs, cat.tank(50, 50, 50), "outTank", dec, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "outEng", outTank, 2);
     addLink(bs, "outTank", "coreTank");   // outer feeds core (asparagus)
 
     // wet: coreTank 150 + coreEng 10 + dec 5 + outTank 150 + outEng 10 = 325
@@ -266,10 +268,10 @@ static void test_asparagus() {
     // Drain layers of the core engine: [out], [core] -- outer first.
     // Drain layers of the outer engine: [out] only.
     // Combined they empty OUTER first at 2 kg/s. Outer has 100 kg fuel.
-    // Stage 1 stops when outer is empty of drainable fuel: 100 kg burned
-    // in 50 s. Mass falls 325 -> 225 (both dry cores remain).
-    // Drop outer: 50 dry + 10 eng + 5 dec = 65. Remaining = 160.
-    // Stage 2 (final): core engine burns the core 100 kg. 160 -> 60.
+    // Stage 2 (the booster stage) stops when outer is empty of drainable
+    // fuel: 100 kg burned in 50 s. Mass falls 325 -> 225 (both dry cores
+    // remain). Drop outer: 50 dry + 10 eng + 5 dec = 65. Remaining = 160.
+    // Stage 1 (final): core engine burns the core 100 kg. 160 -> 60.
     const double g = 10.0;
     const std::vector<StageRow> rows = computeStaging(bs, g);
     CHECK_TRUE(rows.size() == 2, "asparagus: two rows");
@@ -304,11 +306,11 @@ static void test_barrier_no_link() {
     Catalog cat;
     BuildShip bs;
     // Core carries a LARGER tank (150 kg fuel) so it outlasts the outer.
-    const int coreTank = addPart(bs, cat.tank(50, 75, 75), "coreTank", -1, 2);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", coreTank, 1);
-    const int dec = addPart(bs, cat.decoupler(5), "dec", coreTank, 1);
-    const int outTank = addPart(bs, cat.tank(50, 50, 50), "outTank", dec, 1);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "outEng", outTank, 1);
+    const int coreTank = addPart(bs, cat.tank(50, 75, 75), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", coreTank, 2);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", coreTank, 2);
+    const int outTank = addPart(bs, cat.tank(50, 50, 50), "outTank", dec, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "outEng", outTank, 2);
 
     const double g = 10.0;
     const std::vector<StageRow> rows = computeStaging(bs, g);

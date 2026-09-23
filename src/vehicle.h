@@ -580,23 +580,25 @@ public:
     void power_log(double time);
 
     /* Staging state. `activeStage_` is a monotonic stage COUNTER (the stage
-       about to be triggered): it starts at 1 and advances by one on each
-       stage press, whether or not that stage had a decoupler. This is what
-       lets a part on a lower stage (the central engine) keep firing after a
-       HIGHER-numbered part above it has already been triggered -- the old
-       "lowest stage number on the ship" rule got stuck at 1 forever in that
-       case. An engine fires once the counter has reached its stage
-       (stage <= activeStage_) and then stays lit; a decoupler triggers
-       (drops its child-side subtree) when the counter is at its stage.
-       `totalStages_` is the highest stage number on the ship at build time,
-       for the "stage X of N" readout. */
+       about to be triggered): it starts at the HIGHEST stage number and
+       steps down by one on each stage press, whether or not that stage had
+       a decoupler, so the highest-numbered stage fires first and stage 1
+       fires last. This is what lets a part on a higher stage (the central
+       engine) keep firing after a LOWER-numbered part below it has already
+       been triggered. An engine fires once the counter has reached its
+       stage (stage >= activeStage_) and then stays lit; a decoupler
+       triggers (drops its child-side subtree) when the counter is at its
+       stage. `totalStages_` is the highest stage number on the ship at
+       build time (the counter's start, and the "stage X of N" N);
+       `minStage_` is the lowest (the counter's floor for advanceStage). */
     int activeStage_ = 1;
     int totalStages_ = 1;
+    int minStage_ = 1;
 
     /* The active stage (the counter, see above). */
     int activeStage();
-    /* Advance to the next stage (clamped at the last one). Called once per
-       stage press, after the current stage's decouplers have fired. */
+    /* Step to the previous stage (clamped at the lowest one). Called once
+       per stage press, after the current stage's decouplers have fired. */
     void advanceStage();
 
     /* Total number of stages on the ship (the highest stage number at build
@@ -969,7 +971,7 @@ protected:
     void adjustThrottle(float delta);
 
     /* the ship's full-throttle thrust RIGHT NOW (N) = the sum of every
-       engine that has already been ignited (stage <= the stage counter) of
+       engine that has already been ignited (stage >= the stage counter) of
        its full thrust (each T = (H2 + LOX flow) x ve = 2 x fuel_rate x ve,
        both propellants end up in the plume), scaled by exhaust_scale (the
        test knob). Engines stay lit once ignited, so this is the sum of all
@@ -981,7 +983,7 @@ protected:
        Consumes the tick's fuel and arms the per-thruster thrust; the force
        itself is applied by applyThrustForce() before EVERY substep below.
        A thruster that can't consume its flow this tick doesn't thrust.
-       Every engine that has already been ignited (stage <= the stage
+       Every engine that has already been ignited (stage >= the stage
        counter) fires, and each draws its OWN fuel group's tanks (see
        fuelPool) -- so an engine keeps burning from its connected propellant
        until it runs dry or its tanks are dropped. Stage gates WHEN it

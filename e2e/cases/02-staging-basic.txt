@@ -1,5 +1,5 @@
 # Staging: on the pad, the first SPACE fires the stager's decoupler
-# (stage 1), dropping the boosters; the second finds no decoupler at stage 2
+# (stage 2), dropping the boosters; the second finds no decoupler at stage 1
 # (the capsule's stage), so nothing is dropped -- the capsule (which carries
 # the crew) is safe because it sits on the root side of the decoupler.
 # Verifies the stage-separation path end to end.
