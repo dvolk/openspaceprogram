@@ -376,7 +376,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             const double alt = surface_mode ? agl : asl;
             const double spd = surface_mode ? glm::length(surf_vel) : speed;
             ImGui::PushFont(g.bigger);
-            ImGui::Text("%06dm/s   %08dm", (int)spd, (int)alt);
+            /* %.0f, not a (int) cast: at oort distances the altitude is
+               ~1e15, far past int range -- the cast is UB and x86-64
+               returns INT_MIN, which read as a negative altitude. */
+            ImGui::Text("%06.0fm/s   %08.0fm", spd, alt);
             ImGui::PopFont();
         }
         if(sys.home) {

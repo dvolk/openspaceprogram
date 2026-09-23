@@ -79,14 +79,16 @@ int sim_parse_button(const std::string &s) {
 }
 
 // "1d 04:03:02" or "04:03:02" — ToF / orbit-period readouts.
+// long long, not int: oort/interstellar-class ToFs exceed INT_MAX days,
+// and the out-of-range double->int cast is UB (INT_MIN on x86-64).
 std::string fmt_time(double s) {
     if(s < 0.0) s = 0.0;
-    const int d = (int)(s / 86400.0);
-    const int h = (int)(s / 3600.0) % 24;
-    const int m = (int)(s / 60.0) % 60;
-    const int sec = (int)s % 60;
-    char buf[32];
-    if(d > 0) { snprintf(buf, sizeof buf, "%dd %02d:%02d:%02d", d, h, m, sec); }
-    else     { snprintf(buf, sizeof buf, "%02d:%02d:%02d", h, m, sec); }
+    const long long d = (long long)(s / 86400.0);
+    const long long h = (long long)(s / 3600.0) % 24;
+    const long long m = (long long)(s / 60.0) % 60;
+    const long long sec = (long long)s % 60;
+    char buf[48];
+    if(d > 0) { snprintf(buf, sizeof buf, "%lldd %02lld:%02lld:%02lld", d, h, m, sec); }
+    else     { snprintf(buf, sizeof buf, "%02lld:%02lld:%02lld", h, m, sec); }
     return buf;
 }
