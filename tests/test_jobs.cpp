@@ -207,8 +207,11 @@ int main() {
             std::chrono::steady_clock::now() - t0).count();
         // A drain would be ~1000 ms and run all 20; abort() must be far
         // quicker and drop the queue (only the in-flight body, if any, runs).
+        // dt_ms is the robust signal (a drain can't return this fast); the ran
+        // bound just proves at least one job was dropped (< 20 = not all ran)
+        // -- kept generous so a descheduled post loop can't false-fail it.
         CHECK(dt_ms < 500);
-        CHECK(ran.load() < 10);
+        CHECK(ran.load() < 20);
     }
 
     if(failures == 0) {

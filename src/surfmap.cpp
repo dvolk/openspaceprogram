@@ -68,19 +68,15 @@ void surfmapCompute(Game &g) {
     glm::dvec3 sun_dir;
     const bool baked = g.surfmap_shade && sunDirRot(body, sun, sun_dir);
 
-    // Snapshot the rest (values only) and hand the sweep to the worker
-    // (g.jobs), like the porkchop grid: the frame stays responsive and
-    // the last map stays on screen until the job lands. The worker calls
-    // body->SurfaceColor per pixel: that state (the terrain params, the
-    // palette, the radius) is set once in the light phase and the bodies
-    // outlive every job (main.cpp joins g.jobs before freeing them), so the
-    // off-thread READ is safe -- the same const data buildGridGeom
-    // (terragen.h) baked into the mesh. The one field written AFTER the
-    // light phase is surface.max_height (applied by AttachRoot on the main
-    // thread); a body is only surfaced once it is drawn, i.e. already
-    // ready, so in practice that write lands before this read -- the narrow
-    // window where it is still the 1.0f default would only mis-normalize the
-    // palette ramp (visual), not corrupt memory.
+    // Snapshot the terrain params (values only) and hand the sweep to the
+    // worker (g.jobs), like the porkchop grid: the frame stays responsive
+    // and the last map stays on screen until the job lands. The worker
+    // colours every pixel from THIS snapshot (terrainSurfaceColor with tp),
+    // never from the live body: surface.max_height is applied LATER by
+    // AttachRoot on the main thread (the body's heavy phase), so a live
+    // per-pixel read would race that write. Snapshotting at post time is the
+    // same idiom the porkchop grid and the cloud bake already use.
+    const TerrainParams tp = body->params();
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
     const double t_now = g.time;
@@ -90,7 +86,7 @@ void surfmapCompute(Game &g) {
     // can name it; the worker body itself never touches game state. A
     // by-value capture would copy the non-copyable Game (the JobRunner
     // member forbids it).
-    g.jobs.post("Surface map", [&g, body, sun_dir, w, h, baked, log,
+    g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, log,
                                 body_name, t_now]()
                 -> std::function<void()> {
         // Worker thread: build the pixel buffer. No game-state WRITE, GL
@@ -105,7 +101,7 @@ void surfmapCompute(Game &g) {
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
                 const glm::dvec3 d = surfmapDir(i, j, w, h);
-                const glm::vec3 c = body->SurfaceColor((glm::vec3)d);
+                const glm::vec3 c = terrainSurfaceColor((glm::vec3)d, tp);
                 const float f = baked ? surfmapShade(d, sun_dir) : 1.0f;
                 unsigned char *q = &px[((size_t)j * w + i) * 4];
                 q[0] = (unsigned char)(std::min(1.0f, f * c.r) * 255.0f + 0.5f);
