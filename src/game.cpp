@@ -862,7 +862,9 @@ void Game::updateProximity() {
     const double r_on  = grounded ? args.prox_ground_on  : args.prox_fly_on;
     const double r_off = grounded ? args.prox_ground_off : args.prox_fly_off;
 
-    std::vector<Vehicle *> all = collectVehicles(sys);
+    // Reused scratch (collectVehiclesInto): this runs every tick.
+    static thread_local std::vector<Vehicle *> all;
+    collectVehiclesInto(sys, all);
     bool any_engaged = false;
     for(auto *s : all) {
         if(s == a) { continue; }

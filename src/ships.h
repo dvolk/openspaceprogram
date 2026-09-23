@@ -35,6 +35,11 @@ struct Kerbal;  // the crew characters (eva.h); spawn_crew_kerbal returns one
    M" means the same thing everywhere. */
 std::vector<Vehicle *> collectVehicles(System &sys);
 
+/* The same walk, appended into a reused buffer (cleared here): the
+   per-frame callers (tick, updateProximity) keep one scratch vector
+   instead of allocating a fleet snapshot every frame. */
+void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out);
+
 class Ships {
 public:
     /* parts_file:  the parts catalog to build ships from (owned, loaded here).

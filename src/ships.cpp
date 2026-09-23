@@ -24,14 +24,19 @@
 // orbit) so they don't spawn on top of each other.
 static const double ORBIT_SLOT_SPACING = 20.0;
 
-std::vector<Vehicle *> collectVehicles(System &sys) {
-    std::vector<Vehicle *> out;
+void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out) {
+    out.clear();
     for(auto *b : sys.bodies) {
         for(auto *s : b->ships) {
             out.push_back(s);
             for(auto *c : s->crew) { out.push_back(c); }
         }
     }
+}
+
+std::vector<Vehicle *> collectVehicles(System &sys) {
+    std::vector<Vehicle *> out;
+    collectVehiclesInto(sys, out);
     return out;
 }
 

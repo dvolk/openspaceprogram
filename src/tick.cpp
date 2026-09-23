@@ -30,8 +30,10 @@ void tick(Game &g) {
     // Snapshotted once up front so a ship that crosses a SoI boundary mid-tick
     // (switchFrames moves it between bodies' lists) is still updated exactly
     // once -- the pointers stay valid across the move, and substeps never
-    // move ships.
-    std::vector<Vehicle *> all = collectVehicles(g.sys);
+    // move ships. Reused scratch (collectVehiclesInto): one buffer for the
+    // whole session, not an allocation per frame.
+    static thread_local std::vector<Vehicle *> all;
+    collectVehiclesInto(g.sys, all);
 
     // clear stats and stuff; sync the exhaust-velocity test scale
     // (--exhaust-scale / the Settings slider) onto every ship.
@@ -207,7 +209,7 @@ void tick(Game &g) {
                one snapshot per step (not per walk), so a ship that
                switchFrames moves between body lists mid-step is walked
                exactly once. */
-            all = collectVehicles(g.sys);
+            collectVehiclesInto(g.sys, all);
 
             // The active ship's SOI owner before this tick's frame
             // bookkeeping (checked after the branch, below): crossing into
