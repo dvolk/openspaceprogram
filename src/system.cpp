@@ -268,6 +268,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         // the title can appear before every body's terrain is in. The body
         // simulates fine without it; it just isn't drawn until ready.
 
+        body->refreshParamsCache();   // surface/radius/colour_func are final
         sys.bodies.push_back(body);
 
         // Per-body progress: the caller draws a "loading..." frame here so a

@@ -158,14 +158,19 @@ struct TerrainBody {
     bool patchAlive(GeoPatch *p) const { return alive.count(p) > 0; }
 
     // The body's terrain math as a value snapshot for the worker thread
-    // (the same const data the mesh bakes; set once in load_system).
-    TerrainParams params() const {
-        TerrainParams t;
-        t.surface = surface;
-        t.radius = radius;
-        t.colour_func = colour_func;
-        return t;
+    // (the same const data the mesh bakes). CACHED, by reference: the
+    // inputs are written in exactly two places -- load_system pass 1 and
+    // AttachRoot (applying the computed max_height) -- and both refresh
+    // the cache, so the hot per-frame queries (GetTerrainHeight via
+    // ComputeTerrainShadow, the HUD readouts) don't deep-copy the palette
+    // vector every call.
+    const TerrainParams &params() const { return paramsCache_; }
+    void refreshParamsCache() {
+        paramsCache_.surface = surface;
+        paramsCache_.radius = radius;
+        paramsCache_.colour_func = colour_func;
     }
+    TerrainParams paramsCache_;
 
     // Defined in terrain.cpp (it also deletes the ships + space pads below,
     // which needs the complete Vehicle / StaticBuilding types).
@@ -275,6 +280,7 @@ struct TerrainBody {
     void AttachRoot(const RootGeoms &r) {
         max_depth = r.max_depth;
         surface.max_height = r.max_height;
+        refreshParamsCache();   // the palette ramp reads max_height
         const glm::vec3 p1 = glm::normalize(glm::vec3( 1, 1, 1));
         const glm::vec3 p2 = glm::normalize(glm::vec3(-1, 1, 1));
         const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));
