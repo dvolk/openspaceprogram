@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -98,5 +100,12 @@ struct System {
 
   Must be called after create_physics(), because Create() builds Bullet terrain
   collision.
+
+  `progress` (optional) is called on the caller's thread after each body's
+  terrain + collision is built, with (index, total, body name). The game uses
+  it to keep drawing a "loading..." frame so a big system shows progress
+  instead of a frozen window. Pass nullptr (the default) to load silently.
 */
-System load_system(const char *path, Shader *terrainshader, Shader *sunshader);
+System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
+                   std::function<void(size_t i, size_t total,
+                                      const std::string &name)> progress = nullptr);

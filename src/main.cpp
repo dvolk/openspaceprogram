@@ -78,6 +78,57 @@
    ship/part data model), shared with the JSON loaders and the headless
    tests. */
 
+// The SDL event queue is only drained by poll_events() inside the main loop,
+// which hasn't started yet during the pre-loop load. Pump it (routing events
+// through the ImGui backend, as events.cpp does) so a window-close during the
+// multi-second load is honoured promptly instead of sitting "frozen" until the
+// load finishes. Returns true if the user asked to quit.
+static bool pumpLoadingQuit() {
+    SDL_Event ev;
+    while(SDL_PollEvent(&ev)) {
+        ImGui_ImplSDL3_ProcessEvent(&ev);
+        if(ev.type == SDL_EVENT_QUIT) { return true; }
+    }
+    return false;
+}
+
+// The earliest frame the game can draw: the window, GL context, ImGui and a
+// font are up, but there is no world/shaders/Game yet. Draw a centered
+// "loading..." label on a black background and present it. Called once
+// before the slow init, and again from load_system's per-body progress hook
+// so the window never sits blank (and the label reads as progress) while a
+// big system builds.
+static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    display.Clear(0, 0, 0, 1);
+
+    // Fullscreen, undecorated window; the label is centered in it.
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+    ImGui::Begin("loading", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
+                 ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::PushFont(font);
+    const ImVec2 ts = ImGui::CalcTextSize(text);
+    ImGui::SetCursorPos(ImVec2((ImGui::GetWindowWidth()  - ts.x) * 0.5f,
+                               (ImGui::GetWindowHeight() - ts.y) * 0.5f));
+    ImGui::TextUnformatted(text);
+    ImGui::PopFont();
+    ImGui::End();
+
+    // Leave GL state where the main loop's ImGui pass expects it (no bound
+    // program / VAO) before the next init step or the real loop runs.
+    glUseProgram(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    display.SwapBuffers();
+}
+
 int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
@@ -146,6 +197,14 @@ int main(int argc, char **argv)
                                                   2.0f * args.font_size,
                                                   &font_cfg);
     check_gl_error();
+
+    // First thing the user sees: a "loading..." label, presented before the
+    // slow init (physics, shader compilation, the multi-second system load)
+    // so the window is never blank. The presented frame persists on screen
+    // through the init steps that don't present, and load_system's progress
+    // hook (below) keeps refreshing it.
+    if(pumpLoadingQuit()) { return 1; }
+    drawLoadingFrame(display, bigger, "loading...");
 
     // start bullet; see physics.cpp
     void create_physics(void);
@@ -252,7 +311,30 @@ int main(int argc, char **argv)
     }
     postfx->Resize(display.get_width(), display.get_height());
 
-    System sys = load_system(args.system_file.c_str(), terrainshader, sunshader);
+    // The progress hook redraws the "loading..." label (now with the body
+    // name + count) after each body's terrain/physics is built, so a big
+    // system shows visible progress instead of a frozen window.
+    //
+    // Throttled to ~10 fps: each draw ends in a SwapBuffers that blocks on
+    // vsync (~16 ms at 60 Hz), so drawing all 240 bodies would add ~4 s of
+    // pure UI pacing to the load. The epoch initial value lets the first body
+    // (and the final one, via the i+1<total guard) draw immediately; the rest
+    // draw at most every 100 ms.
+    auto last_loading_draw = std::chrono::steady_clock::time_point{};
+    System sys = load_system(args.system_file.c_str(), terrainshader, sunshader,
+        [&](size_t i, size_t total, const std::string &name) {
+            if(pumpLoadingQuit()) { std::exit(1); }   // window closed mid-load
+            auto now = std::chrono::steady_clock::now();
+            if(now - last_loading_draw < std::chrono::milliseconds(100)
+               && i + 1 < total) {
+                return;   // not time for another frame yet (still responsive to quit)
+            }
+            last_loading_draw = now;
+            char buf[160];
+            snprintf(buf, sizeof(buf), "loading %s  %zu / %zu",
+                     name.c_str(), i + 1, total);
+            drawLoadingFrame(display, bigger, buf);
+        });
     TerrainBody *sun = sys.root;
     TerrainBody *home;
     if(args.body_name.empty()) {

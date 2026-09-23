@@ -12,7 +12,9 @@
 
 #include "orbit.h"  // railStateFromElements
 
-System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
+System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
+                   std::function<void(size_t i, size_t total,
+                                      const std::string &name)> progress) {
     std::ifstream f(path);
     if(!f.is_open()) {
         throw std::runtime_error(std::string("system: cannot open ") + path);
@@ -280,6 +282,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader) {
         body->Create((float)radius, (float)mass);
 
         sys.bodies.push_back(body);
+
+        // Per-body progress: the caller draws a "loading..." frame here so a
+        // big system shows progress instead of a frozen window (see system.h).
+        if(progress) { progress(i, bodies.size(), body->name); }
     }
 
     // --- pass 2: wire the parent/child frame tree --------------------------
