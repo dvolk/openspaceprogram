@@ -220,23 +220,25 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
 // Format a sim-clock time (s) on the home body's calendar, the same
 // "Year ... Day d/N ... HH:MM" the top bar (HUD) shows, so a planned
 // departure time (a porkchop "Send best") can be read off against it.
-// Empty when there is no home calendar or t < 0.
-static std::string fmt_cal_time(const Calendar &cal, double t) {
-    if(!cal.valid() || t < 0.0) { return std::string(); }
+// Zero-alloc buffer-fill (the fmt.h convention): the HUD and the Transfer
+// window call this every frame, and the "Year ... Day d/N HH:MM" line is
+// long enough that returning it as a std::string heap-allocates each time.
+// Fills buf; returns false (empty buf) when there is no calendar line.
+static bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
+    if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
     const CalTime ct = cal.at(t);
-    char line[64];
     if(ct.has_year) {
         // CalTime only exposes month + day-of-month, so the day-of-year is
         // day + the days in the earlier months.
         int doy = ct.day;
         for(int m = 0; m < ct.month - 1; m++) { doy += cal.month_days[m]; }
-        snprintf(line, sizeof(line), "Year %04d   Day %d/%d   %02d:%02d",
+        snprintf(buf, n, "Year %04d   Day %d/%d   %02d:%02d",
                  ct.year, doy, cal.days_per_year, ct.hh, ct.mm);
     } else {
-        snprintf(line, sizeof(line), "Day %d   %02d:%02d",
+        snprintf(buf, n, "Day %d   %02d:%02d",
                  ct.day, ct.hh, ct.mm);
     }
-    return line;
+    return true;
 }
 
 // --- Telemetry window: a 2x2 grid of plots, each with a dropdown to pick
@@ -385,11 +387,11 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             ImGui::PopFont();
         }
         if(sys.home) {
-            const std::string line = fmt_cal_time(sys.home->cal, time);
-            if(!line.empty()) {
+            char line[64];
+            if(fmt_cal_time(sys.home->cal, time, line, sizeof line)) {
                 ImGui::SetCursorPosX((ImGui::GetWindowWidth()
-                    - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
-                ImGui::TextUnformatted(line.c_str());
+                    - ImGui::CalcTextSize(line).x) * 0.5f);
+                ImGui::TextUnformatted(line);
             }
         }
     });
@@ -711,10 +713,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                                    "DEPARTURE NOW -- burn");
             }
             if(sys.home) {
-                const std::string dt = fmt_cal_time(sys.home->cal,
-                                                    planner.xfer_t_dep);
-                if(!dt.empty()) {
-                    ImGui::Text("departure:    %s", dt.c_str());
+                char dt[64];
+                if(fmt_cal_time(sys.home->cal, planner.xfer_t_dep,
+                                dt, sizeof dt)) {
+                    ImGui::Text("departure:    %s", dt);
                 }
             }
             if(ImGui::Button("Clear plan")) {

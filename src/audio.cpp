@@ -142,7 +142,7 @@ void Audio::primeTrack(MIX_Track *t) {
     MIX_StopTrack(t, 0);   // the callback ran at least once: buffers are grown
 }
 
-void Audio::setLoop(const std::string &path, bool active, float gain) {
+void Audio::setLoop(const char *path, bool active, float gain) {
     if(mixer_ == nullptr) { return; }
     if(!active) {
         // Engine off: fade out (no mid-wave cut = no "clipping" artifact).

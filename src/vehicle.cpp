@@ -1064,6 +1064,11 @@ bool Vehicle::isCrewAboard() const { return false; }
 Part *Vehicle::capsulePart() const { return nullptr; }
 
 void Vehicle::buildFuelGroups() {
+    // The group structure is about to change, so any cached drain layers
+    // (fuelDrainLayers) are now stale -- drop them. This is the only place
+    // the groups are ever rebuilt (construction, docking merges, split/undock,
+    // save-load), so the cache can never outlive the structure it describes.
+    drainLayers_.clear();
     for(Part *p : parts) { p->fuelGroup = -1; }
     /* undirected adjacency over the part tree (Part::parent; each
        non-root part has exactly one parent edge). */
@@ -1108,10 +1113,19 @@ std::vector<Part *> Vehicle::fuelPool(Part *engine) const {
     return pool;
 }
 
-std::vector<std::vector<int> > Vehicle::fuelDrainLayers(Part *engine) const {
+const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) const {
     const int g = engine->fuelGroup;
+    if(g < 0) {
+        static const std::vector<std::vector<int> > empty;
+        return empty;
+    }
+    // Cached per group (drainLayers_): the layer structure is static until
+    // buildFuelGroups re-runs (construction / a docking merge), so a repeat
+    // call for the same group is a map lookup, not a reverse-adjacency BFS
+    // plus a dozen map/vector allocs (a hot path while thrusting).
+    auto it = drainLayers_.find(g);
+    if(it != drainLayers_.end()) { return it->second; }
     std::vector<std::vector<int> > layers;
-    if(g < 0) { return layers; }
     /* reverse adjacency over fuel groups: rev[Y] = { X : X feeds Y }. */
     std::map<int, std::vector<int> > rev;
     for(size_t k = 0; k < fuelLinks.size(); k++) {
@@ -1148,11 +1162,12 @@ std::vector<std::vector<int> > Vehicle::fuelDrainLayers(Part *engine) const {
         it != byDist.rend(); ++it) {
         layers.push_back(it->second);
     }
-    return layers;
+    auto res = drainLayers_.emplace(g, std::move(layers));
+    return res.first->second;
 }
 
 bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engine) {
-    const std::vector<std::vector<int> > layers = fuelDrainLayers(engine);
+    const std::vector<std::vector<int> > &layers = fuelDrainLayers(engine);
     if(layers.empty()) { return false; }
     /* Total fuel across all source groups (every layer). */
     float total = 0;
@@ -1167,36 +1182,39 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
         }
     }
     if(total < amt) { return false; }
-    /* Drain layer by layer (furthest first), pro-rata across the
-       layer's tanks. */
+    /* Drain layer by layer (furthest first), pro-rata across the layer's
+       tanks. Single pass (no per-layer scratch vector): total >= amt means
+       `remaining` can never exceed a layer's available fuel, so each tank's
+       share `take * have / layerTotal` is computed and applied in one loop
+       -- identical to the old collect-then-drain, minus the allocation. */
     float remaining = amt;
     for(size_t li = 0; li < layers.size() && remaining > 0.0f; li++) {
-        std::vector<Part *> tanks;
         float layerTotal = 0;
         for(size_t gi = 0; gi < layers[li].size(); gi++) {
             const int grp = layers[li][gi];
-            for(size_t i = 0; i < parts.size(); i++) {
-                Part *p = parts[i];
-                if(!p->isTank()) { continue; }
-                if(p->fuelGroup != grp) { continue; }
-                float have = p->resources.current[(int)type];
-                if(have <= 0.0f) { continue; }
-                tanks.push_back(p);
-                layerTotal += have;
+            for(Part *p : parts) {
+                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+                if(p->resources.current[(int)type] > 0.0f) {
+                    layerTotal += p->resources.current[(int)type];
+                }
             }
         }
         if(layerTotal <= 0.0f) { continue; }
         float take = remaining < layerTotal ? remaining : layerTotal;
-        for(size_t ti = 0; ti < tanks.size(); ti++) {
-            Part *p = tanks[ti];
-            float have = p->resources.current[(int)type];
-            float share = take * have / layerTotal;
-            if(share > have) { share = have; }
-            p->resources.current[(int)type] = have - share;
-            /* No SetMass: a part has no rigid body. The ship's mass
-               properties follow from the parts, and refreshCompound()
-               (once per tick) rebuilds them once the drift matters. */
-            p->body->mass -= (double)share;
+        for(size_t gi = 0; gi < layers[li].size(); gi++) {
+            const int grp = layers[li][gi];
+            for(Part *p : parts) {
+                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+                float have = p->resources.current[(int)type];
+                if(have <= 0.0f) { continue; }
+                float share = take * have / layerTotal;
+                if(share > have) { share = have; }
+                p->resources.current[(int)type] = have - share;
+                /* No SetMass: a part has no rigid body. The ship's mass
+                   properties follow from the parts, and refreshCompound()
+                   (once per tick) rebuilds them once the drift matters. */
+                p->body->mass -= (double)share;
+            }
         }
         remaining -= take;
     }
@@ -1216,8 +1234,12 @@ float Vehicle::getFuelMass(const std::vector<enum ResourceType>& types) {
 float Vehicle::getDeltaV() {
     // Rocket propellant only (H2 + LOX): jet fuel is a SEPARATE type
     // (air-breathing, no onboard oxidizer) and produces no delta-v, so it
-    // is correctly absent from this count.
-    float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX }); /* kg */
+    // is correctly absent from this count. The type list is a static (not a
+    // brace-init temp): getDeltaV is called every frame by the Vessel window,
+    // and a fresh std::vector per call is pure churn.
+    static const std::vector<ResourceType> prop =
+        { ResourceType::Hydrogen, ResourceType::LOX };
+    float remaining_fuel = getFuelMass(prop); /* kg */
     double ve = 0;   // first ROCKET thruster's exhaust velocity (the delta-v estimate).
                      // Jets are skipped: they are air-breathing, so they produce no
                      // thrust in vacuum and their exhaust velocity is not a delta-v.
@@ -1381,9 +1403,12 @@ float Vehicle::getFullThrustTWR() {
 
 float Vehicle::getMaxTWR() {
     // ALL burnable propellant (rocket H2 + LOX and jet fuel): max TWR is at
-    // the lightest mass, i.e. after all of it has been spent.
-    float remaining_fuel = getFuelMass({ ResourceType::Hydrogen, ResourceType::LOX,
-                                         ResourceType::JetFuel }); /* kg */
+    // the lightest mass, i.e. after all of it has been spent. The type list
+    // is a static (getMaxTWR is called every frame by the Vessel window; a
+    // brace-init std::vector per call is pure churn).
+    static const std::vector<ResourceType> prop =
+        { ResourceType::Hydrogen, ResourceType::LOX, ResourceType::JetFuel };
+    float remaining_fuel = getFuelMass(prop); /* kg */
     return GetActiveThrust() / ((getMass() - remaining_fuel) * m_parent->g);
 }
 

@@ -70,8 +70,11 @@ public:
     /* The looping SFX (the engine hum). active starts/stops it (a 150 ms
        fade on the stop so the cutoff doesn't clip); gain in [0,1] is the
        throttle. Full level -- the ship's own engine, no distance falloff
-       (there is no air to carry it in space). */
-    void setLoop(const std::string &path, bool active, float gain);
+       (there is no air to carry it in space). `path` is a C string: this is
+       called every frame in a pilot scene, and taking std::string would
+       construct a temp at the call site each frame (the loopPath_ compare
+       below is the only per-frame work, and it does not allocate). */
+    void setLoop(const char *path, bool active, float gain);
 
     /* Ambient music: load once (decoded on playback, not pre-expanded),
        loop forever. A missing file is a logged no-op. */

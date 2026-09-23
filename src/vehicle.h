@@ -338,6 +338,18 @@ public:
     struct FuelLink { Part *from; Part *to; };
     std::vector<FuelLink> fuelLinks;
 
+    /* Cached fuel-drain layers, per fuel group (group -> layer buckets).
+       The layer structure depends ONLY on the group graph (fuelLinks) and
+       the engine's group id -- not on fuel amounts -- so it is static until
+       the groups change. fuelDrainLayers builds it once per group and
+       returns a reference; buildFuelGroups (the only place the group
+       structure is ever rebuilt -- construction, docking merges,
+       split/undock, save-load) clears it, so the cache can never outlive
+       the structure it describes. Without this, every thrust tick re-ran
+       the reverse-adjacency BFS and re-allocated its maps/vectors
+       (heaptrack: a dozen+ allocs per engine per tick while thrusting). */
+    mutable std::map<int, std::vector<std::vector<int> > > drainLayers_;
+
     /* --drain-log state: the last sample's per-group total fuel mass +
        time, so the next sample can print the drain rate (kg/s) -- the
        change in a group's mass between two samples. */
@@ -530,8 +542,11 @@ public:
        out) draining symmetrically instead of one arm before the other. It
        generalises the chain rule -- C->B->A, D->E->A drains {C,D}
        together, then {B,E}, then A -- because the layers are exactly the
-       hop-distance levels. */
-    std::vector<std::vector<int> > fuelDrainLayers(Part *engine) const;
+       hop-distance levels. The result is cached per group (drainLayers_):
+       a const reference into that cache, so the caller must not mutate it
+       (and it stays valid until the next buildFuelGroups). For a barrier
+       engine (group < 0) returns a shared empty. */
+    const std::vector<std::vector<int> > &fuelDrainLayers(Part *engine) const;
 
     /* Draw `amt` kg of `type` from the engine's fuel sources, LAYER by
        LAYER (fuelDrainLayers: furthest layer first) and pro-rata across
