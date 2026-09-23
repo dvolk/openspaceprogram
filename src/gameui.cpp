@@ -22,7 +22,8 @@
 #include "calendar.h"    // CalTime (the HUD + Game Debug Info clocks)
 #include "version.h"     // VERSION (the main menu)
 #include "physics.h"     // GetAngVelocity (the VESSEL window)
-#include "siminput.h"    // fmt_time (the TRANSFER window)
+#include "siminput.h"    // the --sim-press / --sim-mouse queues
+#include "fmt.h"         // fmt_dist / fmt_time (the UI readouts)
 #include "orbitsample.h" // OrbitSampleCache + open-arc sampling (the map)
 #include "orbitmap.h"    // OrbitMap + contrastingColor (the map)
 #include "surfmap.h"     // the lon/lat <-> pixel math + surfmapCompute
@@ -376,10 +377,11 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
             const double alt = surface_mode ? agl : asl;
             const double spd = surface_mode ? glm::length(surf_vel) : speed;
             ImGui::PushFont(g.bigger);
-            /* %.0f, not a (int) cast: at oort distances the altitude is
-               ~1e15, far past int range -- the cast is UB and x86-64
-               returns INT_MIN, which read as a negative altitude. */
-            ImGui::Text("%06.0fm/s   %08.0fm", spd, alt);
+            /* fmt_dist, not a fixed unit: at oort distances a meter count
+               is 16 digits wide and the old (int) cast was UB (INT_MIN). */
+            char spd_s[32], alt_s[32];
+            ImGui::Text("%s/s   %s", fmt_dist(spd, spd_s, sizeof spd_s),
+                        fmt_dist(alt, alt_s, sizeof alt_s));
             ImGui::PopFont();
         }
         if(sys.home) {
@@ -724,25 +726,26 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         if(!xfer_auto) {
             ImGui::SliderFloat("log10(ToF s)", &xfer_tof_log,
                                1.8, 7.5, "%.2f");
-            ImGui::Text("ToF: %s",
-                        fmt_time(std::pow(10.0, xfer_tof_log)).c_str());
+            char tof_s[40];
+            ImGui::Text("ToF: %s", fmt_time(std::pow(10.0, xfer_tof_log), tof_s, sizeof tof_s));
         }
         if(!xfer.valid) {
             ImGui::Text("No transfer solution for this target / ToF.");
             return;
         }
         const TransferSolution &sol = xfer.sol;
+        char dist_s[32], time_s[40];
         ImGui::Text("dv depart:  %08.1f m/s", sol.dv_departure);
         if(!isShip) {
-            ImGui::Text("dv capture: %08.1f m/s @ %.0f km",
-                        sol.dv_capture, sol.r_cap / 1000.0);
+            ImGui::Text("dv capture: %08.1f m/s @ %s",
+                        sol.dv_capture, fmt_dist(sol.r_cap, dist_s, sizeof dist_s));
             if(sol.capture_orbit_period > 0.0) {
                 ImGui::Text("capture P:  %s",
-                            fmt_time(sol.capture_orbit_period).c_str());
+                            fmt_time(sol.capture_orbit_period, time_s, sizeof time_s));
             }
         }
         ImGui::Text("total dv:   %08.1f m/s", sol.total_dv);
-        ImGui::Text("ToF:        %s", fmt_time(sol.tof).c_str());
+        ImGui::Text("ToF:        %s", fmt_time(sol.tof, time_s, sizeof time_s));
         ImGui::Text("v_inf:      %08.1f m/s", sol.v_inf);
         if(sol.transfer_semi_major > 0.0) {
             ImGui::Text("transfer:   ellipse  a=%.6g m  e=%.3f",
@@ -852,9 +855,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         }
 
         // The best cell (argmin over the valid cells).
+        char pc_t[40];
         ImGui::Text("min dv:      %08.1f m/s", pc.dv_min);
-        ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min).c_str());
-        ImGui::Text("time of flt: %s", fmt_time(pc.tof_min).c_str());
+        ImGui::Text("depart in:   %s", fmt_time(pc.t_dep_min, pc_t, sizeof pc_t));
+        ImGui::Text("time of flt: %s", fmt_time(pc.tof_min, pc_t, sizeof pc_t));
         // Apply the best cell to the Transfer planner: pin the ToF (manual
         // mode) and record the ABSOLUTE departure time (compute moment + the
         // best cell's delay). The Transfer window then counts down to it, and
@@ -949,11 +953,12 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                          ImVec2(0, 1), ImVec2(1, 0));
             ImGui::Text("%.0f", lo);
         ImGui::EndGroup();
+        char pc_min[40];
         ImGui::TextDisabled("x: departure delay  %.0f .. %.0f s (min %s)",
                             pc.t_dep_lo, pc.t_dep_hi,
-                            fmt_time(pc.t_dep_min).c_str());
+                            fmt_time(pc.t_dep_min, pc_min, sizeof pc_min));
         ImGui::TextDisabled("y: time of flight   %.0f .. %.0f s (min %s)",
-                            pc.tof_lo, pc.tof_hi, fmt_time(pc.tof_min).c_str());
+                            pc.tof_lo, pc.tof_hi, fmt_time(pc.tof_min, pc_min, sizeof pc_min));
         ImGui::TextDisabled("bar: dv in m/s (top = max)   gray: no solution");
     });
 
@@ -1318,10 +1323,12 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                    camera->up.x, camera->up.y, camera->up.z,
                    args.camFovDeg);
         }
-        ImGui::Text("Home distance: %f",
-                    glm::length(ship->GetPositionRelTo(ship->controller,
-                                                       ship->home->frame)));
-        ImGui::Text("Pos: %.3fkm", distance / 1000);
+        char home_d[32], pos_d[32];
+        ImGui::Text("Home distance: %s",
+                    fmt_dist(glm::length(ship->GetPositionRelTo(ship->controller,
+                                                       ship->home->frame)),
+                             home_d, sizeof home_d));
+        ImGui::Text("Pos: %s", fmt_dist(distance, pos_d, sizeof pos_d));
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
         ImGui::Text("Vel: %.3fm/s", speed);
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
@@ -1370,9 +1377,10 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
     // Labels are abbreviated to <= 3 chars and right-padded to the
     // same width so the values start at a tidy column.
     drawWin(g, W_Orbital, [&] {
+        char dist_s[32];   // one buffer, reused line by line (each Text is a complete call)
         ImGui::Text("Bod: %s", ship->m_parent->name.c_str());
         ImGui::Text("Vel: %.1fm/s", speed);
-        ImGui::Text("Alt: %.1fm", distance);
+        ImGui::Text("Alt: %s", fmt_dist(distance, dist_s, sizeof dist_s));
         /* Every line below is always present; "-" = the quantity
            does not exist for this orbit class. Escape trajectories
            have no apoapsis and no period; a near-circular orbit
@@ -1380,18 +1388,18 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
            countdowns to one are numerically meaningless. */
         const bool circular = o.ecc < 1.0
                             && (o.apoapsis - o.periapsis) < 10e3;
-        if(o.ecc < 1.0) { ImGui::Text("ApA: %.1fm", o.apoapsis); }
+        if(o.ecc < 1.0) { ImGui::Text("ApA: %s", fmt_dist(o.apoapsis, dist_s, sizeof dist_s)); }
         else { ImGui::Text("ApA: -"); }
         if(o.ecc < 1.0 && !circular) { ImGui::Text("ApT: %.1fs", o.time_to_apo); }
         else { ImGui::Text("ApT: -"); }
-        ImGui::Text("PeA: %.1fm", o.periapsis);
+        ImGui::Text("PeA: %s", fmt_dist(o.periapsis, dist_s, sizeof dist_s));
         if(!circular && o.time_to_peri >= 0.0) { ImGui::Text("PeT: %.1fs", o.time_to_peri); }
         else { ImGui::Text("PeT: -"); }
         if(o.period > 0.0) { ImGui::Text("  T: %.1fs", o.period); }
         else { ImGui::Text("  T: -"); }
         ImGui::Text("Inc: %.2f", glm::degrees(o.inclination));
         ImGui::Text("Ecc: %f", o.ecc);
-        ImGui::Text("SMa: %.1fm", o.semi_major);
+        ImGui::Text("SMa: %s", fmt_dist(o.semi_major, dist_s, sizeof dist_s));
         ImGui::Text("LAN: %.2f", glm::degrees(o.raan));
         ImGui::Text("LPe: %.2f", glm::degrees(o.arg_periapsis));
         double prograde_angle = glm::angle(facing_dir, vel_dir);
@@ -1429,8 +1437,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
 
     // Labels right-padded to 3 chars, same as ORBITAL.
     drawWin(g, W_Surface, [&] {
-        ImGui::Text("Alt: %.1fm", distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)));
-        ImGui::Text("ASL: %.1fm", distance - ship->m_parent->radius);
+        char dist_s[32];
+        ImGui::Text("Alt: %s", fmt_dist(distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)), dist_s, sizeof dist_s));
+        ImGui::Text("ASL: %s", fmt_dist(distance - ship->m_parent->radius, dist_s, sizeof dist_s));
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
         ImGui::Text(" Hs: %.2fm/s", hor_speed2);
         ImGui::Text("Lat: %.4f", glm::degrees(latitude));

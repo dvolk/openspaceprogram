@@ -508,6 +508,12 @@ $(TESTDIR)/test_fleet: $(TESTDIR)/obj/test_fleet.o $(TESTDIR)/obj/fleet.o
 $(TESTDIR)/test_calendar: $(TESTDIR)/obj/test_calendar.o
 	$(CXX) -o $@ $^
 
+# UI formatting helpers (src/fmt.h, header-only pure C++): the unit
+# ladder (m/km/Mm/AU/ly), sign handling, and the overflow-safe long long
+# ToF. Pins the exact readout strings.
+$(TESTDIR)/test_fmt: $(TESTDIR)/obj/test_fmt.o
+	$(CXX) -o $@ $^
+
 # two-body orbital elements + time-to-apsis (src/orbit.h, header-only
 # pure math): elements, anomaly conversions, the ApT/PeT countdown fix,
 # hyperbolic/parabolic handling, degenerate-plane guards.
@@ -632,7 +638,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_rotation test_shipload test_save test_crew test_fleet test_calendar \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
-        test_pick test_settings test_keys test_cli
+        test_pick test_settings test_keys test_cli test_fmt
 
 .PHONY: test
 test: $(addprefix $(TESTDIR)/,$(TESTS))
@@ -672,6 +678,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_settings
 	$(TESTDIR)/test_keys
 	$(TESTDIR)/test_cli
+	$(TESTDIR)/test_fmt
 
 # E2E battery: launch the built game under Xvfb and run the pass/fail cases
 # in e2e/cases/ (see e2e/run.py). Needs the game binary, so it depends on

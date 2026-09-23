@@ -5,7 +5,6 @@
 //   SimMouseAction     one parsed --sim-mouse entry.
 //   sim_parse_key      SDL key name (SPACE, A, F11, ...) or decimal keycode.
 //   sim_parse_button   SDL button name (L/R/M...) or decimal code.
-//   fmt_time           "1d 04:03:02" / "04:03:02" ToF / period readouts.
 
 #pragma once
 
@@ -117,4 +116,3 @@ struct SimModeChange {
 SDL_Keycode sim_parse_key(const std::string &s);
 // Unknown button: returns -1.
 int sim_parse_button(const std::string &s);
-std::string fmt_time(double s);

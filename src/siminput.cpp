@@ -3,7 +3,6 @@
 #include "siminput.h"
 
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <map>
 
@@ -78,17 +77,3 @@ int sim_parse_button(const std::string &s) {
     return -1; // unknown
 }
 
-// "1d 04:03:02" or "04:03:02" — ToF / orbit-period readouts.
-// long long, not int: oort/interstellar-class ToFs exceed INT_MAX days,
-// and the out-of-range double->int cast is UB (INT_MIN on x86-64).
-std::string fmt_time(double s) {
-    if(s < 0.0) s = 0.0;
-    const long long d = (long long)(s / 86400.0);
-    const long long h = (long long)(s / 3600.0) % 24;
-    const long long m = (long long)(s / 60.0) % 60;
-    const long long sec = (long long)s % 60;
-    char buf[48];
-    if(d > 0) { snprintf(buf, sizeof buf, "%lldd %02lld:%02lld:%02lld", d, h, m, sec); }
-    else     { snprintf(buf, sizeof buf, "%02lld:%02lld:%02lld", h, m, sec); }
-    return buf;
-}
