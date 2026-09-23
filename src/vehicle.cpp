@@ -1560,7 +1560,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // so a banked ship still weathervanes the nose into the flow (the moment
     // about the COM). `com` is the hull origin the lever is measured from.
     {
-        std::vector<glm::dvec3> shipVerts;
+        // Reused scratch (clear/reserve keep capacity): this block runs
+        // every physics substep, so a fresh vector here is pure churn.
+        static thread_local std::vector<glm::dvec3> shipVerts;
+        shipVerts.clear();
         {   // reserve the exact size so the push_backs below don't realloc
             size_t cap = 0;
             for(Part *p : parts) {

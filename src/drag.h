@@ -193,8 +193,12 @@ inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
                                                   : glm::dvec3(0, 1, 0);
     const glm::dvec3 u = glm::normalize(glm::cross(d, ref));
     const glm::dvec3 w = glm::cross(d, u);
-    // Project the hull vertices onto (u, w).
-    std::vector<glm::dvec2> p(hullVerts.size());
+    // Project the hull vertices onto (u, w). Scratch buffers are reused
+    // across calls (clear/resize keep capacity): this runs every physics
+    // substep per part, so fresh vectors here are pure churn (heaptrack:
+    // 181k allocations in a 30 s flight).
+    static thread_local std::vector<glm::dvec2> p;
+    p.resize(hullVerts.size());
     for(size_t i = 0; i < hullVerts.size(); i++) {
         p[i] = glm::dvec2(glm::dot(hullVerts[i], u), glm::dot(hullVerts[i], w));
     }
@@ -203,7 +207,8 @@ inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
     std::sort(p.begin(), p.end(), [](const glm::dvec2 &a, const glm::dvec2 &b) {
         return (a.x < b.x) || (a.x == b.x && a.y < b.y);
     });
-    std::vector<glm::dvec2> h;
+    static thread_local std::vector<glm::dvec2> h;
+    h.clear();
     for(size_t i = 0; i < p.size(); i++) {
         while(h.size() >= 2
               && cross2(h[h.size() - 2], h[h.size() - 1], p[i]) <= 0.0) {
