@@ -32,12 +32,25 @@ struct DragAtmosphere {
         : sea_level_density(rho0), scale_height(H) {}
 };
 
+/* The density floor below which aero is not worth computing: exp(-alt/H)
+   stays positive for hundreds of km past the point where the force rounds
+   to zero (a ship at 500 km over Kerbin reads rho = 4e-40 kg/m^3), and the
+   silhouette geometry used to run every substep for exactly 0.00 N. At
+   1e-15 kg/m^3 the drag acceleration is < 1e-8 m/s^2 even at 10 km/s over
+   100 m^2 -- unmeasurable on any timescale the game runs. ~190 km on a
+   Kerbin-like air, ~700 km in the thickest atmosphere in res/ksp_system.
+   Callers that gate on density compare against this instead of 0; laws
+   that merely multiply by rho (jetThrust's density gate) need no floor --
+   a sub-floor rho reads as vacuum there anyway. */
+inline constexpr double kRhoFloor = 1e-15;
+
 /* Density [kg/m^3] at `alt` metres above the surface:
      rho(alt) = sea_level_density · exp(−alt / scale_height)
    Below the surface (alt <= 0) there is no air to push through, and a
    degenerate atmosphere (no density, no scale height) reads as none.
    The exponential is self-limiting -- at alt = 8·H the density is ~0.03%
-   of sea level -- so no hard "atmosphere top" is needed. */
+   of sea level -- so no hard "atmosphere top" is needed (callers gate on
+   kRhoFloor instead). */
 inline double airDensity(const DragAtmosphere &a, double alt) {
     if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
     if(alt <= 0.0) { return 0.0; }
@@ -166,7 +179,9 @@ inline double cross2(const glm::dvec2 &a, const glm::dvec2 &b,
 }
 
 /* The projected (silhouette) area of a body seen along `dir`, from the
-   vertices of its CONVEX HULL (part-local frame). The silhouette of a convex
+   vertices of its CONVEX HULL -- in any single frame (part-local for a
+   part, frame S for a ship's aeroHull), as long as `dir` is in the same
+   frame; the area is rigid-transform invariant. The silhouette of a convex
    body is exactly the convex hull of its projected vertices, so this is the
    area of that 2-D hull:
      A_proj(dir) = area(conv({ (v.u, v.w) : v in hullVerts }))

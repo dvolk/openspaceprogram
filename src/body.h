@@ -65,7 +65,10 @@ struct Body {
 
     /* The part's collision hull's VERTICES (part-local frame), captured once
        at build time from body->shape (the same btConvexHullShape the
-       collision uses). The drag area facing the flow is
+       collision uses). The hull is reduced to its EXTREME points at build
+       (optimizeConvexHull, physics.cpp BuildHull), so this is tens of
+       verts, not the mesh's full 192-640 -- same hull, same silhouette.
+       The drag area facing the flow is
        projectedArea(hullVerts, v̂) -- the body's silhouette (drag.h), so a
        part drags more as it turns broadside to the velocity (Phase 2 of the
        projected-drag work, reports/projected-drag). Storing the HULL's

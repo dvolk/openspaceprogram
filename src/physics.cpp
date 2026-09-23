@@ -302,7 +302,6 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
 void PhysicsEngine::BuildHull(Body *body) {
     Mesh *m = body->mesh;
 
-    printf("PhysicsEngine::BuildHull(): m->num_vertices: %d\n", m->num_vertices);
     assert(m->vs != NULL);
     assert(m->num_vertices >= 3);
 
@@ -312,6 +311,12 @@ void PhysicsEngine::BuildHull(Body *body) {
        correctly with the triangle-mesh world (terrain / space port). */
     btConvexHullShape *hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                                     3 * sizeof(double));
+    /* Reduce to the extreme vertices only: the hull (collision AND the drag
+       silhouette, which reads the same verts) is geometrically identical,
+       but a part carries tens of points instead of its whole mesh (192-640
+       on the stock parts) -- projectedArea sorts these every substep, so
+       the interior points were pure cost. */
+    hull->optimizeConvexHull();
 
     /* the body carries the part's resolved margin (ship def > catalog,
        see resolveHullMargin); -1 when neither sets one */

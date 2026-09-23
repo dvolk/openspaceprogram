@@ -555,7 +555,7 @@ void Vehicle::rebuildCompound() {
     delete hull; hull = nullptr;
     compoundParts.clear();
     principal = btTransform::getIdentity();
-    if(parts.empty()) { return; }
+    if(parts.empty()) { aeroHull.clear(); return; }
 
     /* ownership back-pointers (part.h): the parts list is the ownership list,
        so every part in it points back at this vehicle. The attach primitives
@@ -582,7 +582,7 @@ void Vehicle::rebuildCompound() {
         compoundParts.push_back(p);
     }
     /* calculatePrincipalAxisTransform btAsserts every child mass > 0 */
-    if(total <= 0) { delete inS; compoundParts.clear(); return; }
+    if(total <= 0) { delete inS; compoundParts.clear(); aeroHull.clear(); return; }
 
     btVector3 inertiaDiag(0, 0, 0);
     inS->calculatePrincipalAxisTransform(&masses[0], principal, inertiaDiag);
@@ -622,8 +622,47 @@ void Vehicle::rebuildCompound() {
     }
     if(wasInWorld) { AddPhysicsBody(hull); }
 
+    rebuildAeroHull();
+
     checkCompoundInvariants();
     assert(checkPartInvariants() && "containment invariant broken (see [part] above)");
+}
+
+void Vehicle::rebuildAeroHull() {
+    aeroHull.clear();
+    size_t cap = 0;
+    for(Part *p : parts) {
+        if(p->body != nullptr) { cap += p->body->hullVerts.size(); }
+    }
+    if(cap < 3) { return; }
+    /* The union of the parts' hull verts, in frame S (their localPos/localRot
+       are authored in S, so no world state is needed -- the silhouette area
+       is transform-invariant anyway, see aeroHull). */
+    std::vector<glm::dvec3> u;
+    u.reserve(cap);
+    for(Part *p : parts) {
+        if(p->body == nullptr) { continue; }
+        for(const glm::dvec3 &v : p->body->hullVerts) {
+            u.push_back(p->localRot * v + p->localPos);
+        }
+    }
+    /* Reduce to the extreme points with the same hull Bullet already links
+       (optimizeConvexHull): the convex hull -- and so every projected
+       silhouette of it -- is unchanged, but the per-substep projectedArea
+       sorts tens of points instead of every part's every vert. This runs at
+       most once per tick (staging/dock, or a burn's mass-drift rebuild)
+       against n substeps per tick (n up to 2000 at warp). */
+    btConvexHullShape shape(reinterpret_cast<const btScalar *>(&u[0].x),
+                            (int)u.size(), 3 * sizeof(double));
+    shape.optimizeConvexHull();
+    const int n = shape.getNumVertices();
+    if(n < 3) { aeroHull.swap(u); return; }  // degenerate reduce: keep the union
+    aeroHull.reserve(n);
+    for(int i = 0; i < n; i++) {
+        btVector3 v;
+        shape.getVertex(i, v);
+        aeroHull.push_back(glm::dvec3(v.getX(), v.getY(), v.getZ()));
+    }
 }
 
 bool Vehicle::checkPartInvariants() const {
@@ -1513,7 +1552,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const DragAtmosphere da { atm.sea_level_density, atm.scale_height };
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
-    if(rho <= 0.0) { return lastAeroForce; }  // numerically above the air
+    /* Numerically above the air: below kRhoFloor (drag.h) the drag is
+       unmeasurable but exp(-alt/H) stays positive for hundreds more km --
+       the 500 km high-orbit perf case read rho = 4e-40 kg/m3 and F = 0.00 N,
+       yet every substep still paid the whole silhouette pass. */
+    if(rho < kRhoFloor) { return lastAeroForce; }
 
     // v_rel = the ship's velocity in its (rot) frame -- the air co-rotates
     // with the planet, so this is already air-relative (see drag.h).
@@ -1521,21 +1564,34 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const double v2 = glm::length2(vrel);
     if(v2 <= 0.0) { return lastAeroForce; }  // at rest in air
 
+    // Frame S read ONCE: it is constant within a substep, and every part
+    // pose below derives from it. (partPos/partRot re-read the Bullet
+    // transform per call, and this function used to make 3-4 such calls per
+    // part per substep for the identical answer.)
+    glm::dvec3 sPos; glm::dmat3 sRot;
+    frameS(sPos, sRot);
+    const auto partPosS = [&](const Part *p) {
+        return sPos + sRot * p->localPos;
+    };
+
     // The flow frame -- shared by every part (the ship is one rigid body).
     // The root part's local axes give the nose (+Z, sets the off-axis term),
     // right (+X) and up (+Y, the wing normal that lift acts along). A ship
     // with no root part (defensive) is treated as prograde and non-lifting.
     const Part *root = rootPart();
-    const glm::dvec3 nose  = (root != nullptr) ? partAxis(root, 2)
-                                               : glm::dvec3(0.0, 0.0, 1.0);
-    const glm::dvec3 right = (root != nullptr) ? partAxis(root, 0)
-                                               : glm::dvec3(1.0, 0.0, 0.0);
-    const glm::dvec3 up    = (root != nullptr) ? partAxis(root, 1)
-                                               : glm::dvec3(0.0, 1.0, 0.0);
+    const glm::dmat3 rootRot = (root != nullptr) ? sRot * root->localRot
+                                                 : glm::dmat3(1.0);
+    const glm::dvec3 nose  = rootRot[2];
+    const glm::dvec3 right = rootRot[0];
+    const glm::dvec3 up    = rootRot[1];
     const AeroFrame fr = aeroFrame(vrel, right, up, nose);
     const double alpha   = fr.valid ? fr.alpha   : 0.0;
     lastDragAlpha = alpha;
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
+    // The flow in frame S: the aero hulls live in local frames, and both the
+    // silhouette area and the axis-flow dots are rotation-invariant, so
+    // rotating the flow once replaces transforming any vertices at all.
+    const glm::dvec3 vhatS   = glm::transpose(sRot) * vhat;
     const glm::dvec3 liftDir = liftDirection(vrel, right, nose);
     const double q = 0.5 * rho * v2;  // dynamic pressure (shared by all parts)
 
@@ -1560,51 +1616,39 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // so a banked ship still weathervanes the nose into the flow (the moment
     // about the COM). `com` is the hull origin the lever is measured from.
     {
-        // Reused scratch (clear/reserve keep capacity): this block runs
-        // every physics substep, so a fresh vector here is pure churn.
-        static thread_local std::vector<glm::dvec3> shipVerts;
-        shipVerts.clear();
-        {   // reserve the exact size so the push_backs below don't realloc
-            size_t cap = 0;
-            for(Part *p : parts) {
-                if(p->body != nullptr && !p->body->hullVerts.empty()) {
-                    cap += p->body->hullVerts.size();
-                }
-            }
-            shipVerts.reserve(cap);
-        }
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
-            const glm::dmat3 R = partRot(p);
-            const glm::dvec3 pos = partPos(p);
-            for(const glm::dvec3 &v : p->body->hullVerts) {
-                shipVerts.push_back(R * v + pos);
-            }
             // The part's own silhouette facing the flow: the weight it shows
             // in the center of pressure AND in the area-weighted cd mean.
+            // hullVerts are part-local, so the flow is rotated to the part
+            // (vhatS is already in S) instead of the verts to the world.
             const double a = projectedArea(p->body->hullVerts,
-                                           glm::transpose(R) * vhat);
-            cp += a * pos;
+                                           glm::transpose(p->localRot) * vhatS);
+            cp += a * partPosS(p);
             cpArea += a;
             // The part's cd AS IT FACES THE FLOW (drag.h partCd): the angle
             // between the part's nose axis and the flow selects the forward /
             // side / backward anchor (a cone is sleek nose-first, blunt
             // base-first; a thin disc is blunt face-on, sleek edge-on). A
-            // part with only the shared `drag` set is symmetric.
+            // part with only the shared `drag` set is symmetric. localRot[2]
+            // is the part's nose in S; sRot preserves dots, so this is the
+            // world-frame dot(partAxis(p,2), vhat) without building either.
             if(p->def != nullptr) {
-                // R[2] is the part's nose (local +Z) in world -- same as
-                // partAxis(p,2) but reuses the R already computed above.
-                const double c = glm::dot(R[2], vhat);
+                const double c = glm::dot(p->localRot[2], vhatS);
                 const double cd = partCd(p->def->drag_forward,
                                          p->def->drag_side,
                                          p->def->drag_backward, c);
                 if(cd > 0.0) { cdNum += a * cd; }
             }
         }
-        const double A_ship = projectedArea(shipVerts, vhat);
+        // The ship's silhouette from the precomputed union hull (aeroHull,
+        // frame S, rebuilt with the compound): the same convex hull the
+        // per-substep union built, but only its extreme points, and only
+        // v̂ rotates -- no vertex touches the world frame any more.
+        const double A_ship = projectedArea(aeroHull, vhatS);
         lastDragArea = A_ship;
         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
         if(cpArea > 0.0) { cp /= cpArea; }
@@ -1630,7 +1674,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
         const glm::dvec3 flift = liftForce(q, d->lift_area, d->cl, alpha,
                                            liftDir, d->stall_angle);
         if(glm::length2(flift) <= 0.0) { continue; }
-        const glm::dvec3 ri = partPos(p) - com;  // surface's offset from the COM
+        const glm::dvec3 ri = partPosS(p) - com;  // surface's offset from the COM
         ApplyForce(hull, ri, flift);             // translation + (ri x flift)
         moment += glm::cross(ri, flift);
         ftotal += flift;
@@ -1672,7 +1716,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             const glm::dvec3 forceDir = (ax.forceDirKind == 0) ? liftDir : yawDir;
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
-            const glm::dvec3 ri = partPos(p) - com;
+            const glm::dvec3 ri = partPosS(p) - com;
             // The deflection sign is POSITION-DEPENDENT: the steering torque
             // is ri x F, so a tail (behind the CG) and a canard (ahead) need
             // OPPOSITE deflections for the same steering torque, and a
@@ -2116,6 +2160,10 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     }
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
+    /* The shell's cached aero hull went with the parts: the caller deletes B
+       this same tick (updateDocking), but a parts-empty ship must not carry a
+       hull that would still produce drag if it ever survived to a substep. */
+    B->aeroHull.clear();
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();
 

@@ -159,6 +159,18 @@ public:
        `parts` in order -- test_inertia pins that, and picking relies on it. */
     std::vector<Part *> compoundParts;
 
+    /* The ship's convex hull -- the union of every part's collision-hull
+       verts -- in frame S, reduced to its extreme points. Rebuilt with the
+       compound (rebuildAeroHull), so it always matches the part assembly.
+       applyAeroForce projects it along the flow for the ship silhouette
+       (drag): a projected AREA is invariant under rigid transforms, so the
+       substep only rotates v̂ into S instead of transforming every vertex
+       into the world and re-hulling it there (what the drag path used to do
+       every substep). Empty for a ship with no hull-able parts --
+       projectedArea of < 3 verts is 0 (no drag), as before. */
+    std::vector<glm::dvec3> aeroHull;
+    void rebuildAeroHull();
+
     /* Is the hull in the physics world? A registered collision object has a
        broadphase handle and an unregistered one does not, so this asks Bullet
        rather than tracking a flag that could drift out of step with the world
@@ -686,9 +698,10 @@ public:
        own position; lift_area/cl to 0 = no lift, a rocket stays a rocket):
          lift_i = liftDir · q · (lift_area·cl · alpha)        (Phase 2)
          applied at partPos(i), so its OFFSET from the COM is the moment.
-       No-op when m_parent has no
-       physical atmosphere, the ship is at or below the surface, or it has
-       no speed. Like thrust, re-applied before EVERY substep (Bullet clears
+       No-op when --drag-cd is 0 (the master off switch), m_parent has no
+       physical atmosphere, the ship is at or below the surface, it has no
+       speed, or the density is under the kRhoFloor vacuum floor (drag.h).
+       Like thrust, re-applied before EVERY substep (Bullet clears
        forces per stepSimulation). Returns the total force (also stored in
        lastAeroForce / lastLiftForce / lastAeroTorque for the --drag-log
        instrument). */
@@ -698,7 +711,9 @@ public:
        sea-level density model (the same one applyAeroForce uses) sampled
        at the COM's altitude. Zero when there is no physical atmosphere,
        at / below sea level, or numerically above the air -- so a jet
-       engine (ApplyThrust) reads zero in vacuum and produces no thrust. */
+       engine (ApplyThrust) reads zero in vacuum and produces no thrust.
+       Deliberately has NO kRhoFloor gate: its consumer (jetThrust) scales
+       by rho/rho_sea, so a sub-floor density already reads as vacuum. */
     double airDensityAtCom() const;
 
     /* The armed control forces, re-applied before EVERY substep (Bullet

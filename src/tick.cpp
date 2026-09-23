@@ -445,7 +445,9 @@ void tick(Game &g) {
            rho>0 means the atmosphere model is live at this altitude, |F|>0
            means the ship is moving through the air, |L|>0 means a wing is
            generating lift, |tau|>0 means the aero is torquing the ship
-           (weathervane / pitch stability). */
+           (weathervane / pitch stability). Below the kRhoFloor density floor
+           (drag.h, applyAeroForce) the geometry is skipped, so rho>0 with
+           Cd/A/|F| all 0 is the floor reporting vacuum, not broken geometry. */
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.drag_log_last_ms >= g.orbit_log_interval_ms) {
