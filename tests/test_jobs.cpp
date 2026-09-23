@@ -183,6 +183,34 @@ int main() {
         CHECK(jr.poll() == std::string());   // empty once idle
     }
 
+    // =========================================================================
+    // 7. abort() drops the queued jobs (does NOT drain them).
+    //
+    // Each body is slow (a short sleep) so a full drain of 20 would take
+    // ~1 s. abort() returns after the in-flight one (if any) and discards the
+    // rest: far fewer bodies ever run, and the call returns well before a
+    // drain would. join() (the tested drain contract, case 5) is unchanged.
+    // =========================================================================
+    {
+        JobRunner jr;
+        std::atomic<int> ran{0};
+        for(int i = 0; i < 20; i++) {
+            jr.post("slow", [&]() -> std::function<void()> {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                ran++;
+                return []() {};
+            });
+        }
+        const auto t0 = std::chrono::steady_clock::now();
+        jr.abort();
+        const long dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        // A drain would be ~1000 ms and run all 20; abort() must be far
+        // quicker and drop the queue (only the in-flight body, if any, runs).
+        CHECK(dt_ms < 500);
+        CHECK(ran.load() < 10);
+    }
+
     if(failures == 0) {
         printf("test_jobs: all checks passed\n");
         return 0;

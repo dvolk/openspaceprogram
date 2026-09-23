@@ -79,3 +79,18 @@ void JobRunner::join() {
     cv_.notify_one();
     worker_.join();
 }
+
+void JobRunner::abort() {
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if(stop_) { return; }   // already stopped (idempotent; the dtor joins)
+        stop_ = true;
+        tasks_.clear();         // drop the queued jobs (their lambdas are freed)
+    }
+    cv_.notify_one();
+    // worker_.join() returns once the worker has exited -- which is AFTER the
+    // in-flight task (if any) has finished reading its snapshot, so the caller
+    // may safely free the state a body holds. The queue was cleared, so the
+    // worker breaks on its next loop rather than draining it.
+    worker_.join();
+}

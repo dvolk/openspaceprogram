@@ -1272,11 +1272,13 @@ int main(int argc, char **argv)
     // ::pads), so they are freed when the bodies are deleted below -- no
     // separate ships.clear() here (the bodies would dangle).
 
-    // Drain the background worker BEFORE the bodies it may still hold
-    // (the Surface Map job captures a TerrainBody* and samples its
-    // surface off-thread): game's destructor would join the worker only
-    // on the way out of main, AFTER the deletes below.
-    game.jobs.join();
+    // Stop the background worker BEFORE the bodies it may still hold (a
+    // job captures a TerrainBody* and may be sampling it off-thread); the
+    // dtor would only join the worker on the way out of main, AFTER these
+    // deletes. abort() drops the queued jobs (the deferred terrain stream)
+    // and waits only for the in-flight one, instead of draining the whole
+    // queue -- a hard exit doesn't need the pending terrain built.
+    game.jobs.abort();
 
     for(auto&& body : sys.bodies) { delete body; }
 

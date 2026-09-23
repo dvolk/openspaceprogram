@@ -68,6 +68,14 @@ public:
     // safe.
     void join();
 
+    // Discard all QUEUED jobs and stop: wait only for the single job that
+    // may be in flight (so it finishes reading whatever snapshot it holds
+    // before the caller frees it) and let the worker exit, without running
+    // the rest of the queue. Use at hard shutdown where the pending work
+    // (e.g. the deferred terrain stream) is thrown away -- joining would
+    // drain the whole queue first. Idempotent, like join().
+    void abort();
+
 private:
     void run();
 
