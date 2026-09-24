@@ -94,3 +94,18 @@ void JobRunner::abort() {
     // worker breaks on its next loop rather than draining it.
     worker_.join();
 }
+
+void JobRunner::restart() {
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if(!stop_) { return; }   // worker already live; nothing to do
+        stop_ = false;
+        tasks_.clear();          // abort/join left it empty; be safe
+        done_.clear();           // drop the aborted stream's pending continuation
+        current_.clear();
+        in_flight_ = 0;
+    }
+    // The old worker is joined (not joinable), so move-assigning a fresh thread
+    // onto worker_ is valid; the new run() sees stop_ == false and serves.
+    worker_ = std::thread(&JobRunner::run, this);
+}

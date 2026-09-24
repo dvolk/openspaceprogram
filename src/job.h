@@ -76,6 +76,15 @@ public:
     // drain the whole queue first. Idempotent, like join().
     void abort();
 
+    // Recreate the worker after an abort()/join(): those are terminal for the
+    // worker thread (a joined std::thread cannot be restarted), so a runner
+    // that has stopped is otherwise single-use. restart() clears the one-way
+    // stop latch + the leftover handoff state and spawns a fresh worker, so ONE
+    // runner can serve multiple "load a system" cycles -- the in-process system
+    // switch aborts the old system's terrain stream and then posts the new
+    // one's. A no-op while the worker is already running.
+    void restart();
+
 private:
     void run();
 

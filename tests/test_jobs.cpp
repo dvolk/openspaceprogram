@@ -214,6 +214,32 @@ int main() {
         CHECK(ran.load() < 20);
     }
 
+    // =========================================================================
+    // 8. restart() resurrects a stopped runner. abort() is terminal for the
+    //    worker thread (a joined std::thread cannot run again), so a runner is
+    //    otherwise single-use. The in-process system switch aborts the old
+    //    system's terrain stream and then posts the new one's, so restart()
+    //    must reset the stop latch and spawn a fresh worker.
+    // =========================================================================
+    {
+        JobRunner jr;
+        int first = 0;
+        jr.post("old-system", [&]() -> std::function<void()> {
+            return [&]() { first = 1; };
+        });
+        pump(jr);
+        CHECK(first == 1);
+        jr.abort();          // the worker thread exits (terminal)
+        jr.restart();        // the linchpin: the worker is back
+        int second = 0;
+        jr.post("new-system", [&]() -> std::function<void()> {
+            return [&]() { second = 1; };
+        });
+        pump(jr);
+        CHECK(!jr.busy());
+        CHECK(second == 1);  // the post-abort job ran on the restarted worker
+    }
+
     if(failures == 0) {
         printf("test_jobs: all checks passed\n");
         return 0;
