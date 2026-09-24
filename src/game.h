@@ -311,6 +311,14 @@ struct Game {
     int trackingCloseMs = -1;
     bool trackingCloseFired = false;
 
+    // --switch-system FILE / --switch-at MS: the headless hook for the
+    // in-process system switch (Game::switchSystem) -- boot one system, swap
+    // to another mid-run, land on the Title screen. The only automated cover
+    // for a live system swap.
+    std::string switchSystemPath;
+    int switchSystemMs = -1;
+    bool switchSystemFired = false;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
@@ -623,6 +631,15 @@ struct Game {
        --quit-title hook, shared so the headless path exercises the real
        teardown. */
     void quitToTitle();
+    /* In-process system switch: tear down the running system (fleet, bodies,
+       the pending terrain stream) and load a different one (a system JSON
+       path), landing on the title screen. This is what lets a save that
+       records a different system load into it instead of silently re-homing
+       the ship onto the wrong planet. create_physics + the shaders are
+       one-time globals that survive the swap; only the per-system state
+       changes (the bodies, the fleet, the star re-point, the focus targets,
+       the camera). */
+    void switchSystem(const std::string &path);
     // Keep the "ship" focus entry in sync with the active ship and point
     // the camera focus at it -- or at a random non-star body (the title
     // backdrop) when there is none. select_ship and load_game both

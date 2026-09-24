@@ -21,6 +21,7 @@
 #include "settings.h" // SettingsData + the settings.json JSON mapping
 #include "datadir.h"  // settings.json's location (the data directory)
 #include "shipdef.h"  // PartDef (crew_capacity)
+#include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
     // Render frame: the ship's frame, or the home body's frame when there is
@@ -448,6 +449,69 @@ void Game::unloadGame() {
 void Game::quitToTitle() {
     unloadGame();
     enterTitle(*this);
+}
+
+void Game::switchSystem(const std::string &path) {
+    /* In-process system switch: tear down the running system and load a
+       different one, landing on the title screen. The order matters:
+
+         1. unloadGame -- the fleet is owned by the bodies (terrain.h), so it
+            goes first; this deletes the ships and drops the active-ship state.
+         2. jobs.abort + delete the bodies -- abort() waits for the in-flight
+            body to finish its snapshot read, so the delete is safe; the
+            GeoPatch `alive` set is body-scoped, so it dies with the body.
+         3. load_system (the light phase) + jobs.restart() -- abort() is
+            terminal for the worker (a joined std::thread can't be reused), so
+            the runner must be brought back before the new terrain is posted.
+         4. re-point home / the star / the Ships builder's light source.
+         5. postHeavyPhase -- the same "build this system's bodies" path the
+            boot uses (home/moon/star synchronous, the rest streamed).
+         6. re-seed the focus targets (the old ones dangle after the body
+            delete) + land on the shipless title backdrop. */
+    unloadGame();
+    jobs.abort();
+    for(TerrainBody *b : sys.bodies) { delete b; }
+
+    // The shaders are registry singletons (compiled once, shared, never
+    // deleted): re-fetch the same files the boot used, with the same
+    // attrib/uniform registration, so this is a cache hit (not a recompile).
+    Shader *terrainshader = get_shader("./res/terrainShader",
+        { "position", "normal", "color" },
+        { "MVP", "Normal", "lightDirection", "color", "anchor" });
+    Shader *sunshader = get_shader("./res/sunShader",
+        { "position", "normal", "color" },
+        { "MVP", "Normal", "lightDirection", "color" });
+    Shader *atmosphereshader = get_shader("./res/atmosphereShader",
+        { "position", "normal" },
+        { "MVP", "Normal", "cameraPos", "color", "intensity", "power",
+          "lightDirection", "inside", "planetCenter" });
+    Shader *cloudshader = get_shader("./res/cloudShader",
+        { "position", "normal", "uvParam" },
+        { "MVP", "Normal", "cameraPos", "color", "lightDirection", "drift",
+          "planetCenter", "coverage_tex" });
+    Shader *oceanshader = get_shader("./res/oceanShader",
+        { "position", "normal" },
+        { "MVP", "Normal", "cameraPos", "seaColor", "lightDirection",
+          "time", "planetCenter" });
+    sys = load_system(path.c_str(), terrainshader, sunshader, nullptr);
+    jobs.restart();
+
+    home = sys.home;
+    sun = sys.root;
+    ships.setSun(sun);
+    postHeavyPhase(sys, home, sun, jobs, atmosphereshader, cloudshader,
+                   oceanshader, args.cloud_mesh);
+
+    focusTargets.clear();
+    for(TerrainBody *b : sys.bodies) {
+        focusTargets.push_back({ b->name.c_str(), b });
+    }
+    focusBody = 0;
+    enterTitle(*this);
+    parkTitleCamera();
+    printf("[game] switched system -> %s (home %s)\n",
+           path.c_str(), home->name.c_str());
+    fflush(stdout);
 }
 
 void Game::settleFleet(Vehicle *active) {

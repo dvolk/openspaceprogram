@@ -1,0 +1,19 @@
+# In-process system switch: boot KSP (home Kerbin), then mid-run swap to the
+# solar system (home Earth) via the --switch-system hook, landing on the
+# title screen. This is the core of "(a) saves can load a different system" --
+# the save-load path switches to the save's system before loading the fleet,
+# and the hook exercises that same Game::switchSystem directly. The e2e can't
+# assert on pixels, but it proves the live swap runs the real teardown +
+# rebuild path (abort the old terrain stream, delete the old bodies, load the
+# new system, restart the worker, re-point home/sun/ships, re-stream the
+# heavy phase, land on the new backdrop) with no GL errors / crashes.
+NAME switch-system
+ARGS --system res/ksp_system.json --switch-system res/solar_system.json --switch-at 4000 --timeout 10
+EXPECT Loaded system 'res/ksp_system.json'
+EXPECT [boot] no vessel: title screen
+EXPECT [game] switched system -> res/solar_system.json (home Earth)
+EXPECT Loaded system 'res/solar_system.json'
+EXPECT [title] backdrop:
+FORBID GL_
+FORBID error:
+LIMIT 120

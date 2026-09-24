@@ -14,6 +14,7 @@
 #include "terrain.h"
 #include "frame.h"
 #include "shader.h"
+#include "job.h"
 
 //  A loaded star system
 struct System {
@@ -114,3 +115,15 @@ struct System {
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress = nullptr);
+
+// The heavy phase per body (the load_system light phase's counterpart): build
+// the boot-critical bodies (home, its moon, the star) synchronously so the
+// title + ship are solid from the first frame, and defer the rest to the
+// JobRunner worker so they stream in while the game runs (a body isn't drawn
+// until its heavy phase lands). BuildClouds still posts its coverage bake, so
+// that per-body cost never stalls anything. Shared by the boot (main) and the
+// in-process system switch (Game::switchSystem): one "build this system's
+// bodies" path. Defined in main.cpp.
+void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
+                    JobRunner &jobs, Shader *atmosphereshader,
+                    Shader *cloudshader, Shader *oceanshader, int cloudres);

@@ -166,6 +166,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Pop the Tracking Station back to the hub once at this "
                    "loop time in ms (its menu's \"Back to Space Center\", "
                    "headless; -1 = never)");
+    app.add_option("--switch-system", args.switch_system_path,
+                   "Swap to this system JSON over the running game at "
+                   "--switch-at (the in-process system switch, "
+                   "Game::switchSystem; lands on the Title screen)");
+    app.add_option("--switch-at", args.switch_system_ms,
+                   "Loop time in ms at which --switch-system fires "
+                   "(headless test hook; -1 = never)");
     app.add_option("--vab-scenario", args.vab_scenario,
                    "Seed the VAB's launch scenario (the top-bar dropdown's "
                    "value; empty = \"pad\")");

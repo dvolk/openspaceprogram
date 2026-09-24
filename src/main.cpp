@@ -130,35 +130,30 @@ static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) 
 }
 
 // The heavy phase (max_height + root terrain + the atmosphere/cloud/ocean
-// shells) per body, split: build the boot-critical bodies (the home body, its
-// moon, the star) synchronously so the title + ship are solid from the first
-// frame, and defer the rest to the worker so they stream in while the game
-// runs (a body simply isn't drawn until its heavy phase lands). BuildClouds
-// still posts its coverage bake to the runner (the deck draws a solid
-// placeholder until it lands), so that per-body cost never stalls anything.
-// Shared by the boot (main) and the in-process system switch
-// (Game::switchSystem): one "build this system's bodies" path.
-static void postHeavyPhase(Game &game, System &sys, TerrainBody *home,
-                           TerrainBody *sun, Shader *atmosphereshader,
-                           Shader *cloudshader, Shader *oceanshader,
-                           int cloudres) {
+// shells) per body, split: build the boot-critical bodies (home, its moon, the
+// star) synchronously so the title + ship are solid from the first frame, and
+// defer the rest to the worker so they stream in while the game runs.
+// Declared in system.h (shared by the boot and the in-process system switch).
+void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
+                    JobRunner &jobs, Shader *atmosphereshader,
+                    Shader *cloudshader, Shader *oceanshader, int cloudres) {
     for(TerrainBody *b : sys.bodies) {
         if(b == home || b == sys.moon || b == sun) {
             b->Finish(b->BuildRootGeoms(), atmosphereshader, cloudshader,
-                      cloudres, oceanshader, game.jobs);
+                      cloudres, oceanshader, jobs);
         } else {
             const std::string label = std::string("Terrain (") + b->name + ")";
             // The worker body only uses `b` (BuildRootGeoms is pure); the
             // rest are carried so the main-thread continuation can capture
             // them (the worker never dereferences them).
-            game.jobs.post(label,
+            jobs.post(label,
                 [b, atmosphereshader, cloudshader, cloudres, oceanshader,
-                 &game]() -> std::function<void()> {
+                 &jobs]() -> std::function<void()> {
                 auto r = b->BuildRootGeoms();   // worker: pure math
                 return [b, r, atmosphereshader, cloudshader, cloudres,
-                        oceanshader, &game]() {
+                        oceanshader, &jobs]() {
                     b->Finish(r, atmosphereshader, cloudshader, cloudres,
-                              oceanshader, game.jobs);
+                              oceanshader, jobs);
                 };
             });
         }
@@ -429,7 +424,7 @@ int main(int argc, char **argv)
     // BuildClouds still posts its coverage bake to the runner (the deck
     // draws a solid placeholder until it lands), so that ~0.4s-per-body cost
     // never stalls anything. Shared with the in-process system switch.
-    postHeavyPhase(game, sys, home, sun, atmosphereshader, cloudshader,
+    postHeavyPhase(sys, home, sun, game.jobs, atmosphereshader, cloudshader,
                    oceanshader, args.cloud_mesh);
 
     // settings.json phase 2 (the args fields were applied before the
@@ -882,6 +877,8 @@ int main(int argc, char **argv)
     game.spaceCenterMs = args.space_center_ms;
     game.trackingMs = args.tracking_ms;
     game.trackingCloseMs = args.tracking_close_ms;
+    game.switchSystemPath = args.switch_system_path;
+    game.switchSystemMs = args.switch_system_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -1088,6 +1085,17 @@ int main(int argc, char **argv)
             game.trackingCloseFired = true;
             if(sceneIs(game, SceneId::TrackingStation)) { popScene(game); }
             else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
+        }
+        /* --switch-system: the headless hook for the in-process system switch
+           (Game::switchSystem). Before the scene is read, since it tears the
+           current system down (fleet + bodies + the terrain stream), loads a
+           different one, and lands on the Title screen -- the only automated
+           cover for a live system swap (boot one system, swap to another). */
+        if(!game.switchSystemPath.empty() && game.switchSystemMs >= 0
+           && !game.switchSystemFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.switchSystemMs) {
+            game.switchSystemFired = true;
+            game.switchSystem(game.switchSystemPath);
         }
         vabFireHooks(game);
         {

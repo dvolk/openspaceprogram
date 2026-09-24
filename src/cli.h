@@ -102,6 +102,12 @@ struct GameArgs {
                                 // back to the hub once at this loop time in ms
                                 // (the menu's "Back to Space Center", headless;
                                 // -1 = never)
+    std::string switch_system_path; // --switch-system: the system JSON to swap
+                                    // to over the running game (the in-process
+                                    // system switch, Game::switchSystem)
+    int switch_system_ms = -1;      // --switch-at: loop time in ms for
+                                    // --switch-system (headless test hook;
+                                    // -1 = never)
     std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario
                                // (the top-bar dropdown; empty = "pad")
     std::string vab_body;      // --vab-body: seed the VAB launch body
