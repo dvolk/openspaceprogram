@@ -407,8 +407,11 @@ bool Game::newGame() {
     // to the VAB to build and launch the first vessel (vabLaunch ->
     // enterFlight). Nothing to build here -- the fleet stays empty until that
     // launch -- so this is just "the Space Center is now the floor".
+    // Start paused so the world does not advance while the player sets up;
+    // WarpUp from 0 resumes at 1x.
+    time_accel = 0;
     enterSpaceCenter(*this);
-    printf("[game] new game: Space Center, no ship\n");
+    printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
     toast("New game -- Space Center");
     return true;

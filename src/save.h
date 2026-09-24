@@ -184,7 +184,7 @@ struct SaveMeta {
     std::string system;      // the system file (res/systems/ksp_system.json)
     std::string parts;       // the parts catalog file (res/data/parts.json)
     double time = 0.0;       // the analytic sim clock (s)
-    int time_accel = 1;
+    int time_accel = 1;      // recorded for the round-trip; load starts paused
     std::string active_ship; // display name ("" = none)
     /* Engine-performance difficulty: multiplies every engine's exhaust
        velocity (thrust + delta-v scale by it, the fuel burn does not). Chosen

@@ -744,6 +744,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         app.get_option("--exhaust-scale")->count() > 0;
     args.cli_given.cam_shake =
         app.get_option("--cam-shake")->count() > 0;
+    args.cli_given.time_accel =
+        app.get_option("--time-accel")->count() > 0;
 
     if(!args.save_name.empty() && !args.load_name.empty()) {
         printf("error: --save and --load are mutually exclusive\n");

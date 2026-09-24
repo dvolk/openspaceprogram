@@ -733,10 +733,11 @@ int main(int argc, char **argv)
     SDL_SetWindowRelativeMouseMode(display.get_display(), false);
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
-    // A fresh start takes the CLI warp; a --load keeps the save's warp
-    // (load_game restored it) -- the warp is part of the saved state, and
-    // the CLI --time-accel is only a default for the fleet that was built.
-    if(args.load_name.empty()) {
+    // New game / load game start paused: load_game sets 0, and a --load
+    // leaves it there. An explicit --time-accel still applies on both paths
+    // (tests that need warp after a load pass it). A non-load boot without
+    // the flag keeps the CLI default (1x) for the fleet scenarios.
+    if(args.load_name.empty() || args.cli_given.time_accel) {
         time_accel = args.initial_time_accel;
     }
 

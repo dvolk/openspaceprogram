@@ -607,7 +607,8 @@ struct Game {
        floor, with NO ship -- the player then goes to the VAB to build and
        launch the first vessel (vabLaunch -> enterFlight). There is no fleet to
        build here (the ship comes from the VAB launch), so this is just a scene
-       transition. False (plus a toast) if a game is already running. */
+       transition. Starts paused (time_accel 0). False (plus a toast) if a
+       game is already running. */
     bool newGame();
     /* The New Game setup sheet's Start: switch into `sysPath` when it is a
        different system than the running one, apply `exhaustScale` as the
@@ -627,11 +628,12 @@ struct Game {
        state and the clock, so re-scenarioing would move them. */
     void settleFleet(Vehicle *active);
     /* Load a save over the running game, then move to the scene the result
-       implies: Flight when it has a vessel, Title when it does not. False if
-       the load was refused, in which case the running game is untouched --
-       load_game reads and builds everything before it clears the fleet.
-       Shared by the Save/Load window and the --reload hook, so the headless
-       path exercises the real one rather than a parallel implementation. */
+       implies: Flight when it has a vessel, Title when it does not. Starts
+       paused (load_game sets time_accel 0). False if the load was refused, in
+       which case the running game is untouched -- load_game reads and builds
+       everything before it clears the fleet. Shared by the Save/Load window
+       and the --reload hook, so the headless path exercises the real one
+       rather than a parallel implementation. */
     bool loadFrom(const std::string &dir);
     /* Ensure the running system matches the one the save at dir records
        (switching into it if different). True = the save's system is ready;

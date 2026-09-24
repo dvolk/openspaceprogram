@@ -32,6 +32,7 @@ struct GameArgs {
         bool terrain_px = false;     // --terrain-px
         bool exhaust_scale = false;  // --exhaust-scale
         bool cam_shake = false;      // --cam-shake
+        bool time_accel = false;     // --time-accel (overrides a paused load)
     } cli_given;
 
     std::string system_file = "res/systems/ksp_system.json";

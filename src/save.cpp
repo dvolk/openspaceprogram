@@ -630,7 +630,10 @@ void save_game(Game &g, const std::string &dir) {
 void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     g.time = meta.time;
-    g.time_accel = meta.time_accel;
+    // A load always starts paused, whatever warp the save was made at -- the
+    // player resumes when ready. The save still records time_accel (the
+    // round-trip field); it is simply not restored here.
+    g.time_accel = 0;
     // The save's difficulty (New Game's exhaust-velocity scale). A save is
     // not portable across scales, so the file wins over Settings -- except
     // when --exhaust-scale was given (cli_given beats files, same as

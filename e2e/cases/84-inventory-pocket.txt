@@ -6,8 +6,8 @@
 # pocket permanently unable to thrust. Here the mass must fall as the pocket
 # tank is burned (the pocket draw sheds its mass).
 #
-# The time warp comes from the fixture (save_inventory/save.json time_accel 10;
-# a --load keeps the save's warp, so the CLI --time-accel would be ignored).
+# The time warp is forced by --time-accel 10 (a load starts paused, so the
+# flag -- not the fixture's saved warp -- sets the 10x the burn needs).
 # W is held 1 s..15 s (wall) = ~140 s of sim-time at 10x, burning ~12 kg
 # (0.09 kg/s) of the pocket's 78.54 kg. The kerbal's mass starts at the dry
 # suit (~87 kg) + the full pocket tank (~89 kg) = ~176 kg and ends near ~164 kg.
@@ -23,7 +23,7 @@
 # more than the RCS adds over the burn, so the mass drop is the signal.)
 NAME inventory-pocket
 ARGS --load e2e/fixtures/save_inventory --timeout 18
-ARGS --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30 --prox-warp 10
+ARGS --time-accel 10 --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30 --prox-warp 10
 EXPECT Loaded 4 inventory item(s) with the fleet
 CHECK len(eva) > 5
 CHECK all(e["mode"] == "space" for e in eva)
