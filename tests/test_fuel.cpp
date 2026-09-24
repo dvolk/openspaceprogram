@@ -546,6 +546,79 @@ static void test_fuel_link_insufficient() {
     destroyShip(s);
 }
 
+/* ApplyThrust burns H2 and LOX in a 1:1 ratio, so a tick's burn is limited by
+   its scarcest propellant. THE regression this pins: the old code drained
+   each propellant in a separate drain-or-nothing call joined by `and`, so
+   with H2 >= flow > LOX the H2 was drained (mass off the ship) and the LOX
+   draw refused -- a leak, no thrust. Now the burn is sized from
+   min(H2, LOX, flow) BEFORE draining, so the two drain in LOCKSTEP and the
+   scarcest one limits the burn (thrust scales with the achieved flow).
+   Driven through the real ApplyThrust via the public test accessor. */
+static void test_applythrust_scarcest_limits_burn() {
+    printf("== ApplyThrust: scarcest propellant limits the burn (no leak) ==\n");
+
+    /* LOX is the limiting propellant: H2 100 kg, LOX 10 kg. The engine's
+       fuel_rate is 1.0 kg/s (addPart), thruster_util 1.0, so step 50 ->
+       flow 50 kg -- above LOX (10) and below H2 (100): the leak scenario. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, 0, 0, /*engine=*/true);
+        Part *tank = addPart(s, 100, 10);
+        link(s, eng, tank);
+        initShip(s);
+
+        s.v->ApplyThrust_TESTONLY(50.0);
+
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+                   "LOX fully consumed (10 -> 0)");
+        /* Lockstep: H2 drained exactly what LOX did (10), NOT the full flow
+           (50). The old leaky code drained 50 of H2 and left LOX at 10. */
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+                   "H2 drained 10 (lockstep with LOX), not the full 50 (the leak)");
+        /* The engine fired at a partial thrust proportional to the 10/50 burn
+           (full = 2*1.0*100 = 200 N; 200 * 10/50 = 40 N). */
+        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        destroyShip(s);
+    }
+
+    /* Mirror: H2 is the limiting propellant (H2 10, LOX 100). Same lockstep,
+       the other way round. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, 0, 0, true);
+        Part *tank = addPart(s, 10, 100);
+        link(s, eng, tank);
+        initShip(s);
+
+        s.v->ApplyThrust_TESTONLY(50.0);
+
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+                   "H2 fully consumed (10 -> 0)");
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 90.0, 1e-6,
+                   "LOX drained 10 (lockstep with H2), not the full 50");
+        destroyShip(s);
+    }
+
+    /* Both plentiful (H2 100, LOX 100): the burn is the full flow (50), both
+       drain 50, full thrust -- unchanged from before the fix. */
+    {
+        Ship s; s.v = new Vehicle;
+        Part *eng = addPart(s, 0, 0, true);
+        Part *tank = addPart(s, 100, 100);
+        link(s, eng, tank);
+        initShip(s);
+
+        s.v->ApplyThrust_TESTONLY(50.0);
+
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-6,
+                   "H2 drained the full flow (100 -> 50)");
+        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 50.0, 1e-6,
+                   "LOX drained the full flow (100 -> 50)");
+        CHECK_NEAR(eng->armedThrust, 200.0, 1e-5, "full thrust (both plentiful)");
+        destroyShip(s);
+    }
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -570,6 +643,8 @@ int main() {
     test_fuel_link_dual_chain();
     printf("\n");
     test_fuel_link_insufficient();
+    printf("\n");
+    test_applythrust_scarcest_limits_burn();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

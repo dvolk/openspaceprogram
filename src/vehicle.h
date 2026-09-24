@@ -563,12 +563,31 @@ public:
        caller scales the kg/s flow by the tick's simulated time). */
     bool consumeResourceMass(enum ResourceType type, float amt /* kg */, Part *engine);
 
+    /* Total kg of `type` available to `engine` across its drain layers
+       (fuelDrainLayers) -- the same tanks consumeResourceMass would draw
+       from, without draining. A rocket burns H2 and LOX in a 1:1 ratio, so
+       the burn it can sustain is limited by its scarcest propellant; this
+       lets ApplyThrust size the burn (min of the two) before draining, so
+       it never drains one propellant and leaks it because the other ran
+       short. getFuelMass is NOT equivalent: it sums over ALL parts, while
+       this is scoped to the engine's own group (engines draw per-group). */
+    float availableResourceMass(enum ResourceType type, Part *engine) const;
+
     float getFuelMass(const std::vector<enum ResourceType>& types);
 
     float getDeltaV();
 
     /* TODO should be cached per frame */
     float getMass();
+
+    /* Test-only accessor: drives the real ApplyThrust (the two-propellant
+       burn sizing + drain + arm-thrust logic) so its invariants can be
+       pinned headlessly. ApplyThrust itself stays protected (in the game it
+       is reached only through Command()); this is the sole public path to
+       it and exists solely for the unit tests -- do not call it from game
+       code. It does not apply any force (that is applyThrustForce); it only
+       consumes fuel and arms the per-thruster thrust. */
+    void ApplyThrust_TESTONLY(double step) { ApplyThrust(step); }
 
     /* --- electrical (KSP-style EC) ---------------------------------------
        The ship's EC is a shared pool across its battery parts (a part is a

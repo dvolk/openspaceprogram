@@ -1169,19 +1169,9 @@ const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) con
 bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engine) {
     const std::vector<std::vector<int> > &layers = fuelDrainLayers(engine);
     if(layers.empty()) { return false; }
-    /* Total fuel across all source groups (every layer). */
-    float total = 0;
-    for(size_t li = 0; li < layers.size(); li++) {
-        for(size_t gi = 0; gi < layers[li].size(); gi++) {
-            for(size_t i = 0; i < parts.size(); i++) {
-                Part *p = parts[i];
-                if(!p->isTank()) { continue; }
-                if(p->fuelGroup != layers[li][gi]) { continue; }
-                total += p->resources.current[(int)type];
-            }
-        }
-    }
-    if(total < amt) { return false; }
+    /* Not enough of `type` across the engine's drain layers -> the burn
+       can't be met this tick (drain-or-nothing, no partial leak). */
+    if(availableResourceMass(type, engine) < amt) { return false; }
     /* Drain layer by layer (furthest first), pro-rata across the layer's
        tanks. Single pass (no per-layer scratch vector): total >= amt means
        `remaining` can never exceed a layer's available fuel, so each tank's
@@ -1219,6 +1209,19 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
         remaining -= take;
     }
     return true;
+}
+
+float Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const {
+    float total = 0.0f;
+    for(const std::vector<int> &layer : fuelDrainLayers(engine)) {
+        for(const int grp : layer) {
+            for(Part *p : parts) {
+                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+                total += p->resources.current[(int)type];
+            }
+        }
+    }
+    return total;
 }
 
 float Vehicle::getFuelMass(const std::vector<enum ResourceType>& types) {
@@ -2580,11 +2583,28 @@ void Vehicle::ApplyThrust(double step) {
             }
             continue;
         }
-        if(consumeResourceMass(ResourceType::Hydrogen, flow, p) and
-           consumeResourceMass(ResourceType::LOX,      flow, p))
+        /* A rocket burns H2 and LOX in a 1:1 ratio, so the burn it can
+           sustain this tick is limited by its scarcest propellant. Size the
+           burn from the min of the two availabilities BEFORE draining: the
+           old code drained each in a separate drain-or-nothing call, so if
+           one ran short the other was already drained (mass off the ship)
+           with no thrust -- a ship with H2 but no LOX leaked all its H2.
+           Thrust scales with the achieved flow (fullThrust = 2*rate*ve, so
+           a fraction of the burn is a fraction of the thrust). */
+        float burn = flow;
+        const float availH2  = availableResourceMass(ResourceType::Hydrogen, p);
+        const float availLOX = availableResourceMass(ResourceType::LOX,      p);
+        if(availH2  < burn) { burn = availH2; }
+        if(availLOX < burn) { burn = availLOX; }
+        /* burn <= each availability, so both drains below are guaranteed to
+           succeed (their own total >= amt check passes); the guard is kept
+           only so we never arm thrust off a failed drain. */
+        if(burn > 0.0f &&
+           consumeResourceMass(ResourceType::Hydrogen, burn, p) and
+           consumeResourceMass(ResourceType::LOX,      burn, p))
             {
                 p->armedThrust =
-                    (float)(p->thrust() * thruster_util * exhaust_scale);
+                    (float)(p->thrust() * thruster_util * exhaust_scale * (burn / flow));
                 m_thrust = 1.0;
             }
     }
