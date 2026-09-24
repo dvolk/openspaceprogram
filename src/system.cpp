@@ -40,6 +40,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     sys.root = nullptr;
     sys.home = nullptr;
     sys.moon = nullptr;
+    // A throw mid-build (pass-2 wiring, home resolution) would otherwise
+    // leak the partially-created bodies -- delete them on the way out unless
+    // the build completes (the return "commits" them to the caller).
+    struct BodyCleanup {
+        std::vector<TerrainBody *> *b;
+        bool commit;
+        BodyCleanup(std::vector<TerrainBody *> &b_) : b(&b_), commit(false) {}
+        ~BodyCleanup() { if(!commit && b) { for(TerrainBody *x : *b) { delete x; } } }
+    } cleanup{ sys.bodies };
 
     // --- pass 1: create every body and its frames --------------------------
     for(size_t i = 0; i < bodies.size(); i++) {
@@ -377,5 +386,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
            sys.home ? sys.home->name.c_str() : "(none)",
            sys.moon ? sys.moon->name.c_str() : "(none)");
 
+    cleanup.commit = true;   // build complete: the caller now owns the bodies
     return sys;
 }

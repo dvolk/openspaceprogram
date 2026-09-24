@@ -400,7 +400,9 @@ static std::string saveSystemFile(const std::string &dir) {
     std::ifstream f(dir + "/save.json");
     if(!f) { return ""; }
     nlohmann::json j;
-    try { j = nlohmann::json::parse(f); }
+    // Same permissive parse as load_game (comments allowed) so a save the
+    // loader would accept is also recognized here for its system.
+    try { j = nlohmann::json::parse(f, nullptr, true); }
     catch(const std::exception &) { return ""; }
     return saveMetaFromJson(j).system;
 }
@@ -413,37 +415,49 @@ static std::string baseName(const std::string &p) {
     return (i == std::string::npos) ? p : p.substr(i + 1);
 }
 
-bool Game::loadFrom(const std::string &dir) {
-    // The save records the system it was made in (meta.system). If it is a
-    // DIFFERENT system than the one running, switch into it FIRST (the
-    // in-process swap) so the fleet loads onto the right bodies: a solar
-    // save loaded into KSP used to silently re-home the ship onto Kerbin
-    // (save.cpp's find-else-fallback) instead of onto Earth.
+// The save records the system it was made in (meta.system). If it is a
+// DIFFERENT system than the one running, switch into it FIRST (the in-process
+// swap) so the fleet loads onto the right bodies: a solar save loaded into KSP
+// would otherwise silently re-home the ship onto Kerbin (save.cpp's
+// find-else-fallback) instead of onto Earth. Returns true if the save's system
+// is ready (the current one, or a successful switch); false if the switch
+// failed (the current system keeps running). Shared by the UI/CLI load
+// (loadFrom) and the boot --load path, so both honor the save's system.
+bool Game::ensureSystemForSave(const std::string &dir) {
     const std::string sysfile = saveSystemFile(dir);
-    if(!sysfile.empty() && baseName(sysfile) != baseName(systemPath)) {
-        try {
-            switchSystem(sysfile);
-        } catch(const std::exception &e) {
-            printf("[load] cannot switch to system '%s': %s\n",
-                   sysfile.c_str(), e.what());
-            fflush(stdout);
-            toast("Load failed: cannot open system '%s'", sysfile.c_str());
-            return false;   // stay on the current system
-        }
-        printf("[load] save is from system '%s'; switched before loading\n",
-               sysfile.c_str());
-        fflush(stdout);
+    if(sysfile.empty() || baseName(sysfile) == baseName(systemPath)) {
+        return true;   // same system (or none recorded) -- nothing to switch
     }
+    try {
+        switchSystem(sysfile);
+    } catch(const std::exception &e) {
+        printf("[load] cannot switch to system '%s': %s\n",
+               sysfile.c_str(), e.what());
+        fflush(stdout);
+        // The reason (missing file, bad JSON, ...) is e.what(); surface it
+        // rather than assuming "cannot open".
+        toast("Load failed: %s", e.what());
+        return false;   // stay on the current system
+    }
+    printf("[load] save is from system '%s'; switched before loading\n",
+           sysfile.c_str());
+    fflush(stdout);
+    return true;
+}
+
+bool Game::loadFrom(const std::string &dir) {
+    if(!ensureSystemForSave(dir)) { return false; }
     try {
         load_game(*this, dir);
     } catch(const std::exception &e) {
         printf("[load] refused %s: %s\n", dir.c_str(), e.what());
         fflush(stdout);
         toast("Load failed: %s", e.what());
-        // load_game is transactional, so the fleet is intact and there is
-        // nothing to do but stay put. The test is belt and braces: if a future
-        // change ever lets a load fail after the fleet is gone, this routes to
-        // the title screen instead of leaving a Flight scene with no vessel.
+        // If the switch above already ran, the old fleet is GONE (switchSystem
+        // tears it down) -- a failed load_game then leaves no vessel and the
+        // user is on a different system with no game. Route to the title so
+        // there is no Flight scene with a null ship. (Recovering the old game
+        // on this path is a known gap -- see the plan's C3 follow-up.)
         if(ship == nullptr) { enterTitle(*this); }
         return false;
     }
@@ -493,29 +507,32 @@ void Game::quitToTitle() {
 
 void Game::switchSystem(const std::string &path) {
     /* In-process system switch: replace the running system with a different
-       one, landing on the title screen. The order is transactional -- load
-       the NEW system first, and only tear the old one down once the load has
-       succeeded. If the load throws (a missing / malformed file), the running
-       game is untouched, so a failed switch is a clean no-op, not a teardown
-       that leaves the game with no system.
+       one, landing on the title screen. Transactional in two senses:
+       (1) load the NEW system first, so a missing / malformed file throws with
+           the running game untouched (a failed switch is a clean no-op);
+       (2) re-point the game at the NEW (live) system BEFORE the old bodies are
+           deleted, so there is no window where sys / home / sun / focusTargets
+           point at freed memory. A throw from jobs.restart or postHeavyPhase
+           (after the re-point) still leaves the game on a live system.
 
-         1. load_system (the light phase) -- if this fails, throw: the old
-            system is still intact and nothing below has run.
+         1. load_system (the light phase) -- if this fails, throw: nothing is
+            torn down yet, so the old system is still intact.
          2. unloadGame -- the fleet is owned by the old bodies (terrain.h), so
             it goes before the body delete; this deletes the ships and drops
             the active-ship state.
-         3. jobs.abort + delete the old bodies -- abort() waits for the
+         3. re-point -- sys / home / sun / the Ships light source / focus
+            targets now reference the NEW system (alive); the old bodies are
+            held only by the local oldBodies vector below.
+         4. jobs.abort + delete the old bodies -- the pending terrain stream
+            captures old bodies (still alive here); abort() waits for the
             in-flight body to finish its snapshot read, so the delete is safe;
             the GeoPatch `alive` set is body-scoped, so it dies with the body.
-         4. jobs.restart -- abort() is terminal for the worker (a joined
+         5. jobs.restart -- abort() is terminal for the worker (a joined
             std::thread can't be reused), so the runner must be brought back
             before the new terrain is posted.
-         5. swap in the new system + re-point home / the star / the Ships
-            builder's light source.
          6. postHeavyPhase -- the same "build this system's bodies" path the
             boot uses (home/moon/star synchronous, the rest streamed).
-         7. re-seed the focus targets (the old ones dangle after the body
-            delete) + land on the shipless title backdrop. */
+         7. land on the shipless title backdrop. */
     // The shaders are registry singletons (compiled once, shared, never
     // deleted): re-fetch the same files the boot used, with the same
     // attrib/uniform registration, so this is a cache hit (not a recompile).
@@ -537,27 +554,35 @@ void Game::switchSystem(const std::string &path) {
         { "position", "normal" },
         { "MVP", "Normal", "cameraPos", "seaColor", "lightDirection",
           "time", "planetCenter" });
-    // Load FIRST: a failure here throws with the running game still intact.
+    // Load FIRST: a failure here throws with the running game still intact
+    // (nothing is torn down yet).
     System newSys = load_system(path.c_str(), terrainshader, sunshader, nullptr);
 
     unloadGame();
-    jobs.abort();
-    for(TerrainBody *b : sys.bodies) { delete b; }
-    jobs.restart();
-
+    // Re-point at the NEW (live) system before the old bodies are deleted, so
+    // sys / home / sun / focusTargets never reference freed memory (the old
+    // order deleted the bodies first, leaving them dangling until the
+    // re-point a few lines later).
+    std::vector<TerrainBody *> oldBodies = sys.bodies;
     sys = newSys;
     systemPath = path;   // the running system is now this one (save_game + load)
     home = sys.home;
     sun = sys.root;
     ships.setSun(sun);
-    postHeavyPhase(sys, home, sun, jobs, atmosphereshader, cloudshader,
-                   oceanshader, args.cloud_mesh);
-
     focusTargets.clear();
     for(TerrainBody *b : sys.bodies) {
         focusTargets.push_back({ b->name.c_str(), b });
     }
     focusBody = 0;
+    // The old bodies are now unreachable from the game state (held only by
+    // oldBodies): abort the pending terrain stream (it captures them -- still
+    // alive) and delete them.
+    jobs.abort();
+    for(TerrainBody *b : oldBodies) { delete b; }
+    jobs.restart();
+    postHeavyPhase(sys, home, sun, jobs, atmosphereshader, cloudshader,
+                   oceanshader, args.cloud_mesh);
+
     enterTitle(*this);
     parkTitleCamera();
     printf("[game] switched system -> %s (home %s)\n",

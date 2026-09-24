@@ -627,6 +627,11 @@ struct Game {
        Shared by the Save/Load window and the --reload hook, so the headless
        path exercises the real one rather than a parallel implementation. */
     bool loadFrom(const std::string &dir);
+    /* Ensure the running system matches the one the save at dir records
+       (switching into it if different). True = the save's system is ready;
+       false = the switch failed (the current system keeps running). Shared by
+       loadFrom and the boot --load path, so both honor the save's system. */
+    bool ensureSystemForSave(const std::string &dir);
     /* Tear the running game down to the shipless-boot state: delete the fleet,
        drop part_sels and the active ship/kerbal/lastShip refs, and re-aim the
        camera at home (orbit view). ~Vehicle does the physics/weld/crew cleanup

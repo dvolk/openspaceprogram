@@ -405,6 +405,9 @@ int main(int argc, char **argv)
     // it through this, so the state has a single home.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
+    // The running system (what save_game records + the load path compares
+    // against). Set before the boot --load so ensureSystemForSave sees it.
+    game.systemPath = args.system_file;
 
     // Sound (audio.h): a silent no-op when there is no playback device
     // (headless, the e2e battery under Xvfb) or the assets are missing.
@@ -495,6 +498,14 @@ int main(int argc, char **argv)
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
         game.partsshader = partsshader;   // load_game builds parts with it
+        // Honor the save's system (the primary "load a save" use case): a
+        // solar save loaded into KSP must land on Earth, not Kerbin. This is
+        // the same check the UI/CLI reload uses (loadFrom), so both paths
+        // switch into the save's system before loading the fleet.
+        if(!game.ensureSystemForSave(load_dir)) {
+            printf("Load failed: the save's system could not be opened\n");
+            exit(1);
+        }
         try {
             load_game(game, load_dir);
         } catch(const std::exception &e) {
@@ -504,6 +515,14 @@ int main(int argc, char **argv)
         first = game.ship;
         check_gl_error();
         ship = first;
+        // A cross-system save switched the running system just now
+        // (ensureSystemForSave -> switchSystem DELETED the old bodies), so the
+        // boot-time `sun`/`home` locals dangle. Re-point them at the live
+        // system before line ~579 (UpdateOrbitRails) and the camera focus
+        // (~line 647) read them -- a no-op when no switch happened, since
+        // game.sun/home already equal them.
+        sun = game.sun;
+        home = game.home;
     } else if(!args.radial_test.empty()) {
         RadialTestShip rts = build_radial_test_ship(
             args.radial_test, args.scenario_given, args.scenario,
@@ -879,7 +898,6 @@ int main(int argc, char **argv)
     game.trackingCloseMs = args.tracking_close_ms;
     game.switchSystemPath = args.switch_system_path;
     game.switchSystemMs = args.switch_system_ms;
-    game.systemPath = args.system_file;   // the running system (save_game + load)
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;
@@ -1096,7 +1114,17 @@ int main(int argc, char **argv)
            && !game.switchSystemFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.switchSystemMs) {
             game.switchSystemFired = true;
-            game.switchSystem(game.switchSystemPath);
+            // A bad path (missing file, bad JSON) throws from load_system --
+            // catch it like the load path does and keep running on the current
+            // system, rather than letting it escape the main loop (terminate).
+            try {
+                game.switchSystem(game.switchSystemPath);
+            } catch(const std::exception &e) {
+                printf("[switch] cannot switch to '%s': %s\n",
+                       game.switchSystemPath.c_str(), e.what());
+                fflush(stdout);
+                game.toast("Switch failed: %s", e.what());
+            }
         }
         vabFireHooks(game);
         {

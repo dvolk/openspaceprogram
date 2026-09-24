@@ -240,6 +240,44 @@ int main() {
         CHECK(second == 1);  // the post-abort job ran on the restarted worker
     }
 
+    // =========================================================================
+    // 9. restart() discards pending completions (done_) -- a job that
+    //    finished (body done, apply not yet run) before abort() must NOT run
+    //    its apply after restart(). This is the branch the switch path hits:
+    //    the old system's terrain finished in the worker, and the switch
+    //    aborts before the main loop polls (so done_ is non-empty at abort).
+    // =========================================================================
+    {
+        JobRunner jr;
+        int old_apply = 0;
+        std::atomic<bool> body_done{ false };
+        jr.post("finished-not-polled", [&]() -> std::function<void()> {
+            // Set the flag just before returning: when the test sees it, the
+            // body has finished and its apply is parked in done_ (the branch
+            // under test -- abort() must discard it, not run it).
+            body_done = true;
+            return [&]() { old_apply = 1; };
+        });
+        // Spin (with a deadline) until the body has finished -- this proves
+        // the completion is in done_, unlike a fixed sleep that could expire
+        // before the worker picks the job up.
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::seconds(2);
+        while(!body_done && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        CHECK(body_done);   // the body finished; its apply is in done_
+        jr.abort();         // discards done_ + in_flight_ (the old_apply is dropped)
+        jr.restart();
+        int new_job = 0;
+        jr.post("new-system", [&]() -> std::function<void()> {
+            return [&]() { new_job = 1; };
+        });
+        pump(jr);
+        CHECK(old_apply == 0);  // the discarded completion never ran
+        CHECK(new_job == 1);    // the new job ran on the restarted worker
+    }
+
     if(failures == 0) {
         printf("test_jobs: all checks passed\n");
         return 0;
