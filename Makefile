@@ -640,6 +640,17 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt
 
+# Short-name aliases: `make test_fuel` builds + runs just that one test,
+# instead of typing the full path (build/.../tests/test_fuel), which is the
+# only real target -- a bare `make test_fuel` was "No rule to make target".
+# Phony (always runs); delegates the build to the real target, then runs the
+# binary from the repo root (the same cwd `test` uses -- some tests read res/).
+# `make test` still builds + runs the whole set.
+.PHONY: $(TESTS)
+$(TESTS):
+	$(MAKE) --no-print-directory $(TESTDIR)/$@
+	$(TESTDIR)/$@
+
 .PHONY: test
 test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_frames
