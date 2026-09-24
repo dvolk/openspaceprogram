@@ -879,6 +879,7 @@ int main(int argc, char **argv)
     game.trackingCloseMs = args.tracking_close_ms;
     game.switchSystemPath = args.switch_system_path;
     game.switchSystemMs = args.switch_system_ms;
+    game.systemPath = args.system_file;   // the running system (save_game + load)
     game.vabHooks.placeMs = args.vab_place_ms;
     game.vabHooks.loadMs = args.vab_load_ms;
     game.vabHooks.loadPath = args.vab_load;

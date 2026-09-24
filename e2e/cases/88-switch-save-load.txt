@@ -1,0 +1,22 @@
+# Cross-system save load: boot KSP (home Kerbin) with a live fleet, then load
+# a save that was made in the SOLAR system (home Earth) via the --reload hook.
+# The load path reads the save's meta.system, sees it differs from the running
+# system, and switches into it (Game::switchSystem) BEFORE loading the fleet --
+# so the ship lands on Earth instead of being silently re-homed onto Kerbin
+# (the old save.cpp find-else-fallback). This is the actual "(a) saves can
+# load a different system" path: the save is the selector. The e2e can't read
+# the ship's home body directly, but the switch-before-load ordering is the fix
+# (once the running system is the solar one, "Earth" resolves to the right body
+# and the find-else-fallback never fires).
+NAME switch-save-load
+ARGS --system res/ksp_system.json --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --reload e2e/fixtures/save_solar --reload-at 4000
+ARGS --timeout 10
+EXPECT Loaded system 'res/ksp_system.json'
+EXPECT [load] save is from system 'res/solar_system.json'; switched before loading
+EXPECT Loaded system 'res/solar_system.json'
+EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 120

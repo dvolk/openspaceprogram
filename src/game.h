@@ -319,6 +319,13 @@ struct Game {
     int switchSystemMs = -1;
     bool switchSystemFired = false;
 
+    // The system file this game is currently running (set from --system at
+    // boot, updated by switchSystem). This -- not args.system_file, the boot
+    // CLI arg -- is what save_game records (a save made after a live swap
+    // must name the system it was made in, so a later load can switch to it)
+    // and what the load path compares against to decide whether to switch.
+    std::string systemPath;
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick

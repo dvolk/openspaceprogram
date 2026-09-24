@@ -1,0 +1,17 @@
+# Missing-system guard: a save whose meta.system points at a file that does not
+# exist. The load path tries to switch into it (Game::switchSystem ->
+# load_system), which throws on the missing file; loadFrom catches it and
+# refuses the load with a clean error, staying on the current system -- no
+# crash, no silent re-home, and the fleet is NOT loaded (the load_game commit
+# path is never reached). This is the plan's "missing/unresolvable system file
+# -> clean error" path.
+NAME switch-save-bad-system
+ARGS --system res/ksp_system.json --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --reload e2e/fixtures/save_bad_system --reload-at 4000
+ARGS --timeout 8
+EXPECT Loaded system 'res/ksp_system.json'
+EXPECT [load] cannot switch to system 'res/nonexistent_system.json'
+FORBID Segmentation
+FORBID GL_
+FORBID Loaded game from
+LIMIT 120

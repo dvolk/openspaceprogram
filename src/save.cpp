@@ -605,7 +605,10 @@ void save_game(Game &g, const std::string &dir) {
     ensure_dir(dir);
     ensure_dir(dir + "/ships");
     SaveMeta meta;
-    meta.system = g.args.system_file;
+    // The system the game is ACTUALLY running (the boot --system, or a live
+    // switch), not args.system_file (the boot CLI arg, stale after a swap) --
+    // a load reads this back to switch into the save's system.
+    meta.system = g.systemPath.empty() ? g.args.system_file : g.systemPath;
     meta.parts = g.args.parts_file;
     meta.time = g.time;
     meta.time_accel = g.time_accel;
