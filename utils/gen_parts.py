@@ -32,6 +32,8 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   capacity[EC]        = crew * CAPSULE_BATTERY_WH_PER_CREW
                   (a small built-in battery; the reserve that keeps the crew
                    alive. Scales with crew.)
+  cargo           mass = volume * MASS_DENSITY["cargo"] (empty crate shell)
+                  inventory_capacity = 10 (EXTRA_FIELDS)
   battery         active   = volume * BATTERY_ACTIVE_DENSITY (the Li-ion cells)
                   dry      = volume * BATTERY_DRY_DENSITY (hull/BMS/wiring)
                   mass     = active + dry
@@ -45,11 +47,15 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   but carries the docking_port + fuel_barrier flags
   fuel_link       virtual one-way fuel connection: no mesh, no physics --
                   just the fuel_link flag (EXTRA_FIELDS)
+  drag (DRAG_CD)  per-type aerodynamic shape coefficients (src/drag.h partCd).
+                  `drag` is the symmetric default; the three directional
+                  anchors override it by how the part faces the flow
+                  (nose / broadside / base). Keyed by TYPE, the shape family.
   extras (EXTRA_FIELDS)
-                  crew seats, the kerbal's RCS propellant, the decouplers'
-                  declared mass + staging flags, the engine shrouds --
-                  per-part values that don't derive from geometry, applied
-                  on top
+                  crew seats, the kerbal's RCS propellant + suit pocket, the
+                  cargo crate's inventory, the decouplers' declared mass +
+                  staging flags, the engine shrouds -- per-part values that
+                  don't derive from geometry, applied on top
 
 Radial sizes are 1.0 / 1.5 / 2.25 m (see PARTS).
 
@@ -116,6 +122,7 @@ MASS_DENSITY = {
     "adapter":        15.0,      # thin coupler ring, mostly air
     "nose_cap":       192.0,     # thin fairing
     "rcs":            40.0,      # mostly structure + small thrusters (light)
+    "cargo":          40.0,      # empty crate shell (contents live in inventory)
 }
 
 # attitude authority (N m), scales with radius (leverage of the wheel/arm)
@@ -170,6 +177,72 @@ WING_STALL_ANGLE   = 0.35     # rad (~20 deg), where lift peaks + the flow stall
 RUDDER_DENSITY        = 50.0  # kg/m^3, control-surface structure (skin + spars)
 RUDDER_CL             = 6.0   # deflection effectiveness (per radian)
 RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
+
+# Per-type aerodynamic shape coefficients (src/drag.h partCd). The ship's
+# silhouette supplies the AREA; these supply the shape-vs-orientation the
+# silhouette cannot: how blunt each face of the part is as it meets the flow.
+#   drag           the symmetric default (all three anchors)
+#   drag_forward   nose (+Z stack axis) into the flow   (c = +1)
+#   drag_side      broadside, axis perpendicular to flow (c = 0)
+#   drag_backward  base (-Z) into the flow              (c = -1)
+# Keyed by TYPE -- one cube per shape family, not per part. Anchors track the
+# meshes (see gen_nose_cap.py / gen_wing.py): a thin disc's large faces are
+# PERPENDICULAR to the stack axis, so nose/base-into-flow is FACE-ON (blunt)
+# and broadside is the thin rim (sleek); a cone's apex is +Z, so nose-into-
+# flow is tip-first (sleek) and base-into-flow is the flat disc (blunt).
+DRAG_CD = {
+    # capsule: slender body -- sleek nose-first, the flat heat shield brakes
+    # base-first (the star of the re-entry show).
+    "capsule":        {"drag": 1.0, "drag_forward": 0.35, "drag_side": 0.8,
+                       "drag_backward": 1.3},
+    # thin disc (wheel / battery / rtg / mono / rcs / decoupler / dock port):
+    # faces are the circles at +-Z (blunt face-on), the rim is the thin edge.
+    "reaction_wheel": {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "battery":        {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "rtg":            {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "mono_tank":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "rcs":            {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "decoupler":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "docking_port":   {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    # blunt cylinder (tank / crate): circular ends, long flank.
+    "fuel_tank":      {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
+                       "drag_backward": 1.0},
+    "jet_tank":       {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
+                       "drag_backward": 1.0},
+    "cargo":          {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
+                       "drag_backward": 1.0},
+    "engine":         {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
+                       "drag_backward": 0.9},
+    "orbital_engine": {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
+                       "drag_backward": 0.9},
+    "jet":            {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
+                       "drag_backward": 0.9},
+    "adapter":        {"drag": 0.2, "drag_forward": 0.9, "drag_side": 1.0,
+                       "drag_backward": 0.9},
+    # cone (apex = +Z): tip-first sleek, flat base blunt.
+    "nose_cap":       {"drag": 0.6, "drag_forward": 0.35, "drag_side": 0.9,
+                       "drag_backward": 1.3},
+    "kerbal":         {"drag": 0.5, "drag_forward": 0.5, "drag_side": 0.9,
+                       "drag_backward": 0.9},
+    # thin plate (wing / control surfaces): span is +Z, thickness is Y.
+    # Span-first is a thin edge; broadside can present the planform (a big
+    # flat plate -- kept blunt, see the aero quality pass on the wing cd).
+    "wing":           {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
+                       "drag_backward": 0.2},
+    "rudder":         {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
+                       "drag_backward": 0.2},
+    "elevator":       {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
+                       "drag_backward": 0.2},
+    "aileron":        {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
+                       "drag_backward": 0.2},
+}
 
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual: mesh/texture are None and generate() skips the
@@ -243,6 +316,9 @@ PARTS = [
     ("nose_cap_r1.5h0.75","nose_cap",      "meshes/nose_cap_r1.5h0.75.obj",       "textures/nose_cap.png"),
     ("nose_cap_r2.25h1.125","nose_cap",    "meshes/nose_cap_r2.25h1.125.obj",     "textures/nose_cap.png"),
     ("kerbal",           "kerbal",         "meshes/kerbal.obj",                   "textures/kerbal.png"),
+    # an empty cargo crate: inventory storage (Part::isContainer). Mass from
+    # the crate shell; contents ride inventory_capacity, not the body.
+    ("cargo",            "cargo",          "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
     # a wing: a lifting surface (delta wing, wing.obj by gen_wing.py). Adds
     # lift + a weathervane drag to a ship (see the WING_* constants).
     ("wing",             "wing",           "meshes/wing.obj",                     "textures/wing.png"),
@@ -289,7 +365,11 @@ EXTRA_FIELDS = {
     "capsule_r2.25h4.5": {"crew_capacity": 6},
     # kerbal: DRY mass (full-EVA-gear ~94 kg minus the 10 kg RCS hydrazine,
     # which is a separate capacity that rides effectiveMass, not the body).
-    "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0}},
+    # The suit also carries a small inventory pocket.
+    "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0},
+                          "inventory_capacity": 3},
+    # cargo crate: how many inventory items it holds (PartDef.inventory_capacity)
+    "cargo":             {"inventory_capacity": 10},
     "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
     "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
     "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,
@@ -351,6 +431,7 @@ DISPLAY_BASE = {
     "docking_port":   "Docking Port",
     "nose_cap":       "Nose Cap",
     "kerbal":         "Kerbal",
+    "cargo":          "Cargo Crate",
     "wing":           "Wing",
     "rudder":         "Rudder",
     "elevator":       "Elevator",
@@ -410,7 +491,7 @@ def generate(name, ptype, mesh, texture):
         # Air-breathing (see the JET_* constants + src/drag.h jetThrust).
         # jet_fan_thrust is the static (fan) thrust at sea level; the ram
         # term (rho*A*v*(V_E - v)) is added at runtime from the local air.
-        # The jet burns H2 only (air is the free oxidizer -- no LOX).
+        # The jet burns JET FUEL only (air is the free oxidizer -- no LOX).
         fan = JET_FAN_PER_M2 * radius * radius
         intake = JET_INTAKE_PER_M2 * radius * radius
         e["mass"] = clean(JET_MASS_PER_M2 * radius * radius)
@@ -531,7 +612,7 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
         e["height"] = height
-    else:  # capsule / reaction_wheel / adapter / nose_cap
+    else:  # capsule / reaction_wheel / adapter / nose_cap / cargo
         e["mass"] = clean(volume * MASS_DENSITY[ptype])
         e["radius"] = radius
         e["height"] = height
@@ -549,6 +630,14 @@ def generate(name, ptype, mesh, texture):
             e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_M * radius)
 
     e.update(EXTRA_FIELDS.get(name, {}))
+    # aerodynamic shape cube last: per TYPE (the shape family), not per part.
+    # fuel_link never reaches here (no mesh, no physics).
+    d = DRAG_CD.get(ptype)
+    if d is not None:
+        e["drag"] = d["drag"]
+        e["drag_forward"] = d["drag_forward"]
+        e["drag_side"] = d["drag_side"]
+        e["drag_backward"] = d["drag_backward"]
     return e
 
 
