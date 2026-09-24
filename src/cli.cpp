@@ -460,7 +460,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--font", args.font_path,
                    "TTF font file for all UI text; the normal and big faces "
                    "are the same font (the big one at twice --font-size; "
-                   "default ./res/DejaVuSansMono.ttf)");
+                   "default res/DejaVuSansMono.ttf)");
 
     app.add_option("--font-size", args.font_size,
                    "UI font size in pixels (the big HUD readout font is "

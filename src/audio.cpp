@@ -4,6 +4,8 @@
 
 #include "audio.h"
 
+#include "resdir.h"
+
 #include <cstdio>
 
 bool Audio::init() {
@@ -84,7 +86,7 @@ MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
     // decode is ~1 s of CPU and ~200 MB of RAM, which dominated startup, so
     // it streams -- Vorbis decodes on the fly inside the callback (a few ms
     // per period, well inside the generous 8192-frame buffer).
-    MIX_Audio *a = MIX_LoadAudio(mixer_, path.c_str(), predecode);
+    MIX_Audio *a = MIX_LoadAudio(mixer_, resdir::path(path).c_str(), predecode);
     if(a == nullptr) {
         printf("audio: cannot load %s: %s\n", path.c_str(), SDL_GetError());
         return nullptr;

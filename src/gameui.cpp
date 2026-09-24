@@ -31,6 +31,7 @@
 #include "vab.h"         // the editor ops (drawVabUI: gizmos, save, load, launch)
 #include "staging.h"     // computeStaging (the VAB staging table)
 #include "shipdef.h"     // list_ship_defs (the VAB Load picker's ship list)
+#include "resdir.h"      // resdir::path (asset root)
 #include "system.h"      // list_systems (the New Game setup sheet's picker)
 #include "save.h"        // save_game / load_game / list_saves / delete_save
 #include "datadir.h"     // the saves/ directory's location (the data directory)
@@ -2462,7 +2463,8 @@ void drawNewGame(Game &g) {
     static float exhaustSel = 1.0f;
     {
         std::error_code ec;
-        const auto mtime = std::filesystem::last_write_time("res/systems", ec);
+        const auto mtime = std::filesystem::last_write_time(
+            resdir::path("res/systems"), ec);
         if(!ec && (!scanned || mtime != dirMtime)) {
             // Keep an in-progress pick across a rescan; only the FIRST scan
             // seeds from the running system (so Start is a no-op swap).
@@ -2471,7 +2473,7 @@ void drawNewGame(Game &g) {
             if(!first && sysSel >= 0 && sysSel < (int)systems.size()) {
                 keep = systems[(size_t)sysSel];
             }
-            systems = list_systems("res/systems");
+            systems = list_systems(resdir::path("res/systems"));
             dirMtime = mtime;
             scanned = true;
             sysSel = 0;
@@ -2699,9 +2701,10 @@ void drawVabUI(Game &g) {
     static std::filesystem::file_time_type shipDirMtime;
     {
         std::error_code ec;
-        const auto mtime = std::filesystem::last_write_time("res/ships", ec);
+        const auto mtime = std::filesystem::last_write_time(
+            resdir::path("res/ships"), ec);
         if(!ec && (!shipsScanned || mtime != shipDirMtime)) {
-            ships = list_ship_defs("res/ships");
+            ships = list_ship_defs(resdir::path("res/ships"));
             shipDirMtime = mtime;
             shipsScanned = true;
         }

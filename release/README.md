@@ -5,17 +5,18 @@ land. Very early development — expect rough edges.
 
 ## Run it
 
-The game loads its assets from the `res/` directory next to the binary,
-so **run it from this directory**:
+The game finds its assets in the `res/` directory next to the binary, so
+you can start it from anywhere:
 
-- **Linux** — from a terminal, in this directory:
+- **Linux** — from a terminal:
 
-      ./osp
+      ./osp-<version>-linux/osp
 
-- **Windows** — double-click `osp.exe`, or from a terminal in this
-  directory:
+  (or add that directory to your `PATH` and run `osp`)
 
-      osp.exe
+- **Windows** — double-click `osp.exe`, or from a terminal:
+
+      osp-<version>-windows\osp.exe
 
 A combined archive (the `linux+windows` one) contains both binaries in
 the same directory — use the one for your OS; the other is inert.

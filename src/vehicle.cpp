@@ -90,8 +90,8 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
         /* Shared assets (the get_mesh/get_texture registries): one assimp
            import + GPU upload + texture upload per part FILE, so a
            100-part ship built from 10 part types pays 10x, not 100x. */
-        Mesh *mesh = get_mesh(std::string("./res/") + pd.mesh);
-        Texture *tex = get_texture(std::string("./res/") + pd.texture);
+        Mesh *mesh = get_mesh(std::string("res/") + pd.mesh);
+        Texture *tex = get_texture(std::string("res/") + pd.texture);
 
         /* No rigid body and no world pose of its own: the part is a child of
            the ship's one compound body, and its pose is derived from
@@ -110,9 +110,9 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
            (Vehicle::Draw / the VAB draw). Registry-shared like the part
            assets -- one import per shroud file. */
         if(!pd.shroud.empty()) {
-            part->shroud = get_mesh(std::string("./res/") + pd.shroud);
+            part->shroud = get_mesh(std::string("res/") + pd.shroud);
             part->shroud_texture =
-                get_texture(std::string("./res/") + pd.shroud_texture);
+                get_texture(std::string("res/") + pd.shroud_texture);
         }
 
         if(i == 0) {

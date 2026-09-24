@@ -29,6 +29,7 @@
 #include "mesh.h"      // get_mesh
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
 #include "part.h"      // Part
+#include "resdir.h"    // resdir::path
 #include "ships.h"     // Ships, collectVehicles
 #include "shipdef.h"   // PartsCatalog, PartDef, ResourceType, ShipDef, scenario_by_name
 #include "system.h"    // System
@@ -145,8 +146,8 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
             throw std::runtime_error("load: '" + shipName + "' inventory item '"
                                      + si.part + "' is not in the parts file");
         }
-        Mesh *m = get_mesh("./res/" + pd->mesh);
-        Texture *t = get_texture("./res/" + pd->texture);
+        Mesh *m = get_mesh("res/" + pd->mesh);
+        Texture *t = get_texture("res/" + pd->texture);
         Body *b = create_part_body(m, g.partsshader, t,
                                    (float)si.mass, si.hull_margin);
         Part *item = new Part;
@@ -326,8 +327,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             throw std::runtime_error("load: saved ship '" + s.name + "' has a part "
                                      "'" + sp.part + "' that is no longer in the parts file");
         }
-        Mesh *mesh = get_mesh("./res/" + pd->mesh);
-        Texture *tex = get_texture("./res/" + pd->texture);
+        Mesh *mesh = get_mesh("res/" + pd->mesh);
+        Texture *tex = get_texture("res/" + pd->texture);
         Body *b = create_part_body(mesh, g.partsshader, tex,
                                    (float)sp.mass, sp.hull_margin);
         Part *p = new Part;
@@ -451,7 +452,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                             std::map<std::string, Vehicle *> &byName,
                             const std::map<uint64_t, Part *> &savedUidToPart) {
     const PartsCatalog &cat = g.ships.catalog();
-    ShipDef def = load_ship_def(s.defPath.c_str(), cat);
+    ShipDef def = load_ship_def(resdir::path(s.defPath).c_str(), cat);
     Kerbal *k = new Kerbal;
     k->name = s.name;
     k->defPath = s.defPath;

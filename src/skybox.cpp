@@ -7,6 +7,7 @@
 #include <GL/glew.h>
 
 #include "camera.h"
+#include "resdir.h"
 #include "shader.h"
 #include "texture.h"
 
@@ -29,7 +30,7 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
     std::map<std::string, SDL_Surface*> decoded;
     for(const GLchar* path : faces) {
         if(decoded.find(path) == decoded.end()) {
-            decoded[std::string(path)] = IMG_Load(path);
+            decoded[std::string(path)] = IMG_Load(resdir::path(path).c_str());
         }
     }
 

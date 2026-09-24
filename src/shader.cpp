@@ -5,6 +5,7 @@
 #include "shader.h"
 #include "gldebug.h"
 #include "camera.h"
+#include "resdir.h"
 
 void Shader::FromFile(const std::string& fileName)
 {
@@ -192,7 +193,7 @@ void Shader::setUniform_vec2(const std::string& name, const glm::vec2 & v2) {
 std::string LoadShader(const std::string& fileName)
 {
     std::ifstream file;
-    file.open((fileName).c_str());
+    file.open(resdir::path(fileName).c_str());
 
     std::string output;
     std::string line;
@@ -262,15 +263,11 @@ GLuint Shader::CreateShader(const std::string& text, unsigned int type)
    nothing to share there.) */
 static std::map<std::string, Shader *> s_shaders;
 
-static std::string asset_key(const std::string &path) {
-    if(path.compare(0, 2, "./") == 0) { return path.substr(2); }
-    return path;
-}
-
 Shader *get_shader(const std::string &path,
                    const std::vector<const char *> &attribs,
                    const std::vector<const char *> &uniforms) {
-    std::string key = asset_key(path);
+    // Cache on the resolved path (the stem: FromFile appends .vs/.fs).
+    std::string key = resdir::path(path);
     std::map<std::string, Shader *>::iterator it = s_shaders.find(key);
     if(it != s_shaders.end()) {
         Shader *s = it->second;
@@ -288,6 +285,8 @@ Shader *get_shader(const std::string &path,
     Shader *s = new Shader;
     s->registerAttribs(attribs);
     s->registerUniforms(uniforms);
+    // FromFile/LoadShader resolve for the open; `path` stays the logical
+    // name in the log line below.
     s->FromFile(path);
     // A link failure is cached (like the mesh/texture placeholders), so a
     // broken shader would otherwise render nothing, silently, for every

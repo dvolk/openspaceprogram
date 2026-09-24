@@ -114,7 +114,7 @@ void GLDebugDrawer::Draw(const Camera * camera)
 void GLDebugDrawer::init() {
     lineBuffer.reserve(512 * 1024);
 
-    lineshader = get_shader("./res/lineShader", { "pos" }, { "VP" });
+    lineshader = get_shader("res/lineShader", { "pos" }, { "VP" });
 
     m_debugMode = DBG_DrawWireframe;
 

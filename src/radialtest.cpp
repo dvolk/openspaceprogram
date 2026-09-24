@@ -65,8 +65,8 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
        the Part OWNS the Body and the def points into the catalog (which
        outlives the ship). */
     auto makePart = [&](const PartDef *def) -> Part * {
-        Mesh *mesh = get_mesh(std::string("./res/") + def->mesh);
-        Texture *tex = get_texture(std::string("./res/") + def->texture);
+        Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
+        Texture *tex = get_texture(std::string("res/") + def->texture);
         Body *b = create_part_body(mesh, partsshader, tex, (float)def->mass,
                                    def->hull_margin);
         Part *p = new Part;

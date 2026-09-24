@@ -11,11 +11,15 @@
 #include <nlohmann/json.hpp>
 
 #include "orbit.h"  // railStateFromElements
+#include "resdir.h"
 
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress) {
-    std::ifstream f(path);
+    // `path` is the logical name ("res/systems/...") -- what the logs and
+    // e2e EXPECT strings carry. Only the open sees the resolved filesystem
+    // path (resdir.h).
+    std::ifstream f(resdir::path(path));
     if(!f.is_open()) {
         throw std::runtime_error(std::string("system: cannot open ") + path);
     }

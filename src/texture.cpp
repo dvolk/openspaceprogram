@@ -1,5 +1,7 @@
 #include "texture.h"
 
+#include "resdir.h"
+
 #include <cstdio>
 #include <map>
 #include <string>
@@ -80,17 +82,13 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
    are main-thread (the job worker does pure math only), so no lock. */
 static std::map<std::string, Texture *> s_textures;
 
-/* "res/x.png" and "./res/x.png" must land in one cache slot. */
-static std::string asset_key(const std::string &path) {
-    if(path.compare(0, 2, "./") == 0) { return path.substr(2); }
-    return path;
-}
-
 Texture *get_texture(const std::string &path, bool mipmap) {
-    std::string key = asset_key(path) + (mipmap ? "#mip" : "#nomip");
+    // Cache on the resolved path so "res/x" and an absolute hit one slot.
+    const std::string file = resdir::path(path);
+    const std::string key = file + (mipmap ? "#mip" : "#nomip");
     std::map<std::string, Texture *>::iterator it = s_textures.find(key);
     if(it != s_textures.end()) { return it->second; }
-    Texture *tex = load_texture_file(path.c_str(), mipmap);
+    Texture *tex = load_texture_file(file.c_str(), mipmap);
     if(tex == nullptr) {
         // Hot pink: a part with a broken texture still renders, visibly
         // wrong. Cache the placeholder too, so a missing file does not

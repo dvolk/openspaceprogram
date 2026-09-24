@@ -61,6 +61,7 @@
 #include "vab.h"
 #include "save.h"
 #include "datadir.h"
+#include "resdir.h"
 
 #include <assimp/Importer.hpp>      // C++ importer interface
 #include <assimp/scene.h>           // Output data structure
@@ -220,13 +221,13 @@ int main(int argc, char **argv)
     const float glyph_extra_advance_x = 0.0f;
     ImFontConfig font_cfg;
     font_cfg.GlyphExtraAdvanceX = glyph_extra_advance_x;
-    io.Fonts->AddFontFromFileTTF(args.font_path.c_str(), args.font_size,
-                                 &font_cfg);
+    io.Fonts->AddFontFromFileTTF(resdir::path(args.font_path).c_str(),
+                                 args.font_size, &font_cfg);
     // The big face (2x size) for the HUD + main menu; the UI pass
     // (gameui.cpp) draws with it via the game.
-    ImFont *bigger = io.Fonts->AddFontFromFileTTF(args.font_path.c_str(),
-                                                  2.0f * args.font_size,
-                                                  &font_cfg);
+    ImFont *bigger = io.Fonts->AddFontFromFileTTF(
+        resdir::path(args.font_path).c_str(), 2.0f * args.font_size,
+        &font_cfg);
     check_gl_error();
 
     // First thing the user sees: a "loading..." label, presented before the
@@ -244,23 +245,23 @@ int main(int argc, char **argv)
 
     /* data init (the get_shader registry owns these: compiled once,
        shared, never deleted) */
-    Shader *partsshader = get_shader("./res/partsShader",
+    Shader *partsshader = get_shader("res/partsShader",
                                      { "position", "uv", "normal" },
                                      { "MVP", "Normal", "lightDirection", "shadow",
                                        "alpha", "tint", "flatLight" });
 
-    Shader *terrainshader = get_shader("./res/terrainShader",
+    Shader *terrainshader = get_shader("res/terrainShader",
                                        { "position", "normal", "color" },
                                        { "MVP", "Normal", "lightDirection", "color",
                                          "anchor" });
 
-    Shader *sunshader = get_shader("./res/sunShader",
+    Shader *sunshader = get_shader("res/sunShader",
                                    { "position", "normal", "color" },
                                    { "MVP", "Normal", "lightDirection", "color" });
 
     // Atmosphere shell: Fresnel limb glow from orbit, interior sky dome
     // from the surface (the `inside` flag). See reports/atmosphere2026_08_25.
-    Shader *atmosphereshader = get_shader("./res/atmosphereShader",
+    Shader *atmosphereshader = get_shader("res/atmosphereShader",
                                           { "position", "normal" },
                                           { "MVP", "Normal", "cameraPos",
                                             "color", "intensity", "power",
@@ -274,7 +275,7 @@ int main(int argc, char **argv)
     // texture fetch + lighting.
     // "uvParam" binds the mesh's color slot (attrib location 2): the
     // unwrapped sphere params the deck UV is built from.
-    Shader *cloudshader = get_shader("./res/cloudShader",
+    Shader *cloudshader = get_shader("res/cloudShader",
                                      { "position", "normal", "uvParam" },
                                      { "MVP", "Normal", "cameraPos", "color",
                                        "lightDirection", "drift", "planetCenter",
@@ -283,16 +284,16 @@ int main(int argc, char **argv)
     // Ocean surface: a transparent shell at sea level with animated wave
     // normals, Fresnel reflection and a specular sun glint. Land pokes
     // through via the depth test; the sea floor shows through the water.
-    Shader *oceanshader = get_shader("./res/oceanShader",
+    Shader *oceanshader = get_shader("res/oceanShader",
                                      { "position", "normal" },
                                      { "MVP", "Normal", "cameraPos", "seaColor",
                                        "lightDirection", "time", "planetCenter" });
 
-    Shader *skyboxshader = get_shader("./res/skyboxShader",
+    Shader *skyboxshader = get_shader("res/skyboxShader",
                                       { "position" },
                                       { "projectionview" });
 
-    Shader *lineshader = get_shader("./res/lineShader2",
+    Shader *lineshader = get_shader("res/lineShader2",
                                     { "position" },
                                     { "MVP", "color" });
 
@@ -464,7 +465,7 @@ int main(int argc, char **argv)
 
     std::vector<FleetEntry> fleet_entries;
     if(!args.fleet_file.empty()) {
-        fleet_entries = load_fleet(args.fleet_file.c_str()).ships;
+        fleet_entries = load_fleet(resdir::path(args.fleet_file).c_str()).ships;
     } else if(!args.ship_files.empty() || !args.body_name.empty()) {
         // --ship names the ship; a lone --body implies the default vessel on
         // it. Neither -> no vessel at all, which boots to the title screen.
@@ -587,10 +588,10 @@ int main(int argc, char **argv)
         sun->frame->UpdateOrbitRails(game.time);
     }
 
-    Mesh *engine_plume_mesh = get_mesh("./res/engine_plume.obj");
+    Mesh *engine_plume_mesh = get_mesh("res/engine_plume.obj");
     Texture *engine_plume_texture = get_texture("res/engine_plume.png");
 
-    Shader *billboardshader = get_shader("./res/billboardshader",
+    Shader *billboardshader = get_shader("res/billboardshader",
                                          { "position", "texcoord", "normal" },
                                          { "MVP", "color_uniform" });
 
@@ -691,7 +692,8 @@ int main(int argc, char **argv)
        only the build tree (the editor view), so they are invisible. vabOpen
        parks the (boot) camera and aims the orbit at the build. */
     if(!args.vab.empty()) {
-        ShipDef vdef = load_ship_def(args.vab.c_str(), ships.catalog());
+        ShipDef vdef = load_ship_def(resdir::path(args.vab).c_str(),
+                                     ships.catalog());
         game.vab.build = BuildShip::fromShipDef(vdef);
         game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);

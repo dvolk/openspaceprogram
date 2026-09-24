@@ -561,21 +561,21 @@ void Game::switchSystem(const std::string &path) {
     // The shaders are registry singletons (compiled once, shared, never
     // deleted): re-fetch the same files the boot used, with the same
     // attrib/uniform registration, so this is a cache hit (not a recompile).
-    Shader *terrainshader = get_shader("./res/terrainShader",
+    Shader *terrainshader = get_shader("res/terrainShader",
         { "position", "normal", "color" },
         { "MVP", "Normal", "lightDirection", "color", "anchor" });
-    Shader *sunshader = get_shader("./res/sunShader",
+    Shader *sunshader = get_shader("res/sunShader",
         { "position", "normal", "color" },
         { "MVP", "Normal", "lightDirection", "color" });
-    Shader *atmosphereshader = get_shader("./res/atmosphereShader",
+    Shader *atmosphereshader = get_shader("res/atmosphereShader",
         { "position", "normal" },
         { "MVP", "Normal", "cameraPos", "color", "intensity", "power",
           "lightDirection", "inside", "planetCenter" });
-    Shader *cloudshader = get_shader("./res/cloudShader",
+    Shader *cloudshader = get_shader("res/cloudShader",
         { "position", "normal", "uvParam" },
         { "MVP", "Normal", "cameraPos", "color", "lightDirection", "drift",
           "planetCenter", "coverage_tex" });
-    Shader *oceanshader = get_shader("./res/oceanShader",
+    Shader *oceanshader = get_shader("res/oceanShader",
         { "position", "normal" },
         { "MVP", "Normal", "cameraPos", "seaColor", "lightDirection",
           "time", "planetCenter" });

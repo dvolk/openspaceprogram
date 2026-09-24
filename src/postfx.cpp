@@ -40,12 +40,12 @@ static const char *CRT_EXTRA[] = { "resolution", "time", nullptr };
 static const char *GRAIN_EXTRA[] = { "time", nullptr };
 static const char *CAS_EXTRA[] = { "resolution", nullptr };
 static const FXDef FX_DEFS[] = {
-    { "crt",     "crt",     "./res/fx_crt",     CRT_EXTRA,     nullptr,      0 },
-    { "grain",   "grain",   "./res/fx_grain",   GRAIN_EXTRA,   nullptr,      0 },
-    { "cas",     "cas",     "./res/fx_sharpen", CAS_EXTRA,     nullptr,      0 },
-    { "sharpen", "cas",     "./res/fx_sharpen", CAS_EXTRA,     nullptr,      0 },
-    { "color",   "color",   "./res/fx_color",   nullptr,       COLOR_PARAMS, 4 },
-    { "gamma",   "color",   "./res/fx_color",   nullptr,       COLOR_PARAMS, 4 },
+    { "crt",     "crt",     "res/fx_crt",     CRT_EXTRA,     nullptr,      0 },
+    { "grain",   "grain",   "res/fx_grain",   GRAIN_EXTRA,   nullptr,      0 },
+    { "cas",     "cas",     "res/fx_sharpen", CAS_EXTRA,     nullptr,      0 },
+    { "sharpen", "cas",     "res/fx_sharpen", CAS_EXTRA,     nullptr,      0 },
+    { "color",   "color",   "res/fx_color",   nullptr,       COLOR_PARAMS, 4 },
+    { "gamma",   "color",   "res/fx_color",   nullptr,       COLOR_PARAMS, 4 },
 };
 
 static const FXDef *FindDef(const std::string& name) {
@@ -151,7 +151,7 @@ bool PostFX::AddEffect(const std::string& name)
         }
     }
     e.shader->registerUniforms(uniforms);
-    e.shader->FromFile("./res/fx_quad.vs", std::string(def->fs) + ".fs");
+    e.shader->FromFile("res/fx_quad.vs", std::string(def->fs) + ".fs");
     m_effects.push_back(std::move(e));
     return true;
 }

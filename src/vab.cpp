@@ -19,6 +19,7 @@
 #include "../middleware/imgui/imgui.h"   // ImGui::GetIO().WantCaptureMouse
 
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
+#include "resdir.h"   // resdir::path
 #include "ships.h"    // Ships::catalog (resolve the armed palette name)
 
 namespace {
@@ -33,7 +34,7 @@ VabAsset &vabAsset(const PartDef *def) {
     auto it = g_vabAssets.find(def);
     if(it != g_vabAssets.end()) { return it->second; }
     VabAsset a;
-    Mesh *m = get_mesh(std::string("./res/") + def->mesh);
+    Mesh *m = get_mesh(std::string("res/") + def->mesh);
     if(m != nullptr && m->vs != nullptr && m->num_vertices >= 3) {
         a.hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                        3 * sizeof(double));
@@ -479,7 +480,7 @@ void vabDetachSelected(Game &g) {
 }
 
 void vabSave(Game &g, const char *path) {
-    if(save_ship_def(g.vab.build, path)) {
+    if(save_ship_def(g.vab.build, resdir::path(path).c_str())) {
         printf("[vab] saved %s (%d parts)\n", path, (int)g.vab.build.parts.size());
         fflush(stdout);
         g.toast("Saved %s", path);
@@ -491,7 +492,7 @@ void vabSave(Game &g, const char *path) {
 bool vabLoad(Game &g, const char *path) {
     ShipDef def;
     try {
-        def = load_ship_def(path, g.ships.catalog());
+        def = load_ship_def(resdir::path(path).c_str(), g.ships.catalog());
     } catch(const std::exception &e) {
         printf("[vab] load failed %s: %s\n", path, e.what());
         fflush(stdout);

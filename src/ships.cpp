@@ -14,6 +14,7 @@
 #include "eva.h"      // Kerbal (the crew characters)
 #include "mesh.h"     // get_mesh
 #include "physics.h"  // setPosRot
+#include "resdir.h"   // resdir::path
 #include "shipdef.h"  // load_ship_def, ShipDef, PartsCatalog
 #include "system.h"   // System (build_fleet / spawn_vehicle resolve bodies)
 #include "texture.h"  // get_texture
@@ -41,7 +42,7 @@ std::vector<Vehicle *> collectVehicles(System &sys) {
 }
 
 Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *sun)
-    : part_catalog(load_parts_catalog(parts_file.c_str())),
+    : part_catalog(load_parts_catalog(resdir::path(parts_file).c_str())),
       partsshader(partsshader),
       sun(sun)
 {
@@ -57,8 +58,8 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
     // part on the same pad files would draw the very same mesh + texture),
     // the part shader shared as well. ~TerrainBody frees just the rigid
     // body + hull shape -- nothing to leak.
-    Mesh *m = get_mesh("./res/space_port.obj");
-    Texture *t = get_texture("./res/space_port.png");
+    Mesh *m = get_mesh("res/space_port.obj");
+    Texture *t = get_texture("res/space_port.png");
     StaticBuilding *sp = new StaticBuilding;
     sp->body = create_body(m, partsshader, t, 0, 0, 0, 0);
     setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
@@ -71,7 +72,7 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
 Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wantName,
                            TerrainBody *hb, const ScenarioDef *sc, System &sys)
 {
-    return place_ship_def(load_ship_def(shipDefPath.c_str(), part_catalog),
+    return place_ship_def(load_ship_def(resdir::path(shipDefPath).c_str(), part_catalog),
                           shipDefPath, wantName, hb, sc, sys);
 }
 
@@ -174,10 +175,11 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys) {
     if(capDef->crew_capacity <= 0) { return nullptr; }
     Part *capPart = ship->parts[part];
 
-    ShipDef def = load_ship_def("./res/ships/kerbal.json", part_catalog);
+    ShipDef def = load_ship_def(resdir::path("res/ships/kerbal.json").c_str(),
+                                part_catalog);
     Kerbal *k = new Kerbal;
     k->name = dedupName(sys, "kerbal");
-    k->defPath = "./res/ships/kerbal.json";
+    k->defPath = "res/ships/kerbal.json";
     k->home = ship->home;       // the ship was just placed (bookkeeping set)
     k->scenario = ship->scenario;
     k->m_parent = ship->m_parent;

@@ -10,6 +10,7 @@
 #include <assimp/postprocess.h>     // Post processing flags
 
 #include "gldebug.h"
+#include "resdir.h"
 
 bool Mesh::AssImpFromFile(const std::string& pFile, bool copyData)
 {
@@ -82,11 +83,6 @@ bool Mesh::FromFile(const std::string& fileName, bool copyData)
    objects. Main-thread only (the job worker does pure math), so no lock. */
 static std::map<std::string, Mesh *> s_meshes;
 
-static std::string asset_key(const std::string &path) {
-    if(path.compare(0, 2, "./") == 0) { return path.substr(2); }
-    return path;
-}
-
 /* A failed import leaves nothing to draw or collide with; stand in with a
    unit cube (the same PosTexNorInd layout a file mesh gets, and the vs/is
    copies, so BuildPartHull's convex hull still works). One cube per failed
@@ -130,11 +126,12 @@ static Mesh *placeholder_box() {
 }
 
 Mesh *get_mesh(const std::string &path) {
-    std::string key = asset_key(path);
+    // Cache on the resolved path so "res/x" and an absolute hit one slot.
+    const std::string key = resdir::path(path);
     std::map<std::string, Mesh *>::iterator it = s_meshes.find(key);
     if(it != s_meshes.end()) { return it->second; }
     Mesh *mesh = new Mesh;
-    if(!mesh->FromFile(path, true)) {
+    if(!mesh->FromFile(key, true)) {
         printf("get_mesh: could not import '%s' -- using the cube placeholder\n",
                path.c_str());
         delete mesh;

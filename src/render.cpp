@@ -694,8 +694,8 @@ void drawVab(Game &g) {
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         const BuildPart &bp = g.vab.build.parts[i];
         if(bp.def == nullptr) { continue; }
-        Mesh *m = get_mesh(std::string("./res/") + bp.def->mesh);
-        Texture *t = get_texture(std::string("./res/") + bp.def->texture);
+        Mesh *m = get_mesh(std::string("res/") + bp.def->mesh);
+        Texture *t = get_texture(std::string("res/") + bp.def->texture);
         if(m == nullptr || t == nullptr) { continue; }
         const glm::dmat4 model = glm::translate(bp.localPos)
                                * glm::dmat4(bp.localRot);
@@ -712,8 +712,8 @@ void drawVab(Game &g) {
            light + the hover/selection tint), so the wrap highlights with
            its part. */
         if(!bp.def->shroud.empty() && vabChildBelow(g.vab.build, i)) {
-            Mesh *sm = get_mesh(std::string("./res/") + bp.def->shroud);
-            Texture *st = get_texture(std::string("./res/") + bp.def->shroud_texture);
+            Mesh *sm = get_mesh(std::string("res/") + bp.def->shroud);
+            Texture *st = get_texture(std::string("res/") + bp.def->shroud_texture);
             if(sm != nullptr && st != nullptr) {
                 DrawModelAt(cam, sm, g.partsshader, st, model, sunlight,
                             1.0f, glm::dmat4(1.0), opts);
@@ -743,8 +743,8 @@ void drawVab(Game &g) {
                 for(size_t i = 0; i < sub.parts.size(); i++) {
                     const BuildPart &bp = sub.parts[i];
                     if(bp.def == nullptr) { continue; }
-                    Mesh *m = get_mesh(std::string("./res/") + bp.def->mesh);
-                    Texture *t = get_texture(std::string("./res/") + bp.def->texture);
+                    Mesh *m = get_mesh(std::string("res/") + bp.def->mesh);
+                    Texture *t = get_texture(std::string("res/") + bp.def->texture);
                     if(m == nullptr || t == nullptr) { continue; }
                     const glm::dmat4 model =
                         glm::translate(rp + rr * bp.localPos)
@@ -756,8 +756,8 @@ void drawVab(Game &g) {
         } else if(!g.vab.armed.empty()) {
             const PartDef *ad = g.ships.catalog().find(g.vab.armed);
             if(ad != nullptr) {
-                Mesh *gm = get_mesh(std::string("./res/") + ad->mesh);
-                Texture *gt = get_texture(std::string("./res/") + ad->texture);
+                Mesh *gm = get_mesh(std::string("res/") + ad->mesh);
+                Texture *gt = get_texture(std::string("res/") + ad->texture);
                 if(gm != nullptr && gt != nullptr) {
                     const glm::dmat4 gmodel = glm::translate(g.vab.ghostPos)
                                             * glm::dmat4(g.vab.ghostRot);

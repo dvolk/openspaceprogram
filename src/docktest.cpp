@@ -61,8 +61,8 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     /* One Part (shared render assets + hull + mass, wrapped with the
        catalog spec), exactly the radialtest builder's makePart. */
     auto makePart = [&](const PartDef *def) -> Part * {
-        Mesh *mesh = get_mesh(std::string("./res/") + def->mesh);
-        Texture *tex = get_texture(std::string("./res/") + def->texture);
+        Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
+        Texture *tex = get_texture(std::string("res/") + def->texture);
         Body *b = create_part_body(mesh, partsshader, tex, (float)def->mass,
                                    def->hull_margin);
         Part *p = new Part;
