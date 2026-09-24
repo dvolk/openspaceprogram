@@ -14,7 +14,7 @@
 // physics.h, which names btDefaultCollisionConfiguration in a member
 // (only forward-declared there) and so needs the complete type.
 #define BT_USE_DOUBLE_PRECISION true
-#include <bullet/btBulletDynamicsCommon.h>
+#include <btBulletDynamicsCommon.h>
 #include "physics.h"
 
 #include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes the

@@ -97,7 +97,7 @@ endif
 # __imp_ import-thunk references a real static archive can't satisfy (the
 # non-LTO debug config dies at link; LTO happens to resolve it, don't rely
 # on that). Linux ignores the declspec, so the define is a no-op there.
-CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -DGLEW_STATIC -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -DGLEW_STATIC -I./middleware/glm/ -I./middleware/bullet3/src -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
 LINKER=$(CXX) $(CFGFLAGS) $(LD_OPT) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -362,7 +362,7 @@ $(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
 # $(TESTDIR)/obj/ object and binary happily -- run `make clean` after removing one.
 
 TCC   = -O2 -std=c++20 -DGLEW_STATIC
-TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
+TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
         -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ \
         -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)

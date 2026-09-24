@@ -31,7 +31,7 @@
 //   make test   (or: ./test_fuel)
 
 #define BT_USE_DOUBLE_PRECISION true
-#include <bullet/btBulletDynamicsCommon.h>
+#include <btBulletDynamicsCommon.h>
 
 #include <cmath>
 #include <cstdio>

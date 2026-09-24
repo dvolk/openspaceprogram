@@ -46,7 +46,7 @@
 // sizeof(btScalar) == 8). The macro must be set before ANY bullet header,
 // as src/physics.cpp and src/body.h do.
 #define BT_USE_DOUBLE_PRECISION true
-#include <bullet/btBulletDynamicsCommon.h>
+#include <btBulletDynamicsCommon.h>
 
 #include "body.h"
 #include "physics.h"

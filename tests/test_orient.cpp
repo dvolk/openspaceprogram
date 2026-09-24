@@ -12,7 +12,7 @@
 // Build & run (from repo root):
 //   B=build/linux-v2-znver3/middleware/bullet3/src
 //   g++ -O2 -std=c++20 -DBT_USE_DOUBLE_PRECISION \
-//       -I./src -I./middleware/glm/ -I./middleware/bullet3/ -I./middleware/bullet3/bullet \
+//       -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
 //       tests/test_orient.cpp -o test_orient \
 //       $B/BulletDynamics/libBulletDynamics.a $B/BulletCollision/libBulletCollision.a \
 //       $B/Bullet3Collision/libBullet3Collision.a $B/BulletInverseDynamics/libBulletInverseDynamics.a \
@@ -20,7 +20,7 @@
 //   ./test_orient
 
 #define BT_USE_DOUBLE_PRECISION true
-#include <bullet/btBulletDynamicsCommon.h>
+#include <btBulletDynamicsCommon.h>
 #include <cstdio>
 #include <cmath>
 

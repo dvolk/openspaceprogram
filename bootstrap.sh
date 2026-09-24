@@ -104,10 +104,6 @@ fi
 git submodule update --init
 git -C middleware/sdl3-image submodule update --init external/libpng external/zlib
 
-# the game includes bullet3's headers as <bullet/...>, so bullet3/ has a
-# symlink bullet -> src
-ln -sfn src middleware/bullet3/bullet
-
 echo "=== building bullet3 (static, double precision, Release) ==="
 # CMAKE_POLICY_VERSION_MINIMUM: bullet3 declares a pre-3.5 cmake policy,
 # which cmake 4 rejects without this

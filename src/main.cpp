@@ -27,7 +27,7 @@
 #include <glm/gtx/polar_coordinates.hpp>
 
 #define BT_USE_DOUBLE_PRECISION true
-#include <bullet/btBulletDynamicsCommon.h>
+#include <btBulletDynamicsCommon.h>
 
 #include "display.h"
 #include "mesh.h"

@@ -1,6 +1,6 @@
 #define BT_USE_DOUBLE_PRECISION true
-#include <bullet/btBulletDynamicsCommon.h>
-#include <bullet/BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
+#include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
 

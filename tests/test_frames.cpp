@@ -6,8 +6,7 @@
 // regressions.
 //
 // Build & run (from repo root):
-//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ -I./middleware/bullet3/ \
-//       -I./middleware/bullet3/bullet \
+//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
 //       tests/test_frames.cpp src/frame.cpp -o test_frames && ./test_frames
 
 #include <cmath>
