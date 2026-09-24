@@ -34,7 +34,7 @@ struct GameArgs {
         bool cam_shake = false;      // --cam-shake
     } cli_given;
 
-    std::string system_file = "res/ksp_system.json";
+    std::string system_file = "res/systems/ksp_system.json";
     std::string parts_file = "res/parts.json";
     std::vector<std::string> ship_files;
     std::string fleet_file;
@@ -116,7 +116,8 @@ struct GameArgs {
     int initial_time_accel = 1;
     double start_time = 0.0;   // --start-time: the sim clock's t0 (s)
     double timeout_seconds = 0.0;
-    float exhaust_scale = 1.0f;  // test knob: scales ve (thrust + delta-v)
+    float exhaust_scale = 1.0f;  // difficulty: scales ve (thrust + delta-v);
+                                 // the New Game sheet + save.json own this
     float cam_shake = 1.0f;   // camera shake at high accel (0 = off)
     double drag_cd = 1.2;       // --drag-cd: the drag coefficient (0 = off)
     bool drag_log = false;      // --drag-log: the active ship's drag per tick

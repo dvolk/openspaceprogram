@@ -1,8 +1,10 @@
 # New Game from the title screen: the floor becomes the Space Center hub with
 # NO ship (the player then goes to the VAB to build and launch the first
-# vessel; vabLaunch -> enterFlight). --new-game is the headless hook for the
-# button. Boot is shipless (no --ship): the constructor seeds [Flight], then
-# the shipless boot collapses it to Title.
+# vessel; vabLaunch -> enterFlight). --new-game is the headless hook for
+# starting a game (the title's "New Game" button opens the setup sheet; this
+# fires newGame() directly with the boot --system / --exhaust-scale). Boot is
+# shipless (no --ship): the constructor seeds [Flight], then the shipless
+# boot collapses it to Title.
 NAME title-newgame
 ARGS --new-game 2000 --timeout 8
 EXPECT [scene] flight -> title (enterTitle)

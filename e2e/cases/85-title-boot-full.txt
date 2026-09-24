@@ -1,4 +1,4 @@
-# Boot to the title screen with the BIG system (solar_system_full.json,
+# Boot to the title screen with the BIG system (systems/solar_system_full.json,
 # 240 bodies). This is the path that used to sit on a blank window for ~7s
 # while load_system built every body's terrain + collision. The loading
 # scene now presents a "loading..." frame as early as the font is ready and
@@ -7,8 +7,8 @@
 # big system still boots cleanly to the title with the new frames in the
 # path (no GL errors / crashes from the early present).
 NAME title-boot-full
-ARGS --system res/solar_system_full.json --timeout 6
-EXPECT Loaded system 'res/solar_system_full.json'
+ARGS --system res/systems/solar_system_full.json --timeout 6
+EXPECT Loaded system 'res/systems/solar_system_full.json'
 EXPECT [boot] no vessel: title screen
 EXPECT [title] backdrop:
 EXPECT [scene] flight -> title (enterTitle)

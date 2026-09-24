@@ -40,7 +40,7 @@ sys.path.insert(0, HERE)
 import run as e2e  # noqa: E402  (REPO_ROOT, build_cmd, parse_drag)
 
 REPO = e2e.REPO_ROOT
-KRB_G = 9.81  # Kerbin surface gravity (m/s^2); see res/ksp_system.json
+KRB_G = 9.81  # Kerbin surface gravity (m/s^2); see res/systems/ksp_system.json
 
 
 def ship_mass_and_radius(ship_path, parts_path):

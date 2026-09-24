@@ -35,8 +35,8 @@ void tick(Game &g) {
     static thread_local std::vector<Vehicle *> all;
     collectVehiclesInto(g.sys, all);
 
-    // clear stats and stuff; sync the exhaust-velocity test scale
-    // (--exhaust-scale / the Settings slider) onto every ship.
+    // clear stats and stuff; sync the exhaust-velocity difficulty scale
+    // (New Game / save / --exhaust-scale) onto every ship.
     for(auto *s : all) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;

@@ -6,10 +6,10 @@
 # path is never reached). This is the plan's "missing/unresolvable system file
 # -> clean error" path.
 NAME switch-save-bad-system
-ARGS --system res/ksp_system.json --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --system res/systems/ksp_system.json --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
 ARGS --reload e2e/fixtures/save_bad_system --reload-at 4000
 ARGS --timeout 8
-EXPECT Loaded system 'res/ksp_system.json'
+EXPECT Loaded system 'res/systems/ksp_system.json'
 EXPECT [load] cannot switch to system 'res/nonexistent_system.json'
 FORBID Segmentation
 FORBID GL_

@@ -8,11 +8,11 @@
 # new system, restart the worker, re-point home/sun/ships, re-stream the
 # heavy phase, land on the new backdrop) with no GL errors / crashes.
 NAME switch-system
-ARGS --system res/ksp_system.json --switch-system res/solar_system.json --switch-at 4000 --timeout 10
-EXPECT Loaded system 'res/ksp_system.json'
+ARGS --system res/systems/ksp_system.json --switch-system res/systems/solar_system.json --switch-at 4000 --timeout 10
+EXPECT Loaded system 'res/systems/ksp_system.json'
 EXPECT [boot] no vessel: title screen
-EXPECT [game] switched system -> res/solar_system.json (home Earth)
-EXPECT Loaded system 'res/solar_system.json'
+EXPECT [game] switched system -> res/systems/solar_system.json (home Earth)
+EXPECT Loaded system 'res/systems/solar_system.json'
 EXPECT [title] backdrop:
 FORBID GL_
 FORBID error:

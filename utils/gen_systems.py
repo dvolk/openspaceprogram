@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# Generate old_system.json (Eerbon) and ksp_system.json (Kerbal) for the
+# Generate systems/old_system.json (Eerbon) and systems/ksp_system.json
+# (Kerbal) for the
 # refactored load_system() JSON format. Angular speeds are derived from the
 # CSV orbital / rotational periods: speed = 2*pi / period.
 #
 # Lives in utils/; the body data (ksp_bodies.csv) sits next to it, and the
-# generated JSONs are written to the repo root (where the game loads them).
+# generated JSONs are written to res/systems/ (where the game loads them).
 import math
 import os
 
@@ -421,10 +422,11 @@ ksp = {
 
 def emit(obj, path):
     import json as _json
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         _json.dump(obj, f, indent=2)
         f.write("\n")
     print("wrote", path)
 
-emit(eerbon, os.path.join(ROOT, "res", "old_system.json"))
-emit(ksp, os.path.join(ROOT, "res", "ksp_system.json"))
+emit(eerbon, os.path.join(ROOT, "res", "systems", "old_system.json"))
+emit(ksp, os.path.join(ROOT, "res", "systems", "ksp_system.json"))

@@ -6,7 +6,9 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <string>
 #include <vector>
@@ -45,7 +47,7 @@ struct System {
       one with zero spin and soi = radius + 100 km;
     * the parent/child frame tree the per-tick SOI logic walks.
 
-  JSON layout (see res/old_system.json and res/ksp_system.json):
+  JSON layout (see res/systems/old_system.json and res/systems/ksp_system.json):
     {
       "home": "<name of the planet the ship starts on>",
       "bodies": [
@@ -127,3 +129,24 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
                     JobRunner &jobs, Shader *atmosphereshader,
                     Shader *cloudshader, Shader *oceanshader, int cloudres);
+
+/* List the star-system slugs in `dir` (e.g. "res/systems") -- the file base
+   names with the ".json" extension stripped -- sorted; empty if the directory
+   is missing or holds no .json files. Only the .json entries are kept, so the
+   New Game setup window offers exactly the files load_system reads
+   (res/systems/<slug>.json). Header-only (std::filesystem ops), the analog of
+   list_ship_defs in shipdef.h. */
+inline std::vector<std::string> list_systems(const std::string &dir) {
+    std::vector<std::string> names;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto it = fs::directory_iterator(dir, ec);
+    if(ec) { return names; }   // dir missing or not a directory
+    for(const auto &entry : it) {
+        const fs::path &p = entry.path();
+        if(p.extension() != ".json") { continue; }
+        names.push_back(p.stem().string());
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}

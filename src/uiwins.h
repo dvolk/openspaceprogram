@@ -64,7 +64,7 @@ enum Win : int {
     W_SurfaceMap, W_VesselInfo, W_ShipList, W_Autopilot, W_Transfer,
     W_Porkchop,
     // title
-    W_TitleMenu,
+    W_TitleMenu, W_NewGame,
     // space center hub
     W_SpaceCenterMenu,
     // tracking station (its own copies of the map + ship list, so they can

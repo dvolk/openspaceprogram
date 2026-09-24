@@ -53,8 +53,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                                "escape", "neptune", "oort", "interstellar"}));
 
     app.add_option("--system", args.system_file,
-                   "Star-system JSON file to load (default: res/ksp_system.json; "
-                   "try res/old_system.json for the Eerbon system)");
+                   "Star-system JSON file to load (default: "
+                   "res/systems/ksp_system.json; try res/systems/old_system.json "
+                   "for the Eerbon system)");
 
     app.add_option("--parts", args.parts_file,
                    "Parts catalog JSON (default: res/parts.json)");
@@ -203,7 +204,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--exhaust-scale", args.exhaust_scale,
                    "Scale the engines' exhaust velocity: thrust and delta-v "
                    "scale by it, the fuel burn does not (0.5-5.0, default 1; "
-                   "adjustable in the Settings window)")
+                   "the New Game sheet sets this per game and it is stored "
+                   "in the save)")
         ->check(CLI::Range(0.5f, 5.0f));
 
     app.add_option("--cam-shake", args.cam_shake,

@@ -67,6 +67,7 @@ void vabDrawUi(Game &g, TransferPlanner &p) {
 void titleDrawUi(Game &g, TransferPlanner &p) {
     drawUIReadouts(g, p);
     drawTitleMenu(g);
+    drawNewGame(g);
     drawSaveLoad(g);
 }
 

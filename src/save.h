@@ -181,11 +181,16 @@ struct SaveShip {
 struct SaveMeta {
     int format = 1;
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
-    std::string system;      // the system file (res/ksp_system.json)
+    std::string system;      // the system file (res/systems/ksp_system.json)
     std::string parts;       // the parts catalog file (res/parts.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;
     std::string active_ship; // display name ("" = none)
+    /* Engine-performance difficulty: multiplies every engine's exhaust
+       velocity (thrust + delta-v scale by it, the fuel burn does not). Chosen
+       on the New Game setup window and stored here so a reload restores the
+       same difficulty -- a save is not portable across scales. */
+    float exhaust_scale = 1.0f;
     std::vector<std::string> ships;
 };
 
@@ -418,6 +423,7 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     j["time"]        = m.time;
     j["time_accel"]  = m.time_accel;
     if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
+    j["exhaust_scale"] = m.exhaust_scale;
     j["ships"]       = m.ships;
     return j;
 }
@@ -431,6 +437,13 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("time") && j["time"].is_number()) { m.time = j["time"].get<double>(); }
     if(j.contains("time_accel") && j["time_accel"].is_number()) { m.time_accel = j["time_accel"].get<int>(); }
     if(j.contains("active_ship") && j["active_ship"].is_string()) { m.active_ship = j["active_ship"].get<std::string>(); }
+    if(j.contains("exhaust_scale") && j["exhaust_scale"].is_number()) {
+        // Clamp like the CLI range (0.5-5): a hand-edited 0 would zero every
+        // engine's thrust, and a 1e6 would make the game unplayable.
+        m.exhaust_scale = j["exhaust_scale"].get<float>();
+        if(m.exhaust_scale < 0.5f) { m.exhaust_scale = 0.5f; }
+        if(m.exhaust_scale > 5.0f) { m.exhaust_scale = 5.0f; }
+    }
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }
     }

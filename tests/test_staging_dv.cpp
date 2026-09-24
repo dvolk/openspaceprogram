@@ -335,11 +335,36 @@ static void test_barrier_no_link() {
     CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(110.0 / 60.0), 1e-3, "barrier s2 dv");
 }
 
+// Exhaust-velocity difficulty scale: thrust (so ve_eq = F/mdot) and TWR
+// scale by it, the fuel burn / mass schedule does not -- matching flight
+// (Vehicle::exhaust_scale).
+static void test_exhaust_scale() {
+    Catalog cat;
+    BuildShip bs;
+    const int tank = addPart(bs, cat.tank(50, 75, 75), "tank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tank, 1);
+
+    const double g = 10.0;
+    const std::vector<StageRow> a = computeStaging(bs, g, 1.0);
+    const std::vector<StageRow> b = computeStaging(bs, g, 2.0);
+    CHECK_TRUE(a.size() == 1 && b.size() == 1, "scale: one row each");
+    if(a.size() != 1 || b.size() != 1) { return; }
+
+    // Same mass schedule (the burn does not scale).
+    CHECK_NEAR(b[0].massStart, a[0].massStart, 1e-9, "scale m0 unchanged");
+    CHECK_NEAR(b[0].massEnd, a[0].massEnd, 1e-9, "scale m1 unchanged");
+    // ve_eq and TWR double; delta-v is ve_eq * ln(m0/m1), so it doubles too.
+    CHECK_NEAR(b[0].deltaV, 2.0 * a[0].deltaV, 1e-6, "scale dv doubles");
+    CHECK_NEAR(b[0].minTWR, 2.0 * a[0].minTWR, 1e-6, "scale minTWR doubles");
+    CHECK_NEAR(b[0].maxTWR, 2.0 * a[0].maxTWR, 1e-6, "scale maxTWR doubles");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
     test_asparagus();
     test_barrier_no_link();
+    test_exhaust_scale();
     test_inert_resources();
     test_inert_drop();
     test_zero_g();

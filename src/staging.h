@@ -46,14 +46,18 @@ struct StageRow {
 
 // Simulate the staged burn of `ship` (tanks start FULL) against surface
 // gravity `g` (m/s^2 -- pass the system home body's g; pass 0 to skip
-// TWR and still get delta-v). Rows are in flight order: the first burn
-// first. Empty build -> empty vector.
+// TWR and still get delta-v). `exhaust_scale` multiplies every engine's
+// thrust (the New Game difficulty / Vehicle::exhaust_scale) so the table
+// matches what a launch will actually produce; the fuel burn does not
+// scale. Rows are in flight order: the first burn first. Empty build ->
+// empty vector.
 //
 // Stage periods are the numbers that carry a decoupler, plus the highest
 // stage number (the final burn). A stage that only lights engines sits
 // between two drops: those engines join the burn of the next period that
 // actually lasts (so their thrust shows up in that row's TWR / delta-v).
-std::vector<StageRow> computeStaging(const BuildShip &ship, double g);
+std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
+                                     double exhaust_scale = 1.0);
 
 // Burnable propellant of the part (kg): H2 + LOX from its capacity.
 // JetFuel, hydrazine, O2, water and food are carried but never burned in

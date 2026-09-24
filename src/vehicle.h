@@ -394,7 +394,7 @@ public:
        the def, so there is nothing to keep in sync or rebuild. */
 
     float thruster_util = 1.0;
-    double exhaust_scale = 1.0;  // test knob (Settings / --exhaust-scale):
+    double exhaust_scale = 1.0;  // difficulty (New Game / save / --exhaust-scale):
                                  // scales rocket ve (thrust + delta-v; the fuel
                                  // burn does not) and the whole jet thrust (fan
                                  // + fuel + ram); synced per tick
@@ -1023,7 +1023,7 @@ protected:
        engine that has already been ignited (stage >= the stage counter) of
        its full thrust (each T = (H2 + LOX flow) x ve = 2 x fuel_rate x ve,
        both propellants end up in the plume), scaled by exhaust_scale (the
-       test knob). Engines stay lit once ignited, so this is the sum of all
+       difficulty). Engines stay lit once ignited, so this is the sum of all
        lit engines on the ship; for a single-stage ship it equals the grand
        total. */
     float GetActiveThrust();

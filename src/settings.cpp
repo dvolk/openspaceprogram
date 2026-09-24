@@ -48,7 +48,6 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["music_volume"] = s.music_volume;
     j["fov"] = s.camFovDeg;
     j["terrain_px"] = s.terrain_px;
-    j["exhaust_scale"] = s.exhaust_scale;
     j["cam_shake"] = s.cam_shake;
     j["flip_pitch"] = s.flip_pitch;
     j["flip_yaw"] = s.flip_yaw;
@@ -154,9 +153,6 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     }
     if(j.contains("terrain_px") && j["terrain_px"].is_number_integer()) {
         s.terrain_px = j["terrain_px"].get<int>();
-    }
-    if(j.contains("exhaust_scale") && j["exhaust_scale"].is_number()) {
-        s.exhaust_scale = j["exhaust_scale"].get<float>();
     }
     if(j.contains("cam_shake") && j["cam_shake"].is_number()) {
         // A hand-edited file bypasses the CLI's 0-3 range; clamp it

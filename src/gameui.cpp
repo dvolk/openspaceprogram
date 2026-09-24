@@ -31,6 +31,7 @@
 #include "vab.h"         // the editor ops (drawVabUI: gizmos, save, load, launch)
 #include "staging.h"     // computeStaging (the VAB staging table)
 #include "shipdef.h"     // list_ship_defs (the VAB Load picker's ship list)
+#include "system.h"      // list_systems (the New Game setup sheet's picker)
 #include "save.h"        // save_game / load_game / list_saves / delete_save
 #include "datadir.h"     // the saves/ directory's location (the data directory)
 
@@ -628,11 +629,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
                 args.terrain_px = terrain_px_table[terrain_level];
             }
         }
-        // Test knob: scales the exhaust velocity of every engine (thrust
-        // and delta-v scale by it, the fuel burn does not). Synced to the
-        // ships each tick; takes effect within one physics step.
-        ImGui::SliderFloat("Exhaust scale (test)", &args.exhaust_scale,
-                           0.5f, 5.0f, "%.2fx");
+        // Difficulty lives on the New Game sheet + save.json (and
+        // --exhaust-scale for tests). No Settings slider: it is per-game,
+        // not a global preference.
         // Camera shake: the chase cam rumbles with the crew's felt
         // acceleration (thrust + aero over mass, gravity excluded, so
         // free fall is steady). 0 = off, 1 = default, read live by the
@@ -2380,9 +2379,12 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
    items. Each closes its own menu before the transition it starts (see the
    shell's isRoot note); the title screen's has no such rows to close. */
 static void navTitle(Game &g, float bw) {
-    // Starts a game; there is no game to go back to yet (no "Quit to title"
-    // either) and no editor to offer (nothing to launch into).
-    if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) { g.newGame(); }
+    // Opens the New Game setup sheet (system + difficulty) rather than
+    // starting immediately; there is no game to go back to yet (no "Quit to
+    // title" either) and no editor to offer (nothing to launch into).
+    if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_NewGame, true);
+    }
 }
 static void navSpaceCenter(Game &g, float bw) {
     // Push the editor on top of the hub; the VAB's "Back to game" pops back
@@ -2436,6 +2438,114 @@ void drawTitleMenu(Game &g) {
 
 void drawSpaceCenterMenu(Game &g) {
     drawMenuWindow(g, W_SpaceCenterMenu, true, "Space Center", navSpaceCenter);
+}
+
+/* The New Game setup sheet: which star system to load, and the
+   exhaust-velocity scale (difficulty -- thrust + delta-v scale by it, the
+   fuel burn does not). Start switches system if needed, applies the scale
+   and begins the game; both ride into save.json on the next save.
+
+   The system list is a directory scan of res/systems (the files
+   load_system reads), cached and re-read only when the directory's mtime
+   changes -- the same gate as the VAB Load picker's res/ships list. */
+void drawNewGame(Game &g) {
+    // Selection + the scanned list persist across frames (and across a
+    // close/reopen, so the last pick sticks -- same stance as Save/Load's
+    // nameBuf / selected).
+    static std::vector<std::string> systems;
+    static bool scanned = false;
+    static std::filesystem::file_time_type dirMtime;
+    static int sysSel = 0;
+    // The slider's draft value, committed to args.exhaust_scale only by
+    // Start (startNewGame). Bound live to args instead, it would survive
+    // Cancel / X and leak into settings.json via "Save settings".
+    static float exhaustSel = 1.0f;
+    {
+        std::error_code ec;
+        const auto mtime = std::filesystem::last_write_time("res/systems", ec);
+        if(!ec && (!scanned || mtime != dirMtime)) {
+            // Keep an in-progress pick across a rescan; only the FIRST scan
+            // seeds from the running system (so Start is a no-op swap).
+            const bool first = !scanned;
+            std::string keep;
+            if(!first && sysSel >= 0 && sysSel < (int)systems.size()) {
+                keep = systems[(size_t)sysSel];
+            }
+            systems = list_systems("res/systems");
+            dirMtime = mtime;
+            scanned = true;
+            sysSel = 0;
+            if(first) {
+                const std::string &cur = g.systemPath.empty()
+                                             ? g.args.system_file
+                                             : g.systemPath;
+                const size_t slash = cur.find_last_of('/');
+                const std::string file =
+                    (slash == std::string::npos) ? cur : cur.substr(slash + 1);
+                keep = (file.size() > 5
+                        && file.compare(file.size() - 5, 5, ".json") == 0)
+                           ? file.substr(0, file.size() - 5)
+                           : file;
+            }
+            for(size_t i = 0; i < systems.size(); i++) {
+                if(systems[i] == keep) { sysSel = (int)i; break; }
+            }
+        }
+    }
+    if(sysSel >= (int)systems.size()) { sysSel = (int)systems.size() - 1; }
+    if(sysSel < 0) { sysSel = 0; }
+
+    drawWin(g, W_NewGame, [&] {
+        // Re-seed the draft difficulty on every open, so Cancel / X (and a
+        // close via the window chrome) discard the slider edits.
+        if(ImGui::IsWindowAppearing()) {
+            exhaustSel = g.args.exhaust_scale;
+        }
+        ImGui::TextWrapped(
+            "Choose a star system and engine performance, then start.");
+        ImGui::Spacing();
+
+        ImGui::Text("System");
+        ImGui::SetNextItemWidth(-1.0f);
+        if(systems.empty()) {
+            ImGui::TextDisabled("(none in res/systems)");
+        } else if(ImGui::BeginCombo("##newgame_system",
+                                    systems[(size_t)sysSel].c_str())) {
+            for(size_t i = 0; i < systems.size(); i++) {
+                if(ImGui::Selectable(systems[i].c_str(), (int)i == sysSel)) {
+                    sysSel = (int)i;
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Exhaust velocity scale (difficulty)");
+        // Draft until Start (see exhaustSel above). Lower is harder (less
+        // thrust + delta-v for the same fuel).
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::SliderFloat("##newgame_exhaust", &exhaustSel,
+                           0.5f, 5.0f, "%.2fx");
+        ImGui::TextDisabled("0.5x harder  ·  1.0x stock  ·  5.0x easier");
+        ImGui::TextDisabled("Stored in the save file.");
+
+        ImGui::Spacing();
+        if(ImGui::Button("Start", ImVec2(120.0f, 0.0f))) {
+            if(systems.empty()) {
+                g.toast("No systems in res/systems");
+            } else {
+                const std::string path =
+                    "res/systems/" + systems[(size_t)sysSel] + ".json";
+                if(g.startNewGame(path, exhaustSel)) {
+                    setWinOpen(W_NewGame, false);
+                }
+            }
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
+            setWinOpen(W_NewGame, false);
+        }
+    });
 }
 
 // A save-slot name is a single directory under saves/. Whitelist to letters,
@@ -2874,7 +2984,8 @@ void drawVabUI(Game &g) {
             ImGui::TextDisabled("empty build -- place a part");
             return;
         }
-        const std::vector<StageRow> rows = computeStaging(g.vab.build, gHome);
+        const std::vector<StageRow> rows =
+            computeStaging(g.vab.build, gHome, g.args.exhaust_scale);
         if(rows.empty()) {
             ImGui::TextDisabled("nothing to stage");
             return;

@@ -613,6 +613,7 @@ void save_game(Game &g, const std::string &dir) {
     meta.time = g.time;
     meta.time_accel = g.time_accel;
     meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";
+    meta.exhaust_scale = g.args.exhaust_scale;
     meta.saved_at = nowString();
 
     std::vector<Vehicle *> fleet = collectVehicles(g.sys);
@@ -629,6 +630,13 @@ void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
     g.time = meta.time;
     g.time_accel = meta.time_accel;
+    // The save's difficulty (New Game's exhaust-velocity scale). A save is
+    // not portable across scales, so the file wins over Settings -- except
+    // when --exhaust-scale was given (cli_given beats files, same as
+    // apply_settings_args). An old save with no field restores 1.0.
+    if(!g.args.cli_given.exhaust_scale) {
+        g.args.exhaust_scale = meta.exhaust_scale;
+    }
 
     /* Transactional: everything that can fail is reading or building, and
        neither needs the old fleet DELETED first -- only out of the bodies'

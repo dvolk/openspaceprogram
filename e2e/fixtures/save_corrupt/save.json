@@ -8,7 +8,7 @@
   "v1",
   "v2"
  ],
- "system": "res/ksp_system.json",
+ "system": "res/systems/ksp_system.json",
  "time": 3.0800000000000023,
  "time_accel": 1
 }

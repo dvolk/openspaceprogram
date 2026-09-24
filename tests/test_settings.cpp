@@ -32,7 +32,6 @@ int main() {
     s.music_volume = 0.33f;
     s.camFovDeg = 77.0f;
     s.terrain_px = 256;
-    s.exhaust_scale = 2.5f;
     s.cam_shake = 1.5f;
     s.flip_pitch = true;
     s.flip_yaw = false;
@@ -67,7 +66,6 @@ int main() {
     assert(r.music_volume == 0.33f);
     assert(r.camFovDeg == 77.0f);
     assert(r.terrain_px == 256);
-    assert(r.exhaust_scale == 2.5f);
     assert(r.cam_shake == 1.5f);
     assert(r.flip_pitch == true);
     assert(r.flip_yaw == false);

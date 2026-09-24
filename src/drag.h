@@ -38,7 +38,7 @@ struct DragAtmosphere {
    silhouette geometry used to run every substep for exactly 0.00 N. At
    1e-15 kg/m^3 the drag acceleration is < 1e-8 m/s^2 even at 10 km/s over
    100 m^2 -- unmeasurable on any timescale the game runs. ~190 km on a
-   Kerbin-like air, ~700 km in the thickest atmosphere in res/ksp_system.
+   Kerbin-like air, ~700 km in the thickest atmosphere in res/systems/ksp_system.
    Callers that gate on density compare against this instead of 0; laws
    that merely multiply by rho (jetThrust's density gate) need no floor --
    a sub-floor rho reads as vacuum there anyway. */

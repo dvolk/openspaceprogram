@@ -28,15 +28,24 @@ void drawPartWindows(Game &g);
 // conic + the selected target's highlight).
 void drawUIMap(Game &g, TransferPlanner &planner);
 
-/* The two menus, one shared shell (gameui.cpp drawMenuWindow): the heading +
-   the navigation block differ, the standard items (Save/Load, Settings,
-   Controls, Quit game) are shared, and the hub adds a confirmed "Return to
-   title". Both are Root windows -- forced open, no X -- because the title
-   screen and the Space Center hub ARE their menus; the other scenes (flight,
-   VAB, tracking) have no menu of their own (Esc walks up the tree to the hub).
-   Each scene's drawUi calls its own, last, so it sits on top. */
+/* The menus and title overlays: the shared menu shell (drawTitleMenu /
+   drawSpaceCenterMenu) and the New Game setup sheet (drawNewGame: system +
+   exhaust-velocity difficulty). The shell's heading + navigation block
+   differ per scene; the standard items (Save/Load, Settings, Controls,
+   Quit game) are shared, and the hub adds a confirmed "Return to title".
+   The menus are Root windows -- forced open, no X -- because the title
+   screen and the Space Center hub ARE their menus; New Game is Transient
+   (opened by the title's "New Game"). The other scenes (flight, VAB,
+   tracking) have no menu of their own: Esc walks up the tree and the hub
+   is the only in-game menu. */
 void drawTitleMenu(Game &g);
 void drawSpaceCenterMenu(Game &g);
+
+/* The New Game setup sheet (W_NewGame), opened by the title menu's "New
+   Game": pick which star system to load and the exhaust-velocity scale
+   (difficulty). Start applies both and calls startNewGame; Cancel closes.
+   Title-only (it is in kTitleWins). */
+void drawNewGame(Game &g);
 
 /* The Tracking Station's widgets: a full-screen, chrome-less orbital map and a
    ship list, each a COPY of the flight window's draw code into its own window id

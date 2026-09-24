@@ -609,6 +609,12 @@ struct Game {
        build here (the ship comes from the VAB launch), so this is just a scene
        transition. False (plus a toast) if a game is already running. */
     bool newGame();
+    /* The New Game setup sheet's Start: switch into `sysPath` when it is a
+       different system than the running one, apply `exhaustScale` as the
+       game's difficulty (saved with the fleet), then newGame(). False if a
+       game is already running or the system switch failed -- in both cases
+       the running world is untouched (switchSystem is transactional). */
+    bool startNewGame(const std::string &sysPath, float exhaustScale);
     /* Settle a freshly built fleet into the world: apply every ship's
        scenario (which is what positions them), then park on rails every ship
        except `active`. Does NOT make `active` the player's ship -- the caller

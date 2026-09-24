@@ -10,8 +10,8 @@
 # nullptr (value-initialized in terrain.h) or this segfaults. A short
 # --timeout guarantees a large unattached set at exit.
 NAME exit-midstream-full
-ARGS --system res/solar_system_full.json --timeout 1
-EXPECT Loaded system 'res/solar_system_full.json'
+ARGS --system res/systems/solar_system_full.json --timeout 1
+EXPECT Loaded system 'res/systems/solar_system_full.json'
 EXPECT Main loop starting
 FORBID free(): invalid pointer
 FORBID free(): corrupted

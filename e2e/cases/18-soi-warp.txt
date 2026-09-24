@@ -11,7 +11,7 @@
 # survive a heavily loaded / throttled CI machine (the case is CPU-bound,
 # and a fast-but-starved run is the failure mode).
 NAME soi-warp
-ARGS --system res/old_system.json --body Moon --scenario escape --ship res/ships/racer.json
+ARGS --system res/systems/old_system.json --body Moon --scenario escape --ship res/ships/racer.json
 ARGS --time-accel 100
 ARGS --timeout 90
 EXPECT SOI switch: 'racer' now around Eerbon (was Moon), warp -> 1

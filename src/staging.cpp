@@ -347,9 +347,11 @@ double partPropellantMass(const PartDef &def) {
          + (double)def.capacity[(int)ResourceType::LOX];
 }
 
-std::vector<StageRow> computeStaging(const BuildShip &ship, double g) {
+std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
+                                     double exhaust_scale) {
     std::vector<StageRow> rows;
     if(ship.parts.empty()) { return rows; }
+    if(!(exhaust_scale > 0.0)) { exhaust_scale = 1.0; }
 
     const size_t n = ship.parts.size();
     Sim sim;
@@ -373,7 +375,9 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g) {
             // they contribute no vacuum thrust and burn no vacuum fuel.
             if(bp.def->fuel_rate > 0.0 && bp.def->exhaust_velocity > 0.0
                && !bp.def->jet) {
-                sp.thrust = bp.def->fullThrust();
+                // Scale thrust only (not mdot): ve_eff = F/mdot scales, so
+                // delta-v and TWR track the difficulty knob like flight.
+                sp.thrust = bp.def->fullThrust() * exhaust_scale;
                 sp.mdot = 2.0 * bp.def->fuel_rate;
             }
         }

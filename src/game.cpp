@@ -116,7 +116,6 @@ static SettingsData collect_settings(Game &g) {
     s.music_volume = g.music_volume;
     s.camFovDeg = g.args.camFovDeg;
     s.terrain_px = g.args.terrain_px;
-    s.exhaust_scale = g.args.exhaust_scale;
     s.cam_shake = g.args.cam_shake;
     s.flip_pitch = g.flip_pitch;
     s.flip_yaw = g.flip_yaw;
@@ -134,7 +133,6 @@ static void apply_settings_args(const SettingsData &s, GameArgs &args) {
     if(!args.cli_given.msaa)   { args.msaa_samples  = s.msaa_samples; }
     if(!args.cli_given.fov)           { args.camFovDeg     = s.camFovDeg; }
     if(!args.cli_given.terrain_px)    { args.terrain_px    = s.terrain_px; }
-    if(!args.cli_given.exhaust_scale){ args.exhaust_scale = s.exhaust_scale; }
     if(!args.cli_given.cam_shake)    { args.cam_shake     = s.cam_shake; }
 }
 
@@ -374,6 +372,29 @@ void Game::parkTitleCamera() {
     fflush(stdout);
 }
 
+// The filename component of a path (the system files all live in
+// res/systems/ with distinct basenames, so comparing basenames is a robust
+// "different system?" test that does not care about a "./" or absolute
+// prefix on either side).
+static std::string baseName(const std::string &p) {
+    const size_t i = p.find_last_of('/');
+    return (i == std::string::npos) ? p : p.substr(i + 1);
+}
+
+// The system file a save records (dir/save.json's "system"), or "" when the
+// file is missing / unreadable / predates the field. The load path compares
+// it to Game::systemPath to decide whether to switch into it first.
+static std::string saveSystemFile(const std::string &dir) {
+    std::ifstream f(dir + "/save.json");
+    if(!f) { return ""; }
+    nlohmann::json j;
+    // Same permissive parse as load_game (comments allowed) so a save the
+    // loader would accept is also recognized here for its system.
+    try { j = nlohmann::json::parse(f, nullptr, true); }
+    catch(const std::exception &) { return ""; }
+    return saveMetaFromJson(j).system;
+}
+
 bool Game::newGame() {
     // Any vehicle in the world (not just the active one) means a game is
     // running: a spawned-but-unselected ship, or a crew member aboard a
@@ -393,26 +414,30 @@ bool Game::newGame() {
     return true;
 }
 
-// The system file a save records (dir/save.json's "system"), or "" when the
-// file is missing / unreadable / predates the field. The load path compares
-// it to Game::systemPath to decide whether to switch into it first.
-static std::string saveSystemFile(const std::string &dir) {
-    std::ifstream f(dir + "/save.json");
-    if(!f) { return ""; }
-    nlohmann::json j;
-    // Same permissive parse as load_game (comments allowed) so a save the
-    // loader would accept is also recognized here for its system.
-    try { j = nlohmann::json::parse(f, nullptr, true); }
-    catch(const std::exception &) { return ""; }
-    return saveMetaFromJson(j).system;
-}
-
-// The filename component of a path (the system files all live in res/ with
-// distinct basenames, so comparing basenames is a robust "different system?"
-// test that does not care about a "./" or absolute prefix on either side).
-static std::string baseName(const std::string &p) {
-    const size_t i = p.find_last_of('/');
-    return (i == std::string::npos) ? p : p.substr(i + 1);
+bool Game::startNewGame(const std::string &sysPath, float exhaustScale) {
+    if(!collectVehicles(sys).empty()) {
+        toast("A game is already running");
+        return false;
+    }
+    // Switch first (transactional: a missing / malformed file throws with the
+    // running world untouched). Same-basename = already on it, skip the swap.
+    if(!sysPath.empty() && baseName(sysPath) != baseName(systemPath)) {
+        try {
+            switchSystem(sysPath);
+        } catch(const std::exception &e) {
+            printf("[game] new game: cannot load system '%s': %s\n",
+                   sysPath.c_str(), e.what());
+            fflush(stdout);
+            toast("Cannot load system: %s", e.what());
+            return false;
+        }
+    }
+    // Difficulty: scales every engine's exhaust velocity (thrust + delta-v).
+    // Stored in save.json on the next save and restored by load_game.
+    if(exhaustScale < 0.5f) { exhaustScale = 0.5f; }
+    if(exhaustScale > 5.0f) { exhaustScale = 5.0f; }
+    args.exhaust_scale = exhaustScale;
+    return newGame();
 }
 
 // The save records the system it was made in (meta.system). If it is a

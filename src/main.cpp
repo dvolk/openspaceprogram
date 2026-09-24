@@ -1064,9 +1064,10 @@ int main(int argc, char **argv)
             game.reloadFired = true;
             game.loadFrom(game.reloadDir);
         }
-        /* --new-game: the headless hook for the title screen's New Game
-           button. Before the scene is read, so the frame that starts a game
-           runs the flight scene's update. */
+        /* --new-game: the headless hook for starting a game from the title
+           screen (Game::newGame -- skips the New Game setup sheet and uses
+           the boot --system / --exhaust-scale). Before the scene is read, so
+           the frame that starts a game runs the Space Center scene's update. */
         if(game.newGameMs >= 0 && !game.newGameFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.newGameMs) {
             game.newGameFired = true;

@@ -353,11 +353,12 @@ int main() {
     SaveMeta meta;
     meta.format = 1;
     meta.saved_at = "2026-09-16T06:21:44";
-    meta.system = "res/ksp_system.json";
+    meta.system = "res/systems/ksp_system.json";
     meta.parts = "res/parts.json";
     meta.time = 4.459999999999993;
     meta.time_accel = 1;
     meta.active_ship = "racer";
+    meta.exhaust_scale = 2.5f;
     meta.ships.push_back("v0");
     meta.ships.push_back("v1");
     SaveMeta metaOut = saveMetaFromJson(saveMetaToJson(meta));
@@ -368,6 +369,7 @@ int main() {
     CHECK(near(metaOut.time, meta.time));
     CHECK(metaOut.time_accel == meta.time_accel);
     CHECK(metaOut.active_ship == meta.active_ship);
+    CHECK(near(metaOut.exhaust_scale, meta.exhaust_scale));
     CHECK(metaOut.ships.size() == 2);
     CHECK(metaOut.ships[0] == "v0");
     CHECK(metaOut.ships[1] == "v1");
@@ -377,6 +379,14 @@ int main() {
     CHECK(emptyMeta.format == 1);            // the defaults survive
     CHECK(emptyMeta.ships.empty());
     CHECK(emptyMeta.active_ship.empty());
+    CHECK(near(emptyMeta.exhaust_scale, 1.0));  // missing -> the 1.0 default
+
+    // a hand-edited scale is clamped to the CLI range (0.5-5)
+    nlohmann::json wild = nlohmann::json::object();
+    wild["exhaust_scale"] = 100.0;
+    CHECK(near(saveMetaFromJson(wild).exhaust_scale, 5.0));
+    wild["exhaust_scale"] = 0.0;
+    CHECK(near(saveMetaFromJson(wild).exhaust_scale, 0.5));
 
     SaveShip emptyShip = saveShipFromJson(nlohmann::json::object());
     CHECK(emptyShip.name.empty());

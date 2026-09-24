@@ -170,6 +170,17 @@ const WinDef kWins[W_Count] = {
         .opts = { .slot = ui::Slot::Center, .fixed = true, .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
+    [W_NewGame] = {
+        .name = "New Game", .label = "New Game",
+        // The New Game setup sheet (system + exhaust-velocity difficulty).
+        // Transient like Save/Load: opened by the title menu's "New Game",
+        // closed by Start/Cancel (or X). Docked right of the title menu so
+        // the two do not stack in the same center slot.
+        .opts = { .slot = ui::Slot::Center, .right_of = "Title Menu",
+                  .initial_size = ImVec2(400.0f, 280.0f),
+                  .closable = true, .default_open = false },
+        .role = WinRole::Transient, .inList = false,
+    },
 
     // --- space center hub ------------------------------------------------
     [W_SpaceCenterMenu] = {
@@ -233,7 +244,7 @@ static const Win kFlightWinIds[] = {
 // no flight readouts, which is the whole point: there is no vessel, and the
 // set is what says so rather than a guard in each window's body.
 static const Win kTitleWinIds[] = {
-    W_TitleMenu, W_Settings, W_Controls, W_SaveLoad,
+    W_TitleMenu, W_NewGame, W_Settings, W_Controls, W_SaveLoad,
 };
 // The editor: its top-bar chrome plus the shared windows (the Settings /
 // Controls / Save-Load bodies are shipless-safe, so they draw here as well as
