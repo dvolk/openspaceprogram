@@ -189,6 +189,10 @@ cmake --build "$MWROOT/sdl3-image" -j"$JOBS"
 # out-of-source builds (it generates its own in the build dir, which is
 # what gets compiled) -- restore it so the submodule stays clean.
 git -C middleware/sdl3-image/external/zlib checkout -- zconf.h
+# libpng's autotools configure likewise regenerates config.guess/config.sub
+# in-tree during the build -- restore them the same way so the submodule
+# stays clean.
+git -C middleware/sdl3-image/external/libpng checkout -- config.guess config.sub
 
 echo "=== building SDL3_mixer (static, WAV + stb_vorbis only) ==="
 # The game needs exactly two decoders: WAV (the short SFX chunks --
