@@ -474,15 +474,13 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     /* phase 4.1: restore the suit tank contents (build_ship's init() re-seeded
        them full; this overwrites with the saved amount, so a kerbal that
        burned some EVA propellant does not get a free re-seed on load). The
-       def mass is WET (consumeResourceMass sheds the burned mass from the
-       body), so the body mass sheds the same amount. */
+       body mass is the DRY structure, so only the contents are restored --
+       effectiveMass() reads them from resources.current. */
     if(!s.suit_fuel.empty() && !k->parts.empty()) {
         Part *suit = k->parts[0];
         for(size_t r = 0; r < s.suit_fuel.size() && r < (size_t)ResourceType::Num; r++) {
             const float cur = (float)s.suit_fuel[r];
-            const float cap = suit->resources.capacity[r];
             suit->resources.current[r] = cur;
-            if(cur < cap) { suit->body->mass -= (double)(cap - cur); }
         }
     }
     /* phase 4.6: the suit's inventory items (depth-first, nested included) --

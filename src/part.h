@@ -194,19 +194,30 @@ struct Part {
     double powerDrawConstant() const { return def->power_draw_constant; }  // W, all the time (capsule life support)
     double powerGen() const { return def->power_gen; }            // W, constant source (an RTG)
 
-    /* The part's mass INCLUDING what is parked inside it (the containment
-       edge, phase 2): its own body mass plus the effectiveMass of every
-       contained part, recursively. Phase 3 wires this into the compound
-       (rebuildCompound / compoundCom / checkCompoundInvariants) and the
-       force paths (applyGravity / fictitious / getMass) so a capsule's mass
-       carries its crew without baking it into the body mass (the addPartMass
-       mechanism it replaced). The traversal is non-owning -- the contained
+    /* The part's mass INCLUDING its propellant contents and whatever is
+       parked inside it (the containment edge, phase 2). Its own body mass is
+       the DRY structure only (res/parts.json mass is dry; the propellant is
+       not baked in), so the current fuel (resources.current) is added back
+       here -- EC excluded, since it is energy with no mass (a battery's EC
+       charge is never part of the ship's mass). Then the effectiveMass of
+       every contained part, recursively. Phase 3 wired this into the compound
+       (rebuildCompound / compoundCom / checkCompoundInvariants) and the force
+       paths (applyGravity / fictitious / getMass) so a capsule's mass carries
+       its crew without baking it into the body mass (the addPartMass mechanism
+       it replaced); the tank fuel rides the exact same path, so
+       checkCompoundInvariants' "shape carries less than effectiveMass" handling
+       (written for crew) covers fuel too. The traversal is non-owning -- the
+       contained
        parts are owned by their own vehicles (Vehicle::crew), so this only
        reads, never frees. checkPartInvariants keeps the containment edge a
        tree (each contained part has at most one container), so the recursion
        is acyclic in every reachable state. */
     double effectiveMass() const {
         double m = body->mass;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(r == (int)ResourceType::EC) { continue; }   // energy, no mass
+            m += (double)resources.current[r];
+        }
         for(Part *c : contents) { m += c->effectiveMass(); }
         return m;
     }

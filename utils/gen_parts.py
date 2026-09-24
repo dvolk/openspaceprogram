@@ -7,11 +7,12 @@ then derived from that geometry with a small set of physical constants, so the
 catalog is reproducible and internally consistent instead of hand-tuned:
 
   fuel_tank       capacity = volume * PROP_DENSITY (50/50 LH2 + LOX by mass)
-                  dry mass = volume * TANK_DRY_DENSITY
-                  mass     = capacity + dry   (the body sheds propellant as it
-                  burns, so a spent tank is left with just its structure)
+                  mass     = volume * TANK_DRY_DENSITY   (DRY structure only --
+                  the propellant is NOT in the mass; it rides `capacity` and
+                  Part::effectiveMass, shedding as the tank burns, so a spent
+                  tank is left with just its structure)
   mono_tank       capacity = volume * HYDRAZINE_DENSITY (hydrazine mono, the
-                  RCS fuel); dry/mass like the fuel tank. A tank, nothing else.
+                  RCS fuel); mass = dry like the fuel tank. A tank, nothing else.
   rcs             rcs_thrust = RCS_THRUST_PER_M2 * radius^2 (translation
                   authority, burns hydrazine mono); mass = volume * 40
                   (mostly structure + small thrusters, lighter than the wheel)
@@ -286,7 +287,9 @@ EXTRA_FIELDS = {
     "capsule":           {"crew_capacity": 1},
     "capsule_r1.5h3":    {"crew_capacity": 3},
     "capsule_r2.25h4.5": {"crew_capacity": 6},
-    "kerbal":            {"mass": 97.05, "capacity": {"hydrazine": 10.0}},
+    # kerbal: DRY mass (full-EVA-gear ~94 kg minus the 10 kg RCS hydrazine,
+    # which is a separate capacity that rides effectiveMass, not the body).
+    "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0}},
     "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
     "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
     "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,
@@ -414,7 +417,12 @@ def generate(name, ptype, mesh, texture):
         capacity = volume * PROP_DENSITY
         dry = volume * TANK_DRY_DENSITY
         half = capacity / 2.0
-        e["mass"] = clean(capacity + dry)
+        # mass = DRY structure only. The propellant is NOT baked into the mass:
+        # it lives in `capacity` and rides Part::effectiveMass (added back at
+        # runtime), shedding as the tank burns -- so a spent tank is its
+        # structure. (Was `capacity + dry`: the wet mass; see the tank-mass
+        # refactor, the body is now dry + explicit fuel.)
+        e["mass"] = clean(dry)
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"hydrogen": clean(half), "lox": clean(half)}
@@ -424,7 +432,8 @@ def generate(name, ptype, mesh, texture):
         # the structure is the same tank dry mass.
         capacity = volume * HYDRAZINE_DENSITY
         dry = volume * TANK_DRY_DENSITY
-        e["mass"] = clean(capacity + dry)
+        # DRY structure only (fuel rides capacity + effectiveMass, not the body).
+        e["mass"] = clean(dry)
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"hydrazine": clean(capacity)}
@@ -435,7 +444,8 @@ def generate(name, ptype, mesh, texture):
         # the volume hydrogen/LOX. The jet draws this.
         capacity = volume * JET_FUEL_DENSITY
         dry = volume * TANK_DRY_DENSITY
-        e["mass"] = clean(capacity + dry)
+        # DRY structure only (fuel rides capacity + effectiveMass, not the body).
+        e["mass"] = clean(dry)
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"jetfuel": clean(capacity)}
@@ -506,9 +516,10 @@ def generate(name, ptype, mesh, texture):
         e["cl_control"] = RUDDER_CL
         e["max_deflection"] = RUDDER_MAX_DEFLECTION
     elif ptype == "kerbal":
-        # A character, not hardware: the mass (~94 kg full-EVA-gear, its
-        # RCS hydrazine included) is declared in EXTRA_FIELDS, like the
-        # decouplers' -- the mesh only supplies the shape (visual + hull).
+        # A character, not hardware: the mass is the DRY body (~87 kg
+        # full-EVA-gear) declared in EXTRA_FIELDS, like the decouplers' -- the
+        # 10 kg RCS hydrazine is a separate capacity (rides effectiveMass, not
+        # the body). The mesh only supplies the shape (visual + hull).
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
         e["height"] = height
@@ -553,19 +564,17 @@ def summary_line(e):
         return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (
             n, t / 1e3, e["fuel_rate"], e["mass"])
     if "capacity" in e and "hydrogen" in e["capacity"]:
-        # a fuel tank (50/50 hydrogen + LOX)
+        # a fuel tank (50/50 hydrogen + LOX); mass = dry structure, fuel = capacity
         c = e["capacity"]["hydrogen"] + e["capacity"].get("lox", 0.0)
-        return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
-            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / PROP_DENSITY))
+        return "  %-24s cap=%8skg  dry=%7skg" % (n, c, e["mass"])
     if "capacity" in e and "jetfuel" in e["capacity"]:
-        # a jet fuel tank (100% jet fuel, no LOX)
+        # a jet fuel tank (100% jet fuel, no LOX); mass = dry structure
         c = e["capacity"]["jetfuel"]
-        return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
-            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / JET_FUEL_DENSITY))
+        return "  %-24s cap=%8skg  dry=%7skg" % (n, c, e["mass"])
     if "capacity" in e and "hydrazine" in e["capacity"]:
+        # a mono tank / the kerbal's suit fuel; mass = dry structure
         c = e["capacity"]["hydrazine"]
-        return "  %-24s cap=%8skg  mass=%7s (dry %s)" % (
-            n, c, e["mass"], clean(c * TANK_DRY_DENSITY / HYDRAZINE_DENSITY))
+        return "  %-24s cap=%8skg  dry=%7skg" % (n, c, e["mass"])
     if "rcs_thrust" in e:
         return "  %-24s RCS=%7.1fkN  mass=%7s" % (n, e["rcs_thrust"] / 1e3, e["mass"])
     if "power_draw_constant" in e:

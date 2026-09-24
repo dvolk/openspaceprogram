@@ -375,11 +375,11 @@ int main() {
         Part *FT = mkPart(I, "flat", 88.99, 1.0, 1.0, 1.0, 0, false, 78.54f);
         FT->resources.current[res] = 78.54f;   // seed the instance fuel (the def sets only capacity)
         CHECK_TRUE(inventoryAdd(FT, H), "flat tank into the pocket");
-        const double ftMass0 = FT->body->mass;
+        const double ftMass0 = FT->effectiveMass();
         CHECK_TRUE(inventoryDrain(H, res, 5.0f), "a flat pocket tank covers the draw");
         CHECK_NEAR(FT->resources.current[res], 73.54f, 1e-5,
                    "the flat tank shed 5 kg of fuel");
-        CHECK_NEAR(FT->body->mass, ftMass0 - 5.0, 1e-9,
+        CHECK_NEAR(FT->effectiveMass(), ftMass0 - 5.0, 1e-9,
                    "the flat tank shed 5 kg of mass");
         destroyVehicle(S6.v);   // frees H -> FT
 
@@ -395,11 +395,11 @@ int main() {
         CHECK_TRUE(inventoryAdd(PC, H2), "the pocket crate into the pocket");
         CHECK_NEAR(inventorySubtreeResource(H2, res), 50.0f, 1e-6,
                    "the pocket sees the nested tank's fuel");
-        const double ptMass0 = PT->body->mass;
+        const double ptMass0 = PT->effectiveMass();
         CHECK_TRUE(inventoryDrain(H2, res, 7.0f), "the nested pocket tank covers the draw");
         CHECK_NEAR(PT->resources.current[res], 43.0f, 1e-6,
                    "the nested tank shed 7 kg of fuel");
-        CHECK_NEAR(PT->body->mass, ptMass0 - 7.0, 1e-9,
+        CHECK_NEAR(PT->effectiveMass(), ptMass0 - 7.0, 1e-9,
                    "the nested tank shed 7 kg of mass");
         destroyVehicle(S6b.v);   // frees H2 -> PC -> PT
 
@@ -413,7 +413,7 @@ int main() {
                    "a 2 kg pocket cannot cover a 5 kg draw");
         CHECK_NEAR(PN->resources.current[res], 2.0f, 1e-6,
                    "the refused draw drained nothing");
-        CHECK_NEAR(PN->body->mass, 30.0, 1e-9, "the refused draw shed no mass");
+        CHECK_NEAR(PN->effectiveMass(), 32.0, 1e-9, "the refused draw shed no mass");
         CHECK_TRUE(inventoryDrain(PE, res, 2.0f), "the same pocket covers a 2 kg draw");
         CHECK_NEAR(PN->resources.current[res], 0.0f, 1e-6, "the 2 kg draw empties the tank");
         delete PE;   // standalone: frees PN

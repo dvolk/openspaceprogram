@@ -78,7 +78,13 @@ struct Ship {
    fuel wall (decoupler). Returns the new Part (index parts.size()-1). */
 static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
                      bool barrier = false) {
-    const double m = 100.0 + (double)h2 + (double)lox;   /* dry mass + fuel */
+    /* DRY structure mass only. The fuel (h2/lox) is NOT baked into the body:
+       init() seeds it into resources.current, and Part::effectiveMass adds it
+       back (body dry + contents), so the ship's mass is 100 + h2 + lox either
+       way. The box shape's local inertia is per-kg, scaled to effectiveMass by
+       the compound build -- the same "shape lighter than effectiveMass" case
+       crew already exercises. */
+    const double m = 100.0;
     btBoxShape *shape = new btBoxShape(btVector3(1.0, 1.0, 1.0));
     btVector3 I;
     shape->calculateLocalInertia(m, I);
@@ -151,8 +157,8 @@ static void test_prorata_in_group() {
         snprintf(buf, sizeof buf, "tank %d drained 30 (pro-rata in group)", i);
         CHECK_NEAR(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
                    70.0, 1e-5, buf);
-        snprintf(buf, sizeof buf, "tank %d's part shed its 30 kg", i);
-        CHECK_NEAR(tanks[i]->body->mass, 270.0, 1e-5, buf);
+        snprintf(buf, sizeof buf, "tank %d's effective mass shed its 30 kg", i);
+        CHECK_NEAR(tanks[i]->effectiveMass(), 270.0, 1e-5, buf);
     }
     CHECK_NEAR(t0->resources.current[(int)ResourceType::LOX], 100.0, 1e-6,
                "LOX untouched by the H2 draw");
@@ -257,7 +263,7 @@ static void test_insufficient_total() {
                "tank 0 untouched");
     CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 1 untouched");
-    CHECK_NEAR(t0->body->mass, 220.0, 1e-6, "tank 0 mass untouched");
+    CHECK_NEAR(t0->effectiveMass(), 220.0, 1e-6, "tank 0 effective mass untouched");
     destroyShip(s);
 }
 

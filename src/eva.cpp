@@ -156,7 +156,8 @@ void Kerbal::applyEva(double h) {
                tanks are not in this ship's fuel groups (buildFuelGroups
                groups Vehicle::parts only), so consumeResourceMass cannot
                reach them -- inventoryDrain does the same per-tank decrement
-               (contents + body mass; refreshCompound picks the mass up),
+               (contents only -- the body mass is dry structure;
+               refreshCompound picks the mass up),
                DFS so a tank nested in a pocket crate is found, and
                all-or-nothing like the suit so a partial draw never applies
                a full-force kick for less propellant. */

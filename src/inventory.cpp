@@ -70,7 +70,8 @@ static float drainSubtree(Part *root, int res, float amt) {
         if(have > 0.0f) {
             const float take = (have < amt - drained) ? have : (amt - drained);
             c->resources.current[res] = have - take;
-            c->body->mass -= (double)take;
+            /* body->mass is the DRY structure (fuel rides effectiveMass via
+               resources.current), so a drain only decrements the contents. */
             drained += take;
         }
         if(drained < amt) { drained += drainSubtree(c, res, amt - drained); }

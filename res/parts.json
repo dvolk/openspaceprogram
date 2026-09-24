@@ -339,7 +339,7 @@
       "display_name": "Jet Fuel Tank (2m x 1m)",
       "mesh": "tank_r1h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 261.69,
+      "mass": 41.78,
       "radius": 1.0,
       "height": 1.0,
       "capacity": {
@@ -356,7 +356,7 @@
       "display_name": "Jet Fuel Tank (2m x 3m)",
       "mesh": "tank_r1h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 785.08,
+      "mass": 125.35,
       "radius": 1.0,
       "height": 3.0,
       "capacity": {
@@ -373,7 +373,7 @@
       "display_name": "Jet Fuel Tank (2m x 5m)",
       "mesh": "tank_r1h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 1308.47,
+      "mass": 208.92,
       "radius": 1.0,
       "height": 5.0,
       "capacity": {
@@ -390,7 +390,7 @@
       "display_name": "Fuel Tank (2m x 2m)",
       "mesh": "fuel_tank.obj",
       "texture": "fuel_tank.png",
-      "mass": 919.23,
+      "mass": 83.57,
       "radius": 1.0,
       "height": 2.0,
       "capacity": {
@@ -408,7 +408,7 @@
       "display_name": "Fuel Tank (2m x 1m)",
       "mesh": "tank_r1h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 459.62,
+      "mass": 41.78,
       "radius": 1.0,
       "height": 1.0,
       "capacity": {
@@ -426,7 +426,7 @@
       "display_name": "Fuel Tank (2m x 3m)",
       "mesh": "tank_r1h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 1378.85,
+      "mass": 125.35,
       "radius": 1.0,
       "height": 3.0,
       "capacity": {
@@ -444,7 +444,7 @@
       "display_name": "Fuel Tank (2m x 5m)",
       "mesh": "tank_r1h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 2298.08,
+      "mass": 208.92,
       "radius": 1.0,
       "height": 5.0,
       "capacity": {
@@ -462,7 +462,7 @@
       "display_name": "Fuel Tank (3m x 1m)",
       "mesh": "tank_r1.5h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 1034.13,
+      "mass": 94.01,
       "radius": 1.5,
       "height": 1.0,
       "capacity": {
@@ -480,7 +480,7 @@
       "display_name": "Fuel Tank (3m x 2m)",
       "mesh": "tank_r1.5h2.obj",
       "texture": "fuel_tank.png",
-      "mass": 2068.27,
+      "mass": 188.02,
       "radius": 1.5,
       "height": 2.0,
       "capacity": {
@@ -498,7 +498,7 @@
       "display_name": "Fuel Tank (3m x 3m)",
       "mesh": "tank_r1.5h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 3102.4,
+      "mass": 282.04,
       "radius": 1.5,
       "height": 3.0,
       "capacity": {
@@ -516,7 +516,7 @@
       "display_name": "Fuel Tank (3m x 5m)",
       "mesh": "tank_r1.5h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 5170.67,
+      "mass": 470.06,
       "radius": 1.5,
       "height": 5.0,
       "capacity": {
@@ -534,7 +534,7 @@
       "display_name": "Fuel Tank (4.5m x 1m)",
       "mesh": "tank_r2.25h1.obj",
       "texture": "fuel_tank.png",
-      "mass": 2326.8,
+      "mass": 211.53,
       "radius": 2.25,
       "height": 1.0,
       "capacity": {
@@ -552,7 +552,7 @@
       "display_name": "Fuel Tank (4.5m x 3m)",
       "mesh": "tank_r2.25h3.obj",
       "texture": "fuel_tank.png",
-      "mass": 6980.4,
+      "mass": 634.58,
       "radius": 2.25,
       "height": 3.0,
       "capacity": {
@@ -570,7 +570,7 @@
       "display_name": "Fuel Tank (4.5m x 5m)",
       "mesh": "tank_r2.25h5.obj",
       "texture": "fuel_tank.png",
-      "mass": 11634,
+      "mass": 1057.64,
       "radius": 2.25,
       "height": 5.0,
       "capacity": {
@@ -588,7 +588,7 @@
       "display_name": "Mono Tank (2m)",
       "mesh": "reaction_wheel_r1h0.25.obj",
       "texture": "reaction_wheel.png",
-      "mass": 88.99,
+      "mass": 10.45,
       "radius": 1.0,
       "height": 0.25,
       "capacity": {
@@ -605,7 +605,7 @@
       "display_name": "Mono Tank (3m)",
       "mesh": "reaction_wheel_r1.5h0.375.obj",
       "texture": "reaction_wheel.png",
-      "mass": 300.33,
+      "mass": 35.25,
       "radius": 1.5,
       "height": 0.375,
       "capacity": {
@@ -622,7 +622,7 @@
       "display_name": "Mono Tank (4.5m)",
       "mesh": "reaction_wheel_r2.25h0.5625.obj",
       "texture": "reaction_wheel.png",
-      "mass": 1013.6,
+      "mass": 118.98,
       "radius": 2.25,
       "height": 0.562,
       "capacity": {
@@ -922,7 +922,7 @@
       "display_name": "Kerbal",
       "mesh": "kerbal.obj",
       "texture": "kerbal.png",
-      "mass": 97.05,
+      "mass": 87.05,
       "radius": 0.199,
       "height": 0.75,
       "capacity": {

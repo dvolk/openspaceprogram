@@ -22,7 +22,10 @@
 // vacuum delta-v and their JetFuel stays as carried mass). Hydrazine,
 // O2, water and food are likewise inert mass here. EC has no mass.
 //
-// Mass: PartDef::mass is the WET mass (dry + full tanks).
+// Mass: PartDef::mass is the DRY structure (res/parts.json mass excludes
+// propellant). Propellant rides capacity: H2+LOX becomes the burnable
+// pool (partPropellantMass), every other resource is inert mass folded
+// into partDryMass, EC has none.
 #pragma once
 
 #include <vector>
@@ -52,14 +55,22 @@ struct StageRow {
 // actually lasts (so their thrust shows up in that row's TWR / delta-v).
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g);
 
-// Burnable propellant folded into PartDef::mass (kg): H2 + LOX. JetFuel,
-// hydrazine, O2, water and food are carried but never burned in vacuum;
-// EC is storage in Wh, not kg. Neither is subtracted from dry mass.
+// Burnable propellant of the part (kg): H2 + LOX from its capacity.
+// JetFuel, hydrazine, O2, water and food are carried but never burned in
+// vacuum; EC is storage in Wh, not kg.
 double partPropellantMass(const PartDef &def);
 
-// Inert mass: wet minus burnable propellant (structure + crew + mono +
-// life support + jet fuel). May be slightly negative on a hand-made def;
-// callers clamp when it matters.
+// Inert mass: the DRY structure (PartDef::mass, which excludes propellant)
+// plus the non-burnable resources it carries (crew + mono + life support +
+// jet fuel), from capacity. EC has no mass. The complement of
+// partPropellantMass over the part's full mass (def.mass + capacity).
 inline double partDryMass(const PartDef &def) {
-    return def.mass - partPropellantMass(def);
+    double m = def.mass;
+    for(size_t r = 0; r < def.capacity.size(); r++) {
+        if(r == (size_t)ResourceType::EC) { continue; }        // energy, no mass
+        if(r == (size_t)ResourceType::Hydrogen) { continue; }  // burnable: sp.fuel
+        if(r == (size_t)ResourceType::LOX) { continue; }       // burnable: sp.fuel
+        m += (double)def.capacity[r];
+    }
+    return m;
 }

@@ -46,36 +46,38 @@ KRB_G = 9.81  # Kerbin surface gravity (m/s^2); see res/ksp_system.json
 def ship_mass_and_radius(ship_path, parts_path):
     """(dry_mass, fueled_mass, max_radius, ve, flow) from the parts catalog.
 
-    A tank part's `mass` is its FUELED mass (empty hull + propellant); the
-    empty hull is `mass - capacity` (see the parts file). So the ship's
-    FUELED mass is the sum of part masses, and the DRY (empty) mass is that
-    minus every tank's capacity. (The game's drainFuel subtracts burned
-    propellant from the body mass, confirming the body mass carries the fuel
-    -- so do NOT add the capacity on top of the part mass.) max_radius is
-    the widest part (its end face is the prograde cross-section)."""
+    A part's `mass` is its DRY structure only (the propellant rides
+    `capacity`, like the game's effectiveMass). So the ship's FUELED mass is
+    the sum of part masses plus every tank's capacity, and the DRY (empty)
+    mass is that minus the burnable propellant (H2/LOX/jetfuel). EC is
+    charge, not mass, so it never counts. max_radius is the widest part (its
+    end face is the prograde cross-section)."""
     with open(ship_path) as f:
         ship = json.load(f)
     with open(parts_path) as f:
         parts = {p["name"]: p for p in json.load(f)["parts"]}
-    fueled = fuel = 0.0
+    dry = fuel = 0.0
     maxr = 0.0
     ve = flow = 0.0  # first rocket engine's exhaust velocity + prop flow (kg/s)
     for ps in ship["parts"]:
         d = parts.get(ps["part"])
         if d is None:
             continue
-        fueled += d.get("mass", 0.0)
+        dry += d.get("mass", 0.0)
         maxr = max(maxr, d.get("radius", 0.0))
         cap = d.get("capacity", {})
         for res in ("hydrogen", "lox", "jetfuel"):
             fuel += cap.get(res, 0.0)
+        # Inert resources (mono, life support) still weigh in at the end.
+        for res in ("hydrazine", "oxygen", "water", "food"):
+            dry += cap.get(res, 0.0)
         # The rated thrust is 2*flow*ve (H2 + LOX both end up in the plume),
         # so the propellant flow is 2*flow and ve is the exhaust velocity.
         if d.get("fuel_rate", 0.0) > 0 and d.get("exhaust_velocity", 0.0) > 0 \
                 and not d.get("jet"):
             ve = d["exhaust_velocity"]
             flow = 2.0 * d["fuel_rate"]
-    dry = fueled - fuel  # empty hulls + the dry parts
+    fueled = dry + fuel  # structure + inert + full propellant
     return dry, fueled, maxr, ve, flow
 
 

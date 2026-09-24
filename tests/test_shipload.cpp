@@ -100,10 +100,10 @@ int main() {
     const PartDef *ft  = cat.find("fuel_tank");
     CHECK(cap != nullptr && rw != nullptr && eng != nullptr && ft != nullptr);
 
-    // the EVA kerbal (gen_kerbal.py): a crew-mass part with no ship
-    // behaviors (no wheel or thruster) but a small hydrazine tank for its
-    // RCS suit -- the mass INCLUDES that propellant (a spent suit keeps
-    // its dry structure, like the tanks above).
+    // the EVA kerbal: a crew-mass part with no ship behaviors (no wheel or
+    // thruster) but a small hydrazine tank for its RCS suit -- the mass is
+    // the DRY suit (the propellant rides capacity / effectiveMass, like the
+    // tanks above, so a spent suit weighs the same).
     const PartDef *kb = cat.find("kerbal");
     CHECK(kb != nullptr);
     CHECK(kb->type == "kerbal");
@@ -111,7 +111,7 @@ int main() {
     CHECK(kb->torque == 0.0 && kb->fuel_rate == 0.0);
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] > 0.0f); // the suit's RCS propellant
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] < 100.0f); // a suit load, not a tank
-    CHECK(kb->mass > kb->capacity[(int)ResourceType::Hydrazine]); // mass includes the fuel
+    CHECK(kb->mass > kb->capacity[(int)ResourceType::Hydrazine]); // dry suit outweighs its propellant load
     CHECK(kb->inventory_capacity > 0); // the suit pocket (phase 4.2)
 
     // a cargo crate: a container (inventory_capacity > 0), no other behavior
@@ -245,9 +245,11 @@ int main() {
     CHECK(ft->fuel_rate == 0.0 && ft->exhaust_velocity == 0.0);
     CHECK(ft->capacity[(int)ResourceType::Hydrogen] > 0.0f);
     CHECK(ft->capacity[(int)ResourceType::LOX] > 0.0f);
-    // the mass INCLUDES the propellant (a spent tank keeps its dry structure)
-    CHECK(ft->mass > ft->capacity[(int)ResourceType::Hydrogen]
-                       + ft->capacity[(int)ResourceType::LOX]);
+    // the mass is the DRY structure only; the propellant rides
+    // resources.current / effectiveMass, not mass. Structure is lighter
+    // than the fuel it holds (density ratio ~1:10), so mass < capacity.
+    CHECK(ft->mass < ft->capacity[(int)ResourceType::Hydrogen]
+                      + ft->capacity[(int)ResourceType::LOX]);
 
     // jet (air-breathing): an AIR-BREATHING thruster that burns a SEPARATE
     // fuel type from rocket H2 -- so it and a rocket on the same ship never
@@ -270,7 +272,7 @@ int main() {
     CHECK(jtank->capacity[(int)ResourceType::JetFuel] > 0.0f);
     CHECK(jtank->capacity[(int)ResourceType::Hydrogen] == 0.0f);
     CHECK(jtank->capacity[(int)ResourceType::LOX] == 0.0f);
-    CHECK(jtank->mass > jtank->capacity[(int)ResourceType::JetFuel]);
+    CHECK(jtank->mass < jtank->capacity[(int)ResourceType::JetFuel]);
 
     // hull margin: no catalog part sets one -> -1 (physics falls back to
     // its default); the field itself still parses

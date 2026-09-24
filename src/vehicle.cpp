@@ -1200,10 +1200,10 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
                 float share = take * have / layerTotal;
                 if(share > have) { share = have; }
                 p->resources.current[(int)type] = have - share;
-                /* No SetMass: a part has no rigid body. The ship's mass
-                   properties follow from the parts, and refreshCompound()
-                   (once per tick) rebuilds them once the drift matters. */
-                p->body->mass -= (double)share;
+                /* The fuel leaves resources.current (above); the body mass is
+                   the DRY structure and stays put -- effectiveMass() adds the
+                   contents back, and refreshCompound() (once per tick) rebuilds
+                   the ship's mass/COM once the drift matters. */
             }
         }
         remaining -= take;
@@ -1248,9 +1248,9 @@ float Vehicle::getDeltaV() {
                      // thrust in vacuum and their exhaust velocity is not a delta-v.
     for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
     // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry). getMass() is the FUELED
-    // mass (each tank's body mass is its fueled mass -- hull + propellant, and
-    // drainFuel subtracts burned propellant from it), and m_dry = getMass()
-    // - remaining_fuel (the empty hulls + dry parts).
+    // mass (each part's effectiveMass: its DRY body mass plus its current
+    // propellant contents, which shed as the tanks burn), and m_dry =
+    // getMass() - remaining_fuel (the empty hulls + dry parts + crew).
     return (float)(ve * exhaust_scale)
          * log(getMass() / (getMass() - remaining_fuel));
 }

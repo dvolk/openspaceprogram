@@ -5,7 +5,9 @@
 //   * a plain two-stage rocket: Tsiolkovsky delta-v per stage, min TWR at
 //     the start of the burn (heaviest) and max at the end (lightest),
 //     against the reference g;
-//   * dry mass = wet - propellant (PartDef::mass INCLUDES full tanks);
+//   * dry mass = catalog mass (the DRY structure) + inert resources:
+//     PartDef::mass EXCLUDES propellant -- H2+LOX rides the burnable pool,
+//     hydrazine / jet fuel ride the dry;
 //   * asparagus (outer -> inner fuel links): the outer booster's tanks
 //     empty first (shared with the core engine), the stage drops when
 //     THEY are empty, and the core keeps burning afterwards;
@@ -56,7 +58,7 @@ struct Catalog {
     const PartDef *tank(double dry, double h2, double lox) {
         defs.push_back(PartDef());
         PartDef &d = defs.back();
-        d.mass = dry + h2 + lox;   // WET: catalog mass includes full tanks
+        d.mass = dry;   // DRY: catalog mass is structure only; the fuel rides capacity
         d.capacity[(int)ResourceType::Hydrogen] = (float)h2;
         d.capacity[(int)ResourceType::LOX] = (float)lox;
         return &d;
@@ -76,10 +78,10 @@ struct Catalog {
         defs.back().fuel_barrier = true;
         return &defs.back();
     }
-    const PartDef *mono(double wet, double hydrazine) {
+    const PartDef *mono(double dry, double hydrazine) {
         defs.push_back(PartDef());
         PartDef &d = defs.back();
-        d.mass = wet;
+        d.mass = dry;   // DRY: the hydrazine rides capacity (inert mass in staging)
         d.capacity[(int)ResourceType::Hydrazine] = (float)hydrazine;
         return &d;
     }
@@ -121,7 +123,7 @@ static void test_two_stage() {
 
     // Wet: 100+10+5+200+10 = 325. Dry: 50+10+5+50+10 = 125.
     CHECK_NEAR(partDryMass(*bs.parts[0].def), 50.0, 1e-9, "upper dry");
-    CHECK_NEAR(bs.parts[0].def->mass, 100.0, 1e-9, "upper wet");
+    CHECK_NEAR(bs.parts[0].def->mass, 50.0, 1e-9, "upper catalog mass is dry structure");
 
     const double g = 10.0;
     const std::vector<StageRow> rows = computeStaging(bs, g);
@@ -180,13 +182,14 @@ static void test_single_stage() {
 static void test_inert_resources() {
     Catalog cat;
     BuildShip bs;
-    // wet 200 + engine 20 = 220 as before, plus a mono tank whose 78 kg
-    // of hydrazine stays on the stack the whole burn.
+    // full 200 + engine 20 = 220 as before, plus a mono tank (dry 10.45 +
+    // 78.54 hydrazine = 88.99 full) whose hydrazine stays on the stack
+    // the whole burn.
     const int tank = addPart(bs, cat.tank(100, 50, 50), "tank", -1, 1);
     addPart(bs, cat.engine(20, 0.5, 2000.0), "eng", tank, 1);
-    addPart(bs, cat.mono(88.99, 78.54), "mono", tank, 1);
+    addPart(bs, cat.mono(10.45, 78.54), "mono", tank, 1);
 
-    // wet = 220 + 88.99 = 308.99, burnable = 100, inert end = 208.99.
+    // full = 220 + 88.99 = 308.99, burnable = 100, inert end = 208.99.
     const std::vector<StageRow> rows = computeStaging(bs, 9.8);
     CHECK_TRUE(rows.size() == 1, "inert: one row");
     if(rows.size() != 1) { return; }
