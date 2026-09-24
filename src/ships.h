@@ -56,6 +56,12 @@ public:
     // the parts catalog (for out-of-band ship builders, e.g. the radial test)
     const PartsCatalog &catalog() const { return part_catalog; }
 
+    // Re-point the star (the in-process system switch: the old star is
+    // deleted, the new one is the new system's root). The star is only read
+    // by the ship/pad builders (light source), so a plain pointer swap is
+    // enough -- no rebuild.
+    void setSun(TerrainBody *sun) { this->sun = sun; }
+
     // --- placement (the ships land in the body's list, not here) ---------
     // Build one ship from defPath and place it on body hb: slot it (next
     // free for the (body, scenario) group), de-dup its name, make sure the

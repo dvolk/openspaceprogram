@@ -129,6 +129,42 @@ static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) 
     display.SwapBuffers();
 }
 
+// The heavy phase (max_height + root terrain + the atmosphere/cloud/ocean
+// shells) per body, split: build the boot-critical bodies (the home body, its
+// moon, the star) synchronously so the title + ship are solid from the first
+// frame, and defer the rest to the worker so they stream in while the game
+// runs (a body simply isn't drawn until its heavy phase lands). BuildClouds
+// still posts its coverage bake to the runner (the deck draws a solid
+// placeholder until it lands), so that per-body cost never stalls anything.
+// Shared by the boot (main) and the in-process system switch
+// (Game::switchSystem): one "build this system's bodies" path.
+static void postHeavyPhase(Game &game, System &sys, TerrainBody *home,
+                           TerrainBody *sun, Shader *atmosphereshader,
+                           Shader *cloudshader, Shader *oceanshader,
+                           int cloudres) {
+    for(TerrainBody *b : sys.bodies) {
+        if(b == home || b == sys.moon || b == sun) {
+            b->Finish(b->BuildRootGeoms(), atmosphereshader, cloudshader,
+                      cloudres, oceanshader, game.jobs);
+        } else {
+            const std::string label = std::string("Terrain (") + b->name + ")";
+            // The worker body only uses `b` (BuildRootGeoms is pure); the
+            // rest are carried so the main-thread continuation can capture
+            // them (the worker never dereferences them).
+            game.jobs.post(label,
+                [b, atmosphereshader, cloudshader, cloudres, oceanshader,
+                 &game]() -> std::function<void()> {
+                auto r = b->BuildRootGeoms();   // worker: pure math
+                return [b, r, atmosphereshader, cloudshader, cloudres,
+                        oceanshader, &game]() {
+                    b->Finish(r, atmosphereshader, cloudshader, cloudres,
+                              oceanshader, game.jobs);
+                };
+            });
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
@@ -392,31 +428,9 @@ int main(int argc, char **argv)
     //
     // BuildClouds still posts its coverage bake to the runner (the deck
     // draws a solid placeholder until it lands), so that ~0.4s-per-body cost
-    // never stalls anything.
-    {
-        const int cloudres = args.cloud_mesh;
-        for(TerrainBody *b : sys.bodies) {
-            if(b == home || b == sys.moon || b == sun) {
-                b->Finish(b->BuildRootGeoms(), atmosphereshader, cloudshader,
-                          cloudres, oceanshader, game.jobs);
-            } else {
-                const std::string label = std::string("Terrain (") + b->name + ")";
-                // The worker body only uses `b` (BuildRootGeoms is pure); the
-                // rest are carried so the main-thread continuation can capture
-                // them (the worker never dereferences them).
-                game.jobs.post(label,
-                    [b, atmosphereshader, cloudshader, cloudres, oceanshader,
-                     &game]() -> std::function<void()> {
-                    auto r = b->BuildRootGeoms();   // worker: pure math
-                    return [b, r, atmosphereshader, cloudshader, cloudres,
-                            oceanshader, &game]() {
-                        b->Finish(r, atmosphereshader, cloudshader, cloudres,
-                                  oceanshader, game.jobs);
-                    };
-                });
-            }
-        }
-    }
+    // never stalls anything. Shared with the in-process system switch.
+    postHeavyPhase(game, sys, home, sun, atmosphereshader, cloudshader,
+                   oceanshader, args.cloud_mesh);
 
     // settings.json phase 2 (the args fields were applied before the
     // Renderer above): the Game + PostFX state, before apply_ui_style
