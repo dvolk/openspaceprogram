@@ -10,12 +10,16 @@
 //
 // root() is the install directory that CONTAINS res/. Today that is
 // SDL_GetBasePath() (the directory of the running binary) with a short
-// walk-up -- the portable layout (release tarball, AppImage) keeps res/
-// next to the binary, and the walk-up covers the dev tree's ./osp symlink
-// into build/<os>-<march>-<tune>/<config>/. The walk also accepts an FHS
-// split (binary in .../bin, assets in .../share/openspaceprogram/res), so
-// a future deb only has to land the tree there -- this file is the sole
-// place that knows the layout.
+// walk-up. Two layouts are accepted at each level:
+//   <dir>/res                        -- release tarball (binary + res/ side
+//                                       by side); also the AppDir root if
+//                                       we ever pack that way
+//   <dir>/share/openspaceprogram/res -- FHS: binary in .../bin (the AppImage
+//                                       AppDir and a future deb /usr/bin),
+//                                       assets in .../share/...
+// The walk-up also covers the dev tree's ./osp symlink into
+// build/<os>-<march>-<tune>/<config>/. This file is the sole place that
+// knows the layout.
 //
 // Header-only, no game state: the same "plain file-system ops" stance as
 // datadir.h (datadir = per-user writable state; resdir = shipped assets).

@@ -18,6 +18,7 @@
 
 #include "../middleware/imgui/imgui.h"   // ImGui::GetIO().WantCaptureMouse
 
+#include "datadir.h" // datadir::ships (VAB Save target -- never the install tree)
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
 #include "resdir.h"   // resdir::path
 #include "ships.h"    // Ships::catalog (resolve the armed palette name)
@@ -480,12 +481,27 @@ void vabDetachSelected(Game &g) {
 }
 
 void vabSave(Game &g, const char *path) {
-    if(save_ship_def(g.vab.build, resdir::path(path).c_str())) {
-        printf("[vab] saved %s (%d parts)\n", path, (int)g.vab.build.parts.size());
+    // Writes are user content and never enter the install tree: an AppImage's
+    // res/ is a read-only squashfs, and a deb's /usr/share is root-owned. A
+    // res/... target (the historical default, still what --vab loads) is
+    // rewritten to the data dir's ships/ under the same basename; anything
+    // else is used as given.
+    std::string out = path;
+    std::string rel = out;
+    if(rel.compare(0, 2, "./") == 0) { rel = rel.substr(2); }
+    if(rel.compare(0, 4, "res/") == 0 || rel == "res") {
+        const size_t slash = rel.find_last_of('/');
+        const std::string base =
+            (slash == std::string::npos) ? rel : rel.substr(slash + 1);
+        datadir::make_dir(datadir::ships());
+        out = datadir::ships() + "/" + base;
+    }
+    if(save_ship_def(g.vab.build, out.c_str())) {
+        printf("[vab] saved %s (%d parts)\n", out.c_str(), (int)g.vab.build.parts.size());
         fflush(stdout);
-        g.toast("Saved %s", path);
+        g.toast("Saved %s", out.c_str());
     } else {
-        g.toast("Save FAILED: %s", path);
+        g.toast("Save FAILED: %s", out.c_str());
     }
 }
 

@@ -5,8 +5,9 @@ land. Very early development — expect rough edges.
 
 ## Run it
 
-The game finds its assets in the `res/` directory next to the binary, so
-you can start it from anywhere:
+The game finds its assets in the `res/` tree that ships with it (beside
+the binary in the tarball, under `usr/share/openspaceprogram/` in the
+AppImage), so you can start it from anywhere:
 
 - **Linux AppImage** — one file, no install:
 

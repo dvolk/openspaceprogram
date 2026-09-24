@@ -2682,35 +2682,67 @@ void drawVabUI(Game &g) {
         }
     }
 
-    // the save path: seeded once from the build's name, editable
+    // the save path: seeded once from the build's name into the data dir's
+    // ships/ (user content -- never the read-only install tree). Editable.
     static char savePath[512] = {0};
     if(savePath[0] == 0) {
         const std::string nm = g.vab.build.name.empty()
             ? std::string("untitled") : g.vab.build.name;
-        snprintf(savePath, sizeof(savePath), "res/ships/%s.json", nm.c_str());
+        snprintf(savePath, sizeof(savePath), "%s/%s.json",
+                 datadir::ships().c_str(), nm.c_str());
     }
 
-    // the load picker: the ship-def slugs in res/ships (the files the VAB
-    // Save writes and --vab loads), with a persistent selection so the Load
-    // button -- read on the frame the click lands -- acts on the chosen row.
-    // The list is cached and re-read only when the directory's mtime changes
-    // (a Save adds/renames a file): re-scanning it every frame would be ~3
+    // the load picker: stock ship-defs in res/ships plus the player's own
+    // under the data dir's ships/. Labels are the file stems ("name" for
+    // stock, "name (user)" when both exist); the parallel path vector is
+    // what Load opens. Cached and re-read when either directory's mtime
+    // changes (a Save adds a file): re-scanning every frame would be ~3
     // syscalls/frame for a list that only ever changes on a Save.
-    static std::vector<std::string> ships;
+    static std::vector<std::string> shipLabels;
+    static std::vector<std::string> shipPaths;
     static bool shipsScanned = false;   // a real mtime could be the epoch; don't rely on that
-    static std::filesystem::file_time_type shipDirMtime;
+    static std::filesystem::file_time_type stockMtime, userMtime;
     {
         std::error_code ec;
-        const auto mtime = std::filesystem::last_write_time(
-            resdir::path("res/ships"), ec);
-        if(!ec && (!shipsScanned || mtime != shipDirMtime)) {
-            ships = list_ship_defs(resdir::path("res/ships"));
-            shipDirMtime = mtime;
+        const std::string stockDir = resdir::path("res/ships");
+        const std::string userDir = datadir::ships();
+        const auto sm = std::filesystem::last_write_time(stockDir, ec);
+        const std::filesystem::file_time_type stock =
+            ec ? std::filesystem::file_time_type{} : sm;
+        const auto um = std::filesystem::last_write_time(userDir, ec);
+        const std::filesystem::file_time_type user =
+            ec ? std::filesystem::file_time_type{} : um;
+        if(!shipsScanned || stock != stockMtime || user != userMtime) {
+            shipLabels.clear();
+            shipPaths.clear();
+            std::vector<std::string> stockNames = list_ship_defs(stockDir);
+            std::vector<std::string> userNames = list_ship_defs(userDir);
+            for(const auto &s : stockNames) {
+                shipLabels.push_back(s);
+                shipPaths.push_back("res/ships/" + s + ".json");
+            }
+            for(const auto &s : userNames) {
+                bool dup = false;
+                for(size_t i = 0; i < shipLabels.size(); i++) {
+                    if(shipLabels[i] == s) {
+                        shipLabels[i] = s + " (user)";
+                        shipPaths[i] = userDir + "/" + s + ".json";
+                        dup = true;
+                        break;
+                    }
+                }
+                if(!dup) {
+                    shipLabels.push_back(s);
+                    shipPaths.push_back(userDir + "/" + s + ".json");
+                }
+            }
+            stockMtime = stock;
+            userMtime = user;
             shipsScanned = true;
         }
     }
     static int loadSel = 0;
-    if(loadSel >= (int)ships.size()) { loadSel = (int)ships.size() - 1; }
+    if(loadSel >= (int)shipLabels.size()) { loadSel = (int)shipLabels.size() - 1; }
     if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
 
     /* Top bar: a fixed top-center window (no titlebar, not movable, not
@@ -2728,13 +2760,13 @@ void drawVabUI(Game &g) {
         if(ImGui::Button("Save")) { vabSave(g, savePath); }
         // Load: pick a saved ship, replace the build with it, and point the
         // save path at the same file so a following Save round-trips it.
-        if(!ships.empty()) {
+        if(!shipLabels.empty()) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(160);
-            const char *cur = ships[(size_t)loadSel].c_str();
+            const char *cur = shipLabels[(size_t)loadSel].c_str();
             if(ImGui::BeginCombo("##vabload", cur)) {
-                for(size_t i = 0; i < ships.size(); i++) {
-                    if(ImGui::Selectable(ships[i].c_str(), (int)i == loadSel)) {
+                for(size_t i = 0; i < shipLabels.size(); i++) {
+                    if(ImGui::Selectable(shipLabels[i].c_str(), (int)i == loadSel)) {
                         loadSel = (int)i;
                     }
                 }
@@ -2742,7 +2774,7 @@ void drawVabUI(Game &g) {
             }
             ImGui::SameLine();
             if(ImGui::Button("Load")) {
-                const std::string p = "res/ships/" + ships[(size_t)loadSel] + ".json";
+                const std::string &p = shipPaths[(size_t)loadSel];
                 if(vabLoad(g, p.c_str())) {
                     snprintf(savePath, sizeof(savePath), "%s", p.c_str());
                 }

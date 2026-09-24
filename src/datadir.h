@@ -81,10 +81,12 @@ inline const std::string &init(const std::string &override) {
 }
 
 // The saves/ directory (slots live under it), the screenshots/ directory
-// (F12 shots land there), and the settings.json path -- all under the data
-// directory.
+// (F12 shots land there), the user ship-defs/ directory (VAB Save), and
+// the settings.json path -- all under the data directory. User-authored
+// content never lands in the install tree (an AppImage's res/ is read-only).
 inline const std::string saves() { return dir() + "saves"; }
 inline const std::string screenshots() { return dir() + "screenshots"; }
+inline const std::string ships() { return dir() + "ships"; }
 inline const std::string settings_file() { return dir() + "settings.json"; }
 
 }   // namespace datadir

@@ -78,7 +78,10 @@ void Audio::shutdown() {
 }
 
 MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
-    auto it = audios_.find(path);
+    // Cache on the resolved path (same as mesh/texture/shader), so "res/x"
+    // and "./res/x" cannot double-load one file.
+    const std::string key = resdir::path(path);
+    auto it = audios_.find(key);
     if(it != audios_.end()) { return it->second; }
     // predecode = true decodes the whole file into PCM at load time, so the
     // real-time audio callback only COPIES samples. The SFX are tiny (WAVs,
@@ -86,12 +89,12 @@ MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
     // decode is ~1 s of CPU and ~200 MB of RAM, which dominated startup, so
     // it streams -- Vorbis decodes on the fly inside the callback (a few ms
     // per period, well inside the generous 8192-frame buffer).
-    MIX_Audio *a = MIX_LoadAudio(mixer_, resdir::path(path).c_str(), predecode);
+    MIX_Audio *a = MIX_LoadAudio(mixer_, key.c_str(), predecode);
     if(a == nullptr) {
         printf("audio: cannot load %s: %s\n", path.c_str(), SDL_GetError());
         return nullptr;
     }
-    audios_[path] = a;
+    audios_[key] = a;
     if(dbg_) {
         SDL_AudioSpec spec;
         const char *fmt = "?";
