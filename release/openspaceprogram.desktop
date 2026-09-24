@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Open Space Program
+GenericName=Space Flight Simulator
+Comment=Open source space sim inspired by Pioneer and Kerbal Space Program
+Exec=osp
+Icon=openspaceprogram
+Terminal=false
+Categories=Game;Simulation;
+Keywords=space;rocket;orbit;simulator;

@@ -8,7 +8,12 @@ land. Very early development — expect rough edges.
 The game finds its assets in the `res/` directory next to the binary, so
 you can start it from anywhere:
 
-- **Linux** — from a terminal:
+- **Linux AppImage** — one file, no install:
+
+      chmod +x osp-<version>-x86_64.AppImage
+      ./osp-<version>-x86_64.AppImage
+
+- **Linux tarball** — from a terminal:
 
       ./osp-<version>-linux/osp
 
@@ -26,8 +31,9 @@ the same directory — use the one for your OS; the other is inert.
 - CPU: x86-64 with the x86-64-v2 instruction set (~2010+; SSE4.2)
 - Graphics: OpenGL 4.5 (a hardware GPU; it will boot on software
   rendering like Mesa llvmpipe, but slowly)
-- The Linux build links the standard desktop libraries (X11, GL,
-  audio); the Windows build is fully self-contained
+- The Linux builds (AppImage + tarball) use the host's standard desktop
+  libraries (X11, GL, audio, libstdc++); the Windows build is fully
+  self-contained
 
 ## Basics
 

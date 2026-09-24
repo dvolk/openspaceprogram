@@ -713,6 +713,10 @@ e2e: all
 DISTDIR=dist
 LINUX_BIN=$(BUILDROOT)/linux-$(MARCH_TOK)-$(MTUNE_TOK)/release/osp
 WINDOWS_BIN=$(BUILDROOT)/windows-$(MARCH_TOK)-$(MTUNE_TOK)/release/osp.exe
+# appimagetool (the packer). Cached under tmp/ across runs -- a 15 MB
+# download every `make appimage` would be silly. APPIMAGE_EXTRACT_AND_RUN
+# so it works without FUSE (containers, many CI images).
+APPIMAGETOOL=tmp/appimagetool-x86_64.AppImage
 # The wine gate is a parity smoke, not the full matrix (the native battery
 # above is the full gate -- 47 serial wine cases would take half an hour on
 # a desktop box). Default = the phase 1.4 acceptance set; extend with
@@ -750,9 +754,30 @@ artifacts:
 	(cd "$$STAGE" && tar -cJf ../../$(DISTDIR)/osp-$$VER-linux.tar.xz osp-$$VER-linux) && \
 	(cd "$$STAGE" && tar -cJf ../../$(DISTDIR)/osp-$$VER-linux+windows.tar.xz osp-$$VER-linux+windows) && \
 	(cd "$$STAGE" && zip -r -q ../../$(DISTDIR)/osp-$$VER-windows.zip osp-$$VER-windows) && \
-	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz > SHA256SUMS) && \
-	rm -rf "$$STAGE"; \
+	rm -rf "$$STAGE"
+	@$(MAKE) --no-print-directory appimage
+	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
+	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz osp-$$VER-x86_64.AppImage > SHA256SUMS); \
 	ls -lh $(DISTDIR)
+
+# AppImage: one-file Linux portable (mount + run). Staging + pack live in
+# utils/make_appimage.sh (AppDir layout notes there). The AppDir is FHS-shaped
+# (usr/bin/osp + usr/share/openspaceprogram/res/) so resdir::root()'s walk-up
+# finds the assets from the binary dir -- no AppRun cd trick. Host libraries
+# only (libGL, X11, Pulse, libstdc++): the binary already links those
+# dynamically and they must match the host driver stack anyway (a bundled
+# libGL is how AppImages get black windows). libstdc++ is likewise left to
+# the host (a deliberate choice: smaller image, needs a reasonably new
+# distro -- the same contract as the linux tarball).
+.PHONY: appimage
+appimage:
+	@$(MAKE) --no-print-directory version
+	@$(MAKE) --no-print-directory all
+	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
+	if [ -z "$$VER" ]; then \
+		echo "error: no version string (src/version.h missing?)" >&2; exit 1; \
+	fi; \
+	bash utils/make_appimage.sh "$(LINUX_BIN)" "$$VER" $(DISTDIR) $(APPIMAGETOOL)
 
 # Real-release path: full gates first (native unit tests + the full native
 # e2e battery + the wine parity set), then package. Any gate failing stops
