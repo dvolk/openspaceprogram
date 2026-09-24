@@ -1,0 +1,4 @@
+release/openspaceprogram.desktop  usr/share/applications/
+release/openspaceprogram.png      usr/share/icons/hicolor/256x256/apps/
+LICENSE.md                        usr/share/doc/openspaceprogram/
+release/README.md                 usr/share/doc/openspaceprogram/

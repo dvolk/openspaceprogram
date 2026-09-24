@@ -1,0 +1,29 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Open Space Program
+Source: https://github.com/dvolk/openspaceprogram
+
+Files: res/*
+Copyright: 2024-2026 Open Space Program contributors
+License: CC-BY-SA-3.0
+
+Files: *
+Copyright: 2024-2026 Denis Volk
+License: AGPL-3.0
+
+License: AGPL-3.0
+ GNU Affero General Public License version 3
+ .
+ The code (the Open Space Program source and compiled binaries) is licensed
+ under the AGPL v3. The full text is shipped with the game in
+ .
+  /usr/share/doc/openspaceprogram/   (LICENSE.md, possibly gzipped)
+ .
+ and may also be obtained from:
+  https://www.gnu.org/licenses/agpl-3.0.html
+
+License: CC-BY-SA-3.0
+ Creative Commons Attribution-ShareAlike 3.0 Unported
+ .
+ The game assets under res/ (art, audio) are licensed under CC BY-SA 3.0.
+ .
+  https://creativecommons.org/licenses/by-sa/3.0/legalcode

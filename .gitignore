@@ -1,5 +1,8 @@
 # Build artifacts
 build/
+# The repo-root ./debian/ is ephemeral: `make deb` copies the canonical
+# packaging (utils/debian/) in for dpkg-buildpackage, then deletes it on exit.
+/debian/
 # Release archives (the `make artifacts` / `make release` output; uploaded
 # manually, never committed)
 dist/

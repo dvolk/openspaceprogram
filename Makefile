@@ -756,8 +756,11 @@ artifacts:
 	(cd "$$STAGE" && zip -r -q ../../$(DISTDIR)/osp-$$VER-windows.zip osp-$$VER-windows) && \
 	rm -rf "$$STAGE"
 	@$(MAKE) --no-print-directory appimage
+	@$(MAKE) --no-print-directory deb
 	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
-	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz osp-$$VER-x86_64.AppImage > SHA256SUMS); \
+	DEBVER=$$(printf '%s' "$$VER" | sed -e 's/^v//' -e 's/-/~/g')-1; \
+	ARCH=$$(dpkg --print-architecture); \
+	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz osp-$$VER-x86_64.AppImage openspaceprogram_$$DEBVER_$$ARCH.deb > SHA256SUMS); \
 	ls -lh $(DISTDIR)
 
 # AppImage: one-file Linux portable (mount + run). Staging + pack live in
@@ -778,6 +781,17 @@ appimage:
 		echo "error: no version string (src/version.h missing?)" >&2; exit 1; \
 	fi; \
 	bash utils/make_appimage.sh "$(LINUX_BIN)" "$$VER" $(DISTDIR) $(APPIMAGETOOL)
+
+# Debian package: a binary .deb built by dpkg-buildpackage from the debian/
+# tree (staging + dh rules live there; the version is derived from the same
+# src/version.h the build embeds, so the .deb version matches `osp --version`).
+# Like appimage above this is the fast path -- no test/e2e gates; `make release`
+# is the full gate. Landed in dist/ alongside the other artifacts.
+.PHONY: deb
+deb:
+	@$(MAKE) --no-print-directory version
+	@$(MAKE) --no-print-directory all
+	bash utils/make_deb.sh $(DISTDIR) "$(LINUX_BIN)"
 
 # Real-release path: full gates first (native unit tests + the full native
 # e2e battery + the wine parity set), then package. Any gate failing stops

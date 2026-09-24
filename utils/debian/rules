@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+
+# The game is built by the project's own Makefile: bootstrap.sh builds the
+# statically-linked middleware (bullet3, SDL3, GLEW, ...) and `make` links
+# the binary. dh's auto build/test don't know that, so override them.
+#
+# The unit / e2e gates are `make test` / `make e2e` (run them via
+# `make release`). They're kept out of the .deb build so packaging stays
+# fast and needs no display.
+
+# Where the release binary lives (the default MARCH/MTUNE build). Override
+# with OSP_BIN=... to package a different ISA build.
+OSP_BIN ?= build/linux-v2-znver3/release/osp
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	./bootstrap.sh
+	make
+
+override_dh_auto_test:
+	:
+
+# dpkg-buildpackage (even with -b) runs `debian/rules clean` first, and dh's
+# auto clean would run the top Makefile's `clean` target -- wiping the existing
+# objects and forcing a full ~50-TU + LTO recompile on every `make deb`. No-op
+# it so the .deb build reuses the tree; dh_clean still clears the debian/
+# staging area (which is the part we actually want reset).
+override_dh_auto_clean:
+	:
+
+override_dh_auto_install:
+	# FHS layout the asset loader walks up from the binary to find
+	# (src/resdir.h) -- the same shape the AppImage AppDir uses:
+	#   /usr/bin/osp
+	#   /usr/share/openspaceprogram/res/
+	install -D -m 755 "$(OSP_BIN)" debian/openspaceprogram/usr/bin/osp
+	install -d debian/openspaceprogram/usr/share/openspaceprogram
+	cp -a res debian/openspaceprogram/usr/share/openspaceprogram/res

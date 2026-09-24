@@ -1,0 +1,31 @@
+Source: openspaceprogram
+Section: games
+Priority: optional
+Maintainer: Denis Volk <denis.volk@gmail.com>
+Build-Depends: g++,
+               make,
+               cmake,
+               curl,
+               git,
+               pkg-config,
+               libgl1-mesa-dev,
+               libpulse-dev,
+               libasound2-dev,
+               libx11-dev,
+               libxext-dev,
+               libxcursor-dev,
+               libxi-dev,
+               libxfixes-dev,
+               libxrandr-dev,
+               libxss-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/dvolk/openspaceprogram
+Rules-Requires-Root: no
+
+Package: openspaceprogram
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Open source space flight simulator
+ An open source space flight simulator. Assemble a ship in the Vehicle
+ Assembly Bay, launch it, and fly orbital missions with real (enough)
+ physics.

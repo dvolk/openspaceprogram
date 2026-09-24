@@ -1,0 +1,5 @@
+openspaceprogram (0.0.1~38~g35f4de0~dirty-1) unstable; urgency=low
+
+  * Initial Debian packaging.
+
+ -- Denis Volk <denis.volk@gmail.com>  Thu, 24 Sep 2026 19:16:26 +0000
