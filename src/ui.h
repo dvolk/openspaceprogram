@@ -90,6 +90,7 @@ public:
         int wait_frames = 0;        // frames spent waiting for a source rect
         int layout_frame = 0;       // imgui frame of the last relayout
         bool has_rect = false;      // measured on screen rect, this frame
+        int first_rect_frame = -1;  // imgui frame of the first measured rect
         ImVec2 rect_min, rect_max;
     };
 
@@ -142,6 +143,7 @@ public:
             st.applied_generation = 0;
             st.wait_frames = 0;
             st.has_rect = false;
+            st.first_rect_frame = -1;
         }
         ResetFlag() = false;
     }
@@ -163,6 +165,8 @@ public:
         st->rect_min = w->Pos;
         st->rect_max = ImVec2(w->Pos.x + w->Size.x, w->Pos.y + w->Size.y);
         st->has_rect = true;
+        if (st->first_rect_frame < 0)
+            st->first_rect_frame = (int)ImGui::GetFrameCount();
     }
 
     // Slot anchor point + the window pivot that pins the window there:
@@ -219,11 +223,23 @@ private:
                 return false; // source declared later this frame: wait
             return true;      // it never showed up: slot placement stands
         }
-        // The source was re-laid-out this frame and is not fixed: imgui
+        // The source's FIRST measured rect is never trustworthy: imgui
         // only applies a window's content-fit size on the NEXT frame's
-        // Begin, so the rect we just measured is stale (min-size). Wait a
-        // frame so the source settles. Fixed windows keep a stable size,
-        // so their rect is trustworthy immediately.
+        // Begin, so the on-screen rect the frame a window first appears
+        // is its min-size (or a default), not its real box. This hits
+        // every fixed window too -- they all get AlwaysAutoResize -- so
+        // "fixed = settled immediately" was wrong for a default-open
+        // left_of / right_of neighbour (it captured the title menu's
+        // first-frame box and never re-laid-out). Wait one frame.
+        if (s->first_rect_frame >= (int)ImGui::GetFrameCount()) {
+            if (++self.wait_frames < max_wait)
+                return false;
+            return true;
+        }
+        // The source was re-laid-out this frame and is not fixed: same
+        // content-fit staleness on a later re-layout (a generation
+        // reset). Fixed windows re-place every frame but keep a stable
+        // size, so their rect is already settled by the check above.
         if (s->layout_frame == (int)ImGui::GetFrameCount() && !s->fixed) {
             if (++self.wait_frames < max_wait)
                 return false;

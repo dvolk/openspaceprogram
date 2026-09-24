@@ -16,7 +16,9 @@
 #include <numbers>
 #include <cstdio>
 #include <filesystem>   // last_write_time (the load picker's ship-dir mtime gate)
+#include <fstream>      // the title README panel's file load
 #include <map>
+#include <sstream>      // line-splitting the README text
 #include <vector>
 
 #include "calendar.h"    // CalTime (the HUD + Game Debug Info clocks)
@@ -2386,6 +2388,11 @@ static void navTitle(Game &g, float bw) {
     if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) {
         setWinOpen(W_NewGame, true);
     }
+    // Toggle the README panel (left of this menu). Open by default; this
+    // brings it back after an X / close.
+    if(ImGui::Button("Readme", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_Readme, !winOpen(W_Readme));
+    }
 }
 static void navSpaceCenter(Game &g, float bw) {
     // Push the editor on top of the hub; the VAB's "Back to game" pops back
@@ -2547,6 +2554,79 @@ void drawNewGame(Game &g) {
         if(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
             setWinOpen(W_NewGame, false);
         }
+    });
+}
+
+/* The title screen's README panel (left of the menu). Loads the
+   player-facing readme once and shows it as plain text -- no markdown
+   renderer, just the lines with HTML image tags dropped and the
+   heading / bold markers stripped so it reads as text in a scroll box.
+
+   Which file: release/README.md in the source tree (root README.md is
+   the build-from-source doc), else README.md beside the assets (the
+   name the tarball / AppImage package it as), else the AppImage's
+   usr/share/doc/. First hit wins; a miss shows a placeholder rather
+   than an empty window. */
+static const std::vector<std::string> &readmeLines() {
+    static const std::vector<std::string> lines = [] {
+        namespace fs = std::filesystem;
+        const std::string root = resdir::root();
+        const std::string cands[] = {
+            root + "release/README.md",
+            root + "README.md",
+            root + "../doc/README.md",
+        };
+        std::string text;
+        for(const std::string &p : cands) {
+            std::ifstream f(p);
+            if(!f) { continue; }
+            std::ostringstream ss;
+            ss << f.rdbuf();
+            if(!ss.str().empty()) {
+                text = ss.str();
+                break;
+            }
+        }
+        if(text.empty()) { text = "(README.md not found)\n"; }
+
+        std::vector<std::string> out;
+        std::istringstream in(text);
+        std::string line;
+        while(std::getline(in, line)) {
+            if(!line.empty() && line.back() == '\r') { line.pop_back(); }
+            // HTML image tags are not renderable here; drop the line.
+            if(line.compare(0, 4, "<img") == 0) { continue; }
+            // Strip ATX heading markers ("# ", "## ", ...).
+            size_t i = 0;
+            while(i < line.size() && line[i] == '#') { i++; }
+            if(i > 0 && i < line.size() && line[i] == ' ') {
+                line.erase(0, i + 1);
+            }
+            // Strip **bold** markers (the release readme uses them for
+            // the key names and list labels).
+            for(size_t b; (b = line.find("**")) != std::string::npos; ) {
+                line.erase(b, 2);
+            }
+            out.push_back(line);
+        }
+        return out;
+    }();
+    return lines;
+}
+
+void drawReadme(Game &g) {
+    drawWin(g, W_Readme, [&] {
+        // Scroll box: the readme is longer than a fitted panel, and the
+        // window size is then free to stay user-resizable.
+        ImGui::BeginChild("readme_body", ImVec2(0.0f, 0.0f));
+        for(const std::string &line : readmeLines()) {
+            if(line.empty()) {
+                ImGui::Spacing();
+            } else {
+                ImGui::TextWrapped("%s", line.c_str());
+            }
+        }
+        ImGui::EndChild();
     });
 }
 

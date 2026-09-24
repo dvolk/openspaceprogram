@@ -47,6 +47,12 @@ void drawSpaceCenterMenu(Game &g);
    Title-only (it is in kTitleWins). */
 void drawNewGame(Game &g);
 
+/* The title screen's README panel (W_Readme), docked left of the title
+   menu. Shows the player-facing readme text (release/README.md in the
+   source tree, README.md beside the assets in a package) as plain text.
+   Open by default; the menu's "Readme" toggles it. Title-only. */
+void drawReadme(Game &g);
+
 /* The Tracking Station's widgets: a full-screen, chrome-less orbital map and a
    ship list, each a COPY of the flight window's draw code into its own window id
    (W_TrackingMap / W_TrackingShipList) so the two scenes' versions can diverge

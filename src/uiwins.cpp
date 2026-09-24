@@ -181,6 +181,17 @@ const WinDef kWins[W_Count] = {
                   .closable = true, .default_open = false },
         .role = WinRole::Transient, .inList = false,
     },
+    [W_Readme] = {
+        .name = "Readme", .label = "Readme",
+        // The title screen's README panel (the player-facing readme text),
+        // docked LEFT of the title menu -- the mirror of New Game on the
+        // right. Open by default so the title comes up with both side
+        // panels; closable, and the menu's "Readme" toggles it back.
+        .opts = { .slot = ui::Slot::Center, .left_of = "Title Menu",
+                  .initial_size = ImVec2(420.0f, 520.0f),
+                  .closable = true, .default_open = true },
+        .role = WinRole::Persistent, .inList = false,
+    },
 
     // --- space center hub ------------------------------------------------
     [W_SpaceCenterMenu] = {
@@ -244,7 +255,7 @@ static const Win kFlightWinIds[] = {
 // no flight readouts, which is the whole point: there is no vessel, and the
 // set is what says so rather than a guard in each window's body.
 static const Win kTitleWinIds[] = {
-    W_TitleMenu, W_NewGame, W_Settings, W_Controls, W_SaveLoad,
+    W_TitleMenu, W_Readme, W_NewGame, W_Settings, W_Controls, W_SaveLoad,
 };
 // The editor: its top-bar chrome plus the shared windows (the Settings /
 // Controls / Save-Load bodies are shipless-safe, so they draw here as well as
