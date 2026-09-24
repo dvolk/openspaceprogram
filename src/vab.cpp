@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <map>
 #include <string>
 
@@ -480,45 +481,85 @@ void vabDetachSelected(Game &g) {
     g.toast("Detached %s (+%d) to Subassemblies", rootId.c_str(), n - 1);
 }
 
-void vabSave(Game &g, const char *path) {
-    // Writes are user content and never enter the install tree: an AppImage's
-    // res/ is a read-only squashfs, and a deb's /usr/share is root-owned. A
-    // res/... target (the historical default, still what --vab loads) is
-    // rewritten to the data dir's ships/ under the same basename; anything
-    // else is used as given.
-    std::string out = path;
-    std::string rel = out;
-    if(rel.compare(0, 2, "./") == 0) { rel = rel.substr(2); }
-    if(rel.compare(0, 4, "res/") == 0 || rel == "res") {
-        const size_t slash = rel.find_last_of('/');
-        const std::string base =
-            (slash == std::string::npos) ? rel : rel.substr(slash + 1);
-        datadir::make_dir(datadir::ships());
-        out = datadir::ships() + "/" + base;
+namespace {
+
+// Ship-def identity for the VAB is a NAME ("racer"). Paths and ".json" are
+// accepted (CLI --vab-load, a pasted path) but reduced to the stem -- the
+// UI never shows a path.
+std::string shipDefStem(const std::string &spec) {
+    std::string s = spec;
+    while(!s.empty() && (s.back() == '/' || s.back() == '\\')) { s.pop_back(); }
+    const size_t slash = s.find_last_of("/\\");
+    if(slash != std::string::npos) { s = s.substr(slash + 1); }
+    if(s.size() > 5 && s.compare(s.size() - 5, 5, ".json") == 0) {
+        s.resize(s.size() - 5);
     }
+    return s;
+}
+
+// Resolve a ship-def name (or path) to a file. Data-dir ships/ wins over
+// stock res/ships/. A spec that still looks like a path is opened as one
+// when it exists (power-user / e2e escape hatch).
+std::string shipDefFile(const std::string &spec) {
+    if(spec.find('/') != std::string::npos
+       || spec.find('\\') != std::string::npos) {
+        const std::string p = resdir::path(spec);
+        std::error_code ec;
+        if(std::filesystem::is_regular_file(p, ec)) { return p; }
+    }
+    const std::string stem = shipDefStem(spec);
+    if(stem.empty()) { return std::string(); }
+    std::error_code ec;
+    const std::string user = datadir::ships() + "/" + stem + ".json";
+    if(std::filesystem::is_regular_file(user, ec)) { return user; }
+    return resdir::path("res/ships/" + stem + ".json");
+}
+
+} // namespace
+
+void vabSave(Game &g, const char *name) {
+    // The VAB's ship identity is a NAME ("racer"). It always lands in the
+    // data dir's ships/ (user content -- an AppImage's res/ is a read-only
+    // squashfs); a path or ".json" suffix in the field is ignored.
+    const std::string stem = shipDefStem(name != nullptr ? name : "");
+    if(stem.empty()) {
+        g.toast("Save FAILED: empty name");
+        return;
+    }
+    datadir::make_dir(datadir::ships());
+    const std::string out = datadir::ships() + "/" + stem + ".json";
     if(save_ship_def(g.vab.build, out.c_str())) {
-        printf("[vab] saved %s (%d parts)\n", out.c_str(), (int)g.vab.build.parts.size());
+        printf("[vab] saved %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
         fflush(stdout);
-        g.toast("Saved %s", out.c_str());
+        g.toast("Saved %s", stem.c_str());
     } else {
-        g.toast("Save FAILED: %s", out.c_str());
+        g.toast("Save FAILED: %s", stem.c_str());
     }
 }
 
-bool vabLoad(Game &g, const char *path) {
+bool vabLoad(Game &g, const char *name) {
+    const std::string spec = name != nullptr ? name : "";
+    const std::string stem = shipDefStem(spec);
+    const std::string file = shipDefFile(spec);
+    if(file.empty()) {
+        printf("[vab] load failed %s: empty name\n", spec.c_str());
+        fflush(stdout);
+        g.toast("Load failed: empty name");
+        return false;
+    }
     ShipDef def;
     try {
-        def = load_ship_def(resdir::path(path).c_str(), g.ships.catalog());
+        def = load_ship_def(file.c_str(), g.ships.catalog());
     } catch(const std::exception &e) {
-        printf("[vab] load failed %s: %s\n", path, e.what());
+        printf("[vab] load failed %s: %s\n", stem.c_str(), e.what());
         fflush(stdout);
         g.toast("Load failed: %s", e.what());
         return false;
     }
     if(def.parts.empty()) {
-        printf("[vab] load failed %s: no parts\n", path);
+        printf("[vab] load failed %s: no parts\n", stem.c_str());
         fflush(stdout);
-        g.toast("Load failed: %s (no parts)", path);
+        g.toast("Load failed: %s (no parts)", stem.c_str());
         return false;
     }
     /* Replace the current build, then re-aim the editor at the new tree.
@@ -538,9 +579,9 @@ bool vabLoad(Game &g, const char *path) {
     // flip the Del key from "detach" to a destructive "delete" with nothing
     // visibly selected.
     g.vab.linkSel = -1;
-    printf("[vab] loaded %s (%d parts)\n", path, (int)g.vab.build.parts.size());
+    printf("[vab] loaded %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
     fflush(stdout);
-    g.toast("Loaded %s (%d parts)", path, (int)g.vab.build.parts.size());
+    g.toast("Loaded %s (%d parts)", stem.c_str(), (int)g.vab.build.parts.size());
     return true;
 }
 

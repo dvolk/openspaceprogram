@@ -1,6 +1,6 @@
 # VAB load: --vab boots with racer.json already in the build tree; the
-# --vab-load hook fires vabLoad(res/ships/tanker.json) at 1500 ms, REPLACING
-# the boot build (the VAB's Load button, driven headless); --vab-launch then
+# --vab-load hook fires vabLoad("tanker") at 1500 ms, REPLACING the boot
+# build (the VAB's Load button, driven headless); --vab-launch then
 # converts the replaced tree and builds a real Vehicle on the pad. Pinning
 # both "loaded tanker (7 parts)" and "launched 'tanker' (7 parts)" proves the
 # load replaced racer -- a launch of the stale racer build would show racer's
@@ -8,10 +8,10 @@
 # fromShipDef and the launch would fail to build.
 NAME vab-load
 ARGS --vab res/ships/racer.json
-ARGS --vab-load res/ships/tanker.json --vab-load-at 1500
+ARGS --vab-load tanker --vab-load-at 1500
 ARGS --vab-launch 2500 --timeout 12
 EXPECT Main loop starting
-EXPECT [vab] loaded res/ships/tanker.json (7 parts)
+EXPECT [vab] loaded tanker (7 parts)
 EXPECT [vab] launched 'tanker' (7 parts)
 FORBID GL_
 FORBID error:

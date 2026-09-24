@@ -15,7 +15,7 @@
 #include <cmath>
 #include <numbers>
 #include <cstdio>
-#include <filesystem>   // last_write_time (the load picker's res/ships mtime gate)
+#include <filesystem>   // last_write_time (the load picker's ship-dir mtime gate)
 #include <map>
 #include <vector>
 
@@ -2682,24 +2682,18 @@ void drawVabUI(Game &g) {
         }
     }
 
-    // the save path: seeded once from the build's name into the data dir's
-    // ships/ (user content -- never the read-only install tree). Editable.
-    static char savePath[512] = {0};
-    if(savePath[0] == 0) {
-        const std::string nm = g.vab.build.name.empty()
-            ? std::string("untitled") : g.vab.build.name;
-        snprintf(savePath, sizeof(savePath), "%s/%s.json",
-                 datadir::ships().c_str(), nm.c_str());
+    // the save NAME (not a path -- .json / where the file lives are vabSave's
+    // business). Seeded once from the build's name, editable.
+    static char saveName[128] = {0};
+    if(saveName[0] == 0) {
+        snprintf(saveName, sizeof(saveName), "%s",
+                 g.vab.build.name.empty() ? "untitled" : g.vab.build.name.c_str());
     }
 
-    // the load picker: stock ship-defs in res/ships plus the player's own
-    // under the data dir's ships/. Labels are the file stems ("name" for
-    // stock, "name (user)" when both exist); the parallel path vector is
-    // what Load opens. Cached and re-read when either directory's mtime
-    // changes (a Save adds a file): re-scanning every frame would be ~3
-    // syscalls/frame for a list that only ever changes on a Save.
-    static std::vector<std::string> shipLabels;
-    static std::vector<std::string> shipPaths;
+    // the load picker: ship NAMES (stock res/ships + the player's data-dir
+    // ships/; the data dir wins on a collision). Cached and re-read when
+    // either directory's mtime changes (a Save adds a file).
+    static std::vector<std::string> shipNames;
     static bool shipsScanned = false;   // a real mtime could be the epoch; don't rely on that
     static std::filesystem::file_time_type stockMtime, userMtime;
     {
@@ -2713,60 +2707,44 @@ void drawVabUI(Game &g) {
         const std::filesystem::file_time_type user =
             ec ? std::filesystem::file_time_type{} : um;
         if(!shipsScanned || stock != stockMtime || user != userMtime) {
-            shipLabels.clear();
-            shipPaths.clear();
-            std::vector<std::string> stockNames = list_ship_defs(stockDir);
-            std::vector<std::string> userNames = list_ship_defs(userDir);
-            for(const auto &s : stockNames) {
-                shipLabels.push_back(s);
-                shipPaths.push_back("res/ships/" + s + ".json");
-            }
-            for(const auto &s : userNames) {
-                bool dup = false;
-                for(size_t i = 0; i < shipLabels.size(); i++) {
-                    if(shipLabels[i] == s) {
-                        shipLabels[i] = s + " (user)";
-                        shipPaths[i] = userDir + "/" + s + ".json";
-                        dup = true;
-                        break;
-                    }
-                }
-                if(!dup) {
-                    shipLabels.push_back(s);
-                    shipPaths.push_back(userDir + "/" + s + ".json");
+            shipNames = list_ship_defs(stockDir);
+            for(const std::string &s : list_ship_defs(userDir)) {
+                if(std::find(shipNames.begin(), shipNames.end(), s) == shipNames.end()) {
+                    shipNames.push_back(s);
                 }
             }
+            std::sort(shipNames.begin(), shipNames.end());
             stockMtime = stock;
             userMtime = user;
             shipsScanned = true;
         }
     }
     static int loadSel = 0;
-    if(loadSel >= (int)shipLabels.size()) { loadSel = (int)shipLabels.size() - 1; }
+    if(loadSel >= (int)shipNames.size()) { loadSel = (int)shipNames.size() - 1; }
     if(loadSel < 0) { loadSel = 0; }   // an empty list clamps to -1 above; keep valid
 
     /* Top bar: a fixed top-center window (no titlebar, not movable, not
        resizable) mirroring the HUD, in two lines:
-         line 1 -- Back to game, the save-path input, Save, the ship picker
-                   + Load (load a saved ship into the build, replacing it)
+         line 1 -- Back to game, the save-name input, Save, the ship picker
+                   + Load (load a ship into the build, replacing it)
          line 2 -- the launch body + scenario dropdowns, then LAUNCH */
     drawWin(g, W_VabTopBar, [&] {
-        // line 1: back to the game / save the build / load a saved ship
+        // line 1: back to the game / save the build / load a ship
         if(ImGui::Button("Back to game##vab")) { vabClose(g); }
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(220);
-        ImGui::InputText("##savepath", savePath, sizeof(savePath));
+        ImGui::SetNextItemWidth(140);
+        ImGui::InputText("##savename", saveName, sizeof(saveName));
         ImGui::SameLine();
-        if(ImGui::Button("Save")) { vabSave(g, savePath); }
-        // Load: pick a saved ship, replace the build with it, and point the
-        // save path at the same file so a following Save round-trips it.
-        if(!shipLabels.empty()) {
+        if(ImGui::Button("Save")) { vabSave(g, saveName); }
+        // Load: pick a ship by name, replace the build with it, and point the
+        // save name at the same one so a following Save round-trips it.
+        if(!shipNames.empty()) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(160);
-            const char *cur = shipLabels[(size_t)loadSel].c_str();
+            const char *cur = shipNames[(size_t)loadSel].c_str();
             if(ImGui::BeginCombo("##vabload", cur)) {
-                for(size_t i = 0; i < shipLabels.size(); i++) {
-                    if(ImGui::Selectable(shipLabels[i].c_str(), (int)i == loadSel)) {
+                for(size_t i = 0; i < shipNames.size(); i++) {
+                    if(ImGui::Selectable(shipNames[i].c_str(), (int)i == loadSel)) {
                         loadSel = (int)i;
                     }
                 }
@@ -2774,14 +2752,14 @@ void drawVabUI(Game &g) {
             }
             ImGui::SameLine();
             if(ImGui::Button("Load")) {
-                const std::string &p = shipPaths[(size_t)loadSel];
-                if(vabLoad(g, p.c_str())) {
-                    snprintf(savePath, sizeof(savePath), "%s", p.c_str());
+                const std::string &nm = shipNames[(size_t)loadSel];
+                if(vabLoad(g, nm.c_str())) {
+                    snprintf(saveName, sizeof(saveName), "%s", nm.c_str());
                 }
             }
         } else {
             ImGui::SameLine();
-            ImGui::TextDisabled("(no ships in res/ships)");
+            ImGui::TextDisabled("(no ships)");
         }
 
         // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH

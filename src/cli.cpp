@@ -125,8 +125,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the VAB's place (vabPlace) once at this loop time in "
                    "ms (headless test hook; -1 = never)");
     app.add_option("--vab-load", args.vab_load,
-                   "Load this ship def into the VAB build tree (vabLoad), "
-                   "replacing the current build (headless test hook; empty = never)");
+                   "Load this ship (name, or a path) into the VAB build tree "
+                   "(vabLoad), replacing the current build (headless test "
+                   "hook; empty = never)");
     app.add_option("--vab-load-at", args.vab_load_ms,
                    "Fire the --vab-load hook once at this loop time in ms "
                    "(headless test hook; -1 = never)");

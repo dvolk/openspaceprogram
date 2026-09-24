@@ -70,16 +70,19 @@ void vabDeleteSelected(Game &g);
 // vabDeleteSelected for multi-part subtrees.
 void vabDetachSelected(Game &g);
 
-// Write the build tree to `path` (save_ship_def); toasts the outcome.
-void vabSave(Game &g, const char *path);
+// Write the build tree as the named ship def in the data dir's ships/
+// (save_ship_def). `name` is the ship's identity ("racer"), not a path --
+// .json and where the file lives are implementation details. Toasts the
+// outcome.
+void vabSave(Game &g, const char *name);
 
-// Load the ship def at `path` (load_ship_def -> fromShipDef) into the VAB
-// build tree, REPLACING the current build (no confirm -- KSP-style), then
-// re-aim the editor camera at the new tree (vabOpen) and clear the hover.
-// The launch config (body/scenario) is kept -- vabOpen only seeds it when
-// empty. True on success (the tree now holds the loaded ship); false on a
-// parse failure or an empty def, which leaves the current build untouched.
-bool vabLoad(Game &g, const char *path);
+// Load the named ship def into the VAB build tree, REPLACING the current
+// build (no confirm -- KSP-style), then re-aim the editor camera at the new
+// tree (vabOpen) and clear the hover. Lookup is by name: the data dir's
+// ships/ wins over stock res/ships/. A path (CLI --vab-load, e2e) is
+// accepted and reduced to its stem. True on success; false on a missing
+// def, parse failure, or empty def -- the current build is left untouched.
+bool vabLoad(Game &g, const char *name);
 
 // LAUNCH: convert the tree to a ShipDef, place it on the home body's pad
 // (with startup-style crew aboard), take control of it, and switch to the
