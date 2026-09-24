@@ -30,7 +30,7 @@ static bool expect_throw(const std::function<void()> &fn) {
 }
 
 int main() {
-    PartsCatalog cat = load_parts_catalog("res/parts.json");
+    PartsCatalog cat = load_parts_catalog("res/data/parts.json");
 
     // the capsule family: crew_capacity set (1, 3, 6)
     const PartDef *cap  = cat.find("capsule");

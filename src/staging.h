@@ -22,7 +22,7 @@
 // vacuum delta-v and their JetFuel stays as carried mass). Hydrazine,
 // O2, water and food are likewise inert mass here. EC has no mass.
 //
-// Mass: PartDef::mass is the DRY structure (res/parts.json mass excludes
+// Mass: PartDef::mass is the DRY structure (res/data/parts.json mass excludes
 // propellant). Propellant rides capacity: H2+LOX becomes the burnable
 // pool (partPropellantMass), every other resource is inert mass folded
 // into partDryMass, EC has none.

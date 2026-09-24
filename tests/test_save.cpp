@@ -354,7 +354,7 @@ int main() {
     meta.format = 1;
     meta.saved_at = "2026-09-16T06:21:44";
     meta.system = "res/systems/ksp_system.json";
-    meta.parts = "res/parts.json";
+    meta.parts = "res/data/parts.json";
     meta.time = 4.459999999999993;
     meta.time_accel = 1;
     meta.active_ship = "racer";

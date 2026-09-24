@@ -3,7 +3,7 @@
 # orbit), same body. Ships are intercept-only: dv_cap must be exactly 0 and
 # the solution must be a valid conic between the two ships' states.
 NAME transfer-ship
-ARGS --fleet res/fleet.json --time-accel 1 --timeout 12
+ARGS --fleet res/data/fleet.json --time-accel 1 --timeout 12
 ARGS --xfer-log --orbit-interval 0.5 --transfer-target transporter
 ARGS --sim-press 1500,50,F6
 ARGS --sim-press 2500,50,F6

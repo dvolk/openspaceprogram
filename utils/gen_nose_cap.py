@@ -7,9 +7,9 @@ disc at z = -h/2 and an apex at z = +h/2. The larger caps keep the same
 shape, so they are UNIFORM rescales of the unit cap by their radius r
 (sx = sy = sz = r):
 
-    python3 gen_nose_cap.py res/nose_cap.obj
-    python3 rescale_obj.py res/nose_cap.obj res/nose_cap_r1.5h0.75.obj --sx 1.5 --sy 1.5 --sz 1.5
-    python3 rescale_obj.py res/nose_cap.obj res/nose_cap_r2.25h1.125.obj --sx 2.25 --sy 2.25 --sz 2.25
+    python3 gen_nose_cap.py res/meshes/nose_cap.obj
+    python3 rescale_obj.py res/meshes/nose_cap.obj res/meshes/nose_cap_r1.5h0.75.obj --sx 1.5 --sy 1.5 --sz 1.5
+    python3 rescale_obj.py res/meshes/nose_cap.obj res/meshes/nose_cap_r2.25h1.125.obj --sx 2.25 --sy 2.25 --sz 2.25
 
 (sz differs from rescale_obj.py's usual sz = h/2, which assumes a 2 m-tall
 base cube; this cap's base is only 0.5 m tall, so the correct z scale is

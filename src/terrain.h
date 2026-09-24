@@ -587,7 +587,7 @@ struct TerrainBody {
 
         // Detail texture: shared by all bodies, loaded once via the
         // get_texture registry (mipmapped, REPEAT wrap, anisotropic).
-        static Texture *detail_tex = get_texture("res/terrain_detail.png");
+        static Texture *detail_tex = get_texture("res/textures/terrain_detail.png");
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, detail_tex->id);
 

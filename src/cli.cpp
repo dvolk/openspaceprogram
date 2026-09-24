@@ -58,7 +58,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "for the Eerbon system)");
 
     app.add_option("--parts", args.parts_file,
-                   "Parts catalog JSON (default: res/parts.json)");
+                   "Parts catalog JSON (default: res/data/parts.json)");
 
     app.add_option("--ship", args.ship_files,
                    "Ship def JSON to build; repeat the flag to build more "
@@ -71,7 +71,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "entry per ship, each with its own ship def, name, body "
                    "and scenario; omitted body/scenario fall back to "
                    "--body/--scenario. Ships sharing a body+scenario get "
-                   "their own pad slot / orbit slot. Try res/fleet.json");
+                   "their own pad slot / orbit slot. Try res/data/fleet.json");
 
     app.add_option("--save", args.save_name,
                    "Save the game (the live fleet + crew + clock) into this "
@@ -461,7 +461,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--font", args.font_path,
                    "TTF font file for all UI text; the normal and big faces "
                    "are the same font (the big one at twice --font-size; "
-                   "default res/DejaVuSansMono.ttf)");
+                   "default res/fonts/DejaVuSansMono.ttf)");
 
     app.add_option("--font-size", args.font_size,
                    "UI font size in pixels (the big HUD readout font is "

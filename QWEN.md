@@ -8,7 +8,7 @@
 - Feel free to concisely comment on bits of code that took a lot of investigation, but don't compare it to how it used to be.
 - Upon completing your work: spawn a subagent to do a full and thorough quality pass through it for any remaining bugs, issues or QoL improvements.
 - Source code in ./src/
-- Textures/meshes/shaders/parts/ships/etc in ./res/
+- Assets in ./res/{meshes,textures,shaders,audio,fonts,data}/; ships in ./res/ships/, systems in ./res/systems/
 - Don't use memory: the projects moves quickly and it's usually faster to re-derive than to wrestle with outdated or incorrect notes.
 - Keep commit titles under 80 chars and use commit body to elaborate. Give yourself credit.
 - Run make test and run relevant e2e cases before committing.

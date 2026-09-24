@@ -44,7 +44,7 @@ static int g_checks = 0;
         }                                                                     \
     } while (0)
 
-/* Reference values (the r1 jet, res/parts.json) at Kerbin sea level
+/* Reference values (the r1 jet, res/data/parts.json) at Kerbin sea level
    (rho_sea = 1.225). */
 static const double T_FAN = 32000.0, M_F = 6.82, V_E = 550.0, A = 0.9;
 static const double RHO_SEA = 1.225;

@@ -133,12 +133,12 @@ void Skybox::init(void) {
 
     // Cubemap (Skybox)
     std::vector<const GLchar*> faces;
-    faces.push_back("res/skybox.png");
-    faces.push_back("res/skybox.png");
-    faces.push_back("res/skybox.png");
-    faces.push_back("res/skybox.png");
-    faces.push_back("res/skybox.png");
-    faces.push_back("res/skybox.png");
+    faces.push_back("res/textures/skybox.png");
+    faces.push_back("res/textures/skybox.png");
+    faces.push_back("res/textures/skybox.png");
+    faces.push_back("res/textures/skybox.png");
+    faces.push_back("res/textures/skybox.png");
+    faces.push_back("res/textures/skybox.png");
     cubemapTexture = loadCubemap(faces);
 }
 

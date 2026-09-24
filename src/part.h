@@ -196,7 +196,7 @@ struct Part {
 
     /* The part's mass INCLUDING its propellant contents and whatever is
        parked inside it (the containment edge, phase 2). Its own body mass is
-       the DRY structure only (res/parts.json mass is dry; the propellant is
+       the DRY structure only (res/data/parts.json mass is dry; the propellant is
        not baked in), so the current fuel (resources.current) is added back
        here -- EC excluded, since it is energy with no mass (a battery's EC
        charge is never part of the ship's mass). Then the effectiveMass of

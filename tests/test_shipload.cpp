@@ -59,7 +59,7 @@ static glm::dmat3 testOrient() {
 
 int main() {
     // --- parts catalog ----------------------------------------------------
-    PartsCatalog cat = load_parts_catalog("res/parts.json");
+    PartsCatalog cat = load_parts_catalog("res/data/parts.json");
     // floor, not an exact count: the catalog grows as parts are added
     CHECK(cat.parts.size() >= 35);
     CHECK(cat.find("nope") == nullptr);
@@ -180,8 +180,8 @@ int main() {
     // numbers are owned by gen_parts.py, so pin the invariants, not the values.
     CHECK(cap->type == "capsule");
     CHECK(cap->mass > 0.0);
-    CHECK(cap->mesh == "capsule.obj");
-    CHECK(cap->texture == "capsule.png");
+    CHECK(cap->mesh == "meshes/capsule.obj");
+    CHECK(cap->texture == "textures/capsule.png");
     CHECK(cap->torque > 0.0);   // the capsule carries an attitude wheel
     CHECK(cap->fuel_rate == 0.0 && cap->exhaust_velocity == 0.0);
     // the capsule is a crew module: a CONSTANT life-support draw (on all the
@@ -197,7 +197,7 @@ int main() {
     CHECK(rw->torque > 0.0);
     // the wheel is a thin disc: height = 25% of the radius
     CHECK(rw->radius == 1.0 && rw->height == 0.25);
-    CHECK(rw->mesh == "reaction_wheel_r1h0.25.obj");
+    CHECK(rw->mesh == "meshes/reaction_wheel_r1h0.25.obj");
     // the wheel draws EC while active (the power budget) but generates none
     CHECK(rw->power_draw > 0.0);
     CHECK(rw->power_gen == 0.0);
@@ -239,8 +239,8 @@ int main() {
     // fuel tank is the reservoir: holds the propellant, no thrust params
     CHECK(ft->type == "fuel_tank");
     CHECK(ft->mass > 0.0);
-    CHECK(ft->mesh == "fuel_tank.obj");
-    CHECK(ft->texture == "fuel_tank.png");
+    CHECK(ft->mesh == "meshes/fuel_tank.obj");
+    CHECK(ft->texture == "textures/fuel_tank.png");
     CHECK(ft->torque == 0.0);
     CHECK(ft->fuel_rate == 0.0 && ft->exhaust_velocity == 0.0);
     CHECK(ft->capacity[(int)ResourceType::Hydrogen] > 0.0f);
@@ -333,8 +333,8 @@ int main() {
             CHECK(nc->capacity[r] == 0.0f);
         }
     }
-    CHECK(nc225->mesh == "nose_cap_r2.25h1.125.obj");
-    CHECK(nc225->texture == "nose_cap.png");
+    CHECK(nc225->mesh == "meshes/nose_cap_r2.25h1.125.obj");
+    CHECK(nc225->texture == "textures/nose_cap.png");
 
     // --- ship def: the parent-relative tree schema ------------------------
     // racer: a bare linear stack (no attach given -> default chain, all

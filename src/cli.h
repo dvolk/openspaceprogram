@@ -35,7 +35,7 @@ struct GameArgs {
     } cli_given;
 
     std::string system_file = "res/systems/ksp_system.json";
-    std::string parts_file = "res/parts.json";
+    std::string parts_file = "res/data/parts.json";
     std::vector<std::string> ship_files;
     std::string fleet_file;
 
@@ -179,7 +179,7 @@ struct GameArgs {
     bool no_atmosphere = false;   // --no-atmosphere
     bool no_ocean = false;        // --no-ocean
 
-    std::string font_path = "res/DejaVuSansMono.ttf";
+    std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
     bool perf = false;   // --perf: print a per-frame phase timing breakdown

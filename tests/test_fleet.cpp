@@ -2,7 +2,7 @@
 // Runs from the repo root (needs res/):
 //   make test   (or: ./test_fleet)
 //
-// Covers: res/fleet.json parses with the expected entries, field defaults,
+// Covers: res/data/fleet.json parses with the expected entries, field defaults,
 // and the error paths (bad file, missing/empty "ships", non-object entry,
 // bad JSON).
 
@@ -36,7 +36,7 @@ static void write_file(const char *path, const std::string &content) {
 
 int main() {
     // --- the shipped sample -------------------------------------------------
-    Fleet f = load_fleet("res/fleet.json");
+    Fleet f = load_fleet("res/data/fleet.json");
     CHECK(f.ships.size() == 8);
 
     CHECK(f.ships[0].ship == "res/ships/racer.json");

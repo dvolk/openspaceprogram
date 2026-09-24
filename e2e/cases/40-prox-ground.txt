@@ -4,7 +4,7 @@
 # neighbours engage, and verify the GROUND regime label is used (not fly).
 # (The 2 km fly default is exercised by 39-prox-fly.)
 NAME prox-ground
-ARGS --fleet res/fleet.json --time-accel 1 --timeout 5 --prox-log
+ARGS --fleet res/data/fleet.json --time-accel 1 --timeout 5 --prox-log
 ARGS --prox-ground-on 600 --prox-ground-off 1000
 EXPECT [prox]
 EXPECT ENGAGED

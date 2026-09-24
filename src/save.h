@@ -182,7 +182,7 @@ struct SaveMeta {
     int format = 1;
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
     std::string system;      // the system file (res/systems/ksp_system.json)
-    std::string parts;       // the parts catalog file (res/parts.json)
+    std::string parts;       // the parts catalog file (res/data/parts.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;
     std::string active_ship; // display name ("" = none)

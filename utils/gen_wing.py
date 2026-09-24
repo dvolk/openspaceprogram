@@ -17,7 +17,7 @@ bounding-cylinder fallback) and the wing's mass stays a sane function of its
 size. UVs are present (CalcTangentSpace wants a UV channel) but the part's
 texture is a flat fill, so they only need to exist.
 
-    python3 gen_wing.py res/wing.obj
+    python3 gen_wing.py res/meshes/wing.obj
 """
 
 import argparse

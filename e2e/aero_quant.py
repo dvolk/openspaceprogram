@@ -278,7 +278,7 @@ def main():
     args = ap.parse_args()
 
     ship_path = os.path.join(REPO, args.ship)
-    parts_path = os.path.join(REPO, "res/parts.json")
+    parts_path = os.path.join(REPO, "res/data/parts.json")
     dry, fueled, maxr, ve, flow = ship_mass_and_radius(ship_path, parts_path)
     if args.boost_only:
         bb = boost_budget(args, dry, fueled, maxr, ve, flow)

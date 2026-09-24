@@ -58,8 +58,8 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
     // part on the same pad files would draw the very same mesh + texture),
     // the part shader shared as well. ~TerrainBody frees just the rigid
     // body + hull shape -- nothing to leak.
-    Mesh *m = get_mesh("res/space_port.obj");
-    Texture *t = get_texture("res/space_port.png");
+    Mesh *m = get_mesh("res/meshes/space_port.obj");
+    Texture *t = get_texture("res/textures/space_port.png");
     StaticBuilding *sp = new StaticBuilding;
     sp->body = create_body(m, partsshader, t, 0, 0, 0, 0);
     setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));

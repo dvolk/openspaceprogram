@@ -5,7 +5,7 @@ Some parts are a single flat colour (the wing is a light gray), so instead of
 hand-exporting a texture from an editor this writes a small solid PNG -- the
 part's shader just multiplies that fill by its Lambert shading.
 
-    python3 gen_flat_tex.py res/wing.png --rgb 200 200 200 --size 4
+    python3 gen_flat_tex.py res/textures/wing.png --rgb 200 200 200 --size 4
 """
 
 import argparse

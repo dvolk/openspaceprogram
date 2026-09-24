@@ -245,23 +245,23 @@ int main(int argc, char **argv)
 
     /* data init (the get_shader registry owns these: compiled once,
        shared, never deleted) */
-    Shader *partsshader = get_shader("res/partsShader",
+    Shader *partsshader = get_shader("res/shaders/partsShader",
                                      { "position", "uv", "normal" },
                                      { "MVP", "Normal", "lightDirection", "shadow",
                                        "alpha", "tint", "flatLight" });
 
-    Shader *terrainshader = get_shader("res/terrainShader",
+    Shader *terrainshader = get_shader("res/shaders/terrainShader",
                                        { "position", "normal", "color" },
                                        { "MVP", "Normal", "lightDirection", "color",
                                          "anchor" });
 
-    Shader *sunshader = get_shader("res/sunShader",
+    Shader *sunshader = get_shader("res/shaders/sunShader",
                                    { "position", "normal", "color" },
                                    { "MVP", "Normal", "lightDirection", "color" });
 
     // Atmosphere shell: Fresnel limb glow from orbit, interior sky dome
     // from the surface (the `inside` flag). See reports/atmosphere2026_08_25.
-    Shader *atmosphereshader = get_shader("res/atmosphereShader",
+    Shader *atmosphereshader = get_shader("res/shaders/atmosphereShader",
                                           { "position", "normal" },
                                           { "MVP", "Normal", "cameraPos",
                                             "color", "intensity", "power",
@@ -275,7 +275,7 @@ int main(int argc, char **argv)
     // texture fetch + lighting.
     // "uvParam" binds the mesh's color slot (attrib location 2): the
     // unwrapped sphere params the deck UV is built from.
-    Shader *cloudshader = get_shader("res/cloudShader",
+    Shader *cloudshader = get_shader("res/shaders/cloudShader",
                                      { "position", "normal", "uvParam" },
                                      { "MVP", "Normal", "cameraPos", "color",
                                        "lightDirection", "drift", "planetCenter",
@@ -284,16 +284,16 @@ int main(int argc, char **argv)
     // Ocean surface: a transparent shell at sea level with animated wave
     // normals, Fresnel reflection and a specular sun glint. Land pokes
     // through via the depth test; the sea floor shows through the water.
-    Shader *oceanshader = get_shader("res/oceanShader",
+    Shader *oceanshader = get_shader("res/shaders/oceanShader",
                                      { "position", "normal" },
                                      { "MVP", "Normal", "cameraPos", "seaColor",
                                        "lightDirection", "time", "planetCenter" });
 
-    Shader *skyboxshader = get_shader("res/skyboxShader",
+    Shader *skyboxshader = get_shader("res/shaders/skyboxShader",
                                       { "position" },
                                       { "projectionview" });
 
-    Shader *lineshader = get_shader("res/lineShader2",
+    Shader *lineshader = get_shader("res/shaders/lineShader2",
                                     { "position" },
                                     { "MVP", "color" });
 
@@ -387,10 +387,10 @@ int main(int argc, char **argv)
         }
     }
 
-    /* The ships are built from JSON: the parts catalog (res/parts.json)
+    /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
        order + offsets, and the fleet supplies one entry per ship: its def,
-       name, body and scenario. The fleet comes from --fleet (res/fleet.json)
+       name, body and scenario. The fleet comes from --fleet (res/data/fleet.json)
        or, when that is not given, from the --ship flags as a uniform fleet
        (all entries share the --body/--scenario). Omitted entry body/scenario
        fall back to the CLI values. Ships sharing a (body, scenario) pair are
@@ -415,7 +415,7 @@ int main(int argc, char **argv)
     // The music starts here -- title screen included -- and loops for
     // the whole session.
     if(game.audio.init()) {
-        game.audio.setMusic("res/ville_seppanen-1_g.ogg");
+        game.audio.setMusic("res/audio/ville_seppanen-1_g.ogg");
     }
 
     // The heavy phase (max_height + root terrain + the atmosphere/cloud/
@@ -588,22 +588,22 @@ int main(int argc, char **argv)
         sun->frame->UpdateOrbitRails(game.time);
     }
 
-    Mesh *engine_plume_mesh = get_mesh("res/engine_plume.obj");
-    Texture *engine_plume_texture = get_texture("res/engine_plume.png");
+    Mesh *engine_plume_mesh = get_mesh("res/meshes/engine_plume.obj");
+    Texture *engine_plume_texture = get_texture("res/textures/engine_plume.png");
 
-    Shader *billboardshader = get_shader("res/billboardshader",
+    Shader *billboardshader = get_shader("res/shaders/billboardshader",
                                          { "position", "texcoord", "normal" },
                                          { "MVP", "color_uniform" });
 
     // Billboard icons opt out of mip chains: their alpha cutouts bleed
     // into the neighbouring level when minified.
-    Texture * front_indicator_texture = get_texture("res/front_crosshair.png", false);
-    Texture * prograde_indicator_texture = get_texture("res/prograde_icon.png", false);
-    Texture * retrograde_indicator_texture = get_texture("res/retrograde_icon.png", false);
-    Texture * radial_in_indicator_texture = get_texture("res/radial_in_icon.png", false);
-    Texture * radial_out_indicator_texture = get_texture("res/radial_out_icon.png", false);
-    Texture * normal_plus_indicator_texture = get_texture("res/normal_plus_icon.png", false);
-    Texture * normal_minus_indicator_texture = get_texture("res/normal_minus_icon.png", false);
+    Texture * front_indicator_texture = get_texture("res/textures/front_crosshair.png", false);
+    Texture * prograde_indicator_texture = get_texture("res/textures/prograde_icon.png", false);
+    Texture * retrograde_indicator_texture = get_texture("res/textures/retrograde_icon.png", false);
+    Texture * radial_in_indicator_texture = get_texture("res/textures/radial_in_icon.png", false);
+    Texture * radial_out_indicator_texture = get_texture("res/textures/radial_out_icon.png", false);
+    Texture * normal_plus_indicator_texture = get_texture("res/textures/normal_plus_icon.png", false);
+    Texture * normal_minus_indicator_texture = get_texture("res/textures/normal_minus_icon.png", false);
 
     glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0); // TODO should these be different colors?
 
@@ -643,7 +643,7 @@ int main(int argc, char **argv)
     const float camAspect = (float)display.get_width() / (float)display.get_height();
     const float camZNear = 1.0f;
     // zFar must exceed the farthest visible body. The log-depth shaders
-    // (res/*Shader.vs) define the hard far limit as `far = 1e13` m, which
+    // (res/shaders/*Shader.vs) define the hard far limit as `far = 1e13` m, which
     // covers the real solar system (Pluto at ~5.9e12 m) and KSP-style
     // AU scales (~1.4e10 m). Keep zFar consistent with that.
     const float camZFar = 1e13;
@@ -1179,8 +1179,8 @@ int main(int argc, char **argv)
                 static const char *engineFile = nullptr;
                 if(engineFile == nullptr) {
                     engineFile = (game.audio.deviceRate() == 48000)
-                        ? "res/rocket_engine.001.wav"    // 48 kHz original
-                        : "res/rocket_engine_44k.wav";   // converted for 44.1 kHz
+                        ? "res/audio/rocket_engine.001.wav"    // 48 kHz original
+                        : "res/audio/rocket_engine_44k.wav";   // converted for 44.1 kHz
                 }
                 game.audio.setLoop(engineFile, firing, ship->thruster_util);
             } else {

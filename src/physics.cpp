@@ -21,7 +21,7 @@
 PhysicsEngine *physics;
 
 /* The default convex-hull collision margin (m), overridable per part
-   (res/parts.json), per ship (ShipDef::hull_margin, which wins) and wholesale
+   (res/data/parts.json), per ship (ShipDef::hull_margin, which wins) and wholesale
    by OSP_HULL_MARGIN -- the last is what makes the value measurable, since
    build_ship's pad lift assumes it:
 
@@ -114,7 +114,7 @@ void GLDebugDrawer::Draw(const Camera * camera)
 void GLDebugDrawer::init() {
     lineBuffer.reserve(512 * 1024);
 
-    lineshader = get_shader("res/lineShader", { "pos" }, { "VP" });
+    lineshader = get_shader("res/shaders/lineShader", { "pos" }, { "VP" });
 
     m_debugMode = DBG_DrawWireframe;
 

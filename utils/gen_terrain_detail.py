@@ -12,7 +12,7 @@ mix(1, tex, strength), so a flat 255 map is the identity and the noise is
 only a darkening modulation of the body's palette colour (it never
 re-colours sea or gas-giant bands).
 
-    python3 gen_terrain_detail.py res/terrain_detail.png --size 1024
+    python3 gen_terrain_detail.py res/textures/terrain_detail.png --size 1024
 """
 
 import argparse

@@ -18,7 +18,7 @@ UVs wrap u around the axis, v along the height: the shroud texture is a
 flat fill, so they only need to be present (CalcTangentSpace requires a
 UV channel).
 
-    python3 gen_engine_shroud.py res/engine_shroud.obj --radius 0.98 --height 2
+    python3 gen_engine_shroud.py res/meshes/engine_shroud.obj --radius 0.98 --height 2
 """
 
 import argparse

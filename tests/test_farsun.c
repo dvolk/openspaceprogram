@@ -50,7 +50,7 @@ static GLuint link(GLuint vs, GLuint fs) {
     return p;
 }
 
-// ---- sun (sphere) program: identical to res/sunShader.{vs,fs} ----
+// ---- sun (sphere) program: identical to res/shaders/sunShader.{vs,fs} ----
 static const char *SUN_VS =
 "#version 120\n"
 "attribute vec3 position;\n"
@@ -86,7 +86,7 @@ static const char *SUN_FS =
 "    gl_FragDepth = logz;\n"
 "}\n";
 
-// ---- skybox: vertex identical to res/skyboxShader.vs, fragment constant ----
+// ---- skybox: vertex identical to res/shaders/skyboxShader.vs, fragment constant ----
 static const char *SKY_VS =
 "#version 120\n"
 "attribute vec3 position;\n"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate res/parts.json from the part meshes + a few physical constants.
+"""Generate res/data/parts.json from the part meshes + a few physical constants.
 
 The meshes are the source of truth for a part's SIZE (radius/height from the
 bounding box, enclosed volume for watertight meshes). The behavior values are
@@ -56,7 +56,7 @@ Radial sizes are 1.0 / 1.5 / 2.25 m (see PARTS).
 Resolves res/ and parts.json relative to the repo root (the parent of
 utils/, where this script lives), so it can be run from anywhere:
 
-    python3 utils/gen_parts.py              # rewrite res/parts.json
+    python3 utils/gen_parts.py              # rewrite res/data/parts.json
     python3 utils/gen_parts.py --dry-run    # print the table, write nothing
     python3 utils/gen_parts.py --out X.json
 """
@@ -178,81 +178,81 @@ RUDDER_MAX_DEFLECTION = 0.35  # rad (~20 deg), the travel limit
 # (capsule & engine h=2r, wheel h=0.25r, nose cap h=r/2, adapter h=max(r)/2);
 # tanks keep the independent fuel-height options.
 PARTS = [
-    ("capsule",          "capsule",        "capsule.obj",                  "capsule.png"),
-    ("capsule_r1.5h3",   "capsule",        "capsule_r1.5h3.obj",           "capsule.png"),
-    ("capsule_r2.25h4.5","capsule",        "capsule_r2.25h4.5.obj",        "capsule.png"),
-    ("reaction_wheel",   "reaction_wheel", "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
-    ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "reaction_wheel_r1.5h0.375.obj",  "reaction_wheel.png"),
-    ("reaction_wheel_r2.25h0.5625","reaction_wheel", "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
-    ("battery",          "battery",        "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
-    ("battery_r1.5h0.375","battery",       "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
-    ("battery_r2.25h0.5625","battery",     "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
-    ("rtg",              "rtg",            "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
-    ("rtg_r1.5h0.375",   "rtg",            "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
-    ("rtg_r2.25h0.5625", "rtg",            "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
-    ("engine",           "engine",         "engine.obj",                   "engine.png"),
-    ("engine_r1.5h3",    "engine",         "engine_r1.5h3.obj",            "engine.png"),
-    ("engine_r2.25h4.5", "engine",         "engine_r2.25h4.5.obj",         "engine.png"),
-    ("orbital_engine",        "orbital_engine", "orbital_engine.obj",              "engine.png"),
-    ("orbital_engine_r1.5h1.5","orbital_engine", "orbital_engine_r1.5h1.5.obj",     "engine.png"),
-    ("orbital_engine_r2.25h2.25","orbital_engine","orbital_engine_r2.25h2.25.obj", "engine.png"),
+    ("capsule",          "capsule",        "meshes/capsule.obj",                  "textures/capsule.png"),
+    ("capsule_r1.5h3",   "capsule",        "meshes/capsule_r1.5h3.obj",           "textures/capsule.png"),
+    ("capsule_r2.25h4.5","capsule",        "meshes/capsule_r2.25h4.5.obj",        "textures/capsule.png"),
+    ("reaction_wheel",   "reaction_wheel", "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
+    ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "meshes/reaction_wheel_r1.5h0.375.obj",  "textures/reaction_wheel.png"),
+    ("reaction_wheel_r2.25h0.5625","reaction_wheel", "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    ("battery",          "battery",        "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
+    ("battery_r1.5h0.375","battery",       "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
+    ("battery_r2.25h0.5625","battery",     "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    ("rtg",              "rtg",            "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
+    ("rtg_r1.5h0.375",   "rtg",            "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
+    ("rtg_r2.25h0.5625", "rtg",            "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    ("engine",           "engine",         "meshes/engine.obj",                   "textures/engine.png"),
+    ("engine_r1.5h3",    "engine",         "meshes/engine_r1.5h3.obj",            "textures/engine.png"),
+    ("engine_r2.25h4.5", "engine",         "meshes/engine_r2.25h4.5.obj",         "textures/engine.png"),
+    ("orbital_engine",        "orbital_engine", "meshes/orbital_engine.obj",              "textures/engine.png"),
+    ("orbital_engine_r1.5h1.5","orbital_engine", "meshes/orbital_engine_r1.5h1.5.obj",     "textures/engine.png"),
+    ("orbital_engine_r2.25h2.25","orbital_engine","meshes/orbital_engine_r2.25h2.25.obj", "textures/engine.png"),
     # jet engine (air-breathing): one size (r1), the rocket engine's mesh
     # with its own tinted texture (like the rudder reuses wing.obj).
-    ("jet",            "jet",            "engine.obj",                   "jet_engine.png"),
+    ("jet",            "jet",            "meshes/engine.obj",                   "textures/jet_engine.png"),
     # jet-fuel tanks: one radius, the fuel tank's heights.
-    ("jet_tank_r1h1",  "jet_tank",       "tank_r1h1.obj",                "fuel_tank.png"),
-    ("jet_tank_r1h3",  "jet_tank",       "tank_r1h3.obj",                "fuel_tank.png"),
-    ("jet_tank_r1h5",  "jet_tank",       "tank_r1h5.obj",                "fuel_tank.png"),
-    ("fuel_tank",        "fuel_tank",      "fuel_tank.obj",                "fuel_tank.png"),
-    ("tank_r1h1",        "fuel_tank",      "tank_r1h1.obj",                "fuel_tank.png"),
-    ("tank_r1h3",        "fuel_tank",      "tank_r1h3.obj",                "fuel_tank.png"),
-    ("tank_r1h5",        "fuel_tank",      "tank_r1h5.obj",                "fuel_tank.png"),
-    ("tank_r1.5h1",      "fuel_tank",      "tank_r1.5h1.obj",              "fuel_tank.png"),
-    ("tank_r1.5h2",      "fuel_tank",      "tank_r1.5h2.obj",              "fuel_tank.png"),
-    ("tank_r1.5h3",      "fuel_tank",      "tank_r1.5h3.obj",              "fuel_tank.png"),
-    ("tank_r1.5h5",      "fuel_tank",      "tank_r1.5h5.obj",              "fuel_tank.png"),
-    ("tank_r2.25h1",     "fuel_tank",      "tank_r2.25h1.obj",             "fuel_tank.png"),
-    ("tank_r2.25h3",     "fuel_tank",      "tank_r2.25h3.obj",             "fuel_tank.png"),
-    ("tank_r2.25h5",     "fuel_tank",      "tank_r2.25h5.obj",             "fuel_tank.png"),
+    ("jet_tank_r1h1",  "jet_tank",       "meshes/tank_r1h1.obj",                "textures/fuel_tank.png"),
+    ("jet_tank_r1h3",  "jet_tank",       "meshes/tank_r1h3.obj",                "textures/fuel_tank.png"),
+    ("jet_tank_r1h5",  "jet_tank",       "meshes/tank_r1h5.obj",                "textures/fuel_tank.png"),
+    ("fuel_tank",        "fuel_tank",      "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
+    ("tank_r1h1",        "fuel_tank",      "meshes/tank_r1h1.obj",                "textures/fuel_tank.png"),
+    ("tank_r1h3",        "fuel_tank",      "meshes/tank_r1h3.obj",                "textures/fuel_tank.png"),
+    ("tank_r1h5",        "fuel_tank",      "meshes/tank_r1h5.obj",                "textures/fuel_tank.png"),
+    ("tank_r1.5h1",      "fuel_tank",      "meshes/tank_r1.5h1.obj",              "textures/fuel_tank.png"),
+    ("tank_r1.5h2",      "fuel_tank",      "meshes/tank_r1.5h2.obj",              "textures/fuel_tank.png"),
+    ("tank_r1.5h3",      "fuel_tank",      "meshes/tank_r1.5h3.obj",              "textures/fuel_tank.png"),
+    ("tank_r1.5h5",      "fuel_tank",      "meshes/tank_r1.5h5.obj",              "textures/fuel_tank.png"),
+    ("tank_r2.25h1",     "fuel_tank",      "meshes/tank_r2.25h1.obj",             "textures/fuel_tank.png"),
+    ("tank_r2.25h3",     "fuel_tank",      "meshes/tank_r2.25h3.obj",             "textures/fuel_tank.png"),
+    ("tank_r2.25h5",     "fuel_tank",      "meshes/tank_r2.25h5.obj",             "textures/fuel_tank.png"),
     # mono (hydrazine) RCS fuel tank + RCS thruster, reaction-wheel sized
     # (the flat disc meshes), 3 radial sizes. The tank stores hydrazine; the
     # thruster provides translation authority (burns the tank's hydrazine).
-    ("mono_tank_r1",     "mono_tank",      "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
-    ("mono_tank_r1.5",   "mono_tank",      "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
-    ("mono_tank_r2.25",  "mono_tank",      "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
-    ("rcs_r1",           "rcs",            "reaction_wheel_r1h0.25.obj",   "reaction_wheel.png"),
-    ("rcs_r1.5",         "rcs",            "reaction_wheel_r1.5h0.375.obj","reaction_wheel.png"),
-    ("rcs_r2.25",        "rcs",            "reaction_wheel_r2.25h0.5625.obj","reaction_wheel.png"),
-    ("adapter_r1to1.5",  "adapter",        "adapter_r1to1.5.obj",          "adapter.png"),
-    ("adapter_r1to2.25", "adapter",        "adapter_r1to2.25.obj",         "adapter.png"),
-    ("adapter_r1.5to1",  "adapter",        "adapter_r1.5to1.obj",          "adapter.png"),
-    ("adapter_r1.5to2.25","adapter",       "adapter_r1.5to2.25.obj",       "adapter.png"),
-    ("adapter_r2.25to1", "adapter",        "adapter_r2.25to1.obj",         "adapter.png"),
-    ("adapter_r2.25to1.5","adapter",       "adapter_r2.25to1.5.obj",       "adapter.png"),
-    ("decoupler_r1",     "decoupler",      "decoupler_r1.obj",             "decoupler.png"),
-    ("decoupler_r1.5",   "decoupler",      "decoupler_r1.5.obj",           "decoupler.png"),
-    ("decoupler_r2.25",  "decoupler",      "decoupler_r2.25.obj",          "decoupler.png"),
-    ("decoupler_radial", "decoupler",      "decoupler_radial.obj",         "decoupler.png"),
+    ("mono_tank_r1",     "mono_tank",      "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
+    ("mono_tank_r1.5",   "mono_tank",      "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
+    ("mono_tank_r2.25",  "mono_tank",      "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    ("rcs_r1",           "rcs",            "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
+    ("rcs_r1.5",         "rcs",            "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
+    ("rcs_r2.25",        "rcs",            "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    ("adapter_r1to1.5",  "adapter",        "meshes/adapter_r1to1.5.obj",          "textures/adapter.png"),
+    ("adapter_r1to2.25", "adapter",        "meshes/adapter_r1to2.25.obj",         "textures/adapter.png"),
+    ("adapter_r1.5to1",  "adapter",        "meshes/adapter_r1.5to1.obj",          "textures/adapter.png"),
+    ("adapter_r1.5to2.25","adapter",       "meshes/adapter_r1.5to2.25.obj",       "textures/adapter.png"),
+    ("adapter_r2.25to1", "adapter",        "meshes/adapter_r2.25to1.obj",         "textures/adapter.png"),
+    ("adapter_r2.25to1.5","adapter",       "meshes/adapter_r2.25to1.5.obj",       "textures/adapter.png"),
+    ("decoupler_r1",     "decoupler",      "meshes/decoupler_r1.obj",             "textures/decoupler.png"),
+    ("decoupler_r1.5",   "decoupler",      "meshes/decoupler_r1.5.obj",           "textures/decoupler.png"),
+    ("decoupler_r2.25",  "decoupler",      "meshes/decoupler_r2.25.obj",          "textures/decoupler.png"),
+    ("decoupler_radial", "decoupler",      "meshes/decoupler_radial.obj",         "textures/decoupler.png"),
     # docking ports: same geometry + declared mass as the decouplers, but
     # they mate ships together instead of staging (docking_port, not
     # decoupler). Mesh/texture are their own copies of the decoupler's.
-    ("docking_port_r1",    "docking_port", "docking_port_r1.obj",          "docking_port.png"),
-    ("docking_port_r1.5",  "docking_port", "docking_port_r1.5.obj",        "docking_port.png"),
-    ("docking_port_r2.25", "docking_port", "docking_port_r2.25.obj",       "docking_port.png"),
-    ("nose_cap",         "nose_cap",       "nose_cap.obj",                 "nose_cap.png"),
-    ("nose_cap_r1.5h0.75","nose_cap",      "nose_cap_r1.5h0.75.obj",       "nose_cap.png"),
-    ("nose_cap_r2.25h1.125","nose_cap",    "nose_cap_r2.25h1.125.obj",     "nose_cap.png"),
-    ("kerbal",           "kerbal",         "kerbal.obj",                   "kerbal.png"),
+    ("docking_port_r1",    "docking_port", "meshes/docking_port_r1.obj",          "textures/docking_port.png"),
+    ("docking_port_r1.5",  "docking_port", "meshes/docking_port_r1.5.obj",        "textures/docking_port.png"),
+    ("docking_port_r2.25", "docking_port", "meshes/docking_port_r2.25.obj",       "textures/docking_port.png"),
+    ("nose_cap",         "nose_cap",       "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
+    ("nose_cap_r1.5h0.75","nose_cap",      "meshes/nose_cap_r1.5h0.75.obj",       "textures/nose_cap.png"),
+    ("nose_cap_r2.25h1.125","nose_cap",    "meshes/nose_cap_r2.25h1.125.obj",     "textures/nose_cap.png"),
+    ("kerbal",           "kerbal",         "meshes/kerbal.obj",                   "textures/kerbal.png"),
     # a wing: a lifting surface (delta wing, wing.obj by gen_wing.py). Adds
     # lift + a weathervane drag to a ship (see the WING_* constants).
-    ("wing",             "wing",           "wing.obj",                     "wing.png"),
+    ("wing",             "wing",           "meshes/wing.obj",                     "textures/wing.png"),
     # a rudder: a control surface (deflection-driven steering authority).
     # Reuses the wing mesh (a flat plate) but gets its OWN tinted texture so
     # the surfaces are visually distinct (blue rudder / red elevator / green
     # aileron) from the gray wing and each other (see the RUDDER_* const).
-    ("rudder",           "rudder",         "wing.obj",                     "rudder.png"),
-    ("elevator",         "elevator",       "wing.obj",                     "elevator.png"),
-    ("aileron",          "aileron",        "wing.obj",                     "aileron.png"),
+    ("rudder",           "rudder",         "meshes/wing.obj",                     "textures/rudder.png"),
+    ("elevator",         "elevator",       "meshes/wing.obj",                     "textures/elevator.png"),
+    ("aileron",          "aileron",        "meshes/wing.obj",                     "textures/aileron.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -269,21 +269,21 @@ EXTRA_FIELDS = {
     # Engine shrouds (src/shipdef.h PartDef.shroud): the open-cylinder
     # wrap drawn over the engine while a part is attached below it
     # (utils/gen_engine_shroud.py). One shared light-gray texture.
-    "engine":                {"shroud": "engine_shroud.obj",
-                              "shroud_texture": "engine_shroud.png"},
-    "engine_r1.5h3":         {"shroud": "engine_r1.5h3_shroud.obj",
-                              "shroud_texture": "engine_shroud.png"},
-    "engine_r2.25h4.5":      {"shroud": "engine_r2.25h4.5_shroud.obj",
-                              "shroud_texture": "engine_shroud.png"},
-    "orbital_engine":        {"shroud": "orbital_engine_shroud.obj",
-                              "shroud_texture": "engine_shroud.png"},
-    "orbital_engine_r1.5h1.5":  {"shroud": "orbital_engine_r1.5h1.5_shroud.obj",
-                                 "shroud_texture": "engine_shroud.png"},
-    "orbital_engine_r2.25h2.25":  {"shroud": "orbital_engine_r2.25h2.25_shroud.obj",
-                                   "shroud_texture": "engine_shroud.png"},
+    "engine":                {"shroud": "meshes/engine_shroud.obj",
+                              "shroud_texture": "textures/engine_shroud.png"},
+    "engine_r1.5h3":         {"shroud": "meshes/engine_r1.5h3_shroud.obj",
+                              "shroud_texture": "textures/engine_shroud.png"},
+    "engine_r2.25h4.5":      {"shroud": "meshes/engine_r2.25h4.5_shroud.obj",
+                              "shroud_texture": "textures/engine_shroud.png"},
+    "orbital_engine":        {"shroud": "meshes/orbital_engine_shroud.obj",
+                              "shroud_texture": "textures/engine_shroud.png"},
+    "orbital_engine_r1.5h1.5":  {"shroud": "meshes/orbital_engine_r1.5h1.5_shroud.obj",
+                                 "shroud_texture": "textures/engine_shroud.png"},
+    "orbital_engine_r2.25h2.25":  {"shroud": "meshes/orbital_engine_r2.25h2.25_shroud.obj",
+                                   "shroud_texture": "textures/engine_shroud.png"},
     # the jet reuses the engine mesh, so it gets the engine's shroud too
-    "jet":                   {"shroud": "engine_shroud.obj",
-                              "shroud_texture": "engine_shroud.png"},
+    "jet":                   {"shroud": "meshes/engine_shroud.obj",
+                              "shroud_texture": "textures/engine_shroud.png"},
     "capsule":           {"crew_capacity": 1},
     "capsule_r1.5h3":    {"crew_capacity": 3},
     "capsule_r2.25h4.5": {"crew_capacity": 6},
@@ -301,6 +301,12 @@ EXTRA_FIELDS = {
                          "height": 0.5625},
     "fuel_link":         {"fuel_link": True},
 }
+
+for _n, _f in EXTRA_FIELDS.items():
+    if "shroud" in _f:
+        assert _f["shroud"].startswith("meshes/"), _f["shroud"]
+    if "shroud_texture" in _f:
+        assert _f["shroud_texture"].startswith("textures/"), _f["shroud_texture"]
 
 
 def mesh_geom(mesh_file):
@@ -387,6 +393,8 @@ def generate(name, ptype, mesh, texture):
         "mesh": mesh,
         "texture": texture,
     }
+    assert mesh.startswith("meshes/"), mesh
+    assert texture.startswith("textures/"), texture
 
     if ptype in ("engine", "orbital_engine"):
         thrust = ENGINE_THRUST_PER_M2 * radius * radius
@@ -594,8 +602,8 @@ def summary_line(e):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--out", default=os.path.join(REPO_ROOT, "res", "parts.json"),
-                    help="output parts.json (default: res/parts.json)")
+    ap.add_argument("--out", default=os.path.join(REPO_ROOT, "res", "data", "parts.json"),
+                    help="output parts.json (default: res/data/parts.json)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the catalog table without writing")
     a = ap.parse_args()

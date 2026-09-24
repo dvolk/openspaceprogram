@@ -15,7 +15,7 @@
    path can be unit-tested headless; only the build step (vehicle.cpp's
    build_ship) needs GL, for shader binding.
 
-   JSON files (see res/parts.json and res/ships/racer.json):
+   JSON files (see res/data/parts.json and res/ships/racer.json):
 
    parts catalog:
      {
@@ -24,10 +24,10 @@
            "type": "engine",              // free-form label (display only)
            "display_name": "Engine (2m)", // human-readable name (display only);
                                           //   optional; empty -> fall back to name
-           "mesh": "engine.obj",          // file in res/
-           "texture": "engine.png",       // file in res/
-           "shroud": "engine_shroud.obj",          // optional, file in res/;
-           "shroud_texture": "engine_shroud.png",  //   an OPEN-cylinder wrap
+           "mesh": "meshes/engine.obj",   // subpath under res/
+           "texture": "textures/engine.png", // subpath under res/
+           "shroud": "meshes/engine_shroud.obj",  // optional, subpath under res/;
+           "shroud_texture": "textures/engine_shroud.png", //  an OPEN-cylinder wrap
                                                    //   drawn OVER the part when
                                                    //   a part is attached on its
                                                    //   exhaust face (a child
@@ -232,8 +232,8 @@ struct PartDef {
     std::string name;
     std::string type;         // free-form label (display only)
     std::string display_name; // human-readable name (display only); empty -> fall back to name
-    std::string mesh;     // file in res/
-    std::string texture;  // file in res/
+    std::string mesh;     // subpath under res/ (e.g. meshes/foo.obj)
+    std::string texture;  // subpath under res/ (e.g. textures/foo.png)
     /* Engine shroud (optional; empty = none, most parts): an open-cylinder
        mesh + texture drawn OVER the part when a part is attached on its
        exhaust face (a child below) -- a plain light-gray wrap that hides an
@@ -241,8 +241,8 @@ struct PartDef {
        fields must be set. Author it at the part's height and just inside
        its radius (0.98x here), so its rim never sits coplanar with the part
        above or the engine's top disc edge -- no z-fighting. */
-    std::string shroud;          // shroud mesh file in res/
-    std::string shroud_texture;  // shroud texture file in res/
+    std::string shroud;          // shroud mesh subpath under res/
+    std::string shroud_texture;  // shroud texture subpath under res/
     double mass;          // kg
 
     /* Physical size in metres; the .obj is authored to match (origin

@@ -561,21 +561,21 @@ void Game::switchSystem(const std::string &path) {
     // The shaders are registry singletons (compiled once, shared, never
     // deleted): re-fetch the same files the boot used, with the same
     // attrib/uniform registration, so this is a cache hit (not a recompile).
-    Shader *terrainshader = get_shader("res/terrainShader",
+    Shader *terrainshader = get_shader("res/shaders/terrainShader",
         { "position", "normal", "color" },
         { "MVP", "Normal", "lightDirection", "color", "anchor" });
-    Shader *sunshader = get_shader("res/sunShader",
+    Shader *sunshader = get_shader("res/shaders/sunShader",
         { "position", "normal", "color" },
         { "MVP", "Normal", "lightDirection", "color" });
-    Shader *atmosphereshader = get_shader("res/atmosphereShader",
+    Shader *atmosphereshader = get_shader("res/shaders/atmosphereShader",
         { "position", "normal" },
         { "MVP", "Normal", "cameraPos", "color", "intensity", "power",
           "lightDirection", "inside", "planetCenter" });
-    Shader *cloudshader = get_shader("res/cloudShader",
+    Shader *cloudshader = get_shader("res/shaders/cloudShader",
         { "position", "normal", "uvParam" },
         { "MVP", "Normal", "cameraPos", "color", "lightDirection", "drift",
           "planetCenter", "coverage_tex" });
-    Shader *oceanshader = get_shader("res/oceanShader",
+    Shader *oceanshader = get_shader("res/shaders/oceanShader",
         { "position", "normal" },
         { "MVP", "Normal", "cameraPos", "seaColor", "lightDirection",
           "time", "planetCenter" });
@@ -1318,7 +1318,7 @@ void Game::stage() {
             // steady loop at the same gain).
             Vehicle *out = a->extractSubtreeAsShip(d, dedup(base));
             if(out == nullptr) { continue; }   // already absorbed into an outer ship
-            audio.playOnce("res/qubodup-crash.wav", 0.4f);
+            audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
             out->enterWorld();
             if(out->m_parent != nullptr) { out->m_parent->ships.push_back(out); }
             ships++;

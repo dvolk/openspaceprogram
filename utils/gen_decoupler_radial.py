@@ -4,7 +4,7 @@
 The radial decoupler is a staging boundary attached to the SIDE of a part
 (attachRadial: its local +Z points away from the parent, its local -h/2
 face sits on the parent's side). It is a 0.1 m x 0.1 m stub, 0.5 m long
-along the attach axis -- the part's radius/height in res/parts.json are
+along the attach axis -- the part's radius/height in res/data/parts.json are
 radius = 0.05 (half the cross-section span), height = 0.5 (the z span).
 
 Geometry: a box, flat normals, one vertex per face corner (24 total).
@@ -15,7 +15,7 @@ normal, so a bad corner order fails loudly. UVs: planar per face in
 [0,1]^2 -- the part's texture is a flat fill, so they only need to be
 present (CalcTangentSpace requires a UV channel).
 
-    python3 utils/gen_decoupler_radial.py res/decoupler_radial.obj
+    python3 utils/gen_decoupler_radial.py res/meshes/decoupler_radial.obj
 """
 
 import argparse

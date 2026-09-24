@@ -9,7 +9,7 @@
    body exists in the loaded system, that a scenario is known -- happens in
    main.cpp, which owns the System and the scenario table.
 
-   fleet file (see res/fleet.json):
+   fleet file (see res/data/fleet.json):
      {
        "ships": [
          { "ship": "res/ships/racer.json",   // ship def; default: res/ships/racer.json

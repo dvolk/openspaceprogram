@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate res/kerbal.obj + res/kerbal.png: the EVA placeholder character.
+"""Generate res/meshes/kerbal.obj + res/textures/kerbal.png: the EVA placeholder character.
 
 A green "cucumber" -- a capsule on the part convention (origin centered,
 long axis = +Z): radius RADIUS, cylindrical section CYL_HEIGHT, hemispherical
@@ -8,7 +8,7 @@ the cross-section is a stubby 0.4 m, the broad-in-suit silhouette. The
 catalog entry is derived from the mesh by utils/gen_parts.py like any other
 part; the ship def that builds a kerbal is res/ships/kerbal.json.
 
-    python3 utils/gen_kerbal.py            # writes res/kerbal.obj + .png
+    python3 utils/gen_kerbal.py            # writes res/meshes/kerbal.obj + .png
     python3 utils/gen_kerbal.py --dry-run  # print the geometry, write nothing
 """
 
@@ -63,7 +63,7 @@ def main():
     # trimesh's own OBJ export omits vertex normals, and the game's mesh
     # loader expects them -- write v/vn/f by hand (no UVs: the loader
     # falls back to (0,0), which samples the flat green texture)
-    obj_path = os.path.join(REPO_ROOT, "res", "kerbal.obj")
+    obj_path = os.path.join(REPO_ROOT, "res", "meshes", "kerbal.obj")
     with open(obj_path, "w") as f:
         f.write("# gen_kerbal.py: the EVA placeholder capsule\n")
         for v in m.vertices:
@@ -81,7 +81,7 @@ def main():
     # (0,0), which samples this one colour)
     from PIL import Image
     img = Image.new("RGB", (64, 64), KERBAL_RGB)
-    png_path = os.path.join(REPO_ROOT, "res", "kerbal.png")
+    png_path = os.path.join(REPO_ROOT, "res", "textures", "kerbal.png")
     img.save(png_path)
     print("wrote %s" % png_path)
 
