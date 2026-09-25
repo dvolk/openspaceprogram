@@ -2,12 +2,18 @@
 # ships coast) and one COMMA exits (->10, physics resumes). Both the entry
 # and exit print lines must appear. Catches a regression in the warp
 # enter/leave state machine.
+#
+# The assertions are the state machine's own prints (goOnRails / leaveRails in
+# vehicle.cpp) rather than the warp toasts: they prove the ship actually parked
+# on its conic and came back into the physics world, which is the transition
+# this case is about.
 NAME rails-warp
 ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 10
 ARGS --timeout 10
 ARGS --sim-press 1500,50,PERIOD
 ARGS --sim-press 2500,50,COMMA
-EXPECT Rails warp: time accel 100
-EXPECT Rails warp: exited
+EXPECT @@@ racer parked on rails around Kerbin
+EXPECT @@@ racer left the rails around Kerbin
+EXPECT [toast] Time accel: 100x (rails)
 FORBID GL_
 FORBID error:
