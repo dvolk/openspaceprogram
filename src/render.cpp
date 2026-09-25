@@ -186,8 +186,16 @@ void updateShipView(Game &g) {
     const glm::dvec3 _north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), _up));
     const glm::dvec3 _east = glm::cross(_up, _north);
 
-    ver_speed = glm::length(glm::proj(surf_vel, pos)); // m/s
-    hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, _up)); // m/s
+    /* Vs/Hs are SURFACE-relative speeds, so the up vector has to come from
+       surf_pos, not pos: for a ship on rails `pos` is in the inertial node
+       while surf_vel was rotated into the rotating one above, and projecting
+       one onto the other is off by the body's spin angle. Signed, so a
+       descent reads negative -- a length never can. (_up stays the inertial
+       radial: heading/pitch/roll below are ship axes against it, all in
+       ship->frame, so they are self-consistent as they are.) */
+    const glm::dvec3 surf_up = glm::normalize(surf_pos);
+    ver_speed = glm::dot(surf_vel, surf_up); // m/s, + = climbing
+    hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, surf_up)); // m/s
 
     const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
 
