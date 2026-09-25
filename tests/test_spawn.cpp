@@ -87,7 +87,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     eerbon->parent = sun;
     eerbon->children = { eerbon_rot, moon };
     eerbon->rotating = false;
-    eerbon->has_rot_frame = true;
+    eerbon->rot_frame = eerbon_rot;
     eerbon->pos = glm::dvec3(0, 0, -13599840260.0);
     eerbon->orient = glm::dmat3(1.0);
     eerbon->rot_ang_speed = 0;
@@ -109,7 +109,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     moon->parent = eerbon;
     moon->children = { moon_rot };
     moon->rotating = false;
-    moon->has_rot_frame = true;
+    moon->rot_frame = moon_rot;
     moon->pos = glm::dvec3(-12e6, 0, 0);
     moon->orient = glm::dmat3(1.0);
     moon->rot_ang_speed = 0;

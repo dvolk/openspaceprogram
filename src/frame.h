@@ -14,7 +14,7 @@ struct Frame {
     TerrainBody *body;
     std::vector<Frame *> children;
     bool rotating;
-    bool has_rot_frame;
+    Frame *rot_frame = nullptr; /* the body's spin frame; null if none. */
 
     double soi; // sphere of influence
 
@@ -65,7 +65,7 @@ struct Frame {
     glm::dmat3 GetOrientRelTo(Frame *relTo);
 
     bool isRotFrame() { return rotating; }
-    bool hasRotFrame() { return has_rot_frame; }
+    bool hasRotFrame() { return rot_frame != nullptr; }
     Frame *getNonRotFrame() {
         if(isRotFrame() == true) {
             return parent;
@@ -74,14 +74,12 @@ struct Frame {
         }
     }
 
-    Frame *getRotFrame() {
-        if(hasRotFrame() == true) {
-            return children.front();
-        }
-        else {
-            return this;
-        }
-    }
+    /* The body's own rotating frame (the spin frame), unambiguously.
+       Returns the spin frame this frame owns, NOT children.front() -- which
+       is only correct by the order system.cpp happens to push its children.
+       Returns this when the frame has no spin frame of its own (rot_frame
+       is null). */
+    Frame *getRotFrame() { return rot_frame ? rot_frame : this; }
 
     // A ship at (pos, vel) in this frame has inertial (root-frame) velocity
     //   root_orient * (vel + GetStasisVelocity(pos)) + root_vel

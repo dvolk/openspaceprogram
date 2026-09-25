@@ -190,7 +190,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         f->parent = nullptr;                 // wired in pass 2
         f->children.clear();
         f->rotating = false;
-        f->has_rot_frame = false;
         f->pos = glm::dvec3(0, 0, 0);
         // GLM 1.0.0+: default-constructed matrices are zero, not identity.
         f->initial_orient = glm::dmat3(1.0);
@@ -245,7 +244,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         rf->parent = f;                    // child of its own inertial frame
         rf->children.clear();
         rf->rotating = true;
-        rf->has_rot_frame = false;
         rf->pos = glm::dvec3(0, 0, 0);
         rf->initial_orient = glm::dmat3(1.0);
         rf->orient = glm::dmat3(1.0);
@@ -272,7 +270,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             rf->rot_ang_speed = 0.0;        // dummy: does not spin
         }
         body->rot_frame = rf;
-        f->has_rot_frame = true;
+        f->rot_frame = rf;
         f->children.push_back(rf);
 
         // The heavy phase (max_height + root terrain + shells) is NOT built

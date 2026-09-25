@@ -68,7 +68,6 @@ static Frame *make_tree() {
     sun->parent = NULL;
     sun->children = { eerbon };
     sun->rotating = false;
-    sun->has_rot_frame = false;
     sun->pos = glm::dvec3(0);
     sun->orient = glm::dmat3(1.0);
     sun->vel = glm::dvec3(0);
@@ -82,7 +81,7 @@ static Frame *make_tree() {
     eerbon->parent = sun;
     eerbon->children = { eerbon_rot, moon };
     eerbon->rotating = false;
-    eerbon->has_rot_frame = true;
+    eerbon->rot_frame = eerbon_rot;
     eerbon->pos = glm::dvec3(0, 0, -1e8);
     eerbon->orient = glm::dmat3(1.0);
     eerbon->vel = glm::dvec3(100, 0, 0); // some orbital velocity
@@ -98,7 +97,6 @@ static Frame *make_tree() {
     eerbon_rot->parent = eerbon;
     eerbon_rot->children = {};
     eerbon_rot->rotating = true;
-    eerbon_rot->has_rot_frame = false;
     eerbon_rot->pos = glm::dvec3(0);
     // UpdateOrbitRails re-derives orient as initial_orient * rotate(-ang, Y);
     // at time 0 that must reproduce the initial 20-degree orientation.
@@ -115,7 +113,7 @@ static Frame *make_tree() {
     moon->parent = eerbon;
     moon->children = { moon_rot };
     moon->rotating = false;
-    moon->has_rot_frame = true;
+    moon->rot_frame = moon_rot;
     moon->pos = glm::dvec3(-12e6, 0, 0);
     moon->orient = glm::dmat3(1.0);
     moon->vel = glm::dvec3(0, 0, 50); // moon moves relative to its parent (eerbon)
@@ -129,7 +127,6 @@ static Frame *make_tree() {
     moon_rot->parent = moon;
     moon_rot->children = {};
     moon_rot->rotating = true;
-    moon_rot->has_rot_frame = false;
     moon_rot->pos = glm::dvec3(0);
     moon_rot->initial_orient = glm::dmat3(1.0);
     moon_rot->orient = glm::dmat3(1.0);
