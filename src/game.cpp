@@ -589,7 +589,8 @@ void Game::switchSystem(const std::string &path) {
           "time", "planetCenter" });
     Shader *ringshader = get_shader("res/shaders/ringShader",
         { "position", "normal" },
-        { "MVP", "Normal", "lightDirection", "albedo", "opacity" });
+        { "MVP", "Normal", "lightDirection", "albedo", "opacity",
+          "planetRadius" });
     // Load FIRST: a failure here throws with the running game still intact
     // (nothing is torn down yet).
     System newSys = load_system(path.c_str(), terrainshader, sunshader, nullptr);

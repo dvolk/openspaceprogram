@@ -586,7 +586,8 @@ struct TerrainBody {
     // opacity a. Cull the far face (the shells' inside flip, for a plane)
     // -- single blend, correct opacity, still visible from above and
     // below. The shader uses a two-sided (abs) Lambert so the ring lights
-    // from either side.
+    // from either side, and a body-local cylinder test so the planet's
+    // sun shadow darkens the far arc.
     void DrawRings(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
         if(ring_meshes.empty()) return;
 
@@ -619,6 +620,8 @@ struct TerrainBody {
             ring_shader->setUniform_vec3(2, sunDir);
             ring_shader->setUniform_vec1(3, surface.rings[i].albedo);
             ring_shader->setUniform_vec1(4, surface.rings[i].opacity);
+            // Occluder for the sun-shadow test (body-local sphere at origin).
+            ring_shader->setUniform_vec1(5, radius);
             ring_meshes[i]->Draw();
         }
         if(below) glCullFace(GL_BACK);

@@ -295,7 +295,7 @@ int main(int argc, char **argv)
     Shader *ringshader = get_shader("res/shaders/ringShader",
                                     { "position", "normal" },
                                     { "MVP", "Normal", "lightDirection",
-                                      "albedo", "opacity" });
+                                      "albedo", "opacity", "planetRadius" });
 
     Shader *skyboxshader = get_shader("res/shaders/skyboxShader",
                                       { "position" },
