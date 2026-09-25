@@ -36,6 +36,10 @@ references/
 screenshot_*.png
 tmp/
 
+# Agent tooling local state (mimocode: plans, node_modules, cron lock) -- local,
+# never commit
+.mimocode/
+
 # Source data (baked into the tracked ksp_system.json)
 ksp_system.csv
 
