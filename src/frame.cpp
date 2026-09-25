@@ -58,7 +58,7 @@ void Frame::UpdateOrbitRails(double time) {
         // total angle as a function of accumulated sim time. Must NOT scale
         // with the current timestep, or the frame (and everything in it)
         // snaps when the time acceleration changes.
-        ang = fmod(rot_ang_speed * time, 2 * std::numbers::pi);
+        const double ang = fmod(rot_ang_speed * time, 2 * std::numbers::pi);
         // Unconditional: `orient` is a pure function of `time`, so skipping
         // the rebuild at ang == 0 (t == 0, or an exact whole turn) would
         // leave it holding the previous epoch's spin.

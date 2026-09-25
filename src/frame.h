@@ -48,8 +48,6 @@ struct Frame {
     glm::dvec3 root_vel;
     glm::dmat3 root_orient = glm::dmat3(1.0);
 
-    double ang;
-
     void UpdateRootRelative();
     void UpdateOrbitRails(double time);
 
