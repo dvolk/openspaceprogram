@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate real-Solar-System star-system JSON files from the NASA NSSDC
-fact sheets cached in tmp/rss/html/.
+fact sheets cached in utils/rss/html/.
 
 Contract with the game loader (src/system.cpp / system.h):
   * reads name/type/orbits/radius/mass/g/seed/has_sea/surface{...}/
@@ -15,10 +15,10 @@ Contract with the game loader (src/system.cpp / system.h):
   * Unknown keys are ignored, so we can embed ring data for future use.
 
 We emit one system file per moon-scope so you can A/B them in-game:
-  res/solar_system.json            the 21-moon core (baseline)
-  res/solar_system_measured.json   only moons with a measured mass
-  res/solar_system_named.json      every NAMED moon (drops S/xxxx specks)
-  res/solar_system_full.json       every moon in the fact sheets
+  res/systems/solar_system.json            the 21-moon core (baseline)
+  res/systems/solar_system_measured.json   only moons with a measured mass
+  res/systems/solar_system_named.json      every NAMED moon (drops S/xxxx specks)
+  res/systems/solar_system_full.json       every moon in the fact sheets
 
 Notes:
   * Moons without a measured mass get one estimated from radius at a nominal
@@ -33,8 +33,8 @@ Notes:
     boundary, not a physical limit, and the smallest moons are un-landable
     otherwise (the 10 km frame-switch hysteresis would eat their Hill sphere).
 
-Sources: tmp/rss/html/*.html (NASA NSSDC planetary fact sheets, cached 2026).
-Run from the project root:  python3 tmp/make_solar_system.py
+Sources: utils/rss/html/*.html (NASA NSSDC planetary fact sheets, cached 2026).
+Run from anywhere:  python3 utils/make_solar_system.py
 """
 import re, math, json, os, html as htmllib
 
@@ -448,11 +448,16 @@ MOON_COLORS = {
     'Charon':    ([0.50, 0.50, 0.50], [0.70, 0.70, 0.72]),
 }
 
-# Moons with a real atmosphere get a limb rim on top of rock() (most of the
-# ~230 moons are airless, so this stays a short list).
+# Moons with a real (or famously hazy) atmosphere get a limb rim on top of
+# rock(); most of the ~230 moons are airless, so this stays a short list.
 MOON_ATMOS = {
-    'Titan': {'color': [0.85, 0.60, 0.25], 'thickness': 40000,
-              'power': 3.0, 'intensity': 0.8},
+    'Titan':  {'color': [0.85, 0.60, 0.25], 'thickness': 40000,
+               'power': 3.0, 'intensity': 0.8,
+               'sea_level_density': 5.3, 'scale_height': 20000},
+    'Triton': {'color': [0.60, 0.70, 0.85], 'thickness': 5000,
+               'power': 5.0, 'intensity': 0.3},   # N2 + methane haze
+    'Io':     {'color': [0.85, 0.75, 0.40], 'thickness': 4000,
+               'power': 5.0, 'intensity': 0.25},  # thin SO2 exosphere
 }
 
 # ---------------------------------------------------------------------------
@@ -477,10 +482,10 @@ def build_base():
 
     sun = make_body('Sun', 'star', None,
         dict(mass_kg=SUN_MASS, radius_m=SUN_RADIUS, soi=1.0e14, rot_s=None),
-        surface={'palette': [[0.0, [1.0, 0.8, 0.35]], [1.0, [1.0, 1.0, 0.75]]],
-                 # photosphere + a warm corona rim
-                 'atmosphere': {'color': [1.0, 0.85, 0.45], 'thickness': 400000,
-                                'power': 3.0, 'intensity': 0.9}})
+        # No atmosphere rim: the limb shader's day/night term falls back to a
+        # fixed world direction for a star, painting a half-eclipse crescent.
+        # The photosphere palette is enough (KSP's Kerbol has no rim either).
+        surface={'palette': [[0.0, [1.0, 0.8, 0.35]], [1.0, [1.0, 1.0, 0.75]]]})
     bodies.append(sun)
     parsed['Sun'] = dict(mass_kg=SUN_MASS)
 
@@ -494,7 +499,8 @@ def build_base():
                                          [1.0, [0.90, 0.80, 0.55]]],
           # the whole planet sits under a thick sulfuric-acid haze
           'atmosphere': {'color': [0.90, 0.75, 0.45], 'thickness': 30000,
-                         'power': 3.0, 'intensity': 0.8},
+                         'power': 3.0, 'intensity': 0.8,
+                         'sea_level_density': 92.0, 'scale_height': 16000},
           'clouds': {'color': [0.92, 0.82, 0.55], 'height': 5000,
                      'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,
@@ -506,7 +512,8 @@ def build_base():
                       [0.82, [0.60, 0.58, 0.55]],  # rock
                       [1.0, [0.95, 0.95, 0.97]]],  # snow peaks
           'atmosphere': {'color': [0.30, 0.50, 1.00], 'thickness': 15000,
-                         'power': 4.0, 'intensity': 0.7},
+                         'power': 4.0, 'intensity': 0.7,
+                         'sea_level_density': 1.225, 'scale_height': 8500},
           'clouds': {'color': [1.0, 1.0, 1.0], 'height': 2500,
                      'coverage': 0.55, 'freq': 10.0}}, True),
         ('marsfact.html', 'Mars', 4.0,
@@ -515,24 +522,40 @@ def build_base():
                                          [1.0, [0.80, 0.55, 0.40]]],
           # thin dusty CO2 haze
           'atmosphere': {'color': [0.85, 0.55, 0.35], 'thickness': 12000,
-                         'power': 4.0, 'intensity': 0.5}}, False),
+                         'power': 4.0, 'intensity': 0.5,
+                         'sea_level_density': 0.020, 'scale_height': 11500}},
+         False),
         # gas giants: band ramp = dark (pole / band edge) -> light (equator /
-        # band centre), sampled by the triangle wave in BandColor.
+        # band centre), sampled by the triangle wave in BandColor. The "air"
+        # is the whole body, so each also gets a broad, soft limb rim (KSP's
+        # Jool does too); the rim tint matches the light band.
         ('jupiterfact.html', 'Jupiter', 5.0,
          {'bands': True, 'band_count': 11,
-          'palette': [[0.0, [0.50, 0.40, 0.32]], [1.0, [0.85, 0.78, 0.65]]]},
+          'palette': [[0.0, [0.50, 0.40, 0.32]], [1.0, [0.85, 0.78, 0.65]]],
+          'atmosphere': {'color': [0.85, 0.78, 0.65], 'thickness': 90000,
+                         'power': 3.0, 'intensity': 0.6,
+                         'sea_level_density': 0.16, 'scale_height': 27000}},
          False),
         ('saturnfact.html', 'Saturn', 6.0,
          {'bands': True, 'band_count': 9,
-          'palette': [[0.0, [0.62, 0.52, 0.38]], [1.0, [0.90, 0.82, 0.65]]]},
+          'palette': [[0.0, [0.62, 0.52, 0.38]], [1.0, [0.90, 0.82, 0.65]]],
+          'atmosphere': {'color': [0.90, 0.82, 0.65], 'thickness': 90000,
+                         'power': 3.0, 'intensity': 0.6,
+                         'sea_level_density': 0.10, 'scale_height': 60000}},
          False),
         ('uranusfact.html', 'Uranus', 7.0,
          {'bands': True, 'band_count': 7,
-          'palette': [[0.0, [0.40, 0.65, 0.70]], [1.0, [0.70, 0.85, 0.88]]]},
+          'palette': [[0.0, [0.40, 0.65, 0.70]], [1.0, [0.70, 0.85, 0.88]]],
+          'atmosphere': {'color': [0.70, 0.85, 0.88], 'thickness': 90000,
+                         'power': 3.0, 'intensity': 0.6,
+                         'sea_level_density': 0.60, 'scale_height': 20000}},
          False),
         ('neptunefact.html', 'Neptune', 8.0,
          {'bands': True, 'band_count': 7,
-          'palette': [[0.0, [0.18, 0.35, 0.75]], [1.0, [0.50, 0.65, 0.90]]]},
+          'palette': [[0.0, [0.18, 0.35, 0.75]], [1.0, [0.50, 0.65, 0.90]]],
+          'atmosphere': {'color': [0.50, 0.65, 0.90], 'thickness': 90000,
+                         'power': 3.0, 'intensity': 0.6,
+                         'sea_level_density': 0.90, 'scale_height': 20000}},
          False),
         ('plutofact.html', 'Pluto', 9.0,
          {'amplitude': 2000, 'palette': [[0.0, [0.55, 0.45, 0.38]],
