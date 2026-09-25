@@ -293,6 +293,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Periodically print ship position/altitude/velocity "
                  "(surface-level companion to --orbit-log)");
 
+    app.add_flag("--info-log", args.info_log,
+                 "Periodically print the Orbit Info + Surface Info window "
+                 "values (body, vel, alt, apsides, elements, attitude, "
+                 "surface coords) to stdout");
+
     app.add_flag("--debug-accel", args.debug_accel,
                  "Per-substep dump of every ship's thrust force + velocity "
                  "(diagnosing spurious forces on dropped ships)");

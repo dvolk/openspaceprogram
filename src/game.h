@@ -362,6 +362,8 @@ struct Game {
        share the "last fired" time, or the earlier block in the loop always
        wins and the other never fires (and one alone spews every tick). */
     Uint32 dbg_log_last_ms = 0;
+    /* Same gate, independent clock (--info-log: the Orbit/Surface Info values). */
+    Uint32 info_log_last_ms = 0;
     /* Same gate, independent clock (the --att-log cadence is --orbit-interval). */
     Uint32 att_log_last_ms = 0;
     /* Same gate, independent clock (--shake-log: the cam-shake state). */

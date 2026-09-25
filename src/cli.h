@@ -133,6 +133,8 @@ struct GameArgs {
     bool orbit_log = false;
     double orbit_interval = 1.0;
     bool dbg_log = false;
+    bool info_log = false;       // --info-log: dump the Orbit Info + Surface
+                                 // Info window values to stdout
     bool debug_accel = false;   // --debug-accel: per-substep thrust/velocity dump
     bool xfer_log = false;
     bool porkchop_log = false;   // --porkchop-log: the launch-window grid min

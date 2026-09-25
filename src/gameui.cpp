@@ -1462,6 +1462,50 @@ void drawUIReadouts(Game &g, TransferPlanner &planner) {
         ImGui::Text("Acc: %.1fm/s2", felt);
     });
 
+    /* --info-log: the same quantities ORBITAL and SURFACE display, raw SI
+       (the instrument-log convention in fmt.h: e2e CHECK parses them).
+       Independent of whether the windows are open -- the values come from
+       the same ShipView snapshot the draw bodies read. */
+    if(args.info_log && ship) {
+        const Uint32 now_ms = SDL_GetTicks();
+        if(now_ms - g.info_log_last_ms >= g.orbit_log_interval_ms) {
+            g.info_log_last_ms = now_ms;
+            const double prograde_angle = glm::angle(facing_dir, vel_dir);
+            const double retrograde_angle = glm::angle(facing_dir, -vel_dir);
+            printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s alt=%.6g m "
+                   "apo=%.6g m apo_t=%.6g s peri=%.6g m peri_t=%.6g s "
+                   "period=%.6g s inc=%.6g deg ecc=%.6g sma=%.6g m "
+                   "lan=%.6g deg lpe=%.6g deg prg=%.6g deg rtg=%.6g deg "
+                   "energy=%.6g J/kg\n",
+                   time, ship->m_parent->name.c_str(), speed, distance,
+                   o.apoapsis, o.time_to_apo, o.periapsis, o.time_to_peri,
+                   o.period, glm::degrees(o.inclination), o.ecc, o.semi_major,
+                   glm::degrees(o.raan), glm::degrees(o.arg_periapsis),
+                   glm::degrees(prograde_angle),
+                   glm::degrees(retrograde_angle),
+                   o.energy);
+            double felt = 0.0;
+            const double felt_mass = (double)ship->getMass();
+            if(felt_mass > 0.0) {
+                felt = glm::length(ship->lastThrustForce + ship->lastAeroForce)
+                       / felt_mass;
+            }
+            printf("[surfinfo] t=%.1fs alt_agl=%.6g m alt_asl=%.6g m "
+                   "vs=%.6g m/s hs=%.6g m/s lat=%.6g deg lon=%.6g deg "
+                   "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg "
+                   "acc=%.6g m/s2\n",
+                   time,
+                   distance - ship->m_parent->GetTerrainHeight(
+                                  glm::normalize(pos)),
+                   distance - ship->m_parent->radius,
+                   ver_speed, hor_speed2,
+                   glm::degrees(latitude), glm::degrees(longitude),
+                   glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
+                   felt);
+            fflush(stdout);
+        }
+    }
+
     drawWin(g, W_ShipList, [&] {
     // Buttons (natural width) + SameLine, the same pattern as the
     // map controls: a full-width Selectable in this auto-resize window

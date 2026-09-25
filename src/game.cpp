@@ -221,6 +221,11 @@ void Game::toast(const char *fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
+    // Mirror to stdout: the on-screen toast is transient, the log is not.
+    // Player-facing state changes (time accel, rails, staging, ...) land here.
+    printf("[toast] %s\n", buf);
+    fflush(stdout);
+
     const double now = SDL_GetTicks() * 0.001;
     while(!toasts.empty() && now - toasts.front().born >= kToastLife) {
         toasts.erase(toasts.begin());

@@ -477,7 +477,6 @@ void poll_events(Game &g) {
                     // enter_rails_warp toasted the refusal reason itself.
                     g.time_accel = next;
                     if(next >= kRailsWarp) {
-                        printf("Rails warp: time accel %d (ships on rails)\n", next);
                         g.toast("Time accel: %dx (rails)", next);
                     } else {
                         g.toast("Time accel: %dx", next);
@@ -489,14 +488,11 @@ void poll_events(Game &g) {
                     const bool leaving_rails_warp =
                         (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
                     g.time_accel /= 10;
-                    if(leaving_rails_warp) {
+                    if(leaving_rails_warp && g.ship != nullptr) {
                         // dropped out of rails warp: the active ship re-enters physics
                         // (idle ships stay parked). No ship (orbit-view state) -> just
                         // the clock speed changes.
-                        if(g.ship != nullptr) {
-                            g.ship->leaveRails();
-                            printf("Rails warp: exited, time accel %d\n", g.time_accel);
-                        }
+                        g.ship->leaveRails();
                     }
                     g.toast("Time accel: %dx", g.time_accel);
                 }
