@@ -183,32 +183,39 @@ void updateShipView(Game &g) {
     facing_dir = glm::normalize(facing);
     vel_dir = glm::normalize(vel);
 
-    const glm::dvec3 _up = glm::normalize(pos);
-    const glm::dvec3 _north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), _up));
-    const glm::dvec3 _east = glm::cross(_up, _north);
+    /* A3: heading/pitch/roll are SURFACE-relative (KSP convention), matching
+       the Vs/Hs below. The ship's nose and up axis are expressed in the
+       rotating (ground) frame and measured against the ground's north/east;
+       a fixed inertial reference (the old _up/_north/_east) drifts from the
+       ground by the body's spin, so a coasting ship's heading wandered off
+       the surface heading. surf_pos/surf_vel are already in the rotating
+       frame (or ship->frame when the body has none). */
+    glm::dvec3 surf_facing = facing;
+    glm::dvec3 surf_up_axis = up;
+    if(ship->frame->isRotFrame() == false and ship->frame->hasRotFrame() == true) {
+        Frame *rot = ship->frame->getRotFrame();
+        surf_facing = ship->frame->GetOrientRelTo(rot) * facing;
+        surf_up_axis = ship->frame->GetOrientRelTo(rot) * up;
+    }
 
-    /* Vs/Hs are SURFACE-relative speeds, so the up vector has to come from
-       surf_pos, not pos: for a ship on rails `pos` is in the inertial node
-       while surf_vel was rotated into the rotating one above, and projecting
-       one onto the other is off by the body's spin angle. Signed, so a
-       descent reads negative -- a length never can. (_up stays the inertial
-       radial: heading/pitch/roll below are ship axes against it, all in
-       ship->frame, so they are self-consistent as they are.) */
     const glm::dvec3 surf_up = glm::normalize(surf_pos);
+    const glm::dvec3 surf_north = glm::normalize(projectVecOntoPlane(glm::dvec3(0, 1, 0), surf_up));
+    const glm::dvec3 surf_east = glm::cross(surf_up, surf_north);
+
     ver_speed = glm::dot(surf_vel, surf_up); // m/s, + = climbing
     hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, surf_up)); // m/s
 
-    const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(facing, _up));
+    const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(surf_facing, surf_up));
 
-    const double hedNorth = glm::dot(groundHed, _north);
-    const double hedEast = glm::dot(groundHed, _east);
+    const double hedNorth = glm::dot(groundHed, surf_north);
+    const double hedEast = glm::dot(groundHed, surf_east);
     heading = wrapAngleToPositive(atan2(hedEast, hedNorth));
 
-    pitch = asin(glm::dot(_up, facing));
+    pitch = asin(glm::dot(surf_up, surf_facing));
     roll =
-        glm::orientedAngle(glm::normalize(projectVecOntoPlane(-pos, glm::normalize(facing))),
-                           glm::normalize(-up),
-                           glm::normalize(facing));
+        glm::orientedAngle(glm::normalize(projectVecOntoPlane(-surf_pos, glm::normalize(surf_facing))),
+                           glm::normalize(-surf_up_axis),
+                           glm::normalize(surf_facing));
 
     const glm::dvec3 dir = glm::normalize(surf_pos);
 
