@@ -448,6 +448,13 @@ MOON_COLORS = {
     'Charon':    ([0.50, 0.50, 0.50], [0.70, 0.70, 0.72]),
 }
 
+# Moons with a real atmosphere get a limb rim on top of rock() (most of the
+# ~230 moons are airless, so this stays a short list).
+MOON_ATMOS = {
+    'Titan': {'color': [0.85, 0.60, 0.25], 'thickness': 40000,
+              'power': 3.0, 'intensity': 0.8},
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -470,31 +477,70 @@ def build_base():
 
     sun = make_body('Sun', 'star', None,
         dict(mass_kg=SUN_MASS, radius_m=SUN_RADIUS, soi=1.0e14, rot_s=None),
-        surface={'palette': [[0.0, [1.0, 0.8, 0.35]], [1.0, [1.0, 1.0, 0.75]]]})
+        surface={'palette': [[0.0, [1.0, 0.8, 0.35]], [1.0, [1.0, 1.0, 0.75]]],
+                 # photosphere + a warm corona rim
+                 'atmosphere': {'color': [1.0, 0.85, 0.45], 'thickness': 400000,
+                                'power': 3.0, 'intensity': 0.9}})
     bodies.append(sun)
     parsed['Sun'] = dict(mass_kg=SUN_MASS)
 
     planets = [
         ('mercuryfact.html', 'Mercury', 1.0,
-         {'amplitude': 3000, 'palette': [[0.0, [0.45, 0.42, 0.40]],
-                                         [1.0, [0.70, 0.65, 0.60]]]}, False),
+         {'amplitude': 3000, 'palette': [[0.0, [0.35, 0.33, 0.32]],
+                                         [0.5, [0.55, 0.52, 0.50]],
+                                         [1.0, [0.75, 0.72, 0.68]]]}, False),
         ('venusfact.html', 'Venus', 2.0,
          {'amplitude': 2000, 'palette': [[0.0, [0.80, 0.65, 0.40]],
-                                         [1.0, [0.90, 0.80, 0.55]]]}, False),
+                                         [1.0, [0.90, 0.80, 0.55]]],
+          # the whole planet sits under a thick sulfuric-acid haze
+          'atmosphere': {'color': [0.90, 0.75, 0.45], 'thickness': 30000,
+                         'power': 3.0, 'intensity': 0.8},
+          'clouds': {'color': [0.92, 0.82, 0.55], 'height': 5000,
+                     'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,
-         {'amplitude': 8000, 'sea_level': 0.0, 'sea_color': [0.1, 0.2, 0.6],
-          'palette': [[0.0, [0.1, 0.4, 0.1]], [0.5, [0.3, 0.5, 0.2]],
-                      [1.0, [0.8, 0.8, 0.8]]]}, True),
+         {'amplitude': 8000, 'sea_level': 0.0, 'sea_color': [0.0, 0.18, 0.50],
+          'palette': [[0.0, [0.55, 0.50, 0.35]],   # sandy coast
+                      [0.12, [0.12, 0.42, 0.15]],  # lowland forest
+                      [0.35, [0.30, 0.42, 0.18]],  # grassland
+                      [0.60, [0.45, 0.40, 0.30]],  # brown highlands
+                      [0.82, [0.60, 0.58, 0.55]],  # rock
+                      [1.0, [0.95, 0.95, 0.97]]],  # snow peaks
+          'atmosphere': {'color': [0.30, 0.50, 1.00], 'thickness': 15000,
+                         'power': 4.0, 'intensity': 0.7},
+          'clouds': {'color': [1.0, 1.0, 1.0], 'height': 2500,
+                     'coverage': 0.55, 'freq': 10.0}}, True),
         ('marsfact.html', 'Mars', 4.0,
-         {'amplitude': 5000, 'palette': [[0.0, [0.55, 0.30, 0.20]],
-                                         [1.0, [0.75, 0.50, 0.35]]]}, False),
-        ('jupiterfact.html', 'Jupiter', 5.0, {'bands': True, 'band_count': 11}, False),
-        ('saturnfact.html', 'Saturn', 6.0, {'bands': True, 'band_count': 9}, False),
-        ('uranusfact.html', 'Uranus', 7.0, {'bands': True, 'band_count': 7}, False),
-        ('neptunefact.html', 'Neptune', 8.0, {'bands': True, 'band_count': 7}, False),
+         {'amplitude': 5000, 'palette': [[0.0, [0.50, 0.25, 0.15]],
+                                         [0.5, [0.65, 0.35, 0.22]],
+                                         [1.0, [0.80, 0.55, 0.40]]],
+          # thin dusty CO2 haze
+          'atmosphere': {'color': [0.85, 0.55, 0.35], 'thickness': 12000,
+                         'power': 4.0, 'intensity': 0.5}}, False),
+        # gas giants: band ramp = dark (pole / band edge) -> light (equator /
+        # band centre), sampled by the triangle wave in BandColor.
+        ('jupiterfact.html', 'Jupiter', 5.0,
+         {'bands': True, 'band_count': 11,
+          'palette': [[0.0, [0.50, 0.40, 0.32]], [1.0, [0.85, 0.78, 0.65]]]},
+         False),
+        ('saturnfact.html', 'Saturn', 6.0,
+         {'bands': True, 'band_count': 9,
+          'palette': [[0.0, [0.62, 0.52, 0.38]], [1.0, [0.90, 0.82, 0.65]]]},
+         False),
+        ('uranusfact.html', 'Uranus', 7.0,
+         {'bands': True, 'band_count': 7,
+          'palette': [[0.0, [0.40, 0.65, 0.70]], [1.0, [0.70, 0.85, 0.88]]]},
+         False),
+        ('neptunefact.html', 'Neptune', 8.0,
+         {'bands': True, 'band_count': 7,
+          'palette': [[0.0, [0.18, 0.35, 0.75]], [1.0, [0.50, 0.65, 0.90]]]},
+         False),
         ('plutofact.html', 'Pluto', 9.0,
-         {'amplitude': 2000, 'palette': [[0.0, [0.60, 0.55, 0.50]],
-                                         [1.0, [0.80, 0.75, 0.70]]]}, False),
+         {'amplitude': 2000, 'palette': [[0.0, [0.55, 0.45, 0.38]],
+                                         [0.5, [0.70, 0.62, 0.55]],
+                                         [1.0, [0.85, 0.82, 0.78]]],
+          # a faint nitrogen haze
+          'atmosphere': {'color': [0.70, 0.75, 0.85], 'thickness': 8000,
+                         'power': 5.0, 'intensity': 0.3}}, False),
     ]
     for page, name, seed, surface, has_sea in planets:
         data = parse_planet(page)
@@ -532,8 +578,11 @@ def build_moon(m, parsed):
                 e=m['e'], omega=0.0, i=m['i'], raan=0.0, nu0=nu0,
                 rot_s=None, rotating_soi=surf)
     c1, c2 = MOON_COLORS.get(name, DEFAULT_COLOR)
+    surface = rock(radius_m, c1, c2)
+    if name in MOON_ATMOS:
+        surface['atmosphere'] = MOON_ATMOS[name]
     return make_body(name, 'moon', m['parent'], data, seed=1000 + m['idx'],
-                     surface=rock(radius_m, c1, c2))
+                     surface=surface)
 
 def emit(base_bodies, parsed, moons, pred, out_path, label):
     bodies = list(base_bodies)
