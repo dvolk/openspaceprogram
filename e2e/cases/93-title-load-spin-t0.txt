@@ -1,0 +1,38 @@
+# The t=0 twin of title-load-spin. Frame::UpdateOrbitRails derives the spin as
+#   ang = fmod(rot_ang_speed * time, 2pi);  orient = initial_orient * rotate(-ang)
+# and the orient rebuild used to be guarded by `if(ang != 0)`, so at time == 0
+# -- exactly where a save made from a fresh, still-paused game lands -- the
+# frame kept the PREVIOUS epoch's spin instead of resetting to
+# initial_orient. Loading such a save from a warped title screen therefore
+# snapped the planet on the first unpaused tick even with the load-time
+# re-propagation in place. This pins the unconditional assignment.
+#
+# save_railed_t0 is save_railed with meta.time set to 0.0 (the fleet poses are
+# frame-relative, so they stay consistent); it is the only fixture whose clock
+# is exactly zero.
+#
+# Same shape and same flake guards as title-load-spin: [surfinfo] prints at
+# most once per rendered frame, so the window is long, the checks need only two
+# samples, and one check pins that a post-unpause sample exists so the
+# transition is really inside the series.
+NAME title-load-spin-t0
+ARGS --timeout 25 --info-log --orbit-interval 0.25
+ARGS --reload e2e/fixtures/save_railed_t0 --reload-at 4000
+ARGS --sim-press 1000,0,PERIOD,1200,0,PERIOD,1400,0,PERIOD,9000,0,PERIOD
+EXPECT [boot] no vessel: title screen
+EXPECT [toast] Time accel: 1000x (rails)
+EXPECT Loaded game from e2e/fixtures/save_railed_t0 (active: racer)
+EXPECT [scene] title -> flight (enterFlight)
+EXPECT [toast] Time accel: 1x
+CHECK out.index("1000x") < out.index("Loaded game from")
+CHECK len(surf) >= 2
+CHECK len(surf) >= 2 and any(s["t"] > surf[0]["t"] for s in surf)
+CHECK len(surf) >= 2 and max(min(abs(b["lon"] - a["lon"]), 360 - abs(b["lon"] - a["lon"])) for a, b in zip(surf, surf[1:])) < 1.0
+CHECK len(surf) >= 2 and max(abs(b["lat"] - a["lat"]) for a, b in zip(surf, surf[1:])) < 0.5
+CHECK len(surf) >= 2 and max(abs(b["hs"] - a["hs"]) for a, b in zip(surf, surf[1:])) < 50.0
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+# See title-load-spin: a NaN would drop the [surfinfo] line from the series.
+FORBID nan
+LIMIT 180

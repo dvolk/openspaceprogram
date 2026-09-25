@@ -330,6 +330,16 @@ struct Game {
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
 
+    /* Every body's orbit and spin is a pure function of `time`
+       (Frame::UpdateOrbitRails), and an unpaused tick re-derives them each
+       step. Anything that moves the clock or swaps the frame tree OUTSIDE a
+       tick has to do it too, or a paused game renders the epoch the previous
+       state left behind and snaps when it resumes -- so go through these
+       instead of assigning `time` directly. (The tick is the exception: it
+       propagates later in its own step, after updateProximity.) */
+    void syncRails() { sun->frame->UpdateOrbitRails(time); }
+    void setTime(double t) { time = t; syncRails(); }
+
     // --- one-shot on-screen messages (gameui.cpp draws the last N) ----------
     std::vector<ToastMsg> toasts;
 

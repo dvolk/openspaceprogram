@@ -64,6 +64,10 @@ CHECK namespace (parsed from the game's stdout):
   shake   list of dicts, one per [shakelog] line: t, a (m/s^2, the felt
           acceleration), amp (m, the shake's target amplitude),
           off (3-tuple, the live smoothed offset)
+  surf    list of dicts, one per [surfinfo] line (--info-log): t, alt_agl,
+          alt_asl, vs, hs, lat, lon, pitch, roll, hdg (degrees), acc
+          (m/s^2). Printed while paused too, so a case can compare the
+          paused readout against the one after the first unpaused tick.
   first / last                 first() / last() of a list
   re      the stdlib `re` module (regex checks against `out`)
 Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
@@ -145,6 +149,12 @@ DRAG_RE = re.compile(
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
     r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
+)
+SURF_RE = re.compile(
+    r"\[surfinfo\]\s+t=([\d.]+)s\s+alt_agl=([-\d.e+]+) m\s+"
+    r"alt_asl=([-\d.e+]+) m\s+vs=([-\d.e+]+) m/s\s+hs=([-\d.e+]+) m/s\s+"
+    r"lat=([-\d.e+]+) deg\s+lon=([-\d.e+]+) deg\s+pitch=([-\d.e+]+) deg\s+"
+    r"roll=([-\d.e+]+) deg\s+hdg=([-\d.e+]+) deg\s+acc=([-\d.e+]+) m/s2"
 )
 DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
@@ -365,6 +375,19 @@ def parse_shake(out):
     return rows
 
 
+def parse_surf(out):
+    rows = []
+    for m in SURF_RE.finditer(out):
+        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, acc) = m.groups()
+        rows.append({
+            "t": float(t), "alt_agl": float(agl), "alt_asl": float(asl),
+            "vs": float(vs), "hs": float(hs), "lat": float(lat),
+            "lon": float(lon), "pitch": float(pitch), "roll": float(roll),
+            "hdg": float(hdg), "acc": float(acc),
+        })
+    return rows
+
+
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
@@ -522,10 +545,12 @@ def run_case(case):
     drainlog = parse_drainlog(out)
     drag = parse_drag(out)
     shake = parse_shake(out)
+    surf = parse_surf(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
+        "surf": surf,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

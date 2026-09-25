@@ -440,11 +440,9 @@ int main(int argc, char **argv)
     // --start-time: start the analytic clock (and every body's orbit and
     // spin, which are functions of it) at a later instant. Must happen
     // before the fleet spawns -- the orbit scenarios read the home body's
-    // frame state -- and the tick only re-propagates frames while
-    // unpaused, so a paused start has to be propagated here or the first
-    // frame renders the t=0 system.
-    game.time = args.start_time;
-    sun->frame->UpdateOrbitRails(args.start_time);
+    // frame state. setTime propagates the frames for the paused start, so
+    // the first frame does not render the t=0 system.
+    game.setTime(args.start_time);
     if(args.start_time > 0.0) {
         printf("Starting at sim time t = %.0f s\n", args.start_time);
     }
@@ -461,7 +459,6 @@ int main(int argc, char **argv)
     bool &screenshot_requested = game.screenshot_requested;
     bool &running = game.running;
     int &focusBody = game.focusBody;
-    double &time = game.time;
 
     std::vector<FleetEntry> fleet_entries;
     if(!args.fleet_file.empty()) {
@@ -519,9 +516,10 @@ int main(int argc, char **argv)
         // A cross-system save switched the running system just now
         // (ensureSystemForSave -> switchSystem DELETED the old bodies), so the
         // boot-time `sun`/`home` locals dangle. Re-point them at the live
-        // system before line ~579 (UpdateOrbitRails) and the camera focus
-        // (~line 647) read them -- a no-op when no switch happened, since
-        // game.sun/home already equal them.
+        // system: `home` is read by the camera focus below, and `sun` has no
+        // reader left on this path but must not be left aiming at freed
+        // bodies. A no-op when no switch happened, since game.sun/home already
+        // equal them.
         sun = game.sun;
         home = game.home;
     } else if(!args.radial_test.empty()) {
@@ -580,12 +578,6 @@ int main(int argc, char **argv)
             first->setSlewRequest((SlewMode)m);
             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
         }
-    } else {
-        // --load: load_game set the clock to the saved time, but the frames
-        // were propagated to args.start_time (0) above. Re-propagate them to
-        // the saved clock so a paused load (time_accel 0, where no tick runs)
-        // renders the system at the right moment instead of t=0.
-        sun->frame->UpdateOrbitRails(game.time);
     }
 
     Mesh *engine_plume_mesh = get_mesh("res/meshes/engine_plume.obj");

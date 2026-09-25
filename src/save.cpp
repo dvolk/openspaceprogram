@@ -629,7 +629,18 @@ void save_game(Game &g, const std::string &dir) {
 
 void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
-    g.time = meta.time;
+    /* setTime, not a bare assignment: the clock jumps here (loading from the
+       title screen moves it by however much the player warped there -- the
+       title runs the same sim on the same clock) and a load always starts
+       paused, so no tick would re-derive the bodies' orbits and spin from the
+       new epoch. Without it the paused load renders the system where the
+       previous state left it, and everything -- the bodies' positions, the
+       surface readout's lat/lon, which come off the spin -- snaps into place
+       on the first unpaused tick. Done BEFORE the fleet is rebuilt below: a
+       ship restored into the ROTATING frame that then parks as coasting
+       captures its inertial rail state (rail_pos / rail_vel / rail_orient, in
+       Vehicle::goOnRails) out of these transforms. */
+    g.setTime(meta.time);
     // A load always starts paused, whatever warp the save was made at -- the
     // player resumes when ready. The save still records time_accel (the
     // round-trip field); it is simply not restored here.
@@ -645,9 +656,16 @@ void load_game(Game &g, const std::string &dir) {
     /* Transactional: everything that can fail is reading or building, and
        neither needs the old fleet DELETED first -- only out of the bodies'
        ship lists, which the detach below does. So a load that throws leaves
-       the running game exactly as it was. It used to delete the fleet first
+       the running FLEET exactly as it was. It used to delete the fleet first
        and discover the failure afterwards, which left the player with nothing
-       to fly and no way back. */
+       to fly and no way back. (The clock, the frames, time_accel and
+       exhaust_scale above are NOT rolled back, so a refused load leaves the
+       OLD fleet paused at the SAVE's epoch -- and a railed ship is not
+       analytic in the clock (railsTick integrates rail_pos/rail_vel
+       incrementally), so that fleet is off-epoch: it keeps the conic phase it
+       was captured at while the bodies sit at meta.time. Still flyable, and
+       the player can resume or load something else, but not "exactly as it
+       was".) */
 
     // Read every ship file. A truncated or missing ships/<name>.json is what a
     // crash or a full disk mid-save actually produces.

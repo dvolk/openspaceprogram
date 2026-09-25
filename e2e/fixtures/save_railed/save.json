@@ -1,0 +1,14 @@
+{
+  "active_ship": "racer",
+  "exhaust_scale": 1.0,
+  "format": 1,
+  "parts": "res/data/parts.json",
+  "saved_at": "2026-09-25T02:22:09Z",
+  "ships": [
+    "v0",
+    "v1"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 6180.0,
+  "time_accel": 1000
+}

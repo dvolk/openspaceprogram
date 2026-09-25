@@ -1,0 +1,49 @@
+# Loading a save FROM THE TITLE SCREEN must not leave the world at the title's
+# epoch. The title runs the same sim on the same clock, so warping there and
+# then loading moves g.time while the bodies' frames -- which are pure
+# functions of it -- stay where the title left them. Only an unpaused tick
+# re-propagates them (tick.cpp) and a load always starts paused, so load_game
+# has to do it itself; before it did, the paused load rendered the system at
+# the wrong moment and everything snapped into place on the first unpaused tick
+# (the reported symptom: the planet visibly jumps, and lat/lon with it).
+#
+# The fixture matters for the SURFACE readout: save_railed's racer is parked ON
+# RAILS, so its pose is in the INERTIAL frame and updateShipView has to rotate
+# it through the body's spin to get lat/lon (render.cpp). save_racer's ship sits
+# in the ROTATING frame, where surf_pos is the saved pose verbatim and a stale
+# spin cancels out -- its ORBITAL readout still goes through the spin, so it is
+# not blind to the bug, only its surface readout is.
+#
+# Shape: boot to the title, warp it to 1000x, load the fixture, unpause later.
+# [surfinfo] prints at most once per rendered frame (gameui.cpp throttle), so
+# the window is long and the checks only need TWO samples -- but the second
+# check pins that at least one is post-unpause, so the paused->running
+# transition is really inside the series and the case cannot pass vacuously.
+# The title clock lands near 3500 s and the fixture saves 6180 s, so the
+# un-propagated snap was ~44 deg of longitude (Kerbin's spin over that
+# difference); lon is unwrapped at the antimeridian so a regenerated fixture
+# cannot fail spuriously.
+NAME title-load-spin
+ARGS --timeout 25 --info-log --orbit-interval 0.25
+ARGS --reload e2e/fixtures/save_railed --reload-at 4000
+ARGS --sim-press 1000,0,PERIOD,1200,0,PERIOD,1400,0,PERIOD,9000,0,PERIOD
+EXPECT [boot] no vessel: title screen
+EXPECT [toast] Time accel: 1000x (rails)
+EXPECT Loaded game from e2e/fixtures/save_railed (active: racer)
+EXPECT [scene] title -> flight (enterFlight)
+EXPECT [toast] Time accel: 1x
+CHECK out.index("1000x") < out.index("Loaded game from")
+CHECK len(surf) >= 2
+CHECK len(surf) >= 2 and any(s["t"] > surf[0]["t"] for s in surf)
+CHECK len(surf) >= 2 and max(min(abs(b["lon"] - a["lon"]), 360 - abs(b["lon"] - a["lon"])) for a, b in zip(surf, surf[1:])) < 1.0
+CHECK len(surf) >= 2 and max(abs(b["lat"] - a["lat"]) for a, b in zip(surf, surf[1:])) < 0.5
+CHECK len(surf) >= 2 and max(abs(b["hs"] - a["hs"]) for a, b in zip(surf, surf[1:])) < 50.0
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+# A NaN in the readout would print as "nan" and silently drop the [surfinfo]
+# line from the `surf` series (SURF_RE cannot match it), hiding the very sample
+# pair the continuity checks compare. (Not FORBID ing bare "inf" -- it would
+# false-positive on "[surfinfo]"/"[orbinfo]".)
+FORBID nan
+LIMIT 180

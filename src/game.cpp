@@ -601,6 +601,11 @@ void Game::switchSystem(const std::string &path) {
     systemPath = path;   // the running system is now this one (save_game + load)
     home = sys.home;
     sun = sys.root;
+    /* load_system propagated the new tree at t=0, but the clock did not move
+       with it -- bring the bodies to `time` or a paused game (New Game starts
+       paused, and the title may have warped the clock a long way) renders the
+       new system at t=0 and snaps on the first unpaused tick. */
+    syncRails();
     ships.setSun(sun);
     focusTargets.clear();
     for(TerrainBody *b : sys.bodies) {
