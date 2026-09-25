@@ -233,34 +233,12 @@ void draw3d(Game &g) {
     Camera *camera = g.camera;
     PostFX *postfx = g.postfx;
 
-    // The per-frame state: was local consts in main's render section, now
-    // lives in g.view (ShipView) so the UI readouts read one snapshot.
-    // The references keep the body's names.
+    // The per-frame state lives in g.view (ShipView) so the UI readouts read
+    // one snapshot; the few aliases below keep the body's original names.
     ShipView &view = g.view;
-    double &mu = view.mu;
     glm::dvec3 &pos = view.pos;
     glm::dvec3 &vel = view.vel;
-    glm::dvec3 &orbit_pos = view.orbit_pos;
-    glm::dvec3 &orbit_vel = view.orbit_vel;
-    glm::dvec3 &surf_pos = view.surf_pos;
-    glm::dvec3 &surf_vel = view.surf_vel;
-    OrbitElements &o = view.o;
-    double &distance = view.distance;
-    double &speed = view.speed;
-    glm::dvec3 &up = view.up;
     glm::dvec3 &facing = view.facing;
-    glm::dvec3 &other = view.other;
-    glm::dvec3 &facing_dir = view.facing_dir;
-    glm::dvec3 &vel_dir = view.vel_dir;
-    double &ver_speed = view.ver_speed;
-    double &hor_speed2 = view.hor_speed2;
-    double &heading = view.heading;
-    double &pitch = view.pitch;
-    double &roll = view.roll;
-    double &latitude = view.latitude;
-    double &longitude = view.longitude;
-    TimeSeries &energy_series = view.energy_series;
-    TimeSeries &angmom_series = view.angmom_series;
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
     if(g.camera->mode == CAM_ORBIT) {

@@ -1726,7 +1726,6 @@ void drawPartWindows(Game &g) {
         }
         const size_t part = sel.part;
         const PartDef *def = ship->parts[part]->def;
-        const Body *partBody = ship->parts[part]->body;
 
         // the human-readable part name (catalog display_name); fall back to
         // the machine id for catalogs that predate the field
@@ -1911,7 +1910,6 @@ void drawUIMap(Game &g) {
     double &mu = g.view.mu;
     glm::dvec3 &orbit_pos = g.view.orbit_pos;
     glm::dvec3 &orbit_vel = g.view.orbit_vel;
-    std::vector<TerrainBody *> &planets = g.sys.bodies;
     float &map_scale = g.map_scale;
     int &map_plane = g.map_plane;
     ImVec2 &map_pan = g.map_pan;
@@ -3499,7 +3497,6 @@ void drawTrackingMap(Game &g) {
         const ImU32 ink       = contrastingColor(bg);
         const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
         const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
-        const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
         const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
         const ImU32 col_body  = ink;

@@ -84,8 +84,6 @@ void GLDebugDrawer::Draw(const Camera * camera)
     const glm::mat4 view = camera->GetView();
     const glm::mat4 projection = camera->GetProjection();
 
-    int attribute_pos = glGetAttribLocation(lineshader->m_program, "pos");
-    check_gl_error();
     lineshader->Bind();
     check_gl_error();
     // the vertices are already render-frame relative (drawLine subtracts

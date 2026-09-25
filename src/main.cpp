@@ -453,11 +453,9 @@ int main(int argc, char **argv)
     Vehicle *&ship = game.ship;
     int &time_accel = game.time_accel;
     int &cam_speed = game.cam_speed;
-    bool &rmbCam = game.rmbCam;
     bool &poly_mode = game.poly_mode;
     bool &screenshot_requested = game.screenshot_requested;
     bool &running = game.running;
-    int &focusBody = game.focusBody;
 
     std::vector<FleetEntry> fleet_entries;
     if(!args.fleet_file.empty()) {

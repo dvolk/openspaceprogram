@@ -97,7 +97,12 @@ endif
 # __imp_ import-thunk references a real static archive can't satisfy (the
 # non-LTO debug config dies at link; LTO happens to resolve it, don't rely
 # on that). Linux ignores the declspec, so the define is a no-op there.
-CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -std=c++20 -DGLEW_STATIC -I./middleware/glm/ -I./middleware/bullet3/src -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+# -Wno-deprecated-enum-enum-conversion (on CXXFLAGS below): implot v1.0 already
+# silences this for Clang (#pragma clang diagnostic ignored at implot.cpp:218)
+# but that pragma is a no-op on GCC, where the bitwise OR of two
+# ImGuiButtonFlags enums still warns. Completes the vendor's suppression for
+# our GCC build.
+CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-deprecated-enum-enum-conversion -std=c++20 -DGLEW_STATIC -I./middleware/glm/ -I./middleware/bullet3/src -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
 LINKER=$(CXX) $(CFGFLAGS) $(LD_OPT) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
