@@ -37,7 +37,6 @@
 #include "physics.h"
 #include "gldebug.h"
 #include "frame.h"
-#include "transferplanner.h"
 #include "shipdef.h"
 #include "fleet.h"
 #include <nlohmann/json.hpp>
@@ -759,13 +758,9 @@ int main(int argc, char **argv)
     // The per-window UI options + the window registry (game.cpp): the
     // layout slots, the default-open states and the TAB-toggle table all
     // live on the game; the UI pass (gameui.cpp) draws with them.
-
-    // Transfer planner (the TRANSFER window + the map's transfer conic +
-    // the blue burn-direction icon): the state (targets, selection, solver
-    // cache) and the per-frame rebuild / solve / --xfer-log live in the
-    // TransferPlanner (transferplanner.cpp). The UI pass (gameui.cpp)
-    // reads it through its own aliases.
-    TransferPlanner xferPlanner(game);
+    // The transfer planner (the TRANSFER window, the map's transfer conic,
+    // the burn-direction icon) is a Game member (game.h) too -- it holds
+    // sim-clock state, so Game owns it and the clock hook can invalidate it.
 
     Skybox skybox;
     skybox.init();
@@ -1215,7 +1210,7 @@ int main(int argc, char **argv)
 
             // The 3D pass: the world + active ship (flight), or the
             // physics-free build tree (Vab).
-            sc.draw3d(game, xferPlanner);
+            sc.draw3d(game);
 
             /*
               ImGui stuff below
@@ -1230,7 +1225,7 @@ int main(int argc, char **argv)
             // The imgui pass: the live scene's widget set. The flight one is
             // scene.cpp's flightDrawUi, which lists it in draw order; the
             // editor's is drawVabUI.
-            sc.drawUi(game, xferPlanner);
+            sc.drawUi(game);
 
             // One-shot messages (g.toast): above everything, including the
             // menu (drawToasts, gameui.cpp).

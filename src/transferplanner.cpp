@@ -9,6 +9,7 @@
 // ships, bodies, args, the sim clock, the log interval) come from the
 // borrowed Game. The pure-math solver (planTransfer) is in transfer.h.
 #include "transferplanner.h"
+#include "game.h"   // the complete Game (transferplanner.h only forward-declares it)
 
 #include <cmath>
 #include <numbers>

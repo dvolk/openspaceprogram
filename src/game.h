@@ -31,6 +31,8 @@
 #include "siminput.h" // TimeSeries (the ShipView telemetry)
 #include "system.h"   // System
 #include "terrain.h"  // TerrainBody
+#include "transferplanner.h" // TransferPlanner (a Game member now, so the
+                             // clock hook can reach + invalidate its state)
 #include "ui.h"       // ui::Options
 #include "eva.h"      // Kerbal (the crew characters, the aboard state)
 #include "vehicle.h"  // Vehicle
@@ -229,6 +231,13 @@ struct Game {
     GameArgs &args;
     Uint32 sim_win_id;
     Uint32 loop_start_ms = 0;   // set once the main loop is about to start
+
+    // --- the transfer planner (TRANSFER window + porkchop cache) -----------
+    // A Game member (not a main() local) so the clock hook can reach it: it
+    // holds sim-clock state (the porkchop plan's absolute departure time, A1)
+    // that must be invalidated when the clock jumps outside a tick. It borrows
+    // `*this` back, so its methods read the same Game the UI + render pass see.
+    TransferPlanner xferPlanner;
 
     // --- sound (audio.h; a silent no-op without a device) -------------------
     Audio audio;
@@ -720,7 +729,8 @@ struct Game {
          TerrainBody *sun, TerrainBody *home, GameArgs &args,
          Uint32 sim_win_id)
         : display(display), postfx(postfx), ships(ships), sys(sys),
-          sun(sun), home(home), args(args), sim_win_id(sim_win_id)
+          sun(sun), home(home), args(args), sim_win_id(sim_win_id),
+          xferPlanner(*this)   // borrows the Game it is a member of
     {
         // The stack is never empty: Flight is the floor scene that every
         // excursion returns to. Seeded here rather than in main so no code

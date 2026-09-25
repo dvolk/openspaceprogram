@@ -31,7 +31,6 @@
 #include "uiwins.h"    // WinSet (the windows a scene owns)
 
 struct Game;
-class TransferPlanner;
 
 enum class SceneId : int {
     /* The floor is one of Title, SpaceCenter (a new game, no ship yet) or
@@ -108,8 +107,8 @@ struct SceneDef {
        with sim == false must still get a redraw, which the loop does with
        `if(!sc.sim) redraw = true` since there is no tick to mark the frame. */
     void (*update)(Game &);
-    void (*draw3d)(Game &, TransferPlanner &);   // the world / build-tree pass
-    void (*drawUi)(Game &, TransferPlanner &);   // this scene's imgui windows
+    void (*draw3d)(Game &);   // the world / build-tree pass
+    void (*drawUi)(Game &);   // this scene's imgui windows
     void (*keys)(Game &, SDL_Scancode, Uint16 mod, bool repeat);
 };
 

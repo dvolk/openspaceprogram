@@ -311,9 +311,10 @@ static void draw_telemetry_cell(Game &g, int idx) {
    with the state they covered -- shipless is a scene now, not a leak into this
    one. No window in this function keeps a guard: every one of them is in the
    flight scene's set only, and the title screen has its own (uiwins.cpp). */
-void drawUIReadouts(Game &g, TransferPlanner &planner) {
+void drawUIReadouts(Game &g) {
     // The window bodies are verbatim from main's ImGui pass; their locals
     // are Game members (aliased so the bodies read the same).
+    TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     Ships &ships = g.ships;
     System &sys = g.sys;
@@ -1903,7 +1904,8 @@ void drawPartWindows(Game &g) {
 // body's neighborhood (child-body orbits, SOI rings, the ship's
 // trajectory + apside markers, the other ships, the transfer conic),
 // and the controls below it edit the map state on the game.
-void drawUIMap(Game &g, TransferPlanner &planner) {
+void drawUIMap(Game &g) {
+    TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     OrbitElements &o = g.view.o;
     double &mu = g.view.mu;
@@ -3301,7 +3303,8 @@ void drawTrackingShipList(Game &g) {
     });
 }
 
-void drawTrackingMap(Game &g, TransferPlanner &planner) {
+void drawTrackingMap(Game &g) {
+    TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     OrbitElements &o = g.view.o;
     double &mu = g.view.mu;

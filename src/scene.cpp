@@ -10,7 +10,6 @@
 #include "gameui.h"    // the flight widget set + drawVabUI
 #include "render.h"    // draw3d / drawVab
 #include "tick.h"      // tick
-#include "transferplanner.h"
 #include "vab.h"       // vabEnter / vabExit / vabUpdate
 
 namespace {
@@ -30,15 +29,15 @@ void floorExit(Game &) {}
    RESOURCES), then the orbital map, then the user-placed part windows, then
    the main menu and Save/Load on top. This is the list stage 3 turns into a
    per-scene window table. */
-void flightDrawUi(Game &g, TransferPlanner &p) {
-    drawUIReadouts(g, p);
-    drawUIMap(g, p);
+void flightDrawUi(Game &g) {
+    drawUIReadouts(g);
+    drawUIMap(g);
     drawPartWindows(g);
     drawSaveLoad(g);
 }
 
 // The two draw signatures that do not line up with the table's.
-void vabDraw3d(Game &g, TransferPlanner &) { drawVab(g); }
+void vabDraw3d(Game &g) { drawVab(g); }
 /* The VAB's per-frame step: the editor's mouse half (hover/ghost/place), then
    the world tick -- the VAB is a live scene (time passes while you build and
    the warp keys pause/accelerate it); the build tree itself is physics-free
@@ -53,9 +52,9 @@ void vabUpdateLive(Game &g) {
    (the Settings / Controls / Save-Load bodies draw here; winInScene keeps every
    flight readout out). The VAB has no menu of its own: its top bar's "Back"
    button + Esc walk up the tree to the hub. */
-void vabDrawUi(Game &g, TransferPlanner &p) {
+void vabDrawUi(Game &g) {
     drawVabUI(g);
-    drawUIReadouts(g, p);
+    drawUIReadouts(g);
     drawSaveLoad(g);
 }
 
@@ -64,8 +63,8 @@ void vabDrawUi(Game &g, TransferPlanner &p) {
    live scene's set, so only the shared ones (Settings, Controls, Save/Load)
    actually appear here. The flight readouts are not "hidden because there is
    no ship", they are not this scene's windows at all. */
-void titleDrawUi(Game &g, TransferPlanner &p) {
-    drawUIReadouts(g, p);
+void titleDrawUi(Game &g) {
+    drawUIReadouts(g);
     drawTitleMenu(g);
     drawReadme(g);
     drawNewGame(g);
@@ -98,9 +97,9 @@ void spaceCenterEnter(Game &g) {
 
 /* The hub's widgets: its root menu, then the shared menu windows (Settings /
    Controls / Save-Load, opened from the menu) on top of it. */
-void spaceCenterDrawUi(Game &g, TransferPlanner &p) {
+void spaceCenterDrawUi(Game &g) {
     drawSpaceCenterMenu(g);
-    drawUIReadouts(g, p);
+    drawUIReadouts(g);
     drawSaveLoad(g);
 }
 
@@ -109,7 +108,7 @@ void spaceCenterDrawUi(Game &g, TransferPlanner &p) {
    the ships, so the snapshot has to track them (updateShipView, render.cpp) --
    this is the render-phase half of "the world advances", the logic half being
    tick. The loop still clears to the Sky backdrop (black) under the opaque map. */
-void trackingDraw3d(Game &g, TransferPlanner &) {
+void trackingDraw3d(Game &g) {
     updateShipView(g);
 }
 
@@ -119,11 +118,11 @@ void trackingDraw3d(Game &g, TransferPlanner &) {
    fills the view and the list sits beside it. The shared windows + Save/Load
    come last, on top. The Tracking Station has no menu of its own: Esc / "Back"
    walk up the tree to the hub. */
-void trackingDrawUi(Game &g, TransferPlanner &p) {
+void trackingDrawUi(Game &g) {
     setWinOpen(W_TrackingMap, true);
-    drawTrackingMap(g, p);
+    drawTrackingMap(g);
     drawTrackingShipList(g);
-    drawUIReadouts(g, p);
+    drawUIReadouts(g);
     drawSaveLoad(g);
 }
 

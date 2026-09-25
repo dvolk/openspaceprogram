@@ -8,14 +8,13 @@
 // the readouts show is the ShipView snapshot render.cpp computes.
 #pragma once
 
-#include "game.h"            // Game (ShipView, the UI state)
-#include "transferplanner.h" // TransferPlanner (the TRANSFER window state)
+#include "game.h"   // Game (ShipView, the UI state, xferPlanner)
 
 // Draw the readout windows (HUD, Windows, Settings, TRANSFER, Game Debug
 // Info, ORBITAL, TELEMETRY, SURFACE, SHIPS, VESSEL, Controls, Autopilot,
-// RESOURCES) for g. planner feeds the TRANSFER window (its
+// RESOURCES) for g. g.xferPlanner feeds the TRANSFER window (its
 // solution is computed in the 3D pass).
-void drawUIReadouts(Game &g, TransferPlanner &planner);
+void drawUIReadouts(Game &g);
 
 // Draw the open part windows: one plain imgui window per g.part_sels
 // entry (the parts the player right-clicked in the 3D view). Not part of
@@ -24,9 +23,9 @@ void drawUIReadouts(Game &g, TransferPlanner &planner);
 // entry.
 void drawPartWindows(Game &g);
 
-// Draw the orbital map window for g. planner feeds it (the transfer
+// Draw the orbital map window for g. g.xferPlanner feeds it (the transfer
 // conic + the selected target's highlight).
-void drawUIMap(Game &g, TransferPlanner &planner);
+void drawUIMap(Game &g);
 
 /* The menus and title overlays: the shared menu shell (drawTitleMenu /
    drawSpaceCenterMenu) and the New Game setup sheet (drawNewGame: system +
@@ -56,9 +55,9 @@ void drawReadme(Game &g);
 /* The Tracking Station's widgets: a full-screen, chrome-less orbital map and a
    ship list, each a COPY of the flight window's draw code into its own window id
    (W_TrackingMap / W_TrackingShipList) so the two scenes' versions can diverge
-   without touching each other. drawTrackingMap takes the planner for the same
-   transfer-conic overlay the flight map draws. */
-void drawTrackingMap(Game &g, TransferPlanner &planner);
+   without touching each other. drawTrackingMap reads g.xferPlanner for the
+   same transfer-conic overlay the flight map draws. */
+void drawTrackingMap(Game &g);
 void drawTrackingShipList(Game &g);
 
 // Draw the in-game Save/Load window (a name to save into + the list of

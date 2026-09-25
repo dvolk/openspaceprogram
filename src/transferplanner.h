@@ -12,10 +12,21 @@
 // planner's own members or the borrowed Game.
 #pragma once
 
-#include <vector>
+#include <cmath>        // std::log10 (the xfer_tof_log / xfer_prev_tof_log initializers)
+#include <vector>       // std::vector<XferTarget>
 
-#include "game.h"       // Game (Ships / System / GameArgs / the sim clock)
-#include "transfer.h"   // TransferSolution
+#include <SDL3/SDL.h>   // Uint32 (xfer_log_last_ms)
+#include <glm/glm.hpp>  // glm::dvec3 (xfer.burn_dir)
+
+#include "transfer.h"   // TransferSolution, PorkchopResult
+
+// The planner is a MEMBER of Game (game.h includes this header for the
+// complete type), so Game is only forward-declared here -- including game.h
+// would be a cycle. XferTarget's body/ship are pointers, so the two sim
+// types are forward-declared the same way.
+struct Game;
+struct TerrainBody;
+class Vehicle;
 
 class TransferPlanner {
 public:

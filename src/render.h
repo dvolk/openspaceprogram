@@ -9,17 +9,17 @@
 // toggles), and the per-frame state now lands in Game::view (ShipView)
 // instead of main's locals, so the UI readouts read one snapshot. The
 // transfer planner's per-frame update keeps its exact position in the
-// pass (between the plume and the burn indicator) -- it is a parameter,
-// not a Game member. The ImGui pass stays in main (the next extraction).
+// pass (between the plume and the burn indicator); the planner is a Game
+// member (g.xferPlanner). The ImGui pass stays in main (the next
+// extraction).
 #pragma once
 
-#include "game.h"            // Game (ShipView, the borrowed subsystems)
-#include "transferplanner.h" // TransferPlanner (its update is part of the pass)
+#include "game.h"   // Game (ShipView, the borrowed subsystems, xferPlanner)
 
 // Draw one 3D frame for g, computing g.view (the active ship's state)
-// along the way. planner.update() runs inside the pass where it always
-// has (the burn indicator draws from its result).
-void draw3d(Game &g, TransferPlanner &planner);
+// along the way. g.xferPlanner.update() runs inside the pass where it
+// always has (the burn indicator draws from its result).
+void draw3d(Game &g);
 
 // Compute the active ship's per-frame state snapshot (Game::view, the
 // ShipView the HUD / VESSEL / orbital map / Tracking Station read) from the

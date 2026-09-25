@@ -8,8 +8,9 @@
 // locals became Game members (aliased below so the body reads the same),
 // and the per-frame state now lands in Game::view (ShipView) instead of
 // main's locals, so the UI readouts read one snapshot. The transfer
-// planner's per-frame update keeps its exact position in the pass (it is
-// a parameter, so the call order with the burn indicator is unchanged).
+// planner's per-frame update keeps its exact position in the pass (the
+// planner is a Game member, g.xferPlanner, so the call order with the burn
+// indicator is unchanged).
 #include "render.h"
 
 #include <cmath>
@@ -215,9 +216,10 @@ void updateShipView(Game &g) {
     latitude = asin(dir.y);
 }
 
-void draw3d(Game &g, TransferPlanner &planner) {
+void draw3d(Game &g) {
     // The pass body is verbatim from main's render section; its globals
     // are Game members (aliased so the body reads the same).
+    TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     // Render frame: the active ship's frame, or the home body's frame when
     // there is no ship (the orbit-view state). Every Draw site transforms
