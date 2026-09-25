@@ -347,7 +347,40 @@ struct Game {
        instead of assigning `time` directly. (The tick is the exception: it
        propagates later in its own step, after updateProximity.) */
     void syncRails() { sun->frame->UpdateOrbitRails(time); }
-    void setTime(double t) { time = t; syncRails(); }
+    /* Every cache stamped against the current sim state, dropped in one
+       place. The porkchop plan + grid are stale when the CLOCK moves outside
+       a tick (their departure time and launch window were sampled for the
+       old planet positions) and when the SYSTEM is swapped (they are for the
+       other system's bodies); the surface map is stale in both cases (its
+       baked terminator is at the old compute instant / old body). The two
+       callers -- setTime (clock jump: a load, the boot --start-time) and
+       switchSystem (frame-tree swap) -- share this, so the invalidation has
+       one home. */
+    void invalidateClockStampedCaches() {
+        xferPlanner.invalidateClockState();
+        surfmap_valid = false;
+        surfmap_computed_at = -1.0;
+        // Bump the epoch so an in-flight porkchop / surfmap job (posted before
+        // this jump) drops its result on landing instead of re-publishing the
+        // old world's grid / terminator over the reset state (the load path
+        // does NOT abort jobs, unlike switchSystem). A job captures this at
+        // post time and skips its publish if it has changed since.
+        cache_epoch++;
+        // The in-flight counters are only decremented by their continuations;
+        // on the switch path those continuations are discarded (jobs.restart),
+        // so zero them here or the windows stay "sweeping / mapping" forever.
+        xferPlanner.pc_in_flight = 0;
+        surfmap_in_flight = 0;
+    }
+    /* The clock moves OUTSIDE a tick (a load, the boot --start-time):
+       re-derive the bodies and invalidate every cache stamped with the old
+       sim clock. A system swap (switchSystem) moves the frame tree instead
+       of the clock and calls invalidateClockStampedCaches() directly. */
+    void setTime(double t) {
+        time = t;
+        syncRails();
+        invalidateClockStampedCaches();
+    }
 
     // --- one-shot on-screen messages (gameui.cpp draws the last N) ----------
     std::vector<ToastMsg> toasts;
@@ -548,6 +581,15 @@ struct Game {
     // border and background hidden -- the map just floats over the 3D view).
     // Modes 1 and 2 keep pan/zoom working.
     int map_mode = 0;
+
+    // --- world-stamped caches ------------------------------------------------
+    // Monotonic generation of the sim state the porkchop grid, the "Send
+    // best" plan and the surface map were stamped against. Bumped by
+    // invalidateClockStampedCaches() (a clock jump or a system swap); a
+    // background job captures it at post time and drops its result on landing
+    // if it has moved since, so an in-flight job can never re-publish the old
+    // world's state over the reset.
+    int cache_epoch = 0;
 
     // --- Surface Map state (gameui.cpp draws it; surfmap.cpp fills it) ---
     // The mapped body: the combo pick; null = the active ship's parent

@@ -80,6 +80,7 @@ void surfmapCompute(Game &g) {
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
     const double t_now = g.time;
+    const int epoch = g.cache_epoch;      // drop the map if the world changes
 
     g.surfmap_in_flight++;   // the window's "mapping ..." state
     // `g` is captured by REFERENCE only so the returned continuation (below)
@@ -87,7 +88,7 @@ void surfmapCompute(Game &g) {
     // by-value capture would copy the non-copyable Game (the JobRunner
     // member forbids it).
     g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, log,
-                                body_name, t_now]()
+                                body_name, t_now, epoch]()
                 -> std::function<void()> {
         // Worker thread: build the pixel buffer. No game-state WRITE, GL
         // or imgui here. The result is handed to the main thread through
@@ -134,7 +135,15 @@ void surfmapCompute(Game &g) {
         // worker before the game is torn down).
         std::shared_ptr<std::vector<unsigned char> > ppx =
             std::make_shared<std::vector<unsigned char> >(std::move(px));
-        return [&g, ppx, w, h, body_name, t_now]() {
+        return [&g, ppx, w, h, body_name, t_now, epoch]() {
+            // A clock jump (load / boot) or a system switch bumped the epoch
+            // after we posted: this map's terminator is for the old world.
+            // Drop it (the load path does NOT abort jobs, so this can still
+            // land) instead of republishing a stale terminator over the reset.
+            if(epoch != g.cache_epoch) {
+                if(g.surfmap_in_flight > 0) { g.surfmap_in_flight--; }
+                return;
+            }
             g.surfmap_px = std::move(*ppx);
             g.surfmap_w = w;
             g.surfmap_h = h;

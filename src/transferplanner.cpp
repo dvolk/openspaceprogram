@@ -214,6 +214,23 @@ void TransferPlanner::clearPorkchopPlan() {
     xfer_tof_log = xfer_prev_tof_log;
 }
 
+void TransferPlanner::invalidateClockState() {
+    // The world moved out from under the planner (a clock jump OR a system
+    // swap -- see Game::invalidateClockStampedCaches). Everything stamped
+    // against the old world is stale: the plan's departure was
+    // pc_computed_at + delay (meaningless now), the grid was swept for the
+    // old planet positions, and the min-dv solution + target list are for the
+    // old ship / bodies. Drop all of it; update() rebuilds the target list
+    // next frame. Clearing xferTargets also frees the old system's body /
+    // ship pointers (a system swap deleted them), so a stale pointer can
+    // never linger past this.
+    clearPorkchopPlan();   // no-op unless a plan is active
+    pc.valid = false;      // the launch window no longer matches the state
+    xfer.valid = false;    // the min-dv solution is for the old state
+    xferTargets.clear();   // old system's bodies / ships (freed on a switch)
+    xfer_target = -1;      // no target until update() rebuilds the list
+}
+
 void TransferPlanner::porkchopCompute() {
     if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
     const XferTarget &t = xferTargets[xfer_target];
@@ -256,11 +273,12 @@ void TransferPlanner::porkchopCompute() {
     const std::string tname = t.name;
     const double t_now = g.time;
     const int target_idx = xfer_target;   // the grid is for this target
+    const int epoch = g.cache_epoch;      // drop the result if the world changes
 
     pc_in_flight++;   // the window's "sweeping..." state (main thread)
     g.jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
                                   t_dep_lo,t_dep_hi,tof_lo,tof_hi,
-                                  n,capture,log,tname,t_now,target_idx,this]()
+                                  n,capture,log,tname,t_now,target_idx,epoch,this]()
                 -> std::function<void()> {
         // Worker thread: PURE. Sweep the grid (porkchopGrid is header-only
         // math) and fire the log; no game state, GL or imgui is touched
@@ -289,7 +307,17 @@ void TransferPlanner::porkchopCompute() {
         // clear the "sweeping" state. Runs on the main thread, so writing
         // the planner's state is safe. pc_computed_at = t_now so a "Send
         // best" departure = t_now + the best cell's delay.
-        return [this, res, t_now, tname, target_idx]() {
+        return [this, res, t_now, tname, target_idx, epoch]() {
+            // A clock jump (load / boot) or a system switch bumped the epoch
+            // after we posted: the grid we just swept is for the old world
+            // (the load path does NOT abort jobs, so this can still land).
+            // Drop it before touching the target list -- for a SHIP target
+            // that list was freed by the load's fleet teardown, so the
+            // still_target name check below would be a use-after-free.
+            if(epoch != this->g.cache_epoch) {
+                if(pc_in_flight > 0) { pc_in_flight--; }
+                return;
+            }
             // Only publish if the target is still the one this grid was
             // swept for: a target switch mid-flight would otherwise leave a
             // grid for the OLD target showing under the new target's label.

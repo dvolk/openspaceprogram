@@ -60,6 +60,16 @@ public:
        the user had before sending. No-op when no plan is active. */
     void clearPorkchopPlan();
 
+    /* The world moved out from under the planner -- the clock jumped OUTSIDE
+       a tick (a load, the boot --start-time) or the system was swapped
+       (switchSystem): every stamp against the old world is now stale. Drop
+       the "Send best" plan (its departure was sampled for the old planet
+       positions), the swept grid (same reason), the min-dv solution, and the
+       target list (a system swap deleted those bodies / ships). Called from
+       Game::invalidateClockStampedCaches. No-op when there is nothing to
+       drop. */
+    void invalidateClockState();
+
     std::vector<XferTarget> xferTargets;
     int xfer_target = -1;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned

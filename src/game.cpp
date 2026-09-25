@@ -612,6 +612,13 @@ void Game::switchSystem(const std::string &path) {
         focusTargets.push_back({ b->name.c_str(), b });
     }
     focusBody = 0;
+    // The planner's plan + grid and the surface map were built for the OLD
+    // system's bodies (their positions, its sun, its terrain): drop them now
+    // that the game points at the new system, so a stale launch window or
+    // terminator never shows under the new system's bodies. Same invalidation
+    // as a clock jump (setTime), since both move the world out from under the
+    // caches.
+    invalidateClockStampedCaches();
     // The old bodies are now unreachable from the game state (held only by
     // oldBodies): abort the pending terrain stream (it captures them -- still
     // alive) and delete them.
