@@ -153,6 +153,24 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.clouds.freq = cv.value("freq", 10.0f);
                 s.clouds.drift = cv.value("drift", 0.0f);
             }
+            if(sv.contains("rings") && sv["rings"].is_array()) {
+                for(const nlohmann::json &rv : sv["rings"]) {
+                    if(!rv.is_object()) {
+                        continue;
+                    }
+                    RingParams rp;
+                    rp.name = rv.value("name", std::string(""));
+                    rp.inner = rv.value("inner", 0.0);
+                    rp.outer = rv.value("outer", 0.0);
+                    rp.thickness = rv.value("thickness", 0.0);
+                    rp.albedo = rv.value("albedo", 0.5f);
+                    rp.opacity = rv.value("opacity", 0.8f);
+                    // skip malformed bands (outer must exceed inner)
+                    if(rp.outer > rp.inner) {
+                        s.rings.push_back(rp);
+                    }
+                }
+            }
         }
         // Per-body noise orientation: two irrational-angle turns so
         // neighbouring seeds land on uncorrelated surfaces.
@@ -257,13 +275,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             const nlohmann::json &rot = bv["rotating"];
             rf->soi = rot.value("soi", 1e5);
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
-            // Optional axial tilt (radians): lean the spin axis away from the
-            // orbital normal (local +Y) toward +X. The spin axis in the body
-            // frame is then (sin t, cos t, 0); (0,1,0) when absent / zero.
+            // Optional axial tilt (radians): lean the body's pole (local +Y)
+            // away from the orbital normal toward +X, folded into
+            // initial_orient. The spin stays about +Y -- the figure axis --
+            // so the pole IS the spin axis. (Tilting the spin_axis instead
+            // would leave the pole t off the axis, and it would wobble
+            // around the true axis once per rotation: the terrain pole, the
+            // gas bands and the rings all precessed visibly on tilted
+            // bodies like Saturn/Uranus.) World spin axis is unchanged:
+            // rotate(-t, Z) * +Y == (sin t, cos t, 0).
             const double axial_tilt = rot.value("axial_tilt", 0.0);
             if(axial_tilt != 0.0) {
-                rf->spin_axis = glm::dvec3(std::sin(axial_tilt),
-                                           std::cos(axial_tilt), 0.0);
+                const double ct = std::cos(axial_tilt), st = std::sin(axial_tilt);
+                rf->initial_orient = glm::dmat3(
+                    glm::dvec3(ct, -st, 0.0),
+                    glm::dvec3(st,  ct, 0.0),
+                    glm::dvec3(0.0, 0.0, 1.0));
             }
         } else {
             rf->soi = radius + 100e3;       // near-body SOI convention

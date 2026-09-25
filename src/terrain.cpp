@@ -49,6 +49,9 @@ TerrainBody::~TerrainBody() {
     free_shell(atmosphere);
     free_shell(clouds);
     free_shell(ocean);
+    // Ring meshes (the shared ring shader is registry-owned, not freed here).
+    for(Mesh *m : ring_meshes) { delete m; }
+    ring_meshes.clear();
     delete frame;
     delete rot_frame;
 }
@@ -386,5 +389,47 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
     }
     mesh->FromData(verts.data(), (unsigned int)verts.size(),
                    idx.data(), (unsigned int)idx.size(), true);
+    return mesh;
+}
+
+// A flat annulus in the local XZ plane (normal +Y): a ring of quads between
+// `inner` and `outer` [m]. +Y is the body's spin axis (the tilt is folded
+// into the frame's initial_orient, see load_system), so the annulus lands
+// in the equatorial plane. Winding is CCW seen from +Y (the +Y face is
+// front); DrawRings culls the far face so the underside shows too. Radii
+// are cast to float -- at the largest ring (Jupiter's Thebe ~2.8e8 m) the
+// ULP is ~32 m, fine for a smooth annulus.
+Mesh *TerrainBody::create_ring_mesh(double inner, double outer, int res) {
+    Mesh *mesh = new Mesh;
+    const int seg = res;
+    const glm::vec3 n(0.0f, 1.0f, 0.0f);
+    std::vector<PosNorColVertex> verts;
+    verts.reserve((seg + 1) * 2);
+    for(int j = 0; j <= seg; j++) {
+        float phi = (float)j / seg * 2.0f * (float)std::numbers::pi;
+        float c = std::cos(phi), s = std::sin(phi);
+        verts.push_back(PosNorColVertex(
+            glm::vec3((float)(inner * c), 0.0f, (float)(inner * s)),
+            n, glm::vec3(0.0f)));
+        verts.push_back(PosNorColVertex(
+            glm::vec3((float)(outer * c), 0.0f, (float)(outer * s)),
+            n, glm::vec3(0.0f)));
+    }
+    std::vector<unsigned int> idx;
+    idx.reserve(seg * 6);
+    for(int j = 0; j < seg; j++) {
+        unsigned int a = j * 2;             // inner  @ j
+        unsigned int b = j * 2 + 1;         // outer  @ j
+        unsigned int c = (j + 1) * 2;       // inner  @ j+1
+        unsigned int d = (j + 1) * 2 + 1;   // outer  @ j+1
+        // split the (a,b,d,c) quad on the (a,d) diagonal: both triangles
+        // wind CCW from +Y (normal up).
+        idx.push_back(a); idx.push_back(c); idx.push_back(d);
+        idx.push_back(a); idx.push_back(d); idx.push_back(b);
+    }
+    // copyData=false: no collision is ever built from a ring, so the
+    // double-precision CPU copy the hull builder needs is pure waste.
+    mesh->FromData(verts.data(), (unsigned int)verts.size(),
+                   idx.data(), (unsigned int)idx.size(), false);
     return mesh;
 }

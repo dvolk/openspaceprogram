@@ -371,7 +371,41 @@
           "intensity": 0.6,
           "sea_level_density": 0.16,
           "scale_height": 27000
-        }
+        },
+        "rings": [
+          {
+            "name": "Halo",
+            "inner": 89400000.0,
+            "outer": 123000000.0,
+            "thickness": 10000000.0,
+            "albedo": 0.15,
+            "opacity": 0.8
+          },
+          {
+            "name": "Main",
+            "inner": 123000000.0,
+            "outer": 128940000.0,
+            "thickness": 100000.0,
+            "albedo": 0.3,
+            "opacity": 0.8
+          },
+          {
+            "name": "Amalthea",
+            "inner": 128940000.0,
+            "outer": 181350000.0,
+            "thickness": 2600000.0,
+            "albedo": 0.12,
+            "opacity": 0.8
+          },
+          {
+            "name": "Thebe",
+            "inner": 181350000.0,
+            "outer": 280000000.0,
+            "thickness": 8800000.0,
+            "albedo": 0.12,
+            "opacity": 0.8
+          }
+        ]
       },
       "inertial": {
         "soi": 53138059483.28794,
@@ -386,37 +420,7 @@
         "soi": 70011000.0,
         "rot_ang_speed": 0.00017585181380295513,
         "axial_tilt": 0.054628805587422516
-      },
-      "rings": [
-        {
-          "name": "Halo",
-          "inner": 89400000.0,
-          "outer": 123000000.0,
-          "thickness": 10000000.0,
-          "albedo": 0.0
-        },
-        {
-          "name": "Main",
-          "inner": 123000000.0,
-          "outer": 128940000.0,
-          "thickness": 100000.0,
-          "albedo": 0.015
-        },
-        {
-          "name": "Amalthea",
-          "inner": 128940000.0,
-          "outer": 181350000.0,
-          "thickness": 2600000.0,
-          "albedo": 0.0
-        },
-        {
-          "name": "Thebe",
-          "inner": 181350000.0,
-          "outer": 280000000.0,
-          "thickness": 8800000.0,
-          "albedo": 0.0
-        }
-      ]
+      }
     },
     {
       "name": "Saturn",
@@ -460,7 +464,33 @@
           "intensity": 0.6,
           "sea_level_density": 0.1,
           "scale_height": 60000
-        }
+        },
+        "rings": [
+          {
+            "name": "C-ring",
+            "inner": 74500000.0,
+            "outer": 92000000.0,
+            "thickness": 1000000.0,
+            "albedo": 0.35,
+            "opacity": 0.6
+          },
+          {
+            "name": "B-ring",
+            "inner": 92000000.0,
+            "outer": 117500000.0,
+            "thickness": 3000000.0,
+            "albedo": 0.75,
+            "opacity": 0.9
+          },
+          {
+            "name": "A-ring",
+            "inner": 122000000.0,
+            "outer": 137000000.0,
+            "thickness": 200000.0,
+            "albedo": 0.55,
+            "opacity": 0.7
+          }
+        ]
       },
       "inertial": {
         "soi": 65156669782.51392,

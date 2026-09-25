@@ -55,6 +55,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -103,6 +104,20 @@ struct CloudParams {
     float drift = 0.0f;       // [pattern units/s] wind: pattern creep vs ground
 };
 
+// One ring band on a body (an entry in the optional "surface.rings" array).
+// A flat annulus in the body's equatorial plane (perpendicular to the spin
+// axis). inner/outer are [m] from the body centre; thickness [m] is the band
+// width (v1-visual-only, kept for a future collision slab); albedo is the
+// band brightness, opacity its transparency.
+struct RingParams {
+    std::string name;
+    double inner = 0.0;    // [m] from body centre
+    double outer = 0.0;    // [m] from body centre
+    double thickness = 0.0;// [m] band width
+    float albedo = 0.5f;   // band brightness
+    float opacity = 0.8f;  // 0..1 band transparency
+};
+
 // Per-body terrain + color parameters (the optional "surface" JSON block).
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
@@ -127,6 +142,7 @@ struct Surface {
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
     AtmosphereParams atmosphere; // optional rim; enabled => body has air
     CloudParams clouds;          // optional deck; enabled => body has clouds
+    std::vector<RingParams> rings;  // optional; flat annuli in the equator
 
     COLOUR PaletteColor(float t) const {
         const std::vector<PaletteStop> &s = palette;

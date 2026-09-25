@@ -128,7 +128,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 // bodies" path. Defined in main.cpp.
 void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
                     JobRunner &jobs, Shader *atmosphereshader,
-                    Shader *cloudshader, Shader *oceanshader, int cloudres);
+                    Shader *cloudshader, Shader *oceanshader,
+                    Shader *ringshader, int cloudres);
 
 /* List the star-system slugs in `dir` (e.g. "res/systems") -- the file base
    names with the ".json" extension stripped -- sorted; empty if the directory

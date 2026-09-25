@@ -181,6 +181,7 @@ struct GameArgs {
     bool no_clouds = false;       // --no-clouds
     bool no_atmosphere = false;   // --no-atmosphere
     bool no_ocean = false;        // --no-ocean
+    bool no_rings = false;        // --no-rings
 
     std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;

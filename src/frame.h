@@ -34,7 +34,10 @@ struct Frame {
     double parent_mu; // gravitational parameter of the body orbited (0 =
                       // non-orbiting); the rail propagates under this
     double rot_ang_speed;
-    // Spin axis in this frame's local (body) frame. (0,1,0) = no axial tilt
+    // Spin axis in this frame's local (body) frame. Always (0,1,0): the body
+    // spins about its own figure axis; a tilted body carries the tilt in
+    // initial_orient (load_system) so the pole stays the spin axis instead
+    // of wobbling around it once per rotation.
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
 
     // For a non-rotating (inertial) frame, `orient` holds the orbital-plane

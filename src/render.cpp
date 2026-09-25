@@ -424,6 +424,12 @@ void draw3d(Game &g) {
             if(!g.args.no_atmosphere) {
                 planet->DrawAtmosphere(camera, sun, rf);
             }
+            // Rings last: the annuli sit far outside every shell, and the
+            // depth buffer (the opaque terrain drew earlier) already hides the
+            // far arc behind the planet and shows the near arc in front.
+            if(!g.args.no_rings) {
+                planet->DrawRings(camera, sun, rf);
+            }
         }
     }
 

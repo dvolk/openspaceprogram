@@ -404,7 +404,9 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         body['rotating'] = {'soi': data['rotating_soi'],
                             'rot_ang_speed': 0.0, 'axial_tilt': 0.0}
     if rings is not None:
-        body['rings'] = rings          # ignored by the loader, kept for later
+        # Rings are a surface property (like atmosphere / clouds), so they
+        # live in the surface block the loader reads (system.cpp: sv["rings"]).
+        body.setdefault('surface', {})['rings'] = rings
     return body
 
 def rock(r, c1, c2):
@@ -463,15 +465,28 @@ MOON_ATMOS = {
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
-def ring(name, r_in_km, r_out_km, thickness_km, albedo):
+def ring(name, r_in_km, r_out_km, thickness_km, albedo, opacity=0.8):
     return {'name': name, 'inner': r_in_km * 1e3, 'outer': r_out_km * 1e3,
-            'thickness': thickness_km * 1e3, 'albedo': albedo}
+            'thickness': thickness_km * 1e3, 'albedo': albedo,
+            'opacity': opacity}
 
+# Albedos are boosted from the (very dark) real values so the bands read as
+# rings in-game: the real Jupiter rings are ~0.01-0.02 albedo, which would
+# render black. The band geometry (inner / outer km) is the real extent.
 JUP_RINGS = [
-    ring('Halo', 89400, 123000, 10000, 0.0),
-    ring('Main', 123000, 128940, 100, 0.015),
-    ring('Amalthea', 128940, 181350, 2600, 0.0),
-    ring('Thebe', 181350, 280000, 8800, 0.0),
+    ring('Halo', 89400, 123000, 10000, 0.15),
+    ring('Main', 123000, 128940, 100, 0.30),
+    ring('Amalthea', 128940, 181350, 2600, 0.12),
+    ring('Thebe', 181350, 280000, 8800, 0.12),
+]
+
+# Saturn's rings -- the famous ones. The Cassini Division (~117,500-122,000
+# km) is the gap between the B- and A-rings (no band there). Albedos are the
+# real band brightnesses (the B-ring is the brightest / densest).
+SAT_RINGS = [
+    ring('C-ring', 74500, 92000, 1000, 0.35, 0.60),   # inner, dark, thin
+    ring('B-ring', 92000, 117500, 3000, 0.75, 0.90),  # bright, dense
+    ring('A-ring', 122000, 137000, 200, 0.55, 0.70),  # outer
 ]
 
 def build_base():
@@ -565,12 +580,15 @@ def build_base():
           'atmosphere': {'color': [0.70, 0.75, 0.85], 'thickness': 8000,
                          'power': 5.0, 'intensity': 0.3}}, False),
     ]
+    # Rings are a surface property: only Jupiter + Saturn get them (the
+    # other gas giants' rings are too faint to bother with in v1).
+    rings_by_name = {'Jupiter': JUP_RINGS, 'Saturn': SAT_RINGS}
     for page, name, seed, surface, has_sea in planets:
         data = parse_planet(page)
         parsed[name] = data
         bodies.append(make_body(name, 'planet', 'Sun', data,
                                 surface=surface, seed=seed, has_sea=has_sea,
-                                rings=JUP_RINGS if name == 'Jupiter' else None))
+                                rings=rings_by_name.get(name)))
     return bodies, parsed
 
 def build_moon(m, parsed):

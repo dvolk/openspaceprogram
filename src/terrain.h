@@ -124,6 +124,13 @@ struct TerrainBody {
     float cloud_radius = 0.0f;   // deck radius [m]; 0 = no clouds
     Shell *ocean = nullptr;      // ocean surface shell (built on demand)
     float ocean_radius = 0.0f;   // shell radius [m]; 0 = no ocean
+    /* Planetary rings (built on demand): one flat annulus per band in
+       surface.rings, in the body's equatorial plane (the local XZ plane --
+       the spin axis is +Y in the rotating frame, and the body's transform
+       carries the tilt). The shared ring shader + the per-band albedo /
+       opacity live in surface.rings, so the body only owns the meshes. */
+    std::vector<Mesh *> ring_meshes;
+    Shader *ring_shader = nullptr;
     float radius;
     double mu;
     double g; // [m/s^2]
@@ -204,6 +211,9 @@ struct TerrainBody {
     // The rim / deck shell sphere (defined in terrain.cpp with the other
     // mesh builders); res = latitude = longitude rings.
     Mesh *create_atmosphere_mesh(float radius, int res);
+    // A flat annulus in the local XZ plane (normal +Y) between inner and
+    // outer radius [m]; res = angular segments (defined in terrain.cpp).
+    Mesh *create_ring_mesh(double inner, double outer, int res);
 
     // The heavy per-load work, split so the CPU-bound part can run on the
     // JobRunner worker and the GL/Bullet part on the main thread (the same
@@ -400,17 +410,30 @@ struct TerrainBody {
         ocean_radius = shell_radius;
     }
 
+    // Build the ring annuli on demand: one flat mesh per band in
+    // surface.rings, in the equatorial plane. The per-band albedo / opacity
+    // stay in surface.rings (DrawRings reads them); the body owns only the
+    // meshes + the shared shader.
+    void BuildRings(Shader *ringshader) {
+        if(ring_shader != nullptr || surface.rings.empty()) return;
+        ring_shader = ringshader;
+        for(const RingParams &rp : surface.rings) {
+            ring_meshes.push_back(create_ring_mesh(rp.inner, rp.outer, 128));
+        }
+    }
+
     // Main thread: the full heavy phase -- attach the worker-built root
     // terrain (BuildRootGeoms) and the demand-built shells (atmosphere rim,
-    // cloud deck, ocean). Used synchronously for the boot-critical bodies
-    // (home, its moon, the star) and from the deferred bodies' JobRunner
-    // continuations.
+    // cloud deck, ocean, rings). Used synchronously for the boot-critical
+    // bodies (home, its moon, the star) and from the deferred bodies'
+    // JobRunner continuations.
     void Finish(const RootGeoms &r, Shader *atmos, Shader *cloud, int cloudres,
-                Shader *ocean, JobRunner &jobs) {
+                Shader *ocean, Shader *rings, JobRunner &jobs) {
         AttachRoot(r);
         BuildAtmosphere(atmos);
         BuildClouds(cloud, cloudres, jobs);
         BuildOcean(ocean);
+        BuildRings(rings);
     }
 
     void DrawOcean(const Camera *camera, TerrainBody *sun,
@@ -552,6 +575,55 @@ struct TerrainBody {
         glDepthMask(true);
         glDisable(GL_BLEND);
         glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    // Draw the ring annuli: transparent, drawn over the opaque terrain so
+    // the depth buffer hides the far arc behind the planet and shows the
+    // near arc in front (no front/back split needed). The annulus is one
+    // flat plane, so the camera-side face is the only one that should
+    // rasterize: with culling off BOTH coincident faces pass the depth
+    // test and blend, rendering the band at 2a-a^2 instead of its stated
+    // opacity a. Cull the far face (the shells' inside flip, for a plane)
+    // -- single blend, correct opacity, still visible from above and
+    // below. The shader uses a two-sided (abs) Lambert so the ring lights
+    // from either side.
+    void DrawRings(const Camera *camera, TerrainBody *sun, Frame *renderFrame) {
+        if(ring_meshes.empty()) return;
+
+        // The ring plane passes through the body centre with normal = the
+        // body's pole (local +Y in world, = the spin axis). The camera on
+        // its +Y side sees the front (CCW) face; below it sees the back.
+        const glm::dvec3 center = glm::dvec3(transform[3]);
+        const glm::dvec3 pole = glm::dvec3(transform[1]);
+        const bool below =
+            glm::dot(camera->GetPos() - center, pole) < 0.0;
+
+        const glm::dmat4 &View = camera->GetView();
+        // double, then truncate (same precision convention as the shells:
+        // the mesh is body-local, the translation lands in the modelview).
+        glm::dmat4 ModelView = View * glm::translate(-camera->GetRenderOrigin())
+                               * transform;
+        glm::mat4 ModelViewFloat = ModelView;
+        const glm::mat4 &Projection = camera->GetProjection();
+        const glm::vec3 sunDir =
+            glm::vec3(SunlightDir(this, sun, renderFrame));
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(false);
+        if(below) glCullFace(GL_FRONT);
+        for(size_t i = 0; i < ring_meshes.size(); i++) {
+            ring_shader->Bind();
+            ring_shader->setUniform_mat4(0, Projection * ModelViewFloat);
+            ring_shader->setUniform_mat4(1, glm::mat4(transform));
+            ring_shader->setUniform_vec3(2, sunDir);
+            ring_shader->setUniform_vec1(3, surface.rings[i].albedo);
+            ring_shader->setUniform_vec1(4, surface.rings[i].opacity);
+            ring_meshes[i]->Draw();
+        }
+        if(below) glCullFace(GL_BACK);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
     }
 
     // Direction light travels (sun -> object) in renderFrame's axes, where

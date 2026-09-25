@@ -587,6 +587,9 @@ void Game::switchSystem(const std::string &path) {
         { "position", "normal" },
         { "MVP", "Normal", "cameraPos", "seaColor", "lightDirection",
           "time", "planetCenter" });
+    Shader *ringshader = get_shader("res/shaders/ringShader",
+        { "position", "normal" },
+        { "MVP", "Normal", "lightDirection", "albedo", "opacity" });
     // Load FIRST: a failure here throws with the running game still intact
     // (nothing is torn down yet).
     System newSys = load_system(path.c_str(), terrainshader, sunshader, nullptr);
@@ -626,7 +629,7 @@ void Game::switchSystem(const std::string &path) {
     for(TerrainBody *b : oldBodies) { delete b; }
     jobs.restart();
     postHeavyPhase(sys, home, sun, jobs, atmosphereshader, cloudshader,
-                   oceanshader, args.cloud_mesh);
+                   oceanshader, ringshader, args.cloud_mesh);
 
     enterTitle(*this);
     parkTitleCamera();

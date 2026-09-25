@@ -513,6 +513,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_flag("--no-ocean", args.no_ocean,
                  "Skip the ocean surface shells (debug: see the sea floor "
                  "terrain without the water layer)");
+    app.add_flag("--no-rings", args.no_rings,
+                 "Skip the planetary ring annuli (debug: see the planet and "
+                 "its depth without the rings)");
 
     // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,

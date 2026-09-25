@@ -136,11 +136,12 @@ static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) 
 // Declared in system.h (shared by the boot and the in-process system switch).
 void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
                     JobRunner &jobs, Shader *atmosphereshader,
-                    Shader *cloudshader, Shader *oceanshader, int cloudres) {
+                    Shader *cloudshader, Shader *oceanshader,
+                    Shader *ringshader, int cloudres) {
     for(TerrainBody *b : sys.bodies) {
         if(b == home || b == sys.moon || b == sun) {
             b->Finish(b->BuildRootGeoms(), atmosphereshader, cloudshader,
-                      cloudres, oceanshader, jobs);
+                      cloudres, oceanshader, ringshader, jobs);
         } else {
             const std::string label = std::string("Terrain (") + b->name + ")";
             // The worker body only uses `b` (BuildRootGeoms is pure); the
@@ -148,12 +149,12 @@ void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
             // them (the worker never dereferences them).
             jobs.post(label,
                 [b, atmosphereshader, cloudshader, cloudres, oceanshader,
-                 &jobs]() -> std::function<void()> {
+                 ringshader, &jobs]() -> std::function<void()> {
                 auto r = b->BuildRootGeoms();   // worker: pure math
                 return [b, r, atmosphereshader, cloudshader, cloudres,
-                        oceanshader, &jobs]() {
+                        oceanshader, ringshader, &jobs]() {
                     b->Finish(r, atmosphereshader, cloudshader, cloudres,
-                              oceanshader, jobs);
+                              oceanshader, ringshader, jobs);
                 };
             });
         }
@@ -287,6 +288,14 @@ int main(int argc, char **argv)
                                      { "position", "normal" },
                                      { "MVP", "Normal", "cameraPos", "seaColor",
                                        "lightDirection", "time", "planetCenter" });
+
+    // Planetary rings: flat annuli in the body's equatorial plane, drawn over
+    // the opaque terrain (the depth buffer hides the far arc behind the
+    // planet). Two-sided Lambert (the sun can be above or below the plane).
+    Shader *ringshader = get_shader("res/shaders/ringShader",
+                                    { "position", "normal" },
+                                    { "MVP", "Normal", "lightDirection",
+                                      "albedo", "opacity" });
 
     Shader *skyboxshader = get_shader("res/shaders/skyboxShader",
                                       { "position" },
@@ -428,7 +437,7 @@ int main(int argc, char **argv)
     // draws a solid placeholder until it lands), so that ~0.4s-per-body cost
     // never stalls anything. Shared with the in-process system switch.
     postHeavyPhase(sys, home, sun, game.jobs, atmosphereshader, cloudshader,
-                   oceanshader, args.cloud_mesh);
+                   oceanshader, ringshader, args.cloud_mesh);
 
     // settings.json phase 2 (the args fields were applied before the
     // Renderer above): the Game + PostFX state, before apply_ui_style
