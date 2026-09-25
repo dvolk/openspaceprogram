@@ -228,6 +228,10 @@ struct Game {
     System &sys;
     TerrainBody *sun;
     TerrainBody *home;
+    // The title-screen backdrop body (pickTitleBody's pick): chosen ONCE per
+    // system so the boot heavy phase can build it synchronously (it is what
+    // the first frame shows) and the backdrop is stable for the session.
+    TerrainBody *titleBody = nullptr;
     GameArgs &args;
     Uint32 sim_win_id;
     Uint32 loop_start_ms = 0;   // set once the main loop is about to start
@@ -637,9 +641,14 @@ struct Game {
     // World (ship-frame) position of a focus target, to point the orbit
     // camera at it.
     glm::dvec3 focusWorldPos(int i) const;
-    // Title-screen backdrop: park the orbit camera on a random non-star
-    // body, 2 radii out. Purely the menu backdrop -- the gameplay home is
-    // untouched. A no-op until focusTargets is seeded.
+    // Choose the title backdrop body: the --title-body pin when given and
+    // present, else a random non-star body; stored in titleBody (so the boot
+    // heavy phase syncs it and the backdrop is stable for the session).
+    // Reads sys.bodies, so it works before focusTargets is seeded.
+    TerrainBody *pickTitleBody();
+    // Title-screen backdrop: park the orbit camera on titleBody, 2 radii
+    // out. Purely the menu backdrop -- the gameplay home is untouched. A
+    // no-op until focusTargets is seeded.
     void parkTitleCamera();
     // TAB: hide / restore the live scene's Persistent windows.
     void toggle_windows();
@@ -700,15 +709,20 @@ struct Game {
     bool loadFrom(const std::string &dir);
     /* Ensure the running system matches the one the save at dir records
        (switching into it if different). True = the save's system is ready;
-       false = the switch failed (the current system keeps running). Shared by
-       loadFrom and the boot --load path, so both honor the save's system. */
-    bool ensureSystemForSave(const std::string &dir);
+       false = the switch failed (the current system keeps running). When
+       `switched` is non-null it is set to true iff the switch actually ran
+       (its heavy phase built the new system's bodies, so the caller must not
+       run one) -- the boot --load path needs that; a runtime reload does not
+       (its system's heavy phase already ran at boot). Shared by loadFrom and
+       the boot --load path, so both honor the save's system. */
+    bool ensureSystemForSave(const std::string &dir, bool *switched = nullptr);
     /* Tear the running game down to the shipless-boot state: delete the fleet,
        drop part_sels and the active ship/kerbal/lastShip refs, and re-aim the
-       camera at home (orbit view). ~Vehicle does the physics/weld/crew cleanup
-       per ship, so walking the bodies' ship lists is the whole teardown. No
-       job drain: no background continuation dereferences the fleet. Leaves the
-       game exactly as a no-vessel boot does. */
+       camera at the title backdrop (orbit view). ~Vehicle does the
+       physics/weld/crew cleanup per ship, so walking the bodies' ship lists
+       is the whole teardown. No job drain: no background continuation
+       dereferences the fleet. Leaves the game exactly as a no-vessel boot
+       does. */
     void unloadGame();
     /* unloadGame + enterTitle: the flight pause menu's "Quit to title" and the
        --quit-title hook, shared so the headless path exercises the real
@@ -721,8 +735,12 @@ struct Game {
        the ship onto the wrong planet. create_physics + the shaders are
        one-time globals that survive the swap; only the per-system state
        changes (the bodies, the fleet, the star re-point, the focus targets,
-       the camera). */
-    void switchSystem(const std::string &path);
+       the camera). `syncNames` are the body NAMES to build synchronously in
+       the switch's heavy phase -- the caller's context (a save's ship bodies,
+       the hub's home); empty = the title backdrop (the switch lands there).
+       Unknown names are dropped; the star is always synchronous. */
+    void switchSystem(const std::string &path,
+                      const std::vector<std::string> &syncNames = {});
     // Keep the "ship" focus entry in sync with the active ship and point
     // the camera focus at it -- or at a random non-star body (the title
     // backdrop) when there is none. select_ship and load_game both

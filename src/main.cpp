@@ -130,16 +130,38 @@ static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) 
 }
 
 // The heavy phase (max_height + root terrain + the atmosphere/cloud/ocean
-// shells) per body, split: build the boot-critical bodies (home, its moon, the
-// star) synchronously so the title + ship are solid from the first frame, and
-// defer the rest to the worker so they stream in while the game runs.
+// shells) per body, split: build the priority bodies synchronously (solid
+// from the first frame), defer the rest to the worker (they stream in while
+// the game runs). The star is always synchronous; at most two planets are,
+// so a pathological fleet never inflates the boot stall.
 // Declared in system.h (shared by the boot and the in-process system switch).
-void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
+void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
                     JobRunner &jobs, Shader *atmosphereshader,
                     Shader *cloudshader, Shader *oceanshader,
                     Shader *ringshader, int cloudres) {
+    std::vector<TerrainBody *> isSync;
+    isSync.push_back(sys.root);   // the star: the light source, always solid
+    for(TerrainBody *b : sync) {
+        if(b == nullptr || b == sys.root) { continue; }
+        bool dup = false;
+        for(TerrainBody *e : isSync) { if(e == b) { dup = true; break; } }
+        if(!dup && isSync.size() < 3) { isSync.push_back(b); }
+    }
+    auto inSync = [&](TerrainBody *b) {
+        for(TerrainBody *e : isSync) { if(e == b) { return true; } }
+        return false;
+    };
+    {   // The sync set is the e2e anchor for "the player's bodies are solid
+        // from frame one": a save landed on a non-home body must list THAT
+        // body here, not the home.
+        std::string names;
+        for(TerrainBody *e : isSync) { if(!names.empty()) { names += ", "; }
+            names += e->name; }
+        printf("[heavy] sync: %s (%zu deferred)\n", names.c_str(),
+               sys.bodies.size() - isSync.size());
+    }
     for(TerrainBody *b : sys.bodies) {
-        if(b == home || b == sys.moon || b == sun) {
+        if(inSync(b)) {
             b->Finish(b->BuildRootGeoms(), atmosphereshader, cloudshader,
                       cloudres, oceanshader, ringshader, jobs);
         } else {
@@ -426,19 +448,6 @@ int main(int argc, char **argv)
         game.audio.setMusic("res/audio/ville_seppanen-1_g.ogg");
     }
 
-    // The heavy phase (max_height + root terrain + the atmosphere/cloud/
-    // ocean shells) is the part that made a big system take ~7s. Split it:
-    // build the boot-critical bodies (the ship's home, its moon, the star)
-    // synchronously so the title + ship are solid from the first frame, and
-    // defer the rest to the worker so they stream in while the game runs.
-    // A body simply isn't drawn until its heavy phase lands (ready).
-    //
-    // BuildClouds still posts its coverage bake to the runner (the deck
-    // draws a solid placeholder until it lands), so that ~0.4s-per-body cost
-    // never stalls anything. Shared with the in-process system switch.
-    postHeavyPhase(sys, home, sun, game.jobs, atmosphereshader, cloudshader,
-                   oceanshader, ringshader, args.cloud_mesh);
-
     // settings.json phase 2 (the args fields were applied before the
     // Renderer above): the Game + PostFX state, before apply_ui_style
     // reads the ui knobs.
@@ -449,7 +458,8 @@ int main(int argc, char **argv)
     // spin, which are functions of it) at a later instant. Must happen
     // before the fleet spawns -- the orbit scenarios read the home body's
     // frame state. setTime propagates the frames for the paused start, so
-    // the first frame does not render the t=0 system.
+    // the first frame does not render the t=0 system. (--load overwrites
+    // it with the save's clock, as before: load_game sets its own time.)
     game.setTime(args.start_time);
     if(args.start_time > 0.0) {
         printf("Starting at sim time t = %.0f s\n", args.start_time);
@@ -480,6 +490,27 @@ int main(int argc, char **argv)
         }
     }
 
+    /* The heavy phase (max_height + root terrain + the atmosphere/cloud/
+       ocean shells) is the part that made a big system take ~7s. Split it:
+       build the bodies the player is ON (or about to be on) synchronously
+       so the first frame is solid, and defer the rest to the worker so they
+       stream in while the game runs (a body simply isn't drawn until ready).
+       The sync set is the player's bodies, NOT the system home: home stays
+       the calendar + default spawn body, but a save landed on a non-home
+       body puts the player there -- and that is the common case (the old
+       home+moon priority streamed exactly the body the loaded ship sat on).
+       Which bodies:
+         --load         the save's ship bodies; a cross-system save switches
+                        FIRST, and the switch runs this same phase with the
+                        same sync set, so the boot system's bodies are never
+                        built at all
+         --radial/--dock the home body (the test ships sit on it)
+         --vab          the launch body (the player is about to be there)
+         fleet          the fleet's bodies
+         otherwise      the title backdrop (the first thing the player sees)
+       BuildClouds still posts its coverage bake to the runner, so that
+       per-body cost never stalls anything. Shared with the in-process
+       system switch (Game::switchSystem). */
     Vehicle *first = nullptr;
     if(!args.load_name.empty()) {
         // --load: the saved fleet replaces the one that would be built.
@@ -505,10 +536,27 @@ int main(int argc, char **argv)
         // Honor the save's system (the primary "load a save" use case): a
         // solar save loaded into KSP must land on Earth, not Kerbin. This is
         // the same check the UI/CLI reload uses (loadFrom), so both paths
-        // switch into the save's system before loading the fleet.
-        if(!game.ensureSystemForSave(load_dir)) {
+        // switch into the save's system before loading the fleet. A
+        // successful switch runs the heavy phase with the save's ship bodies
+        // as the sync set; when no switch happens (same system, or the switch
+        // failed and we stay put) the boot heavy phase below does.
+        bool switched = false;
+        if(!game.ensureSystemForSave(load_dir, &switched)) {
             printf("Load failed: the save's system could not be opened\n");
             exit(1);
+        }
+        if(!switched) {
+            // The heavy phase has not run yet (boot, not a runtime reload):
+            // build it now, syncing the save's ship bodies where they exist
+            // in THIS system; else home -- the load's find-else-fallback
+            // landing.
+            std::vector<TerrainBody *> sync;
+            for(const std::string &n : saveShipBodies(load_dir)) {
+                if(TerrainBody *b = sys.find(n)) { sync.push_back(b); }
+            }
+            if(sync.empty()) { sync.push_back(home); }
+            postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
+                           oceanshader, ringshader, args.cloud_mesh);
         }
         try {
             load_game(game, load_dir);
@@ -528,26 +576,49 @@ int main(int argc, char **argv)
         // equal them.
         sun = game.sun;
         home = game.home;
-    } else if(!args.radial_test.empty()) {
-        RadialTestShip rts = build_radial_test_ship(
-            args.radial_test, args.scenario_given, args.scenario,
-            ships.catalog(), home, sun, partsshader);
-        ships.add_ship(rts.v, home, rts.sc, rts.slot);
-        first = rts.v;
-    } else if(!args.dock_test.empty()) {
-        DockTestShips dts = build_dock_test_ships(
-            args.dock_test, args.scenario_given, args.scenario,
-            ships.catalog(), home, sun, partsshader, sys);
-        /* Both are placed already (the builder ran spawn_vehicle for the
-           station and placed the probe relative to it), so null scenario:
-           apply_scenarios skips them. The probe is the ACTIVE ship; the
-           station parks on rails until proximity wakes it (it is metres
-           away). */
-        ships.add_ship(dts.probe, home, nullptr, 0);
-        ships.add_ship(dts.station, home, nullptr, 1);
-        first = dts.probe;
+        // switchSystem landed on the Title; with a loaded fleet the player is
+        // in flight, not at the menu (a no-op when no switch happened: the
+        // constructor seeded Flight).
+        if(ship != nullptr) { enterFlight(game); }
     } else {
-        first = ships.build_fleet(fleet_entries, sys, home, args.scenario);
+        std::vector<TerrainBody *> sync;
+        if(!args.radial_test.empty() || !args.dock_test.empty()) {
+            sync.push_back(home);   // the test ships sit on the home body
+        } else if(!args.vab.empty() || args.vab_empty) {
+            TerrainBody *vb = args.vab_body.empty()
+                             ? home : sys.find(args.vab_body);
+            sync.push_back(vb != nullptr ? vb : home);   // the launch body
+        } else if(!fleet_entries.empty()) {
+            for(const FleetEntry &fe : fleet_entries) {
+                sync.push_back(fe.body.empty() ? home : sys.find(fe.body));
+            }   // postHeavyPhase dedupes the sync set and caps it at two
+        } else {
+            sync.push_back(game.pickTitleBody());   // the backdrop, below
+        }
+        postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
+                       oceanshader, ringshader, args.cloud_mesh);
+
+        if(!args.radial_test.empty()) {
+            RadialTestShip rts = build_radial_test_ship(
+                args.radial_test, args.scenario_given, args.scenario,
+                ships.catalog(), home, sun, partsshader);
+            ships.add_ship(rts.v, home, rts.sc, rts.slot);
+            first = rts.v;
+        } else if(!args.dock_test.empty()) {
+            DockTestShips dts = build_dock_test_ships(
+                args.dock_test, args.scenario_given, args.scenario,
+                ships.catalog(), home, sun, partsshader, sys);
+            /* Both are placed already (the builder ran spawn_vehicle for the
+               station and placed the probe relative to it), so null scenario:
+               apply_scenarios skips them. The probe is the ACTIVE ship; the
+               station parks on rails until proximity wakes it (it is metres
+               away). */
+            ships.add_ship(dts.probe, home, nullptr, 0);
+            ships.add_ship(dts.station, home, nullptr, 1);
+            first = dts.probe;
+        } else {
+            first = ships.build_fleet(fleet_entries, sys, home, args.scenario);
+        }
     }
 
     if(args.load_name.empty()) {

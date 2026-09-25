@@ -1,0 +1,18 @@
+# The motivation for decoupling boot priority from the home body: load a
+# save whose fleet sits on a NON-home body. Home is still Kerbin (calendar +
+# default spawn body), but the saved ships orbit Mun -- so the heavy phase
+# must build MUN synchronously, not Kerbin: the old home+moon priority
+# streamed exactly the wrong body, leaving the loaded ship's world hollow
+# while it streamed in. The [heavy] line is the anchor: the player's body
+# (Mun) must be in the sync set. The load also ends in flight, not on the
+# title menu (which has no "Resume Flight").
+NAME boot-load-nonhome
+ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_mun --time-accel 1
+ARGS --timeout 8
+EXPECT Loaded system 'res/systems/ksp_system.json'
+EXPECT [heavy] sync: Kerbol, Mun
+EXPECT Loaded game from e2e/fixtures/save_mun (active: racer)
+FORBID [boot] no vessel: title screen
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

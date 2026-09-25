@@ -1,6 +1,6 @@
 // system.h -- the loaded star system and the JSON loader that builds it.
 //
-//   System        the body list + root/home/moon shortcuts.
+//   System        the body list + root/home shortcuts.
 //   load_system() reads a star-system JSON and builds each TerrainBody
 //                  with its inertial + rotating frame tree.
 
@@ -22,8 +22,9 @@
 struct System {
     std::vector<TerrainBody *> bodies;
     TerrainBody *root;      // the star (frame-tree root)
-    TerrainBody *home;      // the planet the ship starts on
-    TerrainBody *moon;      // home's first moon, or NULL
+    TerrainBody *home;      // the calendar body + default spawn body (the
+                            // system JSON's "home"); NOT a boot priority -- the
+                            // heavy phase syncs the bodies the player is on
 
     TerrainBody *find(const std::string &name) {
         for(auto&& b : bodies) {
@@ -102,12 +103,13 @@ struct System {
   wired in a second pass, so the order in the file does not matter.
 
   load_system does the LIGHT phase only: surface params + the frame tree
-  (orbital/physical values) + home/moon resolution. The heavy phase (max_height
-  + root terrain + the atmosphere/cloud/ocean shells) is deferred by the caller
-  to the JobRunner worker (TerrainBody::Finish) so the title can appear before
-  every body's terrain is built; a body simply isn't drawn until its heavy
-  phase lands (TerrainBody::ready). The caller must still run create_physics()
-  first, because the deferred heavy phase builds Bullet terrain collision.
+  (orbital/physical values) + home resolution. The heavy phase (max_height
+  + root terrain + the atmosphere/cloud/ocean shells) is split by the caller's
+  postHeavyPhase: a few bodies build synchronously (solid from the first
+  frame), the rest stream in on the JobRunner worker (TerrainBody::Finish); a
+  body simply isn't drawn until its heavy phase lands (TerrainBody::ready).
+  The caller must still run create_physics() first, because the heavy phase
+  builds Bullet terrain collision.
 
   `progress` (optional) is called on the caller's thread after each body's
   light phase, with (index, total, body name). The game uses it to keep
@@ -118,15 +120,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress = nullptr);
 
-// The heavy phase per body (the load_system light phase's counterpart): build
-// the boot-critical bodies (home, its moon, the star) synchronously so the
-// title + ship are solid from the first frame, and defer the rest to the
-// JobRunner worker so they stream in while the game runs (a body isn't drawn
-// until its heavy phase lands). BuildClouds still posts its coverage bake, so
-// that per-body cost never stalls anything. Shared by the boot (main) and the
-// in-process system switch (Game::switchSystem): one "build this system's
-// bodies" path. Defined in main.cpp.
-void postHeavyPhase(System &sys, TerrainBody *home, TerrainBody *sun,
+// The heavy phase per body (the load_system light phase's counterpart):
+// build the priority bodies synchronously so the first frame is solid, and
+// defer the rest to the JobRunner worker so they stream in while the game
+// runs (a body isn't drawn until its heavy phase lands).
+//
+// `sync` are the planets the player is on or about to be on -- the caller's
+// context decides them: the save's ship bodies (boot --load / a cross-system
+// reload), the fleet's bodies, the VAB launch body, the Space Center's home,
+// or the title backdrop. The star is ALWAYS synchronous (the light source),
+// and at most TWO planets are, so a pathological fleet never inflates the
+// boot stall. BuildClouds still posts its coverage bake, so that per-body
+// cost never stalls anything. Shared by the boot (main) and the in-process
+// system switch (Game::switchSystem): one "build this system's bodies" path.
+// Defined in main.cpp.
+void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
                     JobRunner &jobs, Shader *atmosphereshader,
                     Shader *cloudshader, Shader *oceanshader,
                     Shader *ringshader, int cloudres);

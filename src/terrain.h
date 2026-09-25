@@ -424,8 +424,8 @@ struct TerrainBody {
 
     // Main thread: the full heavy phase -- attach the worker-built root
     // terrain (BuildRootGeoms) and the demand-built shells (atmosphere rim,
-    // cloud deck, ocean, rings). Used synchronously for the boot-critical
-    // bodies (home, its moon, the star) and from the deferred bodies'
+    // cloud deck, ocean, rings). Used synchronously for the boot's sync set
+    // (the player's bodies + the star) and from the deferred bodies'
     // JobRunner continuations.
     void Finish(const RootGeoms &r, Shader *atmos, Shader *cloud, int cloudres,
                 Shader *ocean, Shader *rings, JobRunner &jobs) {

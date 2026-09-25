@@ -43,7 +43,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     System sys;
     sys.root = nullptr;
     sys.home = nullptr;
-    sys.moon = nullptr;
     // A throw mid-build (pass-2 wiring, home resolution) would otherwise
     // leak the partially-created bodies -- delete them on the way out unless
     // the build completes (the return "commits" them to the caller).
@@ -368,20 +367,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         throw std::runtime_error("system: no root (star) body found");
     }
 
-    // --- resolve the home planet and its first moon ------------------------
+    // --- resolve the home planet (the calendar + default spawn body) ------
     if(!home_name.empty()) {
         sys.home = sys.find(home_name);
         if(sys.home == nullptr) {
             throw std::runtime_error("system: home body '" + home_name
                                      + "' not found");
-        }
-        // First moon = the first body whose parent is the home planet.
-        for(size_t i = 0; i < sys.bodies.size(); i++) {
-            const nlohmann::json &bv = bodies[i];
-            if(bv.value("orbits", std::string("")) == home_name) {
-                sys.moon = sys.bodies[i];
-                break;
-            }
         }
     } else if(sys.bodies.size() > 1) {
         // No explicit home: default to the first non-star body.
@@ -410,10 +401,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // are consistent before the first render.
     sys.root->frame->UpdateOrbitRails(0.0);
 
-    printf("Loaded system '%s': %zu bodies (home=%s, moon=%s)\n",
+    printf("Loaded system '%s': %zu bodies (home=%s)\n",
            path, sys.bodies.size(),
-           sys.home ? sys.home->name.c_str() : "(none)",
-           sys.moon ? sys.moon->name.c_str() : "(none)");
+           sys.home ? sys.home->name.c_str() : "(none)");
 
     cleanup.commit = true;   // build complete: the caller now owns the bodies
     return sys;

@@ -12,6 +12,10 @@ EXPECT Loaded system 'res/systems/ksp_system.json'
 EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
 EXPECT Loaded system 'res/systems/solar_system.json'
 EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
+# The switch lands on the title; with a loaded fleet the player must be in
+# FLIGHT (the title menu has no "Resume Flight" -- a load that stops there
+# strands the game with a fleet the player can't reach).
+EXPECT [scene] title -> flight (enterFlight)
 FORBID Segmentation
 FORBID GL_
 LIMIT 120

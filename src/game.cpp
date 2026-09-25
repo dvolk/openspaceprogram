@@ -312,53 +312,63 @@ void Game::syncShipFocus() {
         if(!focusTargets.empty() && focusTargets[0].body == nullptr) {
             focusTargets.erase(focusTargets.begin());
         }
-        // The shipless orbit view (the title backdrop): a random non-star
-        // body, not the home planet.
+        // The shipless orbit view (the title backdrop): the session's
+        // backdrop body (pickTitleBody), not the home planet.
         parkTitleCamera();
     }
 }
 
-/* The title-screen backdrop: park the orbit camera on a random non-star
-   body, 2 radii out. Purely the menu backdrop -- the gameplay home (ship
-   spawn, HUD time, saves) still anchors to `home`. focusTargets must be
-   seeded; at every real call site it is (boot after the list is built, and
-   at runtime after load_game), but a --load no-ship pass through load_game
-   can reach it first, so an empty list is a no-op and the boot call parks
-   it for real. */
-void Game::parkTitleCamera() {
-    if(focusTargets.empty()) { return; }
-    int idx = -1;
-    bool pinned = false;
+/* The title-screen backdrop body + its camera park. pickTitleBody chooses
+   the body (a random non-star, or the --title-body pin) and stores it as the
+   session's backdrop BEFORE the boot heavy phase, so that body is the
+   synchronous one -- the first frame is solid. Purely the menu backdrop: the
+   gameplay home (ship spawn, HUD time, saves) still anchors to `home`.
+   parkTitleCamera must run with focusTargets seeded; at every real call site
+   it is (boot after the list is built, and at runtime after load_game), but
+   a --load no-ship pass through load_game can reach it first, so an empty
+   list is a no-op and the boot call parks it for real. */
+TerrainBody *Game::pickTitleBody() {
     // A --title-body pin selects that body deterministically (a test /
     // visual-regression hook); otherwise the pick is a random non-star body.
     if(!args.title_body.empty()) {
-        for(int i = 0; i < (int)focusTargets.size(); i++) {
-            if(focusTargets[i].body != nullptr &&
-               focusTargets[i].body->name == args.title_body) {
-                idx = i; pinned = true; break;
-            }
+        if(TerrainBody *b = sys.find(args.title_body)) {
+            return (titleBody = b);
         }
-        if(idx < 0) {
-            printf("[title] backdrop pin '%s' not found; picking randomly\n",
-                   args.title_body.c_str());
-            fflush(stdout);
-        }
+        printf("[title] backdrop pin '%s' not found; picking randomly\n",
+               args.title_body.c_str());
+        fflush(stdout);
+    }
+    std::vector<TerrainBody *> cand;
+    for(TerrainBody *b : sys.bodies) {
+        if(b != sys.root) { cand.push_back(b); }
+    }
+    if(cand.empty()) {   // degenerate: no non-star body -- fall back to any
+        if(sys.bodies.empty()) { return nullptr; }
+        cand.push_back(sys.bodies[0]);
+    }
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<size_t> pick(0, cand.size() - 1);
+    return (titleBody = cand[pick(rng)]);
+}
+
+void Game::parkTitleCamera() {
+    if(focusTargets.empty()) { return; }
+    // The backdrop is the session's pick (made before the boot heavy phase,
+    // so the body is the synchronous one); a runtime no-ship state on a
+    // system that never picked gets one now.
+    if(titleBody == nullptr) { pickTitleBody(); }
+    int idx = -1;
+    for(int i = 0; i < (int)focusTargets.size(); i++) {
+        if(focusTargets[i].body == titleBody) { idx = i; break; }
     }
     if(idx < 0) {
-        std::vector<int> cand;
+        // Not a focus target: focusTargets and sys.bodies disagree, which
+        // should not happen -- pick fresh rather than park nowhere.
+        pickTitleBody();
         for(int i = 0; i < (int)focusTargets.size(); i++) {
-            TerrainBody *b = focusTargets[i].body;
-            if(b != nullptr && b != sys.root) { cand.push_back(i); }
+            if(focusTargets[i].body == titleBody) { idx = i; break; }
         }
-        if(cand.empty()) {   // degenerate: no non-star body -- fall back to any
-            for(int i = 0; i < (int)focusTargets.size(); i++) {
-                if(focusTargets[i].body != nullptr) { cand.push_back(i); break; }
-            }
-            if(cand.empty()) { return; }   // no body at all: nothing to park on
-        }
-        static std::mt19937 rng(std::random_device{}());
-        std::uniform_int_distribution<size_t> pick(0, cand.size() - 1);
-        idx = cand[pick(rng)];
+        if(idx < 0) { return; }   // no body at all: nothing to park on
     }
     focusBody = idx;
     TerrainBody *b = focusTargets[idx].body;
@@ -373,7 +383,8 @@ void Game::parkTitleCamera() {
         camera->ComputeView();
     }
     printf("[title] backdrop: %s%s, %.0f m out\n", b->name.c_str(),
-           pinned ? " (pinned)" : "", 2.0 * (double)b->radius);
+           (b->name == args.title_body) ? " (pinned)" : "",
+           2.0 * (double)b->radius);
     fflush(stdout);
 }
 
@@ -422,6 +433,22 @@ bool Game::newGame() {
     return true;
 }
 
+// The "home" body name a system JSON records ("" when the file is missing /
+// unreadable / has no field). The New Game path syncs it: the fresh game
+// lands on the Space Center hub, which frames the new system's home, so that
+// body must be solid from the hub's first frame.
+static std::string systemHomeName(const std::string &path) {
+    std::ifstream f(path);
+    if(!f) { return ""; }
+    nlohmann::json j;
+    try { j = nlohmann::json::parse(f, nullptr, true); }
+    catch(const std::exception &) { return ""; }
+    if(j.contains("home") && j["home"].is_string()) {
+        return j["home"].get<std::string>();
+    }
+    return "";
+}
+
 bool Game::startNewGame(const std::string &sysPath, float exhaustScale) {
     if(!collectVehicles(sys).empty()) {
         toast("A game is already running");
@@ -429,9 +456,13 @@ bool Game::startNewGame(const std::string &sysPath, float exhaustScale) {
     }
     // Switch first (transactional: a missing / malformed file throws with the
     // running world untouched). Same-basename = already on it, skip the swap.
+    // The sync set is the new system's home -- the hub's backdrop.
     if(!sysPath.empty() && baseName(sysPath) != baseName(systemPath)) {
+        std::vector<std::string> syncNames;
+        std::string hn = systemHomeName(sysPath);
+        if(!hn.empty()) { syncNames.push_back(hn); }
         try {
-            switchSystem(sysPath);
+            switchSystem(sysPath, syncNames);
         } catch(const std::exception &e) {
             printf("[game] new game: cannot load system '%s': %s\n",
                    sysPath.c_str(), e.what());
@@ -456,13 +487,18 @@ bool Game::startNewGame(const std::string &sysPath, float exhaustScale) {
 // is ready (the current one, or a successful switch); false if the switch
 // failed (the current system keeps running). Shared by the UI/CLI load
 // (loadFrom) and the boot --load path, so both honor the save's system.
-bool Game::ensureSystemForSave(const std::string &dir) {
+bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
+    if(switched != nullptr) { *switched = false; }
     const std::string sysfile = saveSystemFile(dir);
     if(sysfile.empty() || baseName(sysfile) == baseName(systemPath)) {
         return true;   // same system (or none recorded) -- nothing to switch
     }
+    // The switch's heavy phase syncs the bodies the save's ships sit on --
+    // the player is on them, wherever the save put the fleet (a save landed
+    // on a non-home body is the common case), not the new system's home.
+    const std::vector<std::string> syncNames = saveShipBodies(dir);
     try {
-        switchSystem(sysfile);
+        switchSystem(sysfile, syncNames);
     } catch(const std::exception &e) {
         printf("[load] cannot switch to system '%s': %s\n",
                sysfile.c_str(), e.what());
@@ -472,6 +508,7 @@ bool Game::ensureSystemForSave(const std::string &dir) {
         toast("Load failed: %s", e.what());
         return false;   // stay on the current system
     }
+    if(switched != nullptr) { *switched = true; }
     printf("[load] save is from system '%s'; switched before loading\n",
            sysfile.c_str());
     fflush(stdout);
@@ -538,7 +575,8 @@ void Game::quitToTitle() {
     enterTitle(*this);
 }
 
-void Game::switchSystem(const std::string &path) {
+void Game::switchSystem(const std::string &path,
+                        const std::vector<std::string> &syncNames) {
     /* In-process system switch: replace the running system with a different
        one, landing on the title screen. Transactional in two senses:
        (1) load the NEW system first, so a missing / malformed file throws with
@@ -564,7 +602,8 @@ void Game::switchSystem(const std::string &path) {
             std::thread can't be reused), so the runner must be brought back
             before the new terrain is posted.
          6. postHeavyPhase -- the same "build this system's bodies" path the
-            boot uses (home/moon/star synchronous, the rest streamed).
+            boot uses (the caller's sync set + the star synchronous, the rest
+            streamed).
          7. land on the shipless title backdrop. */
     // The shaders are registry singletons (compiled once, shared, never
     // deleted): re-fetch the same files the boot used, with the same
@@ -629,13 +668,30 @@ void Game::switchSystem(const std::string &path) {
     jobs.abort();
     for(TerrainBody *b : oldBodies) { delete b; }
     jobs.restart();
-    postHeavyPhase(sys, home, sun, jobs, atmosphereshader, cloudshader,
+    // The sync set: the caller's context (a save's ship bodies, the hub's
+    // home) resolved against the NEW system; unknown names drop out. A bare
+    // switch (no names) lands on the title, so the backdrop body is the one
+    // that must be solid. The star is added by postHeavyPhase itself.
+    std::vector<TerrainBody *> sync;
+    for(const std::string &n : syncNames) {
+        if(TerrainBody *b = sys.find(n)) { sync.push_back(b); }
+    }
+    if(sync.empty()) {
+        titleBody = pickTitleBody();
+        if(titleBody != nullptr) { sync.push_back(titleBody); }
+    }
+    postHeavyPhase(sys, sync, jobs, atmosphereshader, cloudshader,
                    oceanshader, ringshader, args.cloud_mesh);
 
     enterTitle(*this);
     parkTitleCamera();
-    printf("[game] switched system -> %s (home %s)\n",
-           path.c_str(), home->name.c_str());
+    std::string syncList;
+    for(TerrainBody *b : sync) {
+        if(!syncList.empty()) { syncList += ", "; }
+        syncList += b->name;
+    }
+    printf("[game] switched system -> %s (home %s, sync %s)\n",
+           path.c_str(), home->name.c_str(), syncList.c_str());
     fflush(stdout);
 }
 

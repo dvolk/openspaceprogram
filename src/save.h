@@ -33,6 +33,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -448,6 +449,49 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
         for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }
     }
     return m;
+}
+
+/* The bodies the saved fleet sits on, in fleet order: each ship file's
+   pose.body (where the ship IS), falling back to its home body (where it was
+   built) when the pose names no body. Unique, first-wins. Empty when the save
+   is missing or unreadable. The boot --load path uses this to build exactly
+   those bodies' heavy phase synchronously -- the player is on them, wherever
+   the save put the fleet (loading a save landed on a non-home body must not
+   leave them streaming). Header-only like saveMetaFromJson (pure file reads),
+   so the unit test can exercise it. */
+inline std::vector<std::string> saveShipBodies(const std::string &dir) {
+    std::vector<std::string> bodies;
+    nlohmann::json meta;
+    {
+        std::ifstream f(dir + "/save.json");
+        if(!f) { return bodies; }
+        try { meta = nlohmann::json::parse(f, nullptr, true); }
+        catch(const std::exception &) { return bodies; }
+    }
+    if(!meta.contains("ships") || !meta["ships"].is_array()) { return bodies; }
+    for(auto &&slug : meta["ships"]) {
+        if(!slug.is_string()) { continue; }
+        nlohmann::json s;
+        {
+            std::ifstream f(dir + "/ships/" + slug.get<std::string>() + ".json");
+            if(!f) { continue; }
+            try { s = nlohmann::json::parse(f, nullptr, true); }
+            catch(const std::exception &) { continue; }
+        }
+        std::string body;
+        if(s.contains("pose") && s["pose"].is_object() &&
+           s["pose"].contains("body") && s["pose"]["body"].is_string()) {
+            body = s["pose"]["body"].get<std::string>();
+        }
+        if(body.empty() && s.contains("home") && s["home"].is_string()) {
+            body = s["home"].get<std::string>();
+        }
+        if(!body.empty() &&
+           std::find(bodies.begin(), bodies.end(), body) == bodies.end()) {
+            bodies.push_back(body);
+        }
+    }
+    return bodies;
 }
 
 // ---- the save-directory helpers (inline: pure file-system, no game state) --
