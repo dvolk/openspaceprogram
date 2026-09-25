@@ -1,0 +1,28 @@
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/index.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html (not a planet but that's how they list it)
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html (moons are inline)
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/joviansatfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupringfact.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturniansatfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranusfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/uraniansatfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranringfact.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/neptunefact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/neptuniansatfact.html
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/nepringfact.html
+
+https://nssdc.gsfc.nasa.gov/planetary/factsheet/plutofact.html (moons are inline)
