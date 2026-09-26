@@ -4,7 +4,7 @@
 //
 // Game code names assets as "res/..." (parts.json, ships/*.json, meshes,
 // shaders, audio). That spelling is LOGICAL: it is what CLI defaults, save
-// metadata, fleet JSON and the e2e EXPECT strings use, and it is what the
+// metadata, startships JSON and the e2e EXPECT strings use, and it is what the
 // logs print. path() is the one place that turns such a name into a
 // filesystem path at the point of I/O.
 //
@@ -28,7 +28,7 @@
 // save.json, toasts, logs). Resolve with path() only when opening the
 // file. An already-absolute path (a --parts/--system/--font the user
 // pointed somewhere else) passes through unchanged; a relative path that
-// is NOT under res/ (e2e fixtures, a user's ./my_fleet.json) stays
+// is NOT under res/ (e2e fixtures, a user's ./my_startships.json) stays
 // cwd-relative.
 
 #include <SDL3/SDL.h>

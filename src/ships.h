@@ -24,7 +24,8 @@
 #include "vehicle.h"  // Vehicle, ScenarioDef
 
 // DebugStartShip: one ship the game spawns at boot. Not a gameplay fleet --
-// just "the ships that exist at start" (parsed from res/data/fleet.json).
+// just "the ships that exist at start" (a list of these, loaded from a
+// JSON file).
 // All four fields are required; loadDebugStartShips errors if any is missing
 // or empty (the game does not guess a ship, body, or scenario).
 struct DebugStartShip {

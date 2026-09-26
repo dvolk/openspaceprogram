@@ -1544,7 +1544,7 @@ int main() {
     }
     /* Every ship def in res/ships/ must resolve against the real catalog. An
        unknown part name throws at load time -- and a ship that nothing loads
-       (not fleet.json, not an e2e case, not src/) can sit broken for a long
+       (not an e2e case, not src/) can sit broken for a long
        time: heavy_one.json referenced "reaction_wheel2.25h0.5625", missing
        the _r, and no test or case ever reached it. This sweep reads the
        directory rather than carrying a list, so a ship added tomorrow is

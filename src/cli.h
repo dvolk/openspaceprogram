@@ -38,7 +38,7 @@ struct GameArgs {
     std::string system_file = "res/systems/ksp_system.json";
     std::string parts_file = "res/data/parts.json";
     std::vector<std::string> ship_files;
-    std::string fleet_file;
+    std::string startships_file;
 
     /* Save/Load (the live fleet + crew + clock). --save captures the game
        into a directory when the --timeout budget is spent (saves + exits --

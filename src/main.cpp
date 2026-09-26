@@ -420,8 +420,8 @@ int main(int argc, char **argv)
     /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
        order + offsets, and the start-ship list supplies one entry per ship:
-       its def, name, body and scenario. The list comes from --fleet
-       (res/data/fleet.json; every field required) or, when that is not given,
+       its def, name, body and scenario. The list comes from --startships
+       (a JSON file; every field required) or, when that is not given,
        from the --ship flags as a uniform list (all ships share the --body /
        --scenario, each taking its name from its own def). Ships sharing a
        (body, scenario) pair are slotted: pad slots 20 m apart along the pad,
@@ -477,10 +477,11 @@ int main(int argc, char **argv)
     bool &running = game.running;
 
     std::vector<DebugStartShip> start_ships;
-    if(!args.fleet_file.empty()) {
+    if(!args.startships_file.empty()) {
         try {
             start_ships =
-                loadDebugStartShips(resdir::path(args.fleet_file).c_str()).ships;
+                loadDebugStartShips(resdir::path(args.startships_file).c_str())
+                    .ships;
         } catch(const std::exception &e) {
             printf("error: %s\n", e.what());
             return 1;
@@ -489,8 +490,9 @@ int main(int argc, char **argv)
         // --ship names the ship; a lone --body has no ship to place on it.
         // Neither -> no vessel at all, which boots to the title screen.
         if(args.ship_files.empty()) {
-            printf("error: --body was given without --ship (or --fleet); "
-                   "there is no ship to place on it (pass --ship, or --fleet)\n");
+            printf("error: --body was given without --ship "
+                   "(or --startships); there is no ship to place on it "
+                   "(pass --ship, or --startships)\n");
             return 1;
         }
         for(size_t i = 0; i < args.ship_files.size(); i++) {

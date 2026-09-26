@@ -64,16 +64,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Ship def JSON to build; repeat the flag to build more "
                    "ships (they share the --body/--scenario, each getting "
                    "its own pad slot / orbit slot and its name from its own "
-                   "def). A uniform-list shorthand -- --fleet (one entry per "
-                   "ship, all fields required) overrides it");
+                   "def). A uniform-list shorthand -- --startships (one entry "
+                   "per ship, all fields required) overrides it");
 
-    app.add_option("--fleet", args.fleet_file,
+    app.add_option("--startships", args.startships_file,
                    "Start-ship-list JSON (default: none; then --ship "
                    "applies). One entry per ship; each entry must name all "
                    "four of ship def, name, body and scenario (the game "
                    "errors if any is missing). Ships sharing a body+scenario "
                    "get their own pad slot / orbit slot. Try "
-                   "res/data/fleet.json");
+                   "e2e/fixtures/startships.json");
 
     app.add_option("--save", args.save_name,
                    "Save the game (the live fleet + crew + clock) into this "
@@ -83,7 +83,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "exclusive with --load");
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "
-                   "instead of building a fleet (--ship/--fleet are ignored). "
+                   "instead of building the start ships (--ship/--startships are ignored). "
                    "A bare name is a slot under the data dir's saves/. "
                    "Mutually exclusive with --save");
     app.add_option("--data-dir", args.data_dir,
