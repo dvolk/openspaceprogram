@@ -2,7 +2,8 @@
 - Using simple C++
 - Very early development, don't worry about breaking changes if it improves the game. We don't need any backward compatibility- it's just you and me working on and running the game!
 - Look for opportunities to simplify.
-- Flag any code that looks odd or poorly designed.
+- Create issues if anything looks odd, buggy or poorly designed. Issues can be speculative/future investigative work.
+- You can make issues with the 'tea' command: 'tea issue create -o json --title <title> -' and stdin. List issues 'tea issue ls -o json'.
 - Libraries: SDL2, bullet3, glm, imgui, implot, assimp, CLI11, nlohmann/json.hpp.
 - Performance is very important as we might scale up the game a lot later.
 - Feel free to concisely comment on bits of code that took a lot of investigation, but don't compare it to how it used to be.
