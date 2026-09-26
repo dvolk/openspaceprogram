@@ -79,7 +79,6 @@ GeoPatch::~GeoPatch() {
     delete kids[2];
     delete kids[3];
     if(collision != NULL) {
-        printf("removing terrain collision\n");
         removeTerrainCollision(collision);
         delete collision;
     }
@@ -192,7 +191,6 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     mesh = grid_mesh;   // owned by this patch
     if(has_collision == true) {
         collision = addTerrainCollision(grid_mesh, anchor);
-        printf("added terrain collision with %p\n", (void*)this);
     } else {
         collision = NULL;
     }

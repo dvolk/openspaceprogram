@@ -230,8 +230,16 @@ btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m,
     // Bullet is double-precision here, so the anchor is exact.
     startTransform.setOrigin(btVector3(anchor.x, anchor.y, anchor.z));
 
+    // Terrain-only triangles: the skirt tail (numInnerIndices) is a
+    // render-only crack filler UNDER the surface -- in the BVH it would be a
+    // hidden two-sided collision slab (Bullet triangle meshes collide from
+    // both sides, plus the margin). numInnerIndices() == 0 means no skirt:
+    // the whole array is terrain.
+    const unsigned int inner = m->numInnerIndices();
+    const unsigned int num_tris = (inner != 0) ? inner / 3
+                                               : m->num_indices / 3;
     btTriangleIndexVertexArray *mesh_interface
-        = new btTriangleIndexVertexArray(m->num_indices / 3,
+        = new btTriangleIndexVertexArray(num_tris,
                                          m->is,
                                          3*sizeof(int), // grr bytes!
                                          m->num_vertices,

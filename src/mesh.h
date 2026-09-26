@@ -89,6 +89,11 @@ public:
     // skirt depth-tests against the terrain in front of it
     void DrawSkirt();
 
+    // FromData's numInnerIndices: 0 = no skirt (the whole index array is
+    // terrain), nonzero = the first that many indices are terrain and the
+    // tail is the render-only skirt
+    unsigned int numInnerIndices() const { return m_numInnerIndices; }
+
     // for bullet physics
     double *vs = NULL;
     unsigned int num_vertices = 0;

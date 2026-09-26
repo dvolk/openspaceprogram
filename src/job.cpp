@@ -9,6 +9,7 @@
 // deques and the status counters.
 #include "job.h"
 
+#include <cstdio>
 #include <exception>
 
 void JobRunner::run() {
@@ -32,9 +33,14 @@ void JobRunner::run() {
         std::function<void()> apply;
         try {
             apply = t.body();
-        } catch(const std::exception &) {
+        } catch(const std::exception &e) {
+            // A failed body still leaves the caller's in-flight flag set
+            // (e.g. GeoPatch::subdivide_in_flight), so a silent swallow
+            // reads as a stuck job -- say what threw.
+            printf("[job-throw] %s: %s\n", t.label.c_str(), e.what());
             apply = nullptr;
         } catch(...) {
+            printf("[job-throw] %s: unknown exception\n", t.label.c_str());
             apply = nullptr;
         }
         {
