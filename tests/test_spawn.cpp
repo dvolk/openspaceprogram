@@ -100,7 +100,19 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
     eerbon_rot->rotating = true;
     eerbon_rot->pos = glm::dvec3(0);
     eerbon_rot->orient = glm::dmat3(1.0);
-    eerbon_rot->initial_orient = glm::dmat3(1.0);
+    /* Axial tilt, folded into initial_orient the way load_system does it
+       for a tilted body (Kerbin: 0.409 rad). root_orient of the rotating
+       frame is then non-identity at t=0 -- which is exactly what broke
+       spawn_vehicle when it fed a root-frame faceAlong to placeShipAtCom
+       as if it were frame-local. */
+    {
+        const double tilt = 0.40910517666747087;
+        const double ct = std::cos(tilt), st = std::sin(tilt);
+        eerbon_rot->initial_orient = glm::dmat3(
+            glm::dvec3(ct, -st, 0.0),
+            glm::dvec3(st,  ct, 0.0),
+            glm::dvec3(0.0, 0.0, 1.0));
+    }
     eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086;
     eerbon_rot->orb_ang_speed = 0;
     eerbon_rot->soi = 700000.0;
@@ -349,12 +361,23 @@ int main() {
             CHECK_TRUE(dist > child->soi - 10000.0, buf);
         }
 
-        // (c) Prograde orientation: the nose (local +Z, 3rd matrix column)
-        //     must point along vhat, and the orient must be orthonormal.
-        glm::dmat3 orient = faceAlong(vhat);
-        glm::dvec3 nose = orient * glm::dvec3(0, 0, 1);
+        // (c) Prograde orientation as spawn_vehicle places it: faceAlong
+        //     builds a ROOT-frame attitude (velWorld is root-frame), then
+        //     placeShipAtCom takes the attitude in the resolved frame's
+        //     axes -- so spawn_vehicle uses
+        //     transpose(root_orient) * faceAlong(velWorld). The nose in
+        //     WORLD must stay along vhat even when root_orient carries
+        //     axial tilt (eerbon_rot's initial_orient above).
+        glm::dmat3 orient = glm::transpose(frame->root_orient) * faceAlong(vhat);
+        glm::dvec3 nose_world = frame->root_orient * (orient * glm::dvec3(0, 0, 1));
         snprintf(buf, sizeof buf, "%s: nose along prograde", c.desc);
-        CHECK_TRUE(glm::length(nose - vhat) < 1e-9, buf);
+        CHECK_TRUE(glm::length(nose_world - vhat) < 1e-9, buf);
+        // A raw root-frame faceAlong used as local would miss by the tilt
+        // (and by the spin angle); pin that the conversion is applied.
+        glm::dvec3 nose_local = orient * glm::dvec3(0, 0, 1);
+        glm::dvec3 vhat_local = glm::transpose(frame->root_orient) * vhat;
+        snprintf(buf, sizeof buf, "%s: nose along frame-local prograde", c.desc);
+        CHECK_TRUE(glm::length(nose_local - vhat_local) < 1e-9, buf);
         bool ortho = true;
         const glm::dmat3 gram = orient * glm::transpose(orient);
         for(int i = 0; i < 3 && ortho; i++)
@@ -494,15 +517,18 @@ int main() {
         Frame *N = eerbon_rot;  // rotating, same origin
         const double mu = eerbon_mu;
 
-        // Position-6 spawn state at t=0 (R(0)=identity): 610/1600 km
-        // ellipse, at periapsis.
+        // Position-6 spawn state at t=0: 610/1600 km ellipse, at periapsis
+        // in the inertial frame. Express it in the rotating frame's axes
+        // (R(0) carries axial tilt in initial_orient -- not identity).
         const double rp0 = 610e3, ra0 = 1600e3;
         const double a0 = 0.5 * (rp0 + ra0);
         const double vI0 = std::sqrt(mu * (2.0 / rp0 - 1.0 / a0));
         glm::dvec3 p_I0(0.0, 0.0, rp0);
         glm::dvec3 v_I0(vI0, 0.0, 0.0);
-        glm::dvec3 p_F0 = p_I0;
-        glm::dvec3 v_F0 = v_I0 - N->GetStasisVelocity(p_F0);
+        const glm::dmat3 R0 = N->GetOrientRelTo(F);  // rotating -> inertial
+        glm::dvec3 p_F0 = glm::transpose(R0) * p_I0;
+        glm::dvec3 v_F0 = glm::transpose(R0) * (v_I0 - N->GetVelocityRelTo(F))
+                        - N->GetStasisVelocity(p_F0);
 
         auto accel_inertial = [&](const glm::dvec3 &p, const glm::dvec3 &v) -> glm::dvec3 {
             (void)v;

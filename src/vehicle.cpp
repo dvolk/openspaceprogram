@@ -421,7 +421,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     // construction (a stacked part stays stacked, a radial part keeps its
     // perpendicular axis) because the parts are rigidly embedded in the
     // compound.
-    const glm::dmat3 orient = faceAlong(velWorld);
+    // `target` is in the resolved frame's axes, so `orient` must be too.
+    // faceAlong(velWorld) is a root-frame attitude (velWorld is root-frame);
+    // feeding it to placeShipAtCom as if it were local is only correct when
+    // frame->root_orient is identity. Axial tilt now lives in the rotating
+    // frame's initial_orient, so a tilted home body makes root_orient a
+    // non-trivial rotation at spawn -- the ship would come out rolled about
+    // its prograde axis by the tilt (breaks port alignment for --dock-test).
+    const glm::dmat3 orient =
+        glm::transpose(frame->root_orient) * faceAlong(velWorld);
     ship->placeShipAtCom(target, orient);
     ship->setVelocity(vel);
 

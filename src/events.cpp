@@ -43,6 +43,13 @@ void emit_sim_events(Game &g) {
             if(!p.down_sent && now >= p.down_ms) {
                 push_key(SDL_EVENT_KEY_DOWN, p);
                 p.down_sent = true;
+                /* Hold for at least this frame. A short press whose down
+                   and up fall due in the same poll would otherwise see
+                   down_sent && up_sent before tick's slotActive runs, so
+                   the down_sent..up_sent window is empty and the held
+                   command never fires -- one slow frame under load eats
+                   the whole --sim-press (dock-approach's 30 ms burst). */
+                continue;
             }
             if(p.down_sent && !p.up_sent && now >= p.up_ms) {
                 push_key(SDL_EVENT_KEY_UP, p);
