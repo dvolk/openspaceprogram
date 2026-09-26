@@ -9,7 +9,7 @@
 # (once the running system is the solar one, "Earth" resolves to the right body
 # and the find-else-fallback never fires).
 NAME switch-save-load
-ARGS --system res/systems/ksp_system.json --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_solar --reload-at 4000
 ARGS --timeout 10
 EXPECT Loaded system 'res/systems/ksp_system.json'

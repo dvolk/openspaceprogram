@@ -9,7 +9,7 @@
 # the live-U window, so "alt stayed < 10 up to 6.0" means T did not thrust.
 NAME rebind-thrust
 WRITE settings.json {"keybinds": {"thrust": [{"sc": 24, "mods": 0}]}}
-ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Moho,pad
 ARGS --timeout 12 --dbg-log
 # ramp throttle (R is ThrottleUp, not rebound -- still live)
 ARGS --sim-press 1000,1500,R

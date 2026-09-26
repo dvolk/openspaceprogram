@@ -3,7 +3,7 @@
 # consistent (total = dep + cap, burn magnitude = dv_dep), and in the sane
 # range for a Kerbin->Mun-class transfer (~1 km/s class, cf. KSP).
 NAME transfer-body
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 12 --xfer-log --orbit-interval 0.5
 ARGS --transfer-target Mun
 EXPECT [xferlog]

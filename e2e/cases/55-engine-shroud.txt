@@ -7,7 +7,7 @@
 # placeholder-cube mesh import / hot-pink texture, or a GL error on the
 # extra draw).
 NAME engine-shroud
-ARGS --scenario pad --ship res/ships/stager.json --timeout 12
+ARGS --timeout 12 --startship stager,res/ships/stager.json,Kerbin,pad
 EXPECT [shroud] engine_upper: shrouded
 EXPECT [shroud] engine_boost: bare
 FORBID GL_

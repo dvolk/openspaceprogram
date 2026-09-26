@@ -6,7 +6,7 @@
 # game on the NEW system with no vessel (routed to the title). No crash, no
 # segfault -- the failure is a clean error, not a dangling-pointer UAF.
 NAME switch-then-load-fail
-ARGS --system res/systems/ksp_system.json --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_bad_part --reload-at 4000
 ARGS --timeout 10
 EXPECT Loaded system 'res/systems/ksp_system.json'

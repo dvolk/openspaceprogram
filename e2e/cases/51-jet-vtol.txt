@@ -16,7 +16,7 @@
 #   3.0-9.0 s  T held (the jet burns; jet fuel at 6.82 kg/s for ~6 s ~= 40 kg)
 #   9.0-14 s   coast to the --timeout 14 exit
 NAME jet-vtol
-ARGS --body Duna --scenario pad --ship res/ships/jet.json --time-accel 1
+ARGS --time-accel 1 --startship jet,res/ships/jet.json,Duna,pad
 ARGS --timeout 14 --dbg-log --fuel-log
 ARGS --sim-press 1000,2000,R
 ARGS --sim-press 3000,6000,T

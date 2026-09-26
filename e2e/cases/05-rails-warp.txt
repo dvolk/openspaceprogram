@@ -8,7 +8,7 @@
 # on its conic and came back into the physics world, which is the transition
 # this case is about.
 NAME rails-warp
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 10
+ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 10
 ARGS --sim-press 1500,50,PERIOD
 ARGS --sim-press 2500,50,COMMA

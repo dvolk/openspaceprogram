@@ -54,7 +54,7 @@
 # Timeline (wall time, --time-accel 1): thrust 0.5-66 s, SPACE at
 # 12 / 24 / 36 / 48 / 60 s, --timeout 70 exits after the final phase.
 NAME asparagus-flight
-ARGS --ship res/ships/heavy_asp.json --time-accel 1
+ARGS --time-accel 1 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
 ARGS --drain-log --fuel-log --timeout 70
 ARGS --sim-press 500,65500,T,12000,0,SPACE,24000,0,SPACE,36000,0,SPACE,48000,0,SPACE,60000,0,SPACE
 EXPECT [drainlog]

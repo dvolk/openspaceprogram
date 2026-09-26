@@ -301,30 +301,23 @@ void Ships::add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int s
 }
 
 Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
-                                     System &sys, TerrainBody *home,
-                                     const std::string &default_scenario)
+                                     System &sys)
 {
     Vehicle *first = nullptr;
     for(size_t i = 0; i < entries.size(); i++) {
         const DebugStartShip &fe = entries[i];
-        TerrainBody *hb;
-        if(fe.body.empty()) {
-            hb = home; // the CLI --body resolution (or the system home)
-        } else {
-            hb = sys.find(fe.body);
-            if(hb == nullptr) {
-                std::string avail;
-                for(size_t k = 0; k < sys.bodies.size(); k++) {
-                    if(k) { avail += ", "; }
-                    avail += sys.bodies[k]->name;
-                }
-                throw std::runtime_error("start ships: ship entry " + std::to_string(i)
-                                         + ": unknown body '" + fe.body
-                                         + "' (available: " + avail + ")");
+        TerrainBody *hb = sys.find(fe.body);
+        if(hb == nullptr) {
+            std::string avail;
+            for(size_t k = 0; k < sys.bodies.size(); k++) {
+                if(k) { avail += ", "; }
+                avail += sys.bodies[k]->name;
             }
+            throw std::runtime_error("start ships: ship entry " + std::to_string(i)
+                                     + ": unknown body '" + fe.body
+                                     + "' (available: " + avail + ")");
         }
-        const ScenarioDef *sc =
-            scenario_by_name(fe.scenario.empty() ? default_scenario : fe.scenario);
+        const ScenarioDef *sc = scenario_by_name(fe.scenario);
         Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys);
         // startup crew: one kerbal aboard each capsule (the "characters in
         // ships" state; the EVA/Board transitions in game.cpp move them)

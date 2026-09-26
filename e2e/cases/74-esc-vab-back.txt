@@ -5,7 +5,7 @@
 # come out right -- a pop that loses the parked pose is the same silent
 # failure case 60 guards against (60 pins the hook, this pins the key).
 NAME esc-vab-back
-ARGS --ship res/ships/racer.json --scenario rot-orbit --timeout 10
+ARGS --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --vab res/ships/tanker.json --sim-press 3000,0,ESCAPE
 EXPECT [vab] entered the editor (sim keeps coasting)
 EXPECT [vab] back to flight (sim keeps coasting)

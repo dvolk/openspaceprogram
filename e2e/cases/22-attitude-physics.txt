@@ -29,7 +29,7 @@
 # --att-log clock cannot bleed one phase into another.
 
 NAME attitude-physics
-ARGS --ship res/ships/racer.json --scenario inertial-orbit --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
 ARGS --att-log --orbit-interval 0.3
 ARGS --sim-press 1000,3000,S
 ARGS --sim-press 6000,3000,E

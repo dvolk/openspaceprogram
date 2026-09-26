@@ -29,7 +29,7 @@
 # offset between the --sim-press clock and the --att-log clock cannot
 # bleed the idle phases in.
 NAME fuel-link-symmetric
-ARGS --ship res/ships/heavy_two.json --time-accel 1
+ARGS --time-accel 1 --startship heavy_two,res/ships/heavy_two.json,Kerbin,pad
 ARGS --fuel-log --att-log --timeout 55
 ARGS --sim-press 1000,40000,T
 EXPECT [fuel]

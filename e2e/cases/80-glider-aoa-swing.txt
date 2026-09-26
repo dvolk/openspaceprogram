@@ -12,7 +12,7 @@
 # (broadside A > edge-on A). Either failing means the attitude-dependent
 # silhouette is broken.
 NAME glider-aoa-swing
-ARGS --body Duna --scenario pad --ship res/ships/glider.json --time-accel 1
+ARGS --time-accel 1 --startship glider,res/ships/glider.json,Duna,pad
 ARGS --timeout 10 --drag-log
 ARGS --sim-press 1000,2000,R
 ARGS --sim-press 1500,3000,T

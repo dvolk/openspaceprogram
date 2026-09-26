@@ -33,8 +33,6 @@ struct DockTestShips {
    mode's gap). Throws std::runtime_error if the parts it needs are missing
    from the catalog. */
 DockTestShips build_dock_test_ships(const std::string &mode,
-                                    bool scenario_given,
-                                    const std::string &scenario,
                                     const PartsCatalog &part_catalog,
                                     TerrainBody *home,
                                     TerrainBody *sun,

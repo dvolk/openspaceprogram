@@ -11,9 +11,6 @@
    a parse error, malformed --sim-press / --sim-mouse). The sim_* state
    doubles as the live state for the synthetic input the event loop emits. */
 struct GameArgs {
-    std::string body_name;
-    std::string scenario = "pad";
-    bool scenario_given = false;    // --scenario was passed explicitly
     std::string title_body;   // --title-body: pin the title-screen backdrop to
                                // this body (a test / visual-regression hook);
                                // empty = a random non-star body
@@ -37,7 +34,10 @@ struct GameArgs {
 
     std::string system_file = "res/systems/ksp_system.json";
     std::string parts_file = "res/data/parts.json";
-    std::vector<std::string> ship_files;
+    // Start ships (the ships that exist at boot). --startship is one inline
+    // entry "name,def,body,scenario" (repeat, all four required); --startships
+    // is the same list as a JSON file.
+    std::vector<std::string> startship;
     std::string startships_file;
 
     /* Save/Load (the live fleet + crew + clock). --save captures the game

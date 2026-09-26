@@ -7,7 +7,7 @@
 # RcsForward binding (H/N back-forward, I/K up-down, J/L left-right; see
 # src/keys.cpp) -- the ship's analogue of the EVA kerbal's WASD translation.
 NAME ship-rcs
-ARGS --ship res/ships/rcs_test.json --scenario inertial-orbit --time-accel 1 --timeout 8 --dbg-log --orbit-log --orbit-interval 0.5 --sim-press 2000,2000,N --frame-cap 30
+ARGS --time-accel 1 --timeout 8 --dbg-log --orbit-log --orbit-interval 0.5 --sim-press 2000,2000,N --frame-cap 30 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
 EXPECT Building ship 'rcs_test' (2 parts)
 FORBID GL_
 FORBID error:

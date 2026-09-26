@@ -18,7 +18,7 @@
 # aborts the process, so the exit-code check would catch it too -- the FORBID
 # is here for the diagnostic.
 NAME compound-check
-ARGS --scenario rot-orbit --ship res/ships/stager.json --time-accel 1 --timeout 15 --compound-check
+ARGS --time-accel 1 --timeout 15 --compound-check --startship stager,res/ships/stager.json,Kerbin,rot-orbit
 ARGS --sim-press 3000,0,SPACE
 EXPECT Main loop starting
 EXPECT [compound] t=

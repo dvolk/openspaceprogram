@@ -23,34 +23,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                          std::string("Open Space Program ") + VERSION,
                          "Prints the version and exits");
 
-    app.add_option("--body", args.body_name,
-        "Body the ship starts on / orbits (default: the system's home body)");
     app.add_option("--title-body", args.title_body,
         "Pin the title-screen backdrop to this body instead of a random "
         "non-star one (a test / visual-regression hook; default: random)");
-
-    /* The name list is duplicated below (the help text and the IsMember
-       validator) and again in vehicle.cpp's kScenarios, which is the real
-       source of truth -- scenario_by_name() lists them when it throws.
-       Unifying would mean exposing the names from vehicle.h, and that pulls
-       body.h (Bullet + GL) into this deliberately dependency-free
-       translation unit. So: add a scenario in ALL THREE places. */
-    app.add_option("--scenario", args.scenario,
-        "Starting scenario: pad, pad-polar, rot-orbit, inertial-orbit, "
-        "high-orbit, high-polar, ellipse-peri, ellipse-apo, ellipse-mid, "
-        "escape, neptune, oort, interstellar (the ellipse-* scenarios are a "
-        "10x1000 km ASL orbit started at periapsis, apoapsis, or halfway by "
-        "angle between them; escape is 2x escape velocity at the rot-orbit "
-        "radius, coasting out of the body's SOI on its own; neptune / oort / "
-        "interstellar are circular orbits at an absolute 4.495e12 / 1e15 / "
-        "1e17 m from the body centre -- real astronomical distances, for "
-        "precision testing; use them with --body Kerbol, since around a "
-        "planet the ship inherits that planet's orbital velocity and is "
-        "hyperbolic w.r.t. the star; default: pad)")
-        ->check(CLI::IsMember({"pad", "pad-polar", "rot-orbit",
-                               "inertial-orbit", "high-orbit", "high-polar",
-                               "ellipse-peri", "ellipse-apo", "ellipse-mid",
-                               "escape", "neptune", "oort", "interstellar"}));
 
     app.add_option("--system", args.system_file,
                    "Star-system JSON file to load (default: "
@@ -60,19 +35,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--parts", args.parts_file,
                    "Parts catalog JSON (default: res/data/parts.json)");
 
-    app.add_option("--ship", args.ship_files,
-                   "Ship def JSON to build; repeat the flag to build more "
-                   "ships (they share the --body/--scenario, each getting "
-                   "its own pad slot / orbit slot and its name from its own "
-                   "def). A uniform-list shorthand -- --startships (one entry "
-                   "per ship, all fields required) overrides it");
+    app.add_option("--startship", args.startship,
+                   "One start ship: name,def,body,scenario -- all four "
+                   "required (e.g. racer,res/ships/racer.json,Kerbin,pad). "
+                   "Repeat the flag for more ships; ships sharing a "
+                   "body+scenario get their own pad/orbit slot. --startships "
+                   "is the same list as a JSON file (and overrides it)");
 
     app.add_option("--startships", args.startships_file,
-                   "Start-ship-list JSON (default: none; then --ship "
-                   "applies). One entry per ship; each entry must name all "
-                   "four of ship def, name, body and scenario (the game "
+                   "Start-ship-list JSON: one entry per ship, each naming all "
+                   "four of name, ship def, body and scenario (the game "
                    "errors if any is missing). Ships sharing a body+scenario "
-                   "get their own pad slot / orbit slot. Try "
+                   "get their own pad/orbit slot. Overrides --startship. Try "
                    "e2e/fixtures/startships.json");
 
     app.add_option("--save", args.save_name,
@@ -83,7 +57,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "exclusive with --load");
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "
-                   "instead of building the start ships (--ship/--startships are ignored). "
+                   "instead of building the start ships (--startship/--startships are ignored). "
                    "A bare name is a slot under the data dir's saves/. "
                    "Mutually exclusive with --save");
     app.add_option("--data-dir", args.data_dir,
@@ -733,11 +707,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         : fullscreen ? WindowMode::Fullscreen
         : borderless ? WindowMode::Borderless
                      : WindowMode::Windowed;
-
-    /* Whether --scenario was passed explicitly: the --radial-test block
-       honors it, and otherwise defaults the test ship to an orbit. */
-    args.scenario_given = app.get_option("--scenario") != nullptr
-                        && app.get_option("--scenario")->count() > 0;
 
     /* Which settings the CLI set explicitly (CLI11 ->count()): the
        settings.json load honors this mask -- the command line beats the

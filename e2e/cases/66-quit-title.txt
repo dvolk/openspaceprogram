@@ -10,7 +10,7 @@
 # before the 8 s and this line would never print. The --load boot path starts
 # shipless, so it cannot show a teardown of a LIVE fleet; this can.
 NAME quit-title
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --quit-title 2000
 EXPECT [game] unloaded: fleet torn down
 EXPECT [scene] flight -> title (enterTitle)

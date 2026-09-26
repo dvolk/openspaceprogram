@@ -6,7 +6,7 @@
 # small SDLK values 1..4, not SDLK_1..4 (=49..52). Pressed in turn they walk
 # flight -> hub -> flight -> tracking -> vab.
 NAME scene-switch-keys
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --sim-press 800,0,49 --sim-press 1600,0,50 --sim-press 2400,0,51 --sim-press 3200,0,52
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> flight (enterFlight)

@@ -19,14 +19,11 @@ struct RadialTestShip {
 };
 
 /* Build one passive-tank spin-test ship for the given --radial-test mode
-   ("parallel", "stacked", "stacks", "parstacks"). If
-   scenario_given is false the ship starts in a "rot-orbit" scenario (no pad
-   contact, no terrain noise in the spin measurement); otherwise it honors
-   the caller's scenario. Throws std::runtime_error if the two tank parts it
-   needs are missing from the catalog. */
+   ("parallel", "stacked", "stacks", "parstacks"). The ship starts in a
+   "rot-orbit" scenario (no pad contact, no terrain noise in the spin
+   measurement). Throws std::runtime_error if the two tank parts it needs
+   are missing from the catalog. */
 RadialTestShip build_radial_test_ship(const std::string &mode,
-                                      bool scenario_given,
-                                      const std::string &scenario,
                                       const PartsCatalog &part_catalog,
                                       TerrainBody *home,
                                       TerrainBody *sun,

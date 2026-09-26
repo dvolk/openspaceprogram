@@ -183,6 +183,26 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
     }
 }
 
+// Split one --startship value "name,def,body,scenario" into its four fields
+// (all required, non-empty); returns false if the shape is wrong. A field may
+// not contain a comma (the field separator).
+static bool splitStartship(const std::string &spec, DebugStartShip &out) {
+    std::vector<std::string> f;
+    std::string cur;
+    for(char c : spec) {
+        if(c == ',') { f.push_back(cur); cur.clear(); }
+        else { cur += c; }
+    }
+    f.push_back(cur);
+    if(f.size() != 4) { return false; }
+    for(const std::string &x : f) { if(x.empty()) { return false; } }
+    out.name = f[0];
+    out.ship = f[1];
+    out.body = f[2];
+    out.scenario = f[3];
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     const auto prog_start = std::chrono::steady_clock::now();
@@ -400,30 +420,17 @@ int main(int argc, char **argv)
             drawLoadingFrame(display, bigger, buf);
         });
     TerrainBody *sun = sys.root;
-    TerrainBody *home;
-    if(args.body_name.empty()) {
-        home = sys.home;
-    } else {
-        home = sys.find(args.body_name);
-        if(home == nullptr) {
-            std::string avail;
-            for(size_t i = 0; i < sys.bodies.size(); i++) {
-                if(i) avail += ", ";
-                avail += sys.bodies[i]->name;
-            }
-            printf("error: unknown body '%s' (available: %s)\n",
-                   args.body_name.c_str(), avail.c_str());
-            return 1;
-        }
-    }
+    TerrainBody *home = sys.home;   // the system home: the VAB launch body,
+                                    // the title backdrop, and the body the
+                                    // --radial-test / --dock-test ships use.
+                                    // (Start ships name their own body.)
 
     /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
        order + offsets, and the start-ship list supplies one entry per ship:
-       its def, name, body and scenario. The list comes from --startships
-       (a JSON file; every field required) or, when that is not given,
-       from the --ship flags as a uniform list (all ships share the --body /
-       --scenario, each taking its name from its own def). Ships sharing a
+       its name, def, body and scenario (all four required). The list comes
+       from --startships (a JSON file) or, failing that, from the repeatable
+       --startship flag (each "name,def,body,scenario"). Ships sharing a
        (body, scenario) pair are slotted: pad slots 20 m apart along the pad,
        orbit slots 20 m apart along the orbit binormal. */
     Ships ships(args.parts_file, partsshader, sun);
@@ -478,6 +485,8 @@ int main(int argc, char **argv)
 
     std::vector<DebugStartShip> start_ships;
     if(!args.startships_file.empty()) {
+        // file form: a JSON list (loadDebugStartShips already validates all
+        // four fields per entry and throws on any error)
         try {
             start_ships =
                 loadDebugStartShips(resdir::path(args.startships_file).c_str())
@@ -486,21 +495,20 @@ int main(int argc, char **argv)
             printf("error: %s\n", e.what());
             return 1;
         }
-    } else if(!args.ship_files.empty() || !args.body_name.empty()) {
-        // --ship names the ship; a lone --body has no ship to place on it.
-        // Neither -> no vessel at all, which boots to the title screen.
-        if(args.ship_files.empty()) {
-            printf("error: --body was given without --ship "
-                   "(or --startships); there is no ship to place on it "
-                   "(pass --ship, or --startships)\n");
-            return 1;
-        }
-        for(size_t i = 0; i < args.ship_files.size(); i++) {
+    } else if(!args.startship.empty()) {
+        // inline form: each --startship is "name,def,body,scenario"
+        for(size_t i = 0; i < args.startship.size(); i++) {
             DebugStartShip e;
-            e.ship = args.ship_files[i];
+            if(!splitStartship(args.startship[i], e)) {
+                printf("error: --startship #%zu '%s': expected "
+                       "name,def,body,scenario (four non-empty fields)\n",
+                       i + 1, args.startship[i].c_str());
+                return 1;
+            }
             start_ships.push_back(e);
         }
     }
+    // Neither -> no start ships, which boots to the title screen.
 
     /* The heavy phase (max_height + root terrain + the atmosphere/cloud/
        ocean shells) is the part that made a big system take ~7s. Split it:
@@ -603,7 +611,7 @@ int main(int argc, char **argv)
             sync.push_back(vb != nullptr ? vb : home);   // the launch body
         } else if(!start_ships.empty()) {
             for(const DebugStartShip &fe : start_ships) {
-                sync.push_back(fe.body.empty() ? home : sys.find(fe.body));
+                sync.push_back(sys.find(fe.body));   // required, non-empty
             }   // postHeavyPhase dedupes the sync set and caps it at two
         } else {
             sync.push_back(game.pickTitleBody());   // the backdrop, below
@@ -617,14 +625,12 @@ int main(int argc, char **argv)
 
         if(!args.radial_test.empty()) {
             RadialTestShip rts = build_radial_test_ship(
-                args.radial_test, args.scenario_given, args.scenario,
-                ships.catalog(), home, sun, partsshader);
+                args.radial_test, ships.catalog(), home, sun, partsshader);
             ships.add_ship(rts.v, home, rts.sc, rts.slot);
             first = rts.v;
         } else if(!args.dock_test.empty()) {
             DockTestShips dts = build_dock_test_ships(
-                args.dock_test, args.scenario_given, args.scenario,
-                ships.catalog(), home, sun, partsshader, sys);
+                args.dock_test, ships.catalog(), home, sun, partsshader, sys);
             /* Both are placed already (the builder ran spawn_vehicle for the
                station and placed the probe relative to it), so null scenario:
                apply_scenarios skips them. The probe is the ACTIVE ship; the
@@ -634,7 +640,7 @@ int main(int argc, char **argv)
             ships.add_ship(dts.station, home, nullptr, 1);
             first = dts.probe;
         } else {
-            first = ships.buildDebugStartShips(start_ships, sys, home, args.scenario);
+            first = ships.buildDebugStartShips(start_ships, sys);
         }
     }
 

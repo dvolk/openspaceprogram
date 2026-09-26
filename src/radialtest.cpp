@@ -14,8 +14,6 @@
 #include "texture.h"  // get_texture
 
 RadialTestShip build_radial_test_ship(const std::string &mode,
-                                      bool scenario_given,
-                                      const std::string &scenario,
                                       const PartsCatalog &part_catalog,
                                       TerrainBody *home,
                                       TerrainBody *sun,
@@ -41,10 +39,8 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                                  "tank_r1.5h2 missing from the parts catalog");
     }
 
-    /* honor an explicit --scenario, otherwise orbit (no pad
-       contact, no terrain noise in the spin measurement) */
-    const ScenarioDef *sc = scenario_by_name(
-        scenario_given ? scenario : "rot-orbit");
+    /* orbit (no pad contact, no terrain noise in the spin measurement) */
+    const ScenarioDef *sc = scenario_by_name("rot-orbit");
 
     Vehicle *v = new Vehicle;
     v->m_parent = home;
@@ -53,7 +49,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
 
     const glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     const glm::dmat3 pad_orient = faceAlong(pad_dir);
-    /* Start 50 m above the surface so a --scenario pad ship drops
+    /* Start 50 m above the surface so a pad-scenario ship drops
        onto the ground (the lowest part would otherwise start
        embedded in the terrain). For orbit scenarios this is only
        staging -- spawn_vehicle repositions the ship. */

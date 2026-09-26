@@ -10,7 +10,7 @@
 # END LOWER (the propellant is being consumed), and the orbit energy must
 # have changed (the RCS actually thrust).
 NAME ship-rcs-fuel
-ARGS --ship res/ships/rcs_test.json --scenario inertial-orbit --time-accel 10 --timeout 18 --fuel-log --orbit-log --orbit-interval 0.5 --sim-press 1000,14000,N --frame-cap 30
+ARGS --time-accel 10 --timeout 18 --fuel-log --orbit-log --orbit-interval 0.5 --sim-press 1000,14000,N --frame-cap 30 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
 EXPECT Building ship 'rcs_test' (2 parts)
 FORBID GL_
 FORBID error:

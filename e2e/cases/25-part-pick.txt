@@ -12,7 +12,7 @@
 # one rigid body per part, so the hit has to be mapped back from a compound
 # child index) would break. "ship=" alone passed with any part index.
 NAME part-pick
-ARGS --scenario pad --ship res/ships/racer.json --time-accel 0 --timeout 15
+ARGS --time-accel 0 --timeout 15 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-mouse 1000,0,960,540,0
 ARGS --sim-mouse 1200,0,960,540,RMB
 EXPECT Main loop starting

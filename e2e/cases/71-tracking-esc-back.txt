@@ -4,7 +4,7 @@
 # (The full walk-down from the deepest scene, including the floor refusal,
 # is case 73.)
 NAME tracking-esc-back
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --space-center 1000 --tracking 2000 --sim-press 3000,0,ESCAPE
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> tracking (push)

@@ -2,7 +2,7 @@
 # orbit the camera. No distinctive stdout line marks the rotation, so this
 # only verifies the mouse-input path doesn't crash the game (exit 0, no GL_).
 NAME mouse-orbit
-ARGS --scenario pad --ship res/ships/racer.json --time-accel 1 --timeout 8
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-mouse 1000,0,900,500,0
 ARGS --sim-mouse 1200,500,1100,600,RMB
 EXPECT Main loop starting

@@ -9,7 +9,7 @@
 # wet ~97 kg to the dry ~87 kg (the hydrazine is gone), and the velocity
 # must have changed (the RCS actually thrust).
 NAME eva-rcs-fuel
-ARGS --ship res/ships/kerbal.json --scenario inertial-orbit --time-accel 10 --timeout 18 --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30
+ARGS --time-accel 10 --timeout 18 --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30 --startship kerbal,res/ships/kerbal.json,Kerbin,inertial-orbit
 EXPECT Building ship 'kerbal' (1 parts)
 FORBID GL_
 FORBID error:

@@ -5,7 +5,7 @@
 # re-armed before each of the three transitions so the push AND pop paths
 # both run the reset branch.
 NAME tab-reset-scene-entry
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --sim-press 1000,0,TAB --space-center 2000 --sim-press 2500,0,TAB
 ARGS --tracking 3000 --sim-press 3500,0,TAB --tracking-close 4000
 EXPECT [scene] flight -> spacecenter (push)

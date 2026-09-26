@@ -1203,7 +1203,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
    a circular orbit at an ABSOLUTE radius from the body centre, anchored to
    a real astronomical distance rather than a multiple of the home body's
    SOI, so the same name means the same distance around any body. Use them
-   with --body Kerbol: around a planet the radius is still exact, but the
+   with the star as the body (Kerbol in --startship): around a planet the
    spawn inherits the planet's own orbital velocity, so the ship is
    hyperbolic with respect to the star (ecc ~1.8 at neptune around Kerbin)
    rather than circular. They exist as precision test beds -- Kerbol's SOI

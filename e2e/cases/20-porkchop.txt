@@ -4,7 +4,7 @@
 # the robust color-scale max (dv_hi) is a multiple of the min dv, not the
 # unphysical fast-transfer spike (which would be ~hundreds of x the min dv).
 NAME porkchop
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 15 --porkchop-log --porkchop-n 40 --orbit-interval 0.5
 ARGS --transfer-target Mun
 ARGS --sim-press 3000,0,P

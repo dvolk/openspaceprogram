@@ -4,7 +4,7 @@
 # scale-1 baseline gains ~155 m in this run; scale 2 gains ~380 m, so a
 # 250 m floor is only reachable when the scale is actually applied.
 NAME exhaust-scale
-ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Moho,pad
 ARGS --timeout 10 --dbg-log
 ARGS --exhaust-scale 2
 ARGS --sim-press 1000,2000,R

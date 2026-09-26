@@ -88,8 +88,11 @@ def flight(presses, timeout, body, ship, cd, autopilot=None):
     ship stays pointed where you want it -- needed for a straight-up boost
     (the radial-out hold) that a hand-held stick can't maintain headless."""
     game = os.path.join(REPO, "osp")
+    name = os.path.basename(ship)
+    if name.endswith(".json"):
+        name = name[:-5]
     args = [
-        "--body", body, "--scenario", "pad", "--ship", ship,
+        "--startship", "%s,%s,%s,pad" % (name, ship, body),
         "--time-accel", "1", "--timeout", str(timeout),
         "--drag-log", "--drag-cd", str(cd),
     ]

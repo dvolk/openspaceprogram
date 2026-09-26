@@ -6,7 +6,7 @@
 # Running to the full timeout is the assertion that matters: the fleet is
 # torn down and rebuilt mid-flight, and the sim keeps going afterwards.
 NAME reload
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_racer --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 EXPECT Loaded game from e2e/fixtures/save_racer (active: racer)

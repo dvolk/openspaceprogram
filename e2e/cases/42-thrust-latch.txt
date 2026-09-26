@@ -7,7 +7,7 @@
 # -- throttle is ramped by R first, exactly as in 41-rebind.
 NAME thrust-latch
 WRITE settings.json {"keybinds": {"thrust_latch": [{"sc": 24, "mods": 0}]}}
-ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Moho,pad
 ARGS --timeout 14 --dbg-log
 # ramp throttle (R = ThrottleUp) -- thrust needs throttle > 0
 ARGS --sim-press 1000,1500,R

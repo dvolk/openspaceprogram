@@ -4,7 +4,7 @@
 # flight's Esc is the menu entry, not a pop. flight -> hub -> tracking, then
 # three Esc presses: pop to the hub, pop to flight, then push the hub again.
 NAME esc-scene-pop
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 10
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --space-center 1000 --tracking 2000
 ARGS --sim-press 3000,0,ESCAPE --sim-press 3500,0,ESCAPE --sim-press 4000,0,ESCAPE
 EXPECT [scene] flight -> spacecenter (push)

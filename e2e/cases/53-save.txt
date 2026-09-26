@@ -3,7 +3,7 @@
 # and exits 0. Assert the save line, that a live burn happened (E changes),
 # and a clean exit. Self-contained -- it writes to tmp/ (a scratch dir).
 NAME save
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 10
+ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 12 --save tmp/e2e_save --orbit-log --orbit-interval 0.5
 ARGS --sim-press 500,500,R
 ARGS --sim-press 1500,3000,T

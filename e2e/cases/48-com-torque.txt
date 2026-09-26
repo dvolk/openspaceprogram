@@ -20,7 +20,7 @@
 # the lag), so the assertion here is on |w|, not on the probe.
 
 NAME com-torque
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --att-log --orbit-interval 0.3 --drain-log
 ARGS --sim-press 1000,5000,T
 ARGS --timeout 14

@@ -48,7 +48,7 @@ int main() {
         std::string out = run(2, (char **)argv, args, ok, code);
         assert(!ok);
         assert(code == 0);
-        assert(out.find("--body") != std::string::npos);
+        assert(out.find("--startship") != std::string::npos);
         assert(out.find("--version") != std::string::npos);
     }
 

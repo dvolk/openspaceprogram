@@ -32,7 +32,7 @@ struct DebugStartShip {
     std::string ship;      // ship def path
     std::string name;      // display name
     std::string body;      // the body it sits on (a name in the system)
-    std::string scenario;  // the spawn scenario (see --scenario)
+    std::string scenario;  // the spawn scenario (a --startship field)
 };
 
 // The collection of them (the parsed "ships" array).
@@ -126,8 +126,7 @@ public:
     // list. Throws std::runtime_error naming the entry + body on an
     // unknown body.
     Vehicle *buildDebugStartShips(const std::vector<DebugStartShip> &entries,
-                                  System &sys, TerrainBody *home,
-                                  const std::string &default_scenario);
+                                  System &sys);
 
 private:
     // Ensure the (body, pad-site) pad exists; build it on demand (the

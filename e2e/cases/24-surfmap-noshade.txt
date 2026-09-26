@@ -3,7 +3,7 @@
 # exactly (the shade factor is 1.0, and 1.0 * x == x, so the two sums are
 # bit-identical) and the log reports shade=off.
 NAME surfmap-noshade
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 15 --surfmap-log --surfmap-n 128 --surfmap-noshade
 ARGS --sim-press 3000,0,M
 EXPECT [surfmap]

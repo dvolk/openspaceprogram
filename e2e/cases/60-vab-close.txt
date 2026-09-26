@@ -1,6 +1,6 @@
 # VAB "Back to game" -- the camera park/restore round trip.
 #
-# --ship builds a racer as the active ship and --vab opens the editor with
+# --startship builds a racer as the active ship and --vab opens the editor with
 # tanker.json as the build tree, so entering the editor parks the FLIGHT camera
 # (Game::parkCamera) and --vab-close fires vabClose at 2 s, which must hand that
 # exact pose back (Game::restoreCamera).
@@ -15,7 +15,7 @@
 # --vab-close is the only headless path in: vabClose is otherwise a UI button
 # ("Back to game"), so before this hook nothing automated covered restoreCamera.
 NAME vab-close
-ARGS --ship res/ships/racer.json --scenario rot-orbit
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --vab res/ships/tanker.json --vab-close 2000 --timeout 10
 EXPECT [vab] entered the editor (sim keeps coasting)
 EXPECT [vab] back to flight (sim keeps coasting)

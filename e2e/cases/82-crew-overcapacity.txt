@@ -14,7 +14,7 @@
 # load and stays put, exit 0. The startup --load path exits 1 for the same
 # throw, but the harness requires exit 0.
 NAME save-load-crew-overcapacity
-ARGS --ship res/ships/racer.json --scenario rot-orbit --time-accel 1 --timeout 8
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_racer_overcrew --reload-at 2000
 ARGS --orbit-log --orbit-interval 0.5
 EXPECT [load] refused e2e/fixtures/save_racer_overcrew

@@ -23,8 +23,6 @@
 #include "texture.h"  // get_texture
 
 DockTestShips build_dock_test_ships(const std::string &mode,
-                                    bool scenario_given,
-                                    const std::string &scenario,
                                     const PartsCatalog &part_catalog,
                                     TerrainBody *home,
                                     TerrainBody *sun,
@@ -55,8 +53,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
                                  + "' (near | approach)");
     }
 
-    const ScenarioDef *sc = scenario_by_name(
-        scenario_given ? scenario : "rot-orbit");
+    const ScenarioDef *sc = scenario_by_name("rot-orbit");
 
     /* One Part (shared render assets + hull + mass, wrapped with the
        catalog spec), exactly the radialtest builder's makePart. */

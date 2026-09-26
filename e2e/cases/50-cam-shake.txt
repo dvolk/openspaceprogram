@@ -6,7 +6,7 @@
 # the amplitude at its cap -- the case asserts the pipeline (force ->
 # accel -> amplitude), not the exact magnitude.
 NAME cam-shake
-ARGS --body Moho --scenario pad --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Moho,pad
 ARGS --timeout 12 --shake-log
 ARGS --sim-press 1000,2000,R
 ARGS --sim-press 3000,2000,T

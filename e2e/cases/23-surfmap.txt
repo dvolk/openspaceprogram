@@ -6,7 +6,7 @@
 # strictly lower on at least one (a planet orbiting a star is never
 # fully lit -- half the map is night).
 NAME surfmap
-ARGS --scenario rot-orbit --ship res/ships/racer.json --time-accel 1
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 15 --surfmap-log --surfmap-n 128
 ARGS --sim-press 3000,0,M
 EXPECT [surfmap]

@@ -28,7 +28,7 @@
 #   0.5-10.5 s  T held (thrust, ~52 kg/s off each outer group)
 #   10.5-16 s   coast to the --timeout 16 exit
 NAME asparagus-drain
-ARGS --ship res/ships/heavy_asp.json --time-accel 1
+ARGS --time-accel 1 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
 ARGS --fuel-log --timeout 16
 ARGS --sim-press 500,10000,T
 EXPECT [fuel]
