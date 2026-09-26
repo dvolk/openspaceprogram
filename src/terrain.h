@@ -36,6 +36,21 @@ class Vehicle;          // a ship (vehicle.h); a body owns its ship list
 struct Body;            // a rigid body (body.h); StaticBuilding's physics body
 class StaticBuilding;   // a space pad (defined at the end of this file)
 
+// What one body's patch tree looks like right now (TerrainBody::lodStats,
+// printed by --terrain-log). `deep_off` is the useful one: the distance from
+// the camera to the NEAREST leaf at the deepest level, i.e. how far the
+// finest detail is from where you are looking -- it should be a patch width
+// or two, not a body radius. Read it only when `deepest > 0`: a tree with no
+// leaves at all (an unattached body) leaves the defaults, where deep_off == 0
+// would read as "the detail is exactly at the camera".
+struct TerrainLodStats {
+    int patches = 0;        // alive patches (every level, not just leaves)
+    int deepest = 0;        // the deepest leaf's depth
+    int collision = 0;      // leaves carrying a Bullet body (depth == max)
+    double deep_off = 0;    // [m] camera -> the nearest deepest leaf's point
+    double cam_r = 0;       // [m] camera -> the body centre
+};
+
 struct GeoPatch {
     TerrainBody *body;
     Mesh *mesh;      // OWNED (procedural grid, unique per patch)
@@ -59,7 +74,7 @@ struct GeoPatch {
     // runs every frame over every alive patch, so it must not re-sample
     // the height function or re-measure the corners.
     double centroid_height;   // [m] terrain radius at `centroid`
-    double width_m;           // [m] widest edge arc (v0-v3 chord * radius)
+    double width_m;           // [m] characteristic size (mean edge chord)
 
     // A requestSubdivide job is in flight: the worker is building the four
     // children's grids and the main-thread continuation will attach them
@@ -78,11 +93,18 @@ struct GeoPatch {
     // double, so the float32 uniform only ever holds patch-scale numbers)
     // and issues the mesh draws.
     void Draw(const Camera* camera, bool skirt_pass);
+    // cam_bf: the camera in BODY-FIXED axes (cameraInBodyFrame -- the patch
+    // corners/centroid are body-fixed, so the body's spin must be undone,
+    // not just its position subtracted). px_per_rad: the camera's screen
+    // scale (lodPxPerRad); it depends only on the camera, so
+    // TerrainBody::Update computes it once per body per frame rather than
+    // per patch.
     // max_patch_px: subdivide while the patch projects wider than this
     // [screen px]; collapse below half (the hysteresis band). Subdivision
     // is async (requestSubdivide): the parent keeps drawing until its
     // children land, so there is never a hole.
-    void Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px, JobRunner &jobs);
+    void Update(const glm::dvec3 &cam_bf, double px_per_rad,
+                int max_patch_px, JobRunner &jobs);
 
     // Post the async subdivision job (main thread). The worker builds the
     // four children's GridGeoms (pure math, terragen.h); the main-thread
@@ -681,11 +703,40 @@ struct TerrainBody {
         }
     }
 
+    // The camera in this body's FIXED axes (cameraInBodyFrame): the LOD
+    // measure and the --terrain-log readout both need it, and it is one
+    // rotation per body per frame instead of one per patch.
+    glm::dvec3 CameraInBodyFrame(const Camera *camera) const {
+        return cameraInBodyFrame(transform, camera->GetPos());
+    }
+
     void Update(const Camera* camera, int max_patch_px, JobRunner &jobs) {
         if(!ready) return;
+        const glm::dvec3 cam_bf = CameraInBodyFrame(camera);
+        // The screen scale depends only on the camera, and the tree is walked
+        // every frame: do the projection maths once here, not once per patch.
+        const double px_per_rad = lodPxPerRad(camera->viewport_h, camera->fov);
         for(auto&& patch : patches) {
-            patch->Update(camera, transform, max_patch_px, jobs);
+            patch->Update(cam_bf, px_per_rad, max_patch_px, jobs);
         }
+    }
+
+    // LOD telemetry (--terrain-log): the live tree relative to the camera.
+    // Walks `alive` (every patch of this body, kept by the GeoPatch ctor /
+    // dtor), so it is one pass per logged line rather than per frame.
+    TerrainLodStats lodStats(const glm::dvec3 &cam_bf) const {
+        TerrainLodStats s;
+        s.cam_r = glm::length(cam_bf);
+        for(const GeoPatch *p : alive) {
+            s.patches++;
+            if(p->kids[0] != NULL) { continue; }   // leaves carry the detail
+            if(p->collision != NULL) { s.collision++; }
+            const double off = glm::length(
+                cam_bf - p->centroid_height * (glm::dvec3)p->centroid);
+            if(p->depth > s.deepest) { s.deepest = p->depth; s.deep_off = off; }
+            else if(p->depth == s.deepest and off < s.deep_off) { s.deep_off = off; }
+        }
+        return s;
     }
 
     int CountPatches() {

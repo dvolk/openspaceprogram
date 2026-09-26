@@ -151,6 +151,7 @@ struct GameArgs {
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
     bool att_log = false;          // log the ship's nose + angular velocity
     bool shake_log = false;       // --shake-log: the cam-shake state per interval
+    bool terrain_log = false;     // --terrain-log: the local body's patch-tree LOD
     bool tq_log = false;           // --tq-log: COM-lag x net-force spurious-torque probe
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links
     bool drain_log = false;      // --drain-log: per-fuel-group drain rate (kg/s)

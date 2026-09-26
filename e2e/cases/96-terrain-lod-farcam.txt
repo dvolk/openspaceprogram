@@ -1,0 +1,32 @@
+# Terrain LOD with a distant camera: --free-cam-pos is applied during init,
+# so the camera is 4000 km out from the first frame and the tree NEVER grows
+# past the six roots -- a root patch projects ~162 px there, under the
+# budget's 512 px, and even under the 256 px collapse floor. That is the
+# "far camera stays coarse" half of the LOD; the grow-then-collapse
+# TRANSITION (the hysteresis band, GeoPatch::Update's delete-kids branch)
+# needs a moving camera and is not covered by the battery yet.
+#
+# Note what the log says about collision: 0. Collidable terrain only exists
+# on max_depth leaves (terrain.cpp: has_collision = depth >= max_depth), so
+# a distant CAMERA means no ground under a grounded ship -- issue #24. The
+# pad ship here is held up by the pad's own StaticBuilding body, so nothing
+# falls; a ship resting on terrain would. When #24 is fixed (collision
+# decoupled from the render LOD and keyed on the ship), this case should grow
+# `CHECK last(terrain)["collision"] > 0`.
+NAME terrain-lod-farcam
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad --width 1920 --height 1080
+ARGS --terrain-px 512 --free-cam-pos 0 4000000 0
+ARGS --timeout 14 --terrain-log --orbit-interval 2
+EXPECT [terrain]
+EXPECT Main loop starting
+FORBID GL_
+FORBID error:
+CHECK len(terrain) > 3
+# the tree is the six roots from the first sample to the last
+CHECK all(t["patches"] == 6 for t in terrain)
+CHECK all(t["deepest"] == 1 for t in terrain)
+CHECK last(terrain)["max_depth"] == 12
+# the camera really is far out, and the coarse detail is nowhere near it
+CHECK last(terrain)["cam_r"] > 3.9e6
+CHECK last(terrain)["deep_off"] > 3.0e6
+LIMIT 90

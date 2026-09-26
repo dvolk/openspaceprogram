@@ -85,23 +85,6 @@ GeoPatch::~GeoPatch() {
     delete mesh;   // owned (procedural grid); the shader is shared
 }
 
-// The four children's corner quads: the edge midpoints (v01, v12, v23,
-// v30) + the shared center cn.
-static void subdivideCorners(const glm::vec3 &v0, const glm::vec3 &v1,
-                             const glm::vec3 &v2, const glm::vec3 &v3,
-                             glm::vec3 quad[4][4]) {
-    const glm::vec3 v01 = glm::normalize(v0+v1);
-    const glm::vec3 v12 = glm::normalize(v1+v2);
-    const glm::vec3 v23 = glm::normalize(v2+v3);
-    const glm::vec3 v30 = glm::normalize(v3+v0);
-    const glm::vec3 cn  = glm::normalize(v0+v1+v2+v3);
-
-    quad[0][0] = v0;  quad[0][1] = v01; quad[0][2] = cn;  quad[0][3] = v30;
-    quad[1][0] = v01; quad[1][1] = v1;  quad[1][2] = v12; quad[1][3] = cn;
-    quad[2][0] = cn;  quad[2][1] = v12; quad[2][2] = v2;  quad[2][3] = v23;
-    quad[3][0] = v30; quad[3][1] = cn;  quad[3][2] = v23; quad[3][3] = v3;
-}
-
 void GeoPatch::requestSubdivide(JobRunner &jobs) {
     subdivide_in_flight = true;
     TerrainBody *body = this->body;
@@ -137,6 +120,14 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
             // subtree while the job was in flight) or no longer want
             // children (a zoom-out cleared the flag on the collapse path)
             // -- in either case drop the built grids.
+            // patchAlive is a POINTER check, so it holds only while a freed
+            // patch's address cannot come back with its flag already set:
+            // continuations run in job order inside one poll(), all before
+            // the frame's Update posts anything new, so a patch allocated
+            // after this one was freed is allocated by a LATER continuation
+            // and starts with subdivide_in_flight false. Break that ordering
+            // (a second worker, or a continuation that posts and polls) and
+            // this needs a per-patch id instead -- see the filed issue.
             if(!body->patchAlive(parent) || !parent->subdivide_in_flight) {
                 return;
             }
@@ -173,7 +164,11 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     // (the height sample is a full noise evaluation; doing it per patch
     // per frame in Update was pure waste).
     centroid_height = (double)body->GetTerrainHeight(centroid);
-    width_m = (double)body->radius * (double)glm::length(v0 - v3);
+    // The mean of the four edge chords, NOT one edge: the midpoint
+    // subdivision makes the quads unequal-edged, and a single edge (v0-v3)
+    // biased the LOD threshold by up to 28% between same-depth siblings --
+    // one coarse patch sitting inside an otherwise detailed square.
+    width_m = (double)body->radius * patchWidthUnit(v0, v1, v2, v3);
     // Leaf patches (subdivision stops at depth == the body's max_depth)
     // get the collision mesh.
     bool has_collision = depth >= body->max_depth;
@@ -230,23 +225,23 @@ void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
     }
 }
 
-void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max_patch_px, JobRunner &jobs) {
-    const glm::dvec3 camera_pos = camera->GetPos() - (glm::dvec3)(transform[3]);
+void GeoPatch::Update(const glm::dvec3 &cam_bf, double px_per_rad,
+                      int max_patch_px, JobRunner &jobs) {
     // Distance to this patch's OWN surface point (centroid_height is
     // cached in the ctor; an earlier version re-sampled the height here
     // every frame, and one before that sampled it at the camera
-    // direction, which mis-measured the distance on slopes).
+    // direction, which mis-measured the distance on slopes). cam_bf is
+    // already in body-fixed axes (cameraInBodyFrame), like `centroid`.
     const glm::dvec3 centroid_pos = centroid_height * (glm::dvec3)centroid;
-    const double dist = glm::length(camera_pos - centroid_pos);
+    const double dist = glm::length(cam_bf - centroid_pos);
 
-    // Projected patch width in screen pixels (small-angle; exact in the
-    // small-patch regime that matters here). A patch subdivides while it
-    // projects wider than max_patch_px and collapses below half of that --
-    // the hysteresis band keeps the LOD from flapping near the boundary.
-    // The budget is in px (not metres or degrees) so it follows FOV,
-    // zoom, and window size/resolution automatically.
-    const double fov_h = 2.0 * std::atan(std::tan(camera->fov * 0.5) * (double)camera->aspect);
-    const double px_width = (width_m / dist) * ((double)camera->viewport_h / fov_h);
+    // The patch's projected screen extent [px]. It subdivides while that is
+    // wider than max_patch_px and collapses below half of it -- the
+    // hysteresis band keeps the LOD from flapping near the boundary. The
+    // budget is in REAL px (not metres or degrees) so it follows FOV, zoom,
+    // and window size/resolution automatically; see lodPxPerRad for why the
+    // window aspect cancels out.
+    const double px_width = lodPxWidth(width_m, dist, px_per_rad);
 
     // Subdivision is async: request it, keep drawing this (coarser) patch
     // until the continuation attaches the children. While a job is in
@@ -272,10 +267,10 @@ void GeoPatch::Update(const Camera* camera, const glm::dmat4& transform, int max
     }
 
     if(kids[0] != NULL) {
-        kids[0]->Update(camera, transform, max_patch_px, jobs);
-        kids[1]->Update(camera, transform, max_patch_px, jobs);
-        kids[2]->Update(camera, transform, max_patch_px, jobs);
-        kids[3]->Update(camera, transform, max_patch_px, jobs);
+        kids[0]->Update(cam_bf, px_per_rad, max_patch_px, jobs);
+        kids[1]->Update(cam_bf, px_per_rad, max_patch_px, jobs);
+        kids[2]->Update(cam_bf, px_per_rad, max_patch_px, jobs);
+        kids[3]->Update(cam_bf, px_per_rad, max_patch_px, jobs);
     }
 }
 

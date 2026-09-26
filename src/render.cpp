@@ -391,6 +391,29 @@ void draw3d(Game &g) {
         // continuations run in the main loop's jobs.poll() BEFORE this
         // pass draws, so new children are attached before the render.
         planet->Update(camera, g.args.terrain_px, g.jobs);
+
+        /* --terrain-log: the local body's tree as the LOD just left it.
+           deep_off is the camera-to-nearest-deepest-leaf distance: the detail
+           belongs under the camera (a patch width or two), so a body-radius
+           sized value means the tree is descending somewhere else. collision
+           counts the leaves with a Bullet body -- today exactly the
+           max_depth ones, i.e. the ground exists only where the CAMERA is
+           close enough (issue #24). */
+        if(g.args.terrain_log && planet == localBody && planet->ready) {
+            const Uint32 now_ms = SDL_GetTicks();
+            if(now_ms - g.terrain_log_last_ms >= g.orbit_log_interval_ms) {
+                g.terrain_log_last_ms = now_ms;
+                const TerrainLodStats s =
+                    planet->lodStats(planet->CameraInBodyFrame(camera));
+                printf("[terrain] t=%.1fs body=\"%s\" patches=%d deepest=%d "
+                       "max_depth=%d collision=%d deep_off=%.6g m "
+                       "cam_r=%.6g m\n",
+                       g.time, planet->name.c_str(), s.patches, s.deepest,
+                       planet->max_depth, s.collision, s.deep_off, s.cam_r);
+                fflush(stdout);
+            }
+        }
+
         if(g.world_drawing == true) {
             planet->Draw(camera, sun, rf);
         }

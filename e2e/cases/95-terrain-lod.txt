@@ -1,0 +1,36 @@
+# Terrain LOD on the pad: the patch tree must descend all the way to the
+# body's max_depth under the camera, and the finest detail must sit AT the
+# camera (deep_off ~ the orbit camera's ~10 m standoff, not a body radius).
+# This is the observable for the LOD metric fixes: --terrain-px is now in
+# REAL pixels (the vertical-pixels-over-horizontal-fov mixup rescaled the
+# budget by 0.65..1.38 with the FOV slider and the window aspect), and every
+# patch of a level measures the same size (width_m was one arbitrary edge
+# chord, +-28% between siblings -- one coarse patch inside a detailed
+# square). Both are pinned numerically by tests/test_terrain.cpp; this case
+# pins the tree end to end. --terrain-px and the window size are pinned
+# because the budget is in px: either one changes how deep the tree grows.
+NAME terrain-lod
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad --width 1920 --height 1080
+ARGS --terrain-px 512 --timeout 20 --terrain-log --orbit-interval 2
+EXPECT [terrain]
+EXPECT Main loop starting
+FORBID GL_
+FORBID error:
+CHECK len(terrain) > 3
+CHECK all(t["body"] == "Kerbin" for t in terrain)
+# converged on the deepest level, and it is the body's own stop depth
+CHECK last(terrain)["deepest"] == last(terrain)["max_depth"] == 12
+# the deepest leaves carry the collision mesh (see 96-terrain-lod-farcam)
+CHECK last(terrain)["collision"] > 0
+# the detail is under the camera: a max_depth leaf on Kerbin is 360-460 m
+# across, so even a camera standing on a leaf's corner is within ~330 m of
+# its centroid -- metres, not the kilometres a body-radius miss would be
+CHECK last(terrain)["deep_off"] < 1000.0
+# the camera is at the pad, i.e. one body radius out (Kerbin: exactly 600 km)
+CHECK last(terrain)["cam_r"] > 590000.0 and last(terrain)["cam_r"] < 610000.0
+# settled, not flapping in the hysteresis band (the last two samples agree)
+CHECK last(terrain)["patches"] == terrain[-2]["patches"]
+# monotone descent while the async subdivision lands (one level per job round
+# trip): the tree never gets shallower once it has grown
+CHECK all(a["deepest"] <= b["deepest"] for a, b in zip(terrain, terrain[1:]))
+LIMIT 90

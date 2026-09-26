@@ -13,10 +13,18 @@
 //   buildGridGeom(...)        the grid a GeoPatch draws: size x size
 //                             terrain vertices + normals + colors, an
 //                             optional skirt ring, and the indices
+//   subdivideCorners(...)     a patch's four child quads (the LOD tree's
+//                             subdivision step)
+//   patchWidthUnit(...)       a patch's characteristic size -- the LOD's
+//                             size measure
+//   lodPxPerRad/lodPxWidth    the camera's screen scale and a patch's
+//                             projected pixel extent -- the LOD's decision
+//   cameraInBodyFrame(...)    the camera in body-fixed axes (the LOD
+//                             measures body-fixed patch corners)
 //
 // The game-side half (GL upload into a Mesh, Bullet collision, the patch
-// tree, LOD) lives in terrain.h / terrain.cpp: the GeoPatch ctor consumes
-// a GridGeom on the main thread.
+// tree that walks the LOD decisions above) lives in terrain.h / terrain.cpp:
+// the GeoPatch ctor consumes a GridGeom on the main thread.
 //
 // Height model (written from scratch -- the old noise aliased into a
 // stepped, voxel-like surface at coarse LOD and its cubic height rescale
@@ -703,4 +711,81 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     }
 
     return geom;
+}
+
+// ---------------------------------------------------------------------------
+// The patch tree: subdivision geometry + the LOD measure
+//
+// Pure math, here rather than in terrain.cpp so tests/test_terrain.cpp can
+// pin the numbers every subdivide/collapse decision is made from (a GeoPatch
+// needs GL to construct, so the game-side tree is only reachable through the
+// e2e battery).
+// ---------------------------------------------------------------------------
+
+// The four children's corner quads of a patch: the edge midpoints (v01, v12,
+// v23, v30) + the shared center cn, each renormalized onto the unit sphere.
+inline void subdivideCorners(const glm::vec3 &v0, const glm::vec3 &v1,
+                             const glm::vec3 &v2, const glm::vec3 &v3,
+                             glm::vec3 quad[4][4]) {
+    const glm::vec3 v01 = glm::normalize(v0+v1);
+    const glm::vec3 v12 = glm::normalize(v1+v2);
+    const glm::vec3 v23 = glm::normalize(v2+v3);
+    const glm::vec3 v30 = glm::normalize(v3+v0);
+    const glm::vec3 cn  = glm::normalize(v0+v1+v2+v3);
+
+    quad[0][0] = v0;  quad[0][1] = v01; quad[0][2] = cn;  quad[0][3] = v30;
+    quad[1][0] = v01; quad[1][1] = v1;  quad[1][2] = v12; quad[1][3] = cn;
+    quad[2][0] = cn;  quad[2][1] = v12; quad[2][2] = v2;  quad[2][3] = v23;
+    quad[3][0] = v30; quad[3][1] = cn;  quad[3][2] = v23; quad[3][3] = v3;
+}
+
+// A patch's characteristic size on the UNIT sphere (x radius = metres): the
+// mean of its four edge chords. Symmetric in the corners, which one arbitrary
+// edge is not -- the midpoint scheme above makes the quads unequal-edged, so
+// measuring only v0-v3 biased the LOD threshold by up to 28% between
+// same-depth siblings (two of one parent's four children measured 0.606 and
+// two 0.765), which read as one coarse patch inside an otherwise detailed
+// square. Against the patches' true linear size (sqrt of the spherical area)
+// the mean chord is flat to within ~7% at every depth down to max_depth,
+// where a single edge swings 28% (tests/test_terrain.cpp walks the tree and
+// pins both numbers).
+inline double patchWidthUnit(const glm::vec3 &v0, const glm::vec3 &v1,
+                             const glm::vec3 &v2, const glm::vec3 &v3) {
+    return 0.25 * ((double)glm::length(v1 - v0) + (double)glm::length(v2 - v1)
+                 + (double)glm::length(v3 - v2) + (double)glm::length(v0 - v3));
+}
+
+// Screen pixels per radian of a perspective camera whose fov is VERTICAL
+// (camera.cpp's projection: `x = t/aspect; // vertical fov`). One number
+// serves for a patch's width and its height alike: a square patch subtends
+// the same angle on both axes while the px-per-radian scale differs by
+// `aspect`, so the aspect cancels and must NOT appear here.
+inline double lodPxPerRad(int viewport_h, float fov_vertical) {
+    return 0.5 * (double)viewport_h / std::tan((double)fov_vertical * 0.5);
+}
+
+// The patch's projected screen extent [px]. Exact, not small-angle: the
+// projection maps tan of the half-angle to pixels, and a flat patch of width
+// `width_m` square-on at distance `dist` has tan(theta/2) == (width_m/2)/dist,
+// so the product below is the true pixel span. Two approximations remain, both
+// second-order: the patch is curved/tilted rather than flat (errs toward
+// subdividing), and `dist` is the slant range to its centroid rather than the
+// axial depth (errs toward NOT subdividing for a patch off-axis -- the
+// foreshortening term the LOD does not model yet).
+inline double lodPxWidth(double width_m, double dist, double px_per_rad) {
+    return (width_m / dist) * px_per_rad;
+}
+
+// The camera position in BODY-FIXED axes. `transform` is body-fixed -> render
+// frame and carries the body's SPIN as well as its position (render.cpp), so
+// the LOD's camera-to-patch distance has to undo the rotation, not just
+// subtract transform[3]: the patch corners and centroid are body-fixed, and
+// comparing them against a render-frame camera measures the distance to a
+// phantom camera rotated away by the spin -- up to 2*|p|, i.e. all the detail
+// landing at the wrong longitude. Identity rotation (a landed ship, whose
+// render frame IS the body's spin frame) hides it.
+inline glm::dvec3 cameraInBodyFrame(const glm::dmat4 &transform,
+                                    const glm::dvec3 &cam_rf) {
+    const glm::dmat3 rot(transform);
+    return glm::transpose(rot) * (cam_rf - glm::dvec3(transform[3]));
 }

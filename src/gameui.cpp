@@ -614,10 +614,13 @@ void drawUIReadouts(Game &g) {
             camera->setFov(f);
         }
         // Terrain LOD: a patch subdivides while it projects wider than
-        // args.terrain_px (read live by GeoPatch::Update). The slider is
-        // a 6-step detail level, right = finer: 1024px is the coarsest
-        // and fastest to generate (the default), 256px the visual sweet
-        // spot, 32px ~= 1px per mesh edge (slowest on software GL).
+        // args.terrain_px [real screen px] (read live by GeoPatch::Update).
+        // The slider is a 6-step detail level, right = finer: 512px is the
+        // default, 1024px the coarsest and fastest to generate, 256px finer
+        // at ~2x the patches. The 64/32 steps are there for poking at the
+        // LOD, not for playing: the budget is per patch, so they ask for
+        // tens of thousands of patches and the single async builder never
+        // catches up (the tree stays shallow under the camera).
         {
             const int terrain_px_table[] = { 1024, 512, 256, 128, 64, 32 };
             const int nlevels = 6;

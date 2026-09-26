@@ -554,10 +554,13 @@ $(TESTDIR)/test_eva: $(TESTDIR)/obj/test_eva.o
 
 # terrain core (src/terragen.h, header-only pure math): the height
 # model (bounds, sea floor, the LOD band-limit fade), the surface
-# color (sea, palette, gas-giant bands), and the grid builder
+# color (sea, palette, gas-giant bands), the grid builder
 # (vertex/index counts, band-limited on-surface vertices, the skirt
-# ring below the terrain).
-$(TESTDIR)/test_terrain: $(TESTDIR)/obj/test_terrain.o
+# ring below the terrain), and the patch-tree LOD maths (the size
+# measure, the projected-px measure, the body-frame camera). Links
+# camera.o so the LOD's px measure is pinned against the projection
+# matrix the renderer actually builds, not a re-derived formula.
+$(TESTDIR)/test_terrain: $(TESTDIR)/obj/test_terrain.o $(TESTDIR)/obj/camera.o
 	$(CXX) -o $@ $^
 
 # atmospheric drag law (src/drag.h, header-only pure math): the

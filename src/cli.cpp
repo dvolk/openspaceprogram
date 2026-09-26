@@ -327,6 +327,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "acceleration, the amplitude, the offset) to stdout; the "
                  "instrument for the cam-shake e2e test");
 
+    app.add_flag("--terrain-log", args.terrain_log,
+                 "Periodically print the local body's terrain LOD to stdout: "
+                 "the alive patch count, the deepest leaf depth, how many "
+                 "leaves carry collision, and how far the nearest deepest "
+                 "leaf is from the camera (deep_off) -- the instrument for "
+                 "the terrain-LOD e2e cases");
+
     app.add_flag("--tq-log", args.tq_log,
                  "Print the spurious-torque probe once per tick: the hull "
                  "origin's COM lag (|dcom|), the net force (|F|), the "
@@ -468,9 +475,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--terrain-px", args.terrain_px,
                    "Terrain LOD: a patch subdivides while it projects "
-                   "wider than this [screen px] (1024 = coarsest, default; "
-                   "256 = good balance; 32 = finest, ~1px per mesh edge; "
-                   "adjustable in the Settings window)")
+                   "wider than this [REAL screen px] (512 = default; "
+                   "256 = finer, ~2x the patches; 1024 = coarsest). "
+                   "The fine end is expensive: the budget is per patch, so "
+                   "32 asks for tens of thousands of them and the single "
+                   "async builder never catches up (the tree stays shallow "
+                   "under the camera). Adjustable in the Settings window")
         ->check(CLI::Range(32, 1024));
 
     app.add_option("--cloud-mesh", args.cloud_mesh,

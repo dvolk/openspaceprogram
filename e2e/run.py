@@ -76,6 +76,12 @@ CHECK namespace (parsed from the game's stdout):
   shake   list of dicts, one per [shakelog] line: t, a (m/s^2, the felt
           acceleration), amp (m, the shake's target amplitude),
           off (3-tuple, the live smoothed offset)
+  terrain list of dicts, one per [terrain] line (--terrain-log): t, body
+          (the LOCAL body's name), patches (alive patch count), deepest
+          (the deepest leaf's depth), max_depth (the body's subdivision
+          stop), collision (leaves carrying a Bullet body), deep_off (m,
+          the camera -> nearest deepest leaf distance: the detail belongs
+          under the camera), cam_r (m, the camera -> body centre distance)
   surf    list of dicts, one per [surfinfo] line (--info-log): t, alt_agl,
           alt_asl, vs, hs, lat, lon, pitch, roll, hdg (degrees), acc
           (m/s^2). Printed while paused too, so a case can compare the
@@ -165,6 +171,11 @@ DRAG_RE = re.compile(
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
     r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
+)
+TERRAIN_RE = re.compile(
+    r"\[terrain\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+patches=(\d+)\s+"
+    r"deepest=(\d+)\s+max_depth=(\d+)\s+collision=(\d+)\s+"
+    r"deep_off=([-\d.e+]+) m\s+cam_r=([-\d.e+]+) m"
 )
 SURF_RE = re.compile(
     r"\[surfinfo\]\s+t=([\d.]+)s\s+alt_agl=([-\d.e+]+) m\s+"
@@ -391,6 +402,20 @@ def parse_shake(out):
     return rows
 
 
+def parse_terrain(out):
+    rows = []
+    for m in TERRAIN_RE.finditer(out):
+        (t, body, patches, deepest, max_depth, collision,
+         deep_off, cam_r) = m.groups()
+        rows.append({
+            "t": float(t), "body": body, "patches": int(patches),
+            "deepest": int(deepest), "max_depth": int(max_depth),
+            "collision": int(collision), "deep_off": float(deep_off),
+            "cam_r": float(cam_r),
+        })
+    return rows
+
+
 def parse_surf(out):
     rows = []
     for m in SURF_RE.finditer(out):
@@ -604,11 +629,13 @@ def run_case(case):
     drainlog = parse_drainlog(out)
     drag = parse_drag(out)
     shake = parse_shake(out)
+    terrain = parse_terrain(out)
     surf = parse_surf(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
+        "terrain": terrain,
         "surf": surf,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
