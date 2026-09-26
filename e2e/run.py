@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""E2E battery: launch the game under Xvfb and check the result.
+"""E2E battery: launch the game and check the result.
 
 The binary defaults to ./osp; point at another build with --game
 (e.g. the new tree: --game build/linux-v2-znver3/release/osp).
 A windows artifact (--game build/windows-.../release/osp.exe) runs
-under Wine; the Xvfb path is unchanged (Wine renders to X).
+under Wine; that path still needs Xvfb (Wine renders to X).
+
+Linux GL: if a DRM render node is usable (/dev/dri/renderD*), the game
+runs with SDL_VIDEODRIVER=offscreen (EGL on the GPU -- radeonsi when the
+host passes the device through, llvmpipe if not). Otherwise it runs under
+Xvfb + GLX (software GL), which is what cloud CI does.
 
 Usage:
   python3 e2e/run.py orbit      run only cases matching "orbit"
@@ -14,9 +19,9 @@ Usage:
                                 (default: 2; --jobs 1 = serial)
 
 A full battery (no selectors) or --jobs > 2 is refused without --force:
-a full battery takes a LONG time, and e2e runs under software GL, so a
-single case already uses ~500% CPU. A targeted selector and the default
-2 jobs usually cover what a change needs; use --force to run it anyway.
+a full battery takes a LONG time, and software-GL runs still use ~500%
+CPU per case. A targeted selector and the default 2 jobs usually cover
+what a change needs; use --force to run it anyway.
 
 Each test is a case file in e2e/cases/*.txt with these keys (one per line,
 `#` starts a comment):
@@ -425,17 +430,70 @@ def wine_for(game):
     return shutil.which("wine64") or shutil.which("wine")
 
 
+def have_render_node():
+    """True if a DRM render node is openable, so SDL offscreen/EGL can talk
+    to a real GPU (LXD gputype=physical, bare metal, ...). Cloud CI has no
+    /dev/dri and gets the Xvfb + llvmpipe path instead."""
+    for path in sorted(glob.glob("/dev/dri/renderD*")):
+        try:
+            fd = os.open(path, os.O_RDWR)
+        except OSError:
+            continue
+        os.close(fd)
+        return True
+    return False
+
+
 def build_cmd(game, args):
     wine = wine_for(game)
+    if wine:
+        # Wine always needs an X server.
+        xvfb = shutil.which("xvfb-run")
+        if xvfb:
+            return [xvfb, "-a", wine] + [game] + args
+        return [wine] + [game] + args
+
+    # Prefer SDL offscreen (EGL) when a render node is usable: Mesa loads
+    # radeonsi/llvmpipe on EGL_PLATFORM_DEVICE without Xvfb. The offscreen
+    # driver is only selected via SDL_VIDEODRIVER (see launch_env).
+    if have_render_node():
+        return [game] + args
+
     if os.environ.get("DISPLAY") and shutil.which("xvfb-run") is None:
         # A real display is available and no Xvfb to fake one.
-        return ([wine] if wine else []) + [game] + args
+        return [game] + args
     xvfb = shutil.which("xvfb-run")
     if xvfb:
-        return [xvfb, "-a"] + ([wine] if wine else []) + [game] + args
+        return [xvfb, "-a"] + [game] + args
     # No Xvfb and no display: run bare; it will fail to open a window, which
     # the case will report as a failure. (Headless envs should install Xvfb.)
-    return ([wine] if wine else []) + [game] + args
+    return [game] + args
+
+
+def launch_env(game):
+    """Environment overrides for the game process, or None to inherit."""
+    wine = wine_for(game)
+    if wine:
+        # Pin Wine's prefix in the tree (tmp/wine) so first-run init and
+        # per-run state stay out of the home dir. WINEDEBUG=-all silences
+        # wine's own fixme/err chatter on stderr -- one of those lines
+        # ("using GL_RENDERER ...") contains "GL_" and would trip the
+        # cases' FORBID GL_ checks, which are meant to catch the GAME's
+        # GL errors only.
+        prefix = os.path.join(REPO_ROOT, "tmp", "wine")
+        os.makedirs(prefix, exist_ok=True)
+        env = dict(os.environ)
+        env["WINEPREFIX"] = prefix
+        env["WINEDEBUG"] = "-all"
+        return env
+    if have_render_node():
+        env = dict(os.environ)
+        # Force SDL's offscreen driver: EGL on a DRM render node, no X.
+        # Drop DISPLAY so SDL cannot fall through to X11/GLX (llvmpipe).
+        env["SDL_VIDEODRIVER"] = "offscreen"
+        env.pop("DISPLAY", None)
+        return env
+    return None
 
 
 def run_case(case):
@@ -475,19 +533,7 @@ def run_case(case):
             wf.write(wcontent)
 
     cmd = build_cmd(game, case["args"] + ["--data-dir", data_dir])
-    env = None
-    if wine_for(game):
-        # Pin Wine's prefix in the tree (tmp/wine) so first-run init and
-        # per-run state stay out of the home dir. WINEDEBUG=-all silences
-        # wine's own fixme/err chatter on stderr -- one of those lines
-        # ("using GL_RENDERER ...") contains "GL_" and would trip the
-        # cases' FORBID GL_ checks, which are meant to catch the GAME's
-        # GL errors only.
-        prefix = os.path.join(REPO_ROOT, "tmp", "wine")
-        os.makedirs(prefix, exist_ok=True)
-        env = dict(os.environ)
-        env["WINEPREFIX"] = prefix
-        env["WINEDEBUG"] = "-all"
+    env = launch_env(game)
     diag = []
     timed_out = False
     exit_code = None
@@ -643,6 +689,12 @@ def main():
         parser.error("--jobs must be >= 1")
     global GAME
     GAME = args.game
+    if wine_for(GAME or ""):
+        pass  # wine: Xvfb
+    elif have_render_node():
+        print("GL: SDL offscreen/EGL (DRM render node present)")
+    else:
+        print("GL: Xvfb/GLX software (no /dev/dri/renderD*)")
     # Wine cases default to serial: two concurrent wine + Xvfb + llvmpipe
     # instances (each software-rendering the whole game) overload a dev
     # box and make the cases flaky (measured: parallel runs intermittently
@@ -651,15 +703,16 @@ def main():
         args.jobs = 1
     selectors = args.selectors
 
-    # A full battery and --jobs > 2 are both expensive (software GL: one
-    # case is already ~500% CPU), so neither runs without an explicit
-    # --force -- the message is the nudge to pick a selector / fewer jobs.
+    # A full battery and --jobs > 2 are both expensive (each case spins a
+    # full game loop; software GL is ~500% CPU), so neither runs without an
+    # explicit --force -- the message is the nudge to pick a selector /
+    # fewer jobs.
     reasons = []
     if not selectors:
         reasons.append("a full battery takes a LONG time")
     if args.jobs > 2:
-        reasons.append("e2e runs under software GL, so each case already "
-                       "uses ~500% CPU -- more parallelism is overkill")
+        reasons.append("each case already runs a full game loop -- more "
+                       "parallelism is usually overkill")
     if reasons and not args.force:
         print("Refusing to run: " + "; ".join(reasons) + ".")
         print("Consider whether you really need it -- a targeted selector "

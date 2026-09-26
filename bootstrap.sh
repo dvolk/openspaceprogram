@@ -58,7 +58,9 @@ fi
 
 # The per-OS video/audio drivers (SDL3's other options are platform-
 # neutral and shared in the invocation below):
-#  linux:   X11 (e2e under Xvfb) + PulseAudio/ALSA audio, GLES + desktop GL
+#  linux:   X11 (desktop + e2e software-GL fallback under Xvfb) + offscreen
+#           (e2e accelerated GL via EGL on a DRM render node) +
+#           PulseAudio/ALSA audio, GLES + desktop GL
 #  windows: built-in video, desktop GL via wgl, WASAPI audio (the platform
 #           default; SDL's dummy driver stays built-in as the headless
 #           fallback). No X11/Wayland/ALSA/Pulse -- those options are
@@ -70,7 +72,7 @@ else
     SDL3_DRIVERS="-DSDL_OPENGL=ON -DSDL_OPENGLES=ON -DSDL_LIBUDEV=OFF \
                   -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
                   -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
-                  -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF \
+                  -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF -DSDL_OFFSCREEN=ON \
                   -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF"
 fi
 
@@ -132,17 +134,20 @@ echo "=== building SDL3 (static, $OS drivers) ==="
 # events/keyboard/mouse/surface APIs, so compile out every subsystem it never
 # touches. The 2D renderer is the big one -- its software blit/blend backend
 # (~1 MB) is pure dead weight here. Joystick/haptic/HIDAPI/sensor/power/GPU,
-# camera, native dialogs, tray, KMSDRM (X11-only), and the offscreen + dummy
-# drivers are likewise unused. Audio stays on -- SDL3_mixer (the game's
-# sound) uses it. GLES + desktop GL (SDL_OPENGL) stay too.
+# camera, native dialogs, tray, KMSDRM (needs a free DRM master -- unusable
+# on a workstation whose desktop owns the iGPU), and the dummy driver are
+# unused. Offscreen is ON: e2e uses SDL_VIDEODRIVER=offscreen for EGL/GL
+# on a DRM render node (hardware when /dev/dri is passed through, llvmpipe
+# otherwise). Audio stays on -- SDL3_mixer (the game's sound) uses it.
+# GLES + desktop GL (SDL_OPENGL) stay too.
 # Audio (linux): PulseAudio (primary) + ALSA (fallback). We tried
 # ALSA-only to slim the dynamic dep tree (Pulse pulls libsystemd/
 # libapparmor/libsndfile + the codec family), but direct ALSA gives the
 # real-time mix callback no slack: the engine track cracked on start/tap
 # even with pre-resampled files and warm buffers. Pulse/PipeWire's
 # server-side queue absorbs that jitter -- exactly why the platform moved
-# to audio servers. sndio/JACK stay off; the dummy driver stays built-in
-# for headless (e2e under Xvfb). (windows: WASAPI, the platform default.)
+# to audio servers. sndio/JACK stay off. (windows: WASAPI, the platform
+# default.)
 cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
     $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
@@ -152,7 +157,7 @@ cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
     -DSDL_JOYSTICK=OFF -DSDL_HIDAPI=OFF -DSDL_HAPTIC=OFF \
     -DSDL_SENSOR=OFF -DSDL_POWER=OFF \
     -DSDL_CAMERA=OFF -DSDL_DIALOG=OFF -DSDL_TRAY=OFF \
-    -DSDL_KMSDRM=OFF -DSDL_OFFSCREEN=OFF \
+    -DSDL_KMSDRM=OFF \
     $SDL3_DRIVERS \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
     -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"

@@ -123,6 +123,15 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
     GLenum glew_status = glewInit();
     check_gl_error();
 
+    // SDL offscreen creates an EGL context, not GLX. glewInit() loads core
+    // GL first (glewContextInit) and only then the window-system pass
+    // (glxewInit), which returns GLEW_ERROR_NO_GLX_DISPLAY here. The GL
+    // entry points are already filled in; the GLX extras just don't apply.
+    if (glew_status == GLEW_ERROR_NO_GLX_DISPLAY && GLEW_VERSION_4_5)
+        {
+            printf("GLEW: no GLX display (EGL/offscreen); core GL ok\n");
+            glew_status = GLEW_OK;
+        }
     if (glew_status != GLEW_OK)
         {
             cerr << "Error: glewInit: " << glewGetErrorString(glew_status) << endl;
@@ -131,6 +140,10 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         {
             cerr << "Error: your graphic card does not support OpenGL " << gl_major << "." << gl_minor << endl;
         }
+    if (const GLubyte* r = glGetString(GL_RENDERER)) {
+        // Not "GL_RENDERER": cases FORBID "GL_" (real GL error enums).
+        printf("GL renderer: %s\n", (const char*)r);
+    }
 
     {
         int granted = 0;
