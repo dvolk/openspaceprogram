@@ -23,6 +23,13 @@ a full battery takes a LONG time, and software-GL runs still use ~500%
 CPU per case. A targeted selector and the default 2 jobs usually cover
 what a change needs; use --force to run it anyway.
 
+Every run is persisted (always, pass or fail) under tmp/e2e/:
+  runs/<UTCstamp>/<case>.log   the case's captured output (partial on timeout)
+  runs/<UTCstamp>/summary.json machine-readable run + per-case summary
+  runs/<UTCstamp>/summary.txt  the human summary printed to the console
+  history.csv                  one appended row per run (datetime, commit,
+                               renderer, cases, pass/fail counts, duration)
+
 Each test is a case file in e2e/cases/*.txt with these keys (one per line,
 `#` starts a comment):
 
@@ -81,13 +88,17 @@ Stdlib only. Run from anywhere; the repo root is derived from this file.
 """
 
 import argparse
+import csv
+import datetime
 import glob
+import json
 import os
 import re
 import shutil
 import signal
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -497,11 +508,11 @@ def launch_env(game):
 
 
 def run_case(case):
-    """Return (passed, diagnostics-lines)."""
+    """Run one case. Returns (passed, diagnostics-lines, out, duration_s)."""
     game = GAME or os.path.join(REPO_ROOT, "osp")
     if not os.path.exists(game):
         return False, ["%s not found; run `make` first"
-                       % os.path.relpath(game, REPO_ROOT)]
+                       % os.path.relpath(game, REPO_ROOT)], "", 0.0
     # Start each case from a clean ImGui layout (window positions persist in
     # imgui.ini otherwise, which would make UI clicks non-deterministic).
     try:
@@ -542,6 +553,7 @@ def run_case(case):
     # timeout can kill the whole tree: the wine wrapper is only the
     # direct child -- killing it leaves the game PE (a grandchild)
     # orphaned, spinning at 100% CPU, and Xvfb behind it.
+    t0 = time.monotonic()
     proc = subprocess.Popen(
         cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, env=env, start_new_session=True,
@@ -564,6 +576,7 @@ def run_case(case):
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 pass
+    duration = time.monotonic() - t0
 
     # 1) exit code
     if timed_out:
@@ -620,7 +633,7 @@ def run_case(case):
             diag.append("CHECK failed: %s" % expr)
 
     passed = (not diag)
-    return passed, diag
+    return passed, diag, out, duration
 
 
 def select_cases(case_files, selectors):
@@ -656,16 +669,172 @@ def available_names(case_files):
 
 
 def run_one(path):
-    """Parse and run one case; return (name, passed, diag). Never raises."""
+    """Parse and run one case. Never raises.
+
+    Returns (filebase, name, passed, diag, out, duration_s) -- filebase is
+    the case filename without .txt (the unique key for the .log file), and
+    out is the captured game output ("" when the case never launched)."""
+    filebase = os.path.splitext(os.path.basename(path))[0]
     try:
         case = parse_cases(path)
     except ValueError as e:
-        return os.path.basename(path), False, ["bad case file: %s" % e]
+        # No NAME line could be read, so the filename is the label.
+        return filebase, filebase, False, \
+            ["bad case file: %s" % e], "", 0.0
     try:
-        passed, diag = run_case(case)
+        passed, diag, out, duration = run_case(case)
     except Exception as e:
-        return case["name"], False, ["runner error: %r" % e]
-    return case["name"], passed, diag
+        return filebase, case["name"], False, ["runner error: %r" % e], "", 0.0
+    return filebase, case["name"], passed, diag, out, duration
+
+
+def git_state():
+    """(short commit or 'none', dirty or None) from the repo, best-effort.
+    None = not a git repo / git unavailable -- the CSV row leaves it blank
+    rather than guessing."""
+    def git(*args):
+        p = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True,
+                           text=True, timeout=10)
+        return p.stdout if p.returncode == 0 else ""
+    try:
+        commit = git("rev-parse", "--short", "HEAD").strip() or "none"
+        dirty = bool(git("status", "--porcelain").strip())
+        return commit, dirty
+    except (OSError, subprocess.SubprocessError):
+        return "none", None
+
+
+def new_run_dir():
+    """tmp/e2e/runs/<UTCstamp>/, with a -2, -3, ... suffix if the name is
+    taken (two runs in the same second must not share a directory).
+    mkdir is atomic, so concurrent runners each get their own dir."""
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    base = os.path.join(REPO_ROOT, "tmp", "e2e", "runs")
+    os.makedirs(base, exist_ok=True)
+    n = 1
+    while True:
+        path = os.path.join(base, stamp if n == 1 else "%s-%d" % (stamp, n))
+        try:
+            os.mkdir(path)
+            return path
+        except FileExistsError:
+            n += 1
+
+
+HISTORY_FIELDS = ["datetime_utc", "commit", "dirty", "renderer", "game",
+                  "jobs", "cases", "n", "passed", "failed", "run_duration_s",
+                  "run_dir"]
+
+
+def format_summary(results):
+    """The human pass/fail table (shared by the console and summary.txt)."""
+    if not results:
+        return "0/0 passed"
+    width = max(len(r[1]) for r in results)
+    lines = []
+    for filebase, name, passed, diag, out, dur in results:
+        lines.append("%-*s  %6.1fs  %s" % (width, name, dur,
+                                          "PASS" if passed else "FAIL"))
+        for line in diag:
+            lines.append("        %s" % line)
+    total = len(results)
+    fails = sum(1 for r in results if not r[2])
+    lines.append("-" * (width + 14))
+    lines.append("%d/%d passed" % (total - fails, total))
+    return "\n".join(lines)
+
+
+def write_run_artifacts(results, meta):
+    """Persist a run: per-case .log files + summary.json/summary.txt in a
+    fresh tmp/e2e/runs/<stamp>/ dir, and one appended row in
+    tmp/e2e/history.csv (the across-runs record). Returns
+    (run_dir, history_path), both absolute.
+
+    results: run_one's (filebase, name, passed, diag, out, duration) tuples.
+    meta: started/finished (datetime), commit, dirty, renderer, game
+    (REPO_ROOT-relative), jobs, selectors (list).
+    """
+    run_dir = new_run_dir()
+    total = len(results)
+    fails = sum(1 for r in results if not r[2])
+    cases = []
+    for filebase, name, passed, diag, out, dur in results:
+        with open(os.path.join(run_dir, filebase + ".log"), "w",
+                  encoding="utf-8") as f:
+            f.write(out)
+        cases.append({
+            "file": filebase + ".txt",
+            "name": name,
+            "passed": passed,
+            "duration_s": round(dur, 3),
+            "diag": diag,
+        })
+
+    summary = {
+        "started": meta["started"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "finished": meta["finished"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "duration_s": round((meta["finished"] - meta["started"]).total_seconds(), 3),
+        "commit": meta["commit"],
+        "dirty": meta["dirty"],
+        "renderer": meta["renderer"],
+        "game": meta["game"],
+        "jobs": meta["jobs"],
+        "selectors": meta["selectors"],
+        "passed": total - fails,
+        "failed": fails,
+        "cases": cases,
+    }
+    with open(os.path.join(run_dir, "summary.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+        f.write("\n")
+
+    header = "\n".join([
+        "e2e run   %s" % summary["started"],
+        "commit    %s%s" % (summary["commit"], " (dirty)" if summary["dirty"] else ""),
+        "renderer  %s" % summary["renderer"],
+        "game      %s" % summary["game"],
+        "jobs      %d" % summary["jobs"],
+        "cases     %s" % ("all" if not summary["selectors"]
+                         else ";".join(summary["selectors"])),
+        "",
+    ])
+    with open(os.path.join(run_dir, "summary.txt"), "w",
+              encoding="utf-8") as f:
+        f.write(header + format_summary(results) + "\n")
+
+    history_path = os.path.join(REPO_ROOT, "tmp", "e2e", "history.csv")
+    # Claim header ownership atomically: O_EXCL means exactly one of several
+    # concurrent runners creates the file and writes the header. A
+    # pre-existing 0-byte file is also initialized (the only overwrite).
+    fresh = False
+    try:
+        fd = os.open(history_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+        fresh = True
+    except FileExistsError:
+        if os.path.getsize(history_path) == 0:
+            fresh = True
+    with open(history_path, "w" if fresh else "a",
+              newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        if fresh:
+            w.writerow(HISTORY_FIELDS)
+        w.writerow([
+            summary["started"],
+            summary["commit"],
+            "" if summary["dirty"] is None else ("yes" if summary["dirty"] else "no"),
+            summary["renderer"],
+            summary["game"],
+            summary["jobs"],
+            "all" if not summary["selectors"] else ";".join(summary["selectors"]),
+            total,
+            total - fails,
+            fails,
+            "%.1f" % summary["duration_s"],
+            os.path.relpath(run_dir, REPO_ROOT),
+        ])
+    return run_dir, history_path
 
 
 def main():
@@ -690,11 +859,14 @@ def main():
     global GAME
     GAME = args.game
     if wine_for(GAME or ""):
-        pass  # wine: Xvfb
+        renderer = "wine+xvfb"
     elif have_render_node():
+        renderer = "egl-offscreen"
         print("GL: SDL offscreen/EGL (DRM render node present)")
     else:
+        renderer = "xvfb-glx"
         print("GL: Xvfb/GLX software (no /dev/dri/renderD*)")
+    commit, dirty = git_state()
     # Wine cases default to serial: two concurrent wine + Xvfb + llvmpipe
     # instances (each software-rendering the whole game) overload a dev
     # box and make the cases flaky (measured: parallel runs intermittently
@@ -736,26 +908,38 @@ def main():
     # retries on a taken display) and captures its own stdout, so they can
     # run concurrently. map() preserves input order, so the summary prints
     # in case-file order regardless of which case finishes first.
+    started = datetime.datetime.now(datetime.timezone.utc)
     if args.jobs == 1:
         results = [run_one(p) for p in case_files]
     else:
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
             results = list(pool.map(run_one, case_files))
+    finished = datetime.datetime.now(datetime.timezone.utc)
 
-    width = max(len(n) for n, _, _ in results)
-    fails = 0
-    for name, passed, diag in results:
-        status = "PASS" if passed else "FAIL"
-        if not passed:
-            fails += 1
-        print("%-*s  %s" % (width, name, status))
-        for line in diag:
-            print("        %s" % line)
+    # Persist before printing, so the console can point at the artifacts.
+    # A failure here (full disk, read-only tmp/) must not swallow the
+    # summary or the pass/fail exit code that `make e2e` relies on.
+    meta = {
+        "started": started,
+        "finished": finished,
+        "commit": commit,
+        "dirty": dirty,
+        "renderer": renderer,
+        "game": os.path.relpath(GAME or os.path.join(REPO_ROOT, "osp"), REPO_ROOT),
+        "jobs": args.jobs,
+        "selectors": list(args.selectors),
+    }
+    try:
+        run_dir, history = write_run_artifacts(results, meta)
+    except OSError as e:
+        print("warning: run artifacts not saved: %s" % e, file=sys.stderr)
+        run_dir = history = None
 
-    total = len(results)
-    print("-" * (width + 8))
-    print("%d/%d passed" % (total - fails, total))
-    return 1 if fails else 0
+    print(format_summary(results))
+    if run_dir is not None:
+        print("logs:    %s" % run_dir)
+        print("history: %s" % history)
+    return 1 if any(not r[2] for r in results) else 0
 
 
 if __name__ == "__main__":
