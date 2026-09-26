@@ -640,7 +640,16 @@ int main(int argc, char **argv)
             ships.add_ship(dts.station, home, nullptr, 1);
             first = dts.probe;
         } else {
-            first = ships.buildDebugStartShips(start_ships, sys);
+            // A typo in any field (unknown body / scenario, an unreadable
+            // def) throws deep in here (sys.find, scenario_by_name,
+            // load_ship_def); catch it the way the --load path above does so
+            // it is a clean error, not a core dump.
+            try {
+                first = ships.buildDebugStartShips(start_ships, sys);
+            } catch(const std::exception &e) {
+                printf("error: %s\n", e.what());
+                return 1;
+            }
         }
     }
 
