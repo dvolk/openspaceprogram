@@ -1,5 +1,4 @@
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+#include "btcommon.h"
 #include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -198,8 +197,6 @@ void physics_tick(float timeStep) {
     physics->tick(timeStep);
 }
 
-void setRigidBody(Body *b, btRigidBody *rb);
-
 btRigidBody *addTerrainCollision(Mesh *m, const glm::dvec3 &anchor) {
     return physics->AddTerrainCollision(m, anchor);
 }
@@ -328,10 +325,47 @@ void BuildPartHull(Body *body) {
     physics->BuildHull(body);
 }
 
-btRigidBody* getRigidBody(Body *b);
+/* Body's Bullet-side lifecycle, out of body.h so that header can stay
+   Bullet-include-free (see the forward declarations there). */
+Body::~Body() {
+    if(btBody != nullptr) {
+        // Bullet never frees the body's motion state (~btRigidBody is
+        // a no-op) and nothing reads it (static bodies), so it is
+        // ours: free it before the body that points at it. The hull
+        // body has none (constructed with a null).
+        delete btBody->getMotionState();
+    }
+    delete btBody;
+    delete shape;
+    /* mesh/shader/texture are shared (the asset registries own them,
+       and live until process exit) -- never freed here. The hull
+       shape copied the mesh's vertices at build time, so it holds no
+       pointer into the mesh. */
+}
 
+void Body::UpdateModelMatrix() {
+    btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);
+}
 
-
+void captureHullVerts(Body *body) {
+    /* The collision hull's vertices (part-local frame) for the projected-area
+       drag (drag.h projectedArea). Read from body->shape -- the SAME
+       btConvexHullShape the collision uses -- so the drag silhouette matches
+       the collision shape by construction, even for a non-convex mesh (the
+       engine's hollow nozzle). A failed import leaves the hull with < 3
+       vertices and projectedArea reads 0 (no drag). */
+    if(const btConvexHullShape *hull =
+           static_cast<const btConvexHullShape *>(body->shape)) {
+        const int n = hull->getNumVertices();
+        body->hullVerts.reserve(n);
+        for(int i = 0; i < n; i++) {
+            btVector3 v;
+            hull->getVertex(i, v);
+            body->hullVerts.push_back(
+                glm::dvec3(v.getX(), v.getY(), v.getZ()));
+        }
+    }
+}
 
 struct AnyContactCallback : public btCollisionWorld::ContactResultCallback {
     bool any = false;

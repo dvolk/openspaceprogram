@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-#include "vehicle.h"   // Vehicle + Part (inline); body.h pulls in Bullet
+#include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 
 static int g_failures = 0;
 static int g_checks = 0;

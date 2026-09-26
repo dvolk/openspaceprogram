@@ -43,10 +43,9 @@
 #include <cstdio>
 
 // OSP runs Bullet on the double-precision path (physics.cpp asserts
-// sizeof(btScalar) == 8). The macro must be set before ANY bullet header,
-// as src/physics.cpp and src/body.h do.
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+// sizeof(btScalar) == 8) -- btcommon.h settles that macro before the
+// include, exactly as src/physics.cpp does.
+#include "btcommon.h"
 
 #include "body.h"
 #include "physics.h"

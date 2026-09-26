@@ -23,6 +23,7 @@
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
 #include "resdir.h"   // resdir::path
 #include "ships.h"    // Ships::catalog (resolve the armed palette name)
+#include "btcommon.h" // complete Bullet types (the ghost hulls + collision objects)
 
 namespace {
 

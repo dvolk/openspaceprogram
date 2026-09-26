@@ -15,7 +15,8 @@
 #include <cmath>
 #include <cstdio>
 
-#include "body.h"    // Body (+ Bullet types; double precision)
+#include "btcommon.h"  // complete Bullet types (double precision)
+#include "body.h"    // Body (pointer members only, no Bullet include)
 #include "camera.h"  // Camera
 #include "pick.h"
 

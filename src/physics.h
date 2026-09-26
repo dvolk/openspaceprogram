@@ -5,6 +5,7 @@
 
 class Mesh;
 class Body;
+class btDefaultCollisionConfiguration;
 class btCollisionDispatcher;
 class btBroadphaseInterface;
 class btSequentialImpulseConstraintSolver;

@@ -30,8 +30,7 @@
 // Runs from the repo root:
 //   make test   (or: ./test_fuel)
 
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+#include "btcommon.h"
 
 #include <cmath>
 #include <cstdio>

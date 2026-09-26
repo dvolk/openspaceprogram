@@ -66,7 +66,7 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
 }
 
 void setRigidBody(Body *b, btRigidBody *rb) { b->btBody = rb; }
-btRigidBody* getRigidBody(Body *b) { return b->btBody; }
+btRigidBody *getRigidBody(Body *b) { return b->btBody; }
 
 Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
                   float x, float y, float z, float mass)
@@ -92,24 +92,10 @@ Body *create_part_body(Mesh *mesh, Shader *shader, Texture *texture,
     body->hull_margin = hull_margin;
     BuildPartHull(body);
     /* The collision hull's vertices (part-local frame) for the projected-area
-       drag (drag.h projectedArea). Read from body->shape -- the SAME
-       btConvexHullShape the collision uses -- so the drag silhouette matches
-       the collision shape by construction, even for a non-convex mesh (the
-       engine's hollow nozzle). Computed here -- the one place every
-       part-creation path goes through -- so flight, the VAB, saves and the
-       dock/radial tests all get it. A failed import leaves the hull with < 3
-       vertices and projectedArea reads 0 (no drag). */
-    if(const btConvexHullShape *hull =
-           static_cast<const btConvexHullShape *>(body->shape)) {
-        const int n = hull->getNumVertices();
-        body->hullVerts.reserve(n);
-        for(int i = 0; i < n; i++) {
-            btVector3 v;
-            hull->getVertex(i, v);
-            body->hullVerts.push_back(
-                glm::dvec3(v.getX(), v.getY(), v.getZ()));
-        }
-    }
+       drag (drag.h projectedArea) -- see captureHullVerts (physics.cpp).
+       Computed here, the one place every part-creation path goes through,
+       so flight, the VAB, saves and the dock/radial tests all get it. */
+    captureHullVerts(body);
     return body;
 }
 

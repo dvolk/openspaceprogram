@@ -1,7 +1,13 @@
 #pragma once
 
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+// The Bullet types below are forward-declared only: this header must stay
+// free of Bullet includes so the TUs that just need a Body (save, ships,
+// drag, ...) don't compile all of Bullet. Complete types come from
+// btcommon.h (the single precision-settled include) in the TUs that use
+// them (physics.cpp, vehicle.h/.cpp, pick.cpp, vab.cpp, terrain.cpp, the
+// tests).
+class btRigidBody;
+class btCollisionShape;
 
 #include "camera.h"
 #include "mesh.h"
@@ -94,30 +100,16 @@ struct Body {
 
     glm::dmat4 model_matrix = glm::dmat4(1.0);
 
-    ~Body() {
-        if(btBody != nullptr) {
-            // Bullet never frees the body's motion state (~btRigidBody is
-            // a no-op) and nothing reads it (static bodies), so it is
-            // ours: free it before the body that points at it. The hull
-            // body has none (constructed with a null).
-            delete btBody->getMotionState();
-        }
-        delete btBody;
-        delete shape;
-        /* mesh/shader/texture are shared (the asset registries own them,
-           and live until process exit) -- never freed here. The hull
-           shape copied the mesh's vertices at build time, so it holds no
-           pointer into the mesh. */
-    }
+    ~Body();   // frees btBody/shape (physics.cpp: needs the complete
+               // Bullet types; ordering constraints live there)
 
     /* The pose to draw at, read off this body's own rigid body. Right for
        anything whose rigid body IS the registered, integrated one (a space
        pad). A ship part is not that any more -- the ship is one body and a
        part's pose is derived from it -- so Vehicle::Draw passes the matrix
-       in through DrawAt instead. */
-    void UpdateModelMatrix() {
-        btBody->getCenterOfMassTransform().getOpenGLMatrix(&model_matrix[0][0]);
-    }
+       in through DrawAt instead. Defined in physics.cpp (complete Bullet
+       type). */
+    void UpdateModelMatrix();
 
     /* xform: extra world transform applied before the camera view
        (identity by default). A body's rigid-body coordinates live in
@@ -143,6 +135,12 @@ struct Body {
 void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot);
 /* Build body->shape (the convex hull of its mesh) without a rigid body. */
 void BuildPartHull(Body *body);
+/* Pointer accessors (no complete Bullet type needed to assign or read). */
+void setRigidBody(Body *b, btRigidBody *rb);
+btRigidBody *getRigidBody(Body *b);
+/* Read body->shape's hull vertices into body->hullVerts (the projected-area
+   drag silhouette). Defined in physics.cpp (needs the complete shape type). */
+void captureHullVerts(Body *body);
 
 Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
                   float x, float y, float z, float mass);

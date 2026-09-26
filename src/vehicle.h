@@ -27,10 +27,10 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/norm.hpp>
 
-// body.h must come before physics.h: body.h sets the bullet
-// double-precision define and includes the complete bullet types, and
-// physics.h names btDefaultCollisionConfiguration in a member (only
-// forward-declared there), so it needs the complete type.
+// Complete Bullet types (btTransform member, btCompoundShape methods)
+// come from btcommon.h, the single precision-settled include; body.h
+// itself stays Bullet-include-free.
+#include "btcommon.h"
 #include "body.h"
 #include "physics.h"
 #include "shipdef.h"

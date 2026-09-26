@@ -10,13 +10,14 @@
 
 #include "pick.h"
 
-#include "body.h"      // Body (+ the Bullet types, double precision)
+#include "body.h"      // Body (pointer members only, no Bullet include)
 #include "camera.h"    // Camera
 #include "frame.h"     // Frame (the per-ship frame transform)
 #include "game.h"      // Game (the fleet, the camera)
 #include "ships.h"     // Ships
 #include "vehicle.h"   // Vehicle (parts)
 
+#include "btcommon.h"  // complete Bullet types (double precision)
 #include <BulletCollision/CollisionDispatch/btCollisionWorld.h>
 
 PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {

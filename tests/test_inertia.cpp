@@ -35,8 +35,7 @@
 // Runs from the repo root:
 //   make test   (or: ./test_inertia)
 
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+#include "btcommon.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
@@ -47,7 +46,7 @@
 #include <string>
 #include <vector>
 
-#include "vehicle.h"   // Vehicle + Part (inline); body.h pulls in Bullet
+#include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 
 static int g_failures = 0;
 static int g_checks = 0;

@@ -19,8 +19,7 @@
 //       $B/Bullet3Geometry/libBullet3Geometry.a $B/LinearMath/libLinearMath.a $B/Bullet3Common/libBullet3Common.a
 //   ./test_orient
 
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+#include "btcommon.h"
 #include <cstdio>
 #include <cmath>
 

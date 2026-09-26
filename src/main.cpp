@@ -26,9 +26,6 @@
 #include <glm/gtx/vector_angle.hpp>
 #include <glm/gtx/polar_coordinates.hpp>
 
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
-
 #include "display.h"
 #include "mesh.h"
 #include "shader.h"

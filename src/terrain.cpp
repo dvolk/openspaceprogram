@@ -9,12 +9,10 @@
 #include <vector>
 
 // GeoPatch holds a btRigidBody* and `delete`s it in ~GeoPatch, so the
-// complete bullet type is needed here. Defined double-precision to match
-// body.h / physics.cpp (same ABI as main.cpp). bullet must come BEFORE
-// physics.h, which names btDefaultCollisionConfiguration in a member
-// (only forward-declared there) and so needs the complete type.
-#define BT_USE_DOUBLE_PRECISION true
-#include <btBulletDynamicsCommon.h>
+// complete type is needed here -- via btcommon.h, the single
+// precision-settled Bullet include (double precision, matching
+// physics.cpp).
+#include "btcommon.h"
 #include "physics.h"
 
 #include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes the
