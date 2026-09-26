@@ -877,7 +877,7 @@ endif
 # Build and run the TSan variant with tsan.supp applied (see that file for
 # what it suppresses and why). Uses the real display when there is one and
 # xvfb-run when there is not. Pass game args through GAME_ARGS:
-#     make tsan-run GAME_ARGS="--timeout 10 --ship res/ships/racer.json"
+#     make tsan-run GAME_ARGS="--timeout 10 --startship racer,res/ships/racer.json,Kerbin,pad"
 # The exit code is TSan's: 0 = clean, 66 = it reported a race.
 GAME_ARGS ?=
 .PHONY: tsan-run
