@@ -167,10 +167,12 @@ int main() {
     const glm::vec3 p3 = glm::normalize(glm::vec3(-1,-1, 1));
     const glm::vec3 p4 = glm::normalize(glm::vec3( 1,-1, 1));
 
-    // 7. The grid without a skirt (a root patch): 49x49 vertices, 48x48
-    //    quads, every vertex on the BAND-LIMITED height field (the same
-    //    fade the builder computes for the quad, with the anchor added
-    //    back in double), indices in range.
+    // 7. The grid without a skirt (has_skirt=false -- no live caller,
+    //    roots and children both build skirted; kept as the num_inner == 0
+    //    convention check): 49x49 vertices, 48x48 quads, every vertex on
+    //    the BAND-LIMITED height field (the same fade the builder computes
+    //    for the quad, with the anchor added back in double), indices in
+    //    range.
     {
         const TerrainParams t = kerbin();
         const GridGeom g = buildGridGeom(t, false, 1, p1, p2, p3, p4);

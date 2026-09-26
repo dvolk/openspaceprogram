@@ -516,11 +516,9 @@ struct GridGeom {
 // adjacent edge vertex so the skirt shades identically to the terrain
 // seam. Technique from Pioneer's GeoPatch; with backface culling on, the
 // skirt only rasterises at the limb, exactly where the cracks show.
-// Root patches (depth 1) get no skirt: at the ranges they're visible the
-// float view-transform noise in fragment depth exceeds the tiny skirt
-// depth margin (zipper artefacts), gaps can't open between the six
-// equal-depth roots, and a root-vs-child T-junction is masked by the
-// child's skirt flaring across the seam.
+// Every patch gets a skirt, roots (depth 1) included: they fill the seams
+// between the six coarsest faces, and the reverse-Z depth rework gave the
+// skirt enough fragment precision to depth-test without zipper artefacts.
 inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
                               int depth, glm::vec3 p1, glm::vec3 p2,
                               glm::vec3 p3, glm::vec3 p4)
