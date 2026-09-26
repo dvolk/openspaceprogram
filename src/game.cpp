@@ -495,8 +495,13 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
     }
     // The switch's heavy phase syncs the bodies the save's ships sit on --
     // the player is on them, wherever the save put the fleet (a save landed
-    // on a non-home body is the common case), not the new system's home.
-    const std::vector<std::string> syncNames = saveShipBodies(dir);
+    // on a non-home body is the common case) -- plus the new system's home,
+    // the load's find-else-fallback landing for a ship whose saved body is
+    // unknown there (last in the list, so the cap drops it first).
+    std::vector<std::string> syncNames = saveShipBodies(dir);
+    if(std::string hn = systemHomeName(sysfile); !hn.empty()) {
+        syncNames.push_back(hn);
+    }
     try {
         switchSystem(sysfile, syncNames);
     } catch(const std::exception &e) {
@@ -644,6 +649,8 @@ void Game::switchSystem(const std::string &path,
     systemPath = path;   // the running system is now this one (save_game + load)
     home = sys.home;
     sun = sys.root;
+    titleBody = nullptr;   // the old system's pick dangles with oldBodies;
+                           // parkTitleCamera / the sync-set block re-picks it
     /* load_system propagated the new tree at t=0, but the clock did not move
        with it -- bring the bodies to `time` or a paused game (New Game starts
        paused, and the title may have warped the clock a long way) renders the

@@ -159,6 +159,7 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
             names += e->name; }
         printf("[heavy] sync: %s (%zu deferred)\n", names.c_str(),
                sys.bodies.size() - isSync.size());
+        fflush(stdout);
     }
     for(TerrainBody *b : sys.bodies) {
         if(inSync(b)) {
@@ -507,7 +508,8 @@ int main(int argc, char **argv)
          --radial/--dock the home body (the test ships sit on it)
          --vab          the launch body (the player is about to be there)
          fleet          the fleet's bodies
-         otherwise      the title backdrop (the first thing the player sees)
+         otherwise      the title backdrop + home (the hub frames home and
+                        the first launch leaves from it)
        BuildClouds still posts its coverage bake to the runner, so that
        per-body cost never stalls anything. Shared with the in-process
        system switch (Game::switchSystem). */
@@ -542,19 +544,19 @@ int main(int argc, char **argv)
         // failed and we stay put) the boot heavy phase below does.
         bool switched = false;
         if(!game.ensureSystemForSave(load_dir, &switched)) {
-            printf("Load failed: the save's system could not be opened\n");
-            exit(1);
+            exit(1);   // reason already printed + toasted by ensureSystemForSave
         }
         if(!switched) {
             // The heavy phase has not run yet (boot, not a runtime reload):
             // build it now, syncing the save's ship bodies where they exist
-            // in THIS system; else home -- the load's find-else-fallback
-            // landing.
+            // in THIS system, plus home -- the load's find-else-fallback
+            // landing for any ship whose saved body is unknown here (last in
+            // the list, so the two-planet cap drops it before a real ship's).
             std::vector<TerrainBody *> sync;
             for(const std::string &n : saveShipBodies(load_dir)) {
                 if(TerrainBody *b = sys.find(n)) { sync.push_back(b); }
             }
-            if(sync.empty()) { sync.push_back(home); }
+            sync.push_back(home);
             postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
                            oceanshader, ringshader, args.cloud_mesh);
         }
@@ -594,6 +596,10 @@ int main(int argc, char **argv)
             }   // postHeavyPhase dedupes the sync set and caps it at two
         } else {
             sync.push_back(game.pickTitleBody());   // the backdrop, below
+            sync.push_back(home);   // the hub frames it and the first launch
+                                    // leaves from it (deduped if it IS the
+                                    // backdrop -- the old home-always-solid
+                                    // boot guarantee, kept deliberately)
         }
         postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
                        oceanshader, ringshader, args.cloud_mesh);

@@ -10,7 +10,9 @@ NAME boot-load-nonhome
 ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_mun --time-accel 1
 ARGS --timeout 8
 EXPECT Loaded system 'res/systems/ksp_system.json'
-EXPECT [heavy] sync: Kerbol, Mun
+# The player's body (Mun) leads the sync set, home (Kerbin) trails as the
+# load's find-fallback landing, and the star is always first.
+EXPECT [heavy] sync: Kerbol, Mun, Kerbin
 EXPECT Loaded game from e2e/fixtures/save_mun (active: racer)
 FORBID [boot] no vessel: title screen
 FORBID Segmentation

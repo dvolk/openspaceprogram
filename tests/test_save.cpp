@@ -545,6 +545,44 @@ int main() {
 
     fs::remove_all(base);   // clean up the scratch dir
 
+    // saveShipBodies: the bodies the saved fleet sits on, in fleet order
+    // (pose.body, falling back to the ship's home; unique, first-wins) --
+    // the set the boot --load path sync-builds. Corrupt / missing ship files
+    // are skipped, a missing dir yields the empty set rather than a throw.
+    {
+        const std::string sb = "tmp/test_save_shipbodies";
+        fs::remove_all(sb);
+        fs::create_directories(sb + "/ships");
+        {
+            std::ofstream f(sb + "/save.json");
+            f << R"({"ships":["v0","v1","v2","v3","v4"]})";
+        }
+        auto ship_json = [&](const std::string &slug, const std::string &body,
+                             const std::string &home) {
+            nlohmann::json s = nlohmann::json::object();
+            if(!body.empty()) {
+                s["pose"] = nlohmann::json::object();
+                s["pose"]["body"] = body;
+            }
+            if(!home.empty()) { s["home"] = home; }
+            std::ofstream f(sb + "/ships/" + slug + ".json");
+            f << s.dump();
+        };
+        ship_json("v0", "Mun", "Kerbin");   // pose.body wins over home
+        ship_json("v1", "", "Kerbin");      // no pose -> the home fallback
+        { std::ofstream f(sb + "/ships/v2.json"); f << "{not json"; }   // corrupt
+        ship_json("v3", "Mun", "");         // duplicates v0's body -> deduped
+        // v4: listed in the meta but the file is missing
+        std::vector<std::string> bodies = saveShipBodies(sb);
+        CHECK(bodies.size() == 2);
+        if(bodies.size() == 2) {
+            CHECK(bodies[0] == "Mun");      // fleet order
+            CHECK(bodies[1] == "Kerbin");   // the home fallback
+        }
+        CHECK(saveShipBodies("tmp/test_save_shipbodies_nope").empty());
+        fs::remove_all(sb);
+    }
+
     if(failures) {
         printf("test_save: %d FAILURE(S)\n", failures);
         return 1;
