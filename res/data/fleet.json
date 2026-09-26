@@ -1,12 +1,12 @@
 {
   "ships": [
-    { "ship": "res/ships/racer.json", "name": "racer", "scenario": "pad" },
-    { "ship": "res/ships/tanker.json", "name": "tanker", "scenario": "pad" },
-    { "ship": "res/ships/stager.json", "name": "stager", "scenario": "pad" },
-    { "ship": "res/ships/laythe_explorer.json", "name": "laythe explorer", "scenario": "inertial-orbit" },
-    { "ship": "res/ships/transporter.json", "name": "transporter", "scenario": "high-orbit" },
-    { "ship": "res/ships/endurance_racer.json", "name": "endurance racer", "scenario": "pad" },
-    { "ship": "res/ships/ranger.json", "name": "ranger", "scenario": "pad" },
-    { "ship": "res/ships/power_test.json", "name": "power test", "scenario": "pad" }
+    { "ship": "res/ships/racer.json", "name": "racer", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/tanker.json", "name": "tanker", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/stager.json", "name": "stager", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/laythe_explorer.json", "name": "laythe explorer", "body": "Kerbin", "scenario": "inertial-orbit" },
+    { "ship": "res/ships/transporter.json", "name": "transporter", "body": "Kerbin", "scenario": "high-orbit" },
+    { "ship": "res/ships/endurance_racer.json", "name": "endurance racer", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/ranger.json", "name": "ranger", "body": "Kerbin", "scenario": "pad" },
+    { "ship": "res/ships/power_test.json", "name": "power test", "body": "Kerbin", "scenario": "pad" }
   ]
 }

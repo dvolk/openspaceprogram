@@ -62,16 +62,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--ship", args.ship_files,
                    "Ship def JSON to build; repeat the flag to build more "
-                   "ships (they share the body/scenario, each getting its "
-                   "own pad slot / orbit slot). A uniform-fleet shorthand "
-                   "-- --fleet overrides it. Default: res/ships/racer.json");
+                   "ships (they share the --body/--scenario, each getting "
+                   "its own pad slot / orbit slot and its name from its own "
+                   "def). A uniform-list shorthand -- --fleet (one entry per "
+                   "ship, all fields required) overrides it");
 
     app.add_option("--fleet", args.fleet_file,
-                   "Fleet JSON (default: none; then --ship applies). One "
-                   "entry per ship, each with its own ship def, name, body "
-                   "and scenario; omitted body/scenario fall back to "
-                   "--body/--scenario. Ships sharing a body+scenario get "
-                   "their own pad slot / orbit slot. Try res/data/fleet.json");
+                   "Start-ship-list JSON (default: none; then --ship "
+                   "applies). One entry per ship; each entry must name all "
+                   "four of ship def, name, body and scenario (the game "
+                   "errors if any is missing). Ships sharing a body+scenario "
+                   "get their own pad slot / orbit slot. Try "
+                   "res/data/fleet.json");
 
     app.add_option("--save", args.save_name,
                    "Save the game (the live fleet + crew + clock) into this "

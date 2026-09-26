@@ -38,7 +38,6 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
-#include "fleet.h"
 #include <nlohmann/json.hpp>
 #include "billboard.h"
 #include "texture.h"
@@ -420,13 +419,13 @@ int main(int argc, char **argv)
 
     /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
-       order + offsets, and the fleet supplies one entry per ship: its def,
-       name, body and scenario. The fleet comes from --fleet (res/data/fleet.json)
-       or, when that is not given, from the --ship flags as a uniform fleet
-       (all entries share the --body/--scenario). Omitted entry body/scenario
-       fall back to the CLI values. Ships sharing a (body, scenario) pair are
-       slotted: pad slots 20 m apart along the pad, orbit slots 20 m apart
-       along the orbit binormal. */
+       order + offsets, and the start-ship list supplies one entry per ship:
+       its def, name, body and scenario. The list comes from --fleet
+       (res/data/fleet.json; every field required) or, when that is not given,
+       from the --ship flags as a uniform list (all ships share the --body /
+       --scenario, each taking its name from its own def). Ships sharing a
+       (body, scenario) pair are slotted: pad slots 20 m apart along the pad,
+       orbit slots 20 m apart along the orbit binormal. */
     Ships ships(args.parts_file, partsshader, sun);
 
     // The running game: borrows the subsystems above and owns the runtime
@@ -477,17 +476,27 @@ int main(int argc, char **argv)
     bool &screenshot_requested = game.screenshot_requested;
     bool &running = game.running;
 
-    std::vector<FleetEntry> fleet_entries;
+    std::vector<DebugStartShip> start_ships;
     if(!args.fleet_file.empty()) {
-        fleet_entries = load_fleet(resdir::path(args.fleet_file).c_str()).ships;
+        try {
+            start_ships =
+                loadDebugStartShips(resdir::path(args.fleet_file).c_str()).ships;
+        } catch(const std::exception &e) {
+            printf("error: %s\n", e.what());
+            return 1;
+        }
     } else if(!args.ship_files.empty() || !args.body_name.empty()) {
-        // --ship names the ship; a lone --body implies the default vessel on
-        // it. Neither -> no vessel at all, which boots to the title screen.
-        if(args.ship_files.empty()) { args.ship_files.push_back(kDefaultShipDef); }
+        // --ship names the ship; a lone --body has no ship to place on it.
+        // Neither -> no vessel at all, which boots to the title screen.
+        if(args.ship_files.empty()) {
+            printf("error: --body was given without --ship (or --fleet); "
+                   "there is no ship to place on it (pass --ship, or --fleet)\n");
+            return 1;
+        }
         for(size_t i = 0; i < args.ship_files.size(); i++) {
-            FleetEntry e;
+            DebugStartShip e;
             e.ship = args.ship_files[i];
-            fleet_entries.push_back(e);
+            start_ships.push_back(e);
         }
     }
 
@@ -590,8 +599,8 @@ int main(int argc, char **argv)
             TerrainBody *vb = args.vab_body.empty()
                              ? home : sys.find(args.vab_body);
             sync.push_back(vb != nullptr ? vb : home);   // the launch body
-        } else if(!fleet_entries.empty()) {
-            for(const FleetEntry &fe : fleet_entries) {
+        } else if(!start_ships.empty()) {
+            for(const DebugStartShip &fe : start_ships) {
                 sync.push_back(fe.body.empty() ? home : sys.find(fe.body));
             }   // postHeavyPhase dedupes the sync set and caps it at two
         } else {
@@ -623,7 +632,7 @@ int main(int argc, char **argv)
             ships.add_ship(dts.station, home, nullptr, 1);
             first = dts.probe;
         } else {
-            first = ships.build_fleet(fleet_entries, sys, home, args.scenario);
+            first = ships.buildDebugStartShips(start_ships, sys, home, args.scenario);
         }
     }
 

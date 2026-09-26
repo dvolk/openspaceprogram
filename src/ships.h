@@ -23,7 +23,26 @@
 #include "terrain.h"  // TerrainBody, StaticBuilding
 #include "vehicle.h"  // Vehicle, ScenarioDef
 
-#include "fleet.h"    // FleetEntry (the startup fleet's entries)
+// DebugStartShip: one ship the game spawns at boot. Not a gameplay fleet --
+// just "the ships that exist at start" (parsed from res/data/fleet.json).
+// All four fields are required; loadDebugStartShips errors if any is missing
+// or empty (the game does not guess a ship, body, or scenario).
+struct DebugStartShip {
+    std::string ship;      // ship def path
+    std::string name;      // display name
+    std::string body;      // the body it sits on (a name in the system)
+    std::string scenario;  // the spawn scenario (see --scenario)
+};
+
+// The collection of them (the parsed "ships" array).
+struct DebugStartShips {
+    std::vector<DebugStartShip> ships;
+};
+
+// Parse + validate the debug-start-ships JSON (load_system style): throws
+// std::runtime_error naming the file + the offending entry on any
+// bad/missing data.
+DebugStartShips loadDebugStartShips(const char *path);
 
 struct System;  // only used by reference in the signatures below
 struct Kerbal;  // the crew characters (eva.h); spawn_crew_kerbal returns one
@@ -88,9 +107,9 @@ public:
     // physics world, the railFrozen convention), registered in the
     // capsule's containment edge so the ship's mass carries it (the ship is
     // heavier with crew aboard -- phase 3's effectiveMass), aboard state
-    // set, and stored on the ship (Vehicle::crew). Called from build_fleet
-    // after each ship is placed; runtime copies (spawn_ship) deliberately
-    // do NOT get crew.
+    // set, and stored on the ship (Vehicle::crew). Called from
+    // buildDebugStartShips after each ship is placed; runtime copies
+    // (spawn_ship) deliberately do NOT get crew.
     void spawn_crew(Vehicle *ship, System &sys);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
@@ -99,14 +118,15 @@ public:
     // Register a ship built out-of-band (the --radial-test ship).
     void add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int slot);
 
-    // Build the startup fleet from the resolved entries: resolve each
+    // Build the start ships from the resolved entries: resolve each
     // entry's body (name -> System body, or the home body) + scenario
     // (name -> table), then place the ship + its startup crew. Returns the
     // first ship built (the natural active one) or nullptr for an empty
-    // fleet. Throws std::runtime_error naming the entry + body on an
+    // list. Throws std::runtime_error naming the entry + body on an
     // unknown body.
-    Vehicle *build_fleet(const std::vector<FleetEntry> &entries, System &sys,
-                         TerrainBody *home, const std::string &default_scenario);
+    Vehicle *buildDebugStartShips(const std::vector<DebugStartShip> &entries,
+                                  System &sys, TerrainBody *home,
+                                  const std::string &default_scenario);
 
 private:
     // Ensure the (body, pad-site) pad exists; build it on demand (the

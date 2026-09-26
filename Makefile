@@ -503,10 +503,6 @@ $(TESTDIR)/test_save: $(TESTDIR)/obj/test_save.o
 $(TESTDIR)/test_crew: $(TESTDIR)/obj/test_crew.o $(TESTDIR)/obj/shipdef.o
 	$(CXX) -o $@ $^
 
-# fleet JSON (GL-free: entry parse + defaults + error paths).
-$(TESTDIR)/test_fleet: $(TESTDIR)/obj/test_fleet.o $(TESTDIR)/obj/fleet.o
-	$(CXX) -o $@ $^
-
 # home-planet calendar (src/calendar.h, header-only pure math): day/year
 # from spin/orbit rates, 427-day snapped year, months, epoch year,
 # tidally-locked + star edge cases. Pinned to the Eerbon JSON rates.
@@ -640,7 +636,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
-        test_rotation test_shipload test_save test_crew test_fleet test_calendar \
+        test_rotation test_shipload test_save test_crew test_calendar \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt
@@ -675,7 +671,6 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_shipload
 	$(TESTDIR)/test_save
 	$(TESTDIR)/test_crew
-	$(TESTDIR)/test_fleet
 	$(TESTDIR)/test_calendar
 	$(TESTDIR)/test_orbit
 	$(TESTDIR)/test_orbitsample

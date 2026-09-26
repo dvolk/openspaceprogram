@@ -8,7 +8,10 @@
 #include "ships.h"
 
 #include <cstdio>
+#include <fstream>
 #include <stdexcept>
+
+#include <nlohmann/json.hpp>
 
 #include "body.h"     // create_body
 #include "eva.h"      // Kerbal (the crew characters)
@@ -16,7 +19,7 @@
 #include "physics.h"  // setPosRot
 #include "resdir.h"   // resdir::path
 #include "shipdef.h"  // load_ship_def, ShipDef, PartsCatalog
-#include "system.h"   // System (build_fleet / spawn_vehicle resolve bodies)
+#include "system.h"   // System (buildDebugStartShips / spawn_vehicle resolve bodies)
 #include "texture.h"  // get_texture
 #include "vehicle.h"  // build_ship, faceAlong, spawn_vehicle, scenario_by_name, Vehicle
 
@@ -24,6 +27,56 @@
 // orbit binormal (slot N sits ORBIT_SLOT_SPACING * N from the reference
 // orbit) so they don't spawn on top of each other.
 static const double ORBIT_SLOT_SPACING = 20.0;
+
+// Every start-ship entry must name all four of these; a missing or empty one
+// is a config error (the game does not guess a ship, body, or scenario).
+static const char *const kStartShipFields[] = {"ship", "name", "body", "scenario"};
+
+DebugStartShips loadDebugStartShips(const char *path) {
+    std::ifstream f(path);
+    if(!f.is_open()) {
+        throw std::runtime_error(std::string("start ships: cannot open ") + path);
+    }
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(f, nullptr, true);
+    } catch(const std::exception &e) {
+        throw std::runtime_error(std::string("start ships: bad JSON in ") + path
+                                 + std::string(": ") + e.what());
+    }
+    if(!doc.is_object() || !doc.contains("ships") || !doc["ships"].is_array()
+       || doc["ships"].empty()) {
+        throw std::runtime_error(std::string("start ships: no ships in ") + path);
+    }
+
+    DebugStartShips list;
+    const nlohmann::json &arr = doc["ships"];
+    for(size_t i = 0; i < arr.size(); i++) {
+        const nlohmann::json &ev = arr[i];
+        if(!ev.is_object()) {
+            throw std::runtime_error(std::string("start ships: entry ")
+                                     + std::to_string(i) + " of " + path
+                                     + " must be an object");
+        }
+
+        DebugStartShip e;
+        for(const char *const field : kStartShipFields) {
+            if(!ev.contains(field) || !ev[field].is_string()
+               || ev[field].get<std::string>().empty()) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + " is missing required field \""
+                                         + field + "\"");
+            }
+        }
+        e.ship = ev["ship"].get<std::string>();
+        e.name = ev["name"].get<std::string>();
+        e.body = ev["body"].get<std::string>();
+        e.scenario = ev["scenario"].get<std::string>();
+        list.ships.push_back(e);
+    }
+    return list;
+}
 
 void collectVehiclesInto(System &sys, std::vector<Vehicle *> &out) {
     out.clear();
@@ -247,12 +300,13 @@ void Ships::add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int s
     home->ships.push_back(v);
 }
 
-Vehicle *Ships::build_fleet(const std::vector<FleetEntry> &entries, System &sys,
-                            TerrainBody *home, const std::string &default_scenario)
+Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
+                                     System &sys, TerrainBody *home,
+                                     const std::string &default_scenario)
 {
     Vehicle *first = nullptr;
     for(size_t i = 0; i < entries.size(); i++) {
-        const FleetEntry &fe = entries[i];
+        const DebugStartShip &fe = entries[i];
         TerrainBody *hb;
         if(fe.body.empty()) {
             hb = home; // the CLI --body resolution (or the system home)
@@ -264,7 +318,7 @@ Vehicle *Ships::build_fleet(const std::vector<FleetEntry> &entries, System &sys,
                     if(k) { avail += ", "; }
                     avail += sys.bodies[k]->name;
                 }
-                throw std::runtime_error("fleet: ship entry " + std::to_string(i)
+                throw std::runtime_error("start ships: ship entry " + std::to_string(i)
                                          + ": unknown body '" + fe.body
                                          + "' (available: " + avail + ")");
             }
