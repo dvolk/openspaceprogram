@@ -66,7 +66,8 @@ void drawTrackingShipList(Game &g);
 // the save_game / load_game pair in save.cpp.
 void drawSaveLoad(Game &g);
 
-// The VAB editor scene's widgets: the build-tree part list (select), and
+// The VAB editor scene's widgets: the selected-part panel (the part is picked
+// by clicking it in the 3D view), the fuel-link list, the subassemblies, and
 // hints. Drawn instead of the flight readouts when Game::scene == Vab.
 void drawVabUI(Game &g);
 

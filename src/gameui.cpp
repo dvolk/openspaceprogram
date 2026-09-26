@@ -2917,15 +2917,8 @@ void drawVabUI(Game &g) {
     ImGui::Begin("VAB", nullptr);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.build.name.c_str(),
                 (int)g.vab.build.parts.size());
-    ImGui::Separator();
-    for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
-        const BuildPart &bp = g.vab.build.parts[i];
-        const bool sel = ((int)i == g.vab.selected);
-        if(ImGui::Selectable(bp.id.c_str(), sel)) {
-            g.vab.selected = (int)i;
-            g.vab.linkSel = -1;   // the two selections are exclusive
-        }
-    }
+    // Parts are selected by clicking them in the 3D view (vab.cpp LMB pick);
+    // the panel below acts on that selection.
     if(g.vab.selected >= 0 && (size_t)g.vab.selected < g.vab.build.parts.size()) {
         ImGui::Separator();
         const int sel = g.vab.selected;
