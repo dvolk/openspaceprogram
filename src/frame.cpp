@@ -30,6 +30,13 @@ glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)
     return glm::transpose(relTo->root_orient) * root_orient;
 }
 
+glm::dmat4 Frame::GetBodyDrawTransform(Frame *relTo)
+{
+    Frame *rot = getRotFrame();
+    return glm::translate(rot->GetPositionRelTo(relTo))
+         * glm::dmat4(rot->GetOrientRelTo(relTo));
+}
+
 void Frame::UpdateRootRelative() {
     if(parent == NULL) {
         return;

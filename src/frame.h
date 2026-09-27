@@ -65,6 +65,13 @@ struct Frame {
     glm::dvec3 GetPositionRelTo(Frame *relTo);
     glm::dmat3 GetOrientRelTo(Frame *relTo);
 
+    /* Model matrix for a body's meshes (authored in getRotFrame() axes).
+       Both halves must be relativized to relTo: bare getRotFrame()->orient
+       is parent-relative only and drops relTo's spin / ancestor tilts, so a
+       landed ship's rotating frame made every other body spin once per local
+       day (issue #27). */
+    glm::dmat4 GetBodyDrawTransform(Frame *relTo);
+
     bool isRotFrame() { return rotating; }
     bool hasRotFrame() { return rot_frame != nullptr; }
     Frame *getNonRotFrame() {

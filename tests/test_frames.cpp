@@ -568,6 +568,69 @@ int main() {
     CHECK_TRUE(eerbon_rot->getRotFrame() == eerbon_rot, "eerbon_rot.getRotFrame() == self");
     CHECK_TRUE(eerbon_rot->getNonRotFrame() == eerbon, "eerbon_rot.getNonRotFrame() == parent");
 
+    // ---- body draw transform (issue #27) ----
+    // render.cpp draws each body with GetBodyDrawTransform(rf). The rotation
+    // half must be getRotFrame()->GetOrientRelTo(rf), never bare
+    // getRotFrame()->orient (parent-relative only). Standing on a spinning
+    // body (rf = eerbon_rot) and drawing the moon is the repro: the old
+    // formula left the moon un-rotated by the local spin, so its surface
+    // drifted once per local day while the sky position stayed correct.
+    printf("== body draw transform (issue #27) ==\n");
+    {
+        // Landed: rf is the local body's spinning rot frame.
+        Frame *rf = eerbon_rot;
+        const glm::dmat4 T = moon->GetBodyDrawTransform(rf);
+        const glm::dmat3 drawn(T);
+        const glm::dmat3 want = moon->getRotFrame()->GetOrientRelTo(rf);
+        CHECK_TRUE(mat_close(drawn, want, 1e-9),
+                   "drawn rot == getRotFrame()->GetOrientRelTo(rf)");
+        CHECK_TRUE(dvec_close(glm::dvec3(T[3]), moon->GetPositionRelTo(rf), 1e-9),
+                   "drawn origin == GetPositionRelTo(rf)");
+        // The bug: bare orient is identity here and ignores rf's spin.
+        CHECK_TRUE(!mat_close(drawn, moon->getRotFrame()->orient, 1e-6),
+                   "drawn rot differs from bare getRotFrame()->orient when rf spins");
+        // Explicit expected value: moon is unspun and un-tilted in this tree,
+        // so its axes in eerbon_rot are the inverse of eerbon_rot's 20-degree
+        // spin (and of any spin at a later time).
+        sun->UpdateOrbitRails(37.0);
+        const glm::dmat4 T2 = moon->GetBodyDrawTransform(eerbon_rot);
+        const glm::dmat3 want2 = glm::transpose(eerbon_rot->root_orient)
+                               * moon->getRotFrame()->root_orient;
+        CHECK_TRUE(mat_close(glm::dmat3(T2), want2, 1e-9),
+                   "at t=37: drawn rot == transpose(rf.root_orient)*rot.root_orient");
+        sun->UpdateOrbitRails(0.0);
+    }
+    {
+        // Local body, rf is its rot frame: identity, origin 0.
+        const glm::dmat4 T = eerbon->GetBodyDrawTransform(eerbon_rot);
+        CHECK_TRUE(mat_close(glm::dmat3(T), glm::dmat3(1.0), 1e-9),
+                   "local body in its rot frame: rot == I");
+        CHECK_TRUE(dvec_close(glm::dvec3(T[3]), glm::dvec3(0), 1e-9),
+                   "local body in its rot frame: origin == 0");
+    }
+    {
+        // Local body, rf is its inertial parent: spin relative to that parent
+        // (the old special case used bare orient, which is correct only here).
+        const glm::dmat4 T = eerbon->GetBodyDrawTransform(eerbon);
+        CHECK_TRUE(mat_close(glm::dmat3(T), eerbon->getRotFrame()->orient, 1e-9),
+                   "local body in its inertial parent: rot == getRotFrame()->orient");
+        CHECK_TRUE(dvec_close(glm::dvec3(T[3]), glm::dvec3(0), 1e-9),
+                   "local body in its inertial parent: origin == 0");
+    }
+    {
+        // Inclined-orbit case: a non-identity ancestor tilt must be carried
+        // into the draw rotation even with an inertial rf (sun).
+        moon->orient = glm::dmat3(glm::rotate(11.0 * M_PI / 180.0, glm::dvec3(0, 0, 1)));
+        sun->UpdateOrbitRails(0.0);
+        const glm::dmat3 drawn = glm::dmat3(moon->GetBodyDrawTransform(sun));
+        CHECK_TRUE(mat_close(drawn, moon->orient, 1e-9),
+                   "inclined moon drawn under sun: rot == ancestor tilt");
+        CHECK_TRUE(!mat_close(drawn, moon->getRotFrame()->orient, 1e-6),
+                   "inclined moon: bare orient misses the ancestor tilt");
+        moon->orient = glm::dmat3(1.0);
+        sun->UpdateOrbitRails(0.0);
+    }
+
     // ---- summary ----
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if (g_failures == 0) {

@@ -302,9 +302,7 @@ void draw3d(Game &g) {
             }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
-            camera->ref = (b == localBody && rf->isRotFrame())
-                ? glm::dmat3(1.0)
-                : glm::dmat3(b->frame->getRotFrame()->orient);
+            camera->ref = b->frame->getRotFrame()->GetOrientRelTo(rf);
         }
     }
 
@@ -367,23 +365,7 @@ void draw3d(Game &g) {
     }
 
     for(auto&& planet : planets) {
-        if(planet == localBody) {
-            //this is the planet we're on. This means its position is always 0, 0, 0
-
-            if(rf->isRotFrame()) {
-                // we're in its rotational frame
-                planet->transform = glm::dmat4(1.0);
-            }
-            else {
-                // we're in its inertial frame
-                planet->transform = glm::dmat4(planet->frame->getRotFrame()->orient);
-            }
-        }
-        else {
-            // other planets
-            glm::dvec3 translate = planet->frame->GetPositionRelTo(rf);
-            planet->transform = glm::translate(translate) * glm::dmat4(planet->frame->getRotFrame()->orient);
-        }
+        planet->transform = planet->frame->GetBodyDrawTransform(rf);
     }
 
     for(auto&& planet : planets) {
