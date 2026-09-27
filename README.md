@@ -1,12 +1,10 @@
 # Open Space Program
 
-Open source space sim inspired by Pioneer and Kerbal Space Program.
+Space sim inspired by Pioneer and Kerbal Space Program.
 
-Written in C++ using SDL3, GLM, ImGui, and Bullet physics.
-
-<img src="https://i.imgur.com/HM02Gd7.png"/>
-<img src="https://i.imgur.com/eKhFz34.png"/>
-<img src="https://i.imgur.com/1xzE4Fo.png"/>
+| <img src="https://oxfordfun.com/2026_09_23-18_19_23-ubbu-osp.png" alt="osp screenshot showing ship around phobos"> | <img src="https://oxfordfun.com/2026_09_23-00_19_57-ubbu-osp.png" alt="osp screenshot showing jupiter and its moons"> |
+|------|------|
+| <img src="https://oxfordfun.com/2026_09_23-18_53_42-ubbu-osp.png" alt="osp screenshot showing the VAB"> | <img src="https://oxfordfun.com/2026_09_24-00_32_48-ubbu-osp.png" alt="osp screenshot showing the space center menu"> |
 
 ## Build from source/run
 
