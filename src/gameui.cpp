@@ -1765,6 +1765,10 @@ void drawPartWindows(Game &g) {
             sel.placed = true;
         }
         bool open = true;
+        /* a successful pickup may have dropped an EARLIER part_sels entry
+           (the item ship's own window, via dropPartWindowsFor), shifting
+           the entries this loop is indexing -- see the break at the end */
+        bool worldChanged = false;
         if(ImGui::Begin(name, &open, ImGuiWindowFlags_NoSavedSettings)) {
             ImGui::Text("Ship: %s", ship->name.c_str());
             ImGui::Text("Part #%zu  (stage %d)", part,
@@ -1890,14 +1894,88 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  (no one in range to board)");
                 }
             }
+            // --- inventory (this part is a container: holds items) --------
+            // Contained items get a Drop button (it leaves into a free 1-part
+            // ship, Game::dropItem). Free item ships within pickup range
+            // (<= 10 m of the container, like boarding) get a Pick up button
+            // (re-parents them into this container, Game::pickUpItem).
+            if(def->inventory_capacity > 0) {
+                Part *cont = ship->parts[part];
+                ImGui::Separator();
+                ImGui::Text("Inventory: %d / %d",
+                            (int)cont->ownedContents.size(),
+                            def->inventory_capacity);
+                if(cont->ownedContents.empty()) {
+                    ImGui::Text("  (empty)");
+                }
+                /* Snapshot: dropItem erases from ownedContents mid-loop, and
+                   a vector erase invalidates the range-for's iterator. */
+                std::vector<Part *> items = cont->ownedContents;
+                for(Part *item : items) {
+                    const char *in = item->def->display_name.empty()
+                        ? item->def->name.c_str()
+                        : item->def->display_name.c_str();
+                    ImGui::PushID(item);
+                    ImGui::Text("  %s  (%.1f kg)", in,
+                                item->effectiveMass());
+                    if(ImGui::SmallButton("Drop")) {
+                        g.dropItem(item);
+                    }
+                    ImGui::PopID();
+                }
+                // free item ships in range: a Pick up button each (a 1-part
+                // ship with a free part; kerbals board, not cargo; a crewed
+                // ship is not stowable)
+                bool anyInRange = false;
+                for(Vehicle *v : collectVehicles(g.sys)) {
+                    if(v->isEva()) { continue; }
+                    if(v->parts.size() != 1) { continue; }
+                    if(v->parts[0]->container != nullptr) { continue; }
+                    if(!v->crew.empty()) { continue; }
+                    if(v == ship) { continue; }
+                    /* distanceTo: COM-to-COM in the common root frame
+                       (updateProximity's idiom) -- a raw coordinate
+                       difference would mix the two ships' frames across an
+                       SOI boundary crossing */
+                    const double dist = ship->distanceTo(v);
+                    if(dist > 10.0) { continue; }
+                    anyInRange = true;
+                    ImGui::PushID(v);
+                    ImGui::Text("  %s (%.1f m, %.1f kg)", v->name.c_str(),
+                                dist, v->getMass());
+                    if(ImGui::SmallButton("Pick up")) {
+                        // picking up the ship you are flying leaves
+                        // orbit-view (pickUpItem drops control) -- hand the
+                        // player back to the carrier
+                        const bool wasFlying = (g.ship == v);
+                        if(g.pickUpItem(v, cont)) {
+                            if(wasFlying) { g.select_ship(cont->owner); }
+                            worldChanged = true;
+                        }
+                    }
+                    ImGui::PopID();
+                }
+                if(!anyInRange) {
+                    ImGui::Text("  (no cargo in range)");
+                }
+            }
             ImGui::Separator();
             ImGui::Text("Picked at: (%.0f, %.0f, %.0f)",
                         sel.point.x, sel.point.y, sel.point.z);
         }
         ImGui::End();
         if(!open) {
-            g.part_sels.erase(g.part_sels.begin() + idx);
+            /* erase by identity, not by idx: a successful pickup may have
+               removed an earlier entry (the item ship's window) and shifted
+               this one off idx */
+            for(auto it = g.part_sels.begin(); it != g.part_sels.end(); ++it) {
+                if(it->ship == ship && it->part == part) {
+                    g.part_sels.erase(it);
+                    break;
+                }
+            }
         }
+        if(worldChanged) { break; }
     }
 }
 

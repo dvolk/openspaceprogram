@@ -963,7 +963,10 @@ Vehicle *Game::dropItem(Part *item) {
        stale hull state, and its pose may sit inside another ship's hull --
        the item would spawn in collision or with the wrong velocity. Only a
        live carrier can shed items. */
-    if(carrier->onRails) { return nullptr; }
+    if(carrier->onRails) {
+        toast("Drop: %s is parked", carrier->name.c_str());
+        return nullptr;
+    }
 
     /* the item's world pose = its container's pose (it sits at the
        container's COM). Rigid velocity: v + w x r (the same derivation
@@ -996,6 +999,10 @@ Vehicle *Game::dropItem(Part *item) {
     SetAngVelocity(nv->hull, GetAngVelocity(carrier->hull));
     nv->enterWorld();
     if(nv->m_parent != nullptr) { nv->m_parent->ships.push_back(nv); }
+    /* the carrier's compound still carries the item's mass + inertia --
+       rebuild it now (pickUpItem's counterpart), so a small cargo drop
+       never rides the stale compound into the next step */
+    carrier->rebuildCompound();
     toast("Dropped %s", item->def->name.c_str());
     return nv;
 }
@@ -1004,6 +1011,14 @@ Vehicle *Game::dropItem(Part *item) {
 bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     if(itemShip == nullptr || dest == nullptr) { return false; }
     if(itemShip->parts.size() != 1) { return false; }
+    /* a crewed ship is not cargo: ~Vehicle deletes its crew, and the
+       capsule's contents (the suit part) would dangle inside the
+       destination container -- mirror remove_ship's guard */
+    if(!shipCrew(itemShip).empty()) {
+        toast("Pick up: %s has crew aboard -- EVA them out first",
+              itemShip->name.c_str());
+        return false;
+    }
     Part *item = itemShip->parts[0];
     if(!dest->isContainer()) { return false; }
 
@@ -1036,7 +1051,9 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
         if(s->dockTargetShip == itemShip) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
     }
     itemShip->parts.clear();
-    RemoveBody(itemShip->hull);
+    /* a railed item ship is already out of the world (goOnRails removed
+       its hull); removeRigidBody on an unregistered body is UB */
+    if(itemShip->hullInWorld()) { RemoveBody(itemShip->hull); }
     delete itemShip;
     /* phase 3: the carrier's compound gains the item's mass */
     if(dest->owner != nullptr) { dest->owner->rebuildCompound(); }
