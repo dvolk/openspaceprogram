@@ -5,14 +5,16 @@
 
 #include "uiwins.h"
 
+#include <algorithm>   // std::max
+
 #include "game.h"    // Game
 #include "scene.h"   // curScene
 
 /* Designated array initializers ([W_Orbital] = ...) so an entry cannot drift
    away from its enum value, and designated struct initializers in ui::Options'
    declaration order (slot, offset, left_of, right_of, below, initial_size,
-   fixed_width, fixed, closable, default_open, flags) so an omitted field keeps
-   the default it had before.
+   fixed_width, size_cb, size_cb_data, fixed, closable, default_open, flags)
+   so an omitted field keeps the default it had before.
 
    `closable = true` on nearly every window is the old info_opts() preset: an X
    on the title bar. `inList` is a row in the Windows panel -- the ones that are
@@ -25,6 +27,32 @@
    for aggregates but not array indices, so GCC flags these under -Wpedantic;
    they are a long-standing GCC/Clang extension and the safety is worth the
    scoped suppression. */
+
+// The Surface Map's map is 2:1 equirectangular and fills the window's
+// content width (gameui.cpp), so the window must stay tall enough for
+// the map + its chrome: the min height is a function of the proposed
+// width (the map's height is half the content width). imgui calls this
+// on the initial size and on every user resize, so dragging the width
+// wider stretches the height to fit the map instead of clipping the
+// bottom caption. The chrome count mirrors the window body's rows (3
+// framed: body/button/checkbox; 5 text: map-size/busy/hover/SOI/
+// equirect) -- keep in sync if a row is added there.
+static void surfaceMapMinSize(ImGuiSizeCallbackData *d) {
+    const ImGuiStyle &s = ImGui::GetStyle();
+    const float frame = ImGui::GetFrameHeight();   // a framed row (the title bar too)
+    const float text = ImGui::GetTextLineHeight();
+    const float isp = s.ItemSpacing.y;
+    const float map_h =
+        std::max(0.0f, d->DesiredSize.x - 2.0f * s.WindowPadding.x) * 0.5f;
+    const float min_h = s.WindowPadding.y * 2.0f
+        + frame                 // title bar (FontSize + 2*FramePadding.y)
+        + 3.0f * (frame + isp)  // body, button, checkbox rows
+        + (text + isp)          // the map-size row
+        + (map_h + isp)         // the map itself
+        + 4.0f * (text + isp);  // caption rows: busy / hover / SOI / equirect
+    if(d->DesiredSize.y < min_h) { d->DesiredSize.y = min_h; }
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 const WinDef kWins[W_Count] = {
@@ -121,9 +149,12 @@ const WinDef kWins[W_Count] = {
     [W_SurfaceMap] = {
         .name = "Surface Map", .label = "Surface Map",
         // The body's 2-D surface (equirectangular) with the ship's position +
-        // orbit overlaid. 256 x 128 default map + the combo + readouts fits in
-        // 520 x 430. Sits under Surface Info, mirroring Orbit Info -> Map.
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(520.0f, 430.0f),
+        // orbit overlaid. The map fills the content width (2:1), so the size
+        // constraint keeps the height tall enough as the window is widened
+        // (surfaceMapMinSize) instead of clipping the bottom caption.
+        // Sits under Surface Info, mirroring Orbit Info -> Map.
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(520.0f, 450.0f),
+                  .size_cb = &surfaceMapMinSize,
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },

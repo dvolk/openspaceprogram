@@ -1063,13 +1063,21 @@ void drawUIReadouts(Game &g) {
             sm_tex_rev = g.surfmap_rev;
         }
 
-        // Fixed display size (2:1); the map resolution only sets how many
-        // texels land on this area. The buffer's row 0 is the north pole,
-        // and GL row 0 is uv (0,0) = the drawn rect's top-left, so the
-        // default (0,0)-(1,1) uv draws it unflipped (the Porkchop heatmap
-        // flips, its row 0 being the axis minimum).
-        const float sm_img_w = 480.0f;
-        const float sm_img_h = 240.0f;
+        // The map fills the window's content width (2:1 equirectangular:
+        // the height is half the width), so a wider window shows a bigger
+        // map -- the texture upscales (LINEAR filtering above), the map
+        // resolution only sets how many texels land on this area. The
+        // window's size constraint (surfaceMapMinSize, uiwins.cpp) keeps
+        // the height tall enough that the bottom caption never clips.
+        // The buffer's row 0 is the north pole, and GL row 0 is uv (0,0)
+        // = the drawn rect's top-left, so the default (0,0)-(1,1) uv
+        // draws it unflipped (the Porkchop heatmap flips, its row 0
+        // being the axis minimum).
+        // ImMax: this imgui's GetContentRegionAvail is not clamped to 0,
+        // and a window dragged narrower than 2*WindowPadding would
+        // otherwise leave a negative width in the overlay math below.
+        const float sm_img_w = ImMax(0.0f, ImGui::GetContentRegionAvail().x);
+        const float sm_img_h = sm_img_w * 0.5f;
         const ImVec2 sm_p0 = ImGui::GetCursorScreenPos();
         ImGui::Image((ImTextureID)(std::intptr_t)sm_tex->id,
                      ImVec2(sm_img_w, sm_img_h));

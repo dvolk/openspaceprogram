@@ -72,6 +72,15 @@ struct Options {
     // full-width progress bars).
     float fixed_width = -1.0f;
 
+    // Per-frame size-constraint callback (imgui's
+    // SetNextWindowSizeConstraints), for a window whose min size must
+    // track its width -- the Surface Map's 2:1 map fills the content
+    // width, so the min height follows the width and the bottom caption
+    // never clips as the window is widened. (fixed_width is the
+    // pinned-width special case of this mechanism.)
+    ImGuiSizeCallback size_cb = nullptr;
+    void *size_cb_data = nullptr;
+
     bool fixed = false;      // no move, no resize; re-placed every frame
     bool closable = false;   // show the X close button (the menu windows)
     bool default_open = true; // open state a reset restores
@@ -345,6 +354,13 @@ bool Window(const char* name, const Options& o, Body&& body) {
             FixedWidthCallback,
             reinterpret_cast<void*>(
                 static_cast<std::size_t>(o.fixed_width * ImGui::GetFontSize())));
+    } else if (o.size_cb != nullptr) {
+        // Applied on the initial size and on every user resize (imgui
+        // routes both through the size-constraint pass), so a width drag
+        // can stretch the height to fit the content instead of clipping.
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX),
+            o.size_cb, o.size_cb_data);
     }
 
     // Closable windows pass their open state to imgui so the X button
