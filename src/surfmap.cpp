@@ -77,6 +77,7 @@ void surfmapCompute(Game &g) {
     // per-pixel read would race that write. Snapshotting at post time is the
     // same idiom the porkchop grid and the cloud bake already use.
     const TerrainParams tp = body->params();
+    const bool ocean = g.surfmap_sea;     // the "Ocean" box (per-pixel below)
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
     const double t_now = g.time;
@@ -87,7 +88,7 @@ void surfmapCompute(Game &g) {
     // can name it; the worker body itself never touches game state. A
     // by-value capture would copy the non-copyable Game (the JobRunner
     // member forbids it).
-    g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, log,
+    g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, ocean, log,
                                 body_name, t_now, epoch]()
                 -> std::function<void()> {
         // Worker thread: build the pixel buffer. No game-state WRITE, GL
@@ -102,7 +103,17 @@ void surfmapCompute(Game &g) {
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
                 const glm::dvec3 d = surfmapDir(i, j, w, h);
-                const glm::vec3 c = terrainSurfaceColor((glm::vec3)d, tp);
+                // Ocean box on and this pixel at / below sea level: the
+                // flat sea (sea_color) covers the sea floor -- the same
+                // coverage the 3D ocean shell (terrain.h BuildOcean)
+                // gives. A body without a sea is untouched, so the box
+                // is a no-op there.
+                const bool under_sea = ocean && tp.surface.has_sea
+                    && terrainHeight((glm::vec3)d, tp)
+                       <= (double)tp.radius + (double)tp.surface.sea_level;
+                const glm::vec3 c = under_sea
+                    ? tp.surface.sea_color
+                    : terrainSurfaceColor((glm::vec3)d, tp);
                 const float f = baked ? surfmapShade(d, sun_dir) : 1.0f;
                 unsigned char *q = &px[((size_t)j * w + i) * 4];
                 q[0] = (unsigned char)(std::min(1.0f, f * c.r) * 255.0f + 0.5f);
@@ -116,13 +127,15 @@ void surfmapCompute(Game &g) {
         if(log) {
             // albedo = the map before the terminator; shaded = as stored.
             // shade=on means a terminator was baked (the e2e battery checks
-            // shaded < albedo on the sun-facing body).
+            // shaded < albedo on the sun-facing body); ocean=on means the
+            // sea was painted over the sea floor.
             printf("[surfmap] t=%.1fs body=\"%s\" %dx%d "
-                   "albedo=[%.4f %.4f %.4f] shaded=[%.4f %.4f %.4f] shade=%s\n",
+                   "albedo=[%.4f %.4f %.4f] shaded=[%.4f %.4f %.4f] "
+                   "shade=%s ocean=%s\n",
                    t_now, body_name.c_str(), w, h,
                    ar / npx, ag / npx, ab / npx,
                    sr / npx, sg / npx, sb / npx,
-                   baked ? "on" : "off");
+                   baked ? "on" : "off", ocean ? "on" : "off");
             fflush(stdout);
         }
         // Main-thread continuation (JobRunner::poll): publish the cache

@@ -618,6 +618,8 @@ struct Game {
     // (the body the ship is orbiting / landed on), else the system home.
     TerrainBody *surfmap_body = nullptr;
     bool surfmap_shade = true;    // bake the terminator (the "Sun shading" box)
+    bool surfmap_sea = false;     // paint the sea (the "Ocean" box; a body
+                                  // without one is unaffected)
     // The last computed map (surfmapCompute publishes it atomically; the
     // window re-uploads the texture on surfmap_rev changes).
     std::vector<unsigned char> surfmap_px;  // RGBA8, w*h

@@ -1018,6 +1018,14 @@ void drawUIReadouts(Game &g) {
             surfmapCompute(g);   // re-bake with the new terminator
         }
         if(sm_busy) { ImGui::EndDisabled(); }
+        ImGui::SameLine();
+        bool sea = g.surfmap_sea;
+        if(sm_busy) { ImGui::BeginDisabled(); }
+        if(ImGui::Checkbox("Ocean", &sea)) {
+            g.surfmap_sea = sea;
+            surfmapCompute(g);   // re-bake with / without the sea
+        }
+        if(sm_busy) { ImGui::EndDisabled(); }
         ImGui::TextDisabled("map %dx%d   (size: --surfmap-n)",
                             g.surfmap_w, g.surfmap_h);
         if(sm_busy) {
