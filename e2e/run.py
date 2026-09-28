@@ -18,6 +18,11 @@ Usage:
   python3 e2e/run.py --jobs 4   run up to 4 cases in parallel
                                 (default: 2; --jobs 1 = serial)
 
+Each case prints a progress line as it finishes:
+  [3/97] orbit-burn PASS (12.3s)
+(diag lines follow a FAIL), so a long battery shows life; the full
+pass/fail table still comes at the end.
+
 A full battery (no selectors) or --jobs > 2 is refused without --force:
 a full battery takes a LONG time, and software-GL runs still use ~500%
 CPU per case. A targeted selector and the default 2 jobs usually cover
@@ -107,7 +112,7 @@ import signal
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
@@ -755,6 +760,17 @@ HISTORY_FIELDS = ["datetime_utc", "commit", "dirty", "renderer", "game",
                   "run_dir"]
 
 
+def print_progress(idx, total, res):
+    """One line per case as it finishes, so a long battery shows life.
+    Flush: piped output (make e2e, CI) is block-buffered otherwise."""
+    _, name, passed, diag, _, dur = res
+    print("[%d/%d] %s %s (%.1fs)" % (idx, total, name,
+                                     "PASS" if passed else "FAIL", dur),
+          flush=True)
+    for line in diag:
+        print("        %s" % line, flush=True)
+
+
 def format_summary(results):
     """The human pass/fail table (shared by the console and summary.txt)."""
     if not results:
@@ -935,14 +951,23 @@ def main():
 
     # Cases are independent: each gets its own Xvfb display (xvfb-run -a
     # retries on a taken display) and captures its own stdout, so they can
-    # run concurrently. map() preserves input order, so the summary prints
-    # in case-file order regardless of which case finishes first.
+    # run concurrently. Progress is printed per case as cases FINISH (completion
+    # order -- a quick case and a slow one interleaved is expected); the final
+    # table stays in case-file order, and artifacts are keyed by filename.
     started = datetime.datetime.now(datetime.timezone.utc)
+    total = len(case_files)
+    results = [None] * total
     if args.jobs == 1:
-        results = [run_one(p) for p in case_files]
+        for i, p in enumerate(case_files):
+            results[i] = run_one(p)
+            print_progress(i + 1, total, results[i])
     else:
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            results = list(pool.map(run_one, case_files))
+            fut_idx = {pool.submit(run_one, p): i for i, p in enumerate(case_files)}
+            for done, fut in enumerate(as_completed(fut_idx), 1):
+                i = fut_idx[fut]
+                results[i] = fut.result()
+                print_progress(done, total, results[i])
     finished = datetime.datetime.now(datetime.timezone.utc)
 
     # Persist before printing, so the console can point at the artifacts.
