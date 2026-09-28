@@ -108,7 +108,7 @@ int main() {
     CHECK(kb != nullptr);
     CHECK(kb->type == "kerbal");
     CHECK(kb->mass > 50.0 && kb->mass < 150.0);
-    CHECK(kb->torque == 0.0 && kb->fuel_rate == 0.0);
+    CHECK(kb->torque == 0.0 && kb->totalPropellantRate() == 0.0);
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] > 0.0f); // the suit's RCS propellant
     CHECK(kb->capacity[(int)ResourceType::Hydrazine] < 100.0f); // a suit load, not a tank
     CHECK(kb->mass > kb->capacity[(int)ResourceType::Hydrazine]); // dry suit outweighs its propellant load
@@ -119,7 +119,7 @@ int main() {
     CHECK(cg != nullptr);
     CHECK(cg->inventory_capacity > 0);
     CHECK(cg->crew_capacity == 0);
-    CHECK(cg->torque == 0.0 && cg->fuel_rate == 0.0);
+    CHECK(cg->torque == 0.0 && cg->totalPropellantRate() == 0.0);
 
     // decouplers are fuel barriers: propellant does not flow across one, so
     // it splits fuel groups (an engine can't draw from the other side).
@@ -140,7 +140,7 @@ int main() {
         CHECK(!dp->decoupler);
         CHECK(dp->mass > 0.0);
         CHECK(dp->torque == 0.0);
-        CHECK(dp->fuel_rate == 0.0 && dp->exhaust_velocity == 0.0);
+        CHECK(dp->totalPropellantRate() == 0.0 && dp->exhaust_velocity == 0.0);
         for(size_t r = 0; r < dp->capacity.size(); r++) {
             CHECK(dp->capacity[r] == 0.0f);
         }
@@ -158,7 +158,7 @@ int main() {
     CHECK(fl->fuel_link);
     CHECK(fl->mesh.empty() && fl->texture.empty());
     CHECK(fl->mass == 0.0);
-    CHECK(fl->torque == 0.0 && fl->fuel_rate == 0.0);
+    CHECK(fl->torque == 0.0 && fl->totalPropellantRate() == 0.0);
     for(size_t r = 0; r < fl->capacity.size(); r++) {
         CHECK(fl->capacity[r] == 0.0f);
     }
@@ -183,7 +183,7 @@ int main() {
     CHECK(cap->mesh == "meshes/capsule.obj");
     CHECK(cap->texture == "textures/capsule.png");
     CHECK(cap->torque > 0.0);   // the capsule carries an attitude wheel
-    CHECK(cap->fuel_rate == 0.0 && cap->exhaust_velocity == 0.0);
+    CHECK(cap->totalPropellantRate() == 0.0 && cap->exhaust_velocity == 0.0);
     // the capsule is a crew module: a CONSTANT life-support draw (on all the
     // time, unlike a wheel's active power_draw) plus a small built-in battery
     // (EC capacity) as the reserve. It is not an active draw and not a source.
@@ -228,13 +228,16 @@ int main() {
     // engine is the pump: thrust params, but no propellant of its own
     CHECK(eng->type == "engine");
     CHECK(eng->mass > 0.0);
-    CHECK(eng->fuel_rate > 0.0);
+    CHECK(eng->totalPropellantRate() > 0.0);
     CHECK(eng->exhaust_velocity > 0.0);
     CHECK(eng->torque == 0.0);
     CHECK(eng->capacity[(int)ResourceType::Hydrogen] == 0.0f); // fuel moved to the tank
     CHECK(eng->capacity[(int)ResourceType::LOX] == 0.0f);
-    // the thrust model: T = (H2 + LOX flow) * ve = 2 * fuel_rate * ve
-    CHECK(near(eng->fullThrust(), 2.0 * eng->fuel_rate * eng->exhaust_velocity));
+    // a chemical engine draws BOTH propellants (H2 + LOX), each at its own rate
+    CHECK(eng->propellant_rate[(int)ResourceType::Hydrogen] > 0.0);
+    CHECK(eng->propellant_rate[(int)ResourceType::LOX] > 0.0);
+    // the thrust model: T = (total propellant flow) * ve
+    CHECK(near(eng->fullThrust(), eng->totalPropellantRate() * eng->exhaust_velocity));
 
     // fuel tank is the reservoir: holds the propellant, no thrust params
     CHECK(ft->type == "fuel_tank");
@@ -242,7 +245,7 @@ int main() {
     CHECK(ft->mesh == "meshes/fuel_tank.obj");
     CHECK(ft->texture == "textures/fuel_tank.png");
     CHECK(ft->torque == 0.0);
-    CHECK(ft->fuel_rate == 0.0 && ft->exhaust_velocity == 0.0);
+    CHECK(ft->totalPropellantRate() == 0.0 && ft->exhaust_velocity == 0.0);
     CHECK(ft->capacity[(int)ResourceType::Hydrogen] > 0.0f);
     CHECK(ft->capacity[(int)ResourceType::LOX] > 0.0f);
     // the mass is the DRY structure only; the propellant rides
@@ -258,8 +261,12 @@ int main() {
     const PartDef *jet   = cat.find("jet");
     const PartDef *jtank = cat.find("jet_tank_r1h3");
     CHECK(jet != nullptr && jtank != nullptr);
-    CHECK(jet->jet && jet->fuel_rate > 0.0 && jet->exhaust_velocity > 0.0);
+    CHECK(jet->jet && jet->totalPropellantRate() > 0.0 && jet->exhaust_velocity > 0.0);
     CHECK(jet->jet_fan_thrust > 0.0 && jet->jet_intake_area > 0.0);
+    // a jet draws JET FUEL only (air is the free oxidizer -- no LOX)
+    CHECK(jet->propellant_rate[(int)ResourceType::JetFuel] > 0.0);
+    CHECK(jet->propellant_rate[(int)ResourceType::Hydrogen] == 0.0);
+    CHECK(jet->propellant_rate[(int)ResourceType::LOX] == 0.0);
     // the jet engine is the pump, not a reservoir: no propellant of its own
     for(size_t r = 0; r < jet->capacity.size(); r++) {
         CHECK(jet->capacity[r] == 0.0f);
@@ -268,7 +275,7 @@ int main() {
     // ONLY that (the Phase 2 separation: not rocket H2/LOX, so it is
     // excluded from delta-v and never feeds a rocket engine).
     CHECK(jtank->type == "jet_tank");
-    CHECK(jtank->fuel_rate == 0.0 && jtank->exhaust_velocity == 0.0);
+    CHECK(jtank->totalPropellantRate() == 0.0 && jtank->exhaust_velocity == 0.0);
     CHECK(jtank->capacity[(int)ResourceType::JetFuel] > 0.0f);
     CHECK(jtank->capacity[(int)ResourceType::Hydrogen] == 0.0f);
     CHECK(jtank->capacity[(int)ResourceType::LOX] == 0.0f);
@@ -328,7 +335,7 @@ int main() {
         CHECK(nc->mass > 0.0);
         CHECK(nc->type == "nose_cap");
         CHECK(nc->torque == 0.0);
-        CHECK(nc->fuel_rate == 0.0 && nc->exhaust_velocity == 0.0);
+        CHECK(nc->totalPropellantRate() == 0.0 && nc->exhaust_velocity == 0.0);
         for(size_t r = 0; r < nc->capacity.size(); r++) {
             CHECK(nc->capacity[r] == 0.0f);
         }
@@ -371,7 +378,7 @@ int main() {
     for(size_t i = 0; i < def.parts.size(); i++) {
         const PartDef *d = def.parts[i].def;
         mass += d->mass;
-        if(d->fuel_rate > 0.0 && d->exhaust_velocity > 0.0) { thrust += d->fullThrust(); }
+        if(d->totalPropellantRate() > 0.0 && d->exhaust_velocity > 0.0) { thrust += d->fullThrust(); }
         if(d->torque > 0.0) { torque += d->torque; }
         // propellant only (H2/LOX) -- the capsule's built-in EC battery is
         // charge, not propellant
@@ -1396,13 +1403,39 @@ int main() {
     CHECK(resolveHullMargin(0.25, 0.0) == 0.25);
     CHECK(resolveHullMargin(-1.0, -1.0) == -1.0);
 
-    // thruster fields must be given together (fuel_rate without exhaust_velocity)
+    // thruster fields must be given together (propellant without exhaust_velocity)
     {
         const char *bad = "/tmp/test_shipload_badcat.json";
         std::ofstream f(bad);
         f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
              "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
-             "\"fuel_rate\": 1.0 } ] }";
+             "\"propellant\": { \"hydrogen\": 1.0 } } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // EC is energy (Wh), not a mass propellant -- it cannot be drawn as one
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"propellant\": { \"ec\": 1.0 }, \"exhaust_velocity\": 100.0 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // a jet burns jet fuel only (air is the free oxidizer); a jet authored
+    // with another propellant would thrust while burning nothing
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"jet\", "
+             "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+             "\"jet\": true, \"propellant\": { \"hydrogen\": 1.0 }, "
+             "\"exhaust_velocity\": 100.0 } ] }";
         f.close();
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);

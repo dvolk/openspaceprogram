@@ -213,7 +213,10 @@
       "mass": 500,
       "radius": 1.0,
       "height": 2.0,
-      "fuel_rate": 5.68,
+      "propellant": {
+        "hydrogen": 5.68,
+        "lox": 5.68
+      },
       "exhaust_velocity": 4400.0,
       "shroud": "meshes/engine_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -231,7 +234,10 @@
       "mass": 1125,
       "radius": 1.5,
       "height": 3.0,
-      "fuel_rate": 12.78,
+      "propellant": {
+        "hydrogen": 12.78,
+        "lox": 12.78
+      },
       "exhaust_velocity": 4400.0,
       "shroud": "meshes/engine_r1.5h3_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -249,7 +255,10 @@
       "mass": 2531.25,
       "radius": 2.25,
       "height": 4.5,
-      "fuel_rate": 28.76,
+      "propellant": {
+        "hydrogen": 28.76,
+        "lox": 28.76
+      },
       "exhaust_velocity": 4400.0,
       "shroud": "meshes/engine_r2.25h4.5_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -267,7 +276,10 @@
       "mass": 166.67,
       "radius": 1.0,
       "height": 1.0,
-      "fuel_rate": 1.89,
+      "propellant": {
+        "hydrogen": 1.89,
+        "lox": 1.89
+      },
       "exhaust_velocity": 4400.0,
       "shroud": "meshes/orbital_engine_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -285,7 +297,10 @@
       "mass": 375,
       "radius": 1.5,
       "height": 1.5,
-      "fuel_rate": 4.26,
+      "propellant": {
+        "hydrogen": 4.26,
+        "lox": 4.26
+      },
       "exhaust_velocity": 4400.0,
       "shroud": "meshes/orbital_engine_r1.5h1.5_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -303,7 +318,10 @@
       "mass": 843.75,
       "radius": 2.25,
       "height": 2.25,
-      "fuel_rate": 9.59,
+      "propellant": {
+        "hydrogen": 9.59,
+        "lox": 9.59
+      },
       "exhaust_velocity": 4400.0,
       "shroud": "meshes/orbital_engine_r2.25h2.25_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -321,7 +339,9 @@
       "mass": 900,
       "radius": 1.0,
       "height": 3.0,
-      "fuel_rate": 1.67,
+      "propellant": {
+        "hydrogen": 3.33
+      },
       "exhaust_velocity": 9000.0,
       "shroud": "meshes/nuclear_engine_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -339,7 +359,9 @@
       "mass": 1200,
       "radius": 1.0,
       "height": 2.0,
-      "fuel_rate": 6.82,
+      "propellant": {
+        "jetfuel": 6.82
+      },
       "exhaust_velocity": 550.0,
       "jet": true,
       "jet_fan_thrust": 32000,

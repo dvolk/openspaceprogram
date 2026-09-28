@@ -18,10 +18,15 @@ catalog is reproducible and internally consistent instead of hand-tuned:
                   (mostly structure + small thrusters, lighter than the wheel)
   engine          thrust   = ENGINE_THRUST_PER_M2 * radius^2  (exit area)
                   mass     = thrust * ENGINE_MASS_PER_N
-                  fuel_rate= thrust / (2 * EXHAUST_VELOCITY)   (both tanks)
+                  propellant = {hydrogen, lox}, each thrust / (2 * EXHAUST_VELOCITY)
+                  (a chemical engine: the total flow thrust/ve split H2/LOX)
   orbital_engine  like engine, but 1/3 thrust -- hence 1/3 mass and 1/3
-                  fuel rate; half the height (from the mesh). A low-thrust
+                  propellant flow; half the height (from the mesh). A low-thrust
                   engine for orbital maneuvering.
+  nuclear_engine  nuclear THERMAL: the reactor heats H2 (no combustion, no
+                  onboard oxidizer), so propellant = {hydrogen} only, at the
+                  full flow thrust / NUCLEAR_EXHAUST_VELOCITY. High Isp, low
+                  thrust, heavy (see NUCLEAR_*).
   capsule / wheel / adapter / nose_cap
                   mass     = volume * MASS_DENSITY[<type>]
                   capsule / wheel also carry attitude torque ~ radius
@@ -86,12 +91,13 @@ TANK_DRY_DENSITY = 13.3          # kg/m^3, structural wall mass per tank volume
 ENGINE_THRUST_PER_M2 = 50000.0   # N, thrust at radius = 1 m (scales with r^2)
 ENGINE_MASS_PER_N = 0.01         # kg per newton of thrust (~100 N/kg)
 # Nuclear engine (nuclear thermal): a HIGHER-Isp, LOWER-thrust engine -- the
-# deep-space workhorse. It burns the same H2/LOX but far more efficiently
-# (reactor heat, no combustion), so its exhaust velocity is ~2x the chemical
-# engines. Its thrust is lower (not for ascent/landing) and its mass is
-# HEAVIER per newton than a chemical engine (reactor + shielding + plumbing) --
-# that weight is exactly what makes it poor for ascent and fine for
-# interplanetary burns. Only the base radius is offered (no r1.5/r2.25).
+# deep-space workhorse. The reactor heats H2 (no combustion, no onboard
+# oxidizer), so it draws HYDROGEN ONLY -- not H2/LOX like a chemical engine --
+# and its exhaust velocity is ~2x the chemical engines. Its thrust is lower
+# (not for ascent/landing) and its mass is HEAVIER per newton than a chemical
+# engine (reactor + shielding + plumbing) -- that weight is exactly what makes
+# it poor for ascent and fine for interplanetary burns. Only the base radius
+# is offered (no r1.5/r2.25).
 NUCLEAR_THRUST_PER_M2 = 30000.0  # N, thrust at radius = 1 m (scales with r^2)
 NUCLEAR_EXHAUST_VELOCITY = 9000.0  # m/s (Isp = 9000/9.81 ~ 917 s), ~2x chemical
 NUCLEAR_MASS_PER_N = 0.03         # kg per newton -- reactor + shielding, ~3x chemical
@@ -499,20 +505,29 @@ def generate(name, ptype, mesh, texture):
     if ptype in ("engine", "orbital_engine", "nuclear_engine"):
         if ptype == "nuclear_engine":
             # nuclear thermal: high Isp, low thrust, heavy (see NUCLEAR_*).
+            # Burns H2 ONLY -- the reactor heats the hydrogen, there is no
+            # combustion and no onboard oxidizer, so all the propellant flow
+            # is hydrogen: rate = thrust / ve (a chemical engine splits the
+            # same total flow H2/LOX; see below).
             thrust = NUCLEAR_THRUST_PER_M2 * radius * radius
             ve = NUCLEAR_EXHAUST_VELOCITY
             mass_per_n = NUCLEAR_MASS_PER_N
+            propellant = {"hydrogen": clean(thrust / ve)}
         else:
             thrust = ENGINE_THRUST_PER_M2 * radius * radius
             if ptype == "orbital_engine":
-                # 1/3 thrust -> 1/3 mass and 1/3 fuel rate (same exhaust velocity)
+                # 1/3 thrust -> 1/3 mass and 1/3 propellant flow (same ve)
                 thrust /= 3.0
             ve = EXHAUST_VELOCITY
             mass_per_n = ENGINE_MASS_PER_N
+            # chemical: H2 + LOX, each half the total flow (thrust / ve), so
+            # each rate = thrust / (2 * ve) and the two sum to thrust / ve.
+            half = clean(thrust / (2.0 * ve))
+            propellant = {"hydrogen": half, "lox": half}
         e["mass"] = clean(thrust * mass_per_n)
         e["radius"] = radius
         e["height"] = height
-        e["fuel_rate"] = clean(thrust / (2.0 * ve))
+        e["propellant"] = propellant
         e["exhaust_velocity"] = ve
     elif ptype == "jet":
         # Air-breathing (see the JET_* constants + src/drag.h jetThrust).
@@ -524,7 +539,7 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(JET_MASS_PER_M2 * radius * radius)
         e["radius"] = radius
         e["height"] = height
-        e["fuel_rate"] = clean(JET_FUEL_PER_M2 * radius * radius)
+        e["propellant"] = {"jetfuel": clean(JET_FUEL_PER_M2 * radius * radius)}
         e["exhaust_velocity"] = JET_EXH_VEL
         e["jet"] = True
         e["jet_fan_thrust"] = clean(fan)
@@ -683,10 +698,12 @@ def summary_line(e):
         return "  %-24s S=%5s  cl_c=%4s  axis=%-6s delta_max=%s  mass=%7s" % (
             n, e["control_area"], e.get("cl_control", 0),
             e.get("control_axis", "pitch"), e["max_deflection"], e["mass"])
-    if "fuel_rate" in e:
-        t = 2.0 * e["fuel_rate"] * e["exhaust_velocity"]
-        return "  %-24s T=%8.1fkN  rate=%7.2f  mass=%7s" % (
-            n, t / 1e3, e["fuel_rate"], e["mass"])
+    if "propellant" in e:
+        rate = sum(e["propellant"].values())
+        t = rate * e["exhaust_velocity"]
+        fuels = " ".join("%s@%.2f" % (k, v) for k, v in e["propellant"].items())
+        return "  %-24s T=%8.1fkN  %s  mass=%7s" % (
+            n, t / 1e3, fuels, e["mass"])
     if "capacity" in e and "hydrogen" in e["capacity"]:
         # a fuel tank (50/50 hydrogen + LOX); mass = dry structure, fuel = capacity
         c = e["capacity"]["hydrogen"] + e["capacity"].get("lox", 0.0)

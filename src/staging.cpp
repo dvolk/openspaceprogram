@@ -11,7 +11,8 @@ namespace {
 
 struct SimPart {
     double dry = 0.0;      // inert mass (structure + non-burnable resources)
-    double fuel = 0.0;     // H2+LOX, kg (the only burnable pool)
+    double fuel = 0.0;     // kg of the burnable pool (the resources the ship's
+                           // rocket engines draw -- see computeStaging's mask)
     double thrust = 0.0;   // N, rocket rated (0 = not an engine)
     double mdot = 0.0;     // kg/s of fuel at full throttle
     bool isDec = false;
@@ -340,11 +341,15 @@ void runBurn(Sim &sim, double g, bool drainAll,
 
 } // namespace
 
-double partPropellantMass(const PartDef &def) {
-    // Only H2+LOX is burned in vacuum. JetFuel / hydrazine / life support
-    // ride along as inert mass; EC is Wh, not kg.
-    return (double)def.capacity[(int)ResourceType::Hydrogen]
-         + (double)def.capacity[(int)ResourceType::LOX];
+double partPropellantMass(const PartDef &def, const bool *burn) {
+    // The resources the ship's rocket engines draw (per `burn`). JetFuel /
+    // hydrazine / life support / any tank resource no engine burns ride along
+    // as inert mass; EC is Wh, not kg.
+    double m = 0.0;
+    for(size_t r = 0; r < def.capacity.size(); r++) {
+        if(burn[r]) { m += (double)def.capacity[r]; }
+    }
+    return m;
 }
 
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
@@ -360,6 +365,26 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     int minStage = ship.parts[0].stage;
     int maxStage = minStage;
 
+    // The resources the ship's ROCKET engines draw (jets excluded: they need
+    // air, so no vacuum delta-v). A tank resource no engine burns (e.g. LOX
+    // on a nuclear-thermal-only ship) is inert mass, not deliverable fuel.
+    // LIMITATION: this is a ship-wide UNION and the sim lumps a part's
+    // propellant into one pool, so a ship MIXING a chemical engine (burns
+    // H2+LOX) with a nuclear-thermal one (H2 only) credits every tank's LOX as
+    // burnable even where only the H2 engine can draw it. Exact for a
+    // homogeneous engine set (all-chemical or all-nuclear); a per-fuel-group
+    // mask would be needed for mixed ships (see issue #41).
+    bool burn[(int)ResourceType::Num];
+    for(int r = 0; r < (int)ResourceType::Num; r++) { burn[r] = false; }
+    for(size_t i = 0; i < n; i++) {
+        const PartDef *def = ship.parts[i].def;
+        if(def == nullptr || def->jet) { continue; }
+        if(!(def->totalPropellantRate() > 0.0 && def->exhaust_velocity > 0.0)) { continue; }
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(def->propellant_rate[r] > 0.0) { burn[r] = true; }
+        }
+    }
+
     for(size_t i = 0; i < n; i++) {
         const BuildPart &bp = ship.parts[i];
         SimPart &sp = sim.parts[i];
@@ -369,16 +394,16 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         sp.isBarrier = (bp.def != nullptr) && (bp.def->decoupler || bp.def->fuel_barrier);
         sp.isDec = (bp.def != nullptr) && bp.def->decoupler;
         if(bp.def != nullptr) {
-            sp.dry = std::max(0.0, partDryMass(*bp.def));
-            sp.fuel = partPropellantMass(*bp.def);
-            // Rocket only (fuel_rate + ve, not a jet). Jets need air, so
+            sp.dry = std::max(0.0, partDryMass(*bp.def, burn));
+            sp.fuel = partPropellantMass(*bp.def, burn);
+            // Rocket only (propellant + ve, not a jet). Jets need air, so
             // they contribute no vacuum thrust and burn no vacuum fuel.
-            if(bp.def->fuel_rate > 0.0 && bp.def->exhaust_velocity > 0.0
+            if(bp.def->totalPropellantRate() > 0.0 && bp.def->exhaust_velocity > 0.0
                && !bp.def->jet) {
                 // Scale thrust only (not mdot): ve_eff = F/mdot scales, so
                 // delta-v and TWR track the difficulty knob like flight.
                 sp.thrust = bp.def->fullThrust() * exhaust_scale;
-                sp.mdot = 2.0 * bp.def->fuel_rate;
+                sp.mdot = bp.def->totalPropellantRate();
             }
         }
         if(sp.stage < minStage) { minStage = sp.stage; }

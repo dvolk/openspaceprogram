@@ -67,7 +67,21 @@ struct Catalog {
         defs.push_back(PartDef());
         PartDef &d = defs.back();
         d.mass = dry;
-        d.fuel_rate = fuelRate;
+        // a chemical engine draws H2 + LOX, each at fuelRate, so the total
+        // propellant flow (the staging mdot) is 2*fuelRate.
+        d.setPropellantRate(ResourceType::Hydrogen, fuelRate);
+        d.setPropellantRate(ResourceType::LOX, fuelRate);
+        d.exhaust_velocity = ve;
+        return &d;
+    }
+    // A nuclear-thermal engine: draws H2 ONLY (no onboard oxidizer), so the
+    // total propellant flow (the staging mdot) is just h2Rate and the thrust
+    // is h2Rate * ve.
+    const PartDef *nuclearEngine(double dry, double h2Rate, double ve) {
+        defs.push_back(PartDef());
+        PartDef &d = defs.back();
+        d.mass = dry;
+        d.setPropellantRate(ResourceType::Hydrogen, h2Rate);
         d.exhaust_velocity = ve;
         return &d;
     }
@@ -107,7 +121,7 @@ static void addLink(BuildShip &bs, const std::string &from, const std::string &t
     bs.fuelLinks.push_back(fl);
 }
 
-// rate = 0.5 -> mdot = 1 kg/s, T = 2*0.5*1000 = 1000 N.
+// rate 0.5 per propellant (H2+LOX) -> mdot = 1 kg/s, T = 1*1000 = 1000 N.
 static void test_two_stage() {
     Catalog cat;
     BuildShip bs;
@@ -122,7 +136,12 @@ static void test_two_stage() {
     addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, 2);
 
     // Wet: 100+10+5+200+10 = 325. Dry: 50+10+5+50+10 = 125.
-    CHECK_NEAR(partDryMass(*bs.parts[0].def), 50.0, 1e-9, "upper dry");
+    // The ship's chemical engines burn H2+LOX, so both are the burnable pool
+    // and a tank's dry mass is its structure alone.
+    bool burn[(int)ResourceType::Num] = {};
+    burn[(int)ResourceType::Hydrogen] = true;
+    burn[(int)ResourceType::LOX] = true;
+    CHECK_NEAR(partDryMass(*bs.parts[0].def, burn), 50.0, 1e-9, "upper dry");
     CHECK_NEAR(bs.parts[0].def->mass, 50.0, 1e-9, "upper catalog mass is dry structure");
 
     const double g = 10.0;
@@ -196,6 +215,39 @@ static void test_inert_resources() {
     CHECK_NEAR(rows[0].massStart, 308.99, 1e-3, "inert m0");
     CHECK_NEAR(rows[0].massEnd, 208.99, 1e-3, "inert m1 (mono kept)");
     CHECK_NEAR(rows[0].deltaV, 2000.0 * std::log(308.99 / 208.99), 1e-3, "inert dv");
+}
+
+// A nuclear-thermal (H2-ONLY) engine on a tank that also holds LOX: no engine
+// burns the LOX, so it is DEAD WEIGHT -- inert mass, not deliverable fuel.
+// This is the shared-tank accounting issue #38 flagged: the burnable set is
+// derived from the engines actually present, not assumed to be H2+LOX.
+static void test_h2_only_engine() {
+    Catalog cat;
+    BuildShip bs;
+    // Tank: dry 100 + H2 50 + LOX 50. Nuclear engine: dry 20, H2 0.5 kg/s,
+    // ve 2000 -> thrust 1000 N, mdot 0.5 (H2 only).
+    const int tank = addPart(bs, cat.tank(100, 50, 50), "tank", -1, 1);
+    addPart(bs, cat.nuclearEngine(20, 0.5, 2000.0), "eng", tank, 1);
+
+    // The engine draws H2 only, so the burnable mask is {H2}: the tank's
+    // deliverable propellant is its 50 kg of H2, and its 50 kg of LOX folds
+    // into the dry/inert mass.
+    bool burn[(int)ResourceType::Num] = {};
+    burn[(int)ResourceType::Hydrogen] = true;
+    CHECK_NEAR(partPropellantMass(*bs.parts[tank].def, burn), 50.0, 1e-9,
+               "h2-only: tank burnable = H2 only (the LOX is inert)");
+    CHECK_NEAR(partDryMass(*bs.parts[tank].def, burn), 150.0, 1e-9,
+               "h2-only: tank dry = structure + the inert LOX");
+
+    // Wet 220, burnable 50 (H2), so the burn ends at 170 (the LOX rides
+    // along). dv = ve * ln(220/170) -- LESS than a chemical engine would get
+    // from the same tank (it could burn the LOX too), which is the point.
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 1, "h2-only: one row");
+    if(rows.size() != 1) { return; }
+    CHECK_NEAR(rows[0].massStart, 220.0, 1e-6, "h2-only m0");
+    CHECK_NEAR(rows[0].massEnd, 170.0, 1e-6, "h2-only m1 (the LOX is kept)");
+    CHECK_NEAR(rows[0].deltaV, 2000.0 * std::log(220.0 / 170.0), 1e-3, "h2-only dv");
 }
 
 // Payload separator: a decoupler subtree with NO propellant. Without the
@@ -366,6 +418,7 @@ int main() {
     test_barrier_no_link();
     test_exhaust_scale();
     test_inert_resources();
+    test_h2_only_engine();
     test_inert_drop();
     test_zero_g();
 

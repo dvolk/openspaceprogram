@@ -68,8 +68,10 @@ CHECK namespace (parsed from the game's stdout):
           links (a list of (from_group, to_group) fuel-link pairs)
   drainlog list of dicts, one per [drainlog] line: t, dt (the sample
           interval, s), ship, thrust (N, the thrust delivered in the
-          sample's tick), rates (group id -> drain rate in kg/s,
-          H2+LOX combined; a group only appears while it carries fuel)
+          sample's tick), rates (group id -> drain rate in kg/s, summed
+          over the resources its engines draw -- H2+LOX for a chemical
+          engine, H2 alone for a nuclear one; a group only appears while it
+          carries fuel)
   drag    list of dicts, one per [drag] line: t, alt (m above the surface),
           rho (kg/m^3, the air density), v (m/s, air-relative speed),
           F (N, the drag force magnitude), cd (the drag coefficient)
@@ -384,8 +386,8 @@ def parse_drainlog(out):
         rows.append({
             "t": float(t), "dt": float(dt), "ship": ship,
             "thrust": float(thrust),
-            # group id -> drain rate (kg/s, H2+LOX combined); a group only
-            # appears while it still carries fuel.
+            # group id -> drain rate (kg/s, summed over the resources its
+            # engines draw); a group only appears while it still carries fuel.
             "rates": rates,
         })
     return rows

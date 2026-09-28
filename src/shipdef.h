@@ -38,9 +38,13 @@
            "radius": 5.0,                 // optional, m; cross-section (x/y extent 2r), default 1.0
            "height": 2.0,                 // optional, m; stack-axis length (z extent), default 2.0
            "torque": 5000,                // optional, N m -> contributes as a reaction wheel
-           "fuel_rate": 142.0,            // optional, kg/s; with exhaust_velocity -> a thruster
-           "exhaust_velocity": 4400,      // optional, m/s; with fuel_rate -> a thruster (H2/LOX, Isp ~450s)
-           "jet": true,                   // optional, bool; with fuel_rate + exhaust_velocity
+           "propellant": { "hydrogen": 71.0, "lox": 71.0 }, // optional, kg/s per resource;
+                                          //   the fuels this engine draws and their rates.
+                                          //   With exhaust_velocity -> a thruster. A chemical
+                                          //   engine burns H2+LOX (both rates); a nuclear
+                                          //   thermal engine H2 only; a jet jetfuel only.
+           "exhaust_velocity": 4400,      // optional, m/s; with propellant -> a thruster (Isp ~450s)
+           "jet": true,                   // optional, bool; with propellant + exhaust_velocity
                                           //   -> an AIR-BREATHING thruster (a jet engine,
                                           //   see below); burns jet fuel (air is the free
                                           //   oxidizer, so no LOX / no delta-v)
@@ -67,7 +71,7 @@
 
    Behavior is driven by the PRESENCE of the optional fields, not by the
    type label: any part with torque adds to the ship's reaction-wheel
-   authority; any part with fuel_rate + exhaust_velocity is a thruster;
+   authority; any part with propellant + exhaust_velocity is a thruster;
    any part with capacity is a propellant tank (engines draw from the
    tanks; a tank's mass INCLUDES the propellant it holds, so it sheds
    mass as the engines burn -- the residual is its dry/structural mass).
@@ -226,7 +230,7 @@ struct Node {
 /* One part TYPE (a catalog entry; ship defs reference it by name).
    `type` is a free-form display label. Behavior comes from the optional
    fields below (see the header comment): torque makes it a reaction
-   wheel, fuel_rate + exhaust_velocity make it a thruster, capacity makes
+   wheel, propellant + exhaust_velocity make it a thruster, capacity makes
    it a propellant tank. They combine freely. */
 struct PartDef {
     std::string name;
@@ -308,16 +312,20 @@ struct PartDef {
     }
 
     double torque;            // N m; > 0 -> contributes as a reaction wheel
-    double fuel_rate;         // kg/s at full throttle; with exhaust_velocity -> thruster
-    double exhaust_velocity;  // m/s; with fuel_rate -> thruster. For a JET this is
+    std::vector<double> propellant_rate; // kg/s per ResourceType at full throttle:
+                              // the propellants this engine draws and their rates,
+                              // indexed by ResourceType (like capacity). All-zero ->
+                              // not a thruster. A chemical engine sets Hydrogen+LOX;
+                              // a nuclear thermal engine Hydrogen only; a jet JetFuel.
+    double exhaust_velocity;  // m/s; with propellant_rate -> thruster. For a JET this is
                               // the REAL exhaust velocity (~500-600 m/s), used in
                               // drag.h jetThrust -- NOT a thrust-encoding knob.
     /* Jet engine (air-breathing) modifier on a thruster (see drag.h
-       jetThrust). jet = true makes the thruster AIR-BREATHING: it burns H2
-       against FREE air (no LOX), and its thrust is the momentum balance
+       jetThrust). jet = true makes the thruster AIR-BREATHING: it burns jet
+       fuel against FREE air (no LOX), and its thrust is the momentum balance
        T = T_fan + ṁ_f·v_e + ρ·A·v·(v_e − v), gated on the local air (so a
        jet is dead in vacuum: no thrust, no burn). Ignored unless the part
-       is also a thruster (fuel_rate + exhaust_velocity). */
+       is also a thruster (propellant + exhaust_velocity). */
     bool jet;
     double jet_fan_thrust;    // N; static (fan) thrust at sea level -- the VTOL floor
     double jet_intake_area;   // m^2; effective intake/capture area (the ram term)
@@ -474,9 +482,24 @@ struct PartDef {
 
     PartDef();
 
-    /* full thrust of one engine: T = (H2 + LOX flow) x ve -- both
-       propellants end up in the plume, so the flow is 2 tanks */
-    double fullThrust() const { return 2.0 * fuel_rate * exhaust_velocity; }
+    /* Total propellant mass flow (kg/s) at full throttle: the sum over the
+       resources this engine draws. */
+    double totalPropellantRate() const {
+        double s = 0.0;
+        for(size_t r = 0; r < propellant_rate.size(); r++) { s += propellant_rate[r]; }
+        return s;
+    }
+    /* Full thrust of one engine: T = (total propellant flow) x ve -- every
+       propellant ends up in the plume, so the flow is the sum of the rates
+       (H2+LOX for a chemical engine, H2 alone for a nuclear thermal one).
+       Jets do NOT use this (their thrust is the air-breathing momentum
+       balance, drag.h jetThrust). */
+    double fullThrust() const { return totalPropellantRate() * exhaust_velocity; }
+    /* Convenience setter (keeps propellant_rate sized): the fuels an engine
+       draws and their kg/s rates. */
+    void setPropellantRate(ResourceType r, double rate) {
+        propellant_rate[(int)r] = rate;
+    }
 };
 
 /* Engine-shroud condition, shared by the flight draw (Vehicle::

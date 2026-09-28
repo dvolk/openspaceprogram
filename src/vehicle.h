@@ -565,15 +565,24 @@ public:
 
     /* Total kg of `type` available to `engine` across its drain layers
        (fuelDrainLayers) -- the same tanks consumeResourceMass would draw
-       from, without draining. A rocket burns H2 and LOX in a 1:1 ratio, so
-       the burn it can sustain is limited by its scarcest propellant; this
-       lets ApplyThrust size the burn (min of the two) before draining, so
-       it never drains one propellant and leaks it because the other ran
-       short. getFuelMass is NOT equivalent: it sums over ALL parts, while
-       this is scoped to the engine's own group (engines draw per-group). */
+       from, without draining. A rocket draws each propellant at its own
+       rate, so the burn it can sustain is limited by its scarcest one; this
+       lets ApplyThrust size the burn (min over propellants of avail/desired)
+       before draining, so it never drains one propellant and leaks it
+       because another ran short. fuelMassMasked is NOT equivalent: it sums
+       over ALL parts, while this is scoped to the engine's own group
+       (engines draw per-group). */
     float availableResourceMass(enum ResourceType type, Part *engine) const;
 
-    float getFuelMass(const std::vector<enum ResourceType>& types);
+    /* Fill burn[ResourceType::Num] with the resources the ship's engines
+       draw (propellant_rate > 0). includeJets also counts jet fuel. The
+       delta-v estimate passes includeJets=false (jets give no vacuum dv);
+       the max-TWR estimate passes true (jet fuel still sheds mass). Stack
+       mask, no allocation -- both run every frame from the Vessel window. */
+    void enginePropellantMask(bool *burn, bool includeJets) const;
+
+    /* Current mass (kg) of the resources flagged in `burn`, over all parts. */
+    float fuelMassMasked(const bool *burn) const;
 
     float getDeltaV();
 
@@ -1021,8 +1030,8 @@ protected:
 
     /* the ship's full-throttle thrust RIGHT NOW (N) = the sum of every
        engine that has already been ignited (stage >= the stage counter) of
-       its full thrust (each T = (H2 + LOX flow) x ve = 2 x fuel_rate x ve,
-       both propellants end up in the plume), scaled by exhaust_scale (the
+       its full thrust (each T = (total propellant flow) x ve, every
+       propellant ends up in the plume), scaled by exhaust_scale (the
        difficulty). Engines stay lit once ignited, so this is the sum of all
        lit engines on the ship; for a single-stage ship it equals the grand
        total. */

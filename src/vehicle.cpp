@@ -1232,25 +1232,46 @@ float Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const
     return total;
 }
 
-float Vehicle::getFuelMass(const std::vector<enum ResourceType>& types) {
-    float fuel = 0;
-    for(auto&& type : types) {
-        for(Part *p : parts) {
-            fuel += p->resources.current[(int)type];
+// Fill burn[ResourceType::Num] with the resources the ship's engines draw.
+// includeJets: also count jet fuel. Jets shed mass but produce no vacuum
+// delta-v, so the delta-v estimate excludes them (includeJets=false) while
+// the max-TWR (lightest-mass) estimate includes them (includeJets=true).
+// Derived from the engines ACTUALLY present, so a tank resource no engine can
+// burn (e.g. LOX on a nuclear-thermal-only ship) is not counted as burnable.
+// Stack mask, no allocation: these run every frame from the Vessel window.
+void Vehicle::enginePropellantMask(bool *burn, bool includeJets) const {
+    for(int r = 0; r < (int)ResourceType::Num; r++) { burn[r] = false; }
+    for(Part *p : parts) {
+        if(!p->isThruster()) { continue; }
+        if(p->isJet() && !includeJets) { continue; }
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(p->def->propellant_rate[r] > 0.0) { burn[r] = true; }
+        }
+    }
+}
+
+// Current mass (kg) of the resources flagged in `burn`, summed over all parts.
+float Vehicle::fuelMassMasked(const bool *burn) const {
+    float fuel = 0.0f;
+    for(Part *p : parts) {
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(burn[r]) { fuel += p->resources.current[r]; }
         }
     }
     return fuel;
 }
 
 float Vehicle::getDeltaV() {
-    // Rocket propellant only (H2 + LOX): jet fuel is a SEPARATE type
-    // (air-breathing, no onboard oxidizer) and produces no delta-v, so it
-    // is correctly absent from this count. The type list is a static (not a
-    // brace-init temp): getDeltaV is called every frame by the Vessel window,
-    // and a fresh std::vector per call is pure churn.
-    static const std::vector<ResourceType> prop =
-        { ResourceType::Hydrogen, ResourceType::LOX };
-    float remaining_fuel = getFuelMass(prop); /* kg */
+    // Rocket propellant only: the resources the ship's ROCKET engines draw
+    // (a chemical engine H2+LOX, a nuclear thermal engine H2 alone). Jet fuel
+    // is excluded -- jets are air-breathing and produce no vacuum delta-v.
+    // LIMITATION: the mask is a ship-wide UNION and `ve` below is the FIRST
+    // rocket's, so a ship MIXING engine types (e.g. chemical + nuclear, or two
+    // different ve) is an estimate -- exact for a homogeneous engine set. See
+    // issue #41.
+    bool burn[(int)ResourceType::Num];
+    enginePropellantMask(burn, /*includeJets=*/false);
+    const float remaining_fuel = fuelMassMasked(burn); /* kg */
     double ve = 0;   // first ROCKET thruster's exhaust velocity (the delta-v estimate).
                      // Jets are skipped: they are air-breathing, so they produce no
                      // thrust in vacuum and their exhaust velocity is not a delta-v.
@@ -1395,7 +1416,7 @@ float Vehicle::getThrust() {
         if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
             t += jetThrust(v_air, rho, rho_sea, p->def->jet_fan_thrust,
-                           p->def->fuel_rate, p->def->exhaust_velocity,
+                           p->jetFuelRate(), p->def->exhaust_velocity,
                            p->def->jet_intake_area);
         } else {
             t += p->thrust();
@@ -1413,13 +1434,13 @@ float Vehicle::getFullThrustTWR() {
 }
 
 float Vehicle::getMaxTWR() {
-    // ALL burnable propellant (rocket H2 + LOX and jet fuel): max TWR is at
-    // the lightest mass, i.e. after all of it has been spent. The type list
-    // is a static (getMaxTWR is called every frame by the Vessel window; a
-    // brace-init std::vector per call is pure churn).
-    static const std::vector<ResourceType> prop =
-        { ResourceType::Hydrogen, ResourceType::LOX, ResourceType::JetFuel };
-    float remaining_fuel = getFuelMass(prop); /* kg */
+    // ALL burnable propellant the ship's engines draw (rocket H2/LOX and jet
+    // fuel): max TWR is at the lightest mass, i.e. after all of it is spent.
+    // Derived from the engines present, so a resource no engine burns is not
+    // subtracted. Stack mask, no allocation (called every frame).
+    bool burn[(int)ResourceType::Num];
+    enginePropellantMask(burn, /*includeJets=*/true);
+    const float remaining_fuel = fuelMassMasked(burn); /* kg */
     return GetActiveThrust() / ((getMass() - remaining_fuel) * m_parent->g);
 }
 
@@ -2547,7 +2568,7 @@ float Vehicle::GetActiveThrust() {
         if(!p->isThruster() || p->stage < as) { continue; }
         if(p->isJet()) {
             t += jetThrust(p->def->exhaust_velocity * 0.5, rho_sea, rho_sea,
-                           p->def->jet_fan_thrust, p->def->fuel_rate,
+                           p->def->jet_fan_thrust, p->jetFuelRate(),
                            p->def->exhaust_velocity, p->def->jet_intake_area);
         } else {
             t += p->thrust();
@@ -2572,50 +2593,63 @@ void Vehicle::ApplyThrust(double step) {
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
         if(p->stage < as) { continue; } /* not ignited yet */
-        const float flow =
-            (float)(p->rate() * (double)thruster_util * step); /* kg this tick, per tank */
         if(p->isJet()) {
             /* Air-breathing: the thrust is the momentum balance
                T = T_fan + ṁ_f·v_e + ρ·A·v·(v_e − v), gated on the local air
                (drag.h jetThrust). In vacuum rho = 0 -> T = 0: no thrust
                AND no burn (a jet cannot run without air). It draws JET
                FUEL only (air is the free oxidizer, no LOX) -- a resource
-               SEPARATE from the rocket H2, so a jet and a rocket on the
-               same ship do not share a propellant pool. */
+               SEPARATE from the rocket propellants, so a jet and a rocket
+               on the same ship do not share a propellant pool. */
             const double T = jetThrust(
-                v_air, rho, rho_sea, p->def->jet_fan_thrust, p->def->fuel_rate,
+                v_air, rho, rho_sea, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
             if(T <= 0.0) { continue; }
+            const float flow =
+                (float)(p->jetFuelRate() * (double)thruster_util * step); /* kg this tick */
             if(consumeResourceMass(ResourceType::JetFuel, flow, p)) {
                 p->armedThrust = (float)(T * thruster_util * exhaust_scale);
                 m_thrust = 1.0;
             }
             continue;
         }
-        /* A rocket burns H2 and LOX in a 1:1 ratio, so the burn it can
-           sustain this tick is limited by its scarcest propellant. Size the
-           burn from the min of the two availabilities BEFORE draining: the
-           old code drained each in a separate drain-or-nothing call, so if
-           one ran short the other was already drained (mass off the ship)
-           with no thrust -- a ship with H2 but no LOX leaked all its H2.
-           Thrust scales with the achieved flow (fullThrust = 2*rate*ve, so
-           a fraction of the burn is a fraction of the thrust). */
-        float burn = flow;
-        const float availH2  = availableResourceMass(ResourceType::Hydrogen, p);
-        const float availLOX = availableResourceMass(ResourceType::LOX,      p);
-        if(availH2  < burn) { burn = availH2; }
-        if(availLOX < burn) { burn = availLOX; }
-        /* burn <= each availability, so both drains below are guaranteed to
-           succeed (their own total >= amt check passes); the guard is kept
-           only so we never arm thrust off a failed drain. */
-        if(burn > 0.0f &&
-           consumeResourceMass(ResourceType::Hydrogen, burn, p) and
-           consumeResourceMass(ResourceType::LOX,      burn, p))
-            {
-                p->armedThrust =
-                    (float)(p->thrust() * thruster_util * exhaust_scale * (burn / flow));
-                m_thrust = 1.0;
-            }
+        /* A rocket draws each of its propellants at its own rate (H2+LOX for
+           a chemical engine, H2 alone for a nuclear thermal one). The burn it
+           can sustain this tick is limited by its scarcest propellant: scale
+           the whole burn by s = min over propellants of (available / desired),
+           clamped to [0,1], so every propellant drains in lockstep and the
+           thrust scales with the achieved flow. Sizing the burn from the min
+           BEFORE draining avoids the old leak (draining each in a separate
+           drain-or-nothing call: if one ran short the other was already gone
+           with no thrust -- a ship with H2 but no LOX leaked all its H2). */
+        double s = 1.0;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            const double rate_r = p->def->propellant_rate[r];
+            if(rate_r <= 0.0) { continue; }
+            const double desired = rate_r * (double)thruster_util * step;
+            const double avail = availableResourceMass((ResourceType)r, p);
+            // desired <= 0 here means a zero-length tick (step == 0; a zero
+            // throttle already returned above): burn nothing and arm no thrust,
+            // matching the old `if(burn > 0)` guard.
+            const double si = (desired > 0.0) ? (avail / desired) : 0.0;
+            if(si < s) { s = si; }
+        }
+        if(s > 1.0) { s = 1.0; }
+        if(s <= 0.0) { continue; }
+        /* s <= every avail/desired, so each drain below is guaranteed to
+           succeed (its own total >= amt check passes); the guard is kept only
+           so we never arm thrust off a failed drain. */
+        bool ok = true;
+        for(int r = 0; r < (int)ResourceType::Num && ok; r++) {
+            const double rate_r = p->def->propellant_rate[r];
+            if(rate_r <= 0.0) { continue; }
+            const float amt = (float)(rate_r * (double)thruster_util * step * s);
+            if(!consumeResourceMass((ResourceType)r, amt, p)) { ok = false; }
+        }
+        if(ok) {
+            p->armedThrust = (float)(p->thrust() * thruster_util * exhaust_scale * s);
+            m_thrust = 1.0;
+        }
     }
 }
 

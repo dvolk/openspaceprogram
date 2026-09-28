@@ -16,8 +16,8 @@
 // as the key for cross-part references.
 //
 // Behavior (thruster / reaction wheel / RCS / capsule) is DERIVED from the
-// PartDef, not stored: a Part is a thruster iff its def has
-// fuel_rate + exhaust_velocity, a wheel iff it has torque, RCS iff it has
+// PartDef, not stored: a Part is a thruster iff its def draws any
+// propellant + has exhaust_velocity, a wheel iff it has torque, RCS iff it has
 // rcs_thrust, a capsule iff it has crew_capacity. That is what lets Vehicle drop the old m_thrusters /
 // m_reaction_wheels / m_thruster* / m_wheel* vectors and the rebuildBehavior
 // bookkeeping that kept them in sync.
@@ -142,7 +142,7 @@ struct Part {
        checks are independent and a part may carry any combination --- */
     bool isThruster() const {
         return def != nullptr
-            && def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0;
+            && def->totalPropellantRate() > 0.0 && def->exhaust_velocity > 0.0;
     }
     /* an air-breathing thruster (a jet engine): a thruster flagged jet.
        Same thrust pipeline (armedThrust / applyThrustForce), but the
@@ -186,7 +186,7 @@ struct Part {
     /* --- derived behavior values (the old per-thruster / per-wheel
        vectors, now read straight off the def) --- */
     double thrust() const { return def->fullThrust(); }  // rocket rated thrust (N); jets use jetThrust
-    double rate() const { return def->fuel_rate; }        // kg/s per tank
+    double jetFuelRate() const { return def->propellant_rate[(int)ResourceType::JetFuel]; } // a jet's fuel flow
     double wheelTorque() const { return def->torque; }    // N m, rated
     double rcsThrust() const { return def->rcs_thrust; }  // N, rated translation authority
     double exhaustVelocity() const { return def->exhaust_velocity; }

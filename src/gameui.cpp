@@ -1790,11 +1790,11 @@ void drawPartWindows(Game &g) {
             }
             if(def->jet) {
                 ImGui::Text("Jet: %.0fN static, air-breathing (%.1fkg/s jet fuel, intake %.2fm^2, %.0fm/s exhaust)",
-                            def->jet_fan_thrust, def->fuel_rate, def->jet_intake_area,
-                            def->exhaust_velocity);
-            } else if(def->fuel_rate > 0.0 && def->exhaust_velocity > 0.0) {
+                            def->jet_fan_thrust, def->propellant_rate[(int)ResourceType::JetFuel],
+                            def->jet_intake_area, def->exhaust_velocity);
+            } else if(def->totalPropellantRate() > 0.0 && def->exhaust_velocity > 0.0) {
                 ImGui::Text("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
-                            def->fullThrust(), def->fuel_rate,
+                            def->fullThrust(), def->totalPropellantRate(),
                             def->exhaust_velocity);
             }
             static const char *resNames[(int)ResourceType::Num] = {

@@ -9,7 +9,7 @@
 #include <nlohmann/json.hpp>
 
 PartDef::PartDef()
-    : mass(0.0), radius(1.0), height(2.0), torque(0.0), fuel_rate(0.0),
+    : mass(0.0), radius(1.0), height(2.0), torque(0.0),
       exhaust_velocity(0.0), jet(false), jet_fan_thrust(0.0),
       jet_intake_area(0.0), rcs_thrust(0.0), power_draw(0.0),
       power_draw_constant(0.0), power_gen(0.0),
@@ -20,6 +20,7 @@ PartDef::PartDef()
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
+    propellant_rate.resize((int)ResourceType::Num, 0.0);
 }
 
 const PartDef *PartsCatalog::find(const std::string &name) const {
@@ -171,23 +172,40 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"power_gen\" must be >= 0 (W)");
         }
 
-        bool has_rate = pv.contains("fuel_rate");
+        bool has_prop = pv.contains("propellant");
         bool has_ve = pv.contains("exhaust_velocity");
-        d.fuel_rate = pv.value("fuel_rate", 0.0);
         d.exhaust_velocity = pv.value("exhaust_velocity", 0.0);
-        if(has_rate != has_ve) {
-            throw std::runtime_error(std::string(ctx)
-                                     + "\"fuel_rate\" and \"exhaust_velocity\" must be given together");
+        if(has_prop) {
+            if(!pv["propellant"].is_object() || pv["propellant"].empty()) {
+                throw std::runtime_error(std::string(ctx)
+                                         + "\"propellant\" must be a non-empty object");
+            }
+            for(auto it = pv["propellant"].begin(); it != pv["propellant"].end(); ++it) {
+                const double rate = it.value().get<double>();
+                if(rate < 0.0) {
+                    throw std::runtime_error(ctx + "\"propellant\" rates must be >= 0 (kg/s)");
+                }
+                const int idx = resource_index_from_string(it.key(), ctx);
+                if(idx == (int)ResourceType::EC) {
+                    throw std::runtime_error(ctx + "\"propellant\" cannot be EC "
+                                             "(energy in Wh, not a mass propellant)");
+                }
+                d.propellant_rate[idx] = rate;
+            }
         }
-        if(has_rate && (d.fuel_rate <= 0.0 || d.exhaust_velocity <= 0.0)) {
+        if(has_prop != has_ve) {
             throw std::runtime_error(std::string(ctx)
-                                     + "\"fuel_rate\" and \"exhaust_velocity\" must be > 0");
+                                     + "\"propellant\" and \"exhaust_velocity\" must be given together");
+        }
+        if(has_prop && (d.totalPropellantRate() <= 0.0 || d.exhaust_velocity <= 0.0)) {
+            throw std::runtime_error(std::string(ctx)
+                                     + "\"propellant\" (total) and \"exhaust_velocity\" must be > 0");
         }
 
         /* jet engine (air-breathing) modifier: a flag + the air-breathing
            parameters (see PartDef.jet / drag.h jetThrust). Omitted -> not a
            jet, and the parameters keep their defaults (harmless). A jet
-           without a thrust source (fuel_rate + exhaust_velocity) is a load
+           without a thrust source (propellant + exhaust_velocity) is a load
            error: the flag alone does nothing. */
         if(pv.contains("jet")) {
             d.jet = pv["jet"].get<bool>();
@@ -200,9 +218,24 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.jet_intake_area < 0.0) {
             throw std::runtime_error(ctx + "\"jet_intake_area\" must be >= 0 (m^2)");
         }
-        if(d.jet && !(d.fuel_rate > 0.0 && d.exhaust_velocity > 0.0)) {
-            throw std::runtime_error(ctx + "\"jet\" requires \"fuel_rate\" "
+        if(d.jet && !(d.totalPropellantRate() > 0.0 && d.exhaust_velocity > 0.0)) {
+            throw std::runtime_error(ctx + "\"jet\" requires \"propellant\" "
                                           "and \"exhaust_velocity\" (the real exhaust velocity)");
+        }
+        /* A jet burns JET FUEL only (air is the free oxidizer). The flight jet
+           branch draws JetFuel specifically (Vehicle::ApplyThrust), so a jet
+           authored with any other propellant would produce fan/ram thrust
+           while burning nothing -- require its propellant be exactly jetfuel. */
+        if(d.jet) {
+            if(d.propellant_rate[(int)ResourceType::JetFuel] <= 0.0) {
+                throw std::runtime_error(ctx + "\"jet\" propellant must include \"jetfuel\"");
+            }
+            for(int r = 0; r < (int)ResourceType::Num; r++) {
+                if(r != (int)ResourceType::JetFuel && d.propellant_rate[r] > 0.0) {
+                    throw std::runtime_error(ctx + "\"jet\" propellant must be ONLY "
+                                             "\"jetfuel\" (air is the free oxidizer)");
+                }
+            }
         }
 
         if(pv.contains("capacity")) {

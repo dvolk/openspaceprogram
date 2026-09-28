@@ -96,7 +96,11 @@ static Part *addPart(Ship &s, float h2, float lox, bool engine = false,
     PartDef d;
     d.capacity[(int)ResourceType::Hydrogen] = h2;
     d.capacity[(int)ResourceType::LOX] = lox;
-    if(engine) { d.fuel_rate = 1.0; d.exhaust_velocity = 100.0; }
+    if(engine) {
+        d.setPropellantRate(ResourceType::Hydrogen, 1.0);
+        d.setPropellantRate(ResourceType::LOX, 1.0);
+        d.exhaust_velocity = 100.0;
+    }
     d.fuel_barrier = barrier;
     s.defs.push_back(d);
 
@@ -551,8 +555,9 @@ static void test_fuel_link_insufficient() {
     destroyShip(s);
 }
 
-/* ApplyThrust burns H2 and LOX in a 1:1 ratio, so a tick's burn is limited by
-   its scarcest propellant. THE regression this pins: the old code drained
+/* This test's engine is a chemical one drawing H2 and LOX at equal rates, so
+   a tick's burn is limited by its scarcest propellant. THE regression this
+   pins: the old code drained
    each propellant in a separate drain-or-nothing call joined by `and`, so
    with H2 >= flow > LOX the H2 was drained (mass off the ship) and the LOX
    draw refused -- a leak, no thrust. Now the burn is sized from
@@ -562,9 +567,10 @@ static void test_fuel_link_insufficient() {
 static void test_applythrust_scarcest_limits_burn() {
     printf("== ApplyThrust: scarcest propellant limits the burn (no leak) ==\n");
 
-    /* LOX is the limiting propellant: H2 100 kg, LOX 10 kg. The engine's
-       fuel_rate is 1.0 kg/s (addPart), thruster_util 1.0, so step 50 ->
-       flow 50 kg -- above LOX (10) and below H2 (100): the leak scenario. */
+    /* LOX is the limiting propellant: H2 100 kg, LOX 10 kg. Each of the
+       engine's propellant rates is 1.0 kg/s (addPart), thruster_util 1.0, so
+       step 50 -> desired 50 kg each -- above LOX (10) and below H2 (100):
+       the leak scenario. */
     {
         Ship s; s.v = new Vehicle;
         Part *eng = addPart(s, 0, 0, /*engine=*/true);

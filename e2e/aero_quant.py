@@ -71,12 +71,14 @@ def ship_mass_and_radius(ship_path, parts_path):
         # Inert resources (mono, life support) still weigh in at the end.
         for res in ("hydrazine", "oxygen", "water", "food"):
             dry += cap.get(res, 0.0)
-        # The rated thrust is 2*flow*ve (H2 + LOX both end up in the plume),
-        # so the propellant flow is 2*flow and ve is the exhaust velocity.
-        if d.get("fuel_rate", 0.0) > 0 and d.get("exhaust_velocity", 0.0) > 0 \
+        # The rated thrust is (total propellant flow) * ve, so the flow is the
+        # sum of the engine's propellant rates (H2+LOX for a chemical engine,
+        # H2 alone for a nuclear thermal one) and ve is the exhaust velocity.
+        prop = d.get("propellant", {})
+        if sum(prop.values()) > 0 and d.get("exhaust_velocity", 0.0) > 0 \
                 and not d.get("jet"):
             ve = d["exhaust_velocity"]
-            flow = 2.0 * d["fuel_rate"]
+            flow = sum(prop.values())
     fueled = dry + fuel  # structure + inert + full propellant
     return dry, fueled, maxr, ve, flow
 

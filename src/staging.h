@@ -18,14 +18,16 @@
 // remaining reachable propellant instead of ending the period at zero
 // length. The last stage burns whatever the still-lit engines can reach.
 //
-// Vacuum model: only H2+LOX burns (jets need air, so they contribute no
-// vacuum delta-v and their JetFuel stays as carried mass). Hydrazine,
-// O2, water and food are likewise inert mass here. EC has no mass.
+// Vacuum model: only the propellants the ship's ROCKET engines draw burn
+// (a chemical engine H2+LOX, a nuclear thermal engine H2 alone); jets need
+// air, so they contribute no vacuum delta-v and their JetFuel stays as
+// carried mass. Hydrazine, O2, water and food are likewise inert mass here,
+// as is any tank resource no engine on the ship can burn. EC has no mass.
 //
 // Mass: PartDef::mass is the DRY structure (res/data/parts.json mass excludes
-// propellant). Propellant rides capacity: H2+LOX becomes the burnable
-// pool (partPropellantMass), every other resource is inert mass folded
-// into partDryMass, EC has none.
+// propellant). Propellant rides capacity: the burnable resources (per the
+// engines present) become the burnable pool (partPropellantMass), every
+// other resource is inert mass folded into partDryMass, EC has none.
 #pragma once
 
 #include <vector>
@@ -59,21 +61,21 @@ struct StageRow {
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                                      double exhaust_scale = 1.0);
 
-// Burnable propellant of the part (kg): H2 + LOX from its capacity.
-// JetFuel, hydrazine, O2, water and food are carried but never burned in
-// vacuum; EC is storage in Wh, not kg.
-double partPropellantMass(const PartDef &def);
+// Burnable propellant of the part (kg): the capacity of the resources flagged
+// in `burn` (the ship's rocket-engine propellants -- see computeStaging).
+// Resources no engine burns (e.g. LOX on a nuclear-thermal-only ship), jet
+// fuel, hydrazine, O2, water and food are carried but inert here; EC is Wh.
+double partPropellantMass(const PartDef &def, const bool *burn);
 
 // Inert mass: the DRY structure (PartDef::mass, which excludes propellant)
-// plus the non-burnable resources it carries (crew + mono + life support +
-// jet fuel), from capacity. EC has no mass. The complement of
-// partPropellantMass over the part's full mass (def.mass + capacity).
-inline double partDryMass(const PartDef &def) {
+// plus every resource NOT flagged burnable in `burn` (and not EC, which has
+// no mass). The complement of partPropellantMass over the part's full mass
+// (def.mass + capacity).
+inline double partDryMass(const PartDef &def, const bool *burn) {
     double m = def.mass;
     for(size_t r = 0; r < def.capacity.size(); r++) {
-        if(r == (size_t)ResourceType::EC) { continue; }        // energy, no mass
-        if(r == (size_t)ResourceType::Hydrogen) { continue; }  // burnable: sp.fuel
-        if(r == (size_t)ResourceType::LOX) { continue; }       // burnable: sp.fuel
+        if(r == (size_t)ResourceType::EC) { continue; }  // energy, no mass
+        if(burn[r]) { continue; }                        // burnable: sp.fuel
         m += (double)def.capacity[r];
     }
     return m;
