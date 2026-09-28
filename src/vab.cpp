@@ -600,14 +600,14 @@ void vabLaunch(Game &g) {
     const ScenarioDef *sc = scenario_by_name(scName);
     /* defPath "": the ship was built in memory -- there is no file to
        respawn it from until it is saved (the Respawn button hides). */
-    Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys);
+    Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time);
     // Non-pad scenarios place the ship in orbit (position + orbit velocity),
     // like the fleet spawn. Left live (NOT on rails) so it is
     // player-controlled -- the VAB's model.
-    if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0); }
+    if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
     // Crew ABOARD after the reposition: each kerbal then parks at the
     // capsule's final (orbit) pose, not the pad's.
-    g.ships.spawn_crew(v, g.sys);   // crew aboard the capsules, like startup
+    g.ships.spawn_crew(v, g.sys, g.time);   // crew aboard the capsules, like startup
     g.select_ship(v);
     vabClearHover(g);
     g.vab.armed.clear();

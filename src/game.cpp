@@ -716,7 +716,7 @@ void Game::settleFleet(Vehicle *active) {
        their own slot (20 m apart along the orbit binormal for an orbit start,
        along the pad for a ground one) so they do not spawn on top of each
        other; ships placed with a null scenario are skipped. */
-    ships.apply_scenarios(sys);
+    ships.apply_scenarios(sys, time);
     /* Idle ships park on rails: flying ones coast on their conic, pad ships
        freeze in the surface frame (their pose rides the planet's spin via the
        render transform). Ships that are neither in free fall nor grounded
@@ -857,18 +857,15 @@ void Game::kerbalEVA(Kerbal *k) {
     /* the kerbal now lives beside the ship: same SoI body (its ship list)
        and same frame as the ship. While aboard its frame was set once at
        build time and the pose was bookkeeping; the ship may have moved on
-       (or changed SoI) since, so both follow the ship now. */
-    k->frame = ship->frame;
-    k->m_parent = ship->m_parent;
-    /* Journal the ride: aboard, the kerbal is railFrozen, so neither
-       railsTick nor switchFrames ever observes its SoI -- without this,
-       a Kerbin->Mun transfer EVA'd at the Mun would journal no events. */
-    k->flog.observe(time, k->m_parent ? k->m_parent->name : "");
+       (or changed SoI) since, so both follow the ship now -- setSoi does
+       the re-home. Order matters: the aboardPart clear + crew erase run
+       FIRST, because setSoi keys its ships-list membership on
+       isCrewAboard() (free -> it enters the body's ships list). */
     for(auto it = ship->crew.begin(); it != ship->crew.end(); it++) {
         if(*it == k) { ship->crew.erase(it); break; }
     }
-    if(ship->m_parent != nullptr) { ship->m_parent->ships.push_back(k); }
     k->aboardPart = nullptr;
+    k->setSoi(ship->frame, time);
     /* step 2.4: clear the containment edge (the kerbal leaves the capsule) --
        both directions, so checkPartInvariants still holds. */
     for(auto it = capPart->contents.begin(); it != capPart->contents.end(); it++) {
@@ -933,20 +930,12 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
-    // Leave its body's ship list (it was a free kerbal there), then follow
-    // the ship's SoI + frame for the parked state.
-    if(k->m_parent != nullptr) {
-        for(auto it = k->m_parent->ships.begin();
-            it != k->m_parent->ships.end(); it++) {
-            if(*it == k) { k->m_parent->ships.erase(it); break; }
-        }
-    }
-    k->frame = ship->frame;
-    k->m_parent = ship->m_parent;
-    // Same as the EVA exit: journal the SoI the boarding kerbal arrives in
-    // (it may have walked between ships parked around different bodies).
-    k->flog.observe(time, k->m_parent ? k->m_parent->name : "");
+    // Parked, following the ship's SoI + frame: setSoi does the re-home.
+    // aboardPart is set FIRST -- that is what setSoi keys its ships-list
+    // membership on, so the free kerbal leaves its body's list here (and
+    // the arrival SoI is journaled).
     k->aboardPart = capPart;
+    k->setSoi(ship->frame, time);
     ship->crew.push_back(k);
     /* step 2.4: register the containment edge (the kerbal's part is parked in
        the capsule, both directions). Vehicle::crew stays the sole owner;
@@ -1001,8 +990,7 @@ Vehicle *Game::dropItem(Part *item) {
     Vehicle *nv = new Vehicle();
     nv->name = item->def->display_name.empty() ? item->def->name : item->def->display_name;
     nv->defPath = "";
-    nv->m_parent = carrier->m_parent;
-    nv->frame = carrier->frame;
+    nv->setSoi(carrier->frame, time);   // list + journal start at the drop
     nv->home = carrier->home;
     nv->sun = carrier->sun;
     nv->parts.push_back(item);
@@ -1014,7 +1002,6 @@ Vehicle *Game::dropItem(Part *item) {
     nv->setVelocity(v);
     SetAngVelocity(nv->hull, GetAngVelocity(carrier->hull));
     nv->enterWorld();
-    if(nv->m_parent != nullptr) { nv->m_parent->ships.push_back(nv); }
     /* the carrier's compound still carries the item's mass + inertia --
        rebuild it now (pickUpItem's counterpart), so a small cargo drop
        never rides the stale compound into the next step */
@@ -1049,12 +1036,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
        parts list -- so clear the list BEFORE the delete: ~Vehicle deletes
        its parts, and leaving the item in would free it here AND again when
        ~Part(dest) runs. */
-    if(itemShip->m_parent != nullptr) {
-        for(auto it = itemShip->m_parent->ships.begin();
-            it != itemShip->m_parent->ships.end(); it++) {
-            if(*it == itemShip) { itemShip->m_parent->ships.erase(it); break; }
-        }
-    }
+    itemShip->detachSoiList();
     // Clear every bookkeeping reference that points at the doomed ship so the
     // next tick doesn't dereference it (mirror remove_ship's pre-delete
     // guards). Picking up the ship you are flying leaves orbit-view; handing
@@ -1292,11 +1274,7 @@ void Game::updateDocking() {
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
     dropPartWindowsFor(b);
-    if(b->m_parent != nullptr) {
-        for(auto it = b->m_parent->ships.begin(); it != b->m_parent->ships.end(); it++) {
-            if(*it == b) { b->m_parent->ships.erase(it); break; }
-        }
-    }
+    b->detachSoiList();
     if(kerbal == b) { kerbal = nullptr; }
     if(lastShip == b) { lastShip = nullptr; }
     /* Any other ship that had targeted b now dangles -- drop its intent. */
@@ -1331,7 +1309,7 @@ void Game::undock() {
         }
     }
     Vehicle::DockSeam seam = a->seams.back();
-    Vehicle *out = a->extractSubtreeAsShip(seam.root, seam.name);
+    Vehicle *out = a->extractSubtreeAsShip(seam.root, seam.name, time);
     if(out == nullptr) {
         toast("Cannot undock");
         return;
@@ -1344,9 +1322,6 @@ void Game::undock() {
     /* part windows on the survivor address parts by index, which just
        shifted -- drop them rather than dangle. */
     dropPartWindowsFor(a);
-    if(out->m_parent != nullptr) {
-        out->m_parent->ships.push_back(out);
-    }
     toast("Undocked %s", seam.name.c_str());
     printf("[undock] t=%.3f a=\"%s\" b=\"%s\"\n", time, a->name.c_str(), seam.name.c_str());
 }
@@ -1436,11 +1411,10 @@ void Game::stage() {
             // pulls the file's full-scale transient down to sit with the engine
             // hum (the file peaks at 0 dB, and a transient reads louder than a
             // steady loop at the same gain).
-            Vehicle *out = a->extractSubtreeAsShip(d, dedup(base));
+            Vehicle *out = a->extractSubtreeAsShip(d, dedup(base), time);
             if(out == nullptr) { continue; }   // already absorbed into an outer ship
             audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
             out->enterWorld();
-            if(out->m_parent != nullptr) { out->m_parent->ships.push_back(out); }
             ships++;
             parts += (int)out->parts.size();
         }
@@ -1496,12 +1470,7 @@ void Game::remove_ship(Vehicle *v) {
     // It is not aboard (guarded above), so it is in its SoI body's ship
     // list: take it out, then delete (the Vehicle dtor detaches the welds
     // + unregisters the bodies + deletes its crew).
-    if(v->m_parent != nullptr) {
-        for(auto it = v->m_parent->ships.begin();
-            it != v->m_parent->ships.end(); it++) {
-            if(*it == v) { v->m_parent->ships.erase(it); break; }
-        }
-    }
+    v->detachSoiList();
     // Ships that had v targeted for docking now dangle -- drop their intent
     // (pointer compare only, so it is safe once v is off the lists).
     for(auto *s : collectVehicles(sys)) {
@@ -1604,9 +1573,9 @@ void Game::recoverActive() {
     // (or while paused) leaves m_parent stale. A zero-step railsTick
     // still evaluates railsSwitchFrames (except a railFrozen grounded
     // vessel, which cannot change SoI anyway), and a crossing found
-    // here journals itself at `time`. The observe below is then a no-op
-    // repeat -- unless the vessel is recovered without ever ticking
-    // (paused straight after a load), where it starts the journal.
+    // here journals itself at `time`. The observe below is belt-and-
+    // braces: journals start at creation/load (setSoi), so it is a
+    // no-op repeat in practice.
     if(v->onRails) { v->railsTick(time, 0.0); } else { v->switchFrames(time); }
     v->flog.observe(time, v->m_parent ? v->m_parent->name : "");
     flightSummary.shipName = name;
@@ -1642,12 +1611,7 @@ void Game::recoverActive() {
 
     // Out of its SoI body's list, then delete (~Vehicle detaches the welds,
     // unregisters the bodies and deletes the owned crew).
-    if(v->m_parent != nullptr) {
-        for(auto it = v->m_parent->ships.begin();
-            it != v->m_parent->ships.end(); it++) {
-            if(*it == v) { v->m_parent->ships.erase(it); break; }
-        }
-    }
+    v->detachSoiList();
     delete v;
 
     // No handoff to a neighbour: the flight is over. Drop the "ship" focus

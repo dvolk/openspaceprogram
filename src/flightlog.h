@@ -5,14 +5,15 @@
 // opened on recover) can list the mission. Not save-persisted: a load
 // starts a fresh journal at the load instant (v1).
 //
-// `observe` is the only writer, called with the ship's current SoI body
+// `observe` is the only writer, called with the vessel's current SoI body
 // name ("" if none): the first call begins the journal, later calls emit
-// left/entered when the body changes. The game starts a journal lazily on
-// the ship's first running tick (tick.cpp; a paused game starts none) and
-// journals SoI events where the switch actually happens
-// (Vehicle::switchFrames / railsSwitchFrames) -- repeat observes of an
-// unchanged body are free no-ops, so the odd extra call (recover) is
-// harmless. Timestamps are sim-clock seconds (Game::time).
+// left/entered when the body changes. The single writer of SoI events in
+// the game is Vehicle::setSoi -- the one SoI re-home site -- so a journal
+// begins when the vessel is placed (creation, load, split) and events are
+// stamped where the switch actually happens, never polled. Repeat observes
+// of an unchanged body are free no-ops, so the odd extra call (recover's
+// belt-and-braces snapshot) is harmless. Timestamps are sim-clock seconds
+// (Game::time).
 //
 // Pure containers + logic -- no game types -- so tests can pin the
 // enter/leave pairing without linking Vehicle.
@@ -37,16 +38,14 @@ struct FlightLog {
     std::vector<FlightEvent> events;
 
     /* Record the ship's SoI body at sim time `t`. The first call starts
-       the journal (and logs an "entered" for the initial body, if any).
-       `t_begin` (>= 0) back-dates that first stamp -- the tick passes the
-       step's start time so a high-warp first step does not shift the
-       flight start by a whole step. A body change logs "left <old>" then
-       "entered <new>"; either side may be empty (a ship with no SoI
-       body). Repeated observes of the same body are free. */
-    void observe(double t, std::string_view body, double t_begin = -1.0) {
+       the journal (and logs an "entered" for the initial body, if any);
+       a body change logs "left <old>" then "entered <new>"; either side
+       may be empty (a ship with no SoI body). Repeated observes of the
+       same body are free. */
+    void observe(double t, std::string_view body) {
         if(!started) {
             started = true;
-            start_t = (t_begin >= 0.0) ? t_begin : t;
+            start_t = t;
             start_body = body;
             last_body = body;
             if(!body.empty()) {

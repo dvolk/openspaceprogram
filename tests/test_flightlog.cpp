@@ -89,15 +89,6 @@ int main() {
         CHECK(log.events[0].body == "Kerbol");
     }
 
-    // --- t_begin back-dates the first stamp (high-warp first step) ---
-    {
-        FlightLog log;
-        log.observe(200.0, "Kerbin", 0.0);
-        CHECK(log.start_t == 0.0);
-        CHECK(log.events.size() == 1);
-        CHECK(log.events[0].t == 0.0);
-    }
-
     // --- full tour: home -> moon -> home ---
     {
         FlightLog log;

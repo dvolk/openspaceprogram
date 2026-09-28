@@ -2,6 +2,7 @@
 // vehicle.h) + ship building + spawn scenarios.
 #include "vehicle.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -330,7 +331,7 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir)
    vector and the velocity), so each ship's orbit stays essentially the
    same shape. 0 for a lone ship (and no-op for pad scenarios). */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
-                          System &sys, double slot_offset)
+                          System &sys, double slot_offset, double t)
 {
     if(sc.on_pad) { return; } // already on the pad, set up in main
 
@@ -412,7 +413,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                           - frame->GetStasisVelocity(target);
 
     if(frame != ship->frame) {
-        ship->moveToFrame(frame);
+        ship->moveToFrame(frame, t);
     }
 
     // Nose (local +Z) along prograde: rigidly re-orient the whole ship. One
@@ -2263,7 +2264,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     SetAngVelocity(hull, wA);
 }
 
-Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
+Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, double t) {
     if(root == nullptr) { return nullptr; }
     bool found = false;
     for(Part *p : parts) { if(p == root) { found = true; break; } }
@@ -2316,12 +2317,13 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name) {
     partWorldPose(root, rootWorldPos, rootWorldRot);
 
     /* New ship: same frame/home/sun (the split is local); no scenario
-       (it is a runtime ship, not a def build). */
+       (it is a runtime ship, not a def build). setSoi places it in the
+       body's ships list and starts its flight journal at `t` (a null
+       frame -- the headless fixtures -- just records the frame). */
     Vehicle *nv = new Vehicle();
     nv->name = name;
     nv->defPath = "";
-    nv->m_parent = m_parent;
-    nv->frame = frame;
+    nv->setSoi(frame, t);
     nv->home = home;
     nv->sun = sun;
     nv->scenario = nullptr;
@@ -2750,7 +2752,7 @@ glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {
     return forient * partPos(part) + fpos;
 }
 
-void Vehicle::moveToFrame(Frame *newFrame) {
+void Vehicle::moveToFrame(Frame *newFrame, double t) {
     /* One rigid body, so a frame change is one pose write and one
        velocity write; the transform is rigid, so the COM maps like any
        other point. */
@@ -2783,7 +2785,7 @@ void Vehicle::moveToFrame(Frame *newFrame) {
     /* after placeShip: proceedToTransform zeroes both velocities */
     SetVelocity(hull, newVel);
 
-    setSoiFrame(newFrame);
+    setSoi(newFrame, t);
 }
 
 /* Dead band on the SoI boundary tests (both sides): a ship loitering at
@@ -2816,26 +2818,46 @@ Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
     return best;
 }
 
-void Vehicle::setSoiFrame(Frame *newFrame) {
-    // The ship lives in the ships list of its SOI body (terrain.h):
-    // crossing to another body's SoI is a list move, done here so the
-    // body lists always agree with m_parent. (Rare -- this runs once
-    // per crossing, not per tick.)
-    if(m_parent != nullptr && m_parent != newFrame->body) {
-        for(auto it = m_parent->ships.begin();
-            it != m_parent->ships.end(); it++) {
-            if(*it == this) { m_parent->ships.erase(it); break; }
-        }
-        newFrame->body->ships.push_back(this);
+void Vehicle::setSoi(Frame *newFrame, double t) {
+    if(newFrame == nullptr || newFrame->body == nullptr) {
+        /* Headless fixtures (the split tests) build vehicles with no frame
+           tree: record the frame, nothing else to re-home. Only valid
+           PRE-placement -- a null frame on a listed vessel would break the
+           list/m_parent invariant, and no live path can produce one. */
+        frame = newFrame;
+        return;
     }
+    TerrainBody *newBody = newFrame->body;
+    // A free vessel lives in its body's ships list; an aboard crew
+    // character rides Vehicle::crew instead (terrain.h).
+    const bool wantList = !isCrewAboard();
+    bool listed = false;
+    if(m_parent != nullptr) {
+        std::vector<Vehicle *> &old = m_parent->ships;
+        auto it = std::find(old.begin(), old.end(), this);
+        listed = (it != old.end());
+        if(listed && (newBody != m_parent || !wantList)) {
+            old.erase(it);
+            listed = false;
+        }
+    }
+    if(wantList && !listed) { newBody->ships.push_back(this); }
     frame = newFrame;
-    m_parent = newFrame->body;
+    m_parent = newBody;
+    flog.observe(t, newBody->name);
+    for(Vehicle *c : crew) { c->setSoi(newFrame, t); }   // aboard crew ride along
+}
+
+void Vehicle::detachSoiList() {
+    if(m_parent == nullptr) { return; }
+    std::vector<Vehicle *> &list = m_parent->ships;
+    auto it = std::find(list.begin(), list.end(), this);
+    if(it != list.end()) { list.erase(it); }
 }
 
 void Vehicle::switchFrames(double t) {
     if(Frame *target = soiTarget(get_center_of_mass(), false)) {
-        moveToFrame(target);   // prints the switch with com/vel detail
-        flog.observe(t, m_parent->name);
+        moveToFrame(target, t);   // prints the switch with com/vel detail
     }
 }
 
@@ -2925,6 +2947,9 @@ bool Vehicle::goOnRails() {
         rail_pos = p;
         rail_vel = v;
         rail_orient = oldFrame->GetOrientRelTo(inertial);
+        // Same-body frame hop (a rail conic lives in the inertial node),
+        // not an SoI re-home: deliberately a bare write, not setSoi --
+        // body, ships list and journal are all unchanged.
         frame = inertial;   // on rails, ship->frame == its inertial node
         railFrozen = false;
     }
@@ -2967,15 +2992,14 @@ void Vehicle::railsSwitchFrames(double t) {
     if(Frame *target = soiTarget(rail_pos, true)) {
         printf("@@@ %s rails SoI switch: %s -> %s\n",
                name.c_str(), frame->name.c_str(), target->name.c_str());
-        moveToRailFrame(target);
-        flog.observe(t, m_parent->name);
+        moveToRailFrame(target, t);
     }
 }
 
-void Vehicle::moveToRailFrame(Frame *newFrame) {
+void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
     const glm::dmat3 O = frame->GetOrientRelTo(newFrame);
     rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
     rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
     rail_orient = O * rail_orient;
-    setSoiFrame(newFrame);
+    setSoi(newFrame, t);
 }

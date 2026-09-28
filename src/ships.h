@@ -83,25 +83,31 @@ public:
     void setSun(TerrainBody *sun) { this->sun = sun; }
 
     // --- placement (the ships land in the body's list, not here) ---------
+    // `t` (sim time) is the flight-journal stamp for the placement
+    // (Vehicle::setSoi): new-game startup passes the clock (0), a runtime
+    // build (VAB launch, a spawn copy) passes the live time.
     // Build one ship from defPath and place it on body hb: slot it (next
     // free for the (body, scenario) group), de-dup its name, make sure the
     // pad exists, build it on the pad. Does NOT apply the scenario --
     // spawn_vehicle is the caller's job, so startup keeps a single spawn
     // pass (apply_scenarios).
     Vehicle *place_ship(const std::string &shipDefPath, const std::string &wantName,
-                        TerrainBody *hb, const ScenarioDef *sc, System &sys);
+                        TerrainBody *hb, const ScenarioDef *sc, System &sys,
+                        double t);
 
     // Same, from an already-loaded def (the VAB Launch builds one in
     // memory); defPath is recorded on the ship ("" = built in memory, no
     // file to respawn from).
     Vehicle *place_ship_def(const ShipDef &def, const std::string &defPath,
                             const std::string &wantName,
-                            TerrainBody *hb, const ScenarioDef *sc, System &sys);
+                            TerrainBody *hb, const ScenarioDef *sc, System &sys,
+                            double t);
 
     // Runtime spawn: place + apply the scenario + park on rails. Appended
     // at the end of the body's list, so it is never the active one.
     Vehicle *spawn_ship(const std::string &defPath, const std::string &wantName,
-                        TerrainBody *hb, const ScenarioDef *sc, System &sys);
+                        TerrainBody *hb, const ScenarioDef *sc, System &sys,
+                        double t);
 
     // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts
     // (parts[i]->def->crew_capacity > 0) -- parked inside (out of the
@@ -111,13 +117,14 @@ public:
     // set, and stored on the ship (Vehicle::crew). Called from
     // buildDebugStartShips after each ship is placed; runtime copies
     // (spawn_ship) deliberately do NOT get crew.
-    void spawn_crew(Vehicle *ship, System &sys);
+    void spawn_crew(Vehicle *ship, System &sys, double t);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).
-    void apply_scenarios(System &sys);
+    void apply_scenarios(System &sys, double t);
 
     // Register a ship built out-of-band (the --radial-test ship).
-    void add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int slot);
+    void add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int slot,
+                  double t);
 
     // Build the start ships from the resolved entries: resolve each
     // entry's body (name -> System body, or the home body) + scenario
@@ -126,7 +133,7 @@ public:
     // list. Throws std::runtime_error naming the entry + body on an
     // unknown body.
     Vehicle *buildDebugStartShips(const std::vector<DebugStartShip> &entries,
-                                  System &sys);
+                                  System &sys, double t);
 
 private:
     // Ensure the (body, pad-site) pad exists; build it on demand (the
@@ -135,7 +142,7 @@ private:
 
     // One crew kerbal aboard (ship, part); the spawn_crew loop calls it per
     // capsule. Returns the kerbal (nullptr if the part is no capsule).
-    Kerbal *spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys);
+    Kerbal *spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t);
 
     // De-duplicate a name across all the ships + crew (first keeps the
     // bare name, later ones get #2, #3 ..).

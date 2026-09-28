@@ -410,9 +410,11 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->scenario = scn;   // resolved before `new Vehicle` (see top of this fn)
     v->slot = s.slot;
     v->sun = g.sun;
-    v->m_parent = g.sys.find(s.pose.body);
-    if(v->m_parent == nullptr) { v->m_parent = v->home; }
-    v->frame = s.pose.rotating ? v->m_parent->rot_frame : v->m_parent->frame;
+    // The re-home: enters the body's ships list and starts a fresh flight
+    // journal at the load instant (journals are not persisted, v1).
+    TerrainBody *pb = g.sys.find(s.pose.body);
+    if(pb == nullptr) { pb = v->home; }
+    v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, g.time);
 
     v->placeShip(s.pose.pos, s.pose.rot);
     v->setVelocity(s.pose.vel);
@@ -429,13 +431,13 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         std::map<uint64_t, Part *>::const_iterator portIt = uidToPart.find(s.docks[k].port);
         std::map<uint64_t, Part *>::const_iterator rootIt = uidToPart.find(s.docks[k].root);
         if(portIt == uidToPart.end() || rootIt == uidToPart.end()) {
-            delete v;
+            v->detachSoiList();   // setSoi listed it above -- never leave a
+            delete v;             // freed pointer in a body list, even transiently
             throw std::runtime_error("load: saved ship '" + s.name + "' has a dock seam ("
                                      + s.docks[k].name + ") naming a part it does not have");
         }
         v->seams.push_back(Vehicle::DockSeam{ portIt->second, rootIt->second, s.docks[k].name });
     }
-    v->m_parent->ships.push_back(v);
     return v;
 }
 
@@ -502,12 +504,12 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         TerrainBody *body = g.sys.find(s.pose.body);
         if(body == nullptr) { body = g.home; }
         k->home = body;
-        k->m_parent = body;
-        k->frame = s.pose.rotating ? body->rot_frame : body->frame;
+        // The re-home: enters the body's ships list and starts a fresh
+        // journal at the load instant.
+        k->setSoi(s.pose.rotating ? body->rot_frame : body->frame, g.time);
         k->placeShip(s.pose.pos, s.pose.rot);
         k->setVelocity(s.pose.vel);
         SetAngVelocity(k->hull, s.pose.angvel);
-        body->ships.push_back(k);
         // a free kerbal saved on the rails (coasting at high warp) stays
         // parked -- the ships' phase-2 pass skips crew.
         if(s.onRails) { k->goOnRails(); }
@@ -580,6 +582,10 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->onRails = true;
         k->railFrozen = true;
         k->aboardPart = cap;
+        // The bookkeeping re-home (aboardPart is set first -- setSoi keys
+        // its ships-list membership on it, and an aboard kerbal is in no
+        // body list): starts the kerbal's journal at the load instant.
+        k->setSoi(ship->frame, g.time);
         ship->crew.push_back(k);
         /* step 2.4: register the containment edge (the kerbal's part is
            parked in the capsule, both directions). Vehicle::crew stays the
@@ -678,8 +684,8 @@ void load_game(Game &g, const std::string &dir) {
 
     /* Detach the running fleet from the bodies but keep it ALIVE until the
        load commits. It has to be out of the way first because the builders
-       append the new vehicles to those same lists (buildShipFromSaveParts ends
-       in `v->m_parent->ships.push_back(v)`), and it has to stay alive because
+       append the new vehicles to those same lists (buildShipFromSaveParts
+       re-homes through `Vehicle::setSoi`), and it has to stay alive because
        deleting it here is exactly what used to make a failed load
        unrecoverable.
 

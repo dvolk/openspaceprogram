@@ -92,11 +92,14 @@ public:
                          // lets a runtime spawn duplicate this ship's design
     std::vector<Part *> parts;   // each Part owns its Body (see part.h)
 
-    TerrainBody *m_parent;
-    Frame *frame;
+    // SoI placement (setSoi is the one writer that re-homes a live
+    // vessel). Null until placed: a fresh `new Vehicle` is off-map, and
+    // setSoi's list scan must see null, not garbage.
+    TerrainBody *m_parent = nullptr;
+    Frame *frame = nullptr;
     // Ownership bookkeeping: a ship lives in the ships list of its SOI
     // body (terrain.h) -- that is m_parent, which changes on a SoI
-    // crossing (moveToFrame moves the ship between the lists). `home` is
+    // crossing (setSoi moves the ship between the lists). `home` is
     // the body the ship was built on (fixed), `scenario` its starting
     // scenario and `slot` its pad/orbit slot within the (home, scenario)
     // group. `crew` are the characters aboard THIS ship (their capsule
@@ -109,11 +112,11 @@ public:
     TerrainBody *sun = nullptr; // the star (light source); set in main
     float m_thrust;
 
-    /* Mission journal: flight start + SoI enter/leave. Started lazily on
-       the ship's first tick (tick.cpp); enter/leave events are journaled
-       where the switch happens (switchFrames / railsSwitchFrames), not
-       polled. Snapshotted into W_FlightSummary on recover. Not
-       save-persisted. */
+    /* Mission journal: flight start + SoI enter/leave. Started when the
+       vessel is placed (setSoi -- creation, load, split); enter/leave
+       events are journaled where the switch happens (setSoi, driven by
+       switchFrames / railsSwitchFrames), not polled. Snapshotted into
+       W_FlightSummary on recover. Not save-persisted. */
     FlightLog flog;
 
     glm::dvec3 m_com;
@@ -995,17 +998,18 @@ public:
        a seam whose port and root both go with the split moves to the new ship,
        one whose both ends stay is kept here, and one the cut splits across is
        dropped -- which is the undock case, so the caller has nothing to pop.
-       The new ship is NOT yet in the fleet list NOR the physics world -- the
-       caller enters it into the world (enterWorld) and adds it to the SoI
-       body's ships. Keeping the world registration in the caller lets the
-       split run headless (no physics world), like the fuel/power tests build
-       ships without enterWorld.
+       The new ship IS in the fleet list (setSoi places it, journal started at
+       `t`) but NOT yet in the physics world -- the caller enters it into the
+       world (enterWorld). Keeping the world registration in the caller lets
+       the split run headless (no physics world), like the fuel/power tests
+       build ships without enterWorld.
 
        Undock (Game::undock) is the first user: the dropped side is the
        subtree under the most recent seam's root. Staging's "dropped stage
        becomes a ship" is the second: the same call with the stage's
        subtree (its decoupler root), instead of deleting it. */
-    Vehicle *extractSubtreeAsShip(Part *root, const std::string &name);
+    Vehicle *extractSubtreeAsShip(Part *root, const std::string &name,
+                                  double t = 0.0);
 
     /* This ship's part frame -> renderFrame. Usually the identity
        (renderFrame is this ship's own frame); an idle ship that switched
@@ -1112,7 +1116,29 @@ public:
        consumer of a part's state. */
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);
 
-    void moveToFrame(Frame *newFrame);
+    /* Re-express the ship's physics state (pose + velocity) in newFrame
+       and re-home it there (setSoi). `t` (sim time) timestamps the flight
+       journal. */
+    void moveToFrame(Frame *newFrame, double t);
+
+    /* The ONE SoI writer: every live (frame, m_parent, ships-list,
+       journal) change goes through here. Idempotent list membership --
+       a free vessel is in its body's ships list, an aboard crew character
+       is not (it rides Vehicle::crew); the lists are only touched when
+       the membership or the body actually changes, so a same-body frame
+       hop (rotational <-> inertial) never churns the canonical ship
+       order. Journals `t` into flog (a fresh vessel's journal STARTS
+       here -- creation, load and split all place through setSoi), then
+       re-homes the aboard crew onto the same frame (they ride along:
+       their m_parent never goes stale, and a body change journals their
+       own enter/leave). Tolerates a null frame (the headless split tests
+       build vehicles with no frame tree). */
+    void setSoi(Frame *newFrame, double t);
+
+    /* Out of the SoI body's ships list, if in it (the removal sites:
+       recover, remove, dock-absorb, pick-up -- the vessel is leaving the
+       fleet, not re-homing; setSoi handles the list itself). */
+    void detachSoiList();
 
     /* Per-tick SOI bookkeeping for THIS ship: if the ship is outside the
        current frame's SOI, move to the parent frame; else if it has
@@ -1120,8 +1146,8 @@ public:
        boundary test is soiTarget). Called per tick for each physics ship
        (the frame tree is shared; each ship tracks its own position in
        it), and additionally when a ship is woken by proximity or
-       recovered (game.cpp). `t` is the sim time: a switch to a different
-       SoI BODY is journaled into flog here, at the switch. */
+       recovered (game.cpp). `t` is the sim time, passed through to
+       setSoi's journal. */
     void switchFrames(double t);
 
     /* Write the rail state into the ship's body (once per tick). Draw,
@@ -1184,8 +1210,9 @@ public:
     void railsSwitchFrames(double t);
 
     /* Re-anchor the rail state on another frame (moveToFrame's math for
-       the analytic state; the new frame is inertial, so no stasis). */
-    void moveToRailFrame(Frame *newFrame);
+       the analytic state; the new frame is inertial, so no stasis) and
+       re-home it (setSoi, journal at `t`). */
+    void moveToRailFrame(Frame *newFrame, double t);
 
 private:
     /* The SoI boundary test shared by switchFrames (physics) and
@@ -1197,11 +1224,6 @@ private:
        the inertial node; physics ships drop into the surface frame near
        the ground. */
     Frame *soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody);
-
-    /* Shared tail of moveToFrame / moveToRailFrame: a ship lives in the
-       ships list of its SoI body (terrain.h), so a body change is a list
-       move; frame and m_parent then follow newFrame. */
-    void setSoiFrame(Frame *newFrame);
 };
 
 // Forward declaration (system.h defines it); spawn_vehicle resolves the
@@ -1283,9 +1305,11 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir);
 /* slot_offset (m): lateral separation for ships sharing a scenario --
    applied along the orbit binormal (perpendicular to both the radius
    vector and the velocity), so each ship's orbit stays essentially the
-   same shape. 0 for a lone ship (and no-op for pad scenarios). */
+   same shape. 0 for a lone ship (and no-op for pad scenarios).
+   `t` (sim time) timestamps the flight journal when the scenario
+   placement re-homes the ship into another frame (setSoi). */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
-                   System &sys, double slot_offset = 0.0);
+                   System &sys, double slot_offset, double t);
 
 /* --radial-test spin diagnostics (two-part ship): per-part angular
    velocities, the INTERNAL contact torque between the two parts, and the

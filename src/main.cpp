@@ -623,7 +623,7 @@ int main(int argc, char **argv)
         if(!args.radial_test.empty()) {
             RadialTestShip rts = build_radial_test_ship(
                 args.radial_test, ships.catalog(), home, sun, partsshader);
-            ships.add_ship(rts.v, home, rts.sc, rts.slot);
+            ships.add_ship(rts.v, home, rts.sc, rts.slot, game.time);
             first = rts.v;
         } else if(!args.dock_test.empty()) {
             DockTestShips dts = build_dock_test_ships(
@@ -633,8 +633,8 @@ int main(int argc, char **argv)
                apply_scenarios skips them. The probe is the ACTIVE ship; the
                station parks on rails until proximity wakes it (it is metres
                away). */
-            ships.add_ship(dts.probe, home, nullptr, 0);
-            ships.add_ship(dts.station, home, nullptr, 1);
+            ships.add_ship(dts.probe, home, nullptr, 0, game.time);
+            ships.add_ship(dts.station, home, nullptr, 1, game.time);
             first = dts.probe;
         } else {
             // A typo in any field (unknown body / scenario, an unreadable
@@ -642,7 +642,7 @@ int main(int argc, char **argv)
             // load_ship_def); catch it the way the --load path above does so
             // it is a clean error, not a core dump.
             try {
-                first = ships.buildDebugStartShips(start_ships, sys);
+                first = ships.buildDebugStartShips(start_ships, sys, game.time);
             } catch(const std::exception &e) {
                 printf("error: %s\n", e.what());
                 return 1;
@@ -936,7 +936,7 @@ int main(int argc, char **argv)
             // 1) spawn a copy of the active ship -> appended at the end;
             //    the active ship must be untouched
             Vehicle *sp = ships.spawn_ship(ship->defPath, "", ship->home,
-                                           ship->scenario, sys);
+                                           ship->scenario, sys, game.time);
             printf("spawn 1: size=%zu active=%s\n",
                    collectVehicles(sys).size(), ship->name.c_str());
             if(collectVehicles(sys).size() != base + 1 || ship != origShip) { ok = false; }
@@ -951,7 +951,7 @@ int main(int argc, char **argv)
             // 3) spawn again, select it, remove it (the active one) -> the
             //    control must hand off and the size return to base
             Vehicle *sp2 = ships.spawn_ship(ship->defPath, "", ship->home,
-                                            ship->scenario, sys);
+                                            ship->scenario, sys, game.time);
             game.select_ship(sp2);
             printf("spawn 2 + select: active=%s size=%zu\n",
                    ship->name.c_str(), collectVehicles(sys).size());

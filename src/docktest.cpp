@@ -98,7 +98,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     station->enterWorld();
     // Circular orbit, slot 0 (no lateral offset): the station's COM ends up
     // at the orbit radius, oriented nose (+Z) along prograde.
-    spawn_vehicle(station, *sc, home, sys, 0.0);
+    spawn_vehicle(station, *sc, home, sys, 0.0, 0.0);
 
     /* --- probe: port (root, front) ... engine (rear) -------------------
        The same 7-part stack as the station, oriented the other way: port at
@@ -139,7 +139,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        rotating frame with the exact inverse of comStateIn, so the Bullet
        sim lands on the conic instead of a neighbouring one. */
     if(probe->frame != station->frame) {
-        probe->moveToFrame(station->frame);
+        probe->moveToFrame(station->frame, 0.0);   // t=0: the test boots at epoch
     }
     Frame *inert = station->frame->getNonRotFrame();
     glm::dvec3 rS_i, vS_i;

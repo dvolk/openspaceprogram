@@ -207,7 +207,7 @@ struct TerrainBody {
 
     // The ships currently in this body's SOI (vehicle.h). While a ship is
     // here, its Vehicle::m_parent is this body; a SoI crossing moves it
-    // between bodies' lists (Vehicle::moveToFrame) instead of copying
+    // between bodies' lists (Vehicle::setSoi) instead of copying
     // anything. Aboard characters are NOT here -- they live on their ship
     // (Vehicle::crew); a free EVA character IS a ship in this list.
     std::vector<Vehicle *> ships;

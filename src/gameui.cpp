@@ -1535,7 +1535,7 @@ void drawUIReadouts(Game &g) {
         if(ship == nullptr) {
             g.toast("Spawn: no active ship");
         } else if(!ship->defPath.empty()) {
-            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys);
+            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys, g.time);
         } else {
             printf("Spawn: active ship has no def (test ship)\n");
         }
@@ -3430,7 +3430,7 @@ void drawTrackingShipList(Game &g) {
         if(ship == nullptr) {
             g.toast("Spawn: no active ship");
         } else if(!ship->defPath.empty()) {
-            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys);
+            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys, g.time);
         } else {
             printf("Spawn: active ship has no def (test ship)\n");
         }

@@ -211,21 +211,6 @@ void tick(Game &g) {
                exactly once. */
             collectVehiclesInto(g.sys, all);
 
-            /* Flight journal start: a ship without one yet (just spawned,
-               loaded, or split off this session) begins its journal on its
-               first running tick, back-dated to this step's start so a
-               high-warp first step does not shift the flight start by a
-               whole step. SoI enter/leave events are NOT polled here --
-               they are journaled at the switch itself (switchFrames /
-               railsSwitchFrames below). */
-            for(auto *s : all) {
-                if(!s->flog.started) {
-                    s->flog.observe(g.time,
-                                    s->m_parent ? s->m_parent->name : "",
-                                    g.time - g.dt * g.time_accel);
-                }
-            }
-
             // The active ship's SOI owner before this tick's frame
             // bookkeeping (checked after the branch, below): crossing into
             // a different body's SOI drops warp to 1x. Null when there is no
