@@ -2073,6 +2073,7 @@ void Vehicle::drain_log(double time) {
         thrust += (double)p->armedThrust;
         if(p->fuelGroup < 0 || !p->isTank()) { continue; }
         for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(r == (int)ResourceType::EC) { continue; }   // energy (Wh), no mass
             if(p->resources.current[r] <= 0.0f) { continue; }
             cur[p->fuelGroup] += p->resources.current[r];
         }
