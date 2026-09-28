@@ -22,6 +22,7 @@
 #include "datadir.h"  // settings.json's location (the data directory)
 #include "shipdef.h"  // PartDef (crew_capacity)
 #include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
+#include "uiwins.h"   // setWinOpen (W_FlightSummary)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
     // Render frame: the ship's frame, or the home body's frame when there is
@@ -260,6 +261,11 @@ void Game::dropPartWindowsFor(Vehicle *ship) {
                    part_sels.end());
 }
 
+void Game::clearFlightSummary() {
+    recoverShipName.clear();
+    setWinOpen(W_FlightSummary, false);
+}
+
 /* The RMB-click entry point: pick the part under the cursor, open its
    window, and log it. The [pick] line doubles as the e2e assertion. */
 void pickAt(Game &g, int px, int py) {
@@ -426,6 +432,7 @@ bool Game::newGame() {
     // Start paused so the world does not advance while the player sets up;
     // WarpUp from 0 resumes at 1x.
     time_accel = 0;
+    clearFlightSummary();   // a prior recover's summary is not this game's
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
@@ -558,6 +565,7 @@ void Game::unloadGame() {
        none dereferences the fleet, and the bodies and the Game both outlive
        this -- so tearing the fleet down cannot dangle an in-flight job. */
     part_sels.clear();
+    clearFlightSummary();   // a summary from THIS game must not leak into the next
     for(TerrainBody *b : sys.bodies) {
         for(Vehicle *v : b->ships) { delete v; }
         b->ships.clear();
@@ -1562,4 +1570,73 @@ void Game::remove_ship(Vehicle *v) {
         printf("Removed '%s' (active unchanged: %s)\n",
                removedName.c_str(), ship->name.c_str());
     }
+}
+
+/* Recover the active vessel -- the successful end of a flight (the hub
+   menu's "Recover Vessel"). Distinct from remove_ship: this is a
+   player-facing mission end, so it allows the last vessel (the hub is a
+   legal shipless floor) and absorbs the crew as "came home with it"
+   instead of refusing a crewed ship. Other fleet ships stay for the
+   Tracking Station; there is no handoff to a neighbour. A free EVA kerbal
+   is NOT recovered -- it is its own vehicle and stays in the world (like
+   KSP: only the vessel and the crew aboard it come home).
+
+   Lands on the Space Center hub (collapsing [flight, spacecenter] so
+   "Resume Flight" cannot pop into the deleted vessel) and opens the
+   Flight Summary window. */
+void Game::recoverActive() {
+    Vehicle *v = ship;
+    if(v == nullptr) {
+        toast("Recover: no active ship");
+        return;
+    }
+    const std::string name = v->name;
+    recoverShipName = name;
+
+    // Part windows on the ship (and on any aboard crew -- their suit parts
+    // can be open too) would dangle the moment the Vehicles go.
+    dropPartWindowsFor(v);
+    for(Vehicle *k : v->crew) { dropPartWindowsFor(k); }
+
+    // Ships that had v targeted for docking now dangle -- drop their intent
+    // (pointer compare only, so it is safe once v is off the lists).
+    for(auto *s : collectVehicles(sys)) {
+        if(s->dockTargetShip == v) {
+            s->dockTargetShip = nullptr;
+            s->dockTargetPort = nullptr;
+        }
+    }
+
+    // Every Vehicle this delete frees: v and its owned crew (Vehicle::crew
+    // is the sole owner; ~Vehicle deletes them). Drop Game's selection refs
+    // into that set first -- an aboard kerbal is not selectable, but
+    // lastShip / kerbal can still point at one after a V toggle-back.
+    auto diesWith = [&](Vehicle *x) {
+        if(x == v) { return true; }
+        for(Vehicle *k : v->crew) { if(k == x) { return true; } }
+        return false;
+    };
+    ship = nullptr;
+    if(diesWith(lastShip)) { lastShip = nullptr; }
+    if(diesWith(kerbal)) { kerbal = nullptr; }
+
+    // Out of its SoI body's list, then delete (~Vehicle detaches the welds,
+    // unregisters the bodies and deletes the owned crew).
+    if(v->m_parent != nullptr) {
+        for(auto it = v->m_parent->ships.begin();
+            it != v->m_parent->ships.end(); it++) {
+            if(*it == v) { v->m_parent->ships.erase(it); break; }
+        }
+    }
+    delete v;
+
+    // No handoff to a neighbour: the flight is over. Drop the "ship" focus
+    // entry and land on the hub.
+    syncShipFocus();
+    enterSpaceCenter(*this);
+    setWinOpen(W_FlightSummary, true);
+
+    printf("[recover] t=%.1f '%s' recovered\n", time, name.c_str());
+    fflush(stdout);
+    toast("Recovered %s", name.c_str());
 }

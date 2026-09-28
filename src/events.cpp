@@ -15,6 +15,7 @@
 #include "eva.h"        // Kerbal (the space-key jump edge)
 #include "siminput.h"   // SimKeyPress, SimMouseAction
 #include "gldebug.h"    // check_gl_error()
+#include "uiwins.h"     // winOpen / setWinOpen (Esc closes the Flight Summary)
 #include "vab.h"        // vabRotate / vabDeleteSelected (the editor keys)
 
 #include "../middleware/imgui/imgui.h"
@@ -384,14 +385,41 @@ void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
 /* The Space Center hub's keys. The menu IS the scene (Root, always open), so
    Esc is the exit: up the tree. When the hub sits on top of a live flight
    (reached by Esc from flight) the pop hands back to the flight, the same as
-   the on-screen "Resume Flight". When the hub IS the floor (a new game, no
-   ship below) there is nothing to pop back to, so Esc goes to the title, the
-   only scene above it. */
+   the on-screen "Resume Flight".
+
+   When the hub IS the floor there is nothing to pop back to. That used to
+   mean only "a new game, no fleet", where Esc can go straight to the title.
+   recoverActive can also leave the hub as floor WITH a remaining fleet --
+   a bare enterTitle would strand it (Title has no Resume, and newGame
+   refuses while any vehicle exists), so that case arms and then discards
+   the same way the menu's confirmed "Return to title" does.
+
+   Esc first dismisses an open Flight Summary: it is a modal-ish dialog
+   sitting on the hub, and swallowing the navigation key until it is gone
+   is the usual dialog contract. */
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
-        if(g.sceneStack.size() <= 1) { enterTitle(g); }
-        else { popScene(g); }
+        if(winOpen(W_FlightSummary)) {
+            setWinOpen(W_FlightSummary, false);
+            return;
+        }
+        if(g.sceneStack.size() > 1) {
+            popScene(g);   // back to the flight below (Resume Flight)
+            return;
+        }
+        if(collectVehicles(g.sys).empty()) {
+            enterTitle(g);   // true no-game hub floor (a new game)
+            return;
+        }
+        // Hub-as-floor with a live remaining fleet (post-recover).
+        if(g.returnTitleArmed) {
+            g.returnTitleArmed = false;
+            g.quitToTitle();
+        } else {
+            g.returnTitleArmed = true;
+            g.toast("Discard remaining vessels? Esc again to confirm");
+        }
     }
 }
 

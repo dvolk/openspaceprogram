@@ -136,6 +136,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Push the Space Center hub once at this loop time in ms "
                    "(the flight pause menu's \"Space Center\", headless; "
                    "-1 = never)");
+    app.add_option("--recover", args.recover_ms,
+                   "Fire the Space Center menu's \"Recover Vessel\" once at "
+                   "this loop time in ms (Game::recoverActive, headless; "
+                   "-1 = never)");
     app.add_option("--tracking", args.tracking_ms,
                    "Push the Tracking Station once at this loop time in ms "
                    "(the Space Center hub's \"Tracking Station\", headless; "

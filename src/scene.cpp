@@ -99,6 +99,7 @@ void spaceCenterEnter(Game &g) {
    Controls / Save-Load, opened from the menu) on top of it. */
 void spaceCenterDrawUi(Game &g) {
     drawSpaceCenterMenu(g);
+    drawFlightSummary(g);
     drawUIReadouts(g);
     drawSaveLoad(g);
 }

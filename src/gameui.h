@@ -46,6 +46,12 @@ void drawSpaceCenterMenu(Game &g);
    Title-only (it is in kTitleWins). */
 void drawNewGame(Game &g);
 
+/* The Flight Summary window (W_FlightSummary), opened by the hub's
+   "Recover Vessel" (Game::recoverActive): the successful-flight
+   congratulations sheet. v1 shows the recovered vessel's name; v2 will add
+   flight stats / events. Space-Center-only (it is in kSpaceCenterWins). */
+void drawFlightSummary(Game &g);
+
 /* The title screen's README panel (W_Readme), docked left of the title
    menu. Shows the player-facing readme text (release/README.md in the
    source tree, README.md beside the assets in a package) as plain text.

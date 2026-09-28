@@ -991,6 +991,7 @@ int main(int argc, char **argv)
     game.reloadMs = args.reload_ms;
     game.quitTitleMs = args.quit_title_ms;
     game.spaceCenterMs = args.space_center_ms;
+    game.recoverMs = args.recover_ms;
     game.trackingMs = args.tracking_ms;
     game.trackingCloseMs = args.tracking_close_ms;
     game.switchSystemPath = args.switch_system_path;
@@ -1185,6 +1186,14 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.spaceCenterMs) {
             game.spaceCenterFired = true;
             if(sceneIs(game, SceneId::Flight)) { pushScene(game, SceneId::SpaceCenter); }
+        }
+        /* --recover: the headless hook for the hub's "Recover Vessel". Fired
+           after --space-center, so --space-center A --recover B drives the
+           real flight -> hub -> recover path. */
+        if(game.recoverMs >= 0 && !game.recoverFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.recoverMs) {
+            game.recoverFired = true;
+            game.recoverActive();
         }
         /* --tracking: the headless hook for the hub's "Tracking Station". Fired
            after --space-center, so --space-center A --tracking B drives the

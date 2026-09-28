@@ -2544,6 +2544,15 @@ static void navSpaceCenter(Game &g, float bw) {
         setWinOpen(W_SpaceCenterMenu, false);
         popScene(g);
     }
+    // Recover Vessel ends the flight successfully: the active ship (and any
+    // crew aboard -- they came home with it) is deleted, the player is left
+    // at the hub with no active vessel, and the Flight Summary window opens.
+    // Offered only when a ship is active (same gate as Resume Flight). No
+    // arm/confirm: this discards a flight you already left, not the game.
+    // (v3 will restrict it to a ship landed on the home planet's surface.)
+    if(g.ship != nullptr && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
+        g.recoverActive();
+    }
     // Return to title discards the fleet and is one Esc from a live flight,
     // so it arms on the first click and confirms on the second (a Cancel
     // clears the arm). "Quit game" (the shell's row) exits the app instead.
@@ -2678,6 +2687,30 @@ void drawNewGame(Game &g) {
         ImGui::SameLine();
         if(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
             setWinOpen(W_NewGame, false);
+        }
+    });
+}
+
+/* The Flight Summary window (W_FlightSummary), opened by the hub's
+   "Recover Vessel" (recoverActive). v1 is a congratulations sheet: the
+   vessel's name and OK. v2 will list the flight's stats and events here
+   (not captured yet -- separate work item). Transient like New Game:
+   recoverActive opens it, OK / X closes. Space-Center-only. */
+void drawFlightSummary(Game &g) {
+    drawWin(g, W_FlightSummary, [&] {
+        ImGui::PushFont(g.bigger);
+        ImGui::TextUnformatted("Flight complete!");
+        ImGui::PopFont();
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "Congratulations — a successful flight. "
+            "The vessel and its crew are home.");
+        ImGui::Spacing();
+        ImGui::Text("Vessel: %s", g.recoverShipName.c_str());
+        // v2: flight stats / events land here.
+        ImGui::Spacing();
+        if(ImGui::Button("OK", ImVec2(120.0f, 0.0f))) {
+            setWinOpen(W_FlightSummary, false);
         }
     });
 }

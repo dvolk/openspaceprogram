@@ -749,6 +749,7 @@ void load_game(Game &g, const std::string &dir) {
     // The load committed, so the old fleet goes -- the deletion that the
     // detach above deferred. part_sels holds Part* into it, so that goes first.
     g.part_sels.clear();     // Part* into the old fleet -- drop before deleting
+    g.clearFlightSummary();  // a prior recover's summary is not this save's
     for(auto &d : detached) {
         for(Vehicle *v : d.second) { delete v; }
     }

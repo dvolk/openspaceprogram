@@ -97,6 +97,9 @@ struct GameArgs {
     int space_center_ms = -1; // --space-center: push the Space Center hub once
                             // at this loop time in ms (headless test hook;
                             // -1 = never)
+    int recover_ms = -1;    // --recover: fire the Space Center menu's "Recover
+                            // Vessel" (Game::recoverActive) once at this loop
+                            // time in ms (headless test hook; -1 = never)
     int tracking_ms = -1;   // --tracking: push the Tracking Station once at this
                             // loop time in ms (headless test hook; -1 = never)
     int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station

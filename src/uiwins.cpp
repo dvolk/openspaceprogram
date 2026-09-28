@@ -202,6 +202,16 @@ const WinDef kWins[W_Count] = {
         .opts = { .slot = ui::Slot::Center, .fixed = true, .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
+    [W_FlightSummary] = {
+        .name = "Flight Summary", .label = "Flight Summary",
+        // The "successful flight" dialog opened by Recover Vessel. Transient
+        // like New Game: recoverActive opens it, OK / X closes. Docked right
+        // of the hub menu so the two do not stack in the same center slot.
+        .opts = { .slot = ui::Slot::Center, .right_of = "Space Center",
+                  .initial_size = ImVec2(400.0f, 280.0f),
+                  .closable = true, .default_open = false },
+        .role = WinRole::Transient, .inList = false,
+    },
 
     // --- tracking station ------------------------------------------------
     [W_TrackingMap] = {
@@ -267,7 +277,7 @@ static const Win kVabWinIds[] = {
 // the editor). The ship is live below (the sim runs) but the hub shows the
 // planet, not a cockpit, so no flight readouts belong here.
 static const Win kSpaceCenterWinIds[] = {
-    W_SpaceCenterMenu, W_Settings, W_Controls, W_SaveLoad,
+    W_SpaceCenterMenu, W_FlightSummary, W_Settings, W_Controls, W_SaveLoad,
 };
 // The Tracking Station: its own full-screen map + ship list (copies of the
 // flight windows, free to diverge -- see drawTrackingMap /

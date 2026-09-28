@@ -314,6 +314,11 @@ struct Game {
     int spaceCenterMs = -1;
     bool spaceCenterFired = false;
 
+    // --recover MS: the headless hook for the Space Center menu's "Recover
+    // Vessel" (Game::recoverActive). Mirrors --space-center.
+    int recoverMs = -1;
+    bool recoverFired = false;
+
     // --tracking MS: the headless hook for the Space Center hub's "Tracking
     // Station" (pushes SceneId::TrackingStation). Mirrors --space-center.
     int trackingMs = -1;
@@ -525,6 +530,11 @@ struct Game {
     // discards the fleet, so it arms on the first click and confirms on the
     // second (navSpaceCenter flips this; a Cancel clears it).
     bool returnTitleArmed = false;
+
+    // The Flight Summary window (W_FlightSummary) payload, written by
+    // recoverActive. v1 is just the recovered vessel's name; v2 will add
+    // flight stats / events (not captured yet).
+    std::string recoverShipName;
 
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;
@@ -775,6 +785,13 @@ struct Game {
     // Remove a ship + its bookkeeping (refuses the last one; hands control
     // off if the active one is removed).
     void remove_ship(Vehicle *v);
+    // Recover the active vessel -- the successful end of a flight. The ship
+    // is deleted (its aboard crew come home with it), every Game ref into
+    // that set is dropped, the stack collapses to the Space Center hub with
+    // no active vessel, and the Flight Summary window opens. Unlike
+    // remove_ship this allows the last vessel (the hub is a legal shipless
+    // floor) and does not hand control to a neighbour.
+    void recoverActive();
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);
@@ -783,9 +800,14 @@ struct Game {
     // the mouse at pick, window pixels; the window opens near it.
     void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
                         int mx, int my);
-    // Drop every part window of a ship (remove_ship); its entries would
-    // dangle the moment the Vehicle is deleted.
+    // Drop every part window of a ship (remove_ship, recoverActive); its
+    // entries would dangle the moment the Vehicle is deleted.
     void dropPartWindowsFor(Vehicle *ship);
+    // Close the Flight Summary and drop its payload. Every game teardown
+    // (unloadGame, load_game, newGame) calls this: scene transitions close
+    // nothing (uiwins.h WinRole), so a summary left open would leak the old
+    // vessel's name into the next game's hub.
+    void clearFlightSummary();
 
     Game(Renderer &display, PostFX *postfx, Ships &ships, System &sys,
          TerrainBody *sun, TerrainBody *home, GameArgs &args,

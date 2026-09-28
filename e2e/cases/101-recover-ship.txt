@@ -1,0 +1,16 @@
+# "Recover Vessel" from the Space Center hub: the active ship is deleted
+# (its aboard crew come home with it), the player is left at the hub with
+# no active vessel, and the Flight Summary window opens. Unlike
+# remove_ship this allows the last vessel -- the hub is a legal shipless
+# floor. The [recover] line is the e2e anchor; the timeout is the real
+# assertion that the delete + scene collapse left nothing dangling.
+NAME recover-ship
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --space-center 1000 --recover 2000
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [recover] t=
+EXPECT 'racer' recovered
+EXPECT [spacecenter] entered
+EXPECT Timeout reached (8.
+FORBID GL_
+FORBID error:
