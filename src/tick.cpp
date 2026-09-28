@@ -211,6 +211,21 @@ void tick(Game &g) {
                exactly once. */
             collectVehiclesInto(g.sys, all);
 
+            /* Flight journal start: a ship without one yet (just spawned,
+               loaded, or split off this session) begins its journal on its
+               first running tick, back-dated to this step's start so a
+               high-warp first step does not shift the flight start by a
+               whole step. SoI enter/leave events are NOT polled here --
+               they are journaled at the switch itself (switchFrames /
+               railsSwitchFrames below). */
+            for(auto *s : all) {
+                if(!s->flog.started) {
+                    s->flog.observe(g.time,
+                                    s->m_parent ? s->m_parent->name : "",
+                                    g.time - g.dt * g.time_accel);
+                }
+            }
+
             // The active ship's SOI owner before this tick's frame
             // bookkeeping (checked after the branch, below): crossing into
             // a different body's SOI drops warp to 1x. Null when there is no
@@ -239,10 +254,7 @@ void tick(Game &g) {
                    stepped at all -- O(ships) per tick instead of a
                    substep count that explodes with the accel. */
                 for(auto *s : all) {
-                    s->railsTick(g.dt * g.time_accel);
-                    s->flog.observe(g.time,
-                                    s->m_parent ? s->m_parent->name : "",
-                                    g.time - g.dt * g.time_accel);
+                    s->railsTick(g.time, g.dt * g.time_accel);
                 }
             } else {
 
@@ -252,11 +264,8 @@ void tick(Game &g) {
             // ships advance their analytic conic here instead --
             // exact for any step size, at any time accel.
             for(auto *s : all) {
-                if(s->onRails) { s->railsTick(g.dt * g.time_accel); }
-                else { s->switchFrames(); }
-                s->flog.observe(g.time,
-                                s->m_parent ? s->m_parent->name : "",
-                                g.time - g.dt * g.time_accel);
+                if(s->onRails) { s->railsTick(g.time, g.dt * g.time_accel); }
+                else { s->switchFrames(g.time); }
                 /* The compound's COM has to track the mass distribution, and
                    a burn moves it. Checked here rather than at each mass
                    writer so one call site covers all of them, and it only

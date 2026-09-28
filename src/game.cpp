@@ -860,6 +860,10 @@ void Game::kerbalEVA(Kerbal *k) {
        (or changed SoI) since, so both follow the ship now. */
     k->frame = ship->frame;
     k->m_parent = ship->m_parent;
+    /* Journal the ride: aboard, the kerbal is railFrozen, so neither
+       railsTick nor switchFrames ever observes its SoI -- without this,
+       a Kerbin->Mun transfer EVA'd at the Mun would journal no events. */
+    k->flog.observe(time, k->m_parent ? k->m_parent->name : "");
     for(auto it = ship->crew.begin(); it != ship->crew.end(); it++) {
         if(*it == k) { ship->crew.erase(it); break; }
     }
@@ -939,6 +943,9 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     }
     k->frame = ship->frame;
     k->m_parent = ship->m_parent;
+    // Same as the EVA exit: journal the SoI the boarding kerbal arrives in
+    // (it may have walked between ships parked around different bodies).
+    k->flog.observe(time, k->m_parent ? k->m_parent->name : "");
     k->aboardPart = capPart;
     ship->crew.push_back(k);
     /* step 2.4: register the containment edge (the kerbal's part is parked in
@@ -1160,7 +1167,7 @@ void Game::updateProximity() {
                would rotate that stale pose into the new frame and land the
                ship frame_velocity*dt (~4 m at LEO) off the live ships. Doing
                the conversion here keeps every ship's pose on one epoch. */
-            s->switchFrames();
+            s->switchFrames(time);
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->name.c_str(), d, r_on,
                                        grounded ? "ground" : "fly"); }
@@ -1175,7 +1182,7 @@ void Game::updateProximity() {
 
     if(any_engaged && a->onRails) {
         a->leaveRails();
-        a->switchFrames();   // same epoch-consistency as the neighbor wake
+        a->switchFrames(time);   // same epoch-consistency as the neighbor wake
         if(args.prox_log) { printf("[prox] t=%.3f active %s WOKEN from rails\n",
                                    time, a->name.c_str()); }
     }
@@ -1595,9 +1602,12 @@ void Game::recoverActive() {
     // Re-run SoI detection before snapshotting: switchFrames/railsTick
     // run before the physics substeps, so a crossing in those substeps
     // (or while paused) leaves m_parent stale. A zero-step railsTick
-    // still evaluates railsSwitchFrames. Then snapshot -- the Vehicle
-    // dies below.
-    if(v->onRails) { v->railsTick(0.0); } else { v->switchFrames(); }
+    // still evaluates railsSwitchFrames (except a railFrozen grounded
+    // vessel, which cannot change SoI anyway), and a crossing found
+    // here journals itself at `time`. The observe below is then a no-op
+    // repeat -- unless the vessel is recovered without ever ticking
+    // (paused straight after a load), where it starts the journal.
+    if(v->onRails) { v->railsTick(time, 0.0); } else { v->switchFrames(time); }
     v->flog.observe(time, v->m_parent ? v->m_parent->name : "");
     flightSummary.shipName = name;
     flightSummary.log = v->flog;

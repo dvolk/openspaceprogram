@@ -5,10 +5,14 @@
 // opened on recover) can list the mission. Not save-persisted: a load
 // starts a fresh journal at the load instant (v1).
 //
-// `observe` is the only writer. Call it once per tick with the ship's
-// current SoI body name ("" if none): the first call begins the journal,
-// later calls emit left/entered when the body changes. Timestamps are
-// sim-clock seconds (Game::time).
+// `observe` is the only writer, called with the ship's current SoI body
+// name ("" if none): the first call begins the journal, later calls emit
+// left/entered when the body changes. The game starts a journal lazily on
+// the ship's first running tick (tick.cpp; a paused game starts none) and
+// journals SoI events where the switch actually happens
+// (Vehicle::switchFrames / railsSwitchFrames) -- repeat observes of an
+// unchanged body are free no-ops, so the odd extra call (recover) is
+// harmless. Timestamps are sim-clock seconds (Game::time).
 //
 // Pure containers + logic -- no game types -- so tests can pin the
 // enter/leave pairing without linking Vehicle.

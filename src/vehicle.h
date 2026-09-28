@@ -109,9 +109,11 @@ public:
     TerrainBody *sun = nullptr; // the star (light source); set in main
     float m_thrust;
 
-    /* Mission journal: flight start + SoI enter/leave. Observed once per
-       tick (tick.cpp) with the current SoI body name; snapshotted into
-       W_FlightSummary on recover. Not save-persisted. */
+    /* Mission journal: flight start + SoI enter/leave. Started lazily on
+       the ship's first tick (tick.cpp); enter/leave events are journaled
+       where the switch happens (switchFrames / railsSwitchFrames), not
+       polled. Snapshotted into W_FlightSummary on recover. Not
+       save-persisted. */
     FlightLog flog;
 
     glm::dvec3 m_com;
@@ -1114,10 +1116,13 @@ public:
 
     /* Per-tick SOI bookkeeping for THIS ship: if the ship is outside the
        current frame's SOI, move to the parent frame; else if it has
-       entered a child's SOI, move to the nearest such child. Called once
-       per tick, per ship (the frame tree is shared; each ship tracks its
-       own position in it). */
-    void switchFrames();
+       entered a child's SOI, move to the nearest such child (the shared
+       boundary test is soiTarget). Called per tick for each physics ship
+       (the frame tree is shared; each ship tracks its own position in
+       it), and additionally when a ship is woken by proximity or
+       recovered (game.cpp). `t` is the sim time: a switch to a different
+       SoI BODY is journaled into flog here, at the switch. */
+    void switchFrames(double t);
 
     /* Write the rail state into the ship's body (once per tick). Draw,
        get_center_of_mass and everything else that reads the body then sees
@@ -1168,18 +1173,35 @@ public:
     /* Per-tick rail advance: propagate the conic by the tick's simulated
        duration (exact for any step size), check SOI boundaries, refresh
        the parked transforms. A frozen (grounded) ship has nothing to
-       propagate: its pose is static in the rotating frame. */
-    void railsTick(const double step);
+       propagate: its pose is static in the rotating frame. `t` (sim time)
+       timestamps the flog journal on an SoI switch. */
+    void railsTick(double t, const double step);
 
     /* SOI bookkeeping for a railed ship (the switchFrames() analog): the
        rail conic is only valid around frame->body while the ship stays in
        that SOI. The rotating child frame is the same body -- never a
        switch candidate; physics ships drop into it after the handoff. */
-    void railsSwitchFrames();
+    void railsSwitchFrames(double t);
 
     /* Re-anchor the rail state on another frame (moveToFrame's math for
        the analytic state; the new frame is inertial, so no stasis). */
     void moveToRailFrame(Frame *newFrame);
+
+private:
+    /* The SoI boundary test shared by switchFrames (physics) and
+       railsSwitchFrames: given the ship's reference point in current-frame
+       coordinates, return the frame to move to, or nullptr to stay put.
+       kSoiMargin (vehicle.cpp) of hysteresis on both sides keeps a ship
+       loitering at a boundary from flapping between frames. `skipSameBody`
+       (rails) excludes the rotating surface child -- a rail conic lives in
+       the inertial node; physics ships drop into the surface frame near
+       the ground. */
+    Frame *soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody);
+
+    /* Shared tail of moveToFrame / moveToRailFrame: a ship lives in the
+       ships list of its SoI body (terrain.h), so a body change is a list
+       move; frame and m_parent then follow newFrame. */
+    void setSoiFrame(Frame *newFrame);
 };
 
 // Forward declaration (system.h defines it); spawn_vehicle resolves the

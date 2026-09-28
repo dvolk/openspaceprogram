@@ -2783,6 +2783,40 @@ void Vehicle::moveToFrame(Frame *newFrame) {
     /* after placeShip: proceedToTransform zeroes both velocities */
     SetVelocity(hull, newVel);
 
+    setSoiFrame(newFrame);
+}
+
+/* Dead band on the SoI boundary tests (both sides): a ship loitering at
+   exactly `soi` would otherwise flip frames on every tick of a noisy
+   integration. 10 km is far below the scale of an encounter. It is NOT
+   a guarantee against overshoot -- at high rails warp one tick can cross
+   a whole SoI -- but the rail conic is re-checked every tick, so the ship
+   lands in the right frame one tick later at worst. */
+static constexpr double kSoiMargin = 10000.0;
+
+Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
+    if(glm::length(posInFrame) > frame->soi + kSoiMargin) {
+        return frame->parent;   // nullptr at the system root: nowhere to go
+    }
+    Frame *best = nullptr;
+    double bestDist = 0.0;
+    for(Frame *child : frame->children) {
+        if(skipSameBody && child->body == frame->body) { continue; }
+        // ship position in the child's coordinates (the same transform
+        // GetPositionRelTo(part, child) applies)
+        const glm::dvec3 rel = frame->GetOrientRelTo(child) * posInFrame
+                             + frame->GetPositionRelTo(child);
+        const double dist = glm::length(rel);
+        if(dist < child->soi - kSoiMargin
+           && (best == nullptr || dist < bestDist)) {
+            best = child;
+            bestDist = dist;
+        }
+    }
+    return best;
+}
+
+void Vehicle::setSoiFrame(Frame *newFrame) {
     // The ship lives in the ships list of its SOI body (terrain.h):
     // crossing to another body's SoI is a list move, done here so the
     // body lists always agree with m_parent. (Rare -- this runs once
@@ -2798,36 +2832,10 @@ void Vehicle::moveToFrame(Frame *newFrame) {
     m_parent = newFrame->body;
 }
 
-void Vehicle::switchFrames() {
-    const glm::dvec3 com = get_center_of_mass();
-    double ship_r = glm::length(com);
-    if(ship_r > frame->soi + 10000) {
-        // switching to parent SOI if there is one
-        if(frame->parent != NULL) {
-            glm::dvec3 pos = partPos(controller);
-            printf("@@@ %s switching frame from %s to parent %s\n",
-                   name.c_str(), frame->name.c_str(),
-                   frame->parent->name.c_str());
-            glm::dvec3 offset = frame->GetPositionRelTo(frame->parent);
-            printf("@@@ Frame offset: %.0f %.0f %.0f\n", offset.x, offset.y, offset.z);
-            printf("@@@@@ OLD position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
-            moveToFrame(frame->parent);
-            pos = partPos(controller);
-            printf("@@@@@ NEW position: %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
-        }
-    }
-    else {
-        // check if we've entered a child SOI
-        for(auto&& child : frame->children) {
-            double dist = glm::length(GetPositionRelTo(controller, child));
-            if(dist < child->soi - 10000) {
-                printf("@@@ %s switching frame from %s to child %s, distance: %.0f\n",
-                       name.c_str(), frame->name.c_str(),
-                       child->name.c_str(), dist);
-                moveToFrame(child);
-                break;
-            }
-        }
+void Vehicle::switchFrames(double t) {
+    if(Frame *target = soiTarget(get_center_of_mass(), false)) {
+        moveToFrame(target);   // prints the switch with com/vel detail
+        flog.observe(t, m_parent->name);
     }
 }
 
@@ -2947,39 +2955,20 @@ void Vehicle::leaveRails() {
            name.c_str(), frame->body->name.c_str());
 }
 
-void Vehicle::railsTick(const double step) {
+void Vehicle::railsTick(double t, const double step) {
     if(!onRails || railFrozen) { return; }
     propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
                     rail_pos, rail_vel);
-    railsSwitchFrames();
+    railsSwitchFrames(t);
     writeRailPose();
 }
 
-void Vehicle::railsSwitchFrames() {
-    const double r = glm::length(rail_pos);
-    if(r > frame->soi + 10000) {
-        if(frame->parent != NULL) {
-            printf("@@@ %s rails switching frame from %s to parent %s\n",
-                   name.c_str(), frame->name.c_str(),
-                   frame->parent->name.c_str());
-            moveToRailFrame(frame->parent);
-        }
-    } else {
-        for(auto&& child : frame->children) {
-            if(child->body == frame->body) { continue; }
-            // ship position in the child's coordinates (the same
-            // transform GetPositionRelTo(part, child) applies)
-            const glm::dvec3 rel = frame->GetOrientRelTo(child) * rail_pos
-                                 + frame->GetPositionRelTo(child);
-            const double dist = glm::length(rel);
-            if(dist < child->soi - 10000) {
-                printf("@@@ %s rails switching frame from %s to child %s, distance: %.0f\n",
-                       name.c_str(), frame->name.c_str(),
-                       child->name.c_str(), dist);
-                moveToRailFrame(child);
-                break;
-            }
-        }
+void Vehicle::railsSwitchFrames(double t) {
+    if(Frame *target = soiTarget(rail_pos, true)) {
+        printf("@@@ %s rails SoI switch: %s -> %s\n",
+               name.c_str(), frame->name.c_str(), target->name.c_str());
+        moveToRailFrame(target);
+        flog.observe(t, m_parent->name);
     }
 }
 
@@ -2988,14 +2977,5 @@ void Vehicle::moveToRailFrame(Frame *newFrame) {
     rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
     rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
     rail_orient = O * rail_orient;
-    // Same list move as moveToFrame (the ship follows its SoI body).
-    if(m_parent != nullptr && m_parent != newFrame->body) {
-        for(auto it = m_parent->ships.begin();
-            it != m_parent->ships.end(); it++) {
-            if(*it == this) { m_parent->ships.erase(it); break; }
-        }
-        newFrame->body->ships.push_back(this);
-    }
-    frame = newFrame;
-    m_parent = newFrame->body;
+    setSoiFrame(newFrame);
 }
