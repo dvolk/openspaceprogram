@@ -1,0 +1,16 @@
+# Flight journal + Flight Summary: an escape trajectory leaves Kerbin's
+# SoI on rails, then the hub's Recover Vessel snapshots the journal. The
+# [flight] lines are what W_FlightSummary shows (duration + enter/leave),
+# with calendar stamps. High warp so the hyperbola clears the SoI inside
+# the timeout.
+NAME flight-events
+ARGS --time-accel 10000 --timeout 12
+ARGS --startship escaper,res/ships/racer.json,Kerbin,escape
+ARGS --space-center 7000 --recover 8000
+EXPECT [flight] vessel='escaper'
+EXPECT left Kerbin
+EXPECT entered
+EXPECT [recover] t=
+EXPECT [spacecenter] entered
+FORBID GL_
+FORBID error:

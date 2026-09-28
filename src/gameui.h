@@ -47,9 +47,9 @@ void drawSpaceCenterMenu(Game &g);
 void drawNewGame(Game &g);
 
 /* The Flight Summary window (W_FlightSummary), opened by the hub's
-   "Recover Vessel" (Game::recoverActive): the successful-flight
-   congratulations sheet. v1 shows the recovered vessel's name; v2 will add
-   flight stats / events. Space-Center-only (it is in kSpaceCenterWins). */
+   "Recover Vessel" (Game::recoverActive): the successful-flight sheet
+   (vessel, calendar duration, SoI enter/leave journal).
+   Space-Center-only (it is in kSpaceCenterWins). */
 void drawFlightSummary(Game &g);
 
 /* The title screen's README panel (W_Readme), docked left of the title

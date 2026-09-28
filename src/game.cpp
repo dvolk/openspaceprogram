@@ -23,6 +23,7 @@
 #include "shipdef.h"  // PartDef (crew_capacity)
 #include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
 #include "uiwins.h"   // setWinOpen (W_FlightSummary)
+#include "calendar.h" // fmt_cal_duration (the recover [flight] line)
 
 glm::dvec3 Game::focusWorldPos(int i) const {
     // Render frame: the ship's frame, or the home body's frame when there is
@@ -262,7 +263,7 @@ void Game::dropPartWindowsFor(Vehicle *ship) {
 }
 
 void Game::clearFlightSummary() {
-    recoverShipName.clear();
+    flightSummary = FlightSummary{};
     setWinOpen(W_FlightSummary, false);
 }
 
@@ -1591,7 +1592,16 @@ void Game::recoverActive() {
         return;
     }
     const std::string name = v->name;
-    recoverShipName = name;
+    // Re-run SoI detection before snapshotting: switchFrames/railsTick
+    // run before the physics substeps, so a crossing in those substeps
+    // (or while paused) leaves m_parent stale. A zero-step railsTick
+    // still evaluates railsSwitchFrames. Then snapshot -- the Vehicle
+    // dies below.
+    if(v->onRails) { v->railsTick(0.0); } else { v->switchFrames(); }
+    v->flog.observe(time, v->m_parent ? v->m_parent->name : "");
+    flightSummary.shipName = name;
+    flightSummary.log = v->flog;
+    flightSummary.end_t = time;
 
     // Part windows on the ship (and on any aboard crew -- their suit parts
     // can be open too) would dangle the moment the Vehicles go.
@@ -1637,6 +1647,23 @@ void Game::recoverActive() {
     setWinOpen(W_FlightSummary, true);
 
     printf("[recover] t=%.1f '%s' recovered\n", time, name.c_str());
+    {
+        char dur[32];
+        fmt_cal_duration(sys.home ? sys.home->cal : Calendar{},
+                         time - flightSummary.log.start_t, dur, sizeof dur);
+        printf("[flight] vessel='%s' duration=%s events=%zu\n",
+               flightSummary.shipName.c_str(), dur,
+               flightSummary.log.events.size());
+        for(const FlightEvent &e : flightSummary.log.events) {
+            char ts[48];
+            if(!fmt_cal_compact(sys.home ? sys.home->cal : Calendar{},
+                                e.t, ts, sizeof ts)) {
+                snprintf(ts, sizeof ts, "t=%.0f", e.t);
+            }
+            printf("[flight] %s %s %s\n", ts,
+                   e.enter ? "entered" : "left", e.body.c_str());
+        }
+    }
     fflush(stdout);
     toast("Recovered %s", name.c_str());
 }

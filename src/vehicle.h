@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "flightlog.h" // FlightLog (the per-vessel mission journal)
+
 // length2 (used by the inline methods) is a gtx function; quat_cast /
 // mat3_cast (the btTransform helpers below) come from gtc/quaternion.
 #define GLM_ENABLE_EXPERIMENTAL
@@ -106,6 +108,11 @@ public:
     std::vector<Vehicle *> crew;
     TerrainBody *sun = nullptr; // the star (light source); set in main
     float m_thrust;
+
+    /* Mission journal: flight start + SoI enter/leave. Observed once per
+       tick (tick.cpp) with the current SoI body name; snapshotted into
+       W_FlightSummary on recover. Not save-persisted. */
+    FlightLog flog;
 
     glm::dvec3 m_com;
 

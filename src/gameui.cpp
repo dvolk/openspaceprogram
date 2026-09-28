@@ -221,29 +221,9 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
     }
 }
 
-// Format a sim-clock time (s) on the home body's calendar, the same
-// "Year ... Day d/N ... HH:MM" the top bar (HUD) shows, so a planned
-// departure time (a porkchop "Send best") can be read off against it.
-// Zero-alloc buffer-fill (the fmt.h convention): the HUD and the Transfer
-// window call this every frame, and the "Year ... Day d/N HH:MM" line is
-// long enough that returning it as a std::string heap-allocates each time.
-// Fills buf; returns false (empty buf) when there is no calendar line.
-static bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
-    if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
-    const CalTime ct = cal.at(t);
-    if(ct.has_year) {
-        // CalTime only exposes month + day-of-month, so the day-of-year is
-        // day + the days in the earlier months.
-        int doy = ct.day;
-        for(int m = 0; m < ct.month - 1; m++) { doy += cal.month_days[m]; }
-        snprintf(buf, n, "Year %04d   Day %d/%d   %02d:%02d",
-                 ct.year, doy, cal.days_per_year, ct.hh, ct.mm);
-    } else {
-        snprintf(buf, n, "Day %d   %02d:%02d",
-                 ct.day, ct.hh, ct.mm);
-    }
-    return true;
-}
+// Format a sim-clock time (s) on the home body's calendar lives in
+// calendar.h (fmt_cal_time / fmt_cal_compact / fmt_cal_duration) -- the
+// HUD, the Transfer window and the Flight Summary all share it.
 
 // --- Telemetry window: a 2x2 grid of plots, each with a dropdown to pick
 // which time series to show. The series are the two conserved 2-body
@@ -2692,12 +2672,13 @@ void drawNewGame(Game &g) {
 }
 
 /* The Flight Summary window (W_FlightSummary), opened by the hub's
-   "Recover Vessel" (recoverActive). v1 is a congratulations sheet: the
-   vessel's name and OK. v2 will list the flight's stats and events here
-   (not captured yet -- separate work item). Transient like New Game:
-   recoverActive opens it, OK / X closes. Space-Center-only. */
+   "Recover Vessel" (recoverActive). Shows the recovered vessel, the
+   flight duration on the home calendar, and the SoI enter/leave journal.
+   Transient like New Game: recoverActive opens it, OK / X closes.
+   Space-Center-only. */
 void drawFlightSummary(Game &g) {
     drawWin(g, W_FlightSummary, [&] {
+        const Game::FlightSummary &fs = g.flightSummary;
         ImGui::PushFont(g.bigger);
         ImGui::TextUnformatted("Flight complete!");
         ImGui::PopFont();
@@ -2706,8 +2687,39 @@ void drawFlightSummary(Game &g) {
             "Congratulations — a successful flight. "
             "The vessel and its crew are home.");
         ImGui::Spacing();
-        ImGui::Text("Vessel: %s", g.recoverShipName.c_str());
-        // v2: flight stats / events land here.
+        ImGui::Text("Vessel: %s", fs.shipName.c_str());
+        const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
+        const double dt = fs.end_t - fs.log.start_t;
+        char dur[32];
+        fmt_cal_duration(cal, dt, dur, sizeof dur);
+        ImGui::Text("Duration: %s", dur);
+        char stamp[64];
+        if(fmt_cal_time(cal, fs.log.start_t, stamp, sizeof stamp)) {
+            ImGui::Text("Started:  %s", stamp);
+            if(g.sys.home) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", g.sys.home->name.c_str());
+            }
+        }
+        if(fmt_cal_time(cal, fs.end_t, stamp, sizeof stamp)) {
+            ImGui::Text("Recovered: %s", stamp);
+        }
+        ImGui::Spacing();
+        if(fs.log.events.empty()) {
+            ImGui::TextDisabled("No recorded events.");
+        } else {
+            ImGui::TextUnformatted("Events");
+            ImGui::Indent();
+            for(const FlightEvent &e : fs.log.events) {
+                char ts[48];
+                if(!fmt_cal_compact(cal, e.t, ts, sizeof ts)) {
+                    snprintf(ts, sizeof ts, "t=%.0f", e.t);
+                }
+                ImGui::Text("%s  %s %s", ts,
+                            e.enter ? "entered" : "left", e.body.c_str());
+            }
+            ImGui::Unindent();
+        }
         ImGui::Spacing();
         if(ImGui::Button("OK", ImVec2(120.0f, 0.0f))) {
             setWinOpen(W_FlightSummary, false);

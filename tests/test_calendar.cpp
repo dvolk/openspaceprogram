@@ -14,6 +14,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 static int failures = 0;
 #define CHECK(cond) do { \
@@ -50,6 +51,17 @@ int main() {
     CHECK(sum == cal.days_per_year);
     for(int m = 0; m < 11; m++) { CHECK(cal.month_days[m] == 36); }
     CHECK(cal.month_days[11] == 31);             // 11*36 + 31 = 427
+
+    // Tiny years: lround(N/12) can empty the 12th month; the floor-split
+    // fallback keeps every month >= 1 and the sum exact.
+    Calendar tiny = Calendar::make(D, 22.0 * D, EPOCH);
+    CHECK(tiny.days_per_year == 22);
+    int tsum = 0;
+    for(int m = 0; m < 12; m++) {
+        CHECK(tiny.month_days[m] >= 1);
+        tsum += tiny.month_days[m];
+    }
+    CHECK(tsum == 22);
     CHECK(cal.year_seconds == Y);                // true orbit kept for seasons
 
     // --- epoch ----------------------------------------------------------------
@@ -107,6 +119,47 @@ int main() {
     CHECK(!star.valid());
     CalTime st = star.at(1000.0);
     CHECK(st.year == 0);
+
+    // --- fmt_cal_time / fmt_cal_compact -----------------------------------------
+    char buf[64];
+    CHECK(fmt_cal_time(cal, 0.0, buf, sizeof buf));
+    CHECK(std::string(buf) == "Year 4724   Day 1/427   00:00");
+    CHECK(fmt_cal_time(cal, 3.0 * D + D * 0.5, buf, sizeof buf));
+    CHECK(std::string(buf) == "Year 4724   Day 4/427   12:00");
+    CHECK(fmt_cal_compact(cal, 0.0, buf, sizeof buf));
+    CHECK(std::string(buf) == "Yr 4724 Day 1  00:00");
+    CHECK(fmt_cal_compact(cal, 3.0 * D + D * 0.5, buf, sizeof buf));
+    CHECK(std::string(buf) == "Yr 4724 Day 4  12:00");
+    CHECK(!fmt_cal_time(cal, -1.0, buf, sizeof buf));
+    CHECK(buf[0] == '\0');
+    CHECK(fmt_cal_time(moon, 5.25 * 138984.4, buf, sizeof buf));
+    CHECK(std::string(buf) == "Day 6   06:00");
+
+    // --- fmt_cal_duration: home-calendar y/d + 24h dial h/m/s --------------------
+    // Every unit is the home calendar's: dial hour = D/24 sim seconds,
+    // dial second = D/86400. 30 real seconds on Kerbin is ~2 dial minutes.
+    const double dial_h = D / 24.0;
+    const double dial_m = D / 1440.0;
+    const double dial_s = D / 86400.0;
+    fmt_cal_duration(cal, 0.0, buf, sizeof buf);
+    CHECK(std::string(buf) == "0s");
+    fmt_cal_duration(cal, 30.0 * dial_s, buf, sizeof buf);
+    CHECK(std::string(buf) == "30s");
+    fmt_cal_duration(cal, 5.0 * dial_m + 12.0 * dial_s, buf, sizeof buf);
+    CHECK(std::string(buf) == "5m 12s");
+    fmt_cal_duration(cal, 3.0 * dial_h + 4.0 * dial_m, buf, sizeof buf);
+    CHECK(std::string(buf) == "3h 04m");
+    fmt_cal_duration(cal, 2.0 * D + 3.0 * dial_h + 4.0 * dial_m, buf, sizeof buf);
+    CHECK(std::string(buf) == "2d 3h 04m");
+    // 1 year + 2 days + 3h 04m (the snapped 427-day year).
+    fmt_cal_duration(cal,
+                     (double)cal.days_per_year * D + 2.0 * D
+                         + 3.0 * dial_h + 4.0 * dial_m,
+                     buf, sizeof buf);
+    CHECK(std::string(buf) == "1y 2d 3h 04m");
+    // Invalid calendar: fall back to raw seconds.
+    fmt_cal_duration(star, 42.0, buf, sizeof buf);
+    CHECK(std::string(buf) == "42s");
 
     if(failures == 0) {
         printf("test_calendar: all checks passed\n");

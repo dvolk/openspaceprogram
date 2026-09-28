@@ -23,6 +23,7 @@
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
 #include "display.h"  // Renderer
+#include "flightlog.h" // FlightLog (the Flight Summary payload)
 #include "job.h"      // JobRunner (background jobs: the porkchop grid, ...)
 #include "orbit.h"    // OrbitElements (the ShipView state)
 #include "postfx.h"   // PostFX
@@ -532,9 +533,14 @@ struct Game {
     bool returnTitleArmed = false;
 
     // The Flight Summary window (W_FlightSummary) payload, written by
-    // recoverActive. v1 is just the recovered vessel's name; v2 will add
-    // flight stats / events (not captured yet).
-    std::string recoverShipName;
+    // recoverActive: the recovered vessel's name, its flight journal
+    // (start + SoI enter/leave), and the recover instant as the end.
+    struct FlightSummary {
+        std::string shipName;
+        FlightLog log;
+        double end_t = 0.0;
+    };
+    FlightSummary flightSummary;
 
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;

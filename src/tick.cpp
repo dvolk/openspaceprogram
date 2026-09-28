@@ -238,7 +238,12 @@ void tick(Game &g) {
                    frozen on the ground) and the Bullet world is not
                    stepped at all -- O(ships) per tick instead of a
                    substep count that explodes with the accel. */
-                for(auto *s : all) { s->railsTick(g.dt * g.time_accel); }
+                for(auto *s : all) {
+                    s->railsTick(g.dt * g.time_accel);
+                    s->flog.observe(g.time,
+                                    s->m_parent ? s->m_parent->name : "",
+                                    g.time - g.dt * g.time_accel);
+                }
             } else {
 
             // per-ship SOI bookkeeping: each ship tracks its own
@@ -249,6 +254,9 @@ void tick(Game &g) {
             for(auto *s : all) {
                 if(s->onRails) { s->railsTick(g.dt * g.time_accel); }
                 else { s->switchFrames(); }
+                s->flog.observe(g.time,
+                                s->m_parent ? s->m_parent->name : "",
+                                g.time - g.dt * g.time_accel);
                 /* The compound's COM has to track the mass distribution, and
                    a burn moves it. Checked here rather than at each mass
                    writer so one call site covers all of them, and it only

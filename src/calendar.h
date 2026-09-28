@@ -25,6 +25,8 @@
 // nothing extra persisted.
 
 #include <cmath>
+#include <cstdio>
+#include <cstddef>
 
 struct CalTime {
     int year = 0;
@@ -54,7 +56,15 @@ struct Calendar {
             if(c.days_per_year < 1) { c.days_per_year = 1; }
         }
         if(c.days_per_year >= 12) {
-            const int base = (int)std::lround((double)c.days_per_year / 12.0);
+            // Prefer round(N/12) so Kerbin keeps 11x36 + 31. That can
+            // leave the 12th month empty/negative (N=22 -> base 2 ->
+            // last 0); fall back to a floor-split so every month is >= 1.
+            int base = (int)std::lround((double)c.days_per_year / 12.0);
+            if(base < 1) { base = 1; }
+            if(c.days_per_year - 11 * base < 1) {
+                base = c.days_per_year / 12;
+                if(base < 1) { base = 1; }
+            }
             for(int m = 0; m < 11; m++) { c.month_days[m] = base; }
             c.month_days[11] = c.days_per_year - 11 * base;
         }
@@ -94,3 +104,94 @@ struct Calendar {
         return h;
     }
 };
+
+// Day-of-year (1-based) from a CalTime that has a year. month_days is the
+// calendar's month table (CalTime only stores month + day-of-month).
+inline int cal_day_of_year(const Calendar &cal, const CalTime &ct) {
+    int doy = ct.day;
+    for(int m = 0; m < ct.month - 1; m++) { doy += cal.month_days[m]; }
+    return doy;
+}
+
+// "Year 4724   Day 12/427   08:14" -- the HUD / Transfer stamp.
+// Zero-alloc buffer-fill (the fmt.h convention). Returns false (empty
+// buf) when there is no calendar line.
+inline bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
+    if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
+    const CalTime ct = cal.at(t);
+    if(ct.has_year) {
+        snprintf(buf, n, "Year %04d   Day %d/%d   %02d:%02d",
+                 ct.year, cal_day_of_year(cal, ct), cal.days_per_year,
+                 ct.hh, ct.mm);
+    } else {
+        snprintf(buf, n, "Day %d   %02d:%02d", ct.day, ct.hh, ct.mm);
+    }
+    return true;
+}
+
+// "Yr 4724 Day 12  08:14" -- compact stamp for event lists. Same
+// false/empty contract as fmt_cal_time.
+inline bool fmt_cal_compact(const Calendar &cal, double t, char *buf, size_t n) {
+    if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
+    const CalTime ct = cal.at(t);
+    if(ct.has_year) {
+        snprintf(buf, n, "Yr %04d Day %d  %02d:%02d",
+                 ct.year, cal_day_of_year(cal, ct), ct.hh, ct.mm);
+    } else {
+        snprintf(buf, n, "Day %d  %02d:%02d", ct.day, ct.hh, ct.mm);
+    }
+    return true;
+}
+
+/* Elapsed sim seconds as a home-calendar duration: "1y 2d 3h 04m",
+   "2d 3h 04m", "3h 04m", "04m 12s", "12s". Years/days use the calendar's
+   snapped year and day; hours/minutes are the 24-hour dial (so an "hour"
+   is D/24 sim seconds -- the same dial the HUD clock shows). Leading
+   zero components are dropped. Returns buf. */
+inline char *fmt_cal_duration(const Calendar &cal, double dt, char *buf, size_t n) {
+    if(dt < 0.0) { dt = 0.0; }
+    if(!cal.valid() || cal.day_seconds <= 0.0) {
+        snprintf(buf, n, "%.0fs", dt);
+        return buf;
+    }
+    // Whole days, then the dial time-of-day within the day (same mapping
+    // as Calendar::at). lround can hit 86400 at the boundary -- clamp.
+    const long day_count = (long)(dt / cal.day_seconds);
+    long total = (long)std::lround(std::fmod(dt, cal.day_seconds)
+                                   * 86400.0 / cal.day_seconds);
+    if(total >= 86400) { total = 86399; }
+    const int hh = (int)(total / 3600);
+    const int mm = (int)((total % 3600) / 60);
+    const int ss = (int)(total % 60);
+
+    int years = 0, days = (int)day_count;
+    if(cal.has_year()) {
+        years = (int)(day_count / cal.days_per_year);
+        days = (int)(day_count % cal.days_per_year);
+    }
+
+    // Drop leading zero components; always show at least seconds. Mid
+    // zeros are kept once a larger unit is present ("1y 0d 2h 00m") so
+    // the piece count stays scannable -- except a zero y/d/h that would
+    // pad "1y 0d 0h 00m" when only minutes matter.
+    if(years > 0) {
+        if(days > 0 || hh > 0) {
+            snprintf(buf, n, "%dy %dd %dh %02dm", years, days, hh, mm);
+        } else {
+            snprintf(buf, n, "%dy %02dm", years, mm);
+        }
+    } else if(days > 0) {
+        if(hh > 0) {
+            snprintf(buf, n, "%dd %dh %02dm", days, hh, mm);
+        } else {
+            snprintf(buf, n, "%dd %02dm", days, mm);
+        }
+    } else if(hh > 0) {
+        snprintf(buf, n, "%dh %02dm", hh, mm);
+    } else if(mm > 0) {
+        snprintf(buf, n, "%dm %02ds", mm, ss);
+    } else {
+        snprintf(buf, n, "%ds", ss);
+    }
+    return buf;
+}

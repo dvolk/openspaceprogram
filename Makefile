@@ -505,8 +505,14 @@ $(TESTDIR)/test_crew: $(TESTDIR)/obj/test_crew.o $(TESTDIR)/obj/shipdef.o
 
 # home-planet calendar (src/calendar.h, header-only pure math): day/year
 # from spin/orbit rates, 427-day snapped year, months, epoch year,
-# tidally-locked + star edge cases. Pinned to the Eerbon JSON rates.
+# tidally-locked + star edge cases, and the stamp/duration formatters.
+# Pinned to the Eerbon JSON rates.
 $(TESTDIR)/test_calendar: $(TESTDIR)/obj/test_calendar.o
+	$(CXX) -o $@ $^
+
+# per-vessel flight journal (src/flightlog.h, header-only pure C++):
+# begin + SoI enter/leave pairing, empty-body edges, repeat observes.
+$(TESTDIR)/test_flightlog: $(TESTDIR)/obj/test_flightlog.o
 	$(CXX) -o $@ $^
 
 # UI formatting helpers (src/fmt.h, header-only pure C++): the unit
@@ -640,6 +646,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
         test_rotation test_shipload test_save test_crew test_calendar \
+        test_flightlog \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt
@@ -675,6 +682,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_save
 	$(TESTDIR)/test_crew
 	$(TESTDIR)/test_calendar
+	$(TESTDIR)/test_flightlog
 	$(TESTDIR)/test_orbit
 	$(TESTDIR)/test_orbitsample
 	$(TESTDIR)/test_transfer
