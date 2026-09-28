@@ -1,0 +1,10 @@
+{
+  "name": "nuclear_test",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1", "stage": 1 },
+    { "part": "reaction_wheel", "id": "wheel_1", "parent": "capsule_1", "stage": 1 },
+    { "part": "tank_r1h1", "id": "tank_1", "parent": "wheel_1", "stage": 1 },
+    { "part": "nuclear_engine", "id": "nuke_1", "parent": "tank_1", "stage": 1 }
+  ]
+}

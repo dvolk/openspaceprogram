@@ -1,0 +1,48 @@
+# Nuclear engine (nuclear_engine part): high Isp, low thrust, heavy. Base
+# radius only, 1.5x taller than the base engine (h2 -> h3). Rated 30 kN at
+# ~917 s (exhaust velocity 9000 m/s), fuel_rate 1.67 kg/s per tank, 900 kg
+# (0.03 kg/N -- reactor + shielding, heavier per newton than a chemical
+# engine). It is the deep-space workhorse: efficient, low thrust, so "not
+# for heavy ascent" -- but it still lights and lifts a light ship.
+#
+# Propellant: H2+LOX in the CURRENT model (thrust = 2*fuel_rate*ve). Making
+# it H2-only (KSP nuclear thermal) is a KNOWN DEFERRED task (issue #38);
+# the drain bound below reflects the H2+LOX model until then.
+#
+# The ship (nuclear_test): capsule -> reaction wheel -> tank_r1h1
+# (H2=417.8, LOX=417.8 kg) -> nuclear engine, on the Kerbin pad. Total mass
+# ~2610 kg, so TWR ~1.17 -- it lifts off (the engine's thrust 30060 N is
+# verified directly below; the altitude check confirms the thrust actually
+# moves the ship). The tank's 417.8 kg of H2 outlasts the 3 s burn.
+#
+# Timeline (--time-accel 1): thrust 1.0-4.0 s, --timeout 8 exits after.
+# Holding T alone gives full thrust: thruster_util defaults to 1.0
+# (vehicle.h), so no R (throttle) press is needed. The drainlog samples
+# every 0.5 s, so the ~3 s burn yields several samples.
+#
+# The thrust is the discriminator: the base engine reads 50048 N, the
+# orbital engine 16632 N, so 30060 N uniquely identifies the nuclear engine
+# (its drain ~3.34 is close to the orbital 3.79, so the drain alone does not
+# separate them).
+NAME nuclear-engine
+ARGS --time-accel 1 --startship nuclear_test,res/ships/nuclear_test.json,Kerbin,pad
+ARGS --drain-log --dbg-log --timeout 8
+ARGS --sim-press 1000,3000,T
+EXPECT [drainlog]
+FORBID GL_
+FORBID error:
+# The nuclear engine's rated thrust is delivered (30060 N = 2*1.67*9000),
+# in at least 3 steady samples.
+CHECK len([r for r in drainlog if abs(r["thrust"] - 30060.0) < 0.01 * 30060.0]) >= 3
+# Its single fuel group drains at the nuclear engine's low flow (~3.34 kg/s,
+# H2 + LOX combined). The first burn sample is skipped (its 0.5 s interval
+# straddles the thrust start, so it reads low); the steady samples read
+# ~3.375 (the drainlog also folds in the capsule's ~0.04 Wh/s life-support
+# EC draw -- see the drainlog EC issue -- so it sits ~1% above 3.34). This
+# 10% band absorbs that. When the engine becomes H2-only (issue #38), the
+# nuclear part's fuel_rate/thrust are re-derived; update this bound then.
+CHECK all(abs(v - 3.34) < 0.10 * 3.34 for v in [v for r in drainlog if abs(r["thrust"] - 30060.0) < 0.01*30060.0 for v in r["rates"].values() if v > 1.0][1:])
+# The thrust actually moves the ship: it lifts off (TWR ~1.17), so the peak
+# altitude is well above the pad. (Catches a regression where the engine's
+# thrust is armed but never applied to the hull.)
+CHECK len(dbg) >= 3 and max(d["alt"] for d in dbg) > min(d["alt"] for d in dbg) + 1

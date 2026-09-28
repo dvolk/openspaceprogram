@@ -85,6 +85,16 @@ PROP_DENSITY = 133.0             # kg/m^3, 50/50 LH2 + LOX mixture by mass
 TANK_DRY_DENSITY = 13.3          # kg/m^3, structural wall mass per tank volume
 ENGINE_THRUST_PER_M2 = 50000.0   # N, thrust at radius = 1 m (scales with r^2)
 ENGINE_MASS_PER_N = 0.01         # kg per newton of thrust (~100 N/kg)
+# Nuclear engine (nuclear thermal): a HIGHER-Isp, LOWER-thrust engine -- the
+# deep-space workhorse. It burns the same H2/LOX but far more efficiently
+# (reactor heat, no combustion), so its exhaust velocity is ~2x the chemical
+# engines. Its thrust is lower (not for ascent/landing) and its mass is
+# HEAVIER per newton than a chemical engine (reactor + shielding + plumbing) --
+# that weight is exactly what makes it poor for ascent and fine for
+# interplanetary burns. Only the base radius is offered (no r1.5/r2.25).
+NUCLEAR_THRUST_PER_M2 = 30000.0  # N, thrust at radius = 1 m (scales with r^2)
+NUCLEAR_EXHAUST_VELOCITY = 9000.0  # m/s (Isp = 9000/9.81 ~ 917 s), ~2x chemical
+NUCLEAR_MASS_PER_N = 0.03         # kg per newton -- reactor + shielding, ~3x chemical
 # RCS (reaction control): the mono (hydrazine) tank + the thruster. Both are
 # reaction-wheel sized (the flat disc meshes), 3 radial sizes. The tank is
 # just a tank -- hydrazine capacity derived from the part volume like the
@@ -222,6 +232,8 @@ DRAG_CD = {
                        "drag_backward": 0.9},
     "orbital_engine": {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
+    "nuclear_engine": {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
+                       "drag_backward": 0.9},
     "jet":            {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
     "adapter":        {"drag": 0.2, "drag_forward": 0.9, "drag_side": 1.0,
@@ -269,6 +281,10 @@ PARTS = [
     ("orbital_engine",        "orbital_engine", "meshes/orbital_engine.obj",              "textures/engine.png"),
     ("orbital_engine_r1.5h1.5","orbital_engine", "meshes/orbital_engine_r1.5h1.5.obj",     "textures/engine.png"),
     ("orbital_engine_r2.25h2.25","orbital_engine","meshes/orbital_engine_r2.25h2.25.obj", "textures/engine.png"),
+    # nuclear engine (nuclear thermal): high Isp, low thrust, heavy. Base
+    # radius only, 1.5x taller than the base engine (h2 -> h3). The base
+    # engine mesh rescaled (like the orbital engine) + its own shroud.
+    ("nuclear_engine",   "nuclear_engine", "meshes/nuclear_engine.obj",             "textures/engine.png"),
     # jet engine (air-breathing): one size (r1), the rocket engine's mesh
     # with its own tinted texture (like the rudder reuses wing.obj).
     ("jet",            "jet",            "meshes/engine.obj",                   "textures/jet_engine.png"),
@@ -357,6 +373,8 @@ EXTRA_FIELDS = {
                                  "shroud_texture": "textures/engine_shroud.png"},
     "orbital_engine_r2.25h2.25":  {"shroud": "meshes/orbital_engine_r2.25h2.25_shroud.obj",
                                    "shroud_texture": "textures/engine_shroud.png"},
+    "nuclear_engine":            {"shroud": "meshes/nuclear_engine_shroud.obj",
+                                  "shroud_texture": "textures/engine_shroud.png"},
     # the jet reuses the engine mesh, so it gets the engine's shroud too
     "jet":                   {"shroud": "meshes/engine_shroud.obj",
                               "shroud_texture": "textures/engine_shroud.png"},
@@ -421,6 +439,7 @@ DISPLAY_BASE = {
     "rtg":            "RTG",
     "engine":         "Engine",
     "orbital_engine": "Orbital Engine",
+    "nuclear_engine": "Nuclear Engine",
     "jet":            "Jet",
     "jet_tank":       "Jet Fuel Tank",
     "fuel_tank":      "Fuel Tank",
@@ -477,16 +496,24 @@ def generate(name, ptype, mesh, texture):
     assert mesh.startswith("meshes/"), mesh
     assert texture.startswith("textures/"), texture
 
-    if ptype in ("engine", "orbital_engine"):
-        thrust = ENGINE_THRUST_PER_M2 * radius * radius
-        if ptype == "orbital_engine":
-            # 1/3 thrust -> 1/3 mass and 1/3 fuel rate (same exhaust velocity)
-            thrust /= 3.0
-        e["mass"] = clean(thrust * ENGINE_MASS_PER_N)
+    if ptype in ("engine", "orbital_engine", "nuclear_engine"):
+        if ptype == "nuclear_engine":
+            # nuclear thermal: high Isp, low thrust, heavy (see NUCLEAR_*).
+            thrust = NUCLEAR_THRUST_PER_M2 * radius * radius
+            ve = NUCLEAR_EXHAUST_VELOCITY
+            mass_per_n = NUCLEAR_MASS_PER_N
+        else:
+            thrust = ENGINE_THRUST_PER_M2 * radius * radius
+            if ptype == "orbital_engine":
+                # 1/3 thrust -> 1/3 mass and 1/3 fuel rate (same exhaust velocity)
+                thrust /= 3.0
+            ve = EXHAUST_VELOCITY
+            mass_per_n = ENGINE_MASS_PER_N
+        e["mass"] = clean(thrust * mass_per_n)
         e["radius"] = radius
         e["height"] = height
-        e["fuel_rate"] = clean(thrust / (2.0 * EXHAUST_VELOCITY))
-        e["exhaust_velocity"] = EXHAUST_VELOCITY
+        e["fuel_rate"] = clean(thrust / (2.0 * ve))
+        e["exhaust_velocity"] = ve
     elif ptype == "jet":
         # Air-breathing (see the JET_* constants + src/drag.h jetThrust).
         # jet_fan_thrust is the static (fan) thrust at sea level; the ram

@@ -313,6 +313,24 @@
       "drag_backward": 0.9
     },
     {
+      "name": "nuclear_engine",
+      "type": "nuclear_engine",
+      "display_name": "Nuclear Engine (2m)",
+      "mesh": "meshes/nuclear_engine.obj",
+      "texture": "textures/engine.png",
+      "mass": 900,
+      "radius": 1.0,
+      "height": 3.0,
+      "fuel_rate": 1.67,
+      "exhaust_velocity": 9000.0,
+      "shroud": "meshes/nuclear_engine_shroud.obj",
+      "shroud_texture": "textures/engine_shroud.png",
+      "drag": 0.6,
+      "drag_forward": 0.9,
+      "drag_side": 1.0,
+      "drag_backward": 0.9
+    },
+    {
       "name": "jet",
       "type": "jet",
       "display_name": "Jet (2m)",
