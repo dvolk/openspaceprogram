@@ -1,6 +1,6 @@
-# Open Space Program
+<h1><img src="https://raw.githubusercontent.com/dvolk/openspaceprogram/refs/heads/master/release/openspaceprogram.png" height=24> Open Space Program</h1>
 
-Space sim inspired by Pioneer and Kerbal Space Program.
+Space sim inspired by [Pioneer](https://pioneerspacesim.net/) and Kerbal Space Program.
 
 | <img src="https://oxfordfun.com/2026_09_23-18_19_23-ubbu-osp.png" alt="osp screenshot showing ship around phobos"> | <img src="https://oxfordfun.com/2026_09_23-00_19_57-ubbu-osp.png" alt="osp screenshot showing jupiter and its moons"> |
 |------|------|
@@ -8,7 +8,8 @@ Space sim inspired by Pioneer and Kerbal Space Program.
 
 ## Build from source/run
 
-    sudo apt-get install g++ cmake make curl libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev --no-install-recommends
+    sudo apt-get install --no-install-recommends g++ cmake make curl libgl1-mesa-dev libx11-dev libxext-dev \
+                         libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev
 
     git clone https://github.com/dvolk/openspaceprogram
     cd openspaceprogram
