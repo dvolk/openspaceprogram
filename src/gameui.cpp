@@ -3004,8 +3004,10 @@ void drawVabUI(Game &g) {
         ImGui::Separator();
         const int sel = g.vab.selected;
         BuildPart &bp = g.vab.build.parts[(size_t)sel];
-        ImGui::Text("selected: %s (%s)", bp.id.c_str(),
-                    bp.def != nullptr ? bp.def->name.c_str() : "?");
+        const char *selName = (bp.def != nullptr && !bp.def->display_name.empty())
+            ? bp.def->display_name.c_str()
+            : (bp.def != nullptr ? bp.def->name.c_str() : "?");
+        ImGui::Text("selected: %s (%s)", bp.id.c_str(), selName);
         if(sel == 0) {
             ImGui::TextDisabled("root -- cannot rotate or delete");
         } else {
@@ -3131,7 +3133,15 @@ void drawVabUI(Game &g) {
         const PartDef &pd = g.ships.catalog().parts[i];
         if(pd.fuel_link) { continue; }
         const bool armed = (g.vab.armed == pd.name);
-        if(ImGui::Selectable(pd.name.c_str(), armed)) {
+        // The row shows the human-readable display name (falling back to the
+        // machine id for catalogs that predate the field). The ##id keeps the
+        // ImGui id unique per part even if two parts ever share a display
+        // name.
+        char lbl[256];
+        snprintf(lbl, sizeof(lbl), "%s##%s",
+                 pd.display_name.empty() ? pd.name.c_str() : pd.display_name.c_str(),
+                 pd.name.c_str());
+        if(ImGui::Selectable(lbl, armed)) {
             g.vab.armed = armed ? std::string("") : pd.name;
             g.vab.armedAsm = -1;     // exclusive with a subassembly
             g.vab.ghostRoll = 0.0;   // a fresh part starts unrolled
@@ -3156,9 +3166,18 @@ void drawVabUI(Game &g) {
     const bool asmArmed = g.vab.armedAsm >= 0
         && (size_t)g.vab.armedAsm < g.vab.subassemblies.size();
     if(asmArmed || !g.vab.armed.empty()) {
-        ImGui::Text("armed: %s", asmArmed
-                    ? g.vab.subassemblies[(size_t)g.vab.armedAsm].name.c_str()
-                    : g.vab.armed.c_str());
+        if(asmArmed) {
+            ImGui::Text("armed: %s",
+                        g.vab.subassemblies[(size_t)g.vab.armedAsm].name.c_str());
+        } else {
+            // g.vab.armed holds the catalog id; show its display name like
+            // the palette rows do.
+            const PartDef *ad = g.ships.catalog().find(g.vab.armed);
+            ImGui::Text("armed: %s",
+                        (ad != nullptr && !ad->display_name.empty())
+                        ? ad->display_name.c_str()
+                        : g.vab.armed.c_str());
+        }
         if(g.vab.ghostValid) {
             ImGui::Text("roll: %.0f deg (Q/E)", g.vab.ghostRollUsed);
             if(g.vab.symmetry > 1) {
