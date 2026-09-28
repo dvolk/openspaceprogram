@@ -343,6 +343,13 @@ void Mesh::FromData(const PosNorColVertex* vertices, unsigned int numVertices, c
     m_numInnerIndices = numInnerIndices;
 
     PosNorIndColInterface model;
+    // Reserve once: unreserved push_back grows each vector geometrically,
+    // ~45 reallocations per 51x51 terrain grid (the 2026-09-28 heaptrack
+    // pass ranked this our top allocator by a wide margin).
+    model.positions.reserve(numVertices);
+    model.normals.reserve(numVertices);
+    model.colors.reserve(numVertices);
+    model.indices.reserve(numIndices);
 
     for(unsigned int i = 0; i < numVertices; i++) {
         model.positions.push_back(vertices[i].pos);

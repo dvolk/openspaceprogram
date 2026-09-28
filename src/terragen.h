@@ -546,6 +546,11 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     // sized for the skirted grid (edge == size+2); a skirtless caller (off == 0)
     // just uses the first edge*edge of them
     geom.verts.resize((size_t)edge * (size_t)edge);
+    // The index loops below push exactly (edge-1)^2 or (size-1)^2 quads of 6
+    // (see the has_skirt skip), so reserve the exact count instead of paying
+    // ~14 geometric-growth reallocations per grid on the worker thread.
+    geom.indices.reserve((size_t)(has_skirt ? edge - 1 : size - 1)
+                         * (size_t)(has_skirt ? edge - 1 : size - 1) * 6);
 
     // Band-limit the heightfield to this grid (see terrainGridFade): the
     // fade is the same on every patch at this depth, so seam heights and
