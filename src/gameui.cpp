@@ -1065,6 +1065,10 @@ void drawUIReadouts(Game &g) {
         const ImVec2 sm_p0 = ImGui::GetCursorScreenPos();
         ImGui::Image((ImTextureID)(std::intptr_t)sm_tex->id,
                      ImVec2(sm_img_w, sm_img_h));
+        // Hover state of the Image (must be read while it is the last
+        // item): the caption below shows the terrain height under the
+        // cursor while the mouse is over the map.
+        const bool sm_hover = ImGui::IsItemHovered();
 
         // The overlay (graticule, orbit, apsides, ship dot) on the map
         // rect. (lon, lat) -> pixels: lon 0..2pi left -> right, lat +pi/2
@@ -1244,6 +1248,27 @@ void drawUIReadouts(Game &g) {
             }
         }
 
+        if(sm_hover) {
+            // The hovered pixel inverts map_px: lon 0..2pi left -> right,
+            // lat +pi/2 (top) -> -pi/2 (bottom). The unit direction feeds
+            // GetTerrainHeight straight -- the map is baked in the same
+            // rotating frame (surfmap.h), so no transform. "elev" is
+            // above the mean radius, like the Surface window's ASL.
+            const ImVec2 sm_mouse = ImGui::GetMousePos();
+            const double u = (sm_mouse.x - sm_p0.x) / sm_img_w;
+            const double v = (sm_mouse.y - sm_p0.y) / sm_img_h;
+            const double lon = u * 2.0 * std::numbers::pi;
+            const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
+            const double cl = std::cos(lat);
+            const glm::vec3 dir(cl * std::sin(lon), std::sin(lat),
+                                cl * std::cos(lon));
+            char elev_s[32];
+            ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s",
+                                glm::degrees(lat), glm::degrees(lon),
+                                fmt_dist((double)sm_body->GetTerrainHeight(dir)
+                                         - (double)sm_body->radius,
+                                         elev_s, sizeof elev_s));
+        }
         if(ship && ship->m_parent && sm_body != ship->m_parent) {
             ImGui::TextDisabled("ship is in %s's SOI -- its orbit (about "
                                 "%s) is not shown on %s's map",
