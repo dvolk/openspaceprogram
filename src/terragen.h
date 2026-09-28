@@ -10,6 +10,8 @@
 //                             (physics, spawning, shadows, surface map)
 //   terrainSurfaceColor(...)  the exact per-vertex color the grid bakes
 //                             (palette / band, sea, contrast)
+//   biomeFromAltitude/biomeAt where on the body's surface a point sits
+//                             (the Biome: ocean / lowlands / midlands / mountain)
 //   buildGridGeom(...)        the grid a GeoPatch draws: size x size
 //                             terrain vertices + normals + colors, an
 //                             optional skirt ring, and the indices
@@ -390,6 +392,59 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
                                            brightness);
 
     return color;
+}
+
+// ---------------------------------------------------------------------------
+// Biomes: where on the body's surface a point sits, by altitude above sea
+// level relative to the body's measured max_height (the heavy phase):
+// ocean (has_sea bodies, at / below sea level), then the land bands --
+// the top 20% is mountain, the next band (50-80%) midlands, the bottom
+// half lowlands. Pure and cheap: biomeFromAltitude classifies an altitude
+// the caller already has (no FBM), biomeAt samples one for a direction.
+// It classifies SOLID bodies only: a banded body is None, and a star has
+// no biome at all -- the caller knows the body's type and should not
+// classify it (a star's Surface is just noise, see issue #52).
+// ---------------------------------------------------------------------------
+
+enum class Biome : unsigned char {
+    None,      // banded gas giant: no solid surface to stand on
+    Ocean,
+    Lowland,
+    Midlands,
+    Mountain,
+};
+
+// Biome from altitude above SEA level [m] (negative = below sea level).
+// Dry bodies have no ocean: a below-sea-level basin is just lowland.
+// A flat body (max_height <= 0) is all lowland -- without the guard,
+// alt >= 0.8 * 0 would make every point a mountain.
+inline Biome biomeFromAltitude(double alt, const Surface &s) {
+    if(s.bands) { return Biome::None; }
+    if(s.has_sea && alt <= 0.0) { return Biome::Ocean; }
+    const double mh = (double)s.max_height;
+    if(mh <= 0.0) { return Biome::Lowland; }
+    if(alt >= 0.8 * mh) { return Biome::Mountain; }
+    if(alt >= 0.5 * mh) { return Biome::Midlands; }
+    return Biome::Lowland;
+}
+
+// Biome at a unit direction in the body's rotating frame (one full-detail
+// height sample, like the HUD's Alt readout).
+inline Biome biomeAt(const glm::vec3 &p, const TerrainParams &t) {
+    const double alt = (double)terrainHeight(p, t) - (double)t.radius
+                     - (double)t.surface.sea_level;
+    return biomeFromAltitude(alt, t.surface);
+}
+
+// The biome's display name (the UI readouts).
+inline const char *biomeName(Biome b) {
+    switch(b) {
+    case Biome::Ocean:    return "ocean";
+    case Biome::Lowland:  return "lowlands";
+    case Biome::Midlands: return "midlands";
+    case Biome::Mountain: return "mountains";
+    default:              return "none";
+    }
 }
 
 // Elevation palette samplers, one per body type (assigned to

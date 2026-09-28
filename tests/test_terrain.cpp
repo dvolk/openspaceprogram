@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 #include <glm/gtc/matrix_transform.hpp>   // translate / rotate (the LOD frame test)
@@ -580,6 +581,70 @@ int main() {
         const glm::dmat4 Ti = glm::translate(glm::dvec3(1.0, 2.0, 3.0));
         check(glm::length(cameraInBodyFrame(Ti, cam_rf) - (cam_rf - glm::dvec3(1.0, 2.0, 3.0))) < 1e-9,
               "lod frame: identity spin reduces to subtracting the position");
+    }
+
+    // 13. Biome classification.
+    //     biomeFromAltitude takes altitude ABOVE SEA LEVEL [m] and the body's
+    //     Surface: <= 0 with a sea is Ocean; the solid biomes cut the
+    //     [0, max_height] range at 50% (Midlands) and 80% (Mountain); a
+    //     banded body (no solid surface) is None. biomeAt is that same
+    //     decision applied to terrainHeight at a direction.
+    {
+        Surface oceanic = kerbin().surface;   // max_height 2500
+        oceanic.has_sea = true;
+        Surface dry = oceanic;
+        dry.has_sea = false;                  // a basin is land, not sea
+        Surface unmeasured = dry;             // pre-AttachRoot (Surface's default)
+        unmeasured.max_height = 1.0f;
+        Surface flat = dry;
+        flat.max_height = 0.0f;               // defensive guard: no real body gets here
+        Surface banded = dry;
+        banded.bands = true;                  // a gas giant
+
+        check(biomeFromAltitude(-50.0, oceanic) == Biome::Ocean, "biome: below sea is ocean");
+        check(biomeFromAltitude(0.0, oceanic) == Biome::Ocean, "biome: at sea level is ocean");
+        check(biomeFromAltitude(0.0, dry) == Biome::Lowland, "biome: dry body at sea level is lowland");
+        check(biomeFromAltitude(-50.0, dry) == Biome::Lowland, "biome: dry body's basin is lowland");
+
+        const double mh = 2500.0;
+        check(biomeFromAltitude(0.1, oceanic) == Biome::Lowland,
+              "biome: just above sea level is lowland");
+        check(biomeFromAltitude(0.5 * mh - 1.0, oceanic) == Biome::Lowland,
+              "biome: just under 50% is lowland");
+        check(biomeFromAltitude(0.5 * mh, oceanic) == Biome::Midlands,
+              "biome: at 50% is midlands");
+        check(biomeFromAltitude(0.8 * mh - 1.0, oceanic) == Biome::Midlands,
+              "biome: just under 80% is midlands");
+        check(biomeFromAltitude(0.8 * mh, oceanic) == Biome::Mountain,
+              "biome: at 80% is mountain");
+        check(biomeFromAltitude(2.0 * mh, oceanic) == Biome::Mountain,
+              "biome: above the range is still mountain");
+
+        check(biomeFromAltitude(100.0, banded) == Biome::None, "biome: banded body has none");
+        // Unmeasured (pre-AttachRoot): max_height is the 1.0f default, so the
+        // bands scale to metres -- a high sample reads mountain. Documented,
+        // not special-cased: callers classify bodies after the heavy phase.
+        check(biomeFromAltitude(100.0, unmeasured) == Biome::Mountain,
+              "biome: unmeasured body scales by the default max_height");
+        check(biomeFromAltitude(100.0, flat) == Biome::Lowland, "biome: zero max_height is lowland");
+
+        // biomeAt: the same decision on a real height field -- must agree
+        // with biomeFromAltitude fed terrainHeight minus the sea-level datum.
+        const TerrainParams kp = kerbin();
+        const double alt = (double)terrainHeight({0.0, 0.0, 1.0}, kp)
+                         - (double)kp.radius - (double)kp.surface.sea_level;
+        check(biomeAt({0.0, 0.0, 1.0}, kp) == biomeFromAltitude(alt, kp.surface),
+              "biome: biomeAt matches the altitude-based decision");
+        TerrainParams banded_body = kp;
+        banded_body.surface = banded;
+        check(biomeAt({0.0, 0.0, 1.0}, banded_body) == Biome::None,
+              "biome: biomeAt sees the banded surface too");
+
+        check(std::string(biomeName(Biome::Ocean)) == "ocean", "biome: name ocean");
+        check(std::string(biomeName(Biome::Lowland)) == "lowlands", "biome: name lowlands");
+        check(std::string(biomeName(Biome::Midlands)) == "midlands", "biome: name midlands");
+        check(std::string(biomeName(Biome::Mountain)) == "mountains", "biome: name mountains");
+        check(std::string(biomeName(Biome::None)) == "none", "biome: name none");
     }
 
     if(g_failures == 0) {
