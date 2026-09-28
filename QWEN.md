@@ -22,4 +22,4 @@
 - Written reports in ./reports/<subject>_YYYY_MM_DD are immutable snapshots of how the project was. Avoid reading and never edit after writing. Supporting code, logs, graphics, figures are welcome in reports.
 - For visual confirmation ask me to check, unless I specifically ask you to iterate with screenshots as this bloats context.
 - Keep references to other intellectual property minimal lest we get into trouble.
-- At the end of a task, do a little post-mortem: what didn't go well, what could we add/remove/change in the project or instructions to make it better in the future.
+- At the end of a task, reflect on how you would have liked the project to be structured/coded/documented to make this task easier.
