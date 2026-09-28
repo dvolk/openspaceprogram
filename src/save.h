@@ -41,6 +41,8 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+#include "flightlog.h"   // FlightLog / FlightEvent (pure containers, no game types)
+
 struct Game;   // save_game / load_game take one; forward-declared so this
                // header stays free of game.h (and the unit test stays light)
 
@@ -131,6 +133,14 @@ struct SaveShip {
     std::string defPath;
     bool is_crew = false;
     SavePose pose;
+    /* The vessel's flight journal (SoI enter/leave history + start instant).
+       Persisted so a recovered vessel after a load shows its FULL mission,
+       not a journal that restarts at the load instant. Restored into
+       Vehicle::flog BEFORE the load's setSoi, so that setSoi's observe is a
+       no-op on an unchanged body (the journal continues where it left off).
+       A default (not-started) log is skipped on write and, on load, starts
+       fresh at the placement -- so an old save with no flog still works. */
+    FlightLog flog;
 
     // ship (is_crew false)
     std::string home;         // home body name
@@ -302,11 +312,51 @@ inline SavePose savePoseFromJson(const nlohmann::json &j) {
     return p;
 }
 
+inline nlohmann::json saveFlogToJson(const FlightLog &f) {
+    nlohmann::json j;
+    j["started"]    = f.started;
+    j["start_t"]    = f.start_t;
+    j["start_body"] = f.start_body;
+    j["last_body"]  = f.last_body;
+    nlohmann::json evs = nlohmann::json::array();
+    for(const FlightEvent &e : f.events) {
+        nlohmann::json ej;
+        ej["t"]     = e.t;
+        ej["enter"] = e.enter;
+        ej["body"]  = e.body;
+        evs.push_back(ej);
+    }
+    j["events"] = evs;
+    return j;
+}
+
+inline FlightLog saveFlogFromJson(const nlohmann::json &j) {
+    FlightLog f;
+    if(j.contains("started") && j["started"].is_boolean()) { f.started = j["started"].get<bool>(); }
+    if(j.contains("start_t") && j["start_t"].is_number()) { f.start_t = j["start_t"].get<double>(); }
+    if(j.contains("start_body") && j["start_body"].is_string()) { f.start_body = j["start_body"].get<std::string>(); }
+    if(j.contains("last_body") && j["last_body"].is_string()) { f.last_body = j["last_body"].get<std::string>(); }
+    if(j.contains("events") && j["events"].is_array()) {
+        for(auto &&ej : j["events"]) {
+            if(!ej.is_object()) { continue; }
+            FlightEvent e;
+            if(ej.contains("t") && ej["t"].is_number()) { e.t = ej["t"].get<double>(); }
+            if(ej.contains("enter") && ej["enter"].is_boolean()) { e.enter = ej["enter"].get<bool>(); }
+            if(ej.contains("body") && ej["body"].is_string()) { e.body = ej["body"].get<std::string>(); }
+            f.events.push_back(e);
+        }
+    }
+    return f;
+}
+
 inline nlohmann::json saveShipToJson(const SaveShip &s) {
     nlohmann::json j;
     j["name"]     = s.name;
     j["defPath"]  = s.defPath;
     j["is_crew"]  = s.is_crew;
+    // Shared by ships and crew. Skipped when the journal never started, so a
+    // fresh vessel writes no flog and an old save (no flog key) loads clean.
+    if(s.flog.started) { j["flog"] = saveFlogToJson(s.flog); }
     if(s.is_crew) {
         if(!s.aboard.empty()) { j["aboard"] = s.aboard; }
         j["aboard_part"] = s.aboard_part;
@@ -361,6 +411,9 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("name") && j["name"].is_string()) { s.name = j["name"].get<std::string>(); }
     if(j.contains("defPath") && j["defPath"].is_string()) { s.defPath = j["defPath"].get<std::string>(); }
     if(j.contains("is_crew") && j["is_crew"].is_boolean()) { s.is_crew = j["is_crew"].get<bool>(); }
+    // Shared by ships and crew; absent (an old save) leaves flog default, so
+    // the load's setSoi starts a fresh journal at the placement.
+    if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {
         if(j.contains("aboard") && j["aboard"].is_string()) { s.aboard = j["aboard"].get<std::string>(); }
         // uid-keyed (not an index): a string/float/negative reads as 0, the

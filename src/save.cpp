@@ -183,6 +183,7 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
     s.name = v->name;
     s.defPath = v->defPath;
     s.is_crew = v->isEva();
+    s.flog = v->flog;   // the vessel's flight journal (shared by ships + crew)
     if(s.is_crew) {
         Kerbal *k = static_cast<Kerbal *>(v);
         Vehicle *ship = k->aboard();
@@ -410,8 +411,11 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->scenario = scn;   // resolved before `new Vehicle` (see top of this fn)
     v->slot = s.slot;
     v->sun = g.sun;
-    // The re-home: enters the body's ships list and starts a fresh flight
-    // journal at the load instant (journals are not persisted, v1).
+    // Restore the persisted journal BEFORE setSoi, so setSoi's observe is a
+    // no-op on the unchanged body and the mission history survives the load
+    // (a fresh log -- an old save -- instead starts here at the load instant).
+    v->flog = s.flog;
+    // The re-home: enters the body's ships list and observes the SoI body.
     TerrainBody *pb = g.sys.find(s.pose.body);
     if(pb == nullptr) { pb = v->home; }
     v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, g.time);
@@ -499,13 +503,15 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         }
         k->rebuildCompound();
     }
+    // Restore the persisted journal BEFORE either setSoi below, so its observe
+    // is a no-op on the unchanged body and the kerbal's history survives load.
+    k->flog = s.flog;
     if(s.aboard.empty()) {
         // free (on EVA): live in the world, at its saved pose
         TerrainBody *body = g.sys.find(s.pose.body);
         if(body == nullptr) { body = g.home; }
         k->home = body;
-        // The re-home: enters the body's ships list and starts a fresh
-        // journal at the load instant.
+        // The re-home: enters the body's ships list and observes the SoI body.
         k->setSoi(s.pose.rotating ? body->rot_frame : body->frame, g.time);
         k->placeShip(s.pose.pos, s.pose.rot);
         k->setVelocity(s.pose.vel);
@@ -584,7 +590,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->aboardPart = cap;
         // The bookkeeping re-home (aboardPart is set first -- setSoi keys
         // its ships-list membership on it, and an aboard kerbal is in no
-        // body list): starts the kerbal's journal at the load instant.
+        // body list): observes the SoI body -- a no-op when the restored
+        // journal's last_body already matches (always so for our own saves).
         k->setSoi(ship->frame, g.time);
         ship->crew.push_back(k);
         /* step 2.4: register the containment edge (the kerbal's part is

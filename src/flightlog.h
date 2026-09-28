@@ -2,8 +2,10 @@
 //
 // One Vehicle owns one FlightLog. It records when the flight began and
 // every SoI enter/leave, so the Flight Summary window (W_FlightSummary,
-// opened on recover) can list the mission. Not save-persisted: a load
-// starts a fresh journal at the load instant (v1).
+// opened on recover) can list the mission. Save-persisted (SaveShip::flog):
+// on load the journal is restored into Vehicle::flog BEFORE the placement's
+// setSoi, so that setSoi's observe is a no-op on the unchanged body and the
+// mission history continues across a save/load rather than restarting.
 //
 // `observe` is the only writer, called with the vessel's current SoI body
 // name ("" if none): the first call begins the journal, later calls emit

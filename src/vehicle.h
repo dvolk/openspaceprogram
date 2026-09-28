@@ -978,6 +978,11 @@ public:
     Part *dockTargetPort = nullptr;
     Part *dockArmPort = nullptr;   // this ship's port to mate with (mandatory)
 
+    /* Dock-absorb: fold B into this ship at the mated port (A's port part).
+       B's shell is consumed and deleted by the caller; B's CREW ride along
+       onto this ship (keeping their own journals). B's ship-level flight
+       journal is dropped by design (v1) -- the merged vessel keeps only A's
+       history. See issue #49 for merging B's events too. */
     void absorbShip(Vehicle *B, Part *portA);
 
     /* Extract a connected subtree (rooted at `root`) into a new Vehicle:
@@ -1127,12 +1132,13 @@ public:
        is not (it rides Vehicle::crew); the lists are only touched when
        the membership or the body actually changes, so a same-body frame
        hop (rotational <-> inertial) never churns the canonical ship
-       order. Journals `t` into flog (a fresh vessel's journal STARTS
-       here -- creation, load and split all place through setSoi), then
-       re-homes the aboard crew onto the same frame (they ride along:
-       their m_parent never goes stale, and a body change journals their
-       own enter/leave). Tolerates a null frame (the headless split tests
-       build vehicles with no frame tree). */
+       order. Journals `t` into flog: a freshly-created or split vessel's
+       journal STARTS here, while a load restores its persisted journal
+       first so this observe is a no-op on the unchanged body (the mission
+       history survives). Then re-homes the aboard crew onto the same frame
+       (they ride along: their m_parent never goes stale, and a body change
+       journals their own enter/leave). Tolerates a null frame (the headless
+       split tests build vehicles with no frame tree). */
     void setSoi(Frame *newFrame, double t);
 
     /* Out of the SoI body's ships list, if in it (the removal sites:

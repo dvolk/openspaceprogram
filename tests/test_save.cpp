@@ -163,6 +163,97 @@ int main() {
     CHECK(out.dock_target_port == ship.dock_target_port);
     CHECK(out.dock_arm_port == ship.dock_arm_port);
 
+    // --- flight journal (flog): round-trips so a recovered vessel after a
+    // load shows its full mission, not one restarting at the load instant ---
+    SaveShip fship;
+    fship.name = "racer";
+    fship.is_crew = false;
+    fship.flog.started = true;
+    fship.flog.start_t = 12.5;
+    fship.flog.start_body = "Kerbin";
+    fship.flog.last_body = "Mun";
+    fship.flog.events.push_back(FlightEvent{12.5, true, "Kerbin"});
+    fship.flog.events.push_back(FlightEvent{90.0, false, "Kerbin"});
+    fship.flog.events.push_back(FlightEvent{90.0, true, "Mun"});
+    SaveShip fOut = saveShipFromJson(saveShipToJson(fship));
+    CHECK(fOut.flog.started == true);
+    CHECK(near(fOut.flog.start_t, 12.5));
+    CHECK(fOut.flog.start_body == "Kerbin");
+    CHECK(fOut.flog.last_body == "Mun");
+    CHECK(fOut.flog.events.size() == 3);
+    if(fOut.flog.events.size() == 3) {
+        CHECK(near(fOut.flog.events[1].t, 90.0));
+        CHECK(fOut.flog.events[1].enter == false);
+        CHECK(fOut.flog.events[1].body == "Kerbin");
+        CHECK(fOut.flog.events[2].enter == true);
+        CHECK(fOut.flog.events[2].body == "Mun");
+    }
+
+    // A journal that never started writes NO flog key, and loads back default
+    // (so the placement's setSoi starts it fresh) -- and an old save with no
+    // flog key at all is indistinguishable from that, hence backward-safe.
+    SaveShip fresh;
+    fresh.name = "racer";
+    fresh.is_crew = false;
+    nlohmann::json freshJ = saveShipToJson(fresh);
+    CHECK(!freshJ.contains("flog"));
+    SaveShip freshOut = saveShipFromJson(freshJ);
+    CHECK(freshOut.flog.started == false);
+    CHECK(freshOut.flog.events.empty());
+
+    // Crew carry a journal too (the same shared field).
+    SaveShip fcrew;
+    fcrew.name = "kerbal";
+    fcrew.is_crew = true;
+    fcrew.aboard = "racer";
+    fcrew.aboard_part = 101;
+    fcrew.flog.started = true;
+    fcrew.flog.start_body = "Kerbin";
+    fcrew.flog.last_body = "Kerbin";
+    fcrew.flog.events.push_back(FlightEvent{5.0, true, "Kerbin"});
+    SaveShip fcOut = saveShipFromJson(saveShipToJson(fcrew));
+    CHECK(fcOut.flog.started == true);
+    CHECK(fcOut.flog.last_body == "Kerbin");
+    CHECK(fcOut.flog.events.size() == 1);
+
+    // A started journal with ZERO events (a vessel placed in no SoI body, or
+    // one whose only observe was an empty body) still round-trips: the emit
+    // rule keys on `started`, not on events being non-empty.
+    SaveShip zship;
+    zship.name = "racer";
+    zship.is_crew = false;
+    zship.flog.started = true;
+    zship.flog.start_t = 7.0;
+    zship.flog.start_body = "";
+    zship.flog.last_body = "";
+    nlohmann::json zj = saveShipToJson(zship);
+    CHECK(zj.contains("flog"));
+    SaveShip zOut = saveShipFromJson(zj);
+    CHECK(zOut.flog.started == true);
+    CHECK(near(zOut.flog.start_t, 7.0));
+    CHECK(zOut.flog.events.empty());
+
+    // A malformed flog degrades to defaults and never throws (the permissive
+    // read matches the rest of this file): a non-object flog, a non-array
+    // events, and event entries with missing/wrong-typed fields.
+    SaveShip flogBad = saveShipFromJson(nlohmann::json::parse(
+        R"({"name":"x","is_crew":false,"flog":42})"));
+    CHECK(flogBad.flog.started == false);
+    CHECK(flogBad.flog.events.empty());
+    SaveShip flogBad2 = saveShipFromJson(nlohmann::json::parse(
+        R"({"name":"x","is_crew":false,"flog":{"started":true,"events":"nope"}})"));
+    CHECK(flogBad2.flog.started == true);
+    CHECK(flogBad2.flog.events.empty());
+    SaveShip flogBad3 = saveShipFromJson(nlohmann::json::parse(
+        R"({"name":"x","is_crew":false,"flog":{"started":true,"events":[{"body":7},{"t":"x","enter":"y","body":"Kerbin"}]}})"));
+    CHECK(flogBad3.flog.events.size() == 2);
+    if(flogBad3.flog.events.size() == 2) {
+        CHECK(flogBad3.flog.events[0].body.empty());   // non-string body -> default
+        CHECK(flogBad3.flog.events[1].t == 0.0);        // non-number t -> default
+        CHECK(flogBad3.flog.events[1].enter == true);   // non-bool enter -> default (true)
+        CHECK(flogBad3.flog.events[1].body == "Kerbin");
+    }
+
     // --- a crew member (the ship fields are empty) -------------------------
     // aboard_part is the CAPSULE'S uid (not an index into the ship's part
     // list): 101 is the capsule's uid in the ship above, so this is a valid
