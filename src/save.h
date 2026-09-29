@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -628,7 +629,7 @@ inline void ensure_dir(const std::string &dir) {
     std::filesystem::create_directories(dir, ec);
 }
 
-// List the save names under base (e.g. "saves"), sorted; empty if base is
+// List the save names under base (e.g. a game dir), sorted; empty if base is
 // missing or empty. A name is a subdirectory that holds a save.json.
 inline std::vector<std::string> list_saves(const std::string &base) {
     std::vector<std::string> names;
@@ -645,6 +646,139 @@ inline std::vector<std::string> list_saves(const std::string &base) {
     }
     std::sort(names.begin(), names.end());
     return names;
+}
+
+// ---- games: the <stamp>-<name> dir a game's saves live under -------------
+// A "game" is one playthrough (one New Game start). Its slots live under
+// saves/<stamp>-<name>/: the dir name carries the START stamp (YYYYMMDD_HHMMSS,
+// local time -- it is the dir the player browses, so local, not the UTC
+// saved_at) and the user-chosen display name. Stamp-first, so `ls` sorts
+// the games chronologically (the UI list uses the same order). Same-named
+// games coexist: each start mints a fresh stamp, bumping the second while the
+// dir already exists (see newGameDir).
+
+// The local-time stamp newGameDir prepends: YYYYMMDD_HHMMSS.
+inline std::string gameStamp(time_t t) {
+    struct tm m;
+    localtime_r(&t, &m);
+    char buf[32];
+    strftime(buf, sizeof buf, "%Y%m%d_%H%M%S", &m);
+    return buf;
+}
+
+// A fresh game dir under base for a game named `name`: <stamp>-<name>. The
+// stamp starts at `now` and bumps one second at a time while the dir exists
+// (two same-named games started the same second must not share a dir --
+// their slots would mix). "" if 60 bumps do not clear it.
+inline std::string newGameDir(const std::string &base, const std::string &name,
+                              time_t now = time(nullptr)) {
+    namespace fs = std::filesystem;
+    for(int bump = 0; bump < 60; bump++) {
+        const std::string dir = base + "/" + gameStamp(now + bump) + "-" + name;
+        std::error_code ec;
+        if(!fs::exists(dir, ec)) { return dir; }
+    }
+    return "";
+}
+
+// The display name of a game dir name: strip exactly ONE leading
+// <YYYYMMDD_HHMMSS>- (newGameDir prepends exactly one, so a name that itself
+// starts with stamp-like digits still round-trips: a game NAMED
+// "20260101_000000-restart" lists as itself). A dir without a leading stamp
+// -- renamed by hand -- keeps its whole name.
+inline std::string gameDirName(const std::string &dirName) {
+    static const size_t kStamp = 15;   // 8 digits + '_' + 6 digits
+    // Need the stamp (0..14), a dash (15), and a non-empty name (16+).
+    if(dirName.size() <= kStamp + 1 || dirName[kStamp] != '-') {
+        return dirName;
+    }
+    for(size_t i = 0; i < kStamp; i++) {
+        // Explicit '0'..'9', not std::isdigit (locale-dependent: under a
+        // non-C locale non-ASCII digits would count and a name could be
+        // mis-stripped).
+        const char c = dirName[i];
+        if((i == 8) ? (c != '_') : (c < '0' || c > '9')) {
+            return dirName;
+        }
+    }
+    return dirName.substr(kStamp + 1);
+}
+
+// One listed game: `dirName` the dir under base (the identity the slots live
+// under), `name` the display label (the stamp stripped; a duplicate label --
+// two same-named games -- gets its stamp appended so the rows stay
+// distinguishable).
+struct GameEntry {
+    std::string dirName;
+    std::string name;
+};
+
+// List the games under base (e.g. the data dir's saves/): the subdirectories
+// holding at least one slot (list_saves non-empty), sorted by dirName --
+// chronological, like `ls`. A manifest-less slot dir (a legacy flat save
+// directly under base) is NOT a game, and neither is a game that never saved;
+// both stay loadable by full path.
+inline std::vector<GameEntry> list_games(const std::string &base) {
+    std::vector<GameEntry> games;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto it = fs::directory_iterator(base, ec);
+    if(ec) { return games; }   // base missing or not a directory
+    for(const auto &entry : it) {
+        if(!fs::is_directory(entry)) { continue; }
+        const std::string dirName = entry.path().filename().string();
+        if(list_saves(entry.path().string()).empty()) { continue; }
+        games.push_back({dirName, gameDirName(dirName)});
+    }
+    std::sort(games.begin(), games.end(),
+              [](const GameEntry &a, const GameEntry &b) {
+                  return a.dirName < b.dirName;
+              });
+    // Duplicate labels (two same-named games) get their stamp appended
+    // (YYYYMMDD_HHMMSS -> "YYYY-MM-DD HH:MM"; a stamped-out dir falls back
+    // to its whole dir name). Count from dirName (immutable), not name:
+    // appending as we go would un-duplicate the entries already labelled.
+    for(size_t i = 0; i < games.size(); i++) {
+        const std::string orig = gameDirName(games[i].dirName);
+        int n = 0;
+        for(const GameEntry &e : games) {
+            if(gameDirName(e.dirName) == orig) { n++; }
+        }
+        if(n <= 1) { continue; }
+        const std::string &dn = games[i].dirName;
+        std::string stamp = dn;
+        if(dn.size() > 16 && gameDirName(dn).size() == dn.size() - 16) {
+            stamp = dn.substr(0, 4) + "-" + dn.substr(4, 2) + "-" +
+                    dn.substr(6, 2) + " " + dn.substr(9, 2) + ":" +
+                    dn.substr(11, 2);
+        }
+        games[i].name += " (" + stamp + ")";
+    }
+    return games;
+}
+
+// Resolve a bare slot name under base (the data dir's saves/): base/<slot>
+// (a legacy flat save) first, then the UNIQUE base/<game>/<slot> (the
+// two-tier layout). "" when missing or ambiguous (two games hold the slot).
+inline std::string find_slot(const std::string &base, const std::string &slot) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if(fs::exists(base + "/" + slot + "/save.json", ec)) {
+        return base + "/" + slot;
+    }
+    std::string found;
+    int n = 0;
+    auto it = fs::directory_iterator(base, ec);
+    if(ec) { return ""; }
+    for(const auto &entry : it) {
+        if(!fs::is_directory(entry)) { continue; }
+        ec.clear();
+        if(fs::exists(entry.path().string() + "/" + slot + "/save.json", ec)) {
+            found = entry.path().string();
+            n++;
+        }
+    }
+    return n == 1 ? found + "/" + slot : "";
 }
 
 // Delete the save at dir (recursive, no shell). Refuses a path not strictly

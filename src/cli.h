@@ -48,9 +48,11 @@ struct GameArgs {
        into a directory when the --timeout budget is spent (saves + exits --
        the headless/e2e path); --load replaces the fleet at startup by
        loading a saved directory instead of building one. A bare name (no
-       '/') is a slot under the data dir's saves/ (the Save/Load window's
-       slots); a path is used as-is. Mutually exclusive (a run either loads
-       a save or builds a fresh fleet to save). */
+       '/') names a slot in the data dir's saves/: --save writes it into
+       the CURRENT game's dir (<stamp>-<gameName>/, minted at the first
+       save), --load resolves it to the legacy flat saves/<name> or the
+       unique saves/<game>/<name>. A path is used as-is. Mutually exclusive
+       (a run either loads a save or builds a fresh fleet to save). */
     std::string save_name;
     std::string load_name;
     std::string data_dir;   // --data-dir: the user data directory (saves +

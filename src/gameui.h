@@ -47,9 +47,10 @@ void drawSpaceCenterMenu(Game &g);
 void drawSpaceCenterTopBar(Game &g);
 
 /* The New Game setup sheet (W_NewGame), opened by the title menu's "New
-   Game": pick which star system to load and the exhaust-velocity scale
-   (difficulty). Start applies both and calls startNewGame; Cancel closes.
-   Title-only (it is in kTitleWins). */
+   Game": name the game (the <stamp>-<name> dir its saves land in under
+   saves/), pick the star system and the exhaust-velocity scale (difficulty).
+   Start applies all and calls startNewGame; Cancel closes. Title-only (it
+   is in kTitleWins). */
 void drawNewGame(Game &g);
 
 /* The Flight Summary window (W_FlightSummary), opened by the hub's
@@ -72,10 +73,12 @@ void drawReadme(Game &g);
 void drawTrackingMap(Game &g);
 void drawTrackingShipList(Game &g);
 
-// Draw the in-game Save/Load window (a name to save into + the list of
-// existing saves to load / delete). Opened from the main menu; drawn with
+// Draw the in-game Save/Load window: a slot name to save the CURRENT game
+// into (its <stamp>-<name> dir under saves/) + the list of existing games
+// and their slots to load / delete. Opened from the main menu; drawn with
 // the other UI (main-menu group). Saving/loading the live fleet + clock is
-// the save_game / load_game pair in save.cpp.
+// the save_game / load_game pair in save.cpp (a load also adopts that
+// game's identity, so the next save lands in its dir).
 void drawSaveLoad(Game &g);
 
 // The VAB editor scene's widgets: the selected-part panel (the part is picked

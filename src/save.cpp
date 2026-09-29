@@ -649,7 +649,8 @@ void save_game(Game &g, const std::string &dir) {
         writeJson(dir + "/ships/" + slug(i) + ".json", saveShipToJson(s));
     }
     writeJson(dir + "/save.json", saveMetaToJson(meta));
-    printf("Saved %zu ship(s) to %s\n", fleet.size(), dir.c_str());
+    printf("Saved %zu ship(s) to %s (game '%s')\n", fleet.size(), dir.c_str(),
+           g.gameName.c_str());
 }
 
 void load_game(Game &g, const std::string &dir) {
@@ -774,8 +775,29 @@ void load_game(Game &g, const std::string &dir) {
         throw;
     }
 
-    // The load committed, so the old fleet goes -- the deletion that the
-    // detach above deferred. part_sels holds Part* into it, so that goes first.
+    // The load committed -- adopt the game identity from the save's location,
+    // here rather than at the top so a REFUSED load (a throw above) leaves
+    // the running identity untouched: adopting early would make the surviving
+    // fleet's next Save land in the rejected save's game dir. A slot that
+    // lives in a dir directly under saves/ belongs to THAT game (the dir name
+    // is the identity; the display name is it minus the leading <stamp>-, a
+    // renamed dir keeps its whole name). A save anywhere else -- an e2e
+    // fixture, a legacy flat save directly under saves/ -- leaves the running
+    // identity (a later save then lands in the running game's dir, not a
+    // phantom one).
+    {
+        namespace fs = std::filesystem;
+        const fs::path gamedir = fs::path(dir).parent_path();
+        if(gamedir.parent_path().filename() == "saves") {
+            const std::string dn = gamedir.filename().string();
+            if(!dn.empty()) {
+                g.gameId = dn;
+                g.gameName = gameDirName(dn);
+            }
+        }
+    }
+    // The old fleet goes -- the deletion the detach above deferred.
+    // part_sels holds Part* into it, so that goes first.
     g.part_sels.clear();     // Part* into the old fleet -- drop before deleting
     g.clearFlightSummary();  // a prior recover's summary is not this save's
     for(auto &d : detached) {

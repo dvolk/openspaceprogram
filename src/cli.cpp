@@ -50,16 +50,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "e2e/fixtures/startships.json");
 
     app.add_option("--save", args.save_name,
-                   "Save the game (the live fleet + crew + clock) into this "
-                   "directory when the --timeout budget is spent, then exit "
-                   "(the headless/e2e path). A bare name is a slot under the "
-                   "data dir's saves/; a path is used as-is. Mutually "
-                   "exclusive with --load");
+                   "Save the game (the live fleet + crew + clock) when the "
+                   "--timeout budget is spent, then exit (the headless/e2e "
+                   "path). A bare name is a slot of the current game under "
+                   "the data dir's saves/ (<stamp>-<gameName>/<slot>, the "
+                   "dir minted at this first save); a path is used as-is. "
+                   "Mutually exclusive with --load");
     app.add_option("--load", args.load_name,
                    "Load the game from this saved directory at startup "
                    "instead of building the start ships (--startship/--startships are ignored). "
-                   "A bare name is a slot under the data dir's saves/. "
-                   "Mutually exclusive with --save");
+                   "A bare name resolves to the data dir's saves/<name> "
+                   "(legacy flat) or the unique saves/<game>/<name>; a path "
+                   "is used as-is. Mutually exclusive with --save");
     app.add_option("--data-dir", args.data_dir,
                    "User data directory (saves/ + settings.json). Default: "
                    "the per-OS user data directory (on Linux: "

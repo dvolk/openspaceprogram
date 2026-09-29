@@ -2673,10 +2673,43 @@ void drawSpaceCenterTopBar(Game &g) {
     });
 }
 
-/* The New Game setup sheet: which star system to load, and the
+// A save-slot name is a single directory under a game dir. Whitelist to
+// letters, digits, - _ . so a name can never carry a path separator or be a
+// dot-name -- it must stay a single component. (Defense-in-depth: delete_save
+// also guards its base, and the CLI --save/--load take full paths by design;
+// this is the user-facing slot picker, so it stays inside saves/.)
+static bool safeSlotName(const std::string &n) {
+    if(n.empty() || n == "." || n == "..") { return false; }
+    for(unsigned char c : n) {
+        bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                     (c >= '0' && c <= '9');
+        if(!alnum && c != '-' && c != '_' && c != '.') { return false; }
+    }
+    return true;
+}
+
+// A game name is the tail of a game dir name under saves/ (<stamp>-<name>).
+// Blocklist instead of the slot whitelist: forbid only what breaks a dir name
+// -- path separators, the Windows-reserved set, control chars -- so spaces and
+// unicode are fine (the name never reaches a shell or a CLI arg).
+static bool safeGameName(const std::string &n) {
+    if(n.empty() || n == "." || n == "..") { return false; }
+    for(unsigned char c : n) {
+        if(c < 0x20) { return false; }
+        switch(c) {
+            case '/': case '\\': case ':': case '*': case '?':
+            case '"': case '<': case '>': case '|':
+                return false;
+        }
+    }
+    return true;
+}
+
+/* The New Game setup sheet: the game's name (the <stamp>-<name> dir its
+   saves land in under saves/), which star system to load, and the
    exhaust-velocity scale (difficulty -- thrust + delta-v scale by it, the
    fuel burn does not). Start switches system if needed, applies the scale
-   and begins the game; both ride into save.json on the next save.
+   and begins the game; the scale rides into save.json on the next save.
 
    The system list is a directory scan of res/systems (the files
    load_system reads), cached and re-read only when the directory's mtime
@@ -2689,6 +2722,9 @@ void drawNewGame(Game &g) {
     static bool scanned = false;
     static std::filesystem::file_time_type dirMtime;
     static int sysSel = 0;
+    // The game's display name (persistent across frames / close-reopen, like
+    // Save/Load's nameBuf): the dir under saves/ it mints is <stamp>-<name>.
+    static char nameBuf[256] = "game1";
     // The slider's draft value, committed to args.exhaust_scale only by
     // Start (startNewGame). Bound live to args instead, it would survive
     // Cancel / X and leak into settings.json via "Save settings".
@@ -2736,7 +2772,16 @@ void drawNewGame(Game &g) {
             exhaustSel = g.args.exhaust_scale;
         }
         ImGui::TextWrapped(
-            "Choose a star system and engine performance, then start.");
+            "Name the game, choose a star system and engine performance, "
+            "then start.");
+        ImGui::Spacing();
+
+        ImGui::Text("Game name");
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("##newgame_name", nameBuf, sizeof(nameBuf));
+        if(!safeGameName(nameBuf)) {
+            ImGui::TextDisabled("(no / \\ : * ? \" < > | or control chars)");
+        }
         ImGui::Spacing();
 
         ImGui::Text("System");
@@ -2767,10 +2812,12 @@ void drawNewGame(Game &g) {
         if(ImGui::Button("Start", ImVec2(120.0f, 0.0f))) {
             if(systems.empty()) {
                 g.toast("No systems in res/systems");
+            } else if(!safeGameName(nameBuf)) {
+                g.toast("Give the game a name (spaces are fine)");
             } else {
                 const std::string path =
                     "res/systems/" + systems[(size_t)sysSel] + ".json";
-                if(g.startNewGame(path, exhaustSel)) {
+                if(g.startNewGame(nameBuf, path, exhaustSel)) {
                     setWinOpen(W_NewGame, false);
                 }
             }
@@ -2921,57 +2968,58 @@ void drawReadme(Game &g) {
     });
 }
 
-// A save-slot name is a single directory under saves/. Whitelist to letters,
-// digits, - _ . so a name can never carry a path separator or be a dot-name --
-// it must stay a single component under saves/. (Defense-in-depth: delete_save
-// also guards its base, and the CLI --save/--load take full paths by design;
-// this is the user-facing slot picker, so it stays inside saves/.)
-static bool safeSlotName(const std::string &n) {
-    if(n.empty() || n == "." || n == "..") { return false; }
-    for(unsigned char c : n) {
-        bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                     (c >= '0' && c <= '9');
-        if(!alnum && c != '-' && c != '_' && c != '.') { return false; }
-    }
-    return true;
-}
-
 void drawSaveLoad(Game &g) {
     // No TAB gate here: Save/Load is a Transient window and drawWin suppresses
     // it (uiwins.h hiddenByTab), like every non-menu window.
 
-    // The slot name to save into and the selected slot are both persistent
-    // (static): the name so the player does not retype it, and `selected` so
-    // the Load/Delete button -- read on the frame the click lands, after the
-    // Selectable that set it -- acts on the row the player actually chose.
+    // The slot name to save into, and the selected game + slot, are all
+    // persistent (static): the name so the player does not retype it, and the
+    // selections so the Load/Delete button -- read on the frame the click
+    // lands, after the Selectable that set it -- acts on the row the player
+    // actually chose.
     static char nameBuf[256] = "save1";
-    static int selected = 0;   // index into the save list (the Load/Delete target)
+    static int gameSel = 0;    // index into the games list
+    static int slotSel = 0;    // index into the selected game's slots
+    static int prevGameSel = -2;   // a game switch re-picks the first slot
 
     drawWin(g, W_SaveLoad, [&] {
-        // The save list is a directory scan, so read it only while the window
-        // is open, and clamp `selected` if the list grew or shrank (a save /
-        // delete). Clamp BOTH bounds: a frame with an empty list parks
-        // `selected` at -1, and a later `saves[-1]` is an out-of-bounds read
-        // (garbage slot -> bad_alloc on the click).
-        std::vector<std::string> saves = list_saves(datadir::saves());
-        if(selected < 0 || selected >= (int)saves.size()) {
-            selected = (int)saves.size() - 1;
+        // The lists are directory scans, so read them only while the window
+        // is open, and clamp the selections if the lists grew or shrank (a
+        // save / delete). Clamp BOTH bounds: a frame with an empty list parks
+        // the index at -1, and a later `list[-1]` is an out-of-bounds read
+        // (garbage row -> bad_alloc on the click).
+        std::vector<GameEntry> games = list_games(datadir::saves());
+        if(gameSel < 0 || gameSel >= (int)games.size()) {
+            gameSel = (int)games.size() - 1;
+        }
+        std::vector<std::string> slots;
+        if(gameSel >= 0) {
+            slots = list_saves(datadir::saves() + "/" + games[gameSel].dirName);
+        }
+        if(gameSel != prevGameSel) { slotSel = 0; prevGameSel = gameSel; }
+        if(slotSel < 0 || slotSel >= (int)slots.size()) {
+            slotSel = (int)slots.size() - 1;
         }
 
         // --- save-as: capture the live fleet + crew + clock ----------------
         ImGui::TextWrapped(
-            "Save the current game -- the live fleet, crew and clock -- into a slot.");
+            "Save the current game (%s) -- the live fleet, crew and clock -- "
+            "into a slot of it.", g.gameName.c_str());
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
         if(ImGui::Button("Save##saveload") && safeSlotName(nameBuf)) {
-            const std::string dir = datadir::saves() + "/" + nameBuf;
-            try {
-                save_game(g, dir);
-                g.toast("Saved to %s", nameBuf);
-                saves = list_saves(datadir::saves());
-            } catch(const std::exception &e) {
-                g.toast("Save failed: %s", e.what());
+            const std::string gamedir = g.ensureGameDir();
+            if(gamedir.empty()) {
+                g.toast("Save failed: no game directory");
+            } else {
+                const std::string dir = gamedir + "/" + nameBuf;
+                try {
+                    save_game(g, dir);
+                    g.toast("Saved to %s/%s", g.gameName.c_str(), nameBuf);
+                } catch(const std::exception &e) {
+                    g.toast("Save failed: %s", e.what());
+                }
             }
         }
         if(!safeSlotName(nameBuf)) {
@@ -2981,38 +3029,56 @@ void drawSaveLoad(Game &g) {
 
         ImGui::Separator();
 
-        // --- load / delete from an existing slot ---------------------------
-        ImGui::Text("Existing saves:");
-        if(saves.empty()) {
+        // --- load / delete an existing game's slot --------------------------
+        ImGui::Text("Existing games and their saves:");
+        if(games.empty()) {
             ImGui::TextDisabled("(none yet)");
         } else {
-            for(size_t i = 0; i < saves.size(); i++) {
-                if(ImGui::Selectable(saves[i].c_str(), (int)i == selected)) {
-                    selected = (int)i;
+            // Two half-width columns (games | slots of the selected game);
+            // split the content region, leaving room for the item spacing.
+            const float full = ImGui::GetContentRegionAvail().x;
+            const float w = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+            ImGui::BeginChild("##games", ImVec2(w, 180.0f));
+            for(size_t i = 0; i < games.size(); i++) {
+                if(ImGui::Selectable(games[i].name.c_str(), (int)i == gameSel)) {
+                    gameSel = (int)i;
                 }
             }
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("##slots", ImVec2(w, 180.0f));
+            if(slots.empty()) {
+                ImGui::TextDisabled("(no saves in this game)");
+            }
+            for(size_t i = 0; i < slots.size(); i++) {
+                if(ImGui::Selectable(slots[i].c_str(), (int)i == slotSel)) {
+                    slotSel = (int)i;
+                }
+            }
+            ImGui::EndChild();
             ImGui::Spacing();
-            if(ImGui::Button("Load##saveload")) {
-                const std::string dir = datadir::saves() + "/" + saves[selected];
+            if(ImGui::Button("Load##saveload") && gameSel >= 0 && slotSel >= 0) {
+                const std::string dir = datadir::saves() + "/" +
+                                       games[gameSel].dirName + "/" + slots[slotSel];
                 // loadFrom does the load, the scene decision and the failure
                 // toast; it is shared with the --reload hook so the headless
-                // path tests this one.
+                // path tests this one. It also adopts the game's identity
+                // (load_game), so the next save lands in THIS game's dir.
                 if(g.loadFrom(dir)) {
-                    g.toast("Loaded %s", saves[selected].c_str());
+                    g.toast("Loaded %s/%s", games[gameSel].name.c_str(),
+                            slots[slotSel].c_str());
                     setWinOpen(W_SaveLoad, false);
                 }
-                saves = list_saves(datadir::saves());
             }
             ImGui::SameLine();
-            if(ImGui::Button("Delete##saveload")) {
-                const std::string dir = datadir::saves() + "/" + saves[selected];
+            if(ImGui::Button("Delete##saveload") && gameSel >= 0 && slotSel >= 0) {
+                const std::string dir = datadir::saves() + "/" +
+                                       games[gameSel].dirName + "/" + slots[slotSel];
                 try {
                     delete_save(dir, datadir::saves());
-                    g.toast("Deleted %s", saves[selected].c_str());
-                    saves = list_saves(datadir::saves());
-                    if(selected < 0 || selected >= (int)saves.size()) {
-                        selected = (int)saves.size() - 1;
-                    }
+                    g.toast("Deleted %s/%s", games[gameSel].name.c_str(),
+                            slots[slotSel].c_str());
+                    slotSel = 0;   // the slot list shrank under the selection
                 } catch(const std::exception &e) {
                     g.toast("Delete failed: %s", e.what());
                 }

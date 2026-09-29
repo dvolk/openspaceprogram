@@ -537,7 +537,8 @@ static std::string systemHomeName(const std::string &path) {
     return "";
 }
 
-bool Game::startNewGame(const std::string &sysPath, float exhaustScale) {
+bool Game::startNewGame(const std::string &name, const std::string &sysPath,
+                        float exhaustScale) {
     if(!collectVehicles(sys).empty()) {
         toast("A game is already running");
         return false;
@@ -564,7 +565,33 @@ bool Game::startNewGame(const std::string &sysPath, float exhaustScale) {
     if(exhaustScale < 0.5f) { exhaustScale = 0.5f; }
     if(exhaustScale > 5.0f) { exhaustScale = 5.0f; }
     args.exhaust_scale = exhaustScale;
+    // The game's identity, minted AFTER the switch (a failed switch leaves no
+    // orphan dir): <stamp>-<name> under saves/, the first save fills it.
+    // Minting here (not lazily at first save) is what makes the same-second
+    // collision check sound.
+    const std::string gdir = newGameDir(datadir::saves(), name);
+    if(gdir.empty()) {
+        toast("Too many same-named games this second; try again");
+        return false;
+    }
+    ensure_dir(gdir);
+    gameId = baseName(gdir);
+    gameName = name;
+    printf("[game] new game '%s' -> %s\n", name.c_str(), gdir.c_str());
+    fflush(stdout);
     return newGame();
+}
+
+std::string Game::ensureGameDir() {
+    if(!gameId.empty()) { return datadir::saves() + "/" + gameId; }
+    const std::string dir = newGameDir(datadir::saves(), gameName);
+    if(dir.empty()) {
+        toast("Save failed: too many same-named games this second");
+        return "";
+    }
+    ensure_dir(dir);
+    gameId = baseName(dir);
+    return dir;
 }
 
 // The save records the system it was made in (meta.system). If it is a

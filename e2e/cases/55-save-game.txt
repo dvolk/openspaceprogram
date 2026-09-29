@@ -1,0 +1,12 @@
+# Save into the current game's dir: a bare --save NAME (no '/') lands in
+# saves/<stamp>-game1/NAME (the bare boot's game identity is "game1";
+# ensureGameDir mints the dir at this first save). The runner's per-case
+# --data-dir keeps the saves under tmp/e2e/data/save-game/. Assert the save
+# line names the game dir, the slot and the game, and a clean exit.
+NAME save-game
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --timeout 8 --save e2e_slot
+EXPECT /data/save-game/saves/
+EXPECT -game1/e2e_slot (game 'game1')
+FORBID GL_
+FORBID error:

@@ -538,16 +538,21 @@ int main(int argc, char **argv)
         // are both skipped.
         //
         // A bare slot name (a UI save, e.g. "save1") is meant for the data
-        // dir's saves/<slot>; if the given path has no save.json but that
-        // slot does, use the slot (the CLI otherwise takes a full path).
-        // Precedence: the given path as-is first, then the data-dir slot --
-        // so --save (which always writes a bare name to the data dir) and
-        // --load agree, and an explicit path still wins over a same-named
-        // slot.
+        // dir's saves/; if the given path has no save.json, resolve the slot
+        // there instead (the CLI otherwise takes a full path). Precedence:
+        // the given path as-is first, then the data-dir slot (legacy flat
+        // saves/<slot> before the unique saves/<game>/<slot>) -- so --save
+        // (which writes a bare name into the current game's dir) and --load
+        // agree, and an explicit path still wins over a same-named slot.
         std::string load_dir = args.load_name;
-        if(!std::filesystem::exists(load_dir + "/save.json") &&
-           std::filesystem::exists(datadir::saves() + "/" + load_dir + "/save.json")) {
-            load_dir = datadir::saves() + "/" + load_dir;
+        if(!std::filesystem::exists(load_dir + "/save.json")) {
+            load_dir = find_slot(datadir::saves(), load_dir);
+            if(load_dir.empty()) {
+                printf("Load: no save named '%s' under %s (or ambiguous "
+                       "across games)\n",
+                       args.load_name.c_str(), datadir::saves().c_str());
+                exit(1);
+            }
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
         game.partsshader = partsshader;   // load_game builds parts with it
@@ -1123,12 +1128,19 @@ int main(int argc, char **argv)
                 fflush(stdout);
                 // --save: capture the live game state (the fleet + crew +
                 // clock) into the save directory before the loop exits. A
-                // bare name is a slot under the data dir's saves/ (like the
-                // Save/Load window); a path is used as-is.
+                // bare name is a slot of the CURRENT game under the data
+                // dir's saves/ (like the Save/Load window; a bare boot's
+                // game dir is minted at this first save); a path is used
+                // as-is.
                 if(!args.save_name.empty()) {
                     std::string save_dir = args.save_name;
                     if(save_dir.find('/') == std::string::npos) {
-                        save_dir = datadir::saves() + "/" + save_dir;
+                        const std::string gamedir = game.ensureGameDir();
+                        if(gamedir.empty()) {
+                            printf("Save failed: could not create the game dir\n");
+                            exit(1);
+                        }
+                        save_dir = gamedir + "/" + save_dir;
                     }
                     try {
                         save_game(game, save_dir);

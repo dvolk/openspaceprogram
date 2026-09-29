@@ -352,6 +352,15 @@ struct Game {
     // and what the load path compares against to decide whether to switch.
     std::string systemPath;
 
+    // The game (one playthrough) this state belongs to. `gameName` is the
+    // user-chosen display name (the New Game sheet's field; "game1" at a bare
+    // boot) and `gameId` the dir under saves/ that holds the game's slots
+    // (<YYYYMMDD_HHMMSS>-<name>, see save.h): minted by startNewGame, minted
+    // lazily at the first save for a bare boot (ensureGameDir), and adopted
+    // from the save's own dir by load_game. Saves land in saves/<gameId>/<slot>.
+    std::string gameName = "game1";
+    std::string gameId;   // "" until New Game Start / a bare boot's first save / a load
+
     // --- the clock ----------------------------------------------------------
     int time_accel = 1;
     double time = 0;   // the analytic sim clock (s), advanced by the tick
@@ -717,10 +726,18 @@ struct Game {
     bool newGame();
     /* The New Game setup sheet's Start: switch into `sysPath` when it is a
        different system than the running one, apply `exhaustScale` as the
-       game's difficulty (saved with the fleet), then newGame(). False if a
-       game is already running or the system switch failed -- in both cases
-       the running world is untouched (switchSystem is transactional). */
-    bool startNewGame(const std::string &sysPath, float exhaustScale);
+       game's difficulty (saved with the fleet), mint the game's identity
+       (gameName = `name`, gameId = a fresh <stamp>-<name> dir under saves/),
+       then newGame(). False if a game is already running or the system
+       switch failed -- in both cases the running world is untouched
+       (switchSystem is transactional). */
+    bool startNewGame(const std::string &name, const std::string &sysPath,
+                      float exhaustScale);
+    /* Ensure this game has a dir under saves/ and return it: gameId's if it
+       has one, else mint <stamp>-<gameName> now (the bare boot's first save;
+       the UI's Save button goes through this too). "" on a mint failure
+       (a toast already fired). */
+    std::string ensureGameDir();
     /* Settle a freshly built fleet into the world: apply every ship's
        scenario (which is what positions them), then park on rails every ship
        except `active`. Does NOT make `active` the player's ship -- the caller
