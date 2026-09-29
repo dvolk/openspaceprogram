@@ -580,6 +580,64 @@ static void test_seam_kept_across_stage() {
     destroyShip(A.v);
 }
 
+/* --- experiments ride the Part across dock/undock ------------------------- */
+/* Part::experiments is payload on the Part instance. absorbShip /
+   extractSubtreeAsShip only re-point owner/parent/pose -- they must never
+   rebuild or copy Parts -- so science data follows the part (and a kerbal's
+   suit, which is that Kerbal vehicle's Part 0, follows the crew move). */
+static void test_experiments_ride_parts() {
+    printf("== experiments ride Parts across absorb + extract ==\n");
+
+    Experiment eA;
+    eA.type = "observation";
+    eA.body = "Mun";
+    eA.situation = SciSituation::LowOrbit;
+    eA.biome = "midlands";
+    Experiment eB = eA;
+    eB.situation = SciSituation::HighOrbit;
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    tankA->experiments.push_back(eA);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    tankB->experiments.push_back(eB);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+
+    A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(tankA->experiments.size() == 1 && tankA->experiments[0] == eA,
+               "dock: survivor part keeps its experiment");
+    CHECK_TRUE(tankB->experiments.size() == 1 && tankB->experiments[0] == eB,
+               "dock: absorbed part keeps its experiment");
+    CHECK_TRUE(tankB->owner == A.v, "dock: absorbed part is owned by the survivor");
+
+    Vehicle *out = A.v->extractSubtreeAsShip(A.v->seams[0].root, "B");
+    CHECK_TRUE(out != nullptr, "undock: extract returned a ship");
+    if(out != nullptr) {
+        CHECK_TRUE(tankA->experiments.size() == 1 && tankA->experiments[0] == eA,
+                   "undock: survivor part keeps its experiment");
+        CHECK_TRUE(tankB->experiments.size() == 1 && tankB->experiments[0] == eB,
+                   "undock: split-off part keeps its experiment");
+        CHECK_TRUE(tankB->owner == out, "undock: split-off part is owned by the new ship");
+        destroyShip(out);
+    }
+
+    destroyShip(B.v);   /* empty shell */
+    destroyShip(A.v);
+}
+
 int main() {
     test_absorb();
     test_roundtrip();
@@ -587,6 +645,7 @@ int main() {
     test_seam_staging();
     test_seam_nested_dock();
     test_seam_kept_across_stage();
+    test_experiments_ride_parts();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
