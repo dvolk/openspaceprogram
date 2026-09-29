@@ -757,6 +757,15 @@ struct Game {
        and the --reload hook, so the headless path exercises the real one
        rather than a parallel implementation. */
     bool loadFrom(const std::string &dir);
+    /* Quicksave (F5): save the running fleet into the game dir's next
+       quicksave-NN pool slot (quicksave-00..99, overwriting the oldest once
+       full -- see nextQuicksave in save.h). Mints the game dir first if the
+       bare boot has not (ensureGameDir). A toast names the slot either way. */
+    void quicksave();
+    /* Quickload (F9): load the NEWEST quicksave of this game by mtime.
+       No-op with a toast when the game has no dir or no quicksaves yet.
+       On success the usual loadFrom aftermath applies (paused, in flight). */
+    void quickload();
     /* Ensure the running system matches the one the save at dir records
        (switching into it if different). True = the save's system is ready;
        false = the switch failed (the current system keeps running). When

@@ -1,0 +1,19 @@
+# Quicksave / quickload (F5/F9): F5 writes quicksave-00 then quicksave-01
+# into the current game's dir (the bare boot's identity is "game1"; the dir
+# is minted on the first quicksave, same as --save), F9 loads the NEWEST
+# quicksave (quicksave-01). Assert both pool slots on disk via the save
+# lines, the F9 load line (the quicksave slot as the loaded save), the
+# toasts, and a clean exit.
+NAME quicksave
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 2000,0,F5
+ARGS --sim-press 3000,0,F5
+ARGS --sim-press 5000,0,F9
+ARGS --timeout 8
+EXPECT -game1/quicksave-00 (game 'game1')
+EXPECT -game1/quicksave-01 (game 'game1')
+EXPECT quicksave-01 (active: racer)
+EXPECT [toast] Quicksaved quicksave-01 (game 'game1')
+EXPECT [toast] Loaded quicksave-01
+FORBID GL_
+FORBID error:

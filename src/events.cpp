@@ -485,6 +485,19 @@ void poll_events(Game &g) {
                     g.toggle_windows();
                 }
             }
+            /* Quicksave / quickload (F5/F9): scene-neutral like Screenshot --
+               the fleet state is the same object in flight, hub, tracking and
+               VAB. gameRunning gates the no-game states (a title-screen F5
+               would mint a phantom game dir); repeat gated (auto-repeat would
+               keep saving / re-loading). */
+            if(!ev.key.repeat && gameRunning(g)) {
+                if(slotFired(Slot::Quicksave, ksc, kmod, g.binds)) {
+                    g.quicksave();
+                }
+                if(slotFired(Slot::Quickload, ksc, kmod, g.binds)) {
+                    g.quickload();
+                }
+            }
             /* Time warp is a GLOBAL clock, not a flight control: it works in
                every scene (the live hub / tracking / VAB all advance the sim),
                so "pause" (WarpDown to 0) and resume are reachable anywhere.

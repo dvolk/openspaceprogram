@@ -19,6 +19,7 @@
 #include "save.h"
 #include "shipdef.h"   // ResourceType (phase 4.6 inventory fuel index)
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -819,6 +820,125 @@ int main() {
         CHECK(find_slot(base, "save1").empty());   // two games hold it
         CHECK(find_slot(base, "missing").empty());
         fs::remove_all("tmp/test_save_games");
+    }
+
+    // --- quicksaves: the quicksave-00..99 rotating pool --------------------
+    // NN parsing (exactly two digits), next-slot selection (max NN + 1, and
+    // overwrite-the-oldest-by-mtime at the wrap), and the newest-by-mtime
+    // load target (mtime, not NN: after a wrap the number order lies).
+    {
+        CHECK(quicksaveNN("quicksave-00") == 0);
+        CHECK(quicksaveNN("quicksave-42") == 42);
+        CHECK(quicksaveNN("quicksave-99") == 99);
+        CHECK(quicksaveNN("quicksave-0") == -1);     // one digit: not a slot
+        CHECK(quicksaveNN("quicksave-0a") == -1);
+        CHECK(quicksaveNN("quicksave-100") == -1);   // three digits: not one
+        CHECK(quicksaveNN("my-quicksave-00") == -1);
+        CHECK(quicksaveNN("save1") == -1);
+        CHECK(quicksaveName(0) == "quicksave-00");
+        CHECK(quicksaveName(42) == "quicksave-42");
+        CHECK(quicksaveName(99) == "quicksave-99");
+    }
+    {
+        const std::string base = "tmp/test_save_quicksave/game";
+        fs::remove_all("tmp/test_save_quicksave");
+        // a pool slot whose save.json is `age` seconds old (the pool orders
+        // by the FILE's mtime -- a rewrite moves the file, not the dir).
+        // The stream is closed in its own scope BEFORE last_write_time: an
+        // ofstream flushes on destruction, and a flush after the mtime set
+        // would reset it to "now".
+        auto slot = [&](const std::string &s, int age) {
+            fs::create_directories(base + "/" + s);
+            {
+                std::ofstream f(base + "/" + s + "/save.json");
+                f << "{}";
+            }
+            std::error_code ec;
+            fs::last_write_time(base + "/" + s + "/save.json",
+                fs::file_time_type::clock::now() - std::chrono::seconds(age),
+                ec);
+        };
+        // an empty (or missing) game dir -> the first slot; nothing to load
+        CHECK(nextQuicksave(base) == "quicksave-00");
+        CHECK(latestQuicksave(base).empty());
+
+        // a few slots: next is max NN + 1 (holes are not chased)
+        slot("quicksave-00", 300);
+        slot("quicksave-01", 200);
+        slot("quicksave-05", 100);
+        CHECK(nextQuicksave(base) == "quicksave-06");
+        // the load target is the newest by MTIME, not the highest NN
+        slot("quicksave-04", 50);
+        CHECK(latestQuicksave(base) == "quicksave-04");
+        // a non-quicksave slot is invisible to the pool
+        slot("save1", 10);
+        CHECK(nextQuicksave(base) == "quicksave-06");
+        CHECK(latestQuicksave(base) == "quicksave-04");
+
+        // a hole past the top (max NN is 99) wraps: overwrite the oldest
+        slot("quicksave-99", 5);
+        CHECK(nextQuicksave(base) == "quicksave-00");   // age 300, oldest
+        fs::remove_all("tmp/test_save_quicksave");
+    }
+    {
+        // The in-place-rewrite case (the bug a dir-mtime design has): a slot
+        // OVERWRITTEN most recently is the newest even though it was CREATED
+        // first. save_game rewrites save.json in place, so its mtime -- not
+        // the slot dir's -- is the pool's age. Here 00 is created first, 01
+        // second, then 00 is rewritten (age 5) and becomes the newest.
+        const std::string base = "tmp/test_save_quickrewrite/game";
+        fs::remove_all("tmp/test_save_quickrewrite");
+        auto slot = [&](const std::string &s, int age) {
+            fs::create_directories(base + "/" + s);
+            {
+                std::ofstream f(base + "/" + s + "/save.json");
+                f << "{}";
+            }
+            std::error_code ec;
+            fs::last_write_time(base + "/" + s + "/save.json",
+                fs::file_time_type::clock::now() - std::chrono::seconds(age),
+                ec);
+        };
+        slot("quicksave-00", 100);   // created first
+        slot("quicksave-01", 50);    // created second
+        CHECK(latestQuicksave(base) == "quicksave-01");
+        slot("quicksave-00", 5);    // ...then 00 is rewritten (newest)
+        CHECK(latestQuicksave(base) == "quicksave-00");
+        // a third slot, oldest written: still not the full pool, so next is
+        // max NN + 1 (the oldest-overwrite rule is the 100-slot test's)
+        fs::create_directories(base + "/quicksave-02");
+        {
+            std::ofstream f(base + "/quicksave-02/save.json");
+            f << "{}";
+        }
+        std::error_code ec;
+        fs::last_write_time(base + "/quicksave-02/save.json",
+            fs::file_time_type::clock::now() - std::chrono::seconds(200), ec);
+        CHECK(latestQuicksave(base) == "quicksave-00");
+        CHECK(nextQuicksave(base) == "quicksave-03");   // max NN + 1
+        fs::remove_all("tmp/test_save_quickrewrite");
+    }
+    {
+        // pool full (all 100 slots) -> overwrite the oldest by mtime
+        const std::string base = "tmp/test_save_quickfull/game";
+        fs::remove_all("tmp/test_save_quickfull");
+        for(int nn = 0; nn < 100; nn++) {
+            const std::string s = quicksaveName(nn);
+            fs::create_directories(base + "/" + s);
+            {
+                std::ofstream f(base + "/" + s + "/save.json");
+                f << "{}";
+            }
+            std::error_code ec;
+            // ages 1..1000 apart, quicksave-37 the oldest, 99 the newest
+            const int age = (nn == 37) ? 100000 : (1000 - nn);
+            fs::last_write_time(base + "/" + s + "/save.json",
+                fs::file_time_type::clock::now() - std::chrono::seconds(age),
+                ec);
+        }
+        CHECK(nextQuicksave(base) == "quicksave-37");
+        CHECK(latestQuicksave(base) == "quicksave-99");
+        fs::remove_all("tmp/test_save_quickfull");
     }
 
     if(failures) {

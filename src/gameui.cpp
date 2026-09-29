@@ -3008,7 +3008,10 @@ void drawSaveLoad(Game &g) {
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newslot", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
-        if(ImGui::Button("Save##saveload") && safeSlotName(nameBuf)) {
+        // quicksave-NN is the F5 pool: a hand-saved slot under that name
+        // would join the rotation and a wrap could silently clobber it.
+        const bool nameOk = safeSlotName(nameBuf) && quicksaveNN(nameBuf) < 0;
+        if(ImGui::Button("Save##saveload") && nameOk) {
             const std::string gamedir = g.ensureGameDir();
             if(gamedir.empty()) {
                 g.toast("Save failed: no game directory");
@@ -3022,9 +3025,13 @@ void drawSaveLoad(Game &g) {
                 }
             }
         }
-        if(!safeSlotName(nameBuf)) {
+        if(!nameOk) {
             ImGui::SameLine();
-            ImGui::TextDisabled("(name: letters, digits, - _ . only)");
+            if(!safeSlotName(nameBuf)) {
+                ImGui::TextDisabled("(name: letters, digits, - _ . only)");
+            } else {
+                ImGui::TextDisabled("(quicksave-NN is reserved for F5)");
+            }
         }
 
         ImGui::Separator();

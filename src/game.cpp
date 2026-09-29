@@ -659,6 +659,34 @@ bool Game::loadFrom(const std::string &dir) {
     return true;
 }
 
+void Game::quicksave() {
+    const std::string gamedir = ensureGameDir();
+    if(gamedir.empty()) { return; }   // ensureGameDir already toasted
+    const std::string slot = nextQuicksave(gamedir);
+    try {
+        save_game(*this, gamedir + "/" + slot);
+    } catch(const std::exception &e) {
+        toast("Quicksave failed: %s", e.what());
+        return;
+    }
+    toast("Quicksaved %s (game '%s')", slot.c_str(), gameName.c_str());
+}
+
+void Game::quickload() {
+    if(gameId.empty()) {
+        toast("No quicksaves to load (no game yet)");
+        return;
+    }
+    const std::string slot = latestQuicksave(datadir::saves() + "/" + gameId);
+    if(slot.empty()) {
+        toast("No quicksaves to load");
+        return;
+    }
+    if(loadFrom(datadir::saves() + "/" + gameId + "/" + slot)) {
+        toast("Loaded %s", slot.c_str());
+    }
+}
+
 void Game::unloadGame() {
     /* Tear the running fleet down to the shipless-boot state. ~Vehicle
        detaches the welds, unregisters the physics bodies and deletes the crew

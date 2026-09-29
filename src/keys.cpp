@@ -38,6 +38,8 @@ void KeyBindings::resetDefaults() {
     add(Slot::Space,         SDL_SCANCODE_SPACE);
     add(Slot::Undock,        SDL_SCANCODE_U);
     add(Slot::Screenshot,    SDL_SCANCODE_F12);
+    add(Slot::Quicksave,     SDL_SCANCODE_F5);
+    add(Slot::Quickload,     SDL_SCANCODE_F9);
     add(Slot::Porkchop,      SDL_SCANCODE_P);
     add(Slot::SurfaceMap,    SDL_SCANCODE_M);
     add(Slot::Wireframe,     SDL_SCANCODE_F11);
@@ -151,6 +153,8 @@ const char *slotName(Slot s) {
         case Slot::Space:          return "space";
         case Slot::Undock:         return "undock";
         case Slot::Screenshot:     return "screenshot";
+        case Slot::Quicksave:      return "quicksave";
+        case Slot::Quickload:      return "quickload";
         case Slot::Porkchop:       return "porkchop";
         case Slot::SurfaceMap:     return "surface_map";
         case Slot::Wireframe:      return "wireframe";
@@ -223,6 +227,8 @@ const char *slotLabel(Slot s) {
         case Slot::Space:          return "Stage / jump";
         case Slot::Undock:         return "Undock";
         case Slot::Screenshot:     return "Screenshot";
+        case Slot::Quicksave:      return "Quicksave";
+        case Slot::Quickload:      return "Quickload";
         case Slot::Porkchop:       return "Compute porkchop";
         case Slot::SurfaceMap:     return "Compute surface map";
         case Slot::Wireframe:      return "Toggle wireframe";
@@ -277,7 +283,8 @@ SlotGroup slotGroup(Slot s) {
         case Slot::ToggleCamMode: case Slot::CycleTarget: case Slot::ToggleWindows:
         case Slot::DebugInfo: case Slot::Telemetry:
         case Slot::NextShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
-        case Slot::Screenshot: case Slot::Porkchop: case Slot::SurfaceMap:
+        case Slot::Screenshot: case Slot::Quicksave: case Slot::Quickload:
+        case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:
         case Slot::GoSpaceCenter: case Slot::GoFlight:
         case Slot::GoTracking: case Slot::GoVab:

@@ -781,6 +781,102 @@ inline std::string find_slot(const std::string &base, const std::string &slot) {
     return n == 1 ? found + "/" + slot : "";
 }
 
+// ---- quicksaves: a rotating pool of 100 slots in a game dir -------------
+// quicksave-00 .. quicksave-99. F5 (quicksave) writes quicksave-<max NN + 1>
+// (quicksave-00 for an empty game dir); once the pool is full -- or max NN is
+// 99 -- it OVERWRITES the oldest slot by mtime. F9 (quickload) loads the
+// NEWEST by mtime. Newest/oldest are mtime, not NN: after a wrap (or a hand
+// deletion) the number order no longer matches the age order, and mtime is
+// the directory's own truth -- no counter file to desync or lose.
+inline int quicksaveNN(const std::string &slot) {
+    static const std::string kPfx = "quicksave-";
+    if(slot.size() != kPfx.size() + 2) { return -1; }
+    if(slot.compare(0, kPfx.size(), kPfx) != 0) { return -1; }
+    const char a = slot[kPfx.size()], b = slot[kPfx.size() + 1];
+    if(a < '0' || a > '9' || b < '0' || b > '9') { return -1; }
+    return (a - '0') * 10 + (b - '0');
+}
+inline std::string quicksaveName(int nn) {
+    if(nn < 0 || nn > 99) { return ""; }   // the pool is 00..99; "" = no slot
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "quicksave-%02d", nn);
+    return buf;
+}
+
+// The pool's live slots in dir: name + the last-write time of its save.json
+// (a dir must hold a save.json to count -- same rule as list_saves).
+//
+// The FILE's mtime, not the dir's: a quicksave OVERWRITES the slot in place
+// (save_game rewrites save.json and ships/), which advances the file's mtime
+// but not the slot dir's -- a dir's mtime only moves when entries are
+// added/removed, so dir age would freeze a reused slot at its CREATION time
+// and the pool would keep re-overwriting the same oldest-created slot (and
+// F9 would load the newest-created, not the newest-written, save).
+//
+// Non-throwing throughout: a stat failure (a slot deleted mid-scan, perms)
+// skips the entry instead of escaping quicksave()/quickload() into the
+// uncaught main loop.
+inline std::vector<std::pair<std::string, std::filesystem::file_time_type>>
+quicksaveSlots(const std::string &dir) {
+    std::vector<std::pair<std::string, std::filesystem::file_time_type>> out;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto it = fs::directory_iterator(dir, ec);
+    if(ec) { return out; }   // dir missing or not a directory
+    for(const auto &entry : it) {
+        if(!fs::is_directory(entry)) { continue; }
+        const std::string name = entry.path().filename().string();
+        if(quicksaveNN(name) < 0) { continue; }
+        const fs::path meta = entry.path() / "save.json";
+        if(!fs::exists(meta, ec)) { continue; }
+        ec.clear();
+        const fs::file_time_type t = fs::last_write_time(meta, ec);
+        if(ec) { continue; }   // stat failed: skip rather than throw
+        out.push_back({name, t});
+    }
+    return out;
+}
+
+// Pool ordering: by save.json mtime, an mtime TIE (a 1s-resolution
+// filesystem, a cp/rsync'd saves tree) broken on the slot number --
+// deterministic either way, unlike directory_iterator order.
+inline bool quicksaveOlder(
+        const std::pair<std::string, std::filesystem::file_time_type> &a,
+        const std::pair<std::string, std::filesystem::file_time_type> &b) {
+    if(a.second != b.second) { return a.second < b.second; }
+    return quicksaveNN(a.first) < quicksaveNN(b.first);
+}
+
+// The slot the next quicksave writes: quicksave-<max NN + 1>, or quicksave-00
+// for an empty/missing dir; when the pool is full -- or max NN is 99 (a
+// deletion left a hole past the top) -- the oldest live slot by mtime.
+inline std::string nextQuicksave(const std::string &dir) {
+    const auto slots = quicksaveSlots(dir);
+    int maxNN = -1;
+    for(const auto &s : slots) {
+        const int nn = quicksaveNN(s.first);
+        if(nn > maxNN) { maxNN = nn; }
+    }
+    std::string pick;
+    if((int)slots.size() < 100 && maxNN + 1 < 100) {
+        pick = quicksaveName(maxNN + 1);
+    } else if(!slots.empty()) {
+        const auto oldest =
+            std::min_element(slots.begin(), slots.end(), quicksaveOlder);
+        pick = quicksaveName(quicksaveNN(oldest->first));
+    }
+    return pick.empty() ? quicksaveName(0) : pick;
+}
+
+// The newest quicksave in dir by mtime ("" when it has none).
+inline std::string latestQuicksave(const std::string &dir) {
+    const auto slots = quicksaveSlots(dir);
+    if(slots.empty()) { return ""; }
+    const auto newest =
+        std::max_element(slots.begin(), slots.end(), quicksaveOlder);
+    return newest->first;
+}
+
 // Delete the save at dir (recursive, no shell). Refuses a path not strictly
 // under the given base (a guard against a typo'd delete wiping something
 // else): the lexical relative path must be non-empty, not "." (dir == base),
