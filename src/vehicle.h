@@ -1179,13 +1179,36 @@ public:
 
     /* The COM's osculating orbit dips into the terrain band (periapsis
        within 3 km of the surface): sitting on / skimming the ground rather
-       than coasting clear of it. */
+       than coasting clear of it. This is a PERIAPSIS test, not a proximity
+       one -- it is also true for the whole ascent to orbit (periapsis stays
+       inside the body until circularisation) and for a suborbital hop, so
+       ask isGrounded()/isOrbiting() when the question is where the ship is
+       RIGHT NOW. */
     bool inTerrainBand();
 
-    /* Rails classification: a FLYING ship (periapsis clear of the terrain
-       band) coasts on its conic; a GROUNDED one (periapsis inside the
-       band) can only freeze in its rotating surface frame. Anything else
-       -- e.g. a suborbital descent -- is not rail-eligible. */
+    /* Coast-clear of the ground: the COM's conic does not intersect the body
+       (periapsis above the terrain band). The rails "coast on the conic"
+       case, and the test for whether an orbital experiment applies. False on
+       the pad, all through an ascent, and for a hyperbolic trajectory
+       (OrbitElements reports periapsis -1, which reads as inside the band). */
+    bool isOrbiting();
+
+    /* Resting on the surface NOW: in the rotating surface frame, near-static
+       in it, and within a generous band of the analytic terrain
+       (kShipGroundBand, vehicle.cpp). Unlike inTerrainBand this is a proximity
+       test, so it stays false all the way up an ascent. Both the band and the
+       speed term are load-bearing -- the band alone calls a low hover
+       "landed", and the speed alone calls a ship at apoapsis "landed". The
+       band is measured from the COM and is deliberately generous (the speed
+       term does the real discrimination), so a tall stack parked on the pad
+       still reads grounded. Rails-safe: writeRailPose keeps the hull
+       transform current while parked. */
+    bool isGrounded();
+
+    /* Rails classification: an ORBITING ship coasts on its conic; a GROUNDED
+       one freezes in its rotating surface frame. Anything else -- an ascent,
+       a suborbital descent, a hop -- is transient or under its own power and
+       is not rail-eligible. */
     bool canRail();
 
     /* Park this ship out of the physics world and coast it analytically.

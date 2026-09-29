@@ -1559,7 +1559,8 @@ double Vehicle::airDensityAtCom() const {
     // the density depends only on the distance from the body's centre.
     const double ref_radius =
         (double)m_parent->radius + (double)m_parent->surface.sea_level;
-    const DragAtmosphere da { atm.sea_level_density, atm.scale_height };
+    const DragAtmosphere da { atm.sea_level_density, atm.scale_height,
+                              atm.top() };
     return airDensity(da, r - ref_radius);
 }
 
@@ -1607,13 +1608,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlt = alt;
     if(alt <= 0.0) { return lastAeroForce; }  // at / below sea level (in the sea)
 
-    const DragAtmosphere da { atm.sea_level_density, atm.scale_height };
+    const DragAtmosphere da { atm.sea_level_density, atm.scale_height,
+                              atm.top() };
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
-    /* Numerically above the air: below kRhoFloor (drag.h) the drag is
-       unmeasurable but exp(-alt/H) stays positive for hundreds more km --
-       the 500 km high-orbit perf case read rho = 4e-40 kg/m3 and F = 0.00 N,
-       yet every substep still paid the whole silhouette pass. */
+    /* Above the air: airDensity cuts to zero at the hard top (drag.h), and
+       below kRhoFloor it is unmeasurable even inside it. Either way the
+       silhouette pass is skipped -- it used to run every substep for exactly
+       0.00 N, which is what the 500 km high-orbit perf case exposed. */
     if(rho < kRhoFloor) { return lastAeroForce; }
 
     // v_rel = the ship's velocity in its (rot) frame -- the air co-rotates
@@ -2902,12 +2904,32 @@ bool Vehicle::inTerrainBand() {
     return el.periapsis <= inertial->body->radius + 3000.0;
 }
 
+/* isGrounded's two thresholds. The band is generous on purpose: a landed
+   ship's COM sits half its height above the terrain, so a tight band would
+   call a tall stack "not grounded" and refuse it rails warp forever. The
+   speed term is what actually separates a parked ship from a descending or
+   hovering one, so the band only has to exclude orbits. (A kerbal uses a far
+   tighter 0.25 m band -- eva.cpp -- because its restAlt is known exactly.) */
+static constexpr double kShipGroundBand  = 100.0;  // m from the COM to the terrain
+static constexpr double kShipGroundSpeed = 1.0;    // m/s in the rotating frame
+
+bool Vehicle::isOrbiting() {
+    return !inTerrainBand();
+}
+
+bool Vehicle::isGrounded() {
+    if(m_parent == nullptr || !frame->isRotFrame()) { return false; }
+    if(glm::length(GetVelocity(hull)) >= kShipGroundSpeed) { return false; }
+    const glm::dvec3 com = get_center_of_mass();   // valid on rails too
+    const double r = glm::length(com);
+    if(r <= 0.0) { return false; }
+    const double alt = r - m_parent->GetTerrainHeight(glm::vec3(glm::normalize(com)));
+    return alt < kShipGroundBand;
+}
+
 bool Vehicle::canRail() {
     if(onRails) { return true; }
-    if(inTerrainBand()) {
-        return frame->isRotFrame();   // grounded: freeze needs the surface frame
-    }
-    return true;
+    return isGrounded() || isOrbiting();
 }
 
 bool Vehicle::goOnRails() {
@@ -2925,8 +2947,10 @@ bool Vehicle::goOnRails() {
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
 
-    const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
-    const bool grounded = el.periapsis <= inertial->body->radius + 3000.0;
+    // Freeze only a ship actually resting on the surface; an orbiting one
+    // follows its conic. canRail() above already established it is one or
+    // the other, so this cannot fall through to a third case.
+    const bool grounded = isGrounded();
 
     /* Frame S's axes at park time (== the old frame's axes for a ship
        built in it); rail_orient carries them into the inertial node and
@@ -2963,6 +2987,8 @@ bool Vehicle::goOnRails() {
         printf("@@@ %s frozen on rails (grounded around %s)\n",
                name.c_str(), frame->body->name.c_str());
     } else {
+        const OrbitElements el =
+            computeOrbitElements(p, v, inertial->body->mu);
         printf("@@@ %s parked on rails around %s: sma=%.6g m ecc=%.4f\n",
                name.c_str(), inertial->body->name.c_str(),
                el.semi_major, el.ecc);

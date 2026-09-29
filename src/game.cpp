@@ -1114,18 +1114,20 @@ bool Game::enter_rails_warp() {
 
 /* Proximity activation: keep the ships close to the active ship live (in
    the physics world) so they can interact, and park the ones that are not.
-   The active ship is either grounded or flying (inTerrainBand); the two
-   regimes use very different radii -- a few tens of metres on the pad, a few
-   kilometres in orbit. An engaged ship that is parked while the active ship
-   is on rails (rails warp) wakes the active ship and caps the accel, so a
-   close approach always drops out of warp into live physics. A ground
-   engage radius of 0 disables auto-waking grounded neighbors (they wake only
-   when you switch to them). */
+   A ship resting on the surface and one in flight use very different radii
+   -- a few tens of metres on the pad, a few kilometres in the air -- so the
+   regime comes from isGrounded() (a proximity test), not inTerrainBand() (a
+   periapsis test, which stays "in the band" for the whole ascent and would
+   keep the tight pad radii until circularisation). An engaged ship that is
+   parked while the active ship is on rails (rails warp) wakes the active ship
+   and caps the accel, so a close approach always drops out of warp into live
+   physics. A ground engage radius of 0 disables auto-waking grounded
+   neighbors (they wake only when you switch to them). */
 void Game::updateProximity() {
     Vehicle *a = ship;
     if(a == nullptr) { return; }
 
-    const bool grounded = a->inTerrainBand();
+    const bool grounded = a->isGrounded();
     const double r_on  = grounded ? args.prox_ground_on  : args.prox_fly_on;
     const double r_off = grounded ? args.prox_ground_off : args.prox_fly_off;
 
@@ -1457,6 +1459,16 @@ void Game::remove_ship(Vehicle *v) {
     // game action we don't support. EVA the crew out first.
     // (phase 3: the old "folded mass / aboard pointer" reasons are gone; the
     // ownership rule above is what keeps this guard.)
+    if(v->isEva()) {
+        // The "or a crew member themselves" half of that rule. A FREE kerbal
+        // is in its body's ship list and passes both tests below (nothing is
+        // aboard it, and it owns no crew of its own), so it was deletable
+        // from the Ship List -- silently dropping its flog, suit fuel and
+        // suit inventory with no summary and no confirmation (issue #57).
+        toast("Cannot remove %s -- a crew member can't be deleted",
+              v->name.c_str());
+        return;
+    }
     if(v->isCrewAboard() || !shipCrew(v).empty()) {
         toast("Cannot remove %s -- EVA its crew out first", v->name.c_str());
         return;

@@ -1,0 +1,25 @@
+# Rails warp must be REFUSED during an ascent.
+#
+# canRail() used to test `inTerrainBand() && frame->isRotFrame()` and call that
+# "grounded". inTerrainBand() is an OSCULATING-PERIAPSIS test (periapsis within
+# 3 km of the surface), which stays true for the whole climb until
+# circularisation, while the rotating frame reaches radius + 100 km -- so a
+# rocket under power read as grounded and goOnRails() FROZE it in mid-air
+# ("@@@ ... frozen on rails"). isGrounded() is a proximity + near-static test
+# instead, so an ascent is neither grounded nor orbiting and rails warp
+# refuses, leaving the ship in live physics.
+#
+# Moho because the racer can lift off there (TWR ~2.3); Kerbin is below 1 for
+# every current ship. --time-accel 10 so one PERIOD steps onto the rails warp
+# (kRailsWarp is 11), like case 05.
+NAME rails-ascent-refused
+ARGS --startship racer,res/ships/racer.json,Moho,pad --time-accel 10
+ARGS --timeout 10 --dbg-log
+ARGS --sim-press 500,2000,R
+ARGS --sim-press 1500,3000,T
+ARGS --sim-press 6000,50,PERIOD
+EXPECT Rails warp refused
+FORBID frozen on rails
+FORBID GL_
+FORBID error:
+CHECK len(dbg) >= 2 and last(dbg)["alt"] - first(dbg)["alt"] > 100

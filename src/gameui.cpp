@@ -1563,10 +1563,14 @@ void drawUIReadouts(Game &g) {
             if(active) {
                 ImGui::PopStyleColor(3);
             }
-            ImGui::SameLine();
-            if(ImGui::SmallButton("x")) {
-                g.remove_ship(v);
-                removed = true;   // the ship was deleted; stop iterating
+            // A crew member is selectable but not deletable -- remove_ship
+            // refuses it (issue #57) -- so it gets no "x" to click.
+            if(!v->isEva()) {
+                ImGui::SameLine();
+                if(ImGui::SmallButton("x")) {
+                    g.remove_ship(v);
+                    removed = true;   // the ship was deleted; stop iterating
+                }
             }
         }
         ImGui::PopID();
@@ -3443,10 +3447,14 @@ void drawTrackingShipList(Game &g) {
             if(active) {
                 ImGui::PopStyleColor(3);
             }
-            ImGui::SameLine();
-            if(ImGui::SmallButton("x")) {
-                g.remove_ship(v);
-                removed = true;   // the ship was deleted; stop iterating
+            // A crew member is selectable but not deletable -- remove_ship
+            // refuses it (issue #57) -- so it gets no "x" to click.
+            if(!v->isEva()) {
+                ImGui::SameLine();
+                if(ImGui::SmallButton("x")) {
+                    g.remove_ship(v);
+                    removed = true;   // the ship was deleted; stop iterating
+                }
             }
             if(active && !removed) {
                 // Fly: back to the cockpit of this (already-active) ship -- the
