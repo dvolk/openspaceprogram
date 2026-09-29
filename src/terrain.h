@@ -3,14 +3,15 @@
 //   GeoPatch           one subdividable spherical patch (terrain LOD node).
 //   TerrainBody        a celestial body's terrain: 6 root patches,
 //                      atmosphere shell, height/shadow queries.
+//   BodyType           planet / star / moon, from the system JSON's "type".
 //
 // The pure terrain math (per-body params, the height/color functions, the
 // grid builder) lives in terragen.h (glm only, so tests can pin it
-// without GL/Bullet). SO DOES THE BIOME CLASSIFICATION (Biome,
-// biomeFromAltitude, biomeAt, biomeName) -- it is pure math over a Surface,
-// with no GL/Bullet and no dependency on anything in this file, so it sits
-// with the height function it thresholds on rather than here. Query a body's
-// biome through TerrainBody::params(): biomeAt(dir, body->params()).
+// without GL/Bullet), and so does the biome classification (Biome,
+// biomeFromAltitude, biomeAt, biomeName): pure math over a Surface with no
+// GL/Bullet and no dependency on anything in this file, sitting with the
+// height function it thresholds on. Query a body's biome through
+// TerrainBody::params(): biomeAt(dir, body->params()).
 // The GeoPatch ctor consumes its GridGeom on the main
 // thread, and the async subdivision job snapshots a TerrainParams for the
 // worker -- the same pure-work/publish split as the porkchop grid and the
@@ -130,8 +131,8 @@ struct GeoPatch {
 
 /* What kind of body this is, from the system JSON's "type" (system.h). Parsed
    in load_system and stored here: callers need it to decide whether a body has
-   a surface worth classifying (biomeFromAltitude refuses stars and banded
-   bodies, terragen.h), and a star is also the frame-tree root (System::root). */
+   a surface worth classifying (a star has no biome at all, and
+   biomeFromAltitude refuses a banded one -- terragen.h). */
 enum class BodyType : unsigned char {
     Planet,   // default: a body that is neither star nor moon
     Star,     // the system's light source / frame-tree root (System::root)
@@ -176,8 +177,10 @@ struct TerrainBody {
     std::string name;
     BodyType type = BodyType::Planet;   // from the system JSON's "type"
     /* A star has no classifiable surface (its terrain is just noise), so
-       anything asking "what biome is down there" must skip it. Equivalent to
-       `this == sys.root`, which is how the star is otherwise identified. */
+       anything asking "what biome is down there" must skip it. Every shipped
+       system also makes the star the frame-tree root, so this reads the same
+       as `this == sys.root` there -- but the two are parsed independently
+       (a missing "orbits" key picks the root), so nothing enforces it. */
     bool isStar() const { return type == BodyType::Star; }
     double seed = 0;   // noise-domain offset; 0 = legacy pattern
     // Subdivision stop for this body's patch tree (set by AttachRoot from

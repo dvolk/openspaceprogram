@@ -1545,6 +1545,13 @@ void Vehicle::applyThrustForce() {
     }
 }
 
+/* The authored atmosphere as drag.h sees it. One mapping for both callers,
+   so the resolved top (AtmosphereParams::top) cannot be applied in one and
+   forgotten in the other. */
+static DragAtmosphere dragAtm(const AtmosphereParams &a) {
+    return DragAtmosphere { a.sea_level_density, a.scale_height, a.top() };
+}
+
 double Vehicle::airDensityAtCom() const {
     if(m_parent == nullptr) { return 0.0; }
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
@@ -1559,9 +1566,7 @@ double Vehicle::airDensityAtCom() const {
     // the density depends only on the distance from the body's centre.
     const double ref_radius =
         (double)m_parent->radius + (double)m_parent->surface.sea_level;
-    const DragAtmosphere da { atm.sea_level_density, atm.scale_height,
-                              atm.top() };
-    return airDensity(da, r - ref_radius);
+    return airDensity(dragAtm(atm), r - ref_radius);
 }
 
 glm::dvec3 Vehicle::applyAeroForce(double h) {
@@ -1608,14 +1613,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlt = alt;
     if(alt <= 0.0) { return lastAeroForce; }  // at / below sea level (in the sea)
 
-    const DragAtmosphere da { atm.sea_level_density, atm.scale_height,
-                              atm.top() };
+    const DragAtmosphere da = dragAtm(atm);   // also the dragForce call below
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
-    /* Above the air: airDensity cuts to zero at the hard top (drag.h), and
-       below kRhoFloor it is unmeasurable even inside it. Either way the
-       silhouette pass is skipped -- it used to run every substep for exactly
-       0.00 N, which is what the 500 km high-orbit perf case exposed. */
+    /* Above the hard top rho is exactly 0, and below kRhoFloor the force is
+       unmeasurable -- either way skip the per-part silhouette pass. */
     if(rho < kRhoFloor) { return lastAeroForce; }
 
     // v_rel = the ship's velocity in its (rot) frame -- the air co-rotates
@@ -2904,14 +2906,12 @@ bool Vehicle::inTerrainBand() {
     return el.periapsis <= inertial->body->radius + 3000.0;
 }
 
-/* isGrounded's two thresholds. The band is generous on purpose: a landed
-   ship's COM sits half its height above the terrain, so a tight band would
-   call a tall stack "not grounded" and refuse it rails warp forever. The
-   speed term is what actually separates a parked ship from a descending or
-   hovering one, so the band only has to exclude orbits. (A kerbal uses a far
-   tighter 0.25 m band -- eva.cpp -- because its restAlt is known exactly.) */
+/* isGrounded's two thresholds (see the header for what each one is for).
+   The speed term has to sit above a walking kerbal's 2.5 m/s (kWalkSpeed,
+   eva.cpp): a free kerbal on EVA is its own vehicle, and one that reads as
+   neither grounded nor orbiting refuses rails warp for the whole fleet. */
 static constexpr double kShipGroundBand  = 100.0;  // m from the COM to the terrain
-static constexpr double kShipGroundSpeed = 1.0;    // m/s in the rotating frame
+static constexpr double kShipGroundSpeed = 3.0;    // m/s in the rotating frame
 
 bool Vehicle::isOrbiting() {
     return !inTerrainBand();
@@ -2919,7 +2919,7 @@ bool Vehicle::isOrbiting() {
 
 bool Vehicle::isGrounded() {
     if(m_parent == nullptr || !frame->isRotFrame()) { return false; }
-    if(glm::length(GetVelocity(hull)) >= kShipGroundSpeed) { return false; }
+    if(glm::length(GetVel()) >= kShipGroundSpeed) { return false; }
     const glm::dvec3 com = get_center_of_mass();   // valid on rails too
     const double r = glm::length(com);
     if(r <= 0.0) { return false; }

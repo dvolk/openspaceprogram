@@ -1585,7 +1585,7 @@ void drawUIReadouts(Game &g) {
             printf("Spawn: active ship has no def (test ship)\n");
         }
     }
-    ImGui::Text("click name - select    x - remove");
+    ImGui::Text("click name - select    x - remove (not crew)");
     });
 
     drawWin(g, W_VesselInfo, [&] {
@@ -2572,10 +2572,13 @@ static void navSpaceCenter(Game &g, float bw) {
     // Recover Vessel ends the flight successfully: the active ship (and any
     // crew aboard -- they came home with it) is deleted, the player is left
     // at the hub with no active vessel, and the Flight Summary window opens.
-    // Offered only when a ship is active (same gate as Resume Flight). No
-    // arm/confirm: this discards a flight you already left, not the game.
+    // Offered only when a ship is active (same gate as Resume Flight), and not
+    // for a free EVA kerbal -- recoverActive refuses it (a crew member is not
+    // a vessel). No arm/confirm: this discards a flight you already left, not
+    // the game.
     // (v3 will restrict it to a ship landed on the home planet's surface.)
-    if(g.ship != nullptr && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
+    if(g.ship != nullptr && !g.ship->isEva()
+       && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
         g.recoverActive();
     }
     // Return to title discards the fleet and is one Esc from a live flight,
@@ -3484,7 +3487,7 @@ void drawTrackingShipList(Game &g) {
             printf("Spawn: active ship has no def (test ship)\n");
         }
     }
-    ImGui::Text("click name - select    x - remove");
+    ImGui::Text("click name - select    x - remove (not crew)");
     });
 }
 

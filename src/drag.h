@@ -12,7 +12,10 @@
 // far shallower than the SoI, so no SoI handoff happens in the air). The
 // air co-rotates with the planet, so in that frame the air is at rest and
 // the ship's frame velocity IS the air-relative velocity -- no stasis /
-// frame-conversion term is needed. See reports/atmospheric-drag.
+// frame-conversion term is needed. Caveat: the rotating frame reaches
+// radius + 100 km, so a body whose authored top is higher (Jool's 200 km)
+// has a slice of air in the inertial frame where this does not hold
+// (issue #60). See reports/atmospheric-drag.
 
 #include <algorithm>
 #include <cmath>
@@ -28,12 +31,8 @@ struct DragAtmosphere {
     double sea_level_density = 0.0;  // kg/m^3 at alt 0; 0 = no drag
     double scale_height = 0.0;       // [m]; density /e-fold altitude
     /* The hard top [m above sea level]: at or above it the air is vacuum.
-       0 = no cutoff, and the exponential tail runs down to kRhoFloor.
-       Authored per body (AtmosphereParams::height, resolved by
-       AtmosphereParams::top()); Kerbin's is 70 km. Without a top, a 100 km
-       Kerbin orbit still reads rho = 1.6e-8 kg/m^3 -- about 0.4 N on a
-       10 m^2 hull at orbital speed. Tiny, but never zero, so every orbit
-       above the air decays instead of being stable. */
+       0 = no cutoff, and the exponential tail then runs down to kRhoFloor.
+       Resolved per body by AtmosphereParams::top() (terragen.h). */
     double height = 0.0;
     DragAtmosphere() {}
     DragAtmosphere(double rho0, double H, double top = 0.0)
@@ -43,12 +42,15 @@ struct DragAtmosphere {
 /* The density floor below which aero is not worth computing: exp(-alt/H)
    stays positive for hundreds of km past the point where the force rounds
    to zero (a ship at 500 km over Kerbin reads rho = 4e-40 kg/m^3), and the
-   silhouette geometry used to run every substep for exactly 0.00 N. At
+   per-part silhouette pass costs real time. At
    1e-15 kg/m^3 the drag acceleration is < 1e-8 m/s^2 even at 10 km/s over
    100 m^2 -- unmeasurable on any timescale the game runs. It is a
    PERFORMANCE floor, not a physical one -- the physical top is
-   DragAtmosphere::height, which cuts the air off far below this on every
-   authored body (~190 km on a Kerbin-like air vs its 70 km top).
+   DragAtmosphere::height, far below it on every body with air (~190 km on a
+   Kerbin-like air vs its 70 km top), so in game this fires only as
+   rho == 0. It still earns its keep for a body authored with a top above
+   ~35 scale heights, where the exponential underflows toward zero without
+   reaching it.
    Callers that gate on density compare against this instead of 0; laws
    that merely multiply by rho (jetThrust's density gate) need no floor --
    a sub-floor rho reads as vacuum there anyway. */

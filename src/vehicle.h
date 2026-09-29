@@ -1189,20 +1189,22 @@ public:
     /* Coast-clear of the ground: the COM's conic does not intersect the body
        (periapsis above the terrain band). The rails "coast on the conic"
        case, and the test for whether an orbital experiment applies. False on
-       the pad, all through an ascent, and for a hyperbolic trajectory
-       (OrbitElements reports periapsis -1, which reads as inside the band). */
+       the pad and all through an ascent. A hyperbola keeps a real positive
+       periapsis (OrbitElements), so an escape that burns above the band does
+       count as orbiting; a purely radial trajectory does not. */
     bool isOrbiting();
 
     /* Resting on the surface NOW: in the rotating surface frame, near-static
        in it, and within a generous band of the analytic terrain
        (kShipGroundBand, vehicle.cpp). Unlike inTerrainBand this is a proximity
-       test, so it stays false all the way up an ascent. Both the band and the
-       speed term are load-bearing -- the band alone calls a low hover
-       "landed", and the speed alone calls a ship at apoapsis "landed". The
-       band is measured from the COM and is deliberately generous (the speed
-       term does the real discrimination), so a tall stack parked on the pad
-       still reads grounded. Rails-safe: writeRailPose keeps the hull
-       transform current while parked. */
+       test, so it stays false all the way up an ascent. Both terms are
+       load-bearing: the band alone calls a low hover "landed", and the speed
+       alone calls a hovering ship landed at any altitude (a vertical hop's
+       apex has zero speed). The band is measured from the COM and is
+       deliberately generous -- the speed term does the real discrimination --
+       so a tall stack parked on the pad still reads grounded. Rails-safe: the
+       one railed state that can read grounded is railFrozen, whose pose is
+       static in the rotating frame. */
     bool isGrounded();
 
     /* Rails classification: an ORBITING ship coasts on its conic; a GROUNDED

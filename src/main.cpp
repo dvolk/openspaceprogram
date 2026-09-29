@@ -923,8 +923,12 @@ int main(int argc, char **argv)
        then takes a few physics ticks to prove the world is stable and exits. */
     int spawn_test_ticks = 0;
     if(args.selftest_spawn) {
-        if(ship->defPath.empty()) {
-            printf("selftest-spawn: SKIP (active ship has no def: test ship)\n");
+        /* A free kerbal has a def but remove_ship refuses it (a crew member is
+           not deletable), so the spawn-copy-then-remove steps cannot run. */
+        if(ship->defPath.empty() || ship->isEva()) {
+            printf("selftest-spawn: SKIP (%s)\n",
+                   ship->isEva() ? "active ship is a crew member"
+                                 : "active ship has no def: test ship");
             running = false;
         } else {
             const size_t base = collectVehicles(sys).size();

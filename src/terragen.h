@@ -84,9 +84,9 @@ struct PaletteStop {
 
 /* The fallback atmosphere top when a body does not author one: the altitude
    where the exponential density has fallen to e^-10 (~4.5e-5) of sea level.
-   Lands within ~20% of the authored values on the shipped bodies (Kerbin
-   55 km derived vs 70 km authored), so an unauthored atmosphere still has a
-   sane hard top instead of a 190 km exponential wisp. */
+   Lands within ~25% of the authored values on the shipped bodies (worst case
+   Eve: 70 km derived vs 90 km authored), so an unauthored atmosphere still
+   has a sane hard top instead of a 190 km exponential wisp. */
 inline constexpr double kAtmoScaleHeights = 10.0;
 
 // Per-body atmosphere (optional "surface.atmosphere" block), in two halves:
@@ -174,7 +174,8 @@ struct Surface {
     glm::mat3 seed_rot = glm::mat3(1.0f);
     bool bands = false;          // gas giant: smooth sphere, latitude bands
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
-    AtmosphereParams atmosphere; // optional rim; enabled => body has air
+    AtmosphereParams atmosphere; // optional rim; enabled => the JSON block
+                                 // exists (air is the density fields)
     CloudParams clouds;          // optional deck; enabled => body has clouds
     std::vector<RingParams> rings;  // optional; flat annuli in the equator
 
