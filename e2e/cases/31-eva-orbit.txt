@@ -1,0 +1,26 @@
+# EVA from an ORBITING ship on the rotating frame (rot-orbit scenario):
+# the kerbal must hover beside the capsule CO-MOVING on the same conic,
+# not be dropped to zero velocity in the rotating frame (which is
+# planet-co-rotating, i.e. a radial free fall to the surface). The nearby
+# ship wakes from its rails (proximity, fly regime) and STAYS live, so
+# both coast in Bullet on the same circular orbit. Regression: the pose
+# branch used to key on the ship's frame being rotating (the surface
+# case), which zeroed an orbiting kerbal's velocity and let it fall to
+# Kerbin while the ship kept orbiting.
+NAME eva-orbit
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 0.5 --prox-log --sim-press 1000,0,V --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+EXPECT Crew: 'kerbal' aboard 'racer' part 0 (1/1)
+EXPECT EVA: 'kerbal' out of 'racer' part 0
+EXPECT Active ship 2 of 2: kerbal
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 5
+# post-EVA the kerbal stays on the circular orbit (ecc ~0, orbital speed)
+CHECK all(o["ecc"] < 0.01 and 2000.0 < o["v"] < 2500.0 for o in orbit if o["t"] > 1.3)
+# the ship is parked once (select_ship handoff) and never re-parked --
+# the second "parked on rails" was the proximity wake/release thrash
+# that left the ship orbiting on its own
+CHECK out.count("parked on rails") == 1
+# the ship wakes from the rails and stays engaged (never released)
+CHECK out.count("ENGAGED") >= 1
+CHECK out.count("RELEASED") == 0

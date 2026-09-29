@@ -911,9 +911,12 @@ void Game::kerbalEVA(Kerbal *k) {
     const PartDef *capDef = capPart->def;
     Body *kb = k->hull;
 
-    /* the standing / hover pose beside the capsule: on a surface stand on
-       the same floor (the capsule's bottom) just outside its side, in free
-       fall hover beside it co-moving. */
+    /* the standing / hover pose beside the capsule: a grounded ship ->
+       stand on the same floor (the capsule's bottom) just outside its
+       side, an orbiting one -> hover beside it co-moving. The branch is
+       the ship's GROUNDED state, not its frame's rotation: an orbiting
+       ship may ride either frame, and a zero velocity in a rotating frame
+       is planet-co-rotating free fall, not a hover. */
     const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dvec3 upDir = glm::normalize(capCom);
     const glm::dvec3 refs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
@@ -926,7 +929,7 @@ void Game::kerbalEVA(Kerbal *k) {
     const glm::dvec3 right = glm::cross(tangent, upDir);
     const glm::dmat3 orient = glm::dmat3(right, tangent, upDir);
     const double offset = capDef->radius + 2.0;
-    if(ship->frame->isRotFrame()) {
+    if(ship->isGrounded()) {
         const double floorR = std::max(glm::length(capCom) - capDef->height / 2.0,
             (double)ship->m_parent->GetTerrainHeight(glm::vec3(upDir)));
         k->placeShipAtCom(upDir * (floorR + k->restAlt()) + tangent * offset, orient);

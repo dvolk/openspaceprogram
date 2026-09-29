@@ -1912,9 +1912,15 @@ void drawPartWindows(Game &g) {
                     }
                 }
                 // free kerbals in boarding range: a Board button each
-                const glm::dvec3 capCom = ship->partPos(ship->parts[part]);
                 bool anyInRange = false;
                 for(Kerbal *k : freeKerbals(g.sys)) {
+                    /* capsule COM in the KERBAL's frame: a raw subtraction
+                       is a distance only within one frame, and the two can
+                       differ (a railed ship rides its inertial node while
+                       the free kerbal rides the rotating one) -- the error
+                       grows with the frame's accumulated spin. */
+                    const glm::dvec3 capCom =
+                        ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
                     if(dist > 10.0) { continue; }
