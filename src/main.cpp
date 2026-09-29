@@ -809,6 +809,22 @@ int main(int argc, char **argv)
         if(!args.vab_body.empty())     { game.vab.bodyName = args.vab_body; }
     }
 
+    // --surfmap-body: pin the Surface Map's body (the window's combo pick),
+    // so M / the Refresh button map it without a combo click. Applied here,
+    // AFTER the --load branch, so it resolves against the system the boot
+    // actually runs (a cross-system --load has switched it by now). A hard
+    // error on a miss: a silent fallback would leave the map on the default
+    // body and defeat the test that relies on the pin (issue #72).
+    if(!args.surfmap_body.empty()) {
+        if(TerrainBody *b = sys.find(args.surfmap_body)) {
+            game.surfmap_body = b;
+        } else {
+            printf("error: --surfmap-body '%s' is not a body in %s\n",
+                   args.surfmap_body.c_str(), game.systemPath.c_str());
+            return 1;
+        }
+    }
+
     if(args.use_free_cam) {
         // Default free pose = the orbit camera's current view, overridable
         // per-axis via --free-cam-pos / --free-cam-fwd / --free-cam-up.

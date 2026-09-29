@@ -742,6 +742,13 @@ void Game::switchSystem(const std::string &path,
     sun = sys.root;
     titleBody = nullptr;   // the old system's pick dangles with oldBodies;
                            // parkTitleCamera / the sync-set block re-picks it
+    surfmap_body = nullptr;   // a combo pick names an old-system body that is
+                              // deleted below (issue #72); surfmapCompute must
+                              // fall back to the new system's home, not deref
+                              // freed memory. invalidateClockStampedCaches
+                              // resets the map's CACHE but not the pointer --
+                              // and the load path (same system, bodies alive)
+                              // must keep its combo pick, so this goes here.
     /* load_system propagated the new tree at t=0, but the clock did not move
        with it -- bring the bodies to `time` or a paused game (New Game starts
        paused, and the title may have warped the clock a long way) renders the

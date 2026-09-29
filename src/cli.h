@@ -14,6 +14,10 @@ struct GameArgs {
     std::string title_body;   // --title-body: pin the title-screen backdrop to
                                // this body (a test / visual-regression hook);
                                // empty = a random non-star body
+    std::string surfmap_body;  // --surfmap-body: pin the Surface Map's body to
+                               // this one at boot (the window's combo pick);
+                               // empty = the window default (the ship's SOI,
+                               // else the system home -- surfmap.cpp)
 
     // The settings (Settings window) the command line set explicitly
     // (filled in parse_cli from CLI11 ->count()): Game::load_settings()

@@ -317,6 +317,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "surface map (the window's 'Sun shading' box does the same "
                  "at runtime)");
 
+    app.add_option("--surfmap-body", args.surfmap_body,
+                   "Pin the Surface Map's body to NAME at boot (the window's "
+                   "combo pick), so M / the Refresh button map it. Unknown "
+                   "body names are an error. A test hook (issue #72): lets "
+                   "e2e set the map's body without driving the combo click");
+
     app.add_flag("--spin-log", args.spin_log_enabled,
                  "Periodically print the ship's spin diagnostics (per-part "
                  "angular velocities, inter-part contact impulses, tidal "
