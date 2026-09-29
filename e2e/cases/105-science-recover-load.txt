@@ -1,0 +1,13 @@
+# Science v1 save/load: a committed save (e2e/fixtures/save_science) carries
+# two experiments on the aboard kerbal's suit and one already-recovered key.
+# Recover Vessel must score only the NEW key (the low-orbit observation was
+# already counted), printing +1 even though the suit held two.
+NAME science-recover-load
+ARGS --load e2e/fixtures/save_science --time-accel 1 --timeout 6
+ARGS --space-center 1500 --recover 2500
+EXPECT Loaded game from e2e/fixtures/save_science (active: racer)
+EXPECT [science] recovered +1
+EXPECT High orbit observation of Midlands on Kerbin
+EXPECT [recover] t=
+FORBID GL_
+FORBID error:

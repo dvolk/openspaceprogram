@@ -1,0 +1,16 @@
+# Science v1: the headless "Run Experiment" hook records an observation on
+# the active ship's first aboard crew (suit Part), then Recover Vessel harvests
+# it into the game score (unique keys only). The [science] recorded / recovered
+# lines are the e2e anchors. (Duplicate-refusal is unit-tested in test_science
+# and covered via the pre-recovered key in save_science.)
+NAME science-experiment
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --experiment 1500
+ARGS --space-center 3000 --recover 4000
+EXPECT [science] t=
+EXPECT recorded
+EXPECT [science] recovered +1
+EXPECT [recover] t=
+EXPECT [spacecenter] entered
+FORBID GL_
+FORBID error:

@@ -302,6 +302,50 @@ int main() {
     SaveShip crewOldOut = saveShipFromJson(saveShipToJson(crewOld));
     CHECK(crewOldOut.suit_fuel.empty());
 
+    // --- science: experiments on a suit + on a part, and the meta score ----
+    {
+        Experiment e1;
+        e1.type = "observation";
+        e1.body = "Mun";
+        e1.situation = SciSituation::LowOrbit;
+        e1.biome = "midlands";
+        Experiment e2;
+        e2.type = "observation";
+        e2.body = "Mun";
+        e2.situation = SciSituation::HighOrbit;
+        e2.biome = "midlands";
+
+        SaveShip crewSci;
+        crewSci.name = "kerbal";
+        crewSci.is_crew = true;
+        crewSci.aboard = "racer";
+        crewSci.aboard_part = 101;
+        crewSci.suit_experiments.push_back(e1);
+        crewSci.suit_experiments.push_back(e2);
+        SaveShip crewSciOut = saveShipFromJson(saveShipToJson(crewSci));
+        CHECK(crewSciOut.suit_experiments.size() == 2);
+        if(crewSciOut.suit_experiments.size() == 2) {
+            CHECK(crewSciOut.suit_experiments[0] == e1);
+            CHECK(crewSciOut.suit_experiments[1] == e2);
+            CHECK(crewSciOut.suit_experiments[0].situation == SciSituation::LowOrbit);
+            CHECK(crewSciOut.suit_experiments[1].situation == SciSituation::HighOrbit);
+        }
+
+        // an absent suit_experiments (pre-science save) stays empty
+        CHECK(saveShipFromJson(saveShipToJson(crewOld)).suit_experiments.empty());
+
+        // a part's own experiment list (future instrument parts)
+        SavePart p;
+        p.part = "capsule";
+        p.uid = 301;
+        p.id = "capsule_1";
+        p.experiments.push_back(e1);
+        SavePart pOut = savePartFromJson(savePartToJson(p));
+        CHECK(pOut.experiments.size() == 1);
+        if(pOut.experiments.size() == 1) { CHECK(pOut.experiments[0] == e1); }
+        CHECK(savePartFromJson(savePartToJson(SavePart{})).experiments.empty());
+    }
+
     // phase 4.6: nested inventory round-trip (a container holding items,
     // one of which holds a third -- depth-first serialization)
     {
@@ -450,6 +494,14 @@ int main() {
     meta.time_accel = 1;
     meta.active_ship = "racer";
     meta.exhaust_scale = 2.5f;
+    meta.science_score = 7;
+    {
+        Experiment e;
+        e.body = "Mun";
+        e.situation = SciSituation::HighOrbit;
+        e.biome = "mountains";
+        meta.recovered.push_back(e);
+    }
     meta.ships.push_back("v0");
     meta.ships.push_back("v1");
     SaveMeta metaOut = saveMetaFromJson(saveMetaToJson(meta));
@@ -461,6 +513,11 @@ int main() {
     CHECK(metaOut.time_accel == meta.time_accel);
     CHECK(metaOut.active_ship == meta.active_ship);
     CHECK(near(metaOut.exhaust_scale, meta.exhaust_scale));
+    CHECK(metaOut.science_score == 7);
+    CHECK(metaOut.recovered.size() == 1);
+    if(metaOut.recovered.size() == 1) {
+        CHECK(metaOut.recovered[0] == meta.recovered[0]);
+    }
     CHECK(metaOut.ships.size() == 2);
     CHECK(metaOut.ships[0] == "v0");
     CHECK(metaOut.ships[1] == "v1");
@@ -471,6 +528,8 @@ int main() {
     CHECK(emptyMeta.ships.empty());
     CHECK(emptyMeta.active_ship.empty());
     CHECK(near(emptyMeta.exhaust_scale, 1.0));  // missing -> the 1.0 default
+    CHECK(emptyMeta.science_score == 0);
+    CHECK(emptyMeta.recovered.empty());
 
     // a hand-edited scale is clamped to the CLI range (0.5-5)
     nlohmann::json wild = nlohmann::json::object();

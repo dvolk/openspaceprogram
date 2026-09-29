@@ -34,6 +34,7 @@
 #include <cstdint>
 
 #include "body.h"      // Body (complete type -- ~Part deletes it)
+#include "science.h"   // Experiment (science data held on kerbal suits)
 #include "shipdef.h"   // PartDef, ResourceContent
 
 class Vehicle;   // Part::owner (the parts list it is attached to)
@@ -79,6 +80,10 @@ struct Part {
        diagnostics); use `uid` to identify a part. */
     std::string id;
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
+    /* Science experiments recorded on this part (v1: only a kerbal's suit,
+       unlimited). Saved with the part / suit (save.h). Recovery merges them
+       into the game score once per unique key (science.h). */
+    std::vector<Experiment> experiments;
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group
     float armedThrust = 0.0f;   // N armed this tick (disarmed by clearThrust)

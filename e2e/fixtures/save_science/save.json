@@ -1,0 +1,22 @@
+{
+  "active_ship": "racer",
+  "format": 1,
+  "parts": "res/data/parts.json",
+  "recovered": [
+    {
+      "type": "observation",
+      "body": "Kerbin",
+      "situation": "low_orbit",
+      "biome": "lowlands"
+    }
+  ],
+  "saved_at": "2026-09-30T00:00:00",
+  "science_score": 1,
+  "ships": [
+    "v0",
+    "v1"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 3.0800000000000023,
+  "time_accel": 1
+}

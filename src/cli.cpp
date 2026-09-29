@@ -140,6 +140,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the Space Center menu's \"Recover Vessel\" once at "
                    "this loop time in ms (Game::recoverActive, headless; "
                    "-1 = never)");
+    app.add_option("--experiment", args.experiment_ms,
+                   "Fire the part window's \"Run Experiment\" once at this "
+                   "loop time in ms (Game::runExperiment, headless; "
+                   "-1 = never)");
     app.add_option("--tracking", args.tracking_ms,
                    "Push the Tracking Station once at this loop time in ms "
                    "(the Space Center hub's \"Tracking Station\", headless; "

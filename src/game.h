@@ -28,6 +28,7 @@
 #include "orbit.h"    // OrbitElements (the ShipView state)
 #include "postfx.h"   // PostFX
 #include "scene.h"    // SceneId, SceneFrame (the scene stack), Backdrop
+#include "science.h"  // Experiment (the science score + recovered list)
 #include "ships.h"    // Ships
 #include "siminput.h" // TimeSeries (the ShipView telemetry)
 #include "system.h"   // System
@@ -320,6 +321,12 @@ struct Game {
     int recoverMs = -1;
     bool recoverFired = false;
 
+    // --experiment MS: the headless hook for the part window's "Run
+    // Experiment" (Game::runExperiment on the active kerbal, else the active
+    // ship's first aboard crew). Mirrors --recover.
+    int experimentMs = -1;
+    bool experimentFired = false;
+
     // --tracking MS: the headless hook for the Space Center hub's "Tracking
     // Station" (pushes SceneId::TrackingStation). Mirrors --space-center.
     int trackingMs = -1;
@@ -535,12 +542,23 @@ struct Game {
     // The Flight Summary window (W_FlightSummary) payload, written by
     // recoverActive: the recovered vessel's name, its flight journal
     // (start + SoI enter/leave), and the recover instant as the end.
+    // scienceGained / newExperiments are the unique experiments this recover
+    // scored (empty / 0 when none -- or a save that predates science).
     struct FlightSummary {
         std::string shipName;
         FlightLog log;
         double end_t = 0.0;
+        int scienceGained = 0;
+        std::vector<Experiment> newExperiments;
     };
     FlightSummary flightSummary;
+
+    // --- science (score + the unique experiments already recovered) -------
+    // Persisted in save.json (SaveMeta). Recovery merges aboard-crew suit
+    // experiments here once per key (science.h mergeExperiments). v1 is just
+    // a score + the list; later: diminishing returns / a tech tree.
+    int scienceScore = 0;
+    std::vector<Experiment> recovered;
 
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;
@@ -800,6 +818,11 @@ struct Game {
     // remove_ship this allows the last vessel (the hub is a legal shipless
     // floor) and does not hand control to a neighbour.
     void recoverActive();
+    /* Run an observation experiment with kerbal `k` at its current SoI /
+       altitude / biome (science.h). Stores on the kerbal's suit part;
+       refuses a duplicate already held. Toasts the outcome. The part window
+       calls this for a picked kerbal (or the capsule's first aboard crew). */
+    void runExperiment(Kerbal *k);
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);

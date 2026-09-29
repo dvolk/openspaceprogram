@@ -116,6 +116,7 @@ SavePart saveItemPart(Part *c) {
     for(int r = 0; r < (int)ResourceType::Num; r++) {
         si.fuel.push_back((double)c->resources.current[r]);
     }
+    si.experiments = c->experiments;
     for(Part *n : c->ownedContents) { si.inventory.push_back(saveItemPart(n)); }
     return si;
 }
@@ -159,6 +160,7 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
             item->resources.current[r] = (r < (int)si.fuel.size())
                 ? (float)si.fuel[r] : 0.0f;
         }
+        item->experiments = si.experiments;
         container->ownedContents.push_back(item);
         container->contents.push_back(item);
         item->container = container;
@@ -212,6 +214,8 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
             for(Part *c : v->parts[0]->ownedContents) {
                 s.suit_inventory.push_back(saveItemPart(c));
             }
+            // science: experiments recorded on the suit
+            s.suit_experiments = v->parts[0]->experiments;
         }
         return s;
     }
@@ -233,6 +237,7 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             sp.fuel.push_back((double)p->resources.current[r]);
         }
+        sp.experiments = p->experiments;
         /* phase 4.6: nested inventory items (depth-first: an item's own
            items are emitted inside it, so load reconstructs the outermost
            container before anything nested). */
@@ -341,6 +346,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             p->resources.capacity[r] = pd->capacity[r];
             p->resources.current[r] = (r < (int)sp.fuel.size()) ? (float)sp.fuel[r] : 0.0f;
         }
+        p->experiments = sp.experiments;
         if(i == 0) {
             v->setRoot(p);
         } else {
@@ -490,6 +496,10 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
             suit->resources.current[r] = cur;
         }
     }
+    // science: experiments recorded on the suit (unlimited in v1)
+    if(!s.suit_experiments.empty() && !k->parts.empty()) {
+        k->parts[0]->experiments = s.suit_experiments;
+    }
     /* phase 4.6: the suit's inventory items (depth-first, nested included) --
        without this the suit loses its pocket on every load. A refused item
        frees through `delete k` (the items wired so far hang off the suit).
@@ -628,6 +638,8 @@ void save_game(Game &g, const std::string &dir) {
     meta.time_accel = g.time_accel;
     meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";
     meta.exhaust_scale = g.args.exhaust_scale;
+    meta.science_score = g.scienceScore;
+    meta.recovered = g.recovered;
     meta.saved_at = nowString();
 
     std::vector<Vehicle *> fleet = collectVehicles(g.sys);
@@ -665,6 +677,9 @@ void load_game(Game &g, const std::string &dir) {
     if(!g.args.cli_given.exhaust_scale) {
         g.args.exhaust_scale = meta.exhaust_scale;
     }
+    // science (absent in a pre-science save: score 0, nothing recovered)
+    g.scienceScore = meta.science_score;
+    g.recovered = meta.recovered;
 
     /* Transactional: everything that can fail is reading or building, and
        neither needs the old fleet DELETED first -- only out of the bodies'

@@ -42,6 +42,7 @@
 #include <nlohmann/json.hpp>
 
 #include "flightlog.h"   // FlightLog / FlightEvent (pure containers, no game types)
+#include "science.h"     // Experiment (science data on parts + the recover score)
 
 struct Game;   // save_game / load_game take one; forward-declared so this
                // header stays free of game.h (and the unit test stays light)
@@ -93,6 +94,10 @@ struct SavePart {
     double mass = 0.0;
     double hull_margin = -1.0;
     std::vector<double> fuel;   // one entry per ResourceType (Num)
+    /* Science experiments held on this part (v1: kerbal suits, via
+       SaveShip::suit_experiments -- kept here too so a future instrument
+       part round-trips the same way). Empty = none. */
+    std::vector<Experiment> experiments;
     /* Nested inventory items (phase 4.6): the parts parked in this part's
        inventory (Part::ownedContents). Serialized depth-first (a contained
        item is emitted inside its container, so load reconstructs the
@@ -185,6 +190,9 @@ struct SaveShip {
        field). The suit's OWN fuel is suit_fuel; the suit part itself is
        rebuilt from its def, so only its contents are saved here. */
     std::vector<SavePart> suit_inventory;
+    /* The kerbal's suit experiments (Part::experiments on the suit).
+       Unlimited in v1. Empty = none (or a save that predates the field). */
+    std::vector<Experiment> suit_experiments;
 };
 
 // The global save state (dir/save.json). `ships` is the ordered list of
@@ -202,6 +210,11 @@ struct SaveMeta {
        on the New Game setup window and stored here so a reload restores the
        same difficulty -- a save is not portable across scales. */
     float exhaust_scale = 1.0f;
+    /* Science: total score from recovered experiments + the unique keys
+       already counted (recovery scores each once; later diminishing
+       returns). Both default empty/0 for a save that predates science. */
+    int science_score = 0;
+    std::vector<Experiment> recovered;
     std::vector<std::string> ships;
 };
 
@@ -250,6 +263,41 @@ inline uint64_t readUid(const nlohmann::json &j, const char *key, uint64_t absen
     return absent;
 }
 
+inline nlohmann::json experimentToJson(const Experiment &e) {
+    nlohmann::json j;
+    j["type"]      = e.type;
+    j["body"]      = e.body;
+    j["situation"] = situationId(e.situation);
+    j["biome"]     = e.biome;
+    return j;
+}
+
+inline Experiment experimentFromJson(const nlohmann::json &j) {
+    Experiment e;
+    if(j.contains("type") && j["type"].is_string()) { e.type = j["type"].get<std::string>(); }
+    if(j.contains("body") && j["body"].is_string()) { e.body = j["body"].get<std::string>(); }
+    if(j.contains("situation") && j["situation"].is_string()) {
+        e.situation = situationFromId(j["situation"].get<std::string>());
+    }
+    if(j.contains("biome") && j["biome"].is_string()) { e.biome = j["biome"].get<std::string>(); }
+    return e;
+}
+
+inline nlohmann::json experimentListToJson(const std::vector<Experiment> &v) {
+    nlohmann::json a = nlohmann::json::array();
+    for(const Experiment &e : v) { a.push_back(experimentToJson(e)); }
+    return a;
+}
+
+inline std::vector<Experiment> experimentListFromJson(const nlohmann::json &j) {
+    std::vector<Experiment> v;
+    if(!j.is_array()) { return v; }
+    for(auto &&ej : j) {
+        if(ej.is_object()) { v.push_back(experimentFromJson(ej)); }
+    }
+    return v;
+}
+
 inline nlohmann::json savePartToJson(const SavePart &p) {
     nlohmann::json j;
     j["part"]   = p.part;
@@ -262,6 +310,7 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     j["mass"]   = p.mass;
     if(p.hull_margin >= 0.0) { j["hull_margin"] = p.hull_margin; }
     j["fuel"]   = p.fuel;
+    if(!p.experiments.empty()) { j["experiments"] = experimentListToJson(p.experiments); }
     if(!p.inventory.empty()) {
         nlohmann::json inv = nlohmann::json::array();
         for(auto &&sp : p.inventory) { inv.push_back(savePartToJson(sp)); }
@@ -283,6 +332,9 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     if(j.contains("hull_margin") && j["hull_margin"].is_number()) { p.hull_margin = j["hull_margin"].get<double>(); }
     if(j.contains("fuel") && j["fuel"].is_array()) {
         for(auto &&f : j["fuel"]) { if(f.is_number()) { p.fuel.push_back(f.get<double>()); } }
+    }
+    if(j.contains("experiments")) {
+        p.experiments = experimentListFromJson(j["experiments"]);
     }
     if(j.contains("inventory") && j["inventory"].is_array()) {
         for(auto &&sp : j["inventory"]) { if(sp.is_object()) { p.inventory.push_back(savePartFromJson(sp)); } }
@@ -369,6 +421,9 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
             for(auto &&sp : s.suit_inventory) { inv.push_back(savePartToJson(sp)); }
             j["suit_inventory"] = inv;
         }
+        if(!s.suit_experiments.empty()) {
+            j["suit_experiments"] = experimentListToJson(s.suit_experiments);
+        }
         return j;
     }
     j["home"]         = s.home;
@@ -428,6 +483,9 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         if(j.contains("suit_inventory") && j["suit_inventory"].is_array()) {
             for(auto &&sp : j["suit_inventory"]) { if(sp.is_object()) { s.suit_inventory.push_back(savePartFromJson(sp)); } }
         }
+        if(j.contains("suit_experiments")) {
+            s.suit_experiments = experimentListFromJson(j["suit_experiments"]);
+        }
         return s;
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }
@@ -478,6 +536,8 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     j["time_accel"]  = m.time_accel;
     if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
     j["exhaust_scale"] = m.exhaust_scale;
+    if(m.science_score != 0) { j["science_score"] = m.science_score; }
+    if(!m.recovered.empty()) { j["recovered"] = experimentListToJson(m.recovered); }
     j["ships"]       = m.ships;
     return j;
 }
@@ -497,6 +557,12 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
         m.exhaust_scale = j["exhaust_scale"].get<float>();
         if(m.exhaust_scale < 0.5f) { m.exhaust_scale = 0.5f; }
         if(m.exhaust_scale > 5.0f) { m.exhaust_scale = 5.0f; }
+    }
+    if(j.contains("science_score") && j["science_score"].is_number()) {
+        m.science_score = j["science_score"].get<int>();
+    }
+    if(j.contains("recovered")) {
+        m.recovered = experimentListFromJson(j["recovered"]);
     }
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }

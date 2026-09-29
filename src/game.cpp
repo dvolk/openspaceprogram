@@ -22,6 +22,7 @@
 #include "datadir.h"  // settings.json's location (the data directory)
 #include "shipdef.h"  // PartDef (crew_capacity)
 #include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
+#include "terragen.h" // biomeAt / biomeName (the experiment's ground class)
 #include "uiwins.h"   // setWinOpen (W_FlightSummary)
 #include "calendar.h" // fmt_cal_duration (the recover [flight] line)
 
@@ -267,6 +268,83 @@ void Game::clearFlightSummary() {
     setWinOpen(W_FlightSummary, false);
 }
 
+/* Run an observation experiment with kerbal `k` at its current SoI body,
+   altitude band (science.h situationFromAltitude) and ground biome. The
+   experiment lands on the kerbal's suit Part (unlimited in v1); a key the
+   suit already holds is refused so the player sees "already have" rather
+   than silently stacking duplicates (recovery scores each key once anyway).
+
+   Position is the kerbal COM in the body's rotating frame (the same
+   sub-satellite point the Surface Map / HUD use), so the biome is "what is
+   under me" as the planet spins. A star or a banded gas giant has no
+   classifiable biome (terragen.h) -- refuse rather than invent one. */
+void Game::runExperiment(Kerbal *k) {
+    if(k == nullptr || k->parts.empty()) {
+        toast("No experiment: no kerbal");
+        return;
+    }
+    Part *suit = k->parts[0];
+    TerrainBody *body = k->m_parent;
+    if(body == nullptr || body->isStar()) {
+        toast("No experiment: nothing to observe here");
+        return;
+    }
+    Frame *rot = body->frame->getRotFrame();
+    // An aboard kerbal's body pose is frozen at board time (parked out of the
+    // physics world), so read the live capsule it sits in instead -- after a
+    // long coast its own COM is the old location (and after an SoI change it
+    // is even in the wrong frame). A free EVA kerbal's body is live (railed
+    // ones get writeRailPose), so its own COM is current.
+    glm::dvec3 localCom;
+    Frame *posFrame;
+    if(k->isAboard() && k->aboardPart != nullptr) {
+        Vehicle *carrier = k->aboard();
+        localCom = carrier->partPos(k->aboardPart);
+        posFrame = carrier->frame;
+    } else {
+        localCom = k->get_center_of_mass();
+        posFrame = k->frame;
+    }
+    const glm::dvec3 sp = posFrame->GetOrientRelTo(rot) * localCom
+                        + posFrame->GetPositionRelTo(rot);
+    const double r = glm::length(sp);
+    if(r < 1e-9) {
+        toast("No experiment: bad position");
+        return;
+    }
+    const glm::vec3 dir = glm::vec3(sp / r);
+    const double altAsl = r - (double)body->radius;
+    // A body whose heavy phase has not landed has no measured max_height
+    // (biomeFromAltitude would call everything Mountain) -- the active
+    // ship's SoI body is always ready (issue #54), and so is a kerbal's.
+    if(!body->ready) {
+        toast("No experiment: terrain not ready");
+        return;
+    }
+    const Biome biome = biomeAt(dir, body->params());
+    if(biome == Biome::None) {
+        toast("No experiment: no classifiable surface");
+        return;
+    }
+    const double atmoTop = body->surface.atmosphere.top();
+    Experiment e;
+    e.type = "observation";
+    e.body = body->name;
+    e.situation = situationFromAltitude(altAsl, atmoTop, (double)body->radius);
+    e.biome = biomeName(biome);
+    if(!addExperiment(suit->experiments, e)) {
+        toast("Already have: %s", experimentName(e).c_str());
+        printf("[science] t=%.1f '%s' already held '%s'\n", time,
+               k->name.c_str(), experimentName(e).c_str());
+        fflush(stdout);
+        return;
+    }
+    toast("Experiment: %s", experimentName(e).c_str());
+    printf("[science] t=%.1f '%s' recorded '%s'\n", time,
+           k->name.c_str(), experimentName(e).c_str());
+    fflush(stdout);
+}
+
 /* The RMB-click entry point: pick the part under the cursor, open its
    window, and log it. The [pick] line doubles as the e2e assertion. */
 void pickAt(Game &g, int px, int py) {
@@ -434,6 +512,8 @@ bool Game::newGame() {
     // WarpUp from 0 resumes at 1x.
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
+    scienceScore = 0;
+    recovered.clear();
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
@@ -567,6 +647,8 @@ void Game::unloadGame() {
        this -- so tearing the fleet down cannot dangle an in-flight job. */
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
+    scienceScore = 0;
+    recovered.clear();
     for(TerrainBody *b : sys.bodies) {
         for(Vehicle *v : b->ships) { delete v; }
         b->ships.clear();
@@ -1601,6 +1683,28 @@ void Game::recoverActive() {
     flightSummary.shipName = name;
     flightSummary.log = v->flog;
     flightSummary.end_t = time;
+    /* Science: harvest every experiment aboard -- the ship's parts and each
+       aboard crew member's suit -- into the game score (unique keys only)
+       BEFORE the delete below frees them. A free EVA kerbal is its own
+       vehicle and is NOT recovered (the guard at the top of this function),
+       so its experiments stay with it -- same rule as the crew member
+       themselves. */
+    flightSummary.scienceGained = 0;
+    flightSummary.newExperiments.clear();
+    auto harvest = [&](const std::vector<Experiment> &src) {
+        for(const Experiment &e : src) {
+            if(addExperiment(recovered, e)) {
+                flightSummary.scienceGained += scoreOf(e);
+                flightSummary.newExperiments.push_back(e);
+            }
+        }
+    };
+    for(Part *p : v->parts) { harvest(p->experiments); }
+    for(Vehicle *kv : v->crew) {
+        if(kv->parts.empty()) { continue; }
+        harvest(kv->parts[0]->experiments);
+    }
+    scienceScore += flightSummary.scienceGained;
 
     // Part windows on the ship (and on any aboard crew -- their suit parts
     // can be open too) would dangle the moment the Vehicles go.
@@ -1641,6 +1745,14 @@ void Game::recoverActive() {
     setWinOpen(W_FlightSummary, true);
 
     printf("[recover] t=%.1f '%s' recovered\n", time, name.c_str());
+    if(flightSummary.scienceGained > 0) {
+        printf("[science] recovered +%d (total %d): %zu new experiment(s)\n",
+               flightSummary.scienceGained, scienceScore,
+               flightSummary.newExperiments.size());
+        for(const Experiment &e : flightSummary.newExperiments) {
+            printf("[science]   %s\n", experimentName(e).c_str());
+        }
+    }
     {
         char dur[32];
         fmt_cal_duration(sys.home ? sys.home->cal : Calendar{},

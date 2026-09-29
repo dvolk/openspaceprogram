@@ -515,6 +515,11 @@ $(TESTDIR)/test_calendar: $(TESTDIR)/obj/test_calendar.o
 $(TESTDIR)/test_flightlog: $(TESTDIR)/obj/test_flightlog.o
 	$(CXX) -o $@ $^
 
+# science experiments + score helpers (src/science.h, header-only pure C++):
+# uniqueness key, add/merge scoring, display names, the low/high altitude cut.
+$(TESTDIR)/test_science: $(TESTDIR)/obj/test_science.o
+	$(CXX) -o $@ $^
+
 # UI formatting helpers (src/fmt.h, header-only pure C++): the unit
 # ladder (m/km/Mm/AU/ly), sign handling, and the overflow-safe long long
 # ToF. Pins the exact readout strings.
@@ -646,7 +651,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
         test_rotation test_shipload test_save test_crew test_calendar \
-        test_flightlog \
+        test_flightlog test_science \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt
@@ -683,6 +688,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_crew
 	$(TESTDIR)/test_calendar
 	$(TESTDIR)/test_flightlog
+	$(TESTDIR)/test_science
 	$(TESTDIR)/test_orbit
 	$(TESTDIR)/test_orbitsample
 	$(TESTDIR)/test_transfer

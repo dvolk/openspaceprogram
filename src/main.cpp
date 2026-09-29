@@ -996,6 +996,7 @@ int main(int argc, char **argv)
     game.quitTitleMs = args.quit_title_ms;
     game.spaceCenterMs = args.space_center_ms;
     game.recoverMs = args.recover_ms;
+    game.experimentMs = args.experiment_ms;
     game.trackingMs = args.tracking_ms;
     game.trackingCloseMs = args.tracking_close_ms;
     game.switchSystemPath = args.switch_system_path;
@@ -1198,6 +1199,25 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.recoverMs) {
             game.recoverFired = true;
             game.recoverActive();
+        }
+        /* --experiment: the headless hook for the part window's "Run
+           Experiment". Mirrors the UI: a free EVA kerbal runs it itself (the
+           active ship IS the kerbal -- not Game::kerbal, which is only the
+           most-recently-EVA'd pointer for the V toggle-back), else the active
+           ship's first aboard crew (the capsule button's pick). */
+        if(game.experimentMs >= 0 && !game.experimentFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.experimentMs) {
+            game.experimentFired = true;
+            Kerbal *k = nullptr;
+            if(game.ship != nullptr) {
+                if(game.ship->isEva()) {
+                    k = static_cast<Kerbal *>(game.ship);
+                } else if(!game.ship->crew.empty()) {
+                    k = static_cast<Kerbal *>(game.ship->crew.front());
+                }
+            }
+            if(k != nullptr) { game.runExperiment(k); }
+            else { printf("[hook] --experiment: no kerbal, ignored\n"); }
         }
         /* --tracking: the headless hook for the hub's "Tracking Station". Fired
            after --space-center, so --space-center A --tracking B drives the

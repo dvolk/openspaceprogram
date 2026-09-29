@@ -1896,7 +1896,20 @@ void drawPartWindows(Game &g) {
                     if(ImGui::SmallButton("EVA")) {
                         g.kerbalEVA(k);
                     }
+                    ImGui::SameLine();
+                    // Per-crew experiment: the "pick a kerbal" path (no roles
+                    // yet, so any of them can run the same observation).
+                    if(ImGui::SmallButton("Exp")) {
+                        g.runExperiment(k);
+                    }
                     ImGui::PopID();
+                }
+                // Capsule-level "Run Experiment": first aboard crew (stable
+                // for --sim-press; random is a one-liner when roles exist).
+                if(!aboard.empty()) {
+                    if(ImGui::SmallButton("Run Experiment")) {
+                        g.runExperiment(aboard.front());
+                    }
                 }
                 // free kerbals in boarding range: a Board button each
                 const glm::dvec3 capCom = ship->partPos(ship->parts[part]);
@@ -1917,6 +1930,21 @@ void drawPartWindows(Game &g) {
                 }
                 if(!anyInRange) {
                     ImGui::Text("  (no one in range to board)");
+                }
+            }
+            // --- science (this part is a kerbal suit: holds experiments) ---
+            // v1 only kerbals run/hold experiments (on their suit Part). The
+            // capsule's Exp / Run Experiment buttons cover an ABOARD kerbal;
+            // this is the free-EVA (or picked suit) path.
+            if(ship->isEva() && part == 0) {
+                Part *suit = ship->parts[part];
+                ImGui::Separator();
+                if(ImGui::SmallButton("Run Experiment")) {
+                    g.runExperiment(static_cast<Kerbal *>(ship));
+                }
+                ImGui::Text("Experiments: %d", (int)suit->experiments.size());
+                for(const Experiment &e : suit->experiments) {
+                    ImGui::Text("  %s", experimentName(e).c_str());
                 }
             }
             // --- inventory (this part is a container: holds items) --------
@@ -2751,6 +2779,16 @@ void drawFlightSummary(Game &g) {
         }
         if(fmt_cal_time(cal, fs.end_t, stamp, sizeof stamp)) {
             ImGui::Text("Recovered: %s", stamp);
+        }
+        if(fs.scienceGained > 0 || !fs.newExperiments.empty()) {
+            ImGui::Spacing();
+            ImGui::Text("Science: +%d", fs.scienceGained);
+            ImGui::Indent();
+            for(const Experiment &e : fs.newExperiments) {
+                ImGui::Text("%s", experimentName(e).c_str());
+            }
+            ImGui::Unindent();
+            ImGui::Text("Total science: %d", g.scienceScore);
         }
         ImGui::Spacing();
         if(fs.log.events.empty()) {
