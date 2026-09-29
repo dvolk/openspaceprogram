@@ -1,27 +1,19 @@
 #!/usr/bin/env python3
-# Generate systems/old_system.json (Eerbon) and systems/ksp_system.json
-# (Kerbal) for the
-# refactored load_system() JSON format. Angular speeds are derived from the
-# CSV orbital / rotational periods: speed = 2*pi / period.
+# Generate res/systems/old_system.json (Eerbon) and res/systems/ksp_system.json
+# (Kerbal) for the refactored load_system() JSON format. Angular speeds are
+# derived from the CSV orbital / rotational periods: speed = 2*pi / period.
 #
 # Lives in utils/; the body data (ksp_bodies.csv) sits next to it, and the
 # generated JSONs are written to res/systems/ (where the game loads them).
 #
-# !!! DO NOT RUN THIS TO "REGENERATE" res/systems/ksp_system.json !!!
-# The committed JSON has been hand-edited ahead of this script, so running it
-# SILENTLY REVERTS data the game depends on. Measured drift (2026-09-29):
-# 37 keys exist only in the committed file and none only in the output, i.e.
-# the JSON is a strict superset. What would be lost, on Kerbol/Eve/Kerbin/
-# Shay/Duna/Jool/Laythe/Mun:
-#   - surface.atmosphere.sea_level_density + scale_height (all 6 atmospheres)
-#     and surface.atmosphere.height -- i.e. ALL atmospheric drag, and jets
-#     would produce no thrust anywhere
-#   - surface.clouds.{height,coverage,freq,drift} (Kerbin, Shay, Laythe)
-#   - surface.{amplitude,persistence,frequency,octaves} terrain-noise tuning
-#   - Kerbol inertial.soi 1e18 (the script emits 1e16) and Kerbin's sea_color
-# Treat res/systems/*.json as the source of truth and edit it directly, or
-# reconcile this script first (issue #58). old_system.json has not been
-# checked for drift.
+# This script is the source of truth for both committed JSONs. Re-running it
+# is safe and idempotent: it reproduces the committed files (the only
+# canonicalization is small floats such as the cloud `drift` -> e-notation,
+# which is numerically identical). If you change the K table, the SURFACES
+# dict, or ksp_bodies.csv, regenerate and commit the script and the JSONs
+# together. Pass --check to verify the committed files still match, without
+# writing anything (this is the guard the issue #58 drift defeated).
+import argparse
 import math
 import os
 
@@ -97,7 +89,7 @@ eerbon = {
             "seed": 0,
             "has_sea": False,
             "power_scaler": 1,
-            "inertial": {"soi": 1e16, "pos": [0, 0, 0], "orb_ang_speed": 0.0},
+            "inertial": {"soi": 1e18, "pos": [0, 0, 0], "orb_ang_speed": 0.0},
         },
         {
             "name": "Eerbon",
@@ -180,7 +172,7 @@ eerbon = {
 K = [
     # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, soi_m,        has_sea, seed, ps [, phase_deg]
     # KSP bodies: sma_m/ecc/inc_deg/orb_s are None -- see ksp_bodies.csv.
-    ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     1e16,         False, 0.1, 1),
+    ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     1e18,         False, 0.1, 1),
     ("Moho",   "planet", "Kerbol", None,        None,   2.526e21, 2.698,  250000,   None,    None,       1210000,   0.03,     9646660,      False, 1,   3),
     ("Eve",    "planet", "Kerbol", None,        None,   1.224e23, 16.677, 700000,   None,    None,       80500,     2.64,     85109360,     False, 2,   3),
     ("Gilly",  "moon",   "Eve",    None,        None,   1.242e17, 0.049,  13000,    None,    None,       28255,     1.2,      126120,       False, 3,   1),
@@ -224,13 +216,17 @@ SURFACES = {
                     [1.0, [0.65, 0.45, 0.42]]],
     },
     "Eve": {
-        "amplitude": 3000,
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
         "palette": [[0.0, [0.45, 0.08, 0.20]],
                     [0.5, [0.65, 0.15, 0.30]],
                     [1.0, [0.80, 0.40, 0.45]]],
         # thick toxic SO2 haze (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.80, 0.85, 0.35], "thickness": 25000,
-                       "power": 4.0, "intensity": 0.75},
+                       "power": 4.0, "intensity": 0.75,
+                       "sea_level_density": 1.7, "scale_height": 7000,
+                       "height": 90000},
     },
     "Gilly": {
         "amplitude": 400,
@@ -239,17 +235,26 @@ SURFACES = {
                     [1.0, [0.60, 0.45, 0.50]]],
     },
     "Kerbin": {
-        "sea_color": [0.00, 0.35, 0.75],
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
+        "sea_color": [0.20, 0.45, 0.65],
         "palette": [[0.0, [0.13, 0.45, 0.13]],
                     [0.45, [0.45, 0.55, 0.20]],
                     [0.8, [0.55, 0.45, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
         # N2/O2 rim (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
-                       "power": 4.0, "intensity": 0.7},
+                       "power": 4.0, "intensity": 0.7,
+                       "sea_level_density": 1.225, "scale_height": 5500,
+                       "height": 70000},
+        "clouds": {"height": 2500, "coverage": 0.6, "freq": 10,
+                   "drift": 0.00001},
     },
     "Mun": {
-        "amplitude": 1500,
+        "amplitude": 2500,
+        "persistence": 0.7,
+        "frequency": 1.2,
         "palette": [[0.0, [0.35, 0.35, 0.36]],
                     [1.0, [0.65, 0.65, 0.67]]],
     },
@@ -259,10 +264,17 @@ SURFACES = {
                     [1.0, [0.70, 0.90, 0.90]]],
     },
     "Shay": {
+        "amplitude": 3000,
+        "persistence": 0.55,
+        "frequency": 1.1,
         # thicker green-tinted N2/O2 rim than Kerbin's
         # (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
-                       "power": 4.0, "intensity": 0.7},
+                       "power": 4.0, "intensity": 0.7,
+                       "sea_level_density": 1.225, "scale_height": 6000,
+                       "height": 60000},
+        "clouds": {"height": 3000, "coverage": 0.5, "freq": 10,
+                   "drift": 0.00001},
     },
     "Duna": {
         "palette": [[0.0, [0.55, 0.22, 0.08]],
@@ -270,7 +282,9 @@ SURFACES = {
                     [1.0, [0.85, 0.60, 0.40]]],
         # thin dusty CO2 haze (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
-                       "power": 4.0, "intensity": 0.55},
+                       "power": 4.0, "intensity": 0.55,
+                       "sea_level_density": 0.12, "scale_height": 4000,
+                       "height": 50000},
     },
     "Ike": {
         "amplitude": 1000,
@@ -290,17 +304,26 @@ SURFACES = {
         # gas giant: the "atmosphere" is the whole body, so a broad, soft
         # pale rim (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.75, 0.85, 0.85], "thickness": 90000,
-                       "power": 3.0, "intensity": 0.6},
+                       "power": 3.0, "intensity": 0.6,
+                       "sea_level_density": 2.0, "scale_height": 20000,
+                       "height": 200000},
     },
     "Laythe": {
-        "amplitude": 3000,
+        "amplitude": 5000,
+        "octaves": 10,
+        "persistence": 0.55,
+        "frequency": 1.1,
         "sea_color": [0.00, 0.40, 0.45],
         "palette": [[0.0, [0.25, 0.55, 0.25]],
                     [0.7, [0.50, 0.60, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
         # N2/O2 rim (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.30, 0.55, 0.90], "thickness": 12000,
-                       "power": 4.0, "intensity": 0.7},
+                       "power": 4.0, "intensity": 0.7,
+                       "sea_level_density": 1.225, "scale_height": 5500,
+                       "height": 50000},
+        "clouds": {"height": 2000, "coverage": 0.55, "freq": 10,
+                   "drift": 0.00001},
     },
     "Vall": {
         "amplitude": 2000,
@@ -436,13 +459,89 @@ ksp = {
     ],
 }
 
-def emit(obj, path):
+def render(obj):
     import json as _json
+    return _json.dumps(obj, indent=2) + "\n"
+
+def write(obj, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
-        _json.dump(obj, f, indent=2)
-        f.write("\n")
+        f.write(render(obj))
     print("wrote", path)
 
-emit(eerbon, os.path.join(ROOT, "res", "systems", "old_system.json"))
-emit(ksp, os.path.join(ROOT, "res", "systems", "ksp_system.json"))
+def deep_diff(a, b, path, out):
+    """Value-level diff (a = committed, b = generated). Numerically compares,
+    so float canonicalization like 0.00001 vs 1e-05 does not count as drift."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        for k in a:
+            p = f"{path}.{k}" if path else k
+            if k not in b:
+                out.append(f"{p}: in committed file, missing from generated ({a[k]!r})")
+            else:
+                deep_diff(a[k], b[k], p, out)
+        for k in b:
+            p = f"{path}.{k}" if path else k
+            if k not in a:
+                out.append(f"{p}: in generated, missing from committed file ({b[k]!r})")
+    elif isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            out.append(f"{path}: list length committed={len(a)} generated={len(b)}")
+        for i in range(min(len(a), len(b))):
+            deep_diff(a[i], b[i], f"{path}[{i}]", out)
+    else:
+        if a != b:
+            out.append(f"{path}: committed={a!r} generated={b!r}")
+
+def check(obj, path):
+    import json as _json
+    if not os.path.exists(path):
+        print(f"MISSING {path}")
+        return False
+    with open(path) as f:
+        committed = _json.load(f)
+    out = []
+    if committed.get("home") != obj.get("home"):
+        out.append(f"home: committed={committed.get('home')!r} generated={obj.get('home')!r}")
+    cb = {x["name"]: x for x in committed.get("bodies", [])}
+    gb = {x["name"]: x for x in obj.get("bodies", [])}
+    for name in cb:
+        if name not in gb:
+            out.append(f"body {name}: in committed file, missing from generated")
+    for name in gb:
+        if name not in cb:
+            out.append(f"body {name}: in generated, missing from committed file")
+    for name in cb:
+        if name in gb:
+            body_out = []
+            deep_diff(cb[name], gb[name], "", body_out)
+            for line in body_out:
+                out.append(f"{name}: {line}")
+    if out:
+        print(f"DRIFT   {path}:")
+        for line in out:
+            print(f"    {line}")
+        return False
+    print(f"OK      {path}")
+    return True
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Generate res/systems/{old,ksp}_system.json, or --check "
+                    "that the committed files match this script.")
+    ap.add_argument("--check", action="store_true",
+                    help="verify the committed JSONs still match, without "
+                         "writing anything; exit non-zero on any drift")
+    args = ap.parse_args()
+    targets = [
+        (eerbon, os.path.join(ROOT, "res", "systems", "old_system.json")),
+        (ksp, os.path.join(ROOT, "res", "systems", "ksp_system.json")),
+    ]
+    if args.check:
+        ok = True
+        for obj, path in targets:
+            ok = check(obj, path) and ok
+        raise SystemExit(0 if ok else 1)
+    for obj, path in targets:
+        write(obj, path)
+
+main()
