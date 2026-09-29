@@ -4,7 +4,7 @@
 # already counted), printing +1 even though the suit held two.
 NAME science-recover-load
 ARGS --load e2e/fixtures/save_science --time-accel 1 --timeout 6
-ARGS --space-center 1500 --recover 2500
+ARGS --space-center 1500 --recover 2500 --recover-anywhere
 EXPECT Loaded game from e2e/fixtures/save_science (active: racer)
 EXPECT [science] recovered +1
 EXPECT High orbit observation of Midlands on Kerbin

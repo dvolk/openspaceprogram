@@ -140,6 +140,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the Space Center menu's \"Recover Vessel\" once at "
                    "this loop time in ms (Game::recoverActive, headless; "
                    "-1 = never)");
+    app.add_flag("--recover-anywhere", args.recover_anywhere,
+                 "Let 'Recover Vessel' recover the active ship anywhere "
+                 "(the default requires it grounded on the home body)");
     app.add_option("--experiment", args.experiment_ms,
                    "Fire the part window's \"Run Experiment\" once at this "
                    "loop time in ms (Game::runExperiment, headless; "

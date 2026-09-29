@@ -63,6 +63,20 @@ int main() {
         assert(args.timeout_seconds == 5.0);
     }
 
+    // 3b) --recover-anywhere: off by default, on when passed (with the
+    //     --recover hook it travels with).
+    {
+        GameArgs args;
+        assert(!args.recover_anywhere);
+        const char *argv[] = {"osp", "--recover-anywhere", "--recover", "2000"};
+        bool ok = false;
+        int code = -1;
+        run(4, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.recover_anywhere);
+        assert(args.recover_ms == 2000);
+    }
+
     // 4) an unknown flag fails with a nonzero exit code (main() exits with
     //    it) and prints nothing to stdout (CLI11 routes errors to stderr).
     {

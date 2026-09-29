@@ -2609,8 +2609,8 @@ static void navSpaceCenter(Game &g, float bw) {
     // Offered only when a ship is active (same gate as Resume Flight), and not
     // for a free EVA kerbal -- recoverActive refuses it (a crew member is not
     // a vessel). No arm/confirm: this discards a flight you already left, not
-    // the game.
-    // (v3 will restrict it to a ship landed on the home planet's surface.)
+    // the game. recoverActive also refuses unless the ship is grounded on
+    // the home body -- the toast explains (or --recover-anywhere lifts it).
     if(g.ship != nullptr && !g.ship->isEva()
        && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
         g.recoverActive();

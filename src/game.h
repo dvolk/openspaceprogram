@@ -816,7 +816,9 @@ struct Game {
     // that set is dropped, the stack collapses to the Space Center hub with
     // no active vessel, and the Flight Summary window opens. Unlike
     // remove_ship this allows the last vessel (the hub is a legal shipless
-    // floor) and does not hand control to a neighbour.
+    // floor) and does not hand control to a neighbour. Refuses unless the
+    // ship is grounded on the home body (isGrounded + m_parent == home;
+    // --recover-anywhere restores the old recover-anywhere behavior).
     void recoverActive();
     /* Run an observation experiment with kerbal `k` at its current SoI /
        altitude / biome (science.h). Stores on the kerbal's suit part;

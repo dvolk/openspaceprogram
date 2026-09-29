@@ -6,7 +6,7 @@
 # assertion that the delete + scene collapse left nothing dangling.
 NAME recover-ship
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --space-center 1000 --recover 2000
+ARGS --space-center 1000 --recover 2000 --recover-anywhere
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [recover] t=
 EXPECT 'racer' recovered

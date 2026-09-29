@@ -100,6 +100,9 @@ struct GameArgs {
     int recover_ms = -1;    // --recover: fire the Space Center menu's "Recover
                             // Vessel" (Game::recoverActive) once at this loop
                             // time in ms (headless test hook; -1 = never)
+    bool recover_anywhere = false;  // --recover-anywhere: let Recover Vessel
+                                    // recover the ship anywhere (the default
+                                    // requires it grounded on the home body)
     int experiment_ms = -1; // --experiment: fire the part window's "Run
                             // Experiment" (Game::runExperiment) once at this
                             // loop time in ms (headless test hook; -1 = never)

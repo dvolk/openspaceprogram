@@ -1673,16 +1673,26 @@ void Game::recoverActive() {
               name.c_str());
         return;
     }
-    // Re-run SoI detection before snapshotting: switchFrames/railsTick
-    // run before the physics substeps, so a crossing in those substeps
-    // (or while paused) leaves m_parent stale. A zero-step railsTick
-    // still evaluates railsSwitchFrames (except a railFrozen grounded
-    // vessel, which cannot change SoI anyway), and a crossing found
-    // here journals itself at `time`. The observe below is belt-and-
-    // braces: journals start at creation/load (setSoi), so it is a
-    // no-op repeat in practice.
+    // Re-run SoI detection before the home check and the snapshot:
+    // switchFrames/railsTick run before the physics substeps, so a
+    // crossing in those substeps (or while paused) leaves m_parent stale.
+    // A zero-step railsTick still evaluates railsSwitchFrames (except a
+    // railFrozen grounded vessel, which cannot change SoI anyway), and a
+    // crossing found here journals itself at `time` -- a legitimate entry
+    // even when the home check below then refuses. The observe below is
+    // belt-and-braces: journals start at creation/load (setSoi), so it is
+    // a no-op repeat in practice.
     if(v->onRails) { v->railsTick(time, 0.0); } else { v->switchFrames(time); }
     v->flog.observe(time, v->m_parent ? v->m_parent->name : "");
+    // A flight ends only when the ship is HOME: grounded (on the surface,
+    // near-static) in the home body's SoI. Checked after the SoI re-detect
+    // above so m_parent is fresh. --recover-anywhere skips the check and
+    // restores the old recover-anywhere behavior.
+    if(!args.recover_anywhere && (v->m_parent != home || !v->isGrounded())) {
+        toast("Cannot recover %s -- it must be grounded on the home body",
+              name.c_str());
+        return;
+    }
     flightSummary.shipName = name;
     flightSummary.log = v->flog;
     flightSummary.end_t = time;

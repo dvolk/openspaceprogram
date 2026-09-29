@@ -6,7 +6,7 @@
 NAME science-experiment
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --experiment 1500
-ARGS --space-center 3000 --recover 4000
+ARGS --space-center 3000 --recover 4000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
 EXPECT [science] recovered +1

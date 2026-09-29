@@ -1,0 +1,16 @@
+# Recover Vessel works by DEFAULT when the ship is grounded on the home
+# body. The pad scenario parks the racer on Kerbin's pad (rotating frame,
+# near-static, ~5 m above terrain) -- home and resting -- so
+# recoverActive takes the delete + hub-collapse + Flight Summary path with
+# no --recover-anywhere needed. Companion to 106 (the same rule refusing
+# a ship that is not home).
+NAME recover-grounded
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --space-center 1000 --recover 2000
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [recover] t=
+EXPECT 'racer' recovered
+EXPECT [spacecenter] entered
+EXPECT Timeout reached (8.
+FORBID GL_
+FORBID error:

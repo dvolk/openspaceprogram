@@ -6,7 +6,7 @@
 NAME flight-events
 ARGS --time-accel 10000 --timeout 12
 ARGS --startship escaper,res/ships/racer.json,Kerbin,escape
-ARGS --space-center 7000 --recover 8000
+ARGS --space-center 7000 --recover 8000 --recover-anywhere
 EXPECT [flight] vessel='escaper'
 EXPECT left Kerbin
 EXPECT entered

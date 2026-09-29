@@ -1,0 +1,16 @@
+# Recover Vessel must be REFUSED when the ship is grounded on a body that
+# is NOT the home body -- the other half of the 107/106 guard
+# (isGrounded() && m_parent == home). The racer parks on Moho's pad, so
+# it IS grounded (rotating frame, near-static, low altitude) but m_parent
+# is Moho, not Kerbin: recoverActive toasts and bails. Companion to 106
+# (refused in Kerbin orbit) and 107 (allowed on the Kerbin pad).
+NAME recover-wrong-body
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Moho,pad
+ARGS --space-center 1000 --recover 2000
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [toast] Cannot recover
+EXPECT grounded on the home body
+EXPECT Timeout reached (8.
+FORBID [recover]
+FORBID GL_
+FORBID error:

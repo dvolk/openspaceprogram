@@ -1,0 +1,16 @@
+# Recover Vessel must be REFUSED while the ship is not grounded on the
+# home body. The ship here sits in a Kerbin orbit (rot-orbit): not on the
+# surface, so recoverActive toasts and bails -- no [recover] line, no fleet
+# teardown, and "Timeout reached" proves the game is still running with the
+# ship intact. The old recover-anywhere behavior stays available via
+# --recover-anywhere (cases 101-105 pin it).
+NAME recover-refused
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --space-center 1000 --recover 2000
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [toast] Cannot recover
+EXPECT grounded on the home body
+EXPECT Timeout reached (8.
+FORBID [recover]
+FORBID GL_
+FORBID error:
