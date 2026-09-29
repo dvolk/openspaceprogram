@@ -66,7 +66,7 @@ enum Win : int {
     // title
     W_TitleMenu, W_NewGame, W_Readme,
     // space center hub
-    W_SpaceCenterMenu, W_FlightSummary,
+    W_SpaceCenterMenu, W_FlightSummary, W_SpaceCenterTopBar,
     // tracking station (its own copies of the map + ship list, so they can
     // diverge from the flight ones)
     W_TrackingMap, W_TrackingShipList,

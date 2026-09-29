@@ -1,19 +1,23 @@
-# Esc after Recover Vessel when OTHER ships remain. recoverActive is the
-# only path that leaves the hub as floor with a live fleet; a bare
-# enterTitle would strand it (Title has no Resume, newGame refuses while
-# any vehicle exists). Esc must close the Flight Summary first, then
-# (one more Esc) quit to title via quitToTitle -- which unloads the
-# fleet first -- and tear the remaining fleet down cleanly.
+# Esc after Recover Vessel when OTHER ships remain. recoverActive is the only
+# path that leaves the hub as floor with a live fleet, so it is exactly the
+# case where Esc must NOT be an exit: the first Esc closes the Flight Summary,
+# the second does nothing at all -- the tanker survives (recoverActive leaves
+# the rest of the fleet for the Tracking Station), and the menu's "Return to
+# title" is the way out. Pre-fix this discarded the whole game two keystrokes
+# after a recovery (issue #74). The tracking push at the end is the positive
+# anchor: it prints from the hub, so the scene never went to the title.
+# quitToTitle's live-fleet teardown is covered by case 66 (--quit-title).
 NAME recover-esc-multi
 ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --startship tanker,res/ships/tanker.json,Kerbin,rot-orbit
-ARGS --space-center 1000 --recover 2000 --recover-anywhere
+ARGS --space-center 1000 --recover 2000 --recover-anywhere --tracking 4000
 ARGS --sim-press 3000,0,ESCAPE,3300,0,ESCAPE
 EXPECT [recover] t=
 EXPECT 'racer' recovered
-EXPECT [game] unloaded: fleet torn down
-EXPECT [scene] spacecenter -> title (enterTitle)
+EXPECT [scene] spacecenter -> tracking (push)
 EXPECT Timeout reached (10.
+FORBID [game] unloaded: fleet torn down
+FORBID [scene] spacecenter -> title
 FORBID GL_
 FORBID error:

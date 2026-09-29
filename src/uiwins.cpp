@@ -244,6 +244,17 @@ const WinDef kWins[W_Count] = {
         .role = WinRole::Transient, .inList = false,
     },
 
+    [W_SpaceCenterTopBar] = {
+        .name = "Space Center TopBar", .label = "Space Center TopBar",
+        // The same fixed / top-center / no-titlebar treatment as the HUD and
+        // the VAB's bar: career readouts (clock, science, vessel count) that
+        // belong to the hub, not to a vessel. Chrome, so TAB hides it and the
+        // Windows panel does not offer a row for it.
+        .opts = { .slot = ui::Slot::TopCenter, .fixed = true, .default_open = true,
+                  .flags = ImGuiWindowFlags_NoTitleBar },
+        .role = WinRole::Chrome, .inList = false,
+    },
+
     // --- tracking station ------------------------------------------------
     [W_TrackingMap] = {
         .name = "Tracking Map", .label = "Tracking Map",
@@ -304,11 +315,13 @@ static const Win kTitleWinIds[] = {
 static const Win kVabWinIds[] = {
     W_VabTopBar, W_Staging, W_Settings, W_Controls, W_SaveLoad,
 };
-// The Space Center hub: its root menu + the shared windows (same reasoning as
-// the editor). The ship is live below (the sim runs) but the hub shows the
-// planet, not a cockpit, so no flight readouts belong here.
+// The Space Center hub: its root menu + top bar, plus the shared windows (same
+// reasoning as the editor). The ship is live below (the sim runs) but the hub
+// shows the planet, not a cockpit, so no flight readouts belong here -- the top
+// bar is career state (clock, science, vessel count), not a vessel's.
 static const Win kSpaceCenterWinIds[] = {
-    W_SpaceCenterMenu, W_FlightSummary, W_Settings, W_Controls, W_SaveLoad,
+    W_SpaceCenterMenu, W_SpaceCenterTopBar, W_FlightSummary, W_Settings,
+    W_Controls, W_SaveLoad,
 };
 // The Tracking Station: its own full-screen map + ship list (copies of the
 // flight windows, free to diverge -- see drawTrackingMap /

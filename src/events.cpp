@@ -387,10 +387,14 @@ void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
    (reached by Esc from flight) the pop hands back to the flight, the same as
    the on-screen "Resume Flight".
 
-   When the hub IS the floor there is nothing to pop back to: quit to title.
-   quitToTitle unloads the fleet first (a bare enterTitle would strand a
-   live fleet -- Title has no Resume, and newGame refuses while any vehicle
-   exists); the unload is a no-op on a fresh game's empty fleet.
+   When the hub IS the floor there is nothing to pop back to, and Esc is NOT
+   the way out of a game: after a recovery the rest of the fleet is still
+   alive (recoverActive leaves it for the Tracking Station), so one keystroke
+   there would unload it -- "Return to title" is the menu row for that, and
+   quitToTitle is what unloads the fleet first (a bare enterTitle would strand
+   a live fleet: Title has no Resume, and newGame refuses while any vehicle
+   exists). With nothing to lose -- a new game before its first launch, no
+   ship and an empty fleet -- Esc still goes to the title (issue #74).
 
    Esc first dismisses an open Flight Summary: it is a modal-ish dialog
    sitting on the hub, and swallowing the navigation key until it is gone
@@ -406,7 +410,7 @@ void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             popScene(g);   // back to the flight below (Resume Flight)
             return;
         }
-        g.quitToTitle();   // hub-as-floor: discard any fleet, go to title
+        if(collectVehicles(g.sys).empty()) { g.quitToTitle(); }
     }
 }
 

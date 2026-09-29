@@ -40,6 +40,12 @@ void drawUIMap(Game &g);
 void drawTitleMenu(Game &g);
 void drawSpaceCenterMenu(Game &g);
 
+/* The hub's top bar (W_SpaceCenterTopBar): the career-level readouts --
+   the home calendar clock, the science recovered so far, and how many
+   vessels are out there. Chrome like the VAB's bar (fixed, top-center,
+   no titlebar, hidden by TAB). Space-Center-only. */
+void drawSpaceCenterTopBar(Game &g);
+
 /* The New Game setup sheet (W_NewGame), opened by the title menu's "New
    Game": pick which star system to load and the exhaust-velocity scale
    (difficulty). Start applies both and calls startNewGame; Cancel closes.

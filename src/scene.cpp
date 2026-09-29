@@ -91,9 +91,11 @@ void spaceCenterEnter(Game &g) {
     g.toast("Space Center");
 }
 
-/* The hub's widgets: its root menu, then the shared menu windows (Settings /
-   Controls / Save-Load, opened from the menu) on top of it. */
+/* The hub's widgets: its top bar (career readouts), its root menu, then the
+   shared menu windows (Settings / Controls / Save-Load, opened from the menu)
+   on top of it. */
 void spaceCenterDrawUi(Game &g) {
+    drawSpaceCenterTopBar(g);
     drawSpaceCenterMenu(g);
     drawFlightSummary(g);
     drawUIReadouts(g);

@@ -2506,7 +2506,9 @@ void drawToasts(Game &g) {
 
    Quit to title is a NAV item, not a shared one: every scene has it except
    the title screen itself (there is no game to quit to), and nav is where
-   the scene-specific rows live.
+   the scene-specific rows live. `navBottom` is the same hook drawn LOWER --
+   between the shared toggles and "Quit game" -- for a scene's exits, which
+   read better next to the app's own exit than up with the navigation.
 
    Deliberately NOT in the menu -- each of these has a key, and a menu that
    duplicates a binding is a menu with noise in it: "Toggle windows" is TAB,
@@ -2516,7 +2518,8 @@ void drawToasts(Game &g) {
    arrange, these are overlays you flip on. All four are rebindable from
    Controls. */
 static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
-                           void (*nav)(Game &, float)) {
+                           void (*nav)(Game &, float),
+                           void (*navBottom)(Game &, float) = nullptr) {
     if(isRoot) { setWinOpen(win, true); }
     drawWin(g, win, [&] {
         bool &running = g.running;
@@ -2553,6 +2556,8 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
         if(ImGui::Button("Controls", ImVec2(bw, 0.0f))) {
             setWinOpen(W_Controls, !winOpen(W_Controls));
         }
+        // The scene's exits (hub: "Return to title"), just above the app's own.
+        if(navBottom) { navBottom(g, bw); }
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
             running = false;
         }
@@ -2615,8 +2620,15 @@ static void navSpaceCenter(Game &g, float bw) {
        && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
         g.recoverActive();
     }
-    // Return to title discards the fleet. "Quit game" (the shell's row)
-    // exits the app instead.
+    // Return to title lives in navSpaceCenterExit, drawn by the shell just
+    // above "Quit game" so the two ways out sit together. Esc is only an exit
+    // when there is no fleet left to lose (hubKeyActions, issue #74).
+}
+
+/* The hub's bottom nav row: the exits, drawn by the shell between the shared
+   toggles and "Quit game". Return to title discards the fleet; "Quit game"
+   (the shell's own row, directly below) exits the app. */
+static void navSpaceCenterExit(Game &g, float bw) {
     if(ImGui::Button("Return to title", ImVec2(bw, 0.0f))) {
         setWinOpen(W_SpaceCenterMenu, false);
         g.quitToTitle();
@@ -2632,7 +2644,33 @@ void drawTitleMenu(Game &g) {
 }
 
 void drawSpaceCenterMenu(Game &g) {
-    drawMenuWindow(g, W_SpaceCenterMenu, true, "Space Center", navSpaceCenter);
+    drawMenuWindow(g, W_SpaceCenterMenu, true, "Space Center", navSpaceCenter,
+                   navSpaceCenterExit);
+}
+
+/* The hub's top bar: the career state the hub is the right place to show --
+   the home calendar clock (the same stamp the flight HUD's second line
+   carries), the science recovered so far, and how many vessels are out there
+   (free kerbals included, like the Ship List counts them). Read-only: the
+   Ship List and the Tracking Station are the drill-downs. */
+void drawSpaceCenterTopBar(Game &g) {
+    drawWin(g, W_SpaceCenterTopBar, [&] {
+        const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
+        char stamp[64];
+        if(fmt_cal_time(cal, g.time, stamp, sizeof stamp)) {
+            ImGui::TextUnformatted(stamp);
+        } else {
+            ImGui::Text("t=%.0f s", g.time);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        ImGui::Text("Science: %d", g.scienceScore);
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        ImGui::Text("Vessels: %d", (int)collectVehicles(g.sys).size());
+    });
 }
 
 /* The New Game setup sheet: which star system to load, and the
