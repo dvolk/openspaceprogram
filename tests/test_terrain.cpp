@@ -647,6 +647,24 @@ int main() {
         check(std::string(biomeName(Biome::None)) == "none", "biome: name none");
     }
 
+    // 14. The atmosphere top. An authored height wins; without one the top
+    //     derives from scale_height * kAtmoScaleHeights (the e^-10 density
+    //     altitude), so a body with a drag model still gets a hard edge of
+    //     space; a body with neither has no top. (The cutoff airDensity
+    //     applies at that altitude is pinned in test_drag.cpp.)
+    {
+        AtmosphereParams a;
+        a.sea_level_density = 1.225;
+        a.scale_height = 5500.0;              // Kerbin's, height unauthored
+        check(a.top() == 5500.0 * kAtmoScaleHeights,
+              "atmo: an unauthored height derives scale_height * 10");
+        a.height = 70000.0;                   // Kerbin's authored top
+        check(a.top() == 70000.0,
+              "atmo: an authored height wins over the derivation");
+        AtmosphereParams none;                // no drag model at all
+        check(none.top() == 0.0, "atmo: no atmosphere has no top");
+    }
+
     if(g_failures == 0) {
         std::printf("test_terrain: all checks passed\n");
         return 0;

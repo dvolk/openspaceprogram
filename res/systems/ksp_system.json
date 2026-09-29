@@ -144,7 +144,8 @@
           "power": 4.0,
           "intensity": 0.75,
           "sea_level_density": 1.7,
-          "scale_height": 7000
+          "scale_height": 7000,
+          "height": 90000
         }
       },
       "inertial": {
@@ -279,7 +280,8 @@
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_density": 1.225,
-          "scale_height": 5500
+          "scale_height": 5500,
+          "height": 70000
         },
         "clouds": {
           "height": 2500,
@@ -414,7 +416,8 @@
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_density": 1.225,
-          "scale_height": 6000
+          "scale_height": 6000,
+          "height": 60000
         },
         "clouds": {
           "height": 3000,
@@ -485,7 +488,8 @@
           "power": 4.0,
           "intensity": 0.55,
           "sea_level_density": 0.12,
-          "scale_height": 4000
+          "scale_height": 4000,
+          "height": 50000
         }
       },
       "inertial": {
@@ -635,7 +639,8 @@
           "power": 3.0,
           "intensity": 0.6,
           "sea_level_density": 2.0,
-          "scale_height": 20000
+          "scale_height": 20000,
+          "height": 200000
         }
       },
       "inertial": {
@@ -709,7 +714,8 @@
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_density": 1.225,
-          "scale_height": 5500
+          "scale_height": 5500,
+          "height": 50000
         },
         "clouds": {
           "height": 2000,

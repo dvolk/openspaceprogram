@@ -5,7 +5,9 @@
 // test_orbit).
 //
 //   airDensity:  rho(alt) = rho0 * exp(-alt/H); below-surface -> 0; a
-//                degenerate atmosphere -> 0; rho(H) = rho0/e; monotone down.
+//                degenerate atmosphere -> 0; rho(H) = rho0/e; monotone down;
+//                vacuum at and above the hard top (height), and no cutoff at
+//                all when height is 0.
 //   dragForce:   opposite the motion; |F| = 0.5 * rho * cd * A * v^2;
 //                scales as v^2; zero on any degenerate input.
 //
@@ -60,7 +62,7 @@ static void test_density() {
     CHECK_TRUE(airDensity(a, 500.0) > airDensity(a, 5000.0),
                "rho is monotone decreasing with altitude");
 
-    // Deep in the air it is negligible (no hard "top" needed).
+    // Deep in the air it is negligible even with no hard top (height 0).
     CHECK_TRUE(airDensity(a, 8 * 5500.0) < 0.01 * 1.225,
                "rho(8H) < 1% of sea level");
 
@@ -69,6 +71,39 @@ static void test_density() {
     const DragAtmosphere noneH { 1.225, 0.0 };
     CHECK_NEAR(airDensity(none0, 100.0), 0.0, 0.0, "no density -> 0");
     CHECK_NEAR(airDensity(noneH, 100.0), 0.0, 0.0, "no scale height -> 0");
+}
+
+static void test_densityTop() {
+    printf("== airDensity: the hard atmosphere top ==\n");
+
+    const DragAtmosphere a { 1.225, 5500.0 };          // no cutoff
+    const DragAtmosphere kerbin { 1.225, 5500.0, 70000.0 };  // Kerbin's authored top
+
+    // At and above the top the air is vacuum.
+    CHECK_NEAR(airDensity(kerbin, 70000.0), 0.0, 0.0, "rho(top) == 0");
+    CHECK_NEAR(airDensity(kerbin, 100000.0), 0.0, 0.0, "rho above the top == 0");
+    CHECK_TRUE(airDensity(kerbin, 69000.0) > 0.0, "rho just below the top > 0");
+
+    // Inside the top the cutoff changes nothing: the same exponential.
+    CHECK_NEAR(airDensity(kerbin, 5500.0), airDensity(a, 5500.0), 1e-15,
+               "inside the top the model is unchanged");
+    CHECK_NEAR(airDensity(kerbin, 60000.0),
+               1.225 * std::exp(-60000.0 / 5500.0), 1e-12,
+               "rho(60 km) == rho0 * e^(-60km/H)");
+
+    // height 0 means no cutoff at all (the fallback for a body that does not
+    // author one): 200 km still reads a wisp, not vacuum.
+    CHECK_TRUE(airDensity(a, 200000.0) > 0.0, "height 0 -> no cutoff");
+    CHECK_NEAR(airDensity(kerbin, 200000.0), 0.0, 0.0,
+               "with a top, 200 km is vacuum");
+
+    // The force follows: a 100 km Kerbin orbit is genuine vacuum, so no
+    // silhouette pass and no slow orbital decay.
+    const glm::dvec3 v { 0.0, 0.0, 2300.0 };
+    CHECK_TRUE(dragForce(kerbin, 1.0, 10.0, 100000.0, v) == glm::dvec3(0.0),
+               "no drag above the top");
+    CHECK_TRUE(glm::length(dragForce(kerbin, 1.0, 10.0, 30000.0, v)) > 0.0,
+               "drag below the top");
 }
 
 static void test_force() {
@@ -619,6 +654,8 @@ static void test_partCd() {
 
 int main() {
     test_density();
+    printf("\n");
+    test_densityTop();
     printf("\n");
     test_force();
     printf("\n");

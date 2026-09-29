@@ -1,0 +1,19 @@
+# Atmosphere hard top: Kerbin authors surface.atmosphere.height = 70000, and
+# the rot-orbit scenario sits at ~85 km ASL -- above it. The air must read as
+# exact vacuum (rho 0, |F| 0), not as the exponential tail's wisp.
+#
+# Before the hard top the exponential ran all the way down to drag.h's
+# kRhoFloor density floor, ~191 km on Kerbin, so this orbit still felt
+# 2e-7 kg/m^3 of air and slowly decayed. The altitude check is what makes the
+# case mean something: if the spawn altitude ever drops below 70 km the rho
+# assertions would pass for the wrong reason (and CHECK alt would fail first).
+NAME atmo-top
+ARGS --time-accel 1 --timeout 6 --drag-log
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+EXPECT [drag]
+CHECK len(drag) >= 2
+CHECK all(d["alt"] > 70000 for d in drag)
+CHECK all(d["rho"] == 0.0 for d in drag)
+CHECK all(d["F"] == 0.0 for d in drag)
+FORBID GL_
+FORBID error:

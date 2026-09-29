@@ -82,22 +82,46 @@ struct PaletteStop {
     glm::vec3 color;
 };
 
-// Per-body atmosphere appearance (optional "surface.atmosphere" block).
-// v1 is a single Fresnel limb-glow shell drawn over the terrain; see
-// reports/atmosphere2026_08_25/atmosphere.md for the design + roadmap.
+/* The fallback atmosphere top when a body does not author one: the altitude
+   where the exponential density has fallen to e^-10 (~4.5e-5) of sea level.
+   Lands within ~20% of the authored values on the shipped bodies (Kerbin
+   55 km derived vs 70 km authored), so an unauthored atmosphere still has a
+   sane hard top instead of a 190 km exponential wisp. */
+inline constexpr double kAtmoScaleHeights = 10.0;
+
+// Per-body atmosphere (optional "surface.atmosphere" block), in two halves:
+// the RENDER half (a Fresnel limb-glow shell drawn over the terrain; see
+// reports/atmosphere2026_08_25/atmosphere.md for the design + roadmap) and
+// the PHYSICAL half that src/drag.h integrates. They are independent -- a
+// body may draw a rim without any air, and vice versa.
 struct AtmosphereParams {
     bool enabled = false;
     glm::vec3 color = glm::vec3(0.3f, 0.5f, 1.0f);  // rim tint (N2/O2 blue)
-    float thickness = 0.0f;   // [m] shell radius above radius + max_height
+    /* RENDERING ONLY: the limb-glow shell's radius above radius + max_height
+       (BuildAtmosphere, terrain.h). NOT the atmosphere's physical extent --
+       Kerbin's shell is 15 km thick against a 70 km atmosphere. For "where
+       does the air stop" use top() below. */
+    float thickness = 0.0f;
     float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
     float intensity = 1.0f;   // overall alpha scale
-    /* Physical drag (src/drag.h): the density model is
-       rho(alt) = sea_level_density * exp(-alt / scale_height).
-       Both 0 = no drag -- a body may draw a limb rim (above) without an
-       atmosphere for physics, and vice versa. See
-       reports/atmospheric-drag2026_09_11. */
+    /* The physical half (src/drag.h): rho(alt) = sea_level_density *
+       exp(-alt / scale_height), cut to zero at top(). Both density fields 0
+       = no drag. See reports/atmospheric-drag2026_09_11. */
     double sea_level_density = 0.0;  // kg/m^3 at the surface; 0 = no drag
     double scale_height = 0.0;       // [m]; the density /e-fold altitude
+    /* The hard top [m above sea level]: at or above it the air is vacuum and
+       the body counts as space. Authored per body ("surface.atmosphere.height";
+       Kerbin 70 km). 0 = not authored, and top() derives one instead. */
+    double height = 0.0;
+
+    /* The resolved atmosphere top: the authored height, or scale_height *
+       kAtmoScaleHeights when it is absent. One home for the derivation, so
+       drag (airDensity's cutoff) and anything else asking "is this in space?"
+       cannot disagree. 0 only for a body with no physical atmosphere. */
+    double top() const {
+        if(height > 0.0) { return height; }
+        return scale_height > 0.0 ? scale_height * kAtmoScaleHeights : 0.0;
+    }
 };
 
 // Per-body cloud deck (optional "surface.clouds" block). A single shell at
@@ -401,9 +425,17 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
 // the top 20% is mountain, the next band (50-80%) midlands, the bottom
 // half lowlands. Pure and cheap: biomeFromAltitude classifies an altitude
 // the caller already has (no FBM), biomeAt samples one for a direction.
-// It classifies SOLID bodies only: a banded body is None, and a star has
-// no biome at all -- the caller knows the body's type and should not
-// classify it (a star's Surface is just noise, see issue #52).
+//
+// It classifies SOLID bodies only: a banded body is None, and a star has no
+// biome at all -- a star's Surface is just noise (issue #52). The caller must
+// skip those itself; the type is TerrainBody::isStar() / Surface::bands
+// (terrain.h).
+//
+// max_height is MEASURED, not authored: it stays at its 1.0 default until the
+// body's heavy phase lands (TerrainBody::BuildRootGeoms -> AttachRoot, which
+// sets `ready`). Before that every point above 0.8 m classifies as Mountain,
+// so classify only a body you know is ready -- the active ship's SoI body
+// always is (issue #54).
 // ---------------------------------------------------------------------------
 
 enum class Biome : unsigned char {

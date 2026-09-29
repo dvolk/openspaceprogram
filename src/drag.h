@@ -27,9 +27,17 @@
 struct DragAtmosphere {
     double sea_level_density = 0.0;  // kg/m^3 at alt 0; 0 = no drag
     double scale_height = 0.0;       // [m]; density /e-fold altitude
+    /* The hard top [m above sea level]: at or above it the air is vacuum.
+       0 = no cutoff, and the exponential tail runs down to kRhoFloor.
+       Authored per body (AtmosphereParams::height, resolved by
+       AtmosphereParams::top()); Kerbin's is 70 km. Without a top, a 100 km
+       Kerbin orbit still reads rho = 1.6e-8 kg/m^3 -- about 0.4 N on a
+       10 m^2 hull at orbital speed. Tiny, but never zero, so every orbit
+       above the air decays instead of being stable. */
+    double height = 0.0;
     DragAtmosphere() {}
-    DragAtmosphere(double rho0, double H)
-        : sea_level_density(rho0), scale_height(H) {}
+    DragAtmosphere(double rho0, double H, double top = 0.0)
+        : sea_level_density(rho0), scale_height(H), height(top) {}
 };
 
 /* The density floor below which aero is not worth computing: exp(-alt/H)
@@ -37,8 +45,10 @@ struct DragAtmosphere {
    to zero (a ship at 500 km over Kerbin reads rho = 4e-40 kg/m^3), and the
    silhouette geometry used to run every substep for exactly 0.00 N. At
    1e-15 kg/m^3 the drag acceleration is < 1e-8 m/s^2 even at 10 km/s over
-   100 m^2 -- unmeasurable on any timescale the game runs. ~190 km on a
-   Kerbin-like air, ~700 km in the thickest atmosphere in res/systems/ksp_system.
+   100 m^2 -- unmeasurable on any timescale the game runs. It is a
+   PERFORMANCE floor, not a physical one -- the physical top is
+   DragAtmosphere::height, which cuts the air off far below this on every
+   authored body (~190 km on a Kerbin-like air vs its 70 km top).
    Callers that gate on density compare against this instead of 0; laws
    that merely multiply by rho (jetThrust's density gate) need no floor --
    a sub-floor rho reads as vacuum there anyway. */
@@ -47,13 +57,15 @@ inline constexpr double kRhoFloor = 1e-15;
 /* Density [kg/m^3] at `alt` metres above the surface:
      rho(alt) = sea_level_density · exp(−alt / scale_height)
    Below the surface (alt <= 0) there is no air to push through, and a
-   degenerate atmosphere (no density, no scale height) reads as none.
-   The exponential is self-limiting -- at alt = 8·H the density is ~0.03%
-   of sea level -- so no hard "atmosphere top" is needed (callers gate on
-   kRhoFloor instead). */
+   degenerate atmosphere (no density, no scale height) reads as none. At or
+   above `height` the air stops dead -- a hard top, like the reference game's,
+   so "in the atmosphere" and "in space" have one answer. A zero height means
+   no cutoff, and the exponential is then self-limiting (at alt = 8·H the
+   density is ~0.03% of sea level) with callers gating on kRhoFloor. */
 inline double airDensity(const DragAtmosphere &a, double alt) {
     if(a.sea_level_density <= 0.0 || a.scale_height <= 0.0) { return 0.0; }
     if(alt <= 0.0) { return 0.0; }
+    if(a.height > 0.0 && alt >= a.height) { return 0.0; }
     return a.sea_level_density * std::exp(-alt / a.scale_height);
 }
 

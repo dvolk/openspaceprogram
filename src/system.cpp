@@ -63,6 +63,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 
         body->name       = bv.value("name", std::string("body"));
         const std::string type = bv.value("type", std::string("planet"));
+        body->type       = (type == "star") ? BodyType::Star
+                         : (type == "moon") ? BodyType::Moon
+                                            : BodyType::Planet;
         const double radius = bv.value("radius", 600000.0);
         const double mass   = bv.value("mass", 5e22);
         body->radius       = (float)radius;
@@ -136,6 +139,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     av.value("sea_level_density", 0.0);
                 s.atmosphere.scale_height =
                     av.value("scale_height", 0.0);
+                // The hard top (above it: vacuum). Optional -- 0 makes
+                // AtmosphereParams::top() derive scale_height * 10 instead.
+                s.atmosphere.height = av.value("height", 0.0);
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {
                 const nlohmann::json &cv = sv["clouds"];
@@ -189,15 +195,19 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         // terrain is in. surface.max_height keeps its default until then.
 
         // Shader + elevation palette by body type.
-        if(type == "star") {
+        switch(body->type) {
+        case BodyType::Star:
             body->shader = sunshader;
             body->colour_func = GetColourSun;
-        } else if(type == "moon") {
+            break;
+        case BodyType::Moon:
             body->shader = terrainshader;
             body->colour_func = GetColourMoon;
-        } else { // "planet"
+            break;
+        case BodyType::Planet:
             body->shader = terrainshader;
             body->colour_func = GetColourEarth;
+            break;
         }
 
         // --- inertial (non-rotating) frame ---------------------------------

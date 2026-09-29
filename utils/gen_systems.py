@@ -6,6 +6,22 @@
 #
 # Lives in utils/; the body data (ksp_bodies.csv) sits next to it, and the
 # generated JSONs are written to res/systems/ (where the game loads them).
+#
+# !!! DO NOT RUN THIS TO "REGENERATE" res/systems/ksp_system.json !!!
+# The committed JSON has been hand-edited ahead of this script, so running it
+# SILENTLY REVERTS data the game depends on. Measured drift (2026-09-29):
+# 37 keys exist only in the committed file and none only in the output, i.e.
+# the JSON is a strict superset. What would be lost, on Kerbol/Eve/Kerbin/
+# Shay/Duna/Jool/Laythe/Mun:
+#   - surface.atmosphere.sea_level_density + scale_height (all 6 atmospheres)
+#     and surface.atmosphere.height -- i.e. ALL atmospheric drag, and jets
+#     would produce no thrust anywhere
+#   - surface.clouds.{height,coverage,freq,drift} (Kerbin, Shay, Laythe)
+#   - surface.{amplitude,persistence,frequency,octaves} terrain-noise tuning
+#   - Kerbol inertial.soi 1e18 (the script emits 1e16) and Kerbin's sea_color
+# Treat res/systems/*.json as the source of truth and edit it directly, or
+# reconcile this script first (issue #58). old_system.json has not been
+# checked for drift.
 import math
 import os
 
