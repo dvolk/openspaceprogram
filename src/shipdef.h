@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -843,10 +844,11 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
 
 /* List the ship-def slugs in `dir` (e.g. "res/ships") -- the file base names
    with the ".json" extension stripped -- sorted; empty if the directory is
-   missing or holds no .json files. Only the .json entries are kept, so the
-   VAB's Load picker offers exactly the files the VAB Save writes and --vab
-   loads (res/ships/<slug>.json). Header-only (std::filesystem ops), so it is
-   unit-testable headless -- the analog of list_saves in save.h. */
+   missing or holds no .json files. Only the .json entries are kept. The VAB
+   Load picker uses list_vab_ship_defs (this minus the testships); --vab and
+   VAB Save still resolve any slug in the directory (res/ships/<slug>.json).
+   Header-only (std::filesystem ops), so it is unit-testable headless -- the
+   analog of list_saves in save.h. */
 inline std::vector<std::string> list_ship_defs(const std::string &dir) {
     std::vector<std::string> names;
     namespace fs = std::filesystem;
@@ -859,5 +861,34 @@ inline std::vector<std::string> list_ship_defs(const std::string &dir) {
         names.push_back(p.stem().string());
     }
     std::sort(names.begin(), names.end());
+    return names;
+}
+
+/* True if the ship-def file at `path` is marked "testship": true -- an
+   e2e/scenario ship that the VAB Load picker hides from the player. False on
+   a missing file, unparseable JSON, or a non-boolean value (fail-open: a
+   broken or minimal def stays visible rather than silently vanishing).
+   Header-only, so unit-testable headless like list_ship_defs. */
+inline bool shipDefIsTestship(const std::string &path) {
+    std::ifstream f(path);
+    if(!f.is_open()) { return false; }
+    nlohmann::json doc;
+    try { doc = nlohmann::json::parse(f); }
+    catch(const std::exception &) { return false; }
+    if(!doc.is_object() || !doc.contains("testship") || !doc["testship"].is_boolean()) {
+        return false;
+    }
+    return doc["testship"].get<bool>();
+}
+
+/* The VAB Load picker's list for `dir`: list_ship_defs minus the testships
+   (see shipDefIsTestship). A player ship saved into the data dir never
+   carries the flag, so it always appears; a stock e2e ship does. */
+inline std::vector<std::string> list_vab_ship_defs(const std::string &dir) {
+    std::vector<std::string> names;
+    for(const std::string &s : list_ship_defs(dir)) {
+        if(shipDefIsTestship(dir + "/" + s + ".json")) { continue; }
+        names.push_back(s);
+    }
     return names;
 }

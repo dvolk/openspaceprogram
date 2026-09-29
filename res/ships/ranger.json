@@ -1,5 +1,6 @@
 {
   "name": "ranger",
+  "testship": true,
   "controller": "capsule_1",
   "parts": [
     { "part": "capsule", "id": "capsule_1", "stage": 1 },

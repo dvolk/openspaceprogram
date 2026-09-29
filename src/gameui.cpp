@@ -32,7 +32,7 @@
 #include "texture.h"     // make_texture_r8 (the Porkchop heatmap + Surface Map)
 #include "vab.h"         // the editor ops (drawVabUI: gizmos, save, load, launch)
 #include "staging.h"     // computeStaging (the VAB staging table)
-#include "shipdef.h"     // list_ship_defs (the VAB Load picker's ship list)
+#include "shipdef.h"     // list_vab_ship_defs (the VAB Load picker's ship list)
 #include "resdir.h"      // resdir::path (asset root)
 #include "system.h"      // list_systems (the New Game setup sheet's picker)
 #include "save.h"        // save_game / load_game / list_saves / delete_save
@@ -3027,8 +3027,10 @@ void drawVabUI(Game &g) {
     }
 
     // the load picker: ship NAMES (stock res/ships + the player's data-dir
-    // ships/; the data dir wins on a collision). Cached and re-read when
-    // either directory's mtime changes (a Save adds a file).
+    // ships/; the data dir wins on a collision). Testships (e2e/scenario
+    // ships marked "testship": true) are filtered out, so the picker offers
+    // only real, fliable ships. Cached and re-read when either directory's
+    // mtime changes (a Save adds a file).
     static std::vector<std::string> shipNames;
     static bool shipsScanned = false;   // a real mtime could be the epoch; don't rely on that
     static std::filesystem::file_time_type stockMtime, userMtime;
@@ -3043,8 +3045,8 @@ void drawVabUI(Game &g) {
         const std::filesystem::file_time_type user =
             ec ? std::filesystem::file_time_type{} : um;
         if(!shipsScanned || stock != stockMtime || user != userMtime) {
-            shipNames = list_ship_defs(stockDir);
-            for(const std::string &s : list_ship_defs(userDir)) {
+            shipNames = list_vab_ship_defs(stockDir);
+            for(const std::string &s : list_vab_ship_defs(userDir)) {
                 if(std::find(shipNames.begin(), shipNames.end(), s) == shipNames.end()) {
                     shipNames.push_back(s);
                 }

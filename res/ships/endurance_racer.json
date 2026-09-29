@@ -1,5 +1,6 @@
 {
   "name": "endurance_racer",
+  "testship": true,
   "controller": "capsule_1",
   "parts": [
     { "part": "capsule", "id": "capsule_1" },

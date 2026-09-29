@@ -1650,6 +1650,39 @@ int main() {
         }
     }
 
+    // list_vab_ship_defs: list_ship_defs minus the testships. A temp dir with
+    // one flagged def, one non-boolean flag (fail-open: kept), one broken
+    // file (fail-open: kept), and two unflagged defs pins the filter + the
+    // fail-open stance without depending on res/ships' roster.
+    {
+        const std::string dir = "/tmp/test_list_vab_ship_defs";
+        CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
+        CHECK(mkdir(dir.c_str(), 0755) == 0 || access(dir.c_str(), F_OK) == 0);
+        { std::ofstream f((dir + "/aaa.json").c_str()); f << "{}"; }
+        { std::ofstream f((dir + "/bbb.json").c_str()); f << "{ \"testship\": true }"; }
+        { std::ofstream f((dir + "/ccc.json").c_str()); f << "{ \"testship\": \"yes\" }"; }
+        { std::ofstream f((dir + "/ddd.json").c_str()); f << "not json"; }
+        { std::ofstream f((dir + "/eee.json").c_str()); f << "{ \"testship\": false }"; }
+        const std::vector<std::string> got = list_vab_ship_defs(dir);
+        CHECK(got.size() == 4);   // bbb (flagged) is the only one filtered
+        CHECK(got.size() >= 1 && got[0] == "aaa");
+        CHECK(got.size() >= 2 && got[1] == "ccc");
+        CHECK(got.size() >= 3 && got[2] == "ddd");
+        CHECK(got.size() >= 4 && got[3] == "eee");
+        CHECK(std::find(got.begin(), got.end(), std::string("bbb")) == got.end());
+        CHECK(std::system(("rm -rf '" + dir + "'").c_str()) == 0);
+    }
+
+    // list_vab_ship_defs on the real res/ships: exactly the fliable stock
+    // ships the VAB should offer -- the testships (e2e/scenario ships) are
+    // marked and stay out.
+    {
+        const std::vector<std::string> vab = list_vab_ship_defs("res/ships");
+        const std::vector<std::string> want =
+            { "glider", "heavy_asp", "jet", "racer", "stager" };
+        CHECK(vab == want);
+    }
+
 
     if(failures) {
         printf("test_shipload: %d FAILURES\n", failures);

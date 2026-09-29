@@ -1,5 +1,6 @@
 {
   "name": "power_test",
+  "testship": true,
   "controller": "capsule_1",
   "parts": [
     { "part": "capsule_r2.25h4.5", "id": "capsule_1" },

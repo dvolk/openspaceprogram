@@ -1,5 +1,6 @@
 {
   "name": "small docker",
+  "testship": true,
   "controller": "capsule_1",
   "parts": [
     { "part": "docking_port_r1", "id": "docking_port" },

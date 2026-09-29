@@ -1,5 +1,6 @@
 {
   "name": "kerbal",
+  "testship": true,
   "parts": [
     { "part": "kerbal" }
   ]

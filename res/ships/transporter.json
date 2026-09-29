@@ -1,5 +1,6 @@
 {
   "name": "transporter",
+  "testship": true,
   "parts": [
     { "part": "capsule", "id": "capsule_1" },
     { "part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1" },
