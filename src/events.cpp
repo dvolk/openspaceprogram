@@ -387,12 +387,10 @@ void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
    (reached by Esc from flight) the pop hands back to the flight, the same as
    the on-screen "Resume Flight".
 
-   When the hub IS the floor there is nothing to pop back to. That used to
-   mean only "a new game, no fleet", where Esc can go straight to the title.
-   recoverActive can also leave the hub as floor WITH a remaining fleet --
-   a bare enterTitle would strand it (Title has no Resume, and newGame
-   refuses while any vehicle exists), so that case arms and then discards
-   the same way the menu's confirmed "Return to title" does.
+   When the hub IS the floor there is nothing to pop back to: quit to title.
+   quitToTitle unloads the fleet first (a bare enterTitle would strand a
+   live fleet -- Title has no Resume, and newGame refuses while any vehicle
+   exists); the unload is a no-op on a fresh game's empty fleet.
 
    Esc first dismisses an open Flight Summary: it is a modal-ish dialog
    sitting on the hub, and swallowing the navigation key until it is gone
@@ -408,18 +406,7 @@ void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             popScene(g);   // back to the flight below (Resume Flight)
             return;
         }
-        if(collectVehicles(g.sys).empty()) {
-            enterTitle(g);   // true no-game hub floor (a new game)
-            return;
-        }
-        // Hub-as-floor with a live remaining fleet (post-recover).
-        if(g.returnTitleArmed) {
-            g.returnTitleArmed = false;
-            g.quitToTitle();
-        } else {
-            g.returnTitleArmed = true;
-            g.toast("Discard remaining vessels? Esc again to confirm");
-        }
+        g.quitToTitle();   // hub-as-floor: discard any fleet, go to title
     }
 }
 

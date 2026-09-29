@@ -2615,20 +2615,11 @@ static void navSpaceCenter(Game &g, float bw) {
        && ImGui::Button("Recover Vessel", ImVec2(bw, 0.0f))) {
         g.recoverActive();
     }
-    // Return to title discards the fleet and is one Esc from a live flight,
-    // so it arms on the first click and confirms on the second (a Cancel
-    // clears the arm). "Quit game" (the shell's row) exits the app instead.
-    if(g.returnTitleArmed) {
-        if(ImGui::Button("Discard game? Confirm", ImVec2(bw, 0.0f))) {
-            g.returnTitleArmed = false;
-            setWinOpen(W_SpaceCenterMenu, false);
-            g.quitToTitle();
-        }
-        if(ImGui::Button("Cancel", ImVec2(bw, 0.0f))) {
-            g.returnTitleArmed = false;
-        }
-    } else if(ImGui::Button("Return to title", ImVec2(bw, 0.0f))) {
-        g.returnTitleArmed = true;
+    // Return to title discards the fleet. "Quit game" (the shell's row)
+    // exits the app instead.
+    if(ImGui::Button("Return to title", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        g.quitToTitle();
     }
 }
 

@@ -89,10 +89,6 @@ void spaceCenterEnter(Game &g) {
     printf("[spacecenter] entered (live sim)\n");
     fflush(stdout);
     g.toast("Space Center");
-    // A fresh hub view: drop any armed "Return to title" confirm from a
-    // previous visit -- arming used to leak across excursions (leave the hub
-    // to the VAB/tracking, come back still one click from discarding the game).
-    g.returnTitleArmed = false;
 }
 
 /* The hub's widgets: its root menu, then the shared menu windows (Settings /

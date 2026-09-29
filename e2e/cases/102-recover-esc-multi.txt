@@ -1,15 +1,15 @@
 # Esc after Recover Vessel when OTHER ships remain. recoverActive is the
 # only path that leaves the hub as floor with a live fleet; a bare
-# enterTitle used to strand it (Title has no Resume, newGame refuses while
-# any vehicle exists). Esc must close the Flight Summary first, then arm
-# the discard, then confirm -- the same contract as the menu's
-# "Return to title" -- and tear the remaining fleet down cleanly.
+# enterTitle would strand it (Title has no Resume, newGame refuses while
+# any vehicle exists). Esc must close the Flight Summary first, then
+# (one more Esc) quit to title via quitToTitle -- which unloads the
+# fleet first -- and tear the remaining fleet down cleanly.
 NAME recover-esc-multi
 ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --startship tanker,res/ships/tanker.json,Kerbin,rot-orbit
 ARGS --space-center 1000 --recover 2000 --recover-anywhere
-ARGS --sim-press 3000,0,ESCAPE,3300,0,ESCAPE,3600,0,ESCAPE
+ARGS --sim-press 3000,0,ESCAPE,3300,0,ESCAPE
 EXPECT [recover] t=
 EXPECT 'racer' recovered
 EXPECT [game] unloaded: fleet torn down

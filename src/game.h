@@ -534,11 +534,6 @@ struct Game {
     // the engines stay lit until it is undone.
     bool thrust_latched = false;
 
-    // The hub menu's "Return to title" is one Esc from a live flight and
-    // discards the fleet, so it arms on the first click and confirms on the
-    // second (navSpaceCenter flips this; a Cancel clears it).
-    bool returnTitleArmed = false;
-
     // The Flight Summary window (W_FlightSummary) payload, written by
     // recoverActive: the recovered vessel's name, its flight journal
     // (start + SoI enter/leave), and the recover instant as the end.

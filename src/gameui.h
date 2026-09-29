@@ -31,7 +31,7 @@ void drawUIMap(Game &g);
    drawSpaceCenterMenu) and the New Game setup sheet (drawNewGame: system +
    exhaust-velocity difficulty). The shell's heading + navigation block
    differ per scene; the standard items (Save/Load, Settings, Controls,
-   Quit game) are shared, and the hub adds a confirmed "Return to title".
+   Quit game) are shared, and the hub adds a "Return to title".
    The menus are Root windows -- forced open, no X -- because the title
    screen and the Space Center hub ARE their menus; New Game is Transient
    (opened by the title's "New Game"). The other scenes (flight, VAB,
