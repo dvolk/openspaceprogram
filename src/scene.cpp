@@ -125,6 +125,10 @@ void trackingDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
+/* The Research Lab draws no 3D: the loop's flat studio clear (like the
+   editor) is its whole backdrop, so its pass is a no-op. */
+void labDraw3d(Game &) {}
+
 /* The Research Lab's widgets: its single window (Root -- the scene IS the
    window, forced open like the tracking map), then the shared windows +
    Save/Load on top. Esc / "Back" walk up the tree to the hub. */
@@ -171,14 +175,13 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     { "tracking", true, false, Backdrop::Sky, kTrackingWins,
       floorEnter, floorExit,
       tick, trackingDraw3d, trackingDrawUi, trackingKeyActions },
-    /* The Research Lab: the career archive of recovered experiments, over
-       the live world like the hub (the planet turns behind the window).
-       No enter hook: the hub already parked the camera on the home planet
-       and pushScene captures/restores it, so the lab inherits that view.
-       Esc pops back to the hub (labKeyActions). */
-    { "research", true, false, Backdrop::Sky, kResearchWins,
+    /* The Research Lab: the career archive of recovered experiments. A
+       solid studio backdrop like the editor (no world draw, no camera to
+       park -- the window is the scene), but live like the hub: the sim
+       keeps coasting behind it. Esc pops back to the hub (labKeyActions). */
+    { "research", true, false, Backdrop::Studio, kResearchWins,
       floorEnter, floorExit,
-      tick, draw3d, researchLabDrawUi, labKeyActions },
+      tick, labDraw3d, researchLabDrawUi, labKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

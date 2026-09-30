@@ -52,9 +52,9 @@ enum class SceneId : int {
               // offered only when it was pushed on top of a live flight.
     TrackingStation, // no sim; a full-screen chrome-less orbital map + ship list
               // over the paused world, reached from the Space Center hub.
-    ResearchLab,     // the hub's science archive: a read-only window over the
-              // live world listing the recovered experiments
-              // (Game::recovered). Reached from the Space Center hub.
+    ResearchLab,     // the hub's science archive: a read-only window over a
+              // flat studio backdrop (like the editor) listing the
+              // recovered experiments (Game::recovered).
     COUNT
 };
 
