@@ -350,7 +350,11 @@ void Game::runExperiment(Kerbal *k) {
         return;
     }
     if(!suit->addExperiment(e)) {
-        toast("Already have: %s (this suit)", experimentName(e).c_str());
+        // The refusal is the per-TYPE cap (the suit holds one of each), not
+        // this specific biome -- say the type, not the finding, so a re-run in
+        // a 2nd biome doesn't read as "you already have the <old biome> one".
+        toast("Already holding one %s (the suit holds one of each) -- store it first",
+              e.type.c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
                k->name.c_str(), experimentName(e).c_str());
         fflush(stdout);
@@ -384,7 +388,10 @@ void Game::runPodExperiment(Part *pod, Kerbal *k) {
         return;
     }
     if(!pod->addExperiment(e)) {
-        toast("Already have: %s (this pod)", experimentName(e).c_str());
+        // Same per-type cap (the pod holds one of its own family): name the
+        // type, not the biome, so a re-run in a 2nd biome isn't misread.
+        toast("Already holding one %s (the pod holds one) -- take it out first",
+              e.type.c_str());
         printf("[science] t=%.1f '%s' already held '%s' (pod)\n", time,
                k->name.c_str(), experimentName(e).c_str());
         fflush(stdout);
@@ -420,8 +427,9 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
     // still intact).
     const Experiment e = from->experiments[which];
     if(!to->canHold(e)) {
-        toast("Already have: %s (%s)", experimentName(e).c_str(),
-              to->def ? to->def->display_name.c_str() : "?");
+        // The destination already holds one of this type (per-family cap):
+        // name the type, not the biome, so it isn't misread as a biome clash.
+        toast("Already holding one %s (one per type)", e.type.c_str());
         return;
     }
     const std::string name = experimentName(e);
