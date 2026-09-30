@@ -2,7 +2,9 @@
 // (header-only pure C++)
 //
 // An Experiment is one run of an observation, recorded by a kerbal on a ship.
-// Its IDENTITY -- type + body + situation + biome -- is the uniqueness key
+// Its IDENTITY -- type + body + situation, plus the biome only in situations
+// where the family is biome-specific (ExperimentDef: a crew report in landed
+// + low orbit, a materials study only when landed) -- is the uniqueness key
 // (named at the UI edge like "Landed observation of Midlands on Mun"); the
 // provenance (ran_at, recovered_at, kerbal, ship) is extra data that ==
 // ignores. Situations (v2): Landed (grounded), LowOrbit / HighOrbit (altitude
@@ -37,6 +39,69 @@ enum class SciSituation : unsigned char {
     HighOrbit,
 };
 
+/* An experiment family ("type"): its value, the situations it can be run in,
+   and the situations where its finding is biome-specific. A new family is one
+   entry in the registry below -- the single home for per-experiment rules
+   (they used to be scattered if-chains keyed on the type string). KSP: a
+   reading is biome-specific only where you can tell biomes apart -- a crew
+   report on the surface AND low orbit, a materials study only when landed;
+   in high orbit a reading is "of the planet" (no biome). `valid_in` is the
+   hook for situation-gated instruments (a seismometer: landed only; a
+   barometer: in-atmosphere only, once that situation exists). */
+struct ExperimentDef {
+    std::string type;                        // "observation", "materials study"
+    int base_value = 10;                      // the base of scoreOf
+    std::vector<SciSituation> valid_in;         // situations it can RUN in
+    std::vector<SciSituation> biome_specific_in; // where the biome is part of the identity
+    bool validIn(SciSituation s) const {
+        return std::find(valid_in.begin(), valid_in.end(), s) != valid_in.end();
+    }
+    bool biomeSpecificIn(SciSituation s) const {
+        return std::find(biome_specific_in.begin(), biome_specific_in.end(), s)
+            != biome_specific_in.end();
+    }
+};
+
+inline const std::vector<ExperimentDef> &experimentDefs() {
+    static const std::vector<ExperimentDef> defs = {
+        { "observation", 10,
+          { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
+          { SciSituation::Landed, SciSituation::LowOrbit } },
+        { "materials study", 25,
+          { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
+          { SciSituation::Landed } },
+    };
+    return defs;
+}
+// The def for a type, or null (an unknown family: base 10, biome-specific
+// everywhere, valid everywhere -- the safe fallback so an unregistered type
+// behaves like a plain surface instrument, never silently merging findings).
+inline const ExperimentDef *defFor(const std::string &type) {
+    for(const ExperimentDef &d : experimentDefs()) {
+        if(d.type == type) { return &d; }
+    }
+    return nullptr;
+}
+
+// Base value (was the baseValue if-chain). Unknown family -> the base.
+inline int baseValue(const std::string &type) {
+    const ExperimentDef *d = defFor(type);
+    return (d != nullptr) ? d->base_value : 10;
+}
+// Is the biome part of the finding's identity for `type` in `situation`?
+// Unknown family -> yes, in EVERY situation (the KSP common case and the
+// pre-registry behavior). A def opts a family OUT per situation; the default
+// never merges biome-distinct findings on a guess (that is silent data loss).
+inline bool biomeSpecificIn(const std::string &type, SciSituation s) {
+    const ExperimentDef *d = defFor(type);
+    return (d != nullptr) ? d->biomeSpecificIn(s) : true;
+}
+// Can this experiment be RUN in `situation`? Unknown family -> yes.
+inline bool experimentValidIn(const std::string &type, SciSituation s) {
+    const ExperimentDef *d = defFor(type);
+    return (d == nullptr) || d->validIn(s);
+}
+
 struct Experiment {
     // identity -- the uniqueness key; == compares ONLY these four
     std::string type = "observation";  // experiment family (extensible id)
@@ -53,9 +118,15 @@ struct Experiment {
     // different kerbals/ships dedup to one bank; they differ only in the
     // provenance fields above. (A reader assuming full-struct == is
     // surprised -- this is deliberate, not an omission.)
+    // The biome is in the key only where the family is biome-specific
+    // (biomeSpecificIn): a high-orbit crew report is "of the planet" for
+    // every biome (KSP: one reading per orbit segment), so two such runs dedup.
     bool operator==(const Experiment &o) const {
-        return type == o.type && body == o.body
-            && situation == o.situation && biome == o.biome;
+        if(type != o.type || body != o.body || situation != o.situation) {
+            return false;
+        }
+        if(!biomeSpecificIn(type, situation)) { return true; }
+        return biome == o.biome;
     }
     bool operator!=(const Experiment &o) const { return !(*this == o); }
 };
@@ -92,10 +163,16 @@ inline std::string capitalizeFirst(std::string s) {
     return s;
 }
 
-// "Landed observation of Midlands on Mun"
+// "Landed observation of Midlands on Mun" -- the "of <Biome>" clause is
+// present only where the family is biome-specific (biomeSpecificIn); in
+// high orbit it's "of the planet": "High orbit observation on Kerbin".
 inline std::string experimentName(const Experiment &e) {
-    return capitalizeFirst(situationName(e.situation)) + " " + e.type
-         + " of " + capitalizeFirst(e.biome) + " on " + e.body;
+    std::string n = capitalizeFirst(situationName(e.situation)) + " " + e.type;
+    if(biomeSpecificIn(e.type, e.situation)) {
+        n += " of " + capitalizeFirst(e.biome);
+    }
+    n += " on " + e.body;
+    return n;
 }
 
 // ---- list helpers (a vector of experiments) -------------------------------
@@ -172,16 +249,8 @@ inline bool canHoldFinding(ExpStorage role, const std::string &ownFamily,
 }
 
 // ---- the value model ------------------------------------------------------
-// Base value per experiment family. A new family is an explicit entry here --
-// unknown types fall back to the base rather than silently inheriting one.
-// "observation" is the kerbal suit's run (the baseline); "materials study" is
-// the Materials Pod's instrument run (PartDef.experiment_family) -- a
-// dedicated science part, so it is worth MORE per situation (25 vs 10).
-inline int baseValue(const std::string &type) {
-    if(type == "observation") { return 10; }
-    if(type == "materials study") { return 25; }
-    return 10;   // unknown family: the base
-}
+// (baseValue lives with ExperimentDef above: the per-family base is data, not
+// a switch -- "observation" 10, "materials study" 25.)
 
 // Situation weight: the "how hard to be there" factor. Landed is the baseline;
 // reaching orbit -- and high orbit -- is worth a little more.

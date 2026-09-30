@@ -320,6 +320,21 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     out.body = body->name;
     out.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
                                  (double)body->radius);
+    // Availability (ExperimentDef.valid_in): a family may not work in every
+    // situation (a seismometer: landed only; a barometer: in-atmosphere only).
+    // Refuse with where it DOES work so the player isn't guessing.
+    if(!experimentValidIn(type, out.situation)) {
+        std::string where;
+        if(const ExperimentDef *d = defFor(type)) {
+            for(SciSituation s : d->valid_in) {
+                if(!where.empty()) { where += ", "; }
+                where += situationName(s);
+            }
+        }
+        if(where.empty()) { where = "no situation (never)"; }   // broken def
+        toast("%s only works in: %s", type.c_str(), where.c_str());
+        return false;
+    }
     out.biome = biomeName(biome);
     // provenance of this run (the identity key above is what dedups)
     out.ran_at = time;                                    // when `runner` ran it
@@ -427,9 +442,11 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
     // still intact).
     const Experiment e = from->experiments[which];
     if(!to->canHold(e)) {
-        // The destination already holds one of this type (per-family cap):
-        // name the type, not the biome, so it isn't misread as a biome clash.
-        toast("Already holding one %s (one per type)", e.type.c_str());
+        // The destination already holds this finding (exact key) or one of the
+        // same family (a courier/instrument's per-family cap). A capsule is
+        // unlimited-per-type, so "one per type" would be false -- name the
+        // finding instead, which is true in every case.
+        toast("Already holding: %s", experimentName(e).c_str());
         return;
     }
     const std::string name = experimentName(e);

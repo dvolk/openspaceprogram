@@ -199,8 +199,10 @@ struct Part {
          Courier    -- 1 per family, any family (a kerbal's suit: it can hold
                        a crew report and a materials study, but not two of
                        either).
-         Container  -- unlimited per family (a capsule: bulk storage, so it
-                       can hold the same family from several biomes at once).
+         Container  -- unlimited per family (a capsule: bulk storage -- one
+                       finding per key, i.e. the same family from several
+                       biomes at once WHERE the family is biome-specific there;
+                       in high orbit one finding per body+situation).
          None       -- no (most parts). */
     bool canHold(const Experiment &e) const {
         if(def == nullptr) { return false; }

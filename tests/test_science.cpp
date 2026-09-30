@@ -41,6 +41,13 @@ int main() {
         CHECK(a != otherBiome);
         CHECK(a != otherSit);
         CHECK(a != otherBody);
+        // A crew report IS biome-specific in low orbit, but NOT in high orbit
+        // ("of the planet" -- KSP: one reading per orbit segment), so there the
+        // biome is dropped from the key.
+        const Experiment hiA = obs("Mun", SciSituation::HighOrbit, "midlands");
+        const Experiment hiB = obs("Mun", SciSituation::HighOrbit, "lowlands");
+        CHECK(hiA == hiB);   // same segment, different biome -> the same finding
+        CHECK(hiA != a);     // different situation (high vs low orbit) -> distinct
     }
 
     // --- addExperiment / holdsExperiment (suit-level dedup) ---
@@ -98,6 +105,28 @@ int main() {
         CHECK(canHoldFinding(ExpStorage::Container, "", cap, obsLow));     // another family
     }
 
+    // --- canHoldFinding: a capsule holds ONE finding per key ---------------
+    // When the family is NOT biome-specific in the situation (high-orbit
+    // observation, low-orbit materials study), several biomes collapse to one
+    // key, so a capsule holds one per (body, situation) -- not one per biome.
+    // When it IS biome-specific (landed), several biomes are distinct keys.
+    {
+        // high-orbit observation: biome dropped from the key -> one finding
+        std::vector<Experiment> cap;
+        const Experiment hA = obs("Kerbin", SciSituation::HighOrbit, "midlands");
+        const Experiment hB = obs("Kerbin", SciSituation::HighOrbit, "lowlands");
+        CHECK(canHoldFinding(ExpStorage::Container, "", cap, hA));
+        cap.push_back(hA);
+        CHECK(!canHoldFinding(ExpStorage::Container, "", cap, hB));   // same key now
+        // landed observation: biome IS in the key -> several biomes coexist
+        const Experiment lA = obs("Kerbin", SciSituation::Landed, "midlands");
+        const Experiment lB = obs("Kerbin", SciSituation::Landed, "lowlands");
+        CHECK(canHoldFinding(ExpStorage::Container, "", { lA }, lB));   // distinct keys
+        // same body+situation but different body -> always distinct
+        CHECK(canHoldFinding(ExpStorage::Container, "", { hA },
+                             obs("Mun", SciSituation::HighOrbit, "midlands")));
+    }
+
     // --- base value + situation weights ---
     {
         CHECK(baseValue("observation") == 10);
@@ -106,6 +135,44 @@ int main() {
         CHECK(situationWeight(SciSituation::Landed) == 1.0);
         CHECK(situationWeight(SciSituation::LowOrbit) == 1.25);
         CHECK(situationWeight(SciSituation::HighOrbit) == 1.5);
+    }
+
+    // --- ExperimentDef: per-family biome-specificity + availability --------
+    // KSP: a reading is biome-specific only where biomes are tellable apart.
+    // A crew report: landed AND low orbit; a materials study: only landed;
+    // high orbit: never (the reading is "of the planet").
+    {
+        // observation (a crew report)
+        CHECK(biomeSpecificIn("observation", SciSituation::Landed));
+        CHECK(biomeSpecificIn("observation", SciSituation::LowOrbit));
+        CHECK(!biomeSpecificIn("observation", SciSituation::HighOrbit));
+        // materials study
+        CHECK(biomeSpecificIn("materials study", SciSituation::Landed));
+        CHECK(!biomeSpecificIn("materials study", SciSituation::LowOrbit));
+        CHECK(!biomeSpecificIn("materials study", SciSituation::HighOrbit));
+        // unknown family -> biome-specific in EVERY situation (the KSP common
+        // case + pre-registry behavior): never merge biome-distinct findings
+        // on a guess. A def opts a family OUT per situation instead.
+        CHECK(biomeSpecificIn("unknown", SciSituation::Landed));
+        CHECK(biomeSpecificIn("unknown", SciSituation::LowOrbit));
+        CHECK(biomeSpecificIn("unknown", SciSituation::HighOrbit));
+    }
+
+    // --- ExperimentDef: availability (valid_in) ----------------------------
+    // Today both families run in all three situations; an unregistered family
+    // is valid everywhere (the safe fallback). A situation-gated instrument
+    // (barometer: in-atmosphere only; seismometer: landed only) is one entry.
+    {
+        CHECK(experimentValidIn("observation", SciSituation::Landed));
+        CHECK(experimentValidIn("observation", SciSituation::HighOrbit));
+        CHECK(experimentValidIn("materials study", SciSituation::Landed));
+        CHECK(experimentValidIn("materials study", SciSituation::HighOrbit));
+        CHECK(experimentValidIn("unknown", SciSituation::HighOrbit));
+        const ExperimentDef *o = defFor("observation");
+        const ExperimentDef *m = defFor("materials study");
+        CHECK(o != nullptr && o->base_value == 10 && o->validIn(SciSituation::HighOrbit));
+        CHECK(m != nullptr && m->base_value == 25 && m->biomeSpecificIn(SciSituation::Landed));
+        CHECK(defFor("no such family") == nullptr);
     }
 
     // --- the materials-study family (the pod's experiment) is worth MORE ---
@@ -229,6 +296,32 @@ int main() {
         CHECK(countKey(c.recovered, m) == 1);
     }
 
+    // --- recoverMany: the biome-drop banks ONE finding per segment ---------
+    // The whole point of the identity change: two high-orbit observations of
+    // different biomes are now the SAME key, so a recovery carrying both banks
+    // ONCE -- not twice. (Landed observations of two biomes still bank twice.)
+    {
+        Career c;
+        const Experiment hA = obs("Kerbin", SciSituation::HighOrbit, "midlands");
+        const Experiment hB = obs("Kerbin", SciSituation::HighOrbit, "lowlands");
+        const RecoverSummary s = recoverMany(c, { hA, hB }, "Kerbin", 2.0, 100.0);
+        CHECK(s.gained == 15);            // 10 x 1.5 x 1.0, banked ONCE
+        CHECK(s.fresh.size() == 1);
+        CHECK(s.repeat == 0);
+        CHECK(c.recovered.size() == 1);
+        CHECK(countKey(c.recovered, hA) == 1);
+        CHECK(hA == hB);                  // the dedup rests on the identity change
+
+        // landed observations of two biomes are distinct keys -> bank TWICE
+        Career c2;
+        const Experiment lA = obs("Kerbin", SciSituation::Landed, "midlands");
+        const Experiment lB = obs("Kerbin", SciSituation::Landed, "lowlands");
+        const RecoverSummary s2 = recoverMany(c2, { lA, lB }, "Kerbin", 2.0, 100.0);
+        CHECK(s2.gained == 20);           // 10 + 10 (two fresh keys)
+        CHECK(s2.fresh.size() == 2);
+        CHECK(c2.recovered.size() == 2);
+    }
+
     // --- display name (incl. Landed) ---
     {
         const Experiment a = obs("Mun", SciSituation::LowOrbit, "midlands");
@@ -236,7 +329,15 @@ int main() {
         const Experiment b = obs("Kerbin", SciSituation::Landed, "ocean");
         CHECK(experimentName(b) == "Landed observation of Ocean on Kerbin");
         const Experiment c = obs("Kerbin", SciSituation::HighOrbit, "ocean");
-        CHECK(experimentName(c) == "High orbit observation of Ocean on Kerbin");
+        // High orbit: not biome-specific -> "of the planet", no biome in name.
+        CHECK(experimentName(c) == "High orbit observation on Kerbin");
+        // Materials study: biome-specific only when landed (KSP rule).
+        Experiment m;  m.type = "materials study"; m.body = "Kerbin";
+        m.situation = SciSituation::Landed;   m.biome = "lowlands";
+        CHECK(experimentName(m) == "Landed materials study of Lowlands on Kerbin");
+        Experiment m2; m2.type = "materials study"; m2.body = "Kerbin";
+        m2.situation = SciSituation::LowOrbit; m2.biome = "lowlands";
+        CHECK(experimentName(m2) == "Low orbit materials study on Kerbin");
     }
 
     // --- labEntries: the Lab's pre-built rows (issue #87) ------------------

@@ -10,7 +10,7 @@ ARGS --space-center 1500 --recover 2500 --recover-anywhere
 EXPECT Loaded game from e2e/fixtures/save_science (active: racer)
 EXPECT [science] recovered +21
 EXPECT +6 repeat
-EXPECT High orbit observation of Midlands on Kerbin
+EXPECT High orbit observation on Kerbin
 EXPECT [recover] t=
 FORBID GL_
 FORBID error:
