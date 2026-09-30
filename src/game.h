@@ -327,6 +327,13 @@ struct Game {
     int experimentMs = -1;
     bool experimentFired = false;
 
+    // --pod-experiment MS: the headless hook for a science pod's "Run
+    // Experiment" (Game::runPodExperiment on the active ship's first
+    // experiment-family part, with its first aboard crew). Mirrors
+    // --experiment (the suit's observation is the sibling path).
+    int podExperimentMs = -1;
+    bool podExperimentFired = false;
+
     // --tracking MS: the headless hook for the Space Center hub's "Tracking
     // Station" (pushes SceneId::TrackingStation). Mirrors --space-center.
     int trackingMs = -1;
@@ -871,6 +878,23 @@ struct Game {
        refuses a duplicate already held. Toasts the outcome. The part window
        calls this for a picked kerbal (or the capsule's first aboard crew). */
     void runExperiment(Kerbal *k);
+    /* The situation experiment (identity + provenance) for a part riding
+       `poseVehicle`, recorded by `runner` (a kerbal): reads the SoI body's
+       biome / altitude-band / grounded state at the part's position and
+       fills `out`. `body` is the SoI body; `localPart` the part whose
+       position gives the COM (null = the vehicle's own COM); `type` the
+       experiment family. False (with a toast) when there is nothing to
+       observe here. Shared by runExperiment (a suit observation) and
+       runPodExperiment (a science instrument). */
+    bool situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
+                             Part *localPart, const std::string &type,
+                             Kerbal *runner, Experiment &out);
+    /* Run a science-instrument experiment on part `pod` with aboard kerbal
+       `k`: the situation is read from the pod's ship, stored on the pod
+       (Part::experiments, its def's experiment_family), and recovered on
+       recovery (recoverActive already harvests every part's experiments).
+       Refuses a duplicate the pod already holds. Toasts the outcome. */
+    void runPodExperiment(Part *pod, Kerbal *k);
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);

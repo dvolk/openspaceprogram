@@ -149,6 +149,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire the part window's \"Run Experiment\" once at this "
                    "loop time in ms (Game::runExperiment, headless; "
                    "-1 = never)");
+    app.add_option("--pod-experiment", args.pod_experiment_ms,
+                   "Fire a science pod's \"Run Experiment\" once at this loop "
+                   "time in ms (Game::runPodExperiment on the active ship's "
+                   "first experiment-family part, headless; -1 = never)");
     app.add_option("--tracking", args.tracking_ms,
                    "Push the Tracking Station once at this loop time in ms "
                    "(the Space Center hub's \"Tracking Station\", headless; "

@@ -121,6 +121,15 @@ int main() {
     CHECK(cg->crew_capacity == 0);
     CHECK(cg->torque == 0.0 && cg->totalPropellantRate() == 0.0);
 
+    // a science instrument part: names the experiment family it runs (the
+    // suit's "observation" is a kerbal behavior, not a part field). Empty
+    // family = not a science part (capsule, reaction wheel, ...).
+    const PartDef *pod = cat.find("materials_pod");
+    CHECK(pod != nullptr);
+    CHECK(pod->experiment_family == "materials study");
+    CHECK(cap->experiment_family.empty());
+    CHECK(rw->experiment_family.empty());
+
     // decouplers are fuel barriers: propellant does not flow across one, so
     // it splits fuel groups (an engine can't draw from the other side).
     const PartDef *dc = cat.find("decoupler_r1");

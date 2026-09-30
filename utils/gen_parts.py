@@ -139,6 +139,7 @@ MASS_DENSITY = {
     "nose_cap":       192.0,     # thin fairing
     "rcs":            40.0,      # mostly structure + small thrusters (light)
     "cargo":          40.0,      # empty crate shell (contents live in inventory)
+    "materials_pod":  60.0,      # structure + the materials-study instrument (lighter than the wheel)
 }
 
 # attitude authority (N m), scales with radius (leverage of the wheel/arm)
@@ -214,6 +215,9 @@ DRAG_CD = {
     # thin disc (wheel / battery / rtg / mono / rcs / decoupler / dock port):
     # faces are the circles at +-Z (blunt face-on), the rim is the thin edge.
     "reaction_wheel": {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    # materials pod: the same flat-disc shape as the reaction wheel it reuses
+    "materials_pod":  {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
     "battery":        {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
@@ -341,6 +345,12 @@ PARTS = [
     # an empty cargo crate: inventory storage (Part::isContainer). Mass from
     # the crate shell; contents ride inventory_capacity, not the body.
     ("cargo",            "cargo",          "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
+    # a materials study pod: a science instrument that runs + holds a
+    # "materials study" experiment (a higher-value family than the suit's
+    # observation). Its own copies of the base-radius reaction wheel's mesh +
+    # texture (so its look can diverge from the wheel); the behavior is the
+    # science logic (science.h), not the wheel's torque/power.
+    ("materials_pod",    "materials_pod",  "meshes/materials_pod.obj",           "textures/materials_pod.png"),
     # a wing: a lifting surface (delta wing, wing.obj by gen_wing.py). Adds
     # lift + a weathervane drag to a ship (see the WING_* constants).
     ("wing",             "wing",           "meshes/wing.obj",                     "textures/wing.png"),
@@ -394,6 +404,9 @@ EXTRA_FIELDS = {
                           "inventory_capacity": 3},
     # cargo crate: how many inventory items it holds (PartDef.inventory_capacity)
     "cargo":             {"inventory_capacity": 10},
+    # materials pod: the science family it runs (science.h baseValue); the
+    # part window's "Run Experiment" button is gated on this being set.
+    "materials_pod":     {"experiment_family": "materials study"},
     "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
     "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
     "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,
@@ -457,6 +470,7 @@ DISPLAY_BASE = {
     "nose_cap":       "Nose Cap",
     "kerbal":         "Kerbal",
     "cargo":          "Cargo Crate",
+    "materials_pod":  "Materials Pod",
     "wing":           "Wing",
     "rudder":         "Rudder",
     "elevator":       "Elevator",

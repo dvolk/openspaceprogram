@@ -363,6 +363,15 @@ struct PartDef {
        transfer. */
     int inventory_capacity;
 
+    /* The experiment family this part runs (a science instrument): the
+       `type` of the situation experiment it records (science.h). Empty ->
+       not a science part (the default; a kerbal's observation is a character
+       action, not a part family). When set, the part window shows a "Run
+       Experiment" button (needs an aboard kerbal) and Game::runPodExperiment
+       stores the result on this part (Part::experiments), recovered on
+       recovery like a suit's. */
+    std::string experiment_family;
+
     /* true -> a decoupler: a staging boundary. When the ship's stage
        counter reaches this part's stage, the weld to its parent is cut and
        the decoupler plus its child-side subtree (the parts attached below

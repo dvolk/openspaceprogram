@@ -1,0 +1,10 @@
+{
+  "name": "labpod",
+  "testship": true,
+  "parts": [
+    { "part": "capsule", "id": "capsule_1" },
+    { "part": "materials_pod", "id": "materials_pod_1", "parent": "capsule_1" },
+    { "part": "fuel_tank", "id": "fuel_tank_1", "parent": "materials_pod_1" },
+    { "part": "engine", "id": "engine_1", "parent": "fuel_tank_1" }
+  ]
+}

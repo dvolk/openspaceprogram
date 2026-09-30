@@ -125,11 +125,14 @@ inline int countKey(const std::vector<Experiment> &v, const Experiment &e) {
 }
 
 // ---- the value model ------------------------------------------------------
-// Base value per experiment family (extensible; v2 has one family). A new
-// family is an explicit entry here -- unknown types fall back to the base
-// rather than silently inheriting one.
+// Base value per experiment family. A new family is an explicit entry here --
+// unknown types fall back to the base rather than silently inheriting one.
+// "observation" is the kerbal suit's run (the baseline); "materials study" is
+// the Materials Pod's instrument run (PartDef.experiment_family) -- a
+// dedicated science part, so it is worth MORE per situation (25 vs 10).
 inline int baseValue(const std::string &type) {
     if(type == "observation") { return 10; }
+    if(type == "materials study") { return 25; }
     return 10;   // unknown family: the base
 }
 

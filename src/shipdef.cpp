@@ -275,6 +275,13 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
+        /* experiment family (string); the science family this part runs
+           (PartDef.experiment_family, science.h). Omitted -> "" (not a
+           science part). */
+        if(pv.contains("experiment_family")) {
+            d.experiment_family = pv["experiment_family"].get<std::string>();
+        }
+
         /* decoupler (bool); a staging boundary (see PartDef.decoupler).
            Omitted -> false. */
         if(pv.contains("decoupler")) {

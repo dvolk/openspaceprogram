@@ -57,9 +57,27 @@ int main() {
     // --- base value + situation weights ---
     {
         CHECK(baseValue("observation") == 10);
+        CHECK(baseValue("materials study") == 25);   // the pod's instrument
+        CHECK(baseValue("unknown family") == 10);    // falls back to the base
         CHECK(situationWeight(SciSituation::Landed) == 1.0);
         CHECK(situationWeight(SciSituation::LowOrbit) == 1.25);
         CHECK(situationWeight(SciSituation::HighOrbit) == 1.5);
+    }
+
+    // --- the materials-study family (the pod's experiment) is worth MORE ---
+    // base 25 x situation x body; the diminishing-returns halving still applies.
+    {
+        Experiment m;
+        m.type = "materials study";
+        m.body = "Kerbin";
+        m.situation = SciSituation::Landed;
+        m.biome = "lowlands";
+        CHECK(scoreOf(m, 0, 1.0) == 25);   // new, home, landed
+        CHECK(scoreOf(m, 0, 2.0) == 50);   // frontier body doubles it
+        CHECK(scoreOf(m, 1, 1.0) == 12);   // repeat halves (25/2, integer)
+        // a materials study is a DIFFERENT key than an observation of the
+        // same place -- the two bank independently.
+        CHECK(m != obs("Kerbin", SciSituation::Landed, "lowlands"));
     }
 
     // --- scoreOf: first recovery (prevCount 0) = base x situation x body ---

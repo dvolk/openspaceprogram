@@ -268,54 +268,37 @@ void Game::clearFlightSummary() {
     setWinOpen(W_FlightSummary, false);
 }
 
-/* Run an observation experiment with kerbal `k` at its current SoI body,
-   situation (science.h situationFor: grounded -> Landed, else the altitude
-   band) and ground biome. The experiment lands on the kerbal's suit Part
-   (unlimited); a key the suit already holds is refused so the player sees
-   "already have" rather than silently stacking duplicates. A key the career
-   already recovered is a repeat -- it still lands on the suit, but recovery
-   scores it down (diminishing returns) and the toast says so.
-
-   Position is the kerbal COM in the body's rotating frame (the same
-   sub-satellite point the Surface Map / HUD use), so the biome is "what is
+/* Compute the situation experiment (identity + provenance) for a science
+   run: the SoI body, situation (science.h situationFor: grounded -> Landed,
+   else the altitude band) and ground biome the runner is at. The position is
+   `localPart`'s COM on `poseVehicle` (a null localPart = the vehicle's own
+   COM, e.g. a free-EVA kerbal) in the body's rotating frame -- the
+   sub-satellite point the Surface Map / HUD use -- so the biome is "what is
    under me" as the planet spins. A star or a banded gas giant has no
-   classifiable biome (terragen.h) -- refuse rather than invent one. */
-void Game::runExperiment(Kerbal *k) {
-    if(k == nullptr || k->parts.empty()) {
-        toast("No experiment: no kerbal");
-        return;
-    }
-    Part *suit = k->parts[0];
-    TerrainBody *body = k->m_parent;
+   classifiable biome (terragen.h) -- refuse rather than invent one. Both
+   runExperiment (suit) and runPodExperiment (pod) call this. */
+bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
+                               Part *localPart, const std::string &type,
+                               Kerbal *runner, Experiment &out) {
     if(body == nullptr || body->isStar()) {
         toast("No experiment: nothing to observe here");
-        return;
+        return false;
     }
+    // The COM is the part's position on its vehicle (a pod on a ship, an
+    // aboard kerbal's seat on the capsule); null localPart = the vehicle's
+    // own COM (a free-EVA kerbal, whose body is live). An aboard kerbal's
+    // body pose is frozen at board time (parked out of the physics world), so
+    // its own COM is stale after a long coast -- read the live capsule instead.
+    const glm::dvec3 localCom = (localPart != nullptr)
+        ? poseVehicle->partPos(localPart)
+        : poseVehicle->get_center_of_mass();
     Frame *rot = body->frame->getRotFrame();
-    // The pose AND the grounded state come from the vessel the kerbal is
-    // physically on: the carrier capsule when aboard, the kerbal's own
-    // vehicle on free EVA. An aboard kerbal's body pose is frozen at board
-    // time (parked out of the physics world), so its own COM is stale after a
-    // long coast -- read the live capsule instead. A free EVA kerbal's body is
-    // live (railed ones get writeRailPose), so its own COM is current.
-    Vehicle *poseVehicle = nullptr;
-    glm::dvec3 localCom;
-    Frame *posFrame;
-    if(k->isAboard() && k->aboardPart != nullptr) {
-        poseVehicle = k->aboard();
-        localCom = poseVehicle->partPos(k->aboardPart);
-        posFrame = poseVehicle->frame;
-    } else {
-        poseVehicle = k;
-        localCom = k->get_center_of_mass();
-        posFrame = k->frame;
-    }
-    const glm::dvec3 sp = posFrame->GetOrientRelTo(rot) * localCom
-                        + posFrame->GetPositionRelTo(rot);
+    const glm::dvec3 sp = poseVehicle->frame->GetOrientRelTo(rot) * localCom
+                        + poseVehicle->frame->GetPositionRelTo(rot);
     const double r = glm::length(sp);
     if(r < 1e-9) {
         toast("No experiment: bad position");
-        return;
+        return false;
     }
     const glm::vec3 dir = glm::vec3(sp / r);
     const double altAsl = r - (double)body->radius;
@@ -324,24 +307,48 @@ void Game::runExperiment(Kerbal *k) {
     // ship's SoI body is always ready (issue #54), and so is a kerbal's.
     if(!body->ready) {
         toast("No experiment: terrain not ready");
-        return;
+        return false;
     }
     const Biome biome = biomeAt(dir, body->params());
     if(biome == Biome::None) {
         toast("No experiment: no classifiable surface");
-        return;
+        return false;
     }
     const double atmoTop = body->surface.atmosphere.top();
-    Experiment e;
-    e.type = "observation";
-    e.body = body->name;
-    e.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
-                               (double)body->radius);
-    e.biome = biomeName(biome);
+    out = Experiment{};
+    out.type = type;
+    out.body = body->name;
+    out.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
+                                 (double)body->radius);
+    out.biome = biomeName(biome);
     // provenance of this run (the identity key above is what dedups)
-    e.ran_at = time;                                    // when this kerbal ran it
-    e.kerbal = k->name;
-    e.ship = (poseVehicle == k) ? "" : poseVehicle->name;   // "" = free EVA
+    out.ran_at = time;                                    // when `runner` ran it
+    out.kerbal = (runner != nullptr) ? runner->name : "";
+    out.ship = (poseVehicle == runner) ? "" : poseVehicle->name;   // "" = free EVA
+    return true;
+}
+
+void Game::runExperiment(Kerbal *k) {
+    if(k == nullptr || k->parts.empty()) {
+        toast("No experiment: no kerbal");
+        return;
+    }
+    Part *suit = k->parts[0];
+    // The pose + grounded state come from the vessel the kerbal is physically
+    // on: the carrier capsule when aboard, the kerbal's own vehicle on EVA.
+    Vehicle *poseVehicle = nullptr;
+    Part *localPart = nullptr;
+    if(k->isAboard() && k->aboardPart != nullptr) {
+        poseVehicle = k->aboard();
+        localPart = k->aboardPart;
+    } else {
+        poseVehicle = k;
+    }
+    Experiment e;
+    if(!situationExperiment(k->m_parent, poseVehicle, localPart,
+                            "observation", k, e)) {
+        return;
+    }
     if(!addExperiment(suit->experiments, e)) {
         toast("Already have: %s (this suit)", experimentName(e).c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
@@ -358,6 +365,37 @@ void Game::runExperiment(Kerbal *k) {
           experimentName(e).c_str());
     printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, k->name.c_str(),
            repeat ? " REPEAT" : "", experimentName(e).c_str());
+    fflush(stdout);
+}
+
+void Game::runPodExperiment(Part *pod, Kerbal *k) {
+    if(pod == nullptr || pod->def == nullptr || pod->owner == nullptr) {
+        toast("No experiment: no pod on a ship");
+        return;
+    }
+    if(k == nullptr) {
+        toast("No experiment: no kerbal to run it");
+        return;
+    }
+    Vehicle *ship = pod->owner;
+    Experiment e;
+    if(!situationExperiment(ship->m_parent, ship, pod,
+                            pod->def->experiment_family, k, e)) {
+        return;
+    }
+    if(!addExperiment(pod->experiments, e)) {
+        toast("Already have: %s (this pod)", experimentName(e).c_str());
+        printf("[science] t=%.1f '%s' already held '%s' (pod)\n", time,
+               k->name.c_str(), experimentName(e).c_str());
+        fflush(stdout);
+        return;
+    }
+    const bool repeat = holdsExperiment(science.recovered, e);
+    toast(repeat ? "Experiment (repeat): %s -- scores less"
+                 : "Experiment: %s",
+          experimentName(e).c_str());
+    printf("[science] t=%.1f '%s' recorded%s '%s' (pod)\n", time,
+           k->name.c_str(), repeat ? " REPEAT" : "", experimentName(e).c_str());
     fflush(stdout);
 }
 

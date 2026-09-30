@@ -1971,6 +1971,37 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s", experimentName(e).c_str());
                 }
             }
+            // --- science instrument (this part runs + holds an experiment) ---
+            // A science pod (PartDef.experiment_family set): an aboard kerbal
+            // runs the pod's experiment (Game::runPodExperiment), which lands
+            // on the pod and is recovered with the ship (recoverActive
+            // harvests every part's experiments). No crew aboard -> there is
+            // no one to run it with.
+            if(!def->experiment_family.empty()) {
+                Part *pod = ship->parts[part];
+                ImGui::Separator();
+                Kerbal *runner = nullptr;
+                for(Vehicle *kv : ship->crew) {
+                    Kerbal *k = static_cast<Kerbal *>(kv);
+                    if(!k->parts.empty()) { runner = k; break; }
+                }
+                if(runner != nullptr) {
+                    // ##id: a capsule def could one day carry both crew and
+                    // a science family -- keep this button's ID distinct from
+                    // the capsule section's "Run Experiment".
+                    if(ImGui::SmallButton("Run Experiment##pod_run")) {
+                        g.runPodExperiment(pod, runner);
+                    }
+                } else {
+                    ImGui::TextDisabled("Run Experiment  (needs a crew aboard)");
+                }
+                ImGui::Text("Experiments: %d", (int)pod->experiments.size());
+                for(const Experiment &e : pod->experiments) {
+                    const bool repeat = holdsExperiment(g.science.recovered, e);
+                    ImGui::Text("  %s%s", experimentName(e).c_str(),
+                                repeat ? "  (repeat)" : "");
+                }
+            }
             // --- inventory (this part is a container: holds items) --------
             // Contained items get a Drop button (it leaves into a free 1-part
             // ship, Game::dropItem). Free item ships within pickup range

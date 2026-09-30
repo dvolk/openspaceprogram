@@ -990,6 +990,21 @@
       "drag_backward": 1.0
     },
     {
+      "name": "materials_pod",
+      "type": "materials_pod",
+      "display_name": "Materials Pod (2m)",
+      "mesh": "meshes/materials_pod.obj",
+      "texture": "textures/materials_pod.png",
+      "mass": 47.12,
+      "radius": 1.0,
+      "height": 0.25,
+      "experiment_family": "materials study",
+      "drag": 0.6,
+      "drag_forward": 1.1,
+      "drag_side": 0.2,
+      "drag_backward": 1.1
+    },
+    {
       "name": "wing",
       "type": "wing",
       "display_name": "Wing (2m)",

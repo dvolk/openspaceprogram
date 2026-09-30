@@ -112,6 +112,10 @@ struct GameArgs {
     int experiment_ms = -1; // --experiment: fire the part window's "Run
                             // Experiment" (Game::runExperiment) once at this
                             // loop time in ms (headless test hook; -1 = never)
+    int pod_experiment_ms = -1; // --pod-experiment: fire a science pod's
+                                // "Run Experiment" (Game::runPodExperiment)
+                                // once at this loop time in ms (headless test
+                                // hook; -1 = never)
     int tracking_ms = -1;   // --tracking: push the Tracking Station once at this
                             // loop time in ms (headless test hook; -1 = never)
     int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station

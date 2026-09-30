@@ -1018,6 +1018,7 @@ int main(int argc, char **argv)
     game.spaceCenterMs = args.space_center_ms;
     game.recoverMs = args.recover_ms;
     game.experimentMs = args.experiment_ms;
+    game.podExperimentMs = args.pod_experiment_ms;
     game.trackingMs = args.tracking_ms;
     game.trackingCloseMs = args.tracking_close_ms;
     game.researchMs = args.research_ms;
@@ -1248,6 +1249,28 @@ int main(int argc, char **argv)
             }
             if(k != nullptr) { game.runExperiment(k); }
             else { printf("[hook] --experiment: no kerbal, ignored\n"); }
+        }
+        /* --pod-experiment: the headless hook for a science pod's "Run
+           Experiment". Mirrors --experiment (the suit's observation): finds
+           the active ship's first experiment-family part + its first aboard
+           crew, and runs the pod's experiment on it (runPodExperiment). */
+        if(game.podExperimentMs >= 0 && !game.podExperimentFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.podExperimentMs) {
+            game.podExperimentFired = true;
+            Part *pod = nullptr;
+            Kerbal *k = nullptr;
+            if(game.ship != nullptr) {
+                for(Part *p : game.ship->parts) {
+                    if(p->def != nullptr && !p->def->experiment_family.empty()) {
+                        pod = p; break;
+                    }
+                }
+                if(!game.ship->crew.empty()) {
+                    k = static_cast<Kerbal *>(game.ship->crew.front());
+                }
+            }
+            if(pod != nullptr && k != nullptr) { game.runPodExperiment(pod, k); }
+            else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
         }
         /* --tracking: the headless hook for the hub's "Tracking Station". Fired
            after --space-center, so --space-center A --tracking B drives the
