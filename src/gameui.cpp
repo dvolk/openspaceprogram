@@ -1918,6 +1918,16 @@ void drawPartWindows(Game &g) {
                                                     repeat ? "  (repeat)" : "");
                             }
                             ImGui::Unindent();
+                            // Store: this kerbal (the courier) is holding a
+                            // finding; deposit it into THIS capsule. Only
+                            // offered when the capsule can receive (a
+                            // Container); moveExperiment re-checks canHold.
+                            if(ship->parts[part]->canReceive()) {
+                                if(ImGui::SmallButton("Store  (into capsule)")) {
+                                    g.moveExperiment(k->parts[0],
+                                                     ship->parts[part], 0);
+                                }
+                            }
                         }
                     }
                     ImGui::PopID();
@@ -2000,6 +2010,18 @@ void drawPartWindows(Game &g) {
                     const bool repeat = holdsExperiment(g.science.recovered, e);
                     ImGui::Text("  %s%s", experimentName(e).c_str(),
                                 repeat ? "  (repeat)" : "");
+                }
+                // Take: move this pod's finding onto an aboard kerbal's suit
+                // (the courier), so it can then be stored into a capsule.
+                // Needs a held finding + an aboard kerbal. moveExperiment
+                // re-checks the suit's canHold (a Courier holds 1 per family),
+                // so a suit already carrying the same family is refused.
+                if(!pod->experiments.empty() &&
+                   runner != nullptr && !runner->parts.empty() &&
+                   runner->parts[0]->canHold(pod->experiments[0])) {
+                    if(ImGui::SmallButton("Take  (to kerbal)##pod_take")) {
+                        g.moveExperiment(pod, runner->parts[0], 0);
+                    }
                 }
             }
             // --- inventory (this part is a container: holds items) --------

@@ -413,7 +413,12 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
               to->def ? to->def->display_name.c_str() : "?");
         return;
     }
-    const Experiment &e = from->experiments[which];
+    // Copy by value: `erase` below invalidates any reference into
+    // from->experiments, and push_back(e) then reads it -- a dangling
+    // reference (latent UB; only benign while `from` holds a single
+    // finding, since the erased element is the last and its memory is
+    // still intact).
+    const Experiment e = from->experiments[which];
     if(!to->canHold(e)) {
         toast("Already have: %s (%s)", experimentName(e).c_str(),
               to->def ? to->def->display_name.c_str() : "?");
