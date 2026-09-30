@@ -578,6 +578,17 @@ struct Game {
     // spends the score, more situations, instrument parts.
     Career science;
 
+    // The Research Lab's pre-built rows (issue #87): built on scene entry
+    // (researchLabEnter, from science.recovered + the home calendar) so the
+    // per-frame render walks a ready vector instead of rebuilding each row's
+    // name + provenance strings every frame. `labRowsVersion` is the
+    // science.version the rows were built from; the render rebuilds them if it
+    // differs, so the cache self-heals if the log changes while the Lab is
+    // live (a Load from here can -- the failed-load path stays in the scene),
+    // instead of relying on "the player can't change it" UI coincidence.
+    std::vector<LabEntry> labRows;
+    std::size_t labRowsVersion = std::size_t(-1);   // no cache built yet
+
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;
 

@@ -109,6 +109,24 @@ int main() {
         CHECK(holdsExperiment(c.recovered, b));
     }
 
+    // --- Career::version: bumped on every mutation (the Lab cache's key) ---
+    {
+        Career c;
+        const std::size_t v0 = c.version;
+        c.recover(obs("Kerbin", SciSituation::Landed, "lowlands"), 1.0);
+        CHECK(c.version == v0 + 1);          // a bank bumps it
+        const std::size_t v1 = c.version;
+        c.setFrom(7, { obs("Mun", SciSituation::LowOrbit, "midlands") });
+        CHECK(c.version == v1 + 1);          // a Load bumps it
+        CHECK(c.score == 7);
+        CHECK(c.recovered.size() == 1);
+        const std::size_t v2 = c.version;
+        c.reset();
+        CHECK(c.version == v2 + 1);          // a reset bumps it
+        CHECK(c.score == 0);
+        CHECK(c.recovered.empty());
+    }
+
     // --- recoverMany: whole-recovery dedup (multi-crew double-banking) ----
     // The bag is de-duplicated by key, so ONE observation held by N kerbals
     // banks ONCE -- not N times (v1's per-occurrence harvest was a farming
@@ -157,6 +175,63 @@ int main() {
         CHECK(experimentName(b) == "Landed observation of Ocean on Kerbin");
         const Experiment c = obs("Kerbin", SciSituation::HighOrbit, "ocean");
         CHECK(experimentName(c) == "High orbit observation of Ocean on Kerbin");
+    }
+
+    // --- labEntries: the Lab's pre-built rows (issue #87) ------------------
+    // One row per bank, in bank order; the stamps drawn in the home calendar;
+    // the provenance sub-line is the kerbal + ship ("(EVA)" when aboard
+    // nothing). A 0 calendar degrades to name-only (no home yet).
+    {
+        const Calendar cal = Calendar::make(100.0, 0.0, 1);   // day = 100s
+        // a fully-provenanced bank (ran 25s -> Day 1 06:00; banked 125s -> Day 2)
+        Experiment e;
+        e.body = "Mun";
+        e.situation = SciSituation::LowOrbit;
+        e.biome = "midlands";
+        e.ran_at = 25.0;
+        e.recovered_at = 125.0;
+        e.kerbal = "Jebediah";
+        e.ship = "racer";
+        auto rows = labEntries({ e }, cal);
+        CHECK(rows.size() == 1);
+        if(rows.size() == 1) {
+            CHECK(rows[0].line1 ==
+                  "Day 2  06:00  Low orbit observation of Midlands on Mun");
+            CHECK(rows[0].line2 == "ran Day 1  06:00   Jebediah   racer");
+        }
+
+        // free-EVA: a kerbal, no ship -> "(EVA)"; no ran stamp when ran_at==0
+        Experiment eva;
+        eva.body = "Kerbin";
+        eva.situation = SciSituation::Landed;
+        eva.biome = "lowlands";
+        eva.kerbal = "Bill";
+        auto evaRows = labEntries({ eva }, cal);
+        CHECK(evaRows.size() == 1);
+        if(evaRows.size() == 1) {
+            CHECK(evaRows[0].line1 == "Landed observation of Lowlands on Kerbin");
+            CHECK(evaRows[0].line2 == "Bill   (EVA)");
+        }
+
+        // a bare bank (pre-provenance save): name-only, no sub-line at all
+        Experiment bare;
+        bare.body = "Kerbin";
+        bare.situation = SciSituation::Landed;
+        bare.biome = "ocean";
+        auto bareRows = labEntries({ bare }, cal);
+        CHECK(bareRows.size() == 1);
+        if(bareRows.size() == 1) {
+            CHECK(bareRows[0].line1 == "Landed observation of Ocean on Kerbin");
+            CHECK(bareRows[0].line2.empty());
+        }
+
+        // no home calendar: the stamps drop, the provenance text stays
+        auto noCal = labEntries({ e }, Calendar{});
+        CHECK(noCal.size() == 1);
+        if(noCal.size() == 1) {
+            CHECK(noCal[0].line1 == "Low orbit observation of Midlands on Mun");
+            CHECK(noCal[0].line2 == "Jebediah   racer");
+        }
     }
 
     // --- situation ids round-trip (incl. landed) ---

@@ -679,8 +679,7 @@ void load_game(Game &g, const std::string &dir) {
         g.args.exhaust_scale = meta.exhaust_scale;
     }
     // science (absent in a pre-science save: score 0, nothing recovered)
-    g.science.score = meta.science_score;
-    g.science.recovered = meta.recovered;
+    g.science.setFrom(meta.science_score, meta.recovered);
 
     /* Transactional: everything that can fail is reading or building, and
        neither needs the old fleet DELETED first -- only out of the bodies'

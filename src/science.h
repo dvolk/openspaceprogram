@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include "calendar.h"   // Calendar + fmt_cal_compact (the Lab row's stamps)
+
 /* Where the experiment happens. Landed = grounded on a surface; LowOrbit /
    HighOrbit = the two altitude bands over the SoI body (NOT a true orbital
    state -- a suborbital hop still reads as an "orbit observation"). The
@@ -164,10 +166,18 @@ inline int scoreOf(const Experiment &e, int prevCount, double bodyWeight) {
    feeds it harvested experiments and it owns the score and the
    diminishing-returns state together, so they cannot desync: a point is only
    ever the scoreOf of a real bank (fixes the v1 score/recovered-list desync,
-   issue #62). */
+   issue #62).
+
+   `version` is bumped on EVERY mutation (a bank, a Load, a reset) so a derived
+   cache (the Lab's pre-built rows, issue #87) can tell when it is stale: the
+   Lab's "the log can't change for the scene's life" invariant is otherwise
+   only enforced by UI coincidence (a failed Load from the Lab does change it).
+   All mutation goes through these three methods, so no site can forget to
+   bump it. */
 struct Career {
     int score = 0;
     std::vector<Experiment> recovered;   // the log, in bank order
+    std::size_t version = 0;             // bumped on every mutation above
 
     // Bank one harvested experiment (e carries its provenance, incl.
     // recovered_at). The (N+1)th bank of a key scores scoreOf(e, N, bodyWeight)
@@ -178,7 +188,24 @@ struct Career {
         const int gained = scoreOf(e, prev, bodyWeight);
         recovered.push_back(e);
         score += gained;
+        ++version;
         return gained;
+    }
+
+    // Replace the whole career (a Load). One entry point for the bulk write
+    // (score + log) so the version bump is not forgotten at the call site.
+    void setFrom(int newScore, std::vector<Experiment> newLog) {
+        score = newScore;
+        recovered = std::move(newLog);
+        ++version;
+    }
+
+    // A fresh career (New Game / unload). Clears + bumps, so a Lab cache built
+    // from the old log is detected stale.
+    void reset() {
+        score = 0;
+        recovered.clear();
+        ++version;
     }
 };
 
@@ -220,6 +247,58 @@ inline RecoverSummary recoverMany(Career &c, const std::vector<Experiment> &loot
         } else {
             out.repeat += g;
         }
+    }
+    return out;
+}
+
+// ---- the Lab display (issue #87: build once, render many) -----------------
+// One row of the Research Lab, pre-built so the per-frame render does no
+// string building. `line1` is the primary line (the home-calendar bank stamp
+// + the experiment name); `line2` the dimmed provenance sub-line (when it was
+// run, by whom, on which ship; "" = a free-EVA kerbal), empty when there is
+// none to show. Kept as a small struct rather than a bare string because the
+// row has two lines of different weight.
+struct LabEntry {
+    std::string line1;
+    std::string line2;
+};
+
+// The Lab's rows for a log of banks: one entry per bank, in bank order. `cal`
+// is the home calendar the stamps are drawn in; a 0 calendar (no home yet)
+// degrades to name-only, matching the live path. This is the single source
+// for the Lab's text -- the render just walks it, and a future pagination is
+// a slice of the result and a sort a reorder (issue #90's GC is what bounds
+// the length). Pure: takes the log + a calendar, returns display strings, so
+// it is testable without a Game.
+inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered,
+                                        const Calendar &cal) {
+    std::vector<LabEntry> out;
+    out.reserve(recovered.size());
+    for(const Experiment &e : recovered) {
+        LabEntry r;
+        char stamp[64];
+        if(e.recovered_at > 0.0 &&
+           fmt_cal_compact(cal, e.recovered_at, stamp, sizeof stamp)) {
+            r.line1 = stamp;
+            r.line1 += "  ";
+        }
+        r.line1 += experimentName(e);
+        if(e.ran_at > 0.0 &&
+           fmt_cal_compact(cal, e.ran_at, stamp, sizeof stamp)) {
+            r.line2 = "ran ";
+            r.line2 += stamp;
+        }
+        if(!e.kerbal.empty()) {
+            if(!r.line2.empty()) { r.line2 += "   "; }
+            r.line2 += e.kerbal;
+        }
+        if(!e.ship.empty()) {
+            if(!r.line2.empty()) { r.line2 += "   "; }
+            r.line2 += e.ship;
+        } else if(!e.kerbal.empty()) {
+            r.line2 += "   (EVA)";
+        }
+        out.push_back(std::move(r));
     }
     return out;
 }

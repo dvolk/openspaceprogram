@@ -528,7 +528,7 @@ bool Game::newGame() {
     // WarpUp from 0 resumes at 1x.
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
-    science = Career{};     // a fresh career: no score, nothing recovered
+    science.reset();        // a fresh career: no score, nothing recovered
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
@@ -717,7 +717,7 @@ void Game::unloadGame() {
        this -- so tearing the fleet down cannot dangle an in-flight job. */
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
-    science = Career{};     // ...and neither must the career score / archive
+    science.reset();        // ...and neither must the career score / archive
     for(TerrainBody *b : sys.bodies) {
         for(Vehicle *v : b->ships) { delete v; }
         b->ships.clear();

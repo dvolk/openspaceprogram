@@ -178,9 +178,11 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     /* The Research Lab: the career archive of recovered experiments. A
        solid studio backdrop like the editor (no world draw, no camera to
        park -- the window is the scene), but live like the hub: the sim
-       keeps coasting behind it. Esc pops back to the hub (labKeyActions). */
+       keeps coasting behind it. researchLabEnter builds the row cache
+       (issue #87); the player can't recover while here, so it stays valid.
+       Esc pops back to the hub (labKeyActions). */
     { "research", true, false, Backdrop::Studio, kResearchWins,
-      floorEnter, floorExit,
+      researchLabEnter, floorExit,
       tick, labDraw3d, researchLabDrawUi, labKeyActions },
 };
 

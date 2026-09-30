@@ -79,6 +79,10 @@ void drawTrackingShipList(Game &g);
    The window is the scene's Root (forced open by researchLabDrawUi); "Back
    to Space Center" + Esc are the exits. Research-lab-only. */
 void drawResearchLab(Game &g);
+/* The Lab's scene entry (the scene table's enter hook): build g.labRows from
+   the log + home calendar (labEntries, issue #87) so the per-frame render
+   walks pre-built strings. Called by pushScene when the Lab is entered. */
+void researchLabEnter(Game &g);
 
 // Draw the in-game Save/Load window: a slot name to save the CURRENT game
 // into (its <stamp>-<name> dir under saves/) + the list of existing games

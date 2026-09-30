@@ -3999,12 +3999,26 @@ void drawTrackingMap(Game &g) {
 }
 
 // ---- Research Lab windows -------------------------------------------------
-// The scene's single window: the science score + the FULL collection log
-// (g.science.recovered), one entry per bank in bank order -- the raw record
-// of every collection, not just first/last. Each line shows the bank time
-// (home calendar) and the experiment, with a dimmed sub-line of the provenance
-// (when it was run, by whom, on which ship; "" ship = a free-EVA kerbal).
-// Read-only -- recoverActive is what grows the log; the lab only shows it.
+// The scene's single window: the science score + the FULL collection log, one
+// row per bank in bank order -- the raw record of every collection, not just
+// first/last. Each row is the bank time (home calendar) + the experiment, with
+// a dimmed sub-line of the provenance (when it was run, by whom, on which
+// ship; no ship = a free-EVA kerbal). Read-only -- recoverActive grows the
+// log; the lab only shows it.
+//
+// The rows are PRE-BUILT, not rebuilt per frame (issue #87): researchLabEnter
+// fills g.labRows via labEntries, and the render walks them. The render also
+// self-heals -- if g.science.version (bumped on every mutation: a bank, a
+// Load, a reset) differs from g.labRowsVersion, it rebuilds first. That makes
+// the cache correct even if the log changes while the Lab is live (a failed
+// Load from here stays in the scene and does change it), instead of relying on
+// "the player can't recover here" UI coincidence.
+
+void researchLabEnter(Game &g) {
+    const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
+    g.labRows = labEntries(g.science.recovered, cal);
+    g.labRowsVersion = g.science.version;
+}
 
 void drawResearchLab(Game &g) {
     drawWin(g, W_ResearchLab, [&] {
@@ -4022,43 +4036,24 @@ void drawResearchLab(Game &g) {
                 "Run experiments aboard a crewed ship and recover it to "
                 "archive them here.");
         } else {
-            // The full collection log, in bank order (oldest -> newest). A
-            // bank is one Experiment, so repeats show as separate lines --
-            // each with its own provenance (who ran it, when, on which ship).
-            // Times are home-calendar (the home body's clock, not the raw
-            // sim seconds). The archive outgrows the window as the career
-            // grows, so the child fills the remaining height and scrolls.
-            const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
+            // Self-heal: rebuild the rows if the career log changed since they
+            // were built (a Load from this scene is the one way it can). Cheap
+            // O(1) version check; no-op in the common case.
+            if(g.labRowsVersion != g.science.version) {
+                const Calendar &cal =
+                    g.sys.home ? g.sys.home->cal : Calendar{};
+                g.labRows = labEntries(g.science.recovered, cal);
+                g.labRowsVersion = g.science.version;
+            }
+            // g.labRows is ready (built on entry, or just healed above), so
+            // this is a plain walk: no name/provenance string building per
+            // frame. The archive outgrows the window as the career grows, so
+            // the child fills the remaining height and scrolls.
             ImGui::BeginChild("##recovered", ImVec2(0.0f, 0.0f));
-            for(const Experiment &e : g.science.recovered) {
-                char bank[64];
-                const bool haveBank =
-                    e.recovered_at > 0.0 &&
-                    fmt_cal_compact(cal, e.recovered_at, bank, sizeof bank);
-                if(haveBank) {
-                    ImGui::Text("%s  %s", bank, experimentName(e).c_str());
-                } else {
-                    ImGui::TextUnformatted(experimentName(e).c_str());
-                }
-                // Provenance sub-line: when it was run, by whom, on which ship.
-                char ran[64];
-                const bool haveRan =
-                    e.ran_at > 0.0 &&
-                    fmt_cal_compact(cal, e.ran_at, ran, sizeof ran);
-                std::string meta;
-                if(haveRan) { meta += "ran "; meta += ran; }
-                if(!e.kerbal.empty()) {
-                    if(!meta.empty()) { meta += "   "; }
-                    meta += e.kerbal;
-                }
-                if(!e.ship.empty()) {
-                    if(!meta.empty()) { meta += "   "; }
-                    meta += e.ship;
-                } else if(!e.kerbal.empty()) {
-                    meta += "   (EVA)";
-                }
-                if(!meta.empty()) {
-                    ImGui::TextDisabled("%s", meta.c_str());
+            for(const LabEntry &r : g.labRows) {
+                ImGui::TextUnformatted(r.line1.c_str());
+                if(!r.line2.empty()) {
+                    ImGui::TextDisabled("%s", r.line2.c_str());
                 }
             }
             ImGui::EndChild();
