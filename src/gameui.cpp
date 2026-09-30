@@ -1905,6 +1905,9 @@ void drawPartWindows(Game &g) {
                     // What this kerbal is carrying (unrecovered): the count,
                     // and the names. A repeat (already in the career) is
                     // flagged -- it still banks, just less (diminishing).
+                    // (The Store button lives in the free-kerbal section below:
+                    // the take/store dance needs a FREE kerbal in reach, so an
+                    // aboard one can't deposit.)
                     if(!k->parts.empty()) {
                         const std::vector<Experiment> &held =
                             k->parts[0]->experiments;
@@ -1918,16 +1921,6 @@ void drawPartWindows(Game &g) {
                                                     repeat ? "  (repeat)" : "");
                             }
                             ImGui::Unindent();
-                            // Store: this kerbal (the courier) is holding a
-                            // finding; deposit it into THIS capsule. Only
-                            // offered when the capsule can receive (a
-                            // Container); moveExperiment re-checks canHold.
-                            if(ship->parts[part]->canReceive()) {
-                                if(ImGui::SmallButton("Store  (into capsule)")) {
-                                    g.moveExperiment(k->parts[0],
-                                                     ship->parts[part], 0);
-                                }
-                            }
                         }
                     }
                     ImGui::PopID();
@@ -1939,20 +1932,26 @@ void drawPartWindows(Game &g) {
                         g.runExperiment(aboard.front());
                     }
                 }
-                // free kerbals in boarding range: a Board button each
+                // free kerbals in boarding reach: a Board button each, and --
+                // the take/store dance -- a Store button (deposit their carried
+                // finding) when one holds a finding and this capsule can
+                // receive. Their carried findings are shown so the player sees
+                // what would be deposited.
                 bool anyInRange = false;
                 for(Kerbal *k : freeKerbals(g.sys)) {
-                    /* capsule COM in the KERBAL's frame: a raw subtraction
-                       is a distance only within one frame, and the two can
-                       differ (a railed ship rides its inertial node while
-                       the free kerbal rides the rotating one) -- the error
-                       grows with the frame's accumulated spin. */
+                    // Board/Store gate: the same kerbalInRange the Take button
+                    // and the headless hooks use (free + within kBoardingRange)
+                    // -- one reach rule, one function, so the gate the UI shows
+                    // and the one it enforces can't drift. freeKerbals are all
+                    // free, so this reduces to the reach check.
+                    if(!g.kerbalInRange(k, ship->parts[part])) { continue; }
+                    anyInRange = true;
+                    // dist is for the on-screen readout only (the gate above
+                    // already did the same COM math, in the kerbal's frame):
                     const glm::dvec3 capCom =
                         ship->GetPositionRelTo(ship->parts[part], k->frame);
                     const double dist =
                         glm::length(k->get_center_of_mass() - capCom);
-                    if(dist > 10.0) { continue; }
-                    anyInRange = true;
                     const bool full = ((int)aboard.size() >= def->crew_capacity);
                     ImGui::PushID(k);
                     ImGui::Text("  %s (%.1f m)%s", k->name.c_str(), dist,
@@ -1960,10 +1959,35 @@ void drawPartWindows(Game &g) {
                     if(ImGui::SmallButton("Board")) {
                         g.kerbalBoard(k, ship, part);
                     }
+                    // Store (the dance deposit): this FREE kerbal (the
+                    // courier) is in reach; if they carry a finding and the
+                    // capsule can receive, offer to deposit it. moveExperiment
+                    // re-checks canHold (a Container is unlimited per family).
+                    if(!k->parts.empty()) {
+                        const std::vector<Experiment> &held =
+                            k->parts[0]->experiments;
+                        if(!held.empty()) {
+                            ImGui::Indent();
+                            for(const Experiment &he : held) {
+                                const bool repeat =
+                                    holdsExperiment(g.science.recovered, he);
+                                ImGui::TextDisabled("  %s%s",
+                                                    experimentName(he).c_str(),
+                                                    repeat ? "  (repeat)" : "");
+                            }
+                            ImGui::Unindent();
+                            if(ship->parts[part]->canReceive()) {
+                                if(ImGui::SmallButton("Store  (into capsule)")) {
+                                    g.moveExperiment(k->parts[0],
+                                                     ship->parts[part], 0);
+                                }
+                            }
+                        }
+                    }
                     ImGui::PopID();
                 }
                 if(!anyInRange) {
-                    ImGui::Text("  (no one in range to board)");
+                    ImGui::Text("  (no one in reach to board or store)");
                 }
             }
             // --- science (this part is a kerbal suit: holds experiments) ---
@@ -2011,16 +2035,36 @@ void drawPartWindows(Game &g) {
                     ImGui::Text("  %s%s", experimentName(e).c_str(),
                                 repeat ? "  (repeat)" : "");
                 }
-                // Take: move this pod's finding onto an aboard kerbal's suit
-                // (the courier), so it can then be stored into a capsule.
-                // Needs a held finding + an aboard kerbal. moveExperiment
-                // re-checks the suit's canHold (a Courier holds 1 per family),
-                // so a suit already carrying the same family is refused.
-                if(!pod->experiments.empty() &&
-                   runner != nullptr && !runner->parts.empty() &&
-                   runner->parts[0]->canHold(pod->experiments[0])) {
-                    if(ImGui::SmallButton("Take  (to kerbal)##pod_take")) {
-                        g.moveExperiment(pod, runner->parts[0], 0);
+                // Take: a FREE (EVA) kerbal in reach of the pod moves its
+                // finding onto their suit (the courier), to then store into a
+                // capsule. KSP: the kerbal walks up to the part to pick it up,
+                // so being free + in reach (kBoardingRange) is the gate -- an
+                // aboard kerbal can't reach out. moveExperiment re-checks the
+                // suit's canHold (a Courier holds 1 per family, so a suit
+                // already carrying the same family is refused).
+                if(!pod->experiments.empty()) {
+                    bool anyTake = false;
+                    for(Kerbal *k : freeKerbals(g.sys)) {
+                        // A successful take above empties the pod; the next
+                        // iteration's canHold(pod->experiments[0]) would read
+                        // an empty vector. Stop once it's spent.
+                        if(pod->experiments.empty()) { break; }
+                        if(!g.kerbalInRange(k, pod)) { continue; }
+                        if(k->parts.empty() ||
+                           !k->parts[0]->canHold(pod->experiments[0])) {
+                            continue;
+                        }
+                        anyTake = true;
+                        ImGui::PushID(k);
+                        const std::string takeLabel =
+                            "Take  (to " + k->name + ")##pod_take";
+                        if(ImGui::SmallButton(takeLabel.c_str())) {
+                            g.moveExperiment(pod, k->parts[0], 0);
+                        }
+                        ImGui::PopID();
+                    }
+                    if(!anyTake) {
+                        ImGui::TextDisabled("Take  (needs a kerbal on EVA, in reach)");
                     }
                 }
             }

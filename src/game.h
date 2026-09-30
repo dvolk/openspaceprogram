@@ -334,6 +334,12 @@ struct Game {
     int podExperimentMs = -1;
     bool podExperimentFired = false;
 
+    // --eva MS: the headless hook for the part window's "EVA" button
+    // (Game::kerbalEVA on the active ship's first crew kerbal) -- the dance
+    // needs a FREE kerbal in reach, so the e2e EVAs before --take / --store.
+    int evaMs = -1;
+    bool evaFired = false;
+
     // --take MS: the headless hook for the take/store dance -- move the
     // active ship's first held finding from its first instrument/courier
     // onto its first courier (Game::moveExperiment). Mirrors --pod-experiment.
@@ -917,6 +923,16 @@ struct Game {
        part window calls this for a picked finding (the headless
        --take / --store hooks drive it for the e2e dance). */
     void moveExperiment(Part *from, Part *to, size_t which);
+    /* Is free kerbal `k` close enough to part `part` to interact with it in
+       the take/store dance (KSP: the kerbal must be able to REACH the part)?
+       `k` must be free -- on EVA, not aboard -- and within kBoardingRange
+       of `part`, the same reach as boarding a capsule (one value for both,
+       so the Board button and the take/store gate never drift). The part
+       window shows Take/Store only when this is true for some free kerbal;
+       the headless --take / --store hooks use it to pick the courier.
+       (Non-const: it reads the live COM via get_center_of_mass /
+       GetPositionRelTo, both of which are non-const.) */
+    bool kerbalInRange(Kerbal *k, Part *part);
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);
@@ -977,3 +993,11 @@ void load_settings_args(GameArgs &args);
 std::vector<Kerbal *> shipCrew(Vehicle *ship);
 std::vector<Kerbal *> partCrew(Part *capPart);
 std::vector<Kerbal *> freeKerbals(System &sys);
+
+// The capsule-boarding reach [m] (KSP's "the kerbal can reach the part"):
+// a FREE kerbal within this of a capsule gets a Board button, and within
+// this of an instrument / capsule can take a finding off / deposit it in the
+// take/store dance (Game::kerbalInRange). One constant for all three so the
+// reach the UI shows and the gate it enforces can't drift (was an inline
+// 10.0 in the Board button).
+constexpr double kBoardingRange = 10.0;

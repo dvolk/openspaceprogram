@@ -116,6 +116,12 @@ struct GameArgs {
                                 // "Run Experiment" (Game::runPodExperiment)
                                 // once at this loop time in ms (headless test
                                 // hook; -1 = never)
+    int eva_ms = -1;          // --eva: fire the part window's "EVA" button
+                              // (Game::kerbalEVA on the active ship's first
+                              // crew kerbal) once at this loop time in ms
+                              // (headless test hook; -1 = never). The dance
+                              // needs a FREE kerbal in reach, so the e2e
+                              // EVAs before --take / --store.
     int take_ms = -1;         // --take: fire the take/store dance's "Take"
                               // (Game::moveExperiment) once at this loop time
                               // in ms (headless test hook; -1 = never)

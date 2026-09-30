@@ -1019,6 +1019,7 @@ int main(int argc, char **argv)
     game.recoverMs = args.recover_ms;
     game.experimentMs = args.experiment_ms;
     game.podExperimentMs = args.pod_experiment_ms;
+    game.evaMs = args.eva_ms;
     game.takeMs = args.take_ms;
     game.storeMs = args.store_ms;
     game.trackingMs = args.tracking_ms;
@@ -1231,6 +1232,20 @@ int main(int argc, char **argv)
         if(game.recoverMs >= 0 && !game.recoverFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.recoverMs) {
             game.recoverFired = true;
+            // The active ship may be a free EVA kerbal (a crew member), which
+            // recoverActive refuses -- the take/store dance EVAs the kerbal to
+            // reach the parts, so recover the ship that holds the findings
+            // (the labpod) instead.
+            if(game.ship != nullptr && game.ship->isEva()) {
+                for(auto *s : collectVehicles(game.sys)) {
+                    if(s->isEva()) { continue; }
+                    bool holdsFinding = false;
+                    for(Part *p : s->parts) {
+                        if(!p->experiments.empty()) { holdsFinding = true; break; }
+                    }
+                    if(holdsFinding) { game.select_ship(s); break; }
+                }
+            }
             game.recoverActive();
         }
         /* --experiment: the headless hook for the part window's "Run
@@ -1274,6 +1289,21 @@ int main(int argc, char **argv)
             if(pod != nullptr && k != nullptr) { game.runPodExperiment(pod, k); }
             else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
         }
+        /* --eva: the headless hook for the part window's "EVA" button
+           (Game::kerbalEVA) -- take the active ship's first crew kerbal out of
+           its capsule, so the take/store dance can reach a part (the dance
+           needs a FREE kerbal in reach, not an aboard one). Fired before
+           --take / --store in the e2e. */
+        if(game.evaMs >= 0 && !game.evaFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.evaMs) {
+            game.evaFired = true;
+            if(game.ship != nullptr && !game.ship->crew.empty()) {
+                Kerbal *k = static_cast<Kerbal *>(game.ship->crew.front());
+                game.kerbalEVA(k);
+            } else {
+                printf("[hook] --eva: no crew aboard, ignored\n");
+            }
+        }
         /* --take: the headless hook for the take/store dance -- move the
            active ship's first held finding off its instrument onto its
            courier (the kerbal's suit). Mirrors --pod-experiment. */
@@ -1282,20 +1312,31 @@ int main(int argc, char **argv)
             game.takeFired = true;
             Part *from = nullptr;   // the instrument holding a finding to take
             Part *to = nullptr;     // the courier (the kerbal's suit)
-            if(game.ship != nullptr) {
-                for(Part *p : game.ship->parts) {
+            // The instrument (pod) is on the ship's part tree, which after an
+            // EVA is a DIFFERENT ship than the active one (the kerbal is now
+            // its own ship), so search the whole fleet for an instrument
+            // holding a finding -- not just game.ship->parts.
+            for(auto *s : collectVehicles(game.sys)) {
+                for(Part *p : s->parts) {
                     if(p->def != nullptr && !p->experiments.empty()
                        && p->def->experiment_storage == ExpStorage::Instrument) {
                         from = p; break;
                     }
                 }
-                for(Vehicle *c : game.ship->crew) {
-                    Kerbal *k = static_cast<Kerbal *>(c);
-                    if(!k->parts.empty()) { to = k->parts[0]; break; }
+                if(from != nullptr) { break; }
+            }
+            // The dance needs a FREE (EVA) kerbal in reach of the part --
+            // the same gate the Take button uses (kerbalInRange).
+            if(from != nullptr) {
+                for(Kerbal *k : freeKerbals(game.sys)) {
+                    if(game.kerbalInRange(k, from) && !k->parts.empty()
+                       && k->parts[0]->canHold(from->experiments[0])) {
+                        to = k->parts[0]; break;
+                    }
                 }
             }
             if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
-            else { printf("[hook] --take: no instrument/courier, ignored\n"); }
+            else { printf("[hook] --take: no instrument/free-kerbal-in-reach, ignored\n"); }
         }
         /* --store: the headless hook for the take/store dance -- move the
            active ship's courier's first held finding onto its container
@@ -1305,22 +1346,29 @@ int main(int argc, char **argv)
             game.storeFired = true;
             Part *from = nullptr;   // the courier (the kerbal's suit)
             Part *to = nullptr;     // the container (the capsule)
-            if(game.ship != nullptr) {
-                for(Vehicle *c : game.ship->crew) {
-                    Kerbal *k = static_cast<Kerbal *>(c);
-                    if(!k->parts.empty() && !k->parts[0]->experiments.empty()) {
-                        from = k->parts[0]; break;
-                    }
-                }
-                for(Part *p : game.ship->parts) {
+            // The container (capsule) is on the ship's part tree, a DIFFERENT
+            // ship than the active one after an EVA -- search the whole fleet.
+            for(auto *s : collectVehicles(game.sys)) {
+                for(Part *p : s->parts) {
                     if(p->def != nullptr
                        && p->def->experiment_storage == ExpStorage::Container) {
                         to = p; break;
                     }
                 }
+                if(to != nullptr) { break; }
+            }
+            // A FREE (EVA) kerbal in reach of the capsule, carrying a
+            // finding -- the same gate the Store button uses.
+            if(to != nullptr) {
+                for(Kerbal *k : freeKerbals(game.sys)) {
+                    if(game.kerbalInRange(k, to) && !k->parts.empty()
+                       && !k->parts[0]->experiments.empty()) {
+                        from = k->parts[0]; break;
+                    }
+                }
             }
             if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
-            else { printf("[hook] --store: no courier/container, ignored\n"); }
+            else { printf("[hook] --store: no free-kerbal-in-reach/container, ignored\n"); }
         }
         /* --tracking: the headless hook for the hub's "Tracking Station". Fired
            after --space-center, so --space-center A --tracking B drives the

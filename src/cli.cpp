@@ -153,10 +153,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire a science pod's \"Run Experiment\" once at this loop "
                    "time in ms (Game::runPodExperiment on the active ship's "
                    "first experiment-family part, headless; -1 = never)");
+    app.add_option("--eva", args.eva_ms,
+                   "Fire the part window's \"EVA\" once at this loop time in "
+                   "ms (Game::kerbalEVA on the active ship's first crew "
+                   "kerbal, headless; -1 = never). The take/store dance needs "
+                   "a FREE kerbal in reach, so the e2e EVAs before --take/--store.");
     app.add_option("--take", args.take_ms,
                    "Fire the take/store dance's \"Take\" once at this loop "
                    "time in ms (Game::moveExperiment from the active ship's "
-                   "first held finding to its first courier, headless; -1 = never)");
+                   "first held finding to its first free kerbal in reach, "
+                   "headless; -1 = never)");
     app.add_option("--store", args.store_ms,
                    "Fire the take/store dance's \"Store\" once at this loop "
                    "time in ms (Game::moveExperiment from the active ship's "

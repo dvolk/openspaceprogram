@@ -3,30 +3,34 @@
 # invalidated it before `push_back` read it -- UB, latent while the source
 # held a single finding (the erased element was the last, memory intact by
 # luck). A courier holding TWO findings and moving the FIRST (non-last) one
-# exposed it. This case builds exactly that:
-#   --experiment  -> kerbal runs an "observation" (suit = [observation])
+# exposed it. This case builds exactly that (the kerbal must EVA to take):
+#   --experiment     -> kerbal runs an "observation" (suit = [observation])
 #   --pod-experiment -> the pod runs a "materials study" (pod = [materials])
-#   --take        -> suit = [observation, materials]  (2 findings)
-#   --store       -> moves suit[0] (the observation, the NON-LAST one) to
-#                    the capsule; the suit keeps the materials study.
+#   --eva            -> the kerbal is free + in reach (take/store need that)
+#   --take           -> suit = [observation, materials]  (2 findings)
+#   --store          -> moves suit[0] (the observation, the NON-LAST one) to
+#                       the capsule; the suit (now a free kerbal) keeps the
+#                       materials study.
 # The real anchor is what RECOVERY banks, not the move log line: the log
 # captures `name` before the erase, so it prints "observation" even when the
-# reference was dangling and the observation is actually LOST (recovery then
-# banks only the materials study, +38). A correct move banks BOTH -- so the
-# "new:" lines are the catcher (buggy: only the materials study is new).
+# reference was dangling and the capsule actually received the WRONG finding
+# (the materials study). Only the capsule is part of the recovered labpod,
+# so a correct move banks the observation and NOT the materials study. The
+# "new: observation" + "new: materials study" FORBID pair is the catcher.
 NAME courier-two-findings
-ARGS --time-accel 1 --timeout 8 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+ARGS --time-accel 1 --timeout 10 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
 ARGS --experiment 1000
 ARGS --pod-experiment 1500
-ARGS --take 2000
-ARGS --store 2500
-ARGS --space-center 3000 --recover 4000 --recover-anywhere
+ARGS --eva 2000
+ARGS --take 2500
+ARGS --store 3000
+ARGS --space-center 4000 --recover 5000 --recover-anywhere
 EXPECT recorded 'High orbit observation
 EXPECT recorded 'High orbit materials study
 EXPECT moved 'High orbit materials study
 EXPECT moved 'High orbit observation
 EXPECT new: High orbit observation
-EXPECT new: High orbit materials study
+FORBID new: High orbit materials study
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
 FORBID GL_

@@ -1043,6 +1043,22 @@ std::vector<Kerbal *> freeKerbals(System &sys) {
     return out;
 }
 
+/* The take/store reach check: `k` must be FREE (on EVA, not aboard) and
+   within kBoardingRange of `part`. The part's COM is taken in the kerbal's
+   frame (a raw subtraction is a distance only within one frame -- the same
+   reasoning the Board button uses, gameui.cpp), so the two frames can
+   differ without the reach drifting. */
+bool Game::kerbalInRange(Kerbal *k, Part *part) {
+    if(k == nullptr || part == nullptr || part->owner == nullptr) {
+        return false;
+    }
+    if(k->isAboard()) { return false; }   // the dance needs a free (EVA) kerbal
+    const glm::dvec3 partCom =
+        part->owner->GetPositionRelTo(part, k->frame);
+    const double dist = glm::length(k->get_center_of_mass() - partCom);
+    return dist <= kBoardingRange;
+}
+
 /* Take `k` out of its capsule: move its mass off the capsule (the ship
    gets lighter), place it standing / hovering just beside the capsule
    (relative to the capsule part), restore its body to the physics world,
