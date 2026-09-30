@@ -3,13 +3,13 @@
 # archive is non-empty, then push the lab with --research (mirrors
 # --tracking) and pop it with --research-close (the lab's "Back to Space
 # Center"). The push/pop scene lines are the e2e anchors; the window itself
-# is a read-only view of g.recovered.
+# is a read-only view of g.science.recovered.
 NAME research-lab
 ARGS --time-accel 1 --timeout 12 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --experiment 1500
 ARGS --space-center 3000 --recover 4000 --recover-anywhere
 ARGS --research 5000 --research-close 6000
-EXPECT [science] recovered +1
+EXPECT [science] recovered +15
 EXPECT [scene] spacecenter -> research (push)
 EXPECT [scene] research -> spacecenter (pop)
 EXPECT Timeout reached (12.

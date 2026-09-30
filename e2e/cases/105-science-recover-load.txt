@@ -1,12 +1,15 @@
-# Science v1 save/load: a committed save (e2e/fixtures/save_science) carries
-# two experiments on the aboard kerbal's suit and one already-recovered key.
-# Recover Vessel must score only the NEW key (the low-orbit observation was
-# already counted), printing +1 even though the suit held two.
+# Science v2 save/load + diminishing returns: a committed save
+# (e2e/fixtures/save_science) carries two experiments on the aboard kerbal's
+# suit -- a low-orbit observation (already recovered, so a REPEAT) and a
+# high-orbit one (NEW) -- both on the home body. Recovery scores the new key
+# full (10 x 1.5 x 1.0 = 15) and the repeat key halved (10 x 1.25 x 1.0 = 13,
+# halved to 6), so +21 total, +6 from the repeat.
 NAME science-recover-load
 ARGS --load e2e/fixtures/save_science --time-accel 1 --timeout 6
 ARGS --space-center 1500 --recover 2500 --recover-anywhere
 EXPECT Loaded game from e2e/fixtures/save_science (active: racer)
-EXPECT [science] recovered +1
+EXPECT [science] recovered +21
+EXPECT +6 repeat
 EXPECT High orbit observation of Midlands on Kerbin
 EXPECT [recover] t=
 FORBID GL_

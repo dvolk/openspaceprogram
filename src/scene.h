@@ -54,7 +54,7 @@ enum class SceneId : int {
               // over the paused world, reached from the Space Center hub.
     ResearchLab,     // the hub's science archive: a read-only window over a
               // flat studio backdrop (like the editor) listing the
-              // recovered experiments (Game::recovered).
+              // recovered experiments (Game::science.recovered).
     COUNT
 };
 

@@ -269,10 +269,12 @@ void Game::clearFlightSummary() {
 }
 
 /* Run an observation experiment with kerbal `k` at its current SoI body,
-   altitude band (science.h situationFromAltitude) and ground biome. The
-   experiment lands on the kerbal's suit Part (unlimited in v1); a key the
-   suit already holds is refused so the player sees "already have" rather
-   than silently stacking duplicates (recovery scores each key once anyway).
+   situation (science.h situationFor: grounded -> Landed, else the altitude
+   band) and ground biome. The experiment lands on the kerbal's suit Part
+   (unlimited); a key the suit already holds is refused so the player sees
+   "already have" rather than silently stacking duplicates. A key the career
+   already recovered is a repeat -- it still lands on the suit, but recovery
+   scores it down (diminishing returns) and the toast says so.
 
    Position is the kerbal COM in the body's rotating frame (the same
    sub-satellite point the Surface Map / HUD use), so the biome is "what is
@@ -290,18 +292,21 @@ void Game::runExperiment(Kerbal *k) {
         return;
     }
     Frame *rot = body->frame->getRotFrame();
-    // An aboard kerbal's body pose is frozen at board time (parked out of the
-    // physics world), so read the live capsule it sits in instead -- after a
-    // long coast its own COM is the old location (and after an SoI change it
-    // is even in the wrong frame). A free EVA kerbal's body is live (railed
-    // ones get writeRailPose), so its own COM is current.
+    // The pose AND the grounded state come from the vessel the kerbal is
+    // physically on: the carrier capsule when aboard, the kerbal's own
+    // vehicle on free EVA. An aboard kerbal's body pose is frozen at board
+    // time (parked out of the physics world), so its own COM is stale after a
+    // long coast -- read the live capsule instead. A free EVA kerbal's body is
+    // live (railed ones get writeRailPose), so its own COM is current.
+    Vehicle *poseVehicle = nullptr;
     glm::dvec3 localCom;
     Frame *posFrame;
     if(k->isAboard() && k->aboardPart != nullptr) {
-        Vehicle *carrier = k->aboard();
-        localCom = carrier->partPos(k->aboardPart);
-        posFrame = carrier->frame;
+        poseVehicle = k->aboard();
+        localCom = poseVehicle->partPos(k->aboardPart);
+        posFrame = poseVehicle->frame;
     } else {
+        poseVehicle = k;
         localCom = k->get_center_of_mass();
         posFrame = k->frame;
     }
@@ -330,18 +335,25 @@ void Game::runExperiment(Kerbal *k) {
     Experiment e;
     e.type = "observation";
     e.body = body->name;
-    e.situation = situationFromAltitude(altAsl, atmoTop, (double)body->radius);
+    e.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
+                               (double)body->radius);
     e.biome = biomeName(biome);
     if(!addExperiment(suit->experiments, e)) {
-        toast("Already have: %s", experimentName(e).c_str());
+        toast("Already have: %s (this suit)", experimentName(e).c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
                k->name.c_str(), experimentName(e).c_str());
         fflush(stdout);
         return;
     }
-    toast("Experiment: %s", experimentName(e).c_str());
-    printf("[science] t=%.1f '%s' recorded '%s'\n", time,
-           k->name.c_str(), experimentName(e).c_str());
+    // A key the career already recovered is a repeat: it still lands on the
+    // suit, but recovery scores it down (diminishing returns) -- say so now
+    // so the player knows what they are about to bank.
+    const bool repeat = findRecovered(science.recovered, e) != nullptr;
+    toast(repeat ? "Experiment (repeat): %s -- scores less"
+                 : "Experiment: %s",
+          experimentName(e).c_str());
+    printf("[science] t=%.1f '%s' recorded%s '%s'\n", time, k->name.c_str(),
+           repeat ? " REPEAT" : "", experimentName(e).c_str());
     fflush(stdout);
 }
 
@@ -512,8 +524,7 @@ bool Game::newGame() {
     // WarpUp from 0 resumes at 1x.
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
-    scienceScore = 0;
-    recovered.clear();
+    science = Career{};     // a fresh career: no score, nothing recovered
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
@@ -702,8 +713,7 @@ void Game::unloadGame() {
        this -- so tearing the fleet down cannot dangle an in-flight job. */
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
-    scienceScore = 0;
-    recovered.clear();
+    science = Career{};     // ...and neither must the career score / archive
     for(TerrainBody *b : sys.bodies) {
         for(Vehicle *v : b->ships) { delete v; }
         b->ships.clear();
@@ -1764,22 +1774,24 @@ void Game::recoverActive() {
        vehicle and is NOT recovered (the guard at the top of this function),
        so its experiments stay with it -- same rule as the crew member
        themselves. */
-    flightSummary.scienceGained = 0;
-    flightSummary.newExperiments.clear();
-    auto harvest = [&](const std::vector<Experiment> &src) {
-        for(const Experiment &e : src) {
-            if(addExperiment(recovered, e)) {
-                flightSummary.scienceGained += scoreOf(e);
-                flightSummary.newExperiments.push_back(e);
-            }
-        }
-    };
-    for(Part *p : v->parts) { harvest(p->experiments); }
+    // One bag of loot: the ship's parts + every aboard crew member's suit.
+    // recoverMany de-dups by key, so an observation held by N kerbals banks
+    // ONCE (not N times -- the farming exploit the value model must close).
+    std::vector<Experiment> loot;
+    for(Part *p : v->parts) {
+        loot.insert(loot.end(), p->experiments.begin(), p->experiments.end());
+    }
     for(Vehicle *kv : v->crew) {
         if(kv->parts.empty()) { continue; }
-        harvest(kv->parts[0]->experiments);
+        loot.insert(loot.end(), kv->parts[0]->experiments.begin(),
+                    kv->parts[0]->experiments.end());
     }
-    scienceScore += flightSummary.scienceGained;
+    const std::string homeName = (home != nullptr) ? home->name : "";
+    const RecoverSummary rec =
+        recoverMany(science, loot, homeName, kFrontierWeight);
+    flightSummary.scienceGained = rec.gained;
+    flightSummary.repeatScience = rec.repeat;
+    flightSummary.newExperiments = rec.fresh;
 
     // Part windows on the ship (and on any aboard crew -- their suit parts
     // can be open too) would dangle the moment the Vehicles go.
@@ -1821,11 +1833,12 @@ void Game::recoverActive() {
 
     printf("[recover] t=%.1f '%s' recovered\n", time, name.c_str());
     if(flightSummary.scienceGained > 0) {
-        printf("[science] recovered +%d (total %d): %zu new experiment(s)\n",
-               flightSummary.scienceGained, scienceScore,
-               flightSummary.newExperiments.size());
+        printf("[science] recovered +%d (total %d): %zu new, +%d repeat\n",
+               flightSummary.scienceGained, science.score,
+               flightSummary.newExperiments.size(),
+               flightSummary.repeatScience);
         for(const Experiment &e : flightSummary.newExperiments) {
-            printf("[science]   %s\n", experimentName(e).c_str());
+            printf("[science]   new: %s\n", experimentName(e).c_str());
         }
     }
     {

@@ -1902,6 +1902,24 @@ void drawPartWindows(Game &g) {
                     if(ImGui::SmallButton("Exp")) {
                         g.runExperiment(k);
                     }
+                    // What this kerbal is carrying (unrecovered): the count,
+                    // and the names. A repeat (already in the career) is
+                    // flagged -- it still banks, just less (diminishing).
+                    if(!k->parts.empty()) {
+                        const std::vector<Experiment> &held =
+                            k->parts[0]->experiments;
+                        if(!held.empty()) {
+                            ImGui::Indent();
+                            for(const Experiment &he : held) {
+                                const bool repeat =
+                                    findRecovered(g.science.recovered, he) != nullptr;
+                                ImGui::TextDisabled("  %s%s",
+                                                    experimentName(he).c_str(),
+                                                    repeat ? "  (repeat)" : "");
+                            }
+                            ImGui::Unindent();
+                        }
+                    }
                     ImGui::PopID();
                 }
                 // Capsule-level "Run Experiment": first aboard crew (stable
@@ -2673,7 +2691,7 @@ void drawSpaceCenterTopBar(Game &g) {
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
-        ImGui::Text("Science: %d", g.scienceScore);
+        ImGui::Text("Science: %d", g.science.score);
         ImGui::SameLine();
         ImGui::TextDisabled("|");
         ImGui::SameLine();
@@ -2870,15 +2888,23 @@ void drawFlightSummary(Game &g) {
         if(fmt_cal_time(cal, fs.end_t, stamp, sizeof stamp)) {
             ImGui::Text("Recovered: %s", stamp);
         }
-        if(fs.scienceGained > 0 || !fs.newExperiments.empty()) {
+        if(fs.scienceGained > 0) {
             ImGui::Spacing();
             ImGui::Text("Science: +%d", fs.scienceGained);
-            ImGui::Indent();
-            for(const Experiment &e : fs.newExperiments) {
-                ImGui::Text("%s", experimentName(e).c_str());
+            if(!fs.newExperiments.empty()) {
+                ImGui::Indent();
+                for(const Experiment &e : fs.newExperiments) {
+                    ImGui::Text("new:   %s", experimentName(e).c_str());
+                }
+                ImGui::Unindent();
             }
-            ImGui::Unindent();
-            ImGui::Text("Total science: %d", g.scienceScore);
+            if(fs.repeatScience > 0) {
+                // Re-farmed experiments: scored down by diminishing returns,
+                // so a repeat-only recovery still banks something.
+                ImGui::TextDisabled("%d from repeats (already recovered)",
+                                    fs.repeatScience);
+            }
+            ImGui::Text("Total science: %d", g.science.score);
         }
         ImGui::Spacing();
         if(fs.log.events.empty()) {
@@ -3974,9 +4000,9 @@ void drawTrackingMap(Game &g) {
 
 // ---- Research Lab windows -------------------------------------------------
 // The scene's single window: the career archive of recovered experiments
-// (g.recovered, named like the Flight Summary names the ones just gained)
-// plus the science score. Read-only -- recoverActive is what grows the list;
-// the lab only shows it.
+// (g.science.recovered, named like the Flight Summary names the ones just
+// gained) plus the science score. Read-only -- recoverActive is what grows
+// the list; the lab only shows it.
 
 void drawResearchLab(Game &g) {
     drawWin(g, W_ResearchLab, [&] {
@@ -3986,9 +4012,9 @@ void drawResearchLab(Game &g) {
             popScene(g);
         }
         ImGui::Separator();
-        ImGui::Text("Science: %d", g.scienceScore);
+        ImGui::Text("Science: %d", g.science.score);
         ImGui::Separator();
-        if(g.recovered.empty()) {
+        if(g.science.recovered.empty()) {
             ImGui::TextDisabled("No recovered experiment data yet.");
             ImGui::TextDisabled(
                 "Run experiments aboard a crewed ship and recover it to "
@@ -3996,10 +4022,17 @@ void drawResearchLab(Game &g) {
         } else {
             // Scroll box: the archive outgrows the window as the career
             // grows, so the child fills the remaining height and scrolls
-            // (the same pattern as the readme panel).
+            // (the same pattern as the readme panel). The (xN) is how many
+            // times that experiment has been recovered -- its diminishing
+            // state (each repeat scores less).
             ImGui::BeginChild("##recovered", ImVec2(0.0f, 0.0f));
-            for(const Experiment &e : g.recovered) {
-                ImGui::TextUnformatted(experimentName(e).c_str());
+            for(const RecoveredExp &r : g.science.recovered) {
+                if(r.count > 1) {
+                    ImGui::Text("%s  (x%d)", experimentName(r.e).c_str(),
+                                r.count);
+                } else {
+                    ImGui::TextUnformatted(experimentName(r.e).c_str());
+                }
             }
             ImGui::EndChild();
         }

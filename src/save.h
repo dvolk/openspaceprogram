@@ -211,11 +211,13 @@ struct SaveMeta {
        on the New Game setup window and stored here so a reload restores the
        same difficulty -- a save is not portable across scales. */
     float exhaust_scale = 1.0f;
-    /* Science: total score from recovered experiments + the unique keys
-       already counted (recovery scores each once; later diminishing
-       returns). Both default empty/0 for a save that predates science. */
+    /* Science: the career score + the unique experiments recovered (each with
+       its recover count -- the diminishing-returns state). Mirrors Game::
+       science (a science.h Career). Both default empty/0 for a save that
+       predates science; a pre-v2 recovered entry has no "count" and loads as
+       count 1 (recovered once). */
     int science_score = 0;
-    std::vector<Experiment> recovered;
+    std::vector<RecoveredExp> recovered;
     std::vector<std::string> ships;
 };
 
@@ -295,6 +297,40 @@ inline std::vector<Experiment> experimentListFromJson(const nlohmann::json &j) {
     if(!j.is_array()) { return v; }
     for(auto &&ej : j) {
         if(ej.is_object()) { v.push_back(experimentFromJson(ej)); }
+    }
+    return v;
+}
+
+// A career-recovered experiment: the experiment + its recover count (the
+// diminishing-returns state). Permissive on the way in: a pre-v2 entry is a
+// plain experiment object (no "count") and loads as count 1 (recovered once).
+inline nlohmann::json recoveredExpToJson(const RecoveredExp &r) {
+    nlohmann::json j = experimentToJson(r.e);
+    j["count"] = r.count;
+    return j;
+}
+
+inline RecoveredExp recoveredExpFromJson(const nlohmann::json &j) {
+    RecoveredExp r;
+    r.e = experimentFromJson(j);
+    if(j.contains("count") && j["count"].is_number()) {
+        const int c = j["count"].get<int>();
+        r.count = (c < 1) ? 1 : c;
+    }
+    return r;
+}
+
+inline nlohmann::json recoveredListToJson(const std::vector<RecoveredExp> &v) {
+    nlohmann::json a = nlohmann::json::array();
+    for(const RecoveredExp &r : v) { a.push_back(recoveredExpToJson(r)); }
+    return a;
+}
+
+inline std::vector<RecoveredExp> recoveredListFromJson(const nlohmann::json &j) {
+    std::vector<RecoveredExp> v;
+    if(!j.is_array()) { return v; }
+    for(auto &&ej : j) {
+        if(ej.is_object()) { v.push_back(recoveredExpFromJson(ej)); }
     }
     return v;
 }
@@ -538,7 +574,7 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
     j["exhaust_scale"] = m.exhaust_scale;
     if(m.science_score != 0) { j["science_score"] = m.science_score; }
-    if(!m.recovered.empty()) { j["recovered"] = experimentListToJson(m.recovered); }
+    if(!m.recovered.empty()) { j["recovered"] = recoveredListToJson(m.recovered); }
     j["ships"]       = m.ships;
     return j;
 }
@@ -561,9 +597,10 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     }
     if(j.contains("science_score") && j["science_score"].is_number()) {
         m.science_score = j["science_score"].get<int>();
+        if(m.science_score < 0) { m.science_score = 0; }   // a negative score is nonsense
     }
     if(j.contains("recovered")) {
-        m.recovered = experimentListFromJson(j["recovered"]);
+        m.recovered = recoveredListFromJson(j["recovered"]);
     }
     if(j.contains("ships") && j["ships"].is_array()) {
         for(auto &&s : j["ships"]) { if(s.is_string()) { m.ships.push_back(s.get<std::string>()); } }

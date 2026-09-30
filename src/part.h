@@ -80,9 +80,9 @@ struct Part {
        diagnostics); use `uid` to identify a part. */
     std::string id;
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
-    /* Science experiments recorded on this part (v1: only a kerbal's suit,
-       unlimited). Saved with the part / suit (save.h). Recovery merges them
-       into the game score once per unique key (science.h). */
+    /* Science experiments recorded on this part (currently: only a kerbal's
+       suit; instrument parts are the next phase). Saved with the part / suit
+       (save.h). Recovery banks them once per unique key (science.h). */
     std::vector<Experiment> experiments;
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group

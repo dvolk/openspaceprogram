@@ -496,7 +496,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
             suit->resources.current[r] = cur;
         }
     }
-    // science: experiments recorded on the suit (unlimited in v1)
+    // science: experiments recorded on the suit (unlimited)
     if(!s.suit_experiments.empty() && !k->parts.empty()) {
         k->parts[0]->experiments = s.suit_experiments;
     }
@@ -638,8 +638,8 @@ void save_game(Game &g, const std::string &dir) {
     meta.time_accel = g.time_accel;
     meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";
     meta.exhaust_scale = g.args.exhaust_scale;
-    meta.science_score = g.scienceScore;
-    meta.recovered = g.recovered;
+    meta.science_score = g.science.score;
+    meta.recovered = g.science.recovered;
     meta.saved_at = nowString();
 
     std::vector<Vehicle *> fleet = collectVehicles(g.sys);
@@ -679,8 +679,8 @@ void load_game(Game &g, const std::string &dir) {
         g.args.exhaust_scale = meta.exhaust_scale;
     }
     // science (absent in a pre-science save: score 0, nothing recovered)
-    g.scienceScore = meta.science_score;
-    g.recovered = meta.recovered;
+    g.science.score = meta.science_score;
+    g.science.recovered = meta.recovered;
 
     /* Transactional: everything that can fail is reading or building, and
        neither needs the old fleet DELETED first -- only out of the bodies'

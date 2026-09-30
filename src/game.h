@@ -556,23 +556,27 @@ struct Game {
     // The Flight Summary window (W_FlightSummary) payload, written by
     // recoverActive: the recovered vessel's name, its flight journal
     // (start + SoI enter/leave), and the recover instant as the end.
-    // scienceGained / newExperiments are the unique experiments this recover
-    // scored (empty / 0 when none -- or a save that predates science).
+    // scienceGained is the points this recovery scored (new + repeats);
+    // newExperiments are the first-time ones (for the "NEW" list);
+    // repeatScience is the points that came from re-farmed experiments.
+    // All empty / 0 when the ship carried no experiments.
     struct FlightSummary {
         std::string shipName;
         FlightLog log;
         double end_t = 0.0;
         int scienceGained = 0;
+        int repeatScience = 0;
         std::vector<Experiment> newExperiments;
     };
     FlightSummary flightSummary;
 
-    // --- science (score + the unique experiments already recovered) -------
-    // Persisted in save.json (SaveMeta). Recovery merges aboard-crew suit
-    // experiments here once per key (science.h mergeExperiments). v1 is just
-    // a score + the list; later: diminishing returns / a tech tree.
-    int scienceScore = 0;
-    std::vector<Experiment> recovered;
+    // --- science (career score + the unique experiments recovered) --------
+    // Owned as a science.h Career (score + recovered list + per-experiment
+    // recover count), so the score, the archive, and the diminishing-returns
+    // state are one structure and cannot desync. Persisted in save.json
+    // (SaveMeta). v2 adds the value model + Landed; later: a tech tree that
+    // spends the score, more situations, instrument parts.
+    Career science;
 
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;

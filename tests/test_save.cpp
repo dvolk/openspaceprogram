@@ -501,7 +501,7 @@ int main() {
         e.body = "Mun";
         e.situation = SciSituation::HighOrbit;
         e.biome = "mountains";
-        meta.recovered.push_back(e);
+        meta.recovered.push_back(RecoveredExp{e, 3});   // count 3 (farmed twice)
     }
     meta.ships.push_back("v0");
     meta.ships.push_back("v1");
@@ -517,11 +517,51 @@ int main() {
     CHECK(metaOut.science_score == 7);
     CHECK(metaOut.recovered.size() == 1);
     if(metaOut.recovered.size() == 1) {
-        CHECK(metaOut.recovered[0] == meta.recovered[0]);
+        CHECK(metaOut.recovered[0].e == meta.recovered[0].e);
+        CHECK(metaOut.recovered[0].count == 3);
     }
     CHECK(metaOut.ships.size() == 2);
     CHECK(metaOut.ships[0] == "v0");
     CHECK(metaOut.ships[1] == "v1");
+
+    // --- recovered: permissive pre-v2 load (no "count" -> 1; "count":0 -> 1)
+    {
+        // A pre-v2 save: a plain experiment object, no "count" at all.
+        nlohmann::json preV2 = nlohmann::json::array();
+        nlohmann::json entry;
+        entry["type"] = "observation";
+        entry["body"] = "Mun";
+        entry["situation"] = "high_orbit";
+        entry["biome"] = "mountains";
+        preV2.push_back(entry);
+        auto preOut = recoveredListFromJson(preV2);
+        CHECK(preOut.size() == 1);
+        if(preOut.size() == 1) {
+            CHECK(preOut[0].e.body == "Mun");
+            CHECK(preOut[0].e.situation == SciSituation::HighOrbit);
+            CHECK(preOut[0].count == 1);   // pre-v2 entry: recovered once
+        }
+
+        // A hand-edited / corrupt "count" degrades to the >=1 floor.
+        nlohmann::json zeroCount = nlohmann::json::array();
+        nlohmann::json z;
+        z["type"] = "observation";
+        z["body"] = "Mun";
+        z["situation"] = "low_orbit";
+        z["biome"] = "midlands";
+        z["count"] = 0;
+        zeroCount.push_back(z);
+        auto zOut = recoveredListFromJson(zeroCount);
+        CHECK(zOut.size() == 1);
+        if(zOut.size() == 1) { CHECK(zOut[0].count == 1); }   // clamped to 1
+
+        // Non-object entries are skipped; a non-array degrades to empty.
+        nlohmann::json junk = nlohmann::json::array();
+        junk.push_back("not an object");
+        junk.push_back(42);
+        CHECK(recoveredListFromJson(junk).empty());
+        CHECK(recoveredListFromJson(nlohmann::json("nope")).empty());
+    }
 
     // --- permissive reads: an empty / partial document never crashes -------
     SaveMeta emptyMeta = saveMetaFromJson(nlohmann::json::object());
@@ -538,6 +578,11 @@ int main() {
     CHECK(near(saveMetaFromJson(wild).exhaust_scale, 5.0));
     wild["exhaust_scale"] = 0.0;
     CHECK(near(saveMetaFromJson(wild).exhaust_scale, 0.5));
+
+    // a hand-edited negative score degrades to the >=0 floor
+    nlohmann::json negScore = nlohmann::json::object();
+    negScore["science_score"] = -50;
+    CHECK(saveMetaFromJson(negScore).science_score == 0);
 
     SaveShip emptyShip = saveShipFromJson(nlohmann::json::object());
     CHECK(emptyShip.name.empty());

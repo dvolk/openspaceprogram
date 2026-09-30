@@ -74,7 +74,7 @@ void drawTrackingMap(Game &g);
 void drawTrackingShipList(Game &g);
 
 /* The Research Lab's widget: the archive of recovered experiments
-   (Game::recovered, named via experimentName) plus the career science
+   (Game::science.recovered, named via experimentName) plus the career science
    score. Read-only -- recovery (Game::recoverActive) is what adds entries.
    The window is the scene's Root (forced open by researchLabDrawUi); "Back
    to Space Center" + Esc are the exits. Research-lab-only. */
