@@ -125,6 +125,16 @@ void trackingDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
+/* The Research Lab's widgets: its single window (Root -- the scene IS the
+   window, forced open like the tracking map), then the shared windows +
+   Save/Load on top. Esc / "Back" walk up the tree to the hub. */
+void researchLabDrawUi(Game &g) {
+    setWinOpen(W_ResearchLab, true);
+    drawResearchLab(g);
+    drawUIReadouts(g);
+    drawSaveLoad(g);
+}
+
 }   // namespace
 
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
@@ -161,6 +171,14 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
     { "tracking", true, false, Backdrop::Sky, kTrackingWins,
       floorEnter, floorExit,
       tick, trackingDraw3d, trackingDrawUi, trackingKeyActions },
+    /* The Research Lab: the career archive of recovered experiments, over
+       the live world like the hub (the planet turns behind the window).
+       No enter hook: the hub already parked the camera on the home planet
+       and pushScene captures/restores it, so the lab inherits that view.
+       Esc pops back to the hub (labKeyActions). */
+    { "research", true, false, Backdrop::Sky, kResearchWins,
+      floorEnter, floorExit,
+      tick, draw3d, researchLabDrawUi, labKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

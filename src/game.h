@@ -337,6 +337,16 @@ struct Game {
     int trackingCloseMs = -1;
     bool trackingCloseFired = false;
 
+    // --research MS: the headless hook for the Space Center hub's "Research
+    // Lab" (pushes SceneId::ResearchLab). Mirrors --tracking.
+    int researchMs = -1;
+    bool researchFired = false;
+
+    // --research-close MS: the headless hook for the Research Lab's "Back to
+    // Space Center" (pops the scene). Mirrors --research.
+    int researchCloseMs = -1;
+    bool researchCloseFired = false;
+
     // --switch-system FILE / --switch-at MS: the headless hook for the
     // in-process system switch (Game::switchSystem) -- boot one system, swap
     // to another mid-run, land on the Title screen. The only automated cover

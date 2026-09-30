@@ -382,6 +382,15 @@ void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     }
 }
 
+/* The Research Lab's keys: Esc on Slot::Menu (default Esc) walks up the tree
+   to the hub -- the same slot and the same pop as the Tracking Station's,
+   since the lab is the same kind of excursion. */
+void labKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
+    if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
+        popScene(g);   // the hub is the frame below
+    }
+}
+
 /* The Space Center hub's keys. The menu IS the scene (Root, always open), so
    Esc is the exit: up the tree. When the hub sits on top of a live flight
    (reached by Esc from flight) the pop hands back to the flight, the same as

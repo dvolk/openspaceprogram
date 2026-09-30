@@ -35,8 +35,8 @@ void drawUIMap(Game &g);
    The menus are Root windows -- forced open, no X -- because the title
    screen and the Space Center hub ARE their menus; New Game is Transient
    (opened by the title's "New Game"). The other scenes (flight, VAB,
-   tracking) have no menu of their own: Esc walks up the tree and the hub
-   is the only in-game menu. */
+   tracking, research lab) have no menu of their own: Esc walks up the tree
+   and the hub is the only in-game menu. */
 void drawTitleMenu(Game &g);
 void drawSpaceCenterMenu(Game &g);
 
@@ -72,6 +72,13 @@ void drawReadme(Game &g);
    same transfer-conic overlay the flight map draws. */
 void drawTrackingMap(Game &g);
 void drawTrackingShipList(Game &g);
+
+/* The Research Lab's widget: the archive of recovered experiments
+   (Game::recovered, named via experimentName) plus the career science
+   score. Read-only -- recovery (Game::recoverActive) is what adds entries.
+   The window is the scene's Root (forced open by researchLabDrawUi); "Back
+   to Space Center" + Esc are the exits. Research-lab-only. */
+void drawResearchLab(Game &g);
 
 // Draw the in-game Save/Load window: a slot name to save the CURRENT game
 // into (its <stamp>-<name> dir under saves/) + the list of existing games

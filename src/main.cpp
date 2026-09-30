@@ -1020,6 +1020,8 @@ int main(int argc, char **argv)
     game.experimentMs = args.experiment_ms;
     game.trackingMs = args.tracking_ms;
     game.trackingCloseMs = args.tracking_close_ms;
+    game.researchMs = args.research_ms;
+    game.researchCloseMs = args.research_close_ms;
     game.switchSystemPath = args.switch_system_path;
     game.switchSystemMs = args.switch_system_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
@@ -1263,6 +1265,23 @@ int main(int argc, char **argv)
             game.trackingCloseFired = true;
             if(sceneIs(game, SceneId::TrackingStation)) { popScene(game); }
             else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
+        }
+        /* --research: the headless hook for the hub's "Research Lab". Fired
+           after --space-center, so --space-center A --research B drives the
+           real flight -> hub -> lab path. pushScene guards the re-push. */
+        if(game.researchMs >= 0 && !game.researchFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.researchMs) {
+            game.researchFired = true;
+            pushScene(game, SceneId::ResearchLab);
+        }
+        /* --research-close: the headless hook for the lab's "Back to Space
+           Center" (popScene). Fired after --research, so
+           --research A --research-close B drives the push -> pop round trip. */
+        if(game.researchCloseMs >= 0 && !game.researchCloseFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.researchCloseMs) {
+            game.researchCloseFired = true;
+            if(sceneIs(game, SceneId::ResearchLab)) { popScene(game); }
+            else { printf("[hook] --research-close: not in the research lab, ignored\n"); }
         }
         /* --switch-system: the headless hook for the in-process system switch
            (Game::switchSystem). Before the scene is read, since it tears the

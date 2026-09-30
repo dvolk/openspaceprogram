@@ -2600,6 +2600,14 @@ static void navSpaceCenter(Game &g, float bw) {
         setWinOpen(W_SpaceCenterMenu, false);
         pushScene(g, SceneId::TrackingStation);
     }
+    // The Research Lab: the archive of recovered experiments, another
+    // excursion on top of the hub (like the Tracking Station). Its "Back"
+    // (or Esc) pops back here. Open even before the first recovery -- the
+    // window then shows the empty archive.
+    if(ImGui::Button("Research Lab", ImVec2(bw, 0.0f))) {
+        setWinOpen(W_SpaceCenterMenu, false);
+        pushScene(g, SceneId::ResearchLab);
+    }
     // "Resume Flight" pops back to the flight below -- offered only when the
     // hub sits ON TOP of a live flight (a ship is active). When the hub IS the
     // floor (a new game, no ship yet) there is nothing to pop back to, so the
@@ -2637,8 +2645,8 @@ static void navSpaceCenterExit(Game &g, float bw) {
 
 // The two menus: one shell, one heading + navigation block each, both Root --
 // the title screen and the Space Center hub ARE their menus (forced open every
-// frame). The other scenes (flight, VAB, tracking) have no menu of their own:
-// Esc walks up the tree and the hub is the only in-game menu.
+// frame). The other scenes (flight, VAB, tracking, research lab) have no menu
+// of their own: Esc walks up the tree and the hub is the only in-game menu.
 void drawTitleMenu(Game &g) {
     drawMenuWindow(g, W_TitleMenu, true, "Open Space Program", navTitle);
 }
@@ -3962,5 +3970,39 @@ void drawTrackingMap(Game &g) {
     });
     ImGui::PopStyleColor();   // the black map background
     ImGui::PopStyleVar(2);    // WindowBorderSize + WindowPadding
+}
+
+// ---- Research Lab windows -------------------------------------------------
+// The scene's single window: the career archive of recovered experiments
+// (g.recovered, named like the Flight Summary names the ones just gained)
+// plus the science score. Read-only -- recoverActive is what grows the list;
+// the lab only shows it.
+
+void drawResearchLab(Game &g) {
+    drawWin(g, W_ResearchLab, [&] {
+        // Back to the hub (the frame below); Esc does the same
+        // (labKeyActions).
+        if(ImGui::Button("Back to Space Center")) {
+            popScene(g);
+        }
+        ImGui::Separator();
+        ImGui::Text("Science: %d", g.scienceScore);
+        ImGui::Separator();
+        if(g.recovered.empty()) {
+            ImGui::TextDisabled("No recovered experiment data yet.");
+            ImGui::TextDisabled(
+                "Run experiments aboard a crewed ship and recover it to "
+                "archive them here.");
+        } else {
+            // Scroll box: the archive outgrows the window as the career
+            // grows, so the child fills the remaining height and scrolls
+            // (the same pattern as the readme panel).
+            ImGui::BeginChild("##recovered", ImVec2(0.0f, 0.0f));
+            for(const Experiment &e : g.recovered) {
+                ImGui::TextUnformatted(experimentName(e).c_str());
+            }
+            ImGui::EndChild();
+        }
+    });
 }
 

@@ -274,6 +274,18 @@ const WinDef kWins[W_Count] = {
                   .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },
+    // --- research lab ----------------------------------------------------
+    [W_ResearchLab] = {
+        .name = "Research Lab", .label = "Research Lab",
+        // Root: the lab IS this window -- the scene's identity (like the
+        // tracking map), forced open by researchLabDrawUi, no X, and no bulk
+        // operation may close it. Its "Back to Space Center" button + Esc
+        // are the exits. initial_size gives the archive list room to scroll
+        // (the list grows with the career; the child window scrolls).
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(480.0f, 520.0f),
+                  .default_open = true },
+        .role = WinRole::Root, .inList = false,
+    },
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
         .name = "VAB TopBar", .label = "VAB TopBar",
@@ -331,6 +343,12 @@ static const Win kTrackingWinIds[] = {
     W_TrackingMap, W_TrackingShipList, W_Settings, W_Controls,
     W_SaveLoad,
 };
+// The Research Lab: its root window (the recovered-experiments archive),
+// plus the shared windows. It has no menu of its own (Esc / "Back" walk up
+// the tree to the hub), like the Tracking Station.
+static const Win kResearchWinIds[] = {
+    W_ResearchLab, W_Settings, W_Controls, W_SaveLoad,
+};
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };
 const WinSet kTitleWins  = { kTitleWinIds,  sizeof(kTitleWinIds)  / sizeof(Win) };
@@ -339,6 +357,8 @@ const WinSet kSpaceCenterWins = { kSpaceCenterWinIds,
                                   sizeof(kSpaceCenterWinIds) / sizeof(Win) };
 const WinSet kTrackingWins = { kTrackingWinIds,
                                sizeof(kTrackingWinIds) / sizeof(Win) };
+const WinSet kResearchWins = { kResearchWinIds,
+                               sizeof(kResearchWinIds) / sizeof(Win) };
 
 bool winInScene(const Game &g, Win w) {
     const WinSet &set = curScene(g).wins;

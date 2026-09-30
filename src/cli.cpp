@@ -157,6 +157,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Pop the Tracking Station back to the hub once at this "
                    "loop time in ms (its menu's \"Back to Space Center\", "
                    "headless; -1 = never)");
+    app.add_option("--research", args.research_ms,
+                   "Push the Research Lab once at this loop time in ms "
+                   "(the Space Center hub's \"Research Lab\", headless; "
+                   "-1 = never)");
+    app.add_option("--research-close", args.research_close_ms,
+                   "Pop the Research Lab back to the hub once at this "
+                   "loop time in ms (its window's \"Back to Space Center\", "
+                   "headless; -1 = never)");
     app.add_option("--switch-system", args.switch_system_path,
                    "Swap to this system JSON over the running game at "
                    "--switch-at (the in-process system switch, "

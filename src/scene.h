@@ -46,11 +46,15 @@ enum class SceneId : int {
               // shipless case.
     Vab,      // the editor: no sim; physics-free BuildShip draw + editor widgets
     SpaceCenter, // the hub: no sim; the planet as a static backdrop and a root
-              // menu onward to the VAB / the Tracking Station. A NEW game
-              // starts here as the floor (no ship yet); "Resume Flight" is
+              // menu onward to the VAB / the Tracking Station / the Research
+              // Lab. A NEW game starts here as the floor (no ship yet);
+              // "Resume Flight" is
               // offered only when it was pushed on top of a live flight.
     TrackingStation, // no sim; a full-screen chrome-less orbital map + ship list
               // over the paused world, reached from the Space Center hub.
+    ResearchLab,     // the hub's science archive: a read-only window over the
+              // live world listing the recovered experiments
+              // (Game::recovered). Reached from the Space Center hub.
     COUNT
 };
 

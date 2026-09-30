@@ -1,0 +1,14 @@
+# Esc at the Research Lab walks up the tree to the Space Center hub
+# (labKeyActions, Slot::Menu -- the same rebindable slot as the Tracking
+# Station's Esc, and like it the lab has no menu to toggle: the pop is the
+# only exit). Case 111 covers the button path (--research-close); this
+# covers the key path.
+NAME research-esc-back
+ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --space-center 1000 --research 2000 --sim-press 3000,0,ESCAPE
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> research (push)
+EXPECT [scene] research -> spacecenter (pop)
+EXPECT Timeout reached (10.
+FORBID GL_
+FORBID error:

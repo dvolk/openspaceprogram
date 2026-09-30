@@ -118,6 +118,13 @@ struct GameArgs {
                                 // back to the hub once at this loop time in ms
                                 // (the menu's "Back to Space Center", headless;
                                 // -1 = never)
+    int research_ms = -1;   // --research: push the Research Lab once at this
+                            // loop time in ms (the hub's "Research Lab",
+                            // headless; -1 = never)
+    int research_close_ms = -1; // --research-close: pop the Research Lab back
+                                // to the hub once at this loop time in ms
+                                // (the lab's "Back to Space Center", headless;
+                                // -1 = never)
     std::string switch_system_path; // --switch-system: the system JSON to swap
                                     // to over the running game (the in-process
                                     // system switch, Game::switchSystem)

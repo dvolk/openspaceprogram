@@ -35,7 +35,8 @@ struct Game;
    drawing where it is not owned.
 
    Root        the scene's identity -- the title and hub menus, the tracking
-               map. Forced open every frame by the scene's drawUi, and
+               map, the research lab window. Forced open every frame by the
+               scene's drawUi, and
                excluded from TAB and the panel, so no key combination can
                leave a scene with no UI at all. ui::Options::closable alone
                does NOT give this: it only hides the X button, ui::SetOpen
@@ -70,6 +71,8 @@ enum Win : int {
     // tracking station (its own copies of the map + ship list, so they can
     // diverge from the flight ones)
     W_TrackingMap, W_TrackingShipList,
+    // research lab (the scene's identity: the recovered-experiments archive)
+    W_ResearchLab,
     // editor
     W_VabTopBar,
     W_Staging,
@@ -94,7 +97,7 @@ extern const WinDef kWins[W_Count];
 struct WinSet { const Win *ids; size_t n; };
 
 extern const WinSet kFlightWins, kTitleWins, kVabWins, kSpaceCenterWins,
-    kTrackingWins;
+    kTrackingWins, kResearchWins;
 
 // Does `w` belong to the live scene's window set?
 bool winInScene(const Game &g, Win w);

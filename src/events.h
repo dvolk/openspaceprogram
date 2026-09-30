@@ -26,8 +26,10 @@ void poll_events(Game &g);
    (screenshot, wireframe, toggle-windows) have had a chance at the key.
    The live overlay scenes: hubKeyActions is the Space Center's (Esc pops
    back to the flight), trackingKeyActions is the Tracking Station's (Esc
-   pops back to the hub). */
+   pops back to the hub), labKeyActions is the Research Lab's (Esc pops
+   back to the hub, the same excursion shape). */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
 void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
+void labKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat);
