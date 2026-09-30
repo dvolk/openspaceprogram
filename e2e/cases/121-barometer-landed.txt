@@ -1,0 +1,16 @@
+# Barometer, Landed: the OTHER half of the rule (biome-specific only when
+# landed). Grounded on the pad, the barometer records a BIOME-SPECIFIC reading
+# -- "Landed barometer of <Biome> on Kerbin" (the biome is part of the key and
+# the name) -- unlike in orbit where it's "of the planet". First-time landed
+# on the home body = 10 x 1.0 x 1.0 = 10. Mirrors 120-barometer (orbit, global)
+# with a grounded ship, so the two cases together pin the full biome rule.
+NAME barometer-landed
+ARGS --time-accel 1 --timeout 8 --startship baropod,res/ships/baropod.json,Kerbin,pad
+ARGS --pod-experiment 1500
+ARGS --space-center 3000 --recover 4000 --recover-anywhere
+EXPECT Landed barometer of
+EXPECT [science] recovered +10
+EXPECT [recover] t=
+EXPECT [spacecenter] entered
+FORBID GL_
+FORBID error:

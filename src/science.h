@@ -42,12 +42,13 @@ enum class SciSituation : unsigned char {
 /* An experiment family ("type"): its value, the situations it can be run in,
    and the situations where its finding is biome-specific. A new family is one
    entry in the registry below -- the single home for per-experiment rules
-   (they used to be scattered if-chains keyed on the type string). KSP: a
-   reading is biome-specific only where you can tell biomes apart -- a crew
-   report on the surface AND low orbit, a materials study only when landed;
-   in high orbit a reading is "of the planet" (no biome). `valid_in` is the
-   hook for situation-gated instruments (a seismometer: landed only; a
-   barometer: in-atmosphere only, once that situation exists). */
+   (they used to be scattered if-chains keyed on the type string). A reading
+   is biome-specific only where you can tell biomes apart: a crew report in
+   landed + low orbit; a materials study and a barometer only when landed
+   (off the surface a reading is "of the planet", no biome -- the barometer
+   still runs from anywhere, it just isn't biome-specific off the surface).
+   `valid_in` is the hook for situation-gated instruments (a seismometer:
+   landed only; an in-atmosphere-only gauge, once that situation exists). */
 struct ExperimentDef {
     std::string type;                        // "observation", "materials study"
     int base_value = 10;                      // the base of scoreOf
@@ -68,6 +69,9 @@ inline const std::vector<ExperimentDef> &experimentDefs() {
           { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
           { SciSituation::Landed, SciSituation::LowOrbit } },
         { "materials study", 25,
+          { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
+          { SciSituation::Landed } },
+        { "barometer", 10,
           { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
           { SciSituation::Landed } },
     };

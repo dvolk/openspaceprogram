@@ -321,8 +321,10 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     out.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
                                  (double)body->radius);
     // Availability (ExperimentDef.valid_in): a family may not work in every
-    // situation (a seismometer: landed only; a barometer: in-atmosphere only).
-    // Refuse with where it DOES work so the player isn't guessing.
+    // situation (a seismometer: landed only; an in-atmosphere-only gauge:
+    // flying only, once that situation exists). Refuse with where it DOES work
+    // so the player isn't guessing. (A barometer is NOT gated -- it runs from
+    // anywhere; it's just not biome-specific off the surface.)
     if(!experimentValidIn(type, out.situation)) {
         std::string where;
         if(const ExperimentDef *d = defFor(type)) {

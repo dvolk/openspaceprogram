@@ -131,6 +131,7 @@ int main() {
     {
         CHECK(baseValue("observation") == 10);
         CHECK(baseValue("materials study") == 25);   // the pod's instrument
+        CHECK(baseValue("barometer") == 10);         // a basic instrument
         CHECK(baseValue("unknown family") == 10);    // falls back to the base
         CHECK(situationWeight(SciSituation::Landed) == 1.0);
         CHECK(situationWeight(SciSituation::LowOrbit) == 1.25);
@@ -150,6 +151,10 @@ int main() {
         CHECK(biomeSpecificIn("materials study", SciSituation::Landed));
         CHECK(!biomeSpecificIn("materials study", SciSituation::LowOrbit));
         CHECK(!biomeSpecificIn("materials study", SciSituation::HighOrbit));
+        // barometer: works from anywhere, biome-specific only on the surface
+        CHECK(biomeSpecificIn("barometer", SciSituation::Landed));
+        CHECK(!biomeSpecificIn("barometer", SciSituation::LowOrbit));
+        CHECK(!biomeSpecificIn("barometer", SciSituation::HighOrbit));
         // unknown family -> biome-specific in EVERY situation (the KSP common
         // case + pre-registry behavior): never merge biome-distinct findings
         // on a guess. A def opts a family OUT per situation instead.
@@ -159,14 +164,20 @@ int main() {
     }
 
     // --- ExperimentDef: availability (valid_in) ----------------------------
-    // Today both families run in all three situations; an unregistered family
-    // is valid everywhere (the safe fallback). A situation-gated instrument
-    // (barometer: in-atmosphere only; seismometer: landed only) is one entry.
+    // Today all three families run in all three situations; an unregistered
+    // family is valid everywhere (the safe fallback). A situation-gated
+    // instrument (a seismometer: landed only; an in-atmosphere-only gauge:
+    // flying only, once that situation exists) would be one def entry.
     {
         CHECK(experimentValidIn("observation", SciSituation::Landed));
         CHECK(experimentValidIn("observation", SciSituation::HighOrbit));
         CHECK(experimentValidIn("materials study", SciSituation::Landed));
         CHECK(experimentValidIn("materials study", SciSituation::HighOrbit));
+        // barometer: "an atmospheric pressure scan can be performed from
+        // anywhere" -- valid in all three situations.
+        CHECK(experimentValidIn("barometer", SciSituation::Landed));
+        CHECK(experimentValidIn("barometer", SciSituation::LowOrbit));
+        CHECK(experimentValidIn("barometer", SciSituation::HighOrbit));
         CHECK(experimentValidIn("unknown", SciSituation::HighOrbit));
         const ExperimentDef *o = defFor("observation");
         const ExperimentDef *m = defFor("materials study");
@@ -338,6 +349,13 @@ int main() {
         Experiment m2; m2.type = "materials study"; m2.body = "Kerbin";
         m2.situation = SciSituation::LowOrbit; m2.biome = "lowlands";
         CHECK(experimentName(m2) == "Low orbit materials study on Kerbin");
+        // Barometer: biome-specific only when landed (like the materials study).
+        Experiment b;  b.type = "barometer"; b.body = "Kerbin";
+        b.situation = SciSituation::Landed;   b.biome = "lowlands";
+        CHECK(experimentName(b) == "Landed barometer of Lowlands on Kerbin");
+        Experiment b2; b2.type = "barometer"; b2.body = "Kerbin";
+        b2.situation = SciSituation::HighOrbit; b2.biome = "lowlands";
+        CHECK(experimentName(b2) == "High orbit barometer on Kerbin");
     }
 
     // --- labEntries: the Lab's pre-built rows (issue #87) ------------------
