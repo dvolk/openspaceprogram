@@ -116,6 +116,12 @@ struct GameArgs {
                                 // "Run Experiment" (Game::runPodExperiment)
                                 // once at this loop time in ms (headless test
                                 // hook; -1 = never)
+    int take_ms = -1;         // --take: fire the take/store dance's "Take"
+                              // (Game::moveExperiment) once at this loop time
+                              // in ms (headless test hook; -1 = never)
+    int store_ms = -1;        // --store: fire the take/store dance's "Store"
+                              // (Game::moveExperiment) once at this loop time
+                              // in ms (headless test hook; -1 = never)
     int tracking_ms = -1;   // --tracking: push the Tracking Station once at this
                             // loop time in ms (headless test hook; -1 = never)
     int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station

@@ -153,6 +153,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Fire a science pod's \"Run Experiment\" once at this loop "
                    "time in ms (Game::runPodExperiment on the active ship's "
                    "first experiment-family part, headless; -1 = never)");
+    app.add_option("--take", args.take_ms,
+                   "Fire the take/store dance's \"Take\" once at this loop "
+                   "time in ms (Game::moveExperiment from the active ship's "
+                   "first held finding to its first courier, headless; -1 = never)");
+    app.add_option("--store", args.store_ms,
+                   "Fire the take/store dance's \"Store\" once at this loop "
+                   "time in ms (Game::moveExperiment from the active ship's "
+                   "courier to its first container, headless; -1 = never)");
     app.add_option("--tracking", args.tracking_ms,
                    "Push the Tracking Station once at this loop time in ms "
                    "(the Space Center hub's \"Tracking Station\", headless; "

@@ -15,6 +15,7 @@
         "ec": 2000
       },
       "crew_capacity": 1,
+      "experiment_storage": "container",
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
@@ -35,6 +36,7 @@
         "ec": 6000
       },
       "crew_capacity": 3,
+      "experiment_storage": "container",
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
@@ -55,6 +57,7 @@
         "ec": 12000
       },
       "crew_capacity": 6,
+      "experiment_storage": "container",
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
@@ -969,6 +972,7 @@
         "hydrazine": 10.0
       },
       "inventory_capacity": 3,
+      "experiment_storage": "courier",
       "drag": 0.5,
       "drag_forward": 0.5,
       "drag_side": 0.9,
@@ -999,6 +1003,7 @@
       "radius": 1.0,
       "height": 0.25,
       "experiment_family": "materials study",
+      "experiment_storage": "instrument",
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,

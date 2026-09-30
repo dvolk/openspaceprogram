@@ -282,6 +282,24 @@ PartsCatalog load_parts_catalog(const char *path) {
             d.experiment_family = pv["experiment_family"].get<std::string>();
         }
 
+        /* experiment storage (string -> ExpStorage); how this part stores
+           science findings (PartDef.experiment_storage, Part::canHold). One of
+           "instrument" / "courier" / "container"; omitted -> None (not a
+           science holder). An unknown value is a catalog bug -- fail loudly
+           rather than silently holding nothing. */
+        if(pv.contains("experiment_storage")) {
+            const std::string s = pv["experiment_storage"].get<std::string>();
+            if(s == "instrument")      { d.experiment_storage = ExpStorage::Instrument; }
+            else if(s == "courier")    { d.experiment_storage = ExpStorage::Courier; }
+            else if(s == "container")  { d.experiment_storage = ExpStorage::Container; }
+            else if(s == "none")       { d.experiment_storage = ExpStorage::None; }
+            else {
+                throw std::runtime_error(std::string(ctx)
+                    + "\"experiment_storage\" must be instrument/courier/container/none, got \""
+                    + s + "\"");
+            }
+        }
+
         /* decoupler (bool); a staging boundary (see PartDef.decoupler).
            Omitted -> false. */
         if(pv.contains("decoupler")) {

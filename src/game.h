@@ -334,6 +334,18 @@ struct Game {
     int podExperimentMs = -1;
     bool podExperimentFired = false;
 
+    // --take MS: the headless hook for the take/store dance -- move the
+    // active ship's first held finding from its first instrument/courier
+    // onto its first courier (Game::moveExperiment). Mirrors --pod-experiment.
+    int takeMs = -1;
+    bool takeFired = false;
+
+    // --store MS: the headless hook for the take/store dance -- move the
+    // active ship's courier's first held finding onto its first container.
+    // Mirrors --take.
+    int storeMs = -1;
+    bool storeFired = false;
+
     // --tracking MS: the headless hook for the Space Center hub's "Tracking
     // Station" (pushes SceneId::TrackingStation). Mirrors --space-center.
     int trackingMs = -1;
@@ -895,6 +907,16 @@ struct Game {
        recovery (recoverActive already harvests every part's experiments).
        Refuses a duplicate the pod already holds. Toasts the outcome. */
     void runPodExperiment(Part *pod, Kerbal *k);
+    /* The take/store dance (KSP): move the `which`-th finding held on part
+       `from` over to part `to`. `from` may be any role (an instrument gives
+       its reading, a courier what it carries, a capsule what it stores);
+       `to` must be a transfer destination (Part::canReceive -- a courier or
+       a capsule, never an instrument) and still be able to hold the finding
+       (Part::canHold: not already held, family slot open). On success the
+       finding leaves `from` and lands on `to`; both toast the outcome. The
+       part window calls this for a picked finding (the headless
+       --take / --store hooks drive it for the e2e dance). */
+    void moveExperiment(Part *from, Part *to, size_t which);
     // Push a one-shot on-screen message (printf-style), shown for
     // kToastLife wall-clock seconds (the last kToastVisible stack).
     void toast(const char *fmt, ...);

@@ -1,0 +1,25 @@
+# The take/store dance (KSP): the labpod's Materials Pod runs a "materials
+# study" (run -> the pod's active slot), an aboard kerbal TAKES it off the
+# pod onto their suit (the courier), then STORES it into the capsule (the
+# container). The finding ends up in the capsule, not the pod -- but
+# recoverActive harvests every part's experiments, so it banks identically
+# whether it sits on the instrument, the courier, or the container. First-
+# time high-orbit materials study on the home body = 25 x 1.5 x 1.0 = 38.
+# The [science] moved lines (take: pod->suit, store: suit->capsule) are the
+# new anchors; the capacity ceiling + role rules are unit-tested in
+# test_science (canHoldFinding) and test_shipload (the role pins).
+NAME materials-pod-dance
+ARGS --time-accel 1 --timeout 8 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+ARGS --pod-experiment 1500
+ARGS --take 2000
+ARGS --store 2500
+ARGS --space-center 3000 --recover 4000 --recover-anywhere
+EXPECT [science] t=
+EXPECT recorded
+EXPECT materials study
+EXPECT moved
+EXPECT [science] recovered +38
+EXPECT [recover] t=
+EXPECT [spacecenter] entered
+FORBID GL_
+FORBID error:

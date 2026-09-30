@@ -54,6 +54,50 @@ int main() {
         CHECK(holdsExperiment(held, a));
     }
 
+    // --- canHoldFinding: the per-role storage ceiling (Part::canHold) -----
+    // A part holds findings per FAMILY (1 for instrument/courier, unlimited
+    // for a container), never an exact duplicate, and an instrument only its
+    // own family. `held` grows as findings are accepted, mirroring a part.
+    {
+        const Experiment obsLow  = obs("Kerbin", SciSituation::Landed, "lowlands");
+        const Experiment obsHigh = obs("Kerbin", SciSituation::Landed, "highlands");
+        Experiment matLow  = obsLow;  matLow.type  = "materials study";
+        Experiment matHigh = obsHigh; matHigh.type = "materials study";
+
+        // None: holds nothing
+        CHECK(!canHoldFinding(ExpStorage::None, "", {}, obsLow));
+
+        // Instrument: 1 of its OWN family only; a second (even a new biome)
+        // is refused, and any other family is refused outright.
+        std::vector<Experiment> pod;
+        const std::string own = "materials study";
+        CHECK(canHoldFinding(ExpStorage::Instrument, own, pod, matLow));
+        CHECK(!canHoldFinding(ExpStorage::Instrument, own, pod, obsLow));  // not its family
+        pod.push_back(matLow);
+        CHECK(!canHoldFinding(ExpStorage::Instrument, own, pod, matHigh)); // family full
+        CHECK(!canHoldFinding(ExpStorage::Instrument, own, pod, matLow));  // exact dup
+
+        // Courier (a suit): 1 per family, any family -- an observation AND a
+        // materials study, but not two of either.
+        std::vector<Experiment> suit;
+        CHECK(canHoldFinding(ExpStorage::Courier, "", suit, obsLow));
+        suit.push_back(obsLow);
+        CHECK(canHoldFinding(ExpStorage::Courier, "", suit, matLow));      // 2nd family OK
+        suit.push_back(matLow);
+        CHECK(!canHoldFinding(ExpStorage::Courier, "", suit, obsHigh));    // observation full
+        CHECK(!canHoldFinding(ExpStorage::Courier, "", suit, matHigh));    // materials full
+        CHECK(!canHoldFinding(ExpStorage::Courier, "", suit, obsLow));     // exact dup
+
+        // Container (a capsule): unlimited per family, never an exact duplicate
+        std::vector<Experiment> cap;
+        CHECK(canHoldFinding(ExpStorage::Container, "", cap, matLow));
+        cap.push_back(matLow);
+        CHECK(canHoldFinding(ExpStorage::Container, "", cap, matHigh));    // same family, new biome
+        cap.push_back(matHigh);
+        CHECK(!canHoldFinding(ExpStorage::Container, "", cap, matLow));    // exact dup
+        CHECK(canHoldFinding(ExpStorage::Container, "", cap, obsLow));     // another family
+    }
+
     // --- base value + situation weights ---
     {
         CHECK(baseValue("observation") == 10);

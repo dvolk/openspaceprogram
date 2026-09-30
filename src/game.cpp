@@ -349,7 +349,7 @@ void Game::runExperiment(Kerbal *k) {
                             "observation", k, e)) {
         return;
     }
-    if(!addExperiment(suit->experiments, e)) {
+    if(!suit->addExperiment(e)) {
         toast("Already have: %s (this suit)", experimentName(e).c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
                k->name.c_str(), experimentName(e).c_str());
@@ -383,7 +383,7 @@ void Game::runPodExperiment(Part *pod, Kerbal *k) {
                             pod->def->experiment_family, k, e)) {
         return;
     }
-    if(!addExperiment(pod->experiments, e)) {
+    if(!pod->addExperiment(e)) {
         toast("Already have: %s (this pod)", experimentName(e).c_str());
         printf("[science] t=%.1f '%s' already held '%s' (pod)\n", time,
                k->name.c_str(), experimentName(e).c_str());
@@ -396,6 +396,37 @@ void Game::runPodExperiment(Part *pod, Kerbal *k) {
           experimentName(e).c_str());
     printf("[science] t=%.1f '%s' recorded%s '%s' (pod)\n", time,
            k->name.c_str(), repeat ? " REPEAT" : "", experimentName(e).c_str());
+    fflush(stdout);
+}
+
+void Game::moveExperiment(Part *from, Part *to, size_t which) {
+    if(from == nullptr || to == nullptr || from == to) {
+        toast("No transfer: invalid parts");
+        return;
+    }
+    if(which >= from->experiments.size()) {
+        toast("No data to move");
+        return;
+    }
+    if(!to->canReceive()) {
+        toast("Can't store here: %s (not a holder)",
+              to->def ? to->def->display_name.c_str() : "?");
+        return;
+    }
+    const Experiment &e = from->experiments[which];
+    if(!to->canHold(e)) {
+        toast("Already have: %s (%s)", experimentName(e).c_str(),
+              to->def ? to->def->display_name.c_str() : "?");
+        return;
+    }
+    const std::string name = experimentName(e);
+    const std::string fromName = from->def ? from->def->display_name : "?";
+    const std::string toName = to->def ? to->def->display_name : "?";
+    from->experiments.erase(from->experiments.begin() + (std::ptrdiff_t)which);
+    to->experiments.push_back(e);
+    toast("Moved: %s  (%s -> %s)", name.c_str(), fromName.c_str(), toName.c_str());
+    printf("[science] t=%.1f moved '%s' %s -> %s\n", time,
+           name.c_str(), fromName.c_str(), toName.c_str());
     fflush(stdout);
 }
 

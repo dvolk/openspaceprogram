@@ -394,19 +394,26 @@ EXTRA_FIELDS = {
     # the jet reuses the engine mesh, so it gets the engine's shroud too
     "jet":                   {"shroud": "meshes/engine_shroud.obj",
                               "shroud_texture": "textures/engine_shroud.png"},
-    "capsule":           {"crew_capacity": 1},
-    "capsule_r1.5h3":    {"crew_capacity": 3},
-    "capsule_r2.25h4.5": {"crew_capacity": 6},
+    # capsules: the science STORAGE container (PartDef.experiment_storage =
+    # container -- unlimited findings per family, the bulk store a kerbal
+    # deposits taken readings into before recovery).
+    "capsule":           {"crew_capacity": 1, "experiment_storage": "container"},
+    "capsule_r1.5h3":    {"crew_capacity": 3, "experiment_storage": "container"},
+    "capsule_r2.25h4.5": {"crew_capacity": 6, "experiment_storage": "container"},
     # kerbal: DRY mass (full-EVA-gear ~94 kg minus the 10 kg RCS hydrazine,
     # which is a separate capacity that rides effectiveMass, not the body).
-    # The suit also carries a small inventory pocket.
+    # The suit also carries a small inventory pocket, and is the science
+    # COURIER (experiment_storage = courier -- holds 1 finding per family,
+    # shuttling readings between an instrument and the capsule).
     "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0},
-                          "inventory_capacity": 3},
+                          "inventory_capacity": 3, "experiment_storage": "courier"},
     # cargo crate: how many inventory items it holds (PartDef.inventory_capacity)
     "cargo":             {"inventory_capacity": 10},
-    # materials pod: the science family it runs (science.h baseValue); the
-    # part window's "Run Experiment" button is gated on this being set.
-    "materials_pod":     {"experiment_family": "materials study"},
+    # materials pod: the science family it runs (science.h baseValue) + its
+    # storage role (instrument -- 1 finding of its own family, filled by the
+    # part window's "Run Experiment" button and taken out by a kerbal).
+    "materials_pod":     {"experiment_family": "materials study",
+                          "experiment_storage": "instrument"},
     "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
     "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
     "decoupler_r2.25":   {"mass": 110, "decoupler": True, "fuel_barrier": True,

@@ -11,6 +11,8 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+#include "science.h"   // ExpStorage (PartDef.experiment_storage) + the science helpers
+
 /* Ship/part data model: the JSON-backed description of what a ship is made
    of. This file is GL-free (no rendering, no Bullet) so the parse/validate
    path can be unit-tested headless; only the build step (vehicle.cpp's
@@ -371,6 +373,13 @@ struct PartDef {
        stores the result on this part (Part::experiments), recovered on
        recovery like a suit's. */
     std::string experiment_family;
+
+    /* How this part stores science findings (Part::experiments; see
+       ExpStorage above). None -> holds nothing; Instrument -> 1 of its own
+       family (filled by run, taken out); Courier -> 1 per family (a kerbal's
+       suit); Container -> unlimited per family (a capsule). Sets the ceiling
+       in Part::canHold and drives the part-window Take/Store buttons. */
+    ExpStorage experiment_storage = ExpStorage::None;
 
     /* true -> a decoupler: a staging boundary. When the ship's stage
        counter reaches this part's stage, the weld to its parent is cut and

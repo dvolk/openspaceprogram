@@ -130,6 +130,14 @@ int main() {
     CHECK(cap->experiment_family.empty());
     CHECK(rw->experiment_family.empty());
 
+    // and its storage role (PartDef.experiment_storage, Part::canHold): the
+    // pod is an instrument, the capsule a container, the kerbal's suit a
+    // courier; a plain part (reaction wheel) holds nothing.
+    CHECK(pod->experiment_storage == ExpStorage::Instrument);
+    CHECK(cap->experiment_storage == ExpStorage::Container);
+    CHECK(kb->experiment_storage == ExpStorage::Courier);
+    CHECK(rw->experiment_storage == ExpStorage::None);
+
     // decouplers are fuel barriers: propellant does not flow across one, so
     // it splits fuel groups (an engine can't draw from the other side).
     const PartDef *dc = cat.find("decoupler_r1");

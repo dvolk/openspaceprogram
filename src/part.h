@@ -80,9 +80,10 @@ struct Part {
        diagnostics); use `uid` to identify a part. */
     std::string id;
     ResourceContent resources;  // tank contents (all-zero for non-tank parts)
-    /* Science experiments recorded on this part (currently: only a kerbal's
-       suit; instrument parts are the next phase). Saved with the part / suit
-       (save.h). Recovery banks them once per unique key (science.h). */
+    /* Science findings held on this part, under its PartDef.experiment_storage
+       role (Part::canHold): a suit's courier, an instrument's reading, or a
+       capsule's bulk storage. Saved with the part (save.h). Recovery banks
+       them once per unique key (science.h). */
     std::vector<Experiment> experiments;
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier, in no group
@@ -186,6 +187,45 @@ struct Part {
        like any tank; the power system reads its EC as the charge. */
     bool isBattery() const {
         return def != nullptr && def->capacity[(int)ResourceType::EC] > 0.0f;
+    }
+
+    /* Can this part hold finding `e` under its PartDef.experiment_storage
+       role (shipdef.h ExpStorage)? The universal rule first: never the exact
+       same finding twice (science.h holdsExperiment, == is key-only). Then
+       the role ceiling (science.h countFamily):
+         Instrument -- its own family only, 1 finding. It is a PRODUCER: filled
+                       by running it, taken out; it never receives another
+                       family (a thermometer doesn't hold a goo sample).
+         Courier    -- 1 per family, any family (a kerbal's suit: it can hold
+                       a crew report and a materials study, but not two of
+                       either).
+         Container  -- unlimited per family (a capsule: bulk storage, so it
+                       can hold the same family from several biomes at once).
+         None       -- no (most parts). */
+    bool canHold(const Experiment &e) const {
+        if(def == nullptr) { return false; }
+        return canHoldFinding(def->experiment_storage, def->experiment_family,
+                              experiments, e);
+    }
+
+    /* Store finding `e` on this part: the full canHold guard + append. True
+       when stored; false when the part can't take it (wrong role, the family
+       slot is full, or the exact finding is already held here). run, take and
+       store all go through this so the ceiling is enforced in one place. */
+    bool addExperiment(const Experiment &e) {
+        if(!canHold(e)) { return false; }
+        experiments.push_back(e);
+        return true;
+    }
+
+    /* Can this part RECEIVE a finding by transfer (the take/store dance)?
+       Courier (a suit) and Container (a capsule) take findings in; an
+       Instrument only PRODUCES its own (filled by run, taken out) and None
+       holds nothing -- so neither is a transfer destination. */
+    bool canReceive() const {
+        return def != nullptr
+            && (def->experiment_storage == ExpStorage::Courier
+                || def->experiment_storage == ExpStorage::Container);
     }
 
     /* --- derived behavior values (the old per-thruster / per-wheel

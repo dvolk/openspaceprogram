@@ -99,6 +99,17 @@ inline std::string experimentName(const Experiment &e) {
 }
 
 // ---- list helpers (a vector of experiments) -------------------------------
+// How a part stores findings (PartDef.experiment_storage; the role a
+// Part::canHold checks). Capacity is per experiment FAMILY (a part holds N
+// findings of each type); no part ever holds the exact same finding twice.
+//   Instrument -- 1 finding, its OWN family only; filled by running it, taken
+//                 out (a producer, not a container).
+//   Courier    -- 1 finding per family, any family; taken and stored (a
+//                 kerbal's suit, shuttling findings between parts).
+//   Container  -- unlimited per family, any family (a capsule: bulk storage).
+//   None       -- holds nothing (most parts; the default).
+enum class ExpStorage : unsigned char { None, Instrument, Courier, Container };
+
 inline bool holdsExperiment(const std::vector<Experiment> &v,
                             const Experiment &e) {
     for(const Experiment &x : v) {
@@ -122,6 +133,42 @@ inline int countKey(const std::vector<Experiment> &v, const Experiment &e) {
         if(x == e) { ++n; }
     }
     return n;
+}
+
+// How many findings of the same FAMILY a part holds (counted by `type`, not
+// subject) -- the per-family capacity ceiling in Part::canHold (a courier
+// holds 1 of each type; a container, unlimited).
+inline int countFamily(const std::vector<Experiment> &v,
+                       const std::string &type) {
+    int n = 0;
+    for(const Experiment &x : v) {
+        if(x.type == type) { ++n; }
+    }
+    return n;
+}
+
+// Can a part with role `role` (and, for an instrument, its own `ownFamily`),
+// already holding `held`, accept finding `e`? Pure (Part::canHold delegates
+// here) so the ceiling is testable without a Part. The universal rule first:
+// never the exact same finding twice (holdsExperiment, == is key-only). Then
+// the per-FAMILY ceiling (countFamily):
+inline bool canHoldFinding(ExpStorage role, const std::string &ownFamily,
+                           const std::vector<Experiment> &held,
+                           const Experiment &e) {
+    switch(role) {
+        case ExpStorage::Instrument:
+            if(e.type != ownFamily) { return false; }   // own family only
+            break;
+        case ExpStorage::Courier:
+        case ExpStorage::Container:
+            break;   // any family
+        case ExpStorage::None:
+        default:
+            return false;
+    }
+    if(holdsExperiment(held, e)) { return false; }      // no exact duplicate
+    if(role == ExpStorage::Container) { return true; }  // unlimited per family
+    return countFamily(held, e.type) < 1;               // Instrument/Courier: 1 per family
 }
 
 // ---- the value model ------------------------------------------------------

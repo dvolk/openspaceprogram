@@ -1019,6 +1019,8 @@ int main(int argc, char **argv)
     game.recoverMs = args.recover_ms;
     game.experimentMs = args.experiment_ms;
     game.podExperimentMs = args.pod_experiment_ms;
+    game.takeMs = args.take_ms;
+    game.storeMs = args.store_ms;
     game.trackingMs = args.tracking_ms;
     game.trackingCloseMs = args.tracking_close_ms;
     game.researchMs = args.research_ms;
@@ -1271,6 +1273,54 @@ int main(int argc, char **argv)
             }
             if(pod != nullptr && k != nullptr) { game.runPodExperiment(pod, k); }
             else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
+        }
+        /* --take: the headless hook for the take/store dance -- move the
+           active ship's first held finding off its instrument onto its
+           courier (the kerbal's suit). Mirrors --pod-experiment. */
+        if(game.takeMs >= 0 && !game.takeFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.takeMs) {
+            game.takeFired = true;
+            Part *from = nullptr;   // the instrument holding a finding to take
+            Part *to = nullptr;     // the courier (the kerbal's suit)
+            if(game.ship != nullptr) {
+                for(Part *p : game.ship->parts) {
+                    if(p->def != nullptr && !p->experiments.empty()
+                       && p->def->experiment_storage == ExpStorage::Instrument) {
+                        from = p; break;
+                    }
+                }
+                for(Vehicle *c : game.ship->crew) {
+                    Kerbal *k = static_cast<Kerbal *>(c);
+                    if(!k->parts.empty()) { to = k->parts[0]; break; }
+                }
+            }
+            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
+            else { printf("[hook] --take: no instrument/courier, ignored\n"); }
+        }
+        /* --store: the headless hook for the take/store dance -- move the
+           active ship's courier's first held finding onto its container
+           (the capsule). Mirrors --take. */
+        if(game.storeMs >= 0 && !game.storeFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.storeMs) {
+            game.storeFired = true;
+            Part *from = nullptr;   // the courier (the kerbal's suit)
+            Part *to = nullptr;     // the container (the capsule)
+            if(game.ship != nullptr) {
+                for(Vehicle *c : game.ship->crew) {
+                    Kerbal *k = static_cast<Kerbal *>(c);
+                    if(!k->parts.empty() && !k->parts[0]->experiments.empty()) {
+                        from = k->parts[0]; break;
+                    }
+                }
+                for(Part *p : game.ship->parts) {
+                    if(p->def != nullptr
+                       && p->def->experiment_storage == ExpStorage::Container) {
+                        to = p; break;
+                    }
+                }
+            }
+            if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
+            else { printf("[hook] --store: no courier/container, ignored\n"); }
         }
         /* --tracking: the headless hook for the hub's "Tracking Station". Fired
            after --space-center, so --space-center A --tracking B drives the
