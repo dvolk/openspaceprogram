@@ -1912,7 +1912,7 @@ void drawPartWindows(Game &g) {
                             ImGui::Indent();
                             for(const Experiment &he : held) {
                                 const bool repeat =
-                                    findRecovered(g.science.recovered, he) != nullptr;
+                                    holdsExperiment(g.science.recovered, he);
                                 ImGui::TextDisabled("  %s%s",
                                                     experimentName(he).c_str(),
                                                     repeat ? "  (repeat)" : "");
@@ -3999,10 +3999,12 @@ void drawTrackingMap(Game &g) {
 }
 
 // ---- Research Lab windows -------------------------------------------------
-// The scene's single window: the career archive of recovered experiments
-// (g.science.recovered, named like the Flight Summary names the ones just
-// gained) plus the science score. Read-only -- recoverActive is what grows
-// the list; the lab only shows it.
+// The scene's single window: the science score + the FULL collection log
+// (g.science.recovered), one entry per bank in bank order -- the raw record
+// of every collection, not just first/last. Each line shows the bank time
+// (home calendar) and the experiment, with a dimmed sub-line of the provenance
+// (when it was run, by whom, on which ship; "" ship = a free-EVA kerbal).
+// Read-only -- recoverActive is what grows the log; the lab only shows it.
 
 void drawResearchLab(Game &g) {
     drawWin(g, W_ResearchLab, [&] {
@@ -4020,18 +4022,43 @@ void drawResearchLab(Game &g) {
                 "Run experiments aboard a crewed ship and recover it to "
                 "archive them here.");
         } else {
-            // Scroll box: the archive outgrows the window as the career
-            // grows, so the child fills the remaining height and scrolls
-            // (the same pattern as the readme panel). The (xN) is how many
-            // times that experiment has been recovered -- its diminishing
-            // state (each repeat scores less).
+            // The full collection log, in bank order (oldest -> newest). A
+            // bank is one Experiment, so repeats show as separate lines --
+            // each with its own provenance (who ran it, when, on which ship).
+            // Times are home-calendar (the home body's clock, not the raw
+            // sim seconds). The archive outgrows the window as the career
+            // grows, so the child fills the remaining height and scrolls.
+            const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
             ImGui::BeginChild("##recovered", ImVec2(0.0f, 0.0f));
-            for(const RecoveredExp &r : g.science.recovered) {
-                if(r.count > 1) {
-                    ImGui::Text("%s  (x%d)", experimentName(r.e).c_str(),
-                                r.count);
+            for(const Experiment &e : g.science.recovered) {
+                char bank[64];
+                const bool haveBank =
+                    e.recovered_at > 0.0 &&
+                    fmt_cal_compact(cal, e.recovered_at, bank, sizeof bank);
+                if(haveBank) {
+                    ImGui::Text("%s  %s", bank, experimentName(e).c_str());
                 } else {
-                    ImGui::TextUnformatted(experimentName(r.e).c_str());
+                    ImGui::TextUnformatted(experimentName(e).c_str());
+                }
+                // Provenance sub-line: when it was run, by whom, on which ship.
+                char ran[64];
+                const bool haveRan =
+                    e.ran_at > 0.0 &&
+                    fmt_cal_compact(cal, e.ran_at, ran, sizeof ran);
+                std::string meta;
+                if(haveRan) { meta += "ran "; meta += ran; }
+                if(!e.kerbal.empty()) {
+                    if(!meta.empty()) { meta += "   "; }
+                    meta += e.kerbal;
+                }
+                if(!e.ship.empty()) {
+                    if(!meta.empty()) { meta += "   "; }
+                    meta += e.ship;
+                } else if(!e.kerbal.empty()) {
+                    meta += "   (EVA)";
+                }
+                if(!meta.empty()) {
+                    ImGui::TextDisabled("%s", meta.c_str());
                 }
             }
             ImGui::EndChild();

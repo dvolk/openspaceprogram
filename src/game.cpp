@@ -338,6 +338,10 @@ void Game::runExperiment(Kerbal *k) {
     e.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
                                (double)body->radius);
     e.biome = biomeName(biome);
+    // provenance of this run (the identity key above is what dedups)
+    e.ran_at = time;                                    // when this kerbal ran it
+    e.kerbal = k->name;
+    e.ship = (poseVehicle == k) ? "" : poseVehicle->name;   // "" = free EVA
     if(!addExperiment(suit->experiments, e)) {
         toast("Already have: %s (this suit)", experimentName(e).c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
@@ -348,7 +352,7 @@ void Game::runExperiment(Kerbal *k) {
     // A key the career already recovered is a repeat: it still lands on the
     // suit, but recovery scores it down (diminishing returns) -- say so now
     // so the player knows what they are about to bank.
-    const bool repeat = findRecovered(science.recovered, e) != nullptr;
+    const bool repeat = holdsExperiment(science.recovered, e);
     toast(repeat ? "Experiment (repeat): %s -- scores less"
                  : "Experiment: %s",
           experimentName(e).c_str());
@@ -1788,7 +1792,7 @@ void Game::recoverActive() {
     }
     const std::string homeName = (home != nullptr) ? home->name : "";
     const RecoverSummary rec =
-        recoverMany(science, loot, homeName, kFrontierWeight);
+        recoverMany(science, loot, homeName, kFrontierWeight, time);
     flightSummary.scienceGained = rec.gained;
     flightSummary.repeatScience = rec.repeat;
     flightSummary.newExperiments = rec.fresh;

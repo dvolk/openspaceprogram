@@ -4,7 +4,7 @@
 //
 // Pure logic: the uniqueness key, suit-level dedup, display names, the value
 // model (base x situation x body, diminishing returns), the Career accounting
-// (score + recovered + counts, one structure that cannot desync), and the
+// (score + the append-only log, one structure that cannot desync), and the
 // Landed / altitude-band situation classifier.
 #include "science.h"
 
@@ -80,28 +80,33 @@ int main() {
         CHECK(scoreOf(e, 9, 1.0) == 1);   // floor holds
     }
 
-    // --- Career: score + recovered + counts are one structure (no desync) --
+    // --- Career: score + the log are one structure (no desync) ------------
+    // The log appends ONE entry per bank (repeats included); the diminishing
+    // count is countKey (how many entries share the key), so score and log
+    // cannot desync.
     {
         Career c;
         const Experiment a = obs("Kerbin", SciSituation::Landed, "lowlands");
         CHECK(c.recover(a, 1.0) == 10);   // new, full
         CHECK(c.score == 10);
-        CHECK(c.recovered.size() == 1);
-        CHECK(c.recovered[0].count == 1);
+        CHECK(c.recovered.size() == 1);   // one entry for the first bank
+        CHECK(countKey(c.recovered, a) == 1);
         CHECK(c.recover(a, 1.0) == 5);    // repeat (halved)
         CHECK(c.score == 15);
-        CHECK(c.recovered.size() == 1);   // still one unique key
-        CHECK(c.recovered[0].count == 2);
+        CHECK(c.recovered.size() == 2);   // a second entry for the same key
+        CHECK(countKey(c.recovered, a) == 2);
         CHECK(c.recover(a, 1.0) == 2);    // repeat again
         CHECK(c.score == 17);
-        CHECK(c.recovered[0].count == 3);
+        CHECK(c.recovered.size() == 3);
+        CHECK(countKey(c.recovered, a) == 3);
         // a different key is independent
         const Experiment b = obs("Kerbin", SciSituation::HighOrbit, "midlands");
         CHECK(c.recover(b, 1.0) == 15);   // new, full
-        CHECK(c.recovered.size() == 2);
+        CHECK(c.recovered.size() == 4);
         CHECK(c.score == 32);
-        CHECK(findRecovered(c.recovered, a) != nullptr);
-        CHECK(findRecovered(c.recovered, b) != nullptr);
+        CHECK(countKey(c.recovered, b) == 1);
+        CHECK(holdsExperiment(c.recovered, a));
+        CHECK(holdsExperiment(c.recovered, b));
     }
 
     // --- recoverMany: whole-recovery dedup (multi-crew double-banking) ----
@@ -113,31 +118,35 @@ int main() {
         const Experiment e = obs("Kerbin", SciSituation::Landed, "lowlands");
         // Two kerbals BOTH hold the same key.
         std::vector<Experiment> loot = { e, e };
-        const RecoverSummary s = recoverMany(c, loot, "Kerbin", 2.0);
+        const RecoverSummary s = recoverMany(c, loot, "Kerbin", 2.0, 1000.0);
         CHECK(s.gained == 10);            // 10 x 1.0 x 1.0, banked ONCE
         CHECK(s.fresh.size() == 1);
         CHECK(s.repeat == 0);
         CHECK(c.score == 10);
         CHECK(c.recovered.size() == 1);
-        CHECK(c.recovered[0].count == 1);
+        CHECK(countKey(c.recovered, e) == 1);
+        CHECK(c.recovered[0].recovered_at == 1000.0);   // the bank stamp
+        CHECK(c.recovered[0].kerbal.empty());           // provenance preserved
 
         // A repeat recovery of the same bag: deduped, scored down (halved).
-        const RecoverSummary s2 = recoverMany(c, loot, "Kerbin", 2.0);
+        const RecoverSummary s2 = recoverMany(c, loot, "Kerbin", 2.0, 2000.0);
         CHECK(s2.gained == 5);            // 10 -> 5 (halved), still once
         CHECK(s2.fresh.size() == 0);
         CHECK(s2.repeat == 5);
         CHECK(c.score == 15);
-        CHECK(c.recovered[0].count == 2);
+        CHECK(c.recovered.size() == 2);   // the repeat is its own log entry
+        CHECK(countKey(c.recovered, e) == 2);
 
         // A mixed bag: one fresh key (frontier body) + one repeat key.
         const Experiment m = obs("Mun", SciSituation::LowOrbit, "midlands");
-        const RecoverSummary s3 = recoverMany(c, { m, m, e }, "Kerbin", 2.0);
+        const RecoverSummary s3 = recoverMany(c, { m, m, e }, "Kerbin", 2.0, 3000.0);
         // fresh Mun low-orbit = 10 x 1.25 x 2.0 = 25; repeat Kerbin landed = 10/4 = 2
         CHECK(s3.gained == 27);
         CHECK(s3.fresh.size() == 1);
         CHECK(s3.repeat == 2);
         CHECK(c.score == 42);
-        CHECK(c.recovered.size() == 2);
+        CHECK(c.recovered.size() == 4);   // e, e, then m and e again
+        CHECK(countKey(c.recovered, m) == 1);
     }
 
     // --- display name (incl. Landed) ---

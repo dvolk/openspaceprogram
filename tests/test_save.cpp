@@ -496,13 +496,18 @@ int main() {
     meta.active_ship = "racer";
     meta.exhaust_scale = 2.5f;
     meta.science_score = 7;
-    {
-        Experiment e;
-        e.body = "Mun";
-        e.situation = SciSituation::HighOrbit;
-        e.biome = "mountains";
-        meta.recovered.push_back(RecoveredExp{e, 3});   // count 3 (farmed twice)
-    }
+    // Three banks of the same key (the append-only log), each with provenance.
+    Experiment e3;
+    e3.body = "Mun";
+    e3.situation = SciSituation::HighOrbit;
+    e3.biome = "mountains";
+    e3.ran_at = 123.0;
+    e3.recovered_at = 456.0;
+    e3.kerbal = "Jebediah";
+    e3.ship = "racer";
+    meta.recovered.push_back(e3);
+    meta.recovered.push_back(e3);
+    meta.recovered.push_back(e3);
     meta.ships.push_back("v0");
     meta.ships.push_back("v1");
     SaveMeta metaOut = saveMetaFromJson(saveMetaToJson(meta));
@@ -515,16 +520,19 @@ int main() {
     CHECK(metaOut.active_ship == meta.active_ship);
     CHECK(near(metaOut.exhaust_scale, meta.exhaust_scale));
     CHECK(metaOut.science_score == 7);
-    CHECK(metaOut.recovered.size() == 1);
-    if(metaOut.recovered.size() == 1) {
-        CHECK(metaOut.recovered[0].e == meta.recovered[0].e);
-        CHECK(metaOut.recovered[0].count == 3);
+    CHECK(metaOut.recovered.size() == 3);   // the log round-trips as 3 entries
+    for(const Experiment &x : metaOut.recovered) {
+        CHECK(x == e3);                     // key-only ==
+        CHECK(x.kerbal == "Jebediah");      // provenance survives the round-trip
+        CHECK(x.ship == "racer");
+        CHECK(x.ran_at == 123.0);
+        CHECK(x.recovered_at == 456.0);
     }
     CHECK(metaOut.ships.size() == 2);
     CHECK(metaOut.ships[0] == "v0");
     CHECK(metaOut.ships[1] == "v1");
 
-    // --- recovered: permissive pre-v2 load (no "count" -> 1; "count":0 -> 1)
+    // --- recovered: permissive load (bare -> 1; count:0 -> 1; count:3 -> 3)
     {
         // A pre-v2 save: a plain experiment object, no "count" at all.
         nlohmann::json preV2 = nlohmann::json::array();
@@ -537,12 +545,12 @@ int main() {
         auto preOut = recoveredListFromJson(preV2);
         CHECK(preOut.size() == 1);
         if(preOut.size() == 1) {
-            CHECK(preOut[0].e.body == "Mun");
-            CHECK(preOut[0].e.situation == SciSituation::HighOrbit);
-            CHECK(preOut[0].count == 1);   // pre-v2 entry: recovered once
+            CHECK(preOut[0].body == "Mun");
+            CHECK(preOut[0].situation == SciSituation::HighOrbit);
+            CHECK(preOut[0].kerbal.empty());   // pre-v2 entry: no provenance
         }
 
-        // A hand-edited / corrupt "count" degrades to the >=1 floor.
+        // A hand-edited / corrupt "count" degrades to one entry.
         nlohmann::json zeroCount = nlohmann::json::array();
         nlohmann::json z;
         z["type"] = "observation";
@@ -551,9 +559,18 @@ int main() {
         z["biome"] = "midlands";
         z["count"] = 0;
         zeroCount.push_back(z);
-        auto zOut = recoveredListFromJson(zeroCount);
-        CHECK(zOut.size() == 1);
-        if(zOut.size() == 1) { CHECK(zOut[0].count == 1); }   // clamped to 1
+        CHECK(recoveredListFromJson(zeroCount).size() == 1);   // clamps to 1
+
+        // A "count":3 entry (the first/last-era shape) expands to 3 entries.
+        nlohmann::json c3 = nlohmann::json::array();
+        nlohmann::json t;
+        t["type"] = "observation";
+        t["body"] = "Kerbin";
+        t["situation"] = "low_orbit";
+        t["biome"] = "midlands";
+        t["count"] = 3;
+        c3.push_back(t);
+        CHECK(recoveredListFromJson(c3).size() == 3);   // count 3 -> three
 
         // Non-object entries are skipped; a non-array degrades to empty.
         nlohmann::json junk = nlohmann::json::array();

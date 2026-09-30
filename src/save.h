@@ -211,13 +211,14 @@ struct SaveMeta {
        on the New Game setup window and stored here so a reload restores the
        same difficulty -- a save is not portable across scales. */
     float exhaust_scale = 1.0f;
-    /* Science: the career score + the unique experiments recovered (each with
-       its recover count -- the diminishing-returns state). Mirrors Game::
-       science (a science.h Career). Both default empty/0 for a save that
-       predates science; a pre-v2 recovered entry has no "count" and loads as
-       count 1 (recovered once). */
+    /* Science: the career score + the append-only log of every bank (one
+       Experiment per bank, with its provenance). Mirrors Game::science (a
+       science.h Career). Both default empty/0 for a save that predates
+       science. Permissive load: an older entry with a "count" field (the
+       first/last-era shape) expands to that many log entries; a bare
+       experiment (v1) is one entry. */
     int science_score = 0;
-    std::vector<RecoveredExp> recovered;
+    std::vector<Experiment> recovered;
     std::vector<std::string> ships;
 };
 
@@ -272,6 +273,11 @@ inline nlohmann::json experimentToJson(const Experiment &e) {
     j["body"]      = e.body;
     j["situation"] = situationId(e.situation);
     j["biome"]     = e.biome;
+    // provenance of one run (absent on pre-provenance saves -> defaults)
+    j["ran_at"]       = e.ran_at;
+    j["recovered_at"] = e.recovered_at;
+    j["kerbal"]       = e.kerbal;
+    j["ship"]         = e.ship;
     return j;
 }
 
@@ -283,6 +289,11 @@ inline Experiment experimentFromJson(const nlohmann::json &j) {
         e.situation = situationFromId(j["situation"].get<std::string>());
     }
     if(j.contains("biome") && j["biome"].is_string()) { e.biome = j["biome"].get<std::string>(); }
+    // provenance (permissive: absent on older saves -> the 0 / "" defaults)
+    if(j.contains("ran_at") && j["ran_at"].is_number()) { e.ran_at = j["ran_at"].get<double>(); }
+    if(j.contains("recovered_at") && j["recovered_at"].is_number()) { e.recovered_at = j["recovered_at"].get<double>(); }
+    if(j.contains("kerbal") && j["kerbal"].is_string()) { e.kerbal = j["kerbal"].get<std::string>(); }
+    if(j.contains("ship") && j["ship"].is_string()) { e.ship = j["ship"].get<std::string>(); }
     return e;
 }
 
@@ -301,36 +312,26 @@ inline std::vector<Experiment> experimentListFromJson(const nlohmann::json &j) {
     return v;
 }
 
-// A career-recovered experiment: the experiment + its recover count (the
-// diminishing-returns state). Permissive on the way in: a pre-v2 entry is a
-// plain experiment object (no "count") and loads as count 1 (recovered once).
-inline nlohmann::json recoveredExpToJson(const RecoveredExp &r) {
-    nlohmann::json j = experimentToJson(r.e);
-    j["count"] = r.count;
-    return j;
+/* The career's bank log -> JSON (one entry per bank, provenance included).
+   The inverse is permissive: an entry with a "count" field is the older
+   first/last-era shape and expands to that many log entries; a bare
+   experiment (v1) is a single entry. */
+inline nlohmann::json recoveredListToJson(const std::vector<Experiment> &v) {
+    return experimentListToJson(v);
 }
 
-inline RecoveredExp recoveredExpFromJson(const nlohmann::json &j) {
-    RecoveredExp r;
-    r.e = experimentFromJson(j);
-    if(j.contains("count") && j["count"].is_number()) {
-        const int c = j["count"].get<int>();
-        r.count = (c < 1) ? 1 : c;
-    }
-    return r;
-}
-
-inline nlohmann::json recoveredListToJson(const std::vector<RecoveredExp> &v) {
-    nlohmann::json a = nlohmann::json::array();
-    for(const RecoveredExp &r : v) { a.push_back(recoveredExpToJson(r)); }
-    return a;
-}
-
-inline std::vector<RecoveredExp> recoveredListFromJson(const nlohmann::json &j) {
-    std::vector<RecoveredExp> v;
+inline std::vector<Experiment> recoveredListFromJson(const nlohmann::json &j) {
+    std::vector<Experiment> v;
     if(!j.is_array()) { return v; }
     for(auto &&ej : j) {
-        if(ej.is_object()) { v.push_back(recoveredExpFromJson(ej)); }
+        if(!ej.is_object()) { continue; }
+        const Experiment e = experimentFromJson(ej);
+        int n = 1;
+        if(ej.contains("count") && ej["count"].is_number()) {
+            const int c = ej["count"].get<int>();
+            if(c > 1) { n = c; }   // old first/last-era entry: expand
+        }
+        for(int i = 0; i < n; ++i) { v.push_back(e); }
     }
     return v;
 }

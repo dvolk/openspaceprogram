@@ -1,16 +1,18 @@
 // science.h -- experiments, the career score, and the value model.
 // (header-only pure C++)
 //
-// An Experiment is a small value type used as a uniqueness key: type + body +
-// situation + biome, named at the UI edge like
-//   "Landed observation of Midlands on Mun".
-// Situations (v2): Landed (grounded), LowOrbit / HighOrbit (altitude bands).
-// The airborne "Flying" / "Splashed" situations are the next phase.
+// An Experiment is one run of an observation, recorded by a kerbal on a ship.
+// Its IDENTITY -- type + body + situation + biome -- is the uniqueness key
+// (named at the UI edge like "Landed observation of Midlands on Mun"); the
+// provenance (ran_at, recovered_at, kerbal, ship) is extra data that ==
+// ignores. Situations (v2): Landed (grounded), LowOrbit / HighOrbit (altitude
+// bands); the airborne "Flying" / "Splashed" situations are the next phase.
 //
-// The Career owns the score + the unique experiments recovered (each with a
-// recover count). Recovering an experiment scores it via scoreOf: base x
-// situation weight x body weight, halved per repeat (floor 1) -- the
-// "don't farm the same observation" pressure.
+// The Career owns the score + the append-only log of every bank (recovered).
+// Recovering an experiment scores it via scoreOf: base x situation weight x
+// body weight, halved once per earlier bank of the same key (floor 1) -- the
+// "don't farm the same observation" pressure. The log keeps one entry per
+// bank, so the Research Lab shows a full record of collections.
 //
 // Pure containers + logic -- no game types -- so tests can pin the value
 // curve, the Landed classifier, and the career accounting without linking
@@ -34,11 +36,21 @@ enum class SciSituation : unsigned char {
 };
 
 struct Experiment {
+    // identity -- the uniqueness key; == compares ONLY these four
     std::string type = "observation";  // experiment family (extensible id)
     std::string body;                  // SoI body name
     SciSituation situation = SciSituation::Landed;
     std::string biome;                 // biomeName() of the ground below
+    // provenance -- == ignores these; a record of one run of that key
+    double ran_at = 0.0;       // sim clock: when the kerbal recorded it
+    double recovered_at = 0.0; // sim clock: when it was banked (0 = not yet)
+    std::string kerbal;        // who ran it
+    std::string ship;          // aboard ship name; "" = free EVA
 
+    // == is key-only, on purpose: two runs of the same observation by
+    // different kerbals/ships dedup to one bank; they differ only in the
+    // provenance fields above. (A reader assuming full-struct == is
+    // surprised -- this is deliberate, not an omission.)
     bool operator==(const Experiment &o) const {
         return type == o.type && body == o.body
             && situation == o.situation && biome == o.biome;
@@ -100,6 +112,16 @@ inline bool addExperiment(std::vector<Experiment> &v, const Experiment &e) {
     return true;
 }
 
+// How many entries of the same key a log holds (== is key-only, so provenance
+// never affects the count) -- the diminishing-returns prevCount.
+inline int countKey(const std::vector<Experiment> &v, const Experiment &e) {
+    int n = 0;
+    for(const Experiment &x : v) {
+        if(x == e) { ++n; }
+    }
+    return n;
+}
+
 // ---- the value model ------------------------------------------------------
 // Base value per experiment family (extensible; v2 has one family). A new
 // family is an explicit entry here -- unknown types fall back to the base
@@ -136,75 +158,65 @@ inline int scoreOf(const Experiment &e, int prevCount, double bodyWeight) {
     return v;
 }
 
-/* A recovered experiment in the career: the experiment + how many times it
-   has been recovered (>=1). The count drives diminishing returns; list order
-   is first-seen (the Research Lab archive). */
-struct RecoveredExp {
-    Experiment e;
-    int count = 1;
-};
-
-inline RecoveredExp *findRecovered(std::vector<RecoveredExp> &v,
-                                   const Experiment &e) {
-    for(RecoveredExp &r : v) {
-        if(r.e == e) { return &r; }
-    }
-    return nullptr;
-}
-
-/* The career's science: the running score + the unique experiments recovered
-   (with their recover counts). Pure -- the game feeds it harvested
-   experiments and it owns the score and the diminishing-returns state, so
-   the three cannot desync: a point is only ever the scoreOf of a real
-   recovery (fixes the v1 score/recovered-list desync, issue #62). */
+/* The career's science: the running score + the append-only log of every
+   bank. `recovered` holds one Experiment (with its provenance) per bank, in
+   bank order -- the Research Lab's full collection record. Pure -- the game
+   feeds it harvested experiments and it owns the score and the
+   diminishing-returns state together, so they cannot desync: a point is only
+   ever the scoreOf of a real bank (fixes the v1 score/recovered-list desync,
+   issue #62). */
 struct Career {
     int score = 0;
-    std::vector<RecoveredExp> recovered;
+    std::vector<Experiment> recovered;   // the log, in bank order
 
-    // Recover one harvested experiment. Returns the points it scored.
+    // Bank one harvested experiment (e carries its provenance, incl.
+    // recovered_at). The (N+1)th bank of a key scores scoreOf(e, N, bodyWeight)
+    // -- N is how many are already in the log (key-only count). Returns the
+    // points it scored.
     int recover(const Experiment &e, double bodyWeight) {
-        RecoveredExp *r = findRecovered(recovered, e);
-        const int prev = (r != nullptr) ? r->count : 0;
+        const int prev = countKey(recovered, e);
         const int gained = scoreOf(e, prev, bodyWeight);
-        if(r != nullptr) {
-            r->count = prev + 1;
-        } else {
-            recovered.push_back(RecoveredExp{e, 1});
-        }
+        recovered.push_back(e);
         score += gained;
         return gained;
     }
 };
 
 /* The outcome of one recovery: the points it scored, split into fresh (first
-   time) and repeat (already recovered, scored down) -- for the Flight
-   Summary. `fresh` lists the first-time keys, in loot order. */
+   bank of that key, ever) and repeat (already in the log, scored down) -- for
+   the Flight Summary. `fresh` lists the first-time entries, in loot order. */
 struct RecoverSummary {
     int gained = 0;
     int repeat = 0;
     std::vector<Experiment> fresh;
 };
 
-/* Score a whole recovery of a bag of experiments (the ship's parts + every
-   aboard crew's suit) against the career, muting it. The bag is de-duplicated
-   by key first, so ONE observation held by N kerbals banks ONCE at its current
-   value -- v1's per-recovery dedup, preserved under the value model (without
-   this, N crew = a farming exploit: 15 + 7 + 4 + ... per observation).
-   `homeName` is the 1.0-weight body; every other body gets `frontier`. */
+/* Bank a whole recovery of a bag of experiments (the ship's parts + every
+   aboard crew's suit) into the career, appending one log entry per key. The
+   bag is de-duplicated by key first, so ONE observation held by N kerbals
+   banks ONCE at its current value -- v1's per-recovery dedup, preserved under
+   the value model (without this, N crew = a farming exploit: 15 + 7 + 4 + ...
+   per observation). `homeName` is the 1.0-weight body; every other body gets
+   `frontier`; `now` (the sim clock) is stamped as each entry's recovered_at.
+   Each credited entry keeps the first bag-occurrence's provenance (who ran
+   it, when, on which ship). */
 inline RecoverSummary recoverMany(Career &c, const std::vector<Experiment> &loot,
-                                  const std::string &homeName, double frontier) {
+                                  const std::string &homeName, double frontier,
+                                  double now) {
     RecoverSummary out;
     std::vector<Experiment> uniq;
     for(const Experiment &e : loot) {
         if(!holdsExperiment(uniq, e)) { uniq.push_back(e); }
     }
-    for(const Experiment &e : uniq) {
+    for(const Experiment &e0 : uniq) {
+        Experiment e = e0;
+        e.recovered_at = now;   // stamp the bank time on the logged entry
         const double bw = (e.body == homeName) ? 1.0 : frontier;
-        const bool isNew = findRecovered(c.recovered, e) == nullptr;
+        const bool isNew = !holdsExperiment(c.recovered, e);
         const int g = c.recover(e, bw);
         out.gained += g;
         if(isNew) {
-            out.fresh.push_back(e);
+            out.fresh.push_back(e);   // the new key, as banked
         } else {
             out.repeat += g;
         }
