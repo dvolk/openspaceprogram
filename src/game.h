@@ -220,6 +220,29 @@ struct VabState {
     bool lmbPrev = false;    // LMB edge detect for click-to-place
 };
 
+/* The science identity of a pose in a body's SoI: the biome below + the
+   situation (science.h) -- the two halves an Experiment records. One home so
+   the experiment path and the HUD readout classify identically. `dir` = unit
+   vector to the point in the body's rot frame; `altAsl` its height above sea
+   level; `grounded` whether it is down. biome is Biome::None when the body
+   has no classifiable surface (star / banded giant) or its terrain is not
+   measured yet (!ready) -- callers leave the finding's biome empty then; the
+   situation is still valid. */
+struct PoseSituation {
+    Biome biome = Biome::None;
+    SciSituation situation = SciSituation::Landed;
+};
+inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir,
+                                   double altAsl, bool grounded) {
+    const double atmoTop = body->surface.atmosphere.top();
+    const SciSituation situation =
+        situationFor(grounded, altAsl, atmoTop,
+                     orbitCutAlt(body->rot_frame->soi, (double)body->radius, atmoTop));
+    if(!body->hasClassifiableSurface() || !body->ready) {
+        return { Biome::None, situation };
+    }
+    return { biomeAt(dir, body->params()), situation };
+}
 
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------

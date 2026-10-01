@@ -269,18 +269,17 @@ void Game::clearFlightSummary() {
 }
 
 /* Compute the situation experiment (identity + provenance) for a science
-   run: the SoI body, situation (science.h situationFor: grounded -> Landed,
-   else the altitude band) and ground biome the runner is at. The position is
-   `localPart`'s COM on `poseVehicle` (a null localPart = the vehicle's own
-   COM, e.g. a free-EVA kerbal) in the body's rotating frame -- the
-   sub-satellite point the Surface Map / HUD use -- so the biome is "what is
-   under me" as the planet spins. A star or a banded gas giant has no
-   classifiable biome (terragen.h) -- refuse rather than invent one. Both
-   runExperiment (suit) and runPodExperiment (pod) call this. */
+   run. The position is `localPart`'s COM on `poseVehicle` (null localPart =
+   the vehicle's own COM, e.g. a free-EVA kerbal) in the body's rotating
+   frame -- the sub-satellite point the Surface Map / HUD use. A star or
+   banded gas giant has no classifiable biome (terragen.h): its finding is
+   global "of the body," biome left empty, but the situation is still valid
+   (you can orbit a sun). Both runExperiment (suit) and runPodExperiment
+   (pod) call this. */
 bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
                                Part *localPart, const std::string &type,
                                Kerbal *runner, Experiment &out) {
-    if(body == nullptr || body->isStar()) {
+    if(body == nullptr) {
         toast("No experiment: nothing to observe here");
         return false;
     }
@@ -302,27 +301,19 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     }
     const glm::vec3 dir = glm::vec3(sp / r);
     const double altAsl = r - (double)body->radius;
-    // A body whose heavy phase has not landed has no measured max_height
-    // (biomeFromAltitude would call everything Mountain) -- the active
-    // ship's SoI body is always ready (issue #54), and so is a kerbal's.
-    if(!body->ready) {
+    // Biome + situation, the two halves of the finding's key (game.h
+    // poseSituation, shared with the SURFACE readout).
+    const PoseSituation ps = poseSituation(body, dir, altAsl, poseVehicle->isGrounded());
+    // A surface body's biome needs measured terrain (max_height, issue #54).
+    if(body->hasClassifiableSurface() && !body->ready) {
         toast("No experiment: terrain not ready");
         return false;
     }
-    const Biome biome = biomeAt(dir, body->params());
-    if(biome == Biome::None) {
-        toast("No experiment: no classifiable surface");
-        return false;
-    }
-    const double atmoTop = body->surface.atmosphere.top();
     out = Experiment{};
     out.type = type;
     out.body = body->name;
-    // The orbit cut uses the NEAR-BODY SoI (the rotating frame's), not
-    // body->soi -- that one copies the inertial orbital sphere (~84,000 km on
-    // Kerbin) and would push the low/high split far out of reach.
-    out.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
-                                 orbitCutAlt(body->rot_frame->soi, (double)body->radius, atmoTop));
+    out.situation = ps.situation;
+    out.biome = (ps.biome != Biome::None) ? biomeName(ps.biome) : "";
     // Availability (ExperimentDef.valid_in): a family may not work in every
     // situation (a seismometer: landed only). Refuse with where it DOES work
     // so the player isn't guessing. (A barometer is NOT gated -- it runs from
@@ -339,7 +330,6 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
         toast("%s only works in: %s", type.c_str(), where.c_str());
         return false;
     }
-    out.biome = biomeName(biome);
     // provenance of this run (the identity key above is what dedups)
     out.ran_at = time;                                    // when `runner` ran it
     out.kerbal = (runner != nullptr) ? runner->name : "";

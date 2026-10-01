@@ -386,6 +386,16 @@ int main() {
         Experiment baroH; baroH.type = "barometer"; baroH.body = "Kerbin";
         baroH.situation = SciSituation::HighOrbit; baroH.biome = "lowlands";
         CHECK(experimentName(baroH) == "High orbit barometer on Kerbin");
+        // Empty biome (a star / banded giant: no classifiable surface): the
+        // "of <Biome>" clause is dropped even where the family is
+        // biome-specific -- "Low orbit observation on Kerbol", never "of None"
+        // or a dangling "of".
+        const Experiment star = obs("Kerbol", SciSituation::LowOrbit, "");
+        CHECK(experimentName(star) == "Low orbit observation on Kerbol");
+        const Experiment starHi = obs("Kerbol", SciSituation::HighOrbit, "");
+        CHECK(experimentName(starHi) == "High orbit observation on Kerbol");
+        // Two empty-biome findings of the same key dedup (both "of the body").
+        CHECK(star == obs("Kerbol", SciSituation::LowOrbit, ""));
     }
 
     // --- labEntries: the Lab's pre-built rows (issue #87) ------------------

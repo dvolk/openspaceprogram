@@ -182,6 +182,12 @@ struct TerrainBody {
        as `this == sys.root` there -- but the two are parsed independently
        (a missing "orbits" key picks the root), so nothing enforces it. */
     bool isStar() const { return type == BodyType::Star; }
+    /* A surface you can stand on and classify into biomes (Ocean / Lowland /
+       Midlands / Mountain). A star has none (it is noise), and a banded gas
+       giant has none either (surface.bands: no solid ground, just bands).
+       These bodies can still be ORBITED (a valid science situation), but any
+       finding on them is global "of the body" -- its biome is left empty. */
+    bool hasClassifiableSurface() const { return !isStar() && !surface.bands; }
     double seed = 0;   // noise-domain offset; 0 = legacy pattern
     // Subdivision stop for this body's patch tree (set by AttachRoot from
     // the radius, via BuildRootGeoms). The patch angular size at a given

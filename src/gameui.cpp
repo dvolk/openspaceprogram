@@ -1467,8 +1467,19 @@ void drawUIReadouts(Game &g) {
     // Labels right-padded to 3 chars, same as ORBITAL.
     drawWin(g, W_Surface, [&] {
         char dist_s[32];
-        ImGui::Text("Alt: %s", fmt_dist(distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos)), dist_s, sizeof dist_s));
-        ImGui::Text("ASL: %s", fmt_dist(distance - ship->m_parent->radius, dist_s, sizeof dist_s));
+        const TerrainBody *b = ship->m_parent;
+        const double altAsl = distance - (double)b->radius;
+        // Bme/Sit: the science identity of this pose (game.h poseSituation,
+        // shared with --info-log). Biome is "-" when there is none to name
+        // (star, banded giant, or terrain still building).
+        const PoseSituation ps = poseSituation(
+            b, glm::normalize(glm::vec3(view.surf_pos)), altAsl, ship->isGrounded());
+        ImGui::Text("Bme: %s", ps.biome != Biome::None
+                                   ? capitalizeFirst(biomeName(ps.biome)).c_str()
+                                   : "-");
+        ImGui::Text("Sit: %s", capitalizeFirst(situationName(ps.situation)).c_str());
+        ImGui::Text("Alt: %s", fmt_dist(distance - b->GetTerrainHeight(glm::normalize(pos)), dist_s, sizeof dist_s));
+        ImGui::Text("ASL: %s", fmt_dist(altAsl, dist_s, sizeof dist_s));
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
         ImGui::Text(" Hs: %.2fm/s", hor_speed2);
         ImGui::Text("Lat: %.4f", glm::degrees(latitude));
@@ -1495,6 +1506,15 @@ void drawUIReadouts(Game &g) {
         const Uint32 now_ms = SDL_GetTicks();
         if(now_ms - g.info_log_last_ms >= g.orbit_log_interval_ms) {
             g.info_log_last_ms = now_ms;
+            // Same poseSituation call as the SURFACE window above (biome "-"
+            // when there is none to name).
+            const TerrainBody *b = ship->m_parent;
+            const double altAsl = distance - (double)b->radius;
+            const PoseSituation ps = poseSituation(
+                b, glm::normalize(glm::vec3(view.surf_pos)), altAsl,
+                ship->isGrounded());
+            const char *bme = (ps.biome != Biome::None)
+                ? biomeName(ps.biome) : "-";
             const double prograde_angle = glm::angle(facing_dir, vel_dir);
             const double retrograde_angle = glm::angle(facing_dir, -vel_dir);
             printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s alt=%.6g m "
@@ -1502,7 +1522,7 @@ void drawUIReadouts(Game &g) {
                    "period=%.6g s inc=%.6g deg ecc=%.6g sma=%.6g m "
                    "lan=%.6g deg lpe=%.6g deg prg=%.6g deg rtg=%.6g deg "
                    "energy=%.6g J/kg\n",
-                   time, ship->m_parent->name.c_str(), speed, distance,
+                   time, b->name.c_str(), speed, distance,
                    o.apoapsis, o.time_to_apo, o.periapsis, o.time_to_peri,
                    o.period, glm::degrees(o.inclination), o.ecc, o.semi_major,
                    glm::degrees(o.raan), glm::degrees(o.arg_periapsis),
@@ -1515,18 +1535,18 @@ void drawUIReadouts(Game &g) {
                 felt = glm::length(ship->lastThrustForce + ship->lastAeroForce)
                        / felt_mass;
             }
-            printf("[surfinfo] t=%.1fs alt_agl=%.6g m alt_asl=%.6g m "
+            printf("[surfinfo] t=%.1fs "
+                   "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.6g deg lon=%.6g deg "
                    "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg "
-                   "acc=%.6g m/s2\n",
+                   "acc=%.6g m/s2 body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
-                   distance - ship->m_parent->GetTerrainHeight(
-                                  glm::normalize(pos)),
-                   distance - ship->m_parent->radius,
+                   distance - b->GetTerrainHeight(glm::normalize(pos)),
+                   altAsl,
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   felt);
+                   felt, b->name.c_str(), bme, situationName(ps.situation));
             fflush(stdout);
         }
     }

@@ -182,12 +182,13 @@ inline std::string capitalizeFirst(std::string s) {
     return s;
 }
 
-// "Landed observation of Midlands on Mun" -- the "of <Biome>" clause is
-// present only where the family is biome-specific (biomeSpecificIn); in
-// high orbit it's "of the planet": "High orbit observation on Kerbin".
+// "Landed observation of Midlands on Mun" -- the "of <Biome>" clause only
+// where the family is biome-specific (biomeSpecificIn) AND the finding has a
+// biome. A star / banded giant has none, so it reads global "of the body":
+// "Low orbit observation on Kerbol".
 inline std::string experimentName(const Experiment &e) {
     std::string n = capitalizeFirst(situationName(e.situation)) + " " + e.type;
-    if(biomeSpecificIn(e.type, e.situation)) {
+    if(biomeSpecificIn(e.type, e.situation) && !e.biome.empty()) {
         n += " of " + capitalizeFirst(e.biome);
     }
     n += " on " + e.body;
