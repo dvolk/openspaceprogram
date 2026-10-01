@@ -9,18 +9,13 @@
 glm::dvec3 Frame::GetVelocityRelTo(Frame *relTo)
 {
     if (this == relTo) return glm::dvec3(0, 0, 0);
-    /* root_vel lives in UNIVERSE axes; the result must be in relTo's OWN
-       axes, so rotate by relTo->root_orient^-1 (glm's v*M is M^T*v). This
-       applies whether relTo spins (root_orient carries the spin) or is
-       inertial (root_orient carries the ancestors' accumulated orbital
-       tilts -- identity only while every ancestor orbit is uninclined). */
+    /* root_vel lives in UNIVERSE axes; the result must be in relTo's OWN axes. */
     return (root_vel - relTo->root_vel) * relTo->root_orient;
 }
 
 glm::dvec3 Frame::GetPositionRelTo(Frame *relTo)
 {
-    /* Universe-axis difference expressed in relTo's own axes -- see
-       GetVelocityRelTo for why the rotation is unconditional. */
+    /* Universe-axis difference expressed in relTo's own axes. */
     return (root_pos - relTo->root_pos) * relTo->root_orient;
 }
 
@@ -49,12 +44,9 @@ void Frame::UpdateRootRelative() {
 
 void Frame::UpdateOrbitRails(double time) {
     if(parent != NULL and not rotating) {
-        // translate body in orbit: propagate the epoch state on the true
-        // Kepler conic under the parent's mu (for the current circular
-        // data this is the old uniform R_Y rotation, but eccentric orbits
-        // now sweep correctly too). Absolute sim time -- like the spin
-        // angle, this must NOT scale with the current timestep, or the
-        // frame (and everything in it) snaps when time accel changes.
+        // Propagate the epoch state on the true Kepler conic. Absolute sim
+        // time -- must NOT scale with the timestep or the frame snaps when
+        // time accel changes.
         if(orb_ang_speed != 0) {
             propagateKepler(orbit_pos0, orbit_vel0, parent_mu,
                             time, pos, vel);
@@ -62,13 +54,10 @@ void Frame::UpdateOrbitRails(double time) {
     }
 
     if(rotating) {
-        // total angle as a function of accumulated sim time. Must NOT scale
-        // with the current timestep, or the frame (and everything in it)
-        // snaps when the time acceleration changes.
+        // Spin angle from accumulated sim time (not the current timestep).
+        // Unconditional rebuild: orient is a pure function of time; skipping
+        // at ang == 0 would leave a stale epoch.
         const double ang = fmod(rot_ang_speed * time, 2 * std::numbers::pi);
-        // Unconditional: `orient` is a pure function of `time`, so skipping
-        // the rebuild at ang == 0 (t == 0, or an exact whole turn) would
-        // leave it holding the previous epoch's spin.
         orient = initial_orient * glm::dmat3(glm::rotate(-ang, spin_axis));
     }
 

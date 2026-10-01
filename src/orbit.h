@@ -1,19 +1,7 @@
 #pragma once
-// Two-body orbital elements of a (pos, vel) state relative to a central
-// body with gravitational parameter mu. pos/vel must be in the body's
-// INERTIAL (non-rotating) frame, where the trajectory is a Kepler conic.
-//
-// Header-only pure math (like calendar.h) so tests/test_orbit.cpp can pin
-// it without rendering/Bullet. Consumers: the ORBITAL HUD window, the
-// orbital map, and the --orbit-log periodic printout.
-//
-// Conventions:
-// - Angles in radians. The orbital reference plane is the frame's XY plane
-//   (normal +Z); the reference direction is +X (matches the spawn code,
-//   which puts periapsis along +Z and inclines about X).
-// - time_to_peri / time_to_apo are seconds until the NEXT passage. -1 =
-//   the event never happens: a hyperbolic trajectory has no apoapsis, and
-//   once it has swung past periapsis there is no future periapsis either.
+// Two-body orbital elements from a (pos, vel) state in the body's INERTIAL
+// frame. Header-only pure math. Angles in radians; plane = XY (normal +Z).
+// time_to_peri / time_to_apo: seconds to the NEXT passage, -1 = never.
 
 #include <cmath>
 #include <numbers>
@@ -46,8 +34,6 @@ inline double wrapAngleToPositive(const double theta) {
     return theta >= 0.0 ? theta : std::numbers::pi * 2 + theta;
 }
 
-// Project a vector onto the plane through the origin with the given
-// (unit or not) normal: v - (v.n) n.
 inline glm::dvec3 projectVecOntoPlane(const glm::dvec3 &vec, const glm::dvec3 &normal) {
     return vec - glm::dot(vec, normal) * normal;
 }
@@ -67,14 +53,11 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     const glm::dvec3 ecc_vec = glm::cross(vel, h) / mu - pos / distance;
     o.ecc = glm::length(ecc_vec);
     o.radial_vel = glm::dot(pos, vel) / distance;
-    /* h^2 / (mu (1+e)) == (1-e) a on an ellipse, but stays finite in the
-       parabolic limit where (1-e) a is 0 * inf. */
+    // Stays finite in the parabolic limit where (1-e)*a is 0 * inf.
     o.periapsis = h_len * h_len / (mu * (1.0 + o.ecc));
     o.inclination = h_len > 0.0 ? acos(glm::clamp(h.z / h_len, -1.0, 1.0)) : 0.0;
 
-    /* The ascending node and argument of periapsis are undefined for
-       equatorial (|n| ~ 0) and circular (e ~ 0) orbits; report 0 instead
-       of NaN. */
+    // Undefined for equatorial/circular orbits; report 0, not NaN.
     const glm::dvec3 node = glm::cross(glm::dvec3(0.0, 0.0, 1.0), h);
     const double node_len = glm::length(node);
     o.raan = node_len > 0.0 ? wrapAngleToPositive(atan2(node.y, node.x)) : 0.0;
@@ -85,9 +68,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         if(ecc_vec.z < 0.0) { o.arg_periapsis = std::numbers::pi * 2 - o.arg_periapsis; }
     }
 
-    /* True anomaly from (cos, sin): cos from the eccentricity vector, sin
-       from the radial velocity (r_dot = (mu/h) e sin nu). atan2 fixes the
-       quadrant directly. */
+    // atan2 of (e sin nu, e cos nu) picks the quadrant directly.
     o.true_anomaly = 0.0;
     if(o.ecc > 1e-9 && h_len > 0.0) {
         const double c = glm::dot(ecc_vec, pos) / (o.ecc * distance);
@@ -96,27 +77,20 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     }
 
     if(o.ecc < 1.0) {
-        /* Elliptic: closed orbit. */
         o.apoapsis = (1.0 + o.ecc) * o.semi_major;
         o.period = 2.0 * std::numbers::pi * sqrt(o.semi_major * o.semi_major * o.semi_major / mu);
-        /* E = atan2(sqrt(1-e^2) sin nu, e + cos nu) is quadrant-safe, so
-           no acos + branch flip. */
+        // atan2 form is quadrant-safe (no acos + branch flip).
         o.ecc_anomaly = wrapAngleToPositive(
             atan2(sqrt(1.0 - o.ecc * o.ecc) * sin(o.true_anomaly),
                   o.ecc + cos(o.true_anomaly)));
         o.mean_anomaly = o.ecc_anomaly - o.ecc * sin(o.ecc_anomaly);
-        /* Time since periapsis, then the countdowns to the next passage of
-           each apsis. At an apsis the countdown reports the full period to
-           the NEXT return of that apsis (never 0). */
+        // Countdowns to the NEXT passage; at an apsis that is a full period, never 0.
         const double t_since_peri = (o.mean_anomaly / (2.0 * std::numbers::pi)) * o.period;
         o.time_to_peri = o.period - t_since_peri;
         o.time_to_apo = 0.5 * o.period - t_since_peri;
         if(o.time_to_apo <= 0.0) { o.time_to_apo += o.period; }
     } else if(o.ecc > 1.0) {
-        /* Hyperbolic: one periapsis passage, no apoapsis.
-           sinh H = sqrt(e^2-1) sin nu / (1 + e cos nu); asinh is
-           quadrant-safe. nu stays inside the asymptote angle, so
-           1 + e cos nu > 0 always. */
+        // Hyperbolic: asinh is quadrant-safe; nu stays inside the asymptotes.
         o.apoapsis = -1.0;
         o.period = -1.0;
         const double sh = sqrt(o.ecc * o.ecc - 1.0) * sin(o.true_anomaly)
@@ -125,13 +99,11 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         o.mean_anomaly = o.ecc * sh - o.ecc_anomaly;   // e sinh H - H
         const double a_abs = -o.semi_major;
         const double t_from_peri = o.mean_anomaly * sqrt(a_abs * a_abs * a_abs / mu);
-        /* nu > pi (wrapped) is the inbound leg: radial velocity < 0, so
-           periapsis is still ahead. Outbound, it is gone forever. */
+        // Wrapped nu > pi is inbound: periapsis still ahead. Outbound, gone forever.
         o.time_to_peri = (o.true_anomaly > std::numbers::pi) ? -t_from_peri : -1.0;
         o.time_to_apo = -1.0;
     } else {
-        /* Exactly parabolic (measure zero in practice): one periapsis, no
-           period. Don't attempt passage timing. */
+        // Exactly parabolic (measure zero): no period, no passage timing.
         o.apoapsis = -1.0;
         o.period = -1.0;
         o.time_to_peri = -1.0;
@@ -140,8 +112,7 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     return o;
 }
 
-/* Stumpff functions C(z) and S(z): the power series near z = 0 (the
-   parabolic limit), trig/hyperbolic closed forms away from it. */
+// Stumpff C(z)/S(z): power series near z = 0, closed forms away from it.
 inline double stumpffC(const double z) {
     if(z > 1e-6) { return (1.0 - cos(sqrt(z))) / z; }
     if(z < -1e-6) { return (cosh(sqrt(-z)) - 1.0) / (-z); }
@@ -154,16 +125,9 @@ inline double stumpffS(const double z) {
     return 1.0 / 6.0 - z / 120.0 + z * z / 5040.0;
 }
 
-/* Propagate a two-body state (pos0, vel0) by dt seconds under mu, on any
-   conic (elliptic or hyperbolic), via universal variables + f and g
-   functions (Bate, Mueller & White). Exact up to the Newton tolerance --
-   unlike numerical integration the conic's elements are conserved for any
-   dt, which is what lets idle ships coast "on rails" at arbitrary time
-   acceleration. dt may be negative (propagate backwards).
-
-   pos0/vel0 are taken BY VALUE so in-place calls
-   (propagateKepler(p, v, mu, dt, p, v)) are safe: the vel update must
-   read the ORIGINAL pos0, not the freshly overwritten pos. */
+/* Propagate a two-body state by dt (may be negative) via universal variables.
+   Exact for any dt -- what lets idle ships coast "on rails" at any time accel.
+   pos0/vel0 taken BY VALUE so in-place calls (p, v out = p, v in) are safe. */
 inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
                             const double mu, double dt,
                             glm::dvec3 &pos, glm::dvec3 &vel) {
@@ -174,9 +138,8 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double vr0 = glm::dot(pos0, vel0) / r0;   // radial speed, + = receding
     const double alpha = 2.0 / r0 - v0_2 / mu;      // 1/a; negative on hyperbolic
 
-    /* Elliptic: fold whole periods out of dt so the Newton solve only ever
-       spans one revolution (at high time accel dt can be thousands of
-       periods, and the iteration stalls on the multi-revolution equation). */
+    // Fold whole periods out of dt: the Newton solve must span at most one
+    // revolution (it stalls on the multi-revolution equation).
     if(alpha > 0.0) {
         const double a = 1.0 / alpha;
         const double T = 2.0 * std::numbers::pi * sqrt(a * a * a / mu);
@@ -184,27 +147,10 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
         if(dt == 0.0) { pos = pos0; vel = vel0; return; }
     }
 
-    /* Newton iteration on the universal Kepler equation
-         sqrt(mu) dt = (r0 vr0 / sqrt(mu)) chi^2 C(z)
-                     + (1 - alpha r0) chi^3 S(z) + r0 chi,   z = alpha chi^2
-       The derivative simplifies to r0 + (1 - alpha r0) chi^2 C(z)
-       + (r0 vr0 / sqrt(mu)) chi (1 - z S(z)).
-
-       Monotonicity (used by the fallback below): for any physical state
-       k2 = 1 - alpha r0 = r0 v0^2/mu - 1 >= 1 (ellipse: r0 <= a;
-       hyperbolic: > 2), and S(z), C(z), 1 - z S(z) are all > 0 for both
-       z signs -- so F is strictly increasing in chi, F(0) = -target, and
-       F -> +inf as chi -> +inf: a unique root, and bisection works on
-       any bracket with F(lo) < 0 < F(hi). The natural start point
-       chi = target/r0 (the small-dt limit) brackets from OUTSIDE when the
-       state is inbound (vr0 < 0): the negative k1 term can drive
-       F(target/r0) below 0, pushing the root past it -- so the fallback
-       expands the outer end until the sign flips (F -> +/-inf makes this
-       terminate; 100 doublings is far more than any physical case needs).
-       Newton loses the root when the initial guess sits near a zero of
-       C(z) (z ~ (2*pi)^2 -- e.g. half a period from an eccentric
-       periapsis): dF flattens to r0, the step overshoots the root by a
-       wide margin, and the iteration oscillates. Hence the fallback. */
+    /* Newton on the universal Kepler equation (Bate, Mueller & White).
+       Can miss near a zero of C(z): dF flattens, the step overshoots and
+       the iteration oscillates. F is strictly increasing with a unique
+       root, so the bisection fallback below always recovers it. */
     const double sqrt_mu = sqrt(mu);
     const double target = sqrt_mu * dt;
     const double k1 = r0 * vr0 / sqrt_mu;   // 0 at an apsis
@@ -228,9 +174,7 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
         if(fabs(step) < 1e-10 * r0) { break; }
     }
     if(fabs(F(chi)) > 1e-6 * target) {      // Newton missed (see above)
-        // F(0) = -target already has the right sign for the 0 end; the
-        // other end starts at target/r0 and expands outward until the
-        // signs straddle the root (F -> +/-inf guarantees termination).
+        // Expand the outer bracket end until the signs straddle the root.
         double lo, hi;
         if(target > 0.0) {
             lo = 0.0; hi = target / r0;
@@ -246,7 +190,6 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
         chi = 0.5 * (lo + hi);
     }
 
-    /* f and g functions at chi; r from the propagated position. */
     const double z = alpha * chi * chi;
     const double chi2 = chi * chi;
     const double f = 1.0 - (chi2 / r0) * stumpffC(z);
@@ -258,19 +201,9 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     vel = fdot * pos0 + gdot * vel0;
 }
 
-/* Epoch state (pos, vel) of a two-body orbit from its elements, in the
-   BODY-RAIL convention: orbital plane = XZ (normal +Y), in-plane angle
-   measured from +X toward +Z, prograde = +Y x r_hat (at +X the velocity
-   is -Z -- the direction the old R_Y rotation rails produced, and the
-   "prograde" the spawn code uses). Plane tilt is NOT applied here; the
-   frame's orient (a tilt about the parent's +X) carries it out.
-
-   a            semi-major axis (m); a > 0 (elliptic -- bodies don't escape)
-   e            eccentricity, 0 <= e < 1
-   arg_peri     in-plane angle of periapsis from +X (rad); 0 = along +X
-   true_anomaly true anomaly at the epoch (rad), measured from periapsis
-   mu           gravitational parameter of the body orbited
-   Returns false on bad input (pos/vel then left unmodified). */
+/* Epoch state from elements, in the BODY-RAIL convention: orbital plane = XZ
+   (normal +Y). Plane tilt is NOT applied here -- the frame's orient carries it.
+   a > 0, 0 <= e < 1 (bodies don't escape). Returns false on bad input. */
 inline bool railStateFromElements(double a, double e,
                                   double arg_peri, double true_anomaly,
                                   double mu,
@@ -283,10 +216,8 @@ inline bool railStateFromElements(double a, double e,
     const glm::dvec3 rhat(cos(phi), 0.0, sin(phi));
     pos = r * rhat;
 
-    // Radial + transverse split. The TRANSVERSE component is h/r with
-    // h = sqrt(mu*p): vt = sqrt(mu/p) * (1 + e cos(nu)). (The total speed is
-    // the larger sqrt(mu(2/r - 1/a)) = sqrt(mu/p) * sqrt(1 + 2 e cos(nu) + e^2);
-    // using that for vt over-counts whenever the radial part is nonzero.)
+    // Transverse component is h/r, NOT the total vis-viva speed (that
+    // over-counts whenever the radial part is nonzero).
     const double s = sqrt(mu / p);
     const double vr = s * e * sin(true_anomaly);
     const double vt = s * (1.0 + e * cos(true_anomaly));

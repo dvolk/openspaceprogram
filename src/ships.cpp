@@ -1,10 +1,7 @@
 // ships.cpp -- ship construction + placement (see ships.h).
 //
 // The ships themselves are owned by the bodies they sit in
-// (TerrainBody::ships) or, when aboard, by their ship (Vehicle::crew);
-// this file only builds them and places them there. A space pad's render
-// assets are shared (the get_mesh/get_texture registries), so a pad is
-// torn down with just its rigid body -- no asset lifetime to manage.
+// (TerrainBody::ships) or, when aboard, by their ship (Vehicle::crew).
 #include "ships.h"
 
 #include <cstdio>
@@ -24,12 +21,11 @@
 #include "vehicle.h"  // build_ship, faceAlong, spawn_vehicle, scenario_by_name, Vehicle
 
 // Ships sharing a (body, scenario) orbit get this much separation along the
-// orbit binormal (slot N sits ORBIT_SLOT_SPACING * N from the reference
-// orbit) so they don't spawn on top of each other.
+// orbit binormal so they don't spawn on top of each other.
 static const double ORBIT_SLOT_SPACING = 20.0;
 
 // Every start-ship entry must name all four of these; a missing or empty one
-// is a config error (the game does not guess a ship, body, or scenario).
+// is a config error (the game does not guess).
 static const char *const kStartShipFields[] = {"ship", "name", "body", "scenario"};
 
 DebugStartShips loadDebugStartShips(const char *path) {
@@ -107,10 +103,7 @@ void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double
         if(p->parent == hb && p->polar == polar) { return; }
     }
     const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
-    // The pad's render assets are SHARED (the registries own them; a ship
-    // part on the same pad files would draw the very same mesh + texture),
-    // the part shader shared as well. ~TerrainBody frees just the rigid
-    // body + hull shape -- nothing to leak.
+    // The pad's render assets are SHARED (the registries own them).
     Mesh *m = get_mesh("res/meshes/space_port.obj");
     Texture *t = get_texture("res/textures/space_port.png");
     StaticBuilding *sp = new StaticBuilding;
@@ -170,23 +163,19 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     v->m_parent = hb;
     v->sun = sun;
     v->frame = hb->rot_frame;
-    // lateral pad slot (pad local X, 20 m apart) so pad ships stand side
-    // by side; for orbit scenarios this is only staging -- spawn_vehicle
-    // repositions along the orbit binormal and the part offsets relative
-    // to the ship's own COM are what survive.
+    // lateral pad slot (pad local X) so pad ships stand side by side; for
+    // orbit scenarios this is only staging -- spawn_vehicle repositions.
     const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
         + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
     build_ship(v, def, partsshader, base, pad_orient);
     if(is_kerbal) {
-        // frictionless feet: the walk steering is a force applied at the
-        // COM, and foot friction would pair with it into a tipping couple
-        // that rolls the standing capsule over (see src/eva.cpp).
+        // frictionless feet: foot friction would pair with the walk force
+        // into a tipping couple (see src/eva.cpp).
         SetFriction(v->hull, 0.0);
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     // The bookkeeping re-home: enters the body's ships list and starts the
-    // flight journal at `t`. (The raw m_parent/frame writes above are
-    // construction init -- build_ship places the parts in that frame.)
+    // flight journal at `t`.
     v->setSoi(hb->rot_frame, t);
     return v;
 }
@@ -220,14 +209,9 @@ std::string Ships::dedupName(System &sys, const std::string &nm)
     }
 }
 
-/* One crew kerbal aboard (ship, part): build a kerbal, park it inside the
-   capsule (out of the physics world), register it in the capsule's
-   containment edge so the ship's mass carries it (the ship is heavier with
-   crew aboard -- phase 3's effectiveMass, not a mass folded into the part),
-   set its aboard state and store it on the ship (Vehicle::crew). The parked
-   position is bookkeeping only -- the transitions (game.cpp) recompute the
-   kerbal's pose when it EVAs, so a later scenario reposition of the ship
-   (apply_scenarios) does not need to touch it. */
+// One crew kerbal aboard (ship, part): build a kerbal, park it inside the
+// capsule (out of the physics world), register it in the capsule's
+// containment edge so the ship's mass carries it.
 Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t) {
     if(part >= ship->parts.size()) { return nullptr; }
     const PartDef *capDef = ship->parts[part]->def;
@@ -239,7 +223,7 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     Kerbal *k = new Kerbal;
     k->name = dedupName(sys, "kerbal");
     k->defPath = "res/ships/kerbal.json";
-    k->home = ship->home;       // the ship was just placed (bookkeeping set)
+    k->home = ship->home;
     k->scenario = ship->scenario;
     k->m_parent = ship->m_parent;
     k->sun = sun;
@@ -251,30 +235,23 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     build_ship(k, def, partsshader, capCom, capOrient);
     SetFriction(k->hull, 0.0);   // frictionless feet (see place_ship)
 
-    // park inside the capsule (out of the physics world). phase 3: the ship
-    // is heavier with crew aboard through the containment edge (the capsule's
-    // effectiveMass), not a mass folded into the capsule body (addPartMass,
-    // gone) -- the edge is registered just below.
+    // park inside the capsule (out of the physics world). The ship is
+    // heavier with crew aboard through the containment edge (effectiveMass).
     Body *kb = k->hull;
     k->placeShipAtCom(capCom, capOrient);
     RemoveBody(kb);
     k->onRails = true;
     k->railFrozen = true;
     k->aboardPart = capPart;
-    // The bookkeeping re-home (aboardPart is set first -- setSoi keys its
-    // ships-list membership on it): starts the kerbal's flight journal and
-    // keeps its frame/m_parent on the ship's. An aboard kerbal is in no
-    // body list, so there is no list op here.
+    // aboardPart is set first -- setSoi keys its ships-list membership on it.
     k->setSoi(ship->frame, t);
 
     ship->crew.push_back(k);
-    /* step 2.4: register the containment edge (the kerbal's part is parked in
-       the capsule, both directions). Vehicle::crew stays the sole owner;
-       contents is a non-owning back-reference (2.1). */
+    // register the containment edge (both directions). Vehicle::crew stays
+    // the sole owner; contents is a non-owning back-reference (part.h).
     capPart->contents.push_back(k->parts[0]);
     k->parts[0]->container = capPart;
-    /* phase 3: the ship's mass is the capsule's effectiveMass, which just
-       gained the kerbal through the edge. Rebuild so the compound carries it. */
+    // rebuild so the compound carries the crew mass
     ship->rebuildCompound();
     int aboard = 0;
     for(auto *c : ship->crew) {
@@ -297,9 +274,7 @@ void Ships::spawn_crew(Vehicle *ship, System &sys, double t) {
 void Ships::apply_scenarios(System &sys, double t) {
     for(auto *b : sys.bodies) {
         /* Snapshot, not a reference: spawn_vehicle can re-home a ship into
-           ANOTHER body's list (setSoi moves it -- e.g. a neptune/oort
-           scenario places past home's SoI), which would invalidate the
-           iterator mid-loop. */
+           ANOTHER body's list (setSoi moves it). */
         const std::vector<Vehicle *> ships = b->ships;
         for(auto *s : ships) {
             if(s->scenario == nullptr) { continue; }
@@ -336,8 +311,7 @@ Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
         }
         const ScenarioDef *sc = scenario_by_name(fe.scenario);
         Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, t);
-        // startup crew: one kerbal aboard each capsule (the "characters in
-        // ships" state; the EVA/Board transitions in game.cpp move them)
+        // startup crew: one kerbal aboard each capsule
         spawn_crew(v, sys, t);
         if(first == nullptr) { first = v; }
     }

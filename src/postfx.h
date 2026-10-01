@@ -7,9 +7,7 @@
 #include <vector>
 #include "shader.h"
 
-// A settable per-effect parameter (a uniform the effect's fragment shader
-// reads): its name (== the uniform), the Settings-window slider range,
-// and the neutral (no-op) value used as the default.
+// A settable per-effect parameter: name (== uniform), slider range, neutral value.
 struct FXParam {
     const char *name;
     float min;
@@ -17,10 +15,7 @@ struct FXParam {
     float neutral;
 };
 
-// A built-in effect definition (the FX_DEFS table in postfx.cpp):
-// requestable name(s) resolving to one canonical effect, its fragment
-// shader, the uniforms besides "scene" + the parameter names, and the
-// settable parameters (nullptr = none).
+// A built-in effect definition (the FX_DEFS table in postfx.cpp).
 struct FXDef {
     const char *name;
     const char *canonical;
@@ -30,17 +25,10 @@ struct FXDef {
     int n_params;
 };
 
-// Post-processing chain. With no effects active the scene renders
-// straight to the screen (zero cost). With N active effects the scene
-// renders into target 0 and each effect is a fullscreen pass that reads
-// one target and writes the other (the two targets ping-pong, so any
-// number of effects stacks); the last effect composites to the screen.
-// Call Begin before the 3D scene and End after it (before the UI), so the
-// HUD is drawn on top and stays crisp.
-//
-// Effects are toggleable at runtime (Settings): AddEffect creates one (in
-// the disabled state), SetEnabled flips it on/off, and the passes run in
-// the order the effects were added, skipping disabled ones.
+// Post-processing chain. No effects = zero cost (scene goes straight to
+// the screen). N effects = scene into target 0, ping-pong fullscreen passes,
+// last composites to the screen. Call Begin before the 3D scene and End
+// after it (before the UI). Effects are toggleable at runtime (Settings).
 class PostFX
 {
 public:
@@ -49,25 +37,18 @@ public:
 
     // Built-in effect names, canonical, in the order the passes run.
     static const std::vector<std::string>& Available();
-    // Create an effect by name ("crt", "grain", "cas", "color"; "sharpen"
-    // is an alias for "cas", "gamma" an alias for "color"); false if
-    // unknown. Idempotent: adding a name that already exists is a no-op.
-    // New effects start disabled.
+    // Create an effect by name (aliases: "sharpen"->"cas", "gamma"->"color").
+    // Idempotent. New effects start disabled.
     bool AddEffect(const std::string& name);
 
-    // Enable/disable an effect by name (alias-resolved); false if unknown.
-    // Creates the effect on first enable so it can be toggled at runtime.
+    // Enable/disable (alias-resolved); creates on first enable.
     bool SetEnabled(const std::string& name, bool enabled);
     bool IsEnabled(const std::string& name) const;
 
-    // The effect's settable parameters (empty for effects without any);
-    // slider order == return order. "color" exposes gamma, brightness,
-    // black_level, saturation.
+    // The effect's settable parameters (slider order == return order).
     static std::vector<FXParam> Params(const std::string& name);
 
-    // Set/get a parameter value (each param is a uniform the effect reads;
-    // the neutral value is the default). false / 0.0 for an unknown effect
-    // or parameter name, and Set is a no-op until the effect exists.
+    // Set/get a parameter value. false / 0.0 for unknown effect or parameter.
     bool SetParam(const std::string& name, const std::string& param,
                   float value);
     float GetParam(const std::string& name, const std::string& param) const;
@@ -85,8 +66,7 @@ private:
     void RebuildTargets(int width, int height);
 
     // The Shader is owned by pointer: Shader's destructor deletes the GL
-    // program, so a by-value copy/move (vector reallocation, a temporary
-    // in AddEffect) would free objects a second Effect still references.
+    // program, so a by-value copy/move would free objects still referenced.
     struct Effect {
         const FXDef *def;         // its FX_DEFS entry (uniforms + parameters)
         std::string name;         // canonical name (alias-resolved)

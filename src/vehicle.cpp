@@ -24,11 +24,10 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
     printf("Building ship '%s' (%d parts)\n", def.name.c_str(), (int)def.parts.size());
 
     /* 0) partition the def's parts into physical parts (those that get a
-       Body) and fuel links (virtual -- no Body, no mesh). The fuel links
-       are resolved to Part* edges after the physical parts exist. The
-       parent indices (set at load time) are indices into def.parts, so I
-       remap them to the physical-part indices as I go. A fuel link can
-       never be a parent (it is virtual), so the remap is safe. */
+       Body) and fuel links (virtual -- no Body, no mesh). Parent indices
+       (set at load time) are indices into def.parts, so remap them to the
+       physical-part indices. A fuel link can never be a parent, so the
+       remap is safe. */
     std::vector<ShipPart> physical;
     std::vector<const ShipPart *> links;
     std::map<size_t, size_t> physIndex;  // def.parts index -> physical index
@@ -50,8 +49,7 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
         }
     }
 
-    /* Remap the controller index to the physical-part index (the controller
-       is always a physical part -- a fuel link can't be a controller). */
+    // Remap the controller index to the physical-part index.
     int controllerIdx = def.controllerIndex();
     auto cit = physIndex.find((size_t)controllerIdx);
     if(cit == physIndex.end()) {
@@ -61,10 +59,7 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
 
     /* 1) relative poses in a canonical frame: the root at the origin, +Z =
        the stack axis. Each child is placed off its (earlier) parent by the
-       shared attach geometry (shipdef.cpp): a STACK edge mates two named
-       nodes (attachNodes); a SURFACE edge places the child's surface node at
-       a contact point+normal on the parent (attachSurface). Both funnel
-       through the one node solver. */
+       shared attach geometry (shipdef.cpp). */
     std::vector<glm::dvec3> pos(n);
     std::vector<glm::dmat3> rot(n);
     pos[0] = glm::dvec3(0.0);
@@ -74,9 +69,8 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
         const ShipPart &pp = physical[(size_t)sp.parent];
         const glm::dvec3 &pPos = pos[(size_t)sp.parent];
         const glm::dmat3 &pRot = rot[(size_t)sp.parent];
-        /* one solver for both edge kinds (and for the VAB build tree), so
-           flight and the editor can never disagree; solveEdge throws on a
-           missing node (validated at load too). */
+        // one solver for both edge kinds (and for the VAB build tree), so
+        // flight and the editor can never disagree
         const AttachPose ap = solveEdge(pPos, pRot, *pp.def, *sp.def, sp.attach,
                                         sp.parentNode, sp.childNode,
                                         sp.contactPoint, sp.contactNormal,
@@ -88,15 +82,13 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
     for(size_t i = 0; i < n; i++) {
         const PartDef &pd = *physical[i].def;
 
-        /* Shared assets (the get_mesh/get_texture registries): one assimp
-           import + GPU upload + texture upload per part FILE, so a
-           100-part ship built from 10 part types pays 10x, not 100x. */
+        // Shared assets (the get_mesh/get_texture registries): one import +
+        // GPU upload per part FILE, so a 100-part ship from 10 types pays 10x.
         Mesh *mesh = get_mesh(std::string("res/") + pd.mesh);
         Texture *tex = get_texture(std::string("res/") + pd.texture);
 
-        /* No rigid body and no world pose of its own: the part is a child of
-           the ship's one compound body, and its pose is derived from
-           pos[i]/rot[i] once the ship is placed as a whole (below). */
+        // No rigid body and no world pose of its own: the part is a child of
+        // the ship's one compound body.
         Body *b = create_part_body(mesh, partsshader, tex, (float)pd.mass,
                                    resolveHullMargin(def.hull_margin, pd.hull_margin));
 
@@ -106,10 +98,7 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
         part->id    = physical[i].id;
         part->stage = physical[i].stage;
 
-        /* Engine shroud (optional, see PartDef.shroud): the open-cylinder
-           wrap drawn OVER this part while a part is attached below it
-           (Vehicle::Draw / the VAB draw). Registry-shared like the part
-           assets -- one import per shroud file. */
+        // Engine shroud (optional, see PartDef.shroud).
         if(!pd.shroud.empty()) {
             part->shroud = get_mesh(std::string("res/") + pd.shroud);
             part->shroud_texture =
@@ -123,15 +112,12 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
             /* pos[i]/rot[i] are already the ship-local (S) transforms -- S is
                the root's frame, pos[0]=0/rot[0]=I, and the pad `shift` and
                the world base/orient are applied uniformly to every part, so
-               they cancel in the relative pose. attachPose's geometry is
-               pinned numerically by test_shipload. */
+               they cancel in the relative pose. */
             ship->attach(part, (size_t)sp.parent, pos[i], rot[i]);
         }
     }
-    /* One-shot shroud snapshot (e2e anchor + debug): each part that
-       declares a shroud, and whether it is shrouded as built (a part
-       attached below). The state is LIVE -- staging can drop the child
-       below and the shroud goes with it; this is the built state. */
+    /* One-shot shroud snapshot (e2e anchor + debug). The state is LIVE --
+       staging can drop the child below and the shroud goes with it. */
     for(size_t i = 0; i < n; i++) {
         Part *p = ship->parts[i];
         if(p->shroud == nullptr) { continue; }
@@ -143,10 +129,8 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
 
     ship->controller = ship->parts[cit->second];
 
-    /* 4) resolve the fuel links (from/to ids -> Part*). The ids reference
-       the physical parts (a fuel link can't reference another fuel link),
-       so I build an id -> Part* map and look up each endpoint. Reject link
-       cycles (A->B and B->A, or longer) -- the drain model requires a DAG. */
+    /* 4) resolve the fuel links (from/to ids -> Part*). Reject link cycles
+       -- the drain model requires a DAG. */
     if(!links.empty()) {
         std::map<std::string, Part *> idToPart;
         for(size_t i = 0; i < n; i++) {
@@ -166,9 +150,8 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
             }
             ship->fuelLinks.push_back(Vehicle::FuelLink{ f->second, t->second });
         }
-        /* cycle check: build the directed graph (from -> to) and do a DFS
-           for back-edges. The graph is over fuel GROUPS (not parts), so I
-           collapse each endpoint to its fuelGroup first. */
+        // cycle check: build the directed graph (from -> to) and do a DFS
+        // for back-edges. The graph is over fuel GROUPS (not parts).
         ship->buildFuelGroups();
         std::map<int, std::vector<int>> dag;  // fuelGroup -> outgoing fuelGroups
         for(size_t k = 0; k < ship->fuelLinks.size(); k++) {
@@ -210,8 +193,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                        const glm::dvec3 &base, const glm::dmat3 &orient)
 {
     build_ship_structure(ship, def, partsshader);
-    /* Seed the tanks full (init) -- a pad ship lifts off with a full load. */
-    ship->init();
+    ship->init();  // seed the tanks full (a pad ship lifts off with a full load)
     /* Place it on the pad: the lowest point at the pad top, lifted by the
        collision margins (terrain 0.5 + hull 0.1) so the inflated shapes just
        touch instead of popping apart on the first solve. For orbit scenarios
@@ -222,10 +204,7 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
         lowest = std::min(lowest, p->localPos.z - p->def->height / 2.0);
     }
     const glm::dvec3 shift = glm::dvec3(0.0, 0.0, -lowest + 0.6);
-    /* init() built the single rigid body at the origin; this puts frame S
-       where the pad staging wants it -- S's origin at base + orient*shift and
-       S's axes at `orient` -- and every part's world pose then follows from
-       its authored local pose. One write, not one per part. */
+    // One write, not one per part: place frame S where the pad staging wants it.
     ship->placeShip(base + orient * shift, orient);
     ship->enterWorld();
 }
@@ -248,27 +227,7 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
     }
 }
 
-/*
-  Starting scenarios (chosen at the CLI on startup, see main). The pad
-  scenarios are already set up in main (the ship is built on the pad); the
-  orbit scenarios place the ship in a circular orbit around the home body at
-  r = radius + alt_frac * (rotating-frame SOI - radius), in the equatorial
-  plane (local +Z) or the polar plane (local +Y), nose prograde.
-
-  The ellipse-* scenarios place the ship on a 10 km x 1000 km ASL orbit in
-  the equatorial plane, prograde in the same sense as the circular ones
-  (periapsis along world +Z), at periapsis (ell_phase 0), apoapsis (1), or
-  90 deg of true anomaly - halfway by angle between the apsides (2).
-
-  The escape scenario places the ship at the rot-orbit radius with
-  esc_frac x the local escape velocity, prograde -- periapsis of a
-  hyperbola, so it coasts out of the body's SOI on its own.
-
-  As before, the ship's frame is resolved from the innermost SOI containing
-  the spawn point (resolve_frame_by_soi), with the stasis-velocity correction
-  so a rotating frame still yields the correct inertial orbital velocity.
-  ScenarioDef lives in vehicle.h.
-*/
+// Starting scenarios (see ScenarioDef in vehicle.h).
 static const ScenarioDef kScenarios[] = {
     {"pad",            true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"pad-polar",      true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
@@ -276,22 +235,14 @@ static const ScenarioDef kScenarios[] = {
     {"inertial-orbit", false, 1.25, false, -1, 0.0,     0.0, 0.0, 0.0},
     {"high-orbit",     false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"high-polar",     false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
-    /* In-atmosphere "flying" beds (science.h: the airborne situations). The
-       altitudes are alt_frac x the SoI edge -- on Kerbin (100km edge) that is
-       10km (flying-low, below the 20%-of-atmo split) and 50km (flying-high).
-       A circular-orbit speed at those altitudes; drag keeps them in the air
-       long enough to record a reading. */
+    /* In-atmosphere "flying" beds (science.h: the airborne situations). */
     {"flying-low",     false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"flying-high",    false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"ellipse-peri",   false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
     {"escape",         false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
-    /* the absolute-radius distance ladder (see ScenarioDef): anchored to
-       real astronomical distances, so a name means the same distance
-       around any body. Precision test beds -- neptune is comfortably
-       inside double's range (~1 mm ULP), oort is where it starts to bite
-       (~0.22 m), interstellar is where it clearly breaks (~22 m). */
+    /* the absolute-radius distance ladder (see ScenarioDef) */
     {"neptune",        false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
     {"oort",           false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
     {"interstellar",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e17},
@@ -334,9 +285,8 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir)
 }
 
 /* slot_offset (m): lateral separation for ships sharing a scenario --
-   applied along the orbit binormal (perpendicular to both the radius
-   vector and the velocity), so each ship's orbit stays essentially the
-   same shape. 0 for a lone ship (and no-op for pad scenarios). */
+   applied along the orbit binormal, so each ship's orbit stays essentially
+   the same shape. 0 for a lone ship (and no-op for pad scenarios). */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                           System &sys, double slot_offset, double t)
 {
@@ -347,9 +297,8 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
     if(sc.ell_phase >= 0) {
         // Elliptical orbit in the equatorial plane (world X-Z), prograde in
-        // the same sense as the circular scenarios: periapsis along +Z, so
-        // 90 deg along the travel direction is +X. The apsides are inertial
-        // (root-frame) directions, as orbital elements should be.
+        // the same sense as the circular scenarios: periapsis along +Z.
+        // The apsides are inertial (root-frame) directions.
         const double rp = home->radius + sc.peri_alt;
         const double ra = home->radius + sc.apo_alt;
         const double p = 2.0 * rp * ra / (rp + ra); // semi-latus rectum a(1-e^2)
@@ -379,18 +328,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
         // Circular orbital speed (vis-viva with semi-major axis == r); the
         // escape scenario reuses the radius but leaves at esc_frac x the
-        // local escape velocity, so the ship is on a hyperbola (periapsis
-        // at r) and coasts out of the body's SOI on its own.
+        // local escape velocity (a hyperbola).
         const double speed = sc.esc_frac > 0.0
                            ? sc.esc_frac * sqrt(2.0 * home->mu / r)
                            : sqrt(home->mu / r);
 
-        // Prograde: perpendicular to the radius vector, in the system's sense of
-        // rotation (+y axis); polar orbits go around the spin axis instead.
+        // Prograde: perpendicular to the radius vector, in the system's sense
+        // of rotation (+y axis); polar orbits go around the spin axis instead.
         // Normalize: with an inclined body orbit rhat is not orthogonal to
-        // the reference axis, and the raw cross product is short by
-        // cos(incl) -- the spawn would arrive below circular speed, at the
-        // apoapsis of an e = sin^2(incl) ellipse.
+        // the reference axis, and the raw cross product is short by cos(incl).
         const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
         const glm::dvec3 vhat = glm::normalize(
             sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
@@ -407,13 +353,9 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     Frame *frame = resolve_frame_by_soi(sys.root->frame, shipWorldPos);
 
     // Express the spawn position and velocity in the resolved frame's local
-    // coordinates. The invariant (see frame.h) is
-    //   R * (vel + stasis(p)) + root_vel == root-frame velocity,
-    // so  vel = R^T * (velRoot - root_vel) - stasis(p). velWorld above is the
-    // ship's velocity RELATIVE to home, in root-frame axes; the true
-    // root-frame velocity is that plus home's own root velocity (nonzero now
-    // that home orbits on a Kepler rail). When the resolved frame IS home's,
-    // the two root velocities cancel and this reduces to the old R^T*velWorld.
+    // coordinates. velWorld is the ship's velocity RELATIVE to home, in
+    // root-frame axes; the true root-frame velocity is that plus home's own
+    // root velocity.
     const glm::dvec3 target = glm::transpose(frame->root_orient) * (shipWorldPos - frame->root_pos);
     const glm::dvec3 vel = glm::transpose(frame->root_orient)
                           * (velWorld + home->frame->root_vel - frame->root_vel)
@@ -423,19 +365,12 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         ship->moveToFrame(frame, t);
     }
 
-    // Nose (local +Z) along prograde: rigidly re-orient the whole ship. One
-    // body, so this is one pose write -- the COM goes to `target` and frame
-    // S's axes to `orient`. Every part's RELATIVE geometry survives by
-    // construction (a stacked part stays stacked, a radial part keeps its
-    // perpendicular axis) because the parts are rigidly embedded in the
-    // compound.
+    // Nose (local +Z) along prograde: rigidly re-orient the whole ship.
     // `target` is in the resolved frame's axes, so `orient` must be too.
-    // faceAlong(velWorld) is a root-frame attitude (velWorld is root-frame);
-    // feeding it to placeShipAtCom as if it were local is only correct when
-    // frame->root_orient is identity. Axial tilt now lives in the rotating
-    // frame's initial_orient, so a tilted home body makes root_orient a
-    // non-trivial rotation at spawn -- the ship would come out rolled about
-    // its prograde axis by the tilt (breaks port alignment for --dock-test).
+    // faceAlong(velWorld) is a root-frame attitude; feeding it to placeShipAtCom
+    // as if it were local is only correct when frame->root_orient is identity.
+    // Axial tilt lives in the rotating frame's initial_orient, so a tilted home
+    // body makes root_orient a non-trivial rotation at spawn.
     const glm::dmat3 orient =
         glm::transpose(frame->root_orient) * faceAlong(velWorld);
     ship->placeShipAtCom(target, orient);
@@ -448,16 +383,9 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 }
 
 /* --spin-log: the ship's rotational state. A ship is ONE rigid body, so
-   there is a single angular velocity and nothing internal to compare it
-   against -- which is the point of the representation. The old per-part
-   spread, and the inter-part contact torque that drove it, measured how far
-   the welds were from holding a rigid body; that error no longer exists, and
-   Bullet generates no contacts at all between the children of a compound.
-
-   What is left that can still spin a passive ship is the tidal
-   (differential-gravity) torque -- the one legitimate external torque, and
-   negligible at ship scale -- so that is reported alongside the state it acts
-   on. */
+   there is a single angular velocity. What can still spin a passive ship
+   is the tidal (differential-gravity) torque -- negligible at ship scale --
+   so that is reported alongside the state it acts on. */
 void spin_log(Vehicle *ship, double time) {
     if(ship->hull == nullptr) { return; }
 
@@ -545,19 +473,14 @@ void Vehicle::rebuildCompound() {
        would shift the ship by the COM movement and leave it spinning
        about the wrong point. */
     const bool have = (hull != nullptr && hull->btBody != nullptr);
-    /* Out of the world before the delete, back in after: the rebuild
-       replaces the rigid body, and a registered one cannot just be
-       freed. */
+    // Out of the world before the delete, back in after: the rebuild
+    // replaces the rigid body, and a registered one cannot just be freed.
     const bool wasInWorld = hullInWorld();
     if(wasInWorld) { RemoveBody(hull); }
     glm::dvec3 sPos(0.0), vCom(0.0), omega(0.0), oldOrigin(0.0);
     glm::dmat3 sRot(1.0);
-    /* a rebuild makes a new rigid body, so the state that lives on the
-       OLD one and is not part of the compound has to be carried over
-       explicitly: the friction. An EVA kerbal's feet are set
-       frictionless once, at spawn, and a burn must not undo it. (The
-       never-sleep flag needs no carrying -- every ship has it, so it is
-       re-asserted unconditionally below.) */
+    /* a rebuild makes a new rigid body, so the friction has to be carried
+       over explicitly (an EVA kerbal's feet are set frictionless once). */
     btScalar friction = 4.0;          // RegisterObject's value
     if(have) {
         frameS(sPos, sRot);
@@ -573,12 +496,7 @@ void Vehicle::rebuildCompound() {
     principal = btTransform::getIdentity();
     if(parts.empty()) { aeroHull.clear(); return; }
 
-    /* ownership back-pointers (part.h): the parts list is the ownership list,
-       so every part in it points back at this vehicle. The attach primitives
-       (setRoot/attach) and the merge/split set this as parts move; wiring it
-       here too keeps the invariant well-defined for ships assembled without
-       them (the headless tests build parts by hand), so the assert below
-       passes on a correctly-owned ship and fails where ownership is broken. */
+    // ownership back-pointers (part.h): the parts list is the ownership list
     for(Part *p : parts) { p->owner = this; }
 
     btCompoundShape *inS = new btCompoundShape(true, (int)parts.size());
@@ -587,12 +505,7 @@ void Vehicle::rebuildCompound() {
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
         inS->addChildShape(toBt(p->localPos, p->localRot), p->body->shape);
-        /* phase 3: the mass a part reports to the compound is its
-           effectiveMass -- its own body mass plus whatever is parked inside
-           it (the containment edge). A capsule thus carries its crew without
-           the crew mass being baked into its body (addPartMass, now gone).
-           The crew's mass is smeared over the capsule hull's shape (see
-           checkCompoundInvariants); 3.3 refines it to a point mass. */
+        // effectiveMass: body mass + contained crew/inventory (part.h)
         masses[i] = (btScalar)p->effectiveMass();
         total += masses[i];
         compoundParts.push_back(p);
@@ -605,10 +518,10 @@ void Vehicle::rebuildCompound() {
 
     /* Re-base the children into the COM/principal frame: leaving them in
        S would give a body whose origin sits at the root part while its
-       inertia is diagonal about the principal axes -- an inconsistent
-       body that tumbles under any off-axis torque. (Bullet's own
-       CompoundBoxes tutorial writes this product the other way round;
-       the FractureDemo form below is the correct one.) */
+       inertia is diagonal about the principal axes -- an inconsistent body
+       that tumbles under any off-axis torque. (Bullet's own CompoundBoxes
+       tutorial writes this product the other way round; the FractureDemo
+       form below is the correct one.) */
     btCompoundShape *nc = new btCompoundShape(true, inS->getNumChildShapes());
     const btTransform toBody = principal.inverse();
     for(int i = 0; i < inS->getNumChildShapes(); i++) {
@@ -628,7 +541,7 @@ void Vehicle::rebuildCompound() {
 
     /* Restore frame S under the new principal, and the COM's velocity:
        the COM moved WITHIN S, so its world velocity changed by
-       omega x the shift. omega is in world axes and is unchanged. */
+       omega x the shift. */
     glm::dvec3 pOrigin; glm::dmat3 pBasis;
     fromBt(principal, pOrigin, pBasis);
     hull->btBody->setWorldTransform(toBt(sPos + sRot * pOrigin, sRot * pBasis));
@@ -651,9 +564,7 @@ void Vehicle::rebuildAeroHull() {
         if(p->body != nullptr) { cap += p->body->hullVerts.size(); }
     }
     if(cap < 3) { return; }
-    /* The union of the parts' hull verts, in frame S (their localPos/localRot
-       are authored in S, so no world state is needed -- the silhouette area
-       is transform-invariant anyway, see aeroHull). */
+    // The union of the parts' hull verts, in frame S.
     std::vector<glm::dvec3> u;
     u.reserve(cap);
     for(Part *p : parts) {
@@ -662,12 +573,8 @@ void Vehicle::rebuildAeroHull() {
             u.push_back(p->localRot * v + p->localPos);
         }
     }
-    /* Reduce to the extreme points with the same hull Bullet already links
-       (optimizeConvexHull): the convex hull -- and so every projected
-       silhouette of it -- is unchanged, but the per-substep projectedArea
-       sorts tens of points instead of every part's every vert. This runs at
-       most once per tick (staging/dock, or a burn's mass-drift rebuild)
-       against n substeps per tick (n up to 2000 at warp). */
+    /* Reduce to the extreme points (optimizeConvexHull): the silhouette is
+       unchanged, but the per-substep projectedArea sorts fewer points. */
     btConvexHullShape shape(reinterpret_cast<const btScalar *>(&u[0].x),
                             (int)u.size(), 3 * sizeof(double));
     shape.optimizeConvexHull();
@@ -690,13 +597,9 @@ bool Vehicle::checkPartInvariants() const {
             return false;
         }
         if(p->container != nullptr) {
-            /* phases 2-4: a part in a parts list may only be contained as
-               a CREW member -- its owner is the character vehicle (isEva).
-               Inventory items are contained too, but they never appear in
-               any parts list (the container owns them via ownedContents),
-               so they are checked on the container side below. Phase 5
-               drops the exception when a contained kerbal stops being a
-               Vehicle (design report §2.6/§2.7). */
+            /* a part in a parts list may only be contained as a CREW member
+               -- its owner is the character vehicle (isEva). Inventory items
+               are contained too, but they never appear in any parts list. */
             if(!isEva()) {
                 printf("[part] '%s': part '%s' (uid %llu) is contained, but "
                        "this vehicle is not a character\n",
@@ -745,10 +648,9 @@ bool Vehicle::checkPartInvariants() const {
                        (unsigned long long)c->uid);
                 return false;
             }
-            /* phase 4: contents holds BOTH crew members and inventory
-               items. An item is owned by the container itself (in its
-               ownedContents) and claims no vehicle; everything else in
-               contents must be a character's part. */
+            /* contents holds BOTH crew members and inventory items. An item
+               is owned by the container itself (in its ownedContents);
+               everything else in contents must be a character's part. */
             if(c->ownedBy(p)) {
                 if(p->def == nullptr || p->def->inventory_capacity <= 0) {
                     printf("[part] '%s': part uid %llu is an inventory "
@@ -772,9 +674,7 @@ glm::dvec3 Vehicle::compoundCom() const {
     double total = 0.0;
     glm::dvec3 com(0.0);
     for(size_t i = 0; i < parts.size(); i++) {
-        /* phase 3: effectiveMass (body + contained crew), matching
-           rebuildCompound -- so refreshCompound's COM comparison sees the
-           crew's contribution. */
+        // effectiveMass (body + contained crew), matching rebuildCompound
         const double m = parts[i]->effectiveMass();
         total += m;
         com += m * parts[i]->localPos;
@@ -806,8 +706,7 @@ void Vehicle::checkCompoundInvariants() const {
     double total = 0.0, extent = 0.0;
     glm::dvec3 com(0.0);
     for(size_t i = 0; i < parts.size(); i++) {
-        /* phase 3: effectiveMass (body + contained crew), matching
-           rebuildCompound -- the compound's mass/COM carry the crew. */
+        // effectiveMass (body + contained crew), matching rebuildCompound
         const double m = parts[i]->effectiveMass();
         total += m;
         com += m * parts[i]->localPos;
@@ -816,15 +715,12 @@ void Vehicle::checkCompoundInvariants() const {
     if(total <= 0.0) { return; }
     com /= total;
 
-    /* the analytic tensor about the authored COM, in S axes. phase 3: each
-       part's SHAPE carries its effectiveMass (rebuildCompound passes that
-       to calculatePrincipalAxisTransform), so the shape's inertia is scaled
-       from the body mass up to the effective mass (inertia is linear in mass
-       for a fixed shape -- getInertiaDiag is per-kg mass times body->mass, so
-       the ratio restores it at the larger mass) and the parallel-axis term
-       uses the effective mass. A part with body mass but crew in it thus
-       reports the crew's mass smeared over its own hull; 3.3 moves it to a
-       point mass at the child's pose instead. */
+    /* the analytic tensor about the authored COM, in S axes. Each part's
+       SHAPE carries its effectiveMass (rebuildCompound passes that to
+       calculatePrincipalAxisTransform), so the shape's inertia is scaled
+       from the body mass up to the effective mass (inertia is linear in
+       mass for a fixed shape) and the parallel-axis term uses the
+       effective mass. */
     glm::dmat3 want(0.0);
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
@@ -852,9 +748,7 @@ void Vehicle::checkCompoundInvariants() const {
 
     /* btMatrix3x3::diagonalize is a Jacobi iteration that stops once
        every off-diagonal is under 1e-5 x the diagonal trace, so the
-       eigenvalues it hands back carry that much of the tensor's residue
-       -- the tolerance cannot be tighter than that. The COM and the
-       child poses are plain arithmetic, so they are held to rounding. */
+       tolerance cannot be tighter than that. */
     double trace = 0.0;
     for(int c = 0; c < 3; c++) { trace += std::fabs(want[c][c]); }
     const double iTol = 1e-5 * std::max(1.0, trace);
@@ -995,8 +889,8 @@ void Vehicle::attach(Part *part, size_t parentIdx, const glm::dvec3 &localPos, c
 void Vehicle::attachMode(Part *part, size_t parentIdx, AttachMode mode,
                          double angleDeg, double offset) {
     const Part *pp = parts[parentIdx];
-    /* attachPose is relative, so feeding it the parent's ship-local pose
-       returns the child's ship-local pose directly. */
+    // attachPose is relative, so feeding it the parent's ship-local pose
+    // returns the child's ship-local pose directly.
     const AttachPose ap = attachPose(pp->localPos, pp->localRot, *pp->def,
                                      *part->def, mode, angleDeg, offset);
     attach(part, parentIdx, ap.childPos, ap.childRot);
@@ -1015,8 +909,8 @@ void Vehicle::attachSurface(Part *part, size_t parentIdx,
         throw std::runtime_error(std::string("attachSurface: part '") + part->def->name
                                  + "' has no surface node");
     }
-    /* ::attachSurface is the free solver in shipdef.cpp (same name as this
-       method -- qualify it so this isn't a recursive call). */
+    // ::attachSurface is the free solver in shipdef.cpp (qualify so this
+    // isn't a recursive call).
     const AttachPose ap = ::attachSurface(pp->localPos, pp->localRot, point,
                                           normal, *cn, rollDeg, offset);
     attach(part, parentIdx, ap.childPos, ap.childRot);
@@ -1025,10 +919,9 @@ void Vehicle::attachSurface(Part *part, size_t parentIdx,
 void Vehicle::init() {
     if(parts.empty()) { return; }
     /* propellant reservoirs: seed each tank part's resources so the
-       thrusters can draw from them (they shed mass as they burn). Only
-       done at construction -- extractSubtreeAsShip()
-       must NOT re-seed (a stage that has been burning keeps what it has
-       left). */
+       thrusters can draw from them. Only done at construction --
+       extractSubtreeAsShip() must NOT re-seed (a stage that has been
+       burning keeps what it has left). */
     for(size_t i = 0; i < parts.size(); i++) {
         Part *p = parts[i];
         if(!p->isTank()) { continue; }
@@ -1043,11 +936,9 @@ void Vehicle::init() {
 void Vehicle::finalize() {
     if(parts.empty()) { return; }
     if(controller == nullptr) { controller = parts[0]; }
-    /* stage bookkeeping: totalStages_ = the highest stage number (the
-       counter's start + the "stage X of N" N); minStage_ = the lowest (the
-       counter's floor); activeStage_ starts at the HIGHEST stage, so the
-       highest-numbered engines fire at t=0 and stage 1 fires last (a ship
-       whose first engine is stage N still lifts off). Computed once here. */
+    /* stage bookkeeping: totalStages_ = the highest stage number; minStage_
+       = the lowest; activeStage_ starts at the HIGHEST stage, so the
+       highest-numbered engines fire at t=0 and stage 1 fires last. */
     totalStages_ = 1;
     int lowest = parts[0]->stage;
     for(size_t i = 1; i < parts.size(); i++) {
@@ -1056,16 +947,11 @@ void Vehicle::finalize() {
     }
     minStage_ = lowest;
     activeStage_ = totalStages_;
-    /* fuel groups: an engine draws from the tanks it's connected to
-       (its fuel group), not by stage -- the weld links are known now. */
+    // fuel groups: an engine draws from the tanks it's connected to
     buildFuelGroups();
-    /* the ship's single rigid body: the part list is complete, so the
-       compound can be built, and its mass properties asserted against
-       the assembly it came from. ONE body per ship, not one per part --
-       and nothing to weld, because a rigid body has no internal degrees
-       of freedom to constrain. Registering it is enterWorld()'s job, so
-       that a headless caller (the unit tests) can build a ship with no
-       physics world in existence. */
+    // the ship's single rigid body: ONE body per ship, not one per part.
+    // Registering it is enterWorld()'s job (headless callers build without
+    // a physics world).
     rebuildCompound();
 }
 
@@ -1082,12 +968,10 @@ Part *Vehicle::capsulePart() const { return nullptr; }
 void Vehicle::buildFuelGroups() {
     // The group structure is about to change, so any cached drain layers
     // (fuelDrainLayers) are now stale -- drop them. This is the only place
-    // the groups are ever rebuilt (construction, docking merges, split/undock,
-    // save-load), so the cache can never outlive the structure it describes.
+    // the groups are ever rebuilt.
     drainLayers_.clear();
     for(Part *p : parts) { p->fuelGroup = -1; }
-    /* undirected adjacency over the part tree (Part::parent; each
-       non-root part has exactly one parent edge). */
+    // undirected adjacency over the part tree (Part::parent)
     std::map<Part *, std::vector<Part *>> adj;
     for(Part *p : parts) {
         if(p->parent == nullptr) { continue; }
@@ -1135,10 +1019,8 @@ const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) con
         static const std::vector<std::vector<int> > empty;
         return empty;
     }
-    // Cached per group (drainLayers_): the layer structure is static until
-    // buildFuelGroups re-runs (construction / a docking merge), so a repeat
-    // call for the same group is a map lookup, not a reverse-adjacency BFS
-    // plus a dozen map/vector allocs (a hot path while thrusting).
+    // Cached per group (drainLayers_): a repeat call for the same group is
+    // a map lookup, not a reverse-adjacency BFS (a hot path while thrusting).
     auto it = drainLayers_.find(g);
     if(it != drainLayers_.end()) { return it->second; }
     std::vector<std::vector<int> > layers;
@@ -1166,10 +1048,8 @@ const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) con
             queue.push_back(v);
         }
     }
-    /* bucket the groups by distance, then take the buckets in
-       descending order (std::map is ascending, so walk it backwards).
-       Within a bucket the group ids are ascending (dist is keyed by
-       group id), so the order is deterministic. */
+    /* bucket the groups by distance, then take the buckets in descending
+       order (std::map is ascending, so walk it backwards). */
     std::map<int, std::vector<int> > byDist;
     for(std::map<int, int>::const_iterator it = dist.begin(); it != dist.end(); ++it) {
         byDist[it->second].push_back(it->first);
@@ -1189,10 +1069,7 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
        can't be met this tick (drain-or-nothing, no partial leak). */
     if(availableResourceMass(type, engine) < amt) { return false; }
     /* Drain layer by layer (furthest first), pro-rata across the layer's
-       tanks. Single pass (no per-layer scratch vector): total >= amt means
-       `remaining` can never exceed a layer's available fuel, so each tank's
-       share `take * have / layerTotal` is computed and applied in one loop
-       -- identical to the old collect-then-drain, minus the allocation. */
+       tanks. Single pass (no per-layer scratch vector). */
     float remaining = amt;
     for(size_t li = 0; li < layers.size() && remaining > 0.0f; li++) {
         float layerTotal = 0;
@@ -1216,10 +1093,9 @@ bool Vehicle::consumeResourceMass(enum ResourceType type, float amt, Part *engin
                 float share = take * have / layerTotal;
                 if(share > have) { share = have; }
                 p->resources.current[(int)type] = have - share;
-                /* The fuel leaves resources.current (above); the body mass is
-                   the DRY structure and stays put -- effectiveMass() adds the
-                   contents back, and refreshCompound() (once per tick) rebuilds
-                   the ship's mass/COM once the drift matters. */
+                /* The fuel leaves resources.current; the body mass is the
+                   DRY structure and stays put -- effectiveMass() adds the
+                   contents back. */
             }
         }
         remaining -= take;
@@ -1241,12 +1117,8 @@ float Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const
 }
 
 // Fill burn[ResourceType::Num] with the resources the ship's engines draw.
-// includeJets: also count jet fuel. Jets shed mass but produce no vacuum
-// delta-v, so the delta-v estimate excludes them (includeJets=false) while
-// the max-TWR (lightest-mass) estimate includes them (includeJets=true).
-// Derived from the engines ACTUALLY present, so a tank resource no engine can
-// burn (e.g. LOX on a nuclear-thermal-only ship) is not counted as burnable.
-// Stack mask, no allocation: these run every frame from the Vessel window.
+// includeJets: also count jet fuel (jets shed mass but produce no vacuum dv).
+// Derived from the engines ACTUALLY present. Stack mask, no allocation.
 void Vehicle::enginePropellantMask(bool *burn, bool includeJets) const {
     for(int r = 0; r < (int)ResourceType::Num; r++) { burn[r] = false; }
     for(Part *p : parts) {
@@ -1270,31 +1142,22 @@ float Vehicle::fuelMassMasked(const bool *burn) const {
 }
 
 float Vehicle::getDeltaV() {
-    // Rocket propellant only: the resources the ship's ROCKET engines draw
-    // (a chemical engine H2+LOX, a nuclear thermal engine H2 alone). Jet fuel
-    // is excluded -- jets are air-breathing and produce no vacuum delta-v.
-    // LIMITATION: the mask is a ship-wide UNION and `ve` below is the FIRST
-    // rocket's, so a ship MIXING engine types (e.g. chemical + nuclear, or two
-    // different ve) is an estimate -- exact for a homogeneous engine set. See
-    // issue #41.
+    // Rocket propellant only: jets are air-breathing and produce no vacuum
+    // delta-v. LIMITATION: the mask is a ship-wide UNION and `ve` is the
+    // FIRST rocket's, so a ship MIXING engine types is an estimate (issue #41).
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/false);
     const float remaining_fuel = fuelMassMasked(burn); /* kg */
-    double ve = 0;   // first ROCKET thruster's exhaust velocity (the delta-v estimate).
-                     // Jets are skipped: they are air-breathing, so they produce no
-                     // thrust in vacuum and their exhaust velocity is not a delta-v.
+    double ve = 0;   // first ROCKET thruster's exhaust velocity
     for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
-    // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry). getMass() is the FUELED
-    // mass (each part's effectiveMass: its DRY body mass plus its current
-    // propellant contents, which shed as the tanks burn), and m_dry =
-    // getMass() - remaining_fuel (the empty hulls + dry parts + crew).
+    // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry).
     return (float)(ve * exhaust_scale)
          * log(getMass() / (getMass() - remaining_fuel));
 }
 
 float Vehicle::getMass() {
-    /* phase 3: effectiveMass -- the ship's mass includes what is parked in
-       it (the containment edge), so a capsule's crew counts here too. */
+    // effectiveMass -- the ship's mass includes what is parked in it
+    // (the containment edge), so a capsule's crew counts here too.
     float r = 0;
     for(Part *p : parts) {
         r += (float)p->effectiveMass();
@@ -1320,13 +1183,11 @@ void Vehicle::powerTick(double h) {
         }
     }
     // gate: no EC system -> ungated (wheels work as before). Otherwise
-    // the wheels need power left over for them after life support --
-    // excess generation or stored charge.
+    // the wheels need power left over for them after life support.
     const bool hasEC = (ecCapacity > 0.0) || (totalGen > 0.0) || (constantDraw > 0.0);
     powered_ = hasEC ? ((totalGen > constantDraw) || (ecCharge > 0.0)) : true;
     // active draw: the wheels draw only while they are actually working
-    // (powered AND commanding attitude) -- the same condition
-    // applyRotationForce uses to apply torque.
+    // (powered AND commanding attitude).
     double activeDraw = 0.0;
     const bool wheelsActive = powered_
         && ((stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f)
@@ -1417,8 +1278,7 @@ int Vehicle::numStages() { return totalStages_; }
 float Vehicle::getThrust() {
     /* The ACTUAL thrust at the current throttle and air state. Rockets
        contribute their rated thrust; a jet contributes its air-breathing
-       thrust at the current airspeed + density (drag.h jetThrust), so the
-       HUD reads the real force, not a rated figure. */
+       thrust at the current airspeed + density (drag.h jetThrust). */
     const int as = activeStage();
     const double v_air = glm::length(GetVel());
     const double rho = airDensityAtCom();
@@ -1447,10 +1307,8 @@ float Vehicle::getFullThrustTWR() {
 }
 
 float Vehicle::getMaxTWR() {
-    // ALL burnable propellant the ship's engines draw (rocket H2/LOX and jet
-    // fuel): max TWR is at the lightest mass, i.e. after all of it is spent.
-    // Derived from the engines present, so a resource no engine burns is not
-    // subtracted. Stack mask, no allocation (called every frame).
+    // ALL burnable propellant (rocket H2/LOX and jet fuel): max TWR is at
+    // the lightest mass. Derived from the engines present. Stack mask.
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/true);
     const float remaining_fuel = fuelMassMasked(burn); /* kg */
@@ -1473,10 +1331,9 @@ glm::dvec3 Vehicle::applyGravity() {
     glm::dvec3 gf(0.0);
     glm::dvec3 ff_total(0.0);
     for(Part *p : parts) {
-        /* phase 3: effectiveMass -- the force must carry the same mass as the
-           COM and the inertia (both derived from effectiveMass), else the net
-           force misses the crew parked in the capsule and acts off the true
-           COM, adding a spurious dcom x F torque (the com-torque regression). */
+        // effectiveMass -- the force must carry the same mass as the COM
+        // and the inertia, else the net force misses the crew and acts off
+        // the true COM (the com-torque regression).
         const double m = p->effectiveMass();
         if(m == 0) { continue; }
         const glm::dvec3 b1b2 = partPos(p);
@@ -1486,15 +1343,12 @@ glm::dvec3 Vehicle::applyGravity() {
         const glm::dvec3 f = mag * sqrt(invrsqr) * -b1b2;
         /* AT the part, not at the COM: ApplyForce's rel_pos is what
            delivers the differential (tidal) torque, the one legitimate
-           external torque on a rigid ship. Summing the forces and applying
-           them at the COM would drop it. */
+           external torque on a rigid ship. */
         ApplyForce(hull, b1b2 - com, f);
         gf += f;
         if(frame->isRotFrame()) {
             // In rotating coordinates the ship additionally feels
-            // Coriolis + centrifugal; without these its true inertial
-            // orbit is perturbed for as long as it spends in the rotating
-            // frame (see GetFictitiousAccel in frame.h).
+            // Coriolis + centrifugal (see GetFictitiousAccel in frame.h).
             const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, partVel(p));
             const glm::dvec3 ff = m * a_fict;
             ApplyForce(hull, b1b2 - com, ff);
@@ -1503,9 +1357,7 @@ glm::dvec3 Vehicle::applyGravity() {
     }
     /* The per-part levers above are referenced to the hull's transform
        origin, which lags the true COM during a burn; a net force through
-       that offset adds a spurious (comOffset x F) torque the ship's true
-       COM does not feel, so cancel it. (The legitimate tidal torque is
-       about the true COM and is unaffected.) */
+       that offset adds a spurious (comOffset x F) torque, so cancel it. */
     const glm::dvec3 dcom = comOffset();
     if(glm::length2(dcom) > 0.0) {
         ApplyTorque(hull, -glm::cross(dcom, gf + ff_total));
@@ -1517,10 +1369,8 @@ Vehicle::Vehicle() { }
 
 Vehicle::~Vehicle() {
     // The crew aboard (Kerbals, eva.h) are owned by this ship: Vehicle::crew
-    // is the sole owner (the capsule's contents list is a non-owning
-    // back-reference, part.h). Delete them before the parts -- each kerbal's
-    // container/contents edge points into this ship's capsule part, so the
-    // parts must still be alive when the kerbal's edge is torn down.
+    // is the sole owner. Delete them before the parts -- each kerbal's
+    // container/contents edge points into this ship's capsule part.
     for(auto&& k : crew) { delete k; }
     crew.clear();
     if(hullInWorld()) { RemoveBody(hull); }
@@ -1539,27 +1389,22 @@ void Vehicle::applyThrustForce() {
     for(Part *p : parts) {
         if(!p->isThruster()) { continue; }
         if(p->armedThrust == 0.0f) { continue; }
-        /* Along the engine's own +Z, applied AT the engine: an off-axis or
-           tilted engine torques the ship directly, which is what the weld
-           used to have to transmit. */
+        // Along the engine's own +Z, applied AT the engine: an off-axis or
+        // tilted engine torques the ship directly.
         const glm::dvec3 ft = partAxis(p, 2) * (double)p->armedThrust;
         ApplyForce(hull, partPos(p) - com, ft);
         ftotal += ft;
     }
     lastThrustForce = ftotal;
     if(glm::length2(ftotal) < 1e-24) { return; }
-    /* Same spurious-torque cancellation as applyGravity: the thrust lever
-       is referenced to the hull origin, which lags the true COM during a
-       burn, so subtract the (comOffset x F) term it introduces. */
+    // Same spurious-torque cancellation as applyGravity.
     const glm::dvec3 dcom = comOffset();
     if(glm::length2(dcom) > 0.0) {
         ApplyTorque(hull, -glm::cross(dcom, ftotal));
     }
 }
 
-/* The authored atmosphere as drag.h sees it. One mapping for both callers,
-   so the resolved top (AtmosphereParams::top) cannot be applied in one and
-   forgotten in the other. */
+/* The authored atmosphere as drag.h sees it. One mapping for both callers. */
 static DragAtmosphere dragAtm(const AtmosphereParams &a) {
     return DragAtmosphere { a.sea_level_density, a.scale_height, a.top() };
 }
@@ -1574,8 +1419,7 @@ double Vehicle::airDensityAtCom() const {
     const double r = glm::length(com);
     if(r <= 0.0) { return 0.0; }
     // Altitude above SEA LEVEL (the fixed reference radius), like
-    // applyAeroForce: the atmosphere is a spherically-symmetric shell, so
-    // the density depends only on the distance from the body's centre.
+    // applyAeroForce: the atmosphere is a spherically-symmetric shell.
     const double ref_radius =
         (double)m_parent->radius + (double)m_parent->surface.sea_level;
     return airDensity(dragAtm(atm), r - ref_radius);
@@ -1584,7 +1428,7 @@ double Vehicle::airDensityAtCom() const {
 glm::dvec3 Vehicle::applyAeroForce(double h) {
     (void)h;  // a force (not an impulse); Bullet integrates it over the substep
     // The aero state the --drag-log instrument prints; reset so a substep
-    // with no air (no atmo / above it / on the ground) reports zero.
+    // with no air reports zero.
     lastAeroForce = glm::dvec3(0.0);
     lastLiftForce = glm::dvec3(0.0);
     lastAeroTorque = glm::dvec3(0.0);
@@ -1595,13 +1439,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragCd = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
 
-    // --drag-cd 0 = no aero at all (the master off switch, the v1 contract).
-    // The lift term is gated on it too, so "0 disables aero entirely" holds
-    // even for a part that lifts.
+    // --drag-cd 0 = no aero at all (the master off switch). The lift term
+    // is gated on it too.
     if(drag_cd <= 0.0) { return lastAeroForce; }
 
-    // Only a body with a PHYSICAL atmosphere (a density model) produces
-    // aero -- a limb rim alone (render) does not.
+    // Only a body with a PHYSICAL atmosphere (a density model) produces aero.
     if(m_parent == nullptr) { return lastAeroForce; }
     const AtmosphereParams &atm = m_parent->surface.atmosphere;
     if(atm.sea_level_density <= 0.0 || atm.scale_height <= 0.0) {
@@ -1610,12 +1452,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
 
     // Altitude above SEA LEVEL -- the fixed reference radius, not the local
     // terrain. The atmosphere is a spherically-symmetric shell, so its
-    // density depends only on distance from the body's centre: a ship at a
-    // given altitude reads the same air whether it is over a peak or a
-    // valley (measuring above the terrain would make it read denser over a
-    // peak -- backwards). sea_level is 0 for a landlocked body, so this is
-    // altitude above the base radius there. (|com| is the distance from the
-    // centre; GetTerrainHeight is not needed.)
+    // density depends only on distance from the body's centre.
     const glm::dvec3 com = comPos();
     const double r = glm::length(com);
     if(r <= 0.0) { return lastAeroForce; }
@@ -1628,8 +1465,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     const DragAtmosphere da = dragAtm(atm);   // also the dragForce call below
     const double rho = airDensity(da, alt);
     lastDragRho = rho;
-    /* Above the hard top rho is exactly 0, and below kRhoFloor the force is
-       unmeasurable -- either way skip the per-part silhouette pass. */
+    // Above the hard top rho is exactly 0, and below kRhoFloor the force is
+    // unmeasurable -- either way skip the per-part silhouette pass.
     if(rho < kRhoFloor) { return lastAeroForce; }
 
     // v_rel = the ship's velocity in its (rot) frame -- the air co-rotates
@@ -1639,9 +1476,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     if(v2 <= 0.0) { return lastAeroForce; }  // at rest in air
 
     // Frame S read ONCE: it is constant within a substep, and every part
-    // pose below derives from it. (partPos/partRot re-read the Bullet
-    // transform per call, and this function used to make 3-4 such calls per
-    // part per substep for the identical answer.)
+    // pose below derives from it.
     glm::dvec3 sPos; glm::dmat3 sRot;
     frameS(sPos, sRot);
     const auto partPosS = [&](const Part *p) {
@@ -1649,9 +1484,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     };
 
     // The flow frame -- shared by every part (the ship is one rigid body).
-    // The root part's local axes give the nose (+Z, sets the off-axis term),
-    // right (+X) and up (+Y, the wing normal that lift acts along). A ship
-    // with no root part (defensive) is treated as prograde and non-lifting.
+    // The root part's local axes give the nose (+Z), right (+X) and up (+Y).
     const Part *root = rootPart();
     const glm::dmat3 rootRot = (root != nullptr) ? sRot * root->localRot
                                                  : glm::dmat3(1.0);
@@ -1674,40 +1507,25 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     glm::dvec3 moment(0.0);
 
     // DRAG (R2: silhouette area x per-part shape). The AREA is the ship's
-    // convex-hull silhouette facing the flow -- the convex hull of ALL parts'
-    // hull verts, projected onto the plane perpendicular to the flow (drag.h
-    // projectedArea). One area for the whole ship, so a stacked rocket
-    // presents its true end face (one circle), not N of them, and the
-    // prograde->side swing is honest (a long body's side is N x its end).
-    // The COEFFICIENT is each part's 3-anchor cd (drag.h partCd: its
-    // forward/side/backward anchors blended by the angle its nose axis makes
-    // with the flow) -- so a cone is sleek nose-first and blunt base-first,
-    // the silhouette alone can't say -- area-weighted by how much area each
-    // shows to the flow (a blunt heat shield raises it, a sleek nose lowers it).
-    // drag_cd is the global master scale (--drag-cd; 0 = off, handled above).
-    // Applied at the center of pressure (the parts' centroid, weighted by
-    // each part's projected area -- NOT the silhouette polygon's centroid),
-    // so a banked ship still weathervanes the nose into the flow (the moment
-    // about the COM). `com` is the hull origin the lever is measured from.
+    // convex-hull silhouette facing the flow (drag.h projectedArea). The
+    // COEFFICIENT is each part's 3-anchor cd (drag.h partCd) area-weighted
+    // by how much area each shows to the flow. Applied at the center of
+    // pressure (the parts' centroid, weighted by each part's projected
+    // area) so a banked ship still weathervanes the nose into the flow.
     {
         glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
         double cpArea = 0.0;
         double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
-            // The part's own silhouette facing the flow: the weight it shows
-            // in the center of pressure AND in the area-weighted cd mean.
-            // hullVerts are part-local, so the flow is rotated to the part
-            // (vhatS is already in S) instead of the verts to the world.
+            // The part's own silhouette facing the flow. hullVerts are
+            // part-local, so the flow is rotated to the part (vhatS is
+            // already in S) instead of the verts to the world.
             const double a = projectedArea(p->body->hullVerts,
                                            glm::transpose(p->localRot) * vhatS);
             cp += a * partPosS(p);
             cpArea += a;
-            // The part's cd AS IT FACES THE FLOW (drag.h partCd): the angle
-            // between the part's nose axis and the flow selects the forward /
-            // side / backward anchor (a cone is sleek nose-first, blunt
-            // base-first; a thin disc is blunt face-on, sleek edge-on). A
-            // part with only the shared `drag` set is symmetric. localRot[2]
+            // The part's cd AS IT FACES THE FLOW (drag.h partCd). localRot[2]
             // is the part's nose in S; sRot preserves dots, so this is the
             // world-frame dot(partAxis(p,2), vhat) without building either.
             if(p->def != nullptr) {
@@ -1718,10 +1536,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
                 if(cd > 0.0) { cdNum += a * cd; }
             }
         }
-        // The ship's silhouette from the precomputed union hull (aeroHull,
-        // frame S, rebuilt with the compound): the same convex hull the
-        // per-substep union built, but only its extreme points, and only
-        // v̂ rotates -- no vertex touches the world frame any more.
+        // The ship's silhouette from the precomputed union hull (aeroHull).
         const double A_ship = projectedArea(aeroHull, vhatS);
         lastDragArea = A_ship;
         lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
@@ -1738,10 +1553,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     }
 
     // LIFT (per part): each lifting surface generates lift on its OWN area at
-    // its own position, so the moment (pitch/yaw stability) comes from the
-    // surfaces' distribution (a wing ahead pitches one way, behind the other).
-    // 0 for a part with no lift_area / cl (a rocket stays a rocket); the soft
-    // stall collapses it past the part's stall_angle.
+    // its own position, so the moment comes from the surfaces' distribution.
     for(Part *p : parts) {
         if(p->def == nullptr) { continue; }
         const PartDef *d = p->def;
@@ -1756,18 +1568,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     }
 
     // Control surfaces (deflection-driven steering): each surface steers ONE
-    // axis (its control_axis -- elevator pitches, rudder yaws, aileron rolls)
-    // and is driven by that axis's stick alone. The force is the lift law with
-    // the deflection in place of the AoA (controlForce) -- linear, bounded by
-    // the travel -- applied at the surface, so its OFFSET from the COM is the
-    // steering leverage (a tail pitches/yaws the ship, a canard ahead the
-    // other way, a laterally-offset pair rolls). Zero in vacuum (q = 0) and
-    // at rest (returned above).
+    // axis (its control_axis) and is driven by that axis's stick alone. The
+    // force is the lift law with the deflection in place of the AoA
+    // (controlForce) -- applied at the surface, so its OFFSET from the COM
+    // is the steering leverage.
     {
         lastControlDeflections.clear();
         // Force directions, out of the flow (mirrors liftDirection): pitch
-        // and roll share the "up" plane; yaw uses the ship's right axis. The
-        // axis picks the plane AND the stick that drives the surface.
+        // and roll share the "up" plane; yaw uses the ship's right axis.
         const glm::dvec3 yawDirRaw = right - glm::dot(right, vhat) * vhat;
         const double yawLen = glm::length(yawDirRaw);
         const glm::dvec3 yawDir = (yawLen > 0.0) ? yawDirRaw / yawLen
@@ -1777,34 +1585,24 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             if(p->def == nullptr) { continue; }
             const PartDef *d = p->def;
             if(d->control_area <= 0.0 || d->max_deflection <= 0.0) { continue; }
-            // Deflection effectiveness (per radian): the part's dedicated
-            // cl_control if it is set (>0), else its lift-curve slope cl
-            // (controlCl) -- so a part that only declares cl (no cl_control)
-            // keeps the old single-"cl" behaviour.
+            // Deflection effectiveness: the part's dedicated cl_control if
+            // set, else its lift-curve slope cl (controlCl).
             const double clc = controlCl(d->cl, d->cl_control);
             // The axis -> (moment axis, force plane, stick, target sign)
-            // selection is the PURE controlAxisParams (pinned in
-            // test_shipload); here it resolves to the ship's concrete axes.
+            // selection is the PURE controlAxisParams (pinned in test_shipload).
             const ControlAxisParams ax = controlAxisParams(d->control_axis);
             const float sv = stick[ax.stickIndex];   // 0 when that stick is free
             const glm::dvec3 forceDir = (ax.forceDirKind == 0) ? liftDir : yawDir;
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
             const glm::dvec3 ri = partPosS(p) - com;
-            // The deflection sign is POSITION-DEPENDENT: the steering torque
-            // is ri x F, so a tail (behind the CG) and a canard (ahead) need
-            // OPPOSITE deflections for the same steering torque, and a
-            // laterally-offset pair (an aileron) deflects opposite to roll.
-            // controlDeflectionSign picks the sign so the moment about the
-            // axis matches the reaction wheel for EITHER position (the B1
-            // fix), consistent with applyRotationForce.
+            // The deflection sign is POSITION-DEPENDENT: a tail (behind the
+            // CG) and a canard (ahead) need OPPOSITE deflections for the
+            // same steering torque. controlDeflectionSign picks the sign.
             const double sign =
                 controlDeflectionSign(ri, forceDir, about, ax.targetSign);
             const double deflection = sign * (double)sv * d->max_deflection;
-            // Record the applied deflection for the --drag-log telemetry (0
-            // when that stick is released -- the pilot is not steering it).
-            // Stored by part reference (no per-substep string copies); the
-            // name is resolved when the log prints it.
+            // Record for the --drag-log telemetry.
             lastControlDeflections.push_back({d, ctrlIndex++, deflection});
             if(sv == 0.0f || clc <= 0.0 || deflection == 0.0) { continue; }
             const glm::dvec3 F = controlForce(q, d->control_area, clc,
@@ -1821,9 +1619,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastAeroTorque = moment;
     if(glm::length2(ftotal) <= 0.0) { return lastAeroForce; }
 
-    // Same spurious-torque cancellation as applyThrustForce / applyGravity:
-    // the lever is referenced to the hull origin, which lags the true COM
-    // during a burn, so subtract the (comOffset × F) term it introduces.
+    // Same spurious-torque cancellation as applyThrustForce / applyGravity.
     const glm::dvec3 dcom = comOffset();
     if(glm::length2(dcom) > 0.0) {
         ApplyTorque(hull, -glm::cross(dcom, ftotal));
@@ -1845,17 +1641,12 @@ Part * Vehicle::firstWheel() {
 void Vehicle::applyRotationForce(double h) {
     if(firstWheel() == nullptr) { return; }
     /* Power gate: the reaction wheels are electric -- with no power the
-       ship is uncontrolled (no manual stick AND no autopilot slew).
-       powered_ is set by powerTick this substep (a ship with no EC
-       system is ungated, so this is a no-op for them). */
+       ship is uncontrolled. powered_ is set by powerTick this substep (a
+       ship with no EC system is ungated). */
     if(!powered_) { return; }
     /* Manual stick: standard aviation mapping, body-relative.
        Pitch (W/S) about the ship's right axis, yaw (A/D) about its
-       up axis, roll (Q/E) about the nose. The camera tracks the
-       ship's attitude, so these read consistently on screen
-       regardless of the ship's world orientation. Each wheel gets
-       its rated torque along the combined axis; diagonals (W+A)
-       compose as a vector sum. */
+       up axis, roll (Q/E) about the nose. */
     if(stick[0] != 0.0f || stick[1] != 0.0f || stick[2] != 0.0f) {
         Part *rw0 = firstWheel();
         const glm::dvec3 pitchAxis = -partAxis(rw0, 0);  // right (W/S)
@@ -1865,15 +1656,13 @@ void Vehicle::applyRotationForce(double h) {
             (double)stick[0] * rollAxis
             + (double)stick[1] * pitchAxis
             + (double)stick[2] * yawAxis;
-        /* Every wheel turns the same rigid body along the same axis, so
-           their torques simply sum -- and maxTorque() is that sum. */
+        // Every wheel turns the same rigid body along the same axis, so
+        // their torques simply sum -- and maxTorque() is that sum.
         ApplyTorque(hull, maxTorque() * worldAxis);
     }
-    /* Autopilot: one authority-bounded step of the slew/kill-rot law
-       (h = this substep's duration, so the law re-evaluates per
-       substep -- the stable form of the same law). Every directional
-       mode slews the nose toward its target direction (slewTargetDir);
-       kill-rot damps the spin directly instead of chasing a direction. */
+    /* Autopilot: one authority-bounded step of the slew/kill-rot law.
+       kill-rot damps the spin directly; every directional mode slews the
+       nose toward its target direction. */
     if(slew == SlewKillRot) {
         killRotStep(h);
     }
@@ -1911,8 +1700,7 @@ void Vehicle::applyRcsForce(double h) {
     if(e == nullptr) { return; }
     const double F = maxRcsThrust();
     if(F <= 0.0) { return; }
-    /* flow this substep (kg) = thrust / (Isp * g0) * h, the same
-       monoprop Isp the EVA suit uses (src/eva.cpp kRcsIsp). */
+    // flow this substep (kg) = thrust / (Isp * g0) * h
     const double flow = (F / (kRcsIsp * 9.81)) * h;
     if(consumeResourceMass(ResourceType::Hydrazine, (float)flow, e)) {
         ApplyCentralForce(hull, F * rcsWorldDir());
@@ -1990,9 +1778,8 @@ void Vehicle::tq_log(double time) {
     const double G = 6.674e-11;
     const double& parent_mass = m_parent->mass;
     glm::dvec3 F(0.0);
-    /* phase 3: effectiveMass -- this probe re-derives the SAME force that
-       applyGravity applies, so it must use the same mass basis, or it
-       under-reports |F| and |dcom x F| on a crewed ship. */
+    // effectiveMass -- same mass basis as applyGravity (this probe
+    // re-derives the SAME force).
     for(Part *p : parts) {
         const double m = p->effectiveMass();
         if(m == 0) { continue; }
@@ -2047,13 +1834,11 @@ void Vehicle::fuel_log(double time) {
     std::sort(groups.begin(), groups.end());
     /* ONE line per sample (e2e-greppable): each group's current /
        capacity per resource, with the member tanks' own contents in
-       brackets (parts order -- a pro-rata drain keeps them equal),
-       then the fuel links as group pairs. */
+       brackets, then the fuel links as group pairs. */
     printf("[fuel] t=%.3fs ship=\"%s\"", time, name.c_str());
     for(size_t gi = 0; gi < groups.size(); gi++) {
         const int g = groups[gi];
-        /* the resources this group carries (any member tank has
-           capacity > 0), printed in resource order. */
+        // the resources this group carries, printed in resource order.
         std::vector<int> res;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             for(size_t i = 0; i < parts.size(); i++) {
@@ -2084,8 +1869,7 @@ void Vehicle::fuel_log(double time) {
             printf("]");
         }
     }
-    /* the fuel links, collapsed to group ids (the same rule
-       fuelDrainLayers applies: skip barrier endpoints and self-links). */
+    // the fuel links, collapsed to group ids
     if(!fuelLinks.empty()) {
         printf(" links=");
         bool first = true;
@@ -2159,8 +1943,8 @@ void Vehicle::releaseControl() {
 }
 
 std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
-    /* parent -> children, from Part::parent (each non-root part has
-       exactly one parent edge, so this is a tree). */
+    // parent -> children, from Part::parent (each non-root part has
+    // exactly one parent edge, so this is a tree).
     std::map<Part *, std::vector<Part *>> children;
     for(Part *p : parts) {
         if(p->parent != nullptr) { children[p->parent].push_back(p); }
@@ -2169,8 +1953,8 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     for(Part *p : parts) {
         if(!p->isDecoupler() || p->stage != stage) { continue; }
         dropped.insert(p);   // the decoupler flies off with its stage
-        /* BFS over the decoupler's child side (its direct children and
-           their descendants). */
+        // BFS over the decoupler's child side (its direct children and
+        // their descendants).
         std::vector<Part *> stack;
         for(size_t i = 0; i < children[p].size(); i++) { stack.push_back(children[p][i]); }
         while(!stack.empty()) {
@@ -2204,24 +1988,21 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
         q->localRot = T_rot * q->localRot;
     }
 
-    /* Rigid-body state before the move (B's hull is still live; after,
-       it is an empty shell). */
+    // Rigid-body state before the move (B's hull is still live).
     const double mA = getMass();
     const double mB = B->getMass();
     const glm::dvec3 vA = GetVelocity(hull);
     const glm::dvec3 vB = GetVelocity(B->hull);
     const glm::dvec3 wA = GetAngVelocity(hull);
 
-    /* Topology: B's root hangs off this ship's port part -- one tree
-       edge, the two port parts being the joint. The part lists, fuel
-       links and crew move into this ship; B is left an empty shell. */
+    /* Topology: B's root hangs off this ship's port part -- one tree edge,
+       the two port parts being the joint. */
     Part *bRoot = B->rootPart();
     bRoot->parent = portA;
 
     for(Part *q : B->parts) { q->owner = this; }   // they are OUR parts now
-    /* phase 4: the inventory items in B's containers ride B's vehicle via
-       the container's owner (inventory.cpp) -- re-point them to this ship
-       too, or they dangle when the caller deletes B as a shell. */
+    // the inventory items in B's containers ride B's vehicle via the
+    // container's owner -- re-point them to this ship too.
     {
         std::vector<Part *> stack;
         for(Part *q : B->parts) { stack.push_back(q); }
@@ -2235,26 +2016,21 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     }
     parts.insert(parts.end(), B->parts.begin(), B->parts.end());
     B->parts.clear();
-    /* The shell's cached aero hull went with the parts: the caller deletes B
-       this same tick (updateDocking), but a parts-empty ship must not carry a
-       hull that would still produce drag if it ever survived to a substep. */
+    // The shell's cached aero hull went with the parts.
     B->aeroHull.clear();
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();
 
-    /* crew: their capsules just moved in and re-pointed to us, and a
-       kerbal's capsule is a Part* -- stable through the move -- so the
-       kerbals simply join this ship's crew list; each kerbal's
-       `aboardPart` already names the right part. */
+    // crew: their capsules just moved in; each kerbal's `aboardPart` already
+    // names the right part.
     for(size_t i = 0; i < B->crew.size(); i++) {
         crew.push_back(B->crew[i]);
     }
     B->crew.clear();
 
-    /* stage counters: the union (the parts keep their baked-in numbers).
-       The counter walks down from totalStages_ to minStage_, so "further
-       along" is a LOWER counter; the more-advanced ship (the lower counter
-       and lower floor) governs the merge. */
+    /* stage counters: the union. The counter walks down from totalStages_
+       to minStage_, so the more-advanced ship (the lower counter and lower
+       floor) governs the merge. */
     if(B->totalStages_ > totalStages_) { totalStages_ = B->totalStages_; }
     if(B->activeStage_ < activeStage_) { activeStage_ = B->activeStage_; }
     if(B->minStage_ < minStage_) { minStage_ = B->minStage_; }
@@ -2262,18 +2038,14 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     clearThrust();
     clearRotCmd();
 
-    /* B's own seams (it may have docked things of its own) move in too; they
-       are inserted BEFORE the new seam so the undock order -- pop the last --
-       peels the outermost dock (B) first, then B's inner docks. Without this
-       the joint B recorded is orphaned when B is deleted as a shell. */
+    /* B's own seams move in too, inserted BEFORE the new seam so the undock
+       order -- pop the last -- peels the outermost dock (B) first. */
     seams.insert(seams.end(), B->seams.begin(), B->seams.end());
     B->seams.clear();
     seams.push_back(DockSeam{ portA, bRoot, B->name });
 
-    /* Rebuild as the union (carries frame S + the velocity, which the
-       inelastic average below then corrects), and regroup the fuel --
-       the port parts are fuel barriers, so the two ships' fuel systems
-       stay separate groups inside the one body. */
+    // Rebuild as the union, and regroup the fuel -- the port parts are fuel
+    // barriers, so the two ships' fuel systems stay separate groups.
     rebuildCompound();
     buildFuelGroups();
     SetVelocity(hull, (mA * vA + mB * vB) / (mA + mB));
@@ -2286,8 +2058,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     for(Part *p : parts) { if(p == root) { found = true; break; } }
     if(!found) { return nullptr; }
 
-    /* The subtree: `root` plus its descendants (BFS over the children
-       map, the same walk droppedPartsAtStage uses). */
+    // The subtree: `root` plus its descendants (BFS over the children map).
     std::map<Part *, std::vector<Part *>> children;
     for(Part *p : parts) {
         if(p->parent != nullptr) { children[p->parent].push_back(p); }
@@ -2313,13 +2084,12 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     const glm::dvec3 pR = root->localPos;
     const glm::dmat3 RR = root->localRot;
 
-    /* Rigid velocity of the dropped side's COM (before the rebase --
-       partPos needs the current hull). */
+    // Rigid velocity of the dropped side's COM (before the rebase --
+    // partPos needs the current hull).
     double M = 0.0;
     glm::dvec3 comDropped(0.0);
-    /* phase 3: effectiveMass -- the dropped side's COM velocity must carry
-       the same mass basis as the rest of the simulation (a crewed capsule
-       undocked out of this ship carries its crew). */
+    // effectiveMass -- the dropped side's COM velocity must carry the same
+    // mass basis as the rest of the simulation.
     for(Part *q : dropped) {
         const double m = q->effectiveMass();
         M += m;
@@ -2332,10 +2102,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     glm::dvec3 rootWorldPos; glm::dmat3 rootWorldRot;
     partWorldPose(root, rootWorldPos, rootWorldRot);
 
-    /* New ship: same frame/home/sun (the split is local); no scenario
-       (it is a runtime ship, not a def build). setSoi places it in the
-       body's ships list and starts its flight journal at `t` (a null
-       frame -- the headless fixtures -- just records the frame). */
+    // New ship: same frame/home/sun (the split is local); no scenario.
     Vehicle *nv = new Vehicle();
     nv->name = name;
     nv->defPath = "";
@@ -2345,10 +2112,8 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->scenario = nullptr;
 
     /* Part list in the original order: parent before child -- the save
-       format resolves each part's parent by reference, so a child must
-       never precede its parent. (The crew no longer index their capsule:
-       a Part* is stable, so the old "stable indices" reason is gone.)
-       Rebase the poses into S'. */
+       format resolves each part's parent by reference. Rebase the poses
+       into S'. */
     std::vector<Part *> nvParts;
     for(size_t i = 0; i < parts.size(); i++) {
         if(!droppedSet.count(parts[i])) { continue; }
@@ -2360,9 +2125,8 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     root->parent = nullptr;   // root of the new ship
     nv->parts = nvParts;
     for(Part *q : nvParts) { q->owner = nv; }   // the dropped side is ITS ship now
-    /* phase 4: the inventory items in the dropped side's containers follow
-       their container to the new ship (they are owned by the container and
-       traverse its owner for the vehicle). */
+    // the inventory items in the dropped side's containers follow their
+    // container to the new ship.
     {
         std::vector<Part *> stack;
         for(Part *q : nvParts) { stack.push_back(q); }
@@ -2374,15 +2138,15 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
             }
         }
     }
-    /* controller: the build rule (the first wheel, else the root). */
+    // controller: the build rule (the first wheel, else the root).
     nv->controller = nullptr;
     for(size_t i = 0; i < nvParts.size(); i++) {
         if(nvParts[i]->isWheel()) { nv->controller = nvParts[i]; break; }
     }
     if(nv->controller == nullptr) { nv->controller = root; }
 
-    /* fuel links: both endpoints dropped -> the new ship; both kept ->
-       this ship; crossing the cut -> dangling, dropped. */
+    // fuel links: both endpoints dropped -> the new ship; both kept ->
+    // this ship; crossing the cut -> dangling, dropped.
     std::vector<FuelLink> nvLinks, keepLinks;
     for(size_t k = 0; k < fuelLinks.size(); k++) {
         const bool fIn = droppedSet.count(fuelLinks[k].from) > 0;
@@ -2393,15 +2157,10 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->fuelLinks = nvLinks;
     fuelLinks = keepLinks;
 
-    /* seams: the same containment edge as fuel links. A seam records a
-       joint between its port and the docked ship's root, so it stays valid
-       only while both ends live in ONE ship. Both ends staged off together
-       -> the joint moves with the split-off ship (it can still undock). Both
-       ends in the survivor -> stays. Split across the cut (the undock case:
-       the port stays, the docked ship leaves) -> the joint no longer exists,
-       so the seam is dropped. This is what stops the survivor from dangling a
-       seam at a part that has been staged away -- the use-after-free the
-       save path hit in the inventory design report (section 1.7b). */
+    /* seams: the same containment edge as fuel links. Both ends staged off
+       together -> the joint moves with the split-off ship. Split across the
+       cut (the undock case) -> the seam is dropped (stops the survivor from
+       dangling a seam at a part that has been staged away). */
     std::vector<DockSeam> nvSeams, keepSeams;
     for(size_t k = 0; k < seams.size(); k++) {
         const bool portIn = droppedSet.count(seams[k].port) > 0;
@@ -2412,12 +2171,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->seams = nvSeams;
     seams = keepSeams;
 
-    /* crew: a kerbal follows its capsule. The capsules' owners were just
-       re-pointed (or kept), and each kerbal's capsule is a Part* that was
-       stable through the move -- so the side is read straight off the
-       capsule's owner; nothing to reindex. capsulePart() is virtual
-       (Kerbal returns its aboardPart; a ship returns null), so no cast and
-       a headless test can stand in for a Kerbal. */
+    // crew: a kerbal follows its capsule. capsulePart() is virtual so no cast.
     {
         std::vector<Vehicle *> movedCrew, keepCrew;
         for(size_t i = 0; i < crew.size(); i++) {
@@ -2430,8 +2184,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
         crew = keepCrew;
     }
 
-    /* this ship: the survivors (their Part* are valid; no delete order
-       to worry about -- the new ship owns the dropped parts). */
+    // this ship: the survivors.
     {
         std::vector<Part *> keep;
         for(Part *p : parts) { if(!droppedSet.count(p)) { keep.push_back(p); } }
@@ -2445,15 +2198,12 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     drainPrevTime_ = 0.0;
     drainPrevMass_.clear();
 
-    /* The new ship: finalize (no tank re-seed -- the parts carry their
-       current contents), place it at the root's world pose, and give it
-       the rigid velocity of its COM. The caller enters it into the
-       physics world (enterWorld) -- kept out so the split runs headless. */
+    /* The new ship: finalize (no tank re-seed), place it at the root's
+       world pose, and give it the rigid velocity of its COM. The caller
+       enters it into the physics world (enterWorld). */
     nv->finalize();
-    /* The new ship was never commanded: its parts left the active ship
-       mid-tick, still carrying that tick's armedThrust. Disarm them so the
-       split-off vessel coasts instead of firing its inherited thrust (the
-       survivor's own parts are disarmed by the clearThrust() above). */
+    // The new ship was never commanded: its parts left the active ship
+    // mid-tick, still carrying that tick's armedThrust. Disarm them.
     nv->clearThrust();
     nv->placeShip(rootWorldPos, rootWorldRot);
     nv->setVelocity(vOut);
@@ -2469,10 +2219,8 @@ glm::dmat4 Vehicle::renderXform(Frame *renderFrame) const {
 
 void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
     // Light direction at the ship (sun -> ship COM), in the render frame's
-    // axes where the part normals end up after the xform below. Using the
-    // ship's own position -- not the SOI body's center as SunlightDir does
-    // -- is what keeps it defined in the Kerbol SOI, where the SOI center
-    // IS the star and sun->center is a zero vector (normalize -> NaN).
+    // axes. Using the ship's own position -- not the SOI body's center --
+    // keeps it defined in the Kerbol SOI (where sun->center is a zero vector).
     const glm::dvec3 com_root =
         frame->root_orient * get_center_of_mass() + frame->root_pos;
     glm::vec3 sunlightVec =
@@ -2480,34 +2228,25 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
 
     const glm::dmat4 xform = renderXform(renderFrame);
 
-    /* Precision: place the ship with ONE common shift (its absolute COM,
-       which DrawModelAt subtracts renderOrigin from -- exactly 0 for the
-       active ship, an exact small difference for the others) and build the
-       per-part models COM-relative in small coords. Going through absolute
-       per-part positions instead would round each part onto the ULP grid of
-       the huge coords (~0.125 m at oort, ~22 m at interstellar) and shake
-       the ship apart; see reports/precision-scaling2026_09_22. */
+    /* Precision: place the ship with ONE common shift (its absolute COM)
+       and build the per-part models COM-relative in small coords. Going
+       through absolute per-part positions would round each part onto the
+       ULP grid of the huge coords and shake the ship apart. */
     const glm::dmat4 xformShip = xform * glm::translate(get_center_of_mass());
 
     for(Part *p : parts) {
         // Per-part terrain shadow
         const float shadow =
             ComputeTerrainShadow(m_parent, frame, partPos(p), sun);
-        /* Drawn at the part's world pose rather than at a matrix read
-           off its own rigid body: a ship is ONE body, so a part's pose
-           is derived. (While partPoseRelCom still reads the hull body
-           this is the same matrix Draw would have built itself, minus
-           the ULP rounding of the absolute coords.) */
+        // Drawn at the part's world pose rather than at a matrix read off
+        // its own rigid body: a ship is ONE body, so a part's pose is derived.
         glm::dvec3 pp; glm::dmat3 pr;
         partPoseRelCom(p, pp, pr);
         const glm::dmat4 model = glm::translate(pp) * glm::dmat4(pr);
         p->body->DrawAt(camera, sunlightVec, shadow, model, xformShip);
 
-        /* Engine shroud (see PartDef.shroud): while a part is attached
-           on the part's exhaust face (a child below), the plain open
-           cylinder hides the engine underneath -- the part's own pose,
-           shader and terrain shadow, drawn right after the part so it
-           depth-tests against it. */
+        // Engine shroud (see PartDef.shroud): while a part is attached on
+        // the part's exhaust face, the open cylinder hides the engine below.
         if(p->shroud != nullptr && hasChildBelow(p)) {
             DrawModelAt(camera, p->shroud, p->body->shader,
                         p->shroud_texture, model, sunlightVec, shadow, xformShip);
@@ -2538,9 +2277,7 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
         case Roll:
             stick[0] = (cmd.amount >= 0) ? +1.0f : -1.0f;
             break;
-        // RCS translation in the ship's own axes (rcsWorldDir): each
-        // command arms one body axis; diagonals compose as a vector sum,
-        // like the stick.
+        // RCS translation in the ship's own axes (rcsWorldDir).
         case RcsNose:
             rcsDir.z = (cmd.amount >= 0) ? +1.0 : -1.0;
             break;
@@ -2575,9 +2312,7 @@ void Vehicle::adjustThrottle(float delta) {
 float Vehicle::GetActiveThrust() {
     /* The FULL-THROTTLE thrust the ignited engines can produce. Rockets
        contribute their rated value; a jet contributes its SEA-LEVEL PEAK
-       (jetThrust at v = v_e/2, its maximum) so "full TWR" is the best a jet
-       can do and stays >= the current (speed/density-dependent) TWR. Dead
-       in vacuum (no sea-level air -> peak 0), like ApplyThrust. */
+       (jetThrust at v = v_e/2). Dead in vacuum (no sea-level air -> peak 0). */
     const int as = activeStage();
     const double rho_sea = (m_parent != nullptr)
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
@@ -2598,12 +2333,8 @@ float Vehicle::GetActiveThrust() {
 void Vehicle::ApplyThrust(double step) {
     if(thruster_util == 0.0f) { return; } /* zero throttle: no burn, no plume */
     const int as = activeStage();
-    /* Jet state (shared by all jet parts this tick): the air-relative
-       speed (the ship's frame velocity -- the air co-rotates with the
-       planet, so this IS airspeed, like applyAeroForce) and the local air
-       density at the COM (0 in vacuum). The per-part thrust is the
-       air-breathing momentum balance jetThrust(v, rho, rho_sea, ...)
-       (drag.h). */
+    /* Jet state (shared by all jet parts this tick): the air-relative speed
+       and the local air density at the COM. */
     const double v_air = glm::length(GetVel());
     const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
@@ -2612,13 +2343,9 @@ void Vehicle::ApplyThrust(double step) {
         if(!p->isThruster()) { continue; }
         if(p->stage < as) { continue; } /* not ignited yet */
         if(p->isJet()) {
-            /* Air-breathing: the thrust is the momentum balance
-               T = T_fan + ṁ_f·v_e + ρ·A·v·(v_e − v), gated on the local air
-               (drag.h jetThrust). In vacuum rho = 0 -> T = 0: no thrust
-               AND no burn (a jet cannot run without air). It draws JET
-               FUEL only (air is the free oxidizer, no LOX) -- a resource
-               SEPARATE from the rocket propellants, so a jet and a rocket
-               on the same ship do not share a propellant pool. */
+            /* Air-breathing: the thrust is the momentum balance (drag.h
+               jetThrust). In vacuum rho = 0 -> T = 0: no thrust AND no burn.
+               Draws JET FUEL only (air is the free oxidizer). */
             const double T = jetThrust(
                 v_air, rho, rho_sea, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
@@ -2631,32 +2358,27 @@ void Vehicle::ApplyThrust(double step) {
             }
             continue;
         }
-        /* A rocket draws each of its propellants at its own rate (H2+LOX for
-           a chemical engine, H2 alone for a nuclear thermal one). The burn it
-           can sustain this tick is limited by its scarcest propellant: scale
-           the whole burn by s = min over propellants of (available / desired),
-           clamped to [0,1], so every propellant drains in lockstep and the
-           thrust scales with the achieved flow. Sizing the burn from the min
-           BEFORE draining avoids the old leak (draining each in a separate
-           drain-or-nothing call: if one ran short the other was already gone
-           with no thrust -- a ship with H2 but no LOX leaked all its H2). */
+        /* A rocket draws each of its propellants at its own rate. The burn
+           it can sustain this tick is limited by its scarcest propellant:
+           scale the whole burn by s = min over propellants of (available /
+           desired), so every propellant drains in lockstep. Sizing the burn
+           from the min BEFORE draining avoids the old leak (draining each
+           in a separate drain-or-nothing call). */
         double s = 1.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
             const double desired = rate_r * (double)thruster_util * step;
             const double avail = availableResourceMass((ResourceType)r, p);
-            // desired <= 0 here means a zero-length tick (step == 0; a zero
-            // throttle already returned above): burn nothing and arm no thrust,
-            // matching the old `if(burn > 0)` guard.
+            // desired <= 0 here means a zero-length tick: burn nothing.
             const double si = (desired > 0.0) ? (avail / desired) : 0.0;
             if(si < s) { s = si; }
         }
         if(s > 1.0) { s = 1.0; }
         if(s <= 0.0) { continue; }
-        /* s <= every avail/desired, so each drain below is guaranteed to
-           succeed (its own total >= amt check passes); the guard is kept only
-           so we never arm thrust off a failed drain. */
+        // s <= every avail/desired, so each drain below is guaranteed to
+        // succeed; the guard is kept only so we never arm thrust off a
+        // failed drain.
         bool ok = true;
         for(int r = 0; r < (int)ResourceType::Num && ok; r++) {
             const double rate_r = p->def->propellant_rate[r];
@@ -2722,22 +2444,16 @@ void Vehicle::slewToward(glm::dvec3 dir, double h) {
     if(Ieff <= 0.0) { return; }
     const double alpha = maxTorque() / Ieff; /* rad/s^2, wheel-limited */
     const double w_des = std::min(std::sqrt(2.0 * alpha * E), E / (2.0 * h));
-    /* Drive the FULL transverse angular velocity (the part perpendicular
-       to the nose) toward the braking-curve rate about the slew axis.
-       The old torque was along the slew axis ONLY, so the perpendicular
-       "third-axis" spin was never damped: any residual spin about it at
-       engagement persisted (and grew via gyroscopic coupling), and as the
-       slew axis rotated that undamped spin coupled into the nose -- the
+    /* Drive the FULL transverse angular velocity toward the braking-curve
+       rate about the slew axis. The old torque was along the slew axis ONLY,
+       so the perpendicular "third-axis" spin was never damped -- the
        sustained wobble around the prograde/retrograde target. Killing it
        is the fix. Roll about the nose is intentionally left free. */
     const glm::dvec3 w_now = partAngVel(wheel);
     const glm::dvec3 w_transverse = w_now - facing * glm::dot(w_now, facing);
     glm::dvec3 dW = axis * w_des - w_transverse; /* desired change in rate */
     glm::dvec3 torque = I * dW / h;
-    /* Authority bound: the wheel pushes at most maxTorque() N m, so scale
-       the correction down if it would exceed that. Only active while a
-       third-axis spin is present; with none, dW is along the slew axis
-       and |torque| == maxTorque exactly as before. */
+    // Authority bound: the wheel pushes at most maxTorque() N m.
     const double tq = glm::length(torque);
     if(tq > maxTorque()) { torque *= maxTorque() / tq; }
     ApplyTorque(hull, torque);
@@ -2752,10 +2468,8 @@ void Vehicle::killRotStep(double h) {
        Scaling each world axis by I[i][i] alone is only valid when the
        principal basis is world-aligned; with a rotated tensor the
        under-cancel couples axes and the law settles into a period-2
-       limit cycle instead of reaching zero (the post-staging |w|
-       oscillation). Authority-bounded like slewToward, so the command
-       never exceeds a maxed manual stick. When the bound is active the
-       step is a pure scale of w toward 0 (monotonic, no sign flip). */
+       limit cycle instead of reaching zero. Authority-bounded like
+       slewToward. */
     glm::dvec3 torque = I * (-w) / h;
     const double tq = glm::length(torque);
     if(tq > maxTorque()) { torque *= maxTorque() / tq; }
@@ -2769,9 +2483,9 @@ glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {
 }
 
 void Vehicle::moveToFrame(Frame *newFrame, double t) {
-    /* One rigid body, so a frame change is one pose write and one
-       velocity write; the transform is rigid, so the COM maps like any
-       other point. */
+    // One rigid body, so a frame change is one pose write and one
+    // velocity write; the transform is rigid, so the COM maps like any
+    // other point.
     const glm::dvec3 oldCom = get_center_of_mass();
     const glm::dvec3 oldVel = GetVelocity(hull);
     const glm::dvec3 fpos = frame->GetPositionRelTo(newFrame);
@@ -2784,8 +2498,7 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     // The stored velocity is the frame-coordinate velocity, so a ship's
     // inertial velocity is R*(v + stasis(p)) + V. The OLD frame's stasis
     // term is added here and the NEW frame's SUBTRACTED below, or the
-    // ship's inertial velocity is wrong by 2*stasis and the orbit jumps
-    // shape at every inertial->rotational switch.
+    // ship's inertial velocity is wrong by 2*stasis.
     glm::dvec3 vel = oldVel;
     if(frame != newFrame) { vel += frame->GetStasisVelocity(oldCom); }
     vel = forient * vel + frame->GetVelocityRelTo(newFrame);
@@ -2805,11 +2518,7 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
 }
 
 /* Dead band on the SoI boundary tests (both sides): a ship loitering at
-   exactly `soi` would otherwise flip frames on every tick of a noisy
-   integration. 10 km is far below the scale of an encounter. It is NOT
-   a guarantee against overshoot -- at high rails warp one tick can cross
-   a whole SoI -- but the rail conic is re-checked every tick, so the ship
-   lands in the right frame one tick later at worst. */
+   exactly `soi` would otherwise flip frames on every tick. */
 static constexpr double kSoiMargin = 10000.0;
 
 Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
@@ -2820,8 +2529,7 @@ Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
     double bestDist = 0.0;
     for(Frame *child : frame->children) {
         if(skipSameBody && child->body == frame->body) { continue; }
-        // ship position in the child's coordinates (the same transform
-        // GetPositionRelTo(part, child) applies)
+        // ship position in the child's coordinates
         const glm::dvec3 rel = frame->GetOrientRelTo(child) * posInFrame
                              + frame->GetPositionRelTo(child);
         const double dist = glm::length(rel);
@@ -2838,8 +2546,7 @@ void Vehicle::setSoi(Frame *newFrame, double t) {
     if(newFrame == nullptr || newFrame->body == nullptr) {
         /* Headless fixtures (the split tests) build vehicles with no frame
            tree: record the frame, nothing else to re-home. Only valid
-           PRE-placement -- a null frame on a listed vessel would break the
-           list/m_parent invariant, and no live path can produce one. */
+           PRE-placement. */
         frame = newFrame;
         return;
     }
@@ -2878,12 +2585,8 @@ void Vehicle::switchFrames(double t) {
 }
 
 void Vehicle::writeRailPose() {
-    /* ONE write, and it is the whole ship. rail_pos is the COM, which is
-       exactly the hull's transform origin, and rail_orient * railRot are
-       frame S's axes; every part's pose then follows from its authored
-       local pose. There is no per-part snapshot to restore and no
-       deformation to freeze -- the geometry the rails carry IS the
-       authored geometry. */
+    // ONE write, and it is the whole ship. rail_pos is the COM, which is
+    // exactly the hull's transform origin.
     glm::dvec3 pOrigin; glm::dmat3 pBasis;
     fromBt(principal, pOrigin, pBasis);
     setPosRot(hull, rail_pos, (rail_orient * railRot) * pBasis);
@@ -2948,10 +2651,9 @@ bool Vehicle::goOnRails() {
     if(onRails) { return true; }
     if(!canRail()) { return false; }
 
-    /* The COM state in the body's inertial frame node, where the
-       trajectory is a Kepler conic. The velocity is the hull's own -- one
-       rigid body, one COM velocity -- and the parked ship's residual spin
-       is discarded with its attitude (writeRailPose zeroes it). */
+    /* The COM state in the body's inertial frame node, where the trajectory
+       is a Kepler conic. The parked ship's residual spin is discarded with
+       its attitude (writeRailPose zeroes it). */
     Frame *oldFrame = frame;
     Frame *inertial = frame->getNonRotFrame();
     const glm::dvec3 com_frame = get_center_of_mass();  // old frame coords
@@ -2960,21 +2662,17 @@ bool Vehicle::goOnRails() {
     comStateIn(inertial, p, v);
 
     // Freeze only a ship actually resting on the surface; an orbiting one
-    // follows its conic. canRail() above already established it is one or
-    // the other, so this cannot fall through to a third case.
+    // follows its conic.
     const bool grounded = isGrounded();
 
-    /* Frame S's axes at park time (== the old frame's axes for a ship
-       built in it); rail_orient carries them into the inertial node and
-       then holds inertially. Nothing per-part to snapshot: the ship is
-       rigid, so the authored local poses ARE the parked geometry. */
+    // Frame S's axes at park time. Nothing per-part to snapshot: the ship
+    // is rigid, so the authored local poses ARE the parked geometry.
     glm::dvec3 sPosPark;
     frameS(sPosPark, railRot);
 
     if(grounded) {
-        /* freeze: the pose is static in the rotating surface frame
-           (its transforms already are), so the rail state just holds
-           it; the planet's spin carries it via the render transform. */
+        /* freeze: the pose is static in the rotating surface frame, so the
+           rail state just holds it. */
         rail_pos = com_frame;
         rail_vel = vel_frame;
         rail_orient = glm::dmat3(1.0);
@@ -2984,13 +2682,12 @@ bool Vehicle::goOnRails() {
         rail_vel = v;
         rail_orient = oldFrame->GetOrientRelTo(inertial);
         // Same-body frame hop (a rail conic lives in the inertial node),
-        // not an SoI re-home: deliberately a bare write, not setSoi --
-        // body, ships list and journal are all unchanged.
+        // not an SoI re-home: deliberately a bare write, not setSoi.
         frame = inertial;   // on rails, ship->frame == its inertial node
         railFrozen = false;
     }
 
-    /* out of the world: the one body */
+    // out of the world: the one body
     if(hullInWorld()) { RemoveBody(hull); }
 
     onRails = true;

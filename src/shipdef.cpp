@@ -94,14 +94,11 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         d.type = pv.value("type", std::string(""));   // free-form label (display only)
-        // human-readable name (display only); optional, empty -> the UI
-        // falls back to the machine `name`
         d.display_name = pv.value("display_name", std::string(""));
 
-        /* fuel link: a virtual (no-mesh) one-way fuel connection. It is a
-           marker entry -- no geometry, no mass, so the mesh/texture/mass/
-           size validation below is skipped. (It still needs a catalog
-           entry so ship defs can reference it by name.) */
+        /* fuel link: a virtual (no-mesh) one-way fuel connection. Marker
+           entry -- no geometry, no mass, so the mesh/texture/mass/size
+           validation below is skipped. */
         d.fuel_link = pv.value("fuel_link", false);
 
         if(!d.fuel_link) {
@@ -110,9 +107,7 @@ PartsCatalog load_parts_catalog(const char *path) {
             if(d.mesh.empty() || d.texture.empty()) {
                 throw std::runtime_error(ctx + "missing \"mesh\"/\"texture\"");
             }
-            /* Engine shroud (optional, see PartDef.shroud): the pair is
-               all-or-nothing -- a half-set shroud is a catalog bug, not a
-               configuration. */
+            // shroud/shroud_texture: all-or-nothing (a half-set is a catalog bug)
             d.shroud = pv.value("shroud", std::string(""));
             d.shroud_texture = pv.value("shroud_texture", std::string(""));
             if((d.shroud.empty()) != (d.shroud_texture.empty())) {
@@ -137,28 +132,17 @@ PartsCatalog load_parts_catalog(const char *path) {
         }
 
         /* Behavior is field-driven (see shipdef.h): each optional field is
-           validated on its own, and they combine freely. A part with none
-           of them is a passive mass (e.g. a bare capsule). */
+           validated on its own, and they combine freely. */
         d.torque = pv.value("torque", 0.0);
         if(d.torque < 0.0) {
             throw std::runtime_error(ctx + "\"torque\" must be >= 0 (N m)");
         }
 
-        /* RCS translation authority (N); > 0 -> the part contributes to the
-           ship's RCS (burns hydrazine mono, applied at the COM). Independent
-           of the other behavior fields -- a part may be a wheel AND an RCS. */
         d.rcs_thrust = pv.value("rcs_thrust", 0.0);
         if(d.rcs_thrust < 0.0) {
             throw std::runtime_error(ctx + "\"rcs_thrust\" must be >= 0 (N)");
         }
 
-        /* electrical (KSP-style EC): power_draw (W) is a part's draw while
-           active (a reaction wheel); power_draw_constant (W) is a draw that
-           runs all the time (capsule life support); power_gen (W) is a
-           constant source (an RTG). Independent, each optional, each >= 0.
-           A battery is capacity[EC] > 0 (parsed with the capacity object
-           below); a capsule carries both a constant draw and its own small
-           built-in battery. */
         d.power_draw = pv.value("power_draw", 0.0);
         if(d.power_draw < 0.0) {
             throw std::runtime_error(ctx + "\"power_draw\" must be >= 0 (W)");
@@ -202,11 +186,8 @@ PartsCatalog load_parts_catalog(const char *path) {
                                      + "\"propellant\" (total) and \"exhaust_velocity\" must be > 0");
         }
 
-        /* jet engine (air-breathing) modifier: a flag + the air-breathing
-           parameters (see PartDef.jet / drag.h jetThrust). Omitted -> not a
-           jet, and the parameters keep their defaults (harmless). A jet
-           without a thrust source (propellant + exhaust_velocity) is a load
-           error: the flag alone does nothing. */
+        /* jet engine (air-breathing): a jet without a thrust source
+           (propellant + exhaust_velocity) is a load error. */
         if(pv.contains("jet")) {
             d.jet = pv["jet"].get<bool>();
         }
@@ -222,10 +203,9 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"jet\" requires \"propellant\" "
                                           "and \"exhaust_velocity\" (the real exhaust velocity)");
         }
-        /* A jet burns JET FUEL only (air is the free oxidizer). The flight jet
-           branch draws JetFuel specifically (Vehicle::ApplyThrust), so a jet
-           authored with any other propellant would produce fan/ram thrust
-           while burning nothing -- require its propellant be exactly jetfuel. */
+        // A jet burns JET FUEL only (air is the free oxidizer). The flight
+        // jet branch draws JetFuel specifically, so any other propellant
+        // would produce fan/ram thrust while burning nothing.
         if(d.jet) {
             if(d.propellant_rate[(int)ResourceType::JetFuel] <= 0.0) {
                 throw std::runtime_error(ctx + "\"jet\" propellant must include \"jetfuel\"");
@@ -255,8 +235,6 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* crew capacity (int); > 0 marks a capsule (holds that many EVA
-           characters, see PartDef.crew_capacity); omitted -> 0 */
         if(pv.contains("crew_capacity")) {
             d.crew_capacity = pv["crew_capacity"].get<int>();
             if(d.crew_capacity < 0) {
@@ -265,8 +243,6 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* inventory capacity (int); > 0 marks a container (holds that many
-           inventory items, see PartDef.inventory_capacity); omitted -> 0 */
         if(pv.contains("inventory_capacity")) {
             d.inventory_capacity = pv["inventory_capacity"].get<int>();
             if(d.inventory_capacity < 0) {
@@ -275,18 +251,10 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* experiment family (string); the science family this part runs
-           (PartDef.experiment_family, science.h). Omitted -> "" (not a
-           science part). */
         if(pv.contains("experiment_family")) {
             d.experiment_family = pv["experiment_family"].get<std::string>();
         }
 
-        /* experiment storage (string -> ExpStorage); how this part stores
-           science findings (PartDef.experiment_storage, Part::canHold). One of
-           "instrument" / "courier" / "container"; omitted -> None (not a
-           science holder). An unknown value is a catalog bug -- fail loudly
-           rather than silently holding nothing. */
         if(pv.contains("experiment_storage")) {
             const std::string s = pv["experiment_storage"].get<std::string>();
             if(s == "instrument")      { d.experiment_storage = ExpStorage::Instrument; }
@@ -300,26 +268,20 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* decoupler (bool); a staging boundary (see PartDef.decoupler).
-           Omitted -> false. */
         if(pv.contains("decoupler")) {
             d.decoupler = pv["decoupler"].get<bool>();
         }
 
-        /* fuel barrier (bool); fuel does not flow across a barrier, so it
-           splits fuel groups (see PartDef.fuel_barrier). Omitted -> false.
-           A decoupler is a fuel barrier by definition -- force it so the
-           flag can't be silently lost by a stale catalog regen. */
+        /* fuel barrier: fuel does not flow across a barrier, so it splits
+           fuel groups. A decoupler is a fuel barrier by definition -- force
+           it so the flag can't be silently lost by a stale catalog regen. */
         if(pv.contains("fuel_barrier")) {
             d.fuel_barrier = pv["fuel_barrier"].get<bool>();
         }
         if(d.decoupler) { d.fuel_barrier = true; }
 
-        /* docking port (bool); an end face that can lock to another port
-           (see PartDef.docking_port). Omitted -> false. A docking port is a
-           fuel barrier by definition -- a boundary between two ships' fuel
-           systems -- force it, like the decoupler, so the flag can't be
-           silently lost by a stale catalog. */
+        // A docking port is a fuel barrier by definition (a boundary between
+        // two ships' fuel systems) -- force it, like the decoupler.
         if(pv.contains("docking_port")) {
             d.docking_port = pv["docking_port"].get<bool>();
         }
@@ -335,16 +297,7 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0.
-           Drag (R2: silhouette area x per-part shape): `drag` is the part's
-           drag COEFFICIENT (dimensionless, its shape's bluntness) -- the
-           symmetric default. `drag_forward` / `drag_side` / `drag_backward`
-           override it for the three ways the part can face the flow (nose /
-           broadside / base into the flow; each defaults to `drag`). The
-           ship's drag blends the parts' cds by the area each shows to the
-           flow, over the ship's hull silhouette (Vehicle::applyAeroForce).
-           Lift terms: 0 = no lift (a rocket stays a rocket); a lifting
-           surface sets lift_area and cl. */
+        /* aerodynamics (src/drag.h). Each optional and >= 0; omitted -> 0. */
         d.drag = pv.value("drag", 0.0);
         if(d.drag < 0.0) {
             throw std::runtime_error(ctx +
@@ -381,9 +334,8 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.control_area < 0.0) {
             throw std::runtime_error(ctx + "\"control_area\" must be >= 0 (m^2)");
         }
-        // control_axis: the one steering axis the surface acts on. A string
-        // (pitch|yaw|roll) so a part reads like the other part fields; an
-        // unknown value is a load error, not a silent default.
+        // control_axis: the one steering axis. A string (pitch|yaw|roll);
+        // an unknown value is a load error, not a silent default.
         const std::string axis = pv.value("control_axis", std::string("pitch"));
         if(axis == "pitch")      { d.control_axis = ControlAxis::Pitch; }
         else if(axis == "yaw")   { d.control_axis = ControlAxis::Yaw; }
@@ -401,10 +353,8 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
         }
 
-        /* Attachment nodes. An explicit "nodes" array wins; otherwise (the
-           common case) synthesize the two axial stack faces from the size, so
-           an axis-aligned cylinder part needs no node authoring and existing
-           catalogs are unchanged. Fuel links are virtual (no geometry) and
+        /* Attachment nodes. An explicit "nodes" array wins; otherwise
+           synthesize the two axial stack faces from the size. Fuel links
            get none. */
         if(!d.fuel_link) {
             if(pv.contains("nodes")) {
@@ -485,8 +435,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                                      + "' in " + path + " (catalog has: " + avail + ")");
         }
 
-        /* instance id: explicit, or auto "<catalog name>_<n>" (n per catalog
-           name, starting at 1). Must be unique within the ship. */
+        /* instance id: explicit, or auto "<catalog name>_<n>". Must be
+           unique within the ship. */
         sp.id = pv.value("id", std::string(""));
         if(sp.id.empty()) {
             int &n = autoCount[sp.part];
@@ -547,10 +497,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
 
         /* Resolve the edge. A STACK edge (down/up) mates two named nodes; a
            SURFACE edge places the child's surface node at a contact point on
-           the parent. Fuel links are virtual (no edge); the root has none.
-           Node ids / contacts are validated here so a typo is a load error,
-           not a null deref in build_ship. The parent is an earlier part
-           (construction order), so it is already in def.parts. */
+           the parent. Node ids / contacts are validated here so a typo is a
+           load error, not a null deref in build_ship. */
         sp.parentNode = pv.value("parentNode", std::string(""));
         sp.childNode  = pv.value("childNode", std::string(""));
         sp.roll          = pv.value("roll", 0.0);
@@ -563,7 +511,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             if(sp.isStackEdge()) {
                 /* An explicit "parentNode"/"childNode" wins; otherwise default
                    to the synthesized axial faces (down: parent bottom / child
-                   top; up: parent top / child bottom), so attach:down works. */
+                   top; up: parent top / child bottom). */
                 const bool down = (sp.attach == AttachMode::Down);
                 if(sp.parentNode.empty()) { sp.parentNode = down ? "bottom" : "top"; }
                 if(sp.childNode.empty())  { sp.childNode  = down ? "top" : "bottom"; }
@@ -610,9 +558,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
             }
         }
 
-        /* stage: the staging number. Gates ignition (an engine lights once
-           the stage counter reaches it and stays lit) and decoupling (a
-           decoupler fires when the counter is at its stage). */
+        /* stage: the staging number. Gates ignition and decoupling. */
         sp.stage = pv.value("stage", 1);
         if(sp.stage < 1) {
             throw std::runtime_error(std::string("ship: part '") + sp.id + "' in " + path
@@ -620,10 +566,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         }
 
         /* fuel link: from/to (the two parts it connects, by instance id).
-           Required, distinct, not the link's own id. The ids are resolved
-           to Part* at build time (after all parts exist), so here I only
-           check the strings. parent/attach/angle/offset/stage are ignored
-           for a fuel link (it is virtual -- not welded). */
+           Required, distinct, not the link's own id. Resolved to Part* at
+           build time. parent/attach/angle/offset/stage are ignored. */
         if(sp.isFuelLink()) {
             sp.from = pv.value("from", std::string(""));
             sp.to = pv.value("to", std::string(""));
@@ -679,8 +623,7 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
 
 /* The rotation taking unit direction `a` onto unit direction `b` by the
    shortest arc. The roll about that arc is the caller's to resolve (see
-   attachNodes). The anti-parallel case picks a deterministic perpendicular so
-   the result never depends on floating-point whim. */
+   attachNodes). The anti-parallel case picks a deterministic perpendicular. */
 static glm::dmat3 rotationFromTo(const glm::dvec3 &a, const glm::dvec3 &b) {
     const double d = glm::clamp(glm::dot(a, b), -1.0, 1.0);
     if(d > 1.0 - 1e-12) { return glm::dmat3(1.0); }   // already aligned
@@ -704,10 +647,7 @@ AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
 
     /* Relative rotation (child frame w.r.t. the parent frame): the minimal
        arc taking the child's node dir onto the opposed parent dir, then the
-       authored roll about that mating axis. For the synthesized axial nodes
-       the arc is the identity, so the child inherits the parent's full
-       orientation -- which is what makes this match the old procedural
-       Down/Up exactly. */
+       authored roll about that mating axis. */
     glm::dmat3 rrel = rotationFromTo(dC, target);
     if(rollDeg != 0.0) {
         rrel = glm::mat3_cast(glm::angleAxis(glm::radians(rollDeg), target)) * rrel;
@@ -716,8 +656,7 @@ AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
     AttachPose p;
     p.childRot = parentRot * rrel;
     /* Coincide the node positions, pushed apart by `offset` along the parent
-       node dir:  childPos + childRot*childNode.pos
-                  == parentPos + parentRot*(parentNode.pos + dP*offset). */
+       node dir. */
     const glm::dvec3 contact = parentPos + parentRot * (parentNode.pos + dP * offset);
     p.childPos = contact - p.childRot * childNode.pos;
     return p;
@@ -728,10 +667,8 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
                          const Node &childNode, double rollDeg, double offset)
 {
     /* Surface attach IS node mating: a synthetic parent node at the contact
-       (position = the contact point, direction = the outward normal). The
-       child's surface node dir points inward, so attachNodes anti-aligns it
-       onto the normal exactly as it would a stack node -- one solver, no
-       separate surface geometry to drift. */
+       (position = the contact point, direction = the outward normal). One
+       solver, no separate surface geometry to drift. */
     Node contact;
     contact.id  = "srf-contact";
     contact.pos = point;
@@ -775,15 +712,10 @@ void snapSurfaceContact(glm::dvec3 &point, glm::dvec3 &normal,
     }
     /* The normal's azimuth: the pick hull is faceted, so a flat facet's
        normal stays constant while the hit POSITION sweeps several degrees
-       across it -- rotating the normal by the point's snap delta (or
-       snapping its raw facet angle) would cant the part against the
-       snapped position and make it counter-rotate between grid points.
-       Parts are surfaces of revolution about their own axis, where the
-       true normal azimuth equals the contact azimuth: when the two raw
-       azimuths agree (within a facet's span), the normal takes the
-       point's SNAPPED azimuth, keeping its polar tilt. Only a genuinely
-       non-revolution contact (azimuths divergent, e.g. a wing plate)
-       snaps the normal's own azimuth. */
+       across it. Parts are surfaces of revolution, where the true normal
+       azimuth equals the contact azimuth: when the two raw azimuths agree,
+       the normal takes the point's SNAPPED azimuth (keeping its polar tilt).
+       Only a genuinely non-revolution contact snaps the normal's own azimuth. */
     const double rn = std::hypot(normal.x, normal.y);
     if(rn > 1e-6) {
         const double an = std::atan2(normal.y, normal.x);
@@ -823,10 +755,10 @@ std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
         c.edge.rollDeg = rollDeg;
         /* The congruent target is the primary's pose rotated about the
            parent's axis. Solving the rotated contact with the SAME roll
-           lands there only when the minimal arc to the rotated normal
-           equals the rotated minimal arc (true for radial contacts);
-           in general the two differ by a roll about the mating axis, so
-           measure that residual and fold it into the clone's roll. */
+           lands there only when the minimal arc to the rotated normal equals
+           the rotated minimal arc; in general the two differ by a roll about
+           the mating axis, so measure that residual and fold it into the
+           clone's roll. */
         const glm::dmat3 RzS = glm::mat3_cast(glm::angleAxis(th, axisS));
         const glm::dmat3 wantRot = RzS * primary.childRot;
         const AttachPose guess = attachSurface(parentPos, parentRot,
@@ -855,8 +787,7 @@ AttachPose attachPose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                       AttachMode mode, double angleDeg, double offset)
 {
     /* Stack modes mate the axial nodes -- attachNodes is the single source of
-       stack-attach geometry. `angleDeg` is the roll about the stack axis.
-       Surface edges go through attachSurface (point + normal), not here. */
+       stack-attach geometry. Surface edges go through attachSurface. */
     if(mode != AttachMode::Down && mode != AttachMode::Up) {
         throw std::runtime_error("attachPose: only stack modes (down/up); a "
                                  "surface edge uses attachSurface(point + normal)");
@@ -938,8 +869,7 @@ BuildShip BuildShip::fromShipDef(const ShipDef &def) {
         bs.controllerId = def.parts[(size_t)def.controller].id;
     }
     /* physical parts only; remap parent indices as fuel links are dropped
-       from the TREE (they are kept as FuelLink records for the round trip,
-       same partition build_ship does). */
+       from the TREE (they are kept as FuelLink records for the round trip). */
     std::map<size_t, size_t> physIndex;   // def.parts index -> build index
     for(size_t i = 0; i < def.parts.size(); i++) {
         const ShipPart &sp = def.parts[i];
@@ -1184,9 +1114,8 @@ ShipDef BuildShip::toShipDef() const {
         if(!controllerId.empty() && bp.id == controllerId) { def.controller = (int)i; }
         def.parts.push_back(sp);
     }
-    /* fuel links re-appended after the physical parts (they are virtual, so
-       their position is free; the tail keeps parent defaults sane). A link
-       whose endpoint part was deleted is dropped. */
+    /* fuel links re-appended after the physical parts. A link whose endpoint
+       part was deleted is dropped. */
     for(size_t k = 0; k < fuelLinks.size(); k++) {
         const FuelLink &fl = fuelLinks[k];
         bool haveFrom = false, haveTo = false;
@@ -1247,8 +1176,8 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
         pv["attach"] = (sp.attach == AttachMode::Surface) ? "surface"
                      : (sp.attach == AttachMode::Up) ? "up" : "down";
         if(sp.isStackEdge()) {
-            // the root's ids are empty (no edge); omit empty keys so the
-            // load defaults apply exactly as for a hand-written file
+            // omit empty keys so the load defaults apply exactly as for a
+            // hand-written file
             if(!sp.parentNode.empty()) { pv["parentNode"] = sp.parentNode; }
             if(!sp.childNode.empty())  { pv["childNode"] = sp.childNode; }
             pv["angle"] = wrap360(sp.angle);

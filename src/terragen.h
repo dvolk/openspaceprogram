@@ -1,64 +1,17 @@
 // terragen.h -- terrain generation as pure math (glm + STL only: no GL,
-// no Bullet, no game state), so tests/ can pin it without the render
-// chain (like surfmap.h) and terrain work can iterate on it in isolation.
+// no Bullet, no game state), so tests can pin it without the render chain.
+// The game-side half (GL upload, collision, the patch tree) is terrain.h.
 //
-//   Surface / TerrainParams   per-body terrain + color params (the
-//                             "surface" JSON block); value-copyable so a
-//                             worker thread can hold a snapshot (the async
-//                             subdivision job does -- see terrain.h)
-//   terrainHeight(...)        the analytic height function, full detail
-//                             (physics, spawning, shadows, surface map)
-//   terrainSurfaceColor(...)  the exact per-vertex color the grid bakes
-//                             (palette / band, sea, contrast)
-//   biomeFromAltitude/biomeAt where on the body's surface a point sits
-//                             (the Biome: ocean / lowlands / midlands / mountain)
-//   buildGridGeom(...)        the grid a GeoPatch draws: size x size
-//                             terrain vertices + normals + colors, an
-//                             optional skirt ring, and the indices
-//   subdivideCorners(...)     a patch's four child quads (the LOD tree's
-//                             subdivision step)
-//   patchWidthUnit(...)       a patch's characteristic size -- the LOD's
-//                             size measure
-//   lodPxPerRad/lodPxWidth    the camera's screen scale and a patch's
-//                             projected pixel extent -- the LOD's decision
-//   cameraInBodyFrame(...)    the camera in body-fixed axes (the LOD
-//                             measures body-fixed patch corners)
+// Height model: relief = amplitude/2.1 * (0.7*continents + 1.4*mask*mountains),
+// sampled on the UNIT SPHERE so feature sizes grow with the body's radius
+// (the mesh LOD does the same via TerrainBody::max_depth).
 //
-// The game-side half (GL upload into a Mesh, Bullet collision, the patch
-// tree that walks the LOD decisions above) lives in terrain.h / terrain.cpp:
-// the GeoPatch ctor consumes a GridGeom on the main thread.
-//
-// Height model (written from scratch -- the old noise aliased into a
-// stepped, voxel-like surface at coarse LOD and its cubic height rescale
-// left flat plains with knife-sharp hills):
-//
-//   relief = amplitude/2.1 * (0.7*continents + 1.4*mask*mountains)
-//
-//   continents   smooth simplex FBM, octaves 0..5 (noise scales 2..64):
-//                planet-wide landmasses down to ~10 km rolling hills on a
-//                Kerbin-sized body
-//   mountains    a smooth fold (1 - m^2) of a mid-band FBM (octaves 2..):
-//                broad rounded crests and gradual flanks -- big and soft
-//                on purpose, the shading is normal-based
-//   mask         smoothstep of the continents: mountains only rise where
-//                the base ground is already high, so lowlands and coasts
-//                stay gentle
-//
-// The noise lives on the UNIT SPHERE (the direction rotated by the
-// body's seed, times frequency), so feature sizes grow with the body's
-// radius, and the mesh LOD does the same (TerrainBody::max_depth adds
-// one level per radius doubling): every body ends up with comparable
-// mesh + feature density per surface area.
-//
-// Band-limited grids: buildGridGeom() fades every octave whose wavelength
-// is shorter than ~2 grid cells (the grid's Nyquist limit). A coarse
-// patch therefore drops exactly the detail it cannot resolve; sampling it
-// anyway is what aliased into the stepped surface near the ground. The
-// fade is a continuous weight in the octave index, so neighbouring depths
-// agree to within the one partial octave (the skirt covers that seam),
-// and a max-depth patch still bakes every octave -- its grid resolves
-// them all -- so the visual surface and the analytic height function
-// physics uses agree where it matters (landed).
+// buildGridGeom() band-limits every octave shorter than ~2 grid cells
+// (Nyquist): a coarse patch drops exactly the detail it cannot resolve.
+// Neighbouring depths agree to within one partial octave (the skirt covers
+// that seam), and a max-depth patch bakes every octave so the visual
+// surface and the analytic height function physics uses agree where it
+// matters (landed).
 
 #pragma once
 
@@ -75,49 +28,43 @@ typedef struct {
     float r, g, b;
 } COLOUR;
 
-// One stop on a body's land-color ramp: elevation fraction t in [0,1]
-// (0 = sea level / lowest land, 1 = highest relief) and the color there.
+// One stop on a body's land-color ramp: elevation fraction t in [0,1].
 struct PaletteStop {
     float t;
     glm::vec3 color;
 };
 
-/* The fallback atmosphere top when a body does not author one: the altitude
-   where the exponential density has fallen to e^-10 (~4.5e-5) of sea level.
-   Lands within ~25% of the authored values on the shipped bodies (worst case
-   Eve: 70 km derived vs 90 km authored), so an unauthored atmosphere still
-   has a sane hard top instead of a 190 km exponential wisp. */
+// The fallback atmosphere top when a body does not author one: ~e^-10 of
+// sea-level density. Lands within ~25% of the authored values on shipped
+// bodies, so an unauthored atmosphere still has a sane hard top.
 inline constexpr double kAtmoScaleHeights = 10.0;
 
-// Per-body atmosphere (optional "surface.atmosphere" block), in two halves:
-// the RENDER half (a Fresnel limb-glow shell drawn over the terrain; see
-// reports/atmosphere2026_08_25/atmosphere.md for the design + roadmap) and
-// the PHYSICAL half that src/drag.h integrates. They are independent -- a
-// body may draw a rim without any air, and vice versa.
+// Per-body atmosphere (optional "surface.atmosphere" block), in two
+// independent halves: the RENDER half (a Fresnel limb-glow shell; see
+// reports/atmosphere2026_08_25) and the PHYSICAL half that src/drag.h
+// integrates. A body may draw a rim without any air, and vice versa.
 struct AtmosphereParams {
     bool enabled = false;
     glm::vec3 color = glm::vec3(0.3f, 0.5f, 1.0f);  // rim tint (N2/O2 blue)
-    /* RENDERING ONLY: the limb-glow shell's radius above radius + max_height
-       (BuildAtmosphere, terrain.h). NOT the atmosphere's physical extent --
-       Kerbin's shell is 15 km thick against a 70 km atmosphere. For "where
-       does the air stop" use top() below. */
+    /* RENDERING ONLY: the limb-glow shell's radius above radius +
+       max_height (BuildAtmosphere, terrain.h). NOT the physical extent --
+       use top() below for "where does the air stop". */
     float thickness = 0.0f;
     float power = 3.0f;       // Fresnel falloff (higher = tighter rim)
     float intensity = 1.0f;   // overall alpha scale
     /* The physical half (src/drag.h): rho(alt) = sea_level_density *
-       exp(-alt / scale_height), cut to zero at top(). Both density fields 0
-       = no drag. See reports/atmospheric-drag2026_09_11. */
+       exp(-alt / scale_height), cut to zero at top(). Both density fields
+       0 = no drag. See reports/atmospheric-drag2026_09_11. */
     double sea_level_density = 0.0;  // kg/m^3 at the surface; 0 = no drag
     double scale_height = 0.0;       // [m]; the density /e-fold altitude
-    /* The hard top [m above sea level]: at or above it the air is vacuum and
-       the body counts as space. Authored per body ("surface.atmosphere.height";
-       Kerbin 70 km). 0 = not authored, and top() derives one instead. */
+    /* The hard top [m above sea level]: at or above it the air is vacuum.
+       Authored per body ("surface.atmosphere.height"). 0 = not authored,
+       and top() derives one instead. */
     double height = 0.0;
 
     /* The resolved atmosphere top: the authored height, or scale_height *
-       kAtmoScaleHeights when it is absent. One home for the derivation, so
-       drag (airDensity's cutoff) and anything else asking "is this in space?"
-       cannot disagree. 0 only for a body with no physical atmosphere. */
+       kAtmoScaleHeights when absent. One home for the derivation so drag
+       and anything else asking "is this in space?" cannot disagree. */
     double top() const {
         if(height > 0.0) { return height; }
         return scale_height > 0.0 ? scale_height * kAtmoScaleHeights : 0.0;
@@ -125,10 +72,9 @@ struct AtmosphereParams {
 };
 
 // Per-body cloud deck (optional "surface.clouds" block). A single shell at
-// `height` above the highest terrain (the same above-peaks rule as the
-// atmosphere shell): a solid ceiling from below, a textured disc from
-// orbit. The coverage pattern is a seeded FBM (cloudCover below), baked
-// at load into a per-body equirectangular map the shader fetches.
+// `height` above the highest terrain: a solid ceiling from below, a
+// textured disc from orbit. Coverage is a seeded FBM (cloudCover below),
+// baked at load into a per-body equirectangular map the shader fetches.
 struct CloudParams {
     bool enabled = false;
     float height = 2500.0f;   // [m] above radius + max_height
@@ -138,11 +84,10 @@ struct CloudParams {
     float drift = 0.0f;       // [pattern units/s] wind: pattern creep vs ground
 };
 
-// One ring band on a body (an entry in the optional "surface.rings" array).
-// A flat annulus in the body's equatorial plane (perpendicular to the spin
-// axis). inner/outer are [m] from the body centre; thickness [m] is the band
-// width (v1-visual-only, kept for a future collision slab); albedo is the
-// band brightness, opacity its transparency.
+// One ring band (an entry in the optional "surface.rings" array). A flat
+// annulus in the body's equatorial plane. inner/outer are [m] from the body
+// centre; thickness [m] is the band width (visual-only, kept for a future
+// collision slab); albedo is the band brightness, opacity its transparency.
 struct RingParams {
     std::string name;
     double inner = 0.0;    // [m] from body centre
@@ -163,14 +108,13 @@ struct Surface {
     glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
     std::vector<PaletteStop> palette;  // empty => type-based default palette
     float max_height = 1.0f;     // [m] highest relief above sea level
-                                 // (measured numerically by the heavy phase,
-                                 //  TerrainBody::BuildRootGeoms; the default
-                                 //  holds until AttachRoot applies it)
+                                 // (measured by the heavy phase,
+                                 //  TerrainBody::BuildRootGeoms)
     // Per-body noise orientation (set by load_system from "seed"). A
     // rotation, not an additive offset: adding seed*100 to the sample
     // point pushed the high-octave noise coordinates into the float
-    // quantization range, which tiled the surface in lattice-aligned
-    // terrace stripes (worst on the high-seed bodies).
+    // quantization range and tiled the surface in lattice-aligned
+    // terrace stripes.
     glm::mat3 seed_rot = glm::mat3(1.0f);
     bool bands = false;          // gas giant: smooth sphere, latitude bands
     int band_count = 9;          // stripes pole to pole (odd => bright equator)
@@ -200,9 +144,8 @@ struct Surface {
         return { 1.0f, 1.0f, 1.0f };
     }
 
-    // Gas-giant color at unit direction p: latitude runs through a triangle
-    // wave so each stripe is dark at its edges, light at its center, sampled
-    // through the palette (first stop = dark, last = light).
+    // Gas-giant color at unit direction p: a triangle wave through the
+    // palette (first stop = dark, last = light).
     COLOUR BandColor(const glm::vec3& p) const {
         float y = glm::clamp(p.y, -1.0f, 1.0f);
         float u = 0.5f + 0.5f * y;           // 0 = south pole, 1 = north
@@ -212,13 +155,10 @@ struct Surface {
     }
 };
 
-// Cloud deck coverage (baked at load into an equirectangular R8 texture by
-// TerrainBody::BuildClouds, so the deck fragment shader is one texture
-// fetch instead of this FBM per visible fragment per frame -- the pattern
-// is static in the body's frame, only the camera moves). Pure math, so
-// tests can pin it without GL. A port of the deck shader's FBM (value
-// noise, 4 octaves); the pattern is a function of DIRECTION ONLY, so the
-// equirectangular bake has no seam (lon -pi and +pi are one direction).
+// Cloud deck coverage (baked at load into an equirectangular R8 texture so
+// the deck shader is one texture fetch). Pure math, so tests can pin it.
+// A port of the deck shader's FBM (value noise, 4 octaves). The pattern is
+// a function of DIRECTION ONLY, so the equirectangular bake has no seam.
 inline float cloudFract(float x) { return x - std::floor(x); }
 
 inline float cloudHash13(const glm::vec3 &q) {
@@ -259,8 +199,8 @@ inline float cloudFbm(const glm::vec3 &q) {
 }
 
 // Deck coverage at a unit direction (body frame): 0 = clear, 1 = cloud.
-// The threshold slides with `coverage` (more coverage -> lower threshold,
-// i.e. more of the deck is cloudy).
+// The threshold slides with `coverage` (more coverage -> more of the deck
+// is cloudy).
 inline float cloudCover(const glm::vec3 &dir, const glm::mat3 &seedRot,
                         const CloudParams &c) {
     const float n = cloudFbm(seedRot * (dir * c.freq));
@@ -271,8 +211,7 @@ inline float cloudCover(const glm::vec3 &dir, const glm::mat3 &seedRot,
 }
 
 // Everything the height/color functions and the grid builder need from a
-// body, as VALUES: the async terrain job snapshots one for the worker
-// thread, so the worker never reads the (main-thread-owned) TerrainBody.
+// body, as VALUES: the async terrain job snapshots one for the worker.
 struct TerrainParams {
     Surface surface;
     float radius;
@@ -281,26 +220,20 @@ struct TerrainParams {
 
 // ---------------------------------------------------------------------------
 // The noise: octaves of 3-D simplex on the unit sphere. Octave i runs at
-// noise scale 2^(i+1) (octave 0 ~ 1-radian features), so its wavelength on
-// the body is radius / 2^(i+1) -- feature sizes track the body's radius.
-// The first `base_octaves` octaves are smooth FBM (the continents/hills);
-// the rest are the mountains.
+// noise scale 2^(i+1); the first `base_octaves` are smooth FBM (the
+// continents/hills), the rest are the mountains.
 // ---------------------------------------------------------------------------
 
-// glm::simplex ranks its skew-space components with step() comparisons;
-// wherever two components tie (exactly axis-aligned directions -- the
-// patch face centers, edge midpoints), a 1-ulp input perturbation flips
-// the corner ranking and the value jumps ~0.1, i.e. ulp-wide cliffs in
-// the heightfield along the symmetric directions. A fixed off-axis
-// offset moves the samples away from the ties (the old additive seed
-// offset did this by accident; the per-body rotation alone does not).
+// glm::simplex ranks its skew-space components with step(); wherever two
+// components tie (exactly axis-aligned directions), a 1-ulp input
+// perturbation flips the corner ranking and the value jumps ~0.1. A fixed
+// off-axis offset moves the samples away from the ties (the per-body
+// rotation alone does not).
 static const glm::vec3 terrain_noise_off(0.173f, 0.291f, 0.417f);
 
 // One octave loop over [first, last): sum += amp * simplex, amplitudes
 // falling by persistence. `fade` band-limits the sum: octave i's weight
-// ramps 1 -> 0 as i goes fade-1 -> fade, so callers drop exactly the
-// wavelengths a grid cannot resolve. Octaves past the fade are skipped
-// outright (weights only ever decrease with i).
+// ramps 1 -> 0 as i goes fade-1 -> fade.
 inline float terrainFbmOctaves(const glm::vec3& q, int first, int last,
                                float persistence, float fade) {
     float sum = 0.0f, norm = 0.0f, amp = 1.0f;
@@ -315,15 +248,10 @@ inline float terrainFbmOctaves(const glm::vec3& q, int first, int last,
     return (norm > 0.0f) ? sum / norm : 0.0f;   // [-1, 1]
 }
 
-// Signed relief [m] relative to the base radius at unit direction p
-// (before the sea-floor clamp): continents in [-0.7, 0.7]*A plus broad
-// mountains up to +1.2*A riding the high ground, normalized by 1.9 so
-// `amplitude` is the tallest peak. The mountains are a smooth fold
-// (1 - m^2) of a mid-band FBM: rounded crests and gradual flanks (the
-// shading is normal-based, so knife-edge ridged noise read as spikes),
-// and the spectrum stops at ~radius/256, so features stay big and soft.
-// `fade` band-limits both noises (see terrainFbmOctaves); pass octaves
-// (or more) for full detail.
+// Signed relief [m] relative to the base radius at unit direction p (before
+// the sea-floor clamp). The mountains are a smooth fold (1 - m^2) of a
+// mid-band FBM: rounded crests and gradual flanks (the shading is
+// normal-based). `fade` band-limits both noises (see terrainFbmOctaves).
 inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
                            float fade) {
     const Surface &s = t.surface;
@@ -343,9 +271,8 @@ inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
 }
 
 // Height (m, from the body center) at a unit direction, band-limited by
-// `fade`. Gas giants are a smooth sphere. Terrain renders at its true
-// height everywhere -- the ocean mesh (a separate shell at sea_level)
-// covers the below-sea-level terrain.
+// `fade`. Gas giants are a smooth sphere. The ocean mesh (a separate shell
+// at sea_level) covers the below-sea-level terrain.
 inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
                                float fade) {
     const Surface &s = t.surface;
@@ -357,24 +284,19 @@ inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
 }
 
 // The full-detail height (every octave): what physics, spawning, shadows
-// and the surface map query. A max-depth patch bakes this same function
-// (its grid resolves every octave), so the walked and the rendered
-// surfaces agree where the ship is.
+// and the surface map query. A max-depth patch bakes this same function,
+// so the walked and the rendered surfaces agree where the ship is.
 inline float terrainHeight(const glm::vec3& p, const TerrainParams& t) {
     return terrainHeightFade(p, t, (float)t.surface.octaves);
 }
 
-// The surface color at a unit direction in the body's rotating frame:
-// the exact per-vertex color the grid bakes (palette / band, sea,
-// contrast), so the 2-D surface map (surfmap.cpp) matches the rendered
-// surface. Colors are evaluated at FULL height detail even on coarse
-// grids: the height fade would shift palette bands between LOD depths
-// and paint visible seam lines; full-detail color has no such
-// discontinuity. The one exception is the color JITTER: it is spatial
-// detail, so the grid passes a band-limited noise scale for it (a scale
-// finer than the grid cells moires into the dotted lowland pattern seen
-// on small bodies); <= 0 means the full meter-scale speckle (the surface
-// map).
+// The surface color at a unit direction in the body's rotating frame: the
+// exact per-vertex color the grid bakes, so the 2-D surface map matches
+// the rendered surface. Colors are evaluated at FULL height detail even on
+// coarse grids (the height fade would shift palette bands between LOD
+// depths). The one exception is the color JITTER: it is spatial detail, so
+// the grid passes a band-limited noise scale (<= 0 means the full
+// meter-scale speckle, the surface map).
 inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
                                      float jitter_scale = -1.0f) {
     const Surface &s = t.surface;
@@ -420,23 +342,12 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
 }
 
 // ---------------------------------------------------------------------------
-// Biomes: where on the body's surface a point sits, by altitude above sea
-// level relative to the body's measured max_height (the heavy phase):
-// ocean (has_sea bodies, at / below sea level), then the land bands --
-// the top 20% is mountain, the next band (50-80%) midlands, the bottom
-// half lowlands. Pure and cheap: biomeFromAltitude classifies an altitude
-// the caller already has (no FBM), biomeAt samples one for a direction.
+// Biomes: by altitude above sea level relative to the body's measured
+// max_height. Classifies SOLID bodies only: a banded body is None, a star
+// has no biome (issue #52) -- the caller must skip those itself.
 //
-// It classifies SOLID bodies only: a banded body is None, and a star has no
-// biome at all -- a star's Surface is just noise (issue #52). The caller must
-// skip those itself; the type is TerrainBody::isStar() / Surface::bands
-// (terrain.h).
-//
-// max_height is MEASURED, not authored: it stays at its 1.0 default until the
-// body's heavy phase lands (TerrainBody::BuildRootGeoms -> AttachRoot, which
-// sets `ready`). Before that every point above 0.8 m classifies as Mountain,
-// so classify only a body you know is ready -- the active ship's SoI body
-// always is (issue #54).
+// max_height is MEASURED (stays at 1.0 until the heavy phase lands), so
+// classify only a body you know is ready (issue #54).
 // ---------------------------------------------------------------------------
 
 enum class Biome : unsigned char {
@@ -448,9 +359,8 @@ enum class Biome : unsigned char {
 };
 
 // Biome from altitude above SEA level [m] (negative = below sea level).
-// Dry bodies have no ocean: a below-sea-level basin is just lowland.
-// A flat body (max_height <= 0) is all lowland -- without the guard,
-// alt >= 0.8 * 0 would make every point a mountain.
+// Dry bodies have no ocean. A flat body (max_height <= 0) is all lowland --
+// without the guard every point would be a mountain.
 inline Biome biomeFromAltitude(double alt, const Surface &s) {
     if(s.bands) { return Biome::None; }
     if(s.has_sea && alt <= 0.0) { return Biome::Ocean; }
@@ -525,10 +435,10 @@ inline COLOUR GetColourEarth(float v, float vmin, float vmax)
 // ---------------------------------------------------------------------------
 
 // Bilinear point on the quad (v0, v1, v2, v3) at (x, y) in [0,1]^2,
-// normalized back onto the sphere (the patch's surface patch). Tolerates
-// x/y slightly outside [0,1] (the normal stencil reaches one cell past
-// the boundary; the heightfield there is the same analytic function the
-// neighbour patch bakes, so seam normals match).
+// normalized back onto the sphere. Tolerates x/y slightly outside [0,1]
+// (the normal stencil reaches one cell past the boundary; the heightfield
+// there is the same analytic function the neighbour patch bakes, so seam
+// normals match).
 inline glm::vec3 terrainSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
                                     const glm::vec3& v2, const glm::vec3& v3,
                                     const float x, const float y)
@@ -539,11 +449,9 @@ inline glm::vec3 terrainSpherePoint(const glm::vec3& v0, const glm::vec3& v1,
                           (1.0f - x) * y * (v3 - v0));
 }
 
-// The octave fade for one grid cell: octave i's wavelength on the unit
-// sphere is ~1/2^(i+1) (times the frequency multiplier); keep wavelengths
-// >= 2 cells (Nyquist) -> i <= log2(1/(2*cell*frequency)) - 1, with the
-// boundary octave partially weighted. A zero/tiny cell (deep patches,
-// where the corner dots below round to 1) means "resolve everything".
+// The octave fade for one grid cell: keep wavelengths >= 2 cells
+// (Nyquist), boundary octave partially weighted. A zero/tiny cell means
+// "resolve everything".
 inline float terrainGridFade(float cell_angle, float frequency) {
     if (!(cell_angle > 0.0f) || !std::isfinite(cell_angle)) {
         return 1e30f;
@@ -551,13 +459,11 @@ inline float terrainGridFade(float cell_angle, float frequency) {
     return std::log2(1.0f / (2.0f * cell_angle * frequency)) - 1.0f;
 }
 
-// The fade for every patch at a subdivision depth. Heights must be a
-// pure function of (position, depth) -- like Pioneer's terrain, which
-// samples one deterministic heightfield at every LOD -- or neighbouring
-// patches disagree where they share an edge. A per-patch fade (from the
-// actual corner angles, which vary between sibling quads) painted seam
-// lines along same-depth boundaries, so the cell angle is the nominal
-// one for the depth: the root cube-face edge (acos 1/3) halved per level.
+// The fade for every patch at a subdivision depth. Heights must be a pure
+// function of (position, depth) -- like Pioneer's terrain -- or neighbouring
+// patches disagree where they share an edge. A per-patch fade painted seam
+// lines along same-depth boundaries, so the cell angle is the nominal one
+// for the depth: the root cube-face edge (acos 1/3) halved per level.
 inline float terrainDepthFade(int depth, int grid_size, float frequency) {
     const float root_angle = 1.2310f;   // acos(1/3), root cube-face edge
     const float cell = root_angle / (float)(1 << (depth - 1))
@@ -565,8 +471,7 @@ inline float terrainDepthFade(int depth, int grid_size, float frequency) {
     return terrainGridFade(cell, frequency);
 }
 
-// One terrain-grid vertex (the GL-free half of Mesh's PosNorColVertex;
-// the GeoPatch ctor converts to Mesh's type when it uploads).
+// One terrain-grid vertex (the GL-free half of Mesh's PosNorColVertex).
 struct TerrVert {
     glm::vec3 pos;
     glm::vec3 normal;
@@ -579,20 +484,16 @@ struct TerrVert {
 
 // The grid a GeoPatch draws: size x size terrain vertices (or (size+2)^2
 // with the skirt ring) + indices. When num_inner is nonzero, the first
-// num_inner indices are the terrain and the tail is the skirt (Mesh::
-// DrawSkirt() renders the tail, after the terrain has written depth).
+// num_inner indices are the terrain and the tail is the skirt.
 //
-// Vertex positions are ANCHOR-RELATIVE: `anchor` is a body-frame point
-// near the patch (its sphere centroid at the band-limited height, in
-// DOUBLE), and every baked pos is that point subtracted. The game side
-// adds the anchor back in double precision only (GeoPatch::Draw folds it
-// into the modelview; the collision rigid body is translated by it).
-// Rationale: a body-centred float32 vertex sits at |pos| ~ planet radius,
-// and the vertex shader's R*v + t cancels radius-scale terms down to
-// metres -- float32 rounds at ULP(radius), so terrain jittered by
-// ~0.4 m on Jool / ~0.04 m on Kerbin with every camera move (the surface
-// visibly swam around the launch pad). Anchor-relative, every float32
-// number in the pipeline (vertex data AND matrix entries) is patch-scale.
+// Vertex positions are ANCHOR-RELATIVE: `anchor` is a body-frame point near
+// the patch (its sphere centroid at the band-limited height, in DOUBLE),
+// and every baked pos is that point subtracted. The game side adds the
+// anchor back in double precision only. Rationale: a body-centred float32
+// vertex sits at |pos| ~ planet radius and the vertex shader's R*v + t
+// cancels radius-scale terms down to metres -- float32 rounds at
+// ULP(radius), so terrain jittered with every camera move. Anchor-relative,
+// every float32 number is patch-scale.
 struct GridGeom {
     std::vector<TerrVert> verts;
     std::vector<unsigned int> indices;
@@ -600,51 +501,39 @@ struct GridGeom {
     glm::dvec3 anchor = glm::dvec3(0.0);   // body-frame [m]; verts are relative
 };
 
-// The patch grid (pure math; the GeoPatch ctor does the GL upload +
-// Bullet collision with the result). The terrain grid is size x size;
-// with a skirt it's (size+2)^2, one extra ring of "skirt" vertices
-// around it to hide the cracks that open between neighbouring patches at
-// different subdivision depths (their edge polylines sample the
-// heightfield at different points). Each skirt vertex sits one grid cell
-// OUTSIDE the patch boundary, dropped to the patch's lowest terrain
-// radius nudged in by 5e-6 (above float precision at any body size, below
-// every point on all four edges). Normals/colors are copied from the
-// adjacent edge vertex so the skirt shades identically to the terrain
-// seam. Technique from Pioneer's GeoPatch; with backface culling on, the
-// skirt only rasterises at the limb, exactly where the cracks show.
-// Every patch gets a skirt, roots (depth 1) included: they fill the seams
-// between the six coarsest faces, and the reverse-Z depth rework gave the
-// skirt enough fragment precision to depth-test without zipper artefacts.
+// The patch grid (pure math; the GeoPatch ctor does the GL upload + Bullet
+// collision). The terrain grid is size x size; with a skirt it's
+// (size+2)^2, one extra ring of "skirt" vertices around it to hide the
+// cracks that open between neighbouring patches at different subdivision
+// depths. Each skirt vertex sits one grid cell OUTSIDE the patch boundary,
+// dropped to the patch's lowest terrain radius nudged in by 5e-6. Technique
+// from Pioneer's GeoPatch; with backface culling on, the skirt only
+// rasterises at the limb. Every patch gets a skirt, roots included.
 inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
                               int depth, glm::vec3 p1, glm::vec3 p2,
                               glm::vec3 p3, glm::vec3 p4)
 {
     GridGeom geom;
     // 49x49: the patch COUNT is set by the LOD budget in screen px
-    // (--terrain-px) alone; the grid size sets the on-screen triangle
-    // density (px/(size-1) per cell at the subdivision boundary). A big
-    // grid + a proportionally big budget keeps the same look and the
-    // same total triangles at a quarter of the patches, draw calls and
-    // subdivision-job rounds.
+    // (--terrain-px); the grid size sets the on-screen triangle density.
+    // A big grid + a proportionally big budget keeps the same look at a
+    // quarter of the patches and draw calls.
     const int size = 49;
     const int off = has_skirt ? 1 : 0;
     const int edge = size + 2 * off;
     const float frac = 1.0f / (size - 1);
 
-    // sized for the skirted grid (edge == size+2); a skirtless caller (off == 0)
+    // sized for the skirted grid (edge == size+2); a skirtless caller
     // just uses the first edge*edge of them
     geom.verts.resize((size_t)edge * (size_t)edge);
-    // The index loops below push exactly (edge-1)^2 or (size-1)^2 quads of 6
-    // (see the has_skirt skip), so reserve the exact count instead of paying
-    // ~14 geometric-growth reallocations per grid on the worker thread.
+    // Reserve the exact index count instead of paying geometric-growth
+    // reallocations per grid on the worker thread.
     geom.indices.reserve((size_t)(has_skirt ? edge - 1 : size - 1)
                          * (size_t)(has_skirt ? edge - 1 : size - 1) * 6);
 
     // Band-limit the heightfield to this grid (see terrainGridFade): the
     // fade is the same on every patch at this depth, so seam heights and
-    // normals agree between same-depth neighbours. The color jitter gets
-    // the same treatment (4 cells here), capped at a 16 m wavelength so
-    // even max-depth grids stay above their cell size.
+    // normals agree. The color jitter gets the same treatment.
     const float fade = terrainDepthFade(depth, size, t.surface.frequency);
     const float jitter_scale =
         std::min(t.radius / 16.0f, std::pow(2.0f, fade - 2.0f));
@@ -654,7 +543,7 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
 
     // The patch anchor (see GridGeom): the sphere centroid of the quad at
     // the band-limited height, in double. All baked positions are relative
-    // to it; the game side adds it back in double only.
+    // to it.
     const glm::dvec3 cdir = glm::normalize(glm::dvec3(p1) + glm::dvec3(p2)
                                          + glm::dvec3(p3) + glm::dvec3(p4));
     const glm::dvec3 anchor = cdir * (double)height_at(glm::vec3(cdir));
@@ -671,8 +560,7 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
             const float height = height_at(d);
 
             // The vertex color (palette / band, sea, contrast), with the
-            // jitter band-limited to this grid; the 2-D surface map uses
-            // the same function at full speckle.
+            // jitter band-limited to this grid.
             const glm::vec3 color = terrainSurfaceColor(d, t, jitter_scale);
             geom.verts[(size_t)(j + off) + (size_t)edge * (i + off)] =
                 TerrVert(anchored(d, height), d, color);
@@ -680,11 +568,9 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     }
 
     // normals: central differences over the whole inner grid. Stencils
-    // that reach past the patch sample the (band-limited) heightfield one
-    // cell outside -- it's analytic and shared, and same-depth neighbours
-    // use the same fade, so seam normals match and no line shows at the
-    // border. The skirt copies the edge normals; its dropped-down
-    // vertices never enter a stencil.
+    // past the patch sample the (band-limited) heightfield one cell
+    // outside -- same-depth neighbours use the same fade, so seam normals
+    // match. The skirt copies the edge normals.
     auto pos_at = [&](float u, float v) {
         const glm::vec3 d = terrainSpherePoint(p1, p2, p3, p4, u, v);
         return anchored(d, height_at(d));
@@ -711,31 +597,23 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
     }
 
     // skirt ring: a 45° wall from the patch boundary -- drops toward the
-    // planet center down to the patch's lowest radius and flares out along the
-    // surface by the same amount (so it's a constant 45° at every subdivision).
-    // Copies normal/color from the adjacent edge vertex (after the normal pass
-    // above, so it gets the final normals).
+    // planet center and flares out along the surface by the same amount.
+    // Copies normal/color from the adjacent edge vertex (after the normal
+    // pass above).
     if (has_skirt) {
         // 45° wall, constant across subdivision AND patch-proportional in
-        // length. Both legs -- the flare along the surface and the drop toward
-        // the planet center -- are one grid cell of the patch edge, so flare =
-        // drop = tan(45°)*drop and every quad is a 45° wall, while the length
-        // scales with the patch (big on coarse, small on fine). (The relief-
-        // based version lost that scaling: a coarse patch has little band-
-        // limited relief, so its skirts came out tiny and useless.) The flare
-        // lies under the neighbouring surface and is hidden by the depth test.
-        // edge_angle = acos(p1.p2) is the patch edge angle (1.231 rad for the
-        // root face, halved per subdivision), so one_cell is patch-proportional.
-        // To change the angle: flare = drop * tan(angle_from_vertical).
-        // To change the length: scale one_cell (e.g. 2*one_cell for a wider skirt).
+        // length (both legs are one grid cell of the patch edge). A
+        // relief-based version lost that scaling (coarse patches came out
+        // with tiny, useless skirts). The flare lies under the neighbouring
+        // surface and is hidden by the depth test. To change the angle:
+        // flare = drop * tan(angle_from_vertical).
         const float edge_angle = std::acos(glm::clamp(glm::dot(p1, p2), -1.0f, 1.0f));
         auto skirt_vertex = [&](int i, int j, float u, float v, int si, int sj) {
             const TerrVert &src = geom.verts[(size_t)sj + (size_t)edge * (size_t)si];
             // The edge vertex's direction + terrain radius, recomputed
             // analytically: src.pos is anchor-relative, so its length is
-            // no longer the radius (and adding the anchor back in float
-            // would reintroduce the radius-scale rounding the anchor
-            // exists to avoid).
+            // no longer the radius (adding the anchor back in float would
+            // reintroduce the radius-scale rounding the anchor avoids).
             const glm::vec3 d_edge = terrainSpherePoint(p1, p2, p3, p4,
                                                         (si - off) * frac,
                                                         (sj - off) * frac);
@@ -807,16 +685,13 @@ inline GridGeom buildGridGeom(const TerrainParams& t, bool has_skirt,
 }
 
 // ---------------------------------------------------------------------------
-// The patch tree: subdivision geometry + the LOD measure
-//
-// Pure math, here rather than in terrain.cpp so tests/test_terrain.cpp can
-// pin the numbers every subdivide/collapse decision is made from (a GeoPatch
-// needs GL to construct, so the game-side tree is only reachable through the
-// e2e battery).
+// The patch tree: subdivision geometry + the LOD measure (pure math, so
+// tests/test_terrain.cpp can pin the numbers every subdivide/collapse
+// decision is made from).
 // ---------------------------------------------------------------------------
 
-// The four children's corner quads of a patch: the edge midpoints (v01, v12,
-// v23, v30) + the shared center cn, each renormalized onto the unit sphere.
+// The four children's corner quads of a patch: the edge midpoints + the
+// shared center cn, each renormalized onto the unit sphere.
 inline void subdivideCorners(const glm::vec3 &v0, const glm::vec3 &v1,
                              const glm::vec3 &v2, const glm::vec3 &v3,
                              glm::vec3 quad[4][4]) {
@@ -834,14 +709,8 @@ inline void subdivideCorners(const glm::vec3 &v0, const glm::vec3 &v1,
 
 // A patch's characteristic size on the UNIT sphere (x radius = metres): the
 // mean of its four edge chords. Symmetric in the corners, which one arbitrary
-// edge is not -- the midpoint scheme above makes the quads unequal-edged, so
-// measuring only v0-v3 biased the LOD threshold by up to 28% between
-// same-depth siblings (two of one parent's four children measured 0.606 and
-// two 0.765), which read as one coarse patch inside an otherwise detailed
-// square. Against the patches' true linear size (sqrt of the spherical area)
-// the mean chord is flat to within ~7% at every depth down to max_depth,
-// where a single edge swings 28% (tests/test_terrain.cpp walks the tree and
-// pins both numbers).
+// edge is not -- the midpoint scheme makes the quads unequal-edged, and a
+// single edge biased the LOD threshold between same-depth siblings.
 inline double patchWidthUnit(const glm::vec3 &v0, const glm::vec3 &v1,
                              const glm::vec3 &v2, const glm::vec3 &v3) {
     return 0.25 * ((double)glm::length(v1 - v0) + (double)glm::length(v2 - v1)
@@ -849,34 +718,30 @@ inline double patchWidthUnit(const glm::vec3 &v0, const glm::vec3 &v1,
 }
 
 // Screen pixels per radian of a perspective camera whose fov is VERTICAL
-// (camera.cpp's projection: `x = t/aspect; // vertical fov`). One number
-// serves for a patch's width and its height alike: a square patch subtends
-// the same angle on both axes while the px-per-radian scale differs by
-// `aspect`, so the aspect cancels and must NOT appear here.
+// (camera.cpp's projection). One number serves for a patch's width and its
+// height alike: a square patch subtends the same angle on both axes while
+// the px-per-radian scale differs by `aspect`, so the aspect cancels and
+// must NOT appear here.
 inline double lodPxPerRad(int viewport_h, float fov_vertical) {
     return 0.5 * (double)viewport_h / std::tan((double)fov_vertical * 0.5);
 }
 
-// The patch's projected screen extent [px]. Exact, not small-angle: the
-// projection maps tan of the half-angle to pixels, and a flat patch of width
-// `width_m` square-on at distance `dist` has tan(theta/2) == (width_m/2)/dist,
-// so the product below is the true pixel span. Two approximations remain, both
-// second-order: the patch is curved/tilted rather than flat (errs toward
-// subdividing), and `dist` is the slant range to its centroid rather than the
-// axial depth (errs toward NOT subdividing for a patch off-axis -- the
-// foreshortening term the LOD does not model yet).
+// The patch's projected screen extent [px]. Exact, not small-angle:
+// tan(theta/2) == (width_m/2)/dist for a flat patch square-on at distance
+// `dist`. Two second-order approximations remain: the patch is curved/tilted
+// rather than flat (errs toward subdividing), and `dist` is the slant range
+// to its centroid rather than the axial depth (errs toward NOT subdividing
+// off-axis).
 inline double lodPxWidth(double width_m, double dist, double px_per_rad) {
     return (width_m / dist) * px_per_rad;
 }
 
-// The camera position in BODY-FIXED axes. `transform` is body-fixed -> render
-// frame and carries the body's SPIN as well as its position (render.cpp), so
-// the LOD's camera-to-patch distance has to undo the rotation, not just
-// subtract transform[3]: the patch corners and centroid are body-fixed, and
-// comparing them against a render-frame camera measures the distance to a
-// phantom camera rotated away by the spin -- up to 2*|p|, i.e. all the detail
-// landing at the wrong longitude. Identity rotation (a landed ship, whose
-// render frame IS the body's spin frame) hides it.
+// The camera position in BODY-FIXED axes. `transform` is body-fixed ->
+// render frame and carries the body's SPIN as well as its position, so the
+// LOD's camera-to-patch distance has to undo the rotation: the patch
+// corners and centroid are body-fixed, and a render-frame camera measures
+// the distance to a phantom camera rotated away by the spin. Identity
+// rotation (a landed ship) hides it.
 inline glm::dvec3 cameraInBodyFrame(const glm::dmat4 &transform,
                                     const glm::dvec3 &cam_rf) {
     const glm::dmat3 rot(transform);

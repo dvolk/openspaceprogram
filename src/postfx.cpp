@@ -12,24 +12,13 @@ static const float QUAD_VERTS[16] = {
      1.0f,  1.0f, 1.0f, 1.0f,
 };
 
-// The composite must draw inside a *real* VAO: this Mesa 26 core profile
-// answers GL_INVALID_OPERATION to any draw (or attribute state change)
-// made in the default VAO 0 (see tests/test_vertexless.c). Explicit
-// position/uv vertices are used instead of a gl_VertexID vertex-less
-// triangle because the latter produced a mis-mapped triangle on an
-// AMD driver (game image only in one screen quadrant).
-
-// Built-in effects. All share the fullscreen-quad vertex shader and the
-// `scene` input (texture unit 0); each registers exactly the uniforms
-// its fragment shader uses (setUniform_* by name no-ops the rest).
+// The composite must draw inside a *real* VAO: Mesa 26 core profile answers
+// GL_INVALID_OPERATION to any draw in the default VAO 0. Explicit
+// position/uv vertices (not gl_VertexID) because the latter mis-mapped on AMD.
 //
-// `name` is a requestable name (aliases resolve to the same `canonical`);
-// `canonical` is what the Effect is stored under, so "sharpen" and "cas"
-// both map to one "cas" effect. `params` are the effect's settable
-// parameters (each a uniform End() feeds from the stored value); the
-// registered uniform list is "scene" + the param names + extra_uniforms.
-// The "color" effect (alias "gamma"): gamma, brightness, black level and
-// saturation, each 1.0/0.0-neutral as its name says.
+// Built-in effects. All share the fullscreen-quad vertex shader and the
+// `scene` input (texture unit 0). `name` is a requestable name (aliases
+// resolve to the same `canonical`); `params` are settable parameters.
 static const FXParam COLOR_PARAMS[] = {
     { "gamma",       0.25f, 3.0f, 1.0f },
     { "brightness",  0.0f,  2.0f, 1.0f },
@@ -257,8 +246,7 @@ void PostFX::RebuildTargets(int width, int height)
         glBindTexture(GL_TEXTURE_2D, 0);
         check_gl_error();
 
-        // The scene depth-tests, so each target needs a depth attachment
-        // (float depth for good range precision).
+        // The scene depth-tests, so each target needs a depth attachment.
         glGenRenderbuffers(1, &m_depthRB[i]);
         glBindRenderbuffer(GL_RENDERBUFFER, m_depthRB[i]);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, width, height);
@@ -294,16 +282,14 @@ void PostFX::Resize(int width, int height)
 
 void PostFX::Begin()
 {
-    // The scene goes straight to the window (keeping the window's own MSAA)
-    // unless a postfx effect is active; then it renders into the offscreen
-    // target and End() runs the effect passes over it.
+    // Scene goes straight to the window (keeping its MSAA) unless a postfx
+    // effect is active; then it renders into the offscreen target.
     if(!Active()) return;
     if(m_fbo[0] == 0) {
         std::cerr << "PostFX::Begin() before Resize()" << std::endl;
         return;
     }
-    // (The viewport is owned by Renderer::onResize and matches the target
-    // size, so it is left alone here.)
+    // (The viewport is owned by Renderer::onResize; left alone here.)
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo[0]);
     check_gl_error();
 }
@@ -311,16 +297,14 @@ void PostFX::Begin()
 void PostFX::End()
 {
     // No effects: the scene already rendered straight to the window (Begin
-    // was a no-op); the UI draws on top after this and SwapBuffers shows it.
+    // was a no-op). The UI draws on top after this.
     if(!Active()) return;
 
     glDisable(GL_DEPTH_TEST);
     check_gl_error();
 
-    // The scene rendered into target 0 (Begin). Only the enabled effects
-    // run, in the order they were added; each reads one target and writes
-    // the other (the two ping-pong, so any count stacks) and the last
-    // composites to the screen.
+    // Only the enabled effects run, in the order they were added; each reads
+    // one target and writes the other (ping-pong) and the last composites.
     int nactive = 0;
     for(size_t i = 0; i < m_effects.size(); i++) {
         if(m_effects[i].enabled) nactive++;
@@ -347,8 +331,7 @@ void PostFX::End()
                                  glm::vec2((float)m_width, (float)m_height));
         e.shader->setUniform_vec1("time",
                                  (float)(SDL_GetTicks() / 1000.0));
-        // The settable parameters (the "color" effect's gamma/brightness/
-        // black_level/saturation); effects without any skip this loop.
+        // Settable parameters (effects without any skip this loop).
         for(int i = 0; i < e.def->n_params; i++) {
             e.shader->setUniform_vec1(e.def->params[i].name,
                                       e.param_values[i]);

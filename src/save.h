@@ -6,27 +6,15 @@
 //   dir/save.json          the global state + the ordered ship list
 //   dir/ships/<slug>.json  one file per vehicle (a ship or a kerbal)
 //
-// The world is deterministic from the clock (the bodies' orbits/spin are
-// functions of the analytic time, see frame.h), so saving the clock re-derives
-// the whole system -- no per-body integration state is stored. What IS
-// authoritative and must be saved is the fleet: each ship's part structure +
+// The world is deterministic from the clock (bodies' orbits/spin are
+// functions of the analytic time), so saving the clock re-derives the whole
+// system. What IS authoritative is the fleet: each ship's part structure +
 // tank contents + mass + pose + staging + docking + crew, and which ship is
-// active. Everything else (the parts' physics, the compound body, the fuel
-// groups) is re-derived by the build path on load.
+// active.
 //
-// A ship's pose is saved in the ship's CURRENT frame (the SOI body's inertial
-// frame for a coasting ship, its rotating surface frame for a grounded one)
-// plus a `rotating` flag -- restoring exactly that frame is simpler and more
-// faithful than normalizing to inertial. A part's pose is its ship-local
-// frame-S pose (the root is always identity), so the whole part tree --
-// including a docking seam or a dropped stage's rebase -- round-trips as the
-// geometry it actually is, not a re-derived attach spec.
-//
-// The pure JSON (de)serialization below (SaveMeta / SaveShip <-> nlohmann) is
-// header-only, as are the save-directory helpers (ensure_dir / list_saves /
-// delete_save -- std::filesystem ops, no game state): both are
-// unit-testable headless (tests/test_save.cpp) with no Game / Bullet link.
-// The Game-coupled capture/restore (save_game / load_game) lives in save.cpp.
+// The pure JSON (de)serialization and the save-directory helpers are
+// header-only (unit-testable headless). The Game-coupled capture/restore
+// (save_game / load_game) lives in save.cpp.
 
 #include <algorithm>
 #include <cstdint>
@@ -46,44 +34,28 @@
 #include "science.h"     // Experiment (science data on parts + the recover score)
 
 struct Game;   // save_game / load_game take one; forward-declared so this
-               // header stays free of game.h (and the unit test stays light)
+               // header stays free of game.h
 
-/* Cross-part references are keyed by Part::uid, NOT by the def-authored
+/* Cross-part references are keyed by Part::uid, NOT the def-authored
    instance id. `id` is unique only within one ship def, and a docked ship
-   carries two ships' parts in one list without renaming either -- so two ships
-   built from the same def collide on EVERY id, and resolving through an
-   id-keyed map silently picked whichever duplicate was inserted last: a wrong
-   controller after a round-trip, and a seam that reconstructed as the wrong
-   part so undock failed and left the ship permanently un-undockable. A uid is
-   minted per instance and distinct process-wide, so it stays a key across a
-   merge.
+   carries two ships' parts in one list without renaming either -- an
+   id-keyed map silently picked the wrong part (a wrong controller after a
+   round-trip, a seam that made undock fail forever).
 
-   A saved uid is THIS SAVE's key for the part, not a value to restore: on load
-   the rebuilt Part keeps the fresh uid its constructor minted, and the file's
-   uids are used only to wire the references back up. That keeps the live uid
-   sequence monotonic with no restore-and-bump-the-counter dance. Every part in
-   one save has a distinct uid because they were all live in one process when
-   it was written -- which is what lets the CROSS-ship references (a dock
-   target's port) resolve through a single map. */
+   A saved uid is THIS SAVE's key for the part, not a value to restore: on
+   load the rebuilt Part keeps the fresh uid its constructor minted. */
 
 // A part instance in a saved ship. `part` is the catalog (def) name, `uid`
-// the identity every reference names it by (must be nonzero -- a part with no
-// uid is a save that predates part identity and is refused on load), `id` the
-// def-authored instance id (kept: authoring, the VAB, diagnostics) and
-// `parent` the parent's uid (0 = this is the root, which is legitimate).
-// Note the two different meanings of 0: for a part's own `uid` it is a load
-// error, but for a *reference* (parent, controller, dock ports) it is the
-// legitimate "absent" default that load accepts. `pos`/`rot` are
-// the part's ship-local frame-S pose (the root is identity -- setRoot forces
-// it -- so they are the no-op defaults for part 0). `mass` is the part's OWN
-// body mass (kg) -- a capsule's saved mass is just its own; aboard crew are
-// separate SaveShips (is_crew) tracked through the containment edge, so their
-// mass is NOT baked into the capsule here (phase 3 dropped the addPartMass
-// bake; the compound derives it from the edge on load). `fuel` the
-// per-ResourceType current tank contents (kg; the capacity is the def's), and
-// `hull_margin` the part's resolved collision margin (the ship-level override
-// already applied, read from Part::body->hull_margin) so the rebuilt hull
-// matches the one that was saved.
+// the identity every reference names it by (must be nonzero -- 0 = a save
+// that predates part identity, refused on load), `id` the def-authored
+// instance id (NOT unique across a merge), `parent` the parent's uid
+// (0 = root). Note the two meanings of 0: for a part's own `uid` it is a
+// load error; for a *reference* it is the legitimate "absent" default.
+// `pos`/`rot` are the part's ship-local frame-S pose. `mass` is the part's
+// OWN body mass -- aboard crew are separate SaveShips (is_crew) tracked
+// through the containment edge, so their mass is NOT baked in here. `fuel`
+// the per-ResourceType current tank contents (kg). `hull_margin` is the
+// part's resolved collision margin so the rebuilt hull matches.
 struct SavePart {
     std::string part;
     uint64_t uid = 0;        // the key every cross-part reference uses; 0 = absent
@@ -99,10 +71,8 @@ struct SavePart {
        SaveShip::suit_experiments -- kept here too so a future instrument
        part round-trips the same way). Empty = none. */
     std::vector<Experiment> experiments;
-    /* Nested inventory items (phase 4.6): the parts parked in this part's
-       inventory (Part::ownedContents). Serialized depth-first (a contained
-       item is emitted inside its container, so load reconstructs the
-       container before its items). Empty for parts with no inventory. */
+    /* Nested inventory items (the parts parked in this part's inventory,
+       Part::ownedContents). Serialized depth-first. */
     std::vector<SavePart> inventory;
 };
 
@@ -139,13 +109,9 @@ struct SaveShip {
     std::string defPath;
     bool is_crew = false;
     SavePose pose;
-    /* The vessel's flight journal (SoI enter/leave history + start instant).
-       Persisted so a recovered vessel after a load shows its FULL mission,
-       not a journal that restarts at the load instant. Restored into
-       Vehicle::flog BEFORE the load's setSoi, so that setSoi's observe is a
-       no-op on an unchanged body (the journal continues where it left off).
-       A default (not-started) log is skipped on write and, on load, starts
-       fresh at the placement -- so an old save with no flog still works. */
+    /* The vessel's flight journal. Restored into Vehicle::flog BEFORE the
+       load's setSoi, so that setSoi's observe is a no-op on an unchanged
+       body. A default log is skipped on write. */
     FlightLog flog;
 
     // ship (is_crew false)
@@ -161,38 +127,27 @@ struct SaveShip {
     int total_stages = 1;
     int slew_request = 0;     // SlewMode (vehicle.h)
     std::vector<SaveDock> docks;
-    /* The dock target is named by SHIP NAME, its port by uid: the target is a
-       separate save file, so there is no shared part scope to name it in, and
-       ship names are the fleet's key (dedupName keeps them unique). The port
-       resolves through the load's one uid->Part map, which spans every file
-       because the uids were minted in one process. */
+    /* The dock target is named by SHIP NAME, its port by uid: the target is
+       a separate save file. The port resolves through the load's one
+       uid->Part map, which spans every file. */
     std::string dock_target_ship;    // "" = no target
     uint64_t dock_target_port = 0;   // part uid on the target ship (0 = none)
     uint64_t dock_arm_port = 0;      // this ship's own port part uid (0 = none)
 
     // crew (is_crew true)
     std::string aboard;       // the ship's name ("" = free / on EVA)
-    // the capsule Part the kerbal sits in, named by uid (NOT by index into the
-    // ship's part list). A uid is stable across a merge/split and, unlike an
-    // index, names the exact part regardless of the list's order -- and 0 is
-    // the "absent" sentinel, so a save that predates uid-keyed crew is refused
-    // on load rather than silently parked in part 0. Load also validates the
-    // target is a capsule (crew_capacity > 0); the index format had no such
-    // check, so a reordered save could park a kerbal in any part.
+    // the capsule Part the kerbal sits in, named by uid (NOT by index). 0 is
+    // the "absent" sentinel, so a save that predates uid-keyed crew is
+    // refused. Load also validates the target is a capsule.
     uint64_t aboard_part = 0; // the aboard ship's container part uid (0 = free / on EVA)
-    /* The kerbal's suit tank contents (kg per ResourceType, one entry per
-       type). Saved so a kerbal that burned some EVA propellant does not get a
-       free re-seed on load (phase 4.1). Empty = the save predates this field
-       and the suit is left at its init() re-seed (full). */
+    /* The kerbal's suit tank contents (kg per ResourceType). Saved so a
+       kerbal that burned some EVA propellant does not get a free re-seed on
+       load. Empty = the save predates this field. */
     std::vector<double> suit_fuel;
-    /* The kerbal's suit inventory (phase 4.6): the items parked in the suit
-       (Part::ownedContents), serialized the same depth-first way as a ship
-       part's `inventory`. Empty = no items (or a save that predates the
-       field). The suit's OWN fuel is suit_fuel; the suit part itself is
-       rebuilt from its def, so only its contents are saved here. */
+    /* The kerbal's suit inventory (Part::ownedContents), serialized the
+       same depth-first way as a ship part's `inventory`. */
     std::vector<SavePart> suit_inventory;
-    /* The kerbal's suit experiments (Part::experiments on the suit).
-       Unlimited in v1. Empty = none (or a save that predates the field). */
+    /* The kerbal's suit experiments (Part::experiments on the suit). */
     std::vector<Experiment> suit_experiments;
 };
 
@@ -207,16 +162,13 @@ struct SaveMeta {
     int time_accel = 1;      // recorded for the round-trip; load starts paused
     std::string active_ship; // display name ("" = none)
     /* Engine-performance difficulty: multiplies every engine's exhaust
-       velocity (thrust + delta-v scale by it, the fuel burn does not). Chosen
-       on the New Game setup window and stored here so a reload restores the
-       same difficulty -- a save is not portable across scales. */
+       velocity. Chosen on the New Game setup window; a save is not portable
+       across scales. */
     float exhaust_scale = 1.0f;
-    /* Science: the career score + the append-only log of every bank (one
-       Experiment per bank, with its provenance). Mirrors Game::science (a
-       science.h Career). Both default empty/0 for a save that predates
-       science. Permissive load: an older entry with a "count" field (the
-       first/last-era shape) expands to that many log entries; a bare
-       experiment (v1) is one entry. */
+    /* Science: the career score + the append-only log of every bank.
+       Both default empty/0 for a save that predates science. Permissive
+       load: an older entry with a "count" field expands to that many log
+       entries. */
     int science_score = 0;
     std::vector<Experiment> recovered;
     std::vector<std::string> ships;
@@ -247,15 +199,9 @@ inline glm::dvec3 vec3FromJson(const nlohmann::json &j) {
     return glm::dvec3(j[0].get<double>(), j[1].get<double>(), j[2].get<double>());
 }
 
-/* Read a saved part uid. A uid is only ever a non-negative integer (the writer
-   emits unsigned integers, and >2^63 round-trips exactly via number_unsigned),
-   so that is the only accepted form. Everything else -- a float (truncates:
-   5.9 would silently become uid 5, a VALID key, mis-resolving to the wrong
-   part), a negative (wraps to a huge unsigned, never 0, so it sails past the
-   "absent" sentinel and the duplicate check), or a non-number -- is returned
-   as `absent` (0 by default) and refused loudly on load. This is what keeps
-   the strict loader's "0 means absent" invariant from being defeated by a
-   corrupt value that `is_number()` would have happily admitted. */
+/* Read a saved part uid. Only a non-negative integer is accepted (a float
+   truncates to a VALID key, a negative wraps past the "absent" sentinel);
+   everything else is returned as `absent` and refused loudly on load. */
 inline uint64_t readUid(const nlohmann::json &j, const char *key, uint64_t absent = 0) {
     if(!j.contains(key)) { return absent; }
     const nlohmann::json &v = j.at(key);
@@ -444,8 +390,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     j["name"]     = s.name;
     j["defPath"]  = s.defPath;
     j["is_crew"]  = s.is_crew;
-    // Shared by ships and crew. Skipped when the journal never started, so a
-    // fresh vessel writes no flog and an old save (no flog key) loads clean.
+    // Shared by ships and crew. Skipped when the journal never started.
     if(s.flog.started) { j["flog"] = saveFlogToJson(s.flog); }
     if(s.is_crew) {
         if(!s.aboard.empty()) { j["aboard"] = s.aboard; }
@@ -504,14 +449,12 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("name") && j["name"].is_string()) { s.name = j["name"].get<std::string>(); }
     if(j.contains("defPath") && j["defPath"].is_string()) { s.defPath = j["defPath"].get<std::string>(); }
     if(j.contains("is_crew") && j["is_crew"].is_boolean()) { s.is_crew = j["is_crew"].get<bool>(); }
-    // Shared by ships and crew; absent (an old save) leaves flog default, so
-    // the load's setSoi starts a fresh journal at the placement.
+    // Shared by ships and crew; absent (an old save) leaves flog default.
     if(j.contains("flog") && j["flog"].is_object()) { s.flog = saveFlogFromJson(j["flog"]); }
     if(s.is_crew) {
         if(j.contains("aboard") && j["aboard"].is_string()) { s.aboard = j["aboard"].get<std::string>(); }
-        // uid-keyed (not an index): a string/float/negative reads as 0, the
-        // "absent" sentinel load refuses -- the same strict handling as every
-        // other part reference (controller, dock ports, fuel links).
+        // uid-keyed (not an index): a string/float/negative reads as 0,
+        // the "absent" sentinel load refuses -- like every other reference.
         s.aboard_part = readUid(j, "aboard_part");
         if(j.contains("pose") && j["pose"].is_object()) { s.pose = savePoseFromJson(j["pose"]); }
         if(j.contains("onRails") && j["onRails"].is_boolean()) { s.onRails = j["onRails"].get<bool>(); }
@@ -591,7 +534,7 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("active_ship") && j["active_ship"].is_string()) { m.active_ship = j["active_ship"].get<std::string>(); }
     if(j.contains("exhaust_scale") && j["exhaust_scale"].is_number()) {
         // Clamp like the CLI range (0.5-5): a hand-edited 0 would zero every
-        // engine's thrust, and a 1e6 would make the game unplayable.
+        // engine's thrust.
         m.exhaust_scale = j["exhaust_scale"].get<float>();
         if(m.exhaust_scale < 0.5f) { m.exhaust_scale = 0.5f; }
         if(m.exhaust_scale > 5.0f) { m.exhaust_scale = 5.0f; }
@@ -610,13 +553,9 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
 }
 
 /* The bodies the saved fleet sits on, in fleet order: each ship file's
-   pose.body (where the ship IS), falling back to its home body (where it was
-   built) when the pose names no body. Unique, first-wins. Empty when the save
-   is missing or unreadable. The boot --load path uses this to build exactly
-   those bodies' heavy phase synchronously -- the player is on them, wherever
-   the save put the fleet (loading a save landed on a non-home body must not
-   leave them streaming). Header-only like saveMetaFromJson (pure file reads),
-   so the unit test can exercise it. */
+   pose.body, falling back to its home body. Unique, first-wins. Empty when
+   the save is missing or unreadable. Used by the boot --load path to build
+   those bodies' heavy phase synchronously. */
 inline std::vector<std::string> saveShipBodies(const std::string &dir) {
     std::vector<std::string> bodies;
     nlohmann::json meta;
@@ -653,14 +592,9 @@ inline std::vector<std::string> saveShipBodies(const std::string &dir) {
 }
 
 // ---- the save-directory helpers (inline: pure file-system, no game state) --
-// All std::filesystem, so portable: the create/list/delete ops that used to
-// be POSIX (dirent + `rm -rf` via a shell) are now cross-platform calls, and
-// deleting no longer shells out at all.
 
-// Create dir (and any missing parents) if it does not exist. No-op if it does.
-// Non-throwing: a creation failure (e.g. an unwritable data dir) surfaces at
-// the subsequent file write, which names the actual file -- matching the old
-// mkdir(2) behavior of ignoring the mkdir error.
+// Create dir (and any missing parents) if it does not exist. Non-throwing:
+// a creation failure surfaces at the subsequent file write.
 inline void ensure_dir(const std::string &dir) {
     if(dir.empty()) { return; }
     std::error_code ec;
@@ -687,13 +621,11 @@ inline std::vector<std::string> list_saves(const std::string &base) {
 }
 
 // ---- games: the <stamp>-<name> dir a game's saves live under -------------
-// A "game" is one playthrough (one New Game start). Its slots live under
-// saves/<stamp>-<name>/: the dir name carries the START stamp (YYYYMMDD_HHMMSS,
-// local time -- it is the dir the player browses, so local, not the UTC
-// saved_at) and the user-chosen display name. Stamp-first, so `ls` sorts
-// the games chronologically (the UI list uses the same order). Same-named
-// games coexist: each start mints a fresh stamp, bumping the second while the
-// dir already exists (see newGameDir).
+// A "game" is one playthrough. Its slots live under saves/<stamp>-<name>/:
+// the dir name carries the START stamp (local time -- it is the dir the
+// player browses) and the user-chosen display name. Stamp-first, so `ls`
+// sorts the games chronologically. Same-named games coexist: each start
+// mints a fresh stamp (see newGameDir).
 
 // The local-time stamp newGameDir prepends: YYYYMMDD_HHMMSS.
 inline std::string gameStamp(time_t t) {
@@ -705,9 +637,9 @@ inline std::string gameStamp(time_t t) {
 }
 
 // A fresh game dir under base for a game named `name`: <stamp>-<name>. The
-// stamp starts at `now` and bumps one second at a time while the dir exists
-// (two same-named games started the same second must not share a dir --
-// their slots would mix). "" if 60 bumps do not clear it.
+// stamp bumps one second at a time while the dir exists (two same-named
+// games started the same second must not share a dir). "" if 60 bumps do
+// not clear it.
 inline std::string newGameDir(const std::string &base, const std::string &name,
                               time_t now = time(nullptr)) {
     namespace fs = std::filesystem;
@@ -720,10 +652,8 @@ inline std::string newGameDir(const std::string &base, const std::string &name,
 }
 
 // The display name of a game dir name: strip exactly ONE leading
-// <YYYYMMDD_HHMMSS>- (newGameDir prepends exactly one, so a name that itself
-// starts with stamp-like digits still round-trips: a game NAMED
-// "20260101_000000-restart" lists as itself). A dir without a leading stamp
-// -- renamed by hand -- keeps its whole name.
+// <YYYYMMDD_HHMMSS>- (so a name that itself starts with stamp-like digits
+// still round-trips). A dir without a leading stamp keeps its whole name.
 inline std::string gameDirName(const std::string &dirName) {
     static const size_t kStamp = 15;   // 8 digits + '_' + 6 digits
     // Need the stamp (0..14), a dash (15), and a non-empty name (16+).
@@ -731,9 +661,7 @@ inline std::string gameDirName(const std::string &dirName) {
         return dirName;
     }
     for(size_t i = 0; i < kStamp; i++) {
-        // Explicit '0'..'9', not std::isdigit (locale-dependent: under a
-        // non-C locale non-ASCII digits would count and a name could be
-        // mis-stripped).
+        // Explicit '0'..'9', not std::isdigit (locale-dependent).
         const char c = dirName[i];
         if((i == 8) ? (c != '_') : (c < '0' || c > '9')) {
             return dirName;
@@ -743,19 +671,16 @@ inline std::string gameDirName(const std::string &dirName) {
 }
 
 // One listed game: `dirName` the dir under base (the identity the slots live
-// under), `name` the display label (the stamp stripped; a duplicate label --
-// two same-named games -- gets its stamp appended so the rows stay
-// distinguishable).
+// under), `name` the display label (a duplicate label gets its stamp
+// appended so the rows stay distinguishable).
 struct GameEntry {
     std::string dirName;
     std::string name;
 };
 
-// List the games under base (e.g. the data dir's saves/): the subdirectories
-// holding at least one slot (list_saves non-empty), sorted by dirName --
-// chronological, like `ls`. A manifest-less slot dir (a legacy flat save
-// directly under base) is NOT a game, and neither is a game that never saved;
-// both stay loadable by full path.
+// List the games under base: the subdirectories holding at least one slot
+// (list_saves non-empty), sorted by dirName (chronological). A legacy flat
+// save directly under base is NOT a game.
 inline std::vector<GameEntry> list_games(const std::string &base) {
     std::vector<GameEntry> games;
     namespace fs = std::filesystem;
@@ -772,10 +697,9 @@ inline std::vector<GameEntry> list_games(const std::string &base) {
               [](const GameEntry &a, const GameEntry &b) {
                   return a.dirName < b.dirName;
               });
-    // Duplicate labels (two same-named games) get their stamp appended
-    // (YYYYMMDD_HHMMSS -> "YYYY-MM-DD HH:MM"; a stamped-out dir falls back
-    // to its whole dir name). Count from dirName (immutable), not name:
-    // appending as we go would un-duplicate the entries already labelled.
+    // Duplicate labels get their stamp appended. Count from dirName
+    // (immutable), not name: appending as we go would un-duplicate the
+    // entries already labelled.
     for(size_t i = 0; i < games.size(); i++) {
         const std::string orig = gameDirName(games[i].dirName);
         int n = 0;
@@ -795,9 +719,8 @@ inline std::vector<GameEntry> list_games(const std::string &base) {
     return games;
 }
 
-// Resolve a bare slot name under base (the data dir's saves/): base/<slot>
-// (a legacy flat save) first, then the UNIQUE base/<game>/<slot> (the
-// two-tier layout). "" when missing or ambiguous (two games hold the slot).
+// Resolve a bare slot name under base: base/<slot> (a legacy flat save)
+// first, then the UNIQUE base/<game>/<slot>. "" when missing or ambiguous.
 inline std::string find_slot(const std::string &base, const std::string &slot) {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -820,12 +743,10 @@ inline std::string find_slot(const std::string &base, const std::string &slot) {
 }
 
 // ---- quicksaves: a rotating pool of 100 slots in a game dir -------------
-// quicksave-00 .. quicksave-99. F5 (quicksave) writes quicksave-<max NN + 1>
-// (quicksave-00 for an empty game dir); once the pool is full -- or max NN is
-// 99 -- it OVERWRITES the oldest slot by mtime. F9 (quickload) loads the
-// NEWEST by mtime. Newest/oldest are mtime, not NN: after a wrap (or a hand
-// deletion) the number order no longer matches the age order, and mtime is
-// the directory's own truth -- no counter file to desync or lose.
+// quicksave-00 .. quicksave-99. F5 writes quicksave-<max NN + 1>; once the
+// pool is full (or max NN is 99) it OVERWRITES the oldest slot by mtime. F9
+// loads the NEWEST by mtime. Newest/oldest are mtime, not NN: after a wrap
+// (or a hand deletion) the number order no longer matches the age order.
 inline int quicksaveNN(const std::string &slot) {
     static const std::string kPfx = "quicksave-";
     if(slot.size() != kPfx.size() + 2) { return -1; }
@@ -841,19 +762,13 @@ inline std::string quicksaveName(int nn) {
     return buf;
 }
 
-// The pool's live slots in dir: name + the last-write time of its save.json
-// (a dir must hold a save.json to count -- same rule as list_saves).
+// The pool's live slots in dir: name + the last-write time of its save.json.
 //
-// The FILE's mtime, not the dir's: a quicksave OVERWRITES the slot in place
-// (save_game rewrites save.json and ships/), which advances the file's mtime
-// but not the slot dir's -- a dir's mtime only moves when entries are
-// added/removed, so dir age would freeze a reused slot at its CREATION time
-// and the pool would keep re-overwriting the same oldest-created slot (and
-// F9 would load the newest-created, not the newest-written, save).
+// The FILE's mtime, not the dir's: a quicksave OVERWRITES the slot in place,
+// which advances the file's mtime but not the slot dir's (a dir's mtime only
+// moves when entries are added/removed).
 //
-// Non-throwing throughout: a stat failure (a slot deleted mid-scan, perms)
-// skips the entry instead of escaping quicksave()/quickload() into the
-// uncaught main loop.
+// Non-throwing throughout: a stat failure skips the entry.
 inline std::vector<std::pair<std::string, std::filesystem::file_time_type>>
 quicksaveSlots(const std::string &dir) {
     std::vector<std::pair<std::string, std::filesystem::file_time_type>> out;
@@ -875,9 +790,8 @@ quicksaveSlots(const std::string &dir) {
     return out;
 }
 
-// Pool ordering: by save.json mtime, an mtime TIE (a 1s-resolution
-// filesystem, a cp/rsync'd saves tree) broken on the slot number --
-// deterministic either way, unlike directory_iterator order.
+// Pool ordering: by save.json mtime, an mtime TIE broken on the slot number
+// (deterministic, unlike directory_iterator order).
 inline bool quicksaveOlder(
         const std::pair<std::string, std::filesystem::file_time_type> &a,
         const std::pair<std::string, std::filesystem::file_time_type> &b) {
@@ -885,9 +799,9 @@ inline bool quicksaveOlder(
     return quicksaveNN(a.first) < quicksaveNN(b.first);
 }
 
-// The slot the next quicksave writes: quicksave-<max NN + 1>, or quicksave-00
-// for an empty/missing dir; when the pool is full -- or max NN is 99 (a
-// deletion left a hole past the top) -- the oldest live slot by mtime.
+// The slot the next quicksave writes: quicksave-<max NN + 1>, or
+// quicksave-00 for an empty/missing dir; when the pool is full (or max NN
+// is 99) the oldest live slot by mtime.
 inline std::string nextQuicksave(const std::string &dir) {
     const auto slots = quicksaveSlots(dir);
     int maxNN = -1;
@@ -917,9 +831,7 @@ inline std::string latestQuicksave(const std::string &dir) {
 
 // Delete the save at dir (recursive, no shell). Refuses a path not strictly
 // under the given base (a guard against a typo'd delete wiping something
-// else): the lexical relative path must be non-empty, not "." (dir == base),
-// have no root (a different drive / absolute escape), and contain no ".."
-// component at any depth (a ".." anywhere would climb out of the base).
+// else).
 inline void delete_save(const std::string &dir, const std::string &base) {
     namespace fs = std::filesystem;
     const fs::path rel = fs::path(dir).lexically_relative(fs::path(base));
@@ -941,12 +853,10 @@ inline void delete_save(const std::string &dir, const std::string &base) {
 
 // Capture the live game state (the fleet + crew + clock) into dir.
 // dir is created if missing. Throws std::runtime_error naming the file on a
-// write failure or an unresolvable ship (e.g. a part whose catalog name is
-// no longer in the parts file).
+// write failure or an unresolvable ship.
 void save_game(Game &g, const std::string &dir);
 
-// Replace the live game state with the one in dir: delete the current fleet
-// (ships + crew), rebuild it from the files, and restore the active ship +
-// the clock. Used both at startup (CLI --load, where the fleet was never
-// built) and at runtime (the in-game Load menu, where it replaces the fleet).
+// Replace the live game state with the one in dir: rebuild the fleet from
+// the files, and restore the active ship + the clock. Used at startup
+// (CLI --load) and at runtime (the in-game Load menu).
 void load_game(Game &g, const std::string &dir);

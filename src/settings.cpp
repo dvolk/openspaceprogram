@@ -1,7 +1,5 @@
-// settings.cpp -- SettingsData <-> settings.json (nlohmann). The reader
-// is deliberately permissive: it only touches a field when the key is
-// present AND of the expected type, so an absent (newer/older file) or
-// mistyped (hand-edited) field leaves s's current value in place.
+// settings.cpp -- SettingsData <-> settings.json (nlohmann). Permissive reader:
+// only touches a field when the key is present AND of the expected type.
 #include "settings.h"
 #include "datadir.h"
 
@@ -52,9 +50,8 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["flip_pitch"] = s.flip_pitch;
     j["flip_yaw"] = s.flip_yaw;
     j["flip_roll"] = s.flip_roll;
-    // keybinds: slot name -> list of {sc, mods}. Every slot is written (a
-    // cleared slot as an empty list), so a save->load round-trips exactly,
-    // including bindings the user unbound.
+    // keybinds: every slot is written (cleared slots as empty lists) so
+    // save->load round-trips exactly.
     nlohmann::json kb = nlohmann::json::object();
     for (size_t i = 0; i < (size_t)Slot::SLOT_COUNT; i++) {
         const char *name = slotName((Slot)i);
@@ -74,8 +71,7 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
 void settings_read(const nlohmann::json &j, SettingsData &s) {
     if(!j.is_object()) { return; }
 
-    // window_mode: a name (the same words --sim-mode / the e2e cases use);
-    // an unknown word keeps the current value.
+    // window_mode: a name (same words --sim-mode uses); unknown keeps the current value.
     if(j.contains("window_mode") && j["window_mode"].is_string()) {
         const std::string m = j["window_mode"].get<std::string>();
         if(m == "windowed" || m == "window") { s.window_mode = 0; }
@@ -106,17 +102,14 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
        j["reference_circles"].is_boolean()) {
         s.draw_skylines = j["reference_circles"].get<bool>();
     }
-    // postfx: a list of effect names. Unknown names are ignored here and
-    // again at apply time (only PostFX::Available() names are toggled).
+    // postfx: unknown names are ignored here and at apply time.
     if(j.contains("postfx") && j["postfx"].is_array()) {
         s.postfx_enabled.clear();
         for(const auto &e : j["postfx"]) {
             if(e.is_string()) { s.postfx_enabled.push_back(e.get<std::string>()); }
         }
     }
-    // postfx_params: effect -> param name -> value; non-object entries and
-    // mistyped values are skipped, the rest lands as-is (unknown effect or
-    // param names are harmless -- SetParam ignores them at apply time).
+    // postfx_params: mistyped entries are skipped.
     if(j.contains("postfx_params") && j["postfx_params"].is_object()) {
         s.postfx_params.clear();
         for(auto it = j["postfx_params"].begin();
@@ -155,8 +148,7 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
         s.terrain_px = j["terrain_px"].get<int>();
     }
     if(j.contains("cam_shake") && j["cam_shake"].is_number()) {
-        // A hand-edited file bypasses the CLI's 0-3 range; clamp it
-        // (a 100x rumble would swing the cam metres, not millimetres).
+        // Clamp: a hand-edited file bypasses the CLI's 0-3 range.
         s.cam_shake = j["cam_shake"].get<float>();
         if(s.cam_shake < 0.0f) { s.cam_shake = 0.0f; }
         if(s.cam_shake > 3.0f) { s.cam_shake = 3.0f; }
@@ -170,10 +162,7 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     if(j.contains("flip_roll") && j["flip_roll"].is_boolean()) {
         s.flip_roll = j["flip_roll"].get<bool>();
     }
-    // keybinds: object of slot name -> array of {sc, mods}. Per-slot merge
-    // (a slot the file does not mention keeps its current bindings), and
-    // mistyped entries are skipped, matching the rest of the reader. A
-    // present-but-empty list clears that slot (the user unbound it).
+    // keybinds: per-slot merge; a present-but-empty list clears that slot.
     if(j.contains("keybinds") && j["keybinds"].is_object()) {
         const nlohmann::json &kbo = j["keybinds"];
         for(auto it = kbo.begin(); it != kbo.end(); ++it) {

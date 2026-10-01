@@ -1,24 +1,8 @@
 // pick.h -- screen-space picking: which part did the player point at?
-//
-// Three layers, each usable on its own:
-//   pickRay      pixel -> ray in the RENDER frame (pure camera math,
-//                unit-testable headless -- the same convention as the
-//                render pass: view built in the render frame, whose
-//                -renderOrigin shift cancels the Draw sites' shift,
-//                leaving p_view = R * (p - cam.pos)).
-//   pickBody     a ray vs ONE rigid body's collision shape, via Bullet's
-//                own convex/concave cast (so a pick hits exactly what
-//                collides; works for triangle meshes -- terrain/pads --
-//                as well as convex hulls). A ship's parts are children of
-//                its ONE compound body rather than bodies of their own, so
-//                pickShipPart casts against those children instead; this
-//                stays the seam for a standalone body and the headless unit
-//                under test in tests/test_pick.cpp.
-//   pickShipPart the first concrete use of both: the nearest ship part
-//                under a pixel, across every ship (each in its own frame).
-//
-// New pickable kinds are "add candidates": anything with a btRigidBody +
-// collision shape can be ray-tested by pickBody.
+// Three layers: pickRay (pixel -> ray in the render frame), pickBody
+// (ray vs one body's collision shape via Bullet), pickShipPart (nearest
+// ship part under a pixel). castRay is the physics-free seam (no rigid
+// body) the VAB build tree picks against.
 
 #pragma once
 
@@ -47,23 +31,17 @@ struct PickBodyHit {
     double dist;        // from the ray origin
 };
 
-// Window pixel (top-left origin, SDL convention) -> ray in the render
-// frame. W/H = the viewport size (the window), px/py the pixel.
+// Window pixel (top-left origin) -> ray in the render frame.
 PickRay pickRay(const Camera &cam, int W, int H, int px, int py);
 
-// Ray vs one body's collision shape. ray must be in the SAME frame as
-// the body's world transform (callers transform it per ship). false = miss.
+// Ray vs one body's collision shape. ray must be in the body's frame.
 bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit);
 
-// Ray vs ONE collision shape at ONE transform, no rigid body required --
-// the physics-free seam the VAB build tree picks against (its parts have
-// hull shapes but no btRigidBody). ray and xform in the same frame.
+// Ray vs one collision shape at one transform (no rigid body required).
 bool castRay(const PickRay &ray, btCollisionObject *obj,
              const btCollisionShape *shape, const btTransform &xform,
              PickBodyHit &hit);
 
-// The nearest ship part under window pixel (px,py): every part of every
-// ship, nearest hit wins. false = nothing hit (ship/part/hit out-params
-// are untouched on a miss).
+// Nearest ship part under a pixel, across every ship. false = miss.
 bool pickShipPart(Game &g, int px, int py,
                   Vehicle *&ship, size_t &part, PickBodyHit &hit);

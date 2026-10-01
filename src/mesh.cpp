@@ -76,22 +76,15 @@ bool Mesh::FromFile(const std::string& fileName, bool copyData)
     return ok;
 }
 
-/* --- the shared file-asset registry (see mesh.h) -------------------------
-   One Mesh per file, shared by every part/pad that uses it: the assimp
-   import, the GPU buffers and the vs/is hull copies all happen once. The
-   map lives until process exit; the GL context teardown reclaims the
-   objects. Main-thread only (the job worker does pure math), so no lock. */
+/* Shared file-asset registry: one Mesh per file, main-thread only (no lock). */
 static std::map<std::string, Mesh *> s_meshes;
 
-/* A failed import leaves nothing to draw or collide with; stand in with a
-   unit cube (the same PosTexNorInd layout a file mesh gets, and the vs/is
-   copies, so BuildPartHull's convex hull still works). One cube per failed
-   key (cached, so no per-part re-import either way). */
+/* Failed import: stand in with a unit cube (same layout + vs/is so
+   BuildPartHull's convex hull still works). Cached per failed key. */
 static Mesh *placeholder_box() {
     PosTexNorIndInterface m;
     struct Face { glm::vec3 u; glm::vec3 v; };
-    // face plane spanned by (u, v), outward normal u x v; corners in
-    // (u, v) space at (-1,-1) (+u,-v) (+u,+v) (-u,+v) -- CCW from outside
+    // face plane spanned by (u, v), outward normal u x v; CCW from outside
     const Face faces[6] = {
         { glm::vec3( 1, 0, 0), glm::vec3(0,  1, 0) },  // +Z
         { glm::vec3(-1, 0, 0), glm::vec3(0,  1, 0) },  // -Z
@@ -169,10 +162,6 @@ void Mesh::InitMesh(const PosInterface & model) {
 
 void Mesh::InitMesh(const PosNorIndColInterface& model, bool copyData)
 {
-    // printf("InitMesh(): copyData: %d\n", copyData);
-    // printf("InitMesh(): model.positions.size(): %d\n", model.positions.size());
-    // printf("InitMesh(): model.indices.size(): %d\n", model.indices.size());
-
     if(copyData == true) {
         num_vertices = model.positions.size();
         vs = new double[num_vertices * 3];
@@ -343,9 +332,7 @@ void Mesh::FromData(const PosNorColVertex* vertices, unsigned int numVertices, c
     m_numInnerIndices = numInnerIndices;
 
     PosNorIndColInterface model;
-    // Reserve once: unreserved push_back grows each vector geometrically,
-    // ~45 reallocations per 51x51 terrain grid (the 2026-09-28 heaptrack
-    // pass ranked this our top allocator by a wide margin).
+    // Reserve once: unreserved push_back was our top allocator by a wide margin.
     model.positions.reserve(numVertices);
     model.normals.reserve(numVertices);
     model.colors.reserve(numVertices);
@@ -381,8 +368,7 @@ void Mesh::Draw()
 {
     glBindVertexArray(m_vertexArrayObject);
 
-    // when the mesh carries a skirt split, Draw() renders only the terrain;
-    // the tail is rendered by DrawSkirt() after the terrain's depth is in
+    // With a skirt split, Draw() renders only the terrain; DrawSkirt() the tail.
     unsigned int count = (m_numInnerIndices != 0) ? m_numInnerIndices : m_numIndices;
     glDrawElementsBaseVertex(GL_TRIANGLES, count, GL_UNSIGNED_INT, 0, 0);
 

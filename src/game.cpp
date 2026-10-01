@@ -1,8 +1,4 @@
-// game.cpp -- the control transitions of the running game (declared in
-// game.h): switching / removing the active ship, entering rails warp, the
-// UI window toggle and the orbit-camera focus resolution. These were
-// lambdas in main(); they touch the fleet (Ships) and the runtime state
-// (Game), so they live with the state.
+// game.cpp -- the control transitions of the running game (declared in game.h).
 #include "game.h"
 
 #include <algorithm>
@@ -13,13 +9,13 @@
 #include <random>
 #include <string>
 
-#include "eva.h"      // Kerbal (the crew characters)
-#include "inventory.h" // inventoryRemove / inventoryAdd (phase 4.3/4.4)
+#include "eva.h"      // Kerbal
+#include "inventory.h" // inventoryRemove / inventoryAdd
 #include "physics.h"  // AddPhysicsBody, RemoveBody, setPosRot
 #include "pick.h"     // pickShipPart (pickAt)
 #include "save.h"     // load_game (Game::loadFrom)
 #include "settings.h" // SettingsData + the settings.json JSON mapping
-#include "datadir.h"  // settings.json's location (the data directory)
+#include "datadir.h"  // settings.json's location
 #include "shipdef.h"  // PartDef (crew_capacity)
 #include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
 #include "terragen.h" // biomeAt / biomeName (the experiment's ground class)
@@ -28,7 +24,7 @@
 
 glm::dvec3 Game::focusWorldPos(int i) const {
     // Render frame: the ship's frame, or the home body's frame when there is
-    // no ship (the orbit-view state). A body focus resolves into it.
+    // no ship (the orbit-view state).
     Frame *rf = ship ? ship->frame : home->frame;
     if (focusTargets[i].body == nullptr) {
         return ship->get_center_of_mass();   // the "ship" target only exists with a ship
@@ -46,13 +42,9 @@ void Game::apply_ui_visible() {
 }
 
 /* TAB: hide the chrome for a clean screenshot, then put it back. Only the
-   LIVE scene's Persistent windows are touched. Root is left alone -- that is
-   what stops TAB blanking the title screen, which ui::Options::closable alone
-   would not do, since it only hides the X button while ui::SetOpen still
-   closes the window. Chrome and the Transient windows are skipped here and
-   hidden by ui_visible at draw time instead, so their open state survives the
-   toggle; the Root menus are not hidden at draw time either. The HUD is an
-   ordinary Persistent entry now and no longer needs the special case it had. */
+   LIVE scene's Persistent windows are touched. Root is left alone (so TAB
+   cannot blank the title screen). Chrome and Transient windows keep their
+   open state; a scene entry restores visibility. */
 void Game::toggle_windows() {
     ui_visible = !ui_visible;
     apply_ui_visible();
@@ -68,13 +60,9 @@ void Game::ensure_ui_visible() {
 
 /* Rebuild the imgui style from the Settings window state. A fresh
    ImGuiStyle every time: ScaleAllSizes() is lossy (it rounds every value
-   to an integer), so it must scale the unscaled defaults, not the
-   previous scale. The fresh default is already dark, so only light and
-   classic need their colors applied. FontScaleDpi scales the fonts too;
-   imgui 1.92+ sizes fonts dynamically, so no atlas rebuild is needed.
-   The themes ship semi-transparent window surfaces (WindowBg alpha
-   0.94/0.85), so make those solid -- otherwise the 3D scene still
-   seethroughs at full transparency and the slider can't reach opaque. */
+   to an integer), so it must scale the unscaled defaults. Themes ship
+   semi-transparent window surfaces -- make those solid or the slider
+   can't reach opaque. */
 void Game::apply_ui_style() {
     ImGuiStyle style;
     if(ui_style == 1) { ImGui::StyleColorsLight(&style); }
@@ -89,10 +77,10 @@ void Game::apply_ui_style() {
 }
 
 /* Settings persistence (the JSON mapping is in settings.cpp).
-   collect_settings reads the live state (args + Game + PostFX);
-   apply_settings writes it back, honoring the CLI mask (args.cli_given:
-   the command line beats the file, field by field). load starts from
-   collect, so a field the file does not mention keeps its current value. */
+   collect_settings reads the live state; apply_settings writes it back,
+   honoring the CLI mask (args.cli_given: the command line beats the file).
+   load starts from collect, so a field the file does not mention keeps its
+   current value. */
 static SettingsData collect_settings(Game &g) {
     SettingsData s;
     s.window_mode = (int)g.args.window_mode;
@@ -141,9 +129,7 @@ static void apply_settings_args(const SettingsData &s, GameArgs &args) {
 
 static void apply_settings_game(Game &g, const SettingsData &s) {
     if(!g.args.cli_given.postfx) {
-        // The effect set is one CLI unit (--postfx): apply the file's
-        // list. Unknown names are never touched -- only Available() names
-        // are iterated.
+        // The effect set is one CLI unit (--postfx): apply the file's list.
         for(const std::string &fx : PostFX::Available()) {
             const bool on =
                 std::find(s.postfx_enabled.begin(), s.postfx_enabled.end(),
@@ -169,8 +155,7 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     g.sfx_volume = s.sfx_volume;
     g.music_volume = s.music_volume;
     // Push to the Audio module (no-op while it is disabled). Runs at boot,
-    // after audio.init() + setMusic(): the music track starts at the saved
-    // level instead of the default 0.5 and then fading to it.
+    // after audio.init() + setMusic().
     g.audio.setSfxVolume(s.sfx_volume);
     g.audio.setMusicVolume(s.music_volume);
     g.flip_pitch = s.flip_pitch;
@@ -179,12 +164,9 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     g.binds = s.keybinds;
 }
 
-/* Startup phase 1 (main, before the Renderer): the file's args fields
-   must reach the window creation (the display mode/size + the MSAA count
-   are fixed in the GLX visual then), so they apply over the CLI defaults
-   here. SettingsData's defaults ARE the CLI defaults, so a field the
-   file does not mention lands back on the same value. No-op when the
-   file is absent. */
+/* Startup phase 1 (main, before the Renderer): the file's args fields must
+   reach the window creation (display mode/size + MSAA are fixed in the GLX
+   visual then). No-op when the file is absent. */
 void load_settings_args(GameArgs &args) {
     SettingsData s;
     if(!settings_load_file(s)) { return; }
@@ -204,19 +186,17 @@ bool Game::save_settings() {
     return (bool)f;
 }
 
-/* Startup phase 2 (main, once the Game exists): the Game + PostFX
-   fields. Started from the live state (collect_settings), so a field
-   the file does not mention keeps its current value. No-op when the
-   file is absent. */
+/* Startup phase 2 (main, once the Game exists): the Game + PostFX fields.
+   Started from the live state, so a field the file does not mention keeps
+   its current value. */
 void Game::load_settings() {
     SettingsData s = collect_settings(*this);
     if(!settings_load_file(s)) { return; }
     apply_settings_game(*this, s);
 }
 
-/* Push a one-shot on-screen message. The queue is bounded: expired
-   entries are dropped lazily here (a push is the only place the queue
-   grows), and anything beyond the cap falls off the front. */
+/* Push a one-shot on-screen message. The queue is bounded: expired entries
+   are dropped lazily here, and anything beyond the cap falls off the front. */
 void Game::toast(const char *fmt, ...) {
     char buf[256];
     va_list ap;
@@ -225,7 +205,6 @@ void Game::toast(const char *fmt, ...) {
     va_end(ap);
 
     // Mirror to stdout: the on-screen toast is transient, the log is not.
-    // Player-facing state changes (time accel, rails, staging, ...) land here.
     printf("[toast] %s\n", buf);
     fflush(stdout);
 
@@ -239,9 +218,8 @@ void Game::toast(const char *fmt, ...) {
     }
 }
 
-/* Part windows: open (or focus) the window for a picked part. Picking
-   the same part again just re-focuses the existing window -- the player
-   wants ONE window per part (several parts can be open at once). */
+/* Part windows: open (or focus) the window for a picked part. Picking the
+   same part again just re-focuses (one window per part). */
 void Game::openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
                           int mx, int my) {
     for(auto &sel : part_sels) {
@@ -271,11 +249,9 @@ void Game::clearFlightSummary() {
 /* Compute the situation experiment (identity + provenance) for a science
    run. The position is `localPart`'s COM on `poseVehicle` (null localPart =
    the vehicle's own COM, e.g. a free-EVA kerbal) in the body's rotating
-   frame -- the sub-satellite point the Surface Map / HUD use. A star or
-   banded gas giant has no classifiable biome (terragen.h): its finding is
-   global "of the body," biome left empty, but the situation is still valid
-   (you can orbit a sun). Both runExperiment (suit) and runPodExperiment
-   (pod) call this. */
+   frame. A star or banded gas giant has no classifiable biome: its finding
+   is global "of the body," biome left empty, but the situation is still
+   valid. Both runExperiment (suit) and runPodExperiment (pod) call this. */
 bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
                                Part *localPart, const std::string &type,
                                Kerbal *runner, Experiment &out) {
@@ -283,11 +259,9 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
         toast("No experiment: nothing to observe here");
         return false;
     }
-    // The COM is the part's position on its vehicle (a pod on a ship, an
-    // aboard kerbal's seat on the capsule); null localPart = the vehicle's
-    // own COM (a free-EVA kerbal, whose body is live). An aboard kerbal's
-    // body pose is frozen at board time (parked out of the physics world), so
-    // its own COM is stale after a long coast -- read the live capsule instead.
+    // The COM is the part's position on its vehicle; null localPart = the
+    // vehicle's own COM (a free-EVA kerbal). An aboard kerbal's body pose is
+    // frozen at board time, so its own COM is stale -- read the live capsule.
     const glm::dvec3 localCom = (localPart != nullptr)
         ? poseVehicle->partPos(localPart)
         : poseVehicle->get_center_of_mass();
@@ -302,9 +276,9 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     const glm::vec3 dir = glm::vec3(sp / r);
     const double altAsl = r - (double)body->radius;
     // Biome + situation, the two halves of the finding's key (game.h
-    // poseSituation, shared with the SURFACE readout).
+    // poseSituation).
     const PoseSituation ps = poseSituation(body, dir, altAsl, poseVehicle->isGrounded());
-    // A surface body's biome needs measured terrain (max_height, issue #54).
+    // A surface body's biome needs measured terrain (max_height).
     if(body->hasClassifiableSurface() && !body->ready) {
         toast("No experiment: terrain not ready");
         return false;
@@ -315,9 +289,7 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     out.situation = ps.situation;
     out.biome = (ps.biome != Biome::None) ? biomeName(ps.biome) : "";
     // Availability (ExperimentDef.valid_in): a family may not work in every
-    // situation (a seismometer: landed only). Refuse with where it DOES work
-    // so the player isn't guessing. (A barometer is NOT gated -- it runs from
-    // anywhere; it's just not biome-specific above flying-low.)
+    // situation. Refuse with where it DOES work so the player isn't guessing.
     if(!experimentValidIn(type, out.situation)) {
         std::string where;
         if(const ExperimentDef *d = defFor(type)) {
@@ -360,8 +332,8 @@ void Game::runExperiment(Kerbal *k) {
     }
     if(!suit->addExperiment(e)) {
         // The refusal is the per-TYPE cap (the suit holds one of each), not
-        // this specific biome -- say the type, not the finding, so a re-run in
-        // a 2nd biome doesn't read as "you already have the <old biome> one".
+        // this specific biome -- say the type so a re-run in a 2nd biome
+        // doesn't read as "you already have the <old biome> one".
         toast("Already holding one %s (the suit holds one of each) -- store it first",
               e.type.c_str());
         printf("[science] t=%.1f '%s' already held '%s'\n", time,
@@ -369,9 +341,7 @@ void Game::runExperiment(Kerbal *k) {
         fflush(stdout);
         return;
     }
-    // A key the career already recovered is a repeat: it still lands on the
-    // suit, but recovery scores it down (diminishing returns) -- say so now
-    // so the player knows what they are about to bank.
+    // A key the career already recovered is a repeat (scores less on recovery).
     const bool repeat = holdsExperiment(science.recovered, e);
     toast(repeat ? "Experiment (repeat): %s -- scores less"
                  : "Experiment: %s",
@@ -397,8 +367,7 @@ void Game::runPodExperiment(Part *pod, Kerbal *k) {
         return;
     }
     if(!pod->addExperiment(e)) {
-        // Same per-type cap (the pod holds one of its own family): name the
-        // type, not the biome, so a re-run in a 2nd biome isn't misread.
+        // Same per-type cap (the pod holds one of its own family).
         toast("Already holding one %s (the pod holds one) -- take it out first",
               e.type.c_str());
         printf("[science] t=%.1f '%s' already held '%s' (pod)\n", time,
@@ -430,16 +399,12 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
         return;
     }
     // Copy by value: `erase` below invalidates any reference into
-    // from->experiments, and push_back(e) then reads it -- a dangling
-    // reference (latent UB; only benign while `from` holds a single
-    // finding, since the erased element is the last and its memory is
-    // still intact).
+    // from->experiments (latent UB while `from` holds a single finding).
     const Experiment e = from->experiments[which];
     if(!to->canHold(e)) {
-        // The destination already holds this finding (exact key) or one of the
-        // same family (a courier/instrument's per-family cap). A capsule is
-        // unlimited-per-type, so "one per type" would be false -- name the
-        // finding instead, which is true in every case.
+        // Already holds this finding (exact key) or one of the same family.
+        // Name the finding (a capsule is unlimited-per-type, so "one per
+        // type" would be false).
         toast("Already holding: %s", experimentName(e).c_str());
         return;
     }
@@ -455,7 +420,7 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
 }
 
 /* The RMB-click entry point: pick the part under the cursor, open its
-   window, and log it. The [pick] line doubles as the e2e assertion. */
+   window, and log it (the [pick] line doubles as the e2e assertion). */
 void pickAt(Game &g, int px, int py) {
     Vehicle *ship = nullptr;
     size_t part = 0;
@@ -472,23 +437,15 @@ void pickAt(Game &g, int px, int py) {
     }
 }
 
-/* Switch the active (controlled) ship. The ship being left is released:
-   throttle zeroed, armed thrust + rotation commands cleared, and it parks
-   on rails (coasting or frozen) if it can. The ship being taken re-enters
-   physics. Taking control during rails warp drops the warp to 10 (the top
-   physics warp -- anything above is a rails warp) so the active ship is
-   integrated. The orbit camera recenters on the ship being taken. */
+/* Switch the active (controlled) ship. The ship being left is released
+   (throttle zeroed, commands cleared, parks on rails). The ship being taken
+   re-enters physics. Taking control during rails warp drops the warp to 10
+   so the active ship is integrated. */
 
 /* Keep the "ship" focus entry in sync with the active ship and point the
    camera focus at it -- or at a random non-star body (the title backdrop)
-   when there is none. select_ship enters the ship state; load_game can enter
-   OR leave it (a save may carry no active ship), so both route through this.
-
-   The orbit camera follows the state change: it keeps its old distance,
-   so re-centering must re-scale too (50 m around a ship is space; 2 radii
-   around a planet centre frames the title backdrop). Home sits at its own
-   frame's origin -- the render frame in the no-ship state -- so a backdrop
-   body resolves into it via focusWorldPos. */
+   when there is none. The orbit camera re-centers and re-scale with the
+   state change. */
 void Game::syncShipFocus() {
     if(ship != nullptr) {
         if(focusTargets.empty() || focusTargets[0].body != nullptr) {
@@ -506,24 +463,20 @@ void Game::syncShipFocus() {
         if(!focusTargets.empty() && focusTargets[0].body == nullptr) {
             focusTargets.erase(focusTargets.begin());
         }
-        // The shipless orbit view (the title backdrop): the session's
-        // backdrop body (pickTitleBody), not the home planet.
+        // The shipless orbit view (the title backdrop).
         parkTitleCamera();
     }
 }
 
 /* The title-screen backdrop body + its camera park. pickTitleBody chooses
-   the body (a random non-star, or the --title-body pin) and stores it as the
-   session's backdrop BEFORE the boot heavy phase, so that body is the
-   synchronous one -- the first frame is solid. Purely the menu backdrop: the
-   gameplay home (ship spawn, HUD time, saves) still anchors to `home`.
-   parkTitleCamera must run with focusTargets seeded; at every real call site
-   it is (boot after the list is built, and at runtime after load_game), but
-   a --load no-ship pass through load_game can reach it first, so an empty
-   list is a no-op and the boot call parks it for real. */
+   the body (a random non-star, or the --title-body pin) and stores it as
+   the session's backdrop BEFORE the boot heavy phase, so that body is the
+   synchronous one. Purely the menu backdrop: the gameplay home still
+   anchors to `home`. parkTitleCamera must run with focusTargets seeded;
+   an empty list is a no-op. */
 TerrainBody *Game::pickTitleBody() {
-    // A --title-body pin selects that body deterministically (a test /
-    // visual-regression hook); otherwise the pick is a random non-star body.
+    // A --title-body pin selects that body deterministically (a test hook);
+    // otherwise the pick is a random non-star body.
     if(!args.title_body.empty()) {
         if(TerrainBody *b = sys.find(args.title_body)) {
             return (titleBody = b);
@@ -547,17 +500,16 @@ TerrainBody *Game::pickTitleBody() {
 
 void Game::parkTitleCamera() {
     if(focusTargets.empty()) { return; }
-    // The backdrop is the session's pick (made before the boot heavy phase,
-    // so the body is the synchronous one); a runtime no-ship state on a
-    // system that never picked gets one now.
+    // The backdrop is the session's pick (made before the boot heavy phase);
+    // a runtime no-ship state on a system that never picked gets one now.
     if(titleBody == nullptr) { pickTitleBody(); }
     int idx = -1;
     for(int i = 0; i < (int)focusTargets.size(); i++) {
         if(focusTargets[i].body == titleBody) { idx = i; break; }
     }
     if(idx < 0) {
-        // Not a focus target: focusTargets and sys.bodies disagree, which
-        // should not happen -- pick fresh rather than park nowhere.
+        // Not a focus target: focusTargets and sys.bodies disagree -- pick
+        // fresh rather than park nowhere.
         pickTitleBody();
         for(int i = 0; i < (int)focusTargets.size(); i++) {
             if(focusTargets[i].body == titleBody) { idx = i; break; }
@@ -571,8 +523,8 @@ void Game::parkTitleCamera() {
         // overrides a free-cam pose (same as quitToTitle does for the ship).
         camera->mode = CAM_ORBIT;
         camera->Follow(focusWorldPos(idx));
-        // 2 radii from the centre frames the body at ~53 deg for ANY size
-        // (Kerbin and Pol look the same scale) -- don't "scale" it further.
+        // 2 radii frames the body at ~53 deg for ANY size -- don't "scale"
+        // it further.
         camera->distance = 2.0 * (double)b->radius;
         camera->ComputeView();
     }
@@ -582,8 +534,7 @@ void Game::parkTitleCamera() {
     fflush(stdout);
 }
 
-// The filename component of a path (the system files all live in
-// res/systems/ with distinct basenames, so comparing basenames is a robust
+// The filename component of a path (comparing basenames is a robust
 // "different system?" test that does not care about a "./" or absolute
 // prefix on either side).
 static std::string baseName(const std::string &p) {
@@ -592,14 +543,12 @@ static std::string baseName(const std::string &p) {
 }
 
 // The system file a save records (dir/save.json's "system"), or "" when the
-// file is missing / unreadable / predates the field. The load path compares
-// it to Game::systemPath to decide whether to switch into it first.
+// file is missing / unreadable / predates the field.
 static std::string saveSystemFile(const std::string &dir) {
     std::ifstream f(dir + "/save.json");
     if(!f) { return ""; }
     nlohmann::json j;
-    // Same permissive parse as load_game (comments allowed) so a save the
-    // loader would accept is also recognized here for its system.
+    // Same permissive parse as load_game (comments allowed).
     try { j = nlohmann::json::parse(f, nullptr, true); }
     catch(const std::exception &) { return ""; }
     return saveMetaFromJson(j).system;
@@ -607,18 +556,13 @@ static std::string saveSystemFile(const std::string &dir) {
 
 bool Game::newGame() {
     // Any vehicle in the world (not just the active one) means a game is
-    // running: a spawned-but-unselected ship, or a crew member aboard a
-    // capsule, would otherwise linger in the fresh world.
+    // running: a spawned-but-unselected ship would otherwise linger.
     if(!collectVehicles(sys).empty()) {
         toast("A game is already running");
         return false;
     }
-    // A new game starts in the Space Center with NO ship: the player then goes
-    // to the VAB to build and launch the first vessel (vabLaunch ->
-    // enterFlight). Nothing to build here -- the fleet stays empty until that
-    // launch -- so this is just "the Space Center is now the floor".
-    // Start paused so the world does not advance while the player sets up;
-    // WarpUp from 0 resumes at 1x.
+    // A new game starts in the Space Center with NO ship (the player goes to
+    // the VAB to build and launch the first vessel). Starts paused.
     time_accel = 0;
     clearFlightSummary();   // a prior recover's summary is not this game's
     science.reset();        // a fresh career: no score, nothing recovered
@@ -674,9 +618,8 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     if(exhaustScale > 5.0f) { exhaustScale = 5.0f; }
     args.exhaust_scale = exhaustScale;
     // The game's identity, minted AFTER the switch (a failed switch leaves no
-    // orphan dir): <stamp>-<name> under saves/, the first save fills it.
-    // Minting here (not lazily at first save) is what makes the same-second
-    // collision check sound.
+    // orphan dir): <stamp>-<name> under saves/. Minting here (not lazily at
+    // first save) is what makes the same-second collision check sound.
     const std::string gdir = newGameDir(datadir::saves(), name);
     if(gdir.empty()) {
         toast("Too many same-named games this second; try again");
@@ -703,24 +646,19 @@ std::string Game::ensureGameDir() {
 }
 
 // The save records the system it was made in (meta.system). If it is a
-// DIFFERENT system than the one running, switch into it FIRST (the in-process
-// swap) so the fleet loads onto the right bodies: a solar save loaded into KSP
-// would otherwise silently re-home the ship onto Kerbin (save.cpp's
-// find-else-fallback) instead of onto Earth. Returns true if the save's system
-// is ready (the current one, or a successful switch); false if the switch
-// failed (the current system keeps running). Shared by the UI/CLI load
-// (loadFrom) and the boot --load path, so both honor the save's system.
+// DIFFERENT system than the one running, switch into it FIRST so the fleet
+// loads onto the right bodies. True if the save's system is ready; false if
+// the switch failed (the current system keeps running). Shared by loadFrom
+// and the boot --load path.
 bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
     if(switched != nullptr) { *switched = false; }
     const std::string sysfile = saveSystemFile(dir);
     if(sysfile.empty() || baseName(sysfile) == baseName(systemPath)) {
         return true;   // same system (or none recorded) -- nothing to switch
     }
-    // The switch's heavy phase syncs the bodies the save's ships sit on --
-    // the player is on them, wherever the save put the fleet (a save landed
-    // on a non-home body is the common case) -- plus the new system's home,
-    // the load's find-else-fallback landing for a ship whose saved body is
-    // unknown there (last in the list, so the cap drops it first).
+    // Sync the bodies the save's ships sit on, plus the new system's home
+    // (the load's find-else-fallback landing). Home is last so the cap
+    // drops it first.
     std::vector<std::string> syncNames = saveShipBodies(dir);
     if(std::string hn = systemHomeName(sysfile); !hn.empty()) {
         syncNames.push_back(hn);
@@ -731,8 +669,6 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
         printf("[load] cannot switch to system '%s': %s\n",
                sysfile.c_str(), e.what());
         fflush(stdout);
-        // The reason (missing file, bad JSON, ...) is e.what(); surface it
-        // rather than assuming "cannot open".
         toast("Load failed: %s", e.what());
         return false;   // stay on the current system
     }
@@ -751,17 +687,15 @@ bool Game::loadFrom(const std::string &dir) {
         printf("[load] refused %s: %s\n", dir.c_str(), e.what());
         fflush(stdout);
         toast("Load failed: %s", e.what());
-        // If the switch above already ran, the old fleet is GONE (switchSystem
-        // tears it down) -- a failed load_game then leaves no vessel and the
-        // user is on a different system with no game. Route to the title so
-        // there is no Flight scene with a null ship. (Recovering the old game
-        // on this path is a known gap -- see the plan's C3 follow-up.)
+        // If the switch above already ran, the old fleet is GONE -- a failed
+        // load_game then leaves no vessel and the user is on a different
+        // system with no game. Route to the title so there is no Flight
+        // scene with a null ship.
         if(ship == nullptr) { enterTitle(*this); }
         return false;
     }
-    // A load is a fresh game: the thrust latch is per-active-ship and is not in
-    // the save, so clear it -- a latch engaged elsewhere (the Title shares the
-    // flight key map) must not light the loaded ship's engine on the first tick.
+    // A load is a fresh game: the thrust latch is per-active-ship and is not
+    // in the save, so clear it.
     thrust_latched = false;
     if(ship != nullptr) { enterFlight(*this); } else { enterTitle(*this); }
     return true;
@@ -799,15 +733,12 @@ void Game::unloadGame() {
     /* Tear the running fleet down to the shipless-boot state. ~Vehicle
        detaches the welds, unregisters the physics bodies and deletes the crew
        aboard, so walking each body's ship list and deleting is the whole
-       teardown -- the same pattern load_game's commit path uses. Aboard crew
-       are NOT in those lists (their ship owns them), so there is no double
-       free; a free EVA kerbal IS a top-level entry and is deleted like any
-       other vehicle. part_sels holds Part* into the fleet, so it goes first.
+       teardown. Aboard crew are NOT in those lists (their ship owns them);
+       a free EVA kerbal IS a top-level entry. part_sels holds Part* into the
+       fleet, so it goes first.
 
-       No job drain is needed: every background continuation (surface map,
-       porkchop grid, terrain) publishes into Game- or body-level state and
-       none dereferences the fleet, and the bodies and the Game both outlive
-       this -- so tearing the fleet down cannot dangle an in-flight job. */
+       No job drain is needed: every background continuation publishes into
+       Game- or body-level state and none dereferences the fleet. */
     part_sels.clear();
     clearFlightSummary();   // a summary from THIS game must not leak into the next
     science.reset();        // ...and neither must the career score / archive
@@ -819,9 +750,7 @@ void Game::unloadGame() {
     kerbal = nullptr;
     lastShip = nullptr;
     // The title screen is an orbit view: force orbit mode (a pilot quitting
-    // from free-cam would otherwise keep the free pose) before syncShipFocus
-    // drops the "ship" focus entry and re-aims at the title backdrop (a
-    // random non-star body).
+    // from free-cam would otherwise keep the free pose).
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
     syncShipFocus();
     printf("[game] unloaded: fleet torn down, no active vessel\n");
@@ -838,34 +767,26 @@ void Game::switchSystem(const std::string &path,
     /* In-process system switch: replace the running system with a different
        one, landing on the title screen. Transactional in two senses:
        (1) load the NEW system first, so a missing / malformed file throws with
-           the running game untouched (a failed switch is a clean no-op);
+           the running game untouched;
        (2) re-point the game at the NEW (live) system BEFORE the old bodies are
            deleted, so there is no window where sys / home / sun / focusTargets
-           point at freed memory. A throw from jobs.restart or postHeavyPhase
-           (after the re-point) still leaves the game on a live system.
+           point at freed memory.
 
          1. load_system (the light phase) -- if this fails, throw: nothing is
-            torn down yet, so the old system is still intact.
-         2. unloadGame -- the fleet is owned by the old bodies (terrain.h), so
-            it goes before the body delete; this deletes the ships and drops
-            the active-ship state.
-         3. re-point -- sys / home / sun / the Ships light source / focus
-            targets now reference the NEW system (alive); the old bodies are
-            held only by the local oldBodies vector below.
-         4. jobs.abort + delete the old bodies -- the pending terrain stream
-            captures old bodies (still alive here); abort() waits for the
-            in-flight body to finish its snapshot read, so the delete is safe;
-            the GeoPatch `alive` set is body-scoped, so it dies with the body.
+            torn down yet.
+         2. unloadGame -- the fleet is owned by the old bodies, so it goes
+            before the body delete.
+         3. re-point -- sys / home / sun / focus targets now reference the
+            NEW system; the old bodies are held only by oldBodies.
+         4. jobs.abort + delete the old bodies -- abort() waits for the
+            in-flight body to finish its snapshot read, so the delete is safe.
          5. jobs.restart -- abort() is terminal for the worker (a joined
-            std::thread can't be reused), so the runner must be brought back
-            before the new terrain is posted.
+            std::thread can't be reused).
          6. postHeavyPhase -- the same "build this system's bodies" path the
-            boot uses (the caller's sync set + the star synchronous, the rest
-            streamed).
+            boot uses (the caller's sync set + the star synchronous).
          7. land on the shipless title backdrop. */
-    // The shaders are registry singletons (compiled once, shared, never
-    // deleted): re-fetch the same files the boot used, with the same
-    // attrib/uniform registration, so this is a cache hit (not a recompile).
+    // The shaders are registry singletons: re-fetch the same files the boot
+    // used (cache hit, not a recompile).
     Shader *terrainshader = get_shader("res/shaders/terrainShader",
         { "position", "normal", "color" },
         { "MVP", "Normal", "lightDirection", "color", "anchor" });
@@ -888,15 +809,12 @@ void Game::switchSystem(const std::string &path,
         { "position", "normal" },
         { "MVP", "Normal", "lightDirection", "albedo", "opacity",
           "planetRadius" });
-    // Load FIRST: a failure here throws with the running game still intact
-    // (nothing is torn down yet).
+    // Load FIRST: a failure here throws with the running game still intact.
     System newSys = load_system(path.c_str(), terrainshader, sunshader, nullptr);
 
     unloadGame();
     // Re-point at the NEW (live) system before the old bodies are deleted, so
-    // sys / home / sun / focusTargets never reference freed memory (the old
-    // order deleted the bodies first, leaving them dangling until the
-    // re-point a few lines later).
+    // sys / home / sun / focusTargets never reference freed memory.
     std::vector<TerrainBody *> oldBodies = sys.bodies;
     sys = newSys;
     systemPath = path;   // the running system is now this one (save_game + load)
@@ -905,16 +823,14 @@ void Game::switchSystem(const std::string &path,
     titleBody = nullptr;   // the old system's pick dangles with oldBodies;
                            // parkTitleCamera / the sync-set block re-picks it
     surfmap_body = nullptr;   // a combo pick names an old-system body that is
-                              // deleted below (issue #72); surfmapCompute must
-                              // fall back to the new system's home, not deref
-                              // freed memory. invalidateClockStampedCaches
-                              // resets the map's CACHE but not the pointer --
-                              // and the load path (same system, bodies alive)
+                              // deleted below; surfmapCompute must fall back
+                              // to the new system's home. invalidateClock-
+                              // StampedCaches resets the map's CACHE but not
+                              // the pointer -- and the load path (same system)
                               // must keep its combo pick, so this goes here.
     /* load_system propagated the new tree at t=0, but the clock did not move
-       with it -- bring the bodies to `time` or a paused game (New Game starts
-       paused, and the title may have warped the clock a long way) renders the
-       new system at t=0 and snaps on the first unpaused tick. */
+       with it -- bring the bodies to `time` or a paused game renders the new
+       system at t=0 and snaps on the first unpaused tick. */
     syncRails();
     ships.setSun(sun);
     focusTargets.clear();
@@ -923,22 +839,18 @@ void Game::switchSystem(const std::string &path,
     }
     focusBody = 0;
     // The planner's plan + grid and the surface map were built for the OLD
-    // system's bodies (their positions, its sun, its terrain): drop them now
-    // that the game points at the new system, so a stale launch window or
-    // terminator never shows under the new system's bodies. Same invalidation
-    // as a clock jump (setTime), since both move the world out from under the
-    // caches.
+    // system's bodies: drop them now that the game points at the new system.
+    // Same invalidation as a clock jump (setTime).
     invalidateClockStampedCaches();
     // The old bodies are now unreachable from the game state (held only by
-    // oldBodies): abort the pending terrain stream (it captures them -- still
-    // alive) and delete them.
+    // oldBodies): abort the pending terrain stream (it captures them) and
+    // delete them.
     jobs.abort();
     for(TerrainBody *b : oldBodies) { delete b; }
     jobs.restart();
-    // The sync set: the caller's context (a save's ship bodies, the hub's
-    // home) resolved against the NEW system; unknown names drop out. A bare
-    // switch (no names) lands on the title, so the backdrop body is the one
-    // that must be solid. The star is added by postHeavyPhase itself.
+    // The sync set: the caller's context resolved against the NEW system;
+    // unknown names drop out. A bare switch (no names) lands on the title,
+    // so the backdrop body is the one that must be solid.
     std::vector<TerrainBody *> sync;
     for(const std::string &n : syncNames) {
         if(TerrainBody *b = sys.find(n)) { sync.push_back(b); }
@@ -964,14 +876,12 @@ void Game::switchSystem(const std::string &path,
 
 void Game::settleFleet(Vehicle *active) {
     /* Apply each ship's scenario. Ships sharing a body+scenario group get
-       their own slot (20 m apart along the orbit binormal for an orbit start,
-       along the pad for a ground one) so they do not spawn on top of each
-       other; ships placed with a null scenario are skipped. */
+       their own slot (20 m apart) so they do not spawn on top of each other;
+       ships placed with a null scenario are skipped. */
     ships.apply_scenarios(sys, time);
     /* Idle ships park on rails: flying ones coast on their conic, pad ships
-       freeze in the surface frame (their pose rides the planet's spin via the
-       render transform). Ships that are neither in free fall nor grounded
-       refuse and stay in the physics world. */
+       freeze in the surface frame. Ships that are neither in free fall nor
+       grounded refuse and stay in the physics world. */
     for(auto *b : sys.bodies) {
         for(auto *s : b->ships) {
             if(s != active) { s->goOnRails(); }
@@ -982,39 +892,30 @@ void Game::settleFleet(Vehicle *active) {
 void Game::select_ship(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
     // An EVA character aboard a ship is not directly controllable: it is
-    // parked inside a capsule (out of the physics world, rail-frozen) and is
-    // owned by that ship (its Vehicle::crew), so it is not a free vehicle to
-    // drive. EVA it from the capsule part window (or the V key) first.
-    // (phase 3: the old "its mass is folded into that part" reason is gone --
-    // the mass is derived through the containment edge -- but a parked,
-    // ship-owned kerbal still cannot be selected directly.)
+    // parked inside a capsule and owned by that ship. EVA it from the capsule
+    // part window (or the V key) first.
     if(v->isCrewAboard()) {
         toast("%s is aboard -- EVA it from its capsule first",
               v->name.c_str());
         return;
     }
-    // The old active ship (null when launching from the orbit-view state,
-    // where there was no ship to release).
+    // The old active ship (null when launching from the orbit-view state).
     if(ship != nullptr) {
         ship->releaseControl();
         ship->goOnRails();
     }
     v->leaveRails();
     ship = v;
-    // The thrust latch is per-active-ship: a new ship starts with thrust
-    // released (the user re-latches if they want it on this ship).
+    // The thrust latch is per-active-ship: a new ship starts with thrust released.
     thrust_latched = false;
     if(time_accel >= kRailsWarp) {
         time_accel = 10;
         toast("Active ship: %s, warp 10x", ship->name.c_str());
     }
     // A ship is active now: the "ship" focus target may be absent (an
-    // orbit-view boot), so sync it in at index 0 -- and re-center + re-scale
-    // the orbit camera onto the new ship.
+    // orbit-view boot), so sync it in at index 0.
     syncShipFocus();
-    // "N of M" in the canonical order (collectVehicles, ships.h) -- the
-    // same order F6 and the Ship List window walk. N = v's position, M = the
-    // whole fleet (ships + aboard crew).
+    // "N of M" in the canonical order (collectVehicles, ships.h).
     int n = 0, i = 0;
     for(auto *x : collectVehicles(sys)) {
         n++;
@@ -1024,12 +925,8 @@ void Game::select_ship(Vehicle *v) {
 }
 
 /* --- crew (characters aboard ships; decls at the bottom of game.h). The
-   aboard crew live on their ship (Vehicle::crew), so the queries read it
-   directly; the free kerbals are the isEva ships in the bodies' lists.
-   The transitions move the kerbal's mass onto/off the capsule part and
-   park/restore its body (parked = out of the physics world, the same
-   railFrozen convention as a grounded railed ship), and move it between
-   ship->crew and its SoI body's ship list. */
+   aboard crew live on their ship (Vehicle::crew); the free kerbals are the
+   isEva ships in the bodies' lists. */
 
 std::vector<Kerbal *> shipCrew(Vehicle *ship) {
     std::vector<Kerbal *> out;
@@ -1038,12 +935,9 @@ std::vector<Kerbal *> shipCrew(Vehicle *ship) {
 }
 
 std::vector<Kerbal *> partCrew(Part *capPart) {
-    /* step 2.4: read the containment edge (capPart->contents) instead of
-       scanning the ship's crew by aboardPart. A crew member's owner is the
-       character (checkPartInvariants guarantees isEva), so the cast is safe.
-       phase 4: contents may also hold inventory items -- they are in the
-       container's ownedContents and their owner is the carrier, NOT a
-       Kerbal, so they are skipped. */
+    /* Read the containment edge (capPart->contents). A crew member's owner
+       is the character; inventory items are skipped (their owner is the
+       carrier, not a Kerbal). */
     std::vector<Kerbal *> out;
     for(Part *p : capPart->contents) {
         if(p->ownedBy(capPart)) { continue; }
@@ -1064,9 +958,7 @@ std::vector<Kerbal *> freeKerbals(System &sys) {
 
 /* The take/store reach check: `k` must be FREE (on EVA, not aboard) and
    within kBoardingRange of `part`. The part's COM is taken in the kerbal's
-   frame (a raw subtraction is a distance only within one frame -- the same
-   reasoning the Board button uses, gameui.cpp), so the two frames can
-   differ without the reach drifting. */
+   frame (a raw subtraction is a distance only within one frame). */
 bool Game::kerbalInRange(Kerbal *k, Part *part) {
     if(k == nullptr || part == nullptr || part->owner == nullptr) {
         return false;
@@ -1078,14 +970,9 @@ bool Game::kerbalInRange(Kerbal *k, Part *part) {
     return dist <= kBoardingRange;
 }
 
-/* Take `k` out of its capsule: move its mass off the capsule (the ship
-   gets lighter), place it standing / hovering just beside the capsule
-   (relative to the capsule part), restore its body to the physics world,
-   and hand the player control of it. The kerbal moves from ship->crew to
-   the ship's SoI body's ship list (its frame follows the ship's, so its
-   pose -- set in the ship's frame -- is integrated in the right frame).
-   The capsule part keeps the rest of the ship; the kerbal is now a live
-   body the player can fly / walk. */
+/* Take `k` out of its capsule: move its mass off the capsule, place it
+   beside the capsule (standing if grounded, co-moving if not), restore its
+   body to the physics world, and hand the player control of it. */
 void Game::kerbalEVA(Kerbal *k) {
     if(!k->isAboard()) {
         toast("EVA: %s is not aboard a ship", k->name.c_str());
@@ -1097,11 +984,10 @@ void Game::kerbalEVA(Kerbal *k) {
     Body *kb = k->hull;
 
     /* the standing / hover pose beside the capsule: a grounded ship ->
-       stand on the same floor (the capsule's bottom) just outside its
-       side, an orbiting one -> hover beside it co-moving. The branch is
-       the ship's GROUNDED state, not its frame's rotation: an orbiting
-       ship may ride either frame, and a zero velocity in a rotating frame
-       is planet-co-rotating free fall, not a hover. */
+       stand on the same floor just outside its side, an orbiting one ->
+       hover beside it co-moving. The branch is the ship's GROUNDED state,
+       not its frame's rotation: a zero velocity in a rotating frame is
+       planet-co-rotating free fall, not a hover. */
     const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dvec3 upDir = glm::normalize(capCom);
     const glm::dvec3 refs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
@@ -1124,29 +1010,24 @@ void Game::kerbalEVA(Kerbal *k) {
         SetVelocity(kb, ship->partVel(capPart));   // co-moving beside the ship
     }
 
-    /* the kerbal now lives beside the ship: same SoI body (its ship list)
-       and same frame as the ship. While aboard its frame was set once at
-       build time and the pose was bookkeeping; the ship may have moved on
-       (or changed SoI) since, so both follow the ship now -- setSoi does
-       the re-home. Order matters: the aboardPart clear + crew erase run
-       FIRST, because setSoi keys its ships-list membership on
-       isCrewAboard() (free -> it enters the body's ships list). */
+    /* the kerbal now lives beside the ship: same SoI body and same frame as
+       the ship. Order matters: the aboardPart clear + crew erase run FIRST,
+       because setSoi keys its ships-list membership on isCrewAboard(). */
     for(auto it = ship->crew.begin(); it != ship->crew.end(); it++) {
         if(*it == k) { ship->crew.erase(it); break; }
     }
     k->aboardPart = nullptr;
     k->setSoi(ship->frame, time);
-    /* step 2.4: clear the containment edge (the kerbal leaves the capsule) --
+    /* clear the containment edge (the kerbal leaves the capsule) --
        both directions, so checkPartInvariants still holds. */
     for(auto it = capPart->contents.begin(); it != capPart->contents.end(); it++) {
         if(*it == k->parts[0]) { capPart->contents.erase(it); break; }
     }
     k->parts[0]->container = nullptr;
-    /* phase 3: the ship's mass no longer comes from a baked capsule body
-       (addPartMass is gone) -- it is the capsule's effectiveMass, which just
-       lost the kerbal through the edge. Rebuild now (one-off, large) so the
-       next physics step sees the lighter ship; the edge is cleared first, so
-       checkPartInvariants inside the rebuild still holds. */
+    /* the ship's mass is the capsule's effectiveMass, which just lost the
+       kerbal through the edge. Rebuild now so the next physics step sees the
+       lighter ship; the edge is cleared first, so checkPartInvariants inside
+       the rebuild still holds. */
     ship->rebuildCompound();
 
     /* back into the physics world (it was parked while aboard) */
@@ -1158,8 +1039,7 @@ void Game::kerbalEVA(Kerbal *k) {
     lastShip = ship;
     select_ship(k);
     toast("EVA: %s", k->name.c_str());
-    /* log the capsule's slot in the ship's part list (e2e 29 pins "part 0"):
-       the state is a Part* now, so map it back to its index for the line. */
+    /* log the capsule's slot in the ship's part list (e2e pins "part 0"). */
     int capIdx = 0;
     for(size_t i = 0; i < ship->parts.size(); i++) {
         if(ship->parts[i] == capPart) { capIdx = (int)i; break; }
@@ -1168,13 +1048,10 @@ void Game::kerbalEVA(Kerbal *k) {
            time, k->name.c_str(), ship->name.c_str(), capIdx);
 }
 
-/* Put a free kerbal `k` into the capsule (ship, part): move its mass
-   onto the capsule (the ship gets heavier), park its body inside at the
-   capsule's COM (out of the physics world), and set its aboard state --
-   it moves from its SoI body's ship list to ship->crew (frame/m_parent
-   follow the ship, so the parked pose is consistent). Refuses a full
-   capsule or a non-capsule part. If the player was controlling the kerbal,
-   hand control to the ship it entered. */
+/* Put a free kerbal `k` into the capsule (ship, part): move its mass onto
+   the capsule, park its body inside at the capsule's COM, and set its aboard
+   state. Refuses a full capsule or a non-capsule part. If the player was
+   controlling the kerbal, hand control to the ship it entered. */
 void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     if(k->isAboard()) {
         toast("Board: %s is already aboard", k->name.c_str());
@@ -1202,19 +1079,18 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     k->railFrozen = true;
     // Parked, following the ship's SoI + frame: setSoi does the re-home.
     // aboardPart is set FIRST -- that is what setSoi keys its ships-list
-    // membership on, so the free kerbal leaves its body's list here (and
-    // the arrival SoI is journaled).
+    // membership on.
     k->aboardPart = capPart;
     k->setSoi(ship->frame, time);
     ship->crew.push_back(k);
-    /* step 2.4: register the containment edge (the kerbal's part is parked in
-       the capsule, both directions). Vehicle::crew stays the sole owner;
-       contents is a non-owning back-reference (2.1). */
+    /* register the containment edge (the kerbal's part is parked in the
+       capsule, both directions). Vehicle::crew stays the sole owner;
+       contents is a non-owning back-reference. */
     capPart->contents.push_back(k->parts[0]);
     k->parts[0]->container = capPart;
-    /* phase 3: the ship's mass is the capsule's effectiveMass, which just
-       gained the kerbal through the edge (no more addPartMass bake). Rebuild
-       now (one-off, large) so the next physics step sees the heavier ship. */
+    /* the ship's mass is the capsule's effectiveMass, which just gained the
+       kerbal through the edge. Rebuild now so the next physics step sees the
+       heavier ship. */
     ship->rebuildCompound();
     if(kerbal == k) { kerbal = nullptr; }
     toast("Board: %s -> %s", k->name.c_str(), ship->name.c_str());
@@ -1229,23 +1105,21 @@ void Game::kerbalBoard(Kerbal *k, Vehicle *ship, size_t part) {
     }
 }
 
-/* phase 4.4: drop an inventory item -- it becomes a free 1-part ship. */
+/* Drop an inventory item -- it becomes a free 1-part ship. */
 Vehicle *Game::dropItem(Part *item) {
     if(item == nullptr || item->container == nullptr) { return nullptr; }
     Vehicle *carrier = item->container->owner;
     if(carrier == nullptr) { return nullptr; }
     /* a parked carrier (on rails, or an aboard kerbal's frozen hull) has a
-       stale hull state, and its pose may sit inside another ship's hull --
-       the item would spawn in collision or with the wrong velocity. Only a
-       live carrier can shed items. */
+       stale hull state -- the item would spawn in collision or with the
+       wrong velocity. Only a live carrier can shed items. */
     if(carrier->onRails) {
         toast("Drop: %s is parked", carrier->name.c_str());
         return nullptr;
     }
 
-    /* the item's world pose = its container's pose (it sits at the
-       container's COM). Rigid velocity: v + w x r (the same derivation
-       as extractSubtreeAsShip's vOut, for a 1-part drop where root == COM). */
+    /* the item's world pose = its container's pose. Rigid velocity:
+       v + w x r (same derivation as extractSubtreeAsShip's vOut). */
     glm::dvec3 itemPos; glm::dmat3 itemRot;
     carrier->partWorldPose(item->container, itemPos, itemRot);
     const glm::dvec3 com = carrier->comPos();
@@ -1253,7 +1127,6 @@ Vehicle *Game::dropItem(Part *item) {
                        + glm::cross(GetAngVelocity(carrier->hull),
                                    itemPos - com);
 
-    /* remove from the container (ownership + traversal) */
     inventoryRemove(item);
 
     /* build the 1-part ship */
@@ -1273,20 +1146,19 @@ Vehicle *Game::dropItem(Part *item) {
     SetAngVelocity(nv->hull, GetAngVelocity(carrier->hull));
     nv->enterWorld();
     /* the carrier's compound still carries the item's mass + inertia --
-       rebuild it now (pickUpItem's counterpart), so a small cargo drop
-       never rides the stale compound into the next step */
+       rebuild it now (pickUpItem's counterpart) */
     carrier->rebuildCompound();
     toast("Dropped %s", item->def->name.c_str());
     return nv;
 }
 
-/* phase 4.4: pick up a dropped item -- re-parent it into the container. */
+/* Pick up a dropped item -- re-parent it into the container. */
 bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     if(itemShip == nullptr || dest == nullptr) { return false; }
     if(itemShip->parts.size() != 1) { return false; }
     /* a crewed ship is not cargo: ~Vehicle deletes its crew, and the
        capsule's contents (the suit part) would dangle inside the
-       destination container -- mirror remove_ship's guard */
+       destination container */
     if(!shipCrew(itemShip).empty()) {
         toast("Pick up: %s has crew aboard -- EVA them out first",
               itemShip->name.c_str());
@@ -1295,22 +1167,19 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
     Part *item = itemShip->parts[0];
     if(!dest->isContainer()) { return false; }
 
-    /* re-parent into the destination container */
     if(!inventoryAdd(item, dest)) {
         toast("Pick up: %s is full", dest->def->name.c_str());
         return false;
     }
 
     /* remove the item ship from the fleet + destroy it. The item itself is
-       now owned by dest (in its ownedContents) and still in itemShip's
-       parts list -- so clear the list BEFORE the delete: ~Vehicle deletes
-       its parts, and leaving the item in would free it here AND again when
-       ~Part(dest) runs. */
+       now owned by dest and still in itemShip's parts list -- so clear the
+       list BEFORE the delete: ~Vehicle deletes its parts, and leaving the
+       item in would free it here AND again when ~Part(dest) runs. */
     itemShip->detachSoiList();
     // Clear every bookkeeping reference that points at the doomed ship so the
-    // next tick doesn't dereference it (mirror remove_ship's pre-delete
-    // guards). Picking up the ship you are flying leaves orbit-view; handing
-    // control to the carrier is the pickup UI's job (4.4 wiring).
+    // next tick doesn't dereference it. Picking up the ship you are flying
+    // leaves orbit-view; handing control to the carrier is the pickup UI's job.
     if(ship == itemShip) { ship->releaseControl(); ship = nullptr; }
     if(lastShip == itemShip) { lastShip = nullptr; }
     if(kerbal == itemShip) { kerbal = nullptr; }
@@ -1323,7 +1192,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
        its hull); removeRigidBody on an unregistered body is UB */
     if(itemShip->hullInWorld()) { RemoveBody(itemShip->hull); }
     delete itemShip;
-    /* phase 3: the carrier's compound gains the item's mass */
+    /* the carrier's compound gains the item's mass */
     if(dest->owner != nullptr) { dest->owner->rebuildCompound(); }
     toast("Picked up %s", item->def->name.c_str());
     return true;
@@ -1332,9 +1201,7 @@ bool Game::pickUpItem(Vehicle *itemShip, Part *dest) {
 /* V: toggle EVA. From a ship: EVA one of its aboard kerbals (the first) and
    take control. From the kerbal: hand control back to the ship the player
    came from. The kerbal stays free either way -- it boards back in via the
-   capsule part window's Board button (kerbalBoard). Both directions go
-   through select_ship, so the old controller parks on rails and the new
-   one re-enters physics. */
+   capsule part window's Board button (kerbalBoard). */
 void Game::toggle_eva() {
     if(ship == nullptr) {
         // orbit-view state: there is no ship (hence no kerbal) to EVA.
@@ -1360,8 +1227,7 @@ void Game::toggle_eva() {
 
 /* Enter rails warp: park every ship (flying ones coast on their conic,
    grounded ones freeze on the ground). Refuses -- and keeps the current
-   accel -- if any ship is not rail-eligible, e.g. a suborbital descent in
-   progress. */
+   accel -- if any ship is not rail-eligible, e.g. a suborbital descent. */
 bool Game::enter_rails_warp() {
     std::vector<Vehicle *> all = collectVehicles(sys);
     for(auto *s : all) {
@@ -1375,9 +1241,8 @@ bool Game::enter_rails_warp() {
     }
     for(auto *s : all) { s->goOnRails(); }
     // On rails the engines are off (the ships coast on their conics), so the
-    // thrust latch -- which keeps the active ship's engines lit -- no longer
-    // applies. Clear it so it doesn't re-engage thrust the moment the warp is
-    // dropped back to physics.
+    // thrust latch no longer applies. Clear it so it doesn't re-engage thrust
+    // the moment the warp is dropped back to physics.
     thrust_latched = false;
     return true;
 }
@@ -1388,12 +1253,8 @@ bool Game::enter_rails_warp() {
    -- a few tens of metres on the pad, a few kilometres in the air -- and the
    regime is a proximity question, so it comes from inTerrainBand() rather
    than isGrounded(): the latter's speed term would flip a still-settling
-   lander (or a kerbal walking past its ship) to the wide radii and wake
-   every neighbour on the pad. An engaged ship that is parked while the
-   active ship is on rails (rails warp) wakes the active ship and caps the
-   accel, so a close approach always drops out of warp into live physics.
-   A ground engage radius of 0 disables auto-waking grounded neighbors (they
-   wake only when you switch to them). */
+   lander to the wide radii and wake every neighbour on the pad. A ground
+   engage radius of 0 disables auto-waking grounded neighbors. */
 void Game::updateProximity() {
     Vehicle *a = ship;
     if(a == nullptr) { return; }
@@ -1415,13 +1276,9 @@ void Game::updateProximity() {
             s->leaveRails();
             /* Re-express the woken ship in its SOI's rotating frame NOW,
                while the frame transforms are still at last tick's epoch
-               (updateProximity runs before UpdateOrbitRails). leaveRails
-               leaves it in the inertial node holding its stale rail_pos --
-               this tick's railsTick has not run for it -- and the per-ship
-               switchFrames below runs AFTER the frame has advanced, which
-               would rotate that stale pose into the new frame and land the
-               ship frame_velocity*dt (~4 m at LEO) off the live ships. Doing
-               the conversion here keeps every ship's pose on one epoch. */
+               (updateProximity runs before UpdateOrbitRails). Doing the
+               conversion later would rotate a stale rail_pos and land the
+               ship frame_velocity*dt off the live ships. */
             s->switchFrames(time);
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->name.c_str(), d, r_on,
@@ -1464,18 +1321,11 @@ void Game::updateProximity() {
 }
 
 /* Docking: INTENT-driven. The active ship mates only when the player has
-   BOTH armed one of its own docking ports (right-click the port -> "Arm for
-   docking", Vehicle::dockArmPort) AND targeted a port on another ship (->
-   "Target for docking", Vehicle::dockTarget*). Checked once per tick at the
-   boundary (tick.cpp, after the physics substeps): the armed port against
-   the targeted port -- the two port face-centres within kDockCapture, each
-   port axis within kDockAlign of the line between the ports, and the port
-   points' relative speed under kDockMaxV at capture. The armed port is the
-   one that mates (no best-fit scan -- the player picked which of the ship's
-   ports this dock uses). The active ship is the survivor (it absorbs the
-   target's ship); the joint is recorded as a seam on it. The intent is
-   consumed (cleared) on success, so an undock cannot immediately re-dock --
-   the player has to re-arm and re-target. At most one dock per tick. */
+   BOTH armed one of its own docking ports AND targeted a port on another
+   ship. Checked once per tick at the boundary. The armed port is the one
+   that mates (the player picked which of the ship's ports this dock uses).
+   The active ship is the survivor. The intent is consumed on success, so an
+   undock cannot immediately re-dock. At most one dock per tick. */
 void Game::updateDocking() {
     Vehicle *a = ship;
     if(a == nullptr || a->isEva() || a->onRails) { return; }
@@ -1485,8 +1335,7 @@ void Game::updateDocking() {
        || a->dockArmPort == nullptr) { return; }
     Vehicle *b = a->dockTargetShip;
     /* Validate the intent: the target must be another live ship that still
-       carries that docking port (else it went stale -- the ship was removed
-       or the port staged away -- so drop it). A ship is only ever deleted
+       carries that docking port (else drop it). A ship is only ever deleted
        through updateDocking / remove_ship, both of which drop targets that
        point at it, so b is live here. */
     bool targetOk = (b != a && !b->isEva() && !b->isCrewAboard());
@@ -1498,19 +1347,15 @@ void Game::updateDocking() {
     }
     if(!targetOk) { a->dockTargetShip = nullptr; a->dockTargetPort = nullptr; return; }
     /* Parked on rails or in another frame: cannot mate this tick. Keep the
-       intent and wait -- proximity wakes the target when it is near, and a
-       frame switch brings it into this ship's frame. */
+       intent and wait -- proximity wakes the target when it is near. */
     if(b->onRails || b->frame != a->frame) { return; }
 
     Part *pb = a->dockTargetPort;
-    /* The armed port is the one that mates -- the player picked which of
-       this ship's docking ports this dock uses, so there is no best-fit
-       scan. */
+    /* The armed port is the one that mates. */
     Part *bestA = a->dockArmPort;
     /* Validate the arm: it must still be a live docking port on this ship
-       (else it went stale -- staged away -- and the intent can't be
-       fulfilled). Drop the dangling arm; keep the target so a re-arm is all
-       the player needs to retry. */
+       (else it went stale -- staged away). Drop the dangling arm; keep the
+       target so a re-arm is all the player needs to retry. */
     bool armOk = false;
     for(Part *p : a->parts) {
         if(p == bestA && p->isDockingPort()) { armOk = true; break; }
@@ -1560,11 +1405,8 @@ void Game::updateDocking() {
     delete b;
 }
 
-/* Undock: split the most recent seam off the active ship. The other side
-   (the subtree under the seam's root) is extracted into a new ship via the
-   general Vehicle::extractSubtreeAsShip primitive (the same call a future
-   "dropped stage becomes a ship" will make) and returned to the fleet.
-   One-shot (the handler in events.cpp). */
+/* Undock: split the most recent seam off the active ship via
+   Vehicle::extractSubtreeAsShip and return it to the fleet. */
 void Game::undock() {
     Vehicle *a = ship;
     if(a == nullptr || a->isEva()) { return; }
@@ -1589,9 +1431,7 @@ void Game::undock() {
     }
     out->enterWorld();   // the split leaves world registration to the caller
     /* The undocked seam is already gone: extractSubtreeAsShip drops a seam
-       split across the cut (the port stays on this ship, the docked ship
-       leaves), so there is nothing left to pop -- popping here would drop the
-       WRONG seam (the one just before it). */
+       split across the cut, so popping here would drop the WRONG seam. */
     /* part windows on the survivor address parts by index, which just
        shifted -- drop them rather than dangle. */
     dropPartWindowsFor(a);
@@ -1600,16 +1440,14 @@ void Game::undock() {
 }
 
 /* Stage: fire the active stage's decouplers. Each decoupler's child-side
-   subtree comes off as a SEPARATE ship (the same extractSubtreeAsShip
-   primitive undock uses -- not a delete) and is returned to the fleet, so
-   the dropped stages keep flying rather than vanishing (like KSP). The
-   survivor stays the active ship and its stage counter steps down so the
-   next stage's engines light. One-shot (the SPACE handler in events.cpp).
+   subtree comes off as a SEPARATE ship (extractSubtreeAsShip, not a delete)
+   and is returned to the fleet, so the dropped stages keep flying like KSP.
+   The survivor stays the active ship and its stage counter steps down.
 
    A decoupler nested inside another's subtree on the same stage is absorbed
-   by the outer one (extracted with it), so the decouplers are fired
-   shallowest-first and a decoupler already absorbed into a previous
-   extraction (extract returns null) is skipped. */
+   by the outer one, so the decouplers are fired shallowest-first and a
+   decoupler already absorbed into a previous extraction (extract returns
+   null) is skipped. */
 void Game::stage() {
     Vehicle *a = ship;
     if(a == nullptr || a->isEva()) { return; }
@@ -1627,9 +1465,7 @@ void Game::stage() {
 
     /* The parts that WOULD come off (the decouplers on this stage plus their
        child-side subtrees, unioned). Refuse if any carries a crewed capsule
-       -- the crew is locked to the vessel, so EVA them out first. (The
-       survivor keeps its crew; a sibling branch sharing the stage is not in
-       this set.) */
+       -- the crew is locked to the vessel, so EVA them out first. */
     const std::vector<Part *> dropped = a->droppedPartsAtStage(st);
     bool crewOnStage = false;
     for(Part *p : dropped) {
@@ -1681,9 +1517,8 @@ void Game::stage() {
                 d->def->display_name.empty() ? d->def->name : d->def->display_name;
             if(!qual.empty()) { base += " " + qual; }
             // The pop: a one-shot "slam" as the part separates. balance 0.4
-            // pulls the file's full-scale transient down to sit with the engine
-            // hum (the file peaks at 0 dB, and a transient reads louder than a
-            // steady loop at the same gain).
+            // pulls the file's full-scale transient down to sit with the
+            // engine hum (a transient reads louder than a steady loop).
             Vehicle *out = a->extractSubtreeAsShip(d, dedup(base), time);
             if(out == nullptr) { continue; }   // already absorbed into an outer ship
             audio.playOnce("res/audio/qubodup-crash.wav", 0.4f);
@@ -1709,11 +1544,9 @@ void Game::stage() {
     }
 }
 
-/* Remove a ship + its bookkeeping. The Vehicle dtor detaches the welds
-   and unregisters the bodies (skipped when the ship is already parked on
-   rails), so this is safe in any state. Refuses to remove the last ship.
-   If the removed ship was active, control hands off to the next ship in
-   the canonical order (or the last one). */
+/* Remove a ship + its bookkeeping. Refuses to remove the last ship. If the
+   removed ship was active, control hands off to the next ship in the
+   canonical order (or the last one). */
 void Game::remove_ship(Vehicle *v) {
     if(v == nullptr) { return; }
     std::vector<Vehicle *> all = collectVehicles(sys);
@@ -1722,19 +1555,15 @@ void Game::remove_ship(Vehicle *v) {
         return;
     }
     // A ship that still carries crew -- or a crew member themselves -- can't
-    // be removed here: an aboard kerbal is owned by its ship (its
-    // Vehicle::crew) and parked out of the world, not in this body's ship
-    // list, so the removal below would not find it and delete would leave the
-    // ship's crew + the capsule's contents dangling; and a crewed ship owns
-    // its crew, so deleting it would delete the crew too (kill them) -- a
-    // game action we don't support. EVA the crew out first.
-    // (phase 3: the old "folded mass / aboard pointer" reasons are gone; the
-    // ownership rule above is what keeps this guard.)
+    // be removed here: an aboard kerbal is owned by its ship and parked out
+    // of the world, so the removal below would not find it and delete would
+    // leave the ship's crew + the capsule's contents dangling; and a crewed
+    // ship owns its crew, so deleting it would delete the crew too (kill
+    // them). EVA the crew out first.
     if(v->isEva()) {
-        // The "or a crew member themselves" half of that rule: a FREE kerbal
-        // is in its body's ship list and passes both tests below, so without
-        // this it is deletable from the Ship List -- dropping its flog, suit
-        // fuel and pocket with no summary and no confirmation (issue #57).
+        // A FREE kerbal is in its body's ship list and passes both tests
+        // below, so without this it is deletable from the Ship List -- a
+        // game action we don't support.
         toast("Cannot remove %s -- a crew member can't be deleted",
               v->name.c_str());
         return;
@@ -1809,13 +1638,9 @@ void Game::remove_ship(Vehicle *v) {
                    removedName.c_str(), i, n, ship->name.c_str());
         } else {
             /* Nothing left to control. Unreachable with today's fleet model
-               (a surviving ship or a free kerbal is selectable, and an
-               aboard crew character's carrier ship is always in `all` too),
-               but the guard above means `ship` would otherwise keep pointing
-               at the deleted vehicle: enter the no-ship state instead (the
-               same one load_game enters -- syncShipFocus drops the "ship"
-               focus entry and re-aims the orbit camera at the title backdrop,
-               a random non-star body). */
+               (a surviving ship or a free kerbal is selectable), but the
+               guard above means `ship` would otherwise keep pointing at the
+               deleted vehicle: enter the no-ship state instead. */
             ship = nullptr;
             syncShipFocus();
             // Flight's "there is an active vessel" invariant: with nothing
@@ -1832,17 +1657,13 @@ void Game::remove_ship(Vehicle *v) {
 }
 
 /* Recover the active vessel -- the successful end of a flight (the hub
-   menu's "Recover Vessel"). Distinct from remove_ship: this is a
-   player-facing mission end, so it allows the last vessel (the hub is a
-   legal shipless floor) and absorbs the crew as "came home with it"
-   instead of refusing a crewed ship. Other fleet ships stay for the
-   Tracking Station; there is no handoff to a neighbour. A free EVA kerbal
-   is NOT recovered -- it is its own vehicle and stays in the world (like
-   KSP: only the vessel and the crew aboard it come home).
+   menu's "Recover Vessel"). Distinct from remove_ship: this allows the last
+   vessel (the hub is a legal shipless floor) and absorbs the crew as "came
+   home with it". Other fleet ships stay for the Tracking Station. A free
+   EVA kerbal is NOT recovered (it is its own vehicle).
 
-   Lands on the Space Center hub (collapsing [flight, spacecenter] so
-   "Resume Flight" cannot pop into the deleted vessel) and opens the
-   Flight Summary window. */
+   Lands on the Space Center hub (collapsing [flight, spacecenter]) and
+   opens the Flight Summary window. */
 void Game::recoverActive() {
     Vehicle *v = ship;
     if(v == nullptr) {
@@ -1851,28 +1672,21 @@ void Game::recoverActive() {
     }
     const std::string name = v->name;
     if(v->isEva()) {
-        // Enforces the rule in the doc comment above: a free kerbal is its own
-        // vehicle, not a mission, and the delete below would remove the crew
-        // member itself (the sibling of remove_ship's guard, issue #57).
+        // A free kerbal is its own vehicle, not a mission (sibling of
+        // remove_ship's guard).
         toast("Cannot recover %s -- a crew member can't be recovered",
               name.c_str());
         return;
     }
     // Re-run SoI detection before the home check and the snapshot:
-    // switchFrames/railsTick run before the physics substeps, so a
-    // crossing in those substeps (or while paused) leaves m_parent stale.
-    // A zero-step railsTick still evaluates railsSwitchFrames (except a
-    // railFrozen grounded vessel, which cannot change SoI anyway), and a
-    // crossing found here journals itself at `time` -- a legitimate entry
-    // even when the home check below then refuses. The observe below is
-    // belt-and-braces: journals start at creation/load (setSoi), so it is
-    // a no-op repeat in practice.
+    // switchFrames/railsTick run before the physics substeps, so a crossing
+    // in those substeps (or while paused) leaves m_parent stale. A crossing
+    // found here journals itself at `time` -- a legitimate entry even when
+    // the home check below then refuses.
     if(v->onRails) { v->railsTick(time, 0.0); } else { v->switchFrames(time); }
     v->flog.observe(time, v->m_parent ? v->m_parent->name : "");
-    // A flight ends only when the ship is HOME: grounded (on the surface,
-    // near-static) in the home body's SoI. Checked after the SoI re-detect
-    // above so m_parent is fresh. --recover-anywhere skips the check and
-    // restores the old recover-anywhere behavior.
+    // A flight ends only when the ship is HOME: grounded in the home body's
+    // SoI. --recover-anywhere skips the check.
     if(!args.recover_anywhere && (v->m_parent != home || !v->isGrounded())) {
         toast("Cannot recover %s -- it must be grounded on the home body",
               name.c_str());
@@ -1883,13 +1697,9 @@ void Game::recoverActive() {
     flightSummary.end_t = time;
     /* Science: harvest every experiment aboard -- the ship's parts and each
        aboard crew member's suit -- into the game score (unique keys only)
-       BEFORE the delete below frees them. A free EVA kerbal is its own
-       vehicle and is NOT recovered (the guard at the top of this function),
-       so its experiments stay with it -- same rule as the crew member
-       themselves. */
-    // One bag of loot: the ship's parts + every aboard crew member's suit.
-    // recoverMany de-dups by key, so an observation held by N kerbals banks
-    // ONCE (not N times -- the farming exploit the value model must close).
+       BEFORE the delete below frees them. A free EVA kerbal is not recovered,
+       so its experiments stay with it. recoverMany de-dups by key, so an
+       observation held by N kerbals banks ONCE. */
     std::vector<Experiment> loot;
     for(Part *p : v->parts) {
         loot.insert(loot.end(), p->experiments.begin(), p->experiments.end());
@@ -1906,13 +1716,12 @@ void Game::recoverActive() {
     flightSummary.repeatScience = rec.repeat;
     flightSummary.newExperiments = rec.fresh;
 
-    // Part windows on the ship (and on any aboard crew -- their suit parts
-    // can be open too) would dangle the moment the Vehicles go.
+    // Part windows on the ship (and on any aboard crew) would dangle the
+    // moment the Vehicles go.
     dropPartWindowsFor(v);
     for(Vehicle *k : v->crew) { dropPartWindowsFor(k); }
 
-    // Ships that had v targeted for docking now dangle -- drop their intent
-    // (pointer compare only, so it is safe once v is off the lists).
+    // Ships that had v targeted for docking now dangle -- drop their intent.
     for(auto *s : collectVehicles(sys)) {
         if(s->dockTargetShip == v) {
             s->dockTargetShip = nullptr;
@@ -1920,10 +1729,8 @@ void Game::recoverActive() {
         }
     }
 
-    // Every Vehicle this delete frees: v and its owned crew (Vehicle::crew
-    // is the sole owner; ~Vehicle deletes them). Drop Game's selection refs
-    // into that set first -- an aboard kerbal is not selectable, but
-    // lastShip / kerbal can still point at one after a V toggle-back.
+    // Every Vehicle this delete frees: v and its owned crew (~Vehicle
+    // deletes them). Drop Game's selection refs into that set first.
     auto diesWith = [&](Vehicle *x) {
         if(x == v) { return true; }
         for(Vehicle *k : v->crew) { if(k == x) { return true; } }

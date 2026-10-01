@@ -1,12 +1,6 @@
 // job.cpp -- the single-worker job runner (see job.h for the contract).
-//
-// One worker thread drains the task queue in order. Each task's body runs
-// off-thread (pure math over a snapshot); when it finishes it has returned
-// the main-thread continuation, which is parked in `done_` and run by the
-// next JobRunner::poll() (the main loop). That ordering -- worker produces,
-// main thread applies -- is the whole synchronization story: the two never
-// touch the same data at once, and the mutex only guards the handoff
-// deques and the status counters.
+// Worker produces, main thread applies: the two never touch the same data.
+
 #include "job.h"
 
 #include <cstdio>
@@ -26,17 +20,13 @@ void JobRunner::run() {
             std::lock_guard<std::mutex> lk(mu_);
             current_ = t.label;
         }
-        // The body runs off-thread; it must be pure (no game state / GL /
-        // imgui) and returns the main-thread continuation. A throw is
-        // caught so the worker keeps serving and the job simply reports no
-        // result (its apply is empty, so nothing is published).
+        // Body runs off-thread (must be pure). A throw is caught so the
+        // worker keeps serving; the job reports no result.
         std::function<void()> apply;
         try {
             apply = t.body();
         } catch(const std::exception &e) {
-            // A failed body still leaves the caller's in-flight flag set
-            // (e.g. GeoPatch::subdivide_in_flight), so a silent swallow
-            // reads as a stuck job -- say what threw.
+            // Say what threw (a silent swallow reads as a stuck job).
             printf("[job-throw] %s: %s\n", t.label.c_str(), e.what());
             apply = nullptr;
         } catch(...) {
@@ -63,8 +53,7 @@ std::string JobRunner::poll() {
         in_flight_ -= n;   // every landed job (apply or not) counts
         if(in_flight_ > 0) { label = current_; }
     }
-    // Run the continuations OUTSIDE the lock so an apply can safely do
-    // anything, including posting another job (no re-entrant deadlock).
+    // Run the continuations OUTSIDE the lock so an apply can post another job.
     for(std::function<void()> &a : applies) {
         a();
     }
@@ -94,10 +83,8 @@ void JobRunner::abort() {
         tasks_.clear();         // drop the queued jobs (their lambdas are freed)
     }
     cv_.notify_one();
-    // worker_.join() returns once the worker has exited -- which is AFTER the
-    // in-flight task (if any) has finished reading its snapshot, so the caller
-    // may safely free the state a body holds. The queue was cleared, so the
-    // worker breaks on its next loop rather than draining it.
+    // join() returns after the worker exits (the in-flight task has finished
+    // reading its snapshot), so the caller may safely free its state.
     worker_.join();
 }
 
@@ -111,7 +98,6 @@ void JobRunner::restart() {
         current_.clear();
         in_flight_ = 0;
     }
-    // The old worker is joined (not joinable), so move-assigning a fresh thread
-    // onto worker_ is valid; the new run() sees stop_ == false and serves.
+    // The old worker is joined, so move-assigning a fresh thread is valid.
     worker_ = std::thread(&JobRunner::run, this);
 }

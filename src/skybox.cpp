@@ -25,8 +25,7 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
     GLuint textureID;
     glGenTextures(1, &textureID);
 
-    // Faces may repeat (all six are the same starfield today), so decode
-    // each distinct file once and upload the shared surface per face.
+    // Faces may repeat, so decode each distinct file once and share the surface.
     std::map<std::string, SDL_Surface*> decoded;
     for(const GLchar* path : faces) {
         if(decoded.find(path) == decoded.end()) {
@@ -63,8 +62,7 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
     if (aniso > 0.0f) {
         glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY, aniso);
     }
-    // Mipmap chain + trilinear: calms starfield shimmer at distance and
-    // gives the anisotropy ratio a chain to work on.
+    // Mipmap chain + trilinear: calms starfield shimmer at distance.
     glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -145,10 +143,8 @@ void Skybox::init(void) {
 void Skybox::Draw(const Camera * camera,
                   Shader * skyboxShader, const glm::dmat3 &skyRot) {
     const glm::dmat4 view = camera->GetView();
-    // The cubemap is at rest in the root (star/inertial) frame, but the scene
-    // is drawn in the ship's frame, which may be rotating. skyRot is the map
-    // root -> ship frame, so the starfield drifts once per sidereal day while
-    // standing on a spinning planet (identity = inertial world, as before).
+    // The cubemap is at rest in the root (inertial) frame; skyRot maps
+    // root -> ship frame so the starfield drifts with the ship's rotation.
     const glm::dmat3 _rot = glm::dmat3(view) * skyRot; // clear to rotation
     const glm::mat4 _view = glm::mat4(_rot);
     const glm::mat4 projection = camera->GetProjection();

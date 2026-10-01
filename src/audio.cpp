@@ -1,7 +1,4 @@
-// audio.cpp -- see audio.h for the module contract (three kinds of
-// tracks, silent degradation, full-level SFX (no positional audio -- there
-// is no air to carry it in space).
-
+// audio.cpp -- see audio.h for the module contract.
 #include "audio.h"
 
 #include "resdir.h"
@@ -15,19 +12,9 @@ bool Audio::init() {
         printf("audio: unavailable (%s) -- running silent\n", SDL_GetError());
         return false;
     }
-    // Headless boxes: the ALSA backend (the fallback) spews diagnostics to
-    // stderr when no card is usable, which the smoke case forbids on boot.
-    // That is handled by running a PulseAudio null sink (Pulse is the primary
-    // backend) so this call routes to the sink and ALSA is never reached --
-    // point a box at a null sink rather than muting stderr here.
-    //
-    // A generous device buffer gives the real-time callback headroom before an
-    // underrun. The ALSA backend allocates a 2-period double buffer whose period
-    // size is this hint, and -- unlike PulseAudio -- it is not forgiving of a
-    // callback that is briefly delayed: the "crack" the moment the engine track
-    // starts mixing is exactly that hiccup. 8192 frames/period (16384 total,
-    // ~340 ms at 48 kHz) absorbs it. A little extra audio latency is an
-    // acceptable trade-off for ambient game SFX/music.
+    // Generous device buffer: the ALSA backend is not forgiving of a briefly
+    // delayed callback (the "crack" when the engine track starts mixing).
+    // Extra latency is fine for ambient game SFX/music.
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "8192");
 
     // spec = NULL: take the device's native format; the mixer converts.
@@ -78,17 +65,11 @@ void Audio::shutdown() {
 }
 
 MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
-    // Cache on the resolved path (same as mesh/texture/shader), so "res/x"
-    // and "./res/x" cannot double-load one file.
+    // Cache on the resolved path so "res/x" and "./res/x" cannot double-load.
     const std::string key = resdir::path(path);
     auto it = audios_.find(key);
     if(it != audios_.end()) { return it->second; }
-    // predecode = true decodes the whole file into PCM at load time, so the
-    // real-time audio callback only COPIES samples. The SFX are tiny (WAVs,
-    // already PCM) so that costs nothing. The music is different: a full
-    // decode is ~1 s of CPU and ~200 MB of RAM, which dominated startup, so
-    // it streams -- Vorbis decodes on the fly inside the callback (a few ms
-    // per period, well inside the generous 8192-frame buffer).
+    // predecode: SFX are tiny WAVs (free); music streams (a full decode stalls boot).
     MIX_Audio *a = MIX_LoadAudio(mixer_, key.c_str(), predecode);
     if(a == nullptr) {
         printf("audio: cannot load %s: %s\n", path.c_str(), SDL_GetError());
@@ -102,8 +83,7 @@ MIX_Audio *Audio::loadAudio(const std::string &path, bool predecode) {
             fmt = (spec.format == SDL_AUDIO_F32) ? "F32"
                  : (spec.format == SDL_AUDIO_S16) ? "S16"
                  : (spec.format == SDL_AUDIO_S32) ? "S32" : "?";
-            // MIX_GetAudioDuration is in SAMPLE FRAMES (not ms): seconds =
-            // frames / rate.
+            // MIX_GetAudioDuration is in SAMPLE FRAMES (not ms).
             const Sint64 frames = MIX_GetAudioDuration(a);
             printf("[aud] load: %s  %dHz/%dch/%s  dur=%.1fs\n",
                    path.c_str(), (int)spec.freq, (int)spec.channels, fmt,
@@ -150,12 +130,9 @@ void Audio::primeTrack(MIX_Track *t) {
 void Audio::setLoop(const char *path, bool active, float gain) {
     if(mixer_ == nullptr) { return; }
     if(!active) {
-        // Engine off: fade out (no mid-wave cut = no "clipping" artifact).
-        // The fade is armed exactly ONCE: MIX_StopTrack(fade) leaves the track
-        // "playing" until the fade drains, so re-arming it every frame would
-        // never let it complete (the old "sticky engine"). update() clears the
-        // flag when the fade finishes; the track is kept (warm buffers) for
-        // the next ignition.
+        // Fade out (no mid-wave cut). Arm the fade exactly ONCE: re-arming
+        // every frame would never let it complete. The track is kept warm
+        // for the next ignition.
         loopActive_ = false;
         if(loop_ == nullptr) { return; }
         if(!loopStopping_) {
@@ -165,8 +142,7 @@ void Audio::setLoop(const char *path, bool active, float gain) {
         }
         return;
     }
-    // A re-ignition during a stop-fade: start fresh (the clean way to cancel
-    // the fade and relight at full level).
+    // Re-ignition during a stop-fade: start fresh (cancels the fade cleanly).
     if(loopStopping_) {
         if(loop_ != nullptr) { MIX_DestroyTrack(loop_); loop_ = nullptr; loopPath_.clear(); }
         loopStopping_ = false;
@@ -185,10 +161,9 @@ void Audio::setLoop(const char *path, bool active, float gain) {
     }
     loopGain_ = gain;
     if(!MIX_TrackPlaying(loop_)) {
-        // A fresh track starts at the gain set below; a fade-in from zero is
-        // what reads as a "click", so light it at full level instead.
-        // loops=-1 in the options: PlayTrack with no options would reset the
-        // loop count to 0 and the engine would cut out after one pass.
+        // A fresh track starts at the gain set below (a fade-in reads as a
+        // "click"). loops=-1: PlayTrack with no options would reset the loop
+        // count and the engine would cut out after one pass.
         SDL_PropertiesID o = SDL_CreateProperties();
         SDL_SetNumberProperty(o, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
         const bool ok = MIX_PlayTrack(loop_, o);
@@ -267,10 +242,8 @@ void Audio::update() {
             oneShots_.erase(oneShots_.begin() + (int)i);
         }
     }
-    // A stop-fade finished (the track left the "playing" state). Keep the
-    // track: a re-ignition then reuses it, and its internal mix buffers are
-    // already grown -- a fresh track would reallocate them inside the
-    // real-time callback on its first period (the "crack on a tap").
+    // Stop-fade finished: keep the track warm (a fresh track would reallocate
+    // its mix buffers inside the real-time callback -- the "crack on a tap").
     if(loopStopping_ && loop_ != nullptr && !MIX_TrackPlaying(loop_)) {
         if(dbg_) { printf("[aud] loop fade done -> kept warm\n"); fflush(stdout); }
         loopStopping_ = false;

@@ -49,8 +49,7 @@ SDL_Keycode sim_parse_key(const std::string &s) {
 }
 
 int sim_parse_button(const std::string &s) {
-    // decimal SDL button code (1 = LEFT, 2 = MIDDLE, 3 = RIGHT; 0 = none),
-    // or a name for readability.
+    // decimal SDL button code (1=LEFT, 2=MIDDLE, 3=RIGHT; 0=none) or a name.
     if(!s.empty()) {
         char *end = nullptr;
         const unsigned long v = strtoul(s.c_str(), &end, 10);

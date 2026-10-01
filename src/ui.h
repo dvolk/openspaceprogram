@@ -1,30 +1,4 @@
-// ui.h -- the imgui window wrapper for the game UI.
-//
-// Handles the fiddly parts of the imgui window API in one place:
-//
-//   * layout: every window is placed into one of 9 screen slots (corners,
-//     middle edges, center; default: center), with an optional pixel
-//     offset. A window can also be placed to the left of, to the right
-//     of, or below another window (left_of / right_of / below); the
-//     source must be drawn earlier in the same frame.
-//   * size: windows fit their content on first layout (or use
-//     initial_size when set), and stay user-resizable afterwards. A
-//     fixed_width window is different: its width is pinned and its
-//     height tracks the content every frame, so it is not
-//     user-resizable.
-//   * freedom: the layout is applied once per generation; after that the
-//     user can move and resize windows freely.
-//   * reset: ui::ResetGui(), or `ui::ResetFlag() = true` from anywhere,
-//     bumps the generation, restores every window's default open state and
-//     re-applies the whole layout against the CURRENT viewport. That is the
-//     recovery path for windows that wandered off screen after an
-//     app-window resize.
-//   * fixed windows (opts.fixed): not movable, not resizable, re-placed
-//     every frame -- so they track viewport resizes on their own.
-//
-// The lambda form is a plain inlined Begin()/End() pair: zero perf cost
-// versus writing them by hand (it's a template, so it's inlined into the
-// caller exactly as if you'd written the body inline).
+// ui.h -- the imgui window wrapper: slot layout, size, reset.
 
 #pragma once
 
@@ -55,29 +29,19 @@ struct Options {
     Slot slot = Slot::Center;            // where to place the window
     ImVec2 offset = ImVec2(0.0f, 0.0f);  // pixel nudge from the slot anchor
 
-    // Place this window to the left of / right of / below the named
-    // window (its X / its X / its Y). The source must be drawn earlier
-    // in the frame; if it's closed, the slot placement stands.
+    // Place left of / right of / below the named window. The source must
+    // be drawn earlier in the frame; if closed, the slot placement stands.
     const char* left_of = nullptr;
     const char* right_of = nullptr;
     const char* below = nullptr;
 
-    // Initial size on layout, both components; (-1, -1) = fit to content
-    // (the default).
+    // Initial size on layout; (-1, -1) = fit to content.
     ImVec2 initial_size = ImVec2(-1.0f, -1.0f);
 
-    // Fixed window width in font-size units (so it tracks the font size
-    // and the DPI scale); the height still auto-fits the content. -1 =
-    // off. For content with no meaningful width of its own (e.g.
-    // full-width progress bars).
+    // Fixed width in font-size units (tracks font/DPI); height auto-fits.
     float fixed_width = -1.0f;
 
-    // Per-frame size-constraint callback (imgui's
-    // SetNextWindowSizeConstraints), for a window whose min size must
-    // track its width -- the Surface Map's 2:1 map fills the content
-    // width, so the min height follows the width and the bottom caption
-    // never clips as the window is widened. (fixed_width is the
-    // pinned-width special case of this mechanism.)
+    // Per-frame size-constraint callback (SetNextWindowSizeConstraints).
     ImGuiSizeCallback size_cb = nullptr;
     void *size_cb_data = nullptr;
 
@@ -129,8 +93,7 @@ public:
         return it == states.end() ? nullptr : &it->second;
     }
 
-    // Set the open state without touching default_open (state() would
-    // overwrite it with the passed options).
+    // Set open state without touching default_open (state() would overwrite it).
     void set_open(const char* name, bool open) {
         auto it = states.find(name);
         if (it == states.end()) {
@@ -141,9 +104,7 @@ public:
         it->second.open = open;
     }
 
-    // Full reset: new generation, default open states, layout pending for
-    // every window. The layout then resolves against the CURRENT viewport,
-    // so this recovers windows off a resized app window.
+    // Full reset: new generation, default open states, layout pending.
     void reset_now() {
         generation++;
         for (auto& kv : states) {
@@ -204,9 +165,8 @@ public:
         }
     }
 
-    // Resolve this window's layout position. Returns false while waiting
-    // for a source window's rect (the source is declared later in the
-    // frame); after max_wait frames the slot placement stands.
+    // Resolve this window's layout position. False while waiting for a
+    // source window's rect; after max_wait frames the slot placement stands.
     bool resolve(const Options& o, WinState& self,
                  ImVec2& pos, ImVec2& pivot) {
         slot_anchor(o.slot, margin, pos, pivot);
@@ -232,23 +192,14 @@ private:
                 return false; // source declared later this frame: wait
             return true;      // it never showed up: slot placement stands
         }
-        // The source's FIRST measured rect is never trustworthy: imgui
-        // only applies a window's content-fit size on the NEXT frame's
-        // Begin, so the on-screen rect the frame a window first appears
-        // is its min-size (or a default), not its real box. This hits
-        // every fixed window too -- they all get AlwaysAutoResize -- so
-        // "fixed = settled immediately" was wrong for a default-open
-        // left_of / right_of neighbour (it captured the title menu's
-        // first-frame box and never re-laid-out). Wait one frame.
+        // imgui applies a window's content-fit size only on the NEXT
+        // frame's Begin, so a first-appearance rect is not yet real. Wait
+        // one frame (also after a re-layout of a non-fixed source).
         if (s->first_rect_frame >= (int)ImGui::GetFrameCount()) {
             if (++self.wait_frames < max_wait)
                 return false;
             return true;
         }
-        // The source was re-laid-out this frame and is not fixed: same
-        // content-fit staleness on a later re-layout (a generation
-        // reset). Fixed windows re-place every frame but keep a stable
-        // size, so their rect is already settled by the check above.
         if (s->layout_frame == (int)ImGui::GetFrameCount() && !s->fixed) {
             if (++self.wait_frames < max_wait)
                 return false;
@@ -266,24 +217,13 @@ private:
     std::unordered_map<std::string, WinState> states;
 };
 
-// imgui size-constraint callback for fixed_width windows: the width is
-// pinned to the option, the height keeps auto-fitting the content. imgui
-// passes no window identity to the callback, so the width (in pixels)
-// travels in the user-data pointer (imgui's documented pattern for
-// scalar callback data).
+// Size-constraint callback for fixed_width windows (width via UserData).
 static void FixedWidthCallback(ImGuiSizeCallbackData* d) {
     d->DesiredSize.x =
         static_cast<float>(reinterpret_cast<std::size_t>(d->UserData));
 }
 
-// Draw a window with the wrapper's open state and layout. Returns true if
-// it was drawn (false if closed, or waiting on a source window's rect).
-//
-//     ui::Options o;
-//     o.slot = ui::Slot::TopLeft;
-//     ui::Window("Tools", o, [] {
-//         ImGui::Text("Hello");
-//     });
+// Draw a window with the wrapper's open state and layout. Returns true if drawn.
 template <typename Body>
 bool Window(const char* name, const Options& o, Body&& body) {
     Manager& m = Manager::Get();
@@ -298,24 +238,16 @@ bool Window(const char* name, const Options& o, Body&& body) {
     ImGuiWindowFlags flags = o.flags | ImGuiWindowFlags_NoSavedSettings;
     if (o.fixed)
         flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
-    // fixed and fixed_width windows auto-fit every frame, so they track
-    // viewport resizes and content changes (a fixed_width window's height
-    // follows its rows, which vary with the ship). The trade-off: the
-    // user cannot manually resize them.
+    // fixed / fixed_width windows auto-fit every frame (user cannot resize).
     if (o.fixed || o.fixed_width > 0.0f)
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
 
-    // First layout of this generation -- or every frame for fixed windows,
-    // which must track viewport resizes and content changes.
+    // First layout of this generation -- or every frame for fixed windows.
     const bool relayout = o.fixed || st.applied_generation != m.generation;
 
     if (relayout) {
-        // Windows closed by default open centered on screen: their slot
-        // is where they sit in the default layout, but the first time the
-        // user opens one, screen center is the least surprising spot.
-        // A window anchored to a sibling (left_of / right_of / below)
-        // keeps the anchor: an explicit relative position wins. Fixed
-        // windows keep their slot (they re-place every frame anyway).
+        // Windows closed by default open centered (least surprising).
+        // Explicit left_of/right_of/below wins; fixed keeps its slot.
         Options o2 = o;
         if (!o2.default_open && !o2.fixed &&
             o2.left_of == nullptr && o2.right_of == nullptr &&
@@ -332,9 +264,7 @@ bool Window(const char* name, const Options& o, Body&& body) {
         if (o.initial_size.x > 0.0f && o.initial_size.y > 0.0f) {
             ImGui::SetNextWindowSize(o.initial_size, ImGuiCond_Always);
         } else {
-            // One-shot content fit: imgui auto-fits a window for two frames
-            // while its size is unknown; the flag re-triggers that on a
-            // window that was already sized (reset), then drops off so the
+            // One-shot content fit: re-triggers AlwaysAutoResize so the
             // user can resize freely from frame two on.
             flags |= ImGuiWindowFlags_AlwaysAutoResize;
         }
@@ -343,29 +273,22 @@ bool Window(const char* name, const Options& o, Body&& body) {
         ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
     }
 
-    // The width constraint is per-frame (imgui's NextWindowData), so it
-    // is re-issued every frame: with AlwaysAutoResize the height tracks
-    // the content and the width stays pinned.
+    // Width constraint is per-frame (NextWindowData): height tracks content.
     if (o.fixed_width > 0.0f) {
-        // GetFontSize() includes the DPI scale (FontScaleDpi), so the
-        // width follows "Apply DPI" live, with no re-layout needed.
+        // GetFontSize() includes the DPI scale, so width follows "Apply DPI".
         ImGui::SetNextWindowSizeConstraints(
             ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX),
             FixedWidthCallback,
             reinterpret_cast<void*>(
                 static_cast<std::size_t>(o.fixed_width * ImGui::GetFontSize())));
     } else if (o.size_cb != nullptr) {
-        // Applied on the initial size and on every user resize (imgui
-        // routes both through the size-constraint pass), so a width drag
-        // can stretch the height to fit the content instead of clipping.
+        // Applied on initial size and on every user resize (size-constraint pass).
         ImGui::SetNextWindowSizeConstraints(
             ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX),
             o.size_cb, o.size_cb_data);
     }
 
-    // Closable windows pass their open state to imgui so the X button
-    // closes them; a closed window can be re-opened from the Windows
-    // list, the main menu or the TAB key.
+    // Closable windows pass open state to imgui so the X button closes them.
     bool* p_open = o.closable ? &st.open : nullptr;
     const bool visible = ImGui::Begin(name, p_open, flags);
     if (visible)

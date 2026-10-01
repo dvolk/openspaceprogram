@@ -1,18 +1,12 @@
 // keys.cpp -- the rebindable key map (declared in keys.h).
-//
-// Pure logic over SDL's scancode/modifier constants: no SDL calls, so the
-// lookup / isDown core runs headless (no video context). See keys.h for the
-// Slot / KeyBind / KeyBindings model and the exact-modifier matching rule.
+// Pure logic over SDL scancode/modifier constants: no SDL calls, headless-testable.
 #include "keys.h"
 
 #include <cstring>   // strcmp (slotFromName)
 
 // ---------------------------------------------------------------------------
-// Default map: the game's current key assignments, as scancodes (the
-// physical keys -- on a US layout these are exactly the keys the input
-// paths used to hardcode, and --sim-press resolves the same names to the
-// same scancodes, so the e2e suite is unaffected). Cam/Eva up-down moved
-// off LShift/LCtrl to R/F so that Shift/Ctrl are free to be pure modifiers.
+// Default map (scancodes = physical keys). Cam/Eva up-down on R/F so
+// Shift/Ctrl stay free as pure modifiers.
 // ---------------------------------------------------------------------------
 void KeyBindings::resetDefaults() {
     for (auto &v : perSlot) { v.clear(); }
@@ -23,9 +17,7 @@ void KeyBindings::resetDefaults() {
     // Game (one-shot, events.cpp)
     add(Slot::WarpUp,        SDL_SCANCODE_PERIOD);
     add(Slot::WarpDown,      SDL_SCANCODE_COMMA);
-    // Camera speed moved off L/K (now the RCS right/down translation keys,
-    // KSP-style) so the one-shot speed nudge and the held translation don't
-    // double-fire on the same press.
+    // Camera speed on [/] so it doesn't double-fire with the held RCS keys.
     add(Slot::CamSpeedUp,    SDL_SCANCODE_RIGHTBRACKET);
     add(Slot::CamSpeedDown,  SDL_SCANCODE_LEFTBRACKET);
     add(Slot::ToggleCamMode, SDL_SCANCODE_C);
@@ -45,8 +37,7 @@ void KeyBindings::resetDefaults() {
     add(Slot::Wireframe,     SDL_SCANCODE_F11);
     add(Slot::ResetWindows,  SDL_SCANCODE_F10);
     add(Slot::Menu,          SDL_SCANCODE_ESCAPE);
-    // Scene-switch shortcuts: 1/2/3/4 jump straight to the Space Center /
-    // flight / Tracking Station / VAB from any scene (events.cpp).
+    // Scene-switch shortcuts (events.cpp).
     add(Slot::GoSpaceCenter, SDL_SCANCODE_1);
     add(Slot::GoFlight,      SDL_SCANCODE_2);
     add(Slot::GoTracking,    SDL_SCANCODE_3);
@@ -60,19 +51,14 @@ void KeyBindings::resetDefaults() {
     add(Slot::RollLeft,      SDL_SCANCODE_Q);
     add(Slot::RollRight,     SDL_SCANCODE_E);
     add(Slot::Thrust,        SDL_SCANCODE_T);
-    // Latch is a modifier combo (toggles; a plain 't' press -- the Thrust
-    // slot -- releases it). LShift and RShift are distinct modifier keys, so
-    // the default names one concrete side: LShift+T. (SDL_KMOD_SHIFT is
-    // LShift|RShift -- a value no single press produces -- and would never
-    // match; a rebind to RShift+T stores SDL_KMOD_RSHIFT instead.)
+    // Latch is a modifier combo (toggles; plain 't' releases it).
+    // SDL_KMOD_SHIFT would never match a single press, so name one concrete side.
     perSlot[(size_t)Slot::ThrustLatch].push_back(KeyBind{SDL_SCANCODE_T, SDL_KMOD_LSHIFT});
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
-    // RCS translation (ship-relative). Shares physical keys with other
-    // groups (I/J/K/L are also CamSpeed / ... in the Game group, but those
-    // are one-shot edges in events.cpp and only fire on a press, never held,
-    // so the held RCS commands never collide with them in orbit mode).
+    // RCS translation (shares physical keys with other groups; those are
+    // one-shot edges, so the held RCS commands never collide in orbit mode).
     add(Slot::RcsForward,    SDL_SCANCODE_N);
     add(Slot::RcsBack,       SDL_SCANCODE_H);
     add(Slot::RcsUp,         SDL_SCANCODE_I);
@@ -133,9 +119,7 @@ bool slotSimKey(Slot s, SDL_Scancode sc, const KeyBindings &kb) {
 }
 
 // ---------------------------------------------------------------------------
-// Naming. slotName is the persistent identifier (settings.json + the
-// --bind CLI); slotLabel the display string; slotGroup the UI category.
-// Switches (not a parallel table) so a new Slot can't silently misalign.
+// Naming. Switches (not a parallel table) so a new Slot can't silently misalign.
 // ---------------------------------------------------------------------------
 const char *slotName(Slot s) {
     switch (s) {
@@ -313,9 +297,7 @@ SlotGroup slotGroup(Slot s) {
 }
 
 // ---------------------------------------------------------------------------
-// Display: a binding as "Ctrl+Shift+W" (modifiers in a fixed order, then the
-// key). Unknown scancodes fall back to "key<scancode>" so the UI never shows
-// an empty slot.
+// Display: "Ctrl+Shift+W" (modifiers in fixed order, then the key).
 // ---------------------------------------------------------------------------
 namespace {
 std::string keyName(SDL_Scancode sc) {
@@ -401,9 +383,7 @@ std::string keyName(SDL_Scancode sc) {
 
 std::string bindLabel(const KeyBind &b) {
     std::string s;
-    // Conventional left-to-right modifier order (Shift, Ctrl, Alt). LShift and
-    // RShift (and the L/R Ctrl, Alt pairs) are distinct modifier keys, so each
-    // side is shown on its own -- a binding names the exact side it used.
+    // LShift/RShift (and L/R Ctrl, Alt) shown separately -- a binding names the exact side.
     if (b.mods & SDL_KMOD_LSHIFT) { s += "LShift+"; }
     if (b.mods & SDL_KMOD_RSHIFT) { s += "RShift+"; }
     if (b.mods & SDL_KMOD_LCTRL)  { s += "LCtrl+"; }

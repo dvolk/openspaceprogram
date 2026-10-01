@@ -1,17 +1,9 @@
 // docktest.cpp -- the --dock-test pair builder (see docktest.h).
-//
-// Two single-stage r1.0 ships, nose-to-nose along the station's prograde
-// (the docking axis), co-moving on the same circular orbit. Each carries
-// the same seven parts (port to engine):
-//   docking_port_r1, capsule, rcs_r1, mono_tank_r1, reaction_wheel,
-//   tank_r1h3, engine
-// The probe is oriented port (front, +Z) ... engine (rear); the station is
-// its mirror, engine (front, +Z) ... port (rear, -Z), so each port faces
-// the other. The probe is the active ship and its engine thrusts along its
-// +Z, which is the direction toward the station (the station is ahead of it
-// along prograde) -- so a prograde burn closes the gap. Both ports present
-// the face pointing at the other port, exactly along the line between them,
-// so the alignment test (cos 15 deg) passes with margin.
+// Two single-stage r1.0 ships, nose-to-nose along the station's prograde,
+// co-moving on the same circular orbit. Each carries the same seven parts
+// (port to engine): docking_port_r1, capsule, rcs_r1, mono_tank_r1,
+// reaction_wheel, tank_r1h3, engine. The probe is the active ship; its
+// engine thrusts along +Z toward the station.
 #include "docktest.h"
 
 #include <cmath>
@@ -43,9 +35,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
                                  "missing from the parts catalog");
     }
 
-    /* the starting port-face gap (m): "near" sits inside the kDockCapture
-       window (1.5 m) and docks on the first live tick; "approach" (the
-       default) starts outside it and must burn the last stretch. */
+    /* the starting port-face gap (m) */
     double gap = 1.0;
     if(mode == "approach") { gap = 2.0; }
     else if(mode != "near") {
@@ -55,8 +45,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
 
-    /* One Part (shared render assets + hull + mass, wrapped with the
-       catalog spec), exactly the radialtest builder's makePart. */
+    /* One Part (shared render assets + hull + mass). */
     auto makePart = [&](const PartDef *def) -> Part * {
         Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
         Texture *tex = get_texture(std::string("res/") + def->texture);
@@ -69,11 +58,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
         return p;
     };
 
-    /* --- station: the same 7-part stack, mirror-oriented ---------------
-       Both ships are oriented local +Z = prograde (spawn_vehicle's
-       faceAlong(vel)). The probe sits BEHIND the station, so the station's
-       port must face it: the stack runs engine (nose, +Z) ... port (tail,
-       -Z) -- the reverse of the probe. */
+    /* --- station: the same 7-part stack, mirror-oriented --- */
     Vehicle *station = new Vehicle;
     station->m_parent = home;
     station->sun = sun;
@@ -96,16 +81,11 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     station->controller = stRw;
     station->init();
     station->enterWorld();
-    // Circular orbit, slot 0 (no lateral offset): the station's COM ends up
-    // at the orbit radius, oriented nose (+Z) along prograde.
+    // Circular orbit, slot 0: the station's COM ends up at the orbit radius,
+    // nose (+Z) along prograde.
     spawn_vehicle(station, *sc, home, sys, 0.0, 0.0);
 
-    /* --- probe: port (root, front) ... engine (rear) -------------------
-       The same 7-part stack as the station, oriented the other way: port at
-       the front (+Z, facing the station ahead of it), engine at the rear.
-       The engine thrusts along its +Z = the probe's +Z = prograde = toward
-       the station. attachDown stacks each part face-to-face below the last,
-       so nothing overlaps. */
+    /* --- probe: port (root, front) ... engine (rear) --- */
     Vehicle *probe = new Vehicle;
     probe->m_parent = home;
     probe->sun = sun;
@@ -128,16 +108,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     probe->controller = prRw;
     probe->init();
 
-    /* --- place the probe on the station's orbit, trailing in phase -----
-       The orbit is a Keplerian conic in the inertial node (the station is
-       driven by that conic on the rails). The probe is the ACTIVE ship,
-       simulated by Bullet in the rotating frame with the fictitious
-       forces. To keep the two in step, phase the probe to a point on the
-       station's conic in the inertial node -- rotating the station's
-       inertial (r, v) about the conic's angular-momentum axis is another
-       valid state of that same orbit -- then express that state in the
-       rotating frame with the exact inverse of comStateIn, so the Bullet
-       sim lands on the conic instead of a neighbouring one. */
+    /* --- place the probe on the station's orbit, trailing in phase --- */
     if(probe->frame != station->frame) {
         probe->moveToFrame(station->frame, 0.0);   // t=0: the test boots at epoch
     }
@@ -145,8 +116,7 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     glm::dvec3 rS_i, vS_i;
     station->comStateIn(inert, rS_i, vS_i);
     const glm::dvec3 h_i = glm::normalize(glm::cross(rS_i, vS_i));
-    /* the docking reference is the port, not the COM: the along-track COM
-       spacing must clear both COM-to-port offsets plus the face gap. */
+    /* The docking reference is the port, not the COM. */
     const glm::dvec3 rS = station->get_center_of_mass();
     const double dS = glm::length(station->partPos(stPort) - rS);
     probe->placeShip(glm::dvec3(0.0), glm::dmat3(1.0)); // COM reads at origin

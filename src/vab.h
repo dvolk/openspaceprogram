@@ -1,7 +1,6 @@
 // vab.h -- the VAB editor's interaction layer: physics-free picking of the
-// build tree (parts and their attach nodes), the ghost preview pose, and
-// placing a part into the tree. All in the build ship's frame S (Game::vab
-// poses); the render frame is S shifted by -Game::vab.center.
+// build tree, the ghost preview pose, and placing a part. All in the build
+// ship's frame S (Game::vab poses).
 #pragma once
 
 #include "game.h"   // Game (vab BuildShip, camera)
@@ -10,112 +9,69 @@
 class btCollisionObject;
 class btCollisionShape;
 
-// Cached convex hull (and a wrapper collision object) for a catalog part,
-// built once per PartDef from its mesh -- the physics-free pick geometry
-// (the build tree has hull shapes but no rigid bodies).
+// Cached convex hull for a catalog part (physics-free pick geometry).
 btCollisionShape *vabPartHull(const PartDef *def);
 btCollisionObject *vabPartObject(const PartDef *def);
 
-// Nearest build part under window pixel (px,py). hit is in the build frame
-// S (the Game::vab poses), per the pickRay contract. false = miss.
+// Nearest build part under a pixel. hit is in the build frame S.
 bool pickVabPart(Game &g, int px, int py, int &partIdx, PickBodyHit &hit);
 
 // Build-frame (S) position of node `nodeIdx` on build part `partIdx`.
 glm::dvec3 vabNodePos(const Game &g, int partIdx, int nodeIdx);
 
-// Build-frame (S) point -> window pixel (the pickRay unprojection's
-// inverse; false behind the camera). The port gizmos in drawVabUI draw
-// with it.
+// Build-frame (S) point -> window pixel (pickRay unprojection's inverse).
 bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py);
 
-// Nearest STACK node of build part `partIdx` to the mouse within
-// `thresholdPx` (screen space); -1 if none. Stack ports are points, so
-// screen-space nearest is the natural grab test. Occupied ports
-// (BuildShip::nodeOccupied) are skipped, so hovering one falls through to
-// surface attach.
+// Nearest STACK node to the mouse within `thresholdPx`; -1 if none.
+// Occupied ports are skipped (falls through to surface attach).
 int pickVabNode(Game &g, int px, int py, int partIdx, double thresholdPx);
 
-// Reset the hover + ghost state (no target under the mouse).
+// Reset the hover + ghost state.
 void vabClearHover(Game &g);
 
-// Per-frame editor update: hover part + node, and the ghost pose for the
-// armed palette part at the hovered target (stack node, or a surface hit on
-// the hovered parent when no node is near). Sets Game::vab.hover,
-// vab.hoverNode, vab.ghost*.
+// Per-frame: hover part + node, ghost pose for the armed part at the target.
 void vabUpdateHover(Game &g, int px, int py);
 
-// Place the armed palette part at the current hover target (stack node or
-// surface hit), appending to Game::vab and re-solving poses. Returns the new
-// part index, or -1 if nothing is armed/targeted.
+// Place the armed palette part at the current hover target. -1 on failure.
 int vabPlace(Game &g);
 
-// Q/E: spin the ghost (while one previews) or the selected part about its
-// attach axis by deltaDeg. No ghost, no selection: no-op.
+// Q/E: spin the ghost or selected part about its attach axis. No-op if neither.
 void vabRotate(Game &g, double deltaDeg);
 
-// Link-mode click: the first hovered part becomes the fuel link's SOURCE
-// (Game::vab.linkFromId), the second the DESTINATION -- appending the link
-// to Game::vab.fuelLinks and leaving link mode. Refuses a self-link or a
-// duplicate from->to; a click on empty space is ignored (the mode stays).
+// Link-mode click: first hovered part = SOURCE, second = DESTINATION.
+// Refuses self-link or duplicate; empty space is ignored.
 void vabLinkClick(Game &g);
 
-// Delete/X: remove the selected part and its subtree. The root refuses
-// (toast); success clears the selection + hover.
+// Delete/X: remove the selected part and its subtree. Root refuses.
 void vabDeleteSelected(Game &g);
 
-// Del/X (the default "delete"): detach the selected part's subtree into
-// the session Subassemblies list instead of destroying it (the root
-// refuses). A lone part is not a subassembly (the palette already has it),
-// so detaching one just deletes it. Shift+Del/X remains the destructive
-// vabDeleteSelected for multi-part subtrees.
+// Del/X: detach the selected subtree into Subassemblies. A lone part is
+// deleted instead (the palette already has it). Root refuses.
 void vabDetachSelected(Game &g);
 
-// Write the build tree as the named ship def in the data dir's ships/
-// (save_ship_def). `name` is the ship's identity ("racer"), not a path --
-// .json and where the file lives are implementation details. Toasts the
-// outcome.
+// Write the build tree as the named ship def in the data dir's ships/.
+// `name` is the ship's identity ("racer"), not a path.
 void vabSave(Game &g, const char *name);
 
-// Load the named ship def into the VAB build tree, REPLACING the current
-// build (no confirm -- KSP-style), then re-aim the editor camera at the new
-// tree (vabOpen) and clear the hover. Lookup is by name: the data dir's
-// ships/ wins over stock res/ships/. A path (CLI --vab-load, e2e) is
-// accepted and reduced to its stem. True on success; false on a missing
-// def, parse failure, or empty def -- the current build is left untouched.
+// Load a ship def into the VAB, REPLACING the current build. Lookup by name
+// (data dir's ships/ wins over stock). True on success; current build is
+// left untouched on failure.
 bool vabLoad(Game &g, const char *name);
 
-// LAUNCH: convert the tree to a ShipDef, place it on the home body's pad
-// (with startup-style crew aboard), take control of it, and switch to the
-// Flight scene. Empty tree: toast, stay put.
+// LAUNCH: place the tree on the home body's pad, take control, switch to Flight.
 void vabLaunch(Game &g);
 
-// Aim the editor's orbit camera at the build tree: the parts' bbox centre
-// becomes Game::vab.center (the render frame is S shifted by -center) and the
-// distance fits the build. vabOpen calls it on entry; vabLoad calls it on its
-// own when a loaded tree REPLACES the build, which is a re-aim and not a
-// scene transition (no camera park, no launch-config re-seed, no toast).
+// Aim the editor's orbit camera at the build tree.
 void vabAimCamera(Game &g);
 
-/* The editor's per-frame step, called from the loop's LOGIC phase while the
-   Vab scene is live (the sim does not tick). vabFireHooks fires the headless
-   transition hooks (--vab-load / --vab-launch / --vab-close) and must run
-   FIRST: a launch flips the scene to Flight, and the caller re-checks the
-   scene afterwards so the same frame falls through to tick(). vabUpdate is
-   the mouse half -- hover-pick, the armed ghost, and the fresh-LMB press that
-   places / links / selects -- plus the --vab-place hook. */
+// Per-frame step while the Vab scene is live (the sim does not tick).
+// vabFireHooks runs FIRST (a launch flips the scene to Flight).
 void vabFireHooks(Game &g);
 void vabUpdate(Game &g);
 
-/* Scene transitions (the main menu's "Go to VAB" / the VAB's "Back to game").
-   The Vab is a LIVE scene -- SceneDef::sim is true, so the sim keeps coasting
-   while you build -- and entering mid-flight just hands the camera over.
-
-   vabOpen / vabClose are the player-facing pair: they push and pop the scene
-   stack, and the push/pop is what captures and restores the camera pose the
-   editor takes over (scene.h). vabEnter / vabExit are the scene table's
-   lifecycle hooks that pushScene / popScene call -- vabEnter seeds the launch
-   config and aims the camera at the build, vabExit drops the state that is
-   meaningless with the tree off screen. Call the pair, not the hooks. */
+// Scene transitions. The Vab is a LIVE scene (sim keeps coasting).
+// vabOpen / vabClose are the player-facing pair (push/pop the scene stack).
+// vabEnter / vabExit are the scene table's lifecycle hooks.
 void vabOpen(Game &g);
 void vabClose(Game &g);
 void vabEnter(Game &g);

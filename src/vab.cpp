@@ -1,12 +1,8 @@
 // vab.cpp -- the VAB editor's interaction layer (see vab.h): physics-free
 // picking of the build tree, the ghost preview pose, and placing a part.
-//
-// Picking reuses Bullet's own convex cast (pick.cpp castRay) against a
-// per-part-type convex hull built from the mesh -- the build tree has hull
-// shapes but NO rigid bodies, which is what keeps the authoring preview
-// cheap. pickRay's unprojection already cancels the draw-side renderOrigin
-// shift (see pick.cpp), so the ray and every hit live directly in the build
-// frame S: hulls go at the parts' localPos as-is, no -vab.center shift.
+// Picking reuses Bullet's convex cast (pick.cpp castRay) against per-part
+// hulls (no rigid bodies). The ray lives directly in the build frame S.
+
 #include "vab.h"
 
 #include <cmath>
@@ -54,9 +50,7 @@ btTransform toBt(const glm::dmat4 &m) {
     return t;
 }
 
-// The child stack node that best mates a parent node: the non-surface child
-// node whose direction is most anti-parallel to the parent node's (so a
-// parent "top" grabs the child "bottom", etc.).
+// The child stack node most anti-parallel to the parent node's direction.
 const Node *bestMatingChildNode(const PartDef &child, const glm::dvec3 &parentDir) {
     const Node *best = nullptr;
     double bestDot = -2.0;
@@ -74,8 +68,7 @@ bool altHeld() {
     return ks[SDL_SCANCODE_LALT] || ks[SDL_SCANCODE_RALT];
 }
 
-/* A placement id "<base>_<n>" not yet used in the tree, scanning n upward
-   (deletes leave holes the size-based guess would collide with). */
+/* A placement id "<base>_<n>" not yet used in the tree (deletes leave holes). */
 std::string nextBuildId(const BuildShip &bs, const std::string &base, int &n) {
     for(;;) {
         const std::string id = base + "_" + std::to_string(n);
@@ -94,11 +87,8 @@ std::string nextBuildId(const BuildShip &bs, const std::string &base, int &n) {
 // unprojection. false if behind the camera.
 bool vabProject(const Game &g, const glm::dvec3 &pS, double &px, double &py) {
     const Camera &cam = *g.camera;
-    // The view's camera sits at the render-frame eye (pos - renderOrigin,
-    // up to sub-ULP in Orbit mode -- irrelevant at VAB scale, see
-    // pick.cpp) and DrawModelAt shifts geometry by -renderOrigin; the two
-    // cancel, so S-frame points map straight as v = R * (pS - pos) (the
-    // same contract pickRay inverts).
+    // The -renderOrigin shifts cancel, so S-frame points map straight as
+    // v = R * (pS - pos) (the same contract pickRay inverts).
     const glm::dmat3 R(cam.view);
     const glm::dvec3 v = R * (pS - cam.pos);
     if(v.z >= -1e-6) { return false; }
@@ -172,8 +162,7 @@ void vabClearHover(Game &g) {
 }
 
 /* The definition the ghost places: the armed subassembly's ROOT part, or
-   the armed catalog part. *asmOut (when non-null) receives the assembly's
-   tree for an assembly ghost, else nullptr. */
+   the armed catalog part. */
 static const PartDef *armedChildDef(const Game &g, const BuildShip **asmOut) {
     if(asmOut != nullptr) { *asmOut = nullptr; }
     if(g.vab.armedAsm >= 0
@@ -200,9 +189,7 @@ void vabUpdateHover(Game &g, int px, int py) {
     if(childDef == nullptr) { return; }  // inspecting only; no ghost
     if(g.vab.build.parts.empty()) {
         /* An empty build: the armed part/assembly becomes the ROOT,
-           anchored at the S origin (the frame's anchor -- KSP's "first
-           part" moment). The ghost sits at the origin wherever the
-           cursor is; a plain click commits it. */
+           anchored at the S origin. */
         g.vab.ghostRoot = true;
         g.vab.ghostAssembly = asmShip ? g.vab.armedAsm : -1;
         g.vab.ghostSurface = false;
@@ -221,8 +208,8 @@ void vabUpdateHover(Game &g, int px, int py) {
     const bool snapL = g.vab.snapLen != alt;
     const bool snapA = g.vab.snapAng != alt;
     if(node >= 0) {
-        // stack attach onto the hovered port (symmetry does not apply: the
-        // synthesized axial ports are singletons, clones would coincide)
+        // stack attach onto the hovered port (symmetry does not apply:
+        // the synthesized axial ports are singletons)
         const Node &pn = pp.def->nodes[(size_t)node];
         const Node *cn = bestMatingChildNode(*childDef, pn.dir);
         if(cn == nullptr) { return; }
@@ -274,13 +261,11 @@ void vabUpdateHover(Game &g, int px, int py) {
 int vabPlace(Game &g) {
     if(!g.vab.ghostValid) { return -1; }
     const int parent = g.vab.ghostRoot ? -1 : g.vab.hoverParent;
-    // parent -1 is the valid ROOT placement (empty build); only a
-    // non-root ghost with no resolved parent is a rejection.
+    // parent -1 is the valid ROOT placement (empty build).
     if(!g.vab.ghostRoot && parent < 0) { return -1; }
 
-    /* An armed SUBASSEMBLY: graft a copy under the resolved root edge (one
-       graft per symmetry clone); the list entry is NOT consumed -- placing
-       is copy & paste (ids uniquify per graft). */
+    /* An armed SUBASSEMBLY: graft a copy under the resolved root edge.
+       The list entry is NOT consumed -- placing is copy & paste. */
     if(g.vab.ghostAssembly >= 0
        && (size_t)g.vab.ghostAssembly < g.vab.subassemblies.size()) {
         const BuildShip &sub = g.vab.subassemblies[(size_t)g.vab.ghostAssembly].ship;
@@ -338,8 +323,7 @@ int vabPlace(Game &g) {
         np.angle = g.vab.ghostRollUsed;
     }
     g.vab.build.parts.push_back(np);
-    // the radial-symmetry siblings: ordinary independent surface parts on
-    // the same parent (each selectable/deletable on its own afterwards)
+    // the radial-symmetry siblings: independent surface parts on the same parent
     for(size_t k = 0; k < g.vab.ghostClones.size(); k++) {
         const SymClone &c = g.vab.ghostClones[k];
         BuildPart sp;
@@ -360,9 +344,7 @@ int vabPlace(Game &g) {
 }
 
 /* Q/E rotate: the ghost's pending roll, or the selected part's attach roll
-   (stack angle / surface roll) with its subtree re-solved. With the angle
-   snap on the steps land exactly on the 10 deg grid; off, they are free
-   5 deg steps. */
+   with its subtree re-solved. */
 void vabRotate(Game &g, double deltaDeg) {
     const bool snap = g.vab.snapAng != altHeld();
     if(g.vab.ghostValid) {
@@ -463,8 +445,7 @@ void vabDetachSelected(Game &g) {
     if(sub.parts.empty()) { return; }
     g.vab.selected = -1;
     vabClearHover(g);
-    // A lone part is not a subassembly -- it is always one click away in the
-    // palette, so stashing it is just clutter. Detaching one deletes it.
+    // A lone part is not a subassembly -- the palette already has it.
     if(sub.parts.size() == 1) {
         printf("[vab] deleted %s (single part, not stashed)\n", rootId.c_str());
         fflush(stdout);
@@ -485,8 +466,7 @@ void vabDetachSelected(Game &g) {
 namespace {
 
 // Ship-def identity for the VAB is a NAME ("racer"). Paths and ".json" are
-// accepted (CLI --vab-load, a pasted path) but reduced to the stem -- the
-// UI never shows a path.
+// reduced to the stem.
 std::string shipDefStem(const std::string &spec) {
     std::string s = spec;
     while(!s.empty() && (s.back() == '/' || s.back() == '\\')) { s.pop_back(); }
@@ -499,8 +479,7 @@ std::string shipDefStem(const std::string &spec) {
 }
 
 // Resolve a ship-def name (or path) to a file. Data-dir ships/ wins over
-// stock res/ships/. A spec that still looks like a path is opened as one
-// when it exists (power-user / e2e escape hatch).
+// stock res/ships/.
 std::string shipDefFile(const std::string &spec) {
     if(spec.find('/') != std::string::npos
        || spec.find('\\') != std::string::npos) {
@@ -519,9 +498,8 @@ std::string shipDefFile(const std::string &spec) {
 } // namespace
 
 void vabSave(Game &g, const char *name) {
-    // The VAB's ship identity is a NAME ("racer"). It always lands in the
-    // data dir's ships/ (user content -- an AppImage's res/ is a read-only
-    // squashfs); a path or ".json" suffix in the field is ignored.
+    // The VAB's ship identity is a NAME ("racer"). Always saved to the data
+    // dir's ships/ (user content); a path or ".json" suffix is ignored.
     const std::string stem = shipDefStem(name != nullptr ? name : "");
     if(stem.empty()) {
         g.toast("Save FAILED: empty name");
@@ -563,22 +541,15 @@ bool vabLoad(Game &g, const char *name) {
         g.toast("Load failed: %s (no parts)", stem.c_str());
         return false;
     }
-    /* Replace the current build, then re-aim the editor at the new tree.
-       This is NOT a scene entry -- the editor is already live -- so it is
-       vabAimCamera, not vabOpen: no re-park of the flight camera, no re-seed
-       of the (already set) launch config, and no "entered the editor" toast.
-       The interaction state is dropped because it indexes the tree that was
-       just replaced (vabOpen did all of this as a side effect). */
+    /* Replace the current build, then re-aim the editor (not a scene entry). */
     g.vab.build = BuildShip::fromShipDef(def);
     vabAimCamera(g);
     vabClearHover(g);
     g.vab.selected = -1;
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
-    // linkSel indexes the tree that was just replaced. It is bounds-checked
-    // wherever it is read, so a stale one cannot overrun -- but it would still
-    // flip the Del key from "detach" to a destructive "delete" with nothing
-    // visibly selected.
+    // linkSel indexes the tree that was just replaced; reset it (a stale one
+    // would flip Del from "detach" to destructive "delete").
     g.vab.linkSel = -1;
     printf("[vab] loaded %s (%d parts)\n", stem.c_str(), (int)g.vab.build.parts.size());
     fflush(stdout);
@@ -598,27 +569,21 @@ void vabLaunch(Game &g) {
     }
     const std::string scName = g.vab.scenarioName.empty() ? "pad" : g.vab.scenarioName;
     const ScenarioDef *sc = scenario_by_name(scName);
-    /* defPath "": the ship was built in memory -- there is no file to
-       respawn it from until it is saved (the Respawn button hides). */
+    /* defPath "": the ship was built in memory -- no file to respawn from. */
     Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time);
-    // Non-pad scenarios place the ship in orbit (position + orbit velocity),
-    // like the fleet spawn. Left live (NOT on rails) so it is
-    // player-controlled -- the VAB's model.
+    // Non-pad scenarios place the ship in orbit (like the fleet spawn).
+    // Left live (NOT on rails) so it is player-controlled.
     if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
-    // Crew ABOARD after the reposition: each kerbal then parks at the
-    // capsule's final (orbit) pose, not the pad's.
-    g.ships.spawn_crew(v, g.sys, g.time);   // crew aboard the capsules, like startup
+    // Crew aboard after the reposition so each kerbal parks at the final pose.
+    g.ships.spawn_crew(v, g.sys, g.time);
     g.select_ship(v);
     vabClearHover(g);
     g.vab.armed.clear();
     g.vab.ghostRoll = 0.0;
     g.vab.selected = -1;
-    /* Collapse the stack to [Flight]. That discards the editor scene AND the
-       camera pose it parked: the launched ship is the active one now and
-       select_ship has just aimed the camera at it, so there is nothing to go
-       back to. Leaving the pose on a frame would make the next vabOpen skip
-       capturing one, and the "Back to game" after that restore a viewpoint
-       from before this launch. */
+    /* Collapse the stack to [Flight]: the launched ship is the active one now;
+       leaving the editor's camera pose would make the next vabOpen skip
+       capturing one. */
     enterFlight(g);
     printf("[vab] launched '%s' (%d parts)\n", v->name.c_str(),
            (int)g.vab.build.parts.size());
@@ -630,11 +595,8 @@ void vabLaunch(Game &g) {
     }
 }
 
-/* Aim the editor's orbit camera at the build tree: the parts' bbox centre
-   becomes vab.center (the render frame is S shifted by -center) and the
-   distance fits the build -- an empty build sits 30 m from the S origin.
-   This is the camera half of entering the editor, split out because it is
-   also what a replaced tree needs (vabLoad) with no scene transition at all. */
+/* Aim the editor's orbit camera at the build tree (also what a replaced
+   tree needs from vabLoad). */
 void vabAimCamera(Game &g) {
     g.vab.center = glm::dvec3(0.0);
     double dist = 30.0;
@@ -651,24 +613,18 @@ void vabAimCamera(Game &g) {
         g.camera->toOrbit(g.vab.center);   // also from Free mode
         g.camera->distance = dist;
     }
-    // The e2e anchor for "the editor camera followed the tree" -- a vabLoad
-    // that stopped re-aiming would otherwise pass its cases silently.
+    // e2e anchor: "the editor camera followed the tree".
     printf("[vab] camera aimed at the build: %d part(s), %.1f m out\n",
            (int)g.vab.build.parts.size(), dist);
     fflush(stdout);
 }
 
-/* Enter the editor: push the Vab scene on the stack. The push captures the
-   flight camera pose first (the editor takes the camera over for the
-   session), so vabEnter below is free to aim it at the build tree. */
+/* Enter the editor: push the Vab scene (captures the flight camera pose). */
 void vabOpen(Game &g) { pushScene(g, SceneId::Vab); }
 
-/* The scene table's enter hook for SceneId::Vab -- scene.cpp calls it from
-   pushScene, once the camera has been captured onto the new frame. */
+/* Scene table's enter hook -- scene.cpp calls it from pushScene. */
 void vabEnter(Game &g) {
-    // seed the launch config once (the dropdowns' initial selection): the
-    // home body + the pad. Left alone afterwards, so a body/scenario chosen
-    // in a prior VAB session is kept when the editor is re-entered.
+    // Seed the launch config once (home body + pad); left alone afterwards.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
     vabClearHover(g);
@@ -682,35 +638,25 @@ void vabEnter(Game &g) {
     g.toast("VAB -- the sim keeps running");
 }
 
-/* The scene table's exit hook: drop only the state that is meaningless once
-   the build tree is off screen. Deliberately NOT the armed part, the
-   selection or the ghost roll -- "Back to game" just hands the camera back to
-   the live world (the sim never stopped), so the editor must be exactly as
-   you left it when you come back. vabLaunch resets those itself, because a
-   launch is a fresh start. */
+/* Scene table's exit hook: drop only the state that is meaningless once the
+   tree is off screen. Deliberately NOT the armed part / selection / roll --
+   "Back to game" must leave the editor as you left it. */
 void vabExit(Game &g) {
     vabClearHover(g);
     g.vab.linkMode = false;
     g.vab.linkFromId.clear();
 }
 
-/* Leave the editor the way the player does: pop the stack, which runs
-   vabExit and hands the parked flight camera back. The pop always succeeds
-   from here -- the stack is seeded with Flight at boot, so being in the
-   editor means there is a frame below to return to. */
+/* Leave the editor: pop the stack (hands the parked flight camera back). */
 void vabClose(Game &g) {
     popScene(g);
-    // Named from the stack, not hardcoded: an editor opened with nothing to
-    // fly sits on [title, vab] and pops back to the TITLE screen.
     printf("[vab] back to %s (sim keeps coasting)\n", sceneName(curSceneId(g)));
     fflush(stdout);
     g.toast("Back from the VAB -- the sim keeps running");
 }
 
-/* The headless transition hooks (--vab-load, --vab-launch, --vab-close), each
-   fired at most once at its loop time and only while the editor is the live
-   scene. The scene is re-checked between them: a launch flips it to Flight,
-   and the caller re-checks too so the same frame falls through to tick(). */
+/* Headless transition hooks (--vab-load, --vab-launch, --vab-close), each
+   fired at most once. vabFireHooks must run FIRST (a launch flips the scene). */
 void vabFireHooks(Game &g) {
     if(!sceneIs(g, SceneId::Vab)) { return; }
     const int ms = (int)(SDL_GetTicks() - g.loop_start_ms);
@@ -719,9 +665,7 @@ void vabFireHooks(Game &g) {
         g.vabHooks.loadFired = true;
         vabLoad(g, g.vabHooks.loadPath.c_str());
     }
-    /* --vab-detach: the headless stand-in for Del/X on a selected part. It
-       selects the named build part (the mouse-click path can't be driven
-       headless) and runs the same vabDetachSelected the key would. */
+    /* --vab-detach: headless stand-in for Del/X on a selected part. */
     if(sceneIs(g, SceneId::Vab) && g.vabHooks.detachMs >= 0
        && g.vabHooks.detachIdx >= 0 && !g.vabHooks.detachFired
        && ms >= g.vabHooks.detachMs) {
@@ -745,13 +689,9 @@ void vabFireHooks(Game &g) {
     }
 }
 
-/* The editor's mouse half: hover-pick a part/port and preview the armed
-   part's ghost; a fresh LMB press places, links, or selects.
-
-   While the cursor is over an imgui window the UI owns the mouse, so there is
-   no pick and no place. WantCaptureMouse holds LAST frame's value -- imgui
-   sets it in the NewFrame that follows this phase -- so it is at most one
-   frame stale, which the cursor cannot outrun in practice. */
+/* The editor's mouse half: hover-pick, ghost preview, LMB places/links/selects.
+   While the cursor is over an imgui window the UI owns the mouse (no pick/place).
+   WantCaptureMouse holds LAST frame's value -- at most one frame stale. */
 void vabUpdate(Game &g) {
     float fmx = 0, fmy = 0;   // SDL3 reports mouse position in float
     const Uint32 mb = SDL_GetMouseState(&fmx, &fmy);
@@ -762,11 +702,8 @@ void vabUpdate(Game &g) {
     } else {
         vabUpdateHover(g, mx, my);
     }
-    /* --vab-place: the headless placement hook, fired once at its loop time.
-       It exercises vabPlace (root / stack / surface) without a mouse --
-       sim-mouse button events do not update SDL_GetMouseState, so the LMB
-       edge below can't be driven headless. Fires AFTER vabUpdateHover, so the
-       ghost (and root flag) it places from is this frame's. */
+    /* --vab-place: headless placement hook (sim-mouse button events do not
+       update SDL_GetMouseState, so the LMB edge can't be driven headless). */
     if(!overUI && g.vabHooks.placeMs >= 0 && !g.vabHooks.placeFired
        && (int)(SDL_GetTicks() - g.loop_start_ms) >= g.vabHooks.placeMs) {
         g.vabHooks.placeFired = true;

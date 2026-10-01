@@ -1,33 +1,12 @@
 // staging.h -- VAB staging analysis: per-stage delta-v and TWR, with fuel
 // links (asparagus) accounted for.
 //
-// Pure math over BuildShip (no GL / Bullet), so the VAB table and the unit
-// tests share one implementation. The burn model matches flight's rocket
-// drain:
-//   * fuel groups (decouplers / barriers split them),
-//   * one-way fuel links drained FURTHEST-layer-first (Vehicle::
-//     fuelDrainLayers) -- outer asparagus tanks empty before the core,
-//   * engines light when the stage counter reaches their stage,
-//   * a stage press drops the decouplers on that stage (Vehicle::
-//     droppedPartsAtStage: the decoupler + its child-side subtree).
-//
-// The VAB estimate fires each stage when the parts it would drop have
-// emptied every propellant atom any active engine can still draw from
-// them (so asparagus drops the spent outer boosters on time). An inert
-// drop (a payload separator -- nothing drainable in the set) burns the
-// remaining reachable propellant instead of ending the period at zero
-// length. The last stage burns whatever the still-lit engines can reach.
-//
-// Vacuum model: only the propellants the ship's ROCKET engines draw burn
-// (a chemical engine H2+LOX, a nuclear thermal engine H2 alone); jets need
-// air, so they contribute no vacuum delta-v and their JetFuel stays as
-// carried mass. Hydrazine, O2, water and food are likewise inert mass here,
-// as is any tank resource no engine on the ship can burn. EC has no mass.
-//
-// Mass: PartDef::mass is the DRY structure (res/data/parts.json mass excludes
-// propellant). Propellant rides capacity: the burnable resources (per the
-// engines present) become the burnable pool (partPropellantMass), every
-// other resource is inert mass folded into partDryMass, EC has none.
+// Pure math over BuildShip (no GL / Bullet). The burn model matches flight's
+// rocket drain: fuel groups, furthest-layer-first fuel links, stage-gated
+// ignition, and decoupler drops of the child-side subtree.
+// Vacuum model: only the propellants the ship's ROCKET engines draw burn;
+// jets contribute no vacuum delta-v. EC has no mass.
+
 #pragma once
 
 #include <vector>
@@ -47,30 +26,21 @@ struct StageRow {
 };
 
 // Simulate the staged burn of `ship` (tanks start FULL) against surface
-// gravity `g` (m/s^2 -- pass the system home body's g; pass 0 to skip
-// TWR and still get delta-v). `exhaust_scale` multiplies every engine's
-// thrust (the New Game difficulty / Vehicle::exhaust_scale) so the table
-// matches what a launch will actually produce; the fuel burn does not
-// scale. Rows are in flight order: the first burn first. Empty build ->
-// empty vector.
-//
+// gravity `g` (0 skips TWR). `exhaust_scale` multiplies every engine's
+// thrust (the difficulty knob); the fuel burn does not scale.
 // Stage periods are the numbers that carry a decoupler, plus the highest
-// stage number (the final burn). A stage that only lights engines sits
-// between two drops: those engines join the burn of the next period that
-// actually lasts (so their thrust shows up in that row's TWR / delta-v).
+// stage number (the final burn). A stage that only lights engines joins the
+// burn of the next period that actually lasts.
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                                      double exhaust_scale = 1.0);
 
 // Burnable propellant of the part (kg): the capacity of the resources flagged
-// in `burn` (the ship's rocket-engine propellants -- see computeStaging).
-// Resources no engine burns (e.g. LOX on a nuclear-thermal-only ship), jet
-// fuel, hydrazine, O2, water and food are carried but inert here; EC is Wh.
+// in `burn`. Resources no engine burns, jet fuel, hydrazine, O2, water and
+// food are carried but inert here; EC is Wh.
 double partPropellantMass(const PartDef &def, const bool *burn);
 
 // Inert mass: the DRY structure (PartDef::mass, which excludes propellant)
-// plus every resource NOT flagged burnable in `burn` (and not EC, which has
-// no mass). The complement of partPropellantMass over the part's full mass
-// (def.mass + capacity).
+// plus every resource NOT flagged burnable in `burn` (and not EC).
 inline double partDryMass(const PartDef &def, const bool *burn) {
     double m = def.mass;
     for(size_t r = 0; r < def.capacity.size(); r++) {

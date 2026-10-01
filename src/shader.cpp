@@ -115,8 +115,7 @@ bool Shader::registeredAs(const std::vector<const char *> &attribs,
 }
 
 // A registered-but-optimized-out uniform has location GL_INVALID_INDEX;
-// writing it would raise GL_INVALID_OPERATION on every call (the terrain and
-// sun draw paths used to do this per patch pass), so no-op instead.
+// writing it would raise GL_INVALID_OPERATION on every call, so no-op instead.
 void Shader::setUniform_i(int index, int v) {
     if(index < 0 || index >= (int)uniformNames.size() || m_uniforms[index] == GL_INVALID_INDEX) {
         return;
@@ -255,12 +254,7 @@ GLuint Shader::CreateShader(const std::string& text, unsigned int type)
     return shader;
 }
 
-/* --- the shared file-shader registry (see shader.h) ----------------------
-   One program per file, compiled once. The map lives until process exit;
-   the GL context teardown reclaims the programs. Main-thread only, so no
-   lock. (The postfx effects keep using FromFile directly: each one is a
-   UNIQUE program -- same vertex file, different fragment -- so there is
-   nothing to share there.) */
+/* --- the shared file-shader registry (see shader.h) ---------------------- */
 static std::map<std::string, Shader *> s_shaders;
 
 Shader *get_shader(const std::string &path,
@@ -271,9 +265,8 @@ Shader *get_shader(const std::string &path,
     std::map<std::string, Shader *>::iterator it = s_shaders.find(key);
     if(it != s_shaders.end()) {
         Shader *s = it->second;
-        // The registration is fixed at first load; a second caller with a
-        // DIFFERENT list would silently mis-address the positional uniforms,
-        // so fail loudly instead of returning it.
+        // Registration is fixed at first load; a second caller with a
+        // DIFFERENT list would silently mis-address the positional uniforms.
         if(!s->registeredAs(attribs, uniforms)) {
             printf("ERROR: get_shader('%s') was already loaded with a "
                    "different attrib/uniform list -- the first registration "
@@ -288,9 +281,7 @@ Shader *get_shader(const std::string &path,
     // FromFile/LoadShader resolve for the open; `path` stays the logical
     // name in the log line below.
     s->FromFile(path);
-    // A link failure is cached (like the mesh/texture placeholders), so a
-    // broken shader would otherwise render nothing, silently, for every
-    // caller. CheckShaderError already logged the GL reason; this names it.
+    // A link failure is cached so a broken shader would not silently render nothing.
     GLint linked = 0;
     glGetProgramiv(s->m_program, GL_LINK_STATUS, &linked);
     if(linked == GL_FALSE) {

@@ -13,10 +13,8 @@ enum class WindowMode
     Exclusive    // exclusive fullscreen: display mode change to width x height
 };
 
-// One supported display resolution (a "display mode" entry; the Settings
-// dropdown's list item). The same width x height appears once per refresh
-// rate; the refresh is informational -- this SDL has no
-// SDL_SetWindowMode, so exclusive matches on width/height only.
+// One supported display resolution (the Settings dropdown's list item).
+// The refresh is informational -- exclusive matches on width/height only.
 struct Resolution {
     int width;
     int height;
@@ -34,24 +32,17 @@ public:
     void SwapBuffers();
     void onResize(int width, int height);
     bool SaveScreenshot(const char *filename);
-    // Reconfigure the live window to `mode` at `width` x `height` (the
-    // Settings dropdowns and --sim-mode go through this): decorations,
-    // desktop fullscreen, the display-mode change. Fullscreen runs at the
-    // display's native mode, so `width`/`height` are ignored there. The
-    // SIZE_CHANGED event (events.cpp) finishes the resize: the viewport
-    // (onResize), postfx, the camera aspect.
+    // Reconfigure the live window (Settings dropdowns / --sim-mode).
+    // Fullscreen runs at the display's native mode, so width/height are ignored.
+    // The SIZE_CHANGED event finishes the resize (viewport, postfx, camera aspect).
     void setWindowMode(WindowMode mode, int width, int height);
-    // The display's (display 0's) supported resolutions -- one entry per
-    // width x height x refresh rate -- sorted by width, height, refresh,
-    // with the current mode guaranteed to be in the list (some stacks
-    // keep it out of the reported modes).
+    // Supported resolutions sorted by width, height, refresh; the current
+    // mode is guaranteed to be in the list (some stacks keep it out).
     std::vector<Resolution> displayModes();
-    // The refresh rate (Hz) the display is currently running at; 0 if
-    // unknown.
+    // Current refresh rate (Hz); 0 if unknown.
     int currentRefresh();
-    // The sample count the window was actually created with. The driver
-    // may grant fewer than requested, or zero on a stack with no
-    // multisample visual (the constructor's fallback).
+    // Sample count the window was actually created with (the driver may
+    // grant fewer than requested, or zero with no multisample visual).
     int msaaSamples() const;
 
     SDL_Window *get_display() { return m_window; }

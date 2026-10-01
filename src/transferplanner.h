@@ -1,29 +1,16 @@
 // transferplanner.h -- the game-side transfer planner: the TRANSFER window's
-// target selection + the min-dv solver cache.
-//
-// The pure-math solver (Lambert + planTransfer) stays in transfer.h,
-// header-only, so it can be pinned without the game. This class owns the
-// game-side state that was main() locals -- xferTargets / xfer_target /
-// xfer_auto / xfer_tof_log / the solver cache `xfer` / the --xfer-log
-// gate -- and the per-frame work that was a render-pass block in main:
-// rebuild the target list, recompute the solution on input change or
-// every 30 frames, and fire the --xfer-log. The implementation is in
-// transferplanner.cpp; everything reads and writes state through the
-// planner's own members or the borrowed Game.
+// target selection + the min-dv solver cache. Pure math is in transfer.h.
 #pragma once
 
-#include <cmath>        // std::log10 (the xfer_tof_log / xfer_prev_tof_log initializers)
-#include <vector>       // std::vector<XferTarget>
+#include <cmath>
+#include <vector>
 
-#include <SDL3/SDL.h>   // Uint32 (xfer_log_last_ms)
-#include <glm/glm.hpp>  // glm::dvec3 (xfer.burn_dir)
+#include <SDL3/SDL.h>
+#include <glm/glm.hpp>
 
 #include "transfer.h"   // TransferSolution, PorkchopResult
 
-// The planner is a MEMBER of Game (game.h includes this header for the
-// complete type), so Game is only forward-declared here -- including game.h
-// would be a cycle. XferTarget's body/ship are pointers, so the two sim
-// types are forward-declared the same way.
+// Planner is a MEMBER of Game; forward-declare to avoid a cycle.
 struct Game;
 struct TerrainBody;
 class Vehicle;
@@ -38,36 +25,18 @@ public:
 
     explicit TransferPlanner(Game &g) : g(g) {}
 
-    /* Per-frame (render pass): rebuild the target list from the ship's
-       parent's children + the sibling ships, recompute the solution on
-       input change or every 30 frames (the plan changes slowly relative
-       to the ToF scale, and the sweep is the cost center), and fire the
-       --xfer-log. com / vel are the active ship's render-frame COM and
-       velocity -- the render pass's scratch -- so the solver sees exactly
-       what the readouts use. */
+    // Per-frame: rebuild the target list, recompute the solution on input
+    // change or every 30 frames, fire the --xfer-log.
     void update(const glm::dvec3 &com, const glm::dvec3 &vel);
 
-    /* On-demand (the P key / the window's button): build the porkchop
-       plot for the current target from the ship's current state and cache
-       it in pc until the next call. No-op when there is no target.
-       The grid sweep itself runs on the background worker (g.jobs); this
-       only snapshots the inputs and posts the job, so it never blocks the
-       frame. pc is replaced when the job lands (see pc_in_flight). */
+    // On-demand (P key / button): snapshot inputs and post the grid sweep
+    // to the background worker; never blocks the frame.
     void porkchopCompute();
 
-    /* Drop a "Send best" plan (the Transfer window's "Clear plan" button,
-       or a target change): clear the countdown and restore the ToF mode
-       the user had before sending. No-op when no plan is active. */
+    // Drop a "Send best" plan and restore the prior ToF mode. No-op if none.
     void clearPorkchopPlan();
 
-    /* The world moved out from under the planner -- the clock jumped OUTSIDE
-       a tick (a load, the boot --start-time) or the system was swapped
-       (switchSystem): every stamp against the old world is now stale. Drop
-       the "Send best" plan (its departure was sampled for the old planet
-       positions), the swept grid (same reason), the min-dv solution, and the
-       target list (a system swap deleted those bodies / ships). Called from
-       Game::invalidateClockStampedCaches. No-op when there is nothing to
-       drop. */
+    // Clock jump or system swap: drop every stamp against the old world.
     void invalidateClockState();
 
     std::vector<XferTarget> xferTargets;
@@ -84,48 +53,27 @@ public:
         TransferSolution sol;
         glm::dvec3 burn_dir = glm::dvec3(0.0); // render-frame burn direction
     } xfer;
-    // --xfer-log: its own "last fired" timestamp (it shares the game's
-    // orbit_log_interval_ms, like the orbit/dbg logs).
     Uint32 xfer_log_last_ms = 0;
 
-    /* Porkchop plot (on-demand): the last porkchopCompute() result, for the
-       window to render. The grid size is g.args.porkchop_n (the size knob;
-       a Settings-window hook later). pc_in_flight counts the grid jobs
-       posted but not yet landed, so the window can show "sweeping" and
-       keep the Compute button disabled until the new grid replaces pc.
-       pc_target is the target index the current grid was swept for: a grid
-       is only valid for its own target, so a target change invalidates pc
-       (update() drops it) rather than showing the old target's window under
-       the new target's label. */
+    // Last porkchopCompute() result. pc_in_flight counts jobs posted but not
+    // yet landed (the window shows "sweeping"). pc_target is the target the
+    // grid was swept for; a target change invalidates pc.
     PorkchopResult pc;   // valid when pc.valid
     int pc_target = -1;  // target index the current pc grid was swept for
     int pc_in_flight = 0;
-    // Departure-delay (x-axis) range, in s. When pcCustomDep is off the
-    // sweep uses the auto range (0 .. one target period); when on it uses
-    // these slider values (see the Porkchop window's checkbox).
+    // Custom dep/ToF ranges; off = auto range (see Porkchop window).
     bool   pcCustomDep = false;
     float  pcDepLo = 0.0f;
     float  pcDepHi = 0.0f;
-    // Time-of-flight (y-axis) range, in s. When pcCustomTof is off the
-    // sweep uses the auto range (60 s .. three target periods); when on it
-    // uses these slider values (see the Porkchop window's checkbox).
     bool   pcCustomTof = false;
     float  pcTofLo = 60.0f;
     float  pcTofHi = 0.0f;
-    // Sim time (s) the last porkchop grid was swept (porkchopCompute). The
-    // best cell's t_dep_min is a DELAY relative to that moment, so an
-    // absolute departure time = pc_computed_at + pc.t_dep_min.
     double pc_computed_at = 0.0;
-    // A porkchop "Send best" applied to this target: xfer_t_dep is the
-    // absolute departure time to count down to (and the ToF is pinned to
-    // the best cell's). At t_dep the live "depart now" solution IS the best
-    // cell, so that is when you burn. xfer_plan_target is the target index
-    // it was sent for; if the target changes, the countdown is dropped.
+    // "Send best": absolute departure time to count down to. Dropped on target change.
     bool   xfer_from_porkchop = false;
     double xfer_t_dep = 0.0;   // s (sim clock)
     int    xfer_plan_target = -1;
-    // The ToF mode the user had before "Send best" pinned the ToF --
-    // clearPorkchopPlan() (Clear button / target change) restores it.
+    // ToF mode saved before "Send best" pinned the ToF; clearPorkchopPlan restores it.
     bool   xfer_prev_auto = true;
     float  xfer_prev_tof_log = (float)std::log10(3600.0);
 

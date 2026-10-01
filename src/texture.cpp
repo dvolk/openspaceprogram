@@ -28,13 +28,9 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
     }
     Texture * ret = new Texture;
 
-    // SDL3: the hand-built SDL_PixelFormat struct is gone; the format is an
-    // enum. Gotcha -- SDL3's 32-bit names are inverted from SDL2 on
-    // little-endian: the [R,G,B,A] byte order (what GL_RGBA below reads, R
-    // first) is SDL_PIXELFORMAT_ABGR8888, while SDL_PIXELFORMAT_RGBA8888 is
-    // [A,R,G,B]. Converting to RGBA8888 therefore reverses the channels
-    // (gray parts render red, plume black->red, alpha->R). Target ABGR8888
-    // (a no-op for the RGBA PNGs and a clean expand for RGB-only ones).
+    // SDL3: 32-bit names are inverted from SDL2 on little-endian. The
+    // [R,G,B,A] byte order GL_RGBA reads is SDL_PIXELFORMAT_ABGR8888;
+    // RGBA8888 would reverse the channels.
     SDL_Surface* glSurface = SDL_ConvertSurface(res_texture, SDL_PIXELFORMAT_ABGR8888);
     SDL_DestroySurface(res_texture);
 
@@ -62,9 +58,7 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
     SDL_DestroySurface(glSurface);
 
     if (mipmap) {
-        // Mipmap chain + trilinear minify: without a chain the anisotropy
-        // ratio above has nothing to interpolate between, and minified parts
-        // shimmer.
+        // Mipmap chain + trilinear minify (anisotropy needs the chain).
         glGenerateMipmap(GL_TEXTURE_2D);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     } else {
@@ -74,12 +68,7 @@ static Texture *load_texture_file(const char *filename, bool mipmap) {
     return ret;
 }
 
-/* --- the shared file-asset registry -------------------------------------
-   One GL texture per (file, mipmap) pair, shared by every part/pad that
-   uses the file: a 100-part ship built from K part types uploads K
-   textures, not 100. The map lives until process exit; the GL context
-   teardown reclaims the objects, so there is no cleanup pass. All calls
-   are main-thread (the job worker does pure math only), so no lock. */
+/* --- the shared file-asset registry: one GL texture per (file, mipmap) pair. --- */
 static std::map<std::string, Texture *> s_textures;
 
 Texture *get_texture(const std::string &path, bool mipmap) {
@@ -90,9 +79,7 @@ Texture *get_texture(const std::string &path, bool mipmap) {
     if(it != s_textures.end()) { return it->second; }
     Texture *tex = load_texture_file(file.c_str(), mipmap);
     if(tex == nullptr) {
-        // Hot pink: a part with a broken texture still renders, visibly
-        // wrong. Cache the placeholder too, so a missing file does not
-        // re-attempt the load (and re-print) on every part built from it.
+        // Hot pink placeholder (cached so a missing file does not re-attempt).
         printf("get_texture: could not load '%s' -- using the hot-pink placeholder\n",
                path.c_str());
         const int w = 16, h = 16;
@@ -111,9 +98,7 @@ Texture *make_texture_r8(int w, int h, const unsigned char *rgba,
     Texture *ret = new Texture;
     glGenTextures(1, &ret->id);
     glBindTexture(GL_TEXTURE_2D, ret->id);
-    // NEAREST: a heatmap is discrete cells; LINEAR would smear them into a
-    // fake smooth gradient when the image is upscaled. linear=true is for
-    // smooth content (the surface map) where the opposite is wanted.
+    // NEAREST for discrete heatmap cells; linear=true for smooth content.
     const GLint filt = linear ? GL_LINEAR : GL_NEAREST;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
@@ -139,9 +124,7 @@ Texture *make_coverage_texture(int w, int h, const unsigned char *r,
                     wrap_s ? GL_REPEAT : GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, r);
-    // Mip chain + trilinear minify: the deck minifies at distance / grazing
-    // angles (the rim in orbit), where a single level shimmers; anisotropy
-    // needs the chain to work on.
+    // Mip chain + trilinear minify (the deck minifies at distance / grazing angles).
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     float aniso = max_anisotropy();

@@ -8,40 +8,24 @@ struct Texture {
     unsigned int id; /* really GLuint */
 };
 
-/* Shared file-asset registry (texture.cpp): lookup-or-load, ONE GL texture
-   per (file, mipmap) pair, shared by every part/pad that uses the file.
-   The registry owns the texture (it lives until process exit; the GL
-   context teardown reclaims it), so callers must never delete it.
-   mipmap=false keeps a single level (no alpha-edge bleed from mip chains);
-   use it for the flat billboard icons. A file that fails to load yields a
-   hot-pink placeholder instead of NULL, so a broken texture is visible in
-   the game rather than a crash far from the cause. */
+/* Shared file-asset registry: ONE GL texture per (file, mipmap) pair.
+   mipmap=false for flat billboard icons (no alpha-edge bleed). A failed
+   load yields a hot-pink placeholder instead of NULL. */
 Texture *get_texture(const std::string &path, bool mipmap = true);
 
-/* CPU-generated RGBA8 texture (the porkchop heatmap; the surface map):
-   rgba is w*h pixels of [R,G,B,A], row 0 = bottom (GL convention).
-   linear=false (default): NEAREST filtering (crisp heatmap cells, no
-   wrap bleed); linear=true: LINEAR (a smooth map upscaled over the
-   window). CLAMP_TO_EDGE either way. */
+/* CPU-generated RGBA8 texture (heatmap / surface map). linear=false: NEAREST
+   (crisp cells); linear=true: LINEAR (smooth map). CLAMP_TO_EDGE. */
 Texture * make_texture_r8(int w, int h, const unsigned char *rgba,
                           bool linear = false);
 /* Re-upload new pixels to an existing make_texture_r8 texture (same w/h). */
 void upload_texture_r8(Texture *tex, int w, int h, const unsigned char *rgba);
 
-/* CPU-generated single-channel (R8) texture WITH a mip chain (the cloud
-   deck's coverage map -- the FBM is baked once at load, so the deck's
-   fragment cost is one fetch, not a per-frame FBM): trilinear + anisotropy
-   (the deck minifies at distance and grazing angles). wrap_s = GL_REPEAT
-   when the UV scrolls (the deck drift) -- the image is a function of
-   direction, so the seam is seamless; T clamps (equirectangular poles).
-   r = w*h bytes, row 0 = v=0. */
+/* CPU-generated R8 texture WITH a mip chain (the cloud deck's coverage map).
+   wrap_s = GL_REPEAT when the UV scrolls (the deck drift). */
 Texture * make_coverage_texture(int w, int h, const unsigned char *r,
                                 bool wrap_s);
-/* Re-upload the grid to an existing make_coverage_texture texture (the
-   async cloud bake: a solid 1x1 placeholder stands in while the worker
-   thread bakes the real grid). */
+/* Re-upload the grid to an existing make_coverage_texture texture. */
 void upload_coverage_r8(Texture *tex, int w, int h, const unsigned char *r);
 
-/* Highest anisotropic filtering ratio the driver supports (0 = unsupported);
-   set GL_TEXTURE_MAX_ANISOTROPY to this value on minifying textures. */
+/* Highest anisotropic filtering ratio the driver supports (0 = unsupported). */
 float max_anisotropy();

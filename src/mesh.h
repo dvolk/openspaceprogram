@@ -69,12 +69,11 @@ class Mesh
 public:
     virtual ~Mesh();
 
-    /* true on success; on failure the Mesh is left empty (no VAO, no
-       buffers) -- a caller that might share the result must check. */
+    // true on success; on failure the Mesh is left empty (no VAO, no buffers).
     bool AssImpFromFile(const std::string& fileName, bool copyData);
     bool FromFile(const std::string& fileName, bool copyData);
-    // numInnerIndices: when nonzero, the first numInnerIndices indices are
-    // the terrain and the tail is a skirt; DrawSkirt() renders the tail.
+    // numInnerIndices: when nonzero, the first N indices are terrain and the
+    // tail is a skirt; DrawSkirt() renders the tail.
     void FromData(const PosNorColVertex* vertices, unsigned int numVertices, const unsigned int* indices, unsigned int numIndices, bool copyData, unsigned int numInnerIndices = 0);
 
     void InitMesh(const PosInterface& model);
@@ -83,15 +82,11 @@ public:
     void InitMesh(const PosTexNorIndColInterface& model, bool copyData);
 
     void Draw();
-    // draw lines initialized by PosInterface
-    void Draw(GLenum mode);
-    // draw the skirt index tail (see FromData); drawn after Draw() so the
-    // skirt depth-tests against the terrain in front of it
+    void Draw(GLenum mode);   // lines initialized by PosInterface
+    // Draw the skirt index tail (see FromData); drawn after Draw() so it
+    // depth-tests against the terrain in front of it.
     void DrawSkirt();
 
-    // FromData's numInnerIndices: 0 = no skirt (the whole index array is
-    // terrain), nonzero = the first that many indices are terrain and the
-    // tail is the render-only skirt
     unsigned int numInnerIndices() const { return m_numInnerIndices; }
 
     // for bullet physics
@@ -102,8 +97,7 @@ public:
 
 private:
 
-    /* defaults keep an empty (import-failed) Mesh destructible: no VAO,
-       no buffers, nothing to delete. */
+    // Defaults keep an empty (import-failed) Mesh destructible.
     int num_VABs = 0;
     GLuint *m_vertexArrayBuffers = NULL;
     GLuint m_vertexArrayObject = 0;
@@ -111,12 +105,9 @@ private:
     unsigned int m_numInnerIndices = 0;
 };
 
-/* Shared file-asset registry (mesh.cpp): lookup-or-load, ONE Mesh per
-   file, shared by every part/pad that uses it. The registry owns the
-   mesh (lives until process exit), so callers must never delete it.
-   The CPU-side vs/is copies are ALWAYS kept (BuildPartHull's convex hull
-   needs them and asserts their presence), and a file that fails to import
-   yields a unit-cube placeholder instead of a half-built Mesh. */
+/* Shared file-asset registry: lookup-or-load, ONE Mesh per file. The registry
+   owns the mesh (lives until process exit). vs/is copies are ALWAYS kept
+   (BuildPartHull needs them); a failed import yields a unit-cube placeholder. */
 Mesh *get_mesh(const std::string &path);
 
 #endif

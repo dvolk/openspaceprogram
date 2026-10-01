@@ -1,27 +1,9 @@
 #pragma once
 
 // eva.h -- the EVA kerbal: a one-part Vehicle subclass + its control laws.
-//
-//   Kerbal          the vehicle (inherits frames, gravity, rails, the HUD)
-//   evaArmCommands  per-tick control arming (keys + camera -> armed state)
-//
-// A kerbal IS a one-part ship as far as the game is concerned (see the
-// design notes in reports/eva2026_09_02/): it rides the fleet list, F6
-// cycling, the rails, the SOI bookkeeping and the readouts unchanged.
-// What's kerbal-specific is the control law: on a surface it walks
-// upright (camera-relative WASD projected onto the tangent plane, the
-// steering force applied at the feet so it translates instead of
-// toppling; space = jump), in free fall it flies RCS-style relative to
-// the camera (W/S along the view direction, A/D strafe, R/F up/down;
-// a fixed thrust with no speed cap, KSP-style, limited by the
-// suit's hydrazine), QE yaw about the view axis, attitude slewed
-// upright on screen facing the camera. The pure geometry lives in
-// evamath.h (headless-testable).
-//
-// Grounded is two-layered: Bullet contact (works on the pad too) OR the
-// analytic terrain height within the standing band. Terrain collision
-// meshes exist only at max-LOD leaf patches (camera proximity), so the
-// analytic height is also the fall-through guard -- see applyEva.
+// Pure geometry lives in evamath.h. Grounded = Bullet contact OR analytic
+// terrain height (meshes only at max-LOD leaves, so the analytic side is
+// also the fall-through guard -- see applyEva).
 
 #include <functional>
 
@@ -34,14 +16,11 @@ struct Game;
 enum EvaMode { EVA_GROUND, EVA_SPACE };
 
 struct Kerbal : Vehicle {
-    // --- per-tick armed state (evaArmCommands writes it once per tick;
-    //     applyEva consumes it before every substep) --------------------
+    // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
     EvaMode mode = EVA_GROUND;
     bool grounded = true;
-    bool jumping = false;        // post-jump: ignore grounded until the
-                                 // floor contact clears (evaArmCommands)
-    bool jumpPressed = false;    // space KEYDOWN edge (events.cpp); armed
-                                 // on the next tick
+    bool jumping = false;        // post-jump: ignore grounded until floor contact clears
+    bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)
     bool jumpRequested = false;  // armed this tick; the first substep fires it
     glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
     glm::dvec3 rcsDir = glm::dvec3(0.0);   // RCS translation dir, unit or 0
@@ -52,35 +31,22 @@ struct Kerbal : Vehicle {
     bool isCrewAboard() const override { return isAboard(); }
     Part *capsulePart() const override { return aboardPart; }
 
-    /* --- crew: where this character is (set by the transitions in game.cpp)
-       Aboard a ship = parked inside one of its capsule parts (its body is
-       out of the physics world and its mass is carried by the capsule's
-       effectiveMass through the containment edge -- phase 3);
-       free = on EVA, a live body in the world. `aboardPart` -- the capsule
-       Part itself -- is the single source of truth: a Part* is stable
-       across a merge (absorbShip) and a split (extractSubtreeAsShip), so
-       no reindex machinery is needed (the old size_t index + crewRebase
-       maps are gone). `aboard` derives from the part's owner back-pointer
-       (part.h). This pointer is one direction of the containment edge; the
-       capsule-side `contents` list (step 2.4) is the other, and every
-       boarding path keeps the two in lockstep. */
+    // Aboard a ship = parked in a capsule Part (body out of the physics world);
+    // free = on EVA. `aboardPart` is the single source of truth: a Part* is
+    // stable across a merge/split, so no reindex machinery is needed.
     Part *aboardPart = nullptr;  // the capsule Part it sits in; nullptr = free (on EVA)
     bool isAboard() const { return aboardPart != nullptr; }
     Vehicle *aboard() const {
         return (aboardPart != nullptr) ? aboardPart->owner : nullptr;
     }
 
-    /* The capsule-center altitude above the analytic surface when standing
-       at rest: half the part height + the collision margins (0.5 terrain +
-       0.1 hull -- the same 0.6 the pad placement lifts ships by). */
+    // Capsule-center altitude above the analytic surface when standing at rest.
     double restAlt() const {
         return parts[0]->def->height / 2.0 + 0.6;
     }
 
-    /* The per-substep EVA law (the applyControlForces override): walking
-       steering + jump + upright torque on the ground, RCS translation +
-       camera-facing attitude in free fall, and the analytic fall-through
-       guard in both. */
+    // Per-substep EVA law: walking + jump + upright on the ground, RCS +
+    // camera-facing attitude in free fall, analytic fall-through guard in both.
     void applyEva(double h);
 
     void applyControlForces(double h) override {
@@ -88,17 +54,10 @@ struct Kerbal : Vehicle {
     }
 
 private:
-    /* Authority-bounded PD slew of the capsule toward `target` (the same
-       law style as the ship's slewToward/killRotStep: drive the angular
-       velocity toward the braking-curve rate, torque capped at
-       `authority`, so no substep is more forceful than a maxed command).
-       The ground gets more authority than space: it also has to win
-       against foot friction to yaw into the walk direction. */
+    // Authority-bounded PD slew toward `target` (braking-curve rate, torque
+    // capped). Ground gets more authority: it must win against foot friction.
     void slewTo(const glm::dmat3 &target, double h, double authority);
 };
 
-/* Arm the active kerbal's controls for this tick from the keys, the
-   camera and the ground state (tick.cpp calls it instead of the ship's
-   Command path). active(slot) = the tick's key-state closure (keyboard OR
-   the --sim-press windows), answered against the key map (keys.h). */
+// Arm the active kerbal's controls for this tick (keys + camera + ground state).
 void evaArmCommands(Game &g, const std::function<bool(Slot)> &active);

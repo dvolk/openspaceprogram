@@ -1,21 +1,6 @@
 #pragma once
-// orbitmap.h -- projection + drawing for the "Orbital map" window.
-//
-// The map is an orthographic top-down view of the FOCUS body's inertial
-// frame, projected onto its reference plane (XZ, normal +Y -- the plane the
-// bodies orbit in; see railStateFromElements, rhat = (cos phi, 0, sin phi)).
-// A 3D point (x, y, z) in that frame maps to
-//   (cx, cy) + (x, z) / scale
-// so y (height above the reference plane) is dropped -- that is what makes an
-// inclined orbit look squashed. The focus body sits at the origin, which is
-// the ellipse focus, so an orbit drawn from this frame has its central body
-// at the right spot for free.
-//
-// project() is pure math (glm only) so it can be unit-tested without
-// rendering; the draw* helpers are thin ImDrawList calls. Orbit sampling
-// (propagateKepler) stays in the caller, so this header stays physics-free
-// and later phases (child orbits, the transfer conic) just project more 3D
-// points through the same helpers.
+// orbitmap.h -- orthographic top-down projection + drawing for the orbital map.
+// Drops the out-of-plane component, so inclined orbits look squashed.
 
 #include <cmath>
 
@@ -28,17 +13,12 @@
 struct OrbitMap {
     double cx = 200.0, cy = 200.0;  // screen position of the focus
     double scale = 6000.0;          // meters per pixel
-    // Map plane in the focus's inertial frame: a unit normal n and an
-    // orthonormal in-plane basis (e1, e2). The default is the equatorial
-    // plane (n = +Y, e1 = +X, e2 = +Z) -- the body-rail reference plane.
+    // Map plane in the focus's inertial frame; default is the body-rail plane.
     glm::dvec3 n  = glm::dvec3(0.0, 1.0, 0.0);
     glm::dvec3 e1 = glm::dvec3(1.0, 0.0, 0.0);
     glm::dvec3 e2 = glm::dvec3(0.0, 0.0, 1.0);
 
-    // Choose the map plane by its normal (focus's inertial frame). A stable
-    // orthonormal in-plane basis is derived; the near-polar normal keeps the
-    // canonical X/Z basis so the equatorial view is byte-identical to the old
-    // p.x/p.z projection.
+    // Near-polar normals keep the canonical X/Z basis (stable equatorial view).
     void setPlane(const glm::dvec3 &normal) {
         n = glm::normalize(normal);
         if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
@@ -50,9 +30,6 @@ struct OrbitMap {
         }
     }
 
-    // 3D point in the focus's inertial frame -> 2D map coordinates:
-    // (cx, cy) + (dot(p,e1), dot(p,e2)) / scale. The component along n is
-    // dropped -- what makes an orbit inclined to the plane look squashed.
     glm::dvec2 project(const glm::dvec3 &p) const {
         return glm::dvec2(cx + glm::dot(p, e1) / scale,
                           cy + glm::dot(p, e2) / scale);
@@ -63,71 +40,53 @@ struct OrbitMap {
         return ImVec2(float(q.x), float(q.y));
     }
 
-    // A path from sampled 3D points (focus's inertial frame). closed=true for
-    // a full orbit; false for an open arc (the transfer conic, departure to
-    // arrival). `start` rotates the point order so a caller can begin/end at
-    // a marker that sits between two samples (the body-on-orbit chord fix).
+    // `start` rotates the point order so a caller can begin/end at a marker
+    // between two samples (the body-on-orbit chord fix).
     void drawOrbit(ImDrawList *dl, const std::vector<glm::dvec3> &pts,
                    ImU32 col, float thickness = 1.0f, bool closed = true,
                    size_t start = 0) const {
         const size_t n = pts.size();
         if(n < 2) { return; }
-        // Reused across calls: with a few hundred orbits per frame the
-        // per-call vector was measurable allocator traffic.
+        // Reused: with hundreds of orbits per frame the per-call vector was
+        // measurable allocator traffic.
         thread_local std::vector<ImVec2> sp;
         sp.clear();
         sp.reserve(n);
         for(size_t j = 0; j < n; j++) { sp.push_back(px(pts[(start + j) % n])); }
-        // imgui 1.92.8+ signature: (points, count, col, thickness, flags)
-        // -- 'closed' is no longer a bool param, it is the ImDrawFlags_Closed
-        // flag (the old (.., bool closed, float thickness) order now trips
-        // the "Did you swap thickness and flags?" assert).
+        // imgui 1.92.8+: closed is ImDrawFlags_Closed, not a bool param.
         const ImDrawFlags flags =
             closed ? ImDrawFlags_Closed : ImDrawFlags_None;
         dl->AddPolyline(sp.data(), (int)sp.size(), col, thickness, flags);
     }
 
-    // Filled dot at a 3D position.
     void drawDot(ImDrawList *dl, const glm::dvec3 &p, float r_px,
                  ImU32 col) const {
         dl->AddCircleFilled(px(p), r_px, col);
     }
 
-    // Pixel radius for a world-radius circle, floored at min_px so a body
-    // stays visible as a dot when zoomed out to where its true radius is
-    // sub-pixel. Pure math, so it is unit-testable without rendering.
+    // Floored at min_px so a body stays visible when zoomed out to sub-pixel.
     float bodyRadiusPx(double radius_m, float min_px) const {
         return fmaxf(min_px, (float)(radius_m / scale));
     }
 
-    // The focus body: a circle of its true radius (meters) at the center.
     void drawBody(ImDrawList *dl, double radius_m, ImU32 col) const {
         dl->AddCircleFilled(ImVec2(float(cx), float(cy)),
                             float(radius_m / scale), col);
     }
 
-    // Any body on the map: a disk of its true radius (meters) at a 3D
-    // position (the planets/moons around the focus, not just the focus
-    // itself), floored at min_px pixels.
     void drawBody(ImDrawList *dl, const glm::dvec3 &pos, double radius_m,
                   ImU32 col, float min_px = 0.0f) const {
         dl->AddCircleFilled(px(pos), bodyRadiusPx(radius_m, min_px), col);
     }
 
-    // A stroked circle of world radius (meters) centered on a 3D position --
-    // a body's sphere of influence. A sphere projects to a circle of the same
-    // radius in any plane, so the map plane is irrelevant here.
+    // A sphere projects to a circle of the same radius in any plane.
     void drawRing(ImDrawList *dl, const glm::dvec3 &center, double radius_m,
                   ImU32 col, float thickness = 1.0f) const {
         dl->AddCircle(px(center), float(radius_m / scale), col, 0, thickness);
     }
 
-    // A direction arrow: from a 3D origin, along a 3D direction, of a fixed
-    // pixel length -- a velocity / prograde vector. The direction is
-    // projected onto the map plane (the out-of-plane component is dropped)
-    // and normalized, so the arrow length is the pixel length, not a world
-    // scale; a small arrowhead caps the tip. Nothing is drawn if the
-    // direction is purely out of plane (its projection vanishes).
+    // Direction arrow of fixed pixel length; out-of-plane component dropped.
+    // Nothing drawn if the direction is purely out of plane.
     void drawArrow(ImDrawList *dl, const glm::dvec3 &origin,
                    const glm::dvec3 &dir, float len_px, ImU32 col,
                    float thickness = 1.5f) const {
@@ -148,18 +107,14 @@ struct OrbitMap {
     }
 };
 
-// A near-black or near-white that contrasts with the given (window) background,
-// so the orbit / ship markers stay readable under any ImGui style (light or
-// dark). Rec. 709 perceptual luminance, 0.5 threshold: light bg -> dark ink,
-// dark bg -> light ink. (The colored accents -- body, apsides -- are left
-// fixed; only the near-white/near-black elements need this.)
+// Near-black or near-white that contrasts with the window background
+// (Rec. 709 luminance, 0.5 threshold). Colored accents are left fixed.
 inline ImU32 contrastingColor(const ImVec4 &bg,
                               const ImVec4 &dark  = ImVec4(0.08f, 0.08f, 0.08f, 1.0f),
                               const ImVec4 &light = ImVec4(0.95f, 0.95f, 0.95f, 1.0f)) {
     const float lum = 0.2126f * bg.x + 0.7152f * bg.y + 0.0722f * bg.z;
     const ImVec4 c = (lum > 0.5f) ? dark : light;
-    // Pack to imgui's 0xAABBGGRR ImU32 layout directly (no imgui call), so
-    // this stays usable in the link-free header-only unit test.
+    // Pack 0xAABBGGRR directly so this stays usable in the link-free unit test.
     const int r = (int)(c.x * 255.0f + 0.5f);
     const int g = (int)(c.y * 255.0f + 0.5f);
     const int b = (int)(c.z * 255.0f + 0.5f);

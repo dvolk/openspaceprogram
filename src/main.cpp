@@ -70,15 +70,12 @@
 #include "../middleware/implot/implot.h"
 
 
-/* ResourceType / ResourceContent / PartDef live in shipdef.h (the GL-free
-   ship/part data model), shared with the JSON loaders and the headless
-   tests. */
+/* ResourceType / ResourceContent / PartDef live in shipdef.h (shared with
+   the JSON loaders and the headless tests). */
 
-// The SDL event queue is only drained by poll_events() inside the main loop,
-// which hasn't started yet during the pre-loop load. Pump it (routing events
-// through the ImGui backend, as events.cpp does) so a window-close during the
-// multi-second load is honoured promptly instead of sitting "frozen" until the
-// load finishes. Returns true if the user asked to quit.
+// Pump the SDL event queue during pre-loop load so a window-close is
+// honoured promptly (poll_events() only drains it inside the main loop).
+// Returns true if the user asked to quit.
 static bool pumpLoadingQuit() {
     SDL_Event ev;
     while(SDL_PollEvent(&ev)) {
@@ -88,12 +85,9 @@ static bool pumpLoadingQuit() {
     return false;
 }
 
-// The earliest frame the game can draw: the window, GL context, ImGui and a
-// font are up, but there is no world/shaders/Game yet. Draw a centered
-// "loading..." label on a black background and present it. Called once
-// before the slow init, and again from load_system's per-body progress hook
-// so the window never sits blank (and the label reads as progress) while a
-// big system builds.
+// Draw a centered "loading..." label on a black background. Called before
+// the slow init and from load_system's per-body progress hook so the window
+// never sits blank.
 static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
@@ -117,7 +111,7 @@ static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) 
     ImGui::End();
 
     // Leave GL state where the main loop's ImGui pass expects it (no bound
-    // program / VAO) before the next init step or the real loop runs.
+    // program / VAO).
     glUseProgram(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     ImGui::Render();
@@ -125,11 +119,9 @@ static void drawLoadingFrame(Renderer &display, ImFont *font, const char *text) 
     display.SwapBuffers();
 }
 
-// The heavy phase (max_height + root terrain + the atmosphere/cloud/ocean
-// shells) per body, split: build the priority bodies synchronously (solid
-// from the first frame), defer the rest to the worker (they stream in while
-// the game runs). The star is always synchronous; at most two planets are,
-// so a pathological fleet never inflates the boot stall.
+// The heavy phase (max_height + root terrain + shells) per body, split:
+// `sync` builds synchronously (solid from the first frame), the rest defer
+// to the worker. The star is always synchronous; at most two planets are.
 // Declared in system.h (shared by the boot and the in-process system switch).
 void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
                     JobRunner &jobs, Shader *atmosphereshader,
@@ -147,9 +139,8 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
         for(TerrainBody *e : isSync) { if(e == b) { return true; } }
         return false;
     };
-    {   // The sync set is the e2e anchor for "the player's bodies are solid
-        // from frame one": a save landed on a non-home body must list THAT
-        // body here, not the home.
+    {   // e2e anchor: the sync set is "the player's bodies are solid from
+        // frame one".
         std::string names;
         for(TerrainBody *e : isSync) { if(!names.empty()) { names += ", "; }
             names += e->name; }
@@ -165,7 +156,7 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
             const std::string label = std::string("Terrain (") + b->name + ")";
             // The worker body only uses `b` (BuildRootGeoms is pure); the
             // rest are carried so the main-thread continuation can capture
-            // them (the worker never dereferences them).
+            // them.
             jobs.post(label,
                 [b, atmosphereshader, cloudshader, cloudres, oceanshader,
                  ringshader, &jobs]() -> std::function<void()> {
@@ -181,8 +172,7 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
 }
 
 // Split one --startship value "name,def,body,scenario" into its four fields
-// (all required, non-empty); returns false if the shape is wrong. A field may
-// not contain a comma (the field separator).
+// (all required, non-empty); returns false if the shape is wrong.
 static bool splitStartship(const std::string &spec, DebugStartShip &out) {
     std::vector<std::string> f;
     std::string cur;
@@ -210,15 +200,14 @@ int main(int argc, char **argv)
 
     // Data directory (datadir.h): saves/ + settings.json live in the per-OS
     // user data directory (--data-dir overrides). Must run before the
-    // settings load below, which reads from there.
+    // settings load below.
     datadir::init(args.data_dir);
 
-    // settings.json (the Settings window's "Save") phase 1: the file's
-    // args fields must reach the window creation -- the display mode/size
-    // and the MSAA count are fixed in the GLX visual by it, and
-    // setWindowMode can't change the MSAA after. Explicit CLI flags win
-    // field by field (args.cli_given). Phase 2 (game.load_settings)
-    // applies the Game + PostFX fields once the Game exists.
+    // settings.json phase 1: the file's args fields must reach the window
+    // creation -- the display mode/size and the MSAA count are fixed in the
+    // GLX visual, and setWindowMode can't change the MSAA after. Explicit
+    // CLI flags win field by field. Phase 2 (game.load_settings) applies the
+    // Game + PostFX fields once the Game exists.
     load_settings_args(args);
 
     Renderer display(args.screen_width, args.screen_height, args.window_mode,
@@ -226,8 +215,7 @@ int main(int argc, char **argv)
     check_gl_error();
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: resolve keycodes to scancodes now that SDL is initialized
-       (SDL_GetScancodeFromKey needs SDL_Init; the CLI parse ran before the
-       Renderer above created the video subsystem). */
+       (the CLI parse ran before the Renderer created the video subsystem). */
     for(auto &p : args.sim_presses) {
         p.sc = SDL_GetScancodeFromKey(p.key, nullptr);
         if(p.sc == SDL_SCANCODE_UNKNOWN) {
@@ -238,8 +226,7 @@ int main(int argc, char **argv)
     }
     ImGuiContext* ctx1 = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx1);
-    // ImPlot keeps its own state per imgui context (v1.0 requires an
-    // explicit context; it is bound to the current one at creation).
+    // ImPlot keeps its own state per imgui context.
     ImPlot::CreateContext();
     ImGui_ImplSDL3_InitForOpenGL(display.get_display(), SDL_GL_GetCurrentContext());
     ImGui_ImplOpenGL3_Init("#version 430");
@@ -249,31 +236,23 @@ int main(int argc, char **argv)
     // No imgui.ini: window layout must not survive between runs or clobber
     // the layout the code sets up each frame.
     io.IniFilename = nullptr;
-    // Normal and big faces are the same font (the big one at 2x size), so
-    // the whole UI is one typeface; --font / --font-size pick which + how big.
-    //
-    // GlyphExtraAdvanceX is the letter-tracking knob (px of extra advance
-    // after each glyph): 0 = the font's natural spacing, >0 pushes the
-    // characters further apart. Map-label clearance from the body dots is
-    // a separate knob -- label_dx / label_gap in gameui.cpp
-    // (drawSystemBodyOrbits) and label_dx / label_dy on the vessel loops.
+    // Normal and big faces are the same font (the big one at 2x size).
+    // --font / --font-size pick which + how big. GlyphExtraAdvanceX is the
+    // letter-tracking knob (map-label clearance is a separate knob in
+    // gameui.cpp).
     const float glyph_extra_advance_x = 0.0f;
     ImFontConfig font_cfg;
     font_cfg.GlyphExtraAdvanceX = glyph_extra_advance_x;
     io.Fonts->AddFontFromFileTTF(resdir::path(args.font_path).c_str(),
                                  args.font_size, &font_cfg);
-    // The big face (2x size) for the HUD + main menu; the UI pass
-    // (gameui.cpp) draws with it via the game.
+    // The big face (2x size) for the HUD + main menu (gameui.cpp).
     ImFont *bigger = io.Fonts->AddFontFromFileTTF(
         resdir::path(args.font_path).c_str(), 2.0f * args.font_size,
         &font_cfg);
     check_gl_error();
 
-    // First thing the user sees: a "loading..." label, presented before the
-    // slow init (physics, shader compilation, the multi-second system load)
-    // so the window is never blank. The presented frame persists on screen
-    // through the init steps that don't present, and load_system's progress
-    // hook (below) keeps refreshing it.
+    // First thing the user sees: a "loading..." label before the slow init.
+    // The presented frame persists through the init steps that don't present.
     if(pumpLoadingQuit()) { return 1; }
     drawLoadingFrame(display, bigger, "loading...");
 
@@ -307,13 +286,10 @@ int main(int argc, char **argv)
                                             "lightDirection", "inside",
                                             "planetCenter" });
 
-    // Cloud deck: a shell between the terrain and the atmosphere rim --
-    // a solid ceiling from below, a textured disc from orbit. Coverage
-    // is baked (BuildClouds) into a per-body equirectangular map -- on
-    // the job worker, so startup doesn't pay for it; the shader is one
-    // texture fetch + lighting.
-    // "uvParam" binds the mesh's color slot (attrib location 2): the
-    // unwrapped sphere params the deck UV is built from.
+    // Cloud deck: a shell between the terrain and the atmosphere rim.
+    // Coverage is baked (BuildClouds) on the job worker. "uvParam" binds
+    // the mesh's color slot (attrib location 2): the unwrapped sphere
+    // params the deck UV is built from.
     Shader *cloudshader = get_shader("res/shaders/cloudShader",
                                      { "position", "normal", "uvParam" },
                                      { "MVP", "Normal", "cameraPos", "color",
@@ -322,15 +298,15 @@ int main(int argc, char **argv)
 
     // Ocean surface: a transparent shell at sea level with animated wave
     // normals, Fresnel reflection and a specular sun glint. Land pokes
-    // through via the depth test; the sea floor shows through the water.
+    // through via the depth test.
     Shader *oceanshader = get_shader("res/shaders/oceanShader",
                                      { "position", "normal" },
                                      { "MVP", "Normal", "cameraPos", "seaColor",
                                        "lightDirection", "time", "planetCenter" });
 
-    // Planetary rings: flat annuli in the body's equatorial plane, drawn over
-    // the opaque terrain (the depth buffer hides the far arc behind the
-    // planet). Two-sided Lambert (the sun can be above or below the plane).
+    // Planetary rings: flat annuli in the body's equatorial plane, drawn
+    // over the opaque terrain. Two-sided Lambert (the sun can be above or
+    // below the plane).
     Shader *ringshader = get_shader("res/shaders/ringShader",
                                     { "position", "normal" },
                                     { "MVP", "Normal", "lightDirection",
@@ -346,13 +322,11 @@ int main(int argc, char **argv)
 
     PostFX *postfx = new PostFX;
     // Create every built-in effect up front (no mid-frame shader
-    // compilation) so the Settings window can toggle them at runtime;
-    // they all start disabled and the --postfx selection enables a subset.
+    // compilation) so the Settings window can toggle them at runtime.
     for(const std::string &name : PostFX::Available()) {
         postfx->AddEffect(name);
     }
-    // Each --postfx value may itself be comma-separated, so both
-    // --postfx crt,grain and --postfx crt --postfx grain work.
+    // Each --postfx value may itself be comma-separated.
     std::vector<std::string> fx_names;
     for(const std::string &spec : args.postfx_spec) {
         size_t start = 0;
@@ -390,17 +364,11 @@ int main(int argc, char **argv)
     }
     postfx->Resize(display.get_width(), display.get_height());
 
-    // The progress hook redraws the "loading..." label (now with the body
-    // name + count) after each body's LIGHT phase (surface params + frames)
-    // is built; the heavy terrain/physics is deferred to the worker, so this
-    // now covers a fast pass and a big system shows progress instead of a
-    // frozen window.
-    //
-    // Throttled to ~10 fps: each draw ends in a SwapBuffers that blocks on
-    // vsync (~16 ms at 60 Hz), so drawing all 240 bodies would add ~4 s of
-    // pure UI pacing to the load. The epoch initial value lets the first body
-    // (and the final one, via the i+1<total guard) draw immediately; the rest
-    // draw at most every 100 ms.
+    // The progress hook redraws the "loading..." label after each body's
+    // LIGHT phase. Throttled to ~10 fps: each draw ends in a SwapBuffers
+    // that blocks on vsync, so drawing every body would add pure UI pacing
+    // to the load. The epoch initial value lets the first body (and the
+    // final one, via the i+1<total guard) draw immediately.
     auto last_loading_draw = std::chrono::steady_clock::time_point{};
     System sys = load_system(args.system_file.c_str(), terrainshader, sunshader,
         [&](size_t i, size_t total, const std::string &name) {
@@ -420,59 +388,46 @@ int main(int argc, char **argv)
     TerrainBody *home = sys.home;   // the system home: the VAB launch body,
                                     // the title backdrop, and the body the
                                     // --radial-test / --dock-test ships use.
-                                    // (Start ships name their own body.)
 
     /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
-       order + offsets, and the start-ship list supplies one entry per ship:
-       its name, def, body and scenario (all four required). The list comes
-       from --startships (a JSON file) or, failing that, from the repeatable
-       --startship flag (each "name,def,body,scenario"). Ships sharing a
-       (body, scenario) pair are slotted: pad slots 20 m apart along the pad,
-       orbit slots 20 m apart along the orbit binormal. */
+       order + offsets, and the start-ship list supplies one entry per ship.
+       Ships sharing a (body, scenario) pair are slotted. */
     Ships ships(args.parts_file, partsshader, sun);
 
     // The running game: borrows the subsystems above and owns the runtime
     // state (camera, clock, active ship, input/UI flags, the orbit-camera
-    // focus targets, the UI window registry) plus the control transitions
-    // (select/remove a ship, enter rails warp, toggle the windows -- see
-    // game.cpp). The event dispatch (events.cpp) and the loop below drive
-    // it through this, so the state has a single home.
+    // focus targets, the UI window registry) plus the control transitions.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
     // The running system (what save_game records + the load path compares
     // against). Set before the boot --load so ensureSystemForSave sees it.
     game.systemPath = args.system_file;
 
-    // Sound (audio.h): a silent no-op when there is no playback device
-    // (headless, the e2e battery under Xvfb) or the assets are missing.
-    // The music starts here -- title screen included -- and loops for
-    // the whole session.
+    // Sound (audio.h): a silent no-op when there is no playback device or
+    // the assets are missing. Music starts here and loops the whole session.
     if(game.audio.init()) {
         game.audio.setMusic("res/audio/ville_seppanen-1_g.ogg");
     }
 
-    // settings.json phase 2 (the args fields were applied before the
-    // Renderer above): the Game + PostFX state, before apply_ui_style
+    // settings.json phase 2: the Game + PostFX state, before apply_ui_style
     // reads the ui knobs.
     game.load_settings();
     game.apply_ui_style();  // the Settings defaults (dark theme, scale 1.0)
 
     // --start-time: start the analytic clock (and every body's orbit and
-    // spin, which are functions of it) at a later instant. Must happen
-    // before the fleet spawns -- the orbit scenarios read the home body's
-    // frame state. setTime propagates the frames for the paused start, so
-    // the first frame does not render the t=0 system. (--load overwrites
-    // it with the save's clock, as before: load_game sets its own time.)
+    // spin) at a later instant. Must happen before the fleet spawns -- the
+    // orbit scenarios read the home body's frame state. setTime propagates
+    // the frames for the paused start. (--load overwrites it with the
+    // save's clock.)
     game.setTime(args.start_time);
     if(args.start_time > 0.0) {
         printf("Starting at sim time t = %.0f s\n", args.start_time);
     }
 
-    // The runtime state lives in `game`. These local references keep the
-    // loop body reading exactly as before; they alias game's members, so
-    // the writes here and the control transitions in game.cpp hit the same
-    // storage. (screenshot_count is pure loop bookkeeping and stays local.)
+    // The runtime state lives in `game`. These local references alias
+    // game's members so the loop body reads as before. (screenshot_count
+    // is pure loop bookkeeping and stays local.)
     Vehicle *&ship = game.ship;
     int &time_accel = game.time_accel;
     int &cam_speed = game.cam_speed;
@@ -482,8 +437,8 @@ int main(int argc, char **argv)
 
     std::vector<DebugStartShip> start_ships;
     if(!args.startships_file.empty()) {
-        // file form: a JSON list (loadDebugStartShips already validates all
-        // four fields per entry and throws on any error)
+        // file form: a JSON list (loadDebugStartShips validates all four
+        // fields per entry)
         try {
             start_ships =
                 loadDebugStartShips(resdir::path(args.startships_file).c_str())
@@ -507,43 +462,27 @@ int main(int argc, char **argv)
     }
     // Neither -> no start ships, which boots to the title screen.
 
-    /* The heavy phase (max_height + root terrain + the atmosphere/cloud/
-       ocean shells) is the part that made a big system take ~7s. Split it:
-       build the bodies the player is ON (or about to be on) synchronously
-       so the first frame is solid, and defer the rest to the worker so they
-       stream in while the game runs (a body simply isn't drawn until ready).
-       The sync set is the player's bodies, NOT the system home: home stays
-       the calendar + default spawn body, but a save landed on a non-home
-       body puts the player there -- and that is the common case (the old
-       home+moon priority streamed exactly the body the loaded ship sat on).
+    /* The heavy phase (max_height + root terrain + shells) is the part that
+       made a big system take ~7s. Split it: build the bodies the player is
+       ON synchronously so the first frame is solid, and defer the rest to
+       the worker. The sync set is the player's bodies, NOT the system home.
        Which bodies:
-         --load         the save's ship bodies; a cross-system save switches
-                        FIRST, and the switch runs this same phase with the
-                        same sync set, so the boot system's bodies are never
-                        built at all
-         --radial/--dock the home body (the test ships sit on it)
-         --vab          the launch body (the player is about to be there)
+         --load         the save's ship bodies
+         --radial/--dock the home body
+         --vab          the launch body
          fleet          the fleet's bodies
-         otherwise      the title backdrop + home (the hub frames home and
-                        the first launch leaves from it)
-       BuildClouds still posts its coverage bake to the runner, so that
-       per-body cost never stalls anything. Shared with the in-process
-       system switch (Game::switchSystem). */
+         otherwise      the title backdrop + home
+       Shared with the in-process system switch (Game::switchSystem). */
     Vehicle *first = nullptr;
     if(!args.load_name.empty()) {
         // --load: the saved fleet replaces the one that would be built.
-        // load_game builds every ship + kerbal, resolves the active ship,
-        // and puts each ship in the world state it was saved in (live or
-        // railed) -- so the scenario reposition and the park-on-rails below
-        // are both skipped.
+        // load_game builds every ship + kerbal and puts each in the world
+        // state it was saved in (live or railed).
         //
-        // A bare slot name (a UI save, e.g. "save1") is meant for the data
-        // dir's saves/; if the given path has no save.json, resolve the slot
-        // there instead (the CLI otherwise takes a full path). Precedence:
-        // the given path as-is first, then the data-dir slot (legacy flat
-        // saves/<slot> before the unique saves/<game>/<slot>) -- so --save
-        // (which writes a bare name into the current game's dir) and --load
-        // agree, and an explicit path still wins over a same-named slot.
+        // A bare slot name is a UI save for the data dir's saves/; if the
+        // given path has no save.json, resolve the slot there instead.
+        // Precedence: the given path as-is first, then the data-dir slot
+        // (legacy flat before the unique saves/<game>/<slot>).
         std::string load_dir = args.load_name;
         if(!std::filesystem::exists(load_dir + "/save.json")) {
             load_dir = find_slot(datadir::saves(), load_dir);
@@ -556,23 +495,19 @@ int main(int argc, char **argv)
             printf("Load: using saves slot '%s'\n", load_dir.c_str());
         }
         game.partsshader = partsshader;   // load_game builds parts with it
-        // Honor the save's system (the primary "load a save" use case): a
-        // solar save loaded into KSP must land on Earth, not Kerbin. This is
-        // the same check the UI/CLI reload uses (loadFrom), so both paths
-        // switch into the save's system before loading the fleet. A
+        // Honor the save's system: a solar save loaded into KSP must land on
+        // Earth, not Kerbin. Same check the UI/CLI reload uses (loadFrom). A
         // successful switch runs the heavy phase with the save's ship bodies
-        // as the sync set; when no switch happens (same system, or the switch
-        // failed and we stay put) the boot heavy phase below does.
+        // as the sync set; when no switch happens the boot heavy phase below
+        // does.
         bool switched = false;
         if(!game.ensureSystemForSave(load_dir, &switched)) {
             exit(1);   // reason already printed + toasted by ensureSystemForSave
         }
         if(!switched) {
             // The heavy phase has not run yet (boot, not a runtime reload):
-            // build it now, syncing the save's ship bodies where they exist
-            // in THIS system, plus home -- the load's find-else-fallback
-            // landing for any ship whose saved body is unknown here (last in
-            // the list, so the two-planet cap drops it before a real ship's).
+            // sync the save's ship bodies where they exist in THIS system,
+            // plus home (the load's find-else-fallback landing).
             std::vector<TerrainBody *> sync;
             for(const std::string &n : saveShipBodies(load_dir)) {
                 if(TerrainBody *b = sys.find(n)) { sync.push_back(b); }
@@ -591,17 +526,13 @@ int main(int argc, char **argv)
         check_gl_error();
         ship = first;
         // A cross-system save switched the running system just now
-        // (ensureSystemForSave -> switchSystem DELETED the old bodies), so the
-        // boot-time `sun`/`home` locals dangle. Re-point them at the live
-        // system: `home` is read by the camera focus below, and `sun` has no
-        // reader left on this path but must not be left aiming at freed
-        // bodies. A no-op when no switch happened, since game.sun/home already
-        // equal them.
+        // (ensureSystemForSave -> switchSystem DELETED the old bodies), so
+        // the boot-time `sun`/`home` locals dangle. Re-point them at the
+        // live system.
         sun = game.sun;
         home = game.home;
-        // switchSystem landed on the Title; with a loaded fleet the player is
-        // in flight, not at the menu (a no-op when no switch happened: the
-        // constructor seeded Flight).
+        // switchSystem landed on the Title; with a loaded fleet the player
+        // is in flight (a no-op when no switch happened).
         if(ship != nullptr) { enterFlight(game); }
     } else {
         std::vector<TerrainBody *> sync;
@@ -618,9 +549,7 @@ int main(int argc, char **argv)
         } else {
             sync.push_back(game.pickTitleBody());   // the backdrop, below
             sync.push_back(home);   // the hub frames it and the first launch
-                                    // leaves from it (deduped if it IS the
-                                    // backdrop -- the old home-always-solid
-                                    // boot guarantee, kept deliberately)
+                                    // leaves from it
         }
         postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
                        oceanshader, ringshader, args.cloud_mesh);
@@ -633,19 +562,17 @@ int main(int argc, char **argv)
         } else if(!args.dock_test.empty()) {
             DockTestShips dts = build_dock_test_ships(
                 args.dock_test, ships.catalog(), home, sun, partsshader, sys);
-            /* Both are placed already (the builder ran spawn_vehicle for the
-               station and placed the probe relative to it), so null scenario:
-               apply_scenarios skips them. The probe is the ACTIVE ship; the
-               station parks on rails until proximity wakes it (it is metres
-               away). */
+            /* Both are placed already (the builder ran spawn_vehicle), so
+               null scenario: apply_scenarios skips them. The probe is the
+               ACTIVE ship; the station parks on rails until proximity wakes
+               it. */
             ships.add_ship(dts.probe, home, nullptr, 0, game.time);
             ships.add_ship(dts.station, home, nullptr, 1, game.time);
             first = dts.probe;
         } else {
             // A typo in any field (unknown body / scenario, an unreadable
-            // def) throws deep in here (sys.find, scenario_by_name,
-            // load_ship_def); catch it the way the --load path above does so
-            // it is a clean error, not a core dump.
+            // def) throws deep in here; catch it the way the --load path
+            // does so it is a clean error, not a core dump.
             try {
                 first = ships.buildDebugStartShips(start_ships, sys, game.time);
             } catch(const std::exception &e) {
@@ -658,25 +585,20 @@ int main(int argc, char **argv)
     if(args.load_name.empty()) {
         check_gl_error();
         // Scenarios first (they are what position the ships), then park the
-        // idle ones -- both before the camera is constructed, so it focuses on
-        // the spawn point. Shared with the title screen's New Game.
+        // idle ones -- both before the camera is constructed, so it focuses
+        // on the spawn point. Shared with the title screen's New Game.
         game.settleFleet(first);
         /* The active (player-controlled) ship: the first one built; F6 / the
-           SHIPS window switch it. game.ship always points at it, so the HUD,
-           camera, input and draw code follow the active ship without special
-           cases. Assigned directly rather than through select_ship: the camera
-           does not exist yet here, and there is no previous ship to hand off
-           from. */
+           SHIPS window switch it. Assigned directly rather than through
+           select_ship: the camera does not exist yet here. */
         ship = first;
         if(first != nullptr) {
             printf("[dbg-dv] getMass=%.2f kg  getDeltaV=%.1f m/s\n",
                    (double)first->getMass(), (double)first->getDeltaV());
         }
         /* --autopilot: engage a slew mode on the active ship (a test hook;
-           the Autopilot window is the only in-game way to engage these and
-           it can't be clicked headless). slewRequest is applied every tick
-           (tick.cpp) and held until toggled, so setting it once here is
-           enough for a whole headless flight. */
+           the Autopilot window is the only in-game way to engage these).
+           slewRequest is applied every tick and held until toggled. */
         if(!args.autopilot.empty() && first != nullptr) {
             int m = 0;  // SlewMode (vehicle.h)
             if(args.autopilot == "prograde")        { m = 1; }
@@ -731,8 +653,7 @@ int main(int argc, char **argv)
                      glm::vec4(0.2f, 0.45f, 1.0f, 1.0f));
     // Target ship's relative velocity, two pink markers: the prograde
     // (diamond) icon for you − target, the retrograde (X) icon for
-    // target − you. Shown when a ship is targeted in the TRANSFER window,
-    // or the ship whose docking port is selected.
+    // target − you.
     const glm::vec4 relvelcolor = glm::vec4(1.0f, 0.4f, 0.9f, 1.0f);
     Billboard *relvel_indicator =
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, relvelcolor);
@@ -746,28 +667,21 @@ int main(int argc, char **argv)
     const float camAspect = (float)display.get_width() / (float)display.get_height();
     const float camZNear = 1.0f;
     // zFar must exceed the farthest visible body. The log-depth shaders
-    // (res/shaders/*Shader.vs) define the hard far limit as `far = 1e13` m, which
-    // covers the real solar system (Pluto at ~5.9e12 m) and KSP-style
-    // AU scales (~1.4e10 m). Keep zFar consistent with that.
+    // define the hard far limit as `far = 1e13` m -- keep zFar consistent
+    // with that.
     const float camZFar = 1e13;
 
-    // One camera, two modes (orbit + free): starts in Orbit mode focused on
-    // the ship (or the home body when there is no ship); --free-cam-* /
-    // use_free_cam drops it into free flight at the (possibly overridden)
-    // pose. The terrain LOD reads the live one.
+    // One camera, two modes (orbit + free). The terrain LOD reads the
+    // live one.
     const glm::dvec3 camFocus = ship ? ship->partPos(ship->controller)
                                      : home->frame->root_pos;
     Camera *cam = new Camera(camFocus, camFov, camAspect, camZNear, camZFar);
     cam->setViewport(display.get_width(), display.get_height());
     game.camera = cam;
-    // Bodies the orbit camera can target. Seeded BEFORE the --vab / --free-cam
-    // framing below, so the shipless title-backdrop park can resolve a focus
-    // target AND that framing stays the LAST word on the camera (a park after
-    // vabOpen would throw the editor's build out to the backdrop distance).
-    // With a ship the ship is index 0; with no ship the bodies start at index
-    // 0 (the title parks on a random non-star body, not the home planet). A
-    // --load boot already ran load_game (which syncs the "ship" entry), so
-    // insert only when absent.
+    // Bodies the orbit camera can target. Seeded BEFORE the --vab /
+    // --free-cam framing below, so that framing stays the LAST word on the
+    // camera. With a ship the ship is index 0. A --load boot already ran
+    // load_game (which syncs the "ship" entry), so insert only when absent.
     if(game.ship != nullptr &&
        (game.focusTargets.empty() || game.focusTargets[0].body != nullptr)) {
         game.focusTargets.push_back({ "ship", nullptr });
@@ -776,14 +690,10 @@ int main(int argc, char **argv)
         game.focusTargets.push_back({ b->name.c_str(), b });
     }
     if(ship == nullptr) {
-        /* No vessel: the floor scene is the TITLE screen, not an empty flight
-           one. Decided before the --vab entry below so an editor opened with
-           nothing to fly sits on [title, vab] -- its "Back to game" then pops
-           to the title screen instead of dropping into a flight scene with no
-           vessel in it (which is what the old single-scene model did). The
-           backdrop camera parks on a random non-star body now, before the
-           --vab / --free-cam framing below (which is the last word on the
-           camera when one of those is active). */
+        /* No vessel: the floor scene is the TITLE screen, not an empty
+           flight one. Decided before the --vab entry below so an editor
+           opened with nothing to fly sits on [title, vab]. The backdrop
+           camera parks before the --vab / --free-cam framing below. */
         enterTitle(game);
         game.parkTitleCamera();
         printf("[boot] no vessel: title screen\n");
@@ -791,9 +701,9 @@ int main(int argc, char **argv)
     }
 
     /* --vab: open the editor scene with a ship def loaded as a physics-free
-       build tree. The flight ships still exist in the world but drawVab draws
-       only the build tree (the editor view), so they are invisible. vabOpen
-       parks the (boot) camera and aims the orbit at the build. */
+       build tree. The flight ships still exist in the world but drawVab
+       draws only the build tree. vabOpen parks the (boot) camera and aims
+       the orbit at the build. */
     if(!args.vab.empty()) {
         ShipDef vdef = load_ship_def(resdir::path(args.vab).c_str(),
                                      ships.catalog());
@@ -802,24 +712,22 @@ int main(int argc, char **argv)
         vabOpen(game);
     } else if(args.vab_empty) {
         // --vab-empty: the main menu's "Go to VAB" (an empty build) -- the
-        // headless entry to the same editor, so e2e can build a ship from
-        // nothing without driving the menu click.
+        // headless entry to the same editor.
         game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     }
     if(sceneIs(game, SceneId::Vab)) {
         // --vab-scenario / --vab-body: override the launch config the top-bar
-        // dropdowns show (vabOpen already seeded the defaults: home + pad).
+        // dropdowns show (vabOpen already seeded the defaults).
         if(!args.vab_scenario.empty()) { game.vab.scenarioName = args.vab_scenario; }
         if(!args.vab_body.empty())     { game.vab.bodyName = args.vab_body; }
     }
 
-    // --surfmap-body: pin the Surface Map's body (the window's combo pick),
-    // so M / the Refresh button map it without a combo click. Applied here,
-    // AFTER the --load branch, so it resolves against the system the boot
-    // actually runs (a cross-system --load has switched it by now). A hard
-    // error on a miss: a silent fallback would leave the map on the default
-    // body and defeat the test that relies on the pin (issue #72).
+    // --surfmap-body: pin the Surface Map's body so M / Refresh map it
+    // without a combo click. Applied AFTER the --load branch so it resolves
+    // against the system the boot actually runs. A hard error on a miss: a
+    // silent fallback would leave the map on the default body and defeat the
+    // test that relies on the pin (issue #72).
     if(!args.surfmap_body.empty()) {
         if(TerrainBody *b = sys.find(args.surfmap_body)) {
             game.surfmap_body = b;
@@ -853,17 +761,16 @@ int main(int argc, char **argv)
 
     // kRailsWarp is defined in game.h (the rails-warp threshold).
     // New game / load game start paused: load_game sets 0, and a --load
-    // leaves it there. An explicit --time-accel still applies on both paths
-    // (tests that need warp after a load pass it). A non-load boot without
-    // the flag keeps the CLI default (1x) for the fleet scenarios.
+    // leaves it there. An explicit --time-accel still applies on both paths.
+    // A non-load boot without the flag keeps the CLI default (1x).
     if(args.load_name.empty() || args.cli_given.time_accel) {
         time_accel = args.initial_time_accel;
     }
 
     /* Starting the game directly in rails warp (accel > 10): the active
-       ship parks too (works on the pad -- that is the frozen mode),
-       unless some ship is not rail-eligible, in which case clamp to the
-       top physics warp (10). */
+       ship parks too (works on the pad -- that is the frozen mode), unless
+       some ship is not rail-eligible, in which case clamp to the top
+       physics warp (10). */
     if(time_accel >= kRailsWarp) {
         bool all_eligible = true;
         for(auto *s : collectVehicles(sys)) {
@@ -883,11 +790,8 @@ int main(int argc, char **argv)
     }
     cam_speed = 1;
 
-    // The per-window UI options + the window registry (game.cpp): the
-    // layout slots, the default-open states and the TAB-toggle table all
-    // live on the game; the UI pass (gameui.cpp) draws with them.
-    // The transfer planner (the TRANSFER window, the map's transfer conic,
-    // the burn-direction icon) is a Game member (game.h) too -- it holds
+    // The per-window UI options + the window registry (game.cpp) live on
+    // the game; the transfer planner (the TRANSFER window) too -- it holds
     // sim-clock state, so Game owns it and the clock hook can invalidate it.
 
     Skybox skybox;
@@ -935,17 +839,16 @@ int main(int argc, char **argv)
 
     /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
        scenario + park on rails; appended at the end so it is never the
-       active one. Called as ships.spawn_ship(def, name, home, sc, sys). */
+       active one. */
 
-    /* --selftest-spawn: exercise the runtime spawn/remove path. Spawn a copy
-       of the active ship, remove it, then spawn-select-remove the active one
-       (exercising the control handoff). Each step is checked against the
-       expected fleet size + active index. Runs before the loop; the loop
-       then takes a few physics ticks to prove the world is stable and exits. */
+    /* --selftest-spawn: exercise the runtime spawn/remove path. Spawn a
+       copy of the active ship, remove it, then spawn-select-remove the
+       active one. Each step is checked against the expected fleet size +
+       active index. */
     int spawn_test_ticks = 0;
     if(args.selftest_spawn) {
-        /* A free kerbal has a def but remove_ship refuses it (a crew member is
-           not deletable), so the spawn-copy-then-remove steps cannot run. */
+        /* A free kerbal has a def but remove_ship refuses it (a crew member
+           is not deletable), so the spawn-copy-then-remove steps cannot run. */
         if(ship->defPath.empty() || ship->isEva()) {
             printf("selftest-spawn: SKIP (%s)\n",
                    ship->isEva() ? "active ship is a crew member"
@@ -984,9 +887,7 @@ int main(int argc, char **argv)
             game.remove_ship(sp2);
             /* The handoff must be checked BEFORE the printf below reads
                ship->name: sp2 is deleted, so a failed handoff would leave
-               `ship` pointing at freed memory (remove_ship's handoff loop
-               used to dereference sp2 itself while looking for a successor
-               -- a use-after-free ASan caught here). */
+               `ship` pointing at freed memory. */
             if(ship == sp2 || ship == nullptr) { ok = false; }
             printf("remove 2 (active): active=%s size=%zu\n",
                    ship ? ship->name.c_str() : "(none)",
@@ -1009,8 +910,8 @@ int main(int argc, char **argv)
     game.loop_start_ms = SDL_GetTicks();
 
     // The headless VAB hooks are stamped on the game too, so the code that
-    // fires them lives with the editor (vabFireHooks / vabUpdate) rather than
-    // in this loop.
+    // fires them lives with the editor (vabFireHooks / vabUpdate) rather
+    // than in this loop.
     game.newGameMs = args.new_game_ms;
     game.reloadDir = args.reload_dir;
     game.reloadMs = args.reload_ms;
@@ -1053,14 +954,11 @@ int main(int argc, char **argv)
         printf("frame cap: off (uncapped)\n");
     }
 
-    // Per-frame phase timing. The steady_clock reads and the push into the
-    // Game::perf_* series run EVERY frame (the Telemetry window reads them);
-    // the cost is a handful of vDSO clock reads + five ring writes, negligible.
-    // --perf only controls the console output: when set, a rolling line prints
-    // ~every second (perf_roll) and a full summary prints at exit
-    // (perf_summary). The "logic" phase is where the Part*/Body* indirection
-    // lives (tick -> physics_tick -> ships -> parts -> bodies); the per-substep
-    // number is the one to compare across refactors.
+    // Per-frame phase timing. The push into the Game::perf_* series runs
+    // EVERY frame (the Telemetry window reads them); --perf only controls
+    // the console output. The "logic" phase is where the Part*/Body*
+    // indirection lives (tick -> physics_tick -> ships -> parts -> bodies);
+    // the per-substep number is the one to compare across refactors.
     const bool perf_on = args.perf;
     double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0,
            p_present = 0.0, p_total = 0.0;                                     // cumulative ms
@@ -1069,9 +967,9 @@ int main(int argc, char **argv)
            w_present = 0.0;                                                    // rolling-window ms
     long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
     // This frame's marks. pf_swap sits between the last draw call and the
-    // SwapBuffers, so "render" = issuing the GL commands and "present" = the
-    // SwapBuffers (which blocks on vsync -- that's the display pacing, not
-    // render cost; keeping the two apart is why the breakdown is honest).
+    // SwapBuffers, so "render" = issuing the GL commands and "present" =
+    // the SwapBuffers (which blocks on vsync -- display pacing, not render
+    // cost).
     std::chrono::steady_clock::time_point pf_iter, pf_a, pf_b, pf_c, pf_swap, pf_d;
     const std::chrono::steady_clock::time_point perf_loop_start =
         std::chrono::steady_clock::now();
@@ -1132,12 +1030,9 @@ int main(int argc, char **argv)
             if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
-                // --save: capture the live game state (the fleet + crew +
-                // clock) into the save directory before the loop exits. A
-                // bare name is a slot of the CURRENT game under the data
-                // dir's saves/ (like the Save/Load window; a bare boot's
-                // game dir is minted at this first save); a path is used
-                // as-is.
+                // --save: capture the live game state into the save directory
+                // before the loop exits. A bare name is a slot of the CURRENT
+                // game under the data dir's saves/; a path is used as-is.
                 if(!args.save_name.empty()) {
                     std::string save_dir = args.save_name;
                     if(save_dir.find('/') == std::string::npos) {
@@ -1174,9 +1069,7 @@ int main(int argc, char **argv)
           EVENTS
         */
         // Emit the synthetic (sim) input that fell due this frame, then
-        // drain the SDL queue and dispatch it (quit, resize, keybinds, the
-        // RMB camera-look and the wheel). Both live in events.cpp and drive
-        // state through the game.
+        // drain the SDL queue and dispatch it. Both live in events.cpp.
         emit_sim_events(game);
         poll_events(game);
         pf_a = std::chrono::steady_clock::now();
@@ -1184,58 +1077,48 @@ int main(int argc, char **argv)
         /*
           LOGIC
         */
-        // The fixed-timestep loop (command arming, the substepped physics,
-        // the spin/orbit/dbg logs) lives in tick.cpp: it advances the
-        // game's clock and marks the frame for a redraw.
-        /* The VAB's headless transition hooks (--vab-load / --vab-launch /
-           --vab-close), then the LIVE scene's per-frame step. The hooks run
-           first and a launch collapses the stack to Flight, so the scene is
-           read after them -- the launching frame falls through to tick().
-           (vabFireHooks is the one scene-specific name left in this loop: it
-           is test scaffolding, and it no-ops unless the editor is live.) */
-        /* --reload: the headless runtime load, the Save/Load window's Load
-           button without the click. Before the scene is read, since a load
-           decides the scene (Flight with a vessel, Title without). */
+        // The fixed-timestep loop lives in tick.cpp.
+        /* The VAB's headless transition hooks, then the LIVE scene's
+           per-frame step. The hooks run first and a launch collapses the
+           stack to Flight, so the scene is read after them. */
+        /* --reload: the headless runtime load. Before the scene is read,
+           since a load decides the scene. */
         if(!game.reloadDir.empty() && game.reloadMs >= 0 && !game.reloadFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.reloadMs) {
             game.reloadFired = true;
             game.loadFrom(game.reloadDir);
         }
         /* --new-game: the headless hook for starting a game from the title
-           screen (Game::newGame -- skips the New Game setup sheet and uses
-           the boot --system / --exhaust-scale). Before the scene is read, so
-           the frame that starts a game runs the Space Center scene's update. */
+           screen (Game::newGame). Before the scene is read. */
         if(game.newGameMs >= 0 && !game.newGameFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.newGameMs) {
             game.newGameFired = true;
             game.newGame();
         }
-        /* --quit-title: the headless hook for the flight pause menu's "Quit to
-           title". Before the scene is read, since it decides the scene (it
-           tears the fleet down and lands on Title). */
+        /* --quit-title: the headless hook for the flight pause menu's
+           "Quit to title". Before the scene is read (it tears the fleet
+           down and lands on Title). */
         if(game.quitTitleMs >= 0 && !game.quitTitleFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.quitTitleMs) {
             game.quitTitleFired = true;
             game.quitToTitle();
         }
         /* --space-center: the headless hook for the pause menu's "Space
-           Center". Before the scene is read; only from Flight, since the hub is
-           an excursion above a running game (its "Resume Flight" pops back). */
+           Center". Only from Flight (the hub is an excursion above a running
+           game). */
         if(game.spaceCenterMs >= 0 && !game.spaceCenterFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.spaceCenterMs) {
             game.spaceCenterFired = true;
             if(sceneIs(game, SceneId::Flight)) { pushScene(game, SceneId::SpaceCenter); }
         }
         /* --recover: the headless hook for the hub's "Recover Vessel". Fired
-           after --space-center, so --space-center A --recover B drives the
-           real flight -> hub -> recover path. */
+           after --space-center. */
         if(game.recoverMs >= 0 && !game.recoverFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.recoverMs) {
             game.recoverFired = true;
-            // The active ship may be a free EVA kerbal (a crew member), which
-            // recoverActive refuses -- the take/store dance EVAs the kerbal to
-            // reach the parts, so recover the ship that holds the findings
-            // (the labpod) instead.
+            // The active ship may be a free EVA kerbal (a crew member),
+            // which recoverActive refuses -- recover the ship that holds
+            // the findings instead.
             if(game.ship != nullptr && game.ship->isEva()) {
                 for(auto *s : collectVehicles(game.sys)) {
                     if(s->isEva()) { continue; }
@@ -1249,10 +1132,8 @@ int main(int argc, char **argv)
             game.recoverActive();
         }
         /* --experiment: the headless hook for the part window's "Run
-           Experiment". Mirrors the UI: a free EVA kerbal runs it itself (the
-           active ship IS the kerbal -- not Game::kerbal, which is only the
-           most-recently-EVA'd pointer for the V toggle-back), else the active
-           ship's first aboard crew (the capsule button's pick). */
+           Experiment". Mirrors the UI: a free EVA kerbal runs it itself,
+           else the active ship's first aboard crew. */
         if(game.experimentMs >= 0 && !game.experimentFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.experimentMs) {
             game.experimentFired = true;
@@ -1268,9 +1149,8 @@ int main(int argc, char **argv)
             else { printf("[hook] --experiment: no kerbal, ignored\n"); }
         }
         /* --pod-experiment: the headless hook for a science pod's "Run
-           Experiment". Mirrors --experiment (the suit's observation): finds
-           the active ship's first experiment-family part + its first aboard
-           crew, and runs the pod's experiment on it (runPodExperiment). */
+           Experiment". Finds the active ship's first experiment-family part
+           + its first aboard crew. */
         if(game.podExperimentMs >= 0 && !game.podExperimentFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.podExperimentMs) {
             game.podExperimentFired = true;
@@ -1290,10 +1170,8 @@ int main(int argc, char **argv)
             else { printf("[hook] --pod-experiment: no pod+kerbal, ignored\n"); }
         }
         /* --eva: the headless hook for the part window's "EVA" button
-           (Game::kerbalEVA) -- take the active ship's first crew kerbal out of
-           its capsule, so the take/store dance can reach a part (the dance
-           needs a FREE kerbal in reach, not an aboard one). Fired before
-           --take / --store in the e2e. */
+           (Game::kerbalEVA) -- take the active ship's first crew kerbal out
+           of its capsule. Fired before --take / --store in the e2e. */
         if(game.evaMs >= 0 && !game.evaFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.evaMs) {
             game.evaFired = true;
@@ -1306,16 +1184,15 @@ int main(int argc, char **argv)
         }
         /* --take: the headless hook for the take/store dance -- move the
            active ship's first held finding off its instrument onto its
-           courier (the kerbal's suit). Mirrors --pod-experiment. */
+           courier (the kerbal's suit). */
         if(game.takeMs >= 0 && !game.takeFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.takeMs) {
             game.takeFired = true;
             Part *from = nullptr;   // the instrument holding a finding to take
             Part *to = nullptr;     // the courier (the kerbal's suit)
-            // The instrument (pod) is on the ship's part tree, which after an
-            // EVA is a DIFFERENT ship than the active one (the kerbal is now
-            // its own ship), so search the whole fleet for an instrument
-            // holding a finding -- not just game.ship->parts.
+            // The instrument (pod) is on the ship's part tree, which after
+            // an EVA is a DIFFERENT ship than the active one -- search the
+            // whole fleet.
             for(auto *s : collectVehicles(game.sys)) {
                 for(Part *p : s->parts) {
                     if(p->def != nullptr && !p->experiments.empty()
@@ -1340,14 +1217,14 @@ int main(int argc, char **argv)
         }
         /* --store: the headless hook for the take/store dance -- move the
            active ship's courier's first held finding onto its container
-           (the capsule). Mirrors --take. */
+           (the capsule). */
         if(game.storeMs >= 0 && !game.storeFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.storeMs) {
             game.storeFired = true;
             Part *from = nullptr;   // the courier (the kerbal's suit)
             Part *to = nullptr;     // the container (the capsule)
-            // The container (capsule) is on the ship's part tree, a DIFFERENT
-            // ship than the active one after an EVA -- search the whole fleet.
+            // The container (capsule) is on the ship's part tree, a
+            // DIFFERENT ship than the active one after an EVA.
             for(auto *s : collectVehicles(game.sys)) {
                 for(Part *p : s->parts) {
                     if(p->def != nullptr
@@ -1370,17 +1247,15 @@ int main(int argc, char **argv)
             if(from != nullptr && to != nullptr) { game.moveExperiment(from, to, 0); }
             else { printf("[hook] --store: no free-kerbal-in-reach/container, ignored\n"); }
         }
-        /* --tracking: the headless hook for the hub's "Tracking Station". Fired
-           after --space-center, so --space-center A --tracking B drives the
-           real flight -> hub -> tracking path. pushScene guards the re-push. */
+        /* --tracking: the headless hook for the hub's "Tracking Station".
+           Fired after --space-center. */
         if(game.trackingMs >= 0 && !game.trackingFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingMs) {
             game.trackingFired = true;
             pushScene(game, SceneId::TrackingStation);
         }
         /* --tracking-close: the headless hook for the tracking menu's "Back
-           to Space Center" (popScene). Fired after --tracking, so
-           --tracking A --tracking-close B drives the push -> pop round trip. */
+           to Space Center" (popScene). Fired after --tracking. */
         if(game.trackingCloseMs >= 0 && !game.trackingCloseFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.trackingCloseMs) {
             game.trackingCloseFired = true;
@@ -1388,16 +1263,14 @@ int main(int argc, char **argv)
             else { printf("[hook] --tracking-close: not in the tracking station, ignored\n"); }
         }
         /* --research: the headless hook for the hub's "Research Lab". Fired
-           after --space-center, so --space-center A --research B drives the
-           real flight -> hub -> lab path. pushScene guards the re-push. */
+           after --space-center. */
         if(game.researchMs >= 0 && !game.researchFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.researchMs) {
             game.researchFired = true;
             pushScene(game, SceneId::ResearchLab);
         }
         /* --research-close: the headless hook for the lab's "Back to Space
-           Center" (popScene). Fired after --research, so
-           --research A --research-close B drives the push -> pop round trip. */
+           Center" (popScene). Fired after --research. */
         if(game.researchCloseMs >= 0 && !game.researchCloseFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.researchCloseMs) {
             game.researchCloseFired = true;
@@ -1406,16 +1279,14 @@ int main(int argc, char **argv)
         }
         /* --switch-system: the headless hook for the in-process system switch
            (Game::switchSystem). Before the scene is read, since it tears the
-           current system down (fleet + bodies + the terrain stream), loads a
-           different one, and lands on the Title screen -- the only automated
-           cover for a live system swap (boot one system, swap to another). */
+           current system down and lands on the Title screen -- the only
+           automated cover for a live system swap. */
         if(!game.switchSystemPath.empty() && game.switchSystemMs >= 0
            && !game.switchSystemFired
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.switchSystemMs) {
             game.switchSystemFired = true;
-            // A bad path (missing file, bad JSON) throws from load_system --
-            // catch it like the load path does and keep running on the current
-            // system, rather than letting it escape the main loop (terminate).
+            // A bad path throws from load_system -- catch it like the load
+            // path does and keep running on the current system.
             try {
                 game.switchSystem(game.switchSystemPath);
             } catch(const std::exception &e) {
@@ -1432,27 +1303,20 @@ int main(int argc, char **argv)
         }
         pf_b = std::chrono::steady_clock::now();
 
-        // Background jobs (the porkchop grid, the surface map, and
-        // terrain patch subdivision): run the finished jobs' main-thread
-        // continuations, which publish their results into game state.
-        // Once per frame, BEFORE the UI reads the state those
-        // continuations wrote. (Per-job "working on it"
-        // state lives in the window that owns the job, e.g. the Porkchop's
-        // "sweeping ..." -- not a global HUD line.)
+        // Background jobs (the porkchop grid, the surface map, and terrain
+        // patch subdivision): run the finished jobs' main-thread
+        // continuations. Once per frame, BEFORE the UI reads the state those
+        // continuations wrote.
         game.jobs.poll();
         // The engine hum: the active ship's thrust state, pilot scenes
-        // only (the others coast with the ship disarmed). Gain is the
-        // throttle itself (already clamped to [0,1]); the sound is ON
-        // only while the ship actually produces thrust (fuel, jet air).
+        // only. Gain is the throttle; the sound is ON only while the ship
+        // actually produces thrust.
         {
             const SceneDef &sc = curScene(game);
             if(sc.pilot && ship != nullptr) {
-                // Firing = an engine armed THIS tick: the tick clears
-                // armedThrust, and ApplyThrust re-arms only on a
-                // held/latched thrust key with fuel (and jet air).
-                // getThrust() alone is the POTENTIAL at the current
-                // throttle -- it would hum at the default 100% with the
-                // thrust key never touched.
+                // Firing = an engine armed THIS tick (getThrust() alone is
+                // the POTENTIAL at the current throttle -- it would hum at
+                // the default 100% with the thrust key never touched).
                 bool firing = false;
                 int armedN = 0;
                 for(const Part *p : ship->parts) {
@@ -1468,10 +1332,9 @@ int main(int argc, char **argv)
                     lastFiring = firing;
                 }
                 // Match the engine loop to the device's sample rate so the
-                // real-time callback never has to resample: the backends
-                // negotiate differently (Pulse/PipeWire ~48 kHz, ALSA the
-                // hardware's 44.1 kHz), and a rate-mismatched loop is
-                // resampled every period inside the audio thread.
+                // real-time callback never has to resample (backends
+                // negotiate differently: Pulse/PipeWire ~48 kHz, ALSA the
+                // hardware's 44.1 kHz).
                 static const char *engineFile = nullptr;
                 if(engineFile == nullptr) {
                     engineFile = (game.audio.deviceRate() == 48000)
@@ -1487,7 +1350,7 @@ int main(int argc, char **argv)
         // No-op when audio is unavailable.
         game.audio.update();
         // pf_swap defaults to pf_c so a frame that skips the render block
-        // (redraw false) records render = present = 0, not a stale window.
+        // (redraw false) records render = present = 0.
         pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c;
 
         /*
@@ -1530,9 +1393,7 @@ int main(int argc, char **argv)
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // The imgui pass: the live scene's widget set. The flight one is
-            // scene.cpp's flightDrawUi, which lists it in draw order; the
-            // editor's is drawVabUI.
+            // The imgui pass: the live scene's widget set.
             sc.drawUi(game);
 
             // One-shot messages (g.toast): above everything, including the
@@ -1544,10 +1405,9 @@ int main(int argc, char **argv)
 
             if(screenshot_requested == true) {
                 // A user feature, so shots live under the data dir (like
-                // saves/), not in the working directory. UTC stamp + the shot
-                // count: unique by construction (two shots in the same second
-                // no longer collide), and portable (gmtime is standard C, no
-                // POSIX _r / Windows _s fork). Main-thread only.
+                // saves/). UTC stamp + the shot count: unique by
+                // construction, portable (gmtime is standard C). Main-thread
+                // only.
                 time_t now = ::time(nullptr);
                 char stamp[40];
                 strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H-%M-%SZ", gmtime(&now));
@@ -1566,8 +1426,7 @@ int main(int argc, char **argv)
             }
 
             // Mark the render/present boundary: everything above is issuing
-            // GL commands (the real render cost); SwapBuffers is where the
-            // vsync block lives (the present cost).
+            // GL commands; SwapBuffers is where the vsync block lives.
             pf_swap = std::chrono::steady_clock::now();
             display.SwapBuffers();
             check_gl_error();
@@ -1575,7 +1434,7 @@ int main(int argc, char **argv)
 
         // Close the frame's timing: fold this frame's phase times into the
         // Telemetry series (always) and, with --perf, the console running
-        // totals (the rolling line prints when a second has passed).
+        // totals.
         pf_d = std::chrono::steady_clock::now();
         const double f_events  = perf_ms(pf_iter, pf_a);
         const double f_logic   = perf_ms(pf_a, pf_b);
@@ -1583,7 +1442,7 @@ int main(int argc, char **argv)
         const double f_render  = perf_ms(pf_c, pf_swap);  // issue GL cmds
         const double f_present = perf_ms(pf_swap, pf_d);  // SwapBuffers (vsync)
         // Always push into the Telemetry window's series (wall-clock x-axis,
-        // s since loop start; the ring dedups on the last sample's time).
+        // s since loop start).
         const double perf_t =
             std::chrono::duration<double>(pf_d - perf_loop_start).count();
         game.perf_events.push(perf_t, f_events);
@@ -1605,8 +1464,7 @@ int main(int argc, char **argv)
         game.phys_steps = 0;   // tick() re-arms it next frame
 
         // --frame-cap: burn the rest of the frame budget. Without this the
-        // iteration spins at full speed whenever the swap isn't vsync-gated
-        // (paused VAB, headless, vsync off) -- 100% of a core doing nothing.
+        // iteration spins at full speed whenever the swap isn't vsync-gated.
         if (cap_ms > 0) {
             const Uint32 used_ms = SDL_GetTicks() - iter_start_ms;
             if (used_ms < (Uint32)cap_ms) {
@@ -1619,22 +1477,17 @@ int main(int argc, char **argv)
     if(perf_on) { perf_summary(); }
 
     // The ships + space pads are owned by the bodies (TerrainBody::ships /
-    // ::pads), so they are freed when the bodies are deleted below -- no
-    // separate ships.clear() here (the bodies would dangle).
+    // ::pads), so they are freed when the bodies are deleted below.
 
     // Stop the background worker BEFORE the bodies it may still hold (a
-    // job captures a TerrainBody* and may be sampling it off-thread); the
-    // dtor would only join the worker on the way out of main, AFTER these
-    // deletes. abort() drops the queued jobs (the deferred terrain stream)
-    // and waits only for the in-flight one, instead of draining the whole
-    // queue -- a hard exit doesn't need the pending terrain built.
+    // job captures a TerrainBody* and may be sampling it off-thread).
+    // abort() drops the queued jobs and waits only for the in-flight one.
     game.jobs.abort();
 
     for(auto&& body : sys.bodies) { delete body; }
 
     // The shaders + textures + plume mesh are registry-owned (get_*):
-    // they outlive this scope on purpose (shared assets, reclaimed by the
-    // GL context teardown) and must NOT be deleted here.
+    // they outlive this scope on purpose and must NOT be deleted here.
     delete postfx;   // owns its own per-effect shaders (unique programs)
 
     delete front_indicator;

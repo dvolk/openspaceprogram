@@ -1,6 +1,4 @@
-// radialtest.h -- the --radial-test spin-test ship builder (see
-// radialtest.cpp). Builds a passive-tank test ship straight from the parts
-// catalog so the spin diagnostics have a known, thruster-free geometry.
+// radialtest.h -- the --radial-test spin-test ship builder (see radialtest.cpp).
 #pragma once
 
 #include <string>

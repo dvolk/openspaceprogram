@@ -11,8 +11,7 @@ namespace {
 
 struct SimPart {
     double dry = 0.0;      // inert mass (structure + non-burnable resources)
-    double fuel = 0.0;     // kg of the burnable pool (the resources the ship's
-                           // rocket engines draw -- see computeStaging's mask)
+    double fuel = 0.0;     // kg of the burnable pool
     double thrust = 0.0;   // N, rocket rated (0 = not an engine)
     double mdot = 0.0;     // kg/s of fuel at full throttle
     bool isDec = false;
@@ -146,8 +145,7 @@ struct Sim {
 
     // Per-tank drain rates (kg/s) from every lit engine that still has
     // fuel in its layers. Each engine fills its mdot from the furthest
-    // non-empty bucket, pro-rata by remaining fuel (the same distribution
-    // consumeResourceMass applies within a call).
+    // non-empty bucket, pro-rata by remaining fuel.
     void computeRates(std::vector<double> &rate) {
         rate.assign(parts.size(), 0.0);
         for(size_t ei = 0; ei < engines.size(); ei++) {
@@ -214,8 +212,7 @@ struct Sim {
     }
 
     // Propellant in `set` that a lit engine can still reach via its drain
-    // layers. The "ready to drop" test: once this hits 0, every atom those
-    // engines would take from the set is gone.
+    // layers. The "ready to drop" test.
     double drainableIn(const std::set<int> &set) const {
         if(set.empty()) { return 0.0; }
         std::set<int> reachable;
@@ -278,8 +275,7 @@ struct BurnAcc {
 };
 
 // Drain until `watch` is empty of drainable fuel, or -- when `drainAll`
-// -- until no lit engine can draw more. Events are tank-empty boundaries
-// (the drop condition is itself one).
+// -- until no lit engine can draw more. Events are tank-empty boundaries.
 void runBurn(Sim &sim, double g, bool drainAll,
              const std::set<int> &watch, BurnAcc &acc) {
     acc.m0 = totalMass(sim.parts);
@@ -343,8 +339,7 @@ void runBurn(Sim &sim, double g, bool drainAll,
 
 double partPropellantMass(const PartDef &def, const bool *burn) {
     // The resources the ship's rocket engines draw (per `burn`). JetFuel /
-    // hydrazine / life support / any tank resource no engine burns ride along
-    // as inert mass; EC is Wh, not kg.
+    // hydrazine / life support ride along as inert mass; EC is Wh, not kg.
     double m = 0.0;
     for(size_t r = 0; r < def.capacity.size(); r++) {
         if(burn[r]) { m += (double)def.capacity[r]; }
@@ -366,14 +361,13 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     int maxStage = minStage;
 
     // The resources the ship's ROCKET engines draw (jets excluded: they need
-    // air, so no vacuum delta-v). A tank resource no engine burns (e.g. LOX
-    // on a nuclear-thermal-only ship) is inert mass, not deliverable fuel.
+    // air, so no vacuum delta-v). A tank resource no engine burns is inert mass.
     // LIMITATION: this is a ship-wide UNION and the sim lumps a part's
     // propellant into one pool, so a ship MIXING a chemical engine (burns
     // H2+LOX) with a nuclear-thermal one (H2 only) credits every tank's LOX as
     // burnable even where only the H2 engine can draw it. Exact for a
-    // homogeneous engine set (all-chemical or all-nuclear); a per-fuel-group
-    // mask would be needed for mixed ships (see issue #41).
+    // homogeneous engine set; a per-fuel-group mask would be needed for mixed
+    // ships (see issue #41).
     bool burn[(int)ResourceType::Num];
     for(int r = 0; r < (int)ResourceType::Num; r++) { burn[r] = false; }
     for(size_t i = 0; i < n; i++) {
@@ -396,8 +390,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         if(bp.def != nullptr) {
             sp.dry = std::max(0.0, partDryMass(*bp.def, burn));
             sp.fuel = partPropellantMass(*bp.def, burn);
-            // Rocket only (propellant + ve, not a jet). Jets need air, so
-            // they contribute no vacuum thrust and burn no vacuum fuel.
+            // Rocket only (propellant + ve, not a jet). Jets need air.
             if(bp.def->totalPropellantRate() > 0.0 && bp.def->exhaust_velocity > 0.0
                && !bp.def->jet) {
                 // Scale thrust only (not mdot): ve_eff = F/mdot scales, so

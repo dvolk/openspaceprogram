@@ -16,9 +16,8 @@
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress) {
-    // `path` is the logical name ("res/systems/...") -- what the logs and
-    // e2e EXPECT strings carry. Only the open sees the resolved filesystem
-    // path (resdir.h).
+    // `path` is the logical name ("res/systems/...") for logs/e2e; only the
+    // open sees the resolved filesystem path (resdir.h).
     std::ifstream f(resdir::path(path));
     if(!f.is_open()) {
         throw std::runtime_error(std::string("system: cannot open ") + path);
@@ -43,9 +42,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     System sys;
     sys.root = nullptr;
     sys.home = nullptr;
-    // A throw mid-build (pass-2 wiring, home resolution) would otherwise
-    // leak the partially-created bodies -- delete them on the way out unless
-    // the build completes (the return "commits" them to the caller).
+    // Delete partially-created bodies on a throw mid-build (return commits).
     struct BodyCleanup {
         std::vector<TerrainBody *> *b;
         bool commit;
@@ -133,14 +130,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.atmosphere.power = av.value("power", 3.0f);
                 s.atmosphere.intensity = av.value("intensity", 1.0f);
                 // Physical drag (src/drag.h): both optional, 0 = no drag.
-                // A rim (the fields above) can exist without these, and
-                // vice versa.
+                // A rim can exist without these, and vice versa.
                 s.atmosphere.sea_level_density =
                     av.value("sea_level_density", 0.0);
                 s.atmosphere.scale_height =
                     av.value("scale_height", 0.0);
-                // The hard top (above it: vacuum). Optional -- 0 makes
-                // AtmosphereParams::top() derive scale_height * 10 instead.
+                // The hard top (above it: vacuum). 0 => top() derives
+                // scale_height * 10.
                 s.atmosphere.height = av.value("height", 0.0);
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {
@@ -189,10 +185,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             s.seed_rot = glm::mat3(ry * rx);
         }
 
-        // max_height + the root terrain are the body's heavy phase (see
-        // TerrainBody::BuildRootGeoms / AttachRoot): built by the worker
-        // after the light phase so the title can appear before every body's
-        // terrain is in. surface.max_height keeps its default until then.
+        // max_height + root terrain are the heavy phase (deferred to the
+        // worker so the title can appear first).
 
         // Shader + elevation palette by body type.
         switch(body->type) {
@@ -240,12 +234,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                     pos[2].get<double>());
             }
             f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
-            // Optional orbital plane orientation (radians): inclination i
-            // tilts the orbital plane, and lon_asc_node (raan) rotates the
-            // line of nodes from the parent's +X out to its longitude.
-            // orient = R_Y(-raan) * R_X(i) maps the local orbital plane
-            // (where pos lives) into the parent frame; identity when both are
-            // zero, and it reduces to the old X-tilt when raan is absent.
+            // Optional orbital plane orientation (radians): orient =
+            // R_Y(-raan) * R_X(i) maps the local orbital plane into the
+            // parent frame.
             const double orb_incl = in.value("orb_incl", 0.0);
             const double lon_asc_node = in.value("lon_asc_node", 0.0);
             if(orb_incl != 0.0 || lon_asc_node != 0.0) {
@@ -260,11 +251,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         body->soi = f->soi;   // keep the body's soi in sync (display only)
 
         // --- rotating (near-body) frame -------------------------------------
-        // Every body gets one. A body without a "rotating" JSON section (e.g.
-        // the star) gets a DUMMY frame: zero spin (no stasis velocity, no
-        // fictitious forces) and the standard near-body SOI (radius + 100 km,
-        // the same convention the real data uses), so scenario radii, frame
-        // resolution and frame switching work uniformly for every body.
+        // Every body gets one. No "rotating" JSON section (e.g. the star) =>
+        // a DUMMY frame: zero spin and the standard near-body SOI, so
+        // scenario radii and frame switching work uniformly.
         Frame *rf = new Frame;
         rf->name  = body->name + " (rotational)";
         rf->body  = body;
@@ -284,15 +273,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             const nlohmann::json &rot = bv["rotating"];
             rf->soi = rot.value("soi", 1e5);
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
-            // Optional axial tilt (radians): lean the body's pole (local +Y)
-            // away from the orbital normal toward +X, folded into
-            // initial_orient. The spin stays about +Y -- the figure axis --
-            // so the pole IS the spin axis. (Tilting the spin_axis instead
-            // would leave the pole t off the axis, and it would wobble
-            // around the true axis once per rotation: the terrain pole, the
-            // gas bands and the rings all precessed visibly on tilted
-            // bodies like Saturn/Uranus.) World spin axis is unchanged:
-            // rotate(-t, Z) * +Y == (sin t, cos t, 0).
+            // Optional axial tilt (radians): lean the pole away from the
+            // orbital normal toward +X, folded into initial_orient. The spin
+            // stays about +Y (the figure axis) so the pole IS the spin axis --
+            // tilting spin_axis instead makes the terrain pole/bands/rings
+            // precess once per rotation.
             const double axial_tilt = rot.value("axial_tilt", 0.0);
             if(axial_tilt != 0.0) {
                 const double ct = std::cos(axial_tilt), st = std::sin(axial_tilt);
@@ -309,17 +294,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         f->rot_frame = rf;
         f->children.push_back(rf);
 
-        // The heavy phase (max_height + root terrain + shells) is NOT built
-        // here: it is deferred to the worker (TerrainBody::Finish) so the
-        // light phase above -- orbital/physical values only -- stays fast and
-        // the title can appear before every body's terrain is in. The body
-        // simulates fine without it; it just isn't drawn until ready.
+        // Heavy phase is NOT built here (deferred; see postHeavyPhase).
 
         body->refreshParamsCache();   // surface/radius/colour_func are final
         sys.bodies.push_back(body);
 
-        // Per-body progress: the caller draws a "loading..." frame here so a
-        // big system shows progress instead of a frozen window (see system.h).
+        // Per-body progress so the caller can draw a "loading..." frame.
         if(progress) { progress(i, bodies.size(), body->name); }
     }
 
@@ -344,11 +324,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             body->frame->parent = parent->frame;
             parent->frame->children.push_back(body->frame);
 
-            // Epoch orbital state for the Kepler rail. a comes from the
-            // (existing) mean angular rate via Kepler's third law, so the
-            // period and calendar are unchanged; e, arg_peri and the epoch
-            // true anomaly are optional and default to the circular orbit
-            // through the given pos (nu0 = its in-plane angle).
+            // Epoch orbital state for the Kepler rail. a comes from the mean
+            // angular rate via Kepler's third law; e, arg_peri and the epoch
+            // true anomaly default to the circular orbit through pos.
             Frame *f = body->frame;
             if(f->orb_ang_speed != 0.0) {
                 const nlohmann::json &in =
@@ -392,11 +370,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
 
     // --- calendars ----------------------------------------------------------
-    // Every body gets its own calendar from its spin (day) and orbit (year)
-    // rates, so the HUD can show LOCAL time on whatever body the ship is in.
-    // The year is snapped to a whole number of days (see calendar.h), so all
-    // date boundaries fall on local midnight. Stars get an invalid calendar
-    // (dummy zero-spin frame).
+    // Per-body calendar from its spin (day) and orbit (year) rates. The year
+    // snaps to whole days (calendar.h) so boundaries fall on local midnight.
+    // Stars get an invalid calendar (dummy zero-spin frame).
     const int epoch_year = 4724;  // the year the game starts in
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
@@ -407,8 +383,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         b->cal = Calendar::make(D, Y, epoch_year);
     }
 
-    // Recompute the root-relative frame values so positions/velocities/orients
-    // are consistent before the first render.
+    // Recompute root-relative frame values before the first render.
     sys.root->frame->UpdateOrbitRails(0.0);
 
     printf("Loaded system '%s': %zu bodies (home=%s)\n",

@@ -1,27 +1,17 @@
-// transferplanner.cpp -- the game-side transfer planner (declared in
-// transferplanner.h).
-//
-// This was the "Transfer planner" block of main's render pass (the
-// per-frame target-list rebuild, the min-dv solve and the --xfer-log) plus
-// the planner's state locals (xferTargets / xfer_target / xfer_auto /
-// xfer_tof_log / xfer / xfer_log_last_ms). It moved out as-is: main's
-// locals became the planner's members, and the remaining globals (ship,
-// ships, bodies, args, the sim clock, the log interval) come from the
-// borrowed Game. The pure-math solver (planTransfer) is in transfer.h.
+// transferplanner.cpp -- game-side transfer planner (declared in
+// transferplanner.h). The pure-math solver is in transfer.h.
 #include "transferplanner.h"
 #include "game.h"   // the complete Game (transferplanner.h only forward-declares it)
 
 #include <cmath>
 #include <numbers>
 #include <cstdio>
-#include <functional>   // std::function (the job's main-thread continuation)
-#include <memory>       // shared_ptr (the cross-thread result handoff)
+#include <functional>
+#include <memory>
 
 namespace {
-/* The frame-independent transforms update() and porkchopCompute() both
-   need: the ship's state and the target's state, lifted from their own
-   (possibly rotating) frames into the parent's INERTIAL frame -- the frame
-   the transfer conic lives in (the same idiom as the ORBITAL readout). */
+// Ship/target state lifted into the parent's INERTIAL frame -- the frame the
+// transfer conic lives in.
 struct InertialShip {
     Frame *inertial = nullptr;
     glm::dvec3 r = glm::dvec3(0.0), v = glm::dvec3(0.0);
@@ -52,21 +42,16 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
     if(t.body) {
         Frame *tf = t.body->frame;
         d.r = tf->GetPositionRelTo(inertial);
-        // The body's orbital velocity in the parent frame, straight from the
-        // frame tree (nonzero now that the rails are Kepler orbits; for the
-        // current circular data this equals the old omega x r construction).
         d.v = tf->GetVelocityRelTo(inertial);
         d.mu = t.body->mu;
         d.r_cap = t.body->radius + 100e3; // 100 km capture orbit
         if(tf->orb_ang_speed > 0.0) {
-            // 3 full target periods covers the min-dv point (near the
-            // Hohmann ToF) with margin on both sides.
+            // 3 target periods covers the min-dv point with margin.
             d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);
         }
         d.capture = true;
     } else {
-        // Ship in the same body: transform its state over to our inertial
-        // frame (stasis of the non-rotating frame is zero).
+        // Ship in the same body: transform its state to our inertial frame.
         Frame *tsf = t.ship->frame;
         const glm::dvec3 tcom = t.ship->get_center_of_mass();
         const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
@@ -79,12 +64,9 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
 } // namespace
 
 void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
-    /* Rebuild the target list, then recompute the solution on input
-       change or every 30 frames. */
     xferTargets.clear();
     if(g.ship == nullptr) {
-        // No active ship: nothing to transfer from. Drop any stale target /
-        // plan so the window shows an empty state (orbit-view boot).
+        // No active ship: drop any stale target / plan (orbit-view boot).
         xfer_target = -1;
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
@@ -97,16 +79,13 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 xferTargets.push_back({b->name.c_str(), b, nullptr});
             }
         }
-        // transfer targets: the other ships in the same SoI body (the
-        // body's own ship list -- free ships + EVA characters, not the
-        // aboard crew, who live on their ship)
+        // Sibling ships (free ships + EVA; not aboard crew).
         for(auto *s : pb->ships) {
             if(s != g.ship) {
                 xferTargets.push_back({s->name.c_str(), nullptr, s});
             }
         }
-        // --transfer-target: explicit selection (e2e / scripting);
-        // wins over the window's combo on every rebuild.
+        // --transfer-target wins over the window's combo on every rebuild.
         if(!g.args.transfer_target.empty()) {
             for(int i = 0; i < (int)xferTargets.size(); i++) {
                 if(xferTargets[i].name == g.args.transfer_target) {
@@ -117,17 +96,11 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     }
     if(xfer_target >= (int)xferTargets.size()) { xfer_target = -1; }
 
-    // A porkchop grid is only valid for the target it was swept for: drop it
-    // on a target change so the old target's launch window never shows under
-    // the new target's label (the "Send best" plan is dropped just below, for
-    // the same reason). Idempotent once pc is cleared.
+    // Drop a grid / plan swept for a different target (stale label).
     if(pc.valid && pc_target != xfer_target) {
         pc.valid = false;
     }
 
-    // A "Send best" plan is for the target it was sent for. Drop it if the
-    // target changed so a stale countdown doesn't linger on the new target
-    // (and restore the ToF mode the user had before sending).
     if(xfer_from_porkchop && xfer_plan_target != xfer_target) {
         clearPorkchopPlan();
     }
@@ -142,8 +115,6 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             || std::fabs(xfer.tof_log - xfer_tof_log) > 1e-12
             || xfer.frame - xfer.solved_frame >= 30;
         if(dirty) {
-            // Ship + target state in the parent's INERTIAL frame (the
-            // shared transform helpers above).
             const InertialShip s1 = shipInertial(g, com, vel);
             const XferTarget &t = xferTargets[xfer_target];
             const InertialTarget d = targetInertial(t, s1.inertial);
@@ -162,11 +133,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
             xfer.sol = sol;
             xfer.valid = sol.valid;
             if(sol.valid) {
-                // Burn direction at the ship, in the render frame
-                // (ship->frame). A dv delta carries no stasis term:
-                // the same stasis applies before and after the burn
-                // at the same position, so it cancels in the
-                // difference.
+                // A dv delta carries no stasis term: it cancels in the difference.
                 const glm::dmat3 O = g.ship->frame->GetOrientRelTo(s1.inertial);
                 xfer.burn_dir = glm::transpose(O) * (sol.v_departure - s1.v);
             } else {
@@ -179,8 +146,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         }
     }
 
-    // --xfer-log: the planner's current solution (render pass, since
-    // that is where the computation lives).
+    // --xfer-log: the planner's current solution.
     if(g.args.xfer_log && xfer_target >= 0) {
         const Uint32 now_ms = SDL_GetTicks();
         if(now_ms - xfer_log_last_ms >= g.orbit_log_interval_ms) {
@@ -215,40 +181,26 @@ void TransferPlanner::clearPorkchopPlan() {
 }
 
 void TransferPlanner::invalidateClockState() {
-    // The world moved out from under the planner (a clock jump OR a system
-    // swap -- see Game::invalidateClockStampedCaches). Everything stamped
-    // against the old world is stale: the plan's departure was
-    // pc_computed_at + delay (meaningless now), the grid was swept for the
-    // old planet positions, and the min-dv solution + target list are for the
-    // old ship / bodies. Drop all of it; update() rebuilds the target list
-    // next frame. Clearing xferTargets also frees the old system's body /
-    // ship pointers (a system swap deleted them), so a stale pointer can
-    // never linger past this.
-    clearPorkchopPlan();   // no-op unless a plan is active
-    pc.valid = false;      // the launch window no longer matches the state
-    xfer.valid = false;    // the min-dv solution is for the old state
-    xferTargets.clear();   // old system's bodies / ships (freed on a switch)
-    xfer_target = -1;      // no target until update() rebuilds the list
+    // Clock jump or system swap: everything stamped against the old world is
+    // stale. Clearing xferTargets also frees the old system's pointers.
+    clearPorkchopPlan();
+    pc.valid = false;
+    xfer.valid = false;
+    xferTargets.clear();
+    xfer_target = -1;
 }
 
 void TransferPlanner::porkchopCompute() {
     if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
     const XferTarget &t = xferTargets[xfer_target];
 
-    // The ship's + the target's state at t = 0 (now) in the parent's
-    // INERTIAL frame (the shared transform helpers). The ship's state is
-    // this render pass's snapshot (g.view), so the grid matches what the
-    // readouts show. This snapshot step is the ONLY part that reads game
-    // state; the grid sweep itself is pure, so it runs on the background
-    // worker (g.jobs) and the frame stays responsive (see job.h).
+    // Snapshot ship/target state at t = 0 in the parent's INERTIAL frame.
+    // This is the ONLY part that reads game state; the grid sweep is pure
+    // and runs on the background worker.
     const InertialShip s1 = shipInertial(g, g.view.pos, g.view.vel);
     const InertialTarget d = targetInertial(t, s1.inertial);
 
-    // Windows. Each axis defaults to the auto range -- departure delay:
-    // 0 .. one full target orbit (covers every relative phase), ToF: 60 s
-    // .. three target periods (the same span update() sweeps) -- unless
-    // the window's checkbox for that axis is on, in which case the slider
-    // values (seconds) are used. porkchopGrid swaps a reversed pair.
+    // Windows: auto range unless the axis checkbox is on (then slider values).
     double t_dep_lo, t_dep_hi;
     if(pcCustomDep) {
         t_dep_lo = pcDepLo; t_dep_hi = pcDepHi;
@@ -262,9 +214,7 @@ void TransferPlanner::porkchopCompute() {
         tof_lo = 60.0; tof_hi = d.tof_max;
     }
 
-    // Snapshot everything the worker needs (pure values, no game refs) so
-    // the off-thread body stays safe to run. The old grid (pc) stays on
-    // screen while this runs; it is replaced when the job lands.
+    // Snapshot pure values only (no game refs) so the worker is safe to run.
     const glm::dvec3 r1 = s1.r, v1 = s1.v, r2 = d.r, v2 = d.v;
     const double mu_p = s1.mu_parent, mu_t = d.mu, r_cap = d.r_cap;
     const int n = g.args.porkchop_n;
@@ -272,20 +222,16 @@ void TransferPlanner::porkchopCompute() {
     const bool log = g.args.porkchop_log;
     const std::string tname = t.name;
     const double t_now = g.time;
-    const int target_idx = xfer_target;   // the grid is for this target
+    const int target_idx = xfer_target;
     const int epoch = g.cache_epoch;      // drop the result if the world changes
 
-    pc_in_flight++;   // the window's "sweeping..." state (main thread)
+    pc_in_flight++;
     g.jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
                                   t_dep_lo,t_dep_hi,tof_lo,tof_hi,
                                   n,capture,log,tname,t_now,target_idx,epoch,this]()
                 -> std::function<void()> {
-        // Worker thread: PURE. Sweep the grid (porkchopGrid is header-only
-        // math) and fire the log; no game state, GL or imgui is touched
-        // here. The result is handed to the main thread through the returned
-        // continuation; a shared_ptr lets it outlive this body (the
-        // continuation is a std::function, so its capture must be copyable
-        // -- the payload has to be shared, not moved).
+        // Worker: PURE (no game state, GL, or imgui). shared_ptr because the
+        // std::function continuation capture must be copyable, not moved.
         std::shared_ptr<PorkchopResult> res =
             std::make_shared<PorkchopResult>(porkchopGrid(
                 r1,v1,r2,v2,mu_p,mu_t,r_cap,
@@ -303,31 +249,23 @@ void TransferPlanner::porkchopCompute() {
             }
             fflush(stdout);
         }
-        // Main-thread continuation (JobRunner::poll): publish the result +
-        // clear the "sweeping" state. Runs on the main thread, so writing
-        // the planner's state is safe. pc_computed_at = t_now so a "Send
-        // best" departure = t_now + the best cell's delay.
+        // Main-thread continuation: publish the result, clear "sweeping".
         return [this, res, t_now, tname, target_idx, epoch]() {
-            // A clock jump (load / boot) or a system switch bumped the epoch
-            // after we posted: the grid we just swept is for the old world
-            // (the load path does NOT abort jobs, so this can still land).
-            // Drop it before touching the target list -- for a SHIP target
-            // that list was freed by the load's fleet teardown, so the
-            // still_target name check below would be a use-after-free.
+            // Epoch bumped after we posted: the grid is for the old world
+            // (load does NOT abort jobs). Drop it before touching the target
+            // list -- a SHIP target list was freed by the load (UAF risk).
             if(epoch != this->g.cache_epoch) {
                 if(pc_in_flight > 0) { pc_in_flight--; }
                 return;
             }
-            // Only publish if the target is still the one this grid was
-            // swept for: a target switch mid-flight would otherwise leave a
-            // grid for the OLD target showing under the new target's label.
+            // Publish only if the target is still the one this grid was for.
             const bool still_target = (xfer_target >= 0
                 && xfer_target < (int)xferTargets.size()
                 && xferTargets[xfer_target].name == tname);
             if(still_target) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
-                pc_target = target_idx;   // remember whose grid this is
+                pc_target = target_idx;
             }
             if(pc_in_flight > 0) { pc_in_flight--; }
         };

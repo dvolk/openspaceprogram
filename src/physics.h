@@ -25,19 +25,16 @@ public:
     void RegisterObject(Body *body, glm::vec3 pos, glm::vec3 rot);
     void BuildHull(Body *body);
     /* Terrain patch collision. The mesh vertices are anchor-relative
-       (terragen.h GridGeom), so the rigid body is placed at `anchor`
-       (body-frame metres) to land them where they were baked from. */
+       (terragen.h GridGeom), so the rigid body is placed at `anchor`. */
     btRigidBody *AddTerrainCollision(Mesh *mesh, const glm::dvec3 &anchor);
     void RemoveTerrainCollision(btRigidBody *b);
     /* Remove a body's rigid body from the dynamics world (call BEFORE
-       deleting the Body). The collision shape is the Body's to free; this
-       only unregisters it so the world holds no dangling ptr. */
+       deleting the Body). */
     void RemoveBody(Body *body);
-    /* Re-add a parked body's EXISTING rigid body to the world (the inverse
-       of RemoveBody; the rails handoff parks and restores ship parts). */
+    /* Re-add a parked body's EXISTING rigid body to the world (inverse of
+       RemoveBody). */
     void AddBody(Body *body);
-    /* True when the body has any contact point in the current world state
-       (terrain, pads, ships -- whatever it touches). */
+    /* True when the body has any contact point in the current world state. */
     bool BodyInContact(Body *body);
     void Draw(const Camera * camera);
 
@@ -58,11 +55,8 @@ void RemoveBody(Body *body);
 /* Re-add a parked body's rigid body to the world (inverse of RemoveBody). */
 void AddPhysicsBody(Body *body);
 
-/* Force applied at `rel`, an offset from the body's centre of mass -- the
-   primitive that lets several parts push a SINGLE rigid body correctly, each
-   contributing its share of the net force plus the torque from its own
-   offset. This is how a ship's thrust and its per-part gravity are now
-   delivered, so an off-axis engine and the tide both turn the ship. */
+/* Force applied at `rel`, an offset from the body's centre of mass -- each
+   push contributes net force plus the torque from its own offset. */
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force);
 void ApplyCentralForce(Body *body, glm::dvec3 force);
 void ApplyTorque(Body *body, glm::dvec3 torque);
@@ -83,12 +77,11 @@ glm::dvec3 GetAngVelocity(Body *b);
 glm::dmat3 GetOrient(Body *body);
 
 /* True when the body touches anything in the current world state (the
-   EVA grounded check; see PhysicsEngine::BodyInContact). */
+   EVA grounded check). */
 bool BodyInContact(Body *body);
 
 void debug_draw(const Camera * camera);
 
-/* Step the global physics world one substep. The caller (the logic tick,
-   tick.cpp) re-applies the forces before EVERY call -- stepSimulation
-   clears accumulated forces on exit (see PhysicsEngine::tick). */
+/* Step the global physics world one substep. The caller re-applies the forces
+   before EVERY call -- stepSimulation clears accumulated forces on exit. */
 void physics_tick(float timeStep);

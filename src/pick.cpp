@@ -1,12 +1,7 @@
-// pick.cpp -- the picking math (see pick.h).
-//
-// The ray test uses btCollisionWorld::rayTestSingle (Bullet's own convex
-// cast / triangle raycast) rather than a hand-rolled hull test: it hits
-// exactly what collides (same margin, same shape) and already supports
-// the triangle meshes terrain/pads use. rayTestSingle takes the object +
-// shape + world transform directly, so it needs no collision world --
-// which matters because every ship's bodies live in that SHIP's own
-// frame, and there is one global Bullet world with no frame of its own.
+// pick.cpp -- the picking math (see pick.h). Uses btCollisionWorld::rayTestSingle
+// (Bullet's own cast) so a pick hits exactly what collides. rayTestSingle
+// takes object + shape + transform directly (no collision world needed --
+// each ship's bodies live in that ship's own frame).
 
 #include "pick.h"
 
@@ -25,32 +20,17 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
     const double nx = 2.0 * (double)px / (double)W - 1.0;
     const double ny = 1.0 - 2.0 * (double)py / (double)H;
 
-    // View-space ray direction for that pixel, straight from the
-    // projection. Reading off the matrix (x/y/w rows: fx*X, fy*Y, C*Z) a
-    // point at infinity in direction d projects to NDC
-    //   (fx*dx, fy*dy) / (C*dz)   =>   dx/dz = nx*C/fx,  dy/dz = ny*C/fy.
-    // The ray must point FORWARD (the camera looks down view -Z, so
-    // dz = -1), which flips the signs:
-    //   dx = -nx*C/fx,   dy = -ny*C/fy.
-    // Doing it this way (instead of unprojecting the near + far clip
-    // points) also works for the game's zFar = infinity projection, where
-    // the far clip point has w = 0 and that other approach NaNs.
+    // View-space ray direction from the projection. This works for the
+    // zFar=infinity projection where unprojecting far-clip NaNs.
     const double fx = cam.projection[0][0];
     const double fy = cam.projection[1][1];
     const double C  = cam.projection[2][3];   // the w row's Z coefficient
     const glm::dvec3 dirView = glm::dvec3(-nx * C / fx, -ny * C / fy, -1.0);
 
-    // buildView() (camera.cpp) builds the view with the camera in the
-    // render frame, and the Draw sites shift geometry by -renderOrigin
-    // (body.h, terrain.cpp). The two shifts cancel, so a render-frame
-    // point p maps as p_view = R * (p - pos) -- renderOrigin only buys
-    // float precision in the MVP cast -- and the inverse (this
-    // unprojection) is p_render = R^T * p_view + pos. Caveat: in Orbit
-    // mode the rendered eye is the exact (focusPoint - renderOrigin) +
-    // off while pos is its rounded absolute form, so the pick ray origin
-    // diverges from the rendered eye by <= ULP(pos)/2 (~6 cm at 1e15,
-    // only relevant at interstellar ranges -- reports/precision-scaling
-    // 2026_09_22).
+    // The -renderOrigin shifts in the view and Draw sites cancel, so
+    // p_render = R^T * p_view + pos. Caveat: in Orbit mode the pick ray
+    // origin diverges from the rendered eye by <= ULP(pos)/2 (~6 cm at 1e15,
+    // only at interstellar ranges).
     const glm::dmat3 R(cam.view);
     return PickRay{
         cam.pos,
@@ -58,16 +38,12 @@ PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
     };
 }
 
-/* The cast itself: one ray against one collision shape at one transform.
-   Takes the object/shape/transform apart rather than a Body, because a
-   ship's parts are children of ONE compound rigid body -- the shape and
-   the pose come from the compound, not from a per-part body. Also the
+/* One ray against one collision shape at one transform. Also the
    physics-free seam for the VAB build tree (no rigid body). */
 bool castRay(const PickRay &ray, btCollisionObject *obj,
              const btCollisionShape *shape, const btTransform &xform,
              PickBodyHit &hit) {
-    // One long segment along the ray, in the body's frame (double
-    // precision, so a scene-sized length is exact enough).
+    // One long segment along the ray (double precision, scene-sized length is exact).
     const double L = 1e7;   // m
     btVector3 from(ray.origin.x, ray.origin.y, ray.origin.z);
     btVector3 to((ray.origin + ray.dir * L).x,
@@ -99,10 +75,8 @@ bool pickBody(const PickRay &ray, const Body *body, PickBodyHit &hit) {
                    body->btBody->getWorldTransform(), hit);
 }
 
-/* One child of a ship's compound, at the pose the compound puts it in. The
-   child index IS the part index: rebuildCompound fills compoundParts in
-   parts order and test_inertia pins the correspondence, so a hit names the
-   part without a search. */
+/* One child of a ship's compound. The child index IS the part index
+   (rebuildCompound fills compoundParts in parts order). */
 static bool pickShipChild(const PickRay &ray, Vehicle *ship, size_t child,
                           PickBodyHit &hit) {
     btCompoundShape *cs = ship->compoundShape();
@@ -131,11 +105,8 @@ bool pickShipPart(Game &g, int px, int py,
     for(auto *b : g.sys.bodies) {
     for(auto *s : b->ships) {
         if(s->compoundShape() == nullptr) { continue; }
-        // The ship's part frame -> render frame (the same transform
-        // Vehicle::Draw uses); the ray must live in the ship's frame,
-        // where its bodies' transforms live.
+        // Ray must live in the ship's frame, where its bodies' transforms live.
         const glm::dmat4 invXf = glm::inverse(s->renderXform(renderFrame));
-        // (glm has no mat4 * vec3; the w=1 point form does the job)
         const glm::dvec4 po = invXf * glm::dvec4(ray.origin, 1.0);
         PickRay sray{ glm::dvec3(po.x, po.y, po.z),
                       glm::normalize(glm::dmat3(invXf) * ray.dir) };

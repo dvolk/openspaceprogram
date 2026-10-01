@@ -1,22 +1,7 @@
-// keys.h -- the rebindable key map.
-//
-// A control is a named Slot (PitchUp, Thrust, WarpUp, ...) -- a logical
-// action, not a physical key. Each Slot backs a list of KeyBindings, and a
-// KeyBinding is a physical scancode plus the modifier bits that must be
-// EXACTLY present (Shift/Ctrl/Alt). A plain binding (mods == 0) fires only
-// when no modifier is held. The same physical key may back several slots
-// (W = PitchUp and CamForward and EvaForward); the call sites only ever
-// read the slot their mode uses, so the shared defaults never collide.
-//
-// This is the single source of truth for "which key does what". It replaces
-// the two hardcoded key models that used to live in the input paths:
-//   - the one-shot (edge) actions in events.cpp, matched by SDL_Keycode;
-//   - the held commands in tick.cpp / eva.cpp, matched by SDL_Scancode.
-// Both now go through this table, keyed by scancode (layout-independent:
-// it is the physical key, so a non-US layout just rebinds).
-//
-// Pure logic: SDL headers only (no SDL calls), so the lookup/isDown core is
-// headless-testable without a video context.
+// keys.h -- the rebindable key map. A Slot is a logical action; a KeyBind is
+// a scancode + modifiers that must be EXACTLY present (plain binding = no
+// modifiers held). The same physical key may back several slots (one per mode).
+// Pure logic (SDL headers only), headless-testable.
 #pragma once
 
 #include <SDL3/SDL_scancode.h>  // SDL_Scancode
@@ -27,18 +12,11 @@
 #include <string>
 #include <vector>
 
-// The modifier bits a binding may require. Anything else (NumLock, CapsLock,
-// GUI/Cmd, ...) is ignored -- a binding is Shift/Ctrl/Alt or none.
-//
-// LShift and RShift (and the L/R Ctrl, Alt pairs) are DISTINCT modifier keys:
-// a binding names the exact side, and a press matches only the side it used.
-// SDL_KMOD_SHIFT is LShift|RShift -- a value no single press produces -- so a
-// binding always stores one concrete side (SDL_KMOD_LSHIFT or SDL_KMOD_RSHIFT).
+// LShift/RShift (and L/R Ctrl, Alt) are DISTINCT: a binding names the exact
+// side. SDL_KMOD_SHIFT is L|R -- a value no single press produces.
 static const Uint16 KMOD_RELEVANT = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT;
 
-// One rebindable control. The enum value is its index into KeyBindings.
-// Grouped for the UI: Game (one-shot), Flight (orbit mode), Camera (free
-// mode), Eva (the kerbal). SLOT_COUNT is the sentinel / array bound.
+// One rebindable control. Grouped for the UI. SLOT_COUNT is the array bound.
 enum class Slot {
     // --- Game: one-shot actions (events.cpp, SDL_KEYDOWN edges) ----------
     WarpUp,        // '.'  warp one step up (10x)
@@ -78,8 +56,7 @@ enum class Slot {
     KillRot,       // 'x'
     ThrottleUp,    // 'r'
     ThrottleDown,  // 'f'
-    // RCS translation (ship-relative, KSP-style; the ship's analogue of
-    // the EVA suit's WASD/R/F -- the kerbal keeps its own keys):
+    // RCS translation (ship-relative):
     RcsForward,    // 'n'  along the ship's nose
     RcsBack,       // 'h'  astern
     RcsUp,         // 'i'  ship up
@@ -93,64 +70,51 @@ enum class Slot {
     CamStrafeRight,// 'd'
     CamRollLeft,   // 'q'
     CamRollRight,  // 'e'
-    CamUp,         // 'r'  (was LShift/RShift)
-    CamDown,       // 'f'  (was LCtrl/RCtrl)
+    CamUp,         // 'r'
+    CamDown,       // 'f'
     // --- Eva: held commands on the kerbal (eva.cpp) ----------------------
     EvaForward,    // 'w'
     EvaBack,       // 's'
     EvaLeft,       // 'a'
     EvaRight,      // 'd'
-    EvaUp,         // 'r'  (was LShift)
-    EvaDown,       // 'f'  (was LCtrl)
+    EvaUp,         // 'r'
+    EvaDown,       // 'f'
     EvaYawLeft,    // 'q'
     EvaYawRight,   // 'e'
     SLOT_COUNT
 };
 
-// One key binding: a physical key (scancode) + the modifiers that must be
-// exactly present. mods is always stored masked to KMOD_RELEVANT; 0 = plain.
+// One key binding: scancode + the modifiers that must be exactly present.
 struct KeyBind {
     SDL_Scancode sc;
-    Uint16 mods;
+    Uint16 mods;   // masked to KMOD_RELEVANT; 0 = plain
 };
 
-// The binding table: slot -> the keys that back it. Default-constructed to
-// the game's default key map (see defaultBindings in keys.cpp).
+// slot -> the keys that back it.
 struct KeyBindings {
     std::array<std::vector<KeyBind>, (size_t)Slot::SLOT_COUNT> perSlot;
-    KeyBindings();                      // = defaultBindings()
-    void resetDefaults();               // back to the game's default map
+    KeyBindings();
+    void resetDefaults();
 };
 
-// --- lookup ----------------------------------------------------------------
-// Exact-modifier match: the press's relevant modifier bits equal the
-// binding's (a plain binding needs no modifier held; a combo needs exactly
-// its modifiers, no more, no less).
+// --- lookup: exact-modifier match ------------------------------------------
 bool bindingMatches(const KeyBind &b, SDL_Scancode sc, Uint16 mods);
 
-// Edge path (events.cpp): did THIS press (sc, mods) fire slot s? True if any
-// of s's bindings matches it. At most one Game slot fires per press in the
-// default map (the one-shot keys are distinct).
+// Edge path (events.cpp): did THIS press fire slot s?
 bool slotFired(Slot s, SDL_Scancode sc, Uint16 mods, const KeyBindings &kb);
 
-// Held path (tick.cpp / eva.cpp): is slot s currently armed? True if any of
-// s's keys is down (keyState = the SDL_GetKeyboardState array) with exactly
-// its modifiers (mods = the current SDL_GetModState).
+// Held path (tick.cpp / eva.cpp): is slot s currently armed?
 bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb);
 
-// --sim-press compatibility: a synthetic key carries a scancode but no
-// modifier state, so it can only back a PLAIN binding. True if slot s has a
-// mods==0 binding on scancode sc (tick.cpp ORs this into its held check).
+// --sim-press: a synthetic key has no modifier state, so only plain bindings match.
 bool slotSimKey(Slot s, SDL_Scancode sc, const KeyBindings &kb);
 
-// --- naming (stable identifiers for the UI + settings.json) ---------------
-// slotName is the persistent identifier (snake_case); slotLabel is the
-// human display string; slotGroup is the UI category.
+// --- naming (stable identifiers for the UI + settings.json) ----------------
 const char *slotName(Slot s);
 Slot        slotFromName(const char *name);   // SLOT_COUNT if unknown
 const char *slotLabel(Slot s);
 enum class SlotGroup { Game, Flight, Camera, Eva, GROUP_COUNT };
 SlotGroup   slotGroup(Slot s);
 
-// A binding as a label: "W", "Shift+W", "Ctrl+Shift+W". (For the UI.)
+// A binding as a label: "W", "Shift+W", "Ctrl+Shift+W".
 std::string bindLabel(const KeyBind &b);

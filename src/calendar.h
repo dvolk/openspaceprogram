@@ -1,28 +1,11 @@
 #pragma once
-// A home-planet calendar derived from a body's spin + orbital rates.
-//
-// The sim clock is one number (seconds since game start); this turns it
-// into a date on a 24-hour dial:
-//
-//   day   D = 2*pi / spin_rate       (one rotation of the body)
-//   year  Y = 2*pi / orbital_rate    (one orbit; 0 if the body doesn't orbit)
-//
-// The calendar year is SNAPPED to a whole number of days, round(Y/D), so
-// that day / month / year boundaries all fall exactly on local midnight
-// (tod == 0) -- a non-integer day count would make the month roll over
-// mid-day. For Eerbon/Kerbin (D = 21,549 s, Y = 9,203,545 s) that is 427
-// days, and the snap shortens the year by 4,122 s (0.045%) -- the true
-// orbital period stays in year_seconds for anything that needs the real
-// orbit (e.g. seasons).
-//
-// Months: 12. The first 11 get round(days_per_year/12) days each, the
-// 12th the remainder. Eerbon/Kerbin: 11 x 36-day months + a 31-day 12th.
-// A body whose year is shorter than 12 days (the Moon: day == orbit,
-// tidally locked) gets no year/months -- just a running day count.
-//
-// Pure math, no game state: the calendar is a function of (D, Y, epoch, t)
-// only, so it freezes with the sim clock when time_accel is 0 and needs
-// nothing extra persisted.
+// A home-planet calendar from a body's spin + orbital rates.
+// day D = 2*pi / spin_rate; year Y = 2*pi / orbital_rate (0 if no orbit).
+// The calendar year is SNAPPED to a whole number of days round(Y/D) so
+// boundaries fall on local midnight. 12 months (first 11 get
+// round(Y/D/12) days, the 12th the remainder). A body whose year is
+// shorter than 12 days gets no year/months -- just a day count.
+// Pure math: a function of (D, Y, epoch, t) only.
 
 #include <cmath>
 #include <cstdio>
@@ -56,9 +39,7 @@ struct Calendar {
             if(c.days_per_year < 1) { c.days_per_year = 1; }
         }
         if(c.days_per_year >= 12) {
-            // Prefer round(N/12) so Kerbin keeps 11x36 + 31. That can
-            // leave the 12th month empty/negative (N=22 -> base 2 ->
-            // last 0); fall back to a floor-split so every month is >= 1.
+            // Prefer round(N/12); fall back to floor-split so every month >= 1.
             int base = (int)std::lround((double)c.days_per_year / 12.0);
             if(base < 1) { base = 1; }
             if(c.days_per_year - 11 * base < 1) {
@@ -92,9 +73,8 @@ struct Calendar {
             h.day = (int)day_count + 1;
         }
 
-        // Time of day on a 24-hour dial (86,400 dial-seconds per day).
-        // Clamp at 23:59:59 so rounding can never cross into the next day
-        // (the day number comes from day_count above, which hasn't rolled).
+        // Time of day on a 24-hour dial. Clamp at 23:59:59 so rounding
+        // never crosses into the next day.
         long total = (long)std::lround(std::fmod(t, day_seconds)
                                        * 86400.0 / day_seconds);
         if(total >= 86400) { total = 86399; }
@@ -105,8 +85,7 @@ struct Calendar {
     }
 };
 
-// Day-of-year (1-based) from a CalTime that has a year. month_days is the
-// calendar's month table (CalTime only stores month + day-of-month).
+// Day-of-year (1-based) from a CalTime that has a year.
 inline int cal_day_of_year(const Calendar &cal, const CalTime &ct) {
     int doy = ct.day;
     for(int m = 0; m < ct.month - 1; m++) { doy += cal.month_days[m]; }
@@ -114,8 +93,7 @@ inline int cal_day_of_year(const Calendar &cal, const CalTime &ct) {
 }
 
 // "Year 4724   Day 12/427   08:14" -- the HUD / Transfer stamp.
-// Zero-alloc buffer-fill (the fmt.h convention). Returns false (empty
-// buf) when there is no calendar line.
+// Zero-alloc buffer-fill. Returns false when there is no calendar line.
 inline bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
     if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
     const CalTime ct = cal.at(t);
@@ -143,11 +121,8 @@ inline bool fmt_cal_compact(const Calendar &cal, double t, char *buf, size_t n) 
     return true;
 }
 
-/* Elapsed sim seconds as a home-calendar duration: "1y 2d 3h 04m",
-   "2d 3h 04m", "3h 04m", "04m 12s", "12s". Years/days use the calendar's
-   snapped year and day; hours/minutes are the 24-hour dial (so an "hour"
-   is D/24 sim seconds -- the same dial the HUD clock shows). Leading
-   zero components are dropped. Returns buf. */
+/* Elapsed sim seconds as a home-calendar duration: "1y 2d 3h 04m", etc.
+   Returns buf. */
 inline char *fmt_cal_duration(const Calendar &cal, double dt, char *buf, size_t n) {
     if(dt < 0.0) { dt = 0.0; }
     if(!cal.valid() || cal.day_seconds <= 0.0) {
@@ -170,10 +145,7 @@ inline char *fmt_cal_duration(const Calendar &cal, double dt, char *buf, size_t 
         days = (int)(day_count % cal.days_per_year);
     }
 
-    // Drop leading zero components; always show at least seconds. Mid
-    // zeros are kept once a larger unit is present ("1y 0d 2h 00m") so
-    // the piece count stays scannable -- except a zero y/d/h that would
-    // pad "1y 0d 0h 00m" when only minutes matter.
+    // Drop leading zero components; always show at least seconds.
     if(years > 0) {
         if(days > 0 || hh > 0) {
             snprintf(buf, n, "%dy %dd %dh %02dm", years, days, hh, mm);

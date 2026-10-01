@@ -1,9 +1,6 @@
-// settings.h -- the Settings window state as plain data + its JSON (de)
-// serialization (nlohmann). One field per Settings-window control, so the
-// file format has a single home: Game (game.cpp) maps its members +
-// GameArgs + PostFX onto SettingsData to save (the window's "Save" button)
-// and load (startup). A field the CLI set explicitly (GameArgs::cli_given)
-// beats the file, field by field.
+// settings.h -- the Settings window state as plain data + its JSON
+// serialization. One field per Settings-window control. The CLI beats the
+// file field by field (GameArgs::cli_given).
 #pragma once
 
 #include <map>
@@ -14,59 +11,43 @@
 
 #include "keys.h"   // KeyBindings (the rebindable key map)
 
-// The settings file is settings.json under the data directory (datadir.h;
-// --data-dir overrides it) -- see datadir::settings_file() there.
-
-// One field per Settings window control. Defaults mirror the launch
-// defaults (GameArgs + Game). The load path starts a SettingsData from
-// the live state and parses the file over it, so a field the file does
-// not mention keeps its current value.
 struct SettingsData {
-    // display (GameArgs)
+    // display
     int window_mode = 0;          // WindowMode index (0 = windowed)
     int screen_width = 1920;
     int screen_height = 1080;
     int msaa_samples = 4;
-    // draw toggles (Game)
+    // draw toggles
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
     bool draw_skylines = false;
-    // postfx (PostFX): the enabled effect names (pass order) + each
-    // effect's parameter values (stored even when the effect is off, so
-    // re-enabling restores them): effect -> param name -> value
+    // postfx: enabled effect names (pass order) + param values (stored even
+    // when the effect is off, so re-enabling restores them).
     std::vector<std::string> postfx_enabled;
     std::map<std::string, std::map<std::string, float>> postfx_params;
-    // ui (Game)
+    // ui
     int ui_style = 0;             // 0 dark, 1 light, 2 classic
     float window_rounding = 0.0f;
     float ui_alpha = 1.0f;
     float ui_scale = 1.0f;
-    // audio (Game -> Audio): master levels in [0,1]; defaults match
-    // Audio's own (sfx 1.0, music 0.5 -- ambient, not the star)
+    // audio: master levels in [0,1]
     float sfx_volume = 1.0f;
     float music_volume = 0.5f;
-    // camera / terrain / test knobs (GameArgs)
+    // camera / terrain / test knobs
     float camFovDeg = 60.0f;
     int terrain_px = 512;
     float cam_shake = 1.0f;
-    // control flips (Game)
+    // control flips
     bool flip_pitch = false;
     bool flip_yaw = false;
     bool flip_roll = false;
-    // keybindings (Game::binds): the rebindable key map. Defaults are the
-    // game's default key assignments (KeyBindings' constructor).
     KeyBindings keybinds;
 };
 
-// Fill j with s; overwrite s's fields from j, skipping absent keys and
-// mistyped ones (a hand-edited or newer/older file must not crash the
-// load -- the current value stands for anything unrecognized).
+// Fill j with s; overwrite s's fields from j, skipping absent/mistyped keys.
 void settings_write(const SettingsData &s, nlohmann::json &j);
 void settings_read(const nlohmann::json &j, SettingsData &s);
 
-// Read the settings file (settings.json under the data directory,
-// datadir.h) over s if it exists and parses -- so a field the file does
-// not mention keeps s's value; false (and s untouched) when the file is
-// missing, unreadable, or not valid JSON.
+// Read settings.json over s if it exists and parses; false when missing or invalid.
 bool settings_load_file(SettingsData &s);

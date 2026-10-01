@@ -1,10 +1,4 @@
-// events.cpp -- the game's input-event dispatch (declared in events.h).
-//
-// This was the "EVENTS" section inside main's loop: the synthetic (sim)
-// input emission, then the SDL_PollEvent dispatch (the keybinds, the RMB
-// camera-look and the wheel). Every state access goes through Game, so the
-// section moved out of main() as-is (main locals -> g members). The LOGIC
-// section (thrust / rotation commands) and the RENDER section stay in main.
+// events.cpp -- input-event dispatch (see events.h).
 #include "events.h"
 
 #include <cstdio>
@@ -22,10 +16,8 @@
 #include "../middleware/imgui/backends/imgui_impl_sdl3.h"
 
 void emit_sim_events(Game &g) {
-    /* --sim-press: emit the synthetic key events that fell due this
-       frame, in down-then-up order per press. They are polled below in
-       the same frame, so one-shot actions fire in the frame the press
-       is due. */
+    /* --sim-press: synthetic keys that fell due, down-then-up, polled in
+       the same frame so one-shot actions fire on time. */
     if(!g.args.sim_presses.empty()) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
         auto push_key = [&](SDL_EventType type, const SimKeyPress &p) {
@@ -44,12 +36,9 @@ void emit_sim_events(Game &g) {
             if(!p.down_sent && now >= p.down_ms) {
                 push_key(SDL_EVENT_KEY_DOWN, p);
                 p.down_sent = true;
-                /* Hold for at least this frame. A short press whose down
-                   and up fall due in the same poll would otherwise see
-                   down_sent && up_sent before tick's slotActive runs, so
-                   the down_sent..up_sent window is empty and the held
-                   command never fires -- one slow frame under load eats
-                   the whole --sim-press (dock-approach's 30 ms burst). */
+                /* Hold for at least this frame: a short press whose down
+                   and up fall due together would have an empty held window
+                   and never fire the held command. */
                 continue;
             }
             if(p.down_sent && !p.up_sent && now >= p.up_ms) {
@@ -59,13 +48,9 @@ void emit_sim_events(Game &g) {
         }
     }
 
-    /* --sim-mouse: emit the synthetic mouse events that fell due this
-       frame, in the order each gesture needs. A drag (button + held)
-       presses the button BEFORE moving so the camera-look handler
-       (gated on rmbCam) sees the button down first; a click moves the
-       cursor into place then presses + releases in place; BTN==0 just
-       repositions. The motion carries the delta from the previous
-       simulated position (args.sim_mouse_x/y), which the camera consumes. */
+    /* --sim-mouse: synthetic mouse events in the order each gesture needs
+       (drag: press then move; click: move then press/release). Motion
+       carries the delta from the previous simulated position. */
     if(!g.args.sim_mouse_actions.empty()) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
         auto push_motion = [&](int x, int y) {
@@ -97,12 +82,9 @@ void emit_sim_events(Game &g) {
         for(auto &a : g.args.sim_mouse_actions) {
             if(!a.started && now >= a.time_ms) {
                 if(a.button == 4 || a.button == 5) {
-                    // wheel notch (4 = up = zoom in, 5 = down = zoom out):
-                    // one SDL_MOUSEWHEEL event. SDL3 wheel events carry the
-                    // SCROLL AMOUNT in x/y (the cursor position lives in
-                    // mouse_x/mouse_y) -- a position in .x reads as a
-                    // horizontal scroll delta and shoves the hovered
-                    // window's content sideways.
+                    // wheel notch: one SDL_MOUSEWHEEL event. SDL3 wheel
+                    // events carry the SCROLL AMOUNT in x/y (cursor lives
+                    // in mouse_x/mouse_y).
                     SDL_Event wev = {0};
                     wev.type = SDL_EVENT_MOUSE_WHEEL;
                     wev.wheel.windowID = g.sim_win_id;
@@ -111,11 +93,8 @@ void emit_sim_events(Game &g) {
                     wev.wheel.y = (a.button == 4) ? 1 : -1;
                     wev.wheel.mouse_x = a.x;
                     wev.wheel.mouse_y = a.y;
-                    // The SDL3 backend updates the imgui mouse position
-                    // from motion events only, so park the cursor at the
-                    // action's position first (the click path does the
-                    // same) -- otherwise a wheel over the map zooms at
-                    // wherever the cursor last moved.
+                    // The imgui backend updates the mouse position from
+                    // motion events only -- park the cursor first.
                     push_motion(a.x, a.y);
                     SDL_PushEvent(&wev);
                     a.started = true;
@@ -145,10 +124,8 @@ void emit_sim_events(Game &g) {
         }
     }
 
-    /* --sim-mode: the scripted display-mode changes that fell due this
-       frame (the same Renderer::setWindowMode path the Settings
-       dropdowns use; the SIZE_CHANGED event in poll_events finishes the
-       resize). */
+    /* --sim-mode: scripted display-mode changes (the SIZE_CHANGED event
+       in poll_events finishes the resize). */
     if(!g.args.sim_mode_changes.empty()) {
         const Uint32 now = SDL_GetTicks() - g.loop_start_ms;
         for(auto &m : g.args.sim_mode_changes) {
@@ -163,12 +140,8 @@ void emit_sim_events(Game &g) {
     }
 }
 
-/* The flight-scene one-shot key actions (the rebindable slots). Extracted
-   from poll_events so the VAB scene can route its own keys instead -- the
-   editor's (rotate, symmetry, snap) rather than the flight's (staging,
-   switching), which don't apply to a build tree. The time-warp slots are NOT
-   here -- they are a global clock, dispatched scene-neutral in poll_events so
-   every scene (flight, hub, tracking, VAB) can pause/accelerate. */
+/* Flight-scene one-shot key actions. Time-warp slots are scene-neutral and
+   dispatched in poll_events. */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::CamSpeedUp, ksc, kmod, g.binds)) {
         if(g.cam_speed < 10000000) {
@@ -181,11 +154,8 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         }
     }
     if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds)) {
-        // Toggle between the body-orbit camera and free flight.
-        // Zero the cam shake first: toFree() keeps the live pos
-        // (shake baked in) and toOrbit() derives the distance
-        // from it, so a mid-burn toggle would otherwise freeze a
-        // live offset into the pose (and the orbit radius).
+        // Zero the cam shake first: toFree keeps the live pose (shake
+        // baked in) and toOrbit derives distance from it.
         g.shake_off = glm::dvec3(0.0);
         g.shake_ang = glm::dvec3(0.0);
         if(g.camera->mode == CAM_ORBIT) {
@@ -211,14 +181,10 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         }
     }
     if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
-        // advance to the next selectable ship in the fleet, wrapping
-        // around (one-shot; auto-repeat would keep cycling). Crew
-        // characters aboard a capsule are skipped: they are not
-        // controllable (EVA them from the capsule window first).
+        // Next selectable ship, wrapping. Aboard crew are skipped. One-shot.
         if(!repeat) {
             std::vector<Vehicle *> all = collectVehicles(g.sys);
             if(all.size() > 1) {
-                // the active ship's position in the canonical order
                 int cur = -1;
                 for(size_t i = 0; i < all.size(); i++) {
                     if(all[i] == g.ship) { cur = (int)i; break; }
@@ -236,60 +202,43 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         }
     }
     if(slotFired(Slot::ToggleEva, ksc, kmod, g.binds)) {
-        // toggle EVA: spawn/re-select the kerbal, or hand control
-        // back to the ship (game.cpp). One-shot.
+        // toggle EVA: spawn/re-select the kerbal, or hand control back
+        // (game.cpp). One-shot.
         if(!repeat) {
             g.toggle_eva();
         }
     }
     if(slotFired(Slot::Space, ksc, kmod, g.binds)) {
-        // EVA: space is the jump key -- the KEYDOWN edge arms it
-        // (evaArmCommands consumes the request on the next tick;
-        // an event edge, because a quick tap can end before any
-        // tick polls the key state).
+        // EVA: space is the jump key (edge-armed; evaArmCommands consumes).
         if(!repeat && g.ship && g.ship->isEva()) {
             static_cast<Kerbal *>(g.ship)->jumpPressed = true;
         }
-        // separate the active stage (one-shot; auto-repeat would
-        // keep dropping stages). Only while flying a ship with
-        // time running (a paused separation would leave the
-        // survivors frozen mid-air).
+        // Stage (one-shot). Only while flying a ship with time running.
         if(!repeat && g.ship && g.camera->mode == CAM_ORBIT && g.time_accel > 0
            && !g.ship->isEva()) {
-            // separate the active stage (one-shot; auto-repeat would
-            // keep dropping stages). Game::stage() handles the rails
-            // wake, the crew guard and the split -- the dropped
-            // stages come off as separate ships (see game.cpp).
             g.stage();
         }
     }
     if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {
-        // split the most recent docked seam off the active ship
-        // (Game::undock handles the rails wake; one-shot)
+        // split the most recent docked seam off (one-shot)
         if(!repeat && g.ship && g.camera->mode == CAM_ORBIT && g.time_accel > 0
            && !g.ship->isEva()) {
             g.undock();
         }
     }
     if(slotFired(Slot::Porkchop, ksc, kmod, g.binds)) {
-        // Compute the porkchop plot for the current transfer target
-        // (one-shot; auto-repeat would just recompute it). The render
-        // pass consumes the flag and runs the (expensive) grid.
+        // One-shot; the render pass runs the expensive grid.
         if(!repeat) {
             g.porkchop_compute_requested = true;
         }
     }
     if(slotFired(Slot::SurfaceMap, ksc, kmod, g.binds)) {
-        // Compute the surface map (one-shot, same pattern as P).
+        // One-shot, same pattern as P.
         if(!repeat) {
             g.surfmap_compute_requested = true;
         }
     }
-    /* F1 / F2: the two diagnostic overlays. Keys rather than menu items or
-       Windows-panel rows -- the menus list what you DO, and these are
-       overlays you flip on while flying. Gated on the scene owning the
-       window, so the title screen (which has neither) cannot latch open
-       state that nothing would ever draw. */
+    /* F1 / F2: diagnostic overlays. Gated on the scene owning the window. */
     if(slotFired(Slot::DebugInfo, ksc, kmod, g.binds)) {
         if(!repeat && winInScene(g, W_Debug)) {
             setWinOpen(W_Debug, !winOpen(W_Debug));
@@ -301,27 +250,18 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         }
     }
     if(slotFired(Slot::ResetWindows, ksc, kmod, g.binds)) {
-        // Reset the window layout to defaults (same as the
-        // main menu's "Reset windows" button).
+        // Reset the window layout to defaults.
         ui::ResetGui();
     }
     if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
-        // Esc walks up the tree: flight -> the Space Center hub (the in-game
-        // menu), the same as the old pause menu's "Space Center" row. The
-        // title screen shares this key map but is already at the top (nothing
-        // above it to walk up to), so gate on being in the flight scene.
-        // !repeat like every other one-shot slot: a held key must not push
-        // the hub repeatedly.
+        // Esc walks up the tree: flight -> the Space Center hub. The title
+        // shares this map but is already at the top, so gate on Flight.
         if(sceneIs(g, SceneId::Flight)) {
             pushScene(g, SceneId::SpaceCenter);
         }
     }
-    // Thrust latch: the ThrustLatch slot (default LShift+T) toggles
-    // it; while engaged, tick.cpp keeps the active ship's engines
-    // lit even with the thrust key released. A plain thrust-key press
-    // takes manual control and clears the latch (the held thrust then
-    // drives it while the key is down). One-shot: guard against the
-    // OS key auto-repeat re-firing the edge.
+    // Thrust latch: keeps engines lit with the key released. A plain
+    // thrust-key press takes manual control. One-shot (auto-repeat).
     if(slotFired(Slot::ThrustLatch, ksc, kmod, g.binds)) {
         if(!repeat) {
             g.thrust_latched = !g.thrust_latched;
@@ -336,18 +276,15 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     }
 }
 
-/* The VAB scene's keys: fixed scancodes, not flight bindings (they are
-   editor-local and the flight slots are gated out of this scene). While an
-   imgui text field is focused the UI owns the keyboard. */
+/* The VAB scene's keys: fixed scancodes (editor-local). While an imgui text
+   field is focused the UI owns the keyboard. */
 void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_Q) { vabRotate(g, -5.0); }
     if(ksc == SDL_SCANCODE_E) { vabRotate(g, +5.0); }
     if((ksc == SDL_SCANCODE_DELETE || ksc == SDL_SCANCODE_X) && !repeat) {
-        /* Del DETACHES the selected subtree into the Subassemblies list --
-           the non-destructive default delete; Shift+Del truly deletes it.
-           A lone part is not a subassembly, so Del deletes it too. A
-           selected fuel link has no subtree: it just deletes. */
+        /* Del DETACHES the selected subtree (Shift+Del truly deletes). A
+           lone part is not a subassembly, so Del deletes it too. */
         if((kmod & SDL_KMOD_SHIFT) || g.vab.linkSel >= 0) { vabDeleteSelected(g); }
         else { vabDetachSelected(g); }
     }
@@ -361,53 +298,31 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.vab.armedAsm = -1;
             g.vab.ghostRoll = 0.0;
         } else {
-            // ... and with nothing to cancel it walks up the tree: back to
-            // the hub, or the title on a --vab boot. vabClose (not a bare
-            // popScene) so the Esc path logs + toasts exactly like the "Back"
-            // button and the --vab-close hook. A fixed Esc, not Slot::Menu --
-            // the editor's keys are editor-local (see the function comment).
+            // ... then walks up the tree. vabClose so the Esc path logs +
+            // toasts like the "Back" button.
             vabClose(g);
         }
     }
 }
 
-/* The Tracking Station's keys: Esc on Slot::Menu (default Esc) walks up the
-   tree to the hub, the same slot as the flight's Esc so rebinding "Main
-   menu" moves both. No WantCaptureKeyboard gate, like the flight's Esc (the
-   gate only bites while an imgui text field is active); the full-screen map
-   window does not capture the keyboard just by being under the cursor. */
+/* Tracking Station keys: Esc pops to the hub (same slot as flight's Esc so
+   rebinding moves both). */
 void trackingKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
         popScene(g);   // the hub is the frame below
     }
 }
 
-/* The Research Lab's keys: Esc on Slot::Menu (default Esc) walks up the tree
-   to the hub -- the same slot and the same pop as the Tracking Station's,
-   since the lab is the same kind of excursion. */
+/* Research Lab keys: same Esc pop as the Tracking Station. */
 void labKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::Menu, ksc, kmod, g.binds) && !repeat) {
         popScene(g);   // the hub is the frame below
     }
 }
 
-/* The Space Center hub's keys. The menu IS the scene (Root, always open), so
-   Esc is the exit: up the tree. When the hub sits on top of a live flight
-   (reached by Esc from flight) the pop hands back to the flight, the same as
-   the on-screen "Resume Flight".
-
-   When the hub IS the floor there is nothing to pop back to, and Esc is NOT
-   the way out of a game: after a recovery the rest of the fleet is still
-   alive (recoverActive leaves it for the Tracking Station), so one keystroke
-   there would unload it -- "Return to title" is the menu row for that, and
-   quitToTitle is what unloads the fleet first (a bare enterTitle would strand
-   a live fleet: Title has no Resume, and newGame refuses while any vehicle
-   exists). With nothing to lose -- a new game before its first launch, no
-   ship and an empty fleet -- Esc still goes to the title (issue #74).
-
-   Esc first dismisses an open Flight Summary: it is a modal-ish dialog
-   sitting on the hub, and swallowing the navigation key until it is gone
-   is the usual dialog contract. */
+/* Space Center hub keys. Esc pops to the flight below, or -- when the hub is
+   the floor and the fleet is empty -- quits to the title. Esc first dismisses
+   an open Flight Summary. */
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_ESCAPE && !repeat) {
@@ -432,9 +347,7 @@ void poll_events(Game &g) {
             g.running = false;
         }
 
-        // SDL3: the SDL_WINDOWEVENT umbrella + .event subfield is gone; each
-        // window event is its own type (pixel-size change = the old
-        // SDL_WINDOWEVENT_SIZE_CHANGED).
+        // SDL3: each window event is its own type (no umbrella + subfield).
         if (ev.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
             g.display.onResize(ev.window.data1, ev.window.data2);
             check_gl_error();
@@ -448,11 +361,9 @@ void poll_events(Game &g) {
             check_gl_error();
         }
         if(ev.type == SDL_EVENT_KEY_DOWN && g.rebind_capture_slot >= 0) {
-            // A rebind capture (Controls window) is in progress: the next
-            // non-modifier key becomes the new binding for the slot. Swallow
-            // it here so it does NOT fire its current slot. A bare modifier
-            // key-down (or unknown) is ignored -- keep capturing -- because a
-            // combo is captured on the non-modifier key that carries it.
+            // A rebind capture is in progress: the next non-modifier key
+            // becomes the binding. Bare modifiers keep capturing (a combo is
+            // captured on the non-modifier key that carries it).
             const SDL_Scancode sc = ev.key.scancode;
             const bool modKey = (sc == SDL_SCANCODE_LSHIFT)
                 || (sc == SDL_SCANCODE_RSHIFT) || (sc == SDL_SCANCODE_LCTRL)
@@ -467,10 +378,7 @@ void poll_events(Game &g) {
                 g.rebind_capture_slot = -1;   // captured: back to idle
             }
         } else if(ev.type == SDL_EVENT_KEY_DOWN) {
-            // One-shot actions: match the press (scancode + modifiers) against
-            // the key map (g.binds). The bodies are unchanged from the old
-            // hardcoded SDLK checks -- only the "which key" test moved to the
-            // table, so rebinding a control just re-points its slot.
+            // One-shot actions: match the press against the key map.
             const SDL_Scancode ksc = ev.key.scancode;
             const Uint16 kmod = ev.key.mod;
             /* Scene-neutral slots: these work in flight AND in the editor. */
@@ -487,18 +395,15 @@ void poll_events(Game &g) {
                 }
             }
             if(slotFired(Slot::ToggleWindows, ksc, kmod, g.binds)) {
-                // toggle the info windows (one-shot; auto-repeat would
-                // just keep flipping). In the VAB scene this hides the
-                // editor chrome (drawVabUI gates on g.ui_visible).
+                // toggle the info windows (one-shot). In the VAB this hides
+                // the editor chrome.
                 if(!ev.key.repeat) {
                     g.toggle_windows();
                 }
             }
-            /* Quicksave / quickload (F5/F9): scene-neutral like Screenshot --
-               the fleet state is the same object in flight, hub, tracking and
-               VAB. gameRunning gates the no-game states (a title-screen F5
-               would mint a phantom game dir); repeat gated (auto-repeat would
-               keep saving / re-loading). */
+            /* Quicksave / quickload (F5/F9): scene-neutral. gameRunning
+               gates the no-game states (a title-screen F5 would mint a
+               phantom game dir). */
             if(!ev.key.repeat && gameRunning(g)) {
                 if(slotFired(Slot::Quicksave, ksc, kmod, g.binds)) {
                     g.quicksave();
@@ -507,17 +412,11 @@ void poll_events(Game &g) {
                     g.quickload();
                 }
             }
-            /* Time warp is a GLOBAL clock, not a flight control: it works in
-               every scene (the live hub / tracking / VAB all advance the sim),
-               so "pause" (WarpDown to 0) and resume are reachable anywhere.
-               Moved here from flightKeyActions so it is scene-neutral. */
+            /* Time warp is a GLOBAL clock, scene-neutral so pause/resume is
+               reachable anywhere. */
             if(slotFired(Slot::WarpUp, ksc, kmod, g.binds)) {
-                // Warp up one step (10x), capped at 100000 (ladder top).
-                // Crossing into rails warp (>= kRailsWarp, i.e. accel > 10)
-                // requires every ship to be rail-eligible: the active ship
-                // coasts (or freezes on the ground) and the physics world
-                // stops stepping; if any ship is not eligible the step is
-                // refused and the current warp stays.
+                // Crossing into rails warp (>= kRailsWarp) requires every
+                // ship to be rail-eligible; otherwise the step is refused.
                 const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
                 if(next > 100000) {
                     g.toast("Max warp reached");
@@ -537,9 +436,8 @@ void poll_events(Game &g) {
                         (g.time_accel >= kRailsWarp) && (g.time_accel / 10 < kRailsWarp);
                     g.time_accel /= 10;
                     if(leaving_rails_warp && g.ship != nullptr) {
-                        // dropped out of rails warp: the active ship re-enters physics
-                        // (idle ships stay parked). No ship (orbit-view state) -> just
-                        // the clock speed changes.
+                        // dropped out of rails warp: the active ship
+                        // re-enters physics (idle ships stay parked)
                         g.ship->leaveRails();
                     }
                     g.toast("Time accel: %dx", g.time_accel);
@@ -550,22 +448,11 @@ void poll_events(Game &g) {
                 }
             }
 
-            /* Scene-switch shortcuts (1/2/3/4): jump to the Space Center /
-               flight / Tracking Station / VAB. Gated three ways:
-               - gameRunning: in-game navigation only -- the stack floor is the
-                 Title exactly in the no-game states (a bare boot, --vab with no
-                 vessel, quitToTitle), where there is nothing to navigate.
-               - !WantCaptureKeyboard: digits are the first scene-neutral keys
-                 people actually type, so a focused text field (the Save/Load
-                 name, the stage selector, the VAB save path) must win.
-               - GoFlight needs an active ship -- entering flight with none
-                 crashes the HUD's ship readouts -- and syncShipFocus, because
-                 enterFlight skips its enter when the base is already Flight
-                 (without it the camera stays on the hub's parked planet).
-               goScene pops down to the scene if it is already on the stack,
-               else pushes it, so the shortcuts never nest a duplicate;
-               enterFlight collapses instead (a launch changed the ship).
-               One-shot (auto-repeat would just keep jumping). */
+            /* Scene-switch shortcuts (1/2/3/4). Gated three ways: gameRunning
+               (in-game only), !WantCaptureKeyboard (digits are typed in text
+               fields), and GoFlight needs an active ship + syncShipFocus
+               (enterFlight skips its enter when the base is already Flight).
+               goScene pops or pushes; enterFlight collapses. One-shot. */
             if(!ev.key.repeat && !ImGui::GetIO().WantCaptureKeyboard
                     && gameRunning(g)) {
                 if(slotFired(Slot::GoSpaceCenter, ksc, kmod, g.binds)) {
@@ -583,9 +470,7 @@ void poll_events(Game &g) {
                 }
             }
 
-            // The live scene owns the key map: in the editor the flight
-            // actions don't apply (staging, switching a build tree makes no
-            // sense), and the editor keys take over instead.
+            // The live scene owns the key map.
             curScene(g).keys(g, ksc, kmod, ev.key.repeat);
         }
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
@@ -603,11 +488,8 @@ void poll_events(Game &g) {
             if(ev.button.button == SDL_BUTTON_RIGHT) {
                 g.rmbCam = false;
                 // A short, still RMB press over the 3D view is a CLICK
-                // (pick the part under the cursor); a moved one was the
-                // camera drag. The camera already got its (sub-threshold)
-                // look for a jittery click -- at 6 px that is <1 deg.
-                // Flight only: the VAB's RMB-drag orbits the build camera
-                // and its picking is the hover (vab.cpp), not a click.
+                // (pick the part); a moved one was the camera drag. Flight
+                // only: the VAB's RMB-drag orbits the build camera.
                 if(sceneIs(g, SceneId::Flight)
                    && !ImGui::GetIO().WantCaptureMouse
                    && g.rmbMoved < kPickClickPx

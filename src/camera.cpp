@@ -2,15 +2,8 @@
 
 #include <cmath>
 
-// Reverse-Z infinite-far perspective: clip depth 1.0 (near) -> 0.0 (far), no
-// far plane. Replaces the Outerra logZ hack (see tmp/depth_migration_scope.txt).
-// Pairs with glClipControl(GL_ZERO_TO_ONE) / glDepthFunc(GL_GEQUAL) /
-// glClearDepth(0.0) in display.cpp.
-//
-// Column-vector (glm/OpenGL) convention -- the transpose of the row-vector
-// form in theomader's depth-precision article. For a point `d` in front of
-// the camera (view-space z = -d): clip.z = zNear, clip.w = d, so
-// ndc.z = zNear/d  (1.0 at the near plane, -> 0 as d -> infinity).
+// Reverse-Z infinite-far perspective (1.0 near -> 0.0 far). Pairs with
+// glClipControl(GL_ZERO_TO_ONE) / glDepthFunc(GL_GEQUAL) in display.cpp.
 static glm::mat4 reverseZInfinitePerspective(float fov, float aspect, float zNear) {
     const float t = 1.0f / std::tan(fov * 0.5f);
     const float x = t / aspect;   // vertical fov
@@ -59,10 +52,8 @@ glm::dmat4 *Camera::GetView_() {
 Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear, float zFar)
     : fov(fov), aspect(aspect), zNear(zNear), zFar(zFar) {
     this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
-    // Start in Orbit mode focused on focusPos, 10 m out along the ref
-    // basis X̂ (the caller sets `ref` every frame; identity at spawn).
-    // pos/forward/up are derived here once so a caller that reads them
-    // before the first ComputeView() gets sensible values.
+    // Derive pos/forward/up once so a caller that reads them before the
+    // first ComputeView() gets sensible values.
     this->mode = CAM_ORBIT;
     this->focusPoint = focusPos;
     this->distance = 10;
@@ -83,23 +74,17 @@ void Camera::ComputeView() {
         const glm::dvec3 off = ref * orbitOffset() * distance;
         pos = focusPoint + off;
         forward = glm::normalize(-off);
-        // Up = the ref up (the ship's up) projected off the view direction,
-        // so the screen-up is a pure function of the camera position -- not
-        // of the yaw/pitch path taken to get there (no trackball holonomy).
-        // It vanishes at the pole (view along the ref up); Pitch() clamps
-        // away from it, but guard against a degenerate projection anyway.
+        // Guard the degenerate projection at the pole (Pitch clamps away
+        // from it, but be safe).
         const glm::dvec3 refUp = ref * glm::dvec3(0, 0, 1);
         glm::dvec3 up = refUp - forward * glm::dot(refUp, forward);
         if (glm::dot(up, up) < 1e-12) {
             up = (std::abs(forward.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
             up = up - forward * glm::dot(up, forward);
         }
-        // Precision: the view translation is built as (focus - renderOrigin)
-        // + off -- an exact difference of neighbouring doubles plus a small
-        // offset -- instead of (focusPoint + off) - renderOrigin, whose
-        // intermediate sum rounds onto the ULP grid of the absolute coords
-        // and snapped the whole view by ~0.125 m per frame at 1e15 (oort
-        // jitter; see reports/precision-scaling2026_09_22).
+        // Precision: (focus - renderOrigin) + off, not (focus+off) -
+        // renderOrigin -- the latter rounds on the absolute ULP grid and
+        // jitters the view at extreme ranges.
         buildView(-forward, up, (focusPoint - renderOrigin) + off);
         return;
     }
@@ -108,14 +93,9 @@ void Camera::ComputeView() {
 }
 
 void Camera::buildView(const glm::dvec3& zAxis, const glm::dvec3& upHintIn, const glm::dvec3& cam) {
-    // Build the camera basis by hand instead of glm::lookAt. lookAt takes
-    // our up vector and computes xAxis = normalize(cross(up, zAxis)); the
-    // instant the camera is pitched to look straight up or down along that
-    // up, cross(up, zAxis) -> 0 and normalize(0) -> NaN, so the whole view
-    // matrix becomes NaN and the sun flickers out of view exactly when you
-    // point at it. Substituting a safe up only in that degenerate case keeps
-    // the (intended) up everywhere else, so the view is identical to lookAt
-    // except that it stays finite when looking along the up.
+    // Hand-built instead of glm::lookAt: lookAt's cross(up, z) goes to zero
+    // (normalize -> NaN) when looking along the up. Swap in a safe up only
+    // in that degenerate case.
     glm::dvec3 upHint = glm::normalize(upHintIn);
     if (glm::abs(glm::dot(upHint, zAxis)) > 0.9999) {
         upHint = (std::abs(zAxis.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);
@@ -125,9 +105,7 @@ void Camera::buildView(const glm::dvec3& zAxis, const glm::dvec3& upHintIn, cons
     up = yAxis;     // keep the stored basis orthonormal
     right = xAxis;  // free-mode basis axis (harmless in Orbit mode)
 
-    // View translation in the render frame (origin = renderOrigin): the
-    // planet centre sits at -renderOrigin there, so a radial upHint
-    // (world normalize(pos)) is exactly normalize(cam - (-renderOrigin)).
+    // View translation in the render frame (origin = renderOrigin).
     glm::dmat4 m;
     m[0] = glm::dvec4(xAxis.x, yAxis.x, zAxis.x, 0.0);
     m[1] = glm::dvec4(xAxis.y, yAxis.y, zAxis.y, 0.0);
@@ -140,8 +118,6 @@ void Camera::buildView(const glm::dvec3& zAxis, const glm::dvec3& upHintIn, cons
 
 void Camera::toFree() {
     if (mode == CAM_FREE) { return; }
-    // Keep the current view: pos/forward/up already hold the live orbit
-    // values (same object now). Just derive the free basis axis.
     right = glm::normalize(glm::cross(forward, up));
     mode = CAM_FREE;
 }
@@ -152,10 +128,7 @@ void Camera::toOrbit(const glm::dvec3& focus) {
     double dist = glm::length(pos - focus);
     if (dist < 10.0) { dist = 10.0; }
     distance = dist;
-    // The turntable angles are left as-is (stale from the last orbit
-    // session) -- they persist across a free detour, so returning to orbit
-    // lands on that same spot on the sphere of radius `distance` around the
-    // new focus.
+    // Turntable angles persist across a free detour (see header).
     mode = CAM_ORBIT;
 }
 
@@ -166,8 +139,7 @@ void Camera::Follow(const glm::dvec3& p) {
 
 void Camera::wheel(double amt) {
     if (mode != CAM_ORBIT) { return; }
-    // Proportional zoom (a notch always changes distance by the same
-    // fraction), clamped so the camera can never cross the focus.
+    // Proportional zoom, clamped so the camera can never cross the focus.
     distance *= std::exp(-amt * 0.25);
     if (distance < 2.0) { distance = 2.0; }
     if (distance > 1e9) { distance = 1e9; }
@@ -190,10 +162,7 @@ void Camera::MoveUp(double amt) {
 
 void Camera::Pitch(double angle) {
     if (mode == CAM_ORBIT) {
-        // Pitch the turntable: move the camera toward/away from the ref up.
-        // Clamped just short of the pole (view along the ref up), where the
-        // projected-up vanishes -- the turntable's one, well-defined
-        // singularity, in exchange for a path-independent (holonomy-free) up.
+        // Pitch the turntable; clamp short of the pole where up vanishes.
         orbitPitch += angle;
         const double lim = 1.52;   // rad (~87 deg), just short of the pole
         if (orbitPitch > lim) { orbitPitch = lim; }
@@ -208,8 +177,7 @@ void Camera::Pitch(double angle) {
 
 void Camera::RotateY(double angle) {
     if (mode == CAM_ORBIT) {
-        // Yaw the turntable around the ref up (the ship's up), which chases
-        // the ship's attitude every frame.
+        // Yaw the turntable around the ref up.
         orbitYaw += angle;
     } else {
         // Yaw: rotate the view direction and right around the up axis.

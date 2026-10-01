@@ -1,10 +1,7 @@
 // radialtest.cpp -- the --radial-test spin-test ship builder.
-//
-// Builds a passive-tank test ship straight from the parts catalog (no JSON
-// ship def). Every part is a passive single-stage tank -- no wheels, no
-// thrusters -- so any spin is self-inflicted by the physics. Every edge goes
-// through Vehicle::attachMode -> attachPose, the same solver build_ship uses,
-// so these layouts exercise the real attach geometry rather than literals.
+// Passive-tank test ships from the parts catalog (no JSON ship def).
+// Every edge goes through Vehicle::attachMode -> attachPose (the same
+// solver build_ship uses), so these layouts exercise the real attach geometry.
 #include "radialtest.h"
 
 #include <stdexcept>
@@ -19,19 +16,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                                       TerrainBody *sun,
                                       Shader *partsshader)
 {
-    /* --radial-test: minimal test ships built straight from the
-       catalog (no JSON ship def). Passive tanks only -- no
-       wheels, no thrusters -- so any spin is self-inflicted by
-       the physics:
-       - "parallel": tank_r2.25h5 + a tank_r1.5h2 surface-attached side by
-                     side on its +X (parallel axes)
-       - "stacked":  the same pair attached along the axis (baseline)
-       - "stacks":   two 2-part stacks attached side by side:
-                     [tank_r2.25h5 + tank_r1.5h2] beside
-                     [tank_r2.25h5 + tank_r1.5h2], the second stack's
-                     root surface-attached to the first stack's root.
-       - "parstacks": like "stacks" but the second stack hangs below rather
-                     than outward. */
+    /* --radial-test: minimal test ships from the parts catalog. */
     const PartDef *defBig = part_catalog.find("tank_r2.25h5");
     const PartDef *defSml = part_catalog.find("tank_r1.5h2");
     if(defBig == nullptr || defSml == nullptr) {
@@ -39,7 +24,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
                                  "tank_r1.5h2 missing from the parts catalog");
     }
 
-    /* orbit (no pad contact, no terrain noise in the spin measurement) */
+    /* orbit (no pad contact, no terrain noise) */
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
 
     Vehicle *v = new Vehicle;
@@ -49,17 +34,11 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
 
     const glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     const glm::dmat3 pad_orient = faceAlong(pad_dir);
-    /* Start 50 m above the surface so a pad-scenario ship drops
-       onto the ground (the lowest part would otherwise start
-       embedded in the terrain). For orbit scenarios this is only
-       staging -- spawn_vehicle repositions the ship. */
+    /* Start 50 m above the surface so a pad-scenario ship drops cleanly. */
     const glm::dvec3 base = pad_dir
         * ((double)home->GetTerrainHeight(pad_dir) + 50.0);
 
-    /* One Part (shared render assets + hull + mass, wrapped with the
-       catalog spec). All parts are passive single-stage tanks (stage 1);
-       the Part OWNS the Body and the def points into the catalog (which
-       outlives the ship). */
+    /* One Part (shared render assets + hull + mass). */
     auto makePart = [&](const PartDef *def) -> Part * {
         Mesh *mesh = get_mesh(std::string("res/") + def->mesh);
         Texture *tex = get_texture(std::string("res/") + def->texture);
@@ -73,13 +52,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
     };
 
     if(mode == "stacks") {
-        /* Two 2-part stacks, side by side. Pad normal = local +Z:
-             stack 1: A1 (tank_r2.25h5, root) + A2 (tank_r1.5h2) below A1
-             stack 2: B1 (tank_r2.25h5) surface-attached off A1's +X side
-                      (parallel axes) + B2 (tank_r1.5h2) stacked outward
-                      beyond B1 (Up along the shared axis).
-           Every edge goes through the node solver (attachMode / attachSurface),
-           so the layout is the solver's, not hand-written literals. */
+        /* Two 2-part stacks, side by side. Pad normal = local +Z. */
         v->name = "stacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);
@@ -94,11 +67,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         v->attachMode(b2, 2, AttachMode::Up);      // B2 outward beyond B1
     }
     else if(mode == "parstacks") {
-        /* Two 2-part stacks side by side with ALL axes PARALLEL (pad normal
-           = local +Z) -- the variant of 'stacks' where the second stack is
-           NOT rotated, so both stacks' axes point the same way:
-             stack 1: A1 (root) + A2 below A1
-             stack 2: B1 side-by-side with A1 (parallel axes) + B2 below B1 */
+        /* Two 2-part stacks side by side with ALL axes PARALLEL. */
         v->name = "parstacks4";
         Part *a1 = makePart(defBig);
         Part *a2 = makePart(defSml);
@@ -118,10 +87,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         Part *b = makePart(defSml);
         v->setRoot(a);
         if(mode == "parallel") {
-            /* B's side touches A's side at +rA; both axes stay on the pad
-               normal (parallel). Surface-attach B at clock 0 on A's side: its
-               surface node (-rB,0,0) lands on the contact (rA,0,0), so B sits
-               at +X by rA + rB and the cylindrical surfaces meet. */
+            /* B's side touches A's side at +rA; both axes stay on the pad. */
             v->attachSurface(b, 0, glm::dvec3(defBig->radius, 0.0, 0.0),
                              glm::dvec3(1.0, 0.0, 0.0));
         }
@@ -131,9 +97,7 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
         }
     }
     /* These hand-built ships bypass build_ship(), which normally resolves
-       the controller from the ship def. All parts are passive single-stage
-       tanks (each Part already carries stage 1), so the controller is just
-       the root. */
+       the attach poses from the catalog's node data. */
     v->controller = v->parts[0];
     v->init();
     v->placeShip(base, pad_orient);

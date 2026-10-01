@@ -8,8 +8,7 @@ class Shader;
 class Texture;
 
 struct Billboard {
-    ~Billboard() { delete mesh; }   // owns its procedural quad (the texture
-                                    // is registry-shared)
+    ~Billboard() { delete mesh; }   // owns its quad (texture is registry-shared)
 
     Frame *frame;
     Texture *texture;

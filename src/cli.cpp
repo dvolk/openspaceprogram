@@ -1,7 +1,5 @@
 // cli.cpp -- command-line parsing (CLI11) + the --sim-press / --sim-mouse
-// folding. Fills GameArgs (cli.h); returns true on a successful parse,
-// false with the process exit code in *exit_code otherwise (help, a
-// parse error, malformed sim input).
+// folding. Fills GameArgs (cli.h).
 #include "cli.h"
 #include "version.h"   // VERSION (the embedded build string, `make version`)
 
@@ -15,10 +13,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 {
     CLI::App app{"Open Space Program"};
 
-    /* --version: prints exactly this string and exits 0 (CLI11 throws
-       CallForVersion on parse; the catch below routes it through
-       app.exit()). The same VERSION the main menu footer shows, so a
-       user's `--version` output always matches what the game reports. */
+    // --version: CLI11 throws CallForVersion on parse; the catch below routes
+    // it through app.exit(). Same VERSION as the main menu footer.
     app.set_version_flag("--version",
                          std::string("Open Space Program ") + VERSION,
                          "Prints the version and exits");
@@ -67,15 +63,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "the per-OS user data directory (on Linux: "
                    "~/.local/share/openspaceprogram/)");
 
-    /* Spin-instrumentation mode: build a test ship (no JSON ship def)
-       and log its spin + the internal contact torque each tick.
-       parallel   = part B surface-attached to part A's side, axes PARALLEL
-                    (side by side, off-axis anchor)
-       stacked    = part B stacked on A's axis (known-good baseline)
-       stacks     = two 2-part stacks side by side, 2nd stack outward
-       parstacks  = two 2-part stacks side by side, 2nd stack below
-       All parts are passive tanks (no wheels/thrusters), so any spin
-       is self-inflicted. */
+    // Spin-instrumentation mode: build a test ship (no JSON ship def) and
+    // log its spin + internal contact torque each tick. All parts are
+    // passive tanks, so any spin is self-inflicted.
     app.add_option("--radial-test", args.radial_test,
                    "Build the spin-test ship(s) instead of a fleet: "
                    "parallel | stacked | stacks | parstacks")
@@ -197,10 +187,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Seed the VAB's launch body (the top-bar dropdown's "
                    "value; empty = the home body)");
 
-    /* Docking pair: probe (active) + station, nose-to-nose in the same
-       orbit (see src/docktest.cpp). near = inside the capture window,
-       it docks on the first live tick; approach = outside it, the player
-       burns prograde to close the last stretch. */
+    // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,
                    "Build the docking pair (probe + station) instead of a "
                    "fleet: near | approach")

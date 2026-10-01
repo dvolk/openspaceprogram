@@ -5,11 +5,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
-// Which way the camera is driven. Orbit keeps a fixed offset (distance) from
-// a focus point and lets you look around it; Free is a full 6DOF fly-by.
-// One Camera object holds BOTH state sets -- `mode` picks which is live and
-// ComputeView() emits the matching view, so switching (the C key) is just a
-// mode change instead of copying pose between two objects.
+// Orbit keeps a fixed offset from a focus; Free is full 6DOF. One object
+// holds both state sets -- `mode` picks which is live.
 enum CameraMode { CAM_ORBIT, CAM_FREE };
 
 class Camera {
@@ -25,69 +22,45 @@ public:
     int viewport_w = 1;   // window size [px]; setViewport() on create/resize
     int viewport_h = 1;   // used for screen-space terrain LOD (GeoPatch::Update)
 
-    // Origin of the render frame, in world coordinates (e.g. the active
-    // ship's COM). ComputeView() builds the view in this frame, so its
-    // translation column stays small; geometry drawn against it must be
-    // shifted by -renderOrigin to match (see the Draw sites). The whole
-    // scene moves rigidly, so the image is unchanged -- the point is that
-    // the float32 MVP cast then quantizes ship-relative numbers (metres)
-    // instead of planet-centre ones (~1e7, ~0.5 m per quantum).
+    // Origin of the render frame in world coords (e.g. the active ship's
+    // COM). The view is built in this frame so the float32 MVP cast
+    // quantizes ship-relative numbers, not planet-scale ones. Geometry drawn
+    // against it must be shifted by -renderOrigin (see the Draw sites).
     glm::dvec3 renderOrigin = glm::dvec3(0.0);
 
-    // Orbit-mode state: a turntable (two angles) + distance around the
-    // focus. The camera sits at
+    // Orbit-mode state: a turntable + distance around the focus.
     //   pos = focus + ref * offset(yaw, pitch) * distance
-    // where offset() is a unit direction in the ref frame, and looks at the
-    // focus with up = the ref up (ref * ẑ) projected off the view direction:
-    //  - `ref` is the orientation the camera chases (the caller sets it
-    //    every frame: the ship's attitude when focused on the ship, so the
-    //    camera turns with the ship -- KSP's chase / Pioneer's sidereal
-    //    style -- and the body's rotating frame when focused on a body, so
-    //    the camera rides its spin).
-    //  - `orbitYaw` / `orbitPitch` are the user's orbit as angles in the ref
-    //    frame: yaw around the ref up (from the ref x̂ toward the ref ŷ),
-    //    pitch toward the ref -ẑ (mouse-down = camera down), so the public
-    //    RotateY()/Pitch() keep their old mouse feel.
-    // Up is the ref up projected perpendicular to the view, so the screen-up
-    // is a pure function of WHERE the camera is -- not of the path taken to
-    // get there. That kills the old trackball holonomy: orbiting around a
-    // loop and returning to the same spot used to leave the view rolled by
-    // the loop's enclosed solid angle. The cost is the standard orbit-camera
-    // pole (looking straight down the ref up, where the projected up
-    // vanishes), so Pitch() clamps just short of it.
+    // `ref` is the orientation the caller sets every frame (ship attitude /
+    // body spin), so the camera chases it. Up is the ref up projected off
+    // the view -- path-independent (no trackball holonomy); the cost is the
+    // usual orbit-camera pole, which Pitch() clamps short of.
     glm::dvec3 focusPoint;
     glm::dmat3 ref = glm::dmat3(1.0);
     double distance = 10.0;
     double orbitYaw = 0.0;     // ref-frame azimuth, rad (0 = ref x̂)
     double orbitPitch = 0.0;   // ref-frame elevation, rad (clamped near pole)
 
-    // Free-mode state. Here pos is PRIMARY (Move* edits it) and right is the
-    // derived basis axis (recomputed every ComputeView()).
+    // Free-mode state. pos is PRIMARY; right is derived each ComputeView().
     glm::dvec3 right;
 
-    // Construct in Orbit mode, focused on focusPos, 10 m out. Use
-    // setFreePose() to start (or return) in Free mode instead.
+    // Construct in Orbit mode, focused on focusPos, 10 m out.
     Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear, float zFar);
 
     void ComputeView();
 
-    // Mode transitions (the C key). toFree keeps pos/forward/up as-is
-    // (they already hold the live orbit values); toOrbit keeps the
-    // orbit's orient as-is and re-derives the distance from the camera's
-    // current position, so returning to orbit lands on the same spot on
-    // the sphere of radius `distance` around the (new) focus.
+    // Mode transitions (the C key). toFree keeps the live pose; toOrbit
+    // re-derives distance from the current position around the new focus.
     void toFree();
     void toOrbit(const glm::dvec3& focus);
 
-    // Free flight: move the camera along its local axes (no-op in Orbit).
+    // Free flight: move along local axes (no-op in Orbit).
     void MoveForward(double amt);
     void MoveRight(double amt);
     void MoveUp(double amt);
 
     // Orbit: point at a new focus (no-op in Free).
     void Follow(const glm::dvec3& p);
-    // Orbit zoom: distance scales with the wheel (clamped, so it can never
-    // cross the focus) (no-op in Free).
+    // Orbit zoom (clamped so it can never cross the focus) (no-op in Free).
     void wheel(double amt);
 
     // Look controls, valid in both modes.
@@ -106,8 +79,7 @@ public:
     glm::dmat4 *GetView_();
 
     // Start (or return) to Free mode at an explicit pose (the --free-cam-*
-    // init). Orthogonalises up against forward, matching the old FreeCamera
-    // ctor, then recomputes the view.
+    // init). Orthogonalises up against forward, then recomputes the view.
     void setFreePose(const glm::dvec3& p, const glm::dvec3& fwd, const glm::dvec3& up);
 
 private:
@@ -115,13 +87,8 @@ private:
     // Pitch positive toward ref -ẑ so Pitch()/RotateY() keep their old feel.
     glm::dvec3 orbitOffset() const;
 
-    // Shared view-matrix construction -- the NaN-safe basis that was
-    // copy-pasted across the two old subclasses. zAxis is the unit view
-    // direction (-forward), upHint the intended up (exact for Orbit, the
-    // stored up for Free), and cam the camera position in the render
-    // frame. Free passes pos - renderOrigin; Orbit passes the more exact
-    // (focusPoint - renderOrigin) + off, which differs from pos -
-    // renderOrigin only by the rounding of the absolute pos (<= ULP/2,
-    // only measurable at oort+ distances -- see ComputeView).
+    // Shared view-matrix construction (NaN-safe when looking along up).
+    // cam is the camera position in the render frame; Orbit passes the more
+    // exact (focusPoint - renderOrigin) + off.
     void buildView(const glm::dvec3& zAxis, const glm::dvec3& upHint, const glm::dvec3& cam);
 };

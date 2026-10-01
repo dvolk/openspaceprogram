@@ -1,4 +1,4 @@
-// inventory.cpp -- phase 4.3: transfer inventory items between containers.
+// inventory.cpp -- transfer inventory items between containers.
 
 #include "inventory.h"
 #include "part.h"
@@ -27,21 +27,13 @@ static bool removeFromContainer(Part *item) {
         c.erase(it2);
     }
     item->container = nullptr;
-    // the item -- and anything in its own inventory (a crate in a crate) --
-    // no longer rides the container's vehicle (dropItem re-points the
-    // subtree to its own 1-part ship; addToContainer to the new container's
-    // owner)
+    // the item (and its nested inventory) no longer rides the container's vehicle
     inventorySetOwner(item, nullptr);
     return true;
 }
 
-/* Is `target` `root` itself or anywhere inside its containment subtree?
-   Adding root into target would close a containment cycle: effectiveMass()
-   walks contents and would recurse forever, and ~Part would double-free.
-   Walk `contents` (the list effectiveMass actually walks), not just
-   ownedContents -- contents also holds crew, and a kerbal's suit is itself
-   a container, so a cycle can run through that edge (a capsule with a
-   crewed kerbal, then the capsule added into the kerbal's suit). */
+// Walk `contents` (what effectiveMass walks), not just ownedContents -- contents
+// also holds crew, and a cycle can run through a kerbal's suit.
 static bool inSubtree(Part *root, Part *target) {
     for(Part *c : root->contents) {
         if(c == target) { return true; }
@@ -70,7 +62,7 @@ static float drainSubtree(Part *root, int res, float amt) {
         if(have > 0.0f) {
             const float take = (have < amt - drained) ? have : (amt - drained);
             c->resources.current[res] = have - take;
-            /* body->mass is the DRY structure (fuel rides effectiveMass via
+            /* body->mass is DRY structure (fuel rides effectiveMass via
                resources.current), so a drain only decrements the contents. */
             drained += take;
         }
@@ -81,8 +73,7 @@ static float drainSubtree(Part *root, int res, float amt) {
 
 bool inventoryDrain(Part *root, int res, float amt) {
     if(root == nullptr || amt <= 0.0f) { return false; }
-    // all-or-nothing like the suit: a draw the subtree can't cover thrusts
-    // nothing (so a partial draw never gets a full-force kick)
+    // all-or-nothing like the suit: a draw the subtree can't cover thrusts nothing
     if(inventorySubtreeResource(root, res) < amt) { return false; }
     drainSubtree(root, res, amt);
     return true;
@@ -90,13 +81,10 @@ bool inventoryDrain(Part *root, int res, float amt) {
 
 static bool addToContainer(Part *item, Part *dest) {
     if(dest == nullptr || item == nullptr) { return false; }
-    // an already-contained item must be removed first (inventoryTransfer
-    // does that) -- a double add would list it twice and ~Part would free it
-    // twice
+    // a double add would list it twice and ~Part would free it twice
     if(item->container != nullptr) { return false; }
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
-    // capacity check: count owned items (not crew -- they are in contents
-    // but not in ownedContents)
+    // capacity check: count owned items (not crew -- they are in contents only)
     if((int)dest->ownedContents.size() >= dest->def->inventory_capacity) {
         return false;
     }
@@ -104,9 +92,6 @@ static bool addToContainer(Part *item, Part *dest) {
     dest->ownedContents.push_back(item);
     dest->contents.push_back(item);
     item->container = dest;
-    // the item -- and its own inventory subtree -- rides the container's
-    // vehicle (the container's owner may be null -- a part held by no
-    // vehicle -- in which case so is the item)
     inventorySetOwner(item, dest->owner);
     return true;
 }
@@ -116,11 +101,7 @@ bool inventoryTransfer(Part *item, Part *dest) {
     if(item == dest) { return false; }
     if(item->container == nullptr) { return false; }
     // check dest capacity AND the cycle BEFORE removing from source (a failed
-    // transfer must not orphan the item): dest must be a valid, non-full
-    // container, and it must not sit inside item's own subtree -- that would
-    // close a containment cycle, and addToContainer would then refuse it
-    // AFTER removeFromContainer already detached item, leaving it with no
-    // container and its whole subtree leaking.
+    // transfer must not orphan the item)
     if(dest->def == nullptr || dest->def->inventory_capacity <= 0) { return false; }
     if((int)dest->ownedContents.size() >= dest->def->inventory_capacity) { return false; }
     if(inSubtree(item, dest)) { return false; }

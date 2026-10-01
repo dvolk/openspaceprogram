@@ -15,8 +15,7 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
     glm::dmat4 ModelView = View * xf * modelMat;
     glm::mat4 ModelViewFloat = ModelView;
     // Precision instrument (PRECDBG=1): per-draw ModelView translation,
-    // double vs the float32 the GPU gets. Wobble in dbl == sim/frame
-    // quantization; wobble only in flt == the cast. Capped at 4000 lines.
+    // double vs the float32 the GPU gets. Capped at 4000 lines.
     {
         static const bool on = getenv("PRECDBG") != nullptr;
         static int s_n = 0;
@@ -43,8 +42,7 @@ void DrawModelAt(const Camera *camera, Mesh *mesh, Shader *shader, Texture *text
     shader->setUniform_vec1(6, opts.flat);
 
     /* Translucent (ghost) pass: blend over what is behind and don't write
-       depth, so a ghost previews without occluding the ship under it.
-       Restore the opaque state afterwards. */
+       depth, so a ghost previews without occluding the ship under it. */
     const bool blend = opts.alpha < 1.0f;
     if(blend) {
         glEnable(GL_BLEND);
@@ -91,10 +89,7 @@ Body *create_part_body(Mesh *mesh, Shader *shader, Texture *texture,
     body->mass = mass;
     body->hull_margin = hull_margin;
     BuildPartHull(body);
-    /* The collision hull's vertices (part-local frame) for the projected-area
-       drag (drag.h projectedArea) -- see captureHullVerts (physics.cpp).
-       Computed here, the one place every part-creation path goes through,
-       so flight, the VAB, saves and the dock/radial tests all get it. */
+    // projected-area drag silhouette; every part-creation path goes through here
     captureHullVerts(body);
     return body;
 }

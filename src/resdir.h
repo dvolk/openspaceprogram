@@ -1,35 +1,10 @@
 #pragma once
 
 // resdir.h -- where the game finds its read-only assets (the res/ tree).
-//
-// Game code names assets as "res/..." (parts.json, ships/*.json, meshes,
-// shaders, audio). That spelling is LOGICAL: it is what CLI defaults, save
-// metadata, startships JSON and the e2e EXPECT strings use, and it is what the
-// logs print. path() is the one place that turns such a name into a
-// filesystem path at the point of I/O.
-//
-// root() is the install directory that CONTAINS res/. Today that is
-// SDL_GetBasePath() (the directory of the running binary) with a short
-// walk-up. Two layouts are accepted at each level:
-//   <dir>/res                        -- release tarball (binary + res/ side
-//                                       by side); also the AppDir root if
-//                                       we ever pack that way
-//   <dir>/share/openspaceprogram/res -- FHS: binary in .../bin (the AppImage
-//                                       AppDir and a future deb /usr/bin),
-//                                       assets in .../share/...
-// The walk-up also covers the dev tree's ./osp symlink into
-// build/<os>-<march>-<tune>/<config>/. This file is the sole place that
-// knows the layout.
-//
-// Header-only, no game state: the same "plain file-system ops" stance as
-// datadir.h (datadir = per-user writable state; resdir = shipped assets).
-//
-// Call-site contract: keep passing "res/..." around as identity (args,
-// save.json, toasts, logs). Resolve with path() only when opening the
-// file. An already-absolute path (a --parts/--system/--font the user
-// pointed somewhere else) passes through unchanged; a relative path that
-// is NOT under res/ (e2e fixtures, a user's ./my_startships.json) stays
-// cwd-relative.
+// Game code names assets as "res/..."; path() is the one place that turns
+// such a name into a filesystem path at the point of I/O. root() walks up
+// from SDL_GetBasePath() accepting <dir>/res or <dir>/share/openspaceprogram/res.
+// Keep passing "res/..." as identity; resolve with path() only when opening.
 
 #include <SDL3/SDL.h>
 
@@ -48,11 +23,8 @@ inline const std::string &root() {
         if(const char *base = SDL_GetBasePath()) {
             p = fs::path(base);
         }
-        // At each level, accept either
-        //   <dir>/res                          -- tarball / AppImage / dev tree
-        //   <dir>/share/openspaceprogram/res   -- FHS (/usr/bin + /usr/share/...)
-        // The walk-up finds the repo root from the dev tree's build/...
-        // binary and finds /usr/share/... from a /usr/bin/osp install.
+        // At each level, accept <dir>/res (tarball / AppImage / dev tree) or
+        // <dir>/share/openspaceprogram/res (FHS).
         for(int i = 0; i < 8; i++) {
             if(fs::is_directory(p / "res")) {
                 std::string s = p.string();
@@ -74,8 +46,8 @@ inline const std::string &root() {
     return r;
 }
 
-// Map a game asset name onto a filesystem path. See the header comment for
-// what is rewritten and what passes through.
+// Map a game asset name onto a filesystem path. Absolute passes through;
+// "res/..." is rewritten to root(); other relative paths stay cwd-relative.
 inline std::string path(const std::string &p) {
     if(p.empty()) { return p; }
     // Absolute (unix, or a Windows drive): a user path, use as-is.

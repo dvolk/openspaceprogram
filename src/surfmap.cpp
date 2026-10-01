@@ -1,18 +1,6 @@
 // surfmap.cpp -- the Surface Map's pixel buffer (the projection + shading
-// math is surfmap.h, pure and tested; this part needs the game: the
-// body's terrain colors, the sun's position, the sim clock).
-//
-// One pixel per (lon, lat) of the equirectangular grid over the body's
-// ROTATING frame (the surface's own frame): the body's analytic surface
-// color at that direction (TerrainBody::SurfaceColor, the SAME function
-// the terrain mesh bakes, so the map matches the rendered surface),
-// optionally multiplied by the terminator at the compute instant (the
-// sun's direction in the body's rotating frame). The map is the surface,
-// fixed; gameui.cpp draws the ship's dot (sub-satellite point) and orbit
-// (ground track) on it in this same frame. The sweep is one-shot (M key
-// / the window's button), like the porkchop grid: a 256 x 128 map is ~33k
-// simplex samples, so it runs on the background worker (g.jobs) and the
-// frame stays responsive (see job.h).
+// math is in surfmap.h). One pixel per (lon, lat) of the equirectangular
+// grid over the body's ROTATING frame. Runs on the background worker.
 
 #include "surfmap.h"
 
@@ -25,10 +13,8 @@
 #include "terrain.h"
 
 namespace {
-// Direction TOWARD the star, in `body`'s rotating frame (the frame the
-// map's pixel directions live in). False when there is no terminator --
-// the mapped body IS the star (it maps itself, fully lit) or the system
-// has no sun -- in which case the caller skips the shading.
+// Direction TOWARD the star in `body`'s rotating frame. False when there
+// is no terminator (the body IS the star, or the system has no sun).
 bool sunDirRot(const TerrainBody *body, const TerrainBody *sun,
                glm::dvec3 &dir) {
     if(sun == nullptr || body == sun) {
@@ -50,8 +36,7 @@ bool sunDirRot(const TerrainBody *body, const TerrainBody *sun,
 } // namespace
 
 void surfmapCompute(Game &g) {
-    // Default body = the active ship's parent (the ship is orbiting /
-    // landed on it); a combo pick pins the map to another body.
+    // Default body = the active ship's parent; a combo pick pins the map.
     TerrainBody *body = g.surfmap_body
         ? g.surfmap_body
         : (g.ship ? g.ship->m_parent : g.sys.home);
@@ -61,21 +46,15 @@ void surfmapCompute(Game &g) {
     int w = std::max(16, g.args.surfmap_n);
     const int h = std::max(8, w / 2);   // 2:1 equirectangular
 
-    // The terminator at the REQUEST instant: the frames move with the
-    // sim, so this read stays on the main thread. False when there is no
-    // terminator -- the mapped body IS the star (it maps itself, fully
-    // lit) or the system has no sun -- in which case no shading is baked.
+    // The terminator at the REQUEST instant (frames move with the sim).
+    // False = no shading baked.
     glm::dvec3 sun_dir;
     const bool baked = g.surfmap_shade && sunDirRot(body, sun, sun_dir);
 
-    // Snapshot the terrain params (values only) and hand the sweep to the
-    // worker (g.jobs), like the porkchop grid: the frame stays responsive
-    // and the last map stays on screen until the job lands. The worker
-    // colours every pixel from THIS snapshot (terrainSurfaceColor with tp),
-    // never from the live body: surface.max_height is applied LATER by
-    // AttachRoot on the main thread (the body's heavy phase), so a live
-    // per-pixel read would race that write. Snapshotting at post time is the
-    // same idiom the porkchop grid and the cloud bake already use.
+    // Snapshot terrain params and hand the sweep to the worker. The worker
+    // colours from THIS snapshot (never the live body: surface.max_height
+    // is applied LATER by AttachRoot on the main thread -- a live per-pixel
+    // read would race that write).
     const TerrainParams tp = body->params();
     const bool ocean = g.surfmap_sea;     // the "Ocean" box (per-pixel below)
     const bool log = g.args.surfmap_log;
@@ -84,18 +63,14 @@ void surfmapCompute(Game &g) {
     const int epoch = g.cache_epoch;      // drop the map if the world changes
 
     g.surfmap_in_flight++;   // the window's "mapping ..." state
-    // `g` is captured by REFERENCE only so the returned continuation (below)
-    // can name it; the worker body itself never touches game state. A
-    // by-value capture would copy the non-copyable Game (the JobRunner
-    // member forbids it).
+    // `g` is captured by REFERENCE only for the returned continuation; the
+    // worker body never touches game state (a by-value capture would copy
+    // the non-copyable Game).
     g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, ocean, log,
                                 body_name, t_now, epoch]()
                 -> std::function<void()> {
-        // Worker thread: build the pixel buffer. No game-state WRITE, GL
-        // or imgui here. The result is handed to the main thread through
-        // the returned continuation; a shared_ptr lets it outlive this
-        // body (the continuation is a std::function, so its capture must
-        // be copyable -- the payload has to be shared, not moved).
+        // Worker: build the pixel buffer (pure). shared_ptr because the
+        // std::function continuation capture must be copyable.
         const size_t npx = (size_t)w * (size_t)h;
         std::vector<unsigned char> px(npx * 4);
         double ar = 0.0, ag = 0.0, ab = 0.0;   // albedo (unshaded) means
@@ -103,11 +78,8 @@ void surfmapCompute(Game &g) {
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
                 const glm::dvec3 d = surfmapDir(i, j, w, h);
-                // Ocean box on and this pixel at / below sea level: the
-                // flat sea (sea_color) covers the sea floor -- the same
-                // coverage the 3D ocean shell (terrain.h BuildOcean)
-                // gives. A body without a sea is untouched, so the box
-                // is a no-op there.
+                // Ocean box on and at/below sea level: flat sea covers the
+                // floor (same coverage as the 3D ocean shell).
                 const bool under_sea = ocean && tp.surface.has_sea
                     && terrainHeight((glm::vec3)d, tp)
                        <= (double)tp.radius + (double)tp.surface.sea_level;
@@ -125,10 +97,8 @@ void surfmapCompute(Game &g) {
             }
         }
         if(log) {
-            // albedo = the map before the terminator; shaded = as stored.
-            // shade=on means a terminator was baked (the e2e battery checks
-            // shaded < albedo on the sun-facing body); ocean=on means the
-            // sea was painted over the sea floor.
+            // albedo = before the terminator; shaded = as stored.
+            // shade=on: a terminator was baked. ocean=on: the sea was painted.
             printf("[surfmap] t=%.1fs body=\"%s\" %dx%d "
                    "albedo=[%.4f %.4f %.4f] shaded=[%.4f %.4f %.4f] "
                    "shade=%s ocean=%s\n",
@@ -142,17 +112,12 @@ void surfmapCompute(Game &g) {
         // (the window uploads it to a texture on a rev change;
         // surfmap_body_name is the staleness check when the ship's SOI /
         // the combo pick changes) + clear the "mapping" state. `g` is
-        // captured BY REFERENCE (a by-value capture would copy the
-        // non-copyable Game -- the JobRunner member forbids it); it is the
-        // main()'s object, which outlives every job (main.cpp joins the
-        // worker before the game is torn down).
+        // captured BY REFERENCE only for the continuation (Game is non-copyable).
         std::shared_ptr<std::vector<unsigned char> > ppx =
             std::make_shared<std::vector<unsigned char> >(std::move(px));
         return [&g, ppx, w, h, body_name, t_now, epoch]() {
-            // A clock jump (load / boot) or a system switch bumped the epoch
-            // after we posted: this map's terminator is for the old world.
-            // Drop it (the load path does NOT abort jobs, so this can still
-            // land) instead of republishing a stale terminator over the reset.
+            // Epoch bumped after we posted: this map is for the old world.
+            // Drop it (the load path does NOT abort jobs).
             if(epoch != g.cache_epoch) {
                 if(g.surfmap_in_flight > 0) { g.surfmap_in_flight--; }
                 return;

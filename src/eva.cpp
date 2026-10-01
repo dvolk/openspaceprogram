@@ -12,15 +12,11 @@
 #include "inventory.h" // inventoryDrain (the pocket draw, phase 4.5)
 #include "physics.h"   // BodyInContact, ApplyCentralForce, ApplyTorque, ...
 
-// --- tuning (debug scope; see the design notes) ------------------------
+// --- tuning -----------------------------------------------------------
 static const double kWalkSpeed   = 2.5;     // m/s
 static const double kWalkAccel   = 10.0;    // m/s^2 toward walkSpeed (damping)
 static const double kJumpSpeed   = 2.5;     // m/s radial kick
-/* RCS translation (monopropellant, KSP-style): a FIXED thrust in newtons,
-   like the ship's engines (fullThrust = flow * ve) -- NOT a fixed
-   acceleration. So the accel rises a little as the suit burns propellant
-   (F is constant, m falls), which is the physical behavior. No speed cap;
-   the propellant is the limiter. */
+// RCS: fixed thrust (N), not fixed accel -- no speed cap; propellant is the limiter.
 static const double kRcsIsp      = 220.0;   // s, monopropellant efficiency
 static const double kRcsForce    = 194.1;   // N; ~2.0 m/s^2 at the 97.05 kg wet suit
 static const double kRcsFlow     = 0.090;   // kg/s = kRcsForce / (kRcsIsp * 9.81); ~111 s burn for 10 kg
@@ -35,16 +31,14 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     Kerbal *k = static_cast<Kerbal *>(g.ship);
     const Camera *cam = g.camera;
 
-    // The camera's pose snapshot: camera positions/directions live in the
-    // render frame, which IS the active kerbal's frame.
+    // Camera positions/directions live in the render frame (= the kerbal's frame).
     const glm::dvec3 fwd = glm::normalize(cam->forward);
     const glm::dvec3 up = glm::normalize(evaOntoPlane(cam->up, fwd));
     const glm::dvec3 sright = evaScreenRight(fwd, up);
     k->camBasis = evaCamBasis(fwd, up);
 
-    // Grounded: Bullet contact (works on the pad mesh too) OR the analytic
-    // terrain within the standing band. Terrain collision leaves only exist
-    // at max LOD under the camera, so the analytic side is load-bearing.
+    // Grounded: Bullet contact OR analytic terrain (meshes only exist at max
+    // LOD under the camera, so the analytic side is load-bearing).
     const glm::dvec3 pos = k->get_center_of_mass();
     const glm::dvec3 radial = glm::normalize(pos);
     const double alt = glm::length(pos)
@@ -52,11 +46,8 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     const double rest = k->restAlt();
     k->grounded = BodyInContact(k->hull) || alt < rest + kGroundBand;
     if(k->jumping) {
-        // post-jump: the hull may still report contact while it is leaving
-        // the floor -- stay ungrounded until the contact itself clears
-        // (releasing on altitude above the band never fires when the jump
-        // apex is below it, as on high-gravity terrain: the latch stuck
-        // and the kerbal never left space mode)
+        // Stay ungrounded until floor contact clears (altitude release never
+        // fires when the jump apex is below the band, as on high-gravity terrain).
         if(BodyInContact(k->hull)) { k->grounded = false; }
         else { k->jumping = false; }
     }
@@ -68,8 +59,7 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
         if(active(Slot::EvaBack)) { w -= fwd; }
         if(active(Slot::EvaRight)) { w += sright; }
         if(active(Slot::EvaLeft)) { w -= sright; }
-        // camera-relative -> surface-relative (walk along the tangent)
-        w = evaOntoPlane(w, radial);
+        w = evaOntoPlane(w, radial);   // walk along the tangent
         k->walkDir = (glm::length2(w) > 1e-9) ? glm::normalize(w)
                                               : glm::dvec3(0.0);
         k->rcsDir = glm::dvec3(0.0);
@@ -105,11 +95,8 @@ void Kerbal::applyEva(double h) {
     const double surfR = (double)m_parent->GetTerrainHeight(glm::vec3(radial));
     const double rest = restAlt();
 
-    /* Analytic floor guard: terrain collision meshes exist only at the
-       max-LOD leaves under the camera, so where the leaves are not loaded
-       there is nothing to stand on. Snap back to standing height instead
-       of falling through the body (fires only without collision -- Bullet
-       contact holds the kerbal near restAlt otherwise). */
+    // Analytic floor guard: snap back to standing height where terrain meshes
+    // are not loaded (fires only without Bullet contact).
     const double alt = glm::length(pos) - surfR;
     if(alt < rest - kFloorDrop) {
         placeShipAtCom(radial * (surfR + rest), partRot(controller));
@@ -124,8 +111,7 @@ void Kerbal::applyEva(double h) {
             jumpRequested = false;
             SetVelocity(b, partVel(controller) + radial * kJumpSpeed);
         }
-        /* Walk steering: drive the tangent-plane velocity toward
-           walkDir * walkSpeed; no input -> damp to a stand. */
+        // Walk steering: drive tangent velocity toward walkDir * walkSpeed.
         const glm::dvec3 v = partVel(controller);
         const glm::dvec3 vh = evaOntoPlane(v, radial);
         glm::dvec3 a = (walkDir * kWalkSpeed - vh) / h;
@@ -134,33 +120,16 @@ void Kerbal::applyEva(double h) {
         if(alen > amax) { a *= amax / alen; }
         ApplyCentralForce(b, b->mass * a);
 
-        /* Stay upright, yawed toward the walk direction. The kerbal's
-           feet are frictionless (ships.cpp), so the steering force at
-           the COM has no friction to pair into a tipping couple with
-           -- with ordinary friction the standing capsule log-rolls,
-           and overwriting the pose / angular velocity instead stalls
-           the translation (the contact solver fights the overwrite). */
+        // Feet are frictionless (ships.cpp) so the COM steering force cannot
+        // tip the capsule; overwriting the pose stalls translation instead.
         const glm::dvec3 faceHint = (glm::length2(walkDir) > 0.0)
             ? walkDir : partAxis(controller, 1);
         slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);
     } else {
-        // RCS translation along the camera axes: a fixed thrust (N) for as
-        // long as the key is held AND the suit can draw this substep's flow
-        // of hydrazine (no speed cap -- KSP-style). Consume-then-arm, the
-        // same as the ship's engines (vehicle.h ApplyThrust): a substep
-        // whose draw the pool can't cover doesn't thrust.
+        // RCS: fixed thrust while held AND hydrazine is available (consume-then-arm).
         if(glm::length2(rcsDir) > 0.0) {
             const float flow = (float)(kRcsFlow * h);
-            /* phase 4.5: the kerbal draws its RCS hydrazine from its own
-               suit tank first, then from its pocket's inventory. The pocket
-               tanks are not in this ship's fuel groups (buildFuelGroups
-               groups Vehicle::parts only), so consumeResourceMass cannot
-               reach them -- inventoryDrain does the same per-tank decrement
-               (contents only -- the body mass is dry structure;
-               refreshCompound picks the mass up),
-               DFS so a tank nested in a pocket crate is found, and
-               all-or-nothing like the suit so a partial draw never applies
-               a full-force kick for less propellant. */
+            // Suit tank first, then pocket inventory (not in this ship's fuel groups).
             bool haveFuel = consumeResourceMass(ResourceType::Hydrazine, flow, parts[0]);
             if(!haveFuel) {
                 haveFuel = inventoryDrain(parts[0], (int)ResourceType::Hydrazine, flow);
@@ -169,8 +138,7 @@ void Kerbal::applyEva(double h) {
                 ApplyCentralForce(b, kRcsForce * rcsDir);
             }
         }
-        /* Upright on screen, facing the camera direction, plus the
-           accumulated QE yaw about the view axis. */
+        // Upright on screen, facing the camera direction, plus QE yaw.
         const glm::dvec3 fwd = camBasis[2];
         slewTo(rotAbout(fwd, viewYaw) * evaSpaceTarget(camBasis), h,
                kEvaTorque);
@@ -186,14 +154,11 @@ void Kerbal::slewTo(const glm::dmat3 &target, double h, double authority) {
     const glm::dmat3 I = getInertia();
     glm::dvec3 tq(0.0);
     if(ang < 1e-9) {
-        // aligned: just kill the residual spin
-        if(glm::length(w) < 1e-4) { return; }
+        if(glm::length(w) < 1e-4) { return; }   // aligned: kill residual spin
         tq = -(I * w) / h;
     } else {
-        // braking curve (the ship's slew law): the fastest rate from
-        // which the authority can still stop exactly on target, capped
-        // so no substep crosses it. A plain linear rate law overshoots
-        // and oscillates under the torque cap.
+        // Braking curve: fastest rate that can still stop exactly on target.
+        // A plain linear rate law overshoots and oscillates under the torque cap.
         const double Ieff = glm::dot(axis, I * axis);
         const double alpha = (Ieff > 0.0) ? authority / Ieff : 0.0;
         const double w_des = glm::min(glm::min(std::sqrt(2.0 * alpha * ang),

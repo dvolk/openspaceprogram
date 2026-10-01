@@ -1,24 +1,8 @@
 // flightlog.h -- the per-vessel flight journal (header-only pure C++).
-//
-// One Vehicle owns one FlightLog. It records when the flight began and
-// every SoI enter/leave, so the Flight Summary window (W_FlightSummary,
-// opened on recover) can list the mission. Save-persisted (SaveShip::flog):
-// on load the journal is restored into Vehicle::flog BEFORE the placement's
-// setSoi, so that setSoi's observe is a no-op on the unchanged body and the
-// mission history continues across a save/load rather than restarting.
-//
-// `observe` is the only writer, called with the vessel's current SoI body
-// name ("" if none): the first call begins the journal, later calls emit
-// left/entered when the body changes. The single writer of SoI events in
-// the game is Vehicle::setSoi -- the one SoI re-home site -- so a journal
-// begins when the vessel is placed (creation, load, split) and events are
-// stamped where the switch actually happens, never polled. Repeat observes
-// of an unchanged body are free no-ops, so the odd extra call (recover's
-// belt-and-braces snapshot) is harmless. Timestamps are sim-clock seconds
-// (Game::time).
-//
-// Pure containers + logic -- no game types -- so tests can pin the
-// enter/leave pairing without linking Vehicle.
+// `observe` is the only writer, called from Vehicle::setSoi (the one SoI
+// re-home site). Save-persisted: on load it is restored BEFORE the
+// placement's setSoi, so the mission history continues across save/load.
+// Timestamps are sim-clock seconds (Game::time).
 
 #pragma once
 
@@ -39,11 +23,8 @@ struct FlightLog {
     std::string last_body;    // SoI after the most recent observe
     std::vector<FlightEvent> events;
 
-    /* Record the ship's SoI body at sim time `t`. The first call starts
-       the journal (and logs an "entered" for the initial body, if any);
-       a body change logs "left <old>" then "entered <new>"; either side
-       may be empty (a ship with no SoI body). Repeated observes of the
-       same body are free. */
+    // First call starts the journal; a body change logs left/entered.
+    // Repeated observes of the same body are free.
     void observe(double t, std::string_view body) {
         if(!started) {
             started = true;

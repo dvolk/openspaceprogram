@@ -1,11 +1,4 @@
-// tick.cpp -- the game's fixed-timestep logic tick (declared in tick.h).
-//
-// This was the "LOGIC" section inside main's loop: the frame accumulator,
-// the per-tick command arming (thrust / rotation from the held keys, plus
-// the free-camera WASD), the substepped physics step, and the --spin-log /
-// --orbit-log / --dbg-log output. Every state access goes through Game
-// (main locals -> g members). The EVENTS section is in events.cpp and the
-// RENDER section stays in main.
+// tick.cpp -- the fixed-timestep logic tick (see tick.h).
 #include "tick.h"
 
 #include <cstdio>
@@ -25,18 +18,11 @@ void tick(Game &g) {
         g.accumulator = 10 * g.dt;
     }
 
-    // The canonical ship list this tick walks: bodies in file order, each
-    // body's ships, each ship's crew right after it (collectVehicles).
-    // Snapshotted once up front so a ship that crosses a SoI boundary mid-tick
-    // (switchFrames moves it between bodies' lists) is still updated exactly
-    // once -- the pointers stay valid across the move, and substeps never
-    // move ships. Reused scratch (collectVehiclesInto): one buffer for the
-    // whole session, not an allocation per frame.
+    // Snapshot the ship list once so a mid-tick SoI move is walked once.
     static thread_local std::vector<Vehicle *> all;
     collectVehiclesInto(g.sys, all);
 
-    // clear stats and stuff; sync the exhaust-velocity difficulty scale
-    // (New Game / save / --exhaust-scale) onto every ship.
+    // clear stats; sync the difficulty scale onto every ship.
     for(auto *s : all) {
         s->m_thrust = 0.0;
         s->exhaust_scale = g.args.exhaust_scale;
@@ -44,13 +30,8 @@ void tick(Game &g) {
     }
 
     while (g.accumulator >= g.dt) {
-        // is this logic? ;_;
-        // Thrust and rotation are armed once per tick (if the keys are
-        // held, below) and then re-applied before every substep; clear
-        // them first so a tick without the keys doesn't keep pushing or
-        // slewing from the last one. RCS translation is armed the same way
-        // (the Rcs* Commands below) and consumed in applyRcsForce. No ship
-        // (orbit-view state) -> nothing to clear; the world still ticks below.
+        // Clear per-tick commands so a tick without the keys doesn't keep
+        // pushing from the last one. No ship -> nothing to clear.
         if(g.ship) {
             g.ship->clearThrust();
             g.ship->clearRotCmd();
@@ -60,10 +41,8 @@ void tick(Game &g) {
         const bool *key = SDL_GetKeyboardState(nullptr);
         const Uint16 modState = SDL_GetModState();
         /* --sim-press: a synthetic key is "down" from its down time to
-           its up time. SDL_PushEvent does not update the key array above
-           (verified on this SDL), so a held command ORs in each entry's
-           window. Synthetic keys carry a scancode but no modifier state,
-           so they only back a PLAIN binding (slotSimKey). */
+           its up time. SDL_PushEvent does not update the key array, so a
+           held command ORs in each entry's window. */
         auto slotActive = [&](Slot s) -> bool {
             if(slotHeld(s, key, modState, g.binds)) { return true; }
             for(size_t i = 0; i < g.args.sim_presses.size(); i++) {
@@ -91,20 +70,13 @@ void tick(Game &g) {
 
         if (g.camera->mode == CAM_ORBIT) {
             bool game_running = (g.time_accel > 0);
-            // The active-ship controls (rails-wake, EVA, slew, stick, RCS):
-            // only with a ship AND in a pilot scene (Flight). A running sim in
-            // a non-pilot scene (the live hub / tracking) coasts -- held keys
-            // there must not steer the ship you left behind.
+            // Active-ship controls: only with a ship and in a pilot scene.
+            // A running sim in a non-pilot scene coasts.
             if(g.ship && curScene(g).pilot) {
-            /* touching the controls wakes a railed active ship: it
-               re-enters physics (you cannot maneuver on rails). A rails
-               warp (accel > 10) drops to 1x on the way out; a ship railed
-               at a low warp (an SOI handoff drops the warp to 1 while the
-               ship keeps its conic) just wakes in place. */
+            // Touching the controls wakes a railed active ship (you cannot
+            // maneuver on rails). A rails warp drops to 1x on the way out.
             if(g.ship->onRails && g.time_accel > 0) {
-                // any flight control wakes a railed ship; in EVA the
-                // kerbal's jump (Space) is the extra -- the walk + up/down
-                // keys share the flight physical keys (W/S/A/D/Q/E/R/F).
+                // any flight control wakes; in EVA Space is the extra
                 bool wake = slotActive(Slot::PitchUp) || slotActive(Slot::PitchDown) ||
                             slotActive(Slot::YawLeft) || slotActive(Slot::YawRight) ||
                             slotActive(Slot::RollLeft) || slotActive(Slot::RollRight) ||
@@ -125,16 +97,12 @@ void tick(Game &g) {
                 }
             }
             if(g.ship->isEva()) {
-                /* EVA: arm the kerbal's walking/RCS controls for this tick
-                   (src/eva.cpp). Like the ship's Command path, nothing is
-                   armed while paused. */
+                /* EVA: arm the kerbal's controls for this tick (eva.cpp).
+                   Nothing is armed while paused. */
                 if(game_running) { evaArmCommands(g, slotActive); }
             } else {
-            /* The Autopilot window's engaged mode (set by its toggle
-               buttons): apply it after clearRotCmd (above) so the ship
-               keeps slewing toward the target and holding, waking a railed
-               ship just like a control key. The X kill-rot key below
-               overrides it while held. */
+            // Autopilot slew: apply after clearRotCmd so the ship keeps
+            // holding. X kill-rot below overrides while held.
             if(game_running && g.ship->slewRequest != SlewNone) {
                 if(g.ship->onRails) {
                     g.ship->leaveRails();
@@ -145,12 +113,8 @@ void tick(Game &g) {
                 }
                 g.ship->slew = g.ship->slewRequest;
             }
-            // Control-axis flips. The baseline amounts below already bake in
-            // the default orientation: viewed from the front the ship's
-            // left/right are mirrored, so yaw and roll are pre-flipped to
-            // respond in your screen direction (pitch is not mirrored, so it
-            // is not). Each flip_* setting (Settings -> Controls) inverts its
-            // axis away from that default.
+            // Baseline sticks are pre-flipped for screen-direction yaw/roll;
+            // flip_* settings invert away from that default.
             const float f_pitch = g.flip_pitch ? -1.0f : 1.0f;
             const float f_yaw   = g.flip_yaw   ? -1.0f : 1.0f;
             const float f_roll  = g.flip_roll  ? -1.0f : 1.0f;
@@ -164,20 +128,15 @@ void tick(Game &g) {
             if (slotActive(Slot::RollLeft)) { g.ship->Command(ShipCmd(Roll,   f_roll  * -1.0f), game_running); }
             if (slotActive(Slot::RollRight)) { g.ship->Command(ShipCmd(Roll,   f_roll  * +1.0f), game_running); }
 
-            // The thrust latch (g.thrust_latched, toggled by the ThrustLatch
-            // slot) keeps the engines lit even with the thrust key released:
-            // it ORs into the held check so Command(Thrust) re-arms every tick.
+            // Thrust latch keeps engines lit with the key released.
             if (slotActive(Slot::Thrust) || g.thrust_latched) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
             if (slotActive(Slot::KillRot)) { g.ship->Command(ShipCmd(KillRot), game_running); }
 
             if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
             if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }
 
-            // RCS translation (ship-relative, KSP-style): each held slot
-            // arms one of the ship's own body axes through Command, like the
-            // stick -- the direction is resolved against the ship's live
-            // axes in applyRcsForce before every substep (the EVA kerbal's
-            // own translation runs its own path, so this is ship-only).
+            // RCS translation (ship-relative): each held slot arms one of
+            // the ship's own axes; applyRcsForce resolves the direction.
             if (slotActive(Slot::RcsForward)) { g.ship->Command(ShipCmd(RcsNose,  +1.0f), game_running); }
             if (slotActive(Slot::RcsBack))    { g.ship->Command(ShipCmd(RcsNose,  -1.0f), game_running); }
             if (slotActive(Slot::RcsUp))      { g.ship->Command(ShipCmd(RcsUp,    +1.0f), game_running); }
@@ -188,94 +147,51 @@ void tick(Game &g) {
             }
         }
 
-        // Advance the analytic sim clock by exactly the physics timestep
-        // (g.dt * g.time_accel), matching physics_tick(g.dt * g.time_accel) below.
-        // The frame tree's analytic motion must run on the same clock as
-        // the ship's integration. The old 1/60.0 constant disagreed with
-        // dt (1/50), so the physics clock ran 20% faster than the analytic
-        // body positions and the ship systematically outran the planets.
+        // Advance the analytic clock by exactly the physics timestep --
+        // the frame tree and the ship integration must share the clock.
         g.time += g.dt * g.time_accel;
         g.phys_steps++;   // one substep ran (the --perf breakdown counts these)
 
         if(g.time_accel != 0) {
-            /* Re-snapshot the ship list for THIS step. It is walked several
-               times below (the rails/physics branch and every substep), and
-               updateDocking() at the end of a step can DELETE the absorbed
-               ship; the accumulator loop then runs another step, and a
-               snapshot taken once before the while loop would still hold the
-               freed pointer and crash walking it. updateDocking erases the
-               absorbed ship from its body's ships list before deleting it,
-               so a fresh per-step snapshot never sees a dangling ship. Still
-               one snapshot per step (not per walk), so a ship that
-               switchFrames moves between body lists mid-step is walked
-               exactly once. */
+            /* Re-snapshot the ship list for THIS step: updateDocking() can
+               delete the absorbed ship at the end of a step, and a stale
+               snapshot would dangle on the next one. */
             collectVehiclesInto(g.sys, all);
 
-            // The active ship's SOI owner before this tick's frame
-            // bookkeeping (checked after the branch, below): crossing into
-            // a different body's SOI drops warp to 1x. Null when there is no
-            // ship (orbit-view state), so the handoff check below no-ops.
+            // SOI owner before this tick's frame bookkeeping (handoff drops
+            // warp to 1x).
             TerrainBody *soiOwner = g.ship ? g.ship->m_parent : nullptr;
 
-            // Proximity: wake ships near the active ship (and, on a close
-            // approach, wake the active ship + cap the warp). Runs before the
-            // branch so a dropped warp routes this tick into the physics path.
-            //
-            // Runs BEFORE UpdateOrbitRails on purpose: a ship woken here is
-            // re-expressed in the rotating frame (leaveRails + switchFrames)
-            // with the frame transforms still at last tick's epoch -- the same
-            // transforms every live ship's Bullet pose was built against. If
-            // the frame were advanced first, the woken ship's stale rail_pos
-            // (this tick's railsTick has not run for it yet) would be rotated
-            // into the NEW frame, landing it frame_velocity*dt (~4 m at LEO)
-            // off the active ship -- enough to blow the dock capture window.
+            // Proximity wakes ships near the active ship. Runs BEFORE
+            // UpdateOrbitRails so a woken ship is re-expressed against last
+            // tick's frame transforms (the same every live Bullet pose used).
             g.updateProximity();
 
             g.sun->frame->UpdateOrbitRails(g.time);
 
             if(g.time_accel >= kRailsWarp) {
-                /* Rails warp: every ship coasts analytically (or sits
-                   frozen on the ground) and the Bullet world is not
-                   stepped at all -- O(ships) per tick instead of a
-                   substep count that explodes with the accel. */
+                /* Rails warp: analytic coast (or frozen on the ground);
+                   Bullet is not stepped. */
                 for(auto *s : all) {
                     s->railsTick(g.time, g.dt * g.time_accel);
                 }
             } else {
 
-            // per-ship SOI bookkeeping: each ship tracks its own
-            // position in the shared frame tree (an idle ship can
-            // cross a boundary while we fly another one). Railed
-            // ships advance their analytic conic here instead --
-            // exact for any step size, at any time accel.
+            // Railed ships advance their analytic conic; live ones track
+            // their SOI in the shared frame tree.
             for(auto *s : all) {
                 if(s->onRails) { s->railsTick(g.time, g.dt * g.time_accel); }
                 else { s->switchFrames(g.time); }
-                /* The compound's COM has to track the mass distribution, and
-                   a burn moves it. Checked here rather than at each mass
-                   writer so one call site covers all of them, and it only
-                   rebuilds once the drift is worth it (see
-                   Vehicle::refreshCompound). Not run on the rails-warp path
-                   above: nothing burns there, and that path is deliberately
-                   O(ships) per tick. */
+                // Keep the compound COM tracking the mass distribution.
+                // Not on the rails-warp path: nothing burns there.
                 s->refreshCompound();
             }
 
-            // Integrate the (time-accelerated) step in substeps,
-            // re-applying gravity + the rotating-frame fictitious forces
-            // + the engine thrust + the armed rotation commands before
-            // EACH substep. Two reasons:
-            //  1. Bullet clears accumulated forces at the end of every
-            //     stepSimulation call, so applying gravity once and then
-            //     stepping multiple substeps would leave the ship
-            //     force-free for all but the first substep.
-            //  2. Re-applying per substep keeps the central-force
-            //     direction and the velocity-dependent Coriolis term
-            //     accurate across the step instead of frozen at the
-            //     step's start.
-            // Keep >=3 substeps so low-accel behavior matches the old
-            // 3-substep step, and grow the count so the substep stays
-            // <= kMaxSubStep at high time-accel.
+            // Integrate the step in substeps, re-applying gravity + thrust +
+            // rotation before EACH: Bullet clears forces at each step, and
+            // velocity-dependent terms must not freeze at the step start.
+            // >=3 substeps matches the old low-accel behavior; grow so the
+            // substep stays <= kMaxSubStep at high time-accel.
             const double step = g.dt * g.time_accel;
             const double kMaxSubStep = 0.1;
             int n = 3;
@@ -284,22 +200,14 @@ void tick(Game &g) {
             if (n > 2000) { n = 2000; }
             const double h = step / n;
             for (int i = 0; i < n; i++) {
-                // every NON-RAILED ship feels its own gravity + atmospheric
-                // drag + armed control forces each substep (ships: thrust +
-                // rotation; the EVA kerbal: walking/RCS -- see
-                // applyControlForces); physics_tick then steps the shared
-                // Bullet world all of them at once. Railed ships have no
-                // bodies in the world -- their conic already advanced this
-                // tick in railsTick (and so feel no drag: the known rails
-                // gap, see reports/atmospheric-drag2026_09_11).
+                // every NON-RAILED ship feels gravity + drag + control each
+                // substep; railed ships' conics already advanced in railsTick
+                // (and so feel no drag -- the known rails gap).
                 for(auto *s : all) {
                     if(s->onRails) { continue; }
                     s->processGravity();
                     s->applyAeroForce(h);
-                    /* Electrical resolution BEFORE the control forces, so
-                       the power gate (powered_) is current when the
-                       reaction wheels are applied (a ship that runs out of
-                       power becomes uncontrolled this substep). */
+                    // Power before control forces so the gate is current.
                     s->powerTick(h);
                     s->applyControlForces(h);
                 }
@@ -315,18 +223,13 @@ void tick(Game &g) {
                 }
             }
 
-            /* Docking: once per tick, at the boundary, after the substeps
-               (the port-pair test + the merge + the velocity carry are all
-               post-physics bookkeeping; one boundary check per tick is
-               enough at any warp). */
+            // Docking: once per tick, after the substeps.
             g.updateDocking();
 
             } // end physics-warp branch (g.time_accel < kRailsWarp)
 
-            /* SOI handoff: the active ship crossed into a different body's
-               SOI (or back out to the parent's) -- drop warp to 1x so the
-               encounter is playable instead of warped straight through.
-               A pause (0) is the player's call and stays put. */
+            // SOI handoff: drop warp to 1x so the encounter is playable.
+            // A pause (0) is the player's call and stays put.
             if(g.ship && soiOwner != g.ship->m_parent && g.time_accel > 1) {
                 printf("SOI switch: '%s' now around %s (was %s), warp -> 1\n",
                        g.ship->name.c_str(), g.ship->m_parent->name.c_str(),
@@ -337,8 +240,7 @@ void tick(Game &g) {
             }
 
             /* --spin-log (or --radial-test): spin diagnostics, once per
-               0.5 s of sim time (after the last substep's solve, so the
-               reported impulses are that solve's). */
+               0.5 s of sim time. */
             if(g.ship && (g.args.spin_log_enabled || !g.args.radial_test.empty())) {
                 static double last_spin_log = -1e30;
                 if(g.time - last_spin_log >= 0.5) {
@@ -347,9 +249,7 @@ void tick(Game &g) {
                 }
             }
 
-            /* --fuel-log: each fuel group's fuel mass + the fuel links,
-               once per 0.5 s of sim time (the heavy_two radial drain
-               instrument: the symmetric radial groups must stay equal). */
+            /* --fuel-log: fuel mass + links, once per 0.5 s of sim time. */
             if(g.ship && g.args.fuel_log) {
                 static double last_fuel_log = -1e30;
                 if(g.time - last_fuel_log >= 0.5) {
@@ -358,9 +258,7 @@ void tick(Game &g) {
                 }
             }
 
-            /* --drain-log: each fuel group's drain rate (kg/s), once per
-               0.5 s of sim time -- the "how is the fuel flowing"
-               instrument: the outer groups drain, the inner stay at 0. */
+            /* --drain-log: fuel drain rates, once per 0.5 s of sim time. */
             if(g.ship && g.args.drain_log) {
                 static double last_drain_log = -1e30;
                 if(g.time - last_drain_log >= 0.5) {
@@ -369,9 +267,7 @@ void tick(Game &g) {
                 }
             }
 
-            /* --power-log: the ship's power balance (generation, constant
-               draw, stored charge, and the wheel gate) once per 0.5 s of
-               sim time -- the "is the ship losing power?" instrument. */
+            /* --power-log: power balance, once per 0.5 s of sim time. */
             if(g.ship && g.args.power_log) {
                 static double last_power_log = -1e30;
                 if(g.time - last_power_log >= 0.5) {
@@ -380,9 +276,7 @@ void tick(Game &g) {
                 }
             }
 
-            /* --slew-log: autopilot (prograde/retrograde/kill-rot) state,
-               once per 0.1 s of sim time -- fine enough to resolve the
-               slew's ~1 s timescale and any oscillation around the target. */
+            /* --slew-log: autopilot state, once per 0.1 s of sim time. */
             if(g.ship && g.args.slew_log_enabled) {
                 static double last_slew_log = -1e30;
                 if(g.time - last_slew_log >= 0.1) {
@@ -392,8 +286,7 @@ void tick(Game &g) {
             }
         }
 
-        // --orbit-log: orbital elements, fit in the body's inertial
-        // frame, where the ship's trajectory is a Kepler conic.
+        // --orbit-log: orbital elements in the body's inertial frame.
         if(g.ship && g.args.orbit_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.orbit_log_last_ms >= g.orbit_log_interval_ms) {
@@ -441,15 +334,9 @@ void tick(Game &g) {
             }
         }
 
-        /* --drag-log: the active ship's aero (the last substep's: altitude,
-           air density, speed, the total force, the lift part, and the moment
-           about the COM). The "is aero actually acting?" instrument --
-           rho>0 means the atmosphere model is live at this altitude, |F|>0
-           means the ship is moving through the air, |L|>0 means a wing is
-           generating lift, |tau|>0 means the aero is torquing the ship
-           (weathervane / pitch stability). Below the kRhoFloor density floor
-           (drag.h, applyAeroForce) the geometry is skipped, so rho>0 with
-           Cd/A/|F| all 0 is the floor reporting vacuum, not broken geometry. */
+        /* --drag-log: the active ship's aero (last substep). rho>0 with
+           Cd/A/|F| all 0 is the density floor reporting vacuum, not broken
+           geometry. */
         if(g.ship && g.args.drag_log) {
             const Uint32 now_ms = SDL_GetTicks();
             if(now_ms - g.drag_log_last_ms >= g.orbit_log_interval_ms) {
@@ -465,11 +352,7 @@ void tick(Game &g) {
                        glm::length(g.ship->lastAeroTorque),
                        g.ship->lastDragCd, g.ship->lastDragArea,
                        glm::degrees(g.ship->lastDragAlpha));
-                // The control surfaces' applied deflections (the "what is the
-                // pilot steering right now?" telemetry): one per surface --
-                // its name, instance index, axis, and deflection in degrees
-                // (0 = released). The name/axis are resolved from the part
-                // reference here (once per interval), not copied per substep.
+                // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {
                     printf("[ctrl]");
                     for(const Vehicle::ControlDeflection &cd :
@@ -493,18 +376,15 @@ void tick(Game &g) {
             }
         }
 
-        // --tq-log: the spurious-torque probe, once per TICK (not the
-        // interval gate): the per-tick quantity is the point, and the bug
-        // it hunts was a per-tick dcom x F that a per-second log would
-        // average out.
+        // --tq-log: the spurious-torque probe, once per TICK (the per-tick
+        // quantity is the point; a per-second log would average it out).
         if(g.ship && g.args.tq_log && !g.ship->onRails) {
             g.ship->tq_log(g.time);
         }
 
-        /* --compound-check: every ship's compound-vs-parts agreement. Not
-           gated on time_accel (a paused ship still has live part poses to
-           compare) and over `all`, not just the active ship: the idle and
-           railed ships are where the frozen-in deformation shows up. */
+        /* --compound-check: compound-vs-parts agreement. Not gated on
+           time_accel; runs over all ships (frozen-in deformation shows on
+           idle/railed ones). */
         if(g.args.compound_check) {
             static Uint32 last_compound_ms = 0;
             const Uint32 now_ms = SDL_GetTicks();

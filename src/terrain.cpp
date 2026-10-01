@@ -1,5 +1,4 @@
-// terrain.cpp -- GeoPatch + TerrainBody method implementations and the
-// terrain free helpers (see terrain.h for the class/data declarations).
+// terrain.cpp -- GeoPatch + TerrainBody method implementations (see terrain.h).
 #include <numbers>
 #include "terrain.h"
 
@@ -8,18 +7,15 @@
 #include <memory>
 #include <vector>
 
-// GeoPatch holds a btRigidBody* and `delete`s it in ~GeoPatch, so the
-// complete type is needed here -- via btcommon.h, the single
-// precision-settled Bullet include (double precision, matching
-// physics.cpp).
+// GeoPatch holds a btRigidBody* and deletes it in ~GeoPatch: the complete
+// type is needed here (btcommon.h, matching physics.cpp's precision).
 #include "btcommon.h"
 #include "physics.h"
 
-#include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes the
-                       // ships this body owns)
+#include "vehicle.h"   // Vehicle (complete type: ~TerrainBody deletes ships)
 
-/* Free a demand-built shell: the procedural mesh + (clouds) the baked
-   texture are the body's; the shader is shared (the registry owns it). */
+// Free a demand-built shell (mesh + cloud texture are the body's; the shader
+// is shared).
 static void free_shell(TerrainBody::Shell *s) {
     if(s == nullptr) { return; }
     delete s->mesh;
@@ -28,15 +24,12 @@ static void free_shell(TerrainBody::Shell *s) {
 }
 
 TerrainBody::~TerrainBody() {
-    // The ships in my SOI first (they reference my frame; the Vehicle dtor
-    // also unregisters their bodies from the still-live Bullet world).
+    // Ships first (they reference my frame; ~Vehicle unregisters from the
+    // still-live Bullet world).
     for(auto *s : ships) { delete s; }
     ships.clear();
-    // The pads next. Their render assets are shared (the registries own
-    // them), so only the rigid Body is freed here: unregister it from the
-    // Bullet world first (the world would otherwise hold a dangling
-    // btBody), then ~Body frees the rigid body + hull shape; the
-    // StaticBuilding struct is freed last.
+    // Pads next: render assets are shared (registries own them), so only
+    // the rigid Body is freed -- unregister it from the Bullet world first.
     for(auto *p : pads) {
         RemoveBody(p->body);
         delete p->body;
@@ -54,16 +47,14 @@ TerrainBody::~TerrainBody() {
     delete rot_frame;
 }
 
-/* A space pad (terrain.h): drawn like terrain, culled when the active
-   ship is not on the pad's body; the light source is the star. */
+/* A space pad (terrain.h): drawn like terrain, culled off-body. */
 void StaticBuilding::Draw(const Camera *camera, const TerrainBody *current,
                           Frame *renderFrame) {
     if(current == parent) {
         const Frame *posFrame = parent->frame->getRotFrame();
         const float shadow = ComputeTerrainShadow(parent, posFrame,
                                                   GetPosition(body), sun);
-        // Light direction at the pad (sun -> pad); stays defined if the
-        // pad's body were ever the star (SunlightDir would be a zero vector).
+        // Stays defined if the pad's body were ever the star.
         const glm::dvec3 pad_root =
             posFrame->root_orient * GetPosition(body) + posFrame->root_pos;
         glm::vec3 sunlightVec =
@@ -90,8 +81,7 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
     TerrainBody *body = this->body;
     Shader *shader = body->shader;
     // Value snapshot of the terrain math (the worker never reads the
-    // main-thread-owned body), like the porkchop grid snapshots its
-    // state (see job.h).
+    // main-thread-owned body).
     const TerrainParams tp = body->params();
     const glm::vec3 v0 = this->v0, v1 = this->v1, v2 = this->v2, v3 = this->v3;
     const int child_depth = depth + 1;
@@ -100,10 +90,8 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
     jobs.post("Terrain", [body, shader, tp, v0, v1, v2, v3, child_depth, parent]()
               -> std::function<void()> {
         // Worker thread: pure math (terragen.h). No game state, GL or
-        // imgui here. The result is handed to the main thread through
-        // the returned continuation; the shared_ptr lets it outlive this
-        // body (std::function needs copyable captures, like the surfmap's
-        // pixel buffer).
+        // imgui here. The shared_ptr lets the result outlive this body
+        // (std::function needs copyable captures).
         glm::vec3 quad[4][4];
         subdivideCorners(v0, v1, v2, v3, quad);
         std::shared_ptr<std::array<GridGeom, 4> > geoms =
@@ -113,21 +101,16 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
             geoms->at(q) = buildGridGeom(tp, true, child_depth, quad[q][0],
                                          quad[q][1], quad[q][2], quad[q][3]);
         }
-        // Main-thread continuation (JobRunner::poll): attach the children
-        // (GL upload + collision) -- or discard the grids.
+        // Main-thread continuation: attach the children (GL + collision)
+        // or discard the grids.
         return [body, shader, child_depth, geoms, parent]() {
-            // The parent may be gone (a grandparent's collapse freed the
-            // subtree while the job was in flight) or no longer want
-            // children (a zoom-out cleared the flag on the collapse path)
-            // -- in either case drop the built grids.
-            // patchAlive is a POINTER check, so it holds only while a freed
-            // patch's address cannot come back with its flag already set:
-            // continuations run in job order inside one poll(), all before
-            // the frame's Update posts anything new, so a patch allocated
-            // after this one was freed is allocated by a LATER continuation
-            // and starts with subdivide_in_flight false. Break that ordering
-            // (a second worker, or a continuation that posts and polls) and
-            // this needs a per-patch id instead -- see the filed issue.
+            // Drop the built grids if the parent is gone (a grandparent's
+            // collapse freed the subtree) or no longer wants children.
+            // patchAlive is a POINTER check: continuations run in job order
+            // inside one poll(), all before the frame's Update posts
+            // anything new, so a reallocated address cannot come back with
+            // its flag already set. Break that ordering and this needs a
+            // per-patch id instead.
             if(!body->patchAlive(parent) || !parent->subdivide_in_flight) {
                 return;
             }
@@ -160,20 +143,16 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     this->v3 = v3;
     this->anchor = geom.anchor;
     this->centroid = glm::normalize(v0 + v1 + v2 + v3);
-    // Cache the per-patch constants Update() and Draw() use every frame
-    // (the height sample is a full noise evaluation; doing it per patch
-    // per frame in Update was pure waste).
+    // Cache the per-patch constants (the height sample is a full noise
+    // evaluation -- not per-frame).
     centroid_height = (double)body->GetTerrainHeight(centroid);
-    // The mean of the four edge chords, NOT one edge: the midpoint
-    // subdivision makes the quads unequal-edged, and a single edge (v0-v3)
-    // biased the LOD threshold by up to 28% between same-depth siblings --
-    // one coarse patch sitting inside an otherwise detailed square.
+    // Mean of the four edge chords, NOT one edge: midpoint subdivision
+    // makes the quads unequal-edged, and a single edge biased the LOD
+    // threshold between same-depth siblings.
     width_m = (double)body->radius * patchWidthUnit(v0, v1, v2, v3);
-    // Leaf patches (subdivision stops at depth == the body's max_depth)
-    // get the collision mesh.
+    // Leaf patches (depth == max_depth) get the collision mesh.
     bool has_collision = depth >= body->max_depth;
-    // GridGeom (pure math, terragen.h) -> Mesh (GL upload): main thread
-    // only, called from here (the startup path and the job continuation).
+    // GridGeom (pure math) -> Mesh (GL upload): main thread only.
     std::vector<PosNorColVertex> pv(geom.verts.size());
     for(size_t i = 0; i < pv.size(); i++) {
         pv[i] = PosNorColVertex(geom.verts[i].pos, geom.verts[i].normal,
@@ -194,26 +173,20 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
 
 void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
     if(kids[0] == NULL) {
-        // Per-patch MVP: the mesh is baked relative to `anchor`, and the
-        // anchor is composed into the modelview in DOUBLE (planet centre +
-        // rotated anchor - renderOrigin cancels there), so the float32
-        // uniform and the vertex data only ever hold patch-scale numbers.
-        // The old body-centred bake made the vertex shader cancel
-        // radius-scale float terms down to metres -- ULP(radius) of jitter
-        // per camera move (~0.4 m on Jool, ~0.04 m on Kerbin).
+        // Per-patch MVP: the mesh is baked relative to `anchor`, composed
+        // into the modelview in DOUBLE, so the float32 uniform and the
+        // vertex data only ever hold patch-scale numbers.
         const glm::dmat4 ModelView = camera->GetView()
             * glm::translate(-camera->GetRenderOrigin())
             * body->transform * glm::translate(anchor);
         shader->setUniform_mat4(0, camera->GetProjection()
                                    * glm::mat4(ModelView));
         shader->setUniform_vec3(4, glm::vec3(anchor));
-        // patch isn't subdivided
         if(skirt_pass == false) {
             mesh->Draw();
         } else {
-            // the skirt is drawn after the terrain and depth-tests against it,
-            // so it shows only in the cracks/limb (where no terrain was drawn)
-            // and hides under the neighbouring surface
+            // Skirt draws after the terrain and depth-tests against it, so
+            // it shows only in the cracks/limb.
             mesh->DrawSkirt();
         }
     }
@@ -228,24 +201,19 @@ void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
 void GeoPatch::Update(const glm::dvec3 &cam_bf, double px_per_rad,
                       int max_patch_px, JobRunner &jobs) {
     // Distance to this patch's OWN surface point (centroid_height is
-    // cached in the ctor; an earlier version re-sampled the height here
-    // every frame, and one before that sampled it at the camera
-    // direction, which mis-measured the distance on slopes). cam_bf is
-    // already in body-fixed axes (cameraInBodyFrame), like `centroid`.
+    // cached in the ctor). cam_bf is already in body-fixed axes.
     const glm::dvec3 centroid_pos = centroid_height * (glm::dvec3)centroid;
     const double dist = glm::length(cam_bf - centroid_pos);
 
-    // The patch's projected screen extent [px]. It subdivides while that is
-    // wider than max_patch_px and collapses below half of it -- the
-    // hysteresis band keeps the LOD from flapping near the boundary. The
-    // budget is in REAL px (not metres or degrees) so it follows FOV, zoom,
-    // and window size/resolution automatically; see lodPxPerRad for why the
-    // window aspect cancels out.
+    // Projected screen extent [px]. Subdivides while wider than
+    // max_patch_px, collapses below half (hysteresis). The budget is in
+    // REAL px so it follows FOV, zoom, and window size (see lodPxPerRad
+    // for why the aspect cancels out).
     const double px_width = lodPxWidth(width_m, dist, px_per_rad);
 
-    // Subdivision is async: request it, keep drawing this (coarser) patch
-    // until the continuation attaches the children. While a job is in
-    // flight the flag suppresses re-posting; the continuation clears it.
+    // Subdivision is async: keep drawing this (coarser) patch until the
+    // continuation attaches the children. subdivide_in_flight suppresses
+    // re-posting.
     if(depth < body->max_depth and px_width > (double)max_patch_px and
        kids[0] == NULL and !subdivide_in_flight) {
         requestSubdivide(jobs);
@@ -259,10 +227,9 @@ void GeoPatch::Update(const glm::dvec3 &cam_bf, double px_per_rad,
         kids[1] = NULL;
         kids[2] = NULL;
         kids[3] = NULL;
-        // A job may still be in flight (its grids are about to land for a
-        // patch that no longer wants children): the flag check in the
-        // continuation makes it discard them. (If the worker THREW, no
-        // continuation ever runs and this is what also clears the flag.)
+        // A job may still be in flight: the continuation's flag check
+        // discards its grids. (If the worker threw, this also clears the
+        // flag.)
         subdivide_in_flight = false;
     }
 
@@ -276,23 +243,17 @@ void GeoPatch::Update(const glm::dvec3 &cam_bf, double px_per_rad,
 
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun) {
-    // Approximate terrain shadow for one point (a ship part / the space port):
-    // cast a ray from the point toward the sun and test it against the
-    // planet's terrain height function, which is analytic and therefore
-    // available everywhere (not just where collision leaves exist).
-    // Approximate by design: one test point per object, hard lit/shadow.
-
+    // Approximate terrain shadow for one point: one test point per object,
+    // hard lit/shadow. The height function is analytic (available
+    // everywhere, not just where collision leaves exist).
     if(sun == nullptr) { return 1.0f; }
 
-    // The SOI body IS the star (ship in the sun's own SOI): the star is the
-    // light source, so its own terrain can't shadow the ship. Without this the
-    // "line to the sun" ray re-crosses the star's body and reads as shadow.
+    // Ship in the sun's own SOI: the star is the light source, so its own
+    // terrain can't shadow the ship.
     if(planet == sun) { return 1.0f; }
 
-    // Work in universe (root) axes: the ray to the sun and the planet
-    // center are both absolute there, and root_orient carries the full
-    // chain (orbital tilts of the ancestors, axial tilt + spin of the
-    // body) for the conversion into the body-fixed frame below.
+    // Work in universe (root) axes; root_orient carries the full chain into
+    // the body-fixed frame below.
     const glm::dvec3 pos = posFrame->root_orient * posInFrame + posFrame->root_pos;
     const glm::dvec3 sunPos = sun->frame->root_pos;
     const glm::dvec3 dir = glm::normalize(sunPos - pos);
@@ -300,26 +261,24 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
     const glm::dvec3 center = planet->frame->root_pos;
     const glm::dvec3 d = pos - center; // center -> point
 
-    // Cheap reject: does the ray pass within (radius + max relief) of the
-    // planet center?  If not, terrain cannot occlude. This is the common
-    // case (high orbit, interplanetary space) and costs one quadratic.
+    // Cheap reject: the ray misses the (radius + max relief) sphere?
+    // Common case (high orbit) and costs one quadratic.
     const double R = (double)planet->radius + (double)planet->surface.max_height;
     const double b = glm::dot(d, dir);
     const double c = glm::dot(d, d) - R * R;
     const double disc = b * b - c;
     if (disc <= 0.0) { return 1.0f; }
 
-    // Chord of the ray inside the (radius + max relief) sphere; the forward
-    // part of it is where terrain could occlude the sun.
+    // Chord of the ray inside the sphere; the forward part is where
+    // terrain could occlude the sun.
     const double s = std::sqrt(disc);
     double t0 = -b - s;
     const double t1 = -b + s;
     if (t0 < 0.0) { t0 = 0.0; }
     if (t0 >= t1) { return 1.0f; }
 
-    // March the chord against the actual height function. The terrain is a
-    // star function in the planet's ROTATING frame (the frame its meshes
-    // are built in), so convert each sample there.
+    // March the chord against the height function (star function in the
+    // planet's ROTATING frame -- convert each sample there).
     const int steps = (int)glm::clamp((t1 - t0) / 100.0, 8.0, 128.0);
     const double dt = (t1 - t0) / steps;
     const glm::dmat3 toLocal = glm::transpose(planet->frame->getRotFrame()->root_orient);
@@ -329,22 +288,19 @@ float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
         const double r = glm::length(ql);
         if (r < 1.0) { continue; } // degenerate sample at the center
         if (r < planet->GetTerrainHeight(glm::vec3(ql / r))) {
-            // Terrain occludes the line to the sun. 0.15 matches
-            // partsShader's min_light so a shadowed part reads as "night".
+            // 0.15 matches partsShader's min_light so a shadowed part
+            // reads as "night".
             return 0.15f;
         }
     }
     return 1.0f;
 }
 
-// (The pure terrain math -- noise, height/color functions, the color
-// palettes, and the grid builder that used to be create_grid_mesh -- now
-// lives in terragen.h.)
+// (The pure terrain math lives in terragen.h.)
 
-// Smooth UV sphere for the atmosphere rim + the cloud deck. No noise: it
-// must be a clean shell just above the terrain. Winding is outward = front
-// (CCW seen from outside) so back-face culling keeps the near hemisphere
-// the camera sees. res = latitude = longitude rings.
+// Smooth UV sphere for the atmosphere rim + the cloud deck. Winding is
+// outward = front so back-face culling keeps the near hemisphere. res =
+// latitude = longitude rings.
 Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
     Mesh *mesh = new Mesh;
     const int lat = res, lon = res;
@@ -358,11 +314,9 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
                 std::sin(theta) * std::cos(phi),
                 std::cos(theta),
                 std::sin(theta) * std::sin(phi));
-            // The color slot carries the UNWRAPPED sphere params
-            // (phi/2pi, theta/pi) for the cloud deck: its vertex shader
-            // needs a longitude that varies continuously around the seam
-            // (an atan(position) there has a branch cut that smears one
-            // meridian). The atmosphere shader ignores color.
+            // The color slot carries the UNWRAPPED sphere params for the
+            // cloud deck (a continuous longitude across the seam). The
+            // atmosphere shader ignores color.
             verts.push_back(PosNorColVertex(dir * radius, dir,
                 glm::vec3(phi / (2.0f * (float)std::numbers::pi),
                           theta / (float)std::numbers::pi, 0.0f)));
@@ -383,13 +337,9 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
     return mesh;
 }
 
-// A flat annulus in the local XZ plane (normal +Y): a ring of quads between
-// `inner` and `outer` [m]. +Y is the body's spin axis (the tilt is folded
-// into the frame's initial_orient, see load_system), so the annulus lands
-// in the equatorial plane. Winding is CCW seen from +Y (the +Y face is
-// front); DrawRings culls the far face so the underside shows too. Radii
-// are cast to float -- at the largest ring (Jupiter's Thebe ~2.8e8 m) the
-// ULP is ~32 m, fine for a smooth annulus.
+// A flat annulus in the local XZ plane (normal +Y). +Y is the body's spin
+// axis (tilt is folded into initial_orient, see load_system). Winding is
+// CCW seen from +Y; DrawRings culls the far face so the underside shows too.
 Mesh *TerrainBody::create_ring_mesh(double inner, double outer, int res) {
     Mesh *mesh = new Mesh;
     const int seg = res;
@@ -413,13 +363,12 @@ Mesh *TerrainBody::create_ring_mesh(double inner, double outer, int res) {
         unsigned int b = j * 2 + 1;         // outer  @ j
         unsigned int c = (j + 1) * 2;       // inner  @ j+1
         unsigned int d = (j + 1) * 2 + 1;   // outer  @ j+1
-        // split the (a,b,d,c) quad on the (a,d) diagonal: both triangles
-        // wind CCW from +Y (normal up).
+        // split the (a,b,d,c) quad on the (a,d) diagonal (both triangles
+        // wind CCW from +Y)
         idx.push_back(a); idx.push_back(c); idx.push_back(d);
         idx.push_back(a); idx.push_back(d); idx.push_back(b);
     }
-    // copyData=false: no collision is ever built from a ring, so the
-    // double-precision CPU copy the hull builder needs is pure waste.
+    // copyData=false: no collision is ever built from a ring.
     mesh->FromData(verts.data(), (unsigned int)verts.size(),
                    idx.data(), (unsigned int)idx.size(), false);
     return mesh;

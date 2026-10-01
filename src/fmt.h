@@ -1,25 +1,15 @@
-// fmt.h -- UI formatting helpers (header-only, no dependencies, zero-alloc).
-//
-// These format for HUMAN readouts (the HUD, the Orbital / Surface /
-// Transfer windows). The instrument logs (--orbit-log / --dbg-log / ...)
-// deliberately stay raw SI: the e2e CHECK harness parses them, and raw
-// meters is the honest unit there.
-//
-// Buffer-fill, not a returned std::string: the no-allocation guarantee is
-// then by construction, not an accident of std::string's small-string
-// buffer (whose capacity is a library implementation detail the outputs
-// would silently outgrow as distances scale).
+// fmt.h -- UI formatting helpers (header-only, zero-alloc buffer-fill).
+// For HUMAN readouts; instrument logs stay raw SI (the e2e CHECK harness
+// parses them). Buffer-fill, not std::string: the no-alloc guarantee is
+// by construction.
 
 #pragma once
 
 #include <cstddef>
 #include <cstdio>
 
-// A distance with a human-readable unit. The ladder:
-//   m < 1 km < 1 Mm < 1e12 m < 1e16 m < ly
-// so the distance scenarios read neptune = 30.0 AU, oort = 6684.6 AU,
-// interstellar = 10.6 ly, instead of 16-digit meter counts. The sign is
-// kept (a sub-meter negative altitude prints "-0.4 m"). Returns buf.
+// A distance with a human-readable unit (m / km / Mm / AU / ly).
+// The sign is kept. Returns buf.
 inline char *fmt_dist(double meters, char *buf, size_t n) {
     const double a = meters < 0.0 ? -meters : meters;
     const char *unit;
@@ -34,9 +24,7 @@ inline char *fmt_dist(double meters, char *buf, size_t n) {
 }
 
 // "1d 04:03:02" or "04:03:02" — ToF / orbit-period readouts.
-// long long, not int: oort/interstellar-class ToFs exceed INT_MAX days,
-// and the out-of-range double->int cast is UB (INT_MIN on x86-64).
-// Returns buf.
+// long long, not int: interstellar ToFs exceed INT_MAX days (UB cast). Returns buf.
 inline char *fmt_time(double s, char *buf, size_t n) {
     if(s < 0.0) { s = 0.0; }
     const long long d = (long long)(s / 86400.0);

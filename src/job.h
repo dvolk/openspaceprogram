@@ -1,20 +1,8 @@
-// job.h -- a single-worker background job runner for the main loop.
-//
-// Long computations (the porkchop grid and the surface map; terrain gen
-// later) run on one worker thread instead of stalling the frame. The main
-// loop calls JobRunner::poll() once per frame; poll() runs the finished
-// jobs' MAIN-THREAD continuations (which publish the result into game state
-// and poke the UI) and returns the label of the job still running or
-// queued, for the "working on it" indicator.
-//
-// A job's BODY runs on the worker thread, so it must only touch its own
-// snapshot of the inputs (pure math) -- not game state, GL or imgui. When
-// it is done it RETURNS a small continuation; poll() runs that on the main
-// thread. That split is what keeps it safe: the worker never reads or
-// writes shared game state, and every write to it happens where the UI
-// already does its work. To adopt it, snapshot the inputs on the main
-// thread, post a body that does the pure work and returns an apply lambda,
-// and let the apply publish the result.
+// job.h -- a single-worker background job runner. A job's BODY runs
+// off-thread (pure math over a snapshot) and RETURNS a main-thread
+// continuation; poll() runs that on the main thread. The worker never
+// touches shared game state.
+
 #pragma once
 
 #include <condition_variable>
@@ -36,12 +24,8 @@ public:
     // The worker is joined (draining any queued jobs) on destruction.
     ~JobRunner() { join(); }
 
-    // Enqueue a job for the worker thread. `label` is what the UI shows
-    // while it runs ("Porkchop grid", "Surface map", ...). `body` runs OFF
-    // the main thread and RETURNS the main-thread continuation (an empty
-    // std::function = none) that publishes the result. `body` must be safe
-    // to run off-thread (pure math over a snapshot); the returned
-    // continuation is what may touch game state / the UI.
+    // Enqueue a job. `body` runs OFF the main thread and RETURNS the
+    // main-thread continuation. `body` must be pure (snapshot inputs only).
     template <class Body>
     void post(const std::string &label, Body &&body) {
         std::function<std::function<void()>()> fn(std::forward<Body>(body));
@@ -53,36 +37,21 @@ public:
         cv_.notify_one();
     }
 
-    // Main thread, once per frame: run the finished jobs' continuations
-    // (in order) and return the label of the job still running or queued
-    // ("" when idle) -- the "working on it" indicator.
+    // Main thread, once per frame: run finished jobs' continuations and
+    // return the label of the job still running ("" when idle).
     std::string poll();
 
-    // True while any posted job has not fully landed (queued, running, or
-    // finished-but-not-yet-applied).
+    // True while any posted job has not fully landed.
     bool busy() const;
 
-    // Block until every posted job has finished (clean shutdown).
-    // Idempotent: the destructor joins too, so callers that join first
-    // (main.cpp does, before freeing the state a job body may hold) are
-    // safe.
+    // Block until every posted job has finished. Idempotent (the dtor joins too).
     void join();
 
-    // Discard all QUEUED jobs and stop: wait only for the single job that
-    // may be in flight (so it finishes reading whatever snapshot it holds
-    // before the caller frees it) and let the worker exit, without running
-    // the rest of the queue. Use at hard shutdown where the pending work
-    // (e.g. the deferred terrain stream) is thrown away -- joining would
-    // drain the whole queue first. Idempotent, like join().
+    // Discard QUEUED jobs and stop (wait only for the in-flight job so it
+    // finishes reading its snapshot). Idempotent. Use at hard shutdown.
     void abort();
 
-    // Recreate the worker after an abort()/join(): those are terminal for the
-    // worker thread (a joined std::thread cannot be restarted), so a runner
-    // that has stopped is otherwise single-use. restart() clears the one-way
-    // stop latch + the leftover handoff state and spawns a fresh worker, so ONE
-    // runner can serve multiple "load a system" cycles -- the in-process system
-    // switch aborts the old system's terrain stream and then posts the new
-    // one's. A no-op while the worker is already running.
+    // Recreate the worker after abort()/join(). A no-op while running.
     void restart();
 
 private:
@@ -97,17 +66,9 @@ private:
     };
 
     // State first, the worker thread LAST: members initialize in
-    // DECLARATION order, and the std::thread ctor starts the thread
-    // immediately. Declaring worker_ first let run() race this ctor --
-    // it locked mu_ before mu_'s own ctor had run, over whatever bytes
-    // were already in that stack slot. Usually harmless (fresh stack
-    // pages are zeroed, which reads like a fresh mutex); rarely the
-    // garbage reads as a robust mutex with a dead owner and
-    // std::mutex::lock() throws system_error (EOWNERDEAD, "Owner died"),
-    // terminating the process at load (TSAN: the ctor's mutex-init write
-    // vs the worker's first lock, no happens-before between them).
-    // With worker_ last, pthread_create is the final initialization step,
-    // so the thread-start synchronization edge covers all the state above.
+    // DECLARATION order and the std::thread ctor starts immediately.
+    // worker_ first let run() race this ctor (locking mu_ before its ctor
+    // had run), which could throw EOWNERDEAD at load.
     mutable std::mutex mu_;
     std::condition_variable cv_;
     std::deque<Task> tasks_;

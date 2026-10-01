@@ -1,17 +1,6 @@
-// save.cpp -- the Game-coupled capture/restore (save_game / load_game) + the
-// save-directory helpers. The pure JSON (de)serialization lives in save.h
-// (header-only, so tests/test_save.cpp links it with no Game / Bullet); this
-// file needs the fleet (Game / Ships / Vehicle / Kerbal) to read and rebuild
-// it, so it is the only part of the save feature that touches the game.
-//
-// capture:  walk the fleet in canonical order (collectVehicles), read each
-//           vehicle's authoritative state (part tree + fuel + mass + pose +
-//           staging + docking + crew) into a SaveShip, and write the meta
-//           (dir/save.json) + one file per vehicle (dir/ships/<slug>.json).
-// restore:  clear the current fleet (ships + crew), rebuild each vehicle in
-//           the save's order (ships before their crew), then resolve the
-//           cross-references (the active ship, the dock targets) and put
-//           each ship into the world state it was saved in (live or railed).
+// save.cpp -- the Game-coupled capture/restore (save_game / load_game) +
+// the save-directory helpers. The pure JSON (de)serialization lives in
+// save.h (header-only).
 
 #include "save.h"
 
@@ -43,9 +32,8 @@ namespace {
 
 std::string slug(size_t i) { return "v" + std::to_string(i); }
 
-// The save's real-world timestamp: UTC (not local) so it is unambiguous and
-// portable across boxes/timezones. gmtime is standard C (no POSIX _r / Windows
-// _s fork) -- main-thread only, so its static buffer is fine.
+// The save's real-world timestamp: UTC so it is unambiguous across
+// boxes/timezones. gmtime is standard C -- main-thread only.
 std::string nowString() {
     time_t t = time(nullptr);
     char buf[64];
@@ -74,18 +62,15 @@ nlohmann::json readJsonFile(const std::string &path) {
 }
 
 // Resolve a scenario name to its def; "" -> none. An unknown name is a bad
-// save (a scenario renamed or removed since), so throw with the name.
+// save, so throw with the name.
 const ScenarioDef *resolveScenario(const std::string &name) {
     if(name.empty()) { return nullptr; }
     return scenario_by_name(name);
 }
 
-// The live Part a saved uid names, but only if it is one of `owner`'s. The
+// The live Part a saved uid names, but only if it is one of `owner`'s (the
 // uid map spans the whole save, so the uid alone does not prove the part
-// belongs to the ship named alongside it -- and updateDocking assumes a dock
-// target's port really is on the target, and an aboard kerbal's capsule
-// really is on the ship it names. 0 or a miss gives nullptr. (Declared in the
-// namespace, before the crew builder, so both load paths resolve through it.)
+// belongs to the ship named alongside it). 0 or a miss gives nullptr.
 Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
                     const Vehicle *owner) {
     if(uid == 0 || owner == nullptr) { return nullptr; }
@@ -98,12 +83,10 @@ Part *findSavedPart(const std::map<uint64_t, Part *> &byUid, uint64_t uid,
 }
 
 
-// ---- inventory items (phase 4.6) --------------------------------------------
+// ---- inventory items ----------------------------------------------------
 // An item is a standalone Part owned by its container (Part::ownedContents),
-// and a container may itself be an item -- so capture and restore are
-// recursive. Both paths walk the SAME depth-first order (the item is emitted
-// inside its container), which is what keeps a container-before-item save
-// reconstructable.
+// and a container may itself be an item -- capture and restore are
+// recursive. Both paths walk the SAME depth-first order.
 
 // One item (and its nested items) from the live Part to SavePart.
 SavePart saveItemPart(Part *c) {
@@ -121,17 +104,15 @@ SavePart saveItemPart(Part *c) {
     return si;
 }
 
-// Rebuild `saved` (and each entry's nested items) as items of `container`,
-// wiring ownership + traversal + back-reference and the item's owner (the
-// container's vehicle). Throws std::runtime_error on an unknown def or a
-// container over capacity; whatever was wired before the throw hangs off
-// `container`, so the caller frees it by deleting the owning vehicle.
+// Rebuild `saved` (and each entry's nested items) as items of `container`.
+// Throws on an unknown def or a container over capacity; whatever was wired
+// before the throw hangs off `container` (the caller frees it by deleting
+// the owning vehicle).
 void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
                          Part *container, const std::string &shipName) {
     const PartsCatalog &cat = g.ships.catalog();
-    /* a live add refuses a full container (inventory.cpp); a load must too,
-       or a hand-edited save can exceed inventory_capacity -- a state the
-       game cannot otherwise reach. */
+    // a live add refuses a full container; a load must too (a hand-edited
+    // save must not exceed inventory_capacity)
     if((int)saved.size() > container->def->inventory_capacity) {
         throw std::runtime_error("load: '" + shipName + "' part '"
                                  + container->def->name + "' holds "
@@ -170,8 +151,8 @@ void buildInventoryItems(Game &g, const std::vector<SavePart> &saved,
 }
 
 // How many inventory items a part carries (itself counted as 1 per level):
-// the load summary line reports the BUILT count, so a restore that silently
-// drops a nested item shows up as a smaller number, not a green load.
+// the load summary line reports the BUILT count, so a silently dropped
+// nested item shows up as a smaller number.
 size_t countPartInventory(Part *p) {
     size_t n = p->ownedContents.size();
     for(Part *c : p->ownedContents) { n += countPartInventory(c); }
@@ -190,8 +171,8 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         Kerbal *k = static_cast<Kerbal *>(v);
         Vehicle *ship = k->aboard();
         s.aboard = (ship != nullptr) ? ship->name : "";
-        // the capsule is named by uid (not its index in the ship's part list):
-        // stable across a merge/split and order-independent on load. 0 = free.
+        // the capsule is named by uid (not its index): stable across a
+        // merge/split and order-independent on load. 0 = free.
         s.aboard_part = (k->aboardPart != nullptr) ? k->aboardPart->uid : 0;
         // a free (EVA) kerbal lives in the world -- save its pose like a
         // ship's (an aboard one's pose is unused on load).
@@ -201,16 +182,13 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         s.pose.vel = v->GetVel();
         s.pose.angvel = GetAngVelocity(v->hull);
         s.onRails = v->onRails;
-        /* phase 4.1: the suit tank contents (the kerbal's part 0 is the
-           suit; its resources are the EVA propellant). Saved so a kerbal
-           that burned some does not get a free re-seed on load. */
+        /* the suit tank contents (the kerbal's part 0 is the suit). Saved
+           so a kerbal that burned some does not get a free re-seed. */
         if(!v->parts.empty()) {
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 s.suit_fuel.push_back((double)v->parts[0]->resources.current[r]);
             }
-            /* phase 4.6: the suit's inventory items (depth-first). Without
-               this the suit -- the catalog's primary container -- would
-               silently lose its pocket on every save. */
+            // the suit's inventory items (depth-first)
             for(Part *c : v->parts[0]->ownedContents) {
                 s.suit_inventory.push_back(saveItemPart(c));
             }
@@ -238,9 +216,8 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
             sp.fuel.push_back((double)p->resources.current[r]);
         }
         sp.experiments = p->experiments;
-        /* phase 4.6: nested inventory items (depth-first: an item's own
-           items are emitted inside it, so load reconstructs the outermost
-           container before anything nested). */
+        // nested inventory items (depth-first: an item's own items are
+        // emitted inside it)
         for(Part *c : p->ownedContents) {
             sp.inventory.push_back(saveItemPart(c));
         }
@@ -286,23 +263,15 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
 // Rebuild one ship from its saved part tree. The parts are built with the
 // low-level setRoot/attach primitives (the SOLVED poses, not a re-derived
 // attach spec -- a docking seam's relative geometry is not recoverable from
-// an attach spec, so the save carries the geometry it actually is). finalize()
-// then re-derives the fuel groups + the compound body; the saved stage
-// bookkeeping (a ship may have staged) is restored over finalize's defaults.
-//
-// `savedUidToPart` (optional) receives this SAVE's uid -> the rebuilt Part.
-// It is the caller's, not a local, because it has to span every ship file --
-// a dock target's port lives in another ship. The rebuilt Parts keep the fresh
-// uids their own constructors minted; the saved uids are only this file's keys
-// (see save.h).
+// an attach spec). `savedUidToPart` (optional) receives this SAVE's uid ->
+// the rebuilt Part; it is the caller's because it must span every ship file
+// (a dock target's port lives in another ship).
 Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
                                 std::map<uint64_t, Part *> *savedUidToPart) {
     const PartsCatalog &cat = g.ships.catalog();
-    /* Resolve the scenario BEFORE constructing the vehicle: it throws on an
-       unknown name, and doing it first is what keeps a refused load from
-       leaking -- a throw after `new Vehicle` (and before this ship is in the
-       load's `built` list) would free nothing, since the rollback only walks
-       `built`. The scenario needs only s.scenario, no built state. */
+    // Resolve the scenario BEFORE constructing the vehicle: it throws, and
+    // doing it first is what keeps a refused load from leaking (the rollback
+    // only walks `built`).
     const ScenarioDef *scn = resolveScenario(s.scenario);
     Vehicle *v = new Vehicle;
     v->name = s.name;
@@ -311,12 +280,9 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     std::map<uint64_t, Part *> uidToPart;
     for(size_t i = 0; i < s.parts.size(); i++) {
         const SavePart &sp = s.parts[i];
-        /* Refuse an unidentified or doubly-identified part rather than guess.
-           uid 0 means a save written before parts carried identity, so none
-           of its references can be resolved at all; a repeated uid is a
-           corrupt or hand-edited file. Both are exactly the ambiguity that
-           made id-keyed resolution silently pick the wrong part, so they are
-           errors here instead of a last-writer-wins overwrite. */
+        /* Refuse an unidentified or doubly-identified part rather than
+           guess: uid 0 is a save that predates part identity; a repeated uid
+           is a corrupt or hand-edited file. */
         if(sp.uid == 0) {
             delete v;
             throw std::runtime_error("load: saved ship '" + s.name + "' part '" + sp.id
@@ -352,7 +318,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         } else {
             std::map<uint64_t, size_t>::const_iterator it = uidToIndex.find(sp.parent);
             if(it == uidToIndex.end()) {
-                delete p;   // not yet attached to v->parts (so ~Vehicle won't take it); ~Part drops the Body
+                delete p;   // not yet attached to v->parts (so ~Vehicle won't take it)
                 delete v;
                 throw std::runtime_error("load: saved ship '" + s.name + "' part '" +
                                          sp.id + "' has an unknown parent uid " +
@@ -364,19 +330,15 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         uidToPart[sp.uid] = p;
         if(savedUidToPart != nullptr
            && !savedUidToPart->insert(std::make_pair(sp.uid, p)).second) {
-            /* p is attached now, so ~Vehicle frees it. Two ship files claiming
-               one uid cannot come from a save this game wrote: every part in
-               the fleet had a distinct process-wide uid when it was captured. */
+            /* p is attached now, so ~Vehicle frees it. Two ship files
+               claiming one uid cannot come from a save this game wrote. */
             delete v;
             throw std::runtime_error("load: two ships claim part uid "
                                      + std::to_string(sp.uid));
         }
-        /* phase 4.6: reconstruct the inventory items (depth-first, nested
-           included): the container is built now, so its items can be wired
-           to it, and each item is a standalone Part (not in the ship's part
-           tree) that the container OWNS (ownedContents) and traverses
-           (contents). A refused item frees through `delete v` below -- the
-           items wired so far hang off p and go with it. */
+        /* Reconstruct the inventory items (depth-first, nested included).
+           A refused item frees through `delete v` -- the items wired so far
+           hang off p and go with it. */
         try {
             buildInventoryItems(g, sp.inventory, p, s.name);
         } catch(const std::exception &) {
@@ -384,10 +346,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
             throw;
         }
     }
-    /* A named controller that is not in the ship is corruption, not something
-       to paper over with finalize()'s default: the controller is what the
-       camera basis and the stick frame are built from, so a silent fallback
-       flies the ship from the wrong part's axes. */
+    /* A named controller that is not in the ship is corruption: a silent
+       fallback would fly the ship from the wrong part's axes. */
     if(s.controller != 0) {
         std::map<uint64_t, Part *>::const_iterator it = uidToPart.find(s.controller);
         if(it == uidToPart.end()) {
@@ -417,9 +377,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->scenario = scn;   // resolved before `new Vehicle` (see top of this fn)
     v->slot = s.slot;
     v->sun = g.sun;
-    // Restore the persisted journal BEFORE setSoi, so setSoi's observe is a
-    // no-op on the unchanged body and the mission history survives the load
-    // (a fresh log -- an old save -- instead starts here at the load instant).
+    // Restore the journal BEFORE setSoi, so setSoi's observe is a no-op on
+    // the unchanged body and the mission history survives the load.
     v->flog = s.flog;
     // The re-home: enters the body's ships list and observes the SoI body.
     TerrainBody *pb = g.sys.find(s.pose.body);
@@ -432,11 +391,10 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->thruster_util = s.throttle;   // restore the throttle (was saved from thruster_util)
     v->setSlewRequest((SlewMode)s.slew_request);
 
-    /* A seam names two of THIS ship's parts, and both must be present. This
-       used to `continue` past a seam it could not resolve, which is worse than
-       a loud failure: the joint stays physically docked while the record that
-       would undock it is gone, so the ship becomes permanently un-undockable
-       (undock finds nothing to pop and reports "Cannot undock" forever). */
+    /* A seam names two of THIS ship's parts, and both must be present.
+       Skipping an unresolvable seam leaves the joint physically docked
+       while the undock record is gone -- the ship becomes permanently
+       un-undockable. */
     for(size_t k = 0; k < s.docks.size(); k++) {
         std::map<uint64_t, Part *>::const_iterator portIt = uidToPart.find(s.docks[k].port);
         std::map<uint64_t, Part *>::const_iterator rootIt = uidToPart.find(s.docks[k].root);
@@ -452,14 +410,11 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 }
 
 // Rebuild one kerbal (a one-part Vehicle) from its ship def + aboard state.
-// The kerbal's fuel (its RCS suit) is NOT saved -- it seeds full on load,
-// like the startup spawn_crew_kerbal. An aboard kerbal is parked inside its
-// capsule (out of the world). phase 3: its mass is NOT in the capsule's
-// saved body mass (that bake is gone) -- it is carried by the containment
-// edge, so the capsule's compound is rebuilt AFTER the edge is set below
-// (rebuildCompound), which is what puts the kerbal's mass into the ship.
-// `savedUidToPart` spans every ship file (built before the crew, which always
-// follows its ship) and is what the aboard capsule's uid resolves through.
+// The kerbal's fuel (its RCS suit) is NOT saved -- it seeds full on load.
+// An aboard kerbal is parked inside its capsule (out of the world); its mass
+// is carried by the containment edge, so the capsule's compound is rebuilt
+// AFTER the edge is set. `savedUidToPart` spans every ship file and is what
+// the aboard capsule's uid resolves through.
 Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                             std::map<std::string, Vehicle *> &byName,
                             const std::map<uint64_t, Part *> &savedUidToPart) {
@@ -473,22 +428,18 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     k->m_parent = g.home;
     k->sun = g.sun;
     k->frame = g.home->rot_frame;
-    /* build_ship can throw (a bad parent / controller / fuel link in the def)
-       after some parts are attached to k. k is not in the load's `built` list
-       yet, so the rollback would not free it -- delete it here. ~Vehicle drops
-       the partially-attached parts; hull is null at this point (finalize has
-       not run) and ~Vehicle handles that. */
+    /* build_ship can throw after some parts are attached; k is not in the
+       load's `built` list yet, so the rollback would not free it -- delete
+       it here. ~Vehicle drops the partially-attached parts. */
     try {
         build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0));
     } catch(...) {
         delete k;
         throw;
     }
-    /* phase 4.1: restore the suit tank contents (build_ship's init() re-seeded
-       them full; this overwrites with the saved amount, so a kerbal that
-       burned some EVA propellant does not get a free re-seed on load). The
-       body mass is the DRY structure, so only the contents are restored --
-       effectiveMass() reads them from resources.current. */
+    /* Restore the suit tank contents (build_ship's init() re-seeded them
+       full). Only the contents -- effectiveMass() reads them from
+       resources.current. */
     if(!s.suit_fuel.empty() && !k->parts.empty()) {
         Part *suit = k->parts[0];
         for(size_t r = 0; r < s.suit_fuel.size() && r < (size_t)ResourceType::Num; r++) {
@@ -500,10 +451,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     if(!s.suit_experiments.empty() && !k->parts.empty()) {
         k->parts[0]->experiments = s.suit_experiments;
     }
-    /* phase 4.6: the suit's inventory items (depth-first, nested included) --
-       without this the suit loses its pocket on every load. A refused item
-       frees through `delete k` (the items wired so far hang off the suit).
-       The compound was built before the items existed, so rebuild it. */
+    /* The suit's inventory items (depth-first). The compound was built
+       before the items existed, so rebuild it. */
     if(!s.suit_inventory.empty() && !k->parts.empty()) {
         try {
             buildInventoryItems(g, s.suit_inventory, k->parts[0], s.name);
@@ -513,8 +462,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         }
         k->rebuildCompound();
     }
-    // Restore the persisted journal BEFORE either setSoi below, so its observe
-    // is a no-op on the unchanged body and the kerbal's history survives load.
+    // Restore the journal BEFORE either setSoi below, so its observe is a
+    // no-op on the unchanged body.
     k->flog = s.flog;
     if(s.aboard.empty()) {
         // free (on EVA): live in the world, at its saved pose
@@ -526,8 +475,7 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->placeShip(s.pose.pos, s.pose.rot);
         k->setVelocity(s.pose.vel);
         SetAngVelocity(k->hull, s.pose.angvel);
-        // a free kerbal saved on the rails (coasting at high warp) stays
-        // parked -- the ships' phase-2 pass skips crew.
+        // a free kerbal saved on the rails stays parked (phase-2 skips crew)
         if(s.onRails) { k->goOnRails(); }
     } else {
         std::map<std::string, Vehicle *>::const_iterator it = byName.find(s.aboard);
@@ -537,13 +485,9 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                                      "ship '" + s.aboard + "'");
         }
         Vehicle *ship = it->second;
-        /* The capsule is named by uid, not index. aboard_part 0 is the "absent"
-           sentinel -- a save that predates uid-keyed crew -- so it is refused
-           rather than silently parked in part 0. A nonzero uid must name one of
-           THIS ship's parts (a reordered/foreign save is corruption, not a miss
-           to paper over), and that part must actually be a capsule: the old
-           index format had no such check, so a reordered save could park a
-           kerbal in a fuel tank (report 1.4). */
+        /* The capsule is named by uid, not index. aboard_part 0 is the
+           "absent" sentinel and is refused. A nonzero uid must name one of
+           THIS ship's parts and must actually be a capsule. */
         if(s.aboard_part == 0) {
             delete k;
             throw std::runtime_error("load: crew '" + s.name + "' is aboard ship '"
@@ -553,9 +497,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         Part *cap = findSavedPart(savedUidToPart, s.aboard_part, ship);
         if(cap == nullptr) {
             delete k;
-            /* Distinguish the two failure modes: a uid no ship has (unknown /
-               mistyped) vs a uid that IS in the save but on a different ship
-               (reordered crew). The second is the reorder-corruption case. */
+            /* Distinguish: a uid no ship has vs a uid that IS in the save
+               but on a different ship (the reorder-corruption case). */
             const bool knownUid =
                 savedUidToPart.find(s.aboard_part) != savedUidToPart.end();
             const std::string where = knownUid
@@ -571,12 +514,9 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
                                      + cap->def->name + "' of ship '" + s.aboard
                                      + "', which is not a capsule (crew_capacity 0)");
         }
-        /* A live board refuses a full capsule (game.cpp kerbalBoard); a load
-           must too, or a hand-edited save can park more kerbals in a seat than
-           the capsule has -- a state the game can't otherwise reach. The count
-           is the capsule's CREW (inventory items share contents but are not
-           seated), built up one save entry at a time, so this fires on the one
-           that overflows. */
+        /* A live board refuses a full capsule; a load must too. The count is
+           the capsule's CREW (inventory items share contents but are not
+           seated), built up one save entry at a time. */
         int crewInCap = 0;
         for(Part *c : cap->contents) {
             if(!c->ownedBy(cap)) { crewInCap++; }
@@ -599,21 +539,15 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
         k->railFrozen = true;
         k->aboardPart = cap;
         // The bookkeeping re-home (aboardPart is set first -- setSoi keys
-        // its ships-list membership on it, and an aboard kerbal is in no
-        // body list): observes the SoI body -- a no-op when the restored
-        // journal's last_body already matches (always so for our own saves).
+        // its ships-list membership on it).
         k->setSoi(ship->frame, g.time);
         ship->crew.push_back(k);
-        /* step 2.4: register the containment edge (the kerbal's part is
-           parked in the capsule, both directions). Vehicle::crew stays the
-           sole owner; contents is a non-owning back-reference (2.1). */
+        // Register the containment edge (both directions). Vehicle::crew
+        // stays the sole owner.
         cap->contents.push_back(k->parts[0]);
         k->parts[0]->container = cap;
-        /* phase 3: the ship's compound was built when the ship loaded (before
-           this kerbal existed), so it does not yet carry the crew's mass. The
-           capsule's effectiveMass now includes the kerbal through the edge --
-           rebuild so the compound does. (No addPartMass: the mass is derived
-           from the edge, not baked into the capsule body.) */
+        // The ship's compound was built before this kerbal existed: rebuild
+        // so it carries the crew's mass (derived from the edge, not baked).
         ship->rebuildCompound();
     }
     return k;
@@ -622,16 +556,13 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
 } // namespace
 
 // ---- the public entry points (declared in save.h) ---------------------------
-// (ensure_dir / list_saves / delete_save are inline in save.h now -- they are
-// pure file-system ops with no game state, so the headless test reaches them.)
 
 void save_game(Game &g, const std::string &dir) {
     ensure_dir(dir);
     ensure_dir(dir + "/ships");
     SaveMeta meta;
     // The system the game is ACTUALLY running (the boot --system, or a live
-    // switch), not args.system_file (the boot CLI arg, stale after a swap) --
-    // a load reads this back to switch into the save's system.
+    // switch), not args.system_file (stale after a swap).
     meta.system = g.systemPath.empty() ? g.args.system_file : g.systemPath;
     meta.parts = g.args.parts_file;
     meta.time = g.time;
@@ -655,48 +586,32 @@ void save_game(Game &g, const std::string &dir) {
 
 void load_game(Game &g, const std::string &dir) {
     SaveMeta meta = saveMetaFromJson(readJsonFile(dir + "/save.json"));
-    /* setTime, not a bare assignment: the clock jumps here (loading from the
-       title screen moves it by however much the player warped there -- the
-       title runs the same sim on the same clock) and a load always starts
-       paused, so no tick would re-derive the bodies' orbits and spin from the
-       new epoch. Without it the paused load renders the system where the
-       previous state left it, and everything -- the bodies' positions, the
-       surface readout's lat/lon, which come off the spin -- snaps into place
-       on the first unpaused tick. Done BEFORE the fleet is rebuilt below: a
-       ship restored into the ROTATING frame that then parks as coasting
-       captures its inertial rail state (rail_pos / rail_vel / rail_orient, in
-       Vehicle::goOnRails) out of these transforms. */
+    /* setTime, not a bare assignment: the clock jumps here and a load always
+       starts paused, so no tick would re-derive the bodies' orbits and spin
+       from the new epoch. Done BEFORE the fleet is rebuilt: a ship restored
+       into the ROTATING frame that then parks as coasting captures its
+       inertial rail state out of these transforms. */
     g.setTime(meta.time);
-    // A load always starts paused, whatever warp the save was made at -- the
-    // player resumes when ready. The save still records time_accel (the
+    // A load always starts paused. The save still records time_accel (the
     // round-trip field); it is simply not restored here.
     g.time_accel = 0;
-    // The save's difficulty (New Game's exhaust-velocity scale). A save is
-    // not portable across scales, so the file wins over Settings -- except
-    // when --exhaust-scale was given (cli_given beats files, same as
-    // apply_settings_args). An old save with no field restores 1.0.
+    // The save's difficulty (exhaust-velocity scale). A save is not portable
+    // across scales, so the file wins over Settings -- except when
+    // --exhaust-scale was given (cli_given beats files).
     if(!g.args.cli_given.exhaust_scale) {
         g.args.exhaust_scale = meta.exhaust_scale;
     }
     // science (absent in a pre-science save: score 0, nothing recovered)
     g.science.setFrom(meta.science_score, meta.recovered);
 
-    /* Transactional: everything that can fail is reading or building, and
-       neither needs the old fleet DELETED first -- only out of the bodies'
-       ship lists, which the detach below does. So a load that throws leaves
-       the running FLEET exactly as it was. It used to delete the fleet first
-       and discover the failure afterwards, which left the player with nothing
-       to fly and no way back. (The clock, the frames, time_accel and
-       exhaust_scale above are NOT rolled back, so a refused load leaves the
-       OLD fleet paused at the SAVE's epoch -- and a railed ship is not
-       analytic in the clock (railsTick integrates rail_pos/rail_vel
-       incrementally), so that fleet is off-epoch: it keeps the conic phase it
-       was captured at while the bodies sit at meta.time. Still flyable, and
-       the player can resume or load something else, but not "exactly as it
-       was".) */
+    /* Transactional: a load that throws leaves the running FLEET exactly as
+       it was (the old fleet is only detached from the bodies' ship lists,
+       not deleted). The clock, the frames, time_accel and exhaust_scale
+       above are NOT rolled back, so a refused load leaves the OLD fleet
+       paused at the SAVE's epoch. */
 
-    // Read every ship file. A truncated or missing ships/<name>.json is what a
-    // crash or a full disk mid-save actually produces.
+    // Read every ship file. A truncated or missing ships/<name>.json is what
+    // a crash or a full disk mid-save produces.
     std::vector<SaveShip> saves;
     saves.reserve(meta.ships.size());
     for(size_t i = 0; i < meta.ships.size(); i++) {
@@ -705,38 +620,22 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     /* Detach the running fleet from the bodies but keep it ALIVE until the
-       load commits. It has to be out of the way first because the builders
-       append the new vehicles to those same lists (buildShipFromSaveParts
-       re-homes through `Vehicle::setSoi`), and it has to stay alive because
-       deleting it here is exactly what used to make a failed load
-       unrecoverable.
-
-       Detaching rather than clearing also means nothing else needs saving:
-       g.ship, g.kerbal, g.lastShip and g.part_sels all still point at live
-       vehicles throughout the build, so a refusal can put the lists back and
-       the game carries on untouched. (The builders read the catalog, the
-       shader, the system and the home body -- never the active ship.) */
+       load commits: out of the way first (the builders append to those same
+       lists), alive so a failed load is recoverable. Detaching rather than
+       clearing also means nothing else needs saving: g.ship etc. stay valid
+       throughout the build. */
     std::vector<std::pair<TerrainBody *, std::vector<Vehicle *>>> detached;
     for(TerrainBody *b : g.sys.bodies) {
         detached.emplace_back(b, b->ships);
         b->ships.clear();
     }
 
-    /* Build every vehicle. The other realistic failure is a save naming a part
-       the catalog no longer has -- the parts catalog moves and nothing here is
-       versioned -- which buildShipFromSaveParts throws for.
-
-       collectVehicles orders a ship before its crew, so a crew's aboard ship
-       is already in byName when the crew is built -- the same invariant the
-       cleanup below relies on. */
+    /* Build every vehicle. collectVehicles orders a ship before its crew,
+       so a crew's aboard ship is already in byName when the crew is built. */
     std::map<std::string, Vehicle *> byName;
-    /* The save's uid -> the rebuilt Part, spanning EVERY ship file: a dock
-       target's port lives in another ship, so phase 2 cannot resolve it from
-       one ship's local map. Keyed by the saved uid -- the rebuilt Part carries
-       a fresh uid of its own and is not addressable by the saved one anywhere
-       else. Distinct across files because the whole fleet was live in one
-       process when it was captured; a collision is a corrupt save and
-       buildShipFromSaveParts throws for it. */
+    /* The save's uid -> the rebuilt Part, spanning EVERY ship file (a dock
+       target's port lives in another ship). Keyed by the saved uid; the
+       rebuilt Part carries a fresh uid of its own. */
     std::map<uint64_t, Part *> savedUidToPart;
     std::vector<Vehicle *> built;
     built.reserve(saves.size());
@@ -750,19 +649,10 @@ void load_game(Game &g, const std::string &dir) {
         }
     } catch(...) {
         /* Put the body lists back BEFORE deleting anything, so no list ever
-           holds a freed pointer: the new vehicles are in those lists too
-           (the builders put them there), and ~Vehicle does not unlink itself.
-
-           Then delete what was built -- but not an aboard crew character,
-           because ~Vehicle owns its crew and deleting both the ship and its
-           kerbals would be a double free. A free (EVA) kerbal is not aboard
-           anything and is deleted here like any other vehicle.
-
-           The ownership test is a SEPARATE pass, because isCrewAboard() is
-           virtual and the answer has to be read while everything is still
-           alive: deleting a ship frees the kerbals aboard it, so testing them
-           afterwards would call a virtual function through freed memory. (The
-           same trap remove_ship had -- see its handoff loop.) */
+           holds a freed pointer. Then delete what was built -- but not an
+           aboard crew character (~Vehicle owns its crew). The ownership test
+           is a SEPARATE pass: isCrewAboard() is virtual and must be read
+           while everything is still alive. */
         for(auto &d : detached) { d.first->ships = d.second; }
         std::vector<char> ownedByShip(built.size(), 0);
         for(size_t i = 0; i < built.size(); i++) {
@@ -775,15 +665,9 @@ void load_game(Game &g, const std::string &dir) {
     }
 
     // The load committed -- adopt the game identity from the save's location,
-    // here rather than at the top so a REFUSED load (a throw above) leaves
-    // the running identity untouched: adopting early would make the surviving
-    // fleet's next Save land in the rejected save's game dir. A slot that
-    // lives in a dir directly under saves/ belongs to THAT game (the dir name
-    // is the identity; the display name is it minus the leading <stamp>-, a
-    // renamed dir keeps its whole name). A save anywhere else -- an e2e
-    // fixture, a legacy flat save directly under saves/ -- leaves the running
-    // identity (a later save then lands in the running game's dir, not a
-    // phantom one).
+    // here so a REFUSED load leaves the running identity untouched. A slot
+    // under saves/<game>/ belongs to that game; a save anywhere else leaves
+    // the running identity.
     {
         namespace fs = std::filesystem;
         const fs::path gamedir = fs::path(dir).parent_path();
@@ -807,16 +691,10 @@ void load_game(Game &g, const std::string &dir) {
     g.lastShip = nullptr;
     g.focusBody = 0;
 
-    // phase 2: resolve the cross-references + the world state, now that
-    // every vehicle exists. The dock target was saved by NAME with its port by
-    // uid, so it is resolved here; the kerbal's aboard ship was resolved at
-    // build time.
-    //
-    // A dock INTENT that names a part which is gone stays lenient (the target
-    // just is not restored), unlike the dock SEAM in buildShipFromSaveParts
-    // which throws: a stale target is an ordinary runtime state --
-    // updateDocking already validates and drops one whose ship or port went
-    // away -- whereas a dropped seam silently strands a real joint.
+    // phase 2: resolve the cross-references + the world state. A dock INTENT
+    // that names a part which is gone stays lenient (unlike the dock SEAM in
+    // buildShipFromSaveParts, which throws: a dropped seam silently strands
+    // a real joint).
     for(size_t i = 0; i < saves.size(); i++) {
         const SaveShip &s = saves[i];
         if(s.is_crew) { continue; }
@@ -830,12 +708,10 @@ void load_game(Game &g, const std::string &dir) {
             }
         }
         v->dockArmPort = findSavedPart(savedUidToPart, s.dock_arm_port, v);
-        // the world state the ship was saved in: railed ships park (coast
-        // or freeze), live ships enter the physics world.
-        // buildShipFromSaveParts left the hull out of the world, so this is
-        // the one place it is added (or parked). A railed ship that is not
-        // rail-eligible (shouldn't happen -- the save only parked eligible
-        // ones) stays live rather than being stranded.
+        // the world state the ship was saved in: railed ships park, live
+        // ships enter the physics world. buildShipFromSaveParts left the
+        // hull out of the world, so this is the one place it is added (or
+        // parked). A railed ship that is not rail-eligible stays live.
         if(s.onRails) {
             if(!v->goOnRails()) { v->enterWorld(); }
         } else {
@@ -858,10 +734,8 @@ void load_game(Game &g, const std::string &dir) {
     // The save may enter OR leave the no-ship state: keep the "ship" focus
     // entry in sync and point the camera at the ship, or home if none.
     g.syncShipFocus();
-    // The BUILT inventory count (the fleet's parts and their nested items,
-    // a kerbal's pocket included): a restore that silently dropped a nested
-    // item would print a smaller number than the save carried, instead of
-    // failing the load's EXPECT.
+    // The BUILT inventory count: a silently dropped nested item prints a
+    // smaller number than the save carried.
     size_t invItems = 0;
     for(size_t i = 0; i < built.size(); i++) {
         for(Part *p : built[i]->parts) { invItems += countPartInventory(p); }

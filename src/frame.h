@@ -34,18 +34,12 @@ struct Frame {
     double parent_mu; // gravitational parameter of the body orbited (0 =
                       // non-orbiting); the rail propagates under this
     double rot_ang_speed;
-    // Spin axis in this frame's local (body) frame. Always (0,1,0): the body
-    // spins about its own figure axis; a tilted body carries the tilt in
-    // initial_orient (load_system) so the pole stays the spin axis instead
-    // of wobbling around it once per rotation.
+    // Spin axis in local (body) frame. Always (0,1,0): a tilted body carries
+    // the tilt in initial_orient so the pole stays the spin axis.
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
 
-    // For a non-rotating (inertial) frame, `orient` holds the orbital-plane
-    // tilt relative to the parent (line of nodes along the parent's X axis;
-    // identity = coplanar). `pos` then lives in the local orbital plane and
-    // UpdateRootRelative carries it into the parent via `orient`. For a
-    // rotating frame `orient` is the spin and `pos` is 0, so `orient` has no
-    // effect on root_pos there.
+    // Non-rotating frame: `orient` holds the orbital-plane tilt (identity =
+    // coplanar). Rotating frame: `orient` is the spin, `pos` is 0.
     /* relative to universe root (i.e. the sun) */
     glm::dvec3 root_pos;
     glm::dvec3 root_vel;
@@ -54,22 +48,13 @@ struct Frame {
     void UpdateRootRelative();
     void UpdateOrbitRails(double time);
 
-    /* Origin state of THIS frame expressed in relTo's OWN local axes.
-       The root_* quantities live in universe axes, so the difference is
-       rotated back by relTo->root_orient -- for a rotating relTo that is
-       its spin, for an inertial relTo the accumulated orbital tilts of
-       its ancestors. Invariant for every frame pair:
-         relTo->root_orient * A->GetPositionRelTo(relTo) + relTo->root_pos
-           == A->root_pos    (and likewise for root_vel). */
+    /* Origin state of THIS frame in relTo's OWN local axes. */
     glm::dvec3 GetVelocityRelTo(Frame *relTo);
     glm::dvec3 GetPositionRelTo(Frame *relTo);
     glm::dmat3 GetOrientRelTo(Frame *relTo);
 
     /* Model matrix for a body's meshes (authored in getRotFrame() axes).
-       Both halves must be relativized to relTo: bare getRotFrame()->orient
-       is parent-relative only and drops relTo's spin / ancestor tilts, so a
-       landed ship's rotating frame made every other body spin once per local
-       day (issue #27). */
+       Both halves must be relativized to relTo (issue #27). */
     glm::dmat4 GetBodyDrawTransform(Frame *relTo);
 
     bool isRotFrame() { return rotating; }
@@ -82,41 +67,22 @@ struct Frame {
         }
     }
 
-    /* The body's own rotating frame (the spin frame), unambiguously.
-       Returns the spin frame this frame owns, NOT children.front() -- which
-       is only correct by the order system.cpp happens to push its children.
-       Returns this when the frame has no spin frame of its own (rot_frame
-       is null). */
+    /* The body's own rotating frame (the spin frame). Returns `this` when
+       the frame has no spin frame of its own. */
     Frame *getRotFrame() { return rot_frame ? rot_frame : this; }
 
-    // A ship at (pos, vel) in this frame has inertial (root-frame) velocity
-    //   root_orient * (vel + GetStasisVelocity(pos)) + root_vel
-    // (verified against the frame rotation in UpdateOrbitRails:
-    // orient = initial_orient * rotate(-ang, spin_axis)).
-    // The frame's angular velocity in its own local frame is
-    //   omega = -rot_ang_speed * spin_axis
-    // (spin_axis is the spin axis in local coords; (0,1,0) for no axial tilt,
-    // which reproduces the old pure-Y convention). Consequences for frame
-    // switching F -> N:
+    // A ship at (pos, vel) in this frame has inertial velocity
+    //   root_orient * (vel + GetStasisVelocity(pos)) + root_vel.
+    // omega = -rot_ang_speed * spin_axis. Frame switching F -> N:
     //   v_N = O(F,N) * (v_F + stasis_F(p_F)) + Vrel(F,N) - stasis_N(p_N)
-    // i.e. the OLD frame's stasis term is added, the NEW frame's subtracted.
-    // (A ship needing velocity -GetStasisVelocity(pos) to be inertially
-    // stationary is a useful mnemonic for the signs.)
+    // (old frame's stasis added, new frame's subtracted).
     glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
         return glm::cross(-rot_ang_speed * spin_axis, pos);
     }
 
-    // Fictitious (Coriolis + centrifugal) acceleration that a ship integrated
-    // IN this (rotating) frame must additionally feel, on top of gravity, so
-    // that its INERTIAL trajectory stays exactly the Kepler orbit the identity
-    // above describes.  With omega = -rot_ang_speed * spin_axis
-    // (i.e. stasis(p) == omega x p), differentiating
-    //   v_root = R * (v + stasis(p)) + V
-    // gives  v_root' = R * (v' + 2*omega x v + omega x (omega x p)),
-    // so for v_root' == R * gravity the frame integration must use
+    // Fictitious (Coriolis + centrifugal) acceleration for a ship integrated
+    // IN this rotating frame so its INERTIAL trajectory stays a Kepler orbit:
     //   v' = gravity - 2*omega x v - omega x (omega x p).
-    // Without this, time spent in a rotating frame perturbs the true orbit
-    // (Coriolis is ~2*w*v, up to ~20% of gravity at low orbits).
     // Zero for non-rotating frames.
     glm::dvec3 GetFictitiousAccel(const glm::dvec3 &pos, const glm::dvec3 &vel) {
         const glm::dvec3 omega = -rot_ang_speed * spin_axis;

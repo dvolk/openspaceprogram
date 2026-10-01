@@ -6,23 +6,14 @@
 #include "display.h"   // WindowMode
 #include "siminput.h"  // SimKeyPress, SimMouseAction
 
-/* Everything the CLI flags configure, filled by parse_cli (cli.cpp),
-   which returns 0 on success or the process exit code on failure (help,
-   a parse error, malformed --sim-press / --sim-mouse). The sim_* state
-   doubles as the live state for the synthetic input the event loop emits. */
+/* Everything the CLI flags configure, filled by parse_cli (cli.cpp).
+   The sim_* state doubles as the live state for synthetic input. */
 struct GameArgs {
-    std::string title_body;   // --title-body: pin the title-screen backdrop to
-                               // this body (a test / visual-regression hook);
-                               // empty = a random non-star body
-    std::string surfmap_body;  // --surfmap-body: pin the Surface Map's body to
-                               // this one at boot (the window's combo pick);
-                               // empty = the window default (the ship's SOI,
-                               // else the system home -- surfmap.cpp)
+    std::string title_body;   // --title-body: pin the title-screen backdrop (test hook)
+    std::string surfmap_body;  // --surfmap-body: pin the Surface Map's body at boot
 
-    // The settings (Settings window) the command line set explicitly
-    // (filled in parse_cli from CLI11 ->count()): Game::load_settings()
-    // must not overwrite these -- the CLI beats settings.json field by
-    // field. A flag not listed here (absent) means the file may apply.
+    // Settings the command line set explicitly; the CLI beats settings.json
+    // field by field. A flag not listed here means the file may apply.
     struct {
         bool window_mode = false;    // --fullscreen / --borderless / --exclusive
         bool width = false;          // --width
@@ -38,147 +29,73 @@ struct GameArgs {
 
     std::string system_file = "res/systems/ksp_system.json";
     std::string parts_file = "res/data/parts.json";
-    // Start ships (the ships that exist at boot). --startship is one inline
-    // entry "name,def,body,scenario" (repeat, all four required); --startships
-    // is the same list as a JSON file.
+    // Start ships: --startship is one inline entry "name,def,body,scenario";
+    // --startships is the same list as a JSON file.
     std::vector<std::string> startship;
     std::string startships_file;
 
-    /* Save/Load (the live fleet + crew + clock). --save captures the game
-       into a directory when the --timeout budget is spent (saves + exits --
-       the headless/e2e path); --load replaces the fleet at startup by
-       loading a saved directory instead of building one. A bare name (no
-       '/') names a slot in the data dir's saves/: --save writes it into
-       the CURRENT game's dir (<stamp>-<gameName>/, minted at the first
-       save), --load resolves it to the legacy flat saves/<name> or the
-       unique saves/<game>/<name>. A path is used as-is. Mutually exclusive
-       (a run either loads a save or builds a fresh fleet to save). */
+    // --save captures the game into a directory when --timeout is spent;
+    // --load replaces the fleet at startup. Bare names resolve under saves/.
     std::string save_name;
     std::string load_name;
-    std::string data_dir;   // --data-dir: the user data directory (saves +
-                            // settings); empty = the per-OS user data
-                            // directory (datadir.h)
+    std::string data_dir;   // --data-dir: user data directory; empty = per-OS default
 
     std::string radial_test;
-    std::string autopilot;  // --autopilot: engage a slew mode on the active
-                             // ship at startup (prograde | retrograde |
-                             // radial-out | radial-in | normal | anti-normal
-                             // | kill-rot). A test hook: the Autopilot window
-                             // is the only in-game way to engage these, and
-                             // headless flights (e2e, aero_quant) can't click
-                             // it. Empty = no autopilot (the default).
+    std::string autopilot;  // --autopilot: engage a slew mode at startup (test hook)
     std::string vab;   // ship def to open in the VAB editor scene (empty = flight)
     bool vab_empty = false;  // --vab-empty: open the VAB with an EMPTY build
-                             // (the main menu's "Go to VAB") instead of flying
     std::string vab_arm;   // catalog part to arm in the VAB palette at startup (test hook)
-    int vab_place_ms = -1; // --vab-place: fire the VAB's place (vabPlace) once
-                           // at this loop time in ms (headless test hook; -1 = never)
-    std::string vab_load;   // --vab-load: the ship def to load into the VAB
-                            // build tree (vabLoad) -- replacing the current
-                            // build (headless test hook; empty = never)
-    int vab_load_ms = -1;   // --vab-load-at: fire the --vab-load hook once at
-                            // this loop time in ms (headless test hook; -1 = never)
-    int vab_launch_ms = -1;  // --vab-launch: fire the VAB's LAUNCH once at
-                             // this loop time in ms (headless test hook; -1 = never)
-    int vab_close_ms = -1;   // --vab-close: fire the VAB's "Back to game"
-                             // (vabClose) once at this loop time in ms. The
-                             // headless path into the camera park/restore
-                             // round trip (headless test hook; -1 = never)
-    int vab_detach_idx = -1; // --vab-detach: select this build part (index)
-                             // and fire the VAB's detach (vabDetachSelected)
-                             // once (headless test hook; -1 = never)
-    int vab_detach_ms = -1;  // --vab-detach-at: fire the --vab-detach hook
-                             // once at this loop time in ms (headless test
-                             // hook; -1 = never)
-    std::string reload_dir; // --reload: the save dir to load over the running
-                            // game, at --reload-at (headless test hook)
-    int reload_ms = -1;     // --reload-at: loop time in ms for --reload
-                            // (-1 = never)
-    int new_game_ms = -1;   // --new-game: fire the title screen's New Game
-                            // (Game::newGame) once at this loop time in ms
-                            // (headless test hook; -1 = never)
-    int quit_title_ms = -1; // --quit-title: fire the flight pause menu's "Quit
-                            // to title" (Game::quitToTitle) once at this loop
-                            // time in ms (headless test hook; -1 = never)
-    int space_center_ms = -1; // --space-center: push the Space Center hub once
-                            // at this loop time in ms (headless test hook;
-                            // -1 = never)
-    int recover_ms = -1;    // --recover: fire the Space Center menu's "Recover
-                            // Vessel" (Game::recoverActive) once at this loop
-                            // time in ms (headless test hook; -1 = never)
-    bool recover_anywhere = false;  // --recover-anywhere: let Recover Vessel
-                                    // recover the ship anywhere (the default
-                                    // requires it grounded on the home body)
-    int experiment_ms = -1; // --experiment: fire the part window's "Run
-                            // Experiment" (Game::runExperiment) once at this
-                            // loop time in ms (headless test hook; -1 = never)
-    int pod_experiment_ms = -1; // --pod-experiment: fire a science pod's
-                                // "Run Experiment" (Game::runPodExperiment)
-                                // once at this loop time in ms (headless test
-                                // hook; -1 = never)
-    int eva_ms = -1;          // --eva: fire the part window's "EVA" button
-                              // (Game::kerbalEVA on the active ship's first
-                              // crew kerbal) once at this loop time in ms
-                              // (headless test hook; -1 = never). The dance
-                              // needs a FREE kerbal in reach, so the e2e
-                              // EVAs before --take / --store.
-    int take_ms = -1;         // --take: fire the take/store dance's "Take"
-                              // (Game::moveExperiment) once at this loop time
-                              // in ms (headless test hook; -1 = never)
-    int store_ms = -1;        // --store: fire the take/store dance's "Store"
-                              // (Game::moveExperiment) once at this loop time
-                              // in ms (headless test hook; -1 = never)
-    int tracking_ms = -1;   // --tracking: push the Tracking Station once at this
-                            // loop time in ms (headless test hook; -1 = never)
-    int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station
-                                // back to the hub once at this loop time in ms
-                                // (the menu's "Back to Space Center", headless;
-                                // -1 = never)
-    int research_ms = -1;   // --research: push the Research Lab once at this
-                            // loop time in ms (the hub's "Research Lab",
-                            // headless; -1 = never)
-    int research_close_ms = -1; // --research-close: pop the Research Lab back
-                                // to the hub once at this loop time in ms
-                                // (the lab's "Back to Space Center", headless;
-                                // -1 = never)
-    std::string switch_system_path; // --switch-system: the system JSON to swap
-                                    // to over the running game (the in-process
-                                    // system switch, Game::switchSystem)
-    int switch_system_ms = -1;      // --switch-at: loop time in ms for
-                                    // --switch-system (headless test hook;
-                                    // -1 = never)
-    std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario
-                               // (the top-bar dropdown; empty = "pad")
-    std::string vab_body;      // --vab-body: seed the VAB launch body
-                               // (the top-bar dropdown; empty = the home body)
+    int vab_place_ms = -1; // --vab-place: fire vabPlace once at this loop time (test hook)
+    std::string vab_load;   // --vab-load: ship def to load into the VAB (test hook)
+    int vab_load_ms = -1;   // --vab-load-at: loop time for --vab-load (test hook)
+    int vab_launch_ms = -1;  // --vab-launch: fire the VAB's LAUNCH (test hook)
+    int vab_close_ms = -1;   // --vab-close: fire vabClose (camera park/restore round trip)
+    int vab_detach_idx = -1; // --vab-detach: select this build part and fire vabDetachSelected
+    int vab_detach_ms = -1;  // --vab-detach-at: loop time for --vab-detach
+    std::string reload_dir; // --reload: save dir to load over the running game
+    int reload_ms = -1;     // --reload-at: loop time for --reload
+    int new_game_ms = -1;   // --new-game: fire Game::newGame (test hook)
+    int quit_title_ms = -1; // --quit-title: fire Game::quitToTitle (test hook)
+    int space_center_ms = -1; // --space-center: push the Space Center hub (test hook)
+    int recover_ms = -1;    // --recover: fire Game::recoverActive (test hook)
+    bool recover_anywhere = false;  // --recover-anywhere: recover anywhere (default: home body only)
+    int experiment_ms = -1; // --experiment: fire Game::runExperiment (test hook)
+    int pod_experiment_ms = -1; // --pod-experiment: fire Game::runPodExperiment (test hook)
+    int eva_ms = -1;          // --eva: fire Game::kerbalEVA (test hook)
+    int take_ms = -1;         // --take: fire the take/store dance's "Take" (test hook)
+    int store_ms = -1;        // --store: fire the take/store dance's "Store" (test hook)
+    int tracking_ms = -1;   // --tracking: push the Tracking Station (test hook)
+    int tracking_close_ms = -1; // --tracking-close: pop the Tracking Station (test hook)
+    int research_ms = -1;   // --research: push the Research Lab (test hook)
+    int research_close_ms = -1; // --research-close: pop the Research Lab (test hook)
+    std::string switch_system_path; // --switch-system: system JSON to swap to (Game::switchSystem)
+    int switch_system_ms = -1;      // --switch-at: loop time for --switch-system
+    std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario (empty = "pad")
+    std::string vab_body;      // --vab-body: seed the VAB launch body (empty = home body)
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // --start-time: the sim clock's t0 (s)
     double timeout_seconds = 0.0;
-    float exhaust_scale = 1.0f;  // difficulty: scales ve (thrust + delta-v);
-                                 // the New Game sheet + save.json own this
+    float exhaust_scale = 1.0f;  // difficulty: scales ve (thrust + delta-v)
     float cam_shake = 1.0f;   // camera shake at high accel (0 = off)
     double drag_cd = 1.2;       // --drag-cd: the drag coefficient (0 = off)
     bool drag_log = false;      // --drag-log: the active ship's drag per tick
 
     std::vector<SimKeyPress> sim_presses;
     std::vector<SimMouseAction> sim_mouse_actions;
-    int sim_mouse_x = 0;   // simulated cursor (window pixels); each motion
-    int sim_mouse_y = 0;   // carries the delta from here for the camera look
+    int sim_mouse_x = 0;   // simulated cursor; each motion carries the delta from here
+    int sim_mouse_y = 0;
     std::vector<SimModeChange> sim_mode_changes;   // --sim-mode
 
     bool selftest_spawn = false;
     bool orbit_log = false;
     double orbit_interval = 1.0;
     bool dbg_log = false;
-    bool info_log = false;       // --info-log: dump the Orbit Info + Surface
-                                 // Info window values to stdout
+    bool info_log = false;       // --info-log: dump Orbit/Surface Info to stdout
     bool debug_accel = false;   // --debug-accel: per-substep thrust/velocity dump
     bool xfer_log = false;
     bool porkchop_log = false;   // --porkchop-log: the launch-window grid min
-    int porkchop_n = 40;        // --porkchop-n: the plot grid (porkchop_n x
-                                // porkchop_n); the size knob (a Settings-
-                                // window hook later). 40 x 40 is ~15 ms.
+    int porkchop_n = 40;        // --porkchop-n: the plot grid size
 
     bool eva_log = false;        // --eva-log: the kerbal's mode + pos/vel
     bool surfmap_log = false;    // --surfmap-log: the map's albedo/shaded means
@@ -210,13 +127,11 @@ struct GameArgs {
     int screen_height = 1080;
     WindowMode window_mode = WindowMode::Windowed;
 
-    // Cloud deck sphere resolution (lat = lon = res rings), applied at
-    // load by BuildClouds. The detail lives in the baked coverage map,
-    // so this only changes the deck's silhouette smoothness at the rim.
+    // Cloud deck sphere resolution (lat = lon = res rings). The detail lives
+    // in the baked coverage map; this only changes the silhouette at the rim.
     int cloud_mesh = 128;
 
-    // Render toggles (temporary debug knobs, for isolating terrain gaps /
-    // depth issues from the cloud + atmosphere layers that sit over them).
+    // Render toggles (debug knobs for isolating terrain gaps / depth issues).
     bool no_clouds = false;       // --no-clouds
     bool no_atmosphere = false;   // --no-atmosphere
     bool no_ocean = false;        // --no-ocean
@@ -227,9 +142,7 @@ struct GameArgs {
     int frame_cap = 60;
     bool perf = false;   // --perf: print a per-frame phase timing breakdown
     float camFovDeg = 60.0f;
-    // terrain LOD: a patch subdivides while it projects wider than this
-    // [px]. 1024 = coarsest (default; fastest startup, the e2e env
-    // renders in software), 256 = visual sweet spot, 32 = finest.
+    // terrain LOD: a patch subdivides while it projects wider than this [px].
     int terrain_px = 512;
 
     std::vector<double> free_cam_pos;
@@ -238,9 +151,6 @@ struct GameArgs {
     bool use_free_cam = false;
 };
 
-/* Fills args from the command line. Returns true on a successful parse.
-   For --help / --version or any invalid input, prints the message and
-   returns false with the process exit code in *exit_code (0 for help).
-   Note the asymmetry: a successful parse returns true, NOT 0, because
-   CLI11's help path also "returns" 0. */
+/* Fills args from the command line. Returns true on success; false with the
+   process exit code in *exit_code for --help / --version or invalid input. */
 bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code);
