@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "calendar.h"   // Calendar + fmt_cal_compact (the Lab row's stamps)
+#include "constants.h"  // kFlyingLowFrac, kOrbitCutMargin
 
 /* Where the experiment happens. FlyingLow/FlyingHigh split the atmosphere at
    kFlyingLowFrac; LowOrbit/HighOrbit split at orbitCutAlt. Altitude-based. */
@@ -347,16 +348,17 @@ inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered
 }
 
 // ---- the situation classifier --------------------------------------------
-// Flying-low is the bottom slice of the atmosphere (KSP-style).
-inline constexpr double kFlyingLowFrac = 0.2;
+// Flying-low is the bottom slice of the atmosphere (kFlyingLowFrac,
+// constants.h).
 
-// Low/high ORBIT cut: the higher of the near-body SoI edge and the atmosphere
-// top, plus a margin. `soi` is the NEAR-BODY (rotating-frame) SoI, not the
-// inertial orbital sphere (that one would make high-orbit nearly unreachable).
-inline constexpr double kOrbitCutMargin = 10e3;
-inline double orbitCutAlt(double soi, double radius, double atmoTop) {
-    const double edge = std::max(soi - radius, atmoTop);
-    return edge + kOrbitCutMargin;
+// Low/high ORBIT cut [m ASL]: the near-body shell edge plus a margin. `soi`
+// is the NEAR-BODY (rotating-frame) SoI, not the inertial orbital sphere
+// (that one would make high-orbit nearly unreachable). The shell always
+// contains the atmosphere (bodylimits.h shellEdge), so no atmoTop term is
+// needed -- and HighOrbit begins exactly where a ship leaves the rotating
+// frame (both are one kSoiMargin-style step past the shell edge).
+inline double orbitCutAlt(double soi, double radius, double sea_level) {
+    return (soi - radius - sea_level) + kOrbitCutMargin;
 }
 
 /* Situation from live state: grounded -> Landed; air -> FlyingLow/High; above

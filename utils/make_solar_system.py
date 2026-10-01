@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate real-Solar-System star-system JSONs from NASA NSSDC fact sheets (utils/rss/html/).
-mu and semimajor axis are derived by the loader (Kepler III). Inertial SoIs are Hill
-spheres, lifted to radius+200 km when the Hill sphere is too small for the 10 km frame-switch hysteresis."""
+mu, semimajor axis and the SOIs are derived by the loader: Kepler III for the orbit, and
+"soi_law": "hill" + the nesting lift for the spheres (src/bodylimits.h). No SOIs are emitted
+except the Sun's authored universe bound."""
 import re, math, json, os, html as htmllib
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
@@ -164,7 +165,6 @@ def parse_planet(page):
     w        = TWO_PI / period_s
     omega    = varp - raan                   # arg of periapsis (in-plane)
     nu0      = true_anomaly(L - varp, e)
-    soi      = a_m * (mass_kg / (3.0 * SUN_MASS)) ** (1.0/3.0)
 
     return dict(mass_kg=mass_kg, radius_m=radius_m, g=g,
                 # obliquity > 90 deg encodes retrograde; keep the rate positive
@@ -172,7 +172,7 @@ def parse_planet(page):
                 rot_s=(abs(rot_hr) * HR if rot_hr else None),
                 obliquity=(obliq_deg * D2R if obliq_deg is not None else 0.0),
                 a=a_m, e=e, i=i, raan=raan, omega=omega, nu0=nu0,
-                w=w, soi=soi)
+                w=w)
 
 # ---------------------------------------------------------------------------
 # moons
@@ -319,7 +319,9 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
     if surface is not None:
         body['surface'] = surface
 
-    inertial = {'soi': data['soi']}
+    # SOIs are derived by the loader (bodylimits.h); only the root authors
+    # one (its universe bound).
+    inertial = {}
     if parent:
         inertial['orb_ang_speed'] = data['w']
         if data.get('e') is not None:
@@ -329,20 +331,17 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         inertial['lon_asc_node'] = data.get('raan', 0.0)
         inertial['true_anomaly0'] = data.get('nu0', 0.0)
     else:
+        inertial['soi'] = data['soi']
         inertial['orb_ang_speed'] = 0.0
     body['inertial'] = inertial
 
     if data.get('rot_s'):
         body['rotating'] = {
-            'soi': data.get('rotating_soi', radius_m + 100e3),
             'rot_ang_speed': TWO_PI / data['rot_s'],
             'axial_tilt': data.get('obliquity', 0.0),
         }
-    elif data.get('rotating_soi'):
-        # near-body SOI = radius + 100 km; inertial SOI lifted past the 10 km
-        # frame-switch hysteresis when the Hill sphere is too small
-        body['rotating'] = {'soi': data['rotating_soi'],
-                            'rot_ang_speed': 0.0, 'axial_tilt': 0.0}
+    # No rot_s -> no rotating block: the loader's dummy frame (zero spin,
+    # derived near-body SOI) covers it.
     if rings is not None:
         body.setdefault('surface', {})['rings'] = rings
     return body
@@ -509,25 +508,19 @@ def build_base():
                                 rings=rings_by_name.get(name)))
     return bodies, parsed
 
-def build_moon(m, parsed):
+def build_moon(m):
     """Turn a master-moon record into a game body (mass estimated if absent)."""
     name = m['name']
     radius_m = m['radius_m']
     mass_kg = m['mass_kg'] if m['measured'] else estimate_mass(radius_m)
-    pmass = parsed[m['parent']]['mass_kg']
-    a = m['a']
     w = TWO_PI / m['period_s'] if m['period_s'] else 0.0
-    hill = a * (mass_kg / (3.0 * pmass)) ** (1.0/3.0) if a and mass_kg else a * 0.05
     # orientation (raan/omega) isn't in the fact sheets; spread epoch anomaly
     nu0 = (m['idx'] * GOLDEN) % TWO_PI
-    # Near-body SOI = radius + 100 km (loader convention). Inertial SOI is the
-    # Hill sphere, lifted to sit outside the surface SOI when the 10 km
-    # frame-switch hysteresis would eat it (smallest moons are un-landable else).
-    surf = radius_m + 100e3
-    soi = max(hill, surf + 100e3)
-    data = dict(radius_m=radius_m, mass_kg=mass_kg, soi=soi, w=w,
+    # SOIs are derived by the loader (soi_law hill + the nesting lift, which
+    # is what makes the tiniest moons landable).
+    data = dict(radius_m=radius_m, mass_kg=mass_kg, w=w,
                 e=m['e'], omega=0.0, i=m['i'], raan=0.0, nu0=nu0,
-                rot_s=None, rotating_soi=surf)
+                rot_s=None)
     c1, c2 = MOON_COLORS.get(name, DEFAULT_COLOR)
     surface = rock(radius_m, c1, c2)
     if name in MOON_ATMOS:
@@ -535,7 +528,7 @@ def build_moon(m, parsed):
     return make_body(name, 'moon', m['parent'], data, seed=1000 + m['idx'],
                      surface=surface)
 
-def emit(base_bodies, parsed, moons, pred, out_path, label):
+def emit(base_bodies, moons, pred, out_path, label, dry=False):
     bodies = list(base_bodies)
     n = 0
     skipped = 0
@@ -545,9 +538,11 @@ def emit(base_bodies, parsed, moons, pred, out_path, label):
         if not m['a'] or not m['period_s']:
             skipped += 1
             continue
-        bodies.append(build_moon(m, parsed))
+        bodies.append(build_moon(m))
         n += 1
-    doc = {'home': 'Earth', 'bodies': bodies}
+    doc = {'home': 'Earth', 'soi_law': 'hill', 'bodies': bodies}
+    if dry:
+        return doc          # --check: the caller compares, nothing is written
     with open(out_path, 'w') as f:
         json.dump(doc, f, indent=2)
         f.write('\n')
@@ -557,6 +552,15 @@ def emit(base_bodies, parsed, moons, pred, out_path, label):
     return n
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(
+        description="Generate res/systems/solar_system*.json, or --check "
+                    "that the committed files match this script.")
+    ap.add_argument("--check", action="store_true",
+                    help="verify the committed JSONs still match, without "
+                         "writing anything; exit non-zero on any drift")
+    args = ap.parse_args()
+
     base_bodies, parsed = build_base()
 
     moons = []
@@ -589,19 +593,35 @@ def main():
             'Callisto', 'Mimas', 'Enceladus', 'Tethys', 'Dione', 'Rhea',
             'Iapetus', 'Titan', 'Miranda', 'Ariel', 'Umbriel', 'Titania',
             'Oberon', 'Triton', 'Charon'}
-    emit(base_bodies, parsed, moons,
-         lambda m: m['name'] in core, os.path.join(OUT, 'solar_system.json'), 'core (21)')
-    emit(base_bodies, parsed, moons,
-         lambda m: m['measured'], os.path.join(OUT, 'solar_system_measured.json'), 'measured mass')
-    emit(base_bodies, parsed, moons,
-         lambda m: m['named'], os.path.join(OUT, 'solar_system_named.json'), 'all named')
-    emit(base_bodies, parsed, moons,
-         lambda m: True, os.path.join(OUT, 'solar_system_full.json'), 'full catalog')
+    targets = [
+        (lambda m: m['name'] in core,
+         os.path.join(OUT, 'solar_system.json'), 'core (21)'),
+        (lambda m: m['measured'],
+         os.path.join(OUT, 'solar_system_measured.json'), 'measured mass'),
+        (lambda m: m['named'],
+         os.path.join(OUT, 'solar_system_named.json'), 'all named'),
+        (lambda m: True,
+         os.path.join(OUT, 'solar_system_full.json'), 'full catalog'),
+    ]
+    if args.check:
+        ok = True
+        for pred, path, label in targets:
+            doc = emit(base_bodies, moons, pred, path, label, dry=True)
+            with open(path) as f:
+                committed = json.load(f)
+            good = committed == doc
+            print(('OK      ' if good else 'DRIFT   ') + path)
+            ok = ok and good
+        return 0 if ok else 1
+    for pred, path, label in targets:
+        emit(base_bodies, moons, pred, path, label)
 
     # ---- verification table for the 'named' set ----
+    # hill = the PRE-lift law value; the game's SOI is
+    # max(hill, rotSOI + lift) computed by the loader (src/bodylimits.h).
     print()
     print('%-14s %-9s %12s %12s %13s %12s' %
-          ('moon', 'parent', 'radius(m)', 'mass(kg)', 'a(m)', 'soi(m)'))
+          ('moon', 'parent', 'radius(m)', 'mass(kg)', 'a(m)', 'hill(m)'))
     for m in moons:
         if not m['named'] or not m['a'] or not m['period_s']:
             continue
@@ -609,9 +629,9 @@ def main():
         mass_kg = m['mass_kg'] if m['measured'] else estimate_mass(radius_m)
         pmass = parsed[m['parent']]['mass_kg']
         a = m['a']
-        soi = a * (mass_kg / (3.0 * pmass)) ** (1.0/3.0)
+        hill = a * (mass_kg / (3.0 * pmass)) ** (1.0/3.0)
         print('%-14s %-9s %12.4g %12.4g %13.4g %12.4g' %
-              (m['name'], m['parent'], radius_m, mass_kg, a, soi))
+              (m['name'], m['parent'], radius_m, mass_kg, a, hill))
     return 0
 
 if __name__ == '__main__':

@@ -6,11 +6,12 @@
 //   airDensity(...)  the exponential density model: rho(alt) = rho0 * e^(-alt/H)
 //   dragForce(...)   the force a body feels: -v̂ · ½ · rho · Cd · A · |v|²
 //
-// A ship inside a body's atmosphere is always in that body's ROTATING frame
-// (the air co-rotates with the planet), so the ship's frame velocity IS the
-// air-relative velocity. Caveat: a body whose authored top is higher than
-// the rotating frame reaches (issue #60) has a slice of air in the inertial
-// frame where this does not hold.
+// The air co-rotates with the planet: it is at rest in the body's ROTATING
+// frame, so there the ship's frame velocity IS the air-relative velocity.
+// In any other frame Vehicle::airRelativeVel subtracts the co-rotation term
+// (issues #60/#97). The loader sizes near-body shells to contain their air
+// (bodylimits.h), so live ships hit that branch only transiently or via
+// saves written under an older shell model.
 
 #include <algorithm>
 #include <cmath>
@@ -18,6 +19,8 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+
+#include "constants.h"  // kRhoFloor
 
 /* The physical half of a body's atmosphere (the render half lives in
    AtmosphereParams, terragen.h). Both zero means "no drag". */
@@ -31,11 +34,6 @@ struct DragAtmosphere {
     DragAtmosphere(double rho0, double H, double top = 0.0)
         : sea_level_density(rho0), scale_height(H), height(top) {}
 };
-
-/* Density floor below which aero is not worth computing (a PERFORMANCE
-   floor, not a physical one -- the physical top is DragAtmosphere::height).
-   Callers that gate on density compare against this instead of 0. */
-inline constexpr double kRhoFloor = 1e-15;
 
 /* Density [kg/m^3] at `alt` metres above the surface:
      rho(alt) = sea_level_density · exp(−alt / scale_height)

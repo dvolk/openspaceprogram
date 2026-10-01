@@ -1,0 +1,10 @@
+NAME jool-shell-vacuum
+ARGS --time-accel 1 --timeout 3 --drag-log --orbit-interval 0.25
+ARGS --startship racer,res/ships/racer.json,Jool,inertial-orbit
+EXPECT [drag]
+CHECK len(drag) >= 2
+CHECK all(d["alt"] > 200000.0 for d in drag)
+CHECK all(d["rho"] == 0.0 for d in drag)
+CHECK all(d["F"] == 0.0 for d in drag)
+FORBID GL_
+FORBID error:

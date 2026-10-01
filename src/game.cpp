@@ -274,7 +274,10 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
         return false;
     }
     const glm::vec3 dir = glm::vec3(sp / r);
-    const double altAsl = r - (double)body->radius;
+    // ASL: above SEA level -- the same datum as the aero altitude and the
+    // atmosphere top (constants live in bodylimits.h/terragen.h).
+    const double altAsl = r - ((double)body->radius
+                               + (double)body->surface.sea_level);
     // Biome + situation, the two halves of the finding's key (game.h
     // poseSituation).
     const PoseSituation ps = poseSituation(body, dir, altAsl, poseVehicle->isGrounded());

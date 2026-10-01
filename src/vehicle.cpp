@@ -13,6 +13,7 @@
 #include "mesh.h"      // get_mesh
 #include "texture.h"   // get_texture
 #include "drag.h"      // the drag law (airDensity / dragForce)
+#include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
 
 /* Instantiate a ship def: one rigid body per part (mesh + texture from the
    catalog entry), welded parent-first in the def's construction order.
@@ -232,12 +233,16 @@ static const ScenarioDef kScenarios[] = {
     {"pad",            true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"pad-polar",      true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
     {"rot-orbit",      false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"inertial-orbit", false, 1.25, false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"inertial-orbit", false, kInertialOrbitFrac, false, -1, 0.0, 0.0, 0.0, 0.0},
     {"high-orbit",     false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"high-polar",     false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
-    /* In-atmosphere "flying" beds (science.h: the airborne situations). */
-    {"flying-low",     false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"flying-high",    false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0},
+    /* In-atmosphere "flying" beds (science.h: the airborne situations).
+       atmo_frac: altitudes are fractions of the atmosphere top, matching
+       the science bands (FlyingLow < 0.2*top <= FlyingHigh < top), so the
+       beds land in their band on EVERY body -- shell fractions missed on
+       Duna/Laythe (exact-boundary) and Saturn (issue #99). */
+    {"flying-low",     false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
+    {"flying-high",    false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
     {"ellipse-peri",   false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
@@ -319,10 +324,17 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     } else {
         // Circular orbit around the home body: radius measured from its frame origin.
         // abs_r > 0 pins the radius to an absolute distance (the neptune /
-        // oort ladder); otherwise alt_frac scales it against the SOI.
-        const double r = sc.abs_r > 0.0
-                       ? sc.abs_r
-                       : home->radius + sc.alt_frac * (home->rot_frame->soi - home->radius);
+        // oort ladder); otherwise alt_frac scales the ALTITUDE ABOVE SEA
+        // LEVEL -- against the atmosphere top for the flying beds
+        // (atmo_frac: the science bands are top() fractions too), against
+        // the near-body shell for the orbit beds.
+        const double sea = (double)home->surface.sea_level;
+        const double top = home->surface.atmosphere.top();
+        const double shell = home->rot_frame->soi - home->radius - sea;
+        const double alt = (sc.atmo_frac && top > 0.0)
+                         ? sc.alt_frac * top
+                         : sc.alt_frac * shell;
+        const double r = sc.abs_r > 0.0 ? sc.abs_r : home->radius + sea + alt;
         const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
         shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 
@@ -1280,7 +1292,7 @@ float Vehicle::getThrust() {
        contribute their rated thrust; a jet contributes its air-breathing
        thrust at the current airspeed + density (drag.h jetThrust). */
     const int as = activeStage();
-    const double v_air = glm::length(GetVel());
+    const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
     const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
@@ -1425,6 +1437,26 @@ double Vehicle::airDensityAtCom() const {
     return airDensity(dragAtm(atm), r - ref_radius);
 }
 
+/* The ship's velocity relative to the AIR (issues #60/#97). The air is at
+   rest in the body's ROT frame, so inside that frame GetVel() is already
+   air-relative. Outside it, subtract the co-rotation: omega = the rot
+   frame's spin in THIS frame's axes (frame.h stasis convention: a point at
+   rest in a frame moves at cross(-rot_ang_speed * spin_axis, pos)). The
+   loader sizes shells to contain their air (bodylimits.h), so live ships
+   reach the corrected branch only transiently or via saves written under
+   an older shell model -- but drag/lift/jets stay honest regardless of
+   the data. */
+glm::dvec3 Vehicle::airRelativeVel(const glm::dvec3 &com) {
+    if(frame == nullptr || frame->isRotFrame() || m_parent == nullptr
+       || m_parent->rot_frame == nullptr) {
+        return GetVel();
+    }
+    Frame *R = m_parent->rot_frame;
+    const glm::dmat3 o = R->GetOrientRelTo(frame);   // rot -> this frame
+    const glm::dvec3 omega = o * (-R->rot_ang_speed * R->spin_axis);
+    return GetVel() - glm::cross(omega, com);
+}
+
 glm::dvec3 Vehicle::applyAeroForce(double h) {
     (void)h;  // a force (not an impulse); Bullet integrates it over the substep
     // The aero state the --drag-log instrument prints; reset so a substep
@@ -1469,9 +1501,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     // unmeasurable -- either way skip the per-part silhouette pass.
     if(rho < kRhoFloor) { return lastAeroForce; }
 
-    // v_rel = the ship's velocity in its (rot) frame -- the air co-rotates
-    // with the planet, so this is already air-relative (see drag.h).
-    const glm::dvec3 vrel = GetVel();
+    /* Air-relative velocity (airRelativeVel): GetVel() minus the air's
+       co-rotation when outside the body's rotating frame (issue #97). */
+    const glm::dvec3 vrel = airRelativeVel(com);
     const double v2 = glm::length2(vrel);
     if(v2 <= 0.0) { return lastAeroForce; }  // at rest in air
 
@@ -2335,7 +2367,7 @@ void Vehicle::ApplyThrust(double step) {
     const int as = activeStage();
     /* Jet state (shared by all jet parts this tick): the air-relative speed
        and the local air density at the COM. */
-    const double v_air = glm::length(GetVel());
+    const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
     const double rho = airDensityAtCom();
     const double rho_sea = (m_parent != nullptr)
         ? (double)m_parent->surface.atmosphere.sea_level_density : 0.0;
@@ -2517,10 +2549,6 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     setSoi(newFrame, t);
 }
 
-/* Dead band on the SoI boundary tests (both sides): a ship loitering at
-   exactly `soi` would otherwise flip frames on every tick. */
-static constexpr double kSoiMargin = 10000.0;
-
 Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
     if(glm::length(posInFrame) > frame->soi + kSoiMargin) {
         return frame->parent;   // nullptr at the system root: nowhere to go
@@ -2618,15 +2646,13 @@ bool Vehicle::inTerrainBand() {
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
     const OrbitElements el = computeOrbitElements(p, v, inertial->body->mu);
-    return el.periapsis <= inertial->body->radius + 3000.0;
+    return el.periapsis <= inertial->body->radius
+                         + inertial->body->surface.sea_level + kTerrainBand;
 }
 
-/* isGrounded's two thresholds (see the header for what each one is for).
-   The speed term has to sit above a walking kerbal's 2.5 m/s (kWalkSpeed,
-   eva.cpp): a free kerbal on EVA is its own vehicle, and one that reads as
-   neither grounded nor orbiting refuses rails warp for the whole fleet. */
-static constexpr double kShipGroundBand  = 100.0;  // m from the COM to the terrain
-static constexpr double kShipGroundSpeed = 3.0;    // m/s in the rotating frame
+/* isGrounded's thresholds are kShipGroundBand/kShipGroundSpeed
+   (constants.h); the speed term has to sit above a walking kerbal's
+   2.5 m/s (kWalkSpeed, eva.cpp) -- see the constant's doc. */
 
 bool Vehicle::isOrbiting() {
     return !inTerrainBand();

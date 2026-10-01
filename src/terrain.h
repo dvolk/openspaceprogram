@@ -142,7 +142,6 @@ struct TerrainBody {
     float radius;
     double mu;
     double g; // [m/s^2]
-    double soi; // [m]
     float mass;
     std::string name;
     BodyType type = BodyType::Planet;   // from the system JSON's "type"

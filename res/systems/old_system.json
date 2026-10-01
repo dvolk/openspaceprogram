@@ -1,5 +1,6 @@
 {
   "home": "Eerbon",
+  "soi_law": "patched_conic",
   "bodies": [
     {
       "name": "Sun",
@@ -43,7 +44,6 @@
         }
       },
       "inertial": {
-        "soi": 84159286,
         "pos": [
           0,
           0,
@@ -52,7 +52,6 @@
         "orb_ang_speed": 6.82691865708223e-07
       },
       "rotating": {
-        "soi": 700000,
         "rot_ang_speed": 0.0002915709030370688,
         "axial_tilt": 0.40840704496667307
       }
@@ -68,7 +67,6 @@
       "has_sea": false,
       "power_scaler": 1,
       "inertial": {
-        "soi": 2429559.1,
         "pos": [
           -12000000,
           0,
@@ -78,7 +76,6 @@
         "orb_incl": 0.0890117918517108
       },
       "rotating": {
-        "soi": 300000,
         "rot_ang_speed": 4.5207852185832584e-05,
         "axial_tilt": 0.11693705988362008
       }

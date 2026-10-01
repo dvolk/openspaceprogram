@@ -12,6 +12,7 @@
 
 #include "orbit.h"  // railStateFromElements
 #include "resdir.h"
+#include "bodylimits.h"  // the derived shell + SOI laws + the ordering asserts
 
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
@@ -36,6 +37,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
     const nlohmann::json &bodies = doc["bodies"];
     const std::string home_name = doc.value("home", std::string(""));
+
+    // Which SOI law derives the inertial spheres (bodylimits.h). Default
+    // patched_conic: it reproduces the KSP wiki values the old data
+    // hardcoded; solar_system*.json author "hill" (their old values).
+    const SoiLaw law =
+        soiLawFromName(doc.value("soi_law", std::string("patched_conic")));
 
     const double G = 6.674e-11;
 
@@ -138,6 +145,14 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 // The hard top (above it: vacuum). 0 => top() derives
                 // scale_height * 10.
                 s.atmosphere.height = av.value("height", 0.0);
+                // Air needs both density halves (or neither: a render-only
+                // rim). One without the other is authored nonsense.
+                if((s.atmosphere.sea_level_density > 0.0)
+                   != (s.atmosphere.scale_height > 0.0)) {
+                    throw std::runtime_error(
+                        "system: " + body->name + ": atmosphere needs both "
+                        "sea_level_density and scale_height (or neither)");
+                }
             }
             if(sv.contains("clouds") && sv["clouds"].is_object()) {
                 const nlohmann::json &cv = sv["clouds"];
@@ -248,12 +263,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             }
         }
         body->frame = f;
-        body->soi = f->soi;   // keep the body's soi in sync (display only)
 
         // --- rotating (near-body) frame -------------------------------------
-        // Every body gets one. No "rotating" JSON section (e.g. the star) =>
-        // a DUMMY frame: zero spin and the standard near-body SOI, so
-        // scenario radii and frame switching work uniformly.
+        // Every body gets one. Its SOI is DERIVED (bodylimits.h shellEdge):
+        // the atmosphere top plus the low-orbit band, floored at kMinShell,
+        // so the air always fits inside the frame's enter band. Authored
+        // rotating.soi is ignored. No "rotating" JSON section (e.g. the
+        // star) => a DUMMY frame: zero spin, same derived SOI, so scenario
+        // radii and frame switching work uniformly.
+        const double shell = shellEdge(s.atmosphere.top());
         Frame *rf = new Frame;
         rf->name  = body->name + " (rotational)";
         rf->body  = body;
@@ -269,9 +287,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         rf->root_pos = glm::dvec3(0);
         rf->root_vel = glm::dvec3(0);
         rf->root_orient = glm::dmat3(1.0);
+        rf->soi = radius + (double)s.sea_level + shell;
         if(bv.contains("rotating") && bv["rotating"].is_object()) {
             const nlohmann::json &rot = bv["rotating"];
-            rf->soi = rot.value("soi", 1e5);
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
             // Optional axial tilt (radians): lean the pole away from the
             // orbital normal toward +X, folded into initial_orient. The spin
@@ -287,7 +305,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     glm::dvec3(0.0, 0.0, 1.0));
             }
         } else {
-            rf->soi = radius + 100e3;       // near-body SOI convention
             rf->rot_ang_speed = 0.0;        // dummy: does not spin
         }
         body->rot_frame = rf;
@@ -324,16 +341,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             body->frame->parent = parent->frame;
             parent->frame->children.push_back(body->frame);
 
-            // Epoch orbital state for the Kepler rail. a comes from the mean
-            // angular rate via Kepler's third law; e, arg_peri and the epoch
-            // true anomaly default to the circular orbit through pos.
             Frame *f = body->frame;
-            if(f->orb_ang_speed != 0.0) {
+            const double mu = parent->mu;
+            const double w = f->orb_ang_speed;
+            // Semi-major axis from the mean angular rate (Kepler III).
+            const double a = (w != 0.0) ? cbrt(mu / (w * w)) : 0.0;
+
+            // DERIVED inertial SOI (bodylimits.h): the system's law value,
+            // lifted clear of the near-body shell's hysteresis band AND wide
+            // enough to contain the inertial-orbit spawn bed. Authored
+            // inertial.soi is ignored for non-root bodies; the root keeps its
+            // authored universe bound (pass 1).
+            f->soi = inertialSoi(soiByLaw(law, a, body->mass, parent->mass),
+                                 body->rot_frame->soi,
+                                 shellEdge(body->surface.atmosphere.top()));
+
+            // Epoch orbital state for the Kepler rail. e, arg_peri and the
+            // epoch true anomaly default to the circular orbit through pos.
+            if(w != 0.0) {
                 const nlohmann::json &in =
                     bv.value("inertial", nlohmann::json::object());
-                const double mu = parent->mu;
-                const double w = f->orb_ang_speed;
-                const double a = cbrt(mu / (w * w));
                 const double e = in.value("ecc", 0.0);
                 const double arg_peri = in.value("arg_peri", 0.0);
                 const double nu0 = in.contains("true_anomaly0")
@@ -353,6 +380,17 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 
     if(sys.root == nullptr) {
         throw std::runtime_error("system: no root (star) body found");
+    }
+
+    // The ordering the game needs (bodylimits.h): air inside the shell's
+    // enter band, the shell enterable, the inertial SOI clear of the
+    // shell's hysteresis and containing the inertial-orbit spawn bed.
+    // Derived values cannot fail these; the check is the tripwire for
+    // future edits.
+    for(TerrainBody *b : sys.bodies) {
+        validateBodyLimits(b->name, b->radius, b->surface.sea_level,
+                           b->surface.atmosphere.top(),
+                           b->rot_frame->soi, b->frame->soi);
     }
 
     // --- resolve the home planet (the calendar + default spawn body) ------

@@ -1,0 +1,9 @@
+NAME duna-flying-high
+ARGS --time-accel 1 --timeout 6
+ARGS --startship baropod,res/ships/baropod.json,Duna,flying-high
+ARGS --pod-experiment 1200
+EXPECT [science] t=
+EXPECT recorded
+EXPECT Flying high barometer on Duna
+FORBID GL_
+FORBID error:

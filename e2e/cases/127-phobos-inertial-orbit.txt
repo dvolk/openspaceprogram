@@ -1,0 +1,7 @@
+NAME phobos-inertial-orbit
+ARGS --system res/systems/solar_system.json --time-accel 1 --timeout 4
+ARGS --startship racer,res/ships/racer.json,Phobos,inertial-orbit
+EXPECT around Phobos: frame 'Phobos (inertial)'
+FORBID SOI switch
+FORBID GL_
+FORBID error:

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "calendar.h"    // CalTime
+#include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip)
 #include "version.h"     // VERSION
 #include "physics.h"     // GetAngVelocity
 #include "siminput.h"    // the --sim-press / --sim-mouse queues
@@ -321,9 +322,12 @@ void drawUIReadouts(Game &g) {
        Row 2: Kerbin clock (regular font, centered). */
     drawWin(g, W_Hud, [&] {
         if(ship) {
-            const double asl = distance - ship->m_parent->radius;
+            const double asl = distance
+                - ((double)ship->m_parent->radius
+                   + (double)ship->m_parent->surface.sea_level);
             const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
-            const bool surface_mode = ship->frame->isRotFrame() && asl < 30000.0;
+            const bool surface_mode = ship->frame->isRotFrame()
+                                   && asl < kSurfaceModeAlt;
             const double alt = surface_mode ? agl : asl;
             const double spd = surface_mode ? glm::length(surf_vel) : speed;
             ImGui::PushFont(g.bigger);
@@ -1178,7 +1182,7 @@ void drawUIReadouts(Game &g) {
             // The hovered pixel inverts map_px. The unit direction feeds
             // GetTerrainHeight straight -- the map is baked in the same
             // rotating frame (surfmap.h), so no transform. "elev" is
-            // above the mean radius, like the Surface window's ASL.
+            // above SEA LEVEL, like the Surface window's ASL.
             const ImVec2 sm_mouse = ImGui::GetMousePos();
             const double u = (sm_mouse.x - sm_p0.x) / sm_img_w;
             const double v = (sm_mouse.y - sm_p0.y) / sm_img_h;
@@ -1191,7 +1195,8 @@ void drawUIReadouts(Game &g) {
             ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s",
                                 glm::degrees(lat), glm::degrees(lon),
                                 fmt_dist((double)sm_body->GetTerrainHeight(dir)
-                                         - (double)sm_body->radius,
+                                         - (double)sm_body->radius
+                                         - (double)sm_body->surface.sea_level,
                                          elev_s, sizeof elev_s));
         }
         if(ship && ship->m_parent && sm_body != ship->m_parent) {
@@ -1244,7 +1249,8 @@ void drawUIReadouts(Game &g) {
                     time_accel >= kRailsWarp ? " (rails)" : "");
         ImGui::Text("Camera altitude: %0.f",
                     glm::length(camera->GetPos()) - ship->m_parent->GetTerrainHeight(glm::normalize(camera->GetPos())));
-        ImGui::Text("Camera ASL: %0.f", glm::length(camera->GetPos()) - ship->m_parent->radius);
+        ImGui::Text("Camera ASL: %0.f", glm::length(camera->GetPos())
+                    - (ship->m_parent->radius + ship->m_parent->surface.sea_level));
         ImGui::Text("Camera Pos: %.0f %.0f %0.f", camera->GetPos().x, camera->GetPos().y, camera->GetPos().z);
         ImGui::Text("Cam forward: %.2f %.2f %.2f",
                     camera->forward.x, camera->forward.y, camera->forward.z);
@@ -1372,7 +1378,8 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_Surface, [&] {
         char dist_s[32];
         const TerrainBody *b = ship->m_parent;
-        const double altAsl = distance - (double)b->radius;
+        const double altAsl = distance - ((double)b->radius
+                                          + (double)b->surface.sea_level);
         // Bme/Sit: the science identity of this pose (game.h poseSituation).
         // Biome is "-" when there is none to name (star, banded giant, or
         // terrain still building).
@@ -1403,7 +1410,8 @@ void drawUIReadouts(Game &g) {
         if(now_ms - g.info_log_last_ms >= g.orbit_log_interval_ms) {
             g.info_log_last_ms = now_ms;
             const TerrainBody *b = ship->m_parent;
-            const double altAsl = distance - (double)b->radius;
+            const double altAsl = distance - ((double)b->radius
+                                          + (double)b->surface.sea_level);
             const PoseSituation ps = poseSituation(
                 b, glm::normalize(glm::vec3(view.surf_pos)), altAsl,
                 ship->isGrounded());
@@ -2223,6 +2231,9 @@ void drawUIMap(Game &g) {
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
+        // The near-body shell ring gets its own tint: it is the boundary
+        // that drives science + the surface-frame flip, not gravitation.
+        const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.45f, 0.70f, 0.45f, 0.35f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
     
@@ -2238,11 +2249,11 @@ void drawUIMap(Game &g) {
         // A body's sphere-of-influence ring, faint. Skipped when
         // sub-pixel or far off-view (a huge circle is both useless and
         // expensive to tessellate).
-        auto draw_soi = [&](const glm::dvec3 &center, double soi_m) {
+        auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {
             if(!map_show_soi || soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
-            map.drawRing(dl, center, soi_m, soi_col, 1.0f);
+            map.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
         // Every body's orbit (around its own parent), projected into the
@@ -2256,7 +2267,11 @@ void drawUIMap(Game &g) {
         }
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime the ship is inside.
-        draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi);
+        draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
+        // The near-body (rotating-frame) shell -- the boundary that drives
+        // the science orbit cut and the surface-frame flip. The lambda's
+        // LOD hides it until zoomed in enough for it to matter.
+        draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
     
         // closed=true for the ellipse (it is a closed loop); false for
         // the open arc (a chord would otherwise close it).
@@ -3742,6 +3757,9 @@ void drawTrackingMap(Game &g) {
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
+        // The near-body shell ring gets its own tint: it is the boundary
+        // that drives science + the surface-frame flip, not gravitation.
+        const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.45f, 0.70f, 0.45f, 0.35f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
     
@@ -3757,11 +3775,11 @@ void drawTrackingMap(Game &g) {
         // A body's sphere-of-influence ring, faint. Skipped when
         // sub-pixel or far off-view (a huge circle is both useless and
         // expensive to tessellate).
-        auto draw_soi = [&](const glm::dvec3 &center, double soi_m) {
+        auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {
             if(!map_show_soi || soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
-            map.drawRing(dl, center, soi_m, soi_col, 1.0f);
+            map.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
         // Every body's orbit (around its own parent), projected into the
@@ -3776,7 +3794,11 @@ void drawTrackingMap(Game &g) {
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime (with a ship: the one it is inside; without:
         // home's).
-        draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi);
+        draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
+        // The near-body (rotating-frame) shell -- the boundary that drives
+        // the science orbit cut and the surface-frame flip. The lambda's
+        // LOD hides it until zoomed in enough for it to matter.
+        draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
 
         // The focus body's disk at the centre (home when there is no ship),
         // with the same visibility floor as the looped bodies.

@@ -495,6 +495,12 @@ public:
        sub-floor density already reads as vacuum. */
     double airDensityAtCom() const;
 
+    /* The ship's velocity relative to the AIR at `com` (its COM in the
+       current frame): GetVel() minus the atmosphere's co-rotation when
+       outside the body's rotating frame (issues #60/#97). Consumers:
+       applyAeroForce (drag/lift/control) and the jet intake speed. */
+    glm::dvec3 airRelativeVel(const glm::dvec3 &com);
+
     /* The armed control forces, re-applied before EVERY substep. The EVA
        kerbal overrides with its own laws (src/eva.h). */
     virtual void applyControlForces(double h);
@@ -748,7 +754,7 @@ public:
 
 private:
     /* The SoI boundary test shared by switchFrames (physics) and
-       railsSwitchFrames. kSoiMargin (vehicle.cpp) of hysteresis on both
+       railsSwitchFrames. kSoiMargin (constants.h) of hysteresis on both
        sides keeps a ship loitering at a boundary from flapping. */
     Frame *soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody);
 };
@@ -779,7 +785,8 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
 struct ScenarioDef {
     const char *name;
     bool on_pad;
-    double alt_frac; // circular: fraction of (rot-frame SOI - radius)
+    double alt_frac; // circular: fraction of the near-body shell (rot SOI -
+                     // radius), or of the atmosphere top when atmo_frac
     bool polar;
     int ell_phase;   // -1: circular; 0: at periapsis; 1: at apoapsis; 2: at 90 deg
     double peri_alt; // ellipse: periapsis altitude above the body radius (m)
@@ -787,6 +794,10 @@ struct ScenarioDef {
     double esc_frac; // escape: launch speed in local escape velocities (0 = not escape)
     double abs_r;    // > 0: absolute circular-orbit radius from the body
                      // centre (m), overriding alt_frac
+    bool atmo_frac = false; // alt_frac scales the atmosphere top() (the
+                     // flying beds: science bands are top() fractions, so
+                     // the beds always land in their band); airless bodies
+                     // fall back to the shell fraction
 };
 
 /* Look up a scenario by name; throws listing the available names if

@@ -2,6 +2,7 @@
 // transferplanner.h). The pure-math solver is in transfer.h.
 #include "transferplanner.h"
 #include "game.h"   // the complete Game (transferplanner.h only forward-declares it)
+#include "bodylimits.h"  // shellEdge (the capture-orbit radius)
 
 #include <cmath>
 #include <numbers>
@@ -44,7 +45,12 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
         d.r = tf->GetPositionRelTo(inertial);
         d.v = tf->GetVelocityRelTo(inertial);
         d.mu = t.body->mu;
-        d.r_cap = t.body->radius + 100e3; // 100 km capture orbit
+        // Capture "orbit" at the near-body shell edge (bodylimits.h): the
+        // LowOrbit/HighOrbit boundary -- above the air on every body (the
+        // old flat radius+100 km sat inside the atmosphere of Jool and the
+        // RSS giants) and on the sea-level datum.
+        d.r_cap = t.body->radius + t.body->surface.sea_level
+                + shellEdge(t.body->surface.atmosphere.top());
         if(tf->orb_ang_speed > 0.0) {
             // 3 target periods covers the min-dv point with margin.
             d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);

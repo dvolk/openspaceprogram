@@ -1,5 +1,6 @@
 {
   "home": "Earth",
+  "soi_law": "hill",
   "bodies": [
     {
       "name": "Sun",
@@ -75,7 +76,6 @@
         ]
       },
       "inertial": {
-        "soi": 220656500.67685997,
         "orb_ang_speed": 8.266781726111516e-07,
         "ecc": 0.20563069,
         "arg_peri": 0.508323304918994,
@@ -84,7 +84,6 @@
         "true_anomaly0": 3.066221559647311
       },
       "rotating": {
-        "soi": 2539700.0,
         "rot_ang_speed": 1.2399326882596827e-06,
         "axial_tilt": 0.000593411945678072
       }
@@ -143,7 +142,6 @@
         }
       },
       "inertial": {
-        "soi": 1011067053.0194923,
         "orb_ang_speed": 3.2363920127827824e-07,
         "ecc": 0.00677323,
         "arg_peri": 0.9573530627587608,
@@ -152,7 +150,6 @@
         "true_anomaly0": 0.8857068191701346
       },
       "rotating": {
-        "soi": 6151800.0,
         "rot_ang_speed": 2.9923691869737844e-07,
         "axial_tilt": 3.095515961337143
       }
@@ -249,7 +246,6 @@
         }
       },
       "inertial": {
-        "soi": 1496434606.3339677,
         "orb_ang_speed": 1.9909885714794665e-07,
         "ecc": 0.01671022,
         "arg_peri": 1.9933026650579555,
@@ -258,7 +254,6 @@
         "true_anomaly0": -0.04406991238140813
       },
       "rotating": {
-        "soi": 6471000.0,
         "rot_ang_speed": 7.292106590880652e-05,
         "axial_tilt": 0.40910517666747087
       }
@@ -315,7 +310,6 @@
         }
       },
       "inertial": {
-        "soi": 1083952029.4190319,
         "orb_ang_speed": 1.0585759726109988e-07,
         "ecc": 0.09341233,
         "arg_peri": 4.999710317835753,
@@ -324,7 +318,6 @@
         "true_anomaly0": 0.37283806523978624
       },
       "rotating": {
-        "soi": 3489500.0,
         "rot_ang_speed": 7.088235959185674e-05,
         "axial_tilt": 0.4396484385773716
       }
@@ -408,7 +401,6 @@
         ]
       },
       "inertial": {
-        "soi": 53138059483.28794,
         "orb_ang_speed": 1.678489516693838e-08,
         "ecc": 0.04839266,
         "arg_peri": -1.497532640783931,
@@ -417,7 +409,6 @@
         "true_anomaly0": 0.36001459654301576
       },
       "rotating": {
-        "soi": 70011000.0,
         "rot_ang_speed": 0.00017585181380295513,
         "axial_tilt": 0.054628805587422516
       }
@@ -493,7 +484,6 @@
         ]
       },
       "inertial": {
-        "soi": 65156669782.51392,
         "orb_ang_speed": 6.761257652006661e-09,
         "ecc": 0.0541506,
         "arg_peri": -0.37146017003120524,
@@ -502,7 +492,6 @@
         "true_anomaly0": -0.7796171205854481
       },
       "rotating": {
-        "soi": 58332000.0,
         "rot_ang_speed": 0.00016378840578024865,
         "axial_tilt": 0.4665265090580843
       }
@@ -552,7 +541,6 @@
         }
       },
       "inertial": {
-        "soi": 70087636040.95345,
         "orb_ang_speed": 2.3699235521267574e-09,
         "ecc": 0.04716771,
         "arg_peri": 1.688333081809502,
@@ -561,7 +549,6 @@
         "true_anomaly0": 2.510860479865436
       },
       "rotating": {
-        "soi": 25462000.0,
         "rot_ang_speed": 0.00010123719559131843,
         "axial_tilt": 1.706408409674856
       }
@@ -611,7 +598,6 @@
         }
       },
       "inertial": {
-        "soi": 116031902633.66919,
         "orb_ang_speed": 1.2082279223500606e-09,
         "ecc": 0.00858587,
         "arg_peri": -1.5140790602245375,
@@ -620,7 +606,6 @@
         "true_anomaly0": -1.7553631329024613
       },
       "rotating": {
-        "soi": 24722000.0,
         "rot_ang_speed": 0.00010833825276190748,
         "axial_tilt": 0.4942772441647941
       }
@@ -675,7 +660,6 @@
         }
       },
       "inertial": {
-        "soi": 7662845774.166474,
         "orb_ang_speed": 8.030261944172967e-10,
         "ecc": 0.24880766,
         "arg_peri": 1.9855439784011397,
@@ -684,7 +668,6 @@
         "true_anomaly0": 0.34309033487997476
       },
       "rotating": {
-        "soi": 1288000.0,
         "rot_ang_speed": 1.1385591834674098e-05,
         "axial_tilt": 2.085842989058423
       }
@@ -721,18 +704,12 @@
         ]
       },
       "inertial": {
-        "soi": 61524555.92366709,
         "orb_ang_speed": 2.6616957278072153e-06,
         "ecc": 0.0549,
         "arg_peri": 0.0,
         "orb_incl": 0.08979719001510825,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.0
-      },
-      "rotating": {
-        "soi": 1837400.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -767,18 +744,12 @@
         ]
       },
       "inertial": {
-        "soi": 211166.6666666667,
         "orb_ang_speed": 0.000228033150940486,
         "ecc": 0.0151,
         "arg_peri": 0.0,
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.3999632297286535
-      },
-      "rotating": {
-        "soi": 111166.66666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -813,18 +784,12 @@
         ]
       },
       "inertial": {
-        "soi": 206300.0,
         "orb_ang_speed": 5.760436311145907e-05,
         "ecc": 0.0005,
         "arg_peri": 0.0,
         "orb_incl": 0.031241393610698498,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.799926459457307
-      },
-      "rotating": {
-        "soi": 106300.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -869,18 +834,12 @@
         }
       },
       "inertial": {
-        "soi": 10558617.99287608,
         "orb_ang_speed": 4.110592399599715e-05,
         "ecc": 0.004,
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.9167043820063743
-      },
-      "rotating": {
-        "soi": 1921500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -915,18 +874,12 @@
         ]
       },
       "inertial": {
-        "soi": 13657941.512738269,
         "orb_ang_speed": 2.0478272486372952e-05,
         "ecc": 0.009,
         "arg_peri": 0.0,
         "orb_incl": 0.008203047484373348,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.3166676117350278
-      },
-      "rotating": {
-        "soi": 1660800.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -961,18 +914,12 @@
         ]
       },
       "inertial": {
-        "soi": 31720254.54766447,
         "orb_ang_speed": 1.0164443839668306e-05,
         "ecc": 0.001,
         "arg_peri": 0.0,
         "orb_incl": 0.003141592653589793,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.716630841463681
-      },
-      "rotating": {
-        "soi": 2731200.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1007,18 +954,12 @@
         ]
       },
       "inertial": {
-        "soi": 50144428.86093004,
         "orb_ang_speed": 4.357479662608672e-06,
         "ecc": 0.007,
         "arg_peri": 0.0,
         "orb_incl": 0.0033161255787892262,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.8334087640127485
-      },
-      "rotating": {
-        "soi": 2510300.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1053,18 +994,12 @@
         ]
       },
       "inertial": {
-        "soi": 222333.3333333333,
         "orb_ang_speed": 0.0002467002471900318,
         "ecc": 0.001,
         "arg_peri": 0.0,
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.2333719937414
-      },
-      "rotating": {
-        "soi": 122333.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1099,18 +1034,12 @@
         ]
       },
       "inertial": {
-        "soi": 208333.3333333333,
         "orb_ang_speed": 0.00024382100236850532,
         "ecc": 0.002,
         "arg_peri": 0.0,
         "orb_incl": 0.0008726646259971648,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.3501499162904693
-      },
-      "rotating": {
-        "soi": 108333.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1145,18 +1074,12 @@
         ]
       },
       "inertial": {
-        "soi": 287333.3333333333,
         "orb_ang_speed": 0.00014597574800710267,
         "ecc": 0.003,
         "arg_peri": 0.0,
         "orb_incl": 0.0066322511575784525,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.7501131460191246
-      },
-      "rotating": {
-        "soi": 187333.3333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1191,18 +1114,12 @@
         ]
       },
       "inertial": {
-        "soi": 249666.66666666666,
         "orb_ang_speed": 0.00010781623745949652,
         "ecc": 0.018,
         "arg_peri": 0.0,
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.150076375747776
-      },
-      "rotating": {
-        "soi": 149666.66666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1237,18 +1154,12 @@
         ]
       },
       "inertial": {
-        "soi": 384210.6467496171,
         "orb_ang_speed": 5.593143529182464e-07,
         "ecc": 0.242,
         "arg_peri": 0.0,
         "orb_incl": 0.7518878417591571,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.2668542982968418
-      },
-      "rotating": {
-        "soi": 104500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1283,18 +1194,12 @@
         ]
       },
       "inertial": {
-        "soi": 1136126.635298188,
         "orb_ang_speed": 3.01851453455215e-07,
         "ecc": 0.164,
         "arg_peri": 0.0,
         "orb_incl": 0.4792674125976429,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.666817528025497
-      },
-      "rotating": {
-        "soi": 109000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1329,18 +1234,12 @@
         ]
       },
       "inertial": {
-        "soi": 13592978.969062002,
         "orb_ang_speed": 2.9023089373758473e-07,
         "ecc": 0.162,
         "arg_peri": 0.0,
         "orb_incl": 0.4799655442984406,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.066780757754152
-      },
-      "rotating": {
-        "soi": 185000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1375,18 +1274,12 @@
         ]
       },
       "inertial": {
-        "soi": 201500.0,
         "orb_ang_speed": 2.885795720890095e-07,
         "ecc": 0.094,
         "arg_peri": 0.0,
         "orb_incl": 0.5342452840354642,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.1835586803032143
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1421,18 +1314,12 @@
         ]
       },
       "inertial": {
-        "soi": 201500.0,
         "orb_ang_speed": 2.885795720890095e-07,
         "ecc": 0.118,
         "arg_peri": 0.0,
         "orb_incl": 0.5131268000863328,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.58352191003187
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1467,18 +1354,12 @@
         ]
       },
       "inertial": {
-        "soi": 201500.0,
         "orb_ang_speed": 2.884651018105133e-07,
         "ecc": 0.18,
         "arg_peri": 0.0,
         "orb_incl": 0.49131018443640373,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.7002998325809386
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1513,18 +1394,12 @@
         ]
       },
       "inertial": {
-        "soi": 2827248.764285557,
         "orb_ang_speed": 2.805418261184723e-07,
         "ecc": 0.112,
         "arg_peri": 0.0,
         "orb_incl": 0.4939281783143953,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.100263062309594
-      },
-      "rotating": {
-        "soi": 112000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1559,18 +1434,12 @@
         ]
       },
       "inertial": {
-        "soi": 6103599.297806705,
         "orb_ang_speed": 2.8007420742788214e-07,
         "ecc": 0.217,
         "arg_peri": 0.0,
         "orb_incl": 0.46478117980608996,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.500226292038249
-      },
-      "rotating": {
-        "soi": 140000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1605,18 +1474,12 @@
         ]
       },
       "inertial": {
-        "soi": 201803.99362378317,
         "orb_ang_speed": 2.7650970405486843e-07,
         "ecc": 0.176,
         "arg_peri": 0.0,
         "orb_incl": 0.5009094953223726,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.6170042145873111
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1651,18 +1514,12 @@
         ]
       },
       "inertial": {
-        "soi": 275645.81900222664,
         "orb_ang_speed": 2.5338694134644737e-07,
         "ecc": 0.211,
         "arg_peri": 0.0,
         "orb_incl": 0.4921828490624009,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.016967444315966
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1697,18 +1554,12 @@
         ]
       },
       "inertial": {
-        "soi": 201000.0,
         "orb_ang_speed": 1.672925055588461e-07,
         "ecc": 0.057,
         "arg_peri": 0.0,
         "orb_incl": 0.9285151620609834,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.13374536686503546
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1743,18 +1594,12 @@
         ]
       },
       "inertial": {
-        "soi": 289834.1404746346,
         "orb_ang_speed": 1.5944321895731286e-07,
         "ecc": 0.43,
         "arg_peri": 0.0,
         "orb_incl": 0.8970992355250854,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.5337085965936836
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1789,18 +1634,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.3636237046021077e-07,
         "ecc": 0.222,
         "arg_peri": 0.0,
         "orb_incl": 0.5934119456780721,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.933671826322339
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1835,18 +1674,12 @@
         ]
       },
       "inertial": {
-        "soi": 219529.4437358054,
         "orb_ang_speed": 1.3205384450050914e-07,
         "ecc": 0.144,
         "arg_peri": 0.0,
         "orb_incl": 2.5446900494077327,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.050449748871408
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1881,18 +1714,12 @@
         ]
       },
       "inertial": {
-        "soi": 461168.7848201966,
         "orb_ang_speed": 1.2367695946671837e-07,
         "ecc": 0.105,
         "arg_peri": 0.0,
         "orb_incl": 2.5551620249196985,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.4504129786000632
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1927,18 +1754,12 @@
         ]
       },
       "inertial": {
-        "soi": 461919.4294832659,
         "orb_ang_speed": 1.236559295467274e-07,
         "ecc": 0.307,
         "arg_peri": 0.0,
         "orb_incl": 2.6249751949994717,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.8503762083287185
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -1973,18 +1794,12 @@
         ]
       },
       "inertial": {
-        "soi": 467833.599555933,
         "orb_ang_speed": 1.2148688968665285e-07,
         "ecc": 0.333,
         "arg_peri": 0.0,
         "orb_incl": 2.6371924997634317,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.9671541308777876
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2019,18 +1834,12 @@
         ]
       },
       "inertial": {
-        "soi": 468811.7122987202,
         "orb_ang_speed": 1.2074058138208603e-07,
         "ecc": 0.278,
         "arg_peri": 0.0,
         "orb_incl": 2.6040312439755393,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.367117360606429
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2065,18 +1874,12 @@
         ]
       },
       "inertial": {
-        "soi": 234599.20401712038,
         "orb_ang_speed": 1.2068047156725922e-07,
         "ecc": 0.215,
         "arg_peri": 0.0,
         "orb_incl": 2.5028021473598687,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.4838952831554977
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2111,18 +1914,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.2066044826021303e-07,
         "ecc": 0.141,
         "arg_peri": 0.0,
         "orb_incl": 2.4399702942880728,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.883858512884153
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2157,18 +1954,12 @@
         ]
       },
       "inertial": {
-        "soi": 235361.22208417556,
         "orb_ang_speed": 1.1994400819137458e-07,
         "ecc": 0.148,
         "arg_peri": 0.0,
         "orb_incl": 2.5813419636996136,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.283821742612808
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2203,18 +1994,12 @@
         ]
       },
       "inertial": {
-        "soi": 235668.30399179482,
         "orb_ang_speed": 1.1680381009706135e-07,
         "ecc": 0.281,
         "arg_peri": 0.0,
         "orb_incl": 2.546435378659727,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.4005996651618773
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2249,18 +2034,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.1992422850664642e-07,
         "ecc": 0.246,
         "arg_peri": 0.0,
         "orb_incl": 2.614503219487506,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.8005628948905326
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2295,18 +2074,12 @@
         ]
       },
       "inertial": {
-        "soi": 354833.1442540423,
         "orb_ang_speed": 1.1718023230169254e-07,
         "ecc": 0.232,
         "arg_peri": 0.0,
         "orb_incl": 2.5987952562195566,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.200526124619188
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2341,18 +2114,12 @@
         ]
       },
       "inertial": {
-        "soi": 476318.15892941295,
         "orb_ang_speed": 1.1592866597549882e-07,
         "ecc": 0.229,
         "arg_peri": 0.0,
         "orb_incl": 2.5918139392115793,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.317304047168257
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2387,18 +2154,12 @@
         ]
       },
       "inertial": {
-        "soi": 238477.53477631166,
         "orb_ang_speed": 1.1780666153641731e-07,
         "ecc": 0.272,
         "arg_peri": 0.0,
         "orb_incl": 2.522000769131806,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.717267276896912
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2433,18 +2194,12 @@
         ]
       },
       "inertial": {
-        "soi": 479252.49715777463,
         "orb_ang_speed": 1.1729363252650064e-07,
         "ecc": 0.227,
         "arg_peri": 0.0,
         "orb_incl": 2.5935592684635735,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.834045199445967
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2479,18 +2234,12 @@
         ]
       },
       "inertial": {
-        "soi": 528078.5204692354,
         "orb_ang_speed": 1.1667263302812515e-07,
         "ecc": 0.226,
         "arg_peri": 0.0,
         "orb_incl": 2.5935592684635735,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.2340084291746223
-      },
-      "rotating": {
-        "soi": 102200.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2525,18 +2274,12 @@
         ]
       },
       "inertial": {
-        "soi": 480662.799252026,
         "orb_ang_speed": 1.1472164721001798e-07,
         "ecc": 0.21,
         "arg_peri": 0.0,
         "orb_incl": 2.6302111827554544,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.633971658903278
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2571,18 +2314,12 @@
         ]
       },
       "inertial": {
-        "soi": 817745.4719052771,
         "orb_ang_speed": 1.1629945972562036e-07,
         "ecc": 0.23,
         "arg_peri": 0.0,
         "orb_incl": 2.600540585471551,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.7507495814523466
-      },
-      "rotating": {
-        "soi": 103400.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2617,18 +2354,12 @@
         ]
       },
       "inertial": {
-        "soi": 481367.9502991517,
         "orb_ang_speed": 1.1578100965838306e-07,
         "ecc": 0.221,
         "arg_peri": 0.0,
         "orb_incl": 2.642428487519415,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.150712811181002
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2663,18 +2394,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.1583633667797133e-07,
         "ecc": 0.341,
         "arg_peri": 0.0,
         "orb_incl": 2.6197392072434886,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.26749073373007093
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2709,18 +2434,12 @@
         ]
       },
       "inertial": {
-        "soi": 482232.32900207996,
         "orb_ang_speed": 1.1583633667797133e-07,
         "ecc": 0.253,
         "arg_peri": 0.0,
         "orb_incl": 2.5830872929516078,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.667453963458726
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2755,18 +2474,12 @@
         ]
       },
       "inertial": {
-        "soi": 967330.7558086063,
         "orb_ang_speed": 1.1455899837181854e-07,
         "ecc": 0.156,
         "arg_peri": 0.0,
         "orb_incl": 2.7017696820872223,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.067417193187367
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2801,18 +2514,12 @@
         ]
       },
       "inertial": {
-        "soi": 628942.4163777741,
         "orb_ang_speed": 1.1515764396901093e-07,
         "ecc": 0.216,
         "arg_peri": 0.0,
         "orb_incl": 2.6075219024795286,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.1841951157364363
-      },
-      "rotating": {
-        "soi": 102600.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2847,18 +2554,12 @@
         ]
       },
       "inertial": {
-        "soi": 4074686.897223467,
         "orb_ang_speed": 1.1911884056745356e-07,
         "ecc": 0.244,
         "arg_peri": 0.0,
         "orb_incl": 2.5987952562195566,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.5841583454650916
-      },
-      "rotating": {
-        "soi": 114000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2893,18 +2594,12 @@
         ]
       },
       "inertial": {
-        "soi": 366570.49716748914,
         "orb_ang_speed": 1.1377041953446556e-07,
         "ecc": 0.229,
         "arg_peri": 0.0,
         "orb_incl": 2.665117767795341,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.984121575193747
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2939,18 +2634,12 @@
         ]
       },
       "inertial": {
-        "soi": 245130.97610806205,
         "orb_ang_speed": 1.1313324854765153e-07,
         "ecc": 0.356,
         "arg_peri": 0.0,
         "orb_incl": 2.6197392072434886,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.100899497742816
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -2985,18 +2674,12 @@
         ]
       },
       "inertial": {
-        "soi": 245836.12715518774,
         "orb_ang_speed": 1.1257283617094488e-07,
         "ecc": 0.365,
         "arg_peri": 0.0,
         "orb_incl": 2.7000243528352277,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.500862727471471
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3031,18 +2714,12 @@
         ]
       },
       "inertial": {
-        "soi": 251056.51958471496,
         "orb_ang_speed": 1.088001977355332e-07,
         "ecc": 0.192,
         "arg_peri": 0.0,
         "orb_incl": 2.8867745827986213,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.6176406500205402
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3077,18 +2754,12 @@
         ]
       },
       "inertial": {
-        "soi": 502931.9242564145,
         "orb_ang_speed": 1.0886534755453653e-07,
         "ecc": 0.497,
         "arg_peri": 0.0,
         "orb_incl": 2.6075219024795286,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.0176038797491955
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3123,18 +2794,12 @@
         ]
       },
       "inertial": {
-        "soi": 253319.8269779087,
         "orb_ang_speed": 1.0762476271485924e-07,
         "ecc": 0.236,
         "arg_peri": 0.0,
         "orb_incl": 2.8640853025226947,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.417567109477851
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3169,18 +2834,12 @@
         ]
       },
       "inertial": {
-        "soi": 255389.78650334215,
         "orb_ang_speed": 1.0647445412361698e-07,
         "ecc": 0.557,
         "arg_peri": 0.0,
         "orb_incl": 2.7087509990951992,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.5343450320269056
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3215,18 +2874,12 @@
         ]
       },
       "inertial": {
-        "soi": 255469.40033124344,
         "orb_ang_speed": 1.0591618433794116e-07,
         "ecc": 0.233,
         "arg_peri": 0.0,
         "orb_incl": 2.8501226685067405,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.934308261755575
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3261,18 +2914,12 @@
         ]
       },
       "inertial": {
-        "soi": 255594.5077750883,
         "orb_ang_speed": 1.059007603996365e-07,
         "ecc": 0.182,
         "arg_peri": 0.0,
         "orb_incl": 2.8867745827986213,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.05108618430464418
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3307,18 +2954,12 @@
         ]
       },
       "inertial": {
-        "soi": 517649.1090141667,
         "orb_ang_speed": 1.042460610183922e-07,
         "ecc": 0.257,
         "arg_peri": 0.0,
         "orb_incl": 2.909463863074547,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.451049414033271
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3353,18 +2994,12 @@
         ]
       },
       "inertial": {
-        "soi": 259541.07895819496,
         "orb_ang_speed": 1.0369606754089606e-07,
         "ecc": 0.194,
         "arg_peri": 0.0,
         "orb_incl": 2.506292805863857,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.851012643761926
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3399,18 +3034,12 @@
         ]
       },
       "inertial": {
-        "soi": 390079.32320634054,
         "orb_ang_speed": 1.0138303661847261e-07,
         "ecc": 0.276,
         "arg_peri": 0.0,
         "orb_incl": 2.6232298657474775,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.9677905663109954
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3445,18 +3074,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.0316648058792793e-07,
         "ecc": 0.273,
         "arg_peri": 0.0,
         "orb_incl": 2.8780479365386493,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.3677537960396506
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3491,18 +3114,12 @@
         ]
       },
       "inertial": {
-        "soi": 260371.33744916553,
         "orb_ang_speed": 1.0316648058792793e-07,
         "ecc": 0.2,
         "arg_peri": 0.0,
         "orb_incl": 2.848377339254746,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.767717025768306
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3537,18 +3154,12 @@
         ]
       },
       "inertial": {
-        "soi": 521311.34509762586,
         "orb_ang_speed": 1.0316648058792793e-07,
         "ecc": 0.27,
         "arg_peri": 0.0,
         "orb_incl": 2.8448866807507573,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.884494948317375
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3583,18 +3194,12 @@
         ]
       },
       "inertial": {
-        "soi": 391205.29020094447,
         "orb_ang_speed": 1.0045869894520016e-07,
         "ecc": 0.259,
         "arg_peri": 0.0,
         "orb_incl": 2.8797932657906435,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.28445817804603
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3629,18 +3234,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.0262779024333953e-07,
         "ecc": 0.159,
         "arg_peri": 0.0,
         "orb_incl": 2.871066619530672,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.4012361005950993
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3675,18 +3274,12 @@
         ]
       },
       "inertial": {
-        "soi": 524063.7088622132,
         "orb_ang_speed": 9.534817381202359e-08,
         "ecc": 0.334,
         "arg_peri": 0.0,
         "orb_incl": 2.66860842629933,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.8011993303237546
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3721,18 +3314,12 @@
         ]
       },
       "inertial": {
-        "soi": 262680.1384583028,
         "orb_ang_speed": 1.0107303984215482e-07,
         "ecc": 0.267,
         "arg_peri": 0.0,
         "orb_incl": 2.8815385950426378,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.20116256005241
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3767,18 +3354,12 @@
         ]
       },
       "inertial": {
-        "soi": 525383.0237245774,
         "orb_ang_speed": 1.0165229545209729e-07,
         "ecc": 0.2,
         "arg_peri": 0.0,
         "orb_incl": 2.865830631774689,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.317940482601479
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3813,18 +3394,12 @@
         ]
       },
       "inertial": {
-        "soi": 263294.30227354134,
         "orb_ang_speed": 1.0158129929659225e-07,
         "ecc": 0.255,
         "arg_peri": 0.0,
         "orb_incl": 2.829178717482808,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.717903712330134
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3859,18 +3434,12 @@
         ]
       },
       "inertial": {
-        "soi": 500885.8488793515,
         "orb_ang_speed": 1.004725782901774e-07,
         "ecc": 0.251,
         "arg_peri": 0.0,
         "orb_incl": 2.8832839242946324,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.1178669420587894
-      },
-      "rotating": {
-        "soi": 101900.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3905,18 +3474,12 @@
         ]
       },
       "inertial": {
-        "soi": 264056.3203405965,
         "orb_ang_speed": 9.968752867228292e-08,
         "ecc": 0.26,
         "arg_peri": 0.0,
         "orb_incl": 2.8797932657906435,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.2346448646078585
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3951,18 +3514,12 @@
         ]
       },
       "inertial": {
-        "soi": 501707.00864713336,
         "orb_ang_speed": 1.0023714978143404e-07,
         "ecc": 0.246,
         "arg_peri": 0.0,
         "orb_incl": 2.8832839242946324,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.634608094336514
-      },
-      "rotating": {
-        "soi": 101900.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -3997,18 +3554,12 @@
         ]
       },
       "inertial": {
-        "soi": 396323.3219945986,
         "orb_ang_speed": 9.959196407344616e-08,
         "ecc": 0.264,
         "arg_peri": 0.0,
         "orb_incl": 2.8815385950426378,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.7513860168855828
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4043,18 +3594,12 @@
         ]
       },
       "inertial": {
-        "soi": 264226.921400385,
         "orb_ang_speed": 1.0107303984215482e-07,
         "ecc": 0.284,
         "arg_peri": 0.0,
         "orb_incl": 2.8675759610266836,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.151349246614238
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4089,18 +3634,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 1.0105899411677376e-07,
         "ecc": 0.312,
         "arg_peri": 0.0,
         "orb_incl": 2.8745572780346604,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.551312476342865
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4135,18 +3674,12 @@
         ]
       },
       "inertial": {
-        "soi": 423618.3542203555,
         "orb_ang_speed": 9.985178108805492e-08,
         "ecc": 0.266,
         "arg_peri": 0.0,
         "orb_incl": 2.8780479365386493,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.668090398891934
-      },
-      "rotating": {
-        "soi": 101600.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4181,18 +3714,12 @@
         ]
       },
       "inertial": {
-        "soi": 265034.4330833838,
         "orb_ang_speed": 1.0056984119268483e-07,
         "ecc": 0.236,
         "arg_peri": 0.0,
         "orb_incl": 2.9042278753185644,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.068053628620589
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4227,18 +3754,12 @@
         ]
       },
       "inertial": {
-        "soi": 265159.5405272286,
         "orb_ang_speed": 1.0055593496464379e-07,
         "ecc": 0.32,
         "arg_peri": 0.0,
         "orb_incl": 2.848377339254746,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.18483155116965833
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4273,18 +3794,12 @@
         ]
       },
       "inertial": {
-        "soi": 664206.7927764498,
         "orb_ang_speed": 9.93199292084545e-08,
         "ecc": 0.252,
         "arg_peri": 0.0,
         "orb_incl": 2.8832839242946324,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.5847947808983136
-      },
-      "rotating": {
-        "soi": 102500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4319,18 +3834,12 @@
         ]
       },
       "inertial": {
-        "soi": 6083325.013451502,
         "orb_ang_speed": 1.035484154441555e-07,
         "ecc": 0.253,
         "arg_peri": 0.0,
         "orb_incl": 2.8780479365386493,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.984758010626969
-      },
-      "rotating": {
-        "soi": 123000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4365,18 +3874,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 9.95510638828616e-08,
         "ecc": 0.332,
         "arg_peri": 0.0,
         "orb_incl": 2.5970499269675624,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.101535933176038
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4411,18 +3914,12 @@
         ]
       },
       "inertial": {
-        "soi": 267127.139416789,
         "orb_ang_speed": 9.718301772875906e-08,
         "ecc": 0.312,
         "arg_peri": 0.0,
         "orb_incl": 2.6354471705114375,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.501499162904693
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4457,18 +3954,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 9.906286904567552e-08,
         "ecc": 0.363,
         "arg_peri": 0.0,
         "orb_incl": 2.9059732045705586,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.9014623926333485
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4503,18 +3994,12 @@
         ]
       },
       "inertial": {
-        "soi": 267809.5436559429,
         "orb_ang_speed": 9.904937641845598e-08,
         "ecc": 0.397,
         "arg_peri": 0.0,
         "orb_incl": 2.6040312439755393,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.0182403151824175
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4549,18 +4034,12 @@
         ]
       },
       "inertial": {
-        "soi": 697369.3641185315,
         "orb_ang_speed": 9.787624786868155e-08,
         "ecc": 0.245,
         "arg_peri": 0.0,
         "orb_incl": 2.8832839242946324,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.418203544911073
-      },
-      "rotating": {
-        "soi": 102600.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4595,18 +4074,12 @@
         ]
       },
       "inertial": {
-        "soi": 8856146.311535718,
         "orb_ang_speed": 9.779727295108983e-08,
         "ecc": 0.409,
         "arg_peri": 0.0,
         "orb_incl": 2.642428487519415,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.5349814674601419
-      },
-      "rotating": {
-        "soi": 129000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4641,18 +4114,12 @@
         ]
       },
       "inertial": {
-        "soi": 538212.2234206705,
         "orb_ang_speed": 9.743040215223794e-08,
         "ecc": 0.272,
         "arg_peri": 0.0,
         "orb_incl": 2.8885199120506155,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.934944697188797
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4687,18 +4154,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 9.778412285387977e-08,
         "ecc": 0.199,
         "arg_peri": 0.0,
         "orb_incl": 2.5534166956677042,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.334907926917452
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4733,18 +4194,12 @@
         ]
       },
       "inertial": {
-        "soi": 539827.246786668,
         "orb_ang_speed": 9.572469680983334e-08,
         "ecc": 0.22,
         "arg_peri": 0.0,
         "orb_incl": 2.8466320100027516,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.4516858494665215
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4779,18 +4234,12 @@
         ]
       },
       "inertial": {
-        "soi": 731039.1892783843,
         "orb_ang_speed": 9.660208842512009e-08,
         "ecc": 0.421,
         "arg_peri": 0.0,
         "orb_incl": 2.6668630970473357,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.8516490791951483
-      },
-      "rotating": {
-        "soi": 102700.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4825,18 +4274,12 @@
         ]
       },
       "inertial": {
-        "soi": 5776351.298816416,
         "orb_ang_speed": 1.0037550333530765e-07,
         "ecc": 0.25,
         "arg_peri": 0.0,
         "orb_incl": 2.7593655474030347,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.251612308923804
-      },
-      "rotating": {
-        "soi": 119000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4871,18 +4314,12 @@
         ]
       },
       "inertial": {
-        "soi": 817076.7157509063,
         "orb_ang_speed": 9.83261927615338e-08,
         "ecc": 0.328,
         "arg_peri": 0.0,
         "orb_incl": 2.7087509990951992,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.3683902314728726
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4917,18 +4354,12 @@
         ]
       },
       "inertial": {
-        "soi": 1090982.4039432905,
         "orb_ang_speed": 9.549842700778778e-08,
         "ecc": 0.432,
         "arg_peri": 0.0,
         "orb_incl": 2.762856205907024,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.768353461201528
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -4963,18 +4394,12 @@
         ]
       },
       "inertial": {
-        "soi": 546901.5040658966,
         "orb_ang_speed": 9.509879974686856e-08,
         "ecc": 0.264,
         "arg_peri": 0.0,
         "orb_incl": 2.8885199120506155,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.885131383750597
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5009,18 +4434,12 @@
         ]
       },
       "inertial": {
-        "soi": 959426.2400384072,
         "orb_ang_speed": 9.58382342731028e-08,
         "ecc": 0.283,
         "arg_peri": 0.0,
         "orb_incl": 2.5673793296836585,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.2850946134792522
-      },
-      "rotating": {
-        "soi": 103500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5055,18 +4474,12 @@
         ]
       },
       "inertial": {
-        "soi": 275623.0721942549,
         "orb_ang_speed": 9.487547575529079e-08,
         "ecc": 0.17,
         "arg_peri": 0.0,
         "orb_incl": 2.90248254606657,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.6850578432079075
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5101,18 +4514,12 @@
         ]
       },
       "inertial": {
-        "soi": 553862.0273052662,
         "orb_ang_speed": 9.856607775336189e-08,
         "ecc": 0.319,
         "arg_peri": 0.0,
         "orb_incl": 2.6057765732275344,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.8018357657569766
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5147,18 +4554,12 @@
         ]
       },
       "inertial": {
-        "soi": 558274.9080517947,
         "orb_ang_speed": 9.332912239018274e-08,
         "ecc": 0.325,
         "arg_peri": 0.0,
         "orb_incl": 2.6598817800393584,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.201798995485632
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5193,18 +4594,12 @@
         ]
       },
       "inertial": {
-        "soi": 562983.4973019565,
         "orb_ang_speed": 9.572469680983334e-08,
         "ecc": 0.321,
         "arg_peri": 0.0,
         "orb_incl": 2.5499260371637154,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.3185769180347009
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5239,18 +4634,12 @@
         ]
       },
       "inertial": {
-        "soi": 521633.8197353325,
         "orb_ang_speed": 7.716507848866653e-05,
         "ecc": 0.0202,
         "arg_peri": 0.0,
         "orb_incl": 0.026703537555513242,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.718540147763356
-      },
-      "rotating": {
-        "soi": 298666.6666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5285,18 +4674,12 @@
         ]
       },
       "inertial": {
-        "soi": 948818.8508213679,
         "orb_ang_speed": 5.3073344654960304e-05,
         "ecc": 0.0045,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.1185033774920115
-      },
-      "rotating": {
-        "soi": 352000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5331,18 +4714,12 @@
         ]
       },
       "inertial": {
-        "soi": 2100934.9769545253,
         "orb_ang_speed": 3.852207602620953e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.03246312408709453,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.2352813000410805
-      },
-      "rotating": {
-        "soi": 630666.6666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5377,18 +4754,12 @@
         ]
       },
       "inertial": {
-        "soi": 3261079.5478173234,
         "orb_ang_speed": 2.6570811357470143e-05,
         "ecc": 0.0022,
         "arg_peri": 0.0,
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.6352445297697358
-      },
-      "rotating": {
-        "soi": 661333.3333333334,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5423,18 +4794,12 @@
         ]
       },
       "inertial": {
-        "soi": 5831892.446020057,
         "orb_ang_speed": 1.6097853274251333e-05,
         "ecc": 0.001,
         "arg_peri": 0.0,
         "orb_incl": 0.006108652381980153,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.035207759498391
-      },
-      "rotating": {
-        "soi": 863333.3333333334,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5481,18 +4846,12 @@
         }
       },
       "inertial": {
-        "soi": 52410081.82950778,
         "orb_ang_speed": 4.560685614160354e-06,
         "ecc": 0.0292,
         "arg_peri": 0.0,
         "orb_incl": 0.005759586531581287,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.15198568204746
-      },
-      "rotating": {
-        "soi": 2675000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5527,18 +4886,12 @@
         ]
       },
       "inertial": {
-        "soi": 2231096.641057985,
         "orb_ang_speed": 3.4179343224491453e-06,
         "ecc": 0.1042,
         "arg_peri": 0.0,
         "orb_incl": 0.007504915783575617,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.551948911776115
-      },
-      "rotating": {
-        "soi": 238666.66666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5573,18 +4926,12 @@
         ]
       },
       "inertial": {
-        "soi": 36325238.37837553,
         "orb_ang_speed": 9.167009253770458e-07,
         "ecc": 0.0283,
         "arg_peri": 0.0,
         "orb_incl": 0.2569124658935653,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.668726834325156
-      },
-      "rotating": {
-        "soi": 834666.6666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5619,18 +4966,12 @@
         ]
       },
       "inertial": {
-        "soi": 200300.0,
         "orb_ang_speed": 0.00015423552951522885,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.0686900640538113
-      },
-      "rotating": {
-        "soi": 100300.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5665,18 +5006,12 @@
         ]
       },
       "inertial": {
-        "soi": 214333.3333333333,
         "orb_ang_speed": 0.00012647313420248766,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.468653293782495
-      },
-      "rotating": {
-        "soi": 114333.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5711,18 +5046,12 @@
         ]
       },
       "inertial": {
-        "soi": 203866.6666666667,
         "orb_ang_speed": 0.00012242769724988282,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.585431216331564
-      },
-      "rotating": {
-        "soi": 103866.66666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5757,18 +5086,12 @@
         ]
       },
       "inertial": {
-        "soi": 215666.6666666667,
         "orb_ang_speed": 0.00012082082101084965,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.005235987755982988,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.9853944460602193
-      },
-      "rotating": {
-        "soi": 115666.66666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5803,18 +5126,12 @@
         ]
       },
       "inertial": {
-        "soi": 246000.0,
         "orb_ang_speed": 0.00011863303779189299,
         "ecc": 0.00204,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.10217236860928836
-      },
-      "rotating": {
-        "soi": 146000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5849,18 +5166,12 @@
         ]
       },
       "inertial": {
-        "soi": 241666.66666666666,
         "orb_ang_speed": 0.00011570732246050979,
         "ecc": 0.0042,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.5021355983379436
-      },
-      "rotating": {
-        "soi": 141666.66666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5895,18 +5206,12 @@
         ]
       },
       "inertial": {
-        "soi": 258333.33333333334,
         "orb_ang_speed": 0.0001047566294532273,
         "ecc": 0.009,
         "arg_peri": 0.0,
         "orb_incl": 0.005934119456780721,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.902098828066542
-      },
-      "rotating": {
-        "soi": 158333.33333333334,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5941,18 +5246,12 @@
         ]
       },
       "inertial": {
-        "soi": 290333.3333333333,
         "orb_ang_speed": 0.00010471137820940301,
         "ecc": 0.007,
         "arg_peri": 0.0,
         "orb_incl": 0.0024434609527920616,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.0188767506156111
-      },
-      "rotating": {
-        "soi": 190333.3333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -5987,18 +5286,12 @@
         ]
       },
       "inertial": {
-        "soi": 200500.0,
         "orb_ang_speed": 8.999140226015394e-05,
         "ecc": 0.0002,
         "arg_peri": 0.0,
         "orb_incl": 1.7453292519943296e-05,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.4188399803442664
-      },
-      "rotating": {
-        "soi": 100500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6033,18 +5326,12 @@
         ]
       },
       "inertial": {
-        "soi": 201600.0,
         "orb_ang_speed": 7.200203184795089e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.818803210072922
-      },
-      "rotating": {
-        "soi": 101600.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6079,18 +5366,12 @@
         ]
       },
       "inertial": {
-        "soi": 201000.0,
         "orb_ang_speed": 6.992505016002923e-05,
         "ecc": 0.001,
         "arg_peri": 0.0,
         "orb_incl": 0.0017453292519943296,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.9355811326219907
-      },
-      "rotating": {
-        "soi": 101000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6125,18 +5406,12 @@
         ]
       },
       "inertial": {
-        "soi": 202566.6666666667,
         "orb_ang_speed": 6.379127383020211e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.335544362350646
-      },
-      "rotating": {
-        "soi": 102566.66666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6171,18 +5446,12 @@
         ]
       },
       "inertial": {
-        "soi": 211333.3333333333,
         "orb_ang_speed": 3.852211683781672e-05,
         "ecc": 0.001,
         "arg_peri": 0.0,
         "orb_incl": 0.025708699881876476,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.45232228489971504
-      },
-      "rotating": {
-        "soi": 111333.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6217,18 +5486,12 @@
         ]
       },
       "inertial": {
-        "soi": 212666.6666666667,
         "orb_ang_speed": 3.852211683781672e-05,
         "ecc": 0.001,
         "arg_peri": 0.0,
         "orb_incl": 0.020210912738094333,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.8522855146283703
-      },
-      "rotating": {
-        "soi": 112666.66666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6263,18 +5526,12 @@
         ]
       },
       "inertial": {
-        "soi": 201233.3333333333,
         "orb_ang_speed": 2.6540894951251965e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.252248744357026
-      },
-      "rotating": {
-        "soi": 101233.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6309,18 +5566,12 @@
         ]
       },
       "inertial": {
-        "soi": 218000.0,
         "orb_ang_speed": 2.657095698287493e-05,
         "ecc": 0.005,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.3690266669060946
-      },
-      "rotating": {
-        "soi": 118000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6355,18 +5606,12 @@
         ]
       },
       "inertial": {
-        "soi": 1322148.4974415447,
         "orb_ang_speed": 1.6196448143971135e-07,
         "ecc": 0.334,
         "arg_peri": 0.0,
         "orb_incl": 0.8499753457212386,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.76898989663475
-      },
-      "rotating": {
-        "soi": 107000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6401,18 +5646,12 @@
         ]
       },
       "inertial": {
-        "soi": 945241.8214960766,
         "orb_ang_speed": 1.6124623540228469e-07,
         "ecc": 0.316,
         "arg_peri": 0.0,
         "orb_incl": 0.8569566627292158,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.168953126363405
-      },
-      "rotating": {
-        "soi": 105000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6447,18 +5686,12 @@
         ]
       },
       "inertial": {
-        "soi": 286887.69312493334,
         "orb_ang_speed": 1.630539286242834e-07,
         "ecc": 0.623,
         "arg_peri": 0.0,
         "orb_incl": 0.7749261878854823,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.2857310489124743
-      },
-      "rotating": {
-        "soi": 101500.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6493,18 +5726,12 @@
         ]
       },
       "inertial": {
-        "soi": 21937634.85770758,
         "orb_ang_speed": 1.3270447475625983e-07,
         "ecc": 0.164,
         "arg_peri": 0.0,
         "orb_incl": 3.0508355324860883,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.6856942786411295
-      },
-      "rotating": {
-        "soi": 206666.6666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6539,18 +5766,12 @@
         ]
       },
       "inertial": {
-        "soi": 2584114.3321475475,
         "orb_ang_speed": 1.0585451552609955e-07,
         "ecc": 0.364,
         "arg_peri": 0.0,
         "orb_incl": 0.8237954069413236,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.8024722011901986
-      },
-      "rotating": {
-        "soi": 110000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6585,18 +5806,12 @@
         ]
       },
       "inertial": {
-        "soi": 792575.0668731492,
         "orb_ang_speed": 9.989292880004175e-08,
         "ecc": 0.27,
         "arg_peri": 0.0,
         "orb_incl": 2.5918139392115793,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.202435430918854
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6631,18 +5846,12 @@
         ]
       },
       "inertial": {
-        "soi": 808385.7664053678,
         "orb_ang_speed": 9.00025398099386e-08,
         "ecc": 0.218,
         "arg_peri": 0.0,
         "orb_incl": 3.0839967882739803,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.602398660647509
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6677,18 +5886,12 @@
         ]
       },
       "inertial": {
-        "soi": 1088252.1488778212,
         "orb_ang_speed": 9.657643049990756e-08,
         "ecc": 0.506,
         "arg_peri": 0.0,
         "orb_incl": 2.8623399732707004,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.7191765831965782
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6723,18 +5926,12 @@
         ]
       },
       "inertial": {
-        "soi": 3575938.2146310206,
         "orb_ang_speed": 9.287618412060076e-08,
         "ecc": 0.469,
         "arg_peri": 0.0,
         "orb_incl": 0.5934119456780721,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.1191398129252335
-      },
-      "rotating": {
-        "soi": 113000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6769,18 +5966,12 @@
         ]
       },
       "inertial": {
-        "soi": 873158.6322309083,
         "orb_ang_speed": 8.709227804362921e-08,
         "ecc": 0.469,
         "arg_peri": 0.0,
         "orb_incl": 0.6108652381980153,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.2359177354743025
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6815,18 +6006,12 @@
         ]
       },
       "inertial": {
-        "soi": 1179172.1715641704,
         "orb_ang_speed": 8.349259720600504e-08,
         "ecc": 0.474,
         "arg_peri": 0.0,
         "orb_incl": 0.6038839211900381,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.635880965202958
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6861,18 +6046,12 @@
         ]
       },
       "inertial": {
-        "soi": 1183456.361114836,
         "orb_ang_speed": 8.515462782954379e-08,
         "ecc": 0.242,
         "arg_peri": 0.0,
         "orb_incl": 0.8396779031344719,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.035844194931613
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6907,18 +6086,12 @@
         ]
       },
       "inertial": {
-        "soi": 1188080.5657092053,
         "orb_ang_speed": 8.465896643356275e-08,
         "ecc": 0.472,
         "arg_peri": 0.0,
         "orb_incl": 0.7754497866610807,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.152622117480682
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6953,18 +6126,12 @@
         ]
       },
       "inertial": {
-        "soi": 4768370.9728996325,
         "orb_ang_speed": 8.116300465003393e-08,
         "ecc": 0.295,
         "arg_peri": 0.0,
         "orb_incl": 0.7958701389094143,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.5525853472093374
-      },
-      "rotating": {
-        "soi": 116000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -6999,18 +6166,12 @@
         ]
       },
       "inertial": {
-        "soi": 901209.8733364573,
         "orb_ang_speed": 8.28269386861394e-08,
         "ecc": 0.464,
         "arg_peri": 0.0,
         "orb_incl": 2.813470754214859,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.952548576937993
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7045,18 +6206,12 @@
         ]
       },
       "inertial": {
-        "soi": 2139714.67002691,
         "orb_ang_speed": 7.853353365705227e-08,
         "ecc": 0.531,
         "arg_peri": 0.0,
         "orb_incl": 0.5899212871740833,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.0693264994870617
-      },
-      "rotating": {
-        "soi": 107000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7091,18 +6246,12 @@
         ]
       },
       "inertial": {
-        "soi": 918550.6405653422,
         "orb_ang_speed": 8.189420289012432e-08,
         "ecc": 0.16,
         "arg_peri": 0.0,
         "orb_incl": 0.8045967851693859,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.469289729215717
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7137,18 +6286,12 @@
         ]
       },
       "inertial": {
-        "soi": 928751.0918764509,
         "orb_ang_speed": 7.895988291686254e-08,
         "ecc": 0.326,
         "arg_peri": 0.0,
         "orb_incl": 3.1381019950858047,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.586067651764786
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7183,18 +6326,12 @@
         ]
       },
       "inertial": {
-        "soi": 1253975.4811789677,
         "orb_ang_speed": 7.802795296827296e-08,
         "ecc": 0.333,
         "arg_peri": 0.0,
         "orb_incl": 2.642428487519415,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.9860308814934413
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7229,18 +6366,12 @@
         ]
       },
       "inertial": {
-        "soi": 945581.8365397804,
         "orb_ang_speed": 7.794432172179035e-08,
         "ecc": 0.273,
         "arg_peri": 0.0,
         "orb_incl": 2.921681167838508,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.385994111222097
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7275,18 +6406,12 @@
         ]
       },
       "inertial": {
-        "soi": 953232.1750231119,
         "orb_ang_speed": 7.630855421451248e-08,
         "ecc": 0.21,
         "arg_peri": 0.0,
         "orb_incl": 2.956587752878394,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.5027720337711656
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7321,18 +6446,12 @@
         ]
       },
       "inertial": {
-        "soi": 955782.287850889,
         "orb_ang_speed": 7.164734203589202e-08,
         "ecc": 0.13,
         "arg_peri": 0.0,
         "orb_incl": 2.691297706575256,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.902735263499821
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7367,18 +6486,12 @@
         ]
       },
       "inertial": {
-        "soi": 959352.4458097771,
         "orb_ang_speed": 7.535963955070507e-08,
         "ecc": 0.216,
         "arg_peri": 0.0,
         "orb_incl": 2.8501226685067405,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.019513186048889963
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7413,18 +6526,12 @@
         ]
       },
       "inertial": {
-        "soi": 969552.8971208859,
         "orb_ang_speed": 7.243232287493068e-08,
         "ecc": 0.431,
         "arg_peri": 0.0,
         "orb_incl": 2.5446900494077327,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.4194764157774884
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7459,18 +6566,12 @@
         ]
       },
       "inertial": {
-        "soi": 1306405.8009180666,
         "orb_ang_speed": 7.345661834992969e-08,
         "ecc": 0.204,
         "arg_peri": 0.0,
         "orb_incl": 2.8466320100027516,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.819439645506144
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7505,18 +6606,12 @@
         ]
       },
       "inertial": {
-        "soi": 986383.6417842152,
         "orb_ang_speed": 7.22883222330322e-08,
         "ecc": 0.142,
         "arg_peri": 0.0,
         "orb_incl": 2.7663468644110125,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.9362175680552127
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7551,18 +6646,12 @@
         ]
       },
       "inertial": {
-        "soi": 991483.8674397697,
         "orb_ang_speed": 7.185973534232253e-08,
         "ecc": 0.143,
         "arg_peri": 0.0,
         "orb_incl": 3.082251459021986,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.336180797783868
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7597,18 +6686,12 @@
         ]
       },
       "inertial": {
-        "soi": 992503.9125708805,
         "orb_ang_speed": 7.150644264152448e-08,
         "ecc": 0.114,
         "arg_peri": 0.0,
         "orb_incl": 3.0682888250060314,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.736144027512523
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7643,18 +6726,12 @@
         ]
       },
       "inertial": {
-        "soi": 1344895.503865317,
         "orb_ang_speed": 7.039888883487937e-08,
         "ecc": 0.12,
         "arg_peri": 0.0,
         "orb_incl": 2.9164451800825244,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.8529219500615923
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7689,18 +6766,12 @@
         ]
       },
       "inertial": {
-        "soi": 1012904.815193098,
         "orb_ang_speed": 6.999235049704561e-08,
         "ecc": 0.372,
         "arg_peri": 0.0,
         "orb_incl": 2.8937558998065986,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.252885179790248
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7735,18 +6806,12 @@
         ]
       },
       "inertial": {
-        "soi": 676629.9369702132,
         "orb_ang_speed": 7.375461680165355e-08,
         "ecc": 0.259,
         "arg_peri": 0.0,
         "orb_incl": 2.907718533822553,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.36966310233931665
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7781,18 +6846,12 @@
         ]
       },
       "inertial": {
-        "soi": 1015454.9280208752,
         "orb_ang_speed": 6.952395044591816e-08,
         "ecc": 0.401,
         "arg_peri": 0.0,
         "orb_incl": 2.8623399732707004,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.769626332067972
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7827,18 +6886,12 @@
         ]
       },
       "inertial": {
-        "soi": 1026675.4244630948,
         "orb_ang_speed": 6.708676399117195e-08,
         "ecc": 0.521,
         "arg_peri": 0.0,
         "orb_incl": 2.5342180738957665,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.169589561796627
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7873,18 +6926,12 @@
         ]
       },
       "inertial": {
-        "soi": 1039425.9886019807,
         "orb_ang_speed": 6.733523348743555e-08,
         "ecc": 0.257,
         "arg_peri": 0.0,
         "orb_incl": 3.0962140930379407,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.2863674843456963
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7919,18 +6966,12 @@
         ]
       },
       "inertial": {
-        "soi": 1039936.0111675361,
         "orb_ang_speed": 6.696321562286409e-08,
         "ecc": 0.206,
         "arg_peri": 0.0,
         "orb_incl": 2.7296949501191317,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.6863307140743515
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -7965,18 +7006,12 @@
         ]
       },
       "inertial": {
-        "soi": 1041670.0878904246,
         "orb_ang_speed": 6.708676399117195e-08,
         "ecc": 0.113,
         "arg_peri": 0.0,
         "orb_incl": 2.7279496208671374,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.086293943803007
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8011,18 +7046,12 @@
         ]
       },
       "inertial": {
-        "soi": 1044016.1916919796,
         "orb_ang_speed": 6.64735394574318e-08,
         "ecc": 0.47,
         "arg_peri": 0.0,
         "orb_incl": 3.0543261909900767,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.203071866352076
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8057,18 +7086,12 @@
         ]
       },
       "inertial": {
-        "soi": 1047841.3609336454,
         "orb_ang_speed": 6.641283302870355e-08,
         "ecc": 0.457,
         "arg_peri": 0.0,
         "orb_incl": 3.024655593706173,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.603035096080731
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8103,18 +7126,12 @@
         ]
       },
       "inertial": {
-        "soi": 1057786.8009619764,
         "orb_ang_speed": 6.510479155454824e-08,
         "ecc": 0.252,
         "arg_peri": 0.0,
         "orb_incl": 2.909463863074547,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.7198130186298002
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8149,18 +7166,12 @@
         ]
       },
       "inertial": {
-        "soi": 1091958.3128541908,
         "orb_ang_speed": 5.92681761747599e-08,
         "ecc": 0.471,
         "arg_peri": 0.0,
         "orb_incl": 2.631956512007449,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.1197762483584555
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8195,18 +7206,12 @@
         ]
       },
       "inertial": {
-        "soi": 1457100.4682875131,
         "orb_ang_speed": 6.247598983370309e-08,
         "ecc": 0.399,
         "arg_peri": 0.0,
         "orb_incl": 3.1014500807939234,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.519739478087111
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8241,18 +7246,12 @@
         ]
       },
       "inertial": {
-        "soi": 1466416.8804849924,
         "orb_ang_speed": 6.189110822674927e-08,
         "ecc": 0.262,
         "arg_peri": 0.0,
         "orb_incl": 2.7663468644110125,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.6365174006361798
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8287,18 +7286,12 @@
         ]
       },
       "inertial": {
-        "soi": 1102158.7641652995,
         "orb_ang_speed": 6.37912738302021e-08,
         "ecc": 0.58,
         "arg_peri": 0.0,
         "orb_incl": 2.8815385950426378,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.036480630364835
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8333,18 +7326,12 @@
         ]
       },
       "inertial": {
-        "soi": 1481853.563469137,
         "orb_ang_speed": 6.0753594124002e-08,
         "ecc": 0.133,
         "arg_peri": 0.0,
         "orb_incl": 2.9845130209103035,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.1532585529139041
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8379,18 +7366,12 @@
         ]
       },
       "inertial": {
-        "soi": 1492870.0508851344,
         "orb_ang_speed": 6.020037430995894e-08,
         "ecc": 0.182,
         "arg_peri": 0.0,
         "orb_incl": 3.0787608005179976,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.5532217826425594
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8425,18 +7406,12 @@
         ]
       },
       "inertial": {
-        "soi": 1128169.9150086269,
         "orb_ang_speed": 5.893197096145089e-08,
         "ecc": 0.478,
         "arg_peri": 0.0,
         "orb_incl": 2.7279496208671374,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.953185012371215
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8471,18 +7446,12 @@
         ]
       },
       "inertial": {
-        "soi": 763333.7731146375,
         "orb_ang_speed": 5.7715914417801904e-08,
         "ecc": 0.136,
         "arg_peri": 0.0,
         "orb_incl": 2.8780479365386493,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.0699629349202837
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8517,18 +7486,12 @@
         ]
       },
       "inertial": {
-        "soi": 1158261.2463763976,
         "orb_ang_speed": 5.602623433469214e-08,
         "ecc": 0.451,
         "arg_peri": 0.0,
         "orb_incl": 3.097959422289935,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.469926164648939
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8563,18 +7526,12 @@
         ]
       },
       "inertial": {
-        "soi": 774894.2846005608,
         "orb_ang_speed": 5.690301421473427e-08,
         "ecc": 0.081,
         "arg_peri": 0.0,
         "orb_incl": 2.9251718263424964,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.869889394377594
-      },
-      "rotating": {
-        "soi": 102000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8609,18 +7566,12 @@
         ]
       },
       "inertial": {
-        "soi": 1564477.2190891178,
         "orb_ang_speed": 5.611269457286296e-08,
         "ecc": 0.381,
         "arg_peri": 0.0,
         "orb_incl": 2.705260340591211,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.9866673169266633
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8655,18 +7606,12 @@
         ]
       },
       "inertial": {
-        "soi": 3525275.973119181,
         "orb_ang_speed": 5.542839341953536e-08,
         "ecc": 0.335,
         "arg_peri": 0.0,
         "orb_incl": 3.0211649352021843,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.386630546655319
-      },
-      "rotating": {
-        "soi": 109000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8701,18 +7646,12 @@
         ]
       },
       "inertial": {
-        "soi": 1176622.0587363932,
         "orb_ang_speed": 5.53861783445776e-08,
         "ecc": 0.187,
         "arg_peri": 0.0,
         "orb_incl": 2.9304078140984795,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.5034084692043876
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8747,18 +7686,12 @@
         ]
       },
       "inertial": {
-        "soi": 1184833.422041836,
         "orb_ang_speed": 5.517606385920364e-08,
         "ecc": 0.049,
         "arg_peri": 0.0,
         "orb_incl": 0.6419320988835144,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.903371698933043
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8793,18 +7726,12 @@
         ]
       },
       "inertial": {
-        "soi": 1208702.4781098303,
         "orb_ang_speed": 5.370904886737843e-08,
         "ecc": 0.667,
         "arg_peri": 0.0,
         "orb_incl": 2.5761059759436304,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.303334928661698
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8839,18 +7766,12 @@
         ]
       },
       "inertial": {
-        "soi": 1616091.502723328,
         "orb_ang_speed": 5.33935772147066e-08,
         "ecc": 0.417,
         "arg_peri": 0.0,
         "orb_incl": 2.8187067419708423,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.4201128512107104
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8885,18 +7806,12 @@
         ]
       },
       "inertial": {
-        "soi": 1214363.7285874956,
         "orb_ang_speed": 5.32762286933556e-08,
         "ecc": 0.312,
         "arg_peri": 0.0,
         "orb_incl": 2.6982790235832335,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.8200760809393657
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8931,18 +7846,12 @@
         ]
       },
       "inertial": {
-        "soi": 1242363.9674364892,
         "orb_ang_speed": 5.146642049995074e-08,
         "ecc": 0.267,
         "arg_peri": 0.0,
         "orb_incl": 2.892010570554604,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.220039310668021
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -8977,18 +7886,12 @@
         ]
       },
       "inertial": {
-        "soi": 1280666.6621097024,
         "orb_ang_speed": 4.8774012184057944e-08,
         "ecc": 0.206,
         "arg_peri": 0.0,
         "orb_incl": 2.9740410453983377,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.33681723321709
-      },
-      "rotating": {
-        "soi": 103000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9023,18 +7926,12 @@
         ]
       },
       "inertial": {
-        "soi": 1818264.4477095034,
         "orb_ang_speed": 4.477958877243251e-08,
         "ecc": 0.148,
         "arg_peri": 0.0,
         "orb_incl": 2.9897490086662866,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.736780462945745
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9069,18 +7966,12 @@
         ]
       },
       "inertial": {
-        "soi": 822037.8064177888,
         "orb_ang_speed": 5.144897955076121e-05,
         "ecc": 0.0013,
         "arg_peri": 0.0,
         "orb_incl": 0.0757472895365539,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.8535583854948143
-      },
-      "rotating": {
-        "soi": 335700.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9115,18 +8006,12 @@
         ]
       },
       "inertial": {
-        "soi": 3254146.948296335,
         "orb_ang_speed": 2.885361771639519e-05,
         "ecc": 0.0012,
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.2535216152234696
-      },
-      "rotating": {
-        "soi": 678900.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9161,18 +8046,12 @@
         ]
       },
       "inertial": {
-        "soi": 4450781.172841618,
         "orb_ang_speed": 1.7548012479786185e-05,
         "ecc": 0.0039,
         "arg_peri": 0.0,
         "orb_incl": 0.0022689280275926286,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.653484844952125
-      },
-      "rotating": {
-        "soi": 684700.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9207,18 +8086,12 @@
         ]
       },
       "inertial": {
-        "soi": 10293472.543373307,
         "orb_ang_speed": 8.353223425815073e-06,
         "ecc": 0.0011,
         "arg_peri": 0.0,
         "orb_incl": 0.0013962634015954637,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.770262767501194
-      },
-      "rotating": {
-        "soi": 888900.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9253,18 +8126,12 @@
         ]
       },
       "inertial": {
-        "soi": 12999890.226492913,
         "orb_ang_speed": 5.401529243748597e-06,
         "ecc": 0.0014,
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.170225997229849
-      },
-      "rotating": {
-        "soi": 861400.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9299,18 +8166,12 @@
         ]
       },
       "inertial": {
-        "soi": 220000.0,
         "orb_ang_speed": 0.00021705872289508047,
         "ecc": 0.0003,
         "arg_peri": 0.0,
         "orb_incl": 0.0013962634015954637,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.28700391977891826
-      },
-      "rotating": {
-        "soi": 120000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9345,18 +8206,12 @@
         ]
       },
       "inertial": {
-        "soi": 221000.0,
         "orb_ang_speed": 0.00019320417685024014,
         "ecc": 0.0099,
         "arg_peri": 0.0,
         "orb_incl": 0.0017453292519943296,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.6869671495075735
-      },
-      "rotating": {
-        "soi": 121000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9391,18 +8246,12 @@
         ]
       },
       "inertial": {
-        "soi": 227000.0,
         "orb_ang_speed": 0.00016733908487623746,
         "ecc": 0.0009,
         "arg_peri": 0.0,
         "orb_incl": 0.0033161255787892262,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.086930379236229
-      },
-      "rotating": {
-        "soi": 127000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9437,18 +8286,12 @@
         ]
       },
       "inertial": {
-        "soi": 241000.0,
         "orb_ang_speed": 0.00015687393956992558,
         "ecc": 0.0004,
         "arg_peri": 0.0,
         "orb_incl": 0.00017453292519943296,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.2037083017852979
-      },
-      "rotating": {
-        "soi": 141000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9483,18 +8326,12 @@
         ]
       },
       "inertial": {
-        "soi": 235000.0,
         "orb_ang_speed": 0.00015353542102064898,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.0019198621771937625,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.603671531513953
-      },
-      "rotating": {
-        "soi": 135000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9529,18 +8366,12 @@
         ]
       },
       "inertial": {
-        "soi": 253000.0,
         "orb_ang_speed": 0.00014748978768809468,
         "ecc": 0.0007,
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.003634761242608
-      },
-      "rotating": {
-        "soi": 153000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9575,18 +8406,12 @@
         ]
       },
       "inertial": {
-        "soi": 270000.0,
         "orb_ang_speed": 0.0001417042458757091,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.0010471975511965976,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.1204126837916775
-      },
-      "rotating": {
-        "soi": 170000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9621,18 +8446,12 @@
         ]
       },
       "inertial": {
-        "soi": 236000.0,
         "orb_ang_speed": 0.00013021890944101707,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.004886921905584123,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.520375913520333
-      },
-      "rotating": {
-        "soi": 136000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9667,18 +8486,12 @@
         ]
       },
       "inertial": {
-        "soi": 209000.0,
         "orb_ang_speed": 0.00011863303779189299,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0017453292519943296,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.6371538360694018
-      },
-      "rotating": {
-        "soi": 109000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9713,18 +8526,12 @@
         ]
       },
       "inertial": {
-        "soi": 245000.0,
         "orb_ang_speed": 0.00011663015742129914,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.0005235987755982988,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.037117065798057
-      },
-      "rotating": {
-        "soi": 145000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9759,18 +8566,12 @@
         ]
       },
       "inertial": {
-        "soi": 213000.0,
         "orb_ang_speed": 0.00011398440778437365,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.008203047484373348,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.437080295526712
-      },
-      "rotating": {
-        "soi": 113000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9805,18 +8606,12 @@
         ]
       },
       "inertial": {
-        "soi": 281000.0,
         "orb_ang_speed": 9.545668429489193e-05,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.005585053606381855,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.5538582180757814
-      },
-      "rotating": {
-        "soi": 181000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9851,18 +8646,12 @@
         ]
       },
       "inertial": {
-        "soi": 212000.0,
         "orb_ang_speed": 7.8788788912709e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0022689280275926286,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.9538214478044367
-      },
-      "rotating": {
-        "soi": 112000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9897,18 +8686,12 @@
         ]
       },
       "inertial": {
-        "soi": 1495906.946054242,
         "orb_ang_speed": 2.7277588959651305e-07,
         "ecc": 0.146,
         "arg_peri": 0.0,
         "orb_incl": 2.5342180738957665,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.07059937035350572
-      },
-      "rotating": {
-        "soi": 111000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9943,18 +8726,12 @@
         ]
       },
       "inertial": {
-        "soi": 8278946.18099022,
         "orb_ang_speed": 1.2549103048564348e-07,
         "ecc": 0.159,
         "arg_peri": 0.0,
         "orb_incl": 2.4591689160600105,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.470562600082161
-      },
-      "rotating": {
-        "soi": 136000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -9989,18 +8766,12 @@
         ]
       },
       "inertial": {
-        "soi": 1017583.0990294992,
         "orb_ang_speed": 1.0703864022141654e-07,
         "ecc": 0.187,
         "arg_peri": 0.0,
         "orb_incl": 2.4766222085799536,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.870525829810816
-      },
-      "rotating": {
-        "soi": 104000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10035,18 +8806,12 @@
         ]
       },
       "inertial": {
-        "soi": 4072876.6719000433,
         "orb_ang_speed": 1.074974902681898e-07,
         "ecc": 0.229,
         "arg_peri": 0.0,
         "orb_incl": 2.5150194521238287,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.9873037523598853
-      },
-      "rotating": {
-        "soi": 116000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10081,18 +8846,12 @@
         ]
       },
       "inertial": {
-        "soi": 2434108.6406838903,
         "orb_ang_speed": 9.592672756421369e-08,
         "ecc": 0.22,
         "arg_peri": 0.0,
         "orb_incl": 2.9164451800825244,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.3872669820885406
-      },
-      "rotating": {
-        "soi": 109000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10127,18 +8886,12 @@
         ]
       },
       "inertial": {
-        "soi": 29050063.827697843,
         "orb_ang_speed": 5.6663590592512377e-08,
         "ecc": 0.5219,
         "arg_peri": 0.0,
         "orb_incl": 2.78240389352936,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.787230211817196
-      },
-      "rotating": {
-        "soi": 175000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10173,18 +8926,12 @@
         ]
       },
       "inertial": {
-        "soi": 4562204.511682137,
         "orb_ang_speed": 4.290892858533774e-08,
         "ecc": 0.661,
         "arg_peri": 0.0,
         "orb_incl": 0.9878563566287906,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.904008134366265
-      },
-      "rotating": {
-        "soi": 110000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10219,18 +8966,12 @@
         ]
       },
       "inertial": {
-        "soi": 12924920.97279624,
         "orb_ang_speed": 3.6778461622632074e-08,
         "ecc": 0.445,
         "arg_peri": 0.0,
         "orb_incl": 2.652900463031381,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.30397136409492
-      },
-      "rotating": {
-        "soi": 125000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10265,18 +9006,12 @@
         ]
       },
       "inertial": {
-        "soi": 13294858.671505801,
         "orb_ang_speed": 3.2540742870248066e-08,
         "ecc": 0.591,
         "arg_peri": 0.0,
         "orb_incl": 2.761110876655029,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.42074928664398925
-      },
-      "rotating": {
-        "soi": 124000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10311,18 +9046,12 @@
         ]
       },
       "inertial": {
-        "soi": 6647238.515069247,
         "orb_ang_speed": 2.575690733386357e-08,
         "ecc": 0.368,
         "arg_peri": 0.0,
         "orb_incl": 2.963569069886372,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.8207125163726445
-      },
-      "rotating": {
-        "soi": 110000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10357,18 +9086,12 @@
         ]
       },
       "inertial": {
-        "soi": 234666.66666666666,
         "orb_ang_speed": 0.0002470211965054906,
         "ecc": 0.0003,
         "arg_peri": 0.0,
         "orb_incl": 0.08272860654453122,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.220675746101243
-      },
-      "rotating": {
-        "soi": 134666.66666666666,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10403,18 +9126,12 @@
         ]
       },
       "inertial": {
-        "soi": 243333.33333333334,
         "orb_ang_speed": 0.0002334688738347927,
         "ecc": 0.0002,
         "arg_peri": 0.0,
         "orb_incl": 0.003665191429188092,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.337453668650312
-      },
-      "rotating": {
-        "soi": 143333.33333333334,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10449,18 +9166,12 @@
         ]
       },
       "inertial": {
-        "soi": 276000.0,
         "orb_ang_speed": 0.00021730454398240099,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.7374168983789673
-      },
-      "rotating": {
-        "soi": 176000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10495,18 +9206,12 @@
         ]
       },
       "inertial": {
-        "soi": 288666.6666666667,
         "orb_ang_speed": 0.0001696160938703201,
         "ecc": 0.0001,
         "arg_peri": 0.0,
         "orb_incl": 0.0008726646259971648,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.137380128107623
-      },
-      "rotating": {
-        "soi": 188666.6666666667,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10541,18 +9246,12 @@
         ]
       },
       "inertial": {
-        "soi": 298000.0,
         "orb_ang_speed": 0.00013111246320486359,
         "ecc": 0.0014,
         "arg_peri": 0.0,
         "orb_incl": 0.003490658503988659,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.2541580506566916
-      },
-      "rotating": {
-        "soi": 198000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10587,18 +9286,12 @@
         ]
       },
       "inertial": {
-        "soi": 217000.0,
         "orb_ang_speed": 7.654952859624252e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.654121280385404
-      },
-      "rotating": {
-        "soi": 117000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10633,18 +9326,12 @@
         ]
       },
       "inertial": {
-        "soi": 642319.4384416783,
         "orb_ang_speed": 6.479647172712688e-05,
         "ecc": 0.0004,
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.7708992029344728
-      },
-      "rotating": {
-        "soi": 310000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10689,18 +9376,12 @@
         }
       },
       "inertial": {
-        "soi": 14596635.9752536,
         "orb_ang_speed": 1.2374316626962385e-05,
         "ecc": 1.6e-05,
         "arg_peri": 0.0,
         "orb_incl": 2.746188311550478,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.170862432663128
-      },
-      "rotating": {
-        "soi": 1453400.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10735,18 +9416,12 @@
         ]
       },
       "inertial": {
-        "soi": 25388680.29355213,
         "orb_ang_speed": 2.0192930948269985e-07,
         "ecc": 0.7512,
         "arg_peri": 0.0,
         "orb_incl": 0.12618730491919003,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.570825662391783
-      },
-      "rotating": {
-        "soi": 270000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10781,18 +9456,12 @@
         ]
       },
       "inertial": {
-        "soi": 13632816.669694059,
         "orb_ang_speed": 3.868811627729446e-08,
         "ecc": 0.571,
         "arg_peri": 0.0,
         "orb_incl": 2.340486526924396,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.6876035849408524
-      },
-      "rotating": {
-        "soi": 130000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10827,18 +9496,12 @@
         ]
       },
       "inertial": {
-        "soi": 15422300.046418406,
         "orb_ang_speed": 2.495523563584997e-08,
         "ecc": 0.293,
         "arg_peri": 0.0,
         "orb_incl": 0.8464846872172498,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.087566814669508
-      },
-      "rotating": {
-        "soi": 120000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10873,18 +9536,12 @@
         ]
       },
       "inertial": {
-        "soi": 8451818.81651991,
         "orb_ang_speed": 2.3151778729244658e-08,
         "ecc": 0.548,
         "arg_peri": 0.0,
         "orb_incl": 0.7347836150896128,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.2043447372185767
-      },
-      "rotating": {
-        "soi": 112000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10919,18 +9576,12 @@
         ]
       },
       "inertial": {
-        "soi": 16213363.608121403,
         "orb_ang_speed": 2.2955917852972124e-08,
         "ecc": 0.424,
         "arg_peri": 0.0,
         "orb_incl": 0.6056292504420324,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.604307966947232
-      },
-      "rotating": {
-        "soi": 120000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -10965,18 +9616,12 @@
         ]
       },
       "inertial": {
-        "soi": 18786263.912749242,
         "orb_ang_speed": 7.977495602894985e-09,
         "ecc": 0.45,
         "arg_peri": 0.0,
         "orb_incl": 2.398082392240209,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.004271196675887
-      },
-      "rotating": {
-        "soi": 120000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11011,18 +9656,12 @@
         ]
       },
       "inertial": {
-        "soi": 41938461.45241548,
         "orb_ang_speed": 7.757846401368722e-09,
         "ecc": 0.495,
         "arg_peri": 0.0,
         "orb_incl": 2.314306588144481,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.1210491192249563
-      },
-      "rotating": {
-        "soi": 130000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11057,18 +9696,12 @@
         ]
       },
       "inertial": {
-        "soi": 10694801.502442503,
         "orb_ang_speed": 7.2585591254871245e-09,
         "ecc": 0.44,
         "arg_peri": 0.0,
         "orb_incl": 2.3474678439323733,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.521012348953498
-      },
-      "rotating": {
-        "soi": 107000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11103,18 +9736,12 @@
         ]
       },
       "inertial": {
-        "soi": 6733588.952395998,
         "orb_ang_speed": 1.1385591834674098e-05,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 8.726646259971648e-07,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.920975578682153
-      },
-      "rotating": {
-        "soi": 706000.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11149,18 +9776,12 @@
         ]
       },
       "inertial": {
-        "soi": 205250.0,
         "orb_ang_speed": 3.6072446511126188e-06,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.0377535012312222
-      },
-      "rotating": {
-        "soi": 105250.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11195,18 +9816,12 @@
         ]
       },
       "inertial": {
-        "soi": 551676.5201443309,
         "orb_ang_speed": 2.9264407310434766e-06,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.4377167309598775
-      },
-      "rotating": {
-        "soi": 118933.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11241,18 +9856,12 @@
         ]
       },
       "inertial": {
-        "soi": 218877.9334509093,
         "orb_ang_speed": 2.2605549321240408e-06,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.5544946535089466
-      },
-      "rotating": {
-        "soi": 106333.33333333333,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     },
     {
@@ -11287,18 +9896,12 @@
         ]
       },
       "inertial": {
-        "soi": 824978.189932099,
         "orb_ang_speed": 1.9037186431002718e-06,
         "ecc": 0.0,
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.954457883237602
-      },
-      "rotating": {
-        "soi": 121300.0,
-        "rot_ang_speed": 0.0,
-        "axial_tilt": 0.0
       }
     }
   ]

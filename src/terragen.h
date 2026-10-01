@@ -24,6 +24,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
 
+#include "constants.h"  // kAtmoScaleHeights
+
 typedef struct {
     float r, g, b;
 } COLOUR;
@@ -33,11 +35,6 @@ struct PaletteStop {
     float t;
     glm::vec3 color;
 };
-
-// The fallback atmosphere top when a body does not author one: ~e^-10 of
-// sea-level density. Lands within ~25% of the authored values on shipped
-// bodies, so an unauthored atmosphere still has a sane hard top.
-inline constexpr double kAtmoScaleHeights = 10.0;
 
 // Per-body atmosphere (optional "surface.atmosphere" block), in two
 // independent halves: the RENDER half (a Fresnel limb-glow shell; see

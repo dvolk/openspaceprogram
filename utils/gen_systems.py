@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # Generate res/systems/{old,ksp}_system.json. Angular speeds = 2*pi / period.
 # Source of truth for the committed JSONs; --check verifies no drift.
+# SOIs are NOT emitted: the loader derives the near-body shells and the
+# inertial spheres from physics -- "soi_law": "patched_conic" reproduces the
+# KSP wiki SOI values the old table hardcoded (src/bodylimits.h).
 import argparse
 import math
 import os
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
+STAR_SOI = 1e18   # m; the root frame's inertial soi: the universe bound
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -57,6 +61,7 @@ WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 # seed 0 keeps the original unseeded terrain.
 eerbon = {
     "home": "Eerbon",
+    "soi_law": "patched_conic",
     "bodies": [
         {
             "name": "Sun",
@@ -67,7 +72,7 @@ eerbon = {
             "seed": 0,
             "has_sea": False,
             "power_scaler": 1,
-            "inertial": {"soi": 1e18, "pos": [0, 0, 0], "orb_ang_speed": 0.0},
+            "inertial": {"soi": STAR_SOI, "pos": [0, 0, 0], "orb_ang_speed": 0.0},
         },
         {
             "name": "Eerbon",
@@ -84,12 +89,10 @@ eerbon = {
                                "power": 4.0, "intensity": 0.7},
             },
             "inertial": {
-                "soi": 84159286,
                 "pos": [0, 0, -13599840260],
                 "orb_ang_speed": 0.00000068269186570822291594437651,
             },
             "rotating": {
-                "soi": 700000,
                 "rot_ang_speed": 0.00029157090303706880702966723086,
                 "axial_tilt": math.radians(23.4),
             },
@@ -105,13 +108,11 @@ eerbon = {
             "has_sea": False,
             "power_scaler": 1,
             "inertial": {
-                "soi": 2429559.1,
                 "pos": [-12000000, 0, 0],
                 "orb_ang_speed": 0.00004520797578987211820731369629,
                 "orb_incl": math.radians(5.1),
             },
             "rotating": {
-                "soi": 300000,
                 "rot_ang_speed": 0.00004520785218583258404235991675,
                 "axial_tilt": math.radians(6.7),
             },
@@ -121,27 +122,30 @@ eerbon = {
 
 # KSP bodies leave sma/ecc/inc/orb_s as None (ksp_bodies.csv is source of truth).
 # tilt_deg: axial tilt (0 = omit). phase_deg: non-KSP start angle (Shay=60 = L4).
+# No soi column: the loader derives inertial SOIs with the patched_conic law
+# (reproduces the wiki values within rounding) and near-body shells from the
+# atmosphere -- see src/bodylimits.h.
 K = [
-    # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, soi_m,        has_sea, seed, ps [, phase_deg]
-    ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     1e18,         False, 0.1, 1),
-    ("Moho",   "planet", "Kerbol", None,        None,   2.526e21, 2.698,  250000,   None,    None,       1210000,   0.03,     9646660,      False, 1,   3),
-    ("Eve",    "planet", "Kerbol", None,        None,   1.224e23, 16.677, 700000,   None,    None,       80500,     2.64,     85109360,     False, 2,   3),
-    ("Gilly",  "moon",   "Eve",    None,        None,   1.242e17, 0.049,  13000,    None,    None,       28255,     1.2,      126120,       False, 3,   1),
-    ("Kerbin", "planet", "Kerbol", None,        None,   5.292e22, 9.81,   600000,   None,    None,       21549,     23.44,    84159290,     True,  1,   3),
-    ("Mun",    "moon",   "Kerbin", None,        None,   9.760e20, 1.628,  200000,   None,    None,       138984,    6.68,     2429560,      False, 5,   1),
-    ("Minmus", "moon",   "Kerbin", None,        None,   2.646e19, 0.491,  60000,    None,    None,       40400,     12.0,     2247430,      False, 6,   1),
+    # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, has_sea, seed, ps [, phase_deg]
+    ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     False, 0.1, 1),
+    ("Moho",   "planet", "Kerbol", None,        None,   2.526e21, 2.698,  250000,   None,    None,       1210000,   0.03,     False, 1,   3),
+    ("Eve",    "planet", "Kerbol", None,        None,   1.224e23, 16.677, 700000,   None,    None,       80500,     2.64,     False, 2,   3),
+    ("Gilly",  "moon",   "Eve",    None,        None,   1.242e17, 0.049,  13000,    None,    None,       28255,     1.2,      False, 3,   1),
+    ("Kerbin", "planet", "Kerbol", None,        None,   5.292e22, 9.81,   600000,   None,    None,       21549,     23.44,    True,  1,   3),
+    ("Mun",    "moon",   "Kerbin", None,        None,   9.760e20, 1.628,  200000,   None,    None,       138984,    6.68,     False, 5,   1),
+    ("Minmus", "moon",   "Kerbin", None,        None,   2.646e19, 0.491,  60000,    None,    None,       40400,     12.0,     False, 6,   1),
     # Shay: Kerbin's L4 trojan (60 deg ahead). Period must match Kerbin's exactly.
-    ("Shay",   "planet", "Kerbol", 13599840260, 0.0,    4.0762e22, 8.9933, 550000,   0.0,     9203544.6,  21549.425, 5.0,      77146016,     True,  0,   3,  60),
-    ("Duna",   "planet", "Kerbol", None,        None,   4.515e21, 2.943,  320000,   None,    None,       65518,     25.19,    47921950,     False, 7,   3),
-    ("Ike",    "moon",   "Duna",   None,        None,   2.782e20, 1.099,  130000,   None,    None,       65518,     1.76,     1049600,      False, 8,   1),
-    ("Dres",   "planet", "Kerbol", None,        None,   3.219e20, 1.128,  138000,   None,    None,       34800,     4.0,      32832840,     False, 9,   3),
-    ("Jool",   "planet", "Kerbol", None,        None,   4.233e24, 7.848,  6000000,  None,    None,       36000,     3.13,     2455985190,   False, 10,  3),
-    ("Laythe", "moon",   "Jool",   None,        None,   2.940e22, 7.848,  500000,   None,    None,       52981,     0.5,      3723650,      True,  11,  3),
-    ("Vall",   "moon",   "Jool",   None,        None,   3.109e21, 2.305,  300000,   None,    None,       105962,    2.0,      2406400,      False, 12,  1),
-    ("Tylo",   "moon",   "Jool",   None,        None,   4.233e22, 7.848,  600000,   None,    None,       211926,    0.2,      10856520,     False, 13,  3),
-    ("Bop",    "moon",   "Jool",   None,        None,   3.726e19, 0.589,  65000,    None,    None,       544507,    25.0,     1221060,      False, 14,  1),
-    ("Pol",    "moon",   "Jool",   None,        None,   1.081e19, 0.373,  44000,    None,    None,       901903,    10.0,     1042140,      False, 15,  1),
-    ("Eeloo",  "planet", "Kerbol", None,        None,   1.115e21, 1.687,  210000,   None,    None,       19460,     122.5,    119082940,    False, 16,  3),
+    ("Shay",   "planet", "Kerbol", 13599840260, 0.0,    4.0762e22, 8.9933, 550000,   0.0,     9203544.6,  21549.425, 5.0,      True,  0,   3,  60),
+    ("Duna",   "planet", "Kerbol", None,        None,   4.515e21, 2.943,  320000,   None,    None,       65518,     25.19,    False, 7,   3),
+    ("Ike",    "moon",   "Duna",   None,        None,   2.782e20, 1.099,  130000,   None,    None,       65518,     1.76,     False, 8,   1),
+    ("Dres",   "planet", "Kerbol", None,        None,   3.219e20, 1.128,  138000,   None,    None,       34800,     4.0,      False, 9,   3),
+    ("Jool",   "planet", "Kerbol", None,        None,   4.233e24, 7.848,  6000000,  None,    None,       36000,     3.13,     False, 10,  3),
+    ("Laythe", "moon",   "Jool",   None,        None,   2.940e22, 7.848,  500000,   None,    None,       52981,     0.5,      True,  11,  3),
+    ("Vall",   "moon",   "Jool",   None,        None,   3.109e21, 2.305,  300000,   None,    None,       105962,    2.0,      False, 12,  1),
+    ("Tylo",   "moon",   "Jool",   None,        None,   4.233e22, 7.848,  600000,   None,    None,       211926,    0.2,      False, 13,  3),
+    ("Bop",    "moon",   "Jool",   None,        None,   3.726e19, 0.589,  65000,    None,    None,       544507,    25.0,     False, 14,  1),
+    ("Pol",    "moon",   "Jool",   None,        None,   1.081e19, 0.373,  44000,    None,    None,       901903,    10.0,     False, 15,  1),
+    ("Eeloo",  "planet", "Kerbol", None,        None,   1.115e21, 1.687,  210000,   None,    None,       19460,     122.5,    False, 16,  3),
 ]
 
 # Optional "surface" block: palette (elevation 0..1 -> color), sea_*/,
@@ -285,7 +289,7 @@ SURFACES = {
 }
 
 
-def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s, tilt_deg, soi, has_sea, seed, ps, phase_deg=0):
+def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s, tilt_deg, has_sea, seed, ps, phase_deg=0):
     b = {
         "name": name,
         "type": typ,
@@ -302,7 +306,7 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
         b["surface"] = SURFACES[name]
 
     if typ == "star":
-        b["inertial"] = {"soi": soi, "pos": [0, 0, 0], "orb_ang_speed": 0.0}
+        b["inertial"] = {"soi": STAR_SOI, "pos": [0, 0, 0], "orb_ang_speed": 0.0}
     else:
         wiki = WIKI_ORBITS.get(name)
         if wiki and wiki.get("period") and orbits in MASS:
@@ -316,7 +320,6 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
             w = TWOPI / wiki["period"]
             nu = true_anomaly_from_mean(M, e)
             inertial = {
-                "soi": soi,
                 "orb_ang_speed": w,
                 "arg_peri": omega,
                 "true_anomaly0": nu,
@@ -350,7 +353,6 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
             else:
                 pos = [-sma, 0, 0]
             inertial = {
-                "soi": soi,
                 "pos": pos,
                 "orb_ang_speed": spd(orb_s),
             }
@@ -358,7 +360,6 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
                 inertial["orb_incl"] = math.radians(inc_deg)
             b["inertial"] = inertial
         rotating = {
-            "soi": radius + 100000,
             "rot_ang_speed": spd(rot_s),
         }
         # Axial tilt: lean the spin axis from the orbital normal (0 = omit).
@@ -372,6 +373,7 @@ MASS = {row[0]: row[5] for row in K}
 
 ksp = {
     "home": "Kerbin",
+    "soi_law": "patched_conic",
     "bodies": [
         ksp_body(*row) for row in K
     ],
