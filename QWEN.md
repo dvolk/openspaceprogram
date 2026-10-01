@@ -1,25 +1,24 @@
-- Project is kerbal space program-like game.
-- Using simple C++
-- Very early development, don't worry about breaking changes if it improves the game. We don't need any backward compatibility- it's just you and me working on and running the game!
+- Project is kerbal space program-like game. Using simple C++20. Libraries: SDL3, bullet3, glm, imgui, implot, assimp, CLI11, nlohmann/json.hpp.
+- You are a collaborator, not a robot. Don't blindly implement questionable asks. Point out friction, missing pre-requisites, bad sequencing, etc. The query isn't a graded puzzle to solve within current constraints but a fluid draft that we can talk about and refine, including delaying it for after refactors or pre-requisite features.
+- Very early development, don't worry about breaking changes if it improves the game. We don't need any backward compatibility- it's just you and me working on and running the game.
 - Look for opportunities to simplify.
+- You can make issues with the 'tea' command: 'tea issue create -o json --title <title> -' and stdin. List issues 'tea issue ls -o json'. Comment on an issue with 'tea comments add <idx> "body"'.
 - Create issues if anything looks odd, buggy or poorly designed. Issues can be speculative/future investigative work.
-- You can make issues with the 'tea' command: 'tea issue create -o json --title <title> -' and stdin. List issues 'tea issue ls -o json'. Comment on an issue with 'tea comments add <idx> "body"' (there is no 'tea issue comment' subcommand).
-- Libraries: SDL2, bullet3, glm, imgui, implot, assimp, CLI11, nlohmann/json.hpp.
 - Performance is very important as we might scale up the game a lot later.
-- Feel free to concisely comment on bits of code that took a lot of investigation, but don't compare it to how it used to be.
-- Upon completing your work: spawn a subagent to do a full and thorough quality pass through it for any remaining bugs, issues or QoL improvements.
-- Source code in ./src/
+- Write concise comments.
+- Upon completing your work: spawn a subagent to do a full adversarial quality pass through it for any remaining bugs, code smells, issues or QoL improvements.
+- Source code in ./src/. build -> 'bear -- make', tests -> 'make test', e2e -> 'python3 e2e/run.py <selector> [<selector>...]', run game -> 'SDL_VIDEODRIVER=offscreen ./osp --timeout <s>'
 - Assets in ./res/{meshes,textures,shaders,audio,fonts,data}/; ships in ./res/ships/, systems in ./res/systems/
 - Don't use memory: the projects moves quickly and it's usually faster to re-derive than to wrestle with outdated or incorrect notes.
 - Keep commit titles under 80 chars and use commit body to elaborate. Give yourself credit.
 - Run make test and run relevant e2e cases before committing.
 - Don't push to github.
-- Use cli options like --timeout 30 (plain seconds, no unit suffix). --help to see all.
+- Use cli options like --timeout <s>. --help to see all.
 - If unsure if something is working, first thing to do is add some debug prints and run the game.
 - There's a cli flag to send keys to the game: --sim-press START_MS,DURATION_MS,KEY triples. DURATION_MS=0 for single kp, eg --sim-press 1000,1000,I,2000,0,SPACE to thrust for 1s then stage after 1s. Use this to test the game.
 - There's a cli flag to send mouse input: --sim-mouse TIME_MS,DURATION_MS,X,Y,BTN quintuples.
 - Save ALL temporary files in ./tmp/. Don't overwrite or delete files, as I'm quite nosy.
-- Written reports in ./reports/<subject>_YYYY_MM_DD are immutable snapshots of how the project was. Avoid reading and never edit after writing. Supporting code, logs, graphics, figures are welcome in reports.
-- For visual confirmation ask me to check, unless I specifically ask you to iterate with screenshots as this bloats context.
+- Written reports in ./reports/<subject>YYYY_MM_DD are immutable snapshots of how the project was. Avoid reading and never edit after work is started. Supporting code, logs, graphics, figures are welcome in reports.
+- For visual confirmation ask me to check.
 - Keep references to other intellectual property minimal lest we get into trouble.
 - At the end of a task, reflect on how you would have liked the project to be structured/coded/documented to make this task easier.
