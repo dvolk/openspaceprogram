@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Rescale a part .obj mesh.
-
-Part meshes are authored centered at the origin with the stack/thrust axis
-along +Z. The base parts are 2 m cubes (radius 1 m, height 2 m), so a part of
-radius r and height h is a rescale by
-
-    sx = sy = r        sz = h / 2
-
-e.g.  rescale_obj.py res/meshes/engine.obj res/meshes/engine_r1.5h3.obj --sx 1.5 --sy 1.5 --sz 1.5
-
-Positions scale by (sx, sy, sz); normals by the inverse transpose
-(diagonal scale -> (1/sx, 1/sy, 1/sz)) and are re-normalized, which is exact
-for axis-aligned scales. UVs and faces pass through untouched, so textures
-and the index layout are preserved.
-"""
+"""Rescale a part .obj: sx=sy=radius, sz=height/2 (2 m base cube). Normals by inverse transpose."""
 
 import argparse
 import math

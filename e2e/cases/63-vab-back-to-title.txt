@@ -1,13 +1,3 @@
-# The editor opened with nothing to fly sits on [title, vab], so "Back to game"
-# pops to the TITLE screen rather than dropping into a flight scene with no
-# vessel in it -- which is what the old single-scene model did, and why the
-# flight readouts were reachable with nothing to read out.
-#
-# The camera round trip is asserted the same way case 60 does: the parked and
-# restored lines must name the same target and distance. The shipless default
-# is a random non-star body, so --title-body pins Kerbin to make the framing
-# deterministic: the round trip must restore the title backdrop exactly
-# (Kerbin at 2 radii = 1200000 m), not the 10 m construction default.
 NAME vab-back-to-title
 ARGS --vab-empty --title-body Kerbin --vab-close 2000 --timeout 8
 EXPECT [scene] title -> vab (push)

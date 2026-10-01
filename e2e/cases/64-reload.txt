@@ -1,10 +1,3 @@
-# A runtime load: --reload fires Game::loadFrom against a LIVE game at 2 s,
-# which is the Save/Load window's Load button without the click. The --load
-# boot path (case save-load) starts from nothing, so it cannot show a load
-# replacing a running fleet -- this can.
-#
-# Running to the full timeout is the assertion that matters: the fleet is
-# torn down and rebuilt mid-flight, and the sim keeps going afterwards.
 NAME reload
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_racer --reload-at 2000

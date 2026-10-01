@@ -1,22 +1,4 @@
-# Regression for a use-after-erase in Game::moveExperiment: it used to keep
-# the finding to move as a REFERENCE into `from->experiments`, then `erase`
-# invalidated it before `push_back` read it -- UB, latent while the source
-# held a single finding (the erased element was the last, memory intact by
-# luck). A courier holding TWO findings and moving the FIRST (non-last) one
-# exposed it. This case builds exactly that (the kerbal must EVA to take):
-#   --experiment     -> kerbal runs an "observation" (suit = [observation])
-#   --pod-experiment -> the pod runs a "materials study" (pod = [materials])
-#   --eva            -> the kerbal is free + in reach (take/store need that)
-#   --take           -> suit = [observation, materials]  (2 findings)
-#   --store          -> moves suit[0] (the observation, the NON-LAST one) to
-#                       the capsule; the suit (now a free kerbal) keeps the
-#                       materials study.
-# The real anchor is what RECOVERY banks, not the move log line: the log
-# captures `name` before the erase, so it prints "observation" even when the
-# reference was dangling and the capsule actually received the WRONG finding
-# (the materials study). Only the capsule is part of the recovered labpod,
-# so a correct move banks the observation and NOT the materials study. The
-# "new: observation" + "new: materials study" FORBID pair is the catcher.
+# two findings couriered home; only the non-pod one scores as new
 NAME courier-two-findings
 ARGS --time-accel 1 --timeout 10 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
 ARGS --experiment 1000

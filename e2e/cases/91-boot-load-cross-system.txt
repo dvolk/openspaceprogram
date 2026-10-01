@@ -1,10 +1,3 @@
-# Cross-system BOOT load (the flagship use case of feature a): boot into KSP,
-# then load a save made in the solar system. The boot --load path must switch
-# into the save's system BEFORE loading the fleet (ensureSystemForSave), and
-# the fleet must land on the save's bodies (Earth), not re-home onto Kerbin.
-# This also covers the stale-local bug: after the switch, main()'s boot-time
-# sun/home locals must be re-pointed at the live system (they dangle after
-# switchSystem deleted the old bodies) or UpdateOrbitRails segfaults.
 NAME boot-load-cross-system
 ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_solar --time-accel 1
 ARGS --timeout 5
@@ -12,9 +5,6 @@ EXPECT Loaded system 'res/systems/ksp_system.json'
 EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
 EXPECT Loaded system 'res/systems/solar_system.json'
 EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
-# The switch lands on the title; with a loaded fleet the player must be in
-# FLIGHT (the title menu has no "Resume Flight" -- a load that stops there
-# strands the game with a fleet the player can't reach).
 EXPECT [scene] title -> flight (enterFlight)
 FORBID Segmentation
 FORBID GL_

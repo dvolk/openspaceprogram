@@ -1,105 +1,11 @@
 #!/usr/bin/env python3
-"""E2E battery: launch the game and check the result.
+"""E2E battery: run e2e/cases/*.txt against the game binary.
 
-The binary defaults to ./osp; point at another build with --game
-(e.g. the new tree: --game build/linux-v2-znver3/release/osp).
-A windows artifact (--game build/windows-.../release/osp.exe) runs
-under Wine; that path still needs Xvfb (Wine renders to X).
-
-Linux GL: if a DRM render node is usable (/dev/dri/renderD*), the game
-runs with SDL_VIDEODRIVER=offscreen (EGL on the GPU -- radeonsi when the
-host passes the device through, llvmpipe if not). Otherwise it runs under
-Xvfb + GLX (software GL), which is what cloud CI does.
-
-Usage:
-  python3 e2e/run.py orbit      run only cases matching "orbit"
-  python3 e2e/run.py smoke 02   run cases matching "smoke" or "02"
-  python3 e2e/run.py --force    run all cases (needs --force; see below)
-  python3 e2e/run.py --jobs 4   run up to 4 cases in parallel
-                                (default: 2; --jobs 1 = serial)
-
-Each case prints a progress line as it finishes:
-  [3/97] orbit-burn PASS (12.3s)
-(diag lines follow a FAIL), so a long battery shows life; the full
-pass/fail table still comes at the end.
-
-A full battery (no selectors) or --jobs > 2 is refused without --force:
-a full battery takes a LONG time, and software-GL runs still use ~500%
-CPU per case. A targeted selector and the default 2 jobs usually cover
-what a change needs; use --force to run it anyway.
-
-Every run is persisted (always, pass or fail) under tmp/e2e/:
-  runs/<UTCstamp>/<case>.log   the case's captured output (partial on timeout)
-  runs/<UTCstamp>/summary.json machine-readable run + per-case summary
-  runs/<UTCstamp>/summary.txt  the human summary printed to the console
-  history.csv                  one appended row per run (datetime, commit,
-                               renderer, cases, pass/fail counts, duration)
-
-Each test is a case file in e2e/cases/*.txt with these keys (one per line,
-`#` starts a comment):
-
-  NAME <label>                 shown in the summary
-  ARGS <game args>             may span lines; split on whitespace, passed to ./osp
-  EXPECT <substring>           must occur in the output (repeat for more)
-  FORBID <substring>           must NOT occur in the output (repeat)
-  CHECK <python expression>    must be truthy (repeat); see the namespace below
-  LIMIT <seconds>              runner hard timeout for this case (default 120)
-  WRITE <path> <content>       write <content> to <path> (REPO_ROOT-relative)
-                               before the game launches -- stage a file for
-                               just this case. "settings.json" is special:
-                               it lands in the case's scratch data directory
-                               (each case runs with --data-dir tmp/e2e/data/
-                               <name>), where the game reads it (datadir.h)
-
-A case PASSES iff: the process exits 0, every EXPECT is found, no FORBID is
-found, and every CHECK is truthy.
-
-CHECK namespace (parsed from the game's stdout):
-  out     the full captured output (str)
-  orbit   list of dicts, one per [orbitlog] line:
-          t, frame, r, v, sma, ecc, peri, apo, inc, T, ttAp, ttPe, h, E
-          (apo == -1 on a hyperbolic/escape trajectory)
-  dbg     list of dicts, one per [dbg] line: t, pos (3-tuple), alt,
-          vel (3-tuple), v
-  att     list of dicts, one per [attlog] line: t, nose (3-tuple),
-          w (3-tuple), wnorm (|w|), wroll (the nose-axis component of w),
-          awroll (abs of wroll)
-  eva     list of dicts, one per [evalog] line: t, mode ("ground"/"space"),
-          grounded (0/1), pos (3-tuple), vel (3-tuple), face (3-tuple,
-          the kerbal's face axis), alt (m above the analytic terrain),
-          mass (kg; None if the binary predates the field)
-  fuel    list of dicts, one per [fuel] line: t, ship, groups
-          (group id -> {resource: (current, capacity, per-tank currents)}),
-          links (a list of (from_group, to_group) fuel-link pairs)
-  drainlog list of dicts, one per [drainlog] line: t, dt (the sample
-          interval, s), ship, thrust (N, the thrust delivered in the
-          sample's tick), rates (group id -> drain rate in kg/s, summed
-          over the resources its engines draw -- H2+LOX for a chemical
-          engine, H2 alone for a nuclear one; a group only appears while it
-          carries fuel)
-  drag    list of dicts, one per [drag] line: t, alt (m above the surface),
-          rho (kg/m^3, the air density), v (m/s, air-relative speed),
-          F (N, the drag force magnitude), cd (the drag coefficient)
-  shake   list of dicts, one per [shakelog] line: t, a (m/s^2, the felt
-          acceleration), amp (m, the shake's target amplitude),
-          off (3-tuple, the live smoothed offset)
-  terrain list of dicts, one per [terrain] line (--terrain-log): t, body
-          (the LOCAL body's name), patches (alive patch count), deepest
-          (the deepest leaf's depth), max_depth (the body's subdivision
-          stop), collision (leaves carrying a Bullet body), deep_off (m,
-          the camera -> nearest deepest leaf distance: the detail belongs
-          under the camera), cam_r (m, the camera -> body centre distance)
-  surf    list of dicts, one per [surfinfo] line (--info-log): t, alt_agl,
-          alt_asl, vs, hs, lat, lon, pitch, roll, hdg (degrees), acc
-          (m/s^2), body (name), bme (biome, "-" where the body has none),
-          sit (situation: landed/flying low/flying high/low orbit/high orbit).
-          Printed while paused too, so a case can compare the paused readout
-          against the one after the first unpaused tick.
-  first / last                 first() / last() of a list
-  re      the stdlib `re` module (regex checks against `out`)
-Example:  CHECK last(orbit)["E"] > first(orbit)["E"]
-
-Stdlib only. Run from anywhere; the repo root is derived from this file.
+Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
+Case keys: NAME ARGS EXPECT FORBID CHECK LIMIT WRITE. CHECK sees out and
+the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/terrain/surf/
+xfer/porkchop/surfmap) plus first/last/re. Full battery and --jobs>2 need
+--force. Artifacts land in tmp/e2e/runs/<stamp>/ + history.csv.
 """
 
 import argparse
@@ -118,9 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
-# The game binary to launch: --game wins, else the legacy ./osp. (The new
-# build tree puts it under build/<os>-<march>-<mtune>/<config>/, so that
-# flow passes --game explicitly.)
+# --game wins, else the legacy ./osp
 GAME = None
 DEFAULT_LIMIT = 120.0
 DEFAULT_JOBS = 2
@@ -197,10 +101,8 @@ DRAINLOG_RATE_RE = re.compile(r"g(\d+)=([-\d.]+)")
 FUEL_RE = re.compile(
     r"\[fuel\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+(.*)"
 )
-# One `gN=RES:cur/cap[tanks] [RES:cur/cap[tanks] ...]` segment per group.
-# The unit repeat stops at the next group id because the unit requires a
-# `:` after the name, and a group id is followed by `=` (same for
-# `links=`); so it cannot run into the next group.
+# Unit repeat cannot cross into the next group: it requires `:` after the
+# name while a group id is followed by `=`.
 FUEL_GROUP_RE = re.compile(
     r"g(\d+)=((?:\s*[A-Za-z0-9]+:[-\d.]+/[-\d.]+\[[^\]]*\])*)"
 )
@@ -238,7 +140,6 @@ def parse_cases(path):
             elif key == "LIMIT":
                 limit = float(rest)
             elif key == "WRITE":
-                # "path content": the content is the rest after the path token.
                 wpath, _, wcontent = rest.partition(" ")
                 writes.append((wpath.strip(), wcontent.strip()))
             else:
@@ -334,13 +235,8 @@ def parse_att(out):
         rows.append({
             "t": float(t), "nose": nose, "w": w,
             "wnorm": float(wnorm),
-            # The nose-axis (roll) component of the angular velocity: ~0
-            # during a pure pitch (spin is perpendicular to the nose), grows
-            # once a roll is added -- the coupling the attitude-physics case
-            # asserts on. awroll is pre-computed (abs) so a CHECK can use it
-            # inside a generator without a free var in the body (an eval
-            # gotcha: free vars in a generator body resolve against globals,
-            # and the CHECK namespace is passed as locals).
+            # awroll pre-computed: free vars in a CHECK generator resolve
+            # against globals, not the locals namespace.
             "wroll": wroll,
             "awroll": abs(wroll),
         })
@@ -394,8 +290,6 @@ def parse_drainlog(out):
         rows.append({
             "t": float(t), "dt": float(dt), "ship": ship,
             "thrust": float(thrust),
-            # group id -> drain rate (kg/s, summed over the resources its
-            # engines draw); a group only appears while it still carries fuel.
             "rates": rates,
         })
     return rows
@@ -470,18 +364,14 @@ def last(seq):
 
 
 def wine_for(game):
-    """windows artifacts (.exe) run under Wine (phase 1.4,
-    reports/build-tree2026_09_22/phase1-windows.md). Wine renders to X, so
-    the Xvfb path below is unchanged. Returns the wine binary, or None."""
+    """Wine binary for .exe artifacts, or None."""
     if not game.endswith(".exe"):
         return None
     return shutil.which("wine64") or shutil.which("wine")
 
 
 def have_render_node():
-    """True if a DRM render node is openable, so SDL offscreen/EGL can talk
-    to a real GPU (LXD gputype=physical, bare metal, ...). Cloud CI has no
-    /dev/dri and gets the Xvfb + llvmpipe path instead."""
+    """True if a DRM render node is openable (SDL offscreen/EGL path)."""
     for path in sorted(glob.glob("/dev/dri/renderD*")):
         try:
             fd = os.open(path, os.O_RDWR)
@@ -495,26 +385,21 @@ def have_render_node():
 def build_cmd(game, args):
     wine = wine_for(game)
     if wine:
-        # Wine always needs an X server.
         xvfb = shutil.which("xvfb-run")
         if xvfb:
             return [xvfb, "-a", wine] + [game] + args
         return [wine] + [game] + args
 
-    # Prefer SDL offscreen (EGL) when a render node is usable: Mesa loads
-    # radeonsi/llvmpipe on EGL_PLATFORM_DEVICE without Xvfb. The offscreen
-    # driver is only selected via SDL_VIDEODRIVER (see launch_env).
+    # SDL offscreen (EGL) when a render node is usable; else Xvfb/GLX.
     if have_render_node():
         return [game] + args
 
     if os.environ.get("DISPLAY") and shutil.which("xvfb-run") is None:
-        # A real display is available and no Xvfb to fake one.
         return [game] + args
     xvfb = shutil.which("xvfb-run")
     if xvfb:
         return [xvfb, "-a"] + [game] + args
-    # No Xvfb and no display: run bare; it will fail to open a window, which
-    # the case will report as a failure. (Headless envs should install Xvfb.)
+    # Bare (will fail to open a window -- the case reports it).
     return [game] + args
 
 
@@ -522,12 +407,7 @@ def launch_env(game):
     """Environment overrides for the game process, or None to inherit."""
     wine = wine_for(game)
     if wine:
-        # Pin Wine's prefix in the tree (tmp/wine) so first-run init and
-        # per-run state stay out of the home dir. WINEDEBUG=-all silences
-        # wine's own fixme/err chatter on stderr -- one of those lines
-        # ("using GL_RENDERER ...") contains "GL_" and would trip the
-        # cases' FORBID GL_ checks, which are meant to catch the GAME's
-        # GL errors only.
+        # WINEDEBUG=-all: Wine's own "GL_" chatter would trip FORBID GL_.
         prefix = os.path.join(REPO_ROOT, "tmp", "wine")
         os.makedirs(prefix, exist_ok=True)
         env = dict(os.environ)
@@ -536,8 +416,7 @@ def launch_env(game):
         return env
     if have_render_node():
         env = dict(os.environ)
-        # Force SDL's offscreen driver: EGL on a DRM render node, no X.
-        # Drop DISPLAY so SDL cannot fall through to X11/GLX (llvmpipe).
+        # offscreen driver + no DISPLAY so SDL cannot fall through to X11.
         env["SDL_VIDEODRIVER"] = "offscreen"
         env.pop("DISPLAY", None)
         return env
@@ -550,17 +429,13 @@ def run_case(case):
     if not os.path.exists(game):
         return False, ["%s not found; run `make` first"
                        % os.path.relpath(game, REPO_ROOT)], "", 0.0
-    # Start each case from a clean ImGui layout (window positions persist in
-    # imgui.ini otherwise, which would make UI clicks non-deterministic).
+    # Clean ImGui layout: persisted imgui.ini would make UI clicks flaky.
     try:
         os.remove(os.path.join(REPO_ROOT, "imgui.ini"))
     except FileNotFoundError:
         pass
 
-    # The game keeps settings.json + saves/ in its data directory
-    # (datadir.h), not the repo root. Give the case a scratch one via
-    # --data-dir, so a locally saved settings.json (display mode, postfx,
-    # the UI knobs) or a fixture from a prior run can't leak in.
+    # Scratch --data-dir per case so settings/saves cannot leak between runs.
     data_dir = os.path.join(REPO_ROOT, "tmp", "e2e", "data", case["name"])
     os.makedirs(data_dir, exist_ok=True)
     try:
@@ -568,11 +443,8 @@ def run_case(case):
     except FileNotFoundError:
         pass
 
-    # Stage any files the case declares (WRITE): written after the cleanup
-    # above, so a fixture (e.g. a rebind settings.json) is live for exactly
-    # this case and the next case's cleanup removes it again. settings.json
-    # goes into the scratch data directory -- that is where the game reads
-    # it (datadir.h); any other path is REPO_ROOT-relative as before.
+    # WRITE staging (after cleanup so a fixture is live for exactly this
+    # case). settings.json goes in the scratch data dir (datadir.h).
     for wpath, wcontent in case.get("writes", []):
         target = (os.path.join(data_dir, "settings.json")
                   if wpath == "settings.json"
@@ -586,10 +458,7 @@ def run_case(case):
     timed_out = False
     exit_code = None
     out = ""
-    # The case runs in its own process group (start_new_session) so a
-    # timeout can kill the whole tree: the wine wrapper is only the
-    # direct child -- killing it leaves the game PE (a grandchild)
-    # orphaned, spinning at 100% CPU, and Xvfb behind it.
+    # Own process group so a timeout can kill wine + the game PE + Xvfb.
     t0 = time.monotonic()
     proc = subprocess.Popen(
         cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE,
@@ -604,7 +473,6 @@ def run_case(case):
         out = (e.output or b"").decode("utf-8", "replace")
     finally:
         if proc.poll() is None:
-            # Timed out (or wedged): kill the whole group, then reap.
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
@@ -655,11 +523,8 @@ def run_case(case):
         "set": set,
         "re": re,
     }
-    # `ns` goes in the GLOBALS, not just locals: free variables in a
-    # generator/comprehension body resolve against the globals (the locals
-    # dict is invisible to them), so a check like `max(... for g in ...)`
-    # would raise NameError with the names only in locals. Keeping
-    # __builtins__ empty still blocks a case file from reaching open/exec.
+    # `ns` must be globals: free vars in a CHECK generator/comprehension
+    # resolve against globals, not locals. Empty __builtins__ blocks open/exec.
     check_globals = dict(ns)
     check_globals["__builtins__"] = {}
     for expr in case["check"]:
@@ -676,12 +541,7 @@ def run_case(case):
 
 
 def select_cases(case_files, selectors):
-    """Filter case_files down to those matching any selector.
-
-    A selector matches a case if it is a (case-insensitive) substring of the
-    case NAME or of the filename without its .txt extension -- so `smoke`,
-    `01-smoke` and `orbit` (-> orbit-burn) all work. No selectors = all cases.
-    """
+    """Filter to cases whose NAME or filename contains any selector (case-insensitive)."""
     if not selectors:
         return case_files
     sel = [s.lower() for s in selectors]
@@ -709,15 +569,11 @@ def available_names(case_files):
 
 def run_one(path):
     """Parse and run one case. Never raises.
-
-    Returns (filebase, name, passed, diag, out, duration_s) -- filebase is
-    the case filename without .txt (the unique key for the .log file), and
-    out is the captured game output ("" when the case never launched)."""
+    Returns (filebase, name, passed, diag, out, duration_s)."""
     filebase = os.path.splitext(os.path.basename(path))[0]
     try:
         case = parse_cases(path)
     except ValueError as e:
-        # No NAME line could be read, so the filename is the label.
         return filebase, filebase, False, \
             ["bad case file: %s" % e], "", 0.0
     try:
@@ -728,9 +584,7 @@ def run_one(path):
 
 
 def git_state():
-    """(short commit or 'none', dirty or None) from the repo, best-effort.
-    None = not a git repo / git unavailable -- the CSV row leaves it blank
-    rather than guessing."""
+    """(short commit, dirty flag) best-effort; dirty is None if git is unavailable."""
     def git(*args):
         p = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True,
                            text=True, timeout=10)
@@ -744,9 +598,7 @@ def git_state():
 
 
 def new_run_dir():
-    """tmp/e2e/runs/<UTCstamp>/, with a -2, -3, ... suffix if the name is
-    taken (two runs in the same second must not share a directory).
-    mkdir is atomic, so concurrent runners each get their own dir."""
+    """tmp/e2e/runs/<UTCstamp>/ (suffixed on collision). mkdir is atomic."""
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     base = os.path.join(REPO_ROOT, "tmp", "e2e", "runs")
     os.makedirs(base, exist_ok=True)
@@ -766,8 +618,7 @@ HISTORY_FIELDS = ["datetime_utc", "commit", "dirty", "renderer", "game",
 
 
 def print_progress(idx, total, res):
-    """One line per case as it finishes, so a long battery shows life.
-    Flush: piped output (make e2e, CI) is block-buffered otherwise."""
+    """One line per case as it finishes. Flush: piped output is block-buffered."""
     _, name, passed, diag, _, dur = res
     print("[%d/%d] %s %s (%.1fs)" % (idx, total, name,
                                      "PASS" if passed else "FAIL", dur),
@@ -777,7 +628,7 @@ def print_progress(idx, total, res):
 
 
 def format_summary(results):
-    """The human pass/fail table (shared by the console and summary.txt)."""
+    """Human pass/fail table (console + summary.txt)."""
     if not results:
         return "0/0 passed"
     width = max(len(r[1]) for r in results)
@@ -795,15 +646,8 @@ def format_summary(results):
 
 
 def write_run_artifacts(results, meta):
-    """Persist a run: per-case .log files + summary.json/summary.txt in a
-    fresh tmp/e2e/runs/<stamp>/ dir, and one appended row in
-    tmp/e2e/history.csv (the across-runs record). Returns
-    (run_dir, history_path), both absolute.
-
-    results: run_one's (filebase, name, passed, diag, out, duration) tuples.
-    meta: started/finished (datetime), commit, dirty, renderer, game
-    (REPO_ROOT-relative), jobs, selectors (list).
-    """
+    """Persist per-case .log + summary.json/txt in a fresh run dir, and append
+    one history.csv row. Returns (run_dir, history_path)."""
     run_dir = new_run_dir()
     total = len(results)
     fails = sum(1 for r in results if not r[2])
@@ -854,9 +698,7 @@ def write_run_artifacts(results, meta):
         f.write(header + format_summary(results) + "\n")
 
     history_path = os.path.join(REPO_ROOT, "tmp", "e2e", "history.csv")
-    # Claim header ownership atomically: O_EXCL means exactly one of several
-    # concurrent runners creates the file and writes the header. A
-    # pre-existing 0-byte file is also initialized (the only overwrite).
+    # O_EXCL: exactly one concurrent runner creates the header.
     fresh = False
     try:
         fd = os.open(history_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -917,18 +759,13 @@ def main():
         renderer = "xvfb-glx"
         print("GL: Xvfb/GLX software (no /dev/dri/renderD*)")
     commit, dirty = git_state()
-    # Wine cases default to serial: two concurrent wine + Xvfb + llvmpipe
-    # instances (each software-rendering the whole game) overload a dev
-    # box and make the cases flaky (measured: parallel runs intermittently
-    # die mid-boot with exit 1; serial is stable). An explicit --jobs wins.
+    # Default to serial under Wine: concurrent wine+Xvfb+llvmpipe instances
+    # overload a dev box and go flaky. An explicit --jobs wins.
     if args.jobs == DEFAULT_JOBS and GAME and wine_for(GAME):
         args.jobs = 1
     selectors = args.selectors
 
-    # A full battery and --jobs > 2 are both expensive (each case spins a
-    # full game loop; software GL is ~500% CPU), so neither runs without an
-    # explicit --force -- the message is the nudge to pick a selector /
-    # fewer jobs.
+    # Full battery and --jobs>2 are expensive; require --force.
     reasons = []
     if not selectors:
         reasons.append("a full battery takes a LONG time")
@@ -954,11 +791,9 @@ def main():
         print("available: %s" % ", ".join(available_names(all_files)))
         return 1
 
-    # Cases are independent: each gets its own Xvfb display (xvfb-run -a
-    # retries on a taken display) and captures its own stdout, so they can
-    # run concurrently. Progress is printed per case as cases FINISH (completion
-    # order -- a quick case and a slow one interleaved is expected); the final
-    # table stays in case-file order, and artifacts are keyed by filename.
+    # Cases are independent (own Xvfb display + stdout capture), so they can
+    # run concurrently. Progress prints in completion order; the final table
+    # stays in case-file order.
     started = datetime.datetime.now(datetime.timezone.utc)
     total = len(case_files)
     results = [None] * total
@@ -975,9 +810,8 @@ def main():
                 print_progress(done, total, results[i])
     finished = datetime.datetime.now(datetime.timezone.utc)
 
-    # Persist before printing, so the console can point at the artifacts.
-    # A failure here (full disk, read-only tmp/) must not swallow the
-    # summary or the pass/fail exit code that `make e2e` relies on.
+    # Persist before printing so the console can point at the artifacts.
+    # A persist failure must not swallow the summary or the exit code.
     meta = {
         "started": started,
         "finished": finished,

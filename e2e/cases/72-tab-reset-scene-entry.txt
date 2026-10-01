@@ -1,9 +1,3 @@
-# A TAB-hide left behind in a scene must not carry into the next one:
-# every scene entry restores visibility (Game::ensure_ui_visible), so the
-# hub cannot come up as a blue screen with its chrome hidden. The log line
-# is the anchor (it fires only when the hide was actually live). The hide is
-# re-armed before each of the three transitions so the push AND pop paths
-# both run the reset branch.
 NAME tab-reset-scene-entry
 ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --sim-press 1000,0,TAB --space-center 2000 --sim-press 2500,0,TAB

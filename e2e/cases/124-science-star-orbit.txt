@@ -1,13 +1,3 @@
-# Science on a STAR: a star has no classifiable surface (hasClassifiableSurface
-# is false), so its finding carries an EMPTY biome -- but it is still orbitable,
-# so the situation (low/high orbit) is valid and scores. The observation is
-# biome-specific in low orbit, yet with an empty biome it reads "of the body"
-# (no dangling "of"): "Low orbit observation on Kerbol". rot-orbit sits at 85km
-# (0.85 x the 100km SoI edge), below the 110km orbit cut -> LOW orbit; Kerbol is
-# not the home body -> frontier weight 2.0. Value = 10 x 1.25 x 2.0 = 25.
-# The [surfinfo] bme/sit rows mirror the SURFACE window: bme "-" (no surface),
-# sit "low orbit". (No prior case covered a star, so this guards the empty-biome
-# + frontier-weight + HUD readout path.)
 NAME science-star-orbit
 ARGS --time-accel 1 --timeout 8 --info-log --startship racer,res/ships/racer.json,Kerbol,rot-orbit
 ARGS --experiment 1500

@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a tank-adapter .obj mesh: a frustum joining two stack radii.
-
-Part meshes are authored centered at the origin with the stack axis along
-+Z. The -Z end carries radius `--r1`, the +Z end radius `--r2`, over the
-given `--height`. Convention for the catalog: height = max(r1, r2) / 2,
-e.g.
-
-    python3 gen_adapter.py res/meshes/adapter_r1to1.5.obj --r1 1 --r2 1.5 --height 0.75
-    python3 gen_adapter.py res/meshes/adapter_r1to2.25.obj --r1 1 --r2 2.25 --height 1.125
-
-Geometry: 32 side segments, disc fans on both ends, smooth analytic side
-normal, flat normals on the discs. Winding is CCW from outside (the
-renderer culls back faces) -- same convention as gen_nose_cap.py. UVs:
-the side wraps u around the axis (v = 0 at the -Z rim, 1 at the +Z rim),
-the discs are planar -- the part's texture is a flat fill, so they only
-need to be present (CalcTangentSpace requires a UV channel).
-"""
+"""Generate a tank-adapter .obj: frustum joining two stack radii, axis +Z, CCW winding."""
 
 import argparse
 import math
@@ -38,26 +22,22 @@ def main():
     r1, r2, h, n = a.r1, a.r2, a.height, a.segments
     zbase, ztop = -h / 2.0, h / 2.0
 
-    # side normal: perpendicular to the (radial, z) side vector
-    # (r1, zbase) -> (r2, ztop), pointing out
+    # side normal: perpendicular to the (radial, z) side vector, pointing out
     L = math.sqrt(h * h + (r2 - r1) * (r2 - r1))
 
     verts, uvts, norms, faces = [], [], [], []
-    # bottom ring (-Z end)
     for i in range(n):
         th = 2.0 * math.pi * i / n
         ct, st = math.cos(th), math.sin(th)
         verts.append((r1 * ct, r1 * st, zbase))
         uvts.append((i / float(n), 0.0))
         norms.append((h * ct / L, h * st / L, (r1 - r2) / L))
-    # top ring (+Z end)
     for i in range(n):
         th = 2.0 * math.pi * i / n
         ct, st = math.cos(th), math.sin(th)
         verts.append((r2 * ct, r2 * st, ztop))
         uvts.append((i / float(n), 1.0))
         norms.append((h * ct / L, h * st / L, (r1 - r2) / L))
-    # disc centers
     cbase = len(verts)
     verts.append((0.0, 0.0, zbase))
     uvts.append((0.5, 0.5))
@@ -68,18 +48,14 @@ def main():
     norms.append((0.0, 0.0, 1.0))
 
     T = n  # top-ring index offset
-    # side: CCW from outside; two triangles per segment
     for i in range(n):
         j = (i + 1) % n
         faces.append((i, j, j + T))
         faces.append((i, j + T, i + T))
-    # bottom disc: CCW from outside (normal -Z)
     for i in range(n):
         j = (i + 1) % n
         faces.append((cbase, j, i))
-    # top disc: CCW from outside (normal +Z); the +T offset is essential --
-    # bare i/j index the bottom ring, which would fan the top center onto
-    # the smaller ring and leave the top disc missing
+    # +T essential: bare i/j index the bottom ring and would leave the top disc missing
     for i in range(n):
         j = (i + 1) % n
         faces.append((ctop, i + T, j + T))

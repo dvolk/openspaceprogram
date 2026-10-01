@@ -1,10 +1,3 @@
-# Switch-then-load-fail: a save from a DIFFERENT system (solar) that ALSO has
-# a part not in the catalog (nonexistent_part). The load path switches into the
-# save's system FIRST (switchSystem succeeds -- the solar system loads), and
-# then load_game fails (the bad part). This is the plan's C3 known-gap: the
-# switch already tore down the running fleet, so the failed load leaves the
-# game on the NEW system with no vessel (routed to the title). No crash, no
-# segfault -- the failure is a clean error, not a dangling-pointer UAF.
 NAME switch-then-load-fail
 ARGS --system res/systems/ksp_system.json --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --reload e2e/fixtures/save_bad_part --reload-at 4000

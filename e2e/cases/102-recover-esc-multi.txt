@@ -1,12 +1,3 @@
-# Esc after Recover Vessel when OTHER ships remain. recoverActive is the only
-# path that leaves the hub as floor with a live fleet, so it is exactly the
-# case where Esc must NOT be an exit: the first Esc closes the Flight Summary,
-# the second does nothing at all -- the tanker survives (recoverActive leaves
-# the rest of the fleet for the Tracking Station), and the menu's "Return to
-# title" is the way out. Pre-fix this discarded the whole game two keystrokes
-# after a recovery (issue #74). The tracking push at the end is the positive
-# anchor: it prints from the hub, so the scene never went to the title.
-# quitToTitle's live-fleet teardown is covered by case 66 (--quit-title).
 NAME recover-esc-multi
 ARGS --time-accel 1 --timeout 10
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit

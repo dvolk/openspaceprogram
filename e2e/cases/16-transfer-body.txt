@@ -1,7 +1,3 @@
-# Transfer planner, parent->child: from a Kerbin orbit (rot-orbit, 85% of
-# the SOI), target the Mun. The min-dv solution must be valid, internally
-# consistent (total = dep + cap, burn magnitude = dv_dep), and in the sane
-# range for a Kerbin->Mun-class transfer (~1 km/s class, cf. KSP).
 NAME transfer-body
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 12 --xfer-log --orbit-interval 0.5

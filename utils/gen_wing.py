@@ -1,24 +1,6 @@
 #!/usr/bin/env python3
-"""Generate a wing .obj mesh: a triangular (delta) plate.
-
-Part meshes are authored centered at the origin. The wing is a delta in the
-stack frame: the root chord (default 2 m) lies along X at the root, the tip
-is a point 2 m outboard along the stack axis (+Z), and it is a constant
-thickness (default 0.1 m) along Y. The planform is a triangle -- the 2 m root
-chord (X, at z = -1) tapering to the tip (x = 0, z = +1) -- so its two "sides"
-are 2 m x 2 m. It is a convex triangular prism, so its mesh doubles as its
-collision hull (see PhysicsEngine::BuildHull).
-
-Winding is CCW from outside (the renderer culls back faces). The six corners
-are shared vertices with SMOOTH per-vertex normals (each the average of its
-adjacent face normals): sharing vertices keeps the mesh watertight, so
-gen_parts.py's mesh_geom reads the true enclosed volume (not its
-bounding-cylinder fallback) and the wing's mass stays a sane function of its
-size. UVs are present (CalcTangentSpace wants a UV channel) but the part's
-texture is a flat fill, so they only need to exist.
-
-    python3 gen_wing.py res/meshes/wing.obj
-"""
+"""Generate a wing .obj: triangular delta plate (chord X, span +Z, thickness Y).
+Shared verts + smooth normals keep the mesh watertight (for volume/mass); CCW winding."""
 
 import argparse
 import math
@@ -54,13 +36,12 @@ def main():
     if a.span <= 0 or a.chord <= 0 or a.thickness <= 0:
         ap.error("span/chord/thickness must be > 0")
 
-    hc = a.chord / 2.0        # root half-chord (X)
-    ht = a.thickness / 2.0    # half thickness (Y)
-    rz = -a.span / 2.0        # root z (at the fuselage)
-    tz = +a.span / 2.0        # tip z (outboard)
+    hc = a.chord / 2.0
+    ht = a.thickness / 2.0
+    rz = -a.span / 2.0
+    tz = +a.span / 2.0
 
-    # The six corners of the triangular prism. The planform triangle is
-    # root-LE (-hc, rz), root-TE (+hc, rz), tip (0, tz); extruded +-ht in Y.
+    # triangular prism: root-LE/root-TE at rz, tip at tz, extruded +-ht in Y
     A_t = (-hc,  ht, rz)   # 0  root leading edge, top
     B_t = ( hc,  ht, rz)   # 1  root trailing edge, top
     C_t = ( 0.0, ht, tz)   # 2  tip, top
@@ -69,10 +50,7 @@ def main():
     C_b = ( 0.0, -ht, tz)  # 5  tip, bottom
     corners = [A_t, B_t, C_t, A_b, B_b, C_b]
 
-    # Eight triangles: the two triangular caps (top/bottom) plus the three
-    # rectangular sides (each split into two). The prism is convex and
-    # centered at the origin, so a face's outward normal points away from
-    # the origin -- I orient each face (and its winding) to agree.
+    # 8 triangles: 2 triangular caps + 3 rectangular sides (each split in two)
     face_idx = [
         (0, 2, 1),   # top cap (+Y)
         (3, 4, 5),   # bottom cap (-Y)
@@ -84,13 +62,8 @@ def main():
         (1, 5, 2),   # root-TE -> tip side, tri 2
     ]
 
-    # The six corners are SHARED (one vertex each, not duplicated per face)
-    # and carry SMOOTH normals (the average of their adjacent face normals).
-    # Sharing vertices keeps the mesh watertight, so gen_parts.py's mesh_geom
-    # reads the true enclosed volume (not its bounding-cylinder fallback) and
-    # the wing's mass stays a sane function of its size. Each face is oriented
-    # CCW-from-outside (the renderer culls back faces) by flipping its winding
-    # when its geometric normal points toward the prism's centroid.
+    # shared corners + smooth normals: keeps the mesh watertight so mesh_geom
+    # reads true volume (not the bounding-cylinder fallback)
     acc = [[0.0, 0.0, 0.0] for _ in corners]
     faces = []
     for (i0, i1, i2) in face_idx:

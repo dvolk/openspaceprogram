@@ -1,25 +1,6 @@
 #!/usr/bin/env python3
-"""Generate an engine-shroud .obj mesh: an OPEN cylinder (no caps) that
-wraps an engine part. The game draws it over an engine when a part is
-attached on the engine's exhaust face (a child below), hiding the nozzle
-and cowl in a plain light-gray cylinder (src/vehicle.cpp Vehicle::Draw,
-src/render.cpp drawVab).
-
-Part meshes are authored centered at the origin with the stack axis along
-+Z, so the shroud is z in [-h/2, +h/2]. Author it slightly INSIDE the
-engine's radius (0.98 x), so its rim never sits on the engine's top disc
-edge or on a part stacked above (no z-fighting).
-
-Flat shading: every face carries its OWN normal (per-face vn, referenced
-by all three of its corners), so assimp's JoinIdenticalVertices keeps the
-facets hard-edged -- the Blender "flat" look the smooth engine mesh does
-not have. Winding is CCW from outside (the renderer culls back faces).
-UVs wrap u around the axis, v along the height: the shroud texture is a
-flat fill, so they only need to be present (CalcTangentSpace requires a
-UV channel).
-
-    python3 gen_engine_shroud.py res/meshes/engine_shroud.obj --radius 0.98 --height 2
-"""
+"""Generate an engine-shroud .obj: open cylinder (no caps), axis +Z, CCW winding.
+Flat per-face normals; author at 0.98x engine radius to avoid z-fighting."""
 
 import argparse
 import math
@@ -39,26 +20,20 @@ def main():
     r, h, n = a.radius, a.height, a.segments
     zbase, ztop = -h / 2.0, h / 2.0
 
-    # one position per column, on each ring (shared, smooth positions)
     cols = []
     for i in range(n):
         th = 2.0 * math.pi * i / n
         cols.append((r * math.cos(th), r * math.sin(th)))
 
-    # one UV per column (u wraps around, v = 0 at the base rim, 1 at the top)
     uvts = [(i / float(n), 0.0) for i in range(n)]
 
-    # one normal PER FACE (the flat-shading trick): radial at the segment
-    # midpoint. A corner referenced with two faces' normals stays a
-    # distinct vertex through assimp's JoinIdenticalVertices, so the
-    # facets render hard-edged.
+    # one normal per face keeps the facets hard-edged through assimp
     norms = []
     for i in range(n):
         th = 2.0 * math.pi * (i + 0.5) / n
         norms.append((math.cos(th), math.sin(th), 0.0))
 
     def vidx(col, ring):
-        # corners (col, ring) -> 1-based v index: bottom ring first
         return col + (ring * n) + 1
 
     def fline(c0, c1, c2, fvn):
@@ -81,10 +56,8 @@ def main():
         out.append("vn %.6f %.6f %.6f" % v)
     for i in range(n):
         j = (i + 1) % n
-        fvn = i + 1   # 1-based face-normal index (one normal per segment)
-        # two triangles per segment, CCW from outside (the (b_i, b_j, t_j)
-        # normal points out of the segment's midpoint); all three corners
-        # of each triangle reference the FACE normal -> flat shading
+        fvn = i + 1
+        # two triangles per segment, CCW from outside; each references the face normal
         out.append(fline((i, 0), (j, 0), (j, 1), fvn))
         out.append(fline((i, 0), (j, 1), (i, 1), fvn))
     out.append("")

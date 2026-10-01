@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Generate res/meshes/kerbal.obj + res/textures/kerbal.png: the EVA placeholder character.
-
-A green "cucumber" -- a capsule on the part convention (origin centered,
-long axis = +Z): radius RADIUS, cylindrical section CYL_HEIGHT, hemispherical
-caps (total height CYL_HEIGHT + 2*RADIUS). A kerbal stands ~0.75 m tall;
-the cross-section is a stubby 0.4 m, the broad-in-suit silhouette. The
-catalog entry is derived from the mesh by utils/gen_parts.py like any other
-part; the ship def that builds a kerbal is res/ships/kerbal.json.
-
-    python3 utils/gen_kerbal.py            # writes res/meshes/kerbal.obj + .png
-    python3 utils/gen_kerbal.py --dry-run  # print the geometry, write nothing
-"""
+"""Generate res/meshes/kerbal.obj + res/textures/kerbal.png: the EVA placeholder capsule (axis +Z)."""
 
 import argparse
 import math
@@ -20,21 +9,17 @@ import trimesh
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-RADIUS = 0.2         # m, cross-section (0.4 m wide in suit)
-CYL_HEIGHT = 0.35    # m, cylindrical section (total = CYL_HEIGHT + 2*RADIUS
-                     # = 0.75 m, the kerbal's standing height)
-SEGMENTS = 16        # around; the caps use the same count
+RADIUS = 0.2         # m, cross-section
+CYL_HEIGHT = 0.35    # m, cylinder section (total height = 0.75)
+SEGMENTS = 16
 
-# bright placeholder green; the parts shader samples the flat texture
 KERBAL_RGB = (60, 200, 60)
 
 
 def build_capsule():
     m = trimesh.creation.capsule(height=CYL_HEIGHT, radius=RADIUS,
                                  count=[SEGMENTS, SEGMENTS])
-    # part convention: long axis = +Z, centered at the origin. The facet
-    # ring is inscribed, so the cross-section undershoots 2*RADIUS by a
-    # hair; the height is exact.
+    # facet ring is inscribed, so cross-section undershoots 2*RADIUS slightly
     ext = m.extents
     assert abs(ext[0] - 2 * RADIUS) < 0.01, ext
     assert abs(ext[1] - 2 * RADIUS) < 0.01, ext
@@ -60,9 +45,8 @@ def main():
         print("[dry-run] not writing")
         return
 
-    # trimesh's own OBJ export omits vertex normals, and the game's mesh
-    # loader expects them -- write v/vn/f by hand (no UVs: the loader
-    # falls back to (0,0), which samples the flat green texture)
+    # trimesh's OBJ export omits the normals the loader wants; write v/vn/f
+    # by hand. No UVs: the loader falls back to (0,0), sampling the flat fill.
     obj_path = os.path.join(REPO_ROOT, "res", "meshes", "kerbal.obj")
     with open(obj_path, "w") as f:
         f.write("# gen_kerbal.py: the EVA placeholder capsule\n")
@@ -77,8 +61,6 @@ def main():
                 face[2] + 1, face[2] + 1))
     print("wrote %s" % obj_path)
 
-    # flat green texture (no UVs in the mesh: the loader falls back to
-    # (0,0), which samples this one colour)
     from PIL import Image
     img = Image.new("RGB", (64, 64), KERBAL_RGB)
     png_path = os.path.join(REPO_ROOT, "res", "textures", "kerbal.png")

@@ -1,15 +1,3 @@
-# SOI handoff warp drop: the ship starts on a 2x-escape-velocity hyperbola
-# from the Moon (escape scenario, Eerbon system), so it coasts out of the
-# Moon's SOI on its own -- no thrusting, no sim-press timing. Crossing the
-# SOI boundary hands the ship to Eerbon's SOI and the warp must drop from
-# 100 to 1. The earlier SAME-BODY hop (Moon rotational -> Moon inertial,
-# ~310 km out) must NOT trigger the drop -- if it did, the warp would
-# already be 1 at the Eerbon crossing, the full EXPECT line would never
-# print, and this case fails. Catches a regression in the tick's
-# SOI-switch warp policy.
-# The coast lands at ~20 s of wall time at 100x; the timeout is 4x that to
-# survive a heavily loaded / throttled CI machine (the case is CPU-bound,
-# and a fast-but-starved run is the failure mode).
 NAME soi-warp
 ARGS --system res/systems/old_system.json --startship racer,res/ships/racer.json,Moon,escape
 ARGS --time-accel 100

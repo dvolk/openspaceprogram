@@ -1,54 +1,24 @@
 #!/usr/bin/env bash
-# bootstrap.sh -- fetch and build the cmake-built middleware so `make` works:
-#   bullet3  static libs, double precision (the game's physics precision)
-#   assimp   static lib (assimp 6 defaults to SHARED, so force it off)
-# The header-only submodules (glm, imgui, implot, CLI11, nlohmann) need no
-# build step. Idempotent: the cmake steps are incremental, so re-running
-# after a submodule update only rebuilds what changed.
+# bootstrap.sh -- fetch and build the cmake-built static middleware so `make` works.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-# Section flags for the cmake-built static libs: put every function/global in
-# its own section so the game link's -Wl,--gc-sections can drop the ones we
-# don't reference (saves ~200 KB on bullet3, ~140 KB on assimp).
-# -fvisibility=hidden (what the game's own build does in the Makefile, and
-# what SDL2 already does internally): the libs are statically linked, so
-# their symbols never need to be exported -- hiding them keeps them out of
-# the dynamic symbol table and lets the LTO pass at the game link inline /
-# eliminate unreferenced code more aggressively (a hidden symbol can't be
-# called from outside the binary).
+# Sections for the game link's --gc-sections; hidden visibility (static, no exports).
 SECT="-ffunction-sections -fdata-sections -fvisibility=hidden"
-# LTO: emit GIMPLE bytecode instead of machine code, so the game link's
-# -flto (the LTO var in the Makefile) runs the optimizer across the game +
-# these libs too. Requires the same compiler version as the game link (a
-# compiler upgrade means a bootstrap re-run); changing this flag re-runs
-# cmake, which rebuilds the libs (bytecode objects are not interchangeable
-# with the old machine-code ones).
+# LTO: must share compiler version with the game link; changing it re-runs cmake.
 LTO="-flto"
-# -march: target ISA (the compatibility contract). Must match the Makefile's
-# MARCH (same default) so the libs are built at the same baseline as the
-# game -- otherwise the game is v2 but the libs are native and the whole
-# binary is not actually v2-portable (older CPU -> SIGILL). Default
-# x86-64-v2 (~2010+ CPUs); MARCH=x86-64-v3 for faster-but-less-portable,
-# MARCH=native for "my box only", MARCH= (empty) for plain x86-64.
-# -mtune: which core to SCHEDULE for without changing the ISA (matches the
-# Makefile's MTUNE default). Default znver3; MTUNE=generic for neutral.
-# Changing either re-runs cmake, which rebuilds all the libs.
+# Must match the Makefile's MARCH/MTUNE (same defaults); changing either re-runs cmake.
 MARCH="${MARCH-x86-64-v2}"
 MTUNE="${MTUNE-znver3}"
 ARCH=""
 if [ -n "$MARCH" ]; then ARCH="-march=$MARCH"; fi
 if [ -n "$MTUNE" ]; then ARCH="${ARCH:+$ARCH }-mtune=$MTUNE"; fi
 
-# OS: which platform the middleware is for (the Makefile's OS, same
-# default). windows = cross-compile from Linux with mingw-w64 (see
-# reports/build-tree2026_09_22/phase1-windows.md).
+# OS: matches the Makefile's OS. windows = mingw-w64 cross-compile.
 OS="${OS-linux}"
-# Cross-building for Windows: the target triplet + the mingw compilers
-# (without these CMake would configure the native gcc). Native Linux
-# adds nothing.
+# Windows cross: target triplet + mingw compilers (else CMake picks native gcc).
 CROSS=""
 if [ "$OS" = windows ]; then
     CROSS="-DCMAKE_SYSTEM_NAME=Windows \
@@ -56,15 +26,7 @@ if [ "$OS" = windows ]; then
            -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++"
 fi
 
-# The per-OS video/audio drivers (SDL3's other options are platform-
-# neutral and shared in the invocation below):
-#  linux:   X11 (desktop + e2e software-GL fallback under Xvfb) + offscreen
-#           (e2e accelerated GL via EGL on a DRM render node) +
-#           PulseAudio/ALSA audio, GLES + desktop GL
-#  windows: built-in video, desktop GL via wgl, WASAPI audio (the platform
-#           default; SDL's dummy driver stays built-in as the headless
-#           fallback). No X11/Wayland/ALSA/Pulse -- those options are
-#           Linux-only.
+# Per-OS video/audio drivers (see the cmake invocation for the toggles).
 if [ "$OS" = windows ]; then
     SDL3_DRIVERS="-DSDL_OPENGL=ON -DSDL_OPENGLES=OFF \
                   -DSDL_X11=OFF -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF"
@@ -76,10 +38,7 @@ else
                   -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF"
 fi
 
-# Build tree (reports/build-tree2026_09_22): the cmake builds land under
-# build/<os>-<march>-<mtune>/middleware/<name>, mirroring the Makefile's
-# MWROOT (same token rules) so the submodules stay clean and the middleware
-# is shared by all the game's configs.
+# Mirrors the Makefile's MWROOT so middleware is shared across game configs.
 MARCH_TOK="${MARCH#x86-64-}"
 [ -z "$MARCH" ] && MARCH_TOK=base
 MTUNE_TOK="${MTUNE:-untuned}"
@@ -98,21 +57,12 @@ if [ "$OS" = windows ]; then
     }
 fi
 
-# check the top-level submodules out at their pinned commits (a no-op if the
-# clone already used --recurse-submodules), plus the two nested submodules
-# the PNG build uses (libpng + zlib). No other nested submodules are
-# initialised: sdl3-image's remaining ones (aom/dav1d/libavif/libtiff/
-# libwebp/jpeg/libjxl) back formats the PNG-only build never compiles.
+# Pinned submodules + sdl3-image's nested libpng/zlib (PNG build needs those only).
 git submodule update --init
 git -C middleware/sdl3-image submodule update --init external/libpng external/zlib
 
 echo "=== building bullet3 (static, double precision, Release) ==="
-# CMAKE_POLICY_VERSION_MINIMUM: bullet3 declares a pre-3.5 cmake policy,
-# which cmake 4 rejects without this
-# demos/extras/tests are not linked by the game, so keep them out
-# Release (-O3 -DNDEBUG): bullet3's own CMakeLists also defaults to
-# Release, but set it explicitly like the other libs; the build type owns
-# the optimization flags, so nothing else is passed.
+# POLICY_VERSION_MINIMUM: bullet3 declares a pre-3.5 cmake policy (cmake 4 rejects).
 cmake -S middleware/bullet3 -B "$MWROOT/bullet3" \
     $CROSS \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -123,31 +73,10 @@ cmake -S middleware/bullet3 -B "$MWROOT/bullet3" \
 cmake --build "$MWROOT/bullet3" -j"$JOBS"
 
 echo "=== building SDL3 (static, $OS drivers) ==="
-# Static lib (SDL_SHARED=OFF). The per-OS drivers come from $SDL3_DRIVERS
-# (above): linux = X11 linked in (SDL_X11_SHARED=OFF, so the game link
-# carries the -lX11... libs) + Pulse/ALSA; windows = built-in video +
-# WASAPI. The game uses GL 4.5 via GLEW on both.
-# SDL_TESTS defaults ON for the main project, so force it off (we never link
-# the testsuite). SDL3 ships a proper CMake config in the build dir that
-# SDL_image3's find_package(SDL3) consumes below.
-# The game renders with raw GL (GLEW) + imgui and only uses SDL's video/
-# events/keyboard/mouse/surface APIs, so compile out every subsystem it never
-# touches. The 2D renderer is the big one -- its software blit/blend backend
-# (~1 MB) is pure dead weight here. Joystick/haptic/HIDAPI/sensor/power/GPU,
-# camera, native dialogs, tray, KMSDRM (needs a free DRM master -- unusable
-# on a workstation whose desktop owns the iGPU), and the dummy driver are
-# unused. Offscreen is ON: e2e uses SDL_VIDEODRIVER=offscreen for EGL/GL
-# on a DRM render node (hardware when /dev/dri is passed through, llvmpipe
-# otherwise). Audio stays on -- SDL3_mixer (the game's sound) uses it.
-# GLES + desktop GL (SDL_OPENGL) stay too.
-# Audio (linux): PulseAudio (primary) + ALSA (fallback). We tried
-# ALSA-only to slim the dynamic dep tree (Pulse pulls libsystemd/
-# libapparmor/libsndfile + the codec family), but direct ALSA gives the
-# real-time mix callback no slack: the engine track cracked on start/tap
-# even with pre-resampled files and warm buffers. Pulse/PipeWire's
-# server-side queue absorbs that jitter -- exactly why the platform moved
-# to audio servers. sndio/JACK stay off. (windows: WASAPI, the platform
-# default.)
+# Static SDL3; drivers from $SDL3_DRIVERS. SDL_TESTS defaults ON -- force off.
+# PulseAudio primary + ALSA fallback: ALSA-only left the mix callback no slack
+# (crackles on start/tap). Offscreen video is the e2e EGL path. Keep audio on
+# (SDL3_mixer needs it).
 cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
     $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
@@ -164,12 +93,7 @@ cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
 cmake --build "$MWROOT/sdl3" -j"$JOBS"
 
 echo "=== building SDL_image3 (static, PNG-only) ==="
-# The game only loads/saves PNG (textures, skybox, screenshots), so build
-# just the PNG loader + saver (like the OBJ-only assimp build). PNG goes
-# through the vendored libpng + zlib (sdl3-image's nested submodules), so
-# no system libpng/zlib packages are needed. Links the SDL3 we built above
-# (SDL3_DIR -> its build dir, so find_package picks ours even if the system
-# SDL3 dev files exist).
+# PNG-only (the game loads/saves PNG). Vendored libpng+zlib; SDL3_DIR pins our SDL3.
 cmake -S middleware/sdl3-image -B "$MWROOT/sdl3-image" \
     $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
@@ -186,24 +110,12 @@ cmake -S middleware/sdl3-image -B "$MWROOT/sdl3-image" \
     -DSDLIMAGE_XCF=OFF -DSDLIMAGE_XPM=OFF -DSDLIMAGE_XV=OFF \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build "$MWROOT/sdl3-image" -j"$JOBS"
-# zlib's CMake renames the in-tree zconf.h -> zconf.h.included for
-# out-of-source builds (it generates its own in the build dir, which is
-# what gets compiled) -- restore it so the submodule stays clean.
+# zlib/libpng rewrite in-tree files during an out-of-source build -- restore them.
 git -C middleware/sdl3-image/external/zlib checkout -- zconf.h
-# libpng's autotools configure likewise regenerates config.guess/config.sub
-# in-tree during the build -- restore them the same way so the submodule
-# stays clean.
 git -C middleware/sdl3-image/external/libpng checkout -- config.guess config.sub
 
 echo "=== building SDL3_mixer (static, WAV + stb_vorbis only) ==="
-# The game needs exactly two decoders: WAV (the short SFX chunks --
-# Mix_Chunk is WAV-only and plays on the regular mixer channels) and
-# OGG Vorbis (the long ambient music, streamed on the music channel).
-# Both are bundled -- WAV is built in, vorbis goes through the
-# public-domain stb_vorbis (src/stb_vorbis) -- so every OTHER format is
-# switched off: with none of them on, nothing external (libmpg123,
-# libvorbisfile, libFLAC, libxmp, ...) is ever looked for. Links the
-# SDL3 we built above (SDL3_DIR -> its build dir, the SDL_image trick).
+# WAV + stb_vorbis only (the game's two formats); all else off, so no external deps.
 cmake -S middleware/sdl-mixer -B "$MWROOT/sdl-mixer" \
     $CROSS \
     -DCMAKE_BUILD_TYPE=Release \
@@ -229,10 +141,7 @@ cmake -S middleware/sdl-mixer -B "$MWROOT/sdl-mixer" \
 cmake --build "$MWROOT/sdl-mixer" -j"$JOBS"
 
 echo "=== building GLEW (static, 2.2.0) ==="
-# GLEW's git repo contains only the generator (src/glew.c is generated from
-# the Khronos registry), so vendor the official 2.2.0 source tarball
-# (pre-generated; the same artifact distros build from). Fetched once, kept
-# in tmp/, and only re-downloaded if the extracted source is missing.
+# GLEW git has no generated glew.c -- vendor the official 2.2.0 tarball (cached in tmp/).
 if [ ! -f middleware/glew/src/glew.c ]; then
     mkdir -p tmp
     curl -fsSL -o tmp/glew_2.2.0.orig.tar.xz \
@@ -240,10 +149,7 @@ if [ ! -f middleware/glew/src/glew.c ]; then
     mkdir -p middleware/glew
     tar xJf tmp/glew_2.2.0.orig.tar.xz -C middleware/glew --strip-components=1
 fi
-# The cmake project lives in the SOURCE dir build/cmake (there is no root
-# CMakeLists.txt), and the static target glew_s -> <builddir>/lib/libGLEW.a.
-# Release: GLEW's CMakeLists also defaults to it; set explicitly for
-# uniformity with the other libs.
+# cmake project is build/cmake (no root CMakeLists); static target -> libGLEW.a.
 cmake -S middleware/glew/build/cmake -B "$MWROOT/glew" \
     $CROSS \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -253,15 +159,9 @@ cmake -S middleware/glew/build/cmake -B "$MWROOT/glew" \
 cmake --build "$MWROOT/glew" -j"$JOBS"
 
 echo "=== building assimp (static, OBJ-only) ==="
-# We only ever load .obj meshes, so build just the OBJ importer (and no
-# exporters). The default all-importers build pulls in ~30 format loaders
-# (FBX, glTF, STEP, IFC, ...) that add ~11 MB to the game binary.
-# windows: assimp's MINGW branch (CMakeLists.txt) force-adds -Wa,-mbig-obj
-# to CXX, and mingw g++ then emits pe-bigobj LTO objects whose symbol table
-# exports no globals -- `ar` can't index them, so the game link dies with
-# undefined Assimp::Importer references. Plain (non-LTO) objects index
-# fine; the game uses 4 assimp symbols, so losing LTO across them is a
-# wash. (linux g++ defaults to fat LTO objects, which are fine.)
+# OBJ-only (the all-importers default adds ~11 MB of unused loaders).
+# windows: assimp's MINGW branch + mingw LTO pe-bigobj objects break `ar`
+# indexing -- force -fno-lto there (the game uses 4 assimp symbols).
 ASSIMP_LTO="$LTO"
 if [ "$OS" = windows ]; then
     ASSIMP_LTO="-fno-lto"

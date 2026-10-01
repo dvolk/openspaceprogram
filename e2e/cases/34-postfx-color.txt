@@ -1,6 +1,3 @@
-# The color postfx (gamma/brightness/black level/saturation), standalone
-# (composites straight to the screen). Must load, run without GL errors,
-# and log in the requested order.
 NAME postfx-color
 ARGS --postfx color --gl-debug --timeout 4
 EXPECT postfx: color

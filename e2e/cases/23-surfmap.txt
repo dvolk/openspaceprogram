@@ -1,10 +1,3 @@
-# Surface Map: the body's surface as a 2-D equirectangular map, computed
-# on demand (M key). The ship starts orbiting Kerbin (rot-orbit), so the
-# default body is Kerbin. Check the map is built at the requested size,
-# the albedo means are in [0,1], and the terminator is actually baked in:
-# the stored (shaded) means are <= the albedo means per channel, and
-# strictly lower on at least one (a planet orbiting a star is never
-# fully lit -- half the map is night).
 NAME surfmap
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 15 --surfmap-log --surfmap-n 128

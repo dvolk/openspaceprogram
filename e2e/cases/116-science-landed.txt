@@ -1,8 +1,3 @@
-# Science v2: the Landed situation. A ship grounded on the pad (the "pad"
-# scenario) runs an observation; because isGrounded() is true it records
-# "Landed observation ..." rather than an orbit observation (the #75 fix:
-# v1 read a grounded ship as a "low orbit observation"). Recovery scores it
-# full: 10 x 1.0 (landed) x 1.0 (home body) = 10.
 NAME science-landed
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --experiment 1500

@@ -1,15 +1,3 @@
-# Issue #72: switchSystem freed the old system's bodies while
-# g.surfmap_body still named one of them -- the only world-stamped pointer
-# invalidateClockStampedCaches missed (it resets the map's CACHE, not the
-# pointer). This case pins the map to Kerbin (--surfmap-body, the headless
-# stand-in for the window's combo click), lets the --switch-system hook tear
-# down KSP at 3 s (landing on the title), then presses M at 5 s: the
-# SurfaceMap slot is not scene-gated (events.cpp), the title uses the flight
-# key map, and the title's draw3d IS the flight one (render.cpp) -- so
-# surfmapCompute runs against the freed body. Before the fix that is a
-# use-after-free; after it the pointer is null, the compute falls back to
-# the NEW system's home (Earth), and that is the body the [surfmap] line
-# reports.
 NAME surfmap-body-switch
 ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --surfmap-body Kerbin

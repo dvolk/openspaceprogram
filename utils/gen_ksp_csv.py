@@ -1,27 +1,7 @@
 #!/usr/bin/env python3
-# Build a rich per-body CSV from the individual KSP wiki pages.
-#
-# Each body page (https://wiki.kerbalspaceprogram.com/wiki/<Name>) carries an
-# infobox table with far more fields than the old ksp_system.csv (apoapsis,
-# periapsis, arg. of periapsis, long. asc. node, mean anomaly, synodic
-# period, orbital velocity, mu, density, escape velocity, solar day,
-# synchronous orbit, atmospheric pressure/height, temperatures, oxygen, and
-# the per-biome science multipliers).
-#
-# We parse that infobox with pandas.read_html, normalise the values (drop
-# [Note N] refs, strip digit-group spaces, turn 6.1e12-style "x10N" into
-# e-notation) and emit one row per body with a unit in each column name.
-#
-# "Axial tilt" is NOT on the individual pages, so we merge that one column
-# back in from the old ksp_system.csv to keep the new file a true superset.
-#
-# Each body page is fetched once and cached at tmp/ksp_wiki/<name>.html, so
-# re-runs never touch the site; --refresh re-downloads. The fetch is plain
-# urllib -- the site's bot wall challenges browser-like clients but passes a
-# plain Python request.
-#
-# Output: ksp_bodies.csv (ksp_system.csv is left untouched). Both live in
-# utils/ next to this script (paths resolved via __file__, run from anywhere).
+# Build ksp_bodies.csv from each KSP wiki body page infobox.
+# Axial tilt is merged from ksp_system.csv (not on the wiki pages).
+# Pages cached at tmp/ksp_wiki/; --refresh re-downloads.
 import argparse
 import io
 import os
@@ -34,7 +14,7 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-HERE = os.path.dirname(os.path.abspath(__file__))   # utils/
+HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 CACHE_DIR = os.path.join(REPO, "tmp", "ksp_wiki")
 
@@ -47,9 +27,6 @@ BODIES = [
 OLD_CSV = os.path.join(HERE, "ksp_system.csv")
 OUT_CSV = os.path.join(HERE, "ksp_bodies.csv")
 
-# ---------------------------------------------------------------------------
-# value normalisation
-# ---------------------------------------------------------------------------
 def clean(s):
     """Normalise a raw wiki cell: drop footnote refs, tidy unicode spaces."""
     if s is None:
@@ -58,7 +35,7 @@ def clean(s):
         return None
     s = str(s)
     s = s.replace("\u2009", " ").replace("\u2009", " ").replace("\xa0", " ")
-    s = re.sub(r"\s*\[Note\s*\d+\]", "", s)   # [Note 1] etc.
+    s = re.sub(r"\s*\[Note\s*\d+\]", "", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
@@ -72,8 +49,7 @@ def to_number(s):
     # 5.0x10-6 / 6.15x1012  ->  5.0e-6 / 6.15e12
     s = re.sub(r"\u00d710-(\d+)", r"e-\1", s)
     s = re.sub(r"\u00d710(\d+)", r"e\1", s)
-    # drop digit-group spaces ("10 811" -> "10811")
-    s = re.sub(r"(?<=\d) (?=\d)", "", s)
+    s = re.sub(r"(?<=\d) (?=\d)", "", s)   # drop digit-group spaces
     s = s.replace(",", "")
     m = re.match(r"^(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)", s)
     return m.group(1) if m else None
@@ -93,8 +69,7 @@ def split_two(s):
     return out[:2]
 
 def split_temp(s):
-    """'-113.13 °C 160.02 K' -> [-113.13, 160.02] (the two values are separated
-    by the °C unit, not by a dash or parenthesis)."""
+    """'-113.13 °C 160.02 K' -> [-113.13, 160.02] (values split on °C, not a dash)."""
     if s is None:
         return [None, None]
     if "\u00b0C" in s:
@@ -102,14 +77,8 @@ def split_temp(s):
         return [to_number(head), to_number(tail)]
     return [to_number(s), None]
 
-# ---------------------------------------------------------------------------
-# infobox parsing
-# ---------------------------------------------------------------------------
 def page(name, refresh):
-    """Body page HTML, cached at tmp/ksp_wiki/<name>.html.
-
-    Returns (text, downloaded): the cache is the default, so a re-run that
-    finds every page cached makes zero network requests."""
+    """Body page HTML, cached at tmp/ksp_wiki/<name>.html (returns text, downloaded)."""
     path = os.path.join(CACHE_DIR, name + ".html")
     if not refresh and os.path.exists(path):
         with open(path, encoding="utf-8") as f:
@@ -131,11 +100,10 @@ def get_infobox(name, text):
 def parse_body(name, text):
     t = get_infobox(name, text)
     header = None
-    fields = {}           # field name -> [value, value, ...] in order
+    fields = {}
     for _, r in t.iterrows():
         a, c = r[0], r[2]
         if str(a) == str(c) == str(r[1]):
-            # name / caption / section header / footnote row
             if header is None and re.match(r"^(Star|Planet|Dwarf planet|Moon)( of \w+)?$", str(a)):
                 header = str(a)
             continue

@@ -1,26 +1,3 @@
-# Pocket fuel: a free kerbal whose SUIT tank is empty but whose pocket holds a
-# full mono tank of hydrazine holds W. The suit cannot draw (empty), so the
-# ONLY way the RCS thrusts is the phase-4.5 pocket draw -- the quality pass
-# found consumeResourceMass could never reach the pocket tanks (they are not in
-# the kerbal's fuel groups), leaving a kerbal with an empty suit and a full
-# pocket permanently unable to thrust. Here the mass must fall as the pocket
-# tank is burned (the pocket draw sheds its mass).
-#
-# The time warp is forced by --time-accel 10 (a load starts paused, so the
-# flag -- not the fixture's saved warp -- sets the 10x the burn needs).
-# W is held 1 s..15 s (wall) = ~140 s of sim-time at 10x, burning ~12 kg
-# (0.09 kg/s) of the pocket's 78.54 kg. The kerbal's mass starts at the dry
-# suit (~87 kg) + the full pocket tank (~89 kg) = ~176 kg and ends near ~164 kg.
-#
-# --prox-warp 10 is the crux: the fixture's racer is ~500 m from the kerbal,
-# inside the fly engage radius (2000 m), so it is LIVE/engaged and the warp
-# would be capped to prox_warp (default 1.0) -- at 1x the burn is only ~1 kg
-# and the mass never crosses 170. Lifting the cap to 10 lets the fixture's
-# 10x warp run, so the 14 s hold burns ~12 kg. (The pocket draw itself works
-# at any warp; this is purely a test-speed matter.)
-#
-# (No velocity assertion: in orbit gravity rotates the velocity vector by far
-# more than the RCS adds over the burn, so the mass drop is the signal.)
 NAME inventory-pocket
 ARGS --load e2e/fixtures/save_inventory --timeout 18
 ARGS --time-accel 10 --eva-log --orbit-interval 0.5 --sim-press 1000,14000,W --frame-cap 30 --prox-warp 10

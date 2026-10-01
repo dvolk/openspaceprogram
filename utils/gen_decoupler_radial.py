@@ -1,22 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the radial-decoupler .obj mesh: a small block (stack axis +Z).
-
-The radial decoupler is a staging boundary attached to the SIDE of a part
-(attachRadial: its local +Z points away from the parent, its local -h/2
-face sits on the parent's side). It is a 0.1 m x 0.1 m stub, 0.5 m long
-along the attach axis -- the part's radius/height in res/data/parts.json are
-radius = 0.05 (half the cross-section span), height = 0.5 (the z span).
-
-Geometry: a box, flat normals, one vertex per face corner (24 total).
-Winding is CCW from outside (the renderer culls back faces -- the original
-placeholder block had mixed winding and 4 of its 6 faces were invisible);
-the generator asserts each triangle's geometric normal matches its face
-normal, so a bad corner order fails loudly. UVs: planar per face in
-[0,1]^2 -- the part's texture is a flat fill, so they only need to be
-present (CalcTangentSpace requires a UV channel).
-
-    python3 utils/gen_decoupler_radial.py res/meshes/decoupler_radial.obj
-"""
+"""Generate the radial-decoupler .obj: 0.1x0.1x0.5 block (attach axis +Z).
+Flat normals; CCW winding (asserted)."""
 
 import argparse
 
@@ -39,7 +23,6 @@ def main():
     A = (-x, -y, -z); B = (x, -y, -z); C = (x, y, -z); D = (-x, y, -z)
     E = (-x, -y, z);  F = (x, -y, z);  G = (x, y, z);  H = (-x, y, z)
 
-    # (face normal, two triangles per face, CCW from outside)
     faces = [
         ((-1, 0, 0), [(A, H, D), (A, E, H)]),
         ((1, 0, 0),  [(B, C, G), (B, G, F)]),
@@ -49,7 +32,6 @@ def main():
         ((0, 0, 1),  [(E, F, G), (E, G, H)]),
     ]
 
-    # winding self-check: geometric normal must agree with the face normal
     def cross(u, v):
         return (u[1]*v[2] - u[2]*v[1],
                 u[2]*v[0] - u[0]*v[2],
@@ -62,7 +44,6 @@ def main():
             if dot <= 0:
                 raise SystemExit("winding error: face %s triangle %s" % (n, t))
 
-    # planar UV per face: (u-axis coord index, v-axis coord index)
     uv_axes = {(-1, 0, 0): (1, 2), (1, 0, 0): (1, 2),
                (0, -1, 0): (0, 2), (0, 1, 0): (0, 2),
                (0, 0, -1): (0, 1), (0, 0, 1): (0, 1)}

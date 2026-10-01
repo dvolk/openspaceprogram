@@ -1,20 +1,7 @@
 #!/usr/bin/env bash
 # Stage an FHS AppDir for osp and pack it with appimagetool.
-#
 #   ./utils/make_appimage.sh <LINUX_BIN> <VERSION> <DISTDIR> [APPIMAGETOOL]
-#
-# AppDir layout (resdir::root() walks up from usr/bin and finds
-# usr/share/openspaceprogram/res/):
-#   AppDir/
-#     AppRun -> usr/bin/osp
-#     openspaceprogram.desktop
-#     openspaceprogram.png
-#     usr/bin/osp
-#     usr/share/openspaceprogram/res/
-#     usr/share/doc/{LICENSE.md,README.md}
-#
-# No library bundling (libGL / X11 / Pulse / libstdc++ all host) -- see the
-# Makefile's appimage target for why.
+# No library bundling (host libGL/X11/Pulse/libstdc++); see the Makefile's appimage target.
 set -euo pipefail
 
 LINUX_BIN=${1:?usage: make_appimage.sh LINUX_BIN VERSION DISTDIR [APPIMAGETOOL]}

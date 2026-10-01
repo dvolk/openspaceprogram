@@ -1,12 +1,3 @@
-# Rails warp: from time-accel 10, one PERIOD enters rails warp (->100,
-# ships coast) and one COMMA exits (->10, physics resumes). Both the entry
-# and exit print lines must appear. Catches a regression in the warp
-# enter/leave state machine.
-#
-# The assertions are the state machine's own prints (goOnRails / leaveRails in
-# vehicle.cpp) rather than the warp toasts: they prove the ship actually parked
-# on its conic and came back into the physics world, which is the transition
-# this case is about.
 NAME rails-warp
 ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 10

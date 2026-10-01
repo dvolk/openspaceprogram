@@ -1,26 +1,7 @@
 #!/usr/bin/env python3
-# Scrape the KSP wiki's Parts page into one CSV per part category table.
-#
-# The page (https://wiki.kerbalspaceprogram.com/wiki/Parts) carries ~55 part
-# tables under its h2/h3/h4 headings (Pods, Fuel Tanks, the engines, ...).
-# pandas.read_html would mangle two wiki quirks, so both are fixed in the DOM
-# first:
-#   - the unit symbols are <img> icons (Funds, fuel units, ...) whose text
-#     pandas drops, leaving headers like "Cost ()" -- the alt text is spliced
-#     in instead ("Cost (Funds)");
-#   - the part-image cells are <figure> blocks that parse to NaN -- they are
-#     replaced with the image file name, the useful half of them.
-# Tables whose first header row is a full-width note cell (fuel densities,
-# "Xenon density is 0.1 kg/unit") get that cell blanked so it does not smear
-# across four column names; the note itself is kept in index.json.
-#
-# Output: <out>/<heading path>.csv (default utils/parts_wiki/, one file per
-# part table) plus index.json mapping file -> {heading, note, rows, columns}.
-# The output directory is gitignored; only this script is tracked.
-#
-# The wiki sits behind a bot wall that challenges browser-like clients but
-# passes a plain urllib request -- that is the fetch path, and the reply is
-# cached to tmp/parts_wiki.html so re-runs never touch the site again.
+# Scrape the KSP wiki Parts page into one CSV per part category table.
+# Fixes <img> unit icons and <figure> part-image cells before pandas.read_html;
+# page is cached at tmp/parts_wiki.html. Output: <out>/<heading>.csv + index.json.
 import argparse
 import io
 import json
@@ -33,7 +14,7 @@ from lxml import etree
 from lxml import html
 
 URL = "https://wiki.kerbalspaceprogram.com/wiki/Parts"
-HERE = os.path.dirname(os.path.abspath(__file__))          # utils/
+HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 CACHE = os.path.join(REPO, "tmp", "parts_wiki.html")
 OUT = os.path.join(HERE, "parts_wiki")
@@ -63,10 +44,7 @@ def replace_with_text(parent, el, text):
 
 
 def prep(doc):
-    """Fix the wiki quirks in the DOM; return (serialized html, per-table meta).
-
-    Meta is a document-order list of {path, is_part, note}, one entry per
-    <table>, so it lines up 1:1 with pd.read_html's result."""
+    """Fix wiki quirks in the DOM; return (serialized html, per-table meta)."""
     hstack = {2: "", 3: "", 4: ""}
     tables = []
     for el in doc.iter():
@@ -101,7 +79,6 @@ def prep(doc):
         else:
             src = fig.xpath(".//img/@src")
             if src:
-                # /images/thumb/3/3c/Part.png/40px-Part.png -> Part.png
                 name = src[0].split("/thumb/")[-1].split("/")[0]
         if name:
             replace_with_text(fig.getparent(), fig, name)

@@ -1,25 +1,10 @@
-# Ship RCS fuel: a ship on an inertial orbit holds N (RcsForward). RCS is a
-# fixed thrust gated on the ship's propellant (consume-then-arm, like the
-# ship's engines), so the burn both changes the velocity AND sheds hydrazine
-# mono from the tank's pool. The rcs_r1 thruster (200 N) draws from the
-# mono_tank_r1 (78.5 kg hydrazine); the two are one fuel group, so the
-# thruster burns the tank's propellant.
-#
-# The run is at 10x so a long N hold burns a detectable amount of hydrazine
-# without depleting the whole tank. The hydrazine pool must start full and
-# END LOWER (the propellant is being consumed), and the orbit energy must
-# have changed (the RCS actually thrust).
 NAME ship-rcs-fuel
 ARGS --time-accel 10 --timeout 18 --fuel-log --orbit-log --orbit-interval 0.5 --sim-press 1000,14000,N --frame-cap 30 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
 EXPECT Building ship 'rcs_test' (2 parts)
 FORBID GL_
 FORBID error:
 CHECK len(fuel) >= 3
-# the hydrazine pool (the single fuel group, g0) starts full
 CHECK first(fuel)["groups"][0]["N2H4"][0] > 30.0
 CHECK first(fuel)["groups"][0]["N2H4"][1] > 35.0
-# ...and the burn consumed some of it (fuel decreased from start to end)
 CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.5
-# the burn actually thrust (E is direction-independent; a single velocity
-# component would depend on the RCS direction vs the orbit)
 CHECK abs(last(orbit)["E"] - first(orbit)["E"]) > 100.0

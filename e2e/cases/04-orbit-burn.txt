@@ -1,7 +1,3 @@
-# Orbit burn: in a circular orbit, ramp throttle (R) and fire (T). A non-zero
-# burn changes specific orbital energy E (a constant between burns), so assert
-# |ΔE| is significant. Deliberately direction-independent -- the spawn attitude
-# isn't prograde, so a prograde/retrograde assertion would be flaky.
 NAME orbit-burn
 ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 12 --orbit-log --orbit-interval 0.5

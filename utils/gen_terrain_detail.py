@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the terrain detail texture: a seamlessly tiling albedo
-modulation map the terrain shader multiplies into the baked vertex
-colours, so the flat ground reads as ground at the landed/kerbal scale.
-
-Seamless: every octave is value noise on a TORUS -- the lattice wraps mod
-P, so the map tiles in BOTH axes. That is what lets the shader's REPEAT
-wrap close the equirectangular antimeridian, and the poles.
-
-Centred on white (255): the shader does albedo = vertexColour *
-mix(1, tex, strength), so a flat 255 map is the identity and the noise is
-only a darkening modulation of the body's palette colour (it never
-re-colours sea or gas-giant bands).
-
-    python3 gen_terrain_detail.py res/textures/terrain_detail.png --size 1024
-"""
+"""Generate the terrain detail texture: seamless tiling albedo modulation map.
+Value noise on a torus (tiles both axes); centred on white so the shader only darkens."""
 
 import argparse
 import random
@@ -29,7 +16,7 @@ def png_chunk(tag, data):
 def write_png(dst, w, h, rgb):
     """rgb: w*h*3 bytes, row-major, unfiltered."""
     raw = b"".join(b"\x00" + rgb[y * w * 3:(y + 1) * w * 3] for y in range(h))
-    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)  # 8-bit, colour type 2 (RGB)
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)  # 8-bit RGB
     png = (b"\x89PNG\r\n\x1a\n"
            + png_chunk(b"IHDR", ihdr)
            + png_chunk(b"IDAT", zlib.compress(raw, 9))
@@ -39,16 +26,8 @@ def write_png(dst, w, h, rgb):
 
 
 def octave_noise(N, T, L, rng):
-    """One octave of tileable value noise: N*N values in [-1, 1].
-
-    The field has period T pixels (T divides N, so it tiles the N*N image)
-    and L random lattice cells per period (the torus resolution; a few
-    samples per cell keeps the interpolation smooth). Sampling in lattice
-    units u = x*L/T with the index wrapped % L tiles for ANY L: shifting x
-    by N adds N*L/T, a whole number of cells. (Wrapping the index as
-    (x//T) % L instead would tile only when L divides N/L.)"""
+    """Tileable value noise, N*N in [-1, 1]. Index wrap % L tiles for any L | N."""
     lat = [rng.uniform(-1.0, 1.0) for _ in range(L * L)]
-    # per-pixel lattice coords, precomputed
     ux = [x * L / T for x in range(N)]
     xs = [int(u) % L for u in ux]
     fx = [u - int(u) for u in ux]
@@ -73,8 +52,7 @@ def octave_noise(N, T, L, rng):
 
 
 def lattice_sample(lat, L, T, x, y):
-    """Bilinear lattice lookup at an ARBITRARY (possibly warped) pixel
-    coordinate; wraps in lattice space, so it tiles for any (T | N, L)."""
+    """Bilinear lattice lookup at an arbitrary (possibly warped) pixel; tiles for any (T|N, L)."""
     u = (x * L / T) % L
     v = (y * L / T) % L
     ix = int(u)
@@ -111,11 +89,7 @@ def main():
         ap.error("--size must be a multiple of 128 (>= 128)")
 
     n = a.size
-    # Ground-like spectrum: fine grain (pebbles) to broad tonal patches.
-    # With the default 64 m tile the world periods are 0.25 m .. 16 m.
-    # The grain octaves are BELOW screen Nyquist at mid range, so the mip
-    # chain averages them (no moire) and they only read up close; the
-    # 2-16 m mottle is what carries the ground look at 10-100 m.
+    # World periods 0.25..16 m at the default 64 m tile (fine grain to broad mottle)
     octaves = [
         (n // 128, 4, 10),    # 0.25 m grain
         (n // 64, 8, 14),     # 0.5 m
@@ -126,12 +100,7 @@ def main():
         (n // 2, 256, 18),    # 16 m broad patches
     ]
 
-    # Domain warp: a low-frequency tileable displacement field (two
-    # independent lattices, one per axis). Period n//8 = 8 m world at the
-    # default tile -- large enough to swirl the mottle into organic
-    # clumps, small enough to repeat several times per image. Each octave
-    # is displaced by a fraction of its own period, so fine grain wiggles
-    # and broad patches flow, coherently (the same field drives all).
+    # Domain warp: low-frequency tileable displacement, shared across octaves
     wx = wy = None
     if a.warp > 0.0:
         wx = octave_noise(n, n // 8, 8, random.Random(a.seed + 900))
@@ -154,12 +123,7 @@ def main():
                     img[i] = A * lattice_sample(lat, L, T,
                                                 x + s * wx[i], y + s * wy[i])
 
-    # Contrast + re-centre on exactly 255: the shader multiplies the map
-    # in (albedo *= mix(1, tex, strength)), so 255 is the identity and the
-    # map only darkens -- it can never re-colour sea or bands. The random
-    # lattices carry a DC bias and the sum's tails are Gaussian-ish, so
-    # scale the deviation, re-centre, and clamp the floor above 0 (pure
-    # black = a hole in the ground).
+    # Contrast + re-centre on 255 (shader identity); clamp floor so pure black is not a hole
     mean = sum(img) / len(img)
     lo = 90
     hi = 255
@@ -167,7 +131,6 @@ def main():
         v = (img[i] - mean) * a.contrast + 255.0
         img[i] = lo if v < lo else (hi if v > hi else v)
 
-    # stats + write (grayscale: r = g = b)
     vmin = min(img)
     rgb = bytearray(3 * n * n)
     j = 0

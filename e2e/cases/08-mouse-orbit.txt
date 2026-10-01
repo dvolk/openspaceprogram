@@ -1,6 +1,3 @@
-# Mouse orbit: move the cursor over the 3D view (BTN 0) then RMB-drag to
-# orbit the camera. No distinctive stdout line marks the rotation, so this
-# only verifies the mouse-input path doesn't crash the game (exit 0, no GL_).
 NAME mouse-orbit
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-mouse 1000,0,900,500,0

@@ -1,7 +1,3 @@
-# Save: an orbiting racer does a burn, then at --timeout the game
-# serializes the live fleet + clock to a directory (save_game in save.cpp)
-# and exits 0. Assert the save line, that a live burn happened (E changes),
-# and a clean exit. Self-contained -- it writes to tmp/ (a scratch dir).
 NAME save
 ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 12 --save tmp/e2e_save --orbit-log --orbit-interval 0.5

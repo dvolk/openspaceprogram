@@ -1,11 +1,3 @@
-# Engine shroud: the stager's upper engine has a decoupler attached below
-# it (so the shroud draws over it), while its booster engine sits at the
-# ship's tail (bare). Both declare the shroud in the catalog, so the
-# build-time snapshot logs one shrouded and one bare.
-# Anchors are the [shroud] snapshot lines (src/vehicle.cpp
-# build_ship_structure); the FORBIDs catch a broken shroud asset (a
-# placeholder-cube mesh import / hot-pink texture, or a GL error on the
-# extra draw).
 NAME engine-shroud
 ARGS --timeout 12 --startship stager,res/ships/stager.json,Kerbin,pad
 EXPECT [shroud] engine_upper: shrouded

@@ -1,10 +1,3 @@
-# EVA space mode: a kerbal on an inertial orbit flies RCS -- holding W
-# translates along the camera forward at the RCS acceleration (the x
-# velocity changes far more than orbital curvature alone), in space mode
-# the whole run. The burn also changes the osculating orbit's energy
-# (RCS is a fixed acceleration with no speed cap, KSP-style). The
-# R press exercises the vertical-translation binding (EvaUp; moved off
-# LSHIFT when the key map became rebindable -- see src/keys.cpp).
 NAME eva-rcs
 ARGS --time-accel 1 --timeout 8 --eva-log --orbit-log --orbit-interval 0.5 --sim-press 2000,2000,W,5000,1500,R --frame-cap 30 --startship kerbal,res/ships/kerbal.json,Kerbin,inertial-orbit
 EXPECT Building ship 'kerbal' (1 parts)

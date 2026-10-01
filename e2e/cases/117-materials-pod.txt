@@ -1,15 +1,3 @@
-# Materials Pod: the science instrument part. The active ship (labpod) carries
-# a Materials Pod + an aboard kerbal (spawn_crew seats one in the capsule);
-# the headless --pod-experiment hook runs the pod's "materials study" -- a
-# dedicated-instrument family worth MORE than the suit's observation (base 25
-# vs 10) -- storing it on the pod (Part::experiments). Recover Vessel banks it
-# (recoverActive harvests every part's experiments, not just the suits). A
-# first-time study on the home body: rot-orbit (85km) is below the 110km orbit
-# cut -> LOW orbit, and a materials study is global there (no biome) --
-# 25 x 1.25 x 1.0 = 31.25 -> 31. The [science] recorded / recovered lines are
-# the e2e anchors. (The pod's value curve + key-distinctness from an
-# observation are unit-tested in test_science; the suit's observation path is
-# the sibling --experiment case.)
 NAME materials-pod
 ARGS --time-accel 1 --timeout 8 --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
 ARGS --pod-experiment 1500

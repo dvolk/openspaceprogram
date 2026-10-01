@@ -1,11 +1,3 @@
-# The other half of the hub's Esc rule: with NOTHING to lose it is still the
-# way back to the title. A new game before its first launch has no ship and an
-# empty fleet, so the hub-as-floor Esc quits (hubKeyActions gates on
-# collectVehicles being empty, not on the hub being the floor -- case 102 pins
-# the live-fleet half, where one keystroke must not discard a game).
-# --new-game fires newGame() directly (the title's button opens the setup
-# sheet instead); boot is shipless, so the constructor's [Flight] collapses to
-# Title and newGame makes the hub the floor.
 NAME esc-title-empty-fleet
 ARGS --time-accel 1 --timeout 8 --new-game 1000
 ARGS --sim-press 2500,0,ESCAPE

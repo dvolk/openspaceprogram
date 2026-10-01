@@ -1,8 +1,3 @@
-# Esc is the scene-neutral "go back" (Slot::Menu, dispatched per-scene in the
-# key maps): from the Tracking Station and the hub it pops the stack up one
-# floor; at the flight floor it pushes the hub (the in-game menu) instead --
-# flight's Esc is the menu entry, not a pop. flight -> hub -> tracking, then
-# three Esc presses: pop to the hub, pop to flight, then push the hub again.
 NAME esc-scene-pop
 ARGS --time-accel 1 --timeout 10 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --space-center 1000 --tracking 2000

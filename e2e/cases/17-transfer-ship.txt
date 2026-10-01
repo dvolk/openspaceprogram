@@ -1,7 +1,3 @@
-# Transfer planner, ship intercept: fleet loaded, F6 x3 -> active ship is
-# the "laythe explorer" (inertial orbit); target the "transporter" (high
-# orbit), same body. Ships are intercept-only: dv_cap must be exactly 0 and
-# the solution must be a valid conic between the two ships' states.
 NAME transfer-ship
 ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 12
 ARGS --xfer-log --orbit-interval 0.5 --transfer-target transporter

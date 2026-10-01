@@ -1,9 +1,3 @@
-# Proximity (flying regime): the active ship is in orbit (inertial-orbit)
-# and a neighbour sits 100 m away in the same orbit-slot group. With the
-# default fly radii (2 km in / 10 km out) the neighbour is well inside the
-# engage radius, so it leaves the rails (ENGAGED, fly regime). Warping up
-# (PERIOD) while it is engaged must be capped back to the encounter warp
-# (default 1x) -- a close approach can't stay in warp.
 NAME prox-fly
 ARGS --startships e2e/fixtures/startships_fly.json --time-accel 1 --timeout 6 --prox-log
 ARGS --sim-press 1500,0,PERIOD

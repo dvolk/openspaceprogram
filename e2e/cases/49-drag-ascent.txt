@@ -1,12 +1,3 @@
-# Atmospheric drag: on Duna (thin CO2 air, low gravity so the racer lifts
-# off), ramp throttle (R) then fire (T). While the ship moves through the
-# air the drag force must be non-zero. Duna is the lightest body with an
-# atmosphere -- every heavier one (Kerbin, Laythe, Eve, ...) is below the
-# racer's TWR, and the airless ones have no atmosphere to drag in.
-#
-# The assertion needs BOTH rho>0 (the atmosphere model is live at this
-# altitude) and F>0 (the ship is moving through the air), so a ship that
-# never lifts off (F stays 0) fails the case.
 NAME drag-ascent
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Duna,pad
 ARGS --timeout 12 --drag-log

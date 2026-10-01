@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
-# Generate res/systems/old_system.json (Eerbon) and res/systems/ksp_system.json
-# (Kerbal) for the refactored load_system() JSON format. Angular speeds are
-# derived from the CSV orbital / rotational periods: speed = 2*pi / period.
-#
-# Lives in utils/; the body data (ksp_bodies.csv) sits next to it, and the
-# generated JSONs are written to res/systems/ (where the game loads them).
-#
-# This script is the source of truth for both committed JSONs. Re-running it
-# is safe and idempotent: it reproduces the committed files (the only
-# canonicalization is small floats such as the cloud `drift` -> e-notation,
-# which is numerically identical). If you change the K table, the SURFACES
-# dict, or ksp_bodies.csv, regenerate and commit the script and the JSONs
-# together. Pass --check to verify the committed files still match, without
-# writing anything (this is the guard the issue #58 drift defeated).
+# Generate res/systems/{old,ksp}_system.json. Angular speeds = 2*pi / period.
+# Source of truth for the committed JSONs; --check verifies no drift.
 import argparse
 import math
 import os
@@ -20,8 +8,8 @@ import os
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
 
-HERE = os.path.dirname(os.path.abspath(__file__))   # utils/
-ROOT = os.path.dirname(HERE)                          # repo root
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 
 def spd(period):
     if not period:
@@ -29,9 +17,7 @@ def spd(period):
     return TWOPI / period
 
 def true_anomaly_from_mean(M, e):
-    """True anomaly nu at mean anomaly M: Newton-solve Kepler's equation
-    M = E - e sin E for the eccentric anomaly E, then convert. For e -> 0
-    this is exactly nu = M."""
+    """True anomaly at mean anomaly M (Newton-solve Kepler; e->0 gives nu=M)."""
     M = M % TWOPI
     E = M if e < 0.8 else math.pi
     for _ in range(30):
@@ -45,11 +31,7 @@ def true_anomaly_from_mean(M, e):
     return math.atan2(sinnu, cosnu) % TWOPI
 
 def load_wiki_orbits(csv_path):
-    """Per-body orbital elements from ksp_bodies.csv (the individual
-    KSP wiki pages): eccentricity, inclination, argument of periapsis (w),
-    longitude of the ascending node (raan), mean anomaly at epoch (M) and
-    the orbital period. Used to place each body at its real KSP starting
-    position instead of the old shared-axis layout."""
+    """Per-body orbital elements from ksp_bodies.csv."""
     import csv
     out = {}
     with open(csv_path) as f:
@@ -71,12 +53,8 @@ def load_wiki_orbits(csv_path):
 
 WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 
-# ---------------------------------------------------------------------------
-# Eerbon system (single home planet + one moon) - values taken verbatim from
-# the pre-refactor setup_frames() / TerrainBody creation in src/main.cpp.
-# Seeds are 0 = the legacy (unseeded) noise pattern, so Eerbon keeps exactly
-# the terrain it always had.
-# ---------------------------------------------------------------------------
+# Eerbon: legacy home + moon. Values from the pre-refactor setup_frames();
+# seed 0 keeps the original unseeded terrain.
 eerbon = {
     "home": "Eerbon",
     "bodies": [
@@ -101,7 +79,6 @@ eerbon = {
             "seed": 0,
             "has_sea": True,
             "power_scaler": 3,
-            # N2/O2 rim (see reports/atmosphere2026_08_25)
             "surface": {
                 "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
                                "power": 4.0, "intensity": 0.7},
@@ -110,12 +87,10 @@ eerbon = {
                 "soi": 84159286,
                 "pos": [0, 0, -13599840260],
                 "orb_ang_speed": 0.00000068269186570822291594437651,
-                # coplanar with the Sun's reference plane
             },
             "rotating": {
                 "soi": 700000,
                 "rot_ang_speed": 0.00029157090303706880702966723086,
-                # Earth-like obliquity: spin axis 23.4 deg off the orbit normal
                 "axial_tilt": math.radians(23.4),
             },
         },
@@ -133,45 +108,21 @@ eerbon = {
                 "soi": 2429559.1,
                 "pos": [-12000000, 0, 0],
                 "orb_ang_speed": 0.00004520797578987211820731369629,
-                # real-Moon-style 5.1 deg tilt of its orbit about Eerbon's
-                # orbital plane
                 "orb_incl": math.radians(5.1),
             },
             "rotating": {
                 "soi": 300000,
                 "rot_ang_speed": 0.00004520785218583258404235991675,
-                # the real Moon's obliquity to its orbit is ~6.7 deg
                 "axial_tilt": math.radians(6.7),
             },
         },
     ],
 }
 
-# ---------------------------------------------------------------------------
-# Kerbal system. Fields:
-#   name, type, orbits, sma_m, ecc, mass_kg, g, radius_m, inc_deg,
-#   orb_period_s, rot_period_s, tilt_deg, soi_m, has_sea, seed,
-#   power_scaler [, phase_deg]
-# KSP bodies (any body in ksp_bodies.csv) leave sma_m / ecc / inc_deg /
-#   orb_period_s as None: the CSV is the source of truth for their orbital
-#   elements, and ksp_body reads e/i/raan/omega/M/period from it. Only
-#   non-KSP bodies (Shay) fill those columns in; ecc is unused there too
-#   (they are circular).
-# phase_deg (optional, last column): a non-KSP body's starting point, in
-#   degrees ahead of its wiki parent along the orbit; 0 = the shared-axis
-#   default (matches the Eerbon data: planets [0,0,-sma], moons [-sma,0,0]).
-#   Shay = 60: Kerbin's L4 slot, 60 deg ahead on the same circle.
-# tilt_deg: axial tilt, emitted as rotating.axial_tilt in radians;
-#   0 = pole on the orbit normal (field omitted). Values follow the
-#   real-solar-system equivalents (Sun 7.25, Earth 23.44, Pluto 122.5, ...);
-#   bodies without a real analog get plausible small values.
-# soi_m: inertial SOI (m).
-# Rotating-frame SOI (near-body boundary) = radius + 100 km, the same rule the
-# Eerbon data follows (Eerbon 600km+100km=700km, Moon 200km+100km=300km).
-# ---------------------------------------------------------------------------
+# KSP bodies leave sma/ecc/inc/orb_s as None (ksp_bodies.csv is source of truth).
+# tilt_deg: axial tilt (0 = omit). phase_deg: non-KSP start angle (Shay=60 = L4).
 K = [
     # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, soi_m,        has_sea, seed, ps [, phase_deg]
-    # KSP bodies: sma_m/ecc/inc_deg/orb_s are None -- see ksp_bodies.csv.
     ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     1e18,         False, 0.1, 1),
     ("Moho",   "planet", "Kerbol", None,        None,   2.526e21, 2.698,  250000,   None,    None,       1210000,   0.03,     9646660,      False, 1,   3),
     ("Eve",    "planet", "Kerbol", None,        None,   1.224e23, 16.677, 700000,   None,    None,       80500,     2.64,     85109360,     False, 2,   3),
@@ -179,11 +130,7 @@ K = [
     ("Kerbin", "planet", "Kerbol", None,        None,   5.292e22, 9.81,   600000,   None,    None,       21549,     23.44,    84159290,     True,  1,   3),
     ("Mun",    "moon",   "Kerbin", None,        None,   9.760e20, 1.628,  200000,   None,    None,       138984,    6.68,     2429560,      False, 5,   1),
     ("Minmus", "moon",   "Kerbin", None,        None,   2.646e19, 0.491,  60000,    None,    None,       40400,     12.0,     2247430,      False, 6,   1),
-    # Shay: Kerbin's L4 trojan, 60 deg ahead on the same circle. Its orbital
-    # period is Kerbin's exactly -- anything else and it drifts off L4.
-    # Day = 21549.425 s: Eerbon's day, ported verbatim with the rest of it.
-    # r = 550 km at the old density: mass ~ R^3, g ~ R, and the SOI
-    # (Kerbin's SOI x (M/M_kerbin)^(1/3)) ~ R at the same orbit.
+    # Shay: Kerbin's L4 trojan (60 deg ahead). Period must match Kerbin's exactly.
     ("Shay",   "planet", "Kerbol", 13599840260, 0.0,    4.0762e22, 8.9933, 550000,   0.0,     9203544.6,  21549.425, 5.0,      77146016,     True,  0,   3,  60),
     ("Duna",   "planet", "Kerbol", None,        None,   4.515e21, 2.943,  320000,   None,    None,       65518,     25.19,    47921950,     False, 7,   3),
     ("Ike",    "moon",   "Duna",   None,        None,   2.782e20, 1.099,  130000,   None,    None,       65518,     1.76,     1049600,      False, 8,   1),
@@ -197,14 +144,8 @@ K = [
     ("Eeloo",  "planet", "Kerbol", None,        None,   1.115e21, 1.687,  210000,   None,    None,       19460,     122.5,    119082940,    False, 16,  3),
 ]
 
-# ---------------------------------------------------------------------------
-# Per-body surface appearance (the optional "surface" JSON block):
-#   palette:  land-color stops [elevation 0..1, [r,g,b]], lerped by altitude
-#   sea_color / sea_level: ocean tint + level (m above base radius)
-#   amplitude: peak terrain noise height [m]
-#   bands/band_count: gas giant — smooth sphere colored by latitude stripes
-# Colors are hand-picked KSP-flavored approximations.
-# ---------------------------------------------------------------------------
+# Optional "surface" block: palette (elevation 0..1 -> color), sea_*/,
+# amplitude, bands/* for gas giants.
 SURFACES = {
     "Kerbol": {
         "palette": [[0.0, [1.00, 0.80, 0.35]], [1.0, [1.00, 1.00, 0.75]]],
@@ -222,7 +163,6 @@ SURFACES = {
         "palette": [[0.0, [0.45, 0.08, 0.20]],
                     [0.5, [0.65, 0.15, 0.30]],
                     [1.0, [0.80, 0.40, 0.45]]],
-        # thick toxic SO2 haze (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.80, 0.85, 0.35], "thickness": 25000,
                        "power": 4.0, "intensity": 0.75,
                        "sea_level_density": 1.7, "scale_height": 7000,
@@ -243,7 +183,6 @@ SURFACES = {
                     [0.45, [0.45, 0.55, 0.20]],
                     [0.8, [0.55, 0.45, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
-        # N2/O2 rim (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.30, 0.50, 1.00], "thickness": 15000,
                        "power": 4.0, "intensity": 0.7,
                        "sea_level_density": 1.225, "scale_height": 5500,
@@ -267,8 +206,6 @@ SURFACES = {
         "amplitude": 3000,
         "persistence": 0.55,
         "frequency": 1.1,
-        # thicker green-tinted N2/O2 rim than Kerbin's
-        # (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.40, 0.65, 0.70], "thickness": 22000,
                        "power": 4.0, "intensity": 0.7,
                        "sea_level_density": 1.225, "scale_height": 6000,
@@ -280,7 +217,6 @@ SURFACES = {
         "palette": [[0.0, [0.55, 0.22, 0.08]],
                     [0.6, [0.70, 0.35, 0.15]],
                     [1.0, [0.85, 0.60, 0.40]]],
-        # thin dusty CO2 haze (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.80, 0.48, 0.30], "thickness": 8000,
                        "power": 4.0, "intensity": 0.55,
                        "sea_level_density": 0.12, "scale_height": 4000,
@@ -301,8 +237,6 @@ SURFACES = {
         "band_count": 9,
         "palette": [[0.0, [0.30, 0.42, 0.45]],
                     [1.0, [0.80, 0.87, 0.83]]],
-        # gas giant: the "atmosphere" is the whole body, so a broad, soft
-        # pale rim (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.75, 0.85, 0.85], "thickness": 90000,
                        "power": 3.0, "intensity": 0.6,
                        "sea_level_density": 2.0, "scale_height": 20000,
@@ -317,7 +251,6 @@ SURFACES = {
         "palette": [[0.0, [0.25, 0.55, 0.25]],
                     [0.7, [0.50, 0.60, 0.35]],
                     [1.0, [1.00, 1.00, 1.00]]],
-        # N2/O2 rim (see reports/atmosphere2026_08_25)
         "atmosphere": {"color": [0.30, 0.55, 0.90], "thickness": 12000,
                        "power": 4.0, "intensity": 0.7,
                        "sea_level_density": 1.225, "scale_height": 5500,
@@ -373,14 +306,8 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
     else:
         wiki = WIKI_ORBITS.get(name)
         if wiki and wiki.get("period") and orbits in MASS:
-            # KSP body: start at its real epoch position, from the orbital
-            # elements on its individual wiki page (eccentricity, inclination,
-            # argument of periapsis w, longitude of the ascending node raan,
-            # mean anomaly at 0s UT) instead of the old shared-axis layout.
-            # load_system derives a from orb_ang_speed via Kepler's third law,
-            # so the JSON only needs w + the angles. arg_peri and true_anomaly0
-            # are emitted even for circular orbits (e=0): they set the starting
-            # angle on the circle (w + M), which is what the wiki encodes.
+            # KSP body: start at the real wiki epoch position (e, i, omega,
+            # raan, M). load_system derives a from orb_ang_speed via Kepler III.
             e = wiki["e"] or 0.0
             i = wiki["i"] or 0.0
             omega = wiki["omega"] or 0.0
@@ -402,13 +329,8 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
                 inertial["ecc"] = e
             b["inertial"] = inertial
         else:
-            # Non-wiki body (Shay): a game-added body, not on the KSP wiki.
-            # It is Kerbin's L4 trojan -- phase_deg ahead of Kerbin in the
-            # orbit direction, on the same circle. Kerbin now sits at its
-            # wiki epoch longitude, so anchor Shay to THAT: "ahead" is the
-            # orbit direction (decreasing in-plane angle), i.e. Kerbin's
-            # epoch longitude minus phase_deg. Any other non-wiki body keeps
-            # the old shared-axis layout (planets -Z, moons -X).
+            # Non-wiki body (Shay): Kerbin's L4 trojan, phase_deg ahead along
+            # the orbit (decreasing in-plane angle from Kerbin's wiki epoch).
             kb = WIKI_ORBITS.get("Kerbin")
             if phase_deg and kb and kb.get("period"):
                 kb_lon = (kb["raan"] or 0.0) + (kb["omega"] or 0.0) \
@@ -435,15 +357,11 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
             if inc_deg:
                 inertial["orb_incl"] = math.radians(inc_deg)
             b["inertial"] = inertial
-        # Every planet / moon spins; near-body SOI = radius + 100 km.
         rotating = {
             "soi": radius + 100000,
             "rot_ang_speed": spd(rot_s),
         }
-        # Axial tilt (CSV "Axial tilt" column): lean the spin axis from the
-        # orbital normal toward +X; 0 = pole on the orbit normal (omitted).
-        # The star gets no "rotating" block (dummy frame), so its tilt value
-        # is documentation only.
+        # Axial tilt: lean the spin axis from the orbital normal (0 = omit).
         if tilt_deg:
             rotating["axial_tilt"] = math.radians(tilt_deg)
         b["rotating"] = rotating
@@ -470,8 +388,7 @@ def write(obj, path):
     print("wrote", path)
 
 def deep_diff(a, b, path, out):
-    """Value-level diff (a = committed, b = generated). Numerically compares,
-    so float canonicalization like 0.00001 vs 1e-05 does not count as drift."""
+    """Value-level diff (a = committed, b = generated); numeric compare ignores float spelling."""
     if isinstance(a, dict) and isinstance(b, dict):
         for k in a:
             p = f"{path}.{k}" if path else k

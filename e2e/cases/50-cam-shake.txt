@@ -1,10 +1,3 @@
-# Camera shake at high acceleration: on Moho (racer TWR ~2.3, the only
-# body where the racer can lift off), ramp throttle (R) then fire (T).
-# The felt acceleration (thrust + aero over mass) must be zero before
-# ignition (steady cam, amp == 0) and rise above the 1 m/s^2 threshold
-# while burning (amp > 0). Moho's ~29 m/s^2 of felt thrust saturates
-# the amplitude at its cap -- the case asserts the pipeline (force ->
-# accel -> amplitude), not the exact magnitude.
 NAME cam-shake
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Moho,pad
 ARGS --timeout 12 --shake-log
@@ -12,8 +5,6 @@ ARGS --sim-press 1000,2000,R
 ARGS --sim-press 3000,2000,T
 EXPECT [shakelog]
 CHECK len(shake) >= 2
-# some samples steady (pre-ignition or post-cutoff, whichever the slow
-# host's first frame lands in) and some shaking while the burn is live
 CHECK any(d["amp"] == 0 for d in shake)
 CHECK any(d["a"] > 0 and d["amp"] > 0 for d in shake)
 FORBID GL_

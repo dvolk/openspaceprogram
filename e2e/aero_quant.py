@@ -1,32 +1,6 @@
 #!/usr/bin/env python3
-"""aero_quant.py -- quantitative aero measurements + a plain-English report.
-
-The "is the aero soupy?" instrument. Runs the ship headless (xvfb, like the
-e2e battery) in two short flights and reduces the --drag-log time series to
-the numbers that define how the flight model feels:
-
-  PROGRADE AREA     silhouette area with the nose into the flow. The whole
-                    point of the hull-silhouette drag model: a prograde
-                    rocket shows ONE end face (pi*r^2), not its side.
-  AREA SWING        broadside / prograde area ratio (how much the drag grows
-                    as the ship goes from edge-on to broadside).
-  MAX THRUST SPEED  the speed it reaches at full thrust (thrust vs
-                    weight+drag; the "max speed feels low?" number).
-  TERMINAL VELOCITY the free-fall speed plateau (drag = weight; the
-                    "~60 m/s feels low?" number).
-  TUMBLE            does the ship hold its nose to the flow in free fall, or
-                    tumble broadside (AoA swinging past 90, area ballooning)?
-                    A tumbling ship presents its SIDE area, so it falls far
-                    slower than the prograde ideal -- this is usually the
-                    real cause of "drag feels too high."
-
-It also prints the theoretical free-fall terminal velocity for both the
-prograde and the broadside area (from the ship's mass + the body's air), so
-you can see exactly where the measured value sits between the two.
-
-Stdlib only (reuses e2e/run.py's parser + xvfb wrapper). Not a pass/fail
-battery -- it reports numbers and flags the tumble.
-"""
+"""Quantitative aero measurements: prograde/broadside area, max speed,
+terminal velocity, tumble flag, and a straight-up boost budget."""
 
 import argparse
 import json
@@ -37,21 +11,16 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import run as e2e  # noqa: E402  (REPO_ROOT, build_cmd, parse_drag)
+import run as e2e  # noqa: E402
 
 REPO = e2e.REPO_ROOT
-KRB_G = 9.81  # Kerbin surface gravity (m/s^2); see res/systems/ksp_system.json
+KRB_G = 9.81  # Kerbin surface gravity (m/s^2)
 
 
 def ship_mass_and_radius(ship_path, parts_path):
     """(dry_mass, fueled_mass, max_radius, ve, flow) from the parts catalog.
-
-    A part's `mass` is its DRY structure only (the propellant rides
-    `capacity`, like the game's effectiveMass). So the ship's FUELED mass is
-    the sum of part masses plus every tank's capacity, and the DRY (empty)
-    mass is that minus the burnable propellant (H2/LOX/jetfuel). EC is
-    charge, not mass, so it never counts. max_radius is the widest part (its
-    end face is the prograde cross-section)."""
+    Part `mass` is dry structure; propellant rides `capacity`. EC is charge,
+    not mass. max_radius is the widest part (prograde cross-section)."""
     with open(ship_path) as f:
         ship = json.load(f)
     with open(parts_path) as f:
@@ -68,27 +37,21 @@ def ship_mass_and_radius(ship_path, parts_path):
         cap = d.get("capacity", {})
         for res in ("hydrogen", "lox", "jetfuel"):
             fuel += cap.get(res, 0.0)
-        # Inert resources (mono, life support) still weigh in at the end.
         for res in ("hydrazine", "oxygen", "water", "food"):
             dry += cap.get(res, 0.0)
-        # The rated thrust is (total propellant flow) * ve, so the flow is the
-        # sum of the engine's propellant rates (H2+LOX for a chemical engine,
-        # H2 alone for a nuclear thermal one) and ve is the exhaust velocity.
+        # Rated thrust = total propellant flow * ve (H2+LOX chemical, H2 nuclear).
         prop = d.get("propellant", {})
         if sum(prop.values()) > 0 and d.get("exhaust_velocity", 0.0) > 0 \
                 and not d.get("jet"):
             ve = d["exhaust_velocity"]
             flow = sum(prop.values())
-    fueled = dry + fuel  # structure + inert + full propellant
+    fueled = dry + fuel
     return dry, fueled, maxr, ve, flow
 
 
 def flight(presses, timeout, body, ship, cd, autopilot=None):
-    """Run one headless flight; return the parsed --drag-log rows.
-
-    autopilot (e.g. "radial-out") engages the slew hold at startup so the
-    ship stays pointed where you want it -- needed for a straight-up boost
-    (the radial-out hold) that a hand-held stick can't maintain headless."""
+    """One headless flight; returns the parsed --drag-log rows.
+    autopilot engages the slew hold at startup (needed for a straight-up boost)."""
     game = os.path.join(REPO, "osp")
     name = os.path.basename(ship)
     if name.endswith(".json"):
@@ -109,10 +72,7 @@ def flight(presses, timeout, body, ship, cd, autopilot=None):
 
 
 def terminal_velocity(rows):
-    """Free-fall terminal speed = the max airspeed reached AFTER the apex.
-
-    Rows are time-ordered; the apex is the highest altitude. The descent is
-    every sample strictly after it; the plateau speed is the max v there."""
+    """Free-fall terminal speed = max airspeed after the apex."""
     if not rows:
         return 0.0
     apex_t = max(rows, key=lambda d: d["alt"])["t"]
@@ -121,20 +81,9 @@ def terminal_velocity(rows):
 
 
 def boost_budget(args, dry, fueled, maxr, ve, flow):
-    """Full vertical boost (radial-out autopilot, straight up): the APEX.
-
-    The radial-out hold keeps the nose straight up, so the delta-v becomes
-    ALTITUDE (a clean vertical boost) instead of an arc. The apex is the
-    headline number. The losses (gravity + drag) are reported for context:
-      gravity loss = g x t_burn -- every second the engine fires, ~9.8 m/s of
-                   delta-v is spent holding the ship up (it becomes altitude,
-                   not speed). A long, low-thrust burn loses a lot here.
-      drag loss    = integral(F/m)dt over the CLIMB -- the velocity the air
-                   bleeds off. (Only the climb counts; the fall's drag is the
-                   ship coming back down, not a loss of the delta-v.)
-    """
-    # Radial-out autopilot (the "straight up" hold) + full-throttle burn.
-    # R ramps the throttle, T fires; hold T long enough for a full burn.
+    """Full vertical boost (radial-out hold): apex + where the delta-v went.
+    gravity loss = g * t_burn; drag loss = integral(F/m)dt over the climb."""
+    # Radial-out autopilot + full-throttle burn (R ramps throttle, T fires).
     rows = flight(["400,3000,R", "700,120000,T"], 170, args.body, args.ship,
                   args.cd, autopilot="radial-out")
     if not rows:
@@ -162,25 +111,20 @@ def boost_budget(args, dry, fueled, maxr, ve, flow):
 
 def report(args, dry, fueled, maxr, ve, flow):
     cd = args.cd
-    # --- Flight 1: prograde thrust (area + max speed) ---
-    # R = throttle up (hold to ramp), T = thrust (hold to fire).
+    # Flight 1: prograde thrust (area + max speed). R = throttle, T = thrust.
     prograde = flight(["500,4000,R", "800,8000,T"], 12, args.body, args.ship, cd)
     near = [d for d in prograde
             if d.get("aoa") is not None and abs(d["aoa"]) < 15 and d.get("a")]
-    # The row that shows the prograde area also carries the model's REAL
-    # coefficient for that orientation (the logged Cd = the parts'
-    # area-weighted mean, cd_ship). Grab it so the theoretical terminal
-    # velocity below uses cd x cd_ship, not the bare --cd master scale.
+    # Logged Cd is the parts' area-weighted mean (cd_ship); use cd*cd_ship
+    # for the theoretical terminal velocity, not the bare --cd master scale.
     pro_row = min(near, key=lambda d: d["a"]) if near else None
     pro_area = pro_row["a"] if pro_row else None
     cd_pro = pro_row["cd"] if pro_row else cd
     max_speed = max((d["v"] for d in prograde), default=0.0)
-    # --- Flight 2: thrust up, cut, free fall (terminal velocity + tumble) ---
+    # Flight 2: thrust up, cut, free fall (terminal velocity + tumble).
     fall = flight(["500,6000,R", "800,7000,T"], 26, args.body, args.ship, cd)
     vt = terminal_velocity(fall)
-    # The tumble: how far the nose swings from the flow during the fall, and
-    # how far the area balloons (broadside). The descent is after the apex.
-    cd_broad = cd  # the model's coefficient at the broadside (fall) orientation
+    cd_broad = cd
     if fall:
         apex_t = max(fall, key=lambda d: d["alt"])["t"]
         desc = [d for d in fall if d["t"] > apex_t]
@@ -197,17 +141,14 @@ def report(args, dry, fueled, maxr, ve, flow):
         broad_area, max_aoa, tumbling = 0.0, 0.0, False
 
     swing = (broad_area / pro_area) if pro_area else 0.0
-    # Theoretical free-fall terminal velocity: drag = weight ->
-    #   0.5*rho*Cd*A*v^2 = m*g   =>   v = sqrt(2*m*g / (rho*Cd*A))
-    # Use the sea-level density the body reports (the fall starts low).
-    rho0 = 1.225  # Kerbin sea-level density; the fall samples carry it too
+    # Terminal velocity theory: 0.5*rho*Cd*A*v^2 = m*g => v = sqrt(2*m*g/(rho*Cd*A)).
+    rho0 = 1.225  # Kerbin sea-level density
     if fall:
         rho0 = min(d["rho"] for d in fall if d.get("rho")) or rho0
-    # The model's real coefficient is --cd (master) x cd_ship (the parts'
-    # area-weighted mean), so the theory uses that product, not the bare --cd.
+    # Real coefficient is --cd (master) x cd_ship (parts' area-weighted mean).
     vt_pro = math.sqrt(2.0 * fueled * KRB_G / (rho0 * cd * cd_pro * pro_area)) if pro_area else 0.0
     vt_broad = math.sqrt(2.0 * fueled * KRB_G / (rho0 * cd * cd_broad * broad_area)) if broad_area else 0.0
-    expected_pro = math.pi * maxr * maxr  # one end face of the widest part
+    expected_pro = math.pi * maxr * maxr
 
     def line(label, value, unit=""):
         return "  %-20s %s" % (label + ":", value + (" " + unit if unit else ""))
@@ -239,8 +180,7 @@ def report(args, dry, fueled, maxr, ve, flow):
     else:
         print("  TUMBLE in free fall: no -- the nose holds to the flow")
         print("  (max AoA %.0f deg); it falls edge-on at the prograde area." % max_aoa)
-    # --- Flight 3: full vertical boost -- the apex (the "how high can it
-    #    go straight up?" number) and where the delta-v went ---
+    # Flight 3: full vertical boost (apex + delta-v budget).
     bb = boost_budget(args, dry, fueled, maxr, ve, flow)
     if bb:
         print("-" * 62)

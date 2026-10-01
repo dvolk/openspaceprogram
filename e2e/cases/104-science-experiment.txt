@@ -1,10 +1,3 @@
-# Science: the headless "Run Experiment" hook records an observation on
-# the active ship's first aboard crew (suit Part), then Recover Vessel scores
-# it via the value model (base 10 x situation x body; the rot-orbit scenario
-# sits at 85km -- below the 110km orbit cut -- so a LOW-orbit observation on
-# the home body = 10 x 1.25 x 1.0 = 12.5 -> 13). The [science] recorded /
-# recovered lines are the e2e anchors. (Duplicate-refusal is unit-tested in
-# test_science; the repeat/diminishing path is covered in science-recover-load.)
 NAME science-experiment
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --experiment 1500

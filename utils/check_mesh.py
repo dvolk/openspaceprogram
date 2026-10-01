@@ -6,11 +6,8 @@ open_mesh = "--open" in sys.argv
 path = [a for a in sys.argv[1:] if a != "--open"][0]
 
 mesh = trimesh.load_mesh(path, process=False)
-# OBJ faces carry per-corner v/vt/vn triples: the same geometric rim vertex
-# has different UV/normal indices on the smooth side than on the flat cap,
-# so trimesh splits it into separate corners and reports phantom boundary
-# edges. Merge by position so the watertight test sees true topology.
-# (merge_tex/merge_norm=True means "ignore" tex/norm differences.)
+# Per-corner v/vt/vn splits make trimesh see phantom boundary edges; merge by
+# position so the watertight test sees true topology (merge_* = ignore diffs).
 mesh.merge_vertices(merge_tex=True, merge_norm=True)
 
 checks = {
@@ -20,7 +17,6 @@ checks = {
     ),
 }
 if not open_mesh:
-    # --open: intentionally open surfaces (e.g. the engine plume billboard)
     checks["watertight"] = mesh.is_watertight
 checks["winding_consistent"] = mesh.is_winding_consistent
 if not open_mesh:

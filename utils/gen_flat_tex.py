@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a solid-fill RGB PNG (a flat part texture) with no dependencies.
-
-Some parts are a single flat colour (the wing is a light gray), so instead of
-hand-exporting a texture from an editor this writes a small solid PNG -- the
-part's shader just multiplies that fill by its Lambert shading.
-
-    python3 gen_flat_tex.py res/textures/wing.png --rgb 200 200 200 --size 4
-"""
+"""Generate a solid-fill RGB PNG (a flat part texture) with no dependencies."""
 
 import argparse
 import struct
@@ -33,9 +26,9 @@ def main():
         ap.error("size must be >= 1")
 
     w = h = a.size
-    row = b"\x00" + bytes([r, g, b]) * w   # filter byte 0 + RGB pixels
+    row = b"\x00" + bytes([r, g, b]) * w   # PNG filter byte 0 + RGB pixels
     raw = row * h
-    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)  # 8-bit, colour type 2 (RGB)
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)  # 8-bit RGB
     png = (b"\x89PNG\r\n\x1a\n"
            + png_chunk(b"IHDR", ihdr)
            + png_chunk(b"IDAT", zlib.compress(raw, 9))

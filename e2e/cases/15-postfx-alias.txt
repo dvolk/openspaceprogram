@@ -1,4 +1,3 @@
-# The 'sharpen' alias must load the same cas effect.
 NAME postfx-sharpen-alias
 ARGS --postfx sharpen --gl-debug --timeout 4
 EXPECT postfx: sharpen

@@ -1,7 +1,3 @@
-# Surface Map with the terminator OFF (--surfmap-noshade): the stored
-# pixels are the raw albedo, so the shaded means equal the albedo means
-# exactly (the shade factor is 1.0, and 1.0 * x == x, so the two sums are
-# bit-identical) and the log reports shade=off.
 NAME surfmap-noshade
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 15 --surfmap-log --surfmap-n 128 --surfmap-noshade
