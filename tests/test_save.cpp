@@ -315,6 +315,16 @@ int main() {
         e2.body = "Mun";
         e2.situation = SciSituation::HighOrbit;
         e2.biome = "midlands";
+        Experiment e3;
+        e3.type = "observation";
+        e3.body = "Mun";
+        e3.situation = SciSituation::FlyingLow;
+        e3.biome = "midlands";
+        Experiment e4;
+        e4.type = "observation";
+        e4.body = "Mun";
+        e4.situation = SciSituation::FlyingHigh;
+        e4.biome = "midlands";
 
         SaveShip crewSci;
         crewSci.name = "kerbal";
@@ -323,13 +333,19 @@ int main() {
         crewSci.aboard_part = 101;
         crewSci.suit_experiments.push_back(e1);
         crewSci.suit_experiments.push_back(e2);
+        crewSci.suit_experiments.push_back(e3);
+        crewSci.suit_experiments.push_back(e4);
         SaveShip crewSciOut = saveShipFromJson(saveShipToJson(crewSci));
-        CHECK(crewSciOut.suit_experiments.size() == 2);
-        if(crewSciOut.suit_experiments.size() == 2) {
+        CHECK(crewSciOut.suit_experiments.size() == 4);
+        if(crewSciOut.suit_experiments.size() == 4) {
             CHECK(crewSciOut.suit_experiments[0] == e1);
             CHECK(crewSciOut.suit_experiments[1] == e2);
+            CHECK(crewSciOut.suit_experiments[2] == e3);
+            CHECK(crewSciOut.suit_experiments[3] == e4);
             CHECK(crewSciOut.suit_experiments[0].situation == SciSituation::LowOrbit);
             CHECK(crewSciOut.suit_experiments[1].situation == SciSituation::HighOrbit);
+            CHECK(crewSciOut.suit_experiments[2].situation == SciSituation::FlyingLow);
+            CHECK(crewSciOut.suit_experiments[3].situation == SciSituation::FlyingHigh);
         }
 
         // an absent suit_experiments (pre-science save) stays empty

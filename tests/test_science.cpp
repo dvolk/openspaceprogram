@@ -134,51 +134,65 @@ int main() {
         CHECK(baseValue("barometer") == 10);         // a basic instrument
         CHECK(baseValue("unknown family") == 10);    // falls back to the base
         CHECK(situationWeight(SciSituation::Landed) == 1.0);
+        CHECK(situationWeight(SciSituation::FlyingLow) == 1.1);
+        CHECK(situationWeight(SciSituation::FlyingHigh) == 1.2);
         CHECK(situationWeight(SciSituation::LowOrbit) == 1.25);
         CHECK(situationWeight(SciSituation::HighOrbit) == 1.5);
     }
 
     // --- ExperimentDef: per-family biome-specificity + availability --------
-    // KSP: a reading is biome-specific only where biomes are tellable apart.
-    // A crew report: landed AND low orbit; a materials study: only landed;
-    // high orbit: never (the reading is "of the planet").
+    // A reading is biome-specific only where biomes are tellable apart: a
+    // crew report in landed + flying + low orbit; a materials study in landed
+    // + flying; a barometer in landed + flying-low. High orbit (and the
+    // barometer's flying-high) are "of the planet" -- never biome-specific.
     {
-        // observation (a crew report)
+        // observation (a crew report): landed + flying + low orbit; high global
         CHECK(biomeSpecificIn("observation", SciSituation::Landed));
+        CHECK(biomeSpecificIn("observation", SciSituation::FlyingLow));
+        CHECK(biomeSpecificIn("observation", SciSituation::FlyingHigh));
         CHECK(biomeSpecificIn("observation", SciSituation::LowOrbit));
         CHECK(!biomeSpecificIn("observation", SciSituation::HighOrbit));
-        // materials study
+        // materials study: landed + both flying bands; orbit global
         CHECK(biomeSpecificIn("materials study", SciSituation::Landed));
+        CHECK(biomeSpecificIn("materials study", SciSituation::FlyingLow));
+        CHECK(biomeSpecificIn("materials study", SciSituation::FlyingHigh));
         CHECK(!biomeSpecificIn("materials study", SciSituation::LowOrbit));
         CHECK(!biomeSpecificIn("materials study", SciSituation::HighOrbit));
-        // barometer: works from anywhere, biome-specific only on the surface
+        // barometer: landed + flying-low only (upper air + space are global)
         CHECK(biomeSpecificIn("barometer", SciSituation::Landed));
+        CHECK(biomeSpecificIn("barometer", SciSituation::FlyingLow));
+        CHECK(!biomeSpecificIn("barometer", SciSituation::FlyingHigh));
         CHECK(!biomeSpecificIn("barometer", SciSituation::LowOrbit));
         CHECK(!biomeSpecificIn("barometer", SciSituation::HighOrbit));
         // unknown family -> biome-specific in EVERY situation (the KSP common
         // case + pre-registry behavior): never merge biome-distinct findings
         // on a guess. A def opts a family OUT per situation instead.
         CHECK(biomeSpecificIn("unknown", SciSituation::Landed));
+        CHECK(biomeSpecificIn("unknown", SciSituation::FlyingLow));
+        CHECK(biomeSpecificIn("unknown", SciSituation::FlyingHigh));
         CHECK(biomeSpecificIn("unknown", SciSituation::LowOrbit));
         CHECK(biomeSpecificIn("unknown", SciSituation::HighOrbit));
     }
 
     // --- ExperimentDef: availability (valid_in) ----------------------------
-    // Today all three families run in all three situations; an unregistered
+    // Today all three families run in all five situations; an unregistered
     // family is valid everywhere (the safe fallback). A situation-gated
-    // instrument (a seismometer: landed only; an in-atmosphere-only gauge:
-    // flying only, once that situation exists) would be one def entry.
+    // instrument (a seismometer: landed only) would be one def entry.
     {
         CHECK(experimentValidIn("observation", SciSituation::Landed));
+        CHECK(experimentValidIn("observation", SciSituation::FlyingHigh));
         CHECK(experimentValidIn("observation", SciSituation::HighOrbit));
         CHECK(experimentValidIn("materials study", SciSituation::Landed));
+        CHECK(experimentValidIn("materials study", SciSituation::FlyingLow));
         CHECK(experimentValidIn("materials study", SciSituation::HighOrbit));
         // barometer: "an atmospheric pressure scan can be performed from
-        // anywhere" -- valid in all three situations.
+        // anywhere" -- valid in all five situations.
         CHECK(experimentValidIn("barometer", SciSituation::Landed));
+        CHECK(experimentValidIn("barometer", SciSituation::FlyingLow));
+        CHECK(experimentValidIn("barometer", SciSituation::FlyingHigh));
         CHECK(experimentValidIn("barometer", SciSituation::LowOrbit));
         CHECK(experimentValidIn("barometer", SciSituation::HighOrbit));
-        CHECK(experimentValidIn("unknown", SciSituation::HighOrbit));
+        CHECK(experimentValidIn("unknown", SciSituation::FlyingHigh));
         const ExperimentDef *o = defFor("observation");
         const ExperimentDef *m = defFor("materials study");
         CHECK(o != nullptr && o->base_value == 10 && o->validIn(SciSituation::HighOrbit));
@@ -333,29 +347,45 @@ int main() {
         CHECK(c2.recovered.size() == 2);
     }
 
-    // --- display name (incl. Landed) ---
+    // --- display name (incl. Landed + flying) ------------------------------
     {
         const Experiment a = obs("Mun", SciSituation::LowOrbit, "midlands");
         CHECK(experimentName(a) == "Low orbit observation of Midlands on Mun");
-        const Experiment b = obs("Kerbin", SciSituation::Landed, "ocean");
-        CHECK(experimentName(b) == "Landed observation of Ocean on Kerbin");
-        const Experiment c = obs("Kerbin", SciSituation::HighOrbit, "ocean");
+        const Experiment l = obs("Kerbin", SciSituation::Landed, "ocean");
+        CHECK(experimentName(l) == "Landed observation of Ocean on Kerbin");
+        const Experiment hi = obs("Kerbin", SciSituation::HighOrbit, "ocean");
         // High orbit: not biome-specific -> "of the planet", no biome in name.
-        CHECK(experimentName(c) == "High orbit observation on Kerbin");
-        // Materials study: biome-specific only when landed (KSP rule).
+        CHECK(experimentName(hi) == "High orbit observation on Kerbin");
+        // Flying: a crew report IS biome-specific in the air, so the biome is
+        // in the name here (unlike high orbit).
+        const Experiment fl = obs("Kerbin", SciSituation::FlyingLow, "ocean");
+        CHECK(experimentName(fl) == "Flying low observation of Ocean on Kerbin");
+        const Experiment fh = obs("Kerbin", SciSituation::FlyingHigh, "ocean");
+        CHECK(experimentName(fh) == "Flying high observation of Ocean on Kerbin");
+        // Materials study: biome-specific in landed + flying; orbit is global.
         Experiment m;  m.type = "materials study"; m.body = "Kerbin";
         m.situation = SciSituation::Landed;   m.biome = "lowlands";
         CHECK(experimentName(m) == "Landed materials study of Lowlands on Kerbin");
-        Experiment m2; m2.type = "materials study"; m2.body = "Kerbin";
-        m2.situation = SciSituation::LowOrbit; m2.biome = "lowlands";
-        CHECK(experimentName(m2) == "Low orbit materials study on Kerbin");
-        // Barometer: biome-specific only when landed (like the materials study).
-        Experiment b;  b.type = "barometer"; b.body = "Kerbin";
-        b.situation = SciSituation::Landed;   b.biome = "lowlands";
-        CHECK(experimentName(b) == "Landed barometer of Lowlands on Kerbin");
-        Experiment b2; b2.type = "barometer"; b2.body = "Kerbin";
-        b2.situation = SciSituation::HighOrbit; b2.biome = "lowlands";
-        CHECK(experimentName(b2) == "High orbit barometer on Kerbin");
+        Experiment mfl; mfl.type = "materials study"; mfl.body = "Kerbin";
+        mfl.situation = SciSituation::FlyingLow;  mfl.biome = "lowlands";
+        CHECK(experimentName(mfl) == "Flying low materials study of Lowlands on Kerbin");
+        Experiment mh; mh.type = "materials study"; mh.body = "Kerbin";
+        mh.situation = SciSituation::LowOrbit; mh.biome = "lowlands";
+        CHECK(experimentName(mh) == "Low orbit materials study on Kerbin");
+        // Barometer: biome-specific in landed + flying-low; flying-high and
+        // orbit are global "of the planet" (no biome in the name).
+        Experiment baroL; baroL.type = "barometer"; baroL.body = "Kerbin";
+        baroL.situation = SciSituation::Landed;   baroL.biome = "lowlands";
+        CHECK(experimentName(baroL) == "Landed barometer of Lowlands on Kerbin");
+        Experiment baroFL; baroFL.type = "barometer"; baroFL.body = "Kerbin";
+        baroFL.situation = SciSituation::FlyingLow;  baroFL.biome = "lowlands";
+        CHECK(experimentName(baroFL) == "Flying low barometer of Lowlands on Kerbin");
+        Experiment baroFH; baroFH.type = "barometer"; baroFH.body = "Kerbin";
+        baroFH.situation = SciSituation::FlyingHigh; baroFH.biome = "lowlands";
+        CHECK(experimentName(baroFH) == "Flying high barometer on Kerbin");
+        Experiment baroH; baroH.type = "barometer"; baroH.body = "Kerbin";
+        baroH.situation = SciSituation::HighOrbit; baroH.biome = "lowlands";
+        CHECK(experimentName(baroH) == "High orbit barometer on Kerbin");
     }
 
     // --- labEntries: the Lab's pre-built rows (issue #87) ------------------
@@ -415,35 +445,52 @@ int main() {
         }
     }
 
-    // --- situation ids round-trip (incl. landed) ---
+    // --- situation ids round-trip (incl. landed + flying) ---
     {
         CHECK(std::string(situationId(SciSituation::Landed)) == "landed");
+        CHECK(std::string(situationId(SciSituation::FlyingLow)) == "flying_low");
+        CHECK(std::string(situationId(SciSituation::FlyingHigh)) == "flying_high");
         CHECK(std::string(situationId(SciSituation::LowOrbit)) == "low_orbit");
         CHECK(std::string(situationId(SciSituation::HighOrbit)) == "high_orbit");
         CHECK(situationFromId("landed") == SciSituation::Landed);
+        CHECK(situationFromId("flying_low") == SciSituation::FlyingLow);
+        CHECK(situationFromId("flying_high") == SciSituation::FlyingHigh);
         CHECK(situationFromId("high_orbit") == SciSituation::HighOrbit);
         CHECK(situationFromId("low_orbit") == SciSituation::LowOrbit);
         CHECK(situationFromId("") == SciSituation::LowOrbit);   // default
     }
 
-    // --- the situation cut: atmosphere top wins; else half the radius -----
+    // --- the orbit cut: max(SoI edge, atmo top) + the 10km margin ----------
     {
-        CHECK(situationCutAlt(70000.0, 600000.0) == 70000.0);
-        CHECK(situationCutAlt(0.0, 200000.0) == 100000.0);
+        CHECK(orbitCutAlt(700000.0, 600000.0, 0.0) == 110000.0);    // airless: edge 100km + 10km
+        CHECK(orbitCutAlt(700000.0, 600000.0, 70000.0) == 110000.0); // edge > atmo -> edge wins
+        CHECK(orbitCutAlt(700000.0, 600000.0, 200000.0) == 210000.0); // atmo > edge -> atmo wins
+        CHECK(orbitCutAlt(6371000.0, 6371000.0, 0.0) == 10000.0);   // SoI at the surface
+        CHECK(kOrbitCutMargin == 10000.0);
+        CHECK(kFlyingLowFrac == 0.2);
     }
 
-    // --- situationFor: grounded -> Landed; else the altitude band ---------
+    // --- situationFor: the five situations from grounded + altitude --------
     {
+        const double atmoTop = 70000.0;    // Kerbin's atmosphere
+        const double cut = 110000.0;      // SoI edge (100km) + 10km margin
         // grounded wins regardless of altitude (the #75 fix)
-        CHECK(situationFor(true, 0.0, 70000.0, 600000.0) == SciSituation::Landed);
-        CHECK(situationFor(true, 69999.0, 70000.0, 600000.0) == SciSituation::Landed);
-        // not grounded: the altitude band (below the atmo top -> low orbit)
-        CHECK(situationFor(false, 69999.0, 70000.0, 600000.0) == SciSituation::LowOrbit);
-        // not grounded, at/above the atmo top -> high orbit
-        CHECK(situationFor(false, 70000.0, 70000.0, 600000.0) == SciSituation::HighOrbit);
-        // airless body: the cut is half the radius
-        CHECK(situationFor(false, 99999.0, 0.0, 200000.0) == SciSituation::LowOrbit);
-        CHECK(situationFor(false, 100000.0, 0.0, 200000.0) == SciSituation::HighOrbit);
+        CHECK(situationFor(true, 0.0, atmoTop, cut) == SciSituation::Landed);
+        CHECK(situationFor(true, 69999.0, atmoTop, cut) == SciSituation::Landed);
+        // airborne in the atmosphere -> flying; the bottom 20% is flying-low
+        CHECK(situationFor(false, 0.0, atmoTop, cut) == SciSituation::FlyingLow);
+        CHECK(situationFor(false, 13999.0, atmoTop, cut) == SciSituation::FlyingLow);
+        CHECK(situationFor(false, 14000.0, atmoTop, cut) == SciSituation::FlyingHigh);
+        CHECK(situationFor(false, 69999.0, atmoTop, cut) == SciSituation::FlyingHigh);
+        // above the atmosphere -> the orbit band, split at the cut
+        CHECK(situationFor(false, 70000.0, atmoTop, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 109999.0, atmoTop, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 110000.0, atmoTop, cut) == SciSituation::HighOrbit);
+        CHECK(situationFor(false, 500000.0, atmoTop, cut) == SciSituation::HighOrbit);
+        // airless body: no flying band; the altitude band straight off the cut
+        CHECK(situationFor(false, 0.0, 0.0, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 109999.0, 0.0, cut) == SciSituation::LowOrbit);
+        CHECK(situationFor(false, 110000.0, 0.0, cut) == SciSituation::HighOrbit);
     }
 
     if(failures == 0) {

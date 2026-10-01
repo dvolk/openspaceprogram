@@ -1,0 +1,19 @@
+# Barometer in FLYING-LOW: the biome-specific half of the flying rule. A ship
+# airborne in the lower atmosphere (the flying-low scenario, ~10km on Kerbin
+# -- below the 20%-of-atmo split) records a BIOME-SPECIFIC reading --
+# "Flying low barometer of <Biome> on Kerbin" -- unlike flying-high, which is
+# "of the planet". First-time flying-low on the home body = 10 x 1.1 x 1.0 =
+# 11. Mirrors 123-barometer-flying-high (global) so the two pin the
+# barometer's flying biome rule; the landed half is 121-barometer-landed.
+NAME barometer-flying-low
+ARGS --time-accel 1 --timeout 8 --startship baropod,res/ships/baropod.json,Kerbin,flying-low
+ARGS --pod-experiment 1200
+ARGS --space-center 2500 --recover 3500 --recover-anywhere
+EXPECT [science] t=
+EXPECT recorded
+EXPECT Flying low barometer of
+EXPECT [science] recovered +11
+EXPECT [recover] t=
+EXPECT [spacecenter] entered
+FORBID GL_
+FORBID error:

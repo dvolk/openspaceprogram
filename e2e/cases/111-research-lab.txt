@@ -9,7 +9,8 @@ ARGS --time-accel 1 --timeout 12 --startship racer,res/ships/racer.json,Kerbin,r
 ARGS --experiment 1500
 ARGS --space-center 3000 --recover 4000 --recover-anywhere
 ARGS --research 5000 --research-close 6000
-EXPECT [science] recovered +15
+# rot-orbit (85km) is below the 110km orbit cut -> LOW orbit (1.25): 10 * 1.25 = 13
+EXPECT [science] recovered +13
 EXPECT [scene] spacecenter -> research (push)
 EXPECT [scene] research -> spacecenter (pop)
 EXPECT Timeout reached (12.

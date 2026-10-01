@@ -4,11 +4,13 @@
 // An Experiment is one run of an observation, recorded by a kerbal on a ship.
 // Its IDENTITY -- type + body + situation, plus the biome only in situations
 // where the family is biome-specific (ExperimentDef: a crew report in landed
-// + low orbit, a materials study only when landed) -- is the uniqueness key
-// (named at the UI edge like "Landed observation of Midlands on Mun"); the
-// provenance (ran_at, recovered_at, kerbal, ship) is extra data that ==
-// ignores. Situations (v2): Landed (grounded), LowOrbit / HighOrbit (altitude
-// bands); the airborne "Flying" / "Splashed" situations are the next phase.
+// + flying + low orbit; a materials study in landed + flying; a barometer in
+// landed + flying-low) -- is the uniqueness key (named at the UI edge like
+// "Landed observation of Midlands on Mun"); the provenance (ran_at,
+// recovered_at, kerbal, ship) is extra data that == ignores. Situations (v3):
+// Landed (grounded); FlyingLow / FlyingHigh (airborne in the atmosphere --
+// the bottom 20% of the air, or the rest); LowOrbit / HighOrbit (above the
+// atmosphere, or over an airless body -- split at the body's SoI edge + 10km).
 //
 // The Career owns the score + the append-only log of every bank (recovered).
 // Recovering an experiment scores it via scoreOf: base x situation weight x
@@ -29,12 +31,15 @@
 
 #include "calendar.h"   // Calendar + fmt_cal_compact (the Lab row's stamps)
 
-/* Where the experiment happens. Landed = grounded on a surface; LowOrbit /
-   HighOrbit = the two altitude bands over the SoI body (NOT a true orbital
-   state -- a suborbital hop still reads as an "orbit observation"). The
-   in-atmosphere "Flying" situation is a later phase. */
+/* Where the experiment happens. Landed = grounded on a surface. FlyingLow /
+   FlyingHigh = airborne in the atmosphere (the bottom kFlyingLowFrac of the
+   air, or the rest). LowOrbit / HighOrbit = above the atmosphere (or over an
+   airless body), split at the body's SoI edge + 10km (orbitCutAlt). A ship's
+   situation is purely altitude-based: grounded, in the air, or in space. */
 enum class SciSituation : unsigned char {
     Landed,
+    FlyingLow,
+    FlyingHigh,
     LowOrbit,
     HighOrbit,
 };
@@ -44,11 +49,11 @@ enum class SciSituation : unsigned char {
    entry in the registry below -- the single home for per-experiment rules
    (they used to be scattered if-chains keyed on the type string). A reading
    is biome-specific only where you can tell biomes apart: a crew report in
-   landed + low orbit; a materials study and a barometer only when landed
-   (off the surface a reading is "of the planet", no biome -- the barometer
-   still runs from anywhere, it just isn't biome-specific off the surface).
+   landed + flying + low orbit (high orbit is "of the planet"); a materials
+   study in landed + flying; a barometer in landed + flying-low (upper air and
+   space give a global "of the planet" reading, though it still RUNS anywhere).
    `valid_in` is the hook for situation-gated instruments (a seismometer:
-   landed only; an in-atmosphere-only gauge, once that situation exists). */
+   landed only). */
 struct ExperimentDef {
     std::string type;                        // "observation", "materials study"
     int base_value = 10;                      // the base of scoreOf
@@ -66,14 +71,18 @@ struct ExperimentDef {
 inline const std::vector<ExperimentDef> &experimentDefs() {
     static const std::vector<ExperimentDef> defs = {
         { "observation", 10,
-          { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
-          { SciSituation::Landed, SciSituation::LowOrbit } },
+          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
+            SciSituation::LowOrbit, SciSituation::HighOrbit },
+          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
+            SciSituation::LowOrbit } },
         { "materials study", 25,
-          { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
-          { SciSituation::Landed } },
+          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
+            SciSituation::LowOrbit, SciSituation::HighOrbit },
+          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh } },
         { "barometer", 10,
-          { SciSituation::Landed, SciSituation::LowOrbit, SciSituation::HighOrbit },
-          { SciSituation::Landed } },
+          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
+            SciSituation::LowOrbit, SciSituation::HighOrbit },
+          { SciSituation::Landed, SciSituation::FlyingLow } },
     };
     return defs;
 }
@@ -137,26 +146,32 @@ struct Experiment {
 
 inline const char *situationName(SciSituation s) {
     switch(s) {
-        case SciSituation::Landed:    return "landed";
-        case SciSituation::LowOrbit:  return "low orbit";
-        case SciSituation::HighOrbit: return "high orbit";
+        case SciSituation::Landed:     return "landed";
+        case SciSituation::FlyingLow:  return "flying low";
+        case SciSituation::FlyingHigh: return "flying high";
+        case SciSituation::LowOrbit:   return "low orbit";
+        case SciSituation::HighOrbit:  return "high orbit";
     }
     return "low orbit";
 }
 
 inline const char *situationId(SciSituation s) {
     switch(s) {
-        case SciSituation::Landed:    return "landed";
-        case SciSituation::LowOrbit:  return "low_orbit";
-        case SciSituation::HighOrbit: return "high_orbit";
+        case SciSituation::Landed:     return "landed";
+        case SciSituation::FlyingLow:  return "flying_low";
+        case SciSituation::FlyingHigh: return "flying_high";
+        case SciSituation::LowOrbit:   return "low_orbit";
+        case SciSituation::HighOrbit:  return "high_orbit";
     }
     return "low_orbit";
 }
 
 inline SciSituation situationFromId(const std::string &id) {
-    if(id == "landed")     { return SciSituation::Landed; }
-    if(id == "high_orbit") { return SciSituation::HighOrbit; }
-    return SciSituation::LowOrbit;
+    if(id == "landed")      { return SciSituation::Landed; }
+    if(id == "flying_low")  { return SciSituation::FlyingLow; }
+    if(id == "flying_high") { return SciSituation::FlyingHigh; }
+    if(id == "high_orbit")  { return SciSituation::HighOrbit; }
+    return SciSituation::LowOrbit;   // "low_orbit" + unknown (old saves)
 }
 
 // ASCII first-letter cap for the display name ("midlands" -> "Midlands").
@@ -257,12 +272,14 @@ inline bool canHoldFinding(ExpStorage role, const std::string &ownFamily,
 // a switch -- "observation" 10, "materials study" 25.)
 
 // Situation weight: the "how hard to be there" factor. Landed is the baseline;
-// reaching orbit -- and high orbit -- is worth a little more.
+// flying (in the air) is a little more; orbit the most, high orbit the most.
 inline double situationWeight(SciSituation s) {
     switch(s) {
-        case SciSituation::Landed:    return 1.0;
-        case SciSituation::LowOrbit:  return 1.25;
-        case SciSituation::HighOrbit: return 1.5;
+        case SciSituation::Landed:     return 1.0;
+        case SciSituation::FlyingLow:  return 1.1;
+        case SciSituation::FlyingHigh: return 1.2;
+        case SciSituation::LowOrbit:   return 1.25;
+        case SciSituation::HighOrbit:  return 1.5;
     }
     return 1.0;
 }
@@ -427,27 +444,42 @@ inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered
 }
 
 // ---- the situation classifier --------------------------------------------
-/* The low/high cut [m above sea level]: the body's physical atmosphere top
-   when it has one (AtmosphereParams::top), else half the body radius. One
-   home for the policy so the situation label and any later "is this space?"
-   check cannot disagree. */
-inline double situationCutAlt(double atmoTop, double radius) {
-    return (atmoTop > 0.0) ? atmoTop : 0.5 * radius;
+// Flying-low is the bottom slice of the atmosphere (KSP-style); the rest of
+// the air is flying-high. Named so the 20% lives in one home, not a literal.
+inline constexpr double kFlyingLowFrac = 0.2;
+
+/* The low/high ORBIT cut [m above sea level]: the higher of the body's
+   near-body SoI edge and its atmosphere top, plus a margin. Both must clear
+   -- the low-orbit band is the space just above whichever is the ceiling.
+   `soi` is the NEAR-BODY (rotating-frame) SoI, not the inertial orbital
+   sphere (that one is hundreds of times bigger and would make the high-orbit
+   band nearly unreachable). One home for the policy so the situation label
+   and any "is this space?" check cannot disagree. (Kerbin: SoI edge 100km >
+   atmo 70km, so 100km + 10km = a 110km cut, and a ship at 85km -- the
+   rot-orbit scenario -- is a LOW orbit.) */
+inline constexpr double kOrbitCutMargin = 10e3;   // m above the higher edge
+inline double orbitCutAlt(double soi, double radius, double atmoTop) {
+    const double edge = std::max(soi - radius, atmoTop);
+    return edge + kOrbitCutMargin;
 }
 
-/* The situation from the vessel's live state: grounded -> Landed; otherwise
-   the altitude band (below the cut -> LowOrbit, above -> HighOrbit). A ship
-   in ascent or a suborbital hop is not grounded, so it still reads as an
-   orbit observation -- the airborne "Flying" situation is the next phase.
-   Edge: isGrounded() is a tolerance (COM within ~100 m of terrain AND slow),
-   so a slow low-hover reads as Landed, not LowOrbit -- acceptable now, and
-   the "Flying" situation is where a real airborne state lands (issue #70).
-   (v1's situationFromAltitude is superseded: it read a landed ship as an
-   "orbit observation", issue #75.) */
-inline SciSituation situationFor(bool grounded, double altAsl,
-                                 double atmoTop, double radius) {
+/* The situation from the vessel's live state. Grounded -> Landed. Airborne in
+   the atmosphere (altAsl below the atmo top) -> FlyingLow (the bottom
+   kFlyingLowFrac of the air) or FlyingHigh. Above the atmosphere (or over an
+   airless body) -> LowOrbit (below orbitCutAlt) or HighOrbit. A ship in
+   ascent, a suborbital hop, or a ballistic reentry reads by its altitude: in
+   the air it is Flying, in space it is the orbit band -- there is no
+   separate "falling" situation. Edge: isGrounded() is a tolerance (COM within
+   ~100 m of terrain AND slow), so a slow low-hover reads as Landed.
+   (Supersedes the v2 classifier, which read every non-landed ship as an
+   "orbit observation" -- issue #75 -- and the v1 situationFromAltitude.) */
+inline SciSituation situationFor(bool grounded, double altAsl, double atmoTop,
+                                 double orbitCut) {
     if(grounded) { return SciSituation::Landed; }
-    return (altAsl < situationCutAlt(atmoTop, radius))
-               ? SciSituation::LowOrbit
-               : SciSituation::HighOrbit;
+    if(atmoTop > 0.0 && altAsl < atmoTop) {
+        return (altAsl < kFlyingLowFrac * atmoTop)
+                   ? SciSituation::FlyingLow
+                   : SciSituation::FlyingHigh;
+    }
+    return (altAsl < orbitCut) ? SciSituation::LowOrbit : SciSituation::HighOrbit;
 }

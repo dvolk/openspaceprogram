@@ -25,12 +25,12 @@ ARGS --eva 2000
 ARGS --take 2500
 ARGS --store 3000
 ARGS --space-center 4000 --recover 5000 --recover-anywhere
-EXPECT recorded 'High orbit observation
-EXPECT recorded 'High orbit materials study
-EXPECT moved 'High orbit materials study
-EXPECT moved 'High orbit observation
-EXPECT new: High orbit observation
-FORBID new: High orbit materials study
+EXPECT recorded 'Low orbit observation
+EXPECT recorded 'Low orbit materials study
+EXPECT moved 'Low orbit materials study
+EXPECT moved 'Low orbit observation
+EXPECT new: Low orbit observation
+FORBID new: Low orbit materials study
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
 FORBID GL_

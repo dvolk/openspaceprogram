@@ -1,20 +1,21 @@
 # Barometer: a basic science instrument (base 10) that works from anywhere
-# but is biome-specific only on the surface. In high orbit (rot-orbit) it
-# yields a GLOBAL result -- "High orbit barometer on Kerbin" (no biome) -- the
+# but is biome-specific only when landed or flying-low. In LOW orbit (the
+# rot-orbit scenario sits at 85km, below the 110km orbit cut) it yields a
+# GLOBAL result -- "Low orbit barometer on Kerbin" (no biome) -- the
 # "atmospheric pressure scan" rule. The active ship (baropod) carries a
 # Barometer + an aboard kerbal (spawn_crew seats one in the capsule); the
 # --pod-experiment hook runs it, and Recover Vessel banks it (recoverActive
-# harvests every part's experiments). First-time high-orbit on the home body
-# = 10 x 1.5 x 1.0 = 15. The [science] recorded / recovered lines are the e2e
-# anchors; the biome rule + name are unit-tested in test_science.
+# harvests every part's experiments). First-time low-orbit on the home body
+# = 10 x 1.25 x 1.0 = 12.5 -> 13. The [science] recorded / recovered lines
+# are the e2e anchors; the biome rule + name are unit-tested in test_science.
 NAME barometer
 ARGS --time-accel 1 --timeout 8 --startship baropod,res/ships/baropod.json,Kerbin,rot-orbit
 ARGS --pod-experiment 1500
 ARGS --space-center 3000 --recover 4000 --recover-anywhere
 EXPECT [science] t=
 EXPECT recorded
-EXPECT High orbit barometer on Kerbin
-EXPECT [science] recovered +15
+EXPECT Low orbit barometer on Kerbin
+EXPECT [science] recovered +13
 EXPECT [recover] t=
 EXPECT [spacecenter] entered
 FORBID GL_

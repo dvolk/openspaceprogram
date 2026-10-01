@@ -318,13 +318,15 @@ bool Game::situationExperiment(TerrainBody *body, Vehicle *poseVehicle,
     out = Experiment{};
     out.type = type;
     out.body = body->name;
+    // The orbit cut uses the NEAR-BODY SoI (the rotating frame's), not
+    // body->soi -- that one copies the inertial orbital sphere (~84,000 km on
+    // Kerbin) and would push the low/high split far out of reach.
     out.situation = situationFor(poseVehicle->isGrounded(), altAsl, atmoTop,
-                                 (double)body->radius);
+                                 orbitCutAlt(body->rot_frame->soi, (double)body->radius, atmoTop));
     // Availability (ExperimentDef.valid_in): a family may not work in every
-    // situation (a seismometer: landed only; an in-atmosphere-only gauge:
-    // flying only, once that situation exists). Refuse with where it DOES work
+    // situation (a seismometer: landed only). Refuse with where it DOES work
     // so the player isn't guessing. (A barometer is NOT gated -- it runs from
-    // anywhere; it's just not biome-specific off the surface.)
+    // anywhere; it's just not biome-specific above flying-low.)
     if(!experimentValidIn(type, out.situation)) {
         std::string where;
         if(const ExperimentDef *d = defFor(type)) {

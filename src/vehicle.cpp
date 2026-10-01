@@ -276,6 +276,13 @@ static const ScenarioDef kScenarios[] = {
     {"inertial-orbit", false, 1.25, false, -1, 0.0,     0.0, 0.0, 0.0},
     {"high-orbit",     false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"high-polar",     false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
+    /* In-atmosphere "flying" beds (science.h: the airborne situations). The
+       altitudes are alt_frac x the SoI edge -- on Kerbin (100km edge) that is
+       10km (flying-low, below the 20%-of-atmo split) and 50km (flying-high).
+       A circular-orbit speed at those altitudes; drag keeps them in the air
+       long enough to record a reading. */
+    {"flying-low",     false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"flying-high",    false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"ellipse-peri",   false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-apo",    false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
     {"ellipse-mid",    false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
