@@ -1302,6 +1302,11 @@ float Vehicle::getMass() {
     return r;
 }
 
+double Vehicle::feltAccel() {
+    const double m = (double)getMass();
+    return m > 0.0 ? glm::length(lastThrustForce + lastAeroForce) / m : 0.0;
+}
+
 void Vehicle::powerTick(double h) {
     double totalGen = 0.0, constantDraw = 0.0;
     double ecCharge = 0.0, ecCapacity = 0.0;

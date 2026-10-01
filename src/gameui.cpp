@@ -1487,15 +1487,7 @@ void drawUIReadouts(Game &g) {
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
         ImGui::Text("  R: %.2f", glm::degrees(roll));
         ImGui::Text("Hdg: %.2f", glm::degrees(yaw));
-        // Felt acceleration: thrust + aero over mass, the same quantity
-        // the camera shake keys off (camShakeStep, render.cpp).
-        double felt = 0.0;
-        const double felt_mass = (double)ship->getMass();
-        if(felt_mass > 0.0) {
-            felt = glm::length(ship->lastThrustForce + ship->lastAeroForce)
-                   / felt_mass;
-        }
-        ImGui::Text("Acc: %.1fm/s2", felt);
+        ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
     /* --info-log: the same quantities ORBITAL and SURFACE display, raw SI
@@ -1529,12 +1521,6 @@ void drawUIReadouts(Game &g) {
                    glm::degrees(prograde_angle),
                    glm::degrees(retrograde_angle),
                    o.energy);
-            double felt = 0.0;
-            const double felt_mass = (double)ship->getMass();
-            if(felt_mass > 0.0) {
-                felt = glm::length(ship->lastThrustForce + ship->lastAeroForce)
-                       / felt_mass;
-            }
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.6g deg lon=%.6g deg "
@@ -1546,7 +1532,8 @@ void drawUIReadouts(Game &g) {
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   felt, b->name.c_str(), bme, situationName(ps.situation));
+                   ship->feltAccel(), b->name.c_str(), bme,
+                   situationName(ps.situation));
             fflush(stdout);
         }
     }

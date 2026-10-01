@@ -601,6 +601,11 @@ public:
     /* TODO should be cached per frame */
     float getMass();
 
+    /* The crew's felt acceleration [m/s^2]: |thrust + aero| / mass (gravity
+       excluded -- coasting and free fall read zero). 0 when the mass is 0.
+       One home for the SURFACE Acc row, [surfinfo], and camShakeStep. */
+    double feltAccel();
+
     /* Test-only accessor: drives the real ApplyThrust (the two-propellant
        burn sizing + drain + arm-thrust logic) so its invariants can be
        pinned headlessly. ApplyThrust itself stays protected (in the game it

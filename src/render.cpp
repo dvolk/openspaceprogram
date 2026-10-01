@@ -50,15 +50,13 @@ static glm::dmat3 shakeRot(const glm::dvec3 &a) {
    the free cam is a debug tool); --cam-shake scales the whole thing
    (0 = off). */
 static void camShakeStep(Game &g, Vehicle *ship) {
-    // The felt acceleration (what the crew feels): thrust + aero over
-    // mass -- gravity excluded, so coasting and free fall read zero.
-    // --shake-log reports it regardless of camera mode; the shake itself
-    // acts only for the orbit camera on the ship (a body focus is a
-    // stable view, the free cam is a debug tool).
+    // The felt acceleration (Vehicle::feltAccel). --shake-log reports it
+    // regardless of camera mode; the shake itself acts only for the orbit
+    // camera on the ship (a body focus is a stable view, the free cam is a
+    // debug tool).
     double a = 0.0;
-    const double m = (double)ship->getMass();
-    if(g.time_accel > 0 && !ship->onRails && m > 0.0) {
-        a = glm::length(ship->lastThrustForce + ship->lastAeroForce) / m;
+    if(g.time_accel > 0 && !ship->onRails) {
+        a = ship->feltAccel();
     }
     // Steady below the threshold (RCS-only flight, idle); above it the
     // amplitude grows with the felt g's and saturates.
