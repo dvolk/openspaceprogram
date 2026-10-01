@@ -69,11 +69,6 @@ struct OrbitMap {
         return fmaxf(min_px, (float)(radius_m / scale));
     }
 
-    void drawBody(ImDrawList *dl, double radius_m, ImU32 col) const {
-        dl->AddCircleFilled(ImVec2(float(cx), float(cy)),
-                            float(radius_m / scale), col);
-    }
-
     void drawBody(ImDrawList *dl, const glm::dvec3 &pos, double radius_m,
                   ImU32 col, float min_px = 0.0f) const {
         dl->AddCircleFilled(px(pos), bodyRadiusPx(radius_m, min_px), col);

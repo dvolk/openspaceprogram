@@ -2234,9 +2234,12 @@ void drawUIMap(Game &g) {
         // The near-body shell ring gets its own tint: it is the boundary
         // that drives science + the surface-frame flip, not gravitation.
         const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.45f, 0.70f, 0.45f, 0.35f));
+        // Atmosphere top: a desaturated-blue disk behind the body, so the
+        // rim marks where the air ends (top() = 0 for airless bodies).
+        const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
-    
+
         // The body selected in the TRANSFER window (a child of the
         // focus), highlighted on the map; nullptr for a ship target or
         // no selection.
@@ -2245,7 +2248,7 @@ void drawUIMap(Game &g) {
            xferTargets[xfer_target].body) {
             sel_body = xferTargets[xfer_target].body;
         }
-    
+
         // A body's sphere-of-influence ring, faint. Skipped when
         // sub-pixel or far off-view (a huge circle is both useless and
         // expensive to tessellate).
@@ -2273,12 +2276,21 @@ void drawUIMap(Game &g) {
         // LOD hides it until zoomed in enough for it to matter.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
     
+        // The atmosphere top (radius + top(), top() in meters above
+        // sea level) as a desaturated-blue disk, under the orbit line.
+        // Same min-pixel floor as the body disk, so the body never
+        // pokes through when the atmosphere is sub-pixel.
+        const double atmo_top = focus->surface.atmosphere.top();
+        if(atmo_top > 0.0) {
+            map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
+                         focus->radius + atmo_top, col_atmo, 3.0f);
+        }
         // closed=true for the ellipse (it is a closed loop); false for
         // the open arc (a chord would otherwise close it).
         map.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
         // The focus body's disk at the centre, with the same visibility
         // floor as the looped bodies.
-        map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), ship->m_parent->radius,
+        map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius,
                      col_body, 3.0f);
         // The ship: a bright dot (you are here) with a green ring, on
         // the line from the focus.
@@ -3760,9 +3772,12 @@ void drawTrackingMap(Game &g) {
         // The near-body shell ring gets its own tint: it is the boundary
         // that drives science + the surface-frame flip, not gravitation.
         const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.45f, 0.70f, 0.45f, 0.35f));
+        // Atmosphere top: a desaturated-blue disk behind the body, so the
+        // rim marks where the air ends (top() = 0 for airless bodies).
+        const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
-    
+
         // The body selected in the TRANSFER window (a child of the
         // focus), highlighted on the map; nullptr for a ship target or
         // no selection.
@@ -3771,7 +3786,7 @@ void drawTrackingMap(Game &g) {
            xferTargets[xfer_target].body) {
             sel_body = xferTargets[xfer_target].body;
         }
-    
+
         // A body's sphere-of-influence ring, faint. Skipped when
         // sub-pixel or far off-view (a huge circle is both useless and
         // expensive to tessellate).
@@ -3800,6 +3815,15 @@ void drawTrackingMap(Game &g) {
         // LOD hides it until zoomed in enough for it to matter.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
 
+        // The atmosphere top (radius + top(), top() in meters above
+        // sea level) as a desaturated-blue disk, then the body on top so
+        // the visible rim is the air. Same min-pixel floor, so the body
+        // never pokes through when the atmosphere is sub-pixel.
+        const double atmo_top = focus->surface.atmosphere.top();
+        if(atmo_top > 0.0) {
+            map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
+                         focus->radius + atmo_top, col_atmo, 3.0f);
+        }
         // The focus body's disk at the centre (home when there is no ship),
         // with the same visibility floor as the looped bodies.
         map.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
