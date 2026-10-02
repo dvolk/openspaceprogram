@@ -305,7 +305,7 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
     Mesh *mesh = new Mesh;
     const int lat = res, lon = res;
     std::vector<PosNorColVertex> verts;
-    verts.reserve((lat + 1) * (lon + 1));
+    verts.reserve((size_t(lat) + 1) * (size_t(lon) + 1));
     for(int i = 0; i <= lat; i++) {
         float theta = (float)i / lat * std::numbers::pi;              // 0..pi (pole->pole)
         for(int j = 0; j <= lon; j++) {
@@ -323,7 +323,7 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
         }
     }
     std::vector<unsigned int> idx;
-    idx.reserve(lat * lon * 6);
+    idx.reserve(size_t(lat) * size_t(lon) * 6);
     for(int i = 0; i < lat; i++) {
         for(int j = 0; j < lon; j++) {
             unsigned int first  = i * (lon + 1) + j;
@@ -345,7 +345,7 @@ Mesh *TerrainBody::create_ring_mesh(double inner, double outer, int res) {
     const int seg = res;
     const glm::vec3 n(0.0f, 1.0f, 0.0f);
     std::vector<PosNorColVertex> verts;
-    verts.reserve((seg + 1) * 2);
+    verts.reserve((size_t(seg) + 1) * 2);
     for(int j = 0; j <= seg; j++) {
         float phi = (float)j / seg * 2.0f * (float)std::numbers::pi;
         float c = std::cos(phi), s = std::sin(phi);
@@ -357,7 +357,7 @@ Mesh *TerrainBody::create_ring_mesh(double inner, double outer, int res) {
             n, glm::vec3(0.0f)));
     }
     std::vector<unsigned int> idx;
-    idx.reserve(seg * 6);
+    idx.reserve(size_t(seg) * 6);
     for(int j = 0; j < seg; j++) {
         unsigned int a = j * 2;             // inner  @ j
         unsigned int b = j * 2 + 1;         // outer  @ j
