@@ -565,6 +565,7 @@ void save_game(Game &g, const std::string &dir) {
     // switch), not args.system_file (stale after a swap).
     meta.system = g.systemPath.empty() ? g.args.system_file : g.systemPath;
     meta.parts = g.args.parts_file;
+    meta.experiments = g.args.experiments_file;
     meta.time = g.time;
     meta.time_accel = g.time_accel;
     meta.active_ship = (g.ship != nullptr) ? g.ship->name : "";

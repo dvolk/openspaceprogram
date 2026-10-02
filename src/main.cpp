@@ -389,11 +389,27 @@ int main(int argc, char **argv)
                                     // the title backdrop, and the body the
                                     // --radial-test / --dock-test ships use.
 
+    /* The experiment family table (res/data/experiments.json): the
+       instruments' balance data (base value, runnable situations,
+       biome-specificity). Loaded before the ships so the cross-check below
+       has the table. */
+    loadExperimentDefs(resdir::path(args.experiments_file).c_str());
+
     /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
        order + offsets, and the start-ship list supplies one entry per ship.
        Ships sharing a (body, scenario) pair are slotted. */
     Ships ships(args.parts_file, partsshader, sun);
+
+    /* An instrument naming a family with no def would silently fall back to
+       the base-10 generic behavior -- a parts.json typo should not hide. */
+    for(const PartDef &p : ships.catalog().parts) {
+        if(!p.experiment_family.empty() && defFor(p.experiment_family) == nullptr) {
+            printf("warning: part '%s' has experiment_family '%s' with no def in %s\n",
+                   p.name.c_str(), p.experiment_family.c_str(),
+                   args.experiments_file.c_str());
+        }
+    }
 
     // The running game: borrows the subsystems above and owns the runtime
     // state (camera, clock, active ship, input/UI flags, the orbit-camera

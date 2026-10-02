@@ -158,6 +158,7 @@ struct SaveMeta {
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
     std::string system;      // the system file (res/systems/ksp_system.json)
     std::string parts;       // the parts catalog file (res/data/parts.json)
+    std::string experiments; // the family table file (res/data/experiments.json)
     double time = 0.0;       // the analytic sim clock (s)
     int time_accel = 1;      // recorded for the round-trip; load starts paused
     std::string active_ship; // display name ("" = none)
@@ -513,6 +514,7 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
     j["saved_at"]    = m.saved_at;
     j["system"]      = m.system;
     j["parts"]       = m.parts;
+    if(!m.experiments.empty()) { j["experiments"] = m.experiments; }
     j["time"]        = m.time;
     j["time_accel"]  = m.time_accel;
     if(!m.active_ship.empty()) { j["active_ship"] = m.active_ship; }
@@ -529,6 +531,9 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     if(j.contains("saved_at") && j["saved_at"].is_string()) { m.saved_at = j["saved_at"].get<std::string>(); }
     if(j.contains("system") && j["system"].is_string()) { m.system = j["system"].get<std::string>(); }
     if(j.contains("parts") && j["parts"].is_string()) { m.parts = j["parts"].get<std::string>(); }
+    if(j.contains("experiments") && j["experiments"].is_string()) {
+        m.experiments = j["experiments"].get<std::string>();
+    }
     if(j.contains("time") && j["time"].is_number()) { m.time = j["time"].get<double>(); }
     if(j.contains("time_accel") && j["time_accel"].is_number()) { m.time_accel = j["time_accel"].get<int>(); }
     if(j.contains("active_ship") && j["active_ship"].is_string()) { m.active_ship = j["active_ship"].get<std::string>(); }

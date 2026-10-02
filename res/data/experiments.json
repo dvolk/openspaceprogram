@@ -1,0 +1,52 @@
+{
+  "experiments": [
+    {
+      "type": "observation",
+      "base_value": 10,
+      "valid_in": [
+        "landed",
+        "flying_low",
+        "flying_high",
+        "low_orbit",
+        "high_orbit"
+      ],
+      "biome_specific_in": [
+        "landed",
+        "flying_low",
+        "flying_high",
+        "low_orbit"
+      ]
+    },
+    {
+      "type": "materials study",
+      "base_value": 25,
+      "valid_in": [
+        "landed",
+        "flying_low",
+        "flying_high",
+        "low_orbit",
+        "high_orbit"
+      ],
+      "biome_specific_in": [
+        "landed",
+        "flying_low",
+        "flying_high"
+      ]
+    },
+    {
+      "type": "barometer",
+      "base_value": 10,
+      "valid_in": [
+        "landed",
+        "flying_low",
+        "flying_high",
+        "low_orbit",
+        "high_orbit"
+      ],
+      "biome_specific_in": [
+        "landed",
+        "flying_low"
+      ]
+    }
+  ]
+}

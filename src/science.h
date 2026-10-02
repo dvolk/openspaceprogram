@@ -1,5 +1,7 @@
 // science.h -- experiments, the career score, and the value model.
-// Header-only pure C++ so tests can pin the value curve without the game.
+// Header-only (types + pure value model) so tests pin the curve without the
+// game; the family TABLE is data: res/data/experiments.json, loaded by
+// science.cpp's loadExperimentDefs.
 //
 // Experiment identity = type + body + situation (+ biome where the family is
 // biome-specific); provenance is extra data that == ignores. Recovering
@@ -41,24 +43,17 @@ struct ExperimentDef {
     }
 };
 
-inline const std::vector<ExperimentDef> &experimentDefs() {
-    static const std::vector<ExperimentDef> defs = {
-        { "observation", 10,
-          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
-            SciSituation::LowOrbit, SciSituation::HighOrbit },
-          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
-            SciSituation::LowOrbit } },
-        { "materials study", 25,
-          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
-            SciSituation::LowOrbit, SciSituation::HighOrbit },
-          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh } },
-        { "barometer", 10,
-          { SciSituation::Landed, SciSituation::FlyingLow, SciSituation::FlyingHigh,
-            SciSituation::LowOrbit, SciSituation::HighOrbit },
-          { SciSituation::Landed, SciSituation::FlyingLow } },
-    };
+// The loaded family table (res/data/experiments.json). Set once at startup
+// by loadExperimentDefs (science.cpp) -- adding an instrument is a res/
+// edit, not a recompile. Unknown families (or a pre-load lookup) fall back
+// through the helpers below: base 10, biome-specific + valid everywhere.
+inline std::vector<ExperimentDef> &experimentDefs() {
+    static std::vector<ExperimentDef> defs;
     return defs;
 }
+// Parse + validate like load_parts_catalog: throws std::runtime_error with
+// the file + offending field on any bad/missing data.
+void loadExperimentDefs(const char *path);
 // Unknown family -> null (fallback: base 10, biome-specific everywhere).
 inline const ExperimentDef *defFor(const std::string &type) {
     for(const ExperimentDef &d : experimentDefs()) {

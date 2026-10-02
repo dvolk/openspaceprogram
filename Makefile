@@ -288,7 +288,9 @@ $(TESTDIR)/test_calendar: $(TESTDIR)/obj/test_calendar.o
 $(TESTDIR)/test_flightlog: $(TESTDIR)/obj/test_flightlog.o
 	$(CXX) -o $@ $^
 
-$(TESTDIR)/test_science: $(TESTDIR)/obj/test_science.o
+# The family table is data now: science.cpp's loader (needs res/ at run
+# time -- run from the repo root).
+$(TESTDIR)/test_science: $(TESTDIR)/obj/test_science.o $(TESTDIR)/obj/science.o
 	$(CXX) -o $@ $^
 
 $(TESTDIR)/test_bodylimits: $(TESTDIR)/obj/test_bodylimits.o

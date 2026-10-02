@@ -31,6 +31,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--parts", args.parts_file,
                    "Parts catalog JSON (default: res/data/parts.json)");
 
+    app.add_option("--experiments", args.experiments_file,
+                   "Experiment family JSON (default: res/data/experiments.json)");
+
     app.add_option("--startship", args.startship,
                    "One start ship: name,def,body,scenario -- all four "
                    "required (e.g. racer,res/ships/racer.json,Kerbin,pad). "

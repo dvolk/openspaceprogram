@@ -29,6 +29,7 @@ struct GameArgs {
 
     std::string system_file = "res/systems/ksp_system.json";
     std::string parts_file = "res/data/parts.json";
+    std::string experiments_file = "res/data/experiments.json";
     // Start ships: --startship is one inline entry "name,def,body,scenario";
     // --startships is the same list as a JSON file.
     std::vector<std::string> startship;

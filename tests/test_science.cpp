@@ -1,6 +1,6 @@
 // test_science: experiments + the career value model (src/science.h).
-// Runs from the repo root:
-//   make test   (or: g++ -O2 -std=c++20 -I./src tests/test_science.cpp -o test_science && ./test_science)
+// Runs from the repo root (loads res/data/experiments.json):
+//   make test   (or: g++ -O2 -std=c++20 -I./src tests/test_science.cpp src/science.cpp -o test_science && ./test_science)
 //
 // Pure logic: the uniqueness key, suit-level dedup, display names, the value
 // model (base x situation x body, diminishing returns), the Career accounting
@@ -9,6 +9,7 @@
 #include "science.h"
 
 #include <cstdio>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,14 @@ static Experiment obs(const char *body, SciSituation sit, const char *biome) {
 }
 
 int main() {
+    // The family table is data now (res/data/experiments.json).
+    try {
+        loadExperimentDefs("res/data/experiments.json");
+    } catch(const std::exception &e) {
+        printf("FAIL setup: %s\n", e.what());
+        return 1;
+    }
+
     // --- uniqueness: type+body+situation+biome; any field differs ---
     {
         const Experiment a = obs("Mun", SciSituation::LowOrbit, "midlands");
