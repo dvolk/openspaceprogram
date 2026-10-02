@@ -144,14 +144,17 @@ const WinDef kWins[W_Count] = {
     },
     [W_Transfer] = {
         .name = "Transfer", .label = "Transfer",
-        .opts = { .slot = ui::Slot::Center, .closable = true, .default_open = false },
+        // Fixed starting size (user-resizable); not auto-fit, so it stays
+        // where the user puts it and doesn't jump as the solution appears.
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(420.0f, 350.0f),
+                  .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
     [W_Porkchop] = {
         .name = "Porkchop", .label = "Porkchop",
         // The 2-D launch-window heatmap. initial_size fits the full content
         // so the image is not clipped. Toggled from the Transfer window.
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(520.0f, 660.0f),
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(480.0f, 700.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = false,
     },
@@ -177,7 +180,7 @@ const WinDef kWins[W_Count] = {
         // The title screen's README panel, docked LEFT of the title menu
         // (the mirror of New Game on the right). Open by default.
         .opts = { .slot = ui::Slot::Center, .left_of = "Title Menu",
-                  .initial_size = ImVec2(420.0f, 520.0f),
+                  .initial_size = ImVec2(470.0f, 520.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },
@@ -194,7 +197,7 @@ const WinDef kWins[W_Count] = {
         // The "successful flight" dialog opened by Recover Vessel. Transient
         // like New Game. Docked right of the hub menu so they do not stack.
         .opts = { .slot = ui::Slot::Center, .right_of = "Space Center",
-                  .initial_size = ImVec2(400.0f, 280.0f),
+                  .initial_size = ImVec2(475.0f, 355.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Transient, .inList = false,
     },
@@ -246,7 +249,7 @@ const WinDef kWins[W_Count] = {
         .name = "Staging", .label = "Staging",
         // The VAB staging table (per-stage delta-v / TWR). Sits bottom-left
         // under the build list; the table is 5 columns and fits ~400px.
-        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(420.0f, 280.0f),
+        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(520.0f, 280.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },

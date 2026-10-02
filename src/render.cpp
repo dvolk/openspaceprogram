@@ -580,7 +580,7 @@ void drawVab(Game &g) {
         const glm::dmat4 model = glm::translate(bp.localPos)
                                * glm::dmat4(bp.localRot);
         DrawOpts opts;
-        opts.flat = 1.0f;   // uniform studio light (the editor look)
+        opts.flat = 0.8f;   // mostly studio light, a touch of bias (the editor look)
         if((int)i == g.vab.selected) { opts.tint = glm::vec3(1.0f, 0.75f, 0.2f); }
         else if((int)i == g.vab.hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
@@ -604,7 +604,7 @@ void drawVab(Game &g) {
     if(g.vab.ghostValid) {
         DrawOpts go;
         go.alpha = 0.4f;
-        go.flat = 1.0f;   // the ghosts share the studio light
+        go.flat = 0.8f;   // the ghosts share the editor's lighting
         if(g.vab.ghostAssembly >= 0
            && (size_t)g.vab.ghostAssembly < g.vab.subassemblies.size()) {
             /* an assembly ghost: the whole tree rides the solved root pose,

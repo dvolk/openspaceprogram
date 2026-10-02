@@ -504,7 +504,7 @@ void drawUIReadouts(Game &g) {
         }
         // Audio: the master levels apply live and persist with "Save".
         // No-op while audio is disabled (headless) -- the values still save.
-        // (0..1 like "Window transparency" -- a %.0f%% label would only
+        // (0..1 like "Window opacity" -- a %.0f%% label would only
         // ever print "0%" or "1%".)
         ImGui::Separator();
         ImGui::Text("Audio");
@@ -522,7 +522,7 @@ void drawUIReadouts(Game &g) {
                              0.0f, 50.0f, "%.0f")) {
             g.apply_ui_style();
         }
-        if(ImGui::SliderFloat("Window transparency", &ui_alpha,
+        if(ImGui::SliderFloat("Window opacity", &ui_alpha,
                              0.2f, 1.0f, "%.2f")) {
             g.apply_ui_style();
         }
@@ -562,10 +562,7 @@ void drawUIReadouts(Game &g) {
                 const int d = std::abs(args.terrain_px - terrain_px_table[i]);
                 if (best < 0 || d < best) { best = d; terrain_level = i; }
             }
-            char terrain_label[48];
-            snprintf(terrain_label, sizeof(terrain_label),
-                     "Terrain detail (%d px)", terrain_px_table[terrain_level]);
-            if(ImGui::SliderInt(terrain_label, &terrain_level, 0, nlevels - 1)) {
+            if(ImGui::SliderInt("Terrain detail", &terrain_level, 0, nlevels - 1)) {
                 args.terrain_px = terrain_px_table[terrain_level];
             }
         }
@@ -606,6 +603,11 @@ void drawUIReadouts(Game &g) {
         const char *cur = (xfer_target >= 0)
                          ? xferTargets[xfer_target].name : "none";
         if(ImGui::BeginCombo("Target", cur)) {
+            // "none" is a real dropdown entry (not just the closed label)
+            // so the target can be cleared back to -1 from here.
+            if(ImGui::Selectable("none", xfer_target == -1)) {
+                xfer_target = -1;
+            }
             for(int i = 0; i < (int)xferTargets.size(); i++) {
                 if(ImGui::Selectable(xferTargets[i].name,
                                      i == xfer_target)) {
@@ -3178,7 +3180,7 @@ void drawVabUI(Game &g) {
 
     ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
     // Resizable: default size at creation, then the user owns the size.
-    ImGui::SetNextWindowSize(ImVec2(320, 480), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340, 410), ImGuiCond_FirstUseEver);
     ImGui::Begin("VAB", nullptr);
     ImGui::Text("VAB -- %s (%d parts)", g.vab.build.name.c_str(),
                 (int)g.vab.build.parts.size());
@@ -3285,22 +3287,20 @@ void drawVabUI(Game &g) {
         ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.6f, 1.0f),
                            "placing copies -- hover a port/surface, LMB; Esc stops");
     }
-    ImGui::TextDisabled("RMB-drag orbit, wheel zoom; LMB places/selects");
-    ImGui::TextDisabled("Q/E roll; Del detach (lone part deletes); Shift+Del delete; TAB hides the UI");
     ImGui::End();
 
     // Palette: arm a catalog part, then hover the ship and LMB to place it
     // (snaps to the hovered stack port, or surface-attaches at the hover
     // point). Hover/ghost targeting comes from the 3D pick (vab.cpp), not
     // from this list, so list hover must not overwrite g.vab.hover.
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 260, 8),
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 290, 8),
                             ImGuiCond_Once);
     // Resizable: default size at creation, then the user owns the size.
     // The part list takes the top and resizes with the window: a negative
     // child height is an offset from the bottom edge, leaving room for the
     // symmetry/snap/status block below. Reserved at its max (armed + ghost +
     // symmetry>1), so the window's own content never needs a scrollbar.
-    ImGui::SetNextWindowSize(ImVec2(250, 560), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 660), ImGuiCond_FirstUseEver);
     ImGui::Begin("Palette", nullptr);
     const float below = ImGui::GetStyle().ItemSpacing.y * 9.0f + 1.0f
         + ImGui::GetTextLineHeight()

@@ -467,7 +467,7 @@ struct Game {
     // The Settings window state (apply_ui_style() rebuilds the style from it).
     int ui_style = 0;              // 0=dark (imgui default) 1=light 2=classic
     float window_rounding = 0.0f;  // imgui default
-    float ui_alpha = 1.0f;         // global imgui alpha (window transparency)
+    float ui_alpha = 1.0f;         // global imgui alpha (window opacity)
     float ui_scale = 1.0f;         // DPI scale: fonts + style sizes
 
     // Audio master levels in [0,1] (Settings sliders; applied live).

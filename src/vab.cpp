@@ -635,7 +635,6 @@ void vabEnter(Game &g) {
     vabAimCamera(g);
     printf("[vab] entered the editor (sim keeps coasting)\n");
     fflush(stdout);
-    g.toast("VAB -- the sim keeps running");
 }
 
 /* Scene table's exit hook: drop only the state that is meaningless once the
@@ -652,7 +651,6 @@ void vabClose(Game &g) {
     popScene(g);
     printf("[vab] back to %s (sim keeps coasting)\n", sceneName(curSceneId(g)));
     fflush(stdout);
-    g.toast("Back from the VAB -- the sim keeps running");
 }
 
 /* Headless transition hooks (--vab-load, --vab-launch, --vab-close), each

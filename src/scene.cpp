@@ -67,7 +67,6 @@ void spaceCenterEnter(Game &g) {
     }
     printf("[spacecenter] entered (live sim)\n");
     fflush(stdout);
-    g.toast("Space Center");
 }
 
 // Hub widgets: top bar, root menu, then the shared windows on top.
