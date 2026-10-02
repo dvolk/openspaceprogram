@@ -134,7 +134,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  const MapViewRect &view, double map_scale,
                                  TerrainBody *sel_body,
                                  ImU32 col_child, ImU32 col_sel, ImU32 ink,
-                                 ImU32 soi_col, bool map_show_soi) {
+                                 ImU32 soi_col) {
     std::vector<TerrainBody *> &planets = g.sys.bodies;
     for(auto *b : planets) {
         Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
@@ -187,7 +187,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                body_px.y - body_r_px - label_gap),
                         ink, b->name.c_str());
         }
-        if(map_show_soi && b->frame->soi > 0.0) {
+        if(b->frame->soi > 0.0) {
             const float soi_px = (float)(b->frame->soi / map_scale);
             if(soi_px >= 1.0f && soi_px <= 4000.0f) {
                 map.drawRing(dl, cpos_f, b->frame->soi, soi_col, 1.0f);
@@ -2040,7 +2040,7 @@ void drawPartWindows(Game &g) {
 // window -> bare map -> no window), the map square draws the focus
 // body's neighborhood (child-body orbits, SOI rings, the ship's
 // trajectory + apside markers, the other ships, the transfer conic),
-// and the controls below it edit the map state on the game.
+// and the controls above it edit the map state on the game.
 void drawUIMap(Game &g) {
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
@@ -2051,8 +2051,6 @@ void drawUIMap(Game &g) {
     float &map_scale = g.map_scale;
     int &map_plane = g.map_plane;
     ImVec2 &map_pan = g.map_pan;
-    bool &map_show_soi = g.map_show_soi;
-    bool &map_show_vel = g.map_show_vel;
     int &map_mode = g.map_mode;
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
@@ -2087,11 +2085,11 @@ void drawUIMap(Game &g) {
         // the rows below use.
         const float isp = ImGui::GetStyle().ItemSpacing.y;
         const float legend_h = std::max(16.0f, ImGui::GetTextLineHeight());
+        // Controls sit ABOVE the map (legend row + plane row), so they
+        // stay visible even when the window is short; the map fills rest.
         const float controls_h = (map_mode == 0)
-            ? 3.0f * (ImGui::GetFrameHeight() + isp)
-              + (ImGui::GetTextLineHeight() + isp)
-              + isp
-              + (legend_h + isp)
+            ? (legend_h + isp)
+              + (ImGui::GetFrameHeight() + isp)
             : 0.0f;
         const float map_w = std::max(0.0f, avail_w);
         const float map_h = std::max(0.0f, avail_h - controls_h);
@@ -2171,10 +2169,73 @@ void drawUIMap(Game &g) {
             const double hl = glm::length(h);
             if(hl > 1e-9) { plane_n = h / hl; }
         }
-    
-        // The map fills the window (map_w x map_h, defined at the top
-        // of the block); the focus (parent body) sits at its center plus
-        // the pan offset; the controls go below.
+
+        // KSP-inspired palette (P4): your orbit is green, the transfer
+        // is blue, other bodies are gray. The focus body, ship dot and
+        // labels use a near-black/white ink that contrasts with the
+        // current style's window background. The selected transfer target
+        // is highlighted brighter than the other children.
+        const ImVec4 bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        const ImU32 ink       = contrastingColor(bg);
+        const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
+        const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
+        const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
+        const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
+        const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        const ImU32 col_body  = ink;
+        const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
+        const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
+        // The near-body shell ring (science + surface-frame boundary),
+        // gray like the SOI ring.
+        const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.35f));
+        // Atmosphere top: a desaturated-blue disk behind the body, so the
+        // rim marks where the air ends (top() = 0 for airless bodies).
+        const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+
+        // Controls (mode 0 only), pinned ABOVE the map so they stay
+        // visible on a short window. Row 1: the color legend. Row 2:
+        // the map plane (half-width) + a reset-view button.
+        if(map_mode == 0) {
+            // Legend: a compact color key (one line), abbreviated so it
+            // fits a narrow window.
+            auto legend = [&](const char *label, ImU32 col, bool dot) {
+                const ImVec2 p = ImGui::GetCursorScreenPos();
+                const float s = 10.0f;
+                if(dot) {
+                    dl->AddCircleFilled(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col);
+                } else {
+                    dl->AddRectFilled(ImVec2(p.x, p.y + 3.0f),
+                                     ImVec2(p.x + s, p.y + 13.0f), col);
+                }
+                ImGui::Dummy(ImVec2(s, 16.0f));
+                ImGui::SameLine();
+                ImGui::TextUnformatted(label);
+            };
+            legend("you", col_ship, false);
+            ImGui::SameLine();
+            legend("ships", col_vessel, false);
+            ImGui::SameLine();
+            legend("xfer", col_xfer, false);
+            ImGui::SameLine();
+            legend("bodies", col_child, false);
+            ImGui::SameLine();
+            legend("apsides", col_apsis, true);
+            // Map plane (half-width) + reset view.
+            static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital" };
+            ImGui::PushItemWidth(avail_w * 0.5f);
+            ImGui::Combo("Map plane", &map_plane, kPlanes, 3);
+            ImGui::PopItemWidth();
+            ImGui::SameLine();
+            if(ImGui::Button("Reset view")) {
+                map_pan = ImVec2(0.0f, 0.0f);
+                map_scale = 6000.0f;
+            }
+        }
+
+        // The map fills the window below the controls (map_w x map_h,
+        // defined at the top of the block); the focus (parent body)
+        // sits at its center plus the pan offset.
         const ImVec2 p0 = ImGui::GetCursorScreenPos();
         const float center_x = p0.x + map_w * 0.5f;
         const float center_y = p0.y + map_h * 0.5f;
@@ -2193,7 +2254,7 @@ void drawUIMap(Game &g) {
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
-            // Clamp to the same range the Scale slider spans (10^2..10^9.5).
+            // Clamp wheel zoom to the intended range (10^2..10^9.5).
             const float min_scale = 100.0f;
             const float max_scale = powf(10.0f, 9.5f);
             if(new_scale < min_scale) { new_scale = min_scale; }
@@ -2215,29 +2276,6 @@ void drawUIMap(Game &g) {
         map.cy = center_y + map_pan.y;
         map.scale = map_scale;
         map.setPlane(plane_n);
-    
-        // KSP-inspired palette (P4): your orbit is green, the transfer
-        // is blue, other bodies are gray. The focus body, ship dot and
-        // labels use a near-black/white ink that contrasts with the
-        // current style's window background. The selected transfer target
-        // is highlighted brighter than the other children.
-        const ImVec4 bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-        const ImU32 ink       = contrastingColor(bg);
-        const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
-        const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
-        const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
-        const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
-        const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
-        const ImU32 col_body  = ink;
-        const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
-        const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
-        // The near-body shell ring gets its own tint: it is the boundary
-        // that drives science + the surface-frame flip, not gravitation.
-        const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.45f, 0.70f, 0.45f, 0.35f));
-        // Atmosphere top: a desaturated-blue disk behind the body, so the
-        // rim marks where the air ends (top() = 0 for airless bodies).
-        const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
-        ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
 
         // The body selected in the TRANSFER window (a child of the
@@ -2253,7 +2291,7 @@ void drawUIMap(Game &g) {
         // sub-pixel or far off-view (a huge circle is both useless and
         // expensive to tessellate).
         auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {
-            if(!map_show_soi || soi_m <= 0.0) { return; }
+            if(soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
             map.drawRing(dl, center, soi_m, col, 1.0f);
@@ -2266,7 +2304,7 @@ void drawUIMap(Game &g) {
             const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
             drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
-                                 soi_col, map_show_soi);
+                                 soi_col);
         }
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime the ship is inside.
@@ -2299,9 +2337,7 @@ void drawUIMap(Game &g) {
         dl->AddCircleFilled(ship_px, 5.0f, ink);
         dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
         // Prograde (velocity) arrow, along the ship's velocity.
-        if(map_show_vel) {
-            map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
-        }
+        map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
         // Apside markers are only meaningful for a non-circular orbit;
         // an open arc has periapsis but no apoapsis.
         if(o.ecc > 1e-3) {
@@ -2366,65 +2402,6 @@ void drawUIMap(Game &g) {
             dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
                         xfer_label);
         }
-    
-        // (The invisible map-nav button above already reserved the map
-        // area, so the controls land below it.)
-        // Bare-map (mode 1) and chrome-less (mode 2) draws only the
-        // map -- the controls below are skipped in both.
-        if(map_mode != 0) {
-            return;
-        }
-        // Which plane to project onto (see the plane_n selection above).
-        // "Orbital" aligns the view with the ship's orbit, so a polar
-        // orbit reads as a full ellipse instead of collapsing to a line.
-        static const char *kPlanes[] = { "Equatorial", "Ecliptic", "Orbital" };
-        ImGui::Combo("Map plane", &map_plane, kPlanes, 3);
-        // The map spans ~8 orders of magnitude (a ~70 km low orbit up
-        // to a ~90,000 Mm interplanetary orbit), so the scale is edited
-        // on a log10 axis -- a linear slider couldn't reach the moons.
-        {
-            float log_scale = log10f(map_scale);
-            if(ImGui::SliderFloat("Scale", &log_scale, 2.0f, 9.5f, "%.1f")) {
-                map_scale = powf(10.0f, log_scale);
-            }
-            ImGui::SameLine();
-            ImGui::Text("%.0f m/px", (double)map_scale);
-            ImGui::SameLine();
-            if(ImGui::Button("Reset view")) {
-                map_pan = ImVec2(0.0f, 0.0f);
-                map_scale = 6000.0f;
-            }
-        }
-        ImGui::Checkbox("SOI rings", &map_show_soi);
-        ImGui::SameLine();
-        ImGui::Checkbox("Velocity", &map_show_vel);
-        ImGui::Text("nu %.2f   E %.2f   inc %.2f deg",
-                    o.true_anomaly, o.ecc_anomaly,
-                    o.inclination * 180.0 / std::numbers::pi);
-        // Legend: a compact color key (one line).
-        ImGui::Spacing();
-        auto legend = [&](const char *label, ImU32 col, bool dot) {
-            const ImVec2 p = ImGui::GetCursorScreenPos();
-            const float s = 10.0f;
-            if(dot) {
-                dl->AddCircleFilled(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col);
-            } else {
-                dl->AddRectFilled(ImVec2(p.x, p.y + 3.0f),
-                                 ImVec2(p.x + s, p.y + 13.0f), col);
-            }
-            ImGui::Dummy(ImVec2(s, 16.0f));
-            ImGui::SameLine();
-            ImGui::TextUnformatted(label);
-        };
-        legend("your orbit", col_ship, false);
-        ImGui::SameLine();
-        legend("other ships", col_vessel, false);
-        ImGui::SameLine();
-        legend("transfer", col_xfer, false);
-        ImGui::SameLine();
-        legend("other bodies", col_child, false);
-        ImGui::SameLine();
-        legend("apsides", col_apsis, true);
     });
 }
 
@@ -3598,8 +3575,6 @@ void drawTrackingMap(Game &g) {
     float &map_scale = g.map_scale;
     int &map_plane = g.map_plane;
     ImVec2 &map_pan = g.map_pan;
-    bool &map_show_soi = g.map_show_soi;
-    bool &map_show_vel = g.map_show_vel;
     std::vector<TransferPlanner::XferTarget> &xferTargets = planner.xferTargets;
     int &xfer_target = planner.xfer_target;
 
@@ -3732,7 +3707,7 @@ void drawTrackingMap(Game &g) {
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
-            // Clamp to the same range the Scale slider spans (10^2..10^9.5).
+            // Clamp wheel zoom to the intended range (10^2..10^9.5).
             const float min_scale = 100.0f;
             const float max_scale = powf(10.0f, 9.5f);
             if(new_scale < min_scale) { new_scale = min_scale; }
@@ -3769,9 +3744,9 @@ void drawTrackingMap(Game &g) {
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
-        // The near-body shell ring gets its own tint: it is the boundary
-        // that drives science + the surface-frame flip, not gravitation.
-        const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.45f, 0.70f, 0.45f, 0.35f));
+        // The near-body shell ring (science + surface-frame boundary),
+        // gray like the SOI ring.
+        const ImU32 shell_col = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.35f));
         // Atmosphere top: a desaturated-blue disk behind the body, so the
         // rim marks where the air ends (top() = 0 for airless bodies).
         const ImU32 col_atmo = ImGui::GetColorU32(ImVec4(0.35f, 0.50f, 0.66f, 0.20f));
@@ -3791,7 +3766,7 @@ void drawTrackingMap(Game &g) {
         // sub-pixel or far off-view (a huge circle is both useless and
         // expensive to tessellate).
         auto draw_soi = [&](const glm::dvec3 &center, double soi_m, ImU32 col) {
-            if(!map_show_soi || soi_m <= 0.0) { return; }
+            if(soi_m <= 0.0) { return; }
             const float r_px = (float)(soi_m / map_scale);
             if(r_px < 1.0f || r_px > 4000.0f) { return; }
             map.drawRing(dl, center, soi_m, col, 1.0f);
@@ -3804,7 +3779,7 @@ void drawTrackingMap(Game &g) {
             const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
             drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
-                                 soi_col, map_show_soi);
+                                 soi_col);
         }
         // The focus body's own SOI -- the boundary of the current
         // gravitational regime (with a ship: the one it is inside; without:
@@ -3839,9 +3814,7 @@ void drawTrackingMap(Game &g) {
             dl->AddCircleFilled(ship_px, 5.0f, ink);
             dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
             // Prograde (velocity) arrow, along the ship's velocity.
-            if(map_show_vel) {
-                map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
-            }
+            map.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
             // Apside markers are only meaningful for a non-circular orbit; an
             // open arc has periapsis but no apoapsis.
             if(o.ecc > 1e-3) {

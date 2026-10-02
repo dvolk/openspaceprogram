@@ -479,9 +479,6 @@ struct Game {
     int map_plane = 0;           // 0 = equatorial, 1 = ecliptic, 2 = orbital
     // Pan offset from the window center, in pixels (P4 navigation).
     ImVec2 map_pan = ImVec2(0.0f, 0.0f);
-    // Optional overlays, toggleable from the map's controls.
-    bool map_show_soi = true;   // spheres-of-influence rings
-    bool map_show_vel = true;   // the ship's velocity (prograde) arrow
     // Right-clicking the map cycles chrome: 0 = full window, 1 = bare map,
     // 2 = no window chrome (map floats over the 3D view). 1 and 2 keep pan/zoom.
     int map_mode = 0;
