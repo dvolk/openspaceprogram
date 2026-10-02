@@ -1322,7 +1322,8 @@ void drawUIReadouts(Game &g) {
     // same width so the values start at a tidy column.
     drawWin(g, W_Orbital, [&] {
         char dist_s[32];   // one buffer, reused line by line
-        ImGui::Text("Bod: %s", ship->m_parent->name.c_str());
+        ImGui::Text("Bod: %s (%c)", ship->m_parent->name.c_str(),
+                    ship->frame->isRotFrame() ? 'R' : 'I');
         ImGui::Text("Vel: %.1fm/s", speed);
         ImGui::Text("Alt: %s", fmt_dist(distance, dist_s, sizeof dist_s));
         /* Every line below is always present; "-" = the quantity
@@ -1507,8 +1508,6 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Ship: %s", ship->name.c_str());
         ImGui::Text("Stage: %d / %d  (SPACE to drop)",
                     ship->activeStage(), ship->numStages());
-        ImGui::Text("Reference frame: %s", ship->frame->name.c_str());
-        ImGui::Text("Reference frame type: %s", ship->frame->isRotFrame() ? "Rotational" : "Inertial");
         ImGui::Text("Mass: %.3fkg", ship->getMass());
         ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
         ImGui::Text("Thrust Util: %.0f%%", ship->thruster_util * 100);
