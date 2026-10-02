@@ -21,6 +21,8 @@ https://github.com/dvolk/openspaceprogram
 - Shift-T - lock/unlock thrust
 - Space - stage
 - R/F - throttle up/down
+- C - orbit / first-person view (ship); orbit / free (EVA)
+- Shift-C - free camera on/off
 - F5 - quicksave
 - F9 - quickload
 - F12 - screenshot

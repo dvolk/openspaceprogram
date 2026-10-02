@@ -1527,7 +1527,7 @@ void drawUIReadouts(Game &g) {
         char buf[80];
         const char *groupNames[(int)SlotGroup::GROUP_COUNT] = {
             "Game (one-shot)",
-            "Flight (orbit mode)",
+            "Flight (piloting)",
             "Camera (free mode)",
             "EVA (the kerbal)",
         };

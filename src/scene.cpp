@@ -172,6 +172,18 @@ void restoreCamera(Game &g, const CameraSnapshot &s) {
     }
     if(s.mode == CAM_FREE) {
         g.camera->setFreePose(s.pos, s.fwd, s.up);
+    } else if(s.mode == CAM_FIRST) {
+        // Pose is re-derived from the ship each frame; seed the stored one so
+        // an immediate ComputeView is not garbage. The turntable state comes
+        // back too: leaving first must return the pre-push orbit framing.
+        g.camera->pos = s.pos;
+        g.camera->forward = s.fwd;
+        g.camera->up = s.up;
+        g.camera->orbitYaw = s.yaw;
+        g.camera->orbitPitch = s.pitch;
+        g.camera->distance = s.distance;
+        g.camera->mode = CAM_FIRST;
+        g.camera->ComputeView();
     } else {
         g.camera->mode = CAM_ORBIT;
         g.camera->orbitYaw = s.yaw;
@@ -181,7 +193,7 @@ void restoreCamera(Game &g, const CameraSnapshot &s) {
         g.camera->ComputeView();   // sane pos/forward/up immediately
     }
     printf("[cam] restored: %s focus=%s dist=%.1f m\n",
-           s.mode == CAM_FREE ? "free" : "orbit",
+           s.mode == CAM_FREE ? "free" : (s.mode == CAM_FIRST ? "first" : "orbit"),
            s.focusBody ? s.focusBody->name.c_str() : "ship",
            g.camera->distance);
     fflush(stdout);
@@ -203,7 +215,8 @@ void pushScene(Game &g, SceneId id) {
         f.cam = captureCamera(g);
         // Park/restore pair is an e2e anchor for the camera handback.
         printf("[cam] parked: %s focus=%s dist=%.1f m\n",
-               f.cam.mode == CAM_FREE ? "free" : "orbit",
+               f.cam.mode == CAM_FREE ? "free"
+                   : (f.cam.mode == CAM_FIRST ? "first" : "orbit"),
                f.cam.focusBody ? f.cam.focusBody->name.c_str() : "ship",
                f.cam.distance);
         fflush(stdout);

@@ -205,7 +205,23 @@ void draw3d(Game &g) {
     glm::dvec3 &facing = view.facing;
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
-    if(g.camera->mode == CAM_ORBIT) {
+    // First person: eye at the controller's top (stack +Z face), looking
+    // along the ship nose. Re-posed every frame so it rides the rigid body.
+    if(camera->mode == CAM_FIRST) {
+        if(ship && !ship->isEva() && ship->controller != nullptr
+           && ship->controller->def != nullptr) {
+            const Part *c = ship->controller;
+            const glm::dvec3 nose = ship->partAxis(c, 2);
+            camera->pos = ship->partPos(c) + nose * (c->def->height * 0.5);
+            camera->forward = nose;
+            camera->up = ship->partAxis(c, 1);
+        } else {
+            // No cockpit to ride (EVA / shipless): fall back to orbit.
+            camera->toOrbit(g.focusWorldPos(g.focusBody));
+        }
+    }
+
+    if(camera->mode == CAM_ORBIT) {
         camera->Follow(g.focusWorldPos(g.focusBody));
         // The orientation the orbit offset lives in: the ship's attitude
         // when focused on the ship, the body's rotating frame when focused
@@ -245,7 +261,7 @@ void draw3d(Game &g) {
     // Camera shake (camShakeStep above): shift the focus point and wobble
     // the orbit basis. Orbit camera on the ship only.
     if(ship) { camShakeStep(g, ship); }
-    if(g.camera->mode == CAM_ORBIT && ship &&
+    if(camera->mode == CAM_ORBIT && ship &&
        g.focusTargets[g.focusBody].body == nullptr) {
         camera->focusPoint += g.shake_off;
         camera->ref = shakeRot(g.shake_ang) * camera->ref;

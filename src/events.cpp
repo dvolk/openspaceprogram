@@ -153,20 +153,45 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.cam_speed /= 4;
         }
     }
-    if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds)) {
-        // Zero the cam shake first: toFree keeps the live pose (shake
-        // baked in) and toOrbit derives distance from it.
+    if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds) && !repeat) {
+        // Zero the cam shake first: the transitions sample the live pose
+        // (toFree keeps it; toOrbit from free derives distance from it).
         g.shake_off = glm::dvec3(0.0);
         g.shake_ang = glm::dvec3(0.0);
-        if(g.camera->mode == CAM_ORBIT) {
-            g.camera->toFree();
+        const bool first_ok = g.ship && !g.ship->isEva();
+        if(first_ok) {
+            // Ship: C is orbit <-> first person. From free, enter first.
+            if(g.camera->mode == CAM_FIRST) {
+                g.camera->toOrbit(g.focusWorldPos(g.focusBody));
+                printf("Camera: orbiting %s (C = first person, Shift-C = free)\n",
+                       g.focusTargets[g.focusBody].name);
+            } else {
+                g.camera->toFirst();
+                printf("Camera: first person (C = orbit, Shift-C = free)\n");
+            }
         } else {
-            g.camera->toOrbit(g.focusWorldPos(g.focusBody));
-            printf("Camera: orbiting %s (G = switch body, C = free)\n",
-                   g.focusTargets[g.focusBody].name);
+            // Kerbal / no ship: C is orbit <-> free (no first person).
+            if(g.camera->mode == CAM_ORBIT) {
+                g.camera->toFree();
+            } else {
+                g.camera->toOrbit(g.focusWorldPos(g.focusBody));
+                printf("Camera: orbiting %s (G = switch body, C = free)\n",
+                       g.focusTargets[g.focusBody].name);
+            }
         }
     }
-    if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds)) {
+    if(slotFired(Slot::ToggleFreeCam, ksc, kmod, g.binds) && !repeat) {
+        g.shake_off = glm::dvec3(0.0);
+        g.shake_ang = glm::dvec3(0.0);
+        if(g.camera->mode == CAM_FREE) {
+            g.camera->toOrbit(g.focusWorldPos(g.focusBody));
+            printf("Camera: orbiting %s\n", g.focusTargets[g.focusBody].name);
+        } else {
+            g.camera->toFree();
+            printf("Camera: free (Shift-C = orbit)\n");
+        }
+    }
+    if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds) && !repeat) {
         // Cycle the orbit camera's target body.
         if(g.camera->mode == CAM_ORBIT) {
             g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();
@@ -176,8 +201,10 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
                 : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
             g.camera->distance = d;
             printf("Orbit camera targeting %s\n", g.focusTargets[g.focusBody].name);
+        } else if(g.camera->mode == CAM_FIRST) {
+            printf("In first person; press C for the orbit view first.\n");
         } else {
-            printf("In free flight; press C to go to orbit, then G to switch body.\n");
+            printf("In free flight; press C or Shift-C to leave free cam.\n");
         }
     }
     if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
@@ -213,15 +240,15 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         if(!repeat && g.ship && g.ship->isEva()) {
             static_cast<Kerbal *>(g.ship)->jumpPressed = true;
         }
-        // Stage (one-shot). Only while flying a ship with time running.
-        if(!repeat && g.ship && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+        // Stage (one-shot). Only while piloting a ship with time running.
+        if(!repeat && g.ship && g.camera->mode != CAM_FREE && g.time_accel > 0
            && !g.ship->isEva()) {
             g.stage();
         }
     }
     if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {
         // split the most recent docked seam off (one-shot)
-        if(!repeat && g.ship && g.camera->mode == CAM_ORBIT && g.time_accel > 0
+        if(!repeat && g.ship && g.camera->mode != CAM_FREE && g.time_accel > 0
            && !g.ship->isEva()) {
             g.undock();
         }

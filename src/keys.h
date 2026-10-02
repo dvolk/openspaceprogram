@@ -23,7 +23,8 @@ enum class Slot {
     WarpDown,      // ','  warp one step down
     CamSpeedUp,    // ']'  camera speed x4
     CamSpeedDown,  // '['  camera speed /4
-    ToggleCamMode, // 'c'  orbit (flying) <-> free (exploring)
+    ToggleCamMode, // 'c'  ship: orbit <-> first-person; kerbal: orbit <-> free
+    ToggleFreeCam, // 'LShift+c' free-cam on/off
     CycleTarget,   // 'g'  orbit mode: cycle the target body/ship
     ToggleWindows, // TAB  toggle the info windows
     DebugInfo,     // F1   toggle the Game Debug Info window
@@ -44,7 +45,7 @@ enum class Slot {
     GoFlight,      // '2'  jump to the flight (the cockpit)
     GoTracking,    // '3'  jump to the Tracking Station
     GoVab,         // '4'  jump to the VAB (the editor)
-    // --- Flight: held commands in orbit mode (tick.cpp) ------------------
+    // --- Flight: held commands while piloting (tick.cpp) -------------------
     PitchUp,       // 'w'
     PitchDown,     // 's'
     YawLeft,       // 'a'

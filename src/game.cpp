@@ -27,7 +27,9 @@ glm::dvec3 Game::focusWorldPos(int i) const {
     // no ship (the orbit-view state).
     Frame *rf = ship ? ship->frame : home->frame;
     if (focusTargets[i].body == nullptr) {
-        return ship->get_center_of_mass();   // the "ship" target only exists with a ship
+        // The "ship" entry only exists with a ship (syncShipFocus); a stale
+        // entry with no ship focuses the origin rather than deref null.
+        return ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
     }
     return focusTargets[i].body->frame->GetPositionRelTo(rf);
 }
@@ -929,7 +931,12 @@ void Game::select_ship(Vehicle *v) {
         toast("Active ship: %s, warp 10x", ship->name.c_str());
     }
     // A ship is active now: the "ship" focus target may be absent (an
-    // orbit-view boot), so sync it in at index 0.
+    // orbit-view boot), so sync it in at index 0. First person is a cockpit
+    // view: drop it on an EVA handoff BEFORE the sync so the kerbal gets its
+    // 5 m orbit framing, not the ship's.
+    if(camera != nullptr && camera->mode == CAM_FIRST && v->isEva()) {
+        camera->mode = CAM_ORBIT;
+    }
     syncShipFocus();
     // "N of M" in the canonical order (collectVehicles, ships.h).
     int n = 0, i = 0;
@@ -1638,7 +1645,7 @@ void Game::remove_ship(Vehicle *v) {
                 toast("Active ship: %s, warp 10x", ship->name.c_str());
             }
             focusBody = 0;
-            if(camera->mode == CAM_ORBIT) {
+            if(camera != nullptr && camera->mode == CAM_ORBIT) {
                 camera->Follow(ship->get_center_of_mass());
                 camera->distance = 50.0;
             }

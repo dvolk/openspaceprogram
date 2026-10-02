@@ -57,6 +57,18 @@ int main() {
     assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LSHIFT, kb));
     assert(slotGroup(Slot::ThrustLatch) == SlotGroup::Flight);
 
+    // 1c) Free cam is Shift+C (both sides). Plain C is ToggleCamMode only.
+    assert(hasCombo(Slot::ToggleFreeCam, SDL_SCANCODE_C, SDL_KMOD_LSHIFT));
+    assert(hasCombo(Slot::ToggleFreeCam, SDL_SCANCODE_C, SDL_KMOD_RSHIFT));
+    assert(!hasPlain(Slot::ToggleFreeCam, SDL_SCANCODE_C));
+    assert(hasPlain(Slot::ToggleCamMode, SDL_SCANCODE_C));
+    assert(slotFired(Slot::ToggleCamMode, SDL_SCANCODE_C, 0, kb));
+    assert(!slotFired(Slot::ToggleCamMode, SDL_SCANCODE_C, SDL_KMOD_LSHIFT, kb));
+    assert(slotFired(Slot::ToggleFreeCam, SDL_SCANCODE_C, SDL_KMOD_LSHIFT, kb));
+    assert(slotFired(Slot::ToggleFreeCam, SDL_SCANCODE_C, SDL_KMOD_RSHIFT, kb));
+    assert(!slotFired(Slot::ToggleFreeCam, SDL_SCANCODE_C, 0, kb));
+    assert(slotGroup(Slot::ToggleFreeCam) == SlotGroup::Game);
+
     // 2) slotFired: exact-modifier match. A plain binding fires with no
     //    modifier and NOT with one held; a different key does not fire.
     assert(slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kb));

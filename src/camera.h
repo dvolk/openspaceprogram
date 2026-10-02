@@ -5,9 +5,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
-// Orbit keeps a fixed offset from a focus; Free is full 6DOF. One object
-// holds both state sets -- `mode` picks which is live.
-enum CameraMode { CAM_ORBIT, CAM_FREE };
+// Orbit keeps a fixed offset from a focus; Free is full 6DOF; First is a
+// rigid eye on the ship's controller (pose set each frame). One object holds
+// the state sets -- `mode` picks which is live.
+enum CameraMode { CAM_ORBIT, CAM_FREE, CAM_FIRST };
 
 class Camera {
 public:
@@ -48,10 +49,13 @@ public:
 
     void ComputeView();
 
-    // Mode transitions (the C key). toFree keeps the live pose; toOrbit
-    // re-derives distance from the current position around the new focus.
+    // Mode transitions (C / Shift-C). toFree keeps the live pose; toFirst
+    // leaves it alone (the caller re-poses it every frame). toOrbit
+    // re-derives distance from the live pose out of Free, but restores the
+    // parked turntable state out of First (C is a true toggle).
     void toFree();
     void toOrbit(const glm::dvec3& focus);
+    void toFirst();
 
     // Free flight: move along local axes (no-op in Orbit).
     void MoveForward(double amt);
@@ -63,7 +67,8 @@ public:
     // Orbit zoom (clamped so it can never cross the focus) (no-op in Free).
     void wheel(double amt);
 
-    // Look controls, valid in both modes.
+    // Look controls (Orbit turntable / Free 6DOF). No-op in First: the view
+    // is locked to the ship axis.
     void Pitch(double angle);
     void RotateY(double angle);
     void Roll(double angle);

@@ -205,7 +205,7 @@ struct Game {
     Audio audio;
 
     // --- cameras -----------------------------------------------------------
-    Camera *camera = nullptr;   // one object: orbit + free, `camera->mode` picks
+    Camera *camera = nullptr;   // orbit + free + first person (`camera->mode`)
     int cam_speed = 1;
     // Chase-cam rumble under high proper acceleration (see render.cpp).
     glm::dvec3 shake_off = glm::dvec3(0.0);

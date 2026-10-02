@@ -88,7 +88,7 @@ void Camera::ComputeView() {
         buildView(-forward, up, (focusPoint - renderOrigin) + off);
         return;
     }
-    // Free: pos is primary; up is the stored free-camera up.
+    // Free / First: pos is primary; up is the stored free-camera up.
     buildView(-forward, up, pos - renderOrigin);
 }
 
@@ -125,11 +125,19 @@ void Camera::toFree() {
 void Camera::toOrbit(const glm::dvec3& focus) {
     if (mode == CAM_ORBIT) { Follow(focus); return; }
     focusPoint = focus;
-    double dist = glm::length(pos - focus);
-    if (dist < 10.0) { dist = 10.0; }
-    distance = dist;
-    // Turntable angles persist across a free detour (see header).
+    // Free -> orbit: the flier can be anywhere, so the orbit radius is its
+    // current standoff. First -> orbit: keep the parked radius/angles -- C
+    // must return the framing the cockpit view interrupted.
+    if (mode == CAM_FREE) {
+        double dist = glm::length(pos - focus);
+        if (dist < 10.0) { dist = 10.0; }
+        distance = dist;
+    }
     mode = CAM_ORBIT;
+}
+
+void Camera::toFirst() {
+    mode = CAM_FIRST;   // pose is re-derived from the ship every frame
 }
 
 void Camera::Follow(const glm::dvec3& p) {
@@ -167,7 +175,7 @@ void Camera::Pitch(double angle) {
         const double lim = 1.52;   // rad (~87 deg), just short of the pole
         if (orbitPitch > lim) { orbitPitch = lim; }
         if (orbitPitch < -lim) { orbitPitch = -lim; }
-    } else {
+    } else if (mode == CAM_FREE) {
         // Rotate the view direction and up around the right axis.
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, right));
         forward = rot * forward;
@@ -179,7 +187,7 @@ void Camera::RotateY(double angle) {
     if (mode == CAM_ORBIT) {
         // Yaw the turntable around the ref up.
         orbitYaw += angle;
-    } else {
+    } else if (mode == CAM_FREE) {
         // Yaw: rotate the view direction and right around the up axis.
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, up));
         forward = rot * forward;

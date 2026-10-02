@@ -68,7 +68,8 @@ void tick(Game &g) {
             else if (slotActive(Slot::CamDown)) { g.camera->MoveUp(-g.cam_speed); }
         }
 
-        if (g.camera->mode == CAM_ORBIT) {
+        // Piloting (orbit / first person). Free cam is a flier: no sticks.
+        if (g.camera->mode != CAM_FREE) {
             bool game_running = (g.time_accel > 0);
             // Active-ship controls: only with a ship and in a pilot scene.
             // A running sim in a non-pilot scene coasts.
