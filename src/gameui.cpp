@@ -2521,8 +2521,11 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
             running = false;
         }
         ImGui::PopFont();
-        // The build's git version (src/version.h, `make version`).
+        // The build's git version (src/version.h, `make version`), grayed
+        // out so it reads as a footer, not a menu item.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
         text_button(VERSION);
+        ImGui::PopStyleColor();
     });
 }
 

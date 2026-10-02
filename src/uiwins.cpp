@@ -232,7 +232,7 @@ const WinDef kWins[W_Count] = {
         .name = "Research Lab", .label = "Research Lab",
         // Root: the lab IS this window (forced open; no bulk op may close
         // it). initial_size gives the archive list room to scroll.
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(480.0f, 520.0f),
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(545.0f, 520.0f),
                   .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
