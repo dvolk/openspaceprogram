@@ -619,6 +619,9 @@ struct Game {
     bool kerbalInRange(Kerbal *k, Part *part);
     // Push a one-shot on-screen message (printf-style).
     void toast(const char *fmt, ...);
+    // toast() minus the on-screen part: just the "[toast] ..." console line.
+    // Scene transitions use this (the move is visible; the line stays an anchor).
+    void toastLog(const char *fmt, ...);
     // Open (or focus) the part window for (ship, part). (mx,my) is the mouse
     // at pick; the window opens near it.
     void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,

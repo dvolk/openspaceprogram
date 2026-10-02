@@ -218,6 +218,19 @@ void Game::toast(const char *fmt, ...) {
     }
 }
 
+/* toast() without the on-screen part: same console line, no toast queue.
+   Scene transitions use it -- the move is visually obvious, but the line
+   stays as a log/e2e anchor. */
+void Game::toastLog(const char *fmt, ...) {
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    printf("[toast] %s\n", buf);
+    fflush(stdout);
+}
+
 /* Part windows: open (or focus) the window for a picked part. Picking the
    same part again just re-focuses (one window per part). */
 void Game::openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
@@ -572,7 +585,7 @@ bool Game::newGame() {
     enterSpaceCenter(*this);
     printf("[game] new game: Space Center, no ship, paused\n");
     fflush(stdout);
-    toast("New game -- Space Center");
+    toastLog("New game -- Space Center");
     return true;
 }
 
