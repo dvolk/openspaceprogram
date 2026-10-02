@@ -187,7 +187,7 @@ const WinDef kWins[W_Count] = {
 
     // --- space center hub ------------------------------------------------
     [W_SpaceCenterMenu] = {
-        .name = "Space Center", .label = "Space Center",
+        .name = "Game Menu", .label = "Game Menu",
         // Root: the hub IS this window (forced open; no bulk op may close it).
         .opts = { .slot = ui::Slot::Center, .fixed = true, .default_open = true },
         .role = WinRole::Root, .inList = false,
@@ -196,7 +196,7 @@ const WinDef kWins[W_Count] = {
         .name = "Flight Summary", .label = "Flight Summary",
         // The "successful flight" dialog opened by Recover Vessel. Transient
         // like New Game. Docked right of the hub menu so they do not stack.
-        .opts = { .slot = ui::Slot::Center, .right_of = "Space Center",
+        .opts = { .slot = ui::Slot::Center, .right_of = "Game Menu",
                   .initial_size = ImVec2(475.0f, 355.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Transient, .inList = false,

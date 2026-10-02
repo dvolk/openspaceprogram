@@ -2585,6 +2585,9 @@ static void navSpaceCenter(Game &g, float bw) {
     // Return to title lives in navSpaceCenterExit, drawn by the shell just
     // above "Quit game". Esc is only an exit when there is no fleet left to
     // lose (hubKeyActions).
+    // A visual break between the scene's nav (above) and the shared items
+    // (Save/Load .. Quit) the shell draws below.
+    ImGui::Spacing();
 }
 
 /* The hub's bottom nav row: the exits, drawn by the shell between the shared
