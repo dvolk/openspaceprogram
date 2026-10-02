@@ -635,7 +635,11 @@ inline std::vector<std::string> list_saves(const std::string &base) {
 // The local-time stamp newGameDir prepends: YYYYMMDD_HHMMSS.
 inline std::string gameStamp(time_t t) {
     struct tm m;
+#if defined(_WIN32)
+    localtime_s(&m, &t);   // mingw/MSVC Annex K; args reversed vs localtime_r
+#else
     localtime_r(&t, &m);
+#endif
     char buf[32];
     strftime(buf, sizeof buf, "%Y%m%d_%H%M%S", &m);
     return buf;
