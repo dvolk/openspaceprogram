@@ -1,56 +1,35 @@
-# Open Space Program — how to run
+# OPEN SPACE PROGRAM
 
-An open source space sim (Kerbal-style): build a rocket, launch, orbit,
-land. Very early development — expect rough edges.
+A sandbox space sim: build a rocket, launch, visit different
+planets, run science experiments, return home to finish the
+flight and recover the ship and experiments.
 
-## Run it
+Very early development — expect rough edges.
 
-The game finds its assets in the `res/` tree that ships with it (beside
-the binary in the tarball, under `usr/share/openspaceprogram/` in the
-AppImage), so you can start it from anywhere:
+## GIVING FEEDBACK
 
-- **Linux AppImage** — one file, no install:
+If you have feedback please open an issue on github:
 
-      chmod +x osp-<version>-x86_64.AppImage
-      ./osp-<version>-x86_64.AppImage
+https://github.com/dvolk/openspaceprogram
 
-- **Linux tarball** — from a terminal:
+## (SOME) DEFAULT CONTROLS
 
-      ./osp-<version>-linux/osp
+- W/S - pitch
+- A/D - yaw
+- Q/E - roll
+- T - thrust
+- Shift-T - lock/unlock thrust
+- Space - stage
+- R/F - throttle up/down
+- F5 - quicksave
+- F9 - quickload
+- F12 - screenshot
 
-  (or add that directory to your `PATH` and run `osp`)
+See Controls for all bindings
 
-- **Windows** — double-click `osp.exe`, or from a terminal:
+## WHERE YOUR DATA GOES
 
-      osp-<version>-windows\osp.exe
+Saves, screenshots, user ships and settings are (usually) in:
 
-A combined archive (the `linux+windows` one) contains both binaries in
-the same directory — use the one for your OS; the other is inert.
-
-## Requirements
-
-- CPU: x86-64 with the x86-64-v2 instruction set (~2010+; SSE4.2)
-- Graphics: OpenGL 4.5 (a hardware GPU; it will boot on software
-  rendering like Mesa llvmpipe, but slowly)
-- The Linux builds (AppImage + tarball) use the host's standard desktop
-  libraries (X11, GL, audio, libstdc++); the Windows build is fully
-  self-contained
-
-## Basics
-
-- `T` thrust, `Space` stage, `W/S` pitch, `A/D` yaw, `Q/E` roll,
-  `R/F` throttle up/down
-- `F5` pause, `F12` screenshot (lands in the data directory)
-- `--help` lists every command-line option (starting ships, bodies,
-  scenarios); `--version` prints the build version
-
-## Where your data goes
-
-Saves, screenshots, and settings live in your per-user data
-directory — `~/.local/share/openspaceprogram/` on Linux,
-`%APPDATA%\openspaceprogram\` on Windows (override with `--data-dir`).
-Nothing in this directory is ever modified by the game.
-
-## Licence
-
-Code: AGPL-3.0; content: CC BY-SA 3.0 (see LICENSE.md).
+- Linux: ~/.local/share/openspaceprogram/
+- Windows: %APPDATA%\openspaceprogram\
