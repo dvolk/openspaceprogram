@@ -4,6 +4,7 @@
 
 #include "science.h"
 
+#include <climits>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
@@ -21,6 +22,16 @@ static bool parse_situation(const std::string &s, SciSituation &out) {
         }
     }
     return false;
+}
+
+// The known ids, built from the enum (error messages must not go stale).
+static std::string knownSituationIds() {
+    std::string s;
+    for(int i = 0; i <= (int)SciSituation::HighOrbit; i++) {
+        if(!s.empty()) { s += ", "; }
+        s += situationId((SciSituation)i);
+    }
+    return s;
 }
 
 void loadExperimentDefs(const char *path) {
@@ -50,9 +61,9 @@ void loadExperimentDefs(const char *path) {
         }
         ExperimentDef d;
         d.type = ev.value("type", std::string(""));
-        if(d.type.empty()) {
+        if(d.type.find_first_not_of(" \t\r\n") == std::string::npos) {
             throw std::runtime_error(std::string("experiments: entry ") + std::to_string(i)
-                                     + " of " + path + ": missing \"type\"");
+                                     + " of " + path + ": missing or blank \"type\"");
         }
         const std::string ctx = "experiments: " + d.type + ": ";
         for(const ExperimentDef &x : defs) {
@@ -61,11 +72,17 @@ void loadExperimentDefs(const char *path) {
             }
         }
 
-        if(!ev.contains("base_value") || !ev["base_value"].is_number_integer()
-           || ev["base_value"].get<int>() <= 0) {
+        if(!ev.contains("base_value") || !ev["base_value"].is_number_integer()) {
             throw std::runtime_error(ctx + "\"base_value\" must be an integer > 0");
         }
-        d.base_value = ev["base_value"].get<int>();
+        // get<int> truncates, so a >2^31 value would wrap; range-check as
+        // long long first.
+        const long long bv = ev["base_value"].get<long long>();
+        if(bv <= 0 || bv > INT32_MAX) {
+            throw std::runtime_error(ctx + "\"base_value\" must be a positive int "
+                                          "(1.." + std::to_string(INT32_MAX) + ")");
+        }
+        d.base_value = (int)bv;
 
         auto parse_list = [&](const char *key, std::vector<SciSituation> &out,
                               bool required) {
@@ -77,7 +94,7 @@ void loadExperimentDefs(const char *path) {
                 return;
             }
             const nlohmann::json &sv = ev[key];
-            if(!sv.is_array() || sv.empty()) {
+            if(!sv.is_array() || (sv.empty() && required)) {
                 throw std::runtime_error(std::string(ctx) + std::string("\"") + key
                                          + "\" must be a non-empty array");
             }
@@ -91,16 +108,25 @@ void loadExperimentDefs(const char *path) {
                 if(!parse_situation(id, s)) {
                     throw std::runtime_error(std::string(ctx) + std::string("\"") + key
                                              + "\": unknown situation id \"" + id
-                                             + "\" (expected landed, flying_low, flying_high, "
-                                               "low_orbit, high_orbit)");
+                                             + "\" (expected " + knownSituationIds() + ")");
                 }
                 out.push_back(s);
             }
         };
         // valid_in is required: an instrument that runs nowhere is a data bug,
-        // not a valid def. biome_specific_in may be empty (never biome-bound).
+        // not a valid def. biome_specific_in may be absent or [] (never
+        // biome-bound).
         parse_list("valid_in", d.valid_in, true);
         parse_list("biome_specific_in", d.biome_specific_in, false);
+        // The biome joins the identity only in situations where the family can
+        // run -- a situation in biome_specific_in but not in valid_in is a
+        // data bug.
+        for(const SciSituation s : d.biome_specific_in) {
+            if(!d.validIn(s)) {
+                throw std::runtime_error(ctx + "\"biome_specific_in\" lists \""
+                                         + situationId(s) + "\" which is not in \"valid_in\"");
+            }
+        }
 
         defs.push_back(std::move(d));
     }

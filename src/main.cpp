@@ -402,13 +402,19 @@ int main(int argc, char **argv)
     Ships ships(args.parts_file, partsshader, sun);
 
     /* An instrument naming a family with no def would silently fall back to
-       the base-10 generic behavior -- a parts.json typo should not hide. */
+       the base-10 generic behavior -- a parts.json typo should not hide.
+       The kerbal suit's own family is hard-coded in game.cpp (runExperiment,
+       "observation"), not in parts.json, so check it here too. */
     for(const PartDef &p : ships.catalog().parts) {
         if(!p.experiment_family.empty() && defFor(p.experiment_family) == nullptr) {
             printf("warning: part '%s' has experiment_family '%s' with no def in %s\n",
                    p.name.c_str(), p.experiment_family.c_str(),
                    args.experiments_file.c_str());
         }
+    }
+    if(defFor("observation") == nullptr) {
+        printf("warning: the kerbal suit's hard-coded family 'observation' has no def in %s\n",
+               args.experiments_file.c_str());
     }
 
     // The running game: borrows the subsystems above and owns the runtime
