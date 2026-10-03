@@ -3,6 +3,7 @@
 // frame. Header-only pure math. Angles in radians; plane = XY (normal +Z).
 // time_to_peri / time_to_apo: seconds to the NEXT passage, -1 = never.
 
+#include <cassert>
 #include <cmath>
 #include <numbers>
 #include <glm/glm.hpp>
@@ -138,6 +139,89 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double vr0 = glm::dot(pos0, vel0) / r0;   // radial speed, + = receding
     const double alpha = 2.0 / r0 - v0_2 / mu;      // 1/a; negative on hyperbolic
 
+    /* Hyperbolic (a < 0): solve in the anomaly H, not the universal chi.
+       Stumpff C/S take the cosh/sinh branch and overflow past |z|~5e5 on the
+       Newton SEED (chi ~ sqrt(mu) dt / r0); planTransfer t_dep hits that.
+       H grows only as log r. Work in dH directly: forming M = M0 + n dt
+       cancels catastrophically on a long reverse coast near e ~ 1. */
+    if(alpha < 0.0) {
+        const double a_abs = -1.0 / alpha;
+        const glm::dvec3 hvec = glm::cross(pos0, vel0);
+        // e^2 = 1 + h^2/(mu|a|); e1 = e-1 via (e^2-1)/(e+1) keeps precision
+        // as e -> 1 (the periapsis well where Newton seeds matter).
+        const double e2m1 = glm::dot(hvec, hvec) / (mu * a_abs);
+        const double e = sqrt(1.0 + e2m1);
+        assert(e >= 1.0);
+        // sinh H = r vr / (e sqrt(mu|a|)); sign(H) = sign(vr) = sign(nu).
+        const double sinh_H0 = r0 * vr0 / (e * sqrt(mu * a_abs));
+        const double H0 = asinh(sinh_H0);
+        const double n = sqrt(mu / (a_abs * a_abs * a_abs));
+        const double ndt = n * dt;
+
+        /* Solve e(sinh(H0+dH) - sinh H0) - dH = n dt  for dH (monotonic). */
+        auto G = [&](const double dH) {
+            return e * (sinh(H0 + dH) - sinh_H0) - dH - ndt;
+        };
+        auto dG = [&](const double dH) {
+            return e * cosh(H0 + dH) - 1.0;
+        };
+
+        // Seed: linear response dH = ndt / (e cosh H0 - 1); asinh far out;
+        // Cardano on the cubic near the e~1, H~0 well (linear seed overshoots
+        // into the e cosh H - 1 = 0 singularity).
+        double dH;
+        const double e1 = e2m1 / (e + 1.0);           // = e - 1, better conditioned
+        if(fabs(ndt) < 1.0 && e1 < 1e-3) {
+            // (e1) dH + dH^3/6 ~ ndt near H0 ~ 0, e ~ 1.
+            const double s = sqrt(9.0 * ndt * ndt + 8.0 * e1 * e1 * e1);
+            dH = cbrt(3.0 * ndt + s) + cbrt(3.0 * ndt - s);
+        } else if(fabs(ndt) < 1.0) {
+            dH = ndt * a_abs / r0;                    // = ndt / (e cosh H0 - 1)
+        } else {
+            dH = asinh(ndt / e) - H0;
+        }
+        for(int iter = 0; iter < 30; iter++) {
+            const double denom = dG(dH);
+            if(!(denom > 0.0)) { dH = 0.0; break; }   // e=1 at H=0: bisection
+            const double step = G(dH) / denom;
+            dH -= step;
+            if(fabs(step) < 1e-12 * (1.0 + fabs(dH) + fabs(H0))) { break; }
+        }
+        if(!(fabs(G(dH)) <= 1e-9 * (1.0 + fabs(ndt)))) {
+            // Bracket from ndt alone (never from a possibly-NaN Newton dH).
+            double lo, hi;
+            if(ndt > 0.0) {
+                lo = 0.0; hi = asinh(ndt / e) + fabs(H0) + 1.0;
+                for(int i = 0; i < 100 && G(hi) < 0.0; i++) { hi *= 2.0; }
+            } else {
+                hi = 0.0; lo = -asinh(-ndt / e) - fabs(H0) - 1.0;
+                for(int i = 0; i < 100 && G(lo) > 0.0; i++) { lo *= 2.0; }
+            }
+            for(int i = 0; i < 70; i++) {
+                const double mid = 0.5 * (lo + hi);
+                if(G(mid) < 0.0) { lo = mid; } else { hi = mid; }
+            }
+            dH = 0.5 * (lo + hi);
+        }
+
+        // Lagrange coefficients in dH. (fdot/gdot blow up at r -> 0, the
+        // exact-radial e=1 periapsis; that's a body impact, not a coast.)
+        const double chm1 = 2.0 * sinh(0.5 * dH) * sinh(0.5 * dH); // cosh(dH)-1
+        double shm0 = sinh(dH) - dH;                               // sinh(dH)-dH
+        if(fabs(dH) < 1e-3) {
+            const double x2 = dH * dH;
+            shm0 = dH * x2 * (1.0 / 6.0 + x2 * (1.0 / 120.0 + x2 / 5040.0));
+        }
+        const double f = 1.0 - (a_abs / r0) * chm1;
+        const double g = dt - (a_abs * sqrt(a_abs) / sqrt(mu)) * shm0;
+        pos = f * pos0 + g * vel0;
+        const double r = glm::length(pos);
+        const double fdot = -sqrt(mu * a_abs) * sinh(dH) / (r * r0);
+        const double gdot = 1.0 - (a_abs / r) * chm1;
+        vel = fdot * pos0 + gdot * vel0;
+        return;
+    }
+
     // Fold whole periods out of dt: the Newton solve must span at most one
     // revolution (it stalls on the multi-revolution equation).
     if(alpha > 0.0) {
@@ -154,7 +238,7 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double sqrt_mu = sqrt(mu);
     const double target = sqrt_mu * dt;
     const double k1 = r0 * vr0 / sqrt_mu;   // 0 at an apsis
-    const double k2 = 1.0 - alpha * r0;     // >= 1 for any bound state
+    const double k2 = 1.0 - alpha * r0;     // 1 - r0/a (signed; not always >= 1)
     auto F = [alpha, r0, k1, k2, target](double chi) {
         const double z = alpha * chi * chi;
         return k1 * chi * chi * stumpffC(z)
@@ -173,7 +257,8 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
         chi -= step;
         if(fabs(step) < 1e-10 * r0) { break; }
     }
-    if(fabs(F(chi)) > 1e-6 * target) {      // Newton missed (see above)
+    // NaN-safe (fabs(NaN) <= x is false) and sign-safe for dt < 0.
+    if(!(fabs(F(chi)) <= 1e-6 * fabs(target))) {  // Newton missed (see above)
         // Expand the outer bracket end until the signs straddle the root.
         double lo, hi;
         if(target > 0.0) {

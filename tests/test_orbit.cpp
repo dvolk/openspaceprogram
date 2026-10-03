@@ -392,6 +392,132 @@ int main() {
         CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-7 * glm::length(p0));
     }
 
+    // --- propagateKepler: hyperbolic, large dt (issue 113: was silent NaN) ---
+    // Overflow is in the Newton SEED z = alpha*chi^2 (chi ~ sqrt(mu)dt/r0),
+    // not the solution |z| = dH^2. For a=-4e6, r0~1e6 the seed crosses |z|~5e5
+    // near dt ~ 1e7; dt=1e8 is well past it.
+    {
+        const double e = 1.5, a = -4.0e6;   // v_inf ~ 10 km/s
+        glm::dvec3 p0, v0;
+        conic_state(a, e, -1.0, p0, v0);    // inbound
+        OrbitElements o0 = computeOrbitElements(p0, v0, MU);
+        glm::dvec3 p, v;
+        propagateKepler(p0, v0, MU, 1.0e7, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z));
+        CHECK(std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z));
+        OrbitElements o1 = computeOrbitElements(p, v, MU);
+        check_all_finite(o1, "hyperbolic dt=1e7");
+        CHECK_NEAR(o1.semi_major, a, 1e-6 * -a);
+        CHECK_NEAR(o1.ecc, e, 1e-9);
+        CHECK_NEAR(o1.energy, o0.energy, 1e-9 * o0.energy);
+        CHECK_NEAR(o1.ang_momentum, o0.ang_momentum, 1e-9 * o0.ang_momentum);
+        // further out still finite + conserved
+        propagateKepler(p0, v0, MU, 1.0e8, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z));
+        CHECK(std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z));
+        o1 = computeOrbitElements(p, v, MU);
+        check_all_finite(o1, "hyperbolic dt=1e8");
+        CHECK_NEAR(o1.energy, o0.energy, 1e-9 * o0.energy);
+        CHECK_NEAR(o1.ang_momentum, o0.ang_momentum, 1e-9 * o0.ang_momentum);
+        // reversibility at large dt
+        glm::dvec3 p2, v2;
+        propagateKepler(p, v, MU, -1.0e8, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-5 * glm::length(p0));
+        CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-5 * glm::length(v0));
+    }
+
+    // --- propagateKepler: outbound large dt and negative dt ------------------
+    {
+        const double e = 1.5, a = -4.0e6;
+        glm::dvec3 p0, v0, p, v, p2, v2;
+        conic_state(a, e, +1.0, p0, v0);    // outbound, periapsis gone
+        propagateKepler(p0, v0, MU, 1.0e8, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(v.x));
+        propagateKepler(p, v, MU, -1.0e8, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-5 * glm::length(p0));
+        propagateKepler(p0, v0, MU, -1.0e8, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(v.x));
+        propagateKepler(p, v, MU, 1.0e8, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-5 * glm::length(p0));
+    }
+
+    // --- propagateKepler: exactly radial hyperbolic (e=1, h=0) through M=0 --
+    // e=1 at H=0 is the e cosh H - 1 = 0 Newton singularity. State: inbound
+    // along -X at r=1e6 on a=-4e6; periapsis (r=0) is dt = -M0/n away.
+    {
+        const double a = -4.0e6, r0 = 1.0e6;
+        const double v = sqrt(MU * (2.0 / r0 - 1.0 / a));
+        const glm::dvec3 p0(r0, 0, 0), v0(-v, 0, 0);
+        const double sinh_H0 = -0.75;   // r vr / (e sqrt(mu|a|)), e=1
+        const double H0 = asinh(sinh_H0);
+        const double M0 = sinh_H0 - H0;
+        const double nh = sqrt(MU / (-a * -a * -a)); // mean motion, |a|^3
+        const double dt_peri = -M0 / nh;
+        glm::dvec3 p, v1;
+        propagateKepler(p0, v0, MU, dt_peri, p, v1);
+        CHECK(std::isfinite(p.x) && std::isfinite(v1.x));
+        CHECK_NEAR(glm::length(p), 0.0, 1e3);          // periapsis at r=0
+        CHECK_NEAR(p.y, 0.0, 1e-6);
+        CHECK_NEAR(p.z, 0.0, 1e-6);
+        // and still finite at large dt
+        propagateKepler(p0, v0, MU, 1.0e6, p, v1);
+        CHECK(std::isfinite(p.x) && std::isfinite(v1.x));
+        CHECK_NEAR(p.y, 0.0, 1e-6 * glm::length(p));
+        CHECK_NEAR(p.z, 0.0, 1e-6 * glm::length(p));
+    }
+
+    // --- propagateKepler: near-radial hyperbolic (e -> 1, the e cosh H - 1
+    // Newton well). Keep periapsis above a few km. Round-trip must return;
+    // e~1 long-coast reverse is ~1e-4 relative (f,g cancellation when
+    // |a|/r0 is huge), so the return pin is 1e-4 not 1e-5.
+    {
+        // rp = |a|(e-1) = 7e11 * 1e-6 = 700 km, e-1 = 1e-6
+        const double e = 1.0 + 1e-6, a = -7.0e11;
+        glm::dvec3 p0, v0;
+        conic_state(a, e, -0.5, p0, v0);
+        OrbitElements o0 = computeOrbitElements(p0, v0, MU);
+        CHECK(o0.ecc > 1.0);
+        glm::dvec3 p, v, p2, v2;
+        propagateKepler(p0, v0, MU, 1.0e7, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z));
+        CHECK(std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z));
+        OrbitElements o1 = computeOrbitElements(p, v, MU);
+        check_all_finite(o1, "near-radial hyperbolic");
+        CHECK_NEAR(o1.energy, o0.energy, 1e-7 * o0.energy);
+        // h is a small cross product on a near-radial conic: 1e-6 relative.
+        CHECK_NEAR(o1.ang_momentum, o0.ang_momentum, 1e-6 * o0.ang_momentum);
+        propagateKepler(p, v, MU, -1.0e7, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-4 * glm::length(p0));
+        CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-4 * glm::length(v0));
+    }
+
+    // --- propagateKepler: e~1 long coast round-trip (the M0 + n dt well) ----
+    // Near e~1 a reverse coast used to land the wrong point on the right
+    // conic (energy/h conserved, position off by many r0) because M0 + n dt
+    // cancels. Solver now works in dH and must return (~1e-4 relative).
+    {
+        // rp = 7e12 * 1e-8 = 70 km
+        const double e = 1.0 + 1e-8, a = -7.0e12;
+        glm::dvec3 p0, v0, p, v, p2, v2;
+        conic_state(a, e, -0.2, p0, v0);
+        propagateKepler(p0, v0, MU, 1.0e7, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(v.x));
+        propagateKepler(p, v, MU, -1.0e7, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-4 * glm::length(p0));
+        CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-4 * glm::length(v0));
+    }
+    {
+        // rp = 4e9 * 1e-7 = 400 km
+        const double e = 1.0 + 1e-7, a = -4.0e9;
+        glm::dvec3 p0, v0, p, v, p2, v2;
+        conic_state(a, e, -0.01, p0, v0);
+        propagateKepler(p0, v0, MU, 1.0e7, p, v);
+        CHECK(std::isfinite(p.x) && std::isfinite(v.x));
+        propagateKepler(p, v, MU, -1.0e7, p2, v2);
+        CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-4 * glm::length(p0));
+        CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-4 * glm::length(v0));
+    }
+
     // --- propagateKepler: in-place call (rails uses p,v as both in & out) ---
     {
         const double a = 2.5e6, e = 0.6;
