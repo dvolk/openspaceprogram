@@ -1,0 +1,11 @@
+NAME esc-spacecenter-noop
+# Esc in the Space Center hub never exits to the title: with the hub as the
+# floor and an empty fleet it is a no-op (the player may hold a meaningful
+# game). Returning to the title is the explicit "Return to title" button.
+ARGS --time-accel 1 --timeout 8 --new-game 1000
+ARGS --sim-press 2500,0,ESCAPE
+EXPECT [game] new game: Space Center, no ship
+EXPECT Timeout reached (8.
+FORBID [scene] spacecenter -> title
+FORBID GL_
+FORBID error:

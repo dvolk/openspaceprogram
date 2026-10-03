@@ -1,0 +1,12 @@
+NAME reload-shipless
+# In-game reload of a shipless save (Game::loadFrom) must land on the Space
+# Center hub, not the title. The bare boot is the title front door; the
+# shipless reload moves it to the hub.
+ARGS --system res/systems/ksp_system.json --timeout 10
+ARGS --reload e2e/fixtures/save_shipless --reload-at 3000
+EXPECT [boot] no vessel: title screen
+EXPECT Loaded game from e2e/fixtures/save_shipless (active: (none))
+EXPECT [scene] title -> spacecenter (enterSpaceCenter)
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

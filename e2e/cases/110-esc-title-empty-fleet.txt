@@ -1,8 +1,0 @@
-NAME esc-title-empty-fleet
-ARGS --time-accel 1 --timeout 8 --new-game 1000
-ARGS --sim-press 2500,0,ESCAPE
-EXPECT [game] new game: Space Center, no ship
-EXPECT [scene] spacecenter -> title (enterTitle)
-EXPECT Timeout reached (8.
-FORBID GL_
-FORBID error:

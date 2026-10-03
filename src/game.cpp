@@ -716,7 +716,9 @@ bool Game::loadFrom(const std::string &dir) {
     // A load is a fresh game: the thrust latch is per-active-ship and is not
     // in the save, so clear it.
     thrust_latched = false;
-    if(ship != nullptr) { enterFlight(*this); } else { enterTitle(*this); }
+    // A shipless save is still a game (science, recovered ships): land on the
+    // Space Center hub, not the title front door.
+    if(ship != nullptr) { enterFlight(*this); } else { enterSpaceCenter(*this); }
     return true;
 }
 
@@ -1667,10 +1669,10 @@ void Game::remove_ship(Vehicle *v) {
                deleted vehicle: enter the no-ship state instead. */
             ship = nullptr;
             syncShipFocus();
-            // Flight's "there is an active vessel" invariant: with nothing
-            // left to control the floor is the title screen, not an empty
-            // flight scene.
-            enterTitle(*this);
+            // A shipless fleet is still a game (science, recovered ships):
+            // the floor is the Space Center hub, not an empty flight scene or
+            // the title front door.
+            enterSpaceCenter(*this);
             printf("Removed '%s'; nothing left to control -- no active vessel\n",
                    removedName.c_str());
         }

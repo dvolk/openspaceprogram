@@ -348,7 +348,8 @@ void labKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
 }
 
 /* Space Center hub keys. Esc pops to the flight below, or -- when the hub is
-   the floor and the fleet is empty -- quits to the title. Esc first dismisses
+   the floor -- is a no-op: it never exits to the title (the player may have
+   recovered every ship but still hold a meaningful game). Esc first dismisses
    an open Flight Summary. */
 void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
@@ -357,11 +358,12 @@ void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             setWinOpen(W_FlightSummary, false);
             return;
         }
+        // Pop back to the flight below. When the hub IS the floor there is
+        // nothing to pop to, so Esc is a no-op -- returning to the title is
+        // the explicit "Return to title" button, not a key.
         if(g.sceneStack.size() > 1) {
             popScene(g);   // back to the flight below (Resume Flight)
-            return;
         }
-        if(collectVehicles(g.sys).empty()) { g.quitToTitle(); }
     }
 }
 

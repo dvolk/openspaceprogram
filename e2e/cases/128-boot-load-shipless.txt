@@ -1,0 +1,12 @@
+NAME boot-load-shipless
+# A shipless save is still a game (science banked, recovered ships). Boot
+# --load must land on the Space Center hub, not the title front door.
+ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_shipless --time-accel 1
+ARGS --timeout 8
+EXPECT Loaded system 'res/systems/ksp_system.json'
+EXPECT Loaded game from e2e/fixtures/save_shipless (active: (none))
+EXPECT [scene] flight -> spacecenter (enterSpaceCenter)
+FORBID [boot] no vessel: title screen
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

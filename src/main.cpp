@@ -553,9 +553,11 @@ int main(int argc, char **argv)
         // live system.
         sun = game.sun;
         home = game.home;
-        // switchSystem landed on the Title; with a loaded fleet the player
-        // is in flight (a no-op when no switch happened).
+        // switchSystem landed on the Title; a loaded fleet resumes in flight,
+        // and a shipless save lands on the Space Center hub (a meaningful
+        // game, just no active vessel) rather than the title front door.
         if(ship != nullptr) { enterFlight(game); }
+        else { enterSpaceCenter(game); }
     } else {
         std::vector<TerrainBody *> sync;
         if(!args.radial_test.empty() || !args.dock_test.empty()) {
@@ -711,11 +713,13 @@ int main(int argc, char **argv)
     for (TerrainBody *b : sys.bodies) {
         game.focusTargets.push_back({ b->name.c_str(), b });
     }
-    if(ship == nullptr) {
-        /* No vessel: the floor scene is the TITLE screen, not an empty
-           flight one. Decided before the --vab entry below so an editor
-           opened with nothing to fly sits on [title, vab]. The backdrop
-           camera parks before the --vab / --free-cam framing below. */
+    if(ship == nullptr && args.load_name.empty()) {
+        /* No vessel and no loaded game: the floor scene is the TITLE screen,
+           not an empty flight one. Decided before the --vab entry below so an
+           editor opened with nothing to fly sits on [title, vab]. The backdrop
+           camera parks before the --vab / --free-cam framing below. A --load
+           already chose its floor (flight or the Space Center hub) above, so a
+           shipless save keeps the hub instead of being pulled to the title. */
         enterTitle(game);
         game.parkTitleCamera();
         printf("[boot] no vessel: title screen\n");
