@@ -351,6 +351,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          + "' orbits unknown body '"
                                          + parent_name + "'");
             }
+            // A self-orbit would make the body its own child frame and turn
+            // any tree walk (the Research Lab's System Atlas) into infinite
+            // recursion -- a data bug, so reject it like the unknown-parent
+            // case above. (A mutual A<->B cycle is still possible; see the
+            // follow-up issue on full acyclicity.)
+            if(parent == body) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "' cannot orbit itself");
+            }
             body->frame->parent = parent->frame;
             parent->frame->children.push_back(body->frame);
 

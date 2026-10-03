@@ -34,7 +34,7 @@ enum Win : int {
     // tracking station (copies of the map + ship list, free to diverge)
     W_TrackingMap, W_TrackingShipList,
     // research lab
-    W_ResearchLab,
+    W_ResearchLab, W_ResearchAtlas,
     // editor
     W_VabTopBar,
     W_Staging,

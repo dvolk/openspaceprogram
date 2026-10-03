@@ -236,6 +236,16 @@ const WinDef kWins[W_Count] = {
                   .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
+    [W_ResearchAtlas] = {
+        .name = "System Atlas", .label = "System Atlas",
+        // The system as a tree (star -> planets -> moons), each body's
+        // research weight + approach Δv + science found. Docked right of the
+        // lab; closable and draggable, so a small screen can move it aside.
+        .opts = { .slot = ui::Slot::Center, .right_of = "Research Lab",
+                  .initial_size = ImVec2(470.0f, 520.0f),
+                  .closable = true, .default_open = true },
+        .role = WinRole::Persistent, .inList = false,
+    },
     // --- editor ----------------------------------------------------------
     [W_VabTopBar] = {
         .name = "VAB TopBar", .label = "VAB TopBar",
@@ -287,9 +297,10 @@ static const Win kTrackingWinIds[] = {
     W_TrackingMap, W_TrackingShipList, W_Settings, W_Controls,
     W_SaveLoad,
 };
-// The Research Lab: its root window plus the shared windows. No menu of its own.
+// The Research Lab: its root window + the System Atlas, plus the shared
+// windows. No menu of its own.
 static const Win kResearchWinIds[] = {
-    W_ResearchLab, W_Settings, W_Controls, W_SaveLoad,
+    W_ResearchLab, W_ResearchAtlas, W_Settings, W_Controls, W_SaveLoad,
 };
 
 const WinSet kFlightWins = { kFlightWinIds, sizeof(kFlightWinIds) / sizeof(Win) };

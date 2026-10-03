@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -3897,10 +3898,16 @@ void drawTrackingMap(Game &g) {
 // self-heals -- if g.science.version differs from g.labRowsVersion, it rebuilds
 // first (a failed Load from here stays in the scene and does change the log).
 
+// Defined with the Atlas (below); declared here so scene entry can build the
+// Atlas rows alongside the Lab's.
+static void buildAtlasRows(Game &g);
+
 void researchLabEnter(Game &g) {
     const Calendar &cal = g.sys.home ? g.sys.home->cal : Calendar{};
     g.labRows = labEntries(g.science.recovered, cal);
     g.labRowsVersion = g.science.version;
+    // The System Atlas rows too (it's open by default in the lab scene).
+    buildAtlasRows(g);
 }
 
 void drawResearchLab(Game &g) {
@@ -3908,6 +3915,13 @@ void drawResearchLab(Game &g) {
         // Back to the hub (the frame below); Esc does the same (labKeyActions).
         if(ImGui::Button("Back to Space Center")) {
             popScene(g);
+        }
+        // Toggle the System Atlas (its own window, docked right of the lab).
+        // A checkbox rather than relying on the window's X alone: closing it
+        // leaves no other way back in the lab, so this is the reopen path.
+        bool atlas_on = winOpen(W_ResearchAtlas);
+        if(ImGui::Checkbox("System Atlas", &atlas_on)) {
+            setWinOpen(W_ResearchAtlas, atlas_on);
         }
         ImGui::Separator();
         ImGui::Text("Science: %d", g.science.score);
@@ -3938,6 +3952,165 @@ void drawResearchLab(Game &g) {
             }
             ImGui::EndChild();
         }
+    });
+}
+
+// ---- System Atlas (Research Lab) -----------------------------------------
+// The system as a tree: the star at the root, planets under it, moons under
+// their planet (recursively -- a moon of a moon nests one level deeper).
+// One row per body: name (indented by depth), its research VALUE (a plain-
+// english tier for "findings worth ×N of home" -- the exact × is a tooltip),
+// the APPROACH Δv (the cost to get there, rounded to 50; "—" = home/star),
+// and how much of the body's science has been DISCOVERED.
+//
+// The rows are PRE-BUILT, not computed per frame (the Lab's issue #87 pattern):
+// buildAtlasRows fills g.atlasRows on scene entry, drawResearchAtlas walks
+// them, and both self-heal if g.science.version has moved since (a recovery
+// while the lab is open, or a Load from it, grows the log).
+namespace {
+// A (family, situation) study-slot -- the identity key for the coverage count.
+// (Named AtlasSlot: ui::Slot is a different thing in scope.)
+struct AtlasSlot {
+    std::string type;
+    int situation = 0;
+    bool operator<(const AtlasSlot &o) const {
+        if(type != o.type) { return type < o.type; }
+        return situation < o.situation;
+    }
+};
+
+// Total study-slots across the family table: each family contributes one slot
+// per situation it can run in. Uniform denominator for every body.
+size_t atlasTotalSlots() {
+    size_t total = 0;
+    for(const ExperimentDef &d : experimentDefs()) {
+        total += (size_t)d.valid_in.size();
+    }
+    return (total > 0) ? total : 1;   // a missing table must not divide by 0
+}
+
+// Walk the frame tree from `b`, appending one row per body (in tree order).
+// A body's inertial frame has TWO kinds of children: its OWN spin frame
+// (rotating -- skipping it is what keeps this from recursing forever) and
+// the inertial frames of the bodies that ORBIT it. `seen` also guards a
+// cyclic orbit pair in the data (issue #129): a bad system then stops
+// re-expanding an already-shown body instead of crashing the lab.
+void atlasWalk(const System &sys, const TerrainBody *b, int depth,
+               const std::map<std::string, std::set<AtlasSlot>> &covered,
+               size_t total, std::vector<AtlasRow> &out,
+               std::set<const TerrainBody *> &seen) {
+    if(!seen.insert(b).second) { return; }   // already shown: stop the cycle
+    AtlasRow r;
+    // Indent: a fixed 3 spaces per level (plain ASCII, reads as a tree
+    // without relying on box-drawing glyphs, fine in any font).
+    std::string name;
+    name.append((size_t)depth * 3, ' ');
+    name += b->name;
+    if(sys.home == b) { name += "  (home)"; }
+    r.name = std::move(name);
+    r.valueWord = valueWord(b->science_mult);
+    r.valueExact = b->science_mult;
+    // 0 = where you start (home) or the reference (the star): no approach.
+    r.dv = (b->transfer_dv <= 0.0) ? 0
+                                   : (long)std::lround(b->transfer_dv / 50.0) * 50;
+    auto it = covered.find(b->name);
+    const size_t cov = (it != covered.end()) ? it->second.size() : 0;
+    r.discovered = (int)std::min<size_t>(100, (size_t)std::lround(100.0 * cov / total));
+    out.push_back(std::move(r));
+
+    if(b->frame == nullptr) { return; }
+    for(const Frame *child : b->frame->children) {
+        if(child == nullptr || child->body == nullptr) { continue; }
+        if(child->rotating) { continue; }   // b's own spin frame, not a moon
+        atlasWalk(sys, child->body, depth + 1, covered, total, out, seen);
+    }
+}
+}   // namespace
+
+// Build g.atlasRows from the current system + career log, and stamp the
+// science version they were built from (for the self-heal check).
+static void buildAtlasRows(Game &g) {
+    const System &sys = g.sys;
+    g.atlasRows.clear();
+    g.atlasRowsVersion = g.science.version;
+    if(sys.root == nullptr) { return; }
+
+    // Which study-slots have been covered on each body. Recovered findings
+    // only (the bank), counted per family+situation. NOTE (the limitation the
+    // caption under the table states): a body's BIOMES are NOT separate slots
+    // here -- that needs the heavy phase's max height, so a biome-rich body
+    // reads LOWER than its true surveyed fraction. The % is a floor.
+    std::map<std::string, std::set<AtlasSlot>> covered;
+    for(const Experiment &e : g.science.recovered) {
+        if(defFor(e.type) == nullptr) { continue; }   // unknown family: skip
+        covered[e.body].emplace(AtlasSlot{ e.type, (int)e.situation });
+    }
+    const size_t total = atlasTotalSlots();
+
+    std::set<const TerrainBody *> seen;   // cycle guard (issue #129)
+    atlasWalk(sys, sys.root, 0, covered, total, g.atlasRows, seen);
+}
+
+void drawResearchAtlas(Game &g) {
+    drawWin(g, W_ResearchAtlas, [&] {
+        const System &sys = g.sys;
+        if(sys.root == nullptr) {
+            ImGui::TextDisabled("No system loaded.");
+            return;
+        }
+        // Self-heal: rebuild the rows if the career log changed since they
+        // were built (a recovery while the lab was open, or a Load from it).
+        if(g.atlasRowsVersion != g.science.version) {
+            buildAtlasRows(g);
+        }
+        // What the columns mean, in the program's voice. (The ·, Δ, —, and
+        // × glyphs render in the bundled DejaVuSansMono; a --font override
+        // lacking them would show tofu.)
+        ImGui::TextDisabled(
+            "research weight · Δv to reach (from home; a moon from its planet) "
+            "· %% of the body's science found");
+        ImGui::Separator();
+        const ImGuiTableFlags flags =
+            ImGuiTableFlags_BordersInner | ImGuiTableFlags_RowBg;
+        // Fixed widths in FONT-SIZE units (not pixels) so the columns track
+        // --font-size / "Apply DPI" and never clip the cell text. Generous
+        // headroom for the widest values (e.g. "22827 m/s").
+        const float fs = ImGui::GetFontSize();
+        if(ImGui::BeginTable("##atlas", 4, flags)) {
+            ImGui::TableSetupColumn("body", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthFixed,
+                                    fs * 9.0f);
+            ImGui::TableSetupColumn("approach", ImGuiTableColumnFlags_WidthFixed,
+                                    fs * 7.5f);
+            ImGui::TableSetupColumn("found", ImGuiTableColumnFlags_WidthFixed,
+                                    fs * 5.5f);
+            ImGui::TableHeadersRow();
+            for(const AtlasRow &r : g.atlasRows) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(r.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(r.valueWord.c_str());
+                ImGui::SetItemTooltip("×%.1f of home", r.valueExact);
+                ImGui::TableNextColumn();
+                if(r.dv <= 0) { ImGui::TextDisabled("\xe2\x80\x94"); }  // "—"
+                else { ImGui::Text("%ld m/s", r.dv); }
+                ImGui::TableNextColumn();
+                ImGui::Text("%d%%", r.discovered);
+            }
+            ImGui::EndTable();
+        }
+        // The "found" column's honest limit (see buildAtlasRows): it is a
+        // floor, because the denominator (all study-situations) ignores the
+        // body's biomes AND includes situations the body can't host (no
+        // atmosphere -> no flying; the star -> no landed).
+        char foundCap[192];
+        std::snprintf(foundCap, sizeof foundCap,
+                      "found = study-situations covered of all %zu; a floor, "
+                      "because biomes aren't counted and it still counts "
+                      "situations a body can't host (no atmosphere, the star).",
+                      atlasTotalSlots());
+        ImGui::TextDisabled("%s", foundCap);
     });
 }
 

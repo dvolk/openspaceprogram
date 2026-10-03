@@ -315,6 +315,32 @@ struct LabEntry {
     std::string line2;
 };
 
+// The body's research weight (science_mult) as a plain-english tier. The
+// exact value stays available (AtlasRow::valueExact) for a tooltip. Home is
+// the 1.0 baseline; the most exotic body in a shipped system is ~3.0.
+inline const char *valueWord(double v) {
+    if(v < 1.1) { return "routine"; }
+    if(v < 1.3) { return "modest"; }
+    if(v < 1.5) { return "moderate"; }
+    if(v < 1.7) { return "notable"; }
+    if(v < 1.9) { return "significant"; }
+    if(v < 2.2) { return "substantial"; }
+    if(v < 2.6) { return "exceptional"; }
+    return "extraordinary";
+}
+
+// One pre-built System Atlas row (the lab renders these; see buildAtlasRows).
+// valueWord/valueExact = the body's research weight; dv = approach Δv rounded
+// to 50 (0 = home/the star: no approach); discovered = % of the study-situations
+// covered on this body (see buildAtlasRows for the definition + limits).
+struct AtlasRow {
+    std::string name;         // indented + "(home)" marker
+    std::string valueWord;    // "notable" etc.
+    double valueExact = 0.0;  // the raw science_mult (tooltip)
+    long dv = 0;              // approach Δv (rounded to 50), or 0
+    int discovered = 0;       // 0-100
+};
+
 // One entry per bank. A 0 calendar degrades to name-only.
 inline std::vector<LabEntry> labEntries(const std::vector<Experiment> &recovered,
                                         const Calendar &cal) {

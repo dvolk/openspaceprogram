@@ -440,6 +440,12 @@ struct Game {
     std::vector<LabEntry> labRows;
     std::size_t labRowsVersion = std::size_t(-1);   // no cache built yet
 
+    // Pre-built System Atlas rows (one per body, tree-ordered). Same
+    // self-heal: built from science.version, rebuilt on the first render if
+    // it has moved (a recovery while the lab was open).
+    std::vector<AtlasRow> atlasRows;
+    std::size_t atlasRowsVersion = std::size_t(-1);
+
     // --- the active ship's per-frame state (render.cpp writes it) ----------
     ShipView view;
 

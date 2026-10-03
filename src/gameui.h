@@ -36,7 +36,10 @@ void drawTrackingShipList(Game &g);
 
 // The Research Lab archive (Root, Research-lab-only).
 void drawResearchLab(Game &g);
-// Scene enter hook: pre-build g.labRows so the frame walk is cheap.
+// The System Atlas (Research-lab-only): the system as a tree, each body's
+// research value + approach Δv + science found.
+void drawResearchAtlas(Game &g);
+// Scene enter hook: pre-build g.labRows and g.atlasRows so the frame walk is cheap.
 void researchLabEnter(Game &g);
 
 // Draw the in-game Save/Load window. A load adopts the game's identity

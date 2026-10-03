@@ -98,10 +98,12 @@ void trackingDrawUi(Game &g) {
 // Research Lab draws no 3D: the studio clear is its whole backdrop.
 void labDraw3d(Game &) {}
 
-// Research Lab widgets: its single window (Root), then shared windows.
+// Research Lab widgets: the archive (Root) + the System Atlas, then shared
+// windows. The lab is drawn first -- the Atlas docks right of it.
 void researchLabDrawUi(Game &g) {
     setWinOpen(W_ResearchLab, true);
     drawResearchLab(g);
+    drawResearchAtlas(g);
     drawUIReadouts(g);
     drawSaveLoad(g);
 }
