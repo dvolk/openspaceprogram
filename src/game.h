@@ -223,9 +223,10 @@ struct Game {
     struct VabHooks {
         int placeMs = -1, loadMs = -1, launchMs = -1, closeMs = -1;
         int detachIdx = -1, detachMs = -1;   // --vab-detach part index + time
-        std::string loadPath;
+        int saveMs = -1;
+        std::string loadPath, savePath;
         bool placeFired = false, loadFired = false, launchFired = false,
-             closeFired = false, detachFired = false;
+             closeFired = false, detachFired = false, saveFired = false;
     };
     VabHooks vabHooks;
 

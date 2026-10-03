@@ -1182,6 +1182,7 @@ int main() {
         CHECK(bs.controllerId == "capsule_1");
         CHECK(save_ship_def(bs, rt));
         ShipDef rl = load_ship_def(rt, cat);
+        CHECK(rl.name == bs.name);   // the ship's identity survives the round trip
         BuildShip bs2 = BuildShip::fromShipDef(rl);
         CHECK(bs2.parts.size() == bs.parts.size());
         CHECK(bs2.controllerId == bs.controllerId);

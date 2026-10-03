@@ -505,6 +505,7 @@ void vabSave(Game &g, const char *name) {
         g.toast("Save FAILED: empty name");
         return;
     }
+    g.vab.build.name = stem;   // the save name IS the ship's identity
     datadir::make_dir(datadir::ships());
     const std::string out = datadir::ships() + "/" + stem + ".json";
     if(save_ship_def(g.vab.build, out.c_str())) {
@@ -664,6 +665,13 @@ void vabFireHooks(Game &g) {
        && !g.vabHooks.loadFired && ms >= g.vabHooks.loadMs) {
         g.vabHooks.loadFired = true;
         vabLoad(g, g.vabHooks.loadPath.c_str());
+    }
+    /* --vab-save: headless stand-in for the top bar's Save button. */
+    if(sceneIs(g, SceneId::Vab) && !g.vabHooks.savePath.empty()
+       && g.vabHooks.saveMs >= 0 && !g.vabHooks.saveFired
+       && ms >= g.vabHooks.saveMs) {
+        g.vabHooks.saveFired = true;
+        vabSave(g, g.vabHooks.savePath.c_str());
     }
     /* --vab-detach: headless stand-in for Del/X on a selected part. */
     if(sceneIs(g, SceneId::Vab) && g.vabHooks.detachMs >= 0

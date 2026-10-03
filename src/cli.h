@@ -53,6 +53,8 @@ struct GameArgs {
     int vab_close_ms = -1;   // --vab-close: fire vabClose (camera park/restore round trip)
     int vab_detach_idx = -1; // --vab-detach: select this build part and fire vabDetachSelected
     int vab_detach_ms = -1;  // --vab-detach-at: loop time for --vab-detach
+    std::string vab_save;   // --vab-save: save the build under this name (test hook)
+    int vab_save_ms = -1;   // --vab-save-at: loop time for --vab-save (test hook)
     std::string reload_dir; // --reload: save dir to load over the running game
     int reload_ms = -1;     // --reload-at: loop time for --reload
     int new_game_ms = -1;   // --new-game: fire Game::newGame (test hook)

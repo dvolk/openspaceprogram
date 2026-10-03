@@ -1,0 +1,15 @@
+NAME vab-save-rename
+# Save-as renames the ship's identity: the JSON "name" must follow the
+# save stem, not the loaded file's old name. The reload in the middle
+# re-reads the FILE (the bug site), so on old code the launch below
+# prints 'racer', not 'racer2'.
+ARGS --vab res/ships/racer.json
+ARGS --vab-save racer2 --vab-save-at 1500
+ARGS --vab-load racer2 --vab-load-at 2000
+ARGS --vab-launch 3000 --timeout 12
+EXPECT [vab] entered the editor (sim keeps coasting)
+EXPECT [vab] saved racer2 (4 parts)
+EXPECT [vab] loaded racer2 (4 parts)
+EXPECT [vab] launched 'racer2' (4 parts)
+FORBID GL_
+FORBID error:

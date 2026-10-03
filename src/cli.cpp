@@ -116,6 +116,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-detach-at", args.vab_detach_ms,
                    "Fire the --vab-detach hook once at this loop time in ms "
                    "(test hook; -1 = never)");
+    app.add_option("--vab-save", args.vab_save,
+                   "Save the VAB build as this ship name (vabSave) -- the "
+                   "headless stand-in for the top bar's Save (test hook; "
+                   "empty = never)");
+    app.add_option("--vab-save-at", args.vab_save_ms,
+                   "Fire the --vab-save hook once at this loop time in ms "
+                   "(test hook; -1 = never)");
     app.add_option("--reload", args.reload_dir,
                    "Load this save dir over the running game at --reload-at "
                    "(the Save/Load window's Load button, headless)");
