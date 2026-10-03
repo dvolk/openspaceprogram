@@ -3896,7 +3896,8 @@ void drawTrackingMap(Game &g) {
 // The rows are PRE-BUILT, not rebuilt per frame (issue #87): researchLabEnter
 // fills g.labRows via labEntries, and the render walks them. The render also
 // self-heals -- if g.science.version differs from g.labRowsVersion, it rebuilds
-// first (a failed Load from here stays in the scene and does change the log).
+// first (a Load that commits while this scene is open changes the log; a
+// refused one leaves the rows, and the career, untouched).
 
 // Defined with the Atlas (below); declared here so scene entry can build the
 // Atlas rows alongside the Lab's.

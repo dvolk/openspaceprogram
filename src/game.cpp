@@ -705,6 +705,18 @@ bool Game::loadFrom(const std::string &dir) {
         load_game(*this, dir);
     } catch(const std::exception &e) {
         printf("[load] refused %s: %s\n", dir.c_str(), e.what());
+        // Same-system refusal leaves the running career science intact
+        // (load_game adopts it only on the success path). A cross-system
+        // refusal is different: the switch already reset science while
+        // tearing the old game down, so report that instead.
+        if(switched) {
+            printf("[load] science reset by the system switch "
+                   "(score=%d, %zu recovered)\n",
+                   science.score, science.recovered.size());
+        } else {
+            printf("[load] science score=%d recovered=%zu (unchanged)\n",
+                   science.score, science.recovered.size());
+        }
         fflush(stdout);
         toast("Load failed: %s", e.what());
         // A switch tore down the old fleet, so a failed load leaves no game --

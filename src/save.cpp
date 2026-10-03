@@ -602,8 +602,6 @@ void load_game(Game &g, const std::string &dir) {
     if(!g.args.cli_given.exhaust_scale) {
         g.args.exhaust_scale = meta.exhaust_scale;
     }
-    // science (absent in a pre-science save: score 0, nothing recovered)
-    g.science.setFrom(meta.science_score, meta.recovered);
 
     /* Transactional: a load that throws leaves the running FLEET exactly as
        it was (the old fleet is only detached from the bodies' ship lists,
@@ -664,6 +662,11 @@ void load_game(Game &g, const std::string &dir) {
         }
         throw;
     }
+
+    // science (absent in a pre-science save: score 0, nothing recovered).
+    // Success path: a refused load must not clobber the running career
+    // score / recovered log (fleet rolls back in the catch, identity below).
+    g.science.setFrom(meta.science_score, meta.recovered);
 
     // The load committed -- adopt the game identity from the save's location,
     // here so a REFUSED load leaves the running identity untouched. A slot

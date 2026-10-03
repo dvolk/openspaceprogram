@@ -1,0 +1,14 @@
+NAME reload-refused-science
+# A refused reload must not clobber the running career science (issue #133).
+# Boot loads a save carrying score 1 / 1 recovered, then a refused reload of a
+# score-0 save (a part no longer in the catalog) must leave that science
+# untouched -- the fleet rolls back, and so must the career score + log.
+ARGS --load e2e/fixtures/save_science --time-accel 1 --timeout 8
+ARGS --reload e2e/fixtures/save_corrupt --reload-at 3000
+EXPECT Loaded game from e2e/fixtures/save_science (active: racer)
+EXPECT [load] refused e2e/fixtures/save_corrupt
+EXPECT no_such_part_in_the_catalog
+EXPECT [load] science score=1 recovered=1 (unchanged)
+FORBID Segmentation
+FORBID GL_
+FORBID error:
