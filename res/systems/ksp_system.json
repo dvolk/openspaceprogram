@@ -441,8 +441,8 @@
         "rot_ang_speed": 0.0002915709030370688,
         "axial_tilt": 0.08726646259971647
       },
-      "transfer_dv": 0.0,
-      "science_mult": 1.0
+      "transfer_dv": 1031.7,
+      "science_mult": 1.4
     },
     {
       "name": "Duna",

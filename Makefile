@@ -411,6 +411,13 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_cli
 	$(TESTDIR)/test_fmt
 
+# Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
+# invariant + committed science-field invariants on every shipped system.
+.PHONY: test-py
+test-py:
+	python3 utils/sci_phase.py
+	python3 utils/sci_dist.py --check res/systems/*.json
+
 # E2E battery (e2e/run.py). Headless via xvfb-run when no display.
 # JOBS=N overrides parallel cases (default 2).
 JOBS ?=

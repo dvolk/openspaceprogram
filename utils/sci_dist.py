@@ -8,20 +8,30 @@
 #                           home / root               0
 #                           Display + path composition (moons of moons later).
 #   science_mult     [1..3] score weight, quantized to 0.1 (half-up).
-#                           Hand-editable: the game reads this and does NOT
-#                           recompute it.
+#                           Baked at generation: the game reads this and
+#                           does NOT recompute it.
 #
 # science_mult default = lerp(1, 3, pathDv / maxPathDv) over every body, where
 # pathDv is home -> target = sum of transfer_dv along the chain from target up
 # to home (planets' transfer_dv is already the home hop, so the sum stops
 # there). The star/root has no transfer edge; it is scored at a flat 2.0.
+# Non-home bodies are floored at 1.1: a separate body never ties home.
+# Sibling hops with degenerate (near-equal SMA) Hohmann cost use the
+# co-orbital phasing term instead (utils/sci_phase.py, issue #128).
+# A body that should sit off the computed default (e.g. a trojan's mult
+# tuned above its drift dv for destination value) is an OVERRIDE in the
+# generator (gen_systems.py KSP_SCIENCE_MULT_OVERRIDES), not a post-
+# generation JSON edit.
 #
 # SMa from the mean angular rate (Kepler III), matching system.cpp.
 import math
 
+from sci_phase import (is_co_orbital, orb_w, phase_gap_rad, phasing_delta_v)
+
 G = 6.674e-11
 K_DIST_MULT_MIN = 1.0
 K_DIST_MULT_MAX = 3.0
+K_NONHOME_MULT_FLOOR = 1.1
 
 
 def hohmann_delta_v(r1, r2, mu):
@@ -89,13 +99,23 @@ def body_sma(body, parent):
     return (mu / (w * w)) ** (1.0 / 3.0) if w != 0.0 else 0.0
 
 
+def _sibling_leg_dv(home_body, home_sma, body, sma, mu_parent):
+    """Home -> sibling-planet heliocentric hop [m/s]. A Hohmann between
+    near-equal SMAs is degenerate (the phase gap never closes), so those
+    hops price the phasing drift instead (sci_phase.py, issue #128)."""
+    if is_co_orbital(home_sma, sma):
+        return phasing_delta_v(sma, orb_w(body), phase_gap_rad(home_body, body))
+    return hohmann_delta_v(home_sma, sma, mu_parent)
+
+
 def transfer_dv(node, home):
     """The approach leg [m/s]: home->planet for planets, parent->moon for moons."""
     if node is home or node.parent is None:
         return 0.0
     # Planet under the star (same parent as home): the heliocentric hop.
     if node.parent.parent is None and home.parent is node.parent:
-        return hohmann_delta_v(home.sma, node.sma, node.parent.mu)
+        return _sibling_leg_dv(home.body, home.sma, node.body, node.sma,
+                               node.parent.mu)
     # Moon (or moon-of-moon): last leg from the parent's parking orbit.
     return hohmann_delta_v(node.parent.radius, node.sma, node.parent.mu)
 
@@ -112,8 +132,8 @@ def stamp_transfer_dv(body, parent, home):
     parent_is_star = not parent.get("orbits")
     if (parent_is_star and home is not None
             and home.get("orbits") == parent.get("name")):
-        home_sma = body_sma(home, parent)
-        body["transfer_dv"] = round(hohmann_delta_v(home_sma, sma, mu), 1)
+        body["transfer_dv"] = round(
+            _sibling_leg_dv(home, body_sma(home, parent), body, sma, mu), 1)
         return
     body["transfer_dv"] = round(
         hohmann_delta_v(float(parent.get("radius") or 0.0), sma, mu), 1)
@@ -138,6 +158,7 @@ def path_dv(home, target):
 
 def stamp_science_mults(doc):
     """Set science_mult on every body (needs the full system for max path)."""
+    assert _quantize_01(K_NONHOME_MULT_FLOOR) == K_NONHOME_MULT_FLOOR
     by = build_nodes(doc["bodies"])
     home_name = doc.get("home") or ""
     home = by.get(home_name)
@@ -154,11 +175,15 @@ def stamp_science_mults(doc):
             body["transfer_dv"] = round(
                 transfer_dv(n, home) if home else 0.0, 1)
         # The star/root has no transfer edge from home; score it at a flat
-        # 2.0 (hand-editable like every other mult).
+        # 2.0 (generator-overridable like every other mult).
         if n.parent is None and n is not home:
             body["science_mult"] = 2.0
         else:
-            body["science_mult"] = score_dist_mult(dvs.get(name, 0.0), max_dv)
+            m = score_dist_mult(dvs.get(name, 0.0), max_dv)
+            # A separate body never ties home, whatever the geometry.
+            if n is not home and m < K_NONHOME_MULT_FLOOR:
+                m = K_NONHOME_MULT_FLOOR
+            body["science_mult"] = m
     return by
 
 
@@ -187,10 +212,49 @@ def annotate(doc):
     return doc
 
 
+def check_fields(doc, path):
+    """Loader/UI invariants on the COMMITTED fields (no recompute): every
+    body carries a finite science_mult > 0; non-home orbiting bodies clear
+    the floor; transfer_dv >= 0 and is 0 only for home/root (the Atlas
+    renders 0 as 'no approach'). Returns the list of violations."""
+    home = doc.get("home") or ""
+    bad = []
+    for b in doc.get("bodies", []):
+        name = b.get("name", "?")
+        m = b.get("science_mult")
+        if not isinstance(m, (int, float)) or not math.isfinite(m) or m <= 0.0:
+            bad.append("%s: science_mult %r not finite > 0" % (name, m))
+        elif b.get("orbits") and name != home and m < K_NONHOME_MULT_FLOOR:
+            bad.append("%s: non-home science_mult %r below floor %r"
+                       % (name, m, K_NONHOME_MULT_FLOOR))
+        dv = b.get("transfer_dv", 0.0)
+        if not isinstance(dv, (int, float)) or not math.isfinite(dv) or dv < 0.0:
+            bad.append("%s: transfer_dv %r not finite >= 0" % (name, dv))
+        elif dv == 0.0 and b.get("orbits") and name != home:
+            bad.append("%s: transfer_dv 0 but not home (Atlas: 'no approach')"
+                       % name)
+    return bad
+
+
 if __name__ == "__main__":
     # Preview table: sci_dist.py <system.json> [...]
+    # --check: invariants on the committed fields, no recompute, no writes.
     import json
     import sys
+    if sys.argv[1:2] == ["--check"]:
+        failed = False
+        for path in sys.argv[2:]:
+            with open(path) as f:
+                doc = json.load(f)
+            bad = check_fields(doc, path)
+            if bad:
+                failed = True
+                print("CHECK FAIL %s:" % path)
+                for line in bad:
+                    print("    %s" % line)
+            else:
+                print("CHECK OK   %s" % path)
+        sys.exit(1 if failed else 0)
     for path in sys.argv[1:]:
         with open(path) as f:
             doc = json.load(f)

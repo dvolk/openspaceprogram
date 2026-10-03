@@ -386,6 +386,16 @@ ksp = {
 stamp_system(eerbon)
 stamp_system(ksp)
 
+# science_mult exceptions: the committed JSON is generated output, so a
+# body that should sit off the computed default is overridden HERE, not by
+# editing the JSON afterwards. Shay: the co-orbital drift dv (sci_phase.py)
+# computes 1.3, but the design intent is a Duna-class interplanetary
+# destination (issue #128).
+KSP_SCIENCE_MULT_OVERRIDES = {"Shay": 1.4}
+for _name, _m in KSP_SCIENCE_MULT_OVERRIDES.items():
+    _b = next(b for b in ksp["bodies"] if b["name"] == _name)
+    _b["science_mult"] = _m
+
 def render(obj):
     import json as _json
     return _json.dumps(obj, indent=2) + "\n"
@@ -398,20 +408,17 @@ def write(obj, path):
 
 def deep_diff(a, b, path, out):
     """Value-level diff (a = committed, b = generated); numeric compare ignores float spelling.
-    science_mult / transfer_dv are hand-editable (utils/sci_dist.py) and
-    deliberately excluded so --check does not forbid that workflow."""
+    science_mult / transfer_dv are INCLUDED: the committed JSON is generated
+    output, and off-model values (e.g. Shay's science_mult) are overrides in
+    this script -- so any JSON drift here is real drift and must fail."""
     if isinstance(a, dict) and isinstance(b, dict):
         for k in a:
-            if k in ("science_mult", "transfer_dv"):
-                continue
             p = f"{path}.{k}" if path else k
             if k not in b:
                 out.append(f"{p}: in committed file, missing from generated ({a[k]!r})")
             else:
                 deep_diff(a[k], b[k], p, out)
         for k in b:
-            if k in ("science_mult", "transfer_dv"):
-                continue
             p = f"{path}.{k}" if path else k
             if k not in a:
                 out.append(f"{p}: in generated, missing from committed file ({b[k]!r})")

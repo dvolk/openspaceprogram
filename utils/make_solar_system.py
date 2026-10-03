@@ -540,7 +540,8 @@ def build_moon(m, parent_body=None, home_body=None):
                      home_body=home_body)
 
 def _comparable(doc):
-    """Copy without the hand-editable science fields (sci_dist.py)."""
+    """Copy without the derived science fields (sci_dist.py re-stamps them,
+    so they must not count as source drift here)."""
     out = dict(doc)
     out['bodies'] = [
         {k: v for k, v in b.items()
