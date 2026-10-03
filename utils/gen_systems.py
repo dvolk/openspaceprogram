@@ -7,12 +7,16 @@
 import argparse
 import math
 import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from sci_dist import stamp_system
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
 STAR_SOI = 1e18   # m; the root frame's inertial soi: the universe bound
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 def spd(period):
@@ -378,6 +382,9 @@ ksp = {
         ksp_body(*row) for row in K
     ],
 }
+# Science fields at creation (sci_dist.annotate remains for the CLI).
+stamp_system(eerbon)
+stamp_system(ksp)
 
 def render(obj):
     import json as _json
@@ -390,15 +397,21 @@ def write(obj, path):
     print("wrote", path)
 
 def deep_diff(a, b, path, out):
-    """Value-level diff (a = committed, b = generated); numeric compare ignores float spelling."""
+    """Value-level diff (a = committed, b = generated); numeric compare ignores float spelling.
+    science_mult / transfer_dv are hand-editable (utils/sci_dist.py) and
+    deliberately excluded so --check does not forbid that workflow."""
     if isinstance(a, dict) and isinstance(b, dict):
         for k in a:
+            if k in ("science_mult", "transfer_dv"):
+                continue
             p = f"{path}.{k}" if path else k
             if k not in b:
                 out.append(f"{p}: in committed file, missing from generated ({a[k]!r})")
             else:
                 deep_diff(a[k], b[k], p, out)
         for k in b:
+            if k in ("science_mult", "transfer_dv"):
+                continue
             p = f"{path}.{k}" if path else k
             if k not in a:
                 out.append(f"{p}: in generated, missing from committed file ({b[k]!r})")

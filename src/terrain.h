@@ -143,6 +143,12 @@ struct TerrainBody {
     double mu;
     double g; // [m/s^2]
     float mass;
+    /* Science distance fields (system JSON, written by utils/sci_dist.py).
+       science_mult is the score body weight (hand-editable); transfer_dv is
+       the approach leg [m/s] for display: home->planet for planets,
+       parent->moon for moons. */
+    double science_mult = 1.0;
+    double transfer_dv = 0.0;
     std::string name;
     BodyType type = BodyType::Planet;   // from the system JSON's "type"
     /* A star has no classifiable surface. Every shipped system also makes

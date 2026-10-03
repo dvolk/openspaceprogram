@@ -3,7 +3,9 @@
 mu, semimajor axis and the SOIs are derived by the loader: Kepler III for the orbit, and
 "soi_law": "hill" + the nesting lift for the spheres (src/bodylimits.h). No SOIs are emitted
 except the Sun's authored universe bound."""
-import re, math, json, os, html as htmllib
+import re, math, json, os, sys, html as htmllib
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sci_dist import stamp_science_mults, stamp_transfer_dv
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -300,7 +302,7 @@ def parse_pluto_moons_all():
     return out
 
 def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
-              has_sea=False, rings=None):
+              has_sea=False, rings=None, parent_body=None, home_body=None):
     radius_m = data['radius_m']
     mass_kg  = data['mass_kg']
     g = data.get('g')
@@ -344,6 +346,8 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
     # derived near-body SOI) covers it.
     if rings is not None:
         body.setdefault('surface', {})['rings'] = rings
+    if parent_body is not None and home_body is not None:
+        stamp_transfer_dv(body, parent_body, home_body)
     return body
 
 def rock(r, c1, c2):
@@ -506,9 +510,15 @@ def build_base():
         bodies.append(make_body(name, 'planet', 'Sun', data,
                                 surface=surface, seed=seed, has_sea=has_sea,
                                 rings=rings_by_name.get(name)))
+    # transfer_dv for a planet needs home (the heliocentric hop); stamp now
+    # that every base body exists.
+    home = next(b for b in bodies if b['name'] == 'Earth')
+    for b in bodies:
+        if b['name'] != 'Sun':
+            stamp_transfer_dv(b, sun, home)
     return bodies, parsed
 
-def build_moon(m):
+def build_moon(m, parent_body=None, home_body=None):
     """Turn a master-moon record into a game body (mass estimated if absent)."""
     name = m['name']
     radius_m = m['radius_m']
@@ -526,10 +536,23 @@ def build_moon(m):
     if name in MOON_ATMOS:
         surface['atmosphere'] = MOON_ATMOS[name]
     return make_body(name, 'moon', m['parent'], data, seed=1000 + m['idx'],
-                     surface=surface)
+                     surface=surface, parent_body=parent_body,
+                     home_body=home_body)
+
+def _comparable(doc):
+    """Copy without the hand-editable science fields (sci_dist.py)."""
+    out = dict(doc)
+    out['bodies'] = [
+        {k: v for k, v in b.items()
+         if k not in ('science_mult', 'transfer_dv')}
+        for b in doc.get('bodies', [])]
+    return out
+
 
 def emit(base_bodies, moons, pred, out_path, label, dry=False):
     bodies = list(base_bodies)
+    by = {b['name']: b for b in bodies}
+    home = by['Earth']
     n = 0
     skipped = 0
     for m in moons:
@@ -538,9 +561,11 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
         if not m['a'] or not m['period_s']:
             skipped += 1
             continue
-        bodies.append(build_moon(m))
+        bodies.append(build_moon(m, parent_body=by[m['parent']], home_body=home))
+        by[m['name']] = bodies[-1]
         n += 1
     doc = {'home': 'Earth', 'soi_law': 'hill', 'bodies': bodies}
+    stamp_science_mults(doc)
     if dry:
         return doc          # --check: the caller compares, nothing is written
     with open(out_path, 'w') as f:
@@ -609,7 +634,7 @@ def main():
             doc = emit(base_bodies, moons, pred, path, label, dry=True)
             with open(path) as f:
                 committed = json.load(f)
-            good = committed == doc
+            good = _comparable(committed) == _comparable(doc)
             print(('OK      ' if good else 'DRIFT   ') + path)
             ok = ok and good
         return 0 if ok else 1

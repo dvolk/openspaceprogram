@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -224,8 +225,13 @@ inline double situationWeight(SciSituation s) {
     return 1.0;
 }
 
-// Home body is 1.0; every other body is the `frontier` weight.
-inline constexpr double kFrontierWeight = 2.0;
+// Body weight = TerrainBody::science_mult (system JSON, hand-editable).
+// Unknown body -> 1.0 (home baseline).
+inline double bodyWeightOf(const std::map<std::string, double> &bodyMult,
+                           const std::string &body) {
+    auto it = bodyMult.find(body);
+    return (it != bodyMult.end()) ? it->second : 1.0;
+}
 
 /* scoreOf: full value on first recovery, each repeat halves it (floor 1). */
 inline int scoreOf(const Experiment &e, int prevCount, double bodyWeight) {
@@ -276,9 +282,10 @@ struct RecoverSummary {
 };
 
 /* Bank a bag of experiments. Deduped by key first so ONE observation held by
-   N kerbals banks ONCE (without this, N crew = a farming exploit). */
+   N kerbals banks ONCE (without this, N crew = a farming exploit).
+   bodyMult: body name -> science_mult (see bodyWeightOf). */
 inline RecoverSummary recoverMany(Career &c, const std::vector<Experiment> &loot,
-                                  const std::string &homeName, double frontier,
+                                  const std::map<std::string, double> &bodyMult,
                                   double now) {
     RecoverSummary out;
     std::vector<Experiment> uniq;
@@ -288,7 +295,7 @@ inline RecoverSummary recoverMany(Career &c, const std::vector<Experiment> &loot
     for(const Experiment &e0 : uniq) {
         Experiment e = e0;
         e.recovered_at = now;   // stamp the bank time on the logged entry
-        const double bw = (e.body == homeName) ? 1.0 : frontier;
+        const double bw = bodyWeightOf(bodyMult, e.body);
         const bool isNew = !holdsExperiment(c.recovered, e);
         const int g = c.recover(e, bw);
         out.gained += g;

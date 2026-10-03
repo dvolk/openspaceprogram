@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <random>
 #include <string>
 
@@ -1732,9 +1733,11 @@ void Game::recoverActive() {
         loot.insert(loot.end(), kv->parts[0]->experiments.begin(),
                     kv->parts[0]->experiments.end());
     }
-    const std::string homeName = (home != nullptr) ? home->name : "";
-    const RecoverSummary rec =
-        recoverMany(science, loot, homeName, kFrontierWeight, time);
+    std::map<std::string, double> bodyMult;
+    for(TerrainBody *b : sys.bodies) {
+        bodyMult[b->name] = b->science_mult;
+    }
+    const RecoverSummary rec = recoverMany(science, loot, bodyMult, time);
     flightSummary.scienceGained = rec.gained;
     flightSummary.repeatScience = rec.repeat;
     flightSummary.newExperiments = rec.fresh;

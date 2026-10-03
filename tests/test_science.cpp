@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <exception>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -218,7 +219,9 @@ int main() {
         m.situation = SciSituation::Landed;
         m.biome = "lowlands";
         CHECK(scoreOf(m, 0, 1.0) == 25);   // new, home, landed
-        CHECK(scoreOf(m, 0, 2.0) == 50);   // frontier body doubles it
+        CHECK(scoreOf(m, 0, 2.0) == 50);   // a science_mult of 2 doubles it
+        // 25 x 1.0 x 1.3 = 32.5 -> lround half-away = 33
+        CHECK(scoreOf(m, 0, 1.3) == 33);
         CHECK(scoreOf(m, 1, 1.0) == 12);   // repeat halves (25/2, integer)
         // a materials study is a DIFFERENT key than an observation of the
         // same place -- the two bank independently.
@@ -299,7 +302,8 @@ int main() {
         const Experiment e = obs("Kerbin", SciSituation::Landed, "lowlands");
         // Two kerbals BOTH hold the same key.
         std::vector<Experiment> loot = { e, e };
-        const RecoverSummary s = recoverMany(c, loot, "Kerbin", 2.0, 1000.0);
+        const RecoverSummary s =
+            recoverMany(c, loot, {{"Kerbin", 1.0}}, 1000.0);
         CHECK(s.gained == 10);            // 10 x 1.0 x 1.0, banked ONCE
         CHECK(s.fresh.size() == 1);
         CHECK(s.repeat == 0);
@@ -310,7 +314,8 @@ int main() {
         CHECK(c.recovered[0].kerbal.empty());           // provenance preserved
 
         // A repeat recovery of the same bag: deduped, scored down (halved).
-        const RecoverSummary s2 = recoverMany(c, loot, "Kerbin", 2.0, 2000.0);
+        const RecoverSummary s2 =
+            recoverMany(c, loot, {{"Kerbin", 1.0}}, 2000.0);
         CHECK(s2.gained == 5);            // 10 -> 5 (halved), still once
         CHECK(s2.fresh.size() == 0);
         CHECK(s2.repeat == 5);
@@ -318,9 +323,10 @@ int main() {
         CHECK(c.recovered.size() == 2);   // the repeat is its own log entry
         CHECK(countKey(c.recovered, e) == 2);
 
-        // A mixed bag: one fresh key (frontier body) + one repeat key.
+        // A mixed bag: one fresh key (far body) + one repeat key.
         const Experiment m = obs("Mun", SciSituation::LowOrbit, "midlands");
-        const RecoverSummary s3 = recoverMany(c, { m, m, e }, "Kerbin", 2.0, 3000.0);
+        const RecoverSummary s3 = recoverMany(
+            c, { m, m, e }, {{"Kerbin", 1.0}, {"Mun", 2.0}}, 3000.0);
         // fresh Mun low-orbit = 10 x 1.25 x 2.0 = 25; repeat Kerbin landed = 10/4 = 2
         CHECK(s3.gained == 27);
         CHECK(s3.fresh.size() == 1);
@@ -328,6 +334,16 @@ int main() {
         CHECK(c.score == 42);
         CHECK(c.recovered.size() == 4);   // e, e, then m and e again
         CHECK(countKey(c.recovered, m) == 1);
+    }
+
+    // --- bodyWeightOf: science_mult lookup (unknown -> 1.0) ----------------
+    {
+        const std::map<std::string, double> mult = {
+            {"Kerbin", 1.0}, {"Mun", 1.3}, {"Jool", 2.1}};
+        CHECK(bodyWeightOf(mult, "Kerbin") == 1.0);
+        CHECK(bodyWeightOf(mult, "Mun") == 1.3);
+        CHECK(bodyWeightOf(mult, "Nowhere") == 1.0);
+        CHECK(bodyWeightOf({}, "Mun") == 1.0);
     }
 
     // --- recoverMany: the biome-drop banks ONE finding per segment ---------
@@ -338,7 +354,8 @@ int main() {
         Career c;
         const Experiment hA = obs("Kerbin", SciSituation::HighOrbit, "midlands");
         const Experiment hB = obs("Kerbin", SciSituation::HighOrbit, "lowlands");
-        const RecoverSummary s = recoverMany(c, { hA, hB }, "Kerbin", 2.0, 100.0);
+        const RecoverSummary s =
+            recoverMany(c, { hA, hB }, {{"Kerbin", 1.0}}, 100.0);
         CHECK(s.gained == 15);            // 10 x 1.5 x 1.0, banked ONCE
         CHECK(s.fresh.size() == 1);
         CHECK(s.repeat == 0);
@@ -350,7 +367,8 @@ int main() {
         Career c2;
         const Experiment lA = obs("Kerbin", SciSituation::Landed, "midlands");
         const Experiment lB = obs("Kerbin", SciSituation::Landed, "lowlands");
-        const RecoverSummary s2 = recoverMany(c2, { lA, lB }, "Kerbin", 2.0, 100.0);
+        const RecoverSummary s2 =
+            recoverMany(c2, { lA, lB }, {{"Kerbin", 1.0}}, 100.0);
         CHECK(s2.gained == 20);           // 10 + 10 (two fresh keys)
         CHECK(s2.fresh.size() == 2);
         CHECK(c2.recovered.size() == 2);

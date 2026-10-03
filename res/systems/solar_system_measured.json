@@ -34,7 +34,9 @@
       "inertial": {
         "soi": 100000000000000.0,
         "orb_ang_speed": 0.0
-      }
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0
     },
     {
       "name": "Mercury",
@@ -86,7 +88,9 @@
       "rotating": {
         "rot_ang_speed": 1.2399326882596827e-06,
         "axial_tilt": 0.000593411945678072
-      }
+      },
+      "transfer_dv": 17145.8,
+      "science_mult": 1.9
     },
     {
       "name": "Venus",
@@ -152,7 +156,9 @@
       "rotating": {
         "rot_ang_speed": 2.9923691869737844e-07,
         "axial_tilt": 3.095515961337143
-      }
+      },
+      "transfer_dv": 5202.4,
+      "science_mult": 1.3
     },
     {
       "name": "Earth",
@@ -256,7 +262,9 @@
       "rotating": {
         "rot_ang_speed": 7.292106590880652e-05,
         "axial_tilt": 0.40910517666747087
-      }
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0
     },
     {
       "name": "Mars",
@@ -320,7 +328,9 @@
       "rotating": {
         "rot_ang_speed": 7.088235959185674e-05,
         "axial_tilt": 0.4396484385773716
-      }
+      },
+      "transfer_dv": 5594.2,
+      "science_mult": 1.3
     },
     {
       "name": "Jupiter",
@@ -411,7 +421,9 @@
       "rotating": {
         "rot_ang_speed": 0.00017585181380295513,
         "axial_tilt": 0.054628805587422516
-      }
+      },
+      "transfer_dv": 14436.0,
+      "science_mult": 1.8
     },
     {
       "name": "Saturn",
@@ -494,7 +506,9 @@
       "rotating": {
         "rot_ang_speed": 0.00016378840578024865,
         "axial_tilt": 0.4665265090580843
-      }
+      },
+      "transfer_dv": 15732.6,
+      "science_mult": 1.8
     },
     {
       "name": "Uranus",
@@ -551,7 +565,9 @@
       "rotating": {
         "rot_ang_speed": 0.00010123719559131843,
         "axial_tilt": 1.706408409674856
-      }
+      },
+      "transfer_dv": 15941.5,
+      "science_mult": 1.9
     },
     {
       "name": "Neptune",
@@ -608,7 +624,9 @@
       "rotating": {
         "rot_ang_speed": 0.00010833825276190748,
         "axial_tilt": 0.4942772441647941
-      }
+      },
+      "transfer_dv": 15709.0,
+      "science_mult": 1.8
     },
     {
       "name": "Pluto",
@@ -670,7 +688,9 @@
       "rotating": {
         "rot_ang_speed": 1.1385591834674098e-05,
         "axial_tilt": 2.085842989058423
-      }
+      },
+      "transfer_dv": 15501.9,
+      "science_mult": 1.8
     },
     {
       "name": "Moon",
@@ -710,7 +730,9 @@
         "orb_incl": 0.08979719001510825,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.0
-      }
+      },
+      "transfer_dv": 4019.9,
+      "science_mult": 1.2
     },
     {
       "name": "Phobos",
@@ -750,7 +772,9 @@
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.3999632297286535
-      }
+      },
+      "transfer_dv": 1333.1,
+      "science_mult": 1.4
     },
     {
       "name": "Deimos",
@@ -790,7 +814,9 @@
         "orb_incl": 0.031241393610698498,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.799926459457307
-      }
+      },
+      "transfer_dv": 1816.5,
+      "science_mult": 1.4
     },
     {
       "name": "Io",
@@ -840,7 +866,9 @@
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.9167043820063743
-      }
+      },
+      "transfer_dv": 21276.2,
+      "science_mult": 2.9
     },
     {
       "name": "Europa",
@@ -880,7 +908,9 @@
         "orb_incl": 0.008203047484373348,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.3166676117350278
-      }
+      },
+      "transfer_dv": 22492.9,
+      "science_mult": 3.0
     },
     {
       "name": "Ganymede",
@@ -920,7 +950,9 @@
         "orb_incl": 0.003141592653589793,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.716630841463681
-      }
+      },
+      "transfer_dv": 22827.1,
+      "science_mult": 3.0
     },
     {
       "name": "Callisto",
@@ -960,7 +992,9 @@
         "orb_incl": 0.0033161255787892262,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.8334087640127485
-      }
+      },
+      "transfer_dv": 22552.6,
+      "science_mult": 3.0
     },
     {
       "name": "Metis",
@@ -1000,7 +1034,9 @@
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.2333719937414
-      }
+      },
+      "transfer_dv": 10826.0,
+      "science_mult": 2.4
     },
     {
       "name": "Adrastea",
@@ -1040,7 +1076,9 @@
         "orb_incl": 0.0008726646259971648,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.3501499162904693
-      }
+      },
+      "transfer_dv": 10940.1,
+      "science_mult": 2.4
     },
     {
       "name": "Amalthea",
@@ -1080,7 +1118,9 @@
         "orb_incl": 0.0066322511575784525,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.7501131460191246
-      }
+      },
+      "transfer_dv": 15278.1,
+      "science_mult": 2.6
     },
     {
       "name": "Thebe",
@@ -1120,7 +1160,9 @@
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.150076375747776
-      }
+      },
+      "transfer_dv": 17274.5,
+      "science_mult": 2.7
     },
     {
       "name": "Leda",
@@ -1160,7 +1202,9 @@
         "orb_incl": 0.4792674125976429,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.666817528025497
-      }
+      },
+      "transfer_dv": 20437.7,
+      "science_mult": 2.9
     },
     {
       "name": "Himalia",
@@ -1200,7 +1244,9 @@
         "orb_incl": 0.4799655442984406,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.066780757754152
-      }
+      },
+      "transfer_dv": 20408.4,
+      "science_mult": 2.9
     },
     {
       "name": "Lysithea",
@@ -1240,7 +1286,9 @@
         "orb_incl": 0.4939281783143953,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.100263062309594
-      }
+      },
+      "transfer_dv": 20383.2,
+      "science_mult": 2.9
     },
     {
       "name": "Elara",
@@ -1280,7 +1328,9 @@
         "orb_incl": 0.46478117980608996,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.500226292038249
-      }
+      },
+      "transfer_dv": 20382.0,
+      "science_mult": 2.9
     },
     {
       "name": "Ananke",
@@ -1320,7 +1370,9 @@
         "orb_incl": 2.5987952562195566,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.5841583454650916
-      }
+      },
+      "transfer_dv": 19799.7,
+      "science_mult": 2.8
     },
     {
       "name": "Carme",
@@ -1360,7 +1412,9 @@
         "orb_incl": 2.8780479365386493,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.984758010626969
-      }
+      },
+      "transfer_dv": 19714.0,
+      "science_mult": 2.8
     },
     {
       "name": "Pasiphae",
@@ -1400,7 +1454,9 @@
         "orb_incl": 2.642428487519415,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.5349814674601419
-      }
+      },
+      "transfer_dv": 19679.8,
+      "science_mult": 2.8
     },
     {
       "name": "Sinope",
@@ -1440,7 +1496,9 @@
         "orb_incl": 2.7593655474030347,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.251612308923804
-      }
+      },
+      "transfer_dv": 19695.3,
+      "science_mult": 2.8
     },
     {
       "name": "Mimas",
@@ -1480,7 +1538,9 @@
         "orb_incl": 0.026703537555513242,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.718540147763356
-      }
+      },
+      "transfer_dv": 10377.1,
+      "science_mult": 2.4
     },
     {
       "name": "Enceladus",
@@ -1520,7 +1580,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.1185033774920115
-      }
+      },
+      "transfer_dv": 11537.0,
+      "science_mult": 2.5
     },
     {
       "name": "Tethys",
@@ -1560,7 +1622,9 @@
         "orb_incl": 0.03246312408709453,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.2352813000410805
-      }
+      },
+      "transfer_dv": 12286.2,
+      "science_mult": 2.5
     },
     {
       "name": "Dione",
@@ -1600,7 +1664,9 @@
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.6352445297697358
-      }
+      },
+      "transfer_dv": 12913.8,
+      "science_mult": 2.5
     },
     {
       "name": "Rhea",
@@ -1640,7 +1706,9 @@
         "orb_incl": 0.006108652381980153,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.035207759498391
-      }
+      },
+      "transfer_dv": 13427.8,
+      "science_mult": 2.6
     },
     {
       "name": "Titan",
@@ -1692,7 +1760,9 @@
         "orb_incl": 0.005759586531581287,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.15198568204746
-      }
+      },
+      "transfer_dv": 13632.0,
+      "science_mult": 2.6
     },
     {
       "name": "Hyperion",
@@ -1732,7 +1802,9 @@
         "orb_incl": 0.007504915783575617,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.551948911776115
-      }
+      },
+      "transfer_dv": 13550.8,
+      "science_mult": 2.6
     },
     {
       "name": "Iapetus",
@@ -1772,7 +1844,9 @@
         "orb_incl": 0.2569124658935653,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.668726834325156
-      }
+      },
+      "transfer_dv": 12958.2,
+      "science_mult": 2.5
     },
     {
       "name": "Pan",
@@ -1812,7 +1886,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.468653293782495
-      }
+      },
+      "transfer_dv": 8306.3,
+      "science_mult": 2.3
     },
     {
       "name": "Daphnis",
@@ -1852,7 +1928,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.585431216331564
-      }
+      },
+      "transfer_dv": 8462.9,
+      "science_mult": 2.3
     },
     {
       "name": "Atlas",
@@ -1892,7 +1970,9 @@
         "orb_incl": 0.005235987755982988,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.9853944460602193
-      }
+      },
+      "transfer_dv": 8525.7,
+      "science_mult": 2.3
     },
     {
       "name": "Prometheus",
@@ -1932,7 +2012,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.10217236860928836
-      }
+      },
+      "transfer_dv": 8611.8,
+      "science_mult": 2.3
     },
     {
       "name": "Pandora",
@@ -1972,7 +2054,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.5021355983379436
-      }
+      },
+      "transfer_dv": 8727.9,
+      "science_mult": 2.3
     },
     {
       "name": "Epimetheus",
@@ -2012,7 +2096,9 @@
         "orb_incl": 0.005934119456780721,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.902098828066542
-      }
+      },
+      "transfer_dv": 9173.1,
+      "science_mult": 2.3
     },
     {
       "name": "Janus",
@@ -2052,7 +2138,9 @@
         "orb_incl": 0.0024434609527920616,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.0188767506156111
-      }
+      },
+      "transfer_dv": 9175.0,
+      "science_mult": 2.3
     },
     {
       "name": "Calypso",
@@ -2092,7 +2180,9 @@
         "orb_incl": 0.025708699881876476,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.45232228489971504
-      }
+      },
+      "transfer_dv": 12286.2,
+      "science_mult": 2.5
     },
     {
       "name": "Telesto",
@@ -2132,7 +2222,9 @@
         "orb_incl": 0.020210912738094333,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.8522855146283703
-      }
+      },
+      "transfer_dv": 12286.2,
+      "science_mult": 2.5
     },
     {
       "name": "Helene",
@@ -2172,7 +2264,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.3690266669060946
-      }
+      },
+      "transfer_dv": 12913.8,
+      "science_mult": 2.5
     },
     {
       "name": "Phoebe",
@@ -2212,7 +2306,9 @@
         "orb_incl": 3.0508355324860883,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.6856942786411295
-      }
+      },
+      "transfer_dv": 12041.7,
+      "science_mult": 2.5
     },
     {
       "name": "Miranda",
@@ -2252,7 +2348,9 @@
         "orb_incl": 0.0757472895365539,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.8535583854948143
-      }
+      },
+      "transfer_dv": 7297.3,
+      "science_mult": 2.2
     },
     {
       "name": "Ariel",
@@ -2292,7 +2390,9 @@
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.2535216152234696
-      }
+      },
+      "transfer_dv": 7809.2,
+      "science_mult": 2.3
     },
     {
       "name": "Umbriel",
@@ -2332,7 +2432,9 @@
         "orb_incl": 0.0022689280275926286,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.653484844952125
-      }
+      },
+      "transfer_dv": 8028.8,
+      "science_mult": 2.3
     },
     {
       "name": "Titania",
@@ -2372,7 +2474,9 @@
         "orb_incl": 0.0013962634015954637,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.770262767501194
-      }
+      },
+      "transfer_dv": 8101.3,
+      "science_mult": 2.3
     },
     {
       "name": "Oberon",
@@ -2412,7 +2516,9 @@
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.170225997229849
-      }
+      },
+      "transfer_dv": 8052.3,
+      "science_mult": 2.3
     },
     {
       "name": "Naiad",
@@ -2452,7 +2558,9 @@
         "orb_incl": 0.08272860654453122,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.220675746101243
-      }
+      },
+      "transfer_dv": 4624.6,
+      "science_mult": 2.1
     },
     {
       "name": "Thalassa",
@@ -2492,7 +2600,9 @@
         "orb_incl": 0.003665191429188092,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.337453668650312
-      }
+      },
+      "transfer_dv": 4825.6,
+      "science_mult": 2.1
     },
     {
       "name": "Despina",
@@ -2532,7 +2642,9 @@
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.7374168983789673
-      }
+      },
+      "transfer_dv": 5072.4,
+      "science_mult": 2.1
     },
     {
       "name": "Galatea",
@@ -2572,7 +2684,9 @@
         "orb_incl": 0.0008726646259971648,
         "lon_asc_node": 0.0,
         "true_anomaly0": 6.137380128107623
-      }
+      },
+      "transfer_dv": 5851.5,
+      "science_mult": 2.2
     },
     {
       "name": "Larissa",
@@ -2612,7 +2726,9 @@
         "orb_incl": 0.003490658503988659,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.2541580506566916
-      }
+      },
+      "transfer_dv": 6545.1,
+      "science_mult": 2.2
     },
     {
       "name": "Hippocamp",
@@ -2652,7 +2768,9 @@
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.654121280385404
-      }
+      },
+      "transfer_dv": 7647.0,
+      "science_mult": 2.3
     },
     {
       "name": "Proteus",
@@ -2692,7 +2810,9 @@
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
         "true_anomaly0": 0.7708992029344728
-      }
+      },
+      "transfer_dv": 7903.1,
+      "science_mult": 2.3
     },
     {
       "name": "Triton",
@@ -2742,7 +2862,9 @@
         "orb_incl": 2.746188311550478,
         "lon_asc_node": 0.0,
         "true_anomaly0": 3.170862432663128
-      }
+      },
+      "transfer_dv": 8931.7,
+      "science_mult": 2.3
     },
     {
       "name": "Nereid",
@@ -2782,7 +2904,9 @@
         "orb_incl": 0.12618730491919003,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.570825662391783
-      }
+      },
+      "transfer_dv": 7857.2,
+      "science_mult": 2.3
     },
     {
       "name": "Halimede",
@@ -2822,7 +2946,9 @@
         "orb_incl": 2.340486526924396,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.6876035849408524
-      }
+      },
+      "transfer_dv": 7490.6,
+      "science_mult": 2.2
     },
     {
       "name": "Sao",
@@ -2862,7 +2988,9 @@
         "orb_incl": 0.8464846872172498,
         "lon_asc_node": 0.0,
         "true_anomaly0": 4.087566814669508
-      }
+      },
+      "transfer_dv": 7416.6,
+      "science_mult": 2.2
     },
     {
       "name": "Laomedeia",
@@ -2902,7 +3030,9 @@
         "orb_incl": 0.6056292504420324,
         "lon_asc_node": 0.0,
         "true_anomaly0": 2.604307966947232
-      }
+      },
+      "transfer_dv": 7403.5,
+      "science_mult": 2.2
     },
     {
       "name": "Psamathe",
@@ -2942,7 +3072,9 @@
         "orb_incl": 2.398082392240209,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.004271196675887
-      }
+      },
+      "transfer_dv": 7262.1,
+      "science_mult": 2.2
     },
     {
       "name": "Neso",
@@ -2982,7 +3114,9 @@
         "orb_incl": 2.314306588144481,
         "lon_asc_node": 0.0,
         "true_anomaly0": 1.1210491192249563
-      }
+      },
+      "transfer_dv": 7258.9,
+      "science_mult": 2.2
     },
     {
       "name": "Charon",
@@ -3022,7 +3156,9 @@
         "orb_incl": 8.726646259971648e-07,
         "lon_asc_node": 0.0,
         "true_anomaly0": 5.920975578682153
-      }
+      },
+      "transfer_dv": 458.8,
+      "science_mult": 1.9
     }
   ]
 }

@@ -76,6 +76,19 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         body->mass         = (float)mass;
         body->g            = bv.value("g", 9.81);
         body->mu           = G * mass;
+        // science_mult is required and hand-editable (utils/sci_dist.py
+        // writes it). Missing / non-finite / non-positive is a data bug:
+        // scoring it as 1.0 would silently under-value the body.
+        if(!bv.contains("science_mult") || !bv["science_mult"].is_number()) {
+            throw std::runtime_error("system: '" + body->name
+                                     + "': missing numeric \"science_mult\"");
+        }
+        body->science_mult = bv["science_mult"].get<double>();
+        if(!(body->science_mult > 0.0) || !std::isfinite(body->science_mult)) {
+            throw std::runtime_error("system: '" + body->name
+                                     + "': science_mult must be finite and > 0");
+        }
+        body->transfer_dv = bv.value("transfer_dv", 0.0);
         body->seed         = bv.value("seed", 0.0);
 
         // Legacy flat fields act as defaults for the surface parameters.

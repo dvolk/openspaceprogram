@@ -19,7 +19,9 @@
           0
         ],
         "orb_ang_speed": 0.0
-      }
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0
     },
     {
       "name": "Eerbon",
@@ -54,7 +56,9 @@
       "rotating": {
         "rot_ang_speed": 0.0002915709030370688,
         "axial_tilt": 0.40840704496667307
-      }
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0
     },
     {
       "name": "Moon",
@@ -78,7 +82,9 @@
       "rotating": {
         "rot_ang_speed": 4.5207852185832584e-05,
         "axial_tilt": 0.11693705988362008
-      }
+      },
+      "transfer_dv": 1297.3,
+      "science_mult": 3.0
     }
   ]
 }
