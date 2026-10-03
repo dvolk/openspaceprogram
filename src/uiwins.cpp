@@ -231,18 +231,20 @@ const WinDef kWins[W_Count] = {
     [W_ResearchLab] = {
         .name = "Research Lab", .label = "Research Lab",
         // Root: the lab IS this window (forced open; no bulk op may close
-        // it). initial_size gives the archive list room to scroll.
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(545.0f, 520.0f),
+        // it). Top-left corner; initial_size gives the archive list room to
+        // scroll. The System Atlas (below) matches this width.
+        .opts = { .slot = ui::Slot::TopLeft, .initial_size = ImVec2(545.0f, 520.0f),
                   .default_open = true },
         .role = WinRole::Root, .inList = false,
     },
     [W_ResearchAtlas] = {
         .name = "System Atlas", .label = "System Atlas",
-        // The system as a tree (star -> planets -> moons), each body's
-        // research weight + approach Δv + science found. Docked right of the
-        // lab; closable and draggable, so a small screen can move it aside.
-        .opts = { .slot = ui::Slot::Center, .right_of = "Research Lab",
-                  .initial_size = ImVec2(470.0f, 520.0f),
+        // The system as a tree (star -> planets -> moons); click a body for
+        // its research weight + approach Δv + science found. Docked right of
+        // the lab at the SAME width; closable and draggable, so a small
+        // screen can move it aside.
+        .opts = { .slot = ui::Slot::TopLeft, .right_of = "Research Lab",
+                  .initial_size = ImVec2(545.0f, 520.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },

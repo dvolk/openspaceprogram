@@ -333,8 +333,11 @@ inline const char *valueWord(double v) {
 // valueWord/valueExact = the body's research weight; dv = approach Δv rounded
 // to 50 (0 = home/the star: no approach); discovered = % of the study-situations
 // covered on this body (see buildAtlasRows for the definition + limits).
+// rawName is the body's plain name (the selection key); name is the indented
+// display string.
 struct AtlasRow {
-    std::string name;         // indented + "(home)" marker
+    std::string rawName;      // the body's plain name (selection key)
+    std::string name;         // indented + "(home)" marker (display)
     std::string valueWord;    // "notable" etc.
     double valueExact = 0.0;  // the raw science_mult (tooltip)
     long dv = 0;              // approach Δv (rounded to 50), or 0

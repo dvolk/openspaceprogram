@@ -4001,6 +4001,7 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
                std::set<const TerrainBody *> &seen) {
     if(!seen.insert(b).second) { return; }   // already shown: stop the cycle
     AtlasRow r;
+    r.rawName = b->name;   // the plain name, for the detail-pane selection key
     // Indent: a fixed 3 spaces per level (plain ASCII, reads as a tree
     // without relying on box-drawing glyphs, fine in any font).
     std::string name;
@@ -4063,54 +4064,89 @@ void drawResearchAtlas(Game &g) {
         if(g.atlasRowsVersion != g.science.version) {
             buildAtlasRows(g);
         }
-        // What the columns mean, in the program's voice. (The ·, Δ, —, and
-        // × glyphs render in the bundled DejaVuSansMono; a --font override
-        // lacking them would show tofu.)
-        ImGui::TextDisabled(
-            "research weight · Δv to reach (from home; a moon from its planet) "
-            "· %% of the body's science found");
-        ImGui::Separator();
-        const ImGuiTableFlags flags =
-            ImGuiTableFlags_BordersInner | ImGuiTableFlags_RowBg;
-        // Fixed widths in FONT-SIZE units (not pixels) so the columns track
-        // --font-size / "Apply DPI" and never clip the cell text. Generous
-        // headroom for the widest values (e.g. "22827 m/s").
-        const float fs = ImGui::GetFontSize();
-        if(ImGui::BeginTable("##atlas", 4, flags)) {
-            ImGui::TableSetupColumn("body", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthFixed,
-                                    fs * 9.0f);
-            ImGui::TableSetupColumn("approach", ImGuiTableColumnFlags_WidthFixed,
-                                    fs * 7.5f);
-            ImGui::TableSetupColumn("found", ImGuiTableColumnFlags_WidthFixed,
-                                    fs * 5.5f);
-            ImGui::TableHeadersRow();
+        if(g.atlasRows.empty()) {
+            ImGui::TextDisabled("No bodies in this system.");
+            return;
+        }
+
+        // Selection = the raw body name (a string, not an index, so it
+        // survives the row set being rebuilt or the system changing). Default
+        // to home, else the first body; keep it while it stays valid.
+        static std::string selected;
+        auto findRow = [&](const std::string &n) -> const AtlasRow * {
             for(const AtlasRow &r : g.atlasRows) {
+                if(r.rawName == n) { return &r; }
+            }
+            return nullptr;
+        };
+        if(findRow(selected) == nullptr) {
+            const AtlasRow *home = sys.home ? findRow(sys.home->name) : nullptr;
+            selected = (home != nullptr) ? home->rawName
+                                         : g.atlasRows.front().rawName;
+        }
+
+        // The ·, Δ, ×, — glyphs render in the bundled DejaVuSansMono; a --font
+        // override lacking them would show tofu.
+        ImGui::TextDisabled(
+            "select a body to see its research weight, approach Δv, and "
+            "science found");
+        ImGui::Separator();
+
+        // Split the window: the tree list on the left, the selected body's
+        // dossier on the right. Two side-by-side children (not a table -- a
+        // table cell can't fill the height independently); each scrolls.
+        // The list is the narrow 1/3; the dossier gets the rest.
+        const float availW = ImGui::GetContentRegionAvail().x;
+        const float listW =
+            std::min(ImGui::GetFontSize() * 16.0f, availW * 0.30f);
+        ImGui::BeginChild("##atlasList", ImVec2(listW, 0.0f), false);
+        for(const AtlasRow &r : g.atlasRows) {
+            const bool sel = (r.rawName == selected);
+            if(ImGui::Selectable(r.name.c_str(), sel)) {
+                selected = r.rawName;
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
+
+        ImGui::BeginChild("##atlasDetail", ImVec2(0.0f, 0.0f), false);
+        const AtlasRow *row = findRow(selected);
+        if(row == nullptr) {
+            ImGui::TextDisabled("(not in this system)");
+        } else {
+            ImGui::Text("%s", row->rawName.c_str());
+            ImGui::Separator();
+            if(ImGui::BeginTable("##atlasDetailRows", 2,
+                                 ImGuiTableFlags_BordersInner)) {
+                ImGui::TableSetupColumn("label",
+                                        ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("value",
+                                        ImGuiTableColumnFlags_WidthStretch);
+                // research weight (the exact × is a tooltip on the word)
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(r.name.c_str());
+                ImGui::TextUnformatted("research weight");
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(r.valueWord.c_str());
-                ImGui::SetItemTooltip("×%.1f of home", r.valueExact);
+                ImGui::TextUnformatted(row->valueWord.c_str());
+                ImGui::SetItemTooltip("×%.1f of home", row->valueExact);
+                // approach Δv (0 = home / the star: no approach)
+                ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                if(r.dv <= 0) { ImGui::TextDisabled("\xe2\x80\x94"); }  // "—"
-                else { ImGui::Text("%ld m/s", r.dv); }
+                ImGui::TextUnformatted("approach Δv");
                 ImGui::TableNextColumn();
-                ImGui::Text("%d%%", r.discovered);
+                if(row->dv <= 0) { ImGui::TextDisabled("\xe2\x80\x94"); }  // "—"
+                else { ImGui::Text("%ld m/s", row->dv); }
+                // science found (% of the body's study-situations covered)
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted("science found");
+                ImGui::TableNextColumn();
+                ImGui::Text("%d%%", row->discovered);
+                ImGui::EndTable();
             }
-            ImGui::EndTable();
         }
-        // The "found" column's honest limit (see buildAtlasRows): it is a
-        // floor, because the denominator (all study-situations) ignores the
-        // body's biomes AND includes situations the body can't host (no
-        // atmosphere -> no flying; the star -> no landed).
-        char foundCap[192];
-        std::snprintf(foundCap, sizeof foundCap,
-                      "found = study-situations covered of all %zu; a floor, "
-                      "because biomes aren't counted and it still counts "
-                      "situations a body can't host (no atmosphere, the star).",
-                      atlasTotalSlots());
-        ImGui::TextDisabled("%s", foundCap);
+        ImGui::EndChild();
     });
 }
 
