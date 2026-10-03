@@ -1,0 +1,14 @@
+NAME reload-refused-shipless
+# A refused SAME-SYSTEM load on a shipless hub leaves the old game (and its
+# hub scene) intact -- it must NOT dump to the title front door. (A refused
+# cross-system load already switched systems, so it does go to the title: 90.)
+ARGS --system res/systems/ksp_system.json --new-game 1000 --timeout 8
+ARGS --reload e2e/fixtures/save_corrupt --reload-at 3000
+EXPECT [game] new game: Space Center, no ship
+EXPECT [load] refused e2e/fixtures/save_corrupt
+EXPECT no_such_part_in_the_catalog
+FORBID [scene] spacecenter -> title
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 120

@@ -558,9 +558,11 @@ struct Game {
        does (main assigns Game::ship directly; newGame uses select_ship).
        --load skips all of this (a save records live-or-railed state). */
     void settleFleet(Vehicle *active);
-    /* Load a save over the running game, then enter Flight or Title. False if
-       the load was refused (running game untouched). Shared by the Save/Load
-       window and the --reload hook. */
+    /* Load a save over the running game, then enter Flight (a ship) or the
+       Space Center hub (shipless). False if refused: a same-system refusal
+       leaves the running game and its scene untouched; a cross-system one
+       already switched systems, so it lands on the title. Shared by the
+       Save/Load window and the --reload hook. */
     bool loadFrom(const std::string &dir);
     // Quicksave (F5): save into the game dir's next quicksave-NN pool slot.
     void quicksave();

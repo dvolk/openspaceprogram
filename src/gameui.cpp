@@ -256,9 +256,9 @@ static void draw_telemetry_cell(Game &g, int idx) {
 
 /* The flight windows below assume there IS an active vessel, and they are
    right to: Flight is only the live scene when there is one. A shipless boot
-   or load lands on the title screen, remove_ship refuses the last vessel,
-   and LAUNCH / New Game create one before enterFlight. The per-window "No
-   active ship." guards went with the state they covered. */
+   lands on the title and a shipless load on the Space Center hub; remove_ship
+   refuses the last vessel; LAUNCH / New Game create one before enterFlight.
+   The per-window "No active ship." guards went with the state they covered. */
 void drawUIReadouts(Game &g) {
     // The window bodies' locals are Game members (aliased so the bodies
     // read the same).

@@ -1,0 +1,12 @@
+NAME boot-load-shipless-cross
+# A shipless save from a DIFFERENT system: the switch tears down the old
+# fleet, then the shipless load lands on the hub (title -> spacecenter), not
+# the title front door.
+ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_shipless_solar --time-accel 1
+ARGS --timeout 8
+EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
+EXPECT Loaded game from e2e/fixtures/save_shipless_solar (active: (none))
+EXPECT [scene] title -> spacecenter (enterSpaceCenter)
+FORBID Segmentation
+FORBID GL_
+LIMIT 120

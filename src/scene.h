@@ -20,7 +20,7 @@ enum class SceneId : int {
     // Floor is Title, SpaceCenter (new game, no ship) or Flight; the editor /
     // hub are excursions pushed on top.
     Title,
-    Flight,   // active vessel is the invariant (see enterTitle for shipless)
+    Flight,   // active vessel is the invariant (a shipless game is on SpaceCenter)
     Vab,
     SpaceCenter,
     TrackingStation,
@@ -87,10 +87,12 @@ void popScene(Game &g);
 // Collapse the stack to [Flight], discarding parked cameras -- a launch or a
 // load established a live flight; nothing meaningful to pop back to.
 void enterFlight(Game &g);
-// Collapse to [Title] -- the shipless state. Keeps Flight's active-vessel
-// invariant true.
+// Collapse to [Title] -- the no-game front door (bare boot, an explicit quit,
+// a refused load that already switched systems). A shipless GAME sits on
+// SpaceCenter, not here.
 void enterTitle(Game &g);
-// Collapse to [SpaceCenter] -- the floor of a NEW game (no ship yet).
+// Collapse to [SpaceCenter] -- the floor of a game with no active vessel:
+// a new game (no ship yet) or a recovered / shipless fleet.
 void enterSpaceCenter(Game &g);
 // "Go to" a scene: pop down if already on the stack, else push (the 1/2/3/4
 // shortcuts). Unlike enterFlight, does not collapse.

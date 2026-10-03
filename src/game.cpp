@@ -699,18 +699,18 @@ bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
 }
 
 bool Game::loadFrom(const std::string &dir) {
-    if(!ensureSystemForSave(dir)) { return false; }
+    bool switched = false;
+    if(!ensureSystemForSave(dir, &switched)) { return false; }
     try {
         load_game(*this, dir);
     } catch(const std::exception &e) {
         printf("[load] refused %s: %s\n", dir.c_str(), e.what());
         fflush(stdout);
         toast("Load failed: %s", e.what());
-        // If the switch above already ran, the old fleet is GONE -- a failed
-        // load_game then leaves no vessel and the user is on a different
-        // system with no game. Route to the title so there is no Flight
-        // scene with a null ship.
-        if(ship == nullptr) { enterTitle(*this); }
+        // A switch tore down the old fleet, so a failed load leaves no game --
+        // the front door is the only floor. No switch means the old fleet and
+        // its scene (flight or hub) are still intact: stay where you were.
+        if(switched) { enterTitle(*this); }
         return false;
     }
     // A load is a fresh game: the thrust latch is per-active-ship and is not
