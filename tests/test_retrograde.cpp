@@ -406,9 +406,12 @@ int main() {
     TerrainBody *pluto = sys.find("Pluto");
     check(charon && pluto, "Charon and Pluto present in solar_system.json");
     if(charon && pluto) {
-        check(glm::dot(orbit_pole(charon->frame), spin_pole(pluto))
-              > std::cos(1.0 * PI / 180.0),
-              "Charon's orbital plane == Pluto's equator (#147)");
+        // Exact pins against the AUTHORED orb_incl (a loose threshold
+        // would pass a loader that silently dropped the inclination).
+        const double ic = authored(j, "Charon", "inertial", "orb_incl");
+        check(std::fabs(std::acos(glm::dot(orbit_pole(charon->frame),
+                                          spin_pole(pluto))) - ic) < 1e-6,
+              "Charon's plane sits at its authored incl from Pluto's equator (#147)");
         // Pluto's pole is now REAL (WGCCRE Table 3; seeded pre-#147):
         // the universe-frame pole must match (alpha0, delta0) pushed
         // through the ecliptic -> rail embedding (rail = (x_ecl, z_ecl,
@@ -439,38 +442,62 @@ int main() {
         check(glm::dot(clon0, -to_charon) > std::cos(1.0 * PI / 180.0),
               "Charon's lon 0 faces Pluto (sub-Pluto meridian, #144)");
     }
-    // Regular moons of tilted parents ride the equator...
-    TerrainBody *io = sys.find("Io");
-    TerrainBody *jupiter = sys.find("Jupiter");
-    check(io && jupiter, "Io and Jupiter present in solar_system.json");
-    if(io && jupiter) {
-        check(glm::dot(orbit_pole(io->frame), spin_pole(jupiter))
-              > std::cos(1.0 * PI / 180.0),
-              "Io's orbital plane == Jupiter's equator (#147)");
+    // Regular moons of tilted parents ride the equator, each at its
+    // authored incl (exact pins, as above).
+    struct EqPair { const char *moon, *parent; };
+    for(EqPair pr : {EqPair{"Io", "Jupiter"}, EqPair{"Phobos", "Mars"},
+                     EqPair{"Titan", "Saturn"}, EqPair{"Titania", "Uranus"}}) {
+        TerrainBody *m = sys.find(pr.moon);
+        TerrainBody *p = sys.find(pr.parent);
+        check(m && p, (std::string(pr.moon) + " and " + pr.parent
+                       + " present in solar_system.json").c_str());
+        if(m && p) {
+            const double incl = authored(j, pr.moon, "inertial", "orb_incl");
+            check(std::fabs(std::acos(glm::dot(orbit_pole(m->frame),
+                                              spin_pole(p))) - incl) < 1e-6,
+                  (std::string(pr.moon) + "'s plane sits at its authored incl from "
+                   + pr.parent + "'s equator (#147)").c_str());
+        }
     }
-    TerrainBody *phobos = sys.find("Phobos");
-    TerrainBody *mars = sys.find("Mars");
-    check(phobos && mars, "Phobos and Mars present in solar_system.json");
-    if(phobos && mars) {
-        check(glm::dot(orbit_pole(phobos->frame), spin_pole(mars))
-              > std::cos(3.0 * PI / 180.0),
-              "Phobos' orbital plane == Mars' equator (1.1 deg incl, #147)");
-    }
-    // ...and the ecliptic-referred rows must NOT have moved: the Moon
-    // stays near the ECLIPTIC (5.1 deg), far from Earth's tilted pole;
-    // Triton (157.3 deg to the ecliptic) stays far from Neptune's pole.
+    // ...and the ecliptic-referred rows must NOT have moved: each stays
+    // at its authored incl from the PARENT'S ORBITAL pole (the old
+    // reference), and far from the parent's tilted spin pole.
     if(moon && earth) {
-        check(glm::dot(orbit_pole(moon->frame), orbit_pole(earth->frame))
-              > std::cos(6.0 * PI / 180.0),
-              "Moon still rides the ecliptic band (incl_ref orbit, #147)");
+        const double im = authored(j, "Moon", "inertial", "orb_incl");
+        check(std::fabs(std::acos(glm::dot(orbit_pole(moon->frame),
+                                          orbit_pole(earth->frame))) - im) < 1e-6,
+              "Moon still rides the ecliptic band at its authored incl (incl_ref orbit, #147)");
         check(glm::dot(orbit_pole(moon->frame), spin_pole(earth))
               < std::cos(15.0 * PI / 180.0),
               "Moon's pole is NOT Earth's pole (not equator-referred, #147)");
     }
     if(triton && neptune) {
-        check(glm::dot(orbit_pole(triton->frame), spin_pole(neptune))
-              < std::cos(45.0 * PI / 180.0),
-              "Triton stays ecliptic-referred (irregular, #147)");
+        const double it = authored(j, "Triton", "inertial", "orb_incl");
+        check(std::fabs(std::acos(glm::dot(orbit_pole(triton->frame),
+                                          orbit_pole(neptune->frame))) - it) < 1e-6,
+              "Triton stays ecliptic-referred at its authored incl (irregular, #147)");
+    }
+    // lon_asc_node under incl_ref=equator is an azimuth IN THE EQUATOR
+    // PLANE (no shipped moon has a nonzero node, so pin it synthetically):
+    // pulling the node line back through the parent's equator frame must
+    // read the authored angle, and the incl must sit off the EQUATOR pole.
+    {
+        const double node = 0.75;
+        with_loaded(mutated(j, "Io", "inertial", "lon_asc_node", node),
+                    "equator_node", [&](System &loaded) {
+            Frame *iof = loaded.find("Io")->frame;
+            Frame *peq = loaded.find("Jupiter")->rot_frame;
+            const glm::dvec3 n = glm::transpose(peq->equator_orient)
+                                 * (iof->orient * glm::dvec3(1.0, 0.0, 0.0));
+            check(std::fabs(azimuth(n) - node) < 1e-9,
+                  "equator-referred lon_asc_node reads as an azimuth in the "
+                  "parent's equator plane (#147)");
+            const double ang = std::acos(glm::dot(
+                glm::normalize(iof->orient * glm::dvec3(0.0, 1.0, 0.0)),
+                glm::normalize(peq->equator_orient * glm::dvec3(0.0, 1.0, 0.0))));
+            check(std::fabs(ang - authored(j, "Io", "inertial", "orb_incl")) < 1e-9,
+                  "equator-referred orb_incl measures off the equator pole (#147)");
+        });
     }
     // Control: OMITTED incl_ref (the default "orbit" path) puts Charon
     // back in Pluto's ORBITAL plane -- 119.5 deg of obliquity away from

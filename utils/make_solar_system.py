@@ -740,8 +740,9 @@ def build_moon(m, parent_body=None, home_body=None):
     # Same policy as parse_planet: positive rate, sense in the inclination.
     assert not m['period_s'] or m['period_s'] > 0.0, name + ': orbital period must be positive'
     w = TWO_PI / m['period_s'] if m['period_s'] else 0.0
-    # orientation (raan/omega) isn't in the fact sheets; spread epoch anomaly
-    nu0 = (m['idx'] * GOLDEN) % TWO_PI
+    # orientation (raan/omega) isn't in the fact sheets; epoch anomaly
+    # spread stashed by main()'s add() (the Pluto/Charon lock reads it too)
+    nu0 = m['nu0']
     # SOIs are derived by the loader (soi_law hill + the nesting lift, which
     # is what makes the tiniest moons landable).
     # #144: every regular moon is tidally locked (the fact sheets' rotation
@@ -828,6 +829,10 @@ def main():
     def add(*ms):
         for m in ms:
             m['idx'] = len(moons)
+            # Epoch anomaly spread (fact sheets carry no moon raan/omega);
+            # stashed so main()'s Pluto/Charon lock and build_moon cannot
+            # desync on the formula.
+            m['nu0'] = (m['idx'] * GOLDEN) % TWO_PI
             moons.append(m)
 
     add(dict(parse_earth_moon(), parent='Earth'))
@@ -850,30 +855,39 @@ def main():
     # first and irregular after -- uraniansatfact spells the boundary out
     # ("Satellites from Francisco out referenced to ecliptic plane instead
     # of equator"), and the values agree (Io 0.04 deg vs Phoebe 174.8 deg).
-    # The first irregular name marks where the ecliptic reference starts.
-    # Earth's Moon says "Inclination to ecliptic" outright; Mars' and
-    # Pluto's moons are all regular (Charon's row says "inclination to
-    # Pluto"). Triton is irregular (157.3 deg to the ecliptic) even though
-    # it is big and synchronous.
-    ECLIPTIC_REF_FROM = {'Earth': None, 'Jupiter': 'Themisto',
-                         'Saturn': 'Kiviuq', 'Uranus': 'Francisco',
-                         'Neptune': 'Triton'}
-    past = set()
+    # Per parent, the cut index: '*' before the first row (Earth's Moon
+    # says "Inclination to ecliptic" outright), '' after the last (Mars
+    # and Pluto are all regular; Charon's row says "inclination to
+    # Pluto"), else the first irregular name. Triton is irregular (157.3
+    # deg to the ecliptic) even though it is big and synchronous.
+    ECLIPTIC_REF_FROM = {'Earth': '*', 'Mars': '', 'Pluto': '',
+                         'Jupiter': 'Themisto', 'Saturn': 'Kiviuq',
+                         'Uranus': 'Francisco', 'Neptune': 'Triton'}
+    by_parent = {}
     for m in moons:
-        p = m['parent']
-        if p not in ECLIPTIC_REF_FROM:
-            m['incl_ref'] = 'equator'
-            continue
-        b = ECLIPTIC_REF_FROM[p]
-        if b is None:
-            m['incl_ref'] = 'orbit'
-            continue
-        if m['name'] == b:
-            past.add(p)
-        m['incl_ref'] = 'orbit' if p in past else 'equator'
+        by_parent.setdefault(m['parent'], []).append(m)
+    assert set(by_parent) == set(ECLIPTIC_REF_FROM), \
+        'moon parents drifted from ECLIPTIC_REF_FROM: %s' % \
+        sorted(set(by_parent) ^ set(ECLIPTIC_REF_FROM))
     for p, b in ECLIPTIC_REF_FROM.items():
-        assert b is None or p in past, \
-            '%s: sheet lost the irregular boundary %r (table order changed?)' % (p, b)
+        ms = by_parent[p]
+        names = [m['name'] for m in ms]
+        if b == '*':
+            cut = 0
+        elif b == '':
+            cut = len(ms)
+        else:
+            assert b in names, \
+                '%s: irregular boundary %r missing from the sheet' % (p, b)
+            cut = names.index(b)
+            # A boundary at index 0 means the table reordered (regulars
+            # first is the convention the cut relies on); Triton-first
+            # Neptunian tables are common in the wild.
+            assert cut > 0, \
+                '%s: boundary %r is first in table order (regulars no ' \
+                'longer precede irregulars?)' % (p, b)
+        for k, m in enumerate(ms):
+            m['incl_ref'] = 'orbit' if k >= cut else 'equator'
 
     n_named = sum(1 for m in moons if m['named'])
     n_meas  = sum(1 for m in moons if m['measured'])
@@ -893,7 +907,7 @@ def main():
     # synthetic golden-angle spread, not the real ephemeris.
     charon = next(m for m in moons if m['name'] == 'Charon')
     pluto = next(b for b in base_bodies if b['name'] == 'Pluto')
-    pluto['rotating']['spin_phase0'] = (charon['idx'] * GOLDEN) % TWO_PI
+    pluto['rotating']['spin_phase0'] = charon['nu0']
 
     core = {'Moon', 'Phobos', 'Deimos', 'Io', 'Europa', 'Ganymede',
             'Callisto', 'Mimas', 'Enceladus', 'Tethys', 'Dione', 'Rhea',

@@ -2,6 +2,7 @@
 #include "system.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <numbers>
 #include <cstdio>
@@ -65,6 +66,16 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         return glm::dmat3(glm::dvec3(c, 0.0, s),
                           glm::dvec3(0.0, 1.0, 0.0),
                           glm::dvec3(-s, 0.0, c));
+    };
+
+    // railAz(raan) * R_X(incl): the orbital-plane orientation from the
+    // authored pair. Used by pass 1 (orbit-referred) and pass 2
+    // (equator-referred, #147) -- one spelling, no duplicated literal.
+    auto planeOrient = [&railAz](double incl, double raan) {
+        const double ci = std::cos(incl), si = std::sin(incl);
+        return railAz(raan) * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
+                                         glm::dvec3(0.0, ci, si),
+                                         glm::dvec3(0.0, -si, ci));
     };
 
     // --- pass 1: create every body and its frames --------------------------
@@ -298,7 +309,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // (default): the parent's orbital plane, composed here.
             // "equator": the parent's equator (the fact sheets' convention
             // for regular moons) -- composed in pass 2, where the parent's
-            // rotating frame (its axial tilt) is resolved.
+            // rotating frame (its axial tilt) is resolved. The sheets'
+            // second plane is really the ECLIPTIC; "orbit" matches it for
+            // planet parents (their rails are ecliptic-embedded, <= 2.5 deg
+            // off), and no body needs a distinct value yet.
             const std::string incl_ref =
                 in.value("incl_ref", std::string("orbit"));
             if(incl_ref != "orbit" && incl_ref != "equator") {
@@ -306,12 +320,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         + "': inertial.incl_ref must be \"orbit\" or "
                         "\"equator\", got \"" + incl_ref + "\"");
             }
-            if(incl_ref == "orbit" && (orb_incl != 0.0 || lon_asc_node != 0.0)) {
-                const double ci = std::cos(orb_incl), si = std::sin(orb_incl);
-                const double co = std::cos(lon_asc_node), so = std::sin(lon_asc_node);
-                f->orient = glm::dmat3(glm::dvec3(co, 0.0, so),
-                                       glm::dvec3(-so * si, ci, co * si),
-                                       glm::dvec3(-so * ci, -si, co * ci));
+            if(incl_ref != "orbit" && !bv.contains("orbits")) {
+                throw std::runtime_error("system: '" + body->name
+                        + "': inertial.incl_ref needs a parent (no "
+                        "\"orbits\" field)");
+            }
+            if(incl_ref == "orbit") {
+                f->orient = planeOrient(orb_incl, lon_asc_node);
             }
         }
 
@@ -454,22 +469,19 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // full initial_orient would node-lock the moon's rail to the
             // parent's prime meridian. Orientation only: the frame
             // hierarchy stays inertial-to-inertial, so positions, rails
-            // and SOIs are untouched. The parent's rot frame always exists
-            // (pass 1 gives every body one; a tilt-free parent composes to
-            // the same result as "orbit").
+            // and SOIs are untouched.
             {
                 const nlohmann::json &ine =
                     bv.value("inertial", nlohmann::json::object());
                 if(ine.value("incl_ref", std::string("orbit")) == "equator") {
-                    const double orb_incl = ine.value("orb_incl", 0.0);
-                    const double lon_asc_node = ine.value("lon_asc_node", 0.0);
-                    const double ci = std::cos(orb_incl), si = std::sin(orb_incl);
-                    const double co = std::cos(lon_asc_node), so = std::sin(lon_asc_node);
+                    // Pass 1 gives every body a rot frame; pass 1 fully
+                    // composed equator_orient before pass 2 reads it, so
+                    // bodies-array order does not matter.
+                    assert(parent->rot_frame && parent->rot_frame->rotating);
                     body->frame->orient =
                         parent->rot_frame->equator_orient
-                        * glm::dmat3(glm::dvec3(co, 0.0, so),
-                                     glm::dvec3(-so * si, ci, co * si),
-                                     glm::dvec3(-so * ci, -si, co * ci));
+                        * planeOrient(ine.value("orb_incl", 0.0),
+                                      ine.value("lon_asc_node", 0.0));
                 }
             }
 
