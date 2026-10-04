@@ -28,8 +28,9 @@ SUN_RADIUS = 6.9634e8   # m
 #     is then opposite the angular-momentum pole our +Y represents).
 # Periodic (amp, phase_deg) terms are evaluated at T = d = 0 -- NOT
 # negligible for Mars (0.42 deg / 1.59 deg / 0.58 deg); the fact sheets'
-# pole rows are these same expressions evaluated at epoch. Earth's W0 is
-# GMST at J2000.0 (IAU 2006 Res. B1.8; the report defers Earth to IERS).
+# pole rows are these same expressions evaluated at epoch. The 2015
+# report dropped Earth; its row is IERS: W0 is GMST at J2000.0, measured
+# from the vernal equinox (not from node Q like the others).
 # Fields: (alpha0, a_sinterms, delta0, d_costerms, W0, w_sinterms, dW).
 WGCCRE = {
     'Mercury': (281.0103, [], 61.4155, [], 329.5988,
@@ -65,12 +66,16 @@ OBLIQ_J2000 = 23.4392911   # deg, J2000 mean obliquity of the ecliptic
 
 
 def _wgccre_epoch(name):
-    """WGCCRE elements evaluated at the standard epoch (T = d = 0).
+    """WGCCRE elements at t=0 = 2000-01-01 00:00 (the calendar's epoch).
+    The report's standard epoch is that date at 12h TDB, so W carries
+    d = -0.5: the calendar anchors MIDNIGHT to t=0, and evaluating W at
+    12h would put local noon at midnight. Precession over half a day is
+    negligible, so alpha/delta stay at T = 0.
     Returns (alpha_deg, delta_deg, W_deg, prograde)."""
     a0, at, d0, dt, w0, wt, dw = WGCCRE[name]
     a = a0 + sum(amp * math.sin(math.radians(ph)) for amp, ph in at)
     d = d0 + sum(amp * math.cos(math.radians(ph)) for amp, ph in dt)
-    w = w0 + sum(amp * math.sin(math.radians(ph)) for amp, ph in wt)
+    w = w0 - 0.5 * dw + sum(amp * math.sin(math.radians(ph)) for amp, ph in wt)
     return a, d, w, dw > 0.0
 
 
@@ -93,32 +98,41 @@ def _rail_from_eq(alpha_deg, delta_deg):
                        math.sin(d))
 
 
-def wgccre_orientation(name, axial_tilt, incl):
+def _railAz(a):
+    """The loader's railAz(a) = R_Y(-a) (system.cpp): maps local +X to
+    rail azimuth +a. 3x3 as row tuples."""
+    c, s = math.cos(a), math.sin(a)
+    return ((c, 0.0, -s), (0.0, 1.0, 0.0), (s, 0.0, c))
+
+def _rx(a):
+    c, s = math.cos(a), math.sin(a)
+    return ((1.0, 0.0, 0.0), (0.0, c, -s), (0.0, s, c))
+
+def _mm(a, b):
+    return tuple(tuple(a[r][0] * b[0][c] + a[r][1] * b[1][c] + a[r][2] * b[2][c]
+                       for c in range(3)) for r in range(3))
+
+def _mv(m, v):
+    return tuple(m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2]
+                 for r in range(3))
+
+
+def wgccre_orientation(name, axial_tilt, incl, raan):
     """(#143) (tilt_azimuth, spin_phase0) in radians, placing the IAU
-    rotation pole and prime meridian at the standard epoch, expressed in
-    the loader's #141 fields (axial_tilt = the authored obliquity-to-orbit;
-    the report's pole is referred to the ecliptic, so the two differ by up
-    to the orbital inclination -- accepted)."""
+    rotation pole and prime meridian at t=0, expressed in the loader's
+    #141 fields. Those fields live in the body's INERTIAL (orbital) frame
+    -- the rot frame is a child of the inertial frame, so the loader
+    composes initial_orient UNDER orient = railAz(raan) * R_X(incl) --
+    hence the sky-frame pole/meridian are pre-rotated by inv(orient).
+    axial_tilt stays the fact sheet's obliquity-to-orbit."""
     a, d, w, prograde = _wgccre_epoch(name)
-    piau = _rail_from_eq(a, d)
-    # Our +Y (and axial_tilt) tracks the ANGULAR-MOMENTUM pole; for a
-    # retrograde rotator (dW < 0) the IAU "north" pole is the opposite end
-    # (Venus obliquity 177 deg, Uranus 98 deg).
-    p = piau if prograde else tuple(-c for c in piau)
-    # Tripwire: the report's pole must sit at the authored obliquity from
-    # the parent orbital normal, within the orbital inclination (+1 deg
-    # slack; Mercury's i is 7 deg).
-    ang = math.acos(max(-1.0, min(1.0, p[1])))
-    assert abs(ang - axial_tilt) <= incl + math.radians(1.0), \
-        name + ': WGCCRE pole vs fact-sheet obliquity mismatch'
-    st = math.sin(axial_tilt)
-    tilt_az = math.atan2(p[2] / st, p[0] / st)
+    piau_sky = _rail_from_eq(a, d)
     # Node Q per the report's section 2: the node of the body's equator on
     # the ICRF EQUATOR at RA alpha0 + 90 deg (the reference plane there is
     # the celestial equator, not the ecliptic -- the text never says
     # ecliptic). W is measured easterly (about the IAU pole) from Q to the
-    # prime meridian. Earth is the report's exception: its W is GMST,
-    # measured from the vernal equinox (rail +X).
+    # prime meridian. Earth is the exception: its W is GMST, from the
+    # vernal equinox (rail +X).
     if name == 'Earth':
         q = (1.0, 0.0, 0.0)
     else:
@@ -128,19 +142,49 @@ def wgccre_orientation(name, axial_tilt, incl):
     # (Rodrigues; p and q are unit and perpendicular).
     wr = math.radians(w)
     cw, sw = math.cos(wr), math.sin(wr)
-    px, py, pz = piau
-    cx = py * q[2] - pz * q[1]
-    cy = pz * q[0] - px * q[0]
-    cz = px * q[1] - py * q[0]
-    r0 = tuple(cw * q[i] + sw * (cx, cy, cz)[i] for i in range(3))
+    px, py, pz = piau_sky
+    cross = (py * q[2] - pz * q[1],
+             pz * q[0] - px * q[2],
+             px * q[1] - py * q[0])
+    r0_sky = tuple(cw * q[i] + sw * cross[i] for i in range(3))
+    # Sky frame -> the body's orbital frame.
+    inv = _mm(_rx(-incl), _railAz(-raan))
+    piau = _mv(inv, piau_sky)
+    r0 = _mv(inv, r0_sky)
+    # Our +Y (and axial_tilt) tracks the ANGULAR-MOMENTUM pole; for a
+    # retrograde rotator (dW < 0) the IAU "north" pole is the opposite end
+    # (Venus obliquity 177 deg, Uranus 98 deg).
+    p = piau if prograde else tuple(-c for c in piau)
+    # Tripwire: in the orbital frame the report's pole must sit at the
+    # fact sheet's obliquity-to-orbit -- both describe the same physical
+    # pole, and precession/data-source differences are arcmin-scale.
+    ang = math.acos(max(-1.0, min(1.0, p[1])))
+    assert abs(ang - axial_tilt) <= math.radians(1.0), \
+        name + ': WGCCRE pole vs fact-sheet obliquity mismatch'
+    assert math.sin(axial_tilt) > 1e-6, name + ': degenerate axial_tilt'
+    tilt_az = math.atan2(p[2], p[0])
     # Undo the loader's composition initial_orient =
-    # R_Y(-tilt_az) * Rz(axial_tilt) * R_Y(-spin_phase0) to recover
-    # spin_phase0 from the desired epoch prime-meridian direction r0.
+    # railAz(tilt_az) * Rz_tilt(axial_tilt) * railAz(spin_phase0) to
+    # recover spin_phase0 from the desired epoch prime-meridian direction.
     ca, sa = math.cos(tilt_az), math.sin(tilt_az)
-    q = (r0[0] * ca + r0[2] * sa, r0[1], -r0[0] * sa + r0[2] * ca)
-    ct, stt = math.cos(axial_tilt), math.sin(axial_tilt)
-    v = (ct * q[0] - stt * q[1], stt * q[0] + ct * q[1], q[2])
-    return tilt_az, math.atan2(v[2], v[0])
+    u = (r0[0] * ca + r0[2] * sa, r0[1], -r0[0] * sa + r0[2] * ca)
+    ct, st = math.cos(axial_tilt), math.sin(axial_tilt)
+    v = (ct * u[0] - st * u[1], st * u[0] + ct * u[1], u[2])
+    spin_phase0 = math.atan2(v[2], v[0])
+    # Round-trip through the loader's exact composition: the authored
+    # triple must land the pole and the meridian where the report says
+    # (catches transcription and inversion slips, which are otherwise
+    # silent numerical errors).
+    rz = ((ct, st, 0.0), (-st, ct, 0.0), (0.0, 0.0, 1.0))
+    io = _mm(_railAz(tilt_az), _mm(rz, _railAz(spin_phase0)))
+    def _deg(a_, b_):
+        dot = sum(a_[i] * b_[i] for i in range(3))
+        return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+    assert _deg(_mv(io, (0.0, 1.0, 0.0)), p) < 1.5, \
+        name + ': authored fields miss the report pole'
+    assert _deg(_mv(io, (1.0, 0.0, 0.0)), r0) < 1.5, \
+        name + ': authored fields miss the report meridian'
+    return tilt_az, spin_phase0
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -299,8 +343,11 @@ def parse_planet(page):
     assert period_s > 0.0, 'sidereal orbit period must be positive'
     w        = TWO_PI / period_s
     raan     = -node
-    omega    = node - varp                  # arg of periapsis (in-plane)
-    nu0      = -true_anomaly(L - varp, e)
+    omega    = node - varp                  # -physical arg of periapsis
+    # t=0 is 2000-01-01 00:00 but the fact-sheet elements are epoch
+    # J2000.0 = that date at 12h: roll the mean anomaly back half a day
+    # (matches _wgccre_epoch's d = -0.5; keeps midnight anchored at t=0).
+    nu0      = -true_anomaly((L - varp) - 0.5 * w * DAY, e)
 
     return dict(mass_kg=mass_kg, radius_m=radius_m, g=g,
                 # obliquity > 90 deg encodes retrograde; keep the rate positive
@@ -479,7 +526,8 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         if name in WGCCRE:
             # #143: real epoch orientation from the vendored IAU report.
             taz, sp0 = wgccre_orientation(name, data.get('obliquity', 0.0),
-                                          data.get('i', 0.0))
+                                          data.get('i', 0.0),
+                                          data.get('raan', 0.0))
             body['rotating']['spin_phase0'] = sp0
             body['rotating']['tilt_azimuth'] = taz
         elif data.get('sync_phase0') is not None:
@@ -699,7 +747,7 @@ def build_moon(m, parent_body=None, home_body=None):
     # Moon's 1.5 deg equator-to-orbit tilt is omitted (the fact sheet's
     # 6.7 deg is referred to the ecliptic, not our rail; #143 covers
     # real tilts once the moon rows carry them).
-    sync = m['period_s'] and m['e'] < 0.1
+    sync = m['period_s'] and m['e'] is not None and m['e'] < 0.1
     data = dict(radius_m=radius_m, mass_kg=mass_kg, w=w,
                 e=m['e'], omega=0.0, i=m['i'], raan=0.0, nu0=nu0,
                 rot_s=m['period_s'] if sync else None,
@@ -790,6 +838,23 @@ def main():
     print('master moon table: %d moons (%d named, %d with measured mass)'
           % (len(moons), n_named, n_meas))
     print()
+
+    # #144 follow-up: Pluto and Charon are MUTUALLY tidally locked, and
+    # the IAU report DEFINES Pluto's lon 0 as the sub-Charon point (and
+    # Charon's as sub-Pluto). Override Pluto's seeded spin phase so the
+    # lon-0 MERIDIAN PLANE contains Charon at t=0 (Charon's own sync
+    # phase, nu0 + pi, faces Pluto exactly -- its tilt is 0). spin_phase0
+    # is a figure-axis angle, not an azimuth: with the 122 deg obliquity
+    # the lon-0 POINT sits ~54 deg off Charon's plane no matter the
+    # phase; the meridian-plane alignment is the best this data model
+    # allows until Charon orbits near Pluto's equator (issue #147).
+    charon = next(m for m in moons if m['name'] == 'Charon')
+    pluto = next(b for b in base_bodies if b['name'] == 'Pluto')
+    ch_az = (charon['idx'] * GOLDEN) % TWO_PI   # Charon's epoch position azimuth
+    prot = pluto['rotating']
+    dlt = ch_az - prot['tilt_azimuth']
+    prot['spin_phase0'] = math.atan2(math.sin(dlt),
+                                     math.cos(dlt) / math.cos(prot['axial_tilt']))
 
     core = {'Moon', 'Phobos', 'Deimos', 'Io', 'Europa', 'Ganymede',
             'Callisto', 'Mimas', 'Enceladus', 'Tethys', 'Dione', 'Rhea',

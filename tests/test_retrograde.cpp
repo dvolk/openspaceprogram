@@ -336,6 +336,25 @@ int main() {
         check(glm::dot(pole, glm::normalize(to_sun)) < -0.30,
               "January sun south of Earth's equator: WGCCRE orientation and "
               "orbital phases share one sky convention (#143)");
+        // The rot frame hangs off the INERTIAL frame, so the authored
+        // tilt_azimuth/spin_phase0 are orbital-frame angles; the generator
+        // pre-rotates the sky pole by inv(orient). Skip that and the
+        // universe-frame pole is off by Earth's raan (11.3 deg azimuth).
+        const double eps = 23.4392911 * PI / 180.0;   // J2000 obliquity
+        const glm::dvec3 want(0.0, std::cos(eps), -std::sin(eps));
+        const glm::dvec3 upole = glm::normalize(earth->rot_frame->root_orient
+                                                * earth->rot_frame->spin_axis);
+        check(glm::dot(upole, want) > std::cos(1.0 * PI / 180.0),
+              "Earth's universe-frame pole == the J2000 sky pole (#143)");
+        // t=0 is 2000-01-01 00:00 and the calendar anchors midnight there:
+        // the lon-0 meridian must face AWAY from the sun. The Sun's
+        // January declination (~-23 deg, plus the RA/ecliptic-longitude
+        // conversion) caps the dot near -cos(26 deg); evaluating W at the
+        // report's 12h epoch instead flips it to +0.9 (noon at midnight).
+        const glm::dvec3 lon0 = earth->rot_frame->orient
+                                * glm::dvec3(1.0, 0.0, 0.0);
+        check(glm::dot(lon0, glm::normalize(to_sun)) < -0.88,
+              "calendar midnight at epoch: lon 0 faces away from the sun (#143)");
     }
 
     // --- #144: the Moon is tidally locked --------------------------------
