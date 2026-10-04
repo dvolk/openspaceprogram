@@ -19,6 +19,129 @@ SMALL_BODY_RHO = 2000.0        # kg/m^3, nominal small-moon density for estimate
 SUN_MASS   = 1.989e30   # kg
 SUN_RADIUS = 6.9634e8   # m
 
+# IAU Working Group on Cartographic Coordinates and Rotational Elements,
+# 2015 report (Archinal et al.), Table 1 -- vendored at
+# utils/rss/WGCCRE2015reprint1.pdf. Rotational elements for the 8 planets:
+#   alpha0/delta0: ICRF equatorial coords of the IAU north pole at J2000;
+#   W0: prime meridian angle at the standard epoch (2000 Jan 1 12h TDB);
+#   dW deg/day: rotation sense (negative = retrograde; the IAU north pole
+#     is then opposite the angular-momentum pole our +Y represents).
+# Periodic (amp, phase_deg) terms are evaluated at T = d = 0 -- NOT
+# negligible for Mars (0.42 deg / 1.59 deg / 0.58 deg); the fact sheets'
+# pole rows are these same expressions evaluated at epoch. Earth's W0 is
+# GMST at J2000.0 (IAU 2006 Res. B1.8; the report defers Earth to IERS).
+# Fields: (alpha0, a_sinterms, delta0, d_costerms, W0, w_sinterms, dW).
+WGCCRE = {
+    'Mercury': (281.0103, [], 61.4155, [], 329.5988,
+                [(0.01067257, 174.7910857), (-0.00112309, 349.5821714),
+                 (-0.00011040, 164.3732571), (-0.00002539, 339.1643429),
+                 (-0.00000571, 153.9554286)], 6.1385108),
+    'Venus':   (272.76, [], 67.16, [], 160.20, [], -1.4813688),
+    'Earth':   (0.0, [], 90.0, [], 280.46061837, [], 360.98564736629),
+    'Mars':    (317.269202, [(0.000068, 198.991226), (0.000238, 226.292679),
+                             (0.000052, 249.663391), (0.000009, 266.183510),
+                             (0.419057, 79.398797)],
+                54.432516, [(0.000051, 122.433576), (0.000141, 43.058401),
+                            (0.000031, 57.663379), (0.000005, 79.476401),
+                            (1.591274, 166.325722)],
+                176.049863, [(0.000145, 129.071773), (0.000157, 36.352167),
+                             (0.000040, 56.668646), (0.000001, 67.364003),
+                             (0.000001, 104.792680), (0.584542, 95.391654)],
+                350.891982443297),
+    'Jupiter': (268.056595, [(0.000117, 99.360714), (0.000938, 175.895369),
+                             (0.001432, 300.323162), (0.000030, 114.012305),
+                             (0.002150, 49.511251)],
+                64.495303, [(0.000050, 99.360714), (0.000404, 175.895369),
+                            (0.000617, 300.323162), (-0.000013, 114.012305),
+                            (0.000926, 49.511251)],
+                284.95, [], 870.5360000),
+    'Saturn':  (40.589, [], 83.537, [], 38.90, [], 810.7939024),
+    'Uranus':  (257.311, [], -15.175, [], 203.81, [], -501.1600928),
+    'Neptune': (299.36, [(0.70, 357.85)], 43.46, [(-0.51, 357.85)],
+                249.978, [(-0.48, 357.85)], 541.1397757),
+}
+
+OBLIQ_J2000 = 23.4392911   # deg, J2000 mean obliquity of the ecliptic
+
+
+def _wgccre_epoch(name):
+    """WGCCRE elements evaluated at the standard epoch (T = d = 0).
+    Returns (alpha_deg, delta_deg, W_deg, prograde)."""
+    a0, at, d0, dt, w0, wt, dw = WGCCRE[name]
+    a = a0 + sum(amp * math.sin(math.radians(ph)) for amp, ph in at)
+    d = d0 + sum(amp * math.cos(math.radians(ph)) for amp, ph in dt)
+    w = w0 + sum(amp * math.sin(math.radians(ph)) for amp, ph in wt)
+    return a, d, w, dw > 0.0
+
+
+def _railvec_eq(x, y, z):
+    """ICRF equatorial vector -> our rail frame. A PROPER rotation
+    (det +1): ecliptic via obliquity eps, then rail = (x_ecl, z_ecl,
+    -y_ecl). Rail azimuth atan2(z, x) = -ecliptic longitude, +Y =
+    ecliptic north -- the only embedding consistent with the rail's
+    prograde motion sweeping azimuth DOWN (system.cpp railAz)."""
+    e = math.radians(OBLIQ_J2000)
+    xe = x
+    ye = y * math.cos(e) + z * math.sin(e)
+    ze = -y * math.sin(e) + z * math.cos(e)
+    return (xe, ze, -ye)
+
+def _rail_from_eq(alpha_deg, delta_deg):
+    a, d = math.radians(alpha_deg), math.radians(delta_deg)
+    return _railvec_eq(math.cos(d) * math.cos(a),
+                       math.cos(d) * math.sin(a),
+                       math.sin(d))
+
+
+def wgccre_orientation(name, axial_tilt, incl):
+    """(#143) (tilt_azimuth, spin_phase0) in radians, placing the IAU
+    rotation pole and prime meridian at the standard epoch, expressed in
+    the loader's #141 fields (axial_tilt = the authored obliquity-to-orbit;
+    the report's pole is referred to the ecliptic, so the two differ by up
+    to the orbital inclination -- accepted)."""
+    a, d, w, prograde = _wgccre_epoch(name)
+    piau = _rail_from_eq(a, d)
+    # Our +Y (and axial_tilt) tracks the ANGULAR-MOMENTUM pole; for a
+    # retrograde rotator (dW < 0) the IAU "north" pole is the opposite end
+    # (Venus obliquity 177 deg, Uranus 98 deg).
+    p = piau if prograde else tuple(-c for c in piau)
+    # Tripwire: the report's pole must sit at the authored obliquity from
+    # the parent orbital normal, within the orbital inclination (+1 deg
+    # slack; Mercury's i is 7 deg).
+    ang = math.acos(max(-1.0, min(1.0, p[1])))
+    assert abs(ang - axial_tilt) <= incl + math.radians(1.0), \
+        name + ': WGCCRE pole vs fact-sheet obliquity mismatch'
+    st = math.sin(axial_tilt)
+    tilt_az = math.atan2(p[2] / st, p[0] / st)
+    # Node Q per the report's section 2: the node of the body's equator on
+    # the ICRF EQUATOR at RA alpha0 + 90 deg (the reference plane there is
+    # the celestial equator, not the ecliptic -- the text never says
+    # ecliptic). W is measured easterly (about the IAU pole) from Q to the
+    # prime meridian. Earth is the report's exception: its W is GMST,
+    # measured from the vernal equinox (rail +X).
+    if name == 'Earth':
+        q = (1.0, 0.0, 0.0)
+    else:
+        ar = math.radians(a)
+        q = _railvec_eq(-math.sin(ar), math.cos(ar), 0.0)
+    # Prime meridian at epoch: Q rotated about the IAU pole by W
+    # (Rodrigues; p and q are unit and perpendicular).
+    wr = math.radians(w)
+    cw, sw = math.cos(wr), math.sin(wr)
+    px, py, pz = piau
+    cx = py * q[2] - pz * q[1]
+    cy = pz * q[0] - px * q[0]
+    cz = px * q[1] - py * q[0]
+    r0 = tuple(cw * q[i] + sw * (cx, cy, cz)[i] for i in range(3))
+    # Undo the loader's composition initial_orient =
+    # R_Y(-tilt_az) * Rz(axial_tilt) * R_Y(-spin_phase0) to recover
+    # spin_phase0 from the desired epoch prime-meridian direction r0.
+    ca, sa = math.cos(tilt_az), math.sin(tilt_az)
+    q = (r0[0] * ca + r0[2] * sa, r0[1], -r0[0] * sa + r0[2] * ca)
+    ct, stt = math.cos(axial_tilt), math.sin(axial_tilt)
+    v = (ct * q[0] - stt * q[1], stt * q[0] + ct * q[1], q[2])
+    return tilt_az, math.atan2(v[2], v[0])
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 BASE = os.path.join(HERE, 'rss', 'html')
@@ -159,17 +282,25 @@ def parse_planet(page):
     a_m  = get(j2000, 'semimajoraxis') * AU
     e    = get(j2000, 'orbitaleccentricity')
     i    = get(j2000, 'orbitalinclination') * D2R
-    raan = get(j2000, 'longitudeofascendingnode') * D2R
-    varp = get(j2000, 'longitudeofperihelion') * D2R
-    L    = get(j2000, 'meanlongitude') * D2R
+    # The loader authors RAIL AZIMUTHS (atan2(z, x) about parent +Y;
+    # system.cpp railAz). Prograde rail motion sweeps azimuth DOWN, so the
+    # physical ecliptic-referenced angles embed as rail azimuth -angle
+    # (+X = vernal equinox, +Y = ecliptic north; incl keeps its sign).
+    # Authoring the physical signs directly mirrors the system, and the
+    # #143 WGCCRE orientations would then fight the orbital phases (wrong
+    # seasons).
+    node   = get(j2000, 'longitudeofascendingnode') * D2R
+    varp   = get(j2000, 'longitudeofperihelion') * D2R
+    L      = get(j2000, 'meanlongitude') * D2R
 
     period_s = period_d * DAY
     # Orbital sense lives in inclination (fact sheets use i > 90 deg, never a
     # signed period); load_system rejects negative rates (issue #139).
     assert period_s > 0.0, 'sidereal orbit period must be positive'
     w        = TWO_PI / period_s
-    omega    = varp - raan                   # arg of periapsis (in-plane)
-    nu0      = true_anomaly(L - varp, e)
+    raan     = -node
+    omega    = node - varp                  # arg of periapsis (in-plane)
+    nu0      = -true_anomaly(L - varp, e)
 
     return dict(mass_kg=mass_kg, radius_m=radius_m, g=g,
                 # obliquity > 90 deg encodes retrograde; keep the rate positive
@@ -344,16 +475,29 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         body['rotating'] = {
             'rot_ang_speed': TWO_PI / data['rot_s'],
             'axial_tilt': data.get('obliquity', 0.0),
+        }
+        if name in WGCCRE:
+            # #143: real epoch orientation from the vendored IAU report.
+            taz, sp0 = wgccre_orientation(name, data.get('obliquity', 0.0),
+                                          data.get('i', 0.0))
+            body['rotating']['spin_phase0'] = sp0
+            body['rotating']['tilt_azimuth'] = taz
+        elif data.get('sync_phase0') is not None:
+            # #144: synchronous moons -- the phase is derived from the
+            # orbital epoch state, not drawn. The tilt stays node-locked
+            # (Cassini-type state), so omitting tilt_azimuth is correct.
+            body['rotating']['spin_phase0'] = data['sync_phase0']
+        else:
             # #141: epoch spin phase and obliquity-node azimuth. The fact
             # sheets do not publish prime meridian at epoch, so draw a
             # reproducible pseudo-random angle per body (seeded by name)
             # instead of leaving both node-locked at 0.
-            'spin_phase0': phase0(name, 'spin'),
-        }
-        if data.get('obliquity'):
-            # tilt_azimuth only where a tilt exists: with zero tilt it
-            # degenerates into a pure phase shift (loader comment, #141).
-            body['rotating']['tilt_azimuth'] = phase0(name, 'tilt')
+            body['rotating']['spin_phase0'] = phase0(name, 'spin')
+            if data.get('obliquity'):
+                # tilt_azimuth only where a tilt exists: with zero tilt it
+                # degenerates into a pure phase shift (loader comment,
+                # #141).
+                body['rotating']['tilt_azimuth'] = phase0(name, 'tilt')
     # No rot_s -> no rotating block: the loader's dummy frame (zero spin,
     # derived near-body SOI) covers it.
     if rings is not None:
@@ -542,9 +686,24 @@ def build_moon(m, parent_body=None, home_body=None):
     nu0 = (m['idx'] * GOLDEN) % TWO_PI
     # SOIs are derived by the loader (soi_law hill + the nesting lift, which
     # is what makes the tiniest moons landable).
+    # #144: every regular moon is tidally locked (the fact sheets' rotation
+    # column says "Synchronous"), so spin at the mean motion with the near
+    # side facing the parent at t=0: the longitude-0 point must point AWAY
+    # from the parent's position azimuth (arg_peri + nu0 = nu0 here), hence
+    # +pi. A uniform spin on an eccentric Kepler rail reproduces the
+    # first-order physical libration (~+-2e rad) for free. tilt_azimuth
+    # stays omitted: node-locked is exactly the Cassini state these moons
+    # sit in. The e < 0.1 gate keeps captured irregulars (Phoebe, Nereid,
+    # the retrograde swarms) unspun as before; Hyperion (e=0.12) is left
+    # unspun on purpose -- its rotation is chaotic, not synchronous. The
+    # Moon's 1.5 deg equator-to-orbit tilt is omitted (the fact sheet's
+    # 6.7 deg is referred to the ecliptic, not our rail; #143 covers
+    # real tilts once the moon rows carry them).
+    sync = m['period_s'] and m['e'] < 0.1
     data = dict(radius_m=radius_m, mass_kg=mass_kg, w=w,
                 e=m['e'], omega=0.0, i=m['i'], raan=0.0, nu0=nu0,
-                rot_s=None)
+                rot_s=m['period_s'] if sync else None,
+                sync_phase0=nu0 + math.pi if sync else None)
     c1, c2 = MOON_COLORS.get(name, DEFAULT_COLOR)
     surface = rock(radius_m, c1, c2)
     if name in MOON_ATMOS:

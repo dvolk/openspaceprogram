@@ -18,6 +18,11 @@
 // #141 adds the epoch spin-phase fields (spin_phase0, tilt_azimuth): the
 // defaults must reproduce the pre-#141 initial_orient exactly, and the
 // authored values must land the epoch longitude/pole azimuth where named.
+// #143 authors REAL epoch orientation for the 8 planets from the vendored
+// IAU WGCCRE 2015 report, and #144 tidally locks the regular moons (spin =
+// mean motion, near side facing the parent at t=0). Both rest on ONE sky
+// convention: rail azimuth = -ecliptic longitude (parse_planet negates the
+// fact sheets' physical angles; the WGCCRE mapping is a proper rotation).
 // The throw and authoring cases run on targeted mutations of the real
 // system JSON (written to tmp/).
 //
@@ -316,6 +321,48 @@ int main() {
         check(std::fabs(pole.y - std::cos(0.3)) < 1e-9,
               "tilt_azimuth preserves the tilt magnitude");
     });
+
+    // --- #143: real epoch sky (WGCCRE 2015 + fact-sheet phases) ---------
+    // One convention end to end: rail azimuth = -ecliptic longitude. The
+    // sharpest cross-check is seasonal: t=0 is J2000.0 (mid-January), so
+    // the Sun must sit SOUTH of Earth's equator -- dot(pole, earth->sun)
+    // reads about -sin(obliquity). With the pre-fix mirrored orbital
+    // phases this flips sign (June in January).
+    if(earth) {
+        const glm::dvec3 pole = earth->rot_frame->initial_orient
+                                * earth->rot_frame->spin_axis;
+        sys.root->frame->UpdateOrbitRails(0.0);
+        const glm::dvec3 to_sun = sys.root->frame->GetPositionRelTo(earth->frame);
+        check(glm::dot(pole, glm::normalize(to_sun)) < -0.30,
+              "January sun south of Earth's equator: WGCCRE orientation and "
+              "orbital phases share one sky convention (#143)");
+    }
+
+    // --- #144: the Moon is tidally locked --------------------------------
+    TerrainBody *moon = sys.find("Moon");
+    check(moon != nullptr, "Moon present in solar_system.json");
+    if(moon) {
+        check(std::fabs(moon->rot_frame->rot_ang_speed
+                        - moon->frame->orb_ang_speed)
+              < 1e-12 * moon->frame->orb_ang_speed,
+              "Moon spin rate == orbital rate (synchronous, #144)");
+        // Longitude 0 faces Earth at t=0 and stays facing it a half period
+        // later: uniform spin vs Keplerian sweep differs only by the
+        // physical libration, bounded by ~2e. A non-spinning Moon would
+        // read cos(quarter turn) ~ 0 at the middle sample, so this bites.
+        const double e_moon = authored(j, "Moon", "inertial", "ecc");
+        const double lim = std::cos(2.0 * e_moon + 0.02);
+        const double Tm = 2.0 * PI / moon->frame->orb_ang_speed;
+        for(double t : {0.0, Tm / 4.0, Tm / 2.0}) {
+            sys.root->frame->UpdateOrbitRails(t);
+            const glm::dvec3 lon0 = moon->rot_frame->orient
+                                    * glm::dvec3(1.0, 0.0, 0.0);
+            const glm::dvec3 to_earth = -glm::normalize(moon->frame->pos);
+            check(glm::dot(lon0, to_earth) > lim,
+                  "Moon near side stays Earth-facing (synchronous rail, #144)");
+        }
+        sys.root->frame->UpdateOrbitRails(0.0);
+    }
 
     // --- the rejected channel: negative rates are data bugs, not retrograde
     expect_reject(mutated(j, "Triton", "inertial", "orb_ang_speed",

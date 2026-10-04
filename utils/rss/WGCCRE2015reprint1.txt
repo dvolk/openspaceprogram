@@ -1,0 +1,3816 @@
+Celest Mech Dyn Astr (2018) 130:22
+https://doi.org/10.1007/s10569-017-9805-5
+
+Report of the IAU Working Group on Cartographic
+Coordinates and Rotational Elements: 2015
+B. A. Archinal1 · C. H. Acton2 · M. F. A’Hearn3 · A. Conrad4 ·
+G. J. Consolmagno5 · T. Duxbury6 · D. Hestroffer7 · J. L. Hilton8 · R. L. Kirk9 ·
+S. A. Klioner10 · D. McCarthy11 · K. Meech12 · J. Oberst13 · J. Ping14 ·
+P. K. Seidelmann15 · D. J. Tholen16 · P. C. Thomas17 · I. P. Williams18
+
+Received: 3 October 2017 / Accepted: 27 October 2017
+© Springer Science+Business Media B.V., part of Springer Nature (outside the USA) 2018
+
+Abstract This report continues the practice where the IAU Working Group on Cartographic
+Coordinates and Rotational Elements revises recommendations regarding those topics for
+the planets, satellites, minor planets, and comets approximately every 3 years. The Working
+
+M. F. A’Hearn deceased on 2017 May 29.
+
+B B. A. Archinal
+
+barchinal@usgs.gov
+
+1
+
+U.S. Geological Survey, Flagstaff, AZ, USA
+
+2
+
+Jet Propulsion Laboratory, Pasadena, CA, USA
+
+3
+
+University of Maryland, College Park, MD, USA
+
+4
+
+Large Binocular Telescope Observatory, University of Arizona, Tucson, AZ, USA
+
+5
+
+Vatican Observatory, Vatican City, Holy See (Vatican City State)
+
+6
+
+George Mason University, Fairfax, VA, USA
+
+7
+
+IMCCE, Observatoire de Paris, PSL Research university, CNRS, Sorbonne Universités, UPMC,
+Univ. Lille, Paris, France
+
+8
+
+U.S. Naval Observatory, Washington, DC, USA
+
+9
+
+U.S. Geological Survey (Emeritus), Flagstaff, AZ, USA
+
+10
+
+Lohrmann Observatory, Technische Universtät Dresden, Dresden, Germany
+
+11
+
+U.S. Naval Observatory (Retired), Washington, DC, USA
+
+12
+
+Institute for Astronomy, Honolulu, HI, USA
+
+13
+
+DLR Berlin Adlershof, Berlin, Germany
+
+14
+
+National Astronomical Observatories of CAS, Beijing, China
+
+15
+
+University of Virginia, Charlottesville, VA, USA
+
+16
+
+University of Hawaii, Honolulu, HI, USA
+
+17
+
+Cornell University, Ithaca, NY, USA
+
+18
+
+Queen Mary, University of London, London, UK
+
+123
+
+22
+
+Page 2 of 46
+
+B. A. Archinal et al.
+
+Group has now become a “functional working group” of the IAU, and its membership is
+open to anyone interested in participating. We describe the procedure for submitting questions about the recommendations given here or the application of these recommendations for
+creating a new or updated coordinate system for a given body. Regarding body orientation,
+the following bodies have been updated: Mercury, based on MESSENGER results; Mars,
+along with a refined longitude definition; Phobos; Deimos; (1) Ceres; (52) Europa; (243)
+Ida; (2867) Šteins; Neptune; (134340) Pluto and its satellite Charon; comets 9P/Tempel 1,
+19P/Borrelly, 67P/Churyumov–Gerasimenko, and 103P/Hartley 2, noting that such information is valid only between specific epochs. The special challenges related to mapping
+67P/Churyumov–Gerasimenko are also discussed. Approximate expressions for the Earth
+have been removed in order to avoid confusion, and the low precision series expression for
+the Moon’s orientation has been removed. The previously online only recommended orientation model for (4) Vesta is repeated with an explanation of how it was updated. Regarding
+body shape, text has been included to explain the expected uses of such information, and the
+relevance of the cited uncertainty information. The size of the Sun has been updated, and
+notation added that the size and the ellipsoidal axes for the Earth and Jupiter have been recommended by an IAU Resolution. The distinction of a reference radius for a body (here, the
+Moon and Titan) is made between cartographic uses, and for orthoprojection and geophysical uses. The recommended radius for Mercury has been updated based on MESSENGER
+results. The recommended radius for Titan is returned to its previous value. Size information
+has been updated for 13 other Saturnian satellites and added for Aegaeon. The sizes of Pluto
+and Charon have been updated. Size information has been updated for (1) Ceres and given for
+(16) Psyche and (52) Europa. The size of (25143) Itokawa has been corrected. In addition, the
+discussion of terminology for the poles (hemispheres) of small bodies has been modified and
+a discussion on cardinal directions added. Although they continue to be used for planets and
+their satellites, it is assumed that the planetographic and planetocentric coordinate system
+definitions do not apply to small bodies. However, planetocentric and planetodetic latitudes
+and longitudes may be used on such bodies, following the right-hand rule. We repeat our
+previous recommendations that planning and efforts be made to make controlled cartographic
+products; newly recommend that common formulations should be used for orientation and
+size; continue to recommend that a community consensus be developed for the orientation
+models of Jupiter and Saturn; newly recommend that historical summaries of the coordinate
+systems for given bodies should be developed, and point out that for planets and satellites
+planetographic systems have generally been historically preferred over planetocentric systems, and that in cases when planetographic coordinates have been widely used in the past,
+there is no obvious advantage to switching to the use of planetocentric coordinates. The
+Working Group also requests community input on the question submitting process, posting
+of updates to the Working Group website, and on whether recommendations should be made
+regarding exoplanet coordinate systems.
+Keywords Cardinal directions · Cartographic coordinates · Coordinate systems · Coordinate
+frames · Longitude · Latitude · Planetographic · Planetocentric · Rotation axes · Rotation
+periods · Sizes · Shapes · Planets · Satellites · Dwarf planets · Minor planets · Asteroids ·
+Comets
+
+1 Introduction
+The International Astronomical Union (IAU) Working Group on Cartographic Coordinates
+and Rotational Elements of the Planets and Satellites was established by resolutions adopted
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 3 of 46
+
+22
+
+by Commissions 4 and 16 at the IAU General Assembly at Grenoble in 1976. The Working
+Group became a joint working group of the IAU and the International Association of Geodesy
+(IAG) in 1985. Following a lack of formal communication with the IAG over several years,
+that affiliation was dropped. It may be re-established in the future. Currently, within the
+IAU, the Working Group is a joint working group of Divisions A and F, and not part of any
+commissions. The first report of the Working Group was presented to the General Assembly
+at Montreal in 1979 and published in the Trans. IAU 17B, 72–79, 1980. The report with
+appendices was published in Celestial Mechanics 22, 205–230, 1980. The guiding principles
+and conventions that were adopted by the Group and the rationale were presented in that
+report and its appendices. The complete list of Working Group reports is listed in the table
+below. In 2003 the name of the Working Group was shortened to the Working Group on
+Cartographic Coordinates and Rotational Elements.
+In 2016 the Working Group became a “Functional Working Group”, whose scope and
+purpose are institutional and naturally extend beyond the IAU 3-year cycle (IAU 2016).
+Such groups would have the “main responsibility of [providing] state-of-the-art deliverables:
+standards, references; tools for education, related software (VO), etc., with an official IAU
+stamp, for universal use” (IAU 2012). The Working Group will continue to serve in the area
+of standards.
+Also in 2016, working with the Presidents of Divisions A and F, the Working Group
+agreed to open its membership to essentially anyone interested in helping with its work. New
+members will be welcome at any time. However, the Working Group will at some regular
+intervals, likely when a new version of the report is finished or at the time of a General
+Assembly, make appropriate announcements inviting new members to join. We would ask
+only what expertise applicants feel they are bringing to the Working Group and how they
+plan to contribute to our main report. In the quite unlikely case of a serious objection to
+someone joining, the applicant would only be turned down after a vote by the Working
+Group and the approval of the Division A and F Presidents. Should the Working Group be
+blessed with a large number of new members, we would develop procedures to split up the
+Working Group to create our reports, answer questions from individuals, editors, instrument
+teams, missions, and space agencies, and do other public and community outreach. Anyone
+interested in joining the Working Group should contact the Chair or Vice-Chair.
+The following table provides references to all of the Working Group reports.
+Report
+
+General assembly
+
+Celestial mechanics and dynamical astronomy
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+–
+–
+12
+13
+
+Montreal in 1979
+Patras in 1982
+New Delhi in 1985
+Baltimore in 1988
+Buenos Aires in 1991
+The Hague in 1994
+Kyoto in 1997
+Manchester in 2000
+Sydney in 2003
+Prague in 2006
+Rio de Janeiro in 2009
+(Erratum to 10 and 11)
+(4) Vesta system
+Beijing in 2012
+Honolulu in 2015
+
+22, 205–230 (Davies et al. 1980)
+29, 309–321 (Davies et al. 1983)
+39, 103–113 (Davies et al. 1986)
+46, 187–204 (Davies et al. 1989)
+53, 377–397 (Davies et al. 1992)
+63, 127–148 (Davies et al. 1996)
+No report
+82, 83–110 (Seidelmann et al. 2002)
+91, 203–215 (Seidelmann et al. 2005)
+98, 155–180 (Seidelmann et al. 2007)
+109, 101–135 (Archinal et al. 2011a)
+110, 401–403 (Archinal et al. 2011b)
+(Archinal et al. 2013b)
+No report
+This paper
+
+Reprints and preprints of the previous reports and this report can be found at the Working
+Group website: https://astrogeology.usgs.gov/groups/iau-wgccre. Previous reports are also
+available at https://link.springer.com/journal/10569.
+
+123
+
+22
+
+Page 4 of 46
+
+B. A. Archinal et al.
+
+The impetus for the Working Group was the IAU Resolution: “to avoid a proliferation of
+inconsistent cartographic and rotational systems, there is a need to define the cartographic
+and rotational elements of the planets and satellites on a systematic basis and to relate the new
+cartographic coordinates rigorously to the rotational elements” (IAU 1977, p. 144). Since
+its first report (Davies et al. 1980), this Working Group’s purpose has remained unchanged,
+except for the recognition of the need to include, beginning with the 2003 report, small solar
+system bodies.
+The Working Group’s mission is to make recommendations that define and relate the
+coordinate systems of solar system bodies to their rotational elements to support making
+cartographic products (i.e., “mapping”) of such bodies. The working group incorporates any
+reasonable and peer-reviewed improved determinations that follow previously established
+conventions, or may select among different such determinations. The Working Group does
+not verify or validate such determinations because of a lack of the resources. Our recommendations are from the Working Group alone, not from the full IAU. The Working Group has
+no “enforcement” mechanism to assure that its recommendations are followed. The value of
+these recommendations is from their development by international consensus and adoption
+by the planetary community.
+Other organizations have since referenced these recommendations, e.g., as standards to
+be followed (PDS 2009, Chapter 2), or by providing services to make it easier to implement
+the numerical use of recommendations made here (NAIF 2013, 2014).
+These recommendations should be followed in cases where standardization is useful. It
+is not our intention to limit science or the state of the art. They should be followed so that
+products can be more easily compared and multiple datasets appropriately registered. If a
+user has sufficient data to significantly improve the recommended models or values, then
+such updates should be used, following the conventions described here. (It may be useful to
+make alternative products using old and new models for comparison purposes).
+This type of action is almost always necessary when updated parameter estimates are
+derived, because there will be some delay before our next report is published or our website
+is updated (see below). We encourage the publication of such updates in the peer-reviewed
+literature at the earliest opportunity. A document prepared by the Planetary Data System
+(PDS) Small Bodies Node describes the requirements for proper documentation of any new
+or updated coordinate system model (PDS 2014). Proper documentation is necessary for the
+Working Group to consider, recommend, and reference them in our next report. Also others
+will become aware of such updates, and can use them in the interim.
+At the request of various individuals and missions, the Working Group will consider
+evaluating whether proposed updates or new systems follow the conventions described here
+and will consider providing interim updates to its recommendations via its website. This
+service is to address the need to update recommendations and consider proposed updates
+or new systems between Working Group reports. As described below, in recent years the
+Working Group has made formal recommendations outside of our reports three times, all
+relative to the coordinate system for Vesta. This included making recommendations twice
+directly to the Dawn mission, and making a formal recommendation on our website as to the
+preferred coordinate system (Archinal et al. 2013b).
+Based on this experience and other input, our current procedures are as follows. If any
+individual researcher or group (e.g., instrument team, mission, PDS, space agency), hereafter
+the requestor, has questions about the recommendations given here or the application of these
+recommendations for creating a new or updated coordinate system for a given body, we would
+prefer they first informally address such questions to the Working Group Chair or Vice-Chair.
+Those individuals will then provide an informal response, consulting the rest of the Working
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 5 of 46
+
+22
+
+Group as needed, with their interpretation of the recommendations. Should the requestor feel
+the response is inadequate or disagrees with it, they can request a formal response from the
+Working Group. This should be done by preparing a written request, including as appropriate
+any information on a new or updated coordinate system. Examples of the kind of information
+required can be seen here in the report and also, for example, in a document prepared by the
+PDS (2014). The Working Group will discuss the request and seek out additional information
+from the requestor or others as needed. At the completion of its consideration, the Working
+Group will provide a formal response to the requestor. The requestor should allow up to 4
+weeks for such a response, and possibly longer if additional information is required. Both
+the request and the response will be published on the Working Group website, and likely
+referenced in future Working Group reports. If the requestor disagrees with the Working
+Group response, the requestor is free to discuss any concerns with the Presidents of the IAU
+Divisions A and F that oversee the Working Group.
+If the Working Group agrees that there is a need to formally recommend the use of a
+newly proposed coordinate system prior to the issuance of one of our regular reports, e.g.,
+due to a need to decide between multiple systems or possible non-IAU compliant systems,
+for the benefit of multiple groups or space agencies, then we may post on our website such a
+recommendation, as we did regarding the coordinate system for Vesta (Archinal et al. 2013b)
+and an appropriate public announcement made via the IAU e-Newsletter (https://www.iau.
+org/publications/e-newsletters/). Such a recommendation will also again be incorporated, or
+updated if appropriate, in our next published report. The posting of recommendations to our
+website is not intended to remove the need for our regular reports. Any recommendations
+originally posted to our website will also again be incorporated, or updated if appropriate, in
+our next report. We will continue to include the bulk of any new recommendations or changes
+to our recommendations in these reports, only placing time-critical ones on our website. Input
+for updates and comment on these procedures from the community is welcome, particularly
+from missions and other working groups.
+The Working Group does not deal with issues related to mapping product formats. Such
+issues have largely been left to individual map developers, archiving organizations such
+as the PDS, the International Planetary Data Alliance, and the NASA Mars Geodesy and
+Cartography Working Group (MGCWG; Duxbury et al. 2001, 2002) and (now inactive)
+Lunar Geodesy and Cartography Working Group (Archinal (2009)) and individual missions.
+Input from such organizations has been welcomed by the Working Group, and the frequency
+of interaction highlights the strong need for such organizations at mission, space agency,
+and international levels. The Working Group looks forward to collaborating with the new
+NASA Mapping and Planetary Spatial Infrastructure Team (MAPSIT; Radebaugh et al. 2017;
+http://www.lpi.usra.edu/mapsit/) and the new IAU Commission A3 Fundamental Standards
+(https://www.iau.org/science/scientific_bodies/commissions/A3/).
+The 2003 report introduced and recommended a consistent system of coordinates for
+minor planets (asteroids) and comets. In the 2011 report we extended it to cover dwarf
+planets. This system is not the same as that for planets and satellites. The existence of two
+different systems has the potential for confusion, but the methods required for other solar
+system bodies (see Sect. 6) differ sufficiently to justify two different systems. This report
+includes descriptions of the two systems; planets and satellites (Sects. 2, 3, 5, 7) and other
+solar system bodies (Sects. 4, 6, 8). Rotational elements (body orientation in inertial space)
+are covered in Sects. 2 through 6, and cartographic coordinates, e.g., latitude, longitude, and
+body shape in Sects. 7 and 8). Brief recommendations from the Working Group complete this
+report (Sect. 9). This report assumes that dwarf planets are the bodies identified as such on the
+list maintained by the IAU Working Group for Planetary System Nomenclature (WGPSN)
+
+123
+
+22
+
+Page 6 of 46
+
+B. A. Archinal et al.
+
+and the IAU Committee on Small Body Nomenclature (CSBN) (2015b). Changes made since
+the previous report are listed in Sect. 10.
+
+2 Definition of rotational elements for planets and satellites
+Planetary coordinate systems are defined relative to their mean axis of rotation and bodydependent definitions of longitude. The longitude systems of most of those bodies with
+observable rigid surfaces have been defined by reference to a surface feature, such as a
+crater. Approximate expressions for these rotational elements with respect to the International
+Celestial Reference Frame (ICRF) (Ma et al. 1998) have been derived. The ICRF is the
+reference frame of the International Celestial Reference System and is epochless. There is
+a small (well under 0.1 arcs) rotation between the ICRF and the mean dynamical frame of
+J2000.0.
+Variable quantities are expressed in units of days (86,400 s) or Julian centuries (36,525
+days) from the epoch J2000.0.1 The reference time scale is Barycentric Dynamical Time
+from the French Temps Dynamique Barycentrique (TDB). TDB was clarified in definition
+at the IAU General Assembly of 2006 in Prague. TDB, sometimes called Teph , is roughly
+equivalent to Terrestrial Time from the French Temps Terrestre (TT) in epoch and rate. UTC,
+Barycentric Coordinate Time from the French Temps Cordonnée Barycentrique (TCB), and
+Geocentric Coordinate Time from the French Temps Coordonnée Géocentrique (TCG) differ
+from TT in epoch and rate. For more information on reference systems and time scales, see
+The Explanatory Supplement to the Astronomical Almanac (Urban and Seidelmann 2012) ,
+Kovalevsky and Seidelmann (2004), https://www.iers.org, http://rorf.usno.navy.mil/ICRF/,
+or http://aa.usno.navy.mil/faq/docs/ICRS_doc.php.
+The north pole is that pole of rotation that lies on the north side of the invariable plane
+of the solar system. Its direction is specified by the values of its right ascension α0 and
+declination δ0 . The two nodes of the body’s equator on the ICRF equator are at α0 ± 90◦ . In
+Fig. 1, the node Q is defined as the node at α0 + 90◦ . The prime meridian is defined so that it
+crosses the body’s equator at the point B. The location of B is determined by the value for W,
+the angle measured easterly along the body’s equator from the Q to B. The inclination of the
+planet’s equator to the celestial equator is 90◦ − δ0 . As long as the planet rotates uniformly,
+W varies nearly linearly with time. The parameters α0, δ0 , and W may vary with time due to
+a precession of the axis of rotation of the planet or satellite. If W increases with time, the
+planet has a direct (or prograde) rotation, and, if W decreases with time, the rotation is said
+to be retrograde.
+In the absence of other information, the axis of rotation is assumed to be normal to the
+mean orbital plane of the planet or the satellite. Most satellites fall into this category. For
+many satellites, it is assumed that the rotation rate is synchronous (i.e., equal to the mean
+orbital period). In some cases, this is only an assumption that still needs to be validated.
+The angle W specifies the ephemeris position of the prime meridian and W0 is the value of
+W at J2000.0 (or occasionally, such as for comets, some other specified epoch). For planets or
+satellites with no accurately observable fixed surface features, the expression for W defines
+the prime meridian and is not subject to correction for this reason. The rotation rate may
+be redefined by some other physical property (e.g., observation of the rotation of the body’s
+magnetic field). Where the cartographic position of the prime meridian is defined by an
+observable feature, the expression for W is chosen so that the ephemeris position follows the
+1 JD 2451545.0 (2000 January 1 12.0 h).
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Z
+
+Page 7 of 46
+
+22
+
+Body north pole
+(α0 , δ0 )
+
+Celesal sphere
+
+Earth
+equinox
+at J2000.0
+
+Prime meridian
+
+Body
+Body
+equator
+of date
+
+Y
+
+Q
+
+90O – δ0
+
+B
+
+X
+
+ICRF equator
+
+Fig. 1 Reference system used to define orientation of the planets and their satellites. For Ẇ (t) > 0, body
+rotation is prograde (e.g., Mercury, Jupiter). For Ẇ (t) < 0, body rotation is retrograde (e.g., Venus, Uranus)
+
+motion of the feature as closely as possible. When higher accuracy mapping is done or a new
+value for W is derived, the longitude of the defining feature must be maintained. Bodies with
+longitude defining features are noted in the footnotes to Tables 1, 2, and 3.
+The Working Group would like to emphasize—as it did in the introduction to its first report
+(Davies et al. 1980, p. 73)—once an observable feature is chosen to define the longitude system, that system should not change except under extraordinary circumstances. For example,
+a few solar system bodies such as Io and various comet nuclei are known to be geologically
+active at the present time, so it is conceivable that surface processes could render a small
+reference feature unidentifiable and necessitate the choice of a new (but consistent) reference.
+Once such a feature has been adopted, the determination of W0 relative to some other feature
+should be avoided. This prescription does not preclude the use of a smaller or more precisely
+determined feature, multiple features, or even human artifacts to define longitude, as long as
+the original definition is maintained to within the accuracy of previous determinations. For
+
+123
+
+22
+
+Page 8 of 46
+
+B. A. Archinal et al.
+
+Table 1 Recommended values for the direction of the north pole of rotation and the prime meridian of the
+Sun and planets
+α 0 , δ0
+
+Are ICRF equatorial coordinates at epoch J2000.0
+Approximate coordinates of the north pole of the invariable plane are α0 = 273◦ .85, δ0 = 66◦ .99
+T=
+Interval in Julian centuries (36,525 days) from the standard epoch
+d=
+Interval in days from the standard epoch
+The standard epoch is JD 2451545.0, i.e., 2000 January 1 12 h TDB
+
+Sun
+
+α0 = 286◦ .13
+δ0 = 63◦ .87
+W = 84◦ .176 + 14◦ .1844000d (a)
+
+Mercury α0 = 281.0103 − 0.0328 T
+δ0 = 61.4155 − 0.0049 T
+W = 329.5988 ± 0.0037 + 6.1385108d
++ 0◦ .01067257 sin M1
+− 0◦ .00112309 sin M2
+− 0◦ .00011040 sin M3
+− 0◦ .00002539 sin M4
+− 0◦ .00000571 sin M5
+where
+M1 = 174◦ .7910857 + 4◦ .092335d
+M2 = 349◦ .5821714 + 8◦ .184670d
+M3 = 164◦ .3732571 + 12◦ .277005d
+M4 = 339◦ .1643429 + 16◦ .369340d
+M5 = 153◦ .9554286 + 20◦ .461675d (b)
+Venus
+
+α0 = 272.76
+δ0 = 67.16
+W = 160.20 − 1.4813688d (c)
+
+Mars
+
+α0 = 317.269202 − 0.10927547T
++ 0.000068 sin(198.991226 + 19139.4819985T )
++ 0.000238 sin(226.292679 + 38280.8511281T )
++ 0.000052 sin(249.663391 + 57420.7251593T )
++ 0.000009 sin(266.183510 + 76560.6367950T )
++ 0.419057 sin(79.398797 + 0.5042615T )
+δ0 = 54.432516 − 0.05827105T
++ 0.000051 cos(122.433576 + 19139.9407476T )
++ 0.000141 cos(43.058401 + 38280.8753272T )
++ 0.000031 cos(57.663379 + 57420.7517205T )
++ 0.000005 cos(79.476401 + 76560.6495004T )
++ 1.591274 cos(166.325722 + 0.5042615T )
+W = 176.049863 + 350.891982443297d
++ 0.000145 sin(129.071773 + 19140.0328244T )
++ 0.000157 sin(36.352167 + 38281.0473591T )
++ 0.000040 sin(56.668646 + 57420.9295360T )
++ 0.000001 sin(67.364003 + 76560.2552215T )
++ 0.000001 sin(104.792680 + 95700.4387578T )
++ 0.584542 sin(95.391654 + 0.5042615T )(d)
+
+Jupiter
+
+where
+
+α0 = 268.056595 − 0.006499T + 0◦ .000117 sin Ja + 0◦ .000938 sin Jb
++ 0.001432 sin Jc + 0.000030 sin Jd + 0.002150 sin Je
+δ0 = 64.495303 + 0.002413T + 0.000050 cos Ja + 0.000404 cos Jb
++ 0.000617 cos Jc − 0.000013 cos Jd + 0.000926 cos Je
+W = 284.95 + 870.5360000d (e)
+Ja = 99◦ .360714 + 4850◦ .4046T, Jb = 175◦ .895369 + 1191◦ .9605T,
+Jc = 300◦ .323162 + 262◦ .5475T, Jd = 114◦ .012305 + 6070◦ .2476T,
+Je = 49◦ .511251 + 64◦ .3000T
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 9 of 46
+
+22
+
+Table 1 continued
+α 0 , δ0
+
+Are ICRF equatorial coordinates at epoch J2000.0
+Approximate coordinates of the north pole of the invariable plane are α0 = 273◦ .85, δ0 = 66◦ .99
+T=
+Interval in Julian centuries (36,525 days) from the standard epoch
+d=
+Interval in days from the standard epoch
+The standard epoch is JD 2451545.0, i.e., 2000 January 1 12 h TDB
+Saturn
+
+α0 = 40.589 − 0.036T
+δ0 = 83.537 − 0.004T
+W = 38.90 + 810.7939024d (e)
+
+Uranus
+
+α0 = 257.311
+δ0 = −15.175
+W = 203.81 − 501.1600928d (e)
+
+Neptune α0 = 299.36 + 0.70 sin N
+δ0 = 43.46 − 0.51 cos N
+W = 249.978 + 541.1397757d − 0.48 sin N
+N = 357.85 + 52.316T (f)
+(a) The equation W for the Sun is now corrected for light travel time and removing the aberration correction.
+See the Appendix in Seidelmann et al. (2007)
+(b) The 20◦ meridian of Mercury is defined by the crater Hun Kal
+(c) The 0◦ meridian of Venus is defined by the central peak in the crater Ariadne
+(d) The longitude of the Viking 1 lander on Mars is defined to be 47◦ .95137 west (Kuchynka et al. 2014),
+maintaining the 0◦ meridian through the crater Airy-0
+(e) The equations for W for Jupiter, Saturn, and Uranus refer to the rotation of their magnetic fields (System
+III). On Jupiter, System I (W I = 67◦ .1 + 877◦ .900d) refers to the mean atmospheric equatorial rotation;
+System II (W I I = 43◦ .3 + 870◦ .270d) refers to the mean atmospheric rotation north of the south component
+of the north equatorial belt, and south of the north component of the south equatorial belt
+(f) The equations for Neptune refer to the rotation of optically observed features in the Neptunian atmosphere
+(System II), while still using the previous expressions for pole position and precession
+
+example, de Vaucouleurs et al. (1973) redefined the origin for longitude for Mars from the
+large feature, then known as Sinus Meridiani, to the small crater Airy-0. In this report, we
+further refine that definition by fixing the longitude of the Viking 1 lander.
+Tables 1 and 2 give recommended expressions for α0 , δ0 , and W , in celestial equatorial
+coordinates, for the planets and satellites. These expressions are generally accurate to onetenth of a degree. Two decimal digits are given to assure consistency. Zeros have sometimes
+been appended to values of Ẇ for computational consistency when compared to the derived
+spin rate at a given epoch and are not an indication of significant accuracy when far from
+that epoch. The expressions for Mercury, Mars, Saturn, and Uranus contain additional digits,
+reflecting a greater confidence in their accuracy. Expressions for the Sun are given to a
+precision similar to those of the other bodies of the solar system. These solar expressions are
+for comparative purposes only.2 These recommendations do not imply that other coordinate
+systems with different rotational elements cannot be used for planetary bodies for other
+purposes. For example, it is recognized that the use of dynamical coordinate systems such
+as those tied to a body’s principal axis may be needed for computational purposes or for
+important dynamical work. Such coordinate systems are used for the Moon and Mercury
+(Margot 2009). It is also possible, depending, for example, on the observational mode and
+2 Previous reports also included approximate expressions for the Earth. Their accuracy was poor, and the
+
+expressions failed near the fundamental epoch (J2000.0), yet they were sometimes used as a recommended
+model. Users should refer to the International Earth Rotation and Reference Systems Service (IERS, https://
+www.iers.org) for appropriate models of the Earth’s rotation.
+
+123
+
+22
+
+Page 10 of 46
+
+B. A. Archinal et al.
+
+Table 2 Recommended values for the direction of the north pole of rotation and the prime meridian of the
+satellites
+α0 , δ0 , T , and d have the same meanings as in Table 1 (epoch JD 2451545.0, i.e. 2000 January 1 12 h TDB)
+Earth:
+Mars:
+
+I
+
+Moon
+Phobos
+
+II
+
+Deimos
+
+See Sect. 3
+α0 = 317.67071657 − 0.10844326T
+− 1.78428399 sin(M1) + 0.02212824 sin(M2)
+− 0.01028251 sin(M3) − 0.00475595 sin(M4)
+δ0 = 52.88627266 − 0.06134706T
+− 1.07516537 cos(M1) + 0.00668626 cos(M2)
+− 0.00648740 cos(M3) + 0.00281576 cos(M4)
+W = 34.9964842535 + 1128.84475928d + 12.72192797T2
++ 1.42421769 sin(M1) − 0.02273783 sin(M2)
++ 0.00410711 sin(M3) + 0.00631964 sin(M4)
++ 1.143 sin(M5)
+α0 = 316.65705808 − 0.10518014T
++ 3.09217726 sin(M6) + 0.22980637 sin(M7)
++ 0.06418655 sin(M8) + 0.02533537 sin(M9)
++ 0.00778695 sin(M10)
+δ = 53.50992033 − 0.05979094T
++ 1.83936004 cos(M6) + 0.14325320 cos(M7)
++ 0.01911409 cos(M8) − 0.01482590 cos(M9)
++ 0.00192430 cos(M10)
+W = 79.39932954 + 285.16188899d
+− 2.73954829 sin(M6) − 0.39968606 sin(M7)
+− 0.06563259 sin(M8) − 0.02912940 sin(M9)
++ 0.01699160 sin(M10)
+
+Jupiter:
+
+where
+
+M1 = 190.72646643 + 15917.10818695T
+M2 = 21.46892470 + 31834.27934054T
+M3 = 332.86082793 + 19139.89694742T
+M4 = 394.93256437 + 38280.79631835T
+M5 = 189.63271560 + 41215158.18420050T
++ 12.71192322T2
+M6 = 121.46893664 + 660.22803474T
+M7 = 231.05028581 + 660.99123540T
+M8 = 251.37314025 + 1320.50145245T
+M9 = 217.98635955 + 38279.96125550T
+M10 = 196.19729402 + 19139.83628608T
+
+XVI
+
+Metis
+
+XV
+
+Adrastea
+
+V
+
+Amalthea
+
+α0 = 268.05 − 0.009T − 0.84 sin J 1 + 0.01 sin 2J 1
+δ0 = 64.49 + 0.003T − 0.36 cos J 1
+W = 231.67 + 722.6314560d + 0.76 sin J 1 − 0.01 sin 2J 1
+
+XIV
+
+Thebe
+
+α0 = 268.05 − 0.009T − 2.11 sin J 2 + 0.04 sin 2J 2
+δ0 = 64.49 + 0.003T − 0.91 cos J 2 + 0.01 cos 2J 2
+W = 8.56 + 533.7004100d + 1.91 sin J 2 − 0.04 sin 2J 2
+
+I
+
+Io
+
+α0 = 268.05 − 0.009T + 0.094 sin J 3 + 0.024 sin J 4
+δ0 = 64.50 + 0.003T + 0.040 cos J 3 + 0.011 cos J 4
+W = 200.39 + 203.4889538d − 0.085 sin J 3 − 0.022 sin J 4(a)
+
+123
+
+α0 = 268.05 − 0.009T
+δ0 = 64.49 + 0.003T
+W = 346.09 + 1221.2547301d
+α0 = 268.05 − 0.009T
+δ0 = 64.49 + 0.003T
+W = 33.29 + 1206.9986602d
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 11 of 46
+
+22
+
+Table 2 continued
+α0 , δ0 , T , and d have the same meanings as in Table 1 (epoch JD 2451545.0, i.e. 2000 January 1 12 h TDB)
+II
+
+Europa
+
+III
+
+Ganymede
+
+IV
+
+Callisto
+
+where
+Saturn:
+
+α0 = 268.08 − 0.009T + 1.086 sin J 4 + 0.060 sin J 5
++ 0.015 sin J 6 + 0.009 sin J 7
+δ0 = 64.51 + 0.003T + 0.468 cos J 4 + 0.026 cos J 5
++ 0.007 cos J 6 + 0.002 cos J 7
+W = 36.022 + 101.3747235d − 0.980 sin J 4 − 0.054 sin J 5
+− 0.014 sin J 6 − 0.008 sin J 7(b)
+α0 = 268.20 − 0.009T − 0.037 sin J 4 + 0.431 sin J 5
++ 0.091 sin J 6
+δ0 = 64.57 + 0.003T − 0.016 cos J 4 + 0.186 cos J 5
++ 0.039 cos J 6
+W = 44.064 + 50.3176081d + 0.033 sin J 4 − 0.389 sin J 5
+− 0.082 sin J 6(c)
+α0 = 268.72 − 0.009T − 0.068 sin J 5 + 0.590 sin J 6
++0.010 sin J 8
+δ0 = 64.83 + 0.003T − 0.029 cos J 5 + 0.254 cos J 6
+− 0.004 cos J 8
+W = 259.51 + 21.5710715d + 0.061 sin J 5 − 0.533 sin J 6
+− 0.009 sin J 8(d)
+Jl = 73◦ .32 + 91472◦ .9T, J 2 = 24◦ .62 + 45137◦ .2T, J 3 = 283◦ .90 + 4850◦ .7T,
+J 4 = 355.80 + 1191.3T, J 5 = 119.90 + 262.1T, J 6 = 229.80 + 64.3T,
+J 7 = 352.25 + 2382.6T, J 8 = 113.35 + 6070.0T
+
+XVIII
+
+Pan
+
+α0 = 40.6 − 0.036T
+δ0 = 83.5 − 0.004T
+W = 48.8 + 626.0440000d
+
+XV
+
+Atlas
+
+α0 = 40.58 − 0.036T
+δ0 = 83.53 − 0.004T
+W = 137.88 + 598.3060000d
+
+XVI
+
+Prometheus
+
+α0 = 40.58 − 0.036T
+δ0 = 83.53 − 0.004T
+W = 296.14 + 587.289000d
+
+XVII
+
+Pandora
+
+α0 = 40.58 − 0.036T
+δ0 = 83.53 − 0.004T
+W = 162.92 + 572.7891000d
+
+XI
+
+Epimetheus
+
+α0 = 40.58 − 0.036T − 3.153 sin S1 + 0.086 sin 2S1
+δ0 = 83.52 − 0.004T − 0.356 cos S1 + 0.005 cos 2S1
+W = 293.87 + 518.4907239d + 3.133 sin S1 − 0.086 sin 2S1(e)
+
+X
+
+Janus
+
+α0 = 40.58 − 0.036T − 1.623 sin S2 + 0.023 sin 2S2
+δ0 = 83.52 − 0.004T − 0.183 cos S2 + 0.001 cos 2S2
+W = 58.83 + 518.2359876d + 1.613 sin S2 − 0.023 sin 2S2(e)
+
+I
+
+Mimas
+
+α0 = 40.66 − 0.036T + 13.56 sin S3
+δ0 = 83.52 − 0.004T − 1.53 cos S3
+W = 333.46 + 381.9945550d − 13.48 sin S3 − 44.85 sin S5(f)
+
+II
+
+Enceladus
+
+α0 = 40.66 − 0.036T
+δ0 = 83.52 − 0.004T
+W = 6.32 + 262.7318996d (g)
+
+III
+
+Tethys
+
+α0 = 40.66 − 0.036T + 9.66 sin S4
+δ0 = 83.52 − 0.004T − 1.09 cos S4
+W = 8.95 + 190.6979085d − 9.60 sin S4 + 2.23 sin S5(h)
+
+XIII
+
+Telesto
+
+α0 = 50.51 − 0.036T
+δ0 = 84.06 − 0.004T
+W = 56.88 + 190.6979332d (e)
+
+123
+
+22
+
+Page 12 of 46
+
+B. A. Archinal et al.
+
+Table 2 continued
+α0 , δ0 , T , and d have the same meanings as in Table 1 (epoch JD 2451545.0, i.e. 2000 January 1 12 h TDB)
+XIV
+
+Calypso
+
+α0 = 36.41 − 0.036T
+δ0 = 85.04 − 0.004T
+W = 153.51 + 190.6742373d (e)
+
+IV
+
+Dione
+
+α0 = 40.66 − 0.036T
+δ0 = 83.52 − 0.004T
+W = 357.6 + 131.5349316d (i)
+
+XII
+
+Helene
+
+α0 = 40.85 − 0.036T
+δ0 = 83.34 − 0.004T
+W = 245.12 + 131.6174056d
+
+V
+
+Rhea
+
+α0 = 40.38 − 0.036T + 3.10 sin S6
+δ0 = 83.55 − 0.004T − 0.35 cos S6
+W = 235.16 + 79.6900478d − 3.08 sin S6(j)
+
+VI
+
+Titan
+
+α0 = 39.4827
+δ0 = 83.4279
+W = 186.5855 + 22.5769768d
+
+VIII
+
+Iapetus
+
+α0 = 318.16 − 3.949T
+δ0 = 75.03 − 1.143T
+W = 355.2 + 4.5379572d (k)
+
+IX
+
+Phoebe
+
+α0 = 356.90
+δ0 = 77.80
+W = 178.58 + 931.639d
+
+where
+
+S1 = 353◦ .32 + 75706◦ .7T, S2 = 28◦ .72 + 75706◦ .7T, S3 = 177◦ .40 − 36505◦ .5T
+S4 = 300.00 − 7225.9T, S5 = 316.45 + 506.2T, S6 = 345.20 − 1016.3T
+
+Uranus:
+
+VI
+
+Cordelia
+
+α0 = 257.31 − 0.15 sin U 1
+δ0 = − 15.18 + 0.14 cos U 1
+W = 127.69 − 1074.5205730d − 0.04 sin U 1
+
+VII
+
+Ophelia
+
+α0 = 257.31 − 0.09 sin U 2
+δ0 = − 15.18 + 0.09 cos U 2
+W = 130.35 − 956.4068150d − 0.03 sin U 2
+
+VIII
+
+Bianca
+
+α0 = 257.31 − 0.16 sin U 3
+δ0 = − 15.18 + 0.16 cos U 3
+W = 105.46 − 828.3914760d − 0.04 sin U 3
+
+IX
+
+Cressida
+
+α0 = 257.31 − 0.04 sin U 4
+δ0 = − 15.18 + 0.04 cos U 4
+W = 59.16 − 776.5816320d − 0.01 sin U 4
+
+X
+
+Desdemona
+
+α0 = 257.31 − 0.17 sin U 5
+δ0 = − 15.18 + 0.16 cos U 5
+W = 95.08 − 760.0531690d − 0.04 sin U 5
+
+XI
+
+Juliet
+
+α0 = 257.31 − 0.06 sin U 6
+δ0 = − 15.18 + 0.06 cos U 6
+W = 302.56 − 730.1253660d − 0.02 sin U 6
+
+XII
+
+Portia
+
+α0 = 257.31 − 0.09 sin U 7
+δ0 = − 15.18 + 0.09 cos U 7
+W = 25.03 − 701.4865870d − 0.02 sin U 7
+
+XIII
+
+Rosalind
+
+α0 = 257.31 − 0.29 sin U 8
+δ0 = − 15.18 + 0.28 cos U 8
+W = 314.90 − 644.6311260d − 0.08 sin U 8
+
+XIV
+
+Belinda
+
+α0 = 257.31 − 0.03 sin U 9
+δ0 = − 15.18 + 0.03 cos U 9
+W = 297.46 − 577.3628170d − 0.01 sin U 9
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 13 of 46
+
+22
+
+Table 2 continued
+α0 , δ0 , T , and d have the same meanings as in Table 1 (epoch JD 2451545.0, i.e. 2000 January 1 12 h TDB)
+XV Puck
+
+α0 = 257.31 − 0.33 sin U 10
+δ0 = − 15.18 + 0.31 cos U 10
+W = 91.24 − 472.5450690d − 0.09 sin Ul0
+
+V
+
+Miranda α0 = 257.43 + 4.41 sin U 11 − 0.04 sin 2U 11
+δ0 = − 15.08 + 4.25 cos U 11 − 0.02 cos 2U 11
+W = 30.70 − 254.6906892d − 1.27 sin U 12 + 0.15 sin 2Ul2
++1.15 sin U 11 − 0.09 sin 2U 11
+
+I
+
+Ariel
+
+II
+
+Umbriel α0 = 257.43 + 0.21 sin U 14
+δ0 = − 15.10 + 0.2 cos U 14
+W = 108.05 − 86.8688923d − 0.09 sin U 12 + 0.06 sin U 14
+
+III
+
+Titania
+
+α0 = 257.43 + 0.29 sin U 15
+δ0 = − 15.10 + 0.28 cos U 15
+W = 77.74 − 41.3514316d + 0.08 sin U 15
+
+IV
+
+Oberon
+
+α0 = 257.43 + 0.16 sin U 16
+δ0 = − 15.10 + 0.16 cos U 16
+W = 6.77 − 26.7394932d + 0.04 sin U 16
+
+where
+
+Neptune III Naiad
+
+α0 = 257.43 + 0.29 sin U 13
+δ0 = − 15.10 + 0.28 cos U 13
+W = 156.22 − 142.8356681d + 0.05 sin U 12 + 0.08 sin U 13
+
+U 1 = 115◦ .75 + 54991◦ .87T, U 2 = 141◦ .69 + 41887◦ .66T, U 3 = 135◦ .03 + 29927◦ .35T,
+U 4 = 61.77 + 25733.59T,
+U 5 = 249.32 + 24471.46T, U 6 = 43.86 + 22278.41T,
+U 7 = 77.66 + 20289.42T
+U 8 = 157.36 + 16652.76T, U 9 = 101.81 + 12872.63T,
+U 10 = 138.64 + 8061.81T, U 11 = 102.23 − 2024.22T, U 12 = 316.41 + 2863.96T,
+U 13 = 304.01 − 51.94T,
+U 14 = 308.71 − 93.17T,
+U 15 = 340.82 − 75.32T,
+U 16 = 259.14 − 504.81T
+α0 = 299.36 + 0.70 sin N − 6.49 sin N 1 + 0.25 sin 2N 1
+δ0 = 43.36 − 0.51 cos N − 4.75 cos N 1 + 0.09 cos 2N 1
+W = 254.06 + 1222.8441209d − 0.48 sin N + 4.40 sin N 1 − 0.27 sin 2N 1
+
+IV
+
+Thalassa α0 = 299.36 + 0.70 sin N − 0.28 sin N 2
+δ0 = 43.45 − 0.51 cos N − 0.21 cos N 2
+W = 102.06 + 1155.7555612d − 0.48 sin N + 0.19 sin N 2
+
+V
+
+Despina α0 = 299.36 + 0.70 sin N − 0.09 sin N 3
+δ0 = 43.45 − 0.51 cos N − 0.07 cos N 3
+W = 306.51 + 1075.7341562d − 0.49 sin N + 0.06 sin N 3
+
+VI
+
+Galatea
+
+α0 = 299.36 + 0.70 sin N − 0.07 sin N 4
+δ0 = 43.43 − 0.51 cos N − 0.05 cos N 4
+W = 258.09 + 839.6597686d − 0.48 sin N + 0.05 sin N 4
+
+VII Larissa
+
+α0 = 299.36 + 0.70 sin N − 0.27 sin N 5
+δ0 = 43.41 − 0.51 cos N − 0.20 cos N 5
+W = 179.41 + 649.0534470d − 0.48 sin N + 0.19 sin N 5
+
+VIII Proteus
+
+α0 = 299.27 + 0.70 sin N − 0.05 sin N 6
+δ0 = 42.91 − 0.51 cos N − 0.04 cos N 6
+W = 93.38 + 320.7654228d − 0.48 sin N + 0.04 sin N 6
+
+I
+
+α0 = 299.36 − 32.35 sin N 7 − 6.28 sin 2N 7 − 2.08 sin 3N 7
+− 0.74 sin 4N 7 − 0.28 sin 5N 7 − 0.11 sin 6N 7
+− 0.07 sin 7N 7 − 0.02 sin 8N 7 − 0.01 sin 9N 7
+δ0 = 41.17 + 22.55 cos N 7 + 2.10 cos 2N 7 + 0.55 cos 3N 7
++ 0.16 cos 4N 7 + 0.05 cos 5N 7 + 0.02 cos 6N 7
++ 0.01 cos 7N 7
+W = 296.53 − 61.2572637d + 22.25 sin N 7 + 6.73 sin 2N 7
++ 2.05 sin 3N 7 + 0.74 sin 4N 7 + 0.28 sin 5N 7
++ 0.11 sin 6N 7 + 0.05 sin 7N 7 + 0.02 sin 8N 7
++ 0.01 sin 9N 7
+
+Triton
+
+123
+
+22
+
+Page 14 of 46
+
+B. A. Archinal et al.
+
+Table 2 continued
+α0 , δ0 , T , and d have the same meanings as in Table 1 (epoch JD 2451545.0, i.e. 2000 January 1 12 h TDB)
+where
+
+N = 357◦ .85 + 52◦ .316T, Nl = 323◦ .92 + 62606◦ .6T, N 2 = 220◦ .51 + 55064◦ .2T,
+N 3 = 354.27 + 46564.5T, N 4 = 75.31 + 26109.4T,
+N 5 = 35.36 + 14325.4T,
+N 6 = 142.61 + 2824.6T, N 7 = 177.85 + 52.316T
+
+(a) The 0◦ meridian of Io is defined by the mean sub-Jovian direction since it is assumed surface features will not last long
+enough to serve as a long-term reference
+(b) The 182◦ meridian of Europa is defined by the crater Cilix
+(c) The 128◦ meridian of Ganymede is defined by the crater Anat
+(d) The 326◦ meridian of Callisto is defined by the crater Saga
+(e) These equations are correct for Janus, Epimetheus, Telesto, and Calypso for the period of the Voyager encounters.
+Because of precession these may change. Additionally, orbital swaps between Janus and Epimetheus induce changes in
+their mean spin rates, and they are subject to forced librations
+(f) The 162◦ meridian of Mimas is defined by the crater Palomides
+(g) The 5◦ meridian of Enceladus is defined by the crater Salih
+(h) The 299◦ meridian of Tethys is defined by the crater Arete
+(i) The 63◦ meridian of Dione is defined by the crater Palinurus
+(j) The 340◦ meridian of Rhea is defined by the crater Tore
+(k) The 276◦ meridian of Iapetus is defined by the crater Almeric
+
+accuracy that a body-fixed coordinate frame can at times be defined relative to inertial space
+at a higher level of accuracy than to a surface feature fixed frame. Mercury is again an
+example, where the currently known orientation of the dynamically oriented body-fixed
+frame is possibly more accurately known than that of the established feature fixed frame.
+When such systems and frames in such systems are used, the relationships between them
+and the recommended cartographic coordinate system should be derived so that conversions
+between the systems can be accomplished at some known level of accuracy. This will allow
+the creation of final cartographic products in the recommended system. Users should also be
+aware that at high levels of precision (e.g., for the Moon and probably, but not yet measured,
+for Mercury), a principal axis system is not necessarily coincident with systems defined
+via principles of synchronous or resonant rotation. Principal axis frames usually rely on a
+specific gravity field model for their definition and may often change with improved gravity
+field determinations—just as frames that rely on fixed features may often change, when a
+body is remapped at improved resolution and accuracy.
+
+3 The lunar coordinate system
+The recommended coordinate system for the Moon is the mean Earth/polar axis (ME) system.
+There is an offset between this system and the principal axis (PA) system, sometimes called
+the axis of figure system (Davies and Colvin 2000).
+The ME system is recommended because nearly all cartographic products have been
+aligned to it (ibid.). The offset between these coordinate systems of a point on the lunar
+surface is approximately 860 meters. Previous reports included the rotation and pole position
+for the ME system using closed formulae in Table 2. We are not continuing to provide those
+formulae as they are only accurate to approximately 150 m (e.g., Konopliv et al. 2001, Fig. 3).
+For high accuracy work (e.g., spacecraft operations, high-resolution mapping, and gravity
+field determination), it is recommended that a lunar ephemeris be used to obtain the libration
+angles for the Moon, from which the pole position and rotation can be derived.
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 15 of 46
+
+22
+
+Table 3 Recommended rotation values for the direction of the positive pole of rotation and the prime meridian
+of selected dwarf planets, minor planets, their satellites, and comet
+d is the interval in days from the standard epoch, i.e., J2000.0 = JD 2451545.0, i.e., 2000 January 1 12 h TDB or from
+the given epoch for the listed comets. α0 , δ0 , W, and Ẇ are as defined in the text
+(1) Ceres
+
+α0 = 291◦ .418 ± 0◦ .03
+δ0 = 66◦ .764 ± 0◦ .03
+W = 170◦ .650 + (952◦ .1532 ± 0◦ .00003)d (a)
+
+(2) Pallas
+
+α0 = 33◦
+δ0 = − 3 ◦
+W = 38◦ + 1105◦ .8036d (b)
+
+(4) Vesta
+
+α0 = 309◦ .031 ± 0◦ .01
+δ0 = 42◦ .235 ± 0◦ .01
+W = 285.39◦ + 1617◦ .3329428d (c)
+
+(21) Lutetia
+
+α0 = 52◦ ± 5◦
+δ0 = 12◦ ± 5◦
+W = 94◦ + 1057◦ .7515d (d)
+
+(52) Europa
+
+α0 = 257◦
+δ0 = 12◦
+W = 55◦ + 1534◦ .6472187d (e)
+
+(243) Ida
+
+α0 = 168◦ .76
+δ0 = − 87◦ .12
+W = 274◦ .05 + 1864◦ .6280070d (f)
+
+(433) Eros
+
+α0 = 11◦ .35 ± 0◦ .02
+δ0 = 17◦ .22 ± 0◦ .02
+W = 326◦ .07 + 1639◦ .38864745d (g)
+
+(511) Davida
+
+α0 = 297◦
+δ0 = 5 ◦
+W = 268◦ .1 + 1684◦ .4193549d (h) (i)
+
+(951) Gaspra
+
+α0 = 9◦ .47
+δ0 = 26◦ .70
+W = 83◦ .67 + 1226◦ .9114850d (j)
+
+(2867) Šteins
+
+α0 = 91◦ ± 5◦
+δ0 = − 62◦ ± 5◦
+W = 321◦ .76 + 1428◦ .09917d (k)
+
+(25143) Itokawa
+
+α0 = 90◦ .53
+δ0 = − 66◦ .30
+W = 0◦ + 712◦ .143d (l)
+
+(134340) Pluto
+
+α0 = 132◦ .993
+δ0 = − 6◦ .163
+W = 302◦ .695 + 56◦ .3625225d (m)
+
+(134340) Pluto : I Charon α0 = 132◦ .993
+δ0 = − 6◦ .163
+W = 122◦ .695 + 56◦ .3625225d (n)
+9P/Tempel 1
+α0 = 255◦
+δ0 = 64.5◦ (Thomas et al. 2013a)
+Epoch: DI Impact
+2005−07−04 05:45:38.4±2 TDB = JD 2453555.740027
+W = 109◦ .7±?◦ ; Ẇ = 211◦ .849/d (o) (Belton et al. 2011)
+d2 W/dt2 = 0◦ .024/d2 (Belton et al. 2011)
+Epoch: Stardust NExT closest approach
+2011−02−15 04:40:18.6 TDB = JD 2455607.694660
+W = 69◦ .2±?◦ ; Ẇ = 212◦ .807/d (o) (Veverka et al.(2013))
+
+123
+
+22
+
+Page 16 of 46
+
+B. A. Archinal et al.
+
+Table 3 continued
+d is the interval in days from the standard epoch, i.e., J2000.0 = JD 2451545.0, i.e., 2000 January 1 12 h TDB or from
+the given epoch for the listed comets. α0 , δ0 , W, and Ẇ are as defined in the text
+19P/Borrelly
+
+Epoch:1994 − 2001
+α0 = 218◦ .5 ± 3◦
+δ0 = − 12◦ .5 ± 3◦
+Ẇ = 324◦ .3/d ± 7◦ /d
+
+67P/Churyumov–Gerasimenko Epoch: 2014 Mar 23–2014 Sep 3
+α0 = 69◦ .54 ± 0◦ .05
+δ0 = 64◦ .11 ± 0◦ .03
+W = 114◦ .69 + 696◦ .543884683/d; ±0◦ .1( p)
+EPOXI Closest Approach
+103P/Hartley 2 Epoch: 2010−11−04 14:00:53.9 TDB = JD 2455505.083957(q)
+αX = 285◦ .1
+δ X = − 31◦ .8
+αY = 350◦ .4
+δY = 34◦ .4
+αZ = 226◦ .1
+δZ = 39◦ .4
+(a) The 0◦ meridian of Ceres is defined by the crater Kait. “The location of this small crater is within the envelope of the
+broad feature identified in HST data to which the previous system was anchored” (Raymond and Roatsch 2015), with the
+broad feature being the unnamed bright spot shown in Figure 1 in Thomas et al. (2005) and Figures 5 and 6 at the 0◦
+meridian in Li et al. (2006)
+(b) The 0◦ meridian of Pallas is defined by the direction (positive x) of the long axis of the Carry et al. (2010) shape model
+(c) The 146◦ meridian of Vesta is defined by the crater Claudia. This definition maintains the location of a feature not
+formally named, but referred to as Olbers Regio by Thomas et al. (1997), at the 0◦ meridian
+(d) The 0◦ meridian of Lutetia has (so far) been arbitrarily defined based on light curve information
+(e) Although it is not called out there specifically, the value of 55◦ for W0 for Europa can be derived from Merline et al.
+(2013) as follows. The 0◦ meridian is defined by the direction of the long axis that pointed toward the Earth on 2007 May
+28 8.3125 UT (light-time corrected). This would have been the left edge of Figure 7 in Merline et al
+(f) The 0◦ meridian of Ida is defined by the crater Afon
+(g) The 0◦ meridian of Eros is defined by an unnamed crater
+(h) The 0◦ meridian of Davida is defined by the direction of the long axis that points toward the Earth on 2002 December
+27 7.83 UT (Conrad et al. 2007)
+(i) Values for Davida have been revised from those which appear in Conrad et al. (2007) to the values given above, which
+appear in a publication by the same authors (in preparation)
+(j) The 0◦ meridian for Gaspra is defined by the crater Charax
+(k) The 0◦ meridian for Šteins is defined by a feature referred to as the crater informally named Spinel by Jorda et al.
+(2012) and later formally named Topaz (Besse et al. 2012)
+(l) Since only rotation rate information is available, the 0◦ meridian for Itokawa is currently arbitrarily defined with
+W0 = 0◦
+(m) The 0◦ meridian for Pluto is defined as the mean sub-Charon meridian
+(n) The 0◦ meridian for Charon is defined as the mean sub-Pluto meridian
+(o) The 0◦ meridian for Tempel 1 is defined by a 350 m diameter unnamed circular feature near the Deep Impactor impact
+site (Thomas et al. 2007). See additional discussion in text
+(p) The 0◦ meridian for Churyumov–Gerasimenko is defined relative to a large ‘boulder’ called Cheops by the Rosetta
+team (Scholten et al. 2015; Preusker et al. 2015)
+(q) The 0◦ meridian for Hartley 2 is defined by an isolated large mount on the waist, near the large lobe as shown in Figures
+2 and 3 of Thomas et al. (2013a)
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 17 of 46
+
+22
+
+At this time, the Working Group is not recommending the use of a new orientation model
+for the Moon. Although the new JPL planetary and lunar ephemeris DE430 is available
+(Folkner et al. 2014), various lunar missions, such as the Lunar Reconnaissance Orbiter (LRO)
+(LRO 2008), continue to use the previously recommended DE421 ephemeris as rotated into
+the ME system (Williams et al. 2008; Folkner et al. 2008, 2009). Users needing the highest
+possible accuracy might wish to consider the use of the DE430, although the differences
+between these two ephemerides for lunar orientation in the ME system are on the order
+of a few meters. The INPOP lunar and planetary ephemeris (http://www.imcce.fr/inpop)
+is also available although in order to use it for cartographic purposes the lunar orientation
+ephemeris would have to be rotated into the ME system. The Working Group anticipates
+working with various missions and groups to work toward recommending the general use
+(for lunar orientation) of DE430 or a possible newer version of the JPL lunar and planetary
+ephemeris at some point, e.g., with a separate publication with such a recommendation or
+via our next general report.
+An ASCII version of the DE421 ephemeris may be downloaded from ftp://ssd.jpl.nasa.
+gov/pub/eph/planets/ascii/de421/. This ephemeris consists of coefficients for the Chebyshev
+polynomial representations of the Euler lunar libration angles in the PA system. The libration
+angles are:
+(a) φ, the angle along the ICRF equator, from the ICRF X axis to the ascending node of the
+lunar equator;
+(b) θ , the inclination of the lunar equator to the ICRF equator; and
+(c) ψ, the angle along the lunar equator from the ascending node to the lunar prime meridian.
+A rectangular unit vector, P, in the DE421 PA system can be rotated into the equivalent unit
+vector, M, in ME system with (Williams et al. 2008, p. 10):
+
+
+
+ 
+
+M = R x − 0. 30 R y − 78. 56 Rz − 67. 92 P
+(1)
+where R x , R y , and Rz are the standard rotation matrices for right-handed rotations around the
+X , Y , and Z axes, respectively. Conversely, a rectangular unit vector, M, in the ME system
+can be rotated to, P, in the PA system using the following expression:
+
+
+
+
+
+
+(2)
+P = Rz 67. 92 R y 78. 56 Rx 0. 30 M
+The user should obtain φ, θ , and ψ, at the desired epoch from the ephemeris file and
+convert them to P, and then apply the transformation (1), and extract the equivalent angles
+in the ME system from M. These angles can then be converted with:
+α0 = φ − 90◦
+δ0 = 90◦ − θ
+W =ψ
+to the lunar rotation angles in the ME system with the α0 , δ0 , and W formulation of Table 2.
+Alternatively, if the point is defined by a unit vector in ICRF coordinates, I , then the ME
+unit vector at a given epoch is:
+
+ 
+
+
+
+M = Rx − 0. 30 R y − 78. 56 Rz − 67. 92 Rz (ψ)Rx (θ )Rz (φ)I
+(3)
+where φ, θ , and ψ are again obtained from the ephemeris file at the desired epoch. The values
+for the rotation matrices are specific to DE421.
+If there is a desire to use the DE430 ephemeris, a unit vector in the PA system can be
+rotated into the equivalent unit vector in the DE421 ME system, using equation 20 of Folkner
+et al. (2014).
+
+123
+
+22
+
+Page 18 of 46
+
+B. A. Archinal et al.
+
+The NASA/JPL Navigation and Ancillary Information Facility (NAIF) provides software
+and data files to facilitate the above transformations. This includes a Planetary Constants Kernel (PCK) containing the DE421 lunar libration ephemeris, and a special lunar frames kernel
+(FK) providing the specifications and data required for the PA to ME system transformation.
+See https://naif.jpl.nasa.gov or (for DE421) https://naif.jpl.nasa.gov/naif/lunar_kernels.txt
+for further information. A new version of the PCK for DE430 is also available at ftp://ssd.jpl.
+nasa.gov/pub/eph/planets/bsp. Although written before DE421 became available, Roncoli
+(2005) also provides useful information on lunar constants and coordinates.
+
+4 Coordinate system for (4) Vesta
+We detail the coordinate system for the asteroid (4) Vesta, as a guide to readers who need to
+understand the different coordinate systems used in various publications and products. This
+also is an example of how the recommendations of this Working Group are intended to be
+put into effect.
+The NASA/DLR/ASI Dawn mission (Rayman et al. 2006) orbited Vesta during the period
+July 16, 2011–September 5, 2012 (Aron 2012). Prior to the mission’s arrival, the Working
+Group had described and recommended a coordinate system for Vesta (Archinal et al. 2011a,
+following earlier versions of our report) based largely on HST observations, in particular those
+of Thomas et al. (1997) with an update to the pole position based on Li (2012). The prime
+meridian of Vesta, as defined by Thomas et al. and recommended for use by the Working
+Group, was centered on a dark albedo feature informally known as Olbers Regio. That feature
+is easily identified in Dawn mission images as an area of lower albedo consisting mostly of
+a degraded topographic depression on Vesta.
+Following the IAU and the Working Group’s long standing recommendations (given in
+Sect. 2), it was expected that once the Dawn mission reached Vesta and started obtaining
+data, the coordinate system would be updated, i.e., with a better determination of the pole
+position, and a refinement of the position of the prime meridian.
+Instead, Dawn mission personnel defined successive new longitude systems for Vesta that
+were not aligned to the existing one. The Dawn mission principal investigator and other
+mission personnel were informed by the Working Group chair in 2011 August that this
+was likely going to cause serious problems in the use of Dawn data by others outside the
+Dawn mission. A formal request was received from the mission for the full Working Group
+to consider the issue, and in 2011 September the Working Group found that the particular
+system being proposed (which included an arbitrary offset of 138◦ from the recommended
+system) did not follow past IAU and Working Group recommendations. The Working Group
+recommended that a system be used in which the Olbers feature would still be on the prime
+meridian. The Dawn mission did not adopt the Working Group’s recommendations.
+In 2011 October, it was made clear to the Dawn mission that the PDS required that data
+submitted to the PDS by the Dawn mission was required to follow IAU recommendations in
+order to be archived (PDS 2009). There was another formal request from the mission in midFebruary of 2012 to the Working Group to consider a new request for approval of the offset
+coordinate system, or alternatively coordinate systems with other large offsets. The Working
+Group considered the issues involved at length and again made the same recommendations
+as in 2011 September. The Working Group also stated “[…] we believe it is important to
+indicate when it is used that it is different from one that follows IAU recommendations.” The
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 19 of 46
+
+22
+
+mission began publishing papers using their system from 2011 September, with no mention
+that it did not follow IAU recommendations.
+Starting in late June 2012 and continuing through July and early August, a large number
+of requests were received from the PDS Small Bodies Node and the PDS Asteroids Subnode
+regarding a review that was taking place of the data the Dawn mission submitted to the PDS
+to be archived. The PDS determined during the review, with assistance from the Working
+Group, that the mission had submitted data in one of the systems it proposed to use in
+February, which the Working Group had already decided was not in compliance with IAU
+recommendations. The Dawn mission was informed how their system could be modified in
+order to comply with IAU recommendations. The mission stated it would soon submit its
+data to the PDS in a system where the Olbers feature was maintained at 0◦ longitude.
+In 2012 October the mission proposed to the Working Group a longitude system that
+did have the Olbers feature at zero degrees. The Working Group recommended that the
+mission use that system for all further publications so as not to cause continued confusion
+regarding the multiple systems in use. We received the reply that “The team is trying to find
+an acceptable solution to the map publication process.” (private communication, Raymond
+2012). The mission then began delivering data to the PDS for publication in the system with
+the Olbers feature at 0◦ longitude. The dataset was described in the PDS archive document
+(Li 2012; Li and Mafi 2013), where it is listed (see Table 1 only, as different values appear
+in the text of the document) as the “Claudia Double-Prime” system, with W0 = 285.39◦ . As
+noted there this system leaves the Olbers feature at 0◦ longitude, by defining the longitude
+of the small crater Claudia (shown in Fig. 1) as positive 146◦ .
+In 2013, Giovanni Valsecchi (then President of IAU Division F on Planetary Systems
+and Bioastronomy) requested that the Working Group explicitly recommend a coordinate
+system for Vesta. Such a recommendation would support further use of this system by the
+IAU Working Group for Planetary System Nomenclature (WGPSN), the IAU generally, and
+the international science community.
+In response, the Working Group chose to recommend the same system as the one proposed
+by the Dawn mission in 2012 October with the Olbers feature at 0◦ longitude. The Working
+Group made this recommendation in Archinal et al. (2013b), and recommended this system
+be known as the “IAU Coordinate System for (4) Vesta,” with the publication year of that
+announcement (2013) specified if necessary to differentiate it from the earlier or later systems
+recommended for Vesta. We note, however, that in following the IAU recommendations, these
+systems are essentially indistinguishable from each other as higher accuracy and resolution
+data became available for Vesta.
+Compared to the values recommended by the WGCRRE in our previous full report (Archinal et al. 2011a), the recommended system has an offset of 2.5◦ in pole position and an increase
+in rotation rate of 0.0001668◦ /day and a constant W term (or W0 ) decrease of 6.61◦ . The
+change in this latter value is mostly due to the change in pole position and the total change
+in rotation since J2000.0 due to the improved rotation rate.
+Further improved values for the pole position and spin rate have become available from
+Konopliv et al. (2014), both with and without a model for precession and nutation. The model
+without precession and nutation corresponds to that given here, but with updated parameter
+values that move the pole by 0◦ .009, and increase the rotation rate by 0.0001807◦ /day.
+However, since Konopliv et al. did not give the value of W0 for that model, it is incomplete
+for cartographic use. Rather than trying to derive an appropriate W0 value, we recommended
+the continued use of the parameter values from Li (2012) given in Table 3, which should be
+sufficiently accurate for making products from the Dawn mission or other observations of
+Vesta.
+
+123
+
+22
+
+Page 20 of 46
+
+B. A. Archinal et al.
+
+5 Rotation elements for planets and satellites
+Table 1 provides recommended rotation elements for the major planets, while Table 2 provides
+them for planetary satellites.
+The MESSENGER spacecraft has performed three flybys and more than four years of
+orbital observations of Mercury. A new orientation model has been derived and adopted
+for data release by the MESSENGER mission team (see Stark et al. (2017b) for details),
+which is recommended for use here. The values for the rotation axis orientation at J2000.0
+and the libration amplitude cited in this report are based on 10 years of Earth-based radar
+observations of Mercury (Margot et al. 2012). The rotation rate is based on MESSENGER
+radio science observations and modeling of Mercury’s gravity field (Mazarico et al. 2014).
+The rotation rate of Mercury was found to differ significantly from the previously adopted
+value, which dates back to Davies et al. (1980). Hence, this required an update for the prime
+meridian constant W0 . In order to comply with the definition of the prime meridian through
+the small crater Hun Kal, W0 was changed by 0.0519◦ (∼ 2.2 km) based on a preliminary
+analysis of images showing this crater (Stark 2016). While the analysis of MESSENGER
+data is still ongoing, more recent rotational parameters for Mercury, relevant for geophysical
+analysis, are available now (Stark et al. 2015; Verma and Margot 2016).
+New models for the orientation of Mars have been derived by Kuchynka et al. (2014) and
+Konopliv et al. (2016). Both have successively been recommended for use by the NASA
+Mars Geodesy and Cartography Working Group (MGCWG) (Duxbury et al. 2013, 2017).
+The Konopliv et al. (2016) model is based on additional data compared to that used by
+Kuchynka et al. (2014). However, only Kuchynka et al. (2014) provide a series expansion
+of the Mars orientation model in the conventional form (α0 , δ0 , and W ), so its use is recommended here.3 Either of these models provides substantial improvement over the model
+previously recommended by the MGCWG (Duxbury et al. 2001, 2002) and the Working
+Group (Seidelmann et al. 2002). As shown by earlier work by Konopliv et al. (2006, Fig. 19),
+the difference between the previous recommended model and revised models can be on the
+order of as much 40 m in longitude and pole position over 10 years. With a million time steps
+from January 1, 2000 to January 1, 2030 , the maximum rotation difference between the
+previous model and the Kuchynka et al. model is about 180 m. The difference between the
+Kuchynka et al and Konopliv et al. (2016) models compared over the same period is just over
+13 m (Bachman, personal communication). Should a series expansion of the Konopliv et al.
+(2016) model in the conventional form become available, the Working Group will consider
+updating its recommendation.
+The origin of the longitude system for Mars is now defined by assigning a longitude of
+47◦ .95137 west to the Viking 1 lander. This is based on work by Parker et al. (2012) and
+Kuchynka et al. (2014), and related work by Duxbury et al. (2014), and as adopted by Konopliv et al. (2016) and the MGCWG (Duxbury et al. 2017). Previously the longitude system
+was defined by assigning a zero longitude to the center of the crater Airy-0. The longitude
+uncertainty within which landed resources can be determined by radiometric tracking is now
+0◦ .0001 (about 6 m) (Kuchynka et al. 2014). Since that is significantly smaller than the
+uncertainty of determining the center of the ∼ 500 m diameter Airy-0, the time has come to
+transition the orientation of the longitude system from being based on Airy-0 to the much
+smaller Viking 1 lander, for which there are extensive radiometric tracking data. Note though
+3 Jacobson (personal communication) et al. have submitted a paper to Planetary and Space Sciences, which
+
+includes a series expansion for the Konopliv et al. (2016) model in the convention form, as well as improved
+orientation models for Phobos and Deimos (see below). The Working Group is not recommending the use of
+these models at this time, pending review and publication.
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 21 of 46
+
+22
+
+that within current cartographic uncertainties, this definition still maintains the position of
+the center of Airy-0 at 0◦ longitude.
+The rotation rate of Saturn given in Table 1 is based on Voyager observations of kilometerwavelength radio signals. Giampieri et al. (2006) give a period of about 10 h and 47 min from
+Cassini observations of a signal in Saturn’s magnetic field. This period is about 8 min longer
+than the previously determined one. It is uncertain whether this is the true rotation rate or
+what physical mechanism is causing the different signals (Stevenson 2006). See Kurth et al.
+(2007), Gurnett et al. (2007), Anderson and Schubert (2007), and Russell and Dougherty
+(2010) for additional discussion. Russell (2010, private communication) reports that results
+indicating a specific period in Russell and Dougherty (2010) are in doubt, and it appears the
+rotation period cannot be obtained reliably from Cassini magnetic field observations alone.
+He and others involved with the Cassini Project (Spilker 2010, private communication) are
+trying to find a consensus solution. So, the rotation rate of Saturn remains unchanged. It is
+possible that there will be new results from the Cassini mission.
+The rotation rate of Uranus was determined from the Voyager mission in 1986. The
+uncertainty of the rotation rate is large enough that the present uncertainty of the prime
+meridian is more than a complete rotation.
+The orientation model for Neptune is derived from that previously reported, but updated
+by a new rotation rate of 15.96630 ± 0.00003 h from Karkoschka (2011), derived from longterm optical observations of two features of the Neptunian atmosphere, and thus improving
+dramatically on the rotation rate derived from Voyager observations. It is called there “System
+II” which is a terminology we continue here. Karkoschka’s recommendation to have the
+rotation, W , match the previously recommended System III and System II at August 3, 1989
+12:00:00.0 UT = JD 2447742 UT has been followed, resulting in the new value for the first
+term of W of 249◦ .978 at J2000.0. We note that Jacobson (2011) has derived new expressions
+for the pole position of Neptune (as well as improved orbits for Triton, Nereid, and Proteus)
+that may be of interest. However, it is not clear if there is a significant improvement over the
+current pole position and precession model, so we are not recommending a change in that
+model at this time.
+It has recently been pointed out (Duxbury, private communication) that the orientation
+models recommended by the Working Group previously for Phobos and Deimos are out of
+date at current epochs, since they are based on orbital elements derived in the 1980s and earlier
+that have since changed. New models have been developed (e.g., Stark et al. 2017a; Jacobson,
+private communication via T. Duxbury). The MGCWG notes and recommends (Duxbury et al.
+2017): “The MGCWG validated that these new expressions couple the orbits and orientations
+to accuracies at the meter level for Stark and sub-meter level for Jacobson, both sufficiently
+accurate for today’s and near-term applications. The MGCWG recommends that the IAU
+WGCCRE adopt the expressions by Jacobson, however there is no external reference for
+this work. Therefore, the expressions by Stark, also sufficiently accurate for today’s and near
+future work, [have been] documented in an abstract that can be referenced and therefore
+the IAU WGCCRE may choose to adopt these expressions.” Due to an urgent need for
+updated models, the Working Group accepts the MGCWG recommendation and chooses to
+use the Stark et al. model since it exists in published form (2017a). For the physical libration
+in longitude and the accordingly adapted W0 of Phobos we adopt the values obtained by
+Burmeister et al. (2018). Stark et al. (2017a) note that “The current accuracy is considered
+sufficient for cartographic purposes but might need improvement for tasks like high precision
+landing on Phobos.”
+Satellites for which no suitable data are yet available have been omitted from this table.
+Hyperion is not included in this table because it is in chaotic rotation. Nereid is not included
+
+123
+
+22
+
+Page 22 of 46
+
+B. A. Archinal et al.
+
+in this table because no simple model for its rotation exists and it may be in chaotic rotation
+(Dobrovolskis 1995).
+
+6 Rotational elements for dwarf planets, minor planets, their satellites,
+and comets
+For dwarf planets, minor planets (or asteroids), their satellites, and comets substantial indirect
+evidence exists for large precession of the rotational poles. So the definition of a north pole
+has been rethought. Situations exist in which the pole that is clearly on the north side of the
+invariant plane is thought to precess over several decades to become clearly on the south
+side of the invariant plane. Comet 2P/Encke is an example of a comet for which very large
+precession has been inferred.
+There is also clear evidence for excited state rotation for comets 1P/Halley and
+103P/Hartley 2 and minor planet (4179) Toutatis. In this case, the body-fixed reference
+system moves with respect to the angular momentum vector. The rotation vector makes substantial excursions from the angular momentum vector. The motion of the rotation vector is
+detected in the object’s light curve. It is likely there are other cases where the rotation pole
+moves between north and south of the invariant plane on a time scale of days. Thus, the
+definition of the pole for small bodies is, since the 2006 report, different from the definition
+for the planets and their satellites.
+The rotation pole for a body is chosen to be the one following the right-hand rule. This
+rotation pole is called the positive pole to avoid confusion with the north–south terminology.
+For common usage, this positive pole is often referred to as the north pole, but in papers
+that rely on coordinates one should make it clear that the north pole refers to the positive
+spin pole rather than the traditional definition for planets and satellites, which is relative to
+the invariant plane. The other cardinal directions are then named in relation to north in the
+same way as on planets and satellites. For example, “east” is 90◦ to the right from north
+and thus is always the direction of rotation and of increasing longitude on minor bodies.
+This informal terminology greatly simplifies the description of geographic and geological
+relations on such objects. Ideally the pole chosen for excited state rotation reduces to this
+definition as the rotational energy relaxes to the ground state. For SAM (short-axis mode)
+rotation states (e.g., Samarasinha et al. 2004), it is possible to define a body-fixed axis that
+circulates in a complex pattern about the angular momentum vector and approaches the simple
+right-hand rule definition as the rotational energy relaxes to the simple rotation ground state.
+The appropriate body-fixed pole is the axis of maximum moment of inertia. The definition
+for a body in a LAM (long-axis mode) rotational state is not as obvious, because there is
+complete rotation about the long axis of the body as well as rotation about a short axis. In this
+case, the pole should be taken as the minimum moment of inertia according to the right-hand
+rule. This choice also allows simple cylindrical projection mapping with far less distortion
+than if the axis of maximum moment of inertia were chosen.
+The terminology of planetographic and planetocentric coordinate systems does not apply
+to such bodies since it is not necessary when the coordinate system will always follow the
+right-hand rule, but will continue to be used for planets and their satellites. However, if referenced to the body center, latitude and longitude on such bodies may be called planetocentric,
+and planetodetic if referenced to an ellipsoidal reference surface.
+The initial encounter with a small irregular body may not provide enough information to
+determine the shape, moments of inertia, and rotational dynamics with sufficient accuracy
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 23 of 46
+
+22
+
+such that rotational parameters based on them will stand the test of time. The recommended
+approach to defining rotational parameters and coordinate axes should be based on the same
+general principles that apply to planets and satellites. If possible, the initial definition of a
+body-fixed coordinate system should be based on a shape model and estimate of the moments
+of inertia, with the polar axis chosen as described above. If there is insufficient information
+to determine the moments of inertia, it may be necessary to define a coordinate system based
+on the instantaneous axis of rotation at the time of encounter. The choice of prime meridian
+is arbitrary, but there is precedent [e.g., with (433) Eros] for choosing it so it aligns with the
+longest axis (or minimum moment of inertia, if this can be estimated).
+It is now clear that predicting future rotational states of cometary nuclei is very difficult,
+based only on flybys and Earth-based data, even for a relatively well-behaved comet like
+9P/Tempel 1 (Belton et al. 2011). At subsequent encounters, the orientation of a comet
+nucleus will likely differ from the model prediction derived from initial encounter data. The
+differences may be large, due to strong torques from outgassing, rapid precession of the spin
+axis relative to the body, and the accuracy of the initial observation. It should be borne in
+mind that, as for planets and satellites, the main purpose of defining a body-fixed coordinate
+system is to facilitate mapping of surface features. It is highly desirable to relate the axes of
+the initial system to identifiable surface features. When new observations become available,
+the axes should, in most cases, be left unchanged with respect to the surface features, and
+the rotational parameters amended to model the orientation of the axes more accurately. For
+irregular bodies both axis orientation and rate may be poorly determined or vary over time.
+So, two or three landmark features will be required to determine the body-fixed orientation
+of the coordinate axes, rather than the single landmark required to define the prime meridian
+of a regularly rotating body. For comets it may be necessary to give a simple formula (in
+terms of α0 , δ0 , W at an epoch, and Ẇ ) that is adequate over a short interval but does not try
+to describe how those parameters evolve. Or in the worst case, it may be necessary to specify
+only the orientation at one or more specific epochs rather than providing a formula for the
+rotational orientation.
+For planets and satellites, longitude should increase approximately monotonically in an
+inertial reference frame as specified in Sect. 5.
+For dwarf planets, minor planets, their satellites, and comets increasing longitude should
+always follow the right-hand rule.4 For each such body, the positive pole of rotation is selected
+as the maximum or minimum moment of inertia according to whether it is in a short or longaxis rotational state. So the positive pole is specified by the value of its right ascension α0 and
+declination δ0 . The two nodes of the body’s equator and the ICRF equator are at α0 ± 90◦ .
+The node α0 + 90◦ is defined as the node Q, and the inclination of the body’s equator to the
+celestial equator is 90◦ − δ0 . The prime meridian is chosen so it crosses the body’s equator
+at B. The angle W is measured along the body’s equator from Q to B in a right-hand system
+with respect to the body’s positive pole (Fig. 2). The right ascension of the node Q is 90◦ +α0 .
+The value of W changes approximately linearly with time according to the right-hand rule.
+The values of α0 , δ0 , and W may also vary with time due to a precession of the rotation
+axis of the body. This formulation of the body orientation in terms of pole orientation and
+spin angle may be insufficient for bodies whose spin precesses rapidly with large amplitude.
+Several such examples, new in this report, are discussed below.
+The angle W specifies the ephemeris position of the prime meridian, and for dwarf planets,
+minor planets, their satellites, and comets without any accurately observable fixed surface
+4 This definition is consistent with the sense of increasing longitude used for Eros by Miller et al. (2002), and
+
+inconsistent with the sense of increasing longitude used for Eros by Thomas et al. (2002).
+
+123
+
+22
+
+Page 24 of 46
+
+B. A. Archinal et al.
+
+Z
+
+Body posive spin pole
+(α0 , δ0 )
+
+Celesal sphere
+
+Earth
+equinox
+at J2000.0
+
+Prime meridian
+
+Rotaon
+Body
+
+Body
+equator
+of date
+
+Q
+
+Y
+
+90O – δ0
+
+B
+
+X
+
+ICRF equator
+
+Fig. 2 Reference system used to define the orientation of dwarf planets, minor planets, their satellites, and
+comets
+
+features, the adopted expression for W defines the prime meridian. Where possible, the cartographic position of the prime meridian is defined by a suitable observable feature, and
+the constants in the expression W = W0 + Ẇ d, where d is the interval in days from the
+standard epoch, are chosen so that the ephemeris position follows the motion of the cartographic position as closely as observations allow; in these cases the expression for W may
+require emendation in the future. Table 3 gives the recommended positions of the positive
+pole of rotation and the prime meridian of selected dwarf planets, minor planets, their satellites, and comets. Included objects have been imaged by spacecraft, radar, or high-resolution
+Earth-based imaging systems with sufficient resolution to establish accurate pole orientation
+and rotation rates. Values are not listed for objects where the observations are limited to
+photometric light curves.
+If new higher accuracy mapping is done, the longitudes of the defining feature or features
+are to be maintained and, as necessary, improved rotational parameters derived, published in
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 25 of 46
+
+22
+
+peer-reviewed literature, and submitted to this Working Group for possible adoption. Defining
+features are noted in the footnotes to Table 3 for those bodies where they are in use. As noted
+in Sect. 2, except in unusual circumstances or in cases where the change amounts to refining
+the landmark position within the precision to which it was originally measured, features and
+their associated longitudes chosen to define cartographic coordinates should not be changed.
+For bodies whose instantaneous rotation axis varies significantly, it is still useful to have a
+single, body-fixed coordinate system. In order to make such a definition, it will be necessary
+to define not only the longitude of a single feature but the latitudes and longitudes of three or
+more features. In such cases the choice of coordinate axes cannot reflect the exact rotational
+state (except perhaps at a given epoch). However, it should be defined to do so as closely
+as possible, by putting the coordinate pole somewhere near the average location over some
+interval or the location at some epoch.
+A dwarf planet, minor planet, one of their satellites, or a comet is included in Table 3 only
+if it meets publication and data quality criteria, and a cartographic need exists that justifies
+the definition of a prime meridian and pole for the body. Estimated values for α0 , δ0 , and W0
+(i.e., W at J2000.0, or W at a given observational epoch if appropriate—see below) should
+appear in a refereed publication. The analysis to determine these values must be derived
+from data of sufficient fidelity and quality to assure an accurate estimate, and a significant
+portion of those data must have been acquired via direct methods (e.g., direct imaging from a
+spacecraft, a space telescope, or an adaptive optics system), but may be combined with data
+from indirect methods (e.g., photometry, multi-chord stellar occultation).
+As for planets and satellites, these recommendations are not intended to imply that other
+coordinate systems with different rotational elements cannot be used for minor planets and
+comets for other than cartographic purposes. Section 2 contains a discussion of possible
+options.
+Each of those comets, whose rotation cannot be described with a simple rotational axis
+position coupled with a longitude zero point and a rotation rate with or without a small number
+of derivatives, constitutes a unique case, so they are discussed individually. The IAU WGPSN
+does not officially accept names for cometary features due to their potentially transient
+nature, but the defining features are shown in the cited literature, sometimes with informal
+names. Unless there is evidence for validity of the rotational formula over an extended
+period, rotational states should not be specified at J2000.0. Rather the rotational states will
+be specified at the relevant epochs of observation.
+Comet 9P/Tempel 1 was visited by the Deep Impact mission in 2005 and the NExT mission
+in 2011. There is no evidence for either slow precession or excited state rotation. Thus, a
+simple, ground-state rotation with a fixed pole has been assumed at the position given in
+Table 3. The zero point of longitude was defined by an unnamed 350 m diameter circular
+feature after the Deep Impact encounter (Thomas et al. 2007), and this defines the reference
+frame of the latest shape model (Farnham and Thomas 2013a). It is clear that the rotation
+period of 9P/Tempel 1, roughly 40 h, varies significantly from one apparition to the next,
+currently decreasing by about 15 min per perihelion passage. There is indirect evidence that
+the derivative changes sign twice each orbit.
+Comet 19P/Borrelly was visited by the Deep Space 1 (DS1) mission on 2001 September
+22, but the limited range of observations by this technology demonstration mission did not
+allow direct determination of the rotation or of a full shape model. Thus, only digital terrain
+models (DTMs) in an arbitrary Cartesian system exist (Kirk et al. 2004) and no cartographic
+coordinate system has been defined. The rotational pole has been studied both from Earth and
+
+123
+
+22
+
+Page 26 of 46
+
+B. A. Archinal et al.
+
+from DS1 assuming that an observed, stationary jet is pointing toward the pole (Soderblom
+et al. 2004 and references therein). There is evidence for precession on the time scale of
+a century, but no indication of precession across the two apparitions from 1994 to 2001
+(Schleicher et al. 2003). We adopt the pole from Soderblom et al. (2004) and the rotational
+rate from Mueller et al. (2010).
+Comet 67P/Churyumov–Gerasimenko, the target of the Rosetta mission, was mapped in
+detail during the early phases of the mission. Diverse shape models have been produced, but
+all are tied to the same reference frame (Scholten et al. 2015; Preusker et al. 2015) and only
+the ones produced by Jorda et al. (2016) have been refereed and archived at the time of this
+report. It is clear that the rotation changes from one apparition to the next. However, Preusker
+et al. show that the rotation was stable over the period from wake-up of Rosetta until the
+end of the first mapping period. We adopt the classical description of the rotation for that
+period. There is a precession of the pole with half-cone angle 0◦ .14 ± 0◦ .02, with a period
+of 10.7 days. This is at the limit of the precision of the pole. At this time, we do not make a
+recommendation on this term. These recommendations are valid only for the limited period
+specified, since large changes in the rotational period are being observed at the time of this
+report. Updated parameters will be included in the next report.
+Comet 103P/Hartley 2 is in an excited state rotation, but the details are not well-determined
+using EPOXI flyby data. There is disagreement on whether the rotational state is a LAM
+or a SAM. The axes of the shape model reference frame (Farnham and Thomas 2013b),
+and, thus, the coordinate system, assume that it is a LAM. The precession period under this
+assumption varied dramatically (16–18 h) over the apparition (see Belton et al. 2013). The
+period of rotation around the long axis, which is the rotation related to the coordinate system,
+is also ambiguous. Thus, we present only the orientation of the body axes at the epoch of
+closest approach, where Z is the long axis, which is the rotational axis and the basis of
+published maps assuming the rotational state is a LAM. One standard deviation uncertainties
+are somewhat less than one degree.
+
+7 Definition of cartographic coordinate systems for planets and satellites
+In mathematical and geodetic terminology, the terms latitude and longitude refer to a righthand spherical coordinate system, in which latitude is defined as the angle between a vector
+passing through the origin of the spherical coordinate system and the equator (the X Y plane,
+where Z is taken as the polar axis), and longitude is the angle between the vector projected onto
+the X Y plane and the positive X axis (the projection of the prime meridian on the X Y plan)
+measured in an eastern direction. This coordinate system, together with Cartesian coordinates,
+is used in most planetary computations and is sometimes called the planetocentric coordinate
+system. In this system, longitudes are always positive toward the east. The origin is the center
+of mass.
+In astronomical tradition, planetographic coordinates (commonly used on maps) may not
+be identical with traditional spherical coordinates. Planetographic coordinates are defined by
+guiding principles contained in a resolution passed at the 14th General Assembly of the IAU
+in 1970. These guiding principles state:
+
+1. The rotational pole of a planet or satellite which lies on the north side of the invariable
+plane will be called north, and northern latitudes will be designated as positive.
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 27 of 46
+
+22
+
+2. The planetographic longitude of the central meridian, as observed from a direction fixed
+with respect to an inertial system, will increase with time. The range of longitudes shall
+extend from 0◦ to 360◦ .
+Thus, west longitudes5 are used when the rotation is direct,6 and east longitudes are used
+when the rotation is retrograde.7 The origin is the center of mass. The Earth, Sun, and Moon
+do not traditionally conform to this definition. Their rotations are direct and longitudes run
+both east and west 180◦ , or positive to the east 360◦ . NASA missions have adopted the use
+of 0◦ –360◦ east longitude for the Moon (LRO 2008).
+For planets and satellites, latitude is measured north and south of the equator, with north
+latitudes designated as positive. The planetographic latitude of a point on the reference surface
+is the angle between the equatorial plane and the normal to the reference surface at the point.
+In the planetographic system, the position of a point (P) not on the reference surface is
+specified by the planetographic latitude of the point (P  ) on the reference surface at which
+the normal passes through P and by the height (h) of P above P  .
+Reference surfaces used for various bodies can be spherical, ellipsoids of revolution for
+which the equatorial semi-axis (A) is larger than the polar semi-axis (C), triaxial ellipsoids
+where the equator is best defined by an ellipse with two semi-axes (A and B), or a topographic
+surface defined by a detailed model. These surfaces may have many different purposes, such
+as: (1) for defining map scale; (2) for use in map projections; (3) for orthoprojection of data
+and analysis of occultation data; (4) as a reference surface for measuring geometric height
+(elevation); (5) for geophysical analysis (e.g., for determining the volume of a body; and
+using an estimate for mass, the bulk density of a body); and (6) for comparative planetology.
+Our recommendations here are primarily for cartographic purposes, therefore, addressing
+primarily applications 1–4. However, recognizing that shape parameters are often used for
+other purposes, we often provide additional information such as uncertainties, and triaxial
+parameters, even where the latter are not necessarily useful for, e.g., application 1 (map scale)
+but may be useful for application 3 (orthoprojection of data) or 5 (geophysical analysis),
+particularly if a detailed topographic model is not available.
+Large bodies such as planets or dwarf planets in near hydrostatic equilibrium can be
+considered ellipsoids of revolution with corresponding A and C semi-axes.
+Hydrostatic shapes for large satellites close to their primary, such as Io, Mimas, Enceladus,
+and Miranda, can be considered triaxial ellipsoids, with significant differences between their
+A, B, and C semi-axes lengths. However, spherical reference surfaces are frequently used
+for mapping in order to specify scale and for map projection (applications 1 and 2). Use of
+triaxial ellipsoids would render computations more complicated, especially those related to
+map projections. It would be difficult to generalize many projections and retain their elegant
+and popular properties, and there is a lack of agreement on matters such as the appropriate
+definitions of latitude and longitude. Therefore, the triaxial shape information tends to be
+used only for the other types of applications (3–6).
+For some bodies an accepted spherical radius or rotational ellipsoid parameters (A and
+C) have been used to establish a reference surface for mapping, e.g., for map scale, map
+projection use, and elevation determination (applications 1, 2, and 4 above). These values
+may not represent the current best determined shapes for the body in question (which might
+be desired for orthoprojection of data (application 3) or geophysical use (application 5)), but
+seem to have been generally accepted in the community or by relevant mission personnel for
+5 Longitudes measured positively to the west.
+6 The sign of the linear term in the expression for W is positive.
+7 The sign of the linear term in the expression for W is negative.
+
+123
+
+123
+
+Same
+
+6378.1366b ± 0.0001
+
+3396.19 ± 0.1
+
+60268 ± 4
+
+25559 ± 4
+
+6051.8 ± 1.0
+
+6371.0084b ± 0.0001
+
+3389.50 ± 0.2
+
+69911 ± 6
+
+58232 ± 6
+
+25362 ± 7
+
+24622 ± 19
+
+Venus
+
+Earthb
+
+Mars
+
+Jupiterc,d
+
+Saturnc
+
+Uranusc
+
+Neptunec
+24341 ± 30
+
+24973 ± 20
+
+54364 ± 10
+
+66854c ± 10
+
+S 3379.21 ± 0.1
+
+N 3373.19 ± 0.1
+
+AVG 3376.20 ± 0.1
+
+6356.7519b ± 0.0001
+
+Same
+
+2438.26 ± 0.04
+
+Polar radius (km)
+
+8
+
+16.8
+
+102.9
+
+62.1
+
+3.0
+
+3.57
+
+1
+
+1
+
+RMS deviation from
+spheroid (km)
+
+14
+
+28
+
+8
+
+31
+
+22.64 ± 0.1
+
+8.85
+
+11
+
+4.6
+
+Maximum
+(km)
+
+elevation
+
+0
+
+0
+
+205
+
+102
+
+7.55 ± 0.1
+
+11.52
+
+2
+
+2.5
+
+Maximum depression (km)
+
+Page 28 of 46
+
+(a) Since the shape of Mercury is close to spherical, the given radius is recommended for cartographic use, such as map scale and map projection, and for elevation reference.
+Perry et al. (2015), however, have derived best fit triaxial ellipsoid semi-axes values, and those are given here for comparison or other uses. The value cited for equatorial radius
+is the semimajor (long equatorial) axis length, while the intermediate (short equatorial) axis length was measured as 2439.28 ± 0.04 km
+(b) These values for the Earth are for comparison only. An IAU resolution (IAU 2015a) has adopted values for the equatorial and polar radii with less precision, giving values of
+6378.1 and 6356.8 km, respectively
+(c) The radii correspond to a one-bar surface
+(d) The equatorial and polar radius values for Jupiter have been adopted by an IAU Resolution (IAU 2015a)
+
+24764 ± 15
+
+71492c ± 4
+
+695,700
+
+2440.53 ± 0.04
+
+2439.4 ± 0.1
+
+Equatorial radius (km)
+
+Mercurya
+
+Mean radius (km)
+
+(Sun)
+
+Planet
+
+Table 4 Size and shape parameters of the planets
+
+22
+B. A. Archinal et al.
+
+Same
+
+Same
+
+85 ± 10
+
+12
+
+40 ± 10
+
+Himalia
+
+Lysithea
+
+Elara
+
+Ananke
+
+Carme
+
+VI
+
+X
+
+VII
+
+XII
+
+XI
+
+18
+
+14
+
+IX
+
+Sinope
+
+VIII Pasiphae
+
+15
+
+10
+
+5
+
+XIII Leda
+
+Callisto
+
+2410.3 ± 1.5
+
+1562.6
+
+1560.8 ± 0.3
+
+Europa
+
+II
+
+Ganymede 2631.2 ± 1.7
+
+1829.4
+
+1821.49
+
+Io
+
+I
+
+III
+
+58
+
+49.3 ± 4
+
+XIV Thebe
+
+IV
+
+10
+
+125
+
+Adrastea
+
+Amalthea
+
+XV
+
+V
+
+83.5 ± 3
+
+30
+
+8.2 ± 4
+
+7.8
+
+Deimos
+
+II
+
+Same
+
+Same
+
+1560.3
+
+1819.4
+
+49
+
+73
+
+8
+
+20
+
+6.0
+
+Same
+
+Same
+
+1559.5
+
+1815.7
+
+42
+
+64
+
+7
+
+17
+
+5.1
+
+9.1
+
+Same
+
+0.6
+
+0.32
+
+3.2
+
+0.2
+
+0.5
+
+13
+
+7.5
+
+3
+
+5.6
+
+2.5
+
+11.4
+
+Same
+
+Same
+
+13.0
+
+11.08 ± 0.04
+
+6.2 ± 0.25
+
+Phobos
+
+I
+
+Mars
+
+1737.4a
+
+21.5 ± 4
+
+Moon
+
+Earth
+
+RMS deviation from Maximum elevation Maximum depresellipsoid (km)
+(km)
+sion (km)
+
+Mean radius (km) Subplanetary equa- Along orbit equato- Polar radius (km)
+torial radius (km)
+rial radius (km)
+
+Jupiter XVI Metis
+
+Satellite
+
+Planet
+
+Table 5 Size and shape parameters of the satellites
+
+Report of the IAU Working Group on Cartographic Coordinates…
+Page 29 of 46
+22
+
+123
+
+123
+
+0.5
+
+XLIX
+
+Anthe
+
+16.3 ± 0.5
+
+15.3 ± 0.3
+
+563.4 ± 0.6
+
+22.5 ± 0.5
+
+12.4 ± 0.4
+
+9.6 ± 0.6
+
+561.4 ± 0.4
+
+18.0 ± 0.4
+
+Telesto
+
+Calypso
+
+Dione
+
+Helene
+
+XIII
+
+XIV
+
+IV
+
+XII
+
+Rhea
+
+Titan
+
+Hyperion
+
+Iapetus
+
+Phoebe
+
+V
+
+VI
+
+VII
+
+VIII
+
+IX
+
+2575.15 ± 0.02
+
+180.1 ± 2.0
+
+745.7 ± 2.9
+
+109.4 ± 1.4
+
+2575.0b
+
+135 ± 4
+
+734.3 ± 2.8
+
+106.5 ± 0.7
+
+765.0 ± 0.7
+
+763.5 ± 0.6
+
+1.5 ± 0.6
+
+538.4 ± 0.3
+
+531.0 ± 0.6
+
+XXXIV Polydeuces 1.3 ± 0.4
+
+256.6 ± 0.6
+
+252.1 ± 0.2
+
+Enceladus
+
+Tethys
+
+II
+
+III
+
+XXXIII Pallene
+
+2.88 ± 0.07
+
+1.45 ± 0.03
+
+2.23 ± 0.07
+
+0.7 ± 0.05
+
+1.94 ± 0.02
+
+0.33 ± 0.06
+
+Aegaeon
+
+LIII
+
+XXXII Methone
+
+Janus
+
+Mimas
+
+X
+
+I
+
+101.7 ± 1.6
+
+Epimetheus 58.2 ± 1.2
+
+XI
+
+207.8 ± 0.5
+
+40.6 ± 1.5
+
+Pandora
+
+XVII
+
+198.2 ± 0.4
+
+52.2 ± 1.8
+
+64.9 ± 1.3
+
+Prometheus 43.1 ± 1.2
+
+89.2 ± 0.8
+
+20.5 ± 0.9
+
+68.2 ± 0.8
+
+15.1 ± 0.8
+
+Atlas
+
+XV
+
+XVI
+
+17.2 ± 1.7
+
+4.6 ± 0.7
+
+14.0 ± 1.2
+
+3.8 ± 0.8
+
+108.5 ± 0.6
+
+745.7 ± 2.9
+
+133.0 ± 4.5
+
+2574.78 ± 0.06
+
+763.1 ± 0.6
+
+1.2 ± 0.4
+
+19.6 ± 0.3
+
+561.3 ± 0.5
+
+9.3 ± 2.2
+
+11.8 ± 0.3
+
+528.3 ± 1.1
+
+251.4 ± 0.2
+
+2.08 ± 0.07
+
+1.29 ± 0.04
+
+0.25 ± 0.06
+
+196.7 ± 0.5
+
+93.0 ± 0.7
+
+57.3 ± 2.5
+
+40.8 ± 2.0
+
+41.6 ± 1.8
+
+17.8 ± 0.7
+
+4.5 ± 0.9
+
+15.4 ± 1.2
+
+101.8 ± 0.3
+
+712.1 ± 1.6
+
+102.7 ± 4.5
+
+2574.47 ± 0.06
+
+762.4 ± 0.6
+
+1.0 ± 0.2
+
+13.3 ± 0.2
+
+559.6 ± 0.4
+
+6.3 ± 0.6
+
+9.8 ± 0.3
+
+526.3 ± 0.6
+
+248.3 ± 0.2
+
+1.8 ± 0.07
+
+1.21 ± 0.02
+
+0.2 ± 0.08
+
+190.6 ± 0.3
+
+76.3 ± 0.4
+
+53.0 ± 0.5
+
+31.5 ± 0.9
+
+28.2 ± 0.8
+
+9.4 ± 0.8
+
+2.8 ± 0.8
+
+10.4 ± 0.9
+
+0.26
+
+0.5
+
+0.4
+
+Pan
+
+Saturn XVIII
+
+XXXV Daphnis
+
+Satellite
+
+Planet
+
+RMS deviation from Maximum elevation Maximum depresellipsoid (km)
+(km)
+sion (km)
+
+Page 30 of 46
+
+Table 5 continued
+
+Mean radius (km) Subplanetary equa- Along orbit equato- Polar radius (km)
+torial radius (km)
+rial radius (km)
+
+22
+B. A. Archinal et al.
+
+31 ± 4
+
+Desdemona 27 ± 3
+
+42 ± 5
+
+Cressida
+
+Juliet
+
+Portia
+
+IX
+
+X
+
+XI
+
+XII
+
+Umbriel
+
+Titania
+
+Oberon
+
+II
+
+III
+
+IV
+
+Same
+
+Same
+
+Same
+
+584.7 ± 2.8
+
+788.9 ± 1.8
+
+761.4 ± 2.6
+
+Same
+Same
+
+Same
+Same
+
+Same
+
+Same
+
+577.7 ± 1.0
+
+1.5
+
+1.3
+
+2.6
+
+0.9
+
+581.1 ± 0.9
+
+578.9 ± 0.6
+
+Ariel
+
+I
+
+577.9 ± 0.6
+
+1.9
+232.9 ± 1.2
+1.6
+
+234.2 ± 0.9
+
+240.4 ± 0.6
+
+77 ± 51.9
+
+235.8 ± 0.7
+
+Miranda
+
+V
+
+XIV Belinda
+
+12
+
+4
+
+4
+
+5
+
+2
+
+6
+
+4
+
+8
+
+RMS deviation from Maximum elevation Maximum depresellipsoid (km)
+(km)
+sion (km)
+
+XV Puck
+
+27 ± 4
+
+33 ± 4
+
+XIII Rosalind
+
+54 ± 6
+
+15 ± 2
+
+13 ± 2
+
+21 ± 3
+
+VII
+
+VIII Bianca
+
+Cordelia
+
+Uranus VI
+
+Mean radius (km) Subplanetary equa- Along orbit equato- Polar radius (km)
+torial radius (km)
+rial radius (km)
+
+Ophelia
+
+Satellite
+
+Planet
+
+Table 5 continued
+
+Report of the IAU Working Group on Cartographic Coordinates…
+Page 31 of 46
+22
+
+123
+
+123
+
+218
+
+208 ± 8
+
+170 ± 25
+
+208
+
+89
+201
+
+7.9
+
+6
+18
+
+5
+13
+
+(a) The mean radius for the Moon is for cartographic use (related to map scale and map projection) and for elevation reference
+(b) The mean radius for Titan is for cartographic use (related to map scale and map projection) and for elevation reference. The current best fitting mean radius for Titan (e.g.,
+for orthoprojection, geophysical, or other purposes) is 2574.73 ± 0.09 km, from Zebker et al. (2009)
+(c) The size of Larissa was determined from only one image, showing a long semi-axis size of 104 km and a short semi-axis size of 89 km, with the mean radius assumed as
+halfway between those values (Thomas and Veverka 1991)
+
+Triton
+
+Nereid
+
+I
+
+II
+
+1352.6 ± 2.4
+
+104
+
+79 ± 12
+
+Galatea
+
+Larissac 96 ± 7
+
+VII
+
+VIII Proteus
+
+Despina 74 ± 10
+
+VI
+
+29 ± 6
+
+V
+
+Naiad
+
+Thalassa 40 ± 8
+
+IV
+
+2.9
+
+Planet
+
+Neptune III
+
+Table 5 continued
+RMS deviation from Maximum elevation Maximum depresellipsoid (km)
+(km)
+sion (km)
+
+Page 32 of 46
+
+Satellite Mean radius (km) Subplanetary equa- Along orbit equato- Polar radius (km)
+torial radius (km)
+rial radius (km)
+
+22
+B. A. Archinal et al.
+
+470
+
+(1) Ceres
+
+9.1
+
+2.70
+
+(951) Gaspr
+
+(2867) Šteins
+
+165 ± 8
+
+3.7
+3.5 ± 0.2
+
+3.0 ± 0.1
+
+4.22 ± 0.05
+
+9P/Tempel 1
+
+19P/Borrelly
+
+–
+
+2.5
+
+4.0 ± 0.25
+
+8.0 ± 0.5
+
+1P/Halley
+
+Same
+
+Same
+
+Same
+
+Same
+
+1188.3 ± 1.6
+
+606.0 ± 1.0
+
+0.147
+
+1.015
+
+2.73
+
+5.2
+
+147
+
+5.5
+
+24
+
+12.0
+
+(134340) Pluto
+
+0.268
+
+(25143) Itokawa
+
+116 ± 10%
+50.5 ± 2.0
+
+(134340) Pluto: I Charon
+
+2.13
+
+(4179) Toutatis
+
+3.24
+
+180
+
+150
+
+6.1 ± 0.4
+
+(511) Davida
+
+33
+17.0
+
+26.5 ± 1.3
+
+8.45 ± 0.02
+
+(253) Mathilde
+
+(433) Eros
+
+189.5 ± 16
+26.8
+
+157.5 ± 7
+
+15.65 ± 0.6
+
+(52) Europa
+
+(243) Ida
+
+139.5 ± 10%
+62.0 ± 2.5
+
+113 ± 23
+
+52.5 ± 2.5
+
+289 ± 5
+
+(16) Psyche
+
+487.3
+280 ± 5
+
+487.3
+
+Radii measured along principal axes
+(km)
+(km)
+
+(21) Lutetia
+
+(4) Vesta
+
+Mean Radius (km)
+
+Body
+
+Table 6 Size and shape parameters of selected dwarf planets, minor planets, their satellites, and comets
+
+–
+
+4.0 ± 0.25
+
+Same
+
+Same
+
+0.104
+
+0.85
+
+2.04
+
+4.4
+
+127
+
+5.5
+
+23
+
+7.6
+
+124.5 ± 10
+
+46.5 ± 6.5
+
+94.5 ± 10%
+
+229 ± 5
+
+446
+
+(km)
+
+(e)
+
+(d)
+
+(c)
+
+(b)
+
+(a)
+
+Report of the IAU Working Group on Cartographic Coordinates…
+Page 33 of 46
+22
+
+123
+
+123
+1.16
+
+∼ 1.16
+
+1.5
+
+(a) An oblate spheroid. Values here for Ceres were determined from Dawn mission results (Raymond and Roatsch 2015). The authors note these values have been determined at
+“a level of precision commensurate with the preliminary nature of this determination and the needs of the users of the associated kernel”
+(b) The principal axes of Psyche have been used to define the longitude system (Shepard et al. 2017, p. 393). 10% uncertainties in axis diameters are repeated here as the assumed
+uncertainties in semi-axis lengths. The 23 km uncertainty in the volume-equivalent spherical-diameter is repeated here as an assumed uncertainty in the radius. Users should be
+aware that an orientation model and alternate size information for Psyche are also given by Drummond et al. (2018), but use of that information is not yet recommended here as
+that has not yet been published
+(c) Values for Davida have been updated from the diameter values which appear in Conrad et al. (2007) to the radii values given above, which result from additional observations
+and appear in a publication by the same authors (in preparation)
+(d) The maximum and minimum radii for Tempel 1 are not properly the values of the principal semi-axes; they are half the maximum and minimum values of the diameter. Due
+to the large deviations from a simple ellipsoid, they may not correspond with measurements along the principal axes, or be orthogonal to each other
+(e) Since essentially only one side of Comet Borrelly was imaged in stereo, only a likely maximum length was determined, so no values are given for the second and third
+semi-axes
+(f) Due to limited mapping of the negative (southern) hemisphere of Churyumov–Gerasimenko, the third axis (parallel to the rotational axis) was constrained to match the volume
+(Preusker et al. 2015)
+(g) The intermediate and small semi-axes of Hartley 2 are very similar to each other (Thomas et al. 2013a)
+
+0.34
+
+1.9
+
+(g)
+
+0.58
+
+(f)
+
+103P/Hartley 2
+
+2.7
+
+1.20
+
+1.975
+
+81P/Wild 2
+
+1.55
+
+1.65
+
+67P/Churyumov–Gerasimenko
+
+2.40
+
+Mean Radius (km)
+
+Body
+(km)
+
+Page 34 of 46
+
+Table 6 continued
+Radii measured along principal axes
+(km)
+(km)
+
+22
+B. A. Archinal et al.
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 35 of 46
+
+22
+
+mapping use. For example, their use to define map scale and/or an elevation reference for
+the body in question avoids small annoying scale differences in maps, mapped datasets, and
+heights as the body radius estimate continued to be refined with minor changes. Currently
+such bodies include Earth (rotational ellipsoid), the Moon (sphere), and Titan (sphere). The
+Tables below indicate the relevant parameters.
+Many satellites, minor planets, and comet nuclei have very irregular shapes. Spherical
+reference surfaces are sometimes used for computational convenience (for all the application
+cases above), but this approach does not preserve the area or shape characteristics of common
+map projections. Orthographic projections often are adopted for cartographic portrayal as
+these preserve the irregular appearance of the body without artificial distortion. A more
+detailed discussion of cartographic coordinate systems for small bodies is given in Sect. 8 of
+this report.
+Table 4 gives size and shape parameters for the planets. The Sun is included for comparison
+purposes with the specified value as derived by Haberreiter et al. (2008) and adopted via IAU
+Resolution B3 (IAU 2015a). Aside from the Earth, the mean radii shown in Tables 4, 5, and 6
+are from the original authors and have not been computed from the other radii by the Working
+Group assuming that some of them are independently computed.
+A planetocentric, east-positive (right-handed) system was adopted for Mercury by the
+MESSENGER project prior to 2002. The Mariner 10 mission used the IAU standard (planetographic) coordinate system with longitude increasing to the east for Mercury (Hall et al.
+1971). The MESSENGER PDS products use a mean radius for Mercury of 2439.4 ± 0.1 km,
+which we recommend for use in mapping projects. The value for the radius is motivated by
+analysis of laser altimetry and radio link occultation data by Perry et al. (2015), who derived
+an area-averaged radius of 2439.36 ± 0.02 km, as well as separate values for equatorial and
+polar radius. While the observed ellipsoidal shape of Mercury may be relevant for geophysical studies, the spherical approximation is sufficient for production and interpretation of
+maps (scale, map projection, and elevation reference) based on MESSENGER data.
+For the Mars Global Surveyor mission, an areocentric, east-positive system was used
+despite years of mapping using the IAU standard system by Mariner 4, 6, 7, and 9 and
+Viking. The MGCWG (Duxbury et al. 2002) recommended the use of such an areocentric,
+east-positive system for all NASA Mars mapping. Average (AVG), north (N), and south
+(S) polar radii are given for Mars. For the purpose of adopting a best fitting ellipsoid for
+Mars, the average polar radius should be used.8 In applications where these differences may
+cause problems, a topographic shape model for Mars should probably be used as a reference
+surface. The current recommended topographic reference surface of Mars is that specified in
+the final MOLA Mission Experiment Gridded Data Record (MEGDR) Products (Smith et al.
+2003). In particular, the 128 pixels per degree resolution, radius and topographic surfaces are
+recommended; the lower resolution versions may be used, if documented, where appropriate,
+and for the areas poleward of ± 87◦ latitude.
+Table 5 gives the size and shape of satellites where known. Only brightness is known
+for many of the more recently discovered satellites. Poles and rotation rates are also not yet
+known for the more recent discoveries, so those satellites are not listed. The mean radius
+given for the Moon and Titan are reference surface radii meant for cartographic purposes
+and for elevation measurement. The current best fitting mean radius for Titan is given in a
+footnote.
+
+8 The other values are used to illustrate the large dichotomy in shape between the northern and southern
+
+hemispheres of Mars.
+
+123
+
+22
+
+Page 36 of 46
+
+B. A. Archinal et al.
+
+The values for the radii and axes in Tables 4, 5 and 6 are derived by various methods. Some
+use star or spacecraft occultation measurements, some use limb fitting, others use altimetry
+measurements from orbiting spacecraft, and some use control network computations. The
+mean radius cannot be consistently derived from triaxial semi-axes values alone, since different authors have used different formulae for such a calculation. For the Earth, the spheroid
+refers to mean sea level, clearly a very different definition from other bodies in the Solar
+System.
+The uncertainties in the values for the radii and axes in Tables 4 and 5 are generally those
+of the authors, and frequently have different meanings. Sometimes they are standard errors
+of a particular data set, sometimes simply an estimate or expression of confidence. The radii
+and axes of the large gaseous planets, Jupiter, Saturn, Uranus, and Neptune in Table 4 refer
+to a one-bar-pressure surface. The radii given in the tables are not necessarily the appropriate
+values to be used in dynamical studies; the radius actually used to derive a value of J2
+(for example) should always be used in conjunction with it. In Table 5, ellipsoidal fit axes
+of objects less than 200 km in radius are for convenient comparison and their use for any
+modeling must recognize their uncertainty.
+Note that the presentation of uncertainties in these tables is not meant to imply that users
+can or should adopt a value within the range of uncertainty rather than the specific cited
+value(s) themselves. One of the primary reasons for our recommendations is to allow users
+to compare and co-register their results, and the use of values even slightly different than
+those cited makes such efforts difficult or impossible. This recommendation is obviously
+not to dissuade users from determining their own values, if they can do so at higher levels
+of accuracy (e.g., with new data or improved processing methods), but to allow for easier
+comparison and registration of results when the use of new values is not warranted.
+
+8 Cartographic coordinates for dwarf planets, minor planets, their
+satellites, and comets
+A spherical or ellipsoidal model shape has traditionally been defined for mapping large
+bodies. Except for dynamical studies, there is no choice of ellipsoid that well represents
+either the shape or equipotential surface for smaller, irregularly shaped bodies. However, a
+sphere may still be useful in concept as a reference surface, with spherical (planetocentric)
+coordinates still being used. For these bodies, topographic shapes are usually represented by
+a grid of heights above the spherical reference surface, or a grid of radii distances to the body
+center, as a function of planetocentric latitude and longitude (when possible, or also by a set
+of vertices and polygons defined in a Cartesian coordinate system).
+It is possible for irregularly shaped smaller bodies to have a line from the center of the
+body intersect the surface more than once. So, a coordinate pair may not uniquely identify a
+point on the surface of the body. Larger bodies, such as the Earth, may also have non-unique
+coordinate pairs because of such features as overhanging cliffs and natural bridges and arches.
+However, these features on large bodies are relatively very small and often ignored at the
+scale of most topographic maps. On small bodies, they may be large relative to the size of the
+body. Even on small bodies, this problem is usually restricted to small areas, but it still may
+make a planetocentric coordinate system difficult to use. Following are some example cases:
+Eros for a small patch west of Psyche, Kleopatra (Ostro et al. 2000), possibly on Toutatis
+near its ’neck’, and near the south pole of Ida some radii may intersect the surface more
+than once. Cartographers have ad hoc tricks for a specific map, such as interpolating across
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 37 of 46
+
+22
+
+the problem area from areas that are uniquely defined, or showing overlapping contours.
+A Cartesian or other coordinate geometry may be preferable for arbitrary, complex shapes,
+such as a toroidal comet nucleus, where an active region has eaten its way through the center.
+Such coordinate geometries are also useful for irregular bodies imaged only on one side, such
+as for 19P/Borrelly and 81P/Wild 2. In the extreme case of 67P/Churyumov–Gerasimenko,
+where there are large regions in which planetocentric radii are multi-valued, the Rosetta team
+has suggested, at least for internal use, that the two lobes be mapped separately (Scholten
+et al. 2015; Preusker et al. 2015).
+Digital cartography has become increasingly popular with the introduction of large mass
+storage to computer systems. Cartographic databases are important particularly when considering irregularly shaped bodies. The surface is mapped by a table of the coordinates for
+each surface element. Other parameters such as brightness and gravity can be also associated
+with each surface element. Pictorial and projected views of the body can then be generated.
+Our recommendation is that longitudes on dwarf planets, minor planets, their satellites,
+and comets should be measured positively from 0 to 360 degrees using a right-hand system
+from a designated prime meridian. The origin is the center of mass, to the extent known.
+Latitude is measured positive and negative from the equator (again, the X Y plane, where
+Z is taken as the polar axis); latitudes toward the positive pole are designated as positive. For
+regularly shaped bodies the cartographic latitude of a point on the reference surface is the
+angle between the equatorial plane and the normal to the reference surface at the point. In
+the cartographic system, the position of a point (P) not on the reference surface is specified
+by the cartographic latitude of the point (P  ) on the reference surface at which the normal
+passes through P and by the height (h) of P above P  .
+For irregular bodies orthographic digital projections are often adopted for cartographic
+portrayal as they preserve the irregular appearance of the body without distortion.
+Table 6 contains data on the size and shape of selected dwarf planets, minor planets, their
+satellites, and comets. As in Tables 4 and 5, the mean radius values may or may not be derived
+from the semi-axes values. Some of these values may instead be the effective radius of the
+body, which is the radius of a sphere of equivalent volume. The uncertainties in the values for
+the radii in Table 6 are generally those given by the authors, and, frequently have different
+meanings. Sometimes they are standard errors of a particular data set, sometimes simply an
+estimate or expression of confidence.
+A body is included in Table 6 only if it meets fundamental publication, data quality, and
+applicability criteria. Estimated values for the body’s size and shape (modeled as a spheroid)
+must have been published in a refereed journal or the equivalent. The analysis to determine
+these values must have been based on data of sufficient accuracy, and some portion of those
+data must have been acquired via direct methods (e.g., direct imaging from a spacecraft, a
+space telescope, or an adaptive optics system). Lastly, a cartographic need must exist that
+justifies the definition of a size and shape for this body.
+The radii given in the tables are not necessarily the appropriate values to be used in
+dynamical studies. For example, the radius used to derive the dynamical form factor, J2 ,
+should be used consistently with the J2 value itself.
+
+9 Recommendations and requests for community input
+The Working Group makes the following recommendations regarding the development of
+planetary coordinate systems and cartographic products. Also included are issues on which
+the Working Group is requesting feedback.
+
+123
+
+22
+
+Page 38 of 46
+
+B. A. Archinal et al.
+
+1. The importance of geodetically controlled cartographic products (derived from least
+squares photogrammetric, radargrammetric, or altimetric (cross-over) solutions) is well
+known (e.g., Archinal et al. 2016). These products are precise and can be cosmetically
+ideal products at the sub-pixel level of the data, with known or derivable levels of precision
+and accuracy. Global control solutions also provide improved body pole position, spin,
+and shape information, with reduced random and, often, systematic error. Such solutions
+allow improvements in the recommended models and provide demonstrably higher precision and accuracy cartographic products. It appears that the production of such products
+using the current flood of new planetary datasets is often neither planned nor adequately
+funded. We strongly recommend that generation of such products be planned as part of the
+normal mission operations and data analysis process. Since making this recommendation
+in our previous report, there have been several publications giving either interim or final
+results for Mercury (Becker et al. 2016b), Ganymede (Zubarev et al. 2015), Enceladus
+(Thomas et al. 2016; Becker et al. 2016a), and Titan (Archinal et al. 2013a), but similar
+work still needs to be completed or reported on for other bodies.
+2. To facilitate use by the community, publications describing new or updated models for
+orientation or shape should use common notation to express orientation and size. While
+other formulations are welcome, expressions should at least be given for α0 , δ0, and W at
+J2000.0 (or for comets at some epoch near that of the observations), and values for radius
+and/or ellipsoid semi-axes lengths in km, along with uncertainties where available.
+3. There are a number of slightly conflicting determinations of the rotation rates of Jupiter
+and Saturn. We urge the planetary community to jointly develop consensus determinations, such as was done in the past for Jupiter by Riddle and Warwick (1976).
+4. We note the excellent and detailed historical summary regarding the evolution and usage
+of the various coordinate systems for Pluto by Zangari (2015). The creation of such
+summaries would be useful for other bodies that have seen significant changes or updates
+in coordinate system usage, such as the Moon, Mars, Mercury, and Vesta.
+5. In discussions at the IAU General Assembly in August 2012, there was agreement (Meech
+et al. 2012) to remind authors, journal editors, instrument teams, missions, and space
+agencies that a substantial number of IAU recommendations exist that have been developed over many decades of input by IAU members, national space agencies, and other
+institutions. We believe that it is important to carefully follow these recommendations
+or to present well-reasoned arguments why they should be changed. The IAU and its
+various components stand ready to help such groups understand and follow IAU recommendations.
+6. Having received occasional inquiries regarding the preference for using planetographic or
+planetocentric coordinate systems for planets and satellites, we note that historically the
+preference has apparently been to use planetographic coordinates. See, for example, the
+IAU resolution (Hall et al. 1971) that predates this Working Group, and which only mentions planetographic coordinates. The Working Group acknowledges that both systems
+have long been in use for some bodies, with Mars as an example, so it makes little sense
+at this point when starting with a body ab inito, to prefer one over the other. However, the
+Working Group does note that where planetographic coordinates have been widely used
+for maps and publications in the past, there is no obvious advantage to switching to the
+use of planetocentric coordinates. So the Working Group believes that continuing to use
+such planetographic coordinates would greatly minimize future confusion. However, we
+would welcome further input on this issue.
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 39 of 46
+
+22
+
+7. The Working Group requests input on its plans (noted in Sect. 1) to evaluate whether
+proposed updates or new coordinate systems follow the conventions described here, and
+whether providing limited updates to its recommendations via its website is reasonable.
+8. Given the publication of thermal maps of exoplanets (e.g., Knutson et al. 2007), we request
+community input on whether the domain of the Working Group should extend beyond the
+Solar System. In other words, should our procedures for establishing coordinate systems
+for Solar System bodies apply to exoplanets? For example, in order to avoid reference
+to the invariable plane of the Solar System, such coordinate systems could follow a
+right-hand rule, similar to that recommended here for dwarf planets, minor planets, their
+satellites, and comets.
+
+10 Summary of changes since the last report
+The following list includes items related to orientation first and then size and shape.
+1. The recommended model for the orientation of Mercury has been updated based on
+MESSENGER results.
+2. Approximate expressions for the rotation of the Earth have been removed to avoid confusion over their accuracy.
+3. The low precision series expression for the orientation of the Moon has been removed.
+4. An improved model is recommended for the orientation of Mars, as well as a refined longitude definition based on fixing the longitude of the Viking 1 lander, based on Kuchynka
+et al. (2014).
+5. New models from Stark et al. (2017a) are recommended for the orientation of Phobos
+and Deimos A revised value for the physical libration of Phobos was adopted based on
+measurements by Burmeister et al. (2018).
+6. A new Sect. 4 has been added to provide information on the background and evolution
+of the coordinate system for (4) Vesta, including a summary of requests from the Dawn
+mission and responses from the Working Group.
+7. The expression for the rotation of Neptune has been updated to refer to the rotation
+of optically observed features in the Neptunian atmosphere (to be called System II) as
+derived by Karkoschka (2011). The previous expressions for pole position and precession
+continue in use.
+8. The W equations for (243) Ida, (134340) Pluto, and (134340) Pluto: I Charon in Table 3
+have been corrected (Archinal et al. 2011b; Eq. 2). The declination of the pole for (243)
+Ida was off by 90◦ since our 2003 report (Seidelmann et al. 2005) and has been corrected.
+9. The orientation model for (1) Ceres has been updated based on Dawn mission results
+(Raymond and Roatsch 2015), although further refinement of those results is expected
+in the future. An alternate model for the orientation of Ceres has also been presented by
+Preusker et al. (2016). An orientation model has been given for (52) Europa by Merline
+et al. (2013). The orientation model for (2867) Šteins in our previous report originated
+from private communication with L. Jorda, not from Jorda et al. (2012, previously listed
+as 2010). The declination of the pole was incorrectly rounded and should have previously
+been 91◦ . The values in this report are from Jorda et al. (2012, Table 3).
+10. Data have been added for comet 9P/Tempel 1 based on the Stardust NExT flyby,
+19P/Borrelly based on the DS1 flyby and subsequent ground-based measurements,
+103P/Hartley 2 based on the EPOXI flyby, and 67P/Churyumov–Gerasimenko based on
+the pre-perihelion approach mapping from the Rosetta orbiter. These additions required
+
+123
+
+22
+
+Page 40 of 46
+
+B. A. Archinal et al.
+
+additional discussion of the uncertainty of individual rotational states and the need to
+present rotational states that are only valid for specific epochs. For Tempel 1 the uncertainty of the rotational state limits us to specifying the orientation of the shape model at
+the time of the NExT closest approach.
+11. In Sect. 7, clarification is made that the reference radius for a body may have many uses,
+such as map scale, map projection, and reference elevation, and for orthoprojection of
+data and geophysical uses. The current reference radius for the Moon is noted to be for
+cartographic use. The recommended reference radius for Titan is returned to its previous
+value, partially at the recommendation of and following the usage of the Cassini Project
+(2016) and the Cassini RADAR team in particular (private communication, Kirk). The
+relevance of the cited uncertainty information is also discussed.
+12. The size of the Sun has been updated in Table 4, as derived by Haberreiter et al. (2008) and
+adopted via IAU Resolution B3 (IAU 2015a). Notation has also been added to indicate
+that the same IAU Resolution recommended similar (rounded) values for the Earth’s
+ellipsoidal radii, and the previously recommended values from the Working Group for
+Jupiter’s ellipsoidal radii.
+13. The recommended radius for Mercury has been updated based on MESSENGER results,
+as described in the text above.
+14. Based on the results of Thomas et al. (2013b), size information has been updated for 13
+inner small Saturnian satellites, XVIII Pan, XXXV Daphnis, XV Atlas, XVI Prometheus,
+XVII Pandora, XI Epimetheus, X Janus, XXXII Methone, XLIX Anthe, XXXIII Pallene,
+XIII Telesto, XIV Calypso, and XII Helene. Size and shape information for LIII Aegaeon
+has also been added.
+15. In our 2006 and 2009 reports, axes lengths were given rather than semi-axes lengths for
+(25143) Itokawa. The values have been corrected in Table 6, based on the values given
+by Fujiwara et al. (2006).
+16. The discussion of terminology for the poles (hemispheres) of small bodies has been
+modified and a discussion of cardinal directions on small bodies added. It is noted that
+the planetographic and planetocentric coordinate system definitions do not apply to such
+bodies.
+17. The difficulty of mapping 67P/Churyumov–Gerasimenko is discussed.
+18. The size information for (1) Ceres has been updated in Table 6, based on Dawn mission
+results (Raymond and Roatsch 2015), although further refinement of those results is
+expected. Shape information has been given for (16) Psyche in Table 6, from Shepard et al.
+(2017). Shape information has been given for (52) Europa in Table 6, from Merline et al.
+(2013). Uncertainties in axes diameters and the volume-equivalent spherical-diameter
+are repeated here as uncertainties in semi-axes and the radius.
+19. The radii of (134340) Pluto and Charon have been updated based on the image processing
+results of Nimmo et al. (2017) from the New Horizons mission. The values given in
+Table 6 for their radii include 2 σ uncertainty estimates. Since upper bounds on oblateness
+uncertainty are small (< 0.6 and < 0.5%, respectively), a spherical shape is assumed.
+20. Updates have been made to Sect. 9 on recommendations, and requests for community
+input also added to that section.
+Acknowledgements We appreciate useful input from Nat Bachman, Jack Drummond, Tony Farnham,
+William Folkner, Rose Hayward, Kenneth Herkenhoff, Robert Jacobson, Laurent Jorda, Alex Konopliv, Janet
+Richie, Boris Semenov, Michael Shepard, and Alexander Stark. Archinal received support under a NASA-U.
+S. Geological Survey Interagency agreement. In memory of Michael A’Hearn, who passed away on May 29,
+2017, Mike made significant contributions to not only this report, but provided outstanding service to our
+Working Group and the International Astronomical Union for many years.
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 41 of 46
+
+22
+
+References
+Anderson, J.D., Schubert, G.: Saturn’s Gravitational Field, Internal Rotation, and Interior Structure. Science
+317, 1384–1387 (2007). https://doi.org/10.1126/science.1144835
+Archinal, B.A., The Lunar Geodesy and Cartography Working Group: Activities of the NASA LPRP Lunar
+Geodesy and Cartography Working Group, LPI XL, Abstract #2095 (2009)
+Archinal, B.A., A’Hearn, M.F., Bowell, E., Conrad, A., Consolmagno, G.J., Courtin, R., Fukushima, T.,
+Hestroffer, D., Hilton, J.L., Krasinsky, G.A., Neumann, G., Oberst, J., Seidelmann, P.K., Stooke, P.,
+Tholen, D.J., Thomas, P.C., Williams, I.P.: Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2009. Cel. Mech. Dyn. Ast. 109(2), 101–135 (2011a). https://doi.org/10.
+1007/s10569-010-9320-4. https://link.springer.com/article/10.1007%2Fs10569-010-9320-4. Accessed
+1 Sept 2017
+Archinal, B.A., A’Hearn, M.F., Conrad, A., Consolmagno, G.J., Courtin, R., Fukushima, T., Hestroffer, D.,
+Hilton, J.L., Krasinsky, G.A., Neumann, G., Oberst, J., Seidelmann, P.K., Stooke, P., Tholen, D.J.,
+Thomas, P.C., Williams, I.P.: Erratum to: Reports of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2006 and 2009. Cel. Mech. Dyn. Ast. 110(4), 401–403 (2011b). https://
+doi.org/10.1007/s10569-011-9362-2. https://link.springer.com/article/10.1007%2Fs10569-011-93622. Accessed 1 Sept 2017
+Archinal, B.A., Becker, T.L., Lee, E.M., Edmundson, K.L.: Initial Global Control Network and Mosaicking
+of ISS Images of Titan, LPI XLIV, Abstract #2957 (2013a)
+Archinal, B.A., Acton, C.H., A’Hearn, M.F., Conrad, A., Consolmagno, G.J., Duxbury, T., Hestroffer,
+D., Hilton, J.L., Jorda, L., Kirk, R., Klioner, S.A., McCarthy, D., Meech, K., Oberst, J., Ping, J.,
+Seidelmann, P.K., Tholen, D.J., Thomas, P.C., Williams, I.P.: Recommended coordinate system for
+(4) Vesta, published by the IAU Working Group on Cartographic Coordinates and Rotational Elements (2013b). https://astropedia.astrogeology.usgs.gov/download/Docs/WGCCRE/IAU-WGCCRECoordinate-System-for-Vesta.pdf. Accessed 1 Sept 2017
+Archinal, B.A., Edmundson, K.L., Kirk, R.L., Gaddis, L.R.: Registering Planetary Datasets for Data Fusion:
+A “Force Multiplier” for Planetary Science, LPS XLVII, Abstract #2377 (2016)
+Aron, J.: Dawn departs Vesta to become first asteroid hopper. New Scientist, 6 Sept 2012. https://www.
+newscientist.com/blogs/shortsharpscience/2012/09/asteroid-hopping-spacecraft-ma.html. Accessed 1
+Sept 2017
+Becker, T.L., Bland, M.T., Edmundson, K.L., Soderblom, L.A., Takir, D., Patterson, G.W., Collins, G.C., Pappalardo, R.T., Roatsch, T., Schenk, P.M.: Completed Global Control Network and Basemap of Enceladus,
+LPS XLVII, Abstract #2342 (2016a)
+Becker, K.J., Robinson, M.S., Becker, T.L., Weller, L.A., Edmundson, K.L., Neumann, G.A., Perry, M.E.,
+Solomon, S.C.: First Global Digital Elevation Model of Mercury, LPS XLVII, Abstract #2959 (2016b)
+Belton, M.J.S., Meech, K.J., Chesley, S.: 68 co-authors: Stardust-NExT, Deep Impact, and the accelerating
+spin of 9P/Tempel 1. Icarus 213, 345–368 (2011). https://doi.org/10.1016/j.icarus.2011.01.006
+Belton, M.J.S., Thomas, P., Li, J.-Y., Williams, J., Carcich, B., A’Hearn, M.F., McLaughlin, S., Farnham, T.,
+McFadden, L., Lisse, C.M., Collins, S., Besse, S., Klaasen, K., Sunshine, J., Meech, K.J., Lindler, D.:
+The complex spin state of 103P/Hartley 2: Kinematics and orientation in space. Icarus 222, 595–609
+(2013). https://doi.org/10.1016/j.icarus.2012.06.037
+Besse, S., Lamy, P., Jorda, L., Marchi, S., Barbieri, C.: Identification and physical properties of craters on
+Asteroid (2867) Steins. Icarus 221, 1119–1129 (2012). https://doi.org/10.1016/j.icarus.2012.08.008
+Burmeister, S., Willner, K., Schmidt, V., Oberst, J.: Determination of Phobos’ Rotational Parameters by an
+Inertial Frame Bundle Block Adjustment. J. Geodesy (2018, in press)
+Carry, B., Dumas, C., Kaasalainen, M., Berthier, J., Merline, W.J., Erard, S., Conrad, A., Drummond, J.D.,
+Hestroffer, D., Fulchignoni, M., Fusco, T.: Physical properties of (2) Pallas. Icarus 205, 460–472 (2010).
+https://doi.org/10.1016/j.icarus.2009.08.007
+Cassini Project: Planetary Constants (PcK) SPICE kernel. March 30 (2016). http://naif.jpl.nasa.gov/pub/naif/
+CASSINI/kernels/pck/cpck30Mar2016.tpc. See “BODY606_RADII”. Accessed 1 Sept 2017
+Conrad, A.R., Dumas, C., Merline, W.J., Drummond, J.D., Campbell, R.D., Goodrich, R.W., Le Mignant,
+D., Chaffee, F.H., Fusco, T., Kwok, S.H., Knight, R.I.: Direct measurement of the size, shape, and pole
+of 511 Davida with Keck AO in a single night. Icarus 191, 616–627 (2007). https://doi.org/10.1016/j.
+icarus.2007.05.004
+Davies, M.E., Colvin, T.R.: Lunar coordinates in the regions of the Apollo landers. JGR 105(E8), 20277–20280
+(2000)
+Davies, M.E., Abalakin, V.K., Cross, C.A., Duncombe, R.L., Masursky, H., Morando, B., Owen, T.C., Seidelmann, P.K., Sinclair, A.T., Wilkins, G.A., Tjuflin, Y.S.: Report of the IAU Working Group on Cartographic
+Coordinates and Rotational Elements of the Planets and Satellites. Celest. Mech. 22, 205–230 (1980)
+
+123
+
+22
+
+Page 42 of 46
+
+B. A. Archinal et al.
+
+Davies, M.E., Abalakin, V.K., Lieske, J.H., Seidelmann, P.K., Sinclair, A.T., Sinzi, A.M., Smith, B.A., Tjuflin,
+Y.S.: Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements of the
+Planets and Satellites: 1982. Celest. Mech. 29, 309–321 (1983)
+Davies, M.E., Abalakin, V.K., Bursa, M., Lederle, T., Lieske, J.H., Rapp, R.H., Seidelmann, P.K., Sinclair, A.T.,
+Teifel, V.G., Tjuflin, Y.S.: Report of the IAU/IAG COSPAR Working Group on Cartographic Coordinates
+and Rotational Elements of the Planets and Satellites: 1985. Celest. Mech. 39, 103–113 (1986)
+Davies, M.E., Abalakin, V.K., Bursa, M., Hunt, G.E., Lieske, J.H., Morando, B., Rapp, R.H., Seidelmann,
+P.K., Sinclair, A.T., Tjuflin, Y.S.: Report of the IAU/IAG/COSPAR Working Group on Cartographic
+Coordinates and Rotational Elements of the Planets and Satellites: 1988. Celest. Mech. Dyn. Astron. 46,
+187–204 (1989)
+Davies, M.E., Abalakin, V.K., Brahic, A., Bursa, M., Chovitz, B.H., Lieske, J.H., Seidelmann, P.K., Sinclair,
+A.T., Tjuflin, Y.S.: Report of the IAU/IAG/COSPAR Working Group on Cartographic Coordinates and
+Rotational Elements of the Planets and Satellites: 1991. Celest. Mech. Dyn. Astron. 53, 377–397 (1992)
+Davies, M.E., Abalakin, V.K., Bursa, M., Lieske, J.H., Morando, B., Seidelmann, P.K., Sinclair, A.T., Yallop,
+B., Tjuflin, Y.S.: Report of the IAU/IAG/COSPAR Working Group on Cartographic Coordinates and
+Rotational Elements of the Planets and Satellites: 1994. Celest. Mech. Dyn. Astron. 63, 127–148 (1996)
+de Vaucouleurs, G., Davies, M.E., Sturms Jr., F.M.: Mariner 9 areographic coordinate system. JGR 78, 4395–
+4404 (1973)
+Dobrovolskis, A.R.: Chaotic rotation of nereid? Icarus 118, 118–198 (1995)
+Drummond, J.D., Merline, W.J., Carry, B., Conrad, A., Reddy, V., Tamblyn, P., Chapman, C.R., Enke, B.L.
+de Pater, I., de Kleer, K., Christou, J., Dumas, C.: The triaxial ellipsoid size, density, and rotational pole
+of asteroid (16) psyche from keck and gemini AO observations 2004–2015. Icarus (2018, in press)
+Duxbury, T.: Recommended new Models for Mars Spin Axis and Rate, Chairman, Mars Program Office
+Geodesy and Cartography Working Group, GMU Memo to B. Archinal, Chairman IAU Working Group
+on Cartographic Coordinates and Rotational Elements, December 3 (2013)
+Duxbury, T.: Recommended new Models for Mars, Phobos and Deimos Orientation Expressions, Chairman,
+Mars Program Office Geodesy and Cartography Working Group, GMU Memo to B. Archinal, Chairman
+IAU Working Group on Cartographic Coordinates and Rotational Elements, draft received 2017 August
+18
+Duxbury, T.C., Kirk, R., Archinal, B.A.: Mars geodesy/cartography working group recommendations on
+mars cartographic constants and coordinate systems. ISPRS WG IV/9: Extraterrestrial Mapping Workshop “Planetary Mapping 2001”, virtual workshop (2001). See https://astrogeology.usgs.gov/groups/
+ISPRSforon-lineabstract. Accessed 1 Sept 2017
+Duxbury, T.C., Kirk, R.L., Archinal, B.A., Neumann, G.A.: Mars Geodesy/Cartography Working Group Recommendations on Mars Cartographic Constants and Coordinate Systems, ISPRS, 34, part 4, “Geospatial
+Theory, Processing and Applications,” Ottawa (2002). http://www.isprs.org/proceedings/XXXIV/part4/
+pdfpapers/521.pdf
+Duxbury, T.C., Christensen, P., Smith, D.E., Neumann, G.A., Kirk, R.L., Caplinger, M.A., Albee, A.A.,
+Seregina, N.V., Neukum, G., Archinal, B.A.: The location of Airy-0, the Mars prime meridian reference,
+from stereo photogrammetric processing of THEMIS IR imaging and digital elevation data. J. Geophys.
+Res. Planets 119(12), 2471–2486 (2014). https://doi.org/10.1002/2014JE004678
+Farnham, T.L., Thomas, P.C., Plate Shape Model of Comet 9P/Tempel 1 V2.0, DIF-C-HRIV/ITS/MRI-5TEMPEL1-SHAPE-MODEL-V2.0. NASA Planetary Data System (2013a)
+Farnham, T.L., Thomas, P.C., Plate Shape Model of Comet 103P/Hartley 2 V1.0, DIF-C-HRIV/MRI-5HARTLEY2-SHAPE-V1.0. NASA Planetary Data System (2013b)
+Folkner, W.M., Williams, J.G., Boggs, D.H.: The planetary and lunar ephemeris DE 421. IPN Progress Report
+42-178, August 15 (2009). https://ipnpr.jpl.nasa.gov/progress_report/42-178/178C.pdf. Accessed 1 Sept
+2017
+Folkner, W.M., Williams, J.G., Boggs, D.H.: The planetary and lunar ephemeris DE 421. JPL Memorandum
+IOM 343R-08-003, 31 March (2008). https://ssd.jpl.nasa.gov/pub/eph/planets/ioms/de421.iom.v1.pdf.
+Accessed 1 Sept 2017
+Folkner, W.M., Williams, J.G., Boggs, D.H., Park, R.S., Kuchynka, P.: The planetary and lunar ephemerides
+DE430 and DE431. IPN Progress Report 42-196, February 15 (2014). https://ipnpr.jpl.nasa.gov/
+progress_report/42-196/196C.pdf. Accessed 1 Sept 2017
+Fujiwara, A., Kawaguchi, J., Yeomans, D.K., Abe, M., Mukai, T., Okada, T., Saito, J., Yano, H., Yoshikawa,
+M., Scheeres, D.J., Barnouin-Jha, O., Cheng, A.F., Demura, H., Gaskell, R.W., Hirata, N., Ikeda, H.,
+Kominato, T., Miyamoto, H., Nakamura, A.M., Nakamura, R., Sasaki, S., Uesugi, K.: The rubble-pile
+asteroid Itokawa as observed by Hayabusa. Science 312, 1330–1334 (2006)
+Giampieri, G., Dougherty, M.K., Smith, E.J., Russell, C.T.: A regular period for Saturn’s magnetic field that
+may track its internal rotation. Nature 441, 62–64 (2006)
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 43 of 46
+
+22
+
+Gurnett, D.A., Persoon, A.M., Kurth, W.S., Groene, J.B., Averkamp, T.F., Dougherty, M.K., Southwood, D.J.:
+The Variable Rotation period of the Inner Region of Saturn’s Plasma Disk. Science 316, 442–445 (2007)
+Haberreiter, M., Schmutz, W., Kosovichev, A.G.: Solving the discrepancy between the seismic and photospheric solar radius. ApJ 675, L53–L56 (2008)
+Hall, J.S., Sagan, C., Middlehurst, B., Pettengill, G.H.: Commission 16: Physical Study of Planets and Satellites,
+Report of Meetings: 20, 24, 25, and 26 August 1970. In: de Jager, C., Jappel, A. (eds.) Proceedings of
+the Fourteenth General Assembly Brighton 1970, 128–137. D. Reidel Publishing Company, Dordrecht
+(1971)
+International Astronomical Union (IAU): Proceedings of the sixteenth general assembly. Transactions of the
+IAU, XVI B, D. Reidel Publishing Company, Dordrecht (1977). A copy of the 1976 IAU Resolutions
+including the “IAU (1976) System of Astronomical Constants” is available on-line as https://www.iau.
+org/static/resolutions/IAU1976_French.pdf. Accessed 1 Sept 2017
+International Astronomical Union (IAU): IAU information bulletin 109, 41 (2012). https://www.iau.org/static/
+publications/IB109.pdf. Accessed 1 Sept 2017
+International Astronomical Union (IAU): Resolution B2 on recommended nominal conversion constants
+for selected solar and planetary properties (2015a). https://www.iau.org/static/resolutions/IAU2015_
+English.pdf. Accessed 1 Sept 2017
+International Astronomical Union (IAU): Working Group for Planetary System Nomenclature (WGPSN) and
+International Astronomical Union Committee on Small Body Nomenclature: Dwarf Planets and their Systems (2015b). https://planetarynames.wr.usgs.gov/append7.html#DwarfPlanets. Accessed 1 Sept 2017
+IAU Executive Committee: Summary of IAU Executive Committee Meeting in May 2016 (2016). https://
+www.iau.org/static/archives/announcements/pdf/ann16029a.pdf. Accessed 1 Sept 2017
+Jacobson, R.A.: The orbits of the neptunian satellites and the orientation of the pole of neptune. Astron. J.
+137, 4322–4329 (2009). https://doi.org/10.1088/0004-6256/137/5/4322
+Jorda, L., Lamy, P.L., Gaskell, R.W., Kaasalainen, G.O., Besse, S., Faury, G.: Asteroid (2867) steins: shape,
+topography and global physical properties from OSIRIS observations. Icarus 221, 1089–1100 (2012).
+https://doi.org/10.1016/j.icarus.2012.07.035
+Jorda, L., Gaskell, R., Capanna, C., Hviid, S., Lamy, P., Durech, J., Faury, G., Groussin, O., Gutiérrez, P.,
+Jackman, C., Keihm, S.J., Keller, H.U., Knollenberg, J., Kührt, E., Marchi, S., Mottola, S., Palmer, E.,
+Schloerb, F.P., Sierks, H., Vincent, J.-B., A’Hearn, M.F., Barbieri, C., Rodrigo, R., Koschny, D., Rickman,
+H., Barucci, M.A., Bertaux, J.L., Bertini, I., Cremonese, G., Da Deppo, V., Davidsson, B., Debei, S.,
+De Cecco, M., Fornasier, S., Fulle, M., Güttler, C., Ip, W.-H., Kramm, J.R., Küppers, M., Lara, L.M.,
+Lazzarin, M., Lopez Moreno, J.J., Marzari, F., Naletto, G., Oklay, N., Thomas, N., Tubiana, C., Wenzel,
+K.-P.: The global shape, density and rotation of Comet 67P/Churyumov-Gerasimenko from preperihelion
+Rosetta/OSIRIS observations. Icarus 277, 257–278 (2016). https://doi.org/10.1016/j.icarus.2016.05.002
+Karkoschka, E.: Neptune’s rotational period suggested by the extraordinary stability of two features. Icarus
+215, 439–448 (2011). https://doi.org/10.1016/j.icarus.2011.05.013
+Kirk, R.L., Oberst, J., Giese, B.: DS1 Digital elevation maps of comet 19P/Borrelly V1.0, DS1-C-MICAS-5BORRELLY-DEM-V1.0. NASA Planetary Data System (2004)
+Knutson, H.A., Charbonneau, D., Allen, L.E., Fortney, J.J., Agol, E., Cowan, N.B., Showman, A.P., Cooper,
+C.S., Thomas, M.S.: A map of the day-night contrast of the extrasolar planet HD 189733b. Nature 447,
+183–186 (2007). https://doi.org/10.1038/nature05782
+Konopliv, A.S., Asmar, S.W., Carranza, E., Sjogren, W.L., Yuan, D.-N.: Recent gravity models as a result of
+the Lunar Prospector mission. Icarus 150, 1–18 (2001)
+Konopliv, A.S., Yoder, C.F., Standish, E.M., Yuan, D.-N., Sjogren, W.L.: A global solution for the Mars static
+and seasonal gravity, Mars orientation, Phobos and Deimos masses, and Mars ephemeris. Icarus 182,
+23–50 (2006)
+Konopliv, A.S., Asmar, S.W., Park, R.S., Bills, B.G., Centinello, F., Chamberlin, A.B., Ermakov, A., Gaskell,
+R.W., Rambaux, N., Raymond, C.A., Russell, C.T., Smith, D.E., Tricarico, P., Zuber, M.T.: The Vesta
+gravity field, spin pole and rotation period, landmark positions, and ephemeris from the Dawn tracking
+and optical data. Icarus 240, 103–117 (2014). https://doi.org/10.1016/j.icarus.2013.09.005
+Konopliv, A.S., Park, R.S., Folkner, W.M.: An improved JPL Mars Gravity Field and Orientation from Mars
+Orbiter and Lander Tracking Data. Icarus 274, 253–260 (2016). https://doi.org/10.1016/j.icarus.2016.
+02.052
+Kovalevsky, J., Seidelmann, P.K.: Fundamentals of Astrometry. Cambridge University Press, Cambridge
+(2004)
+Kuchynka, P., Folkner, W.M., Konopliv, A.S., Parker, T.J., Park, R.S., Le Maistre, S., Dehant, V.: New constraints on Mars rotation determined from radiometric tracking of the Opportunity Mars Exploration
+Rover. Icarus 229, 340–347 (2014). https://doi.org/10.1016/j.icarus.2013.11.015
+
+123
+
+22
+
+Page 44 of 46
+
+B. A. Archinal et al.
+
+Kurth, W.S., Lecacheux, A., Averkamp, T.F., Groene, J.B., Gurnett, D.A.: A Saturnian longitude system
+based on a variable kilometric radiation period. GRL 24, L02201 (2007). https://doi.org/10.1029/
+2006GL028336
+Li, J.-Y.: Body-fixed coordinate systems for asteroid (4) Vesta, planetary data system small bodies node,
+September 18 (2012). Originally at http://sbn.psi.edu/archive/dawn/fc/DWNVFC2_1A/DOCUMENT/
+VESTA_COORDINATES/VESTA_COORDINATES_120918.PDF, Now at https://web.archive.org/
+web/20130217143028/http://sbn.psi.edu/archive/dawn/fc/DWNVFC2_1A/DOCUMENT/VESTA_
+COORDINATES/VESTA_COORDINATES_120918.PDF. Accessed 1 Sept 2017
+Li, J.-Y., Mafi, J.N.: Body-fixed coordinate systems for asteroid (4) Vesta, planetary data system small bodies
+node, October 17 (2013) https://sbn.psi.edu/archive/dawn/fc/DWNVFC2_1A/DOCUMENT/VESTA_
+COORDINATES/VESTA_COORDINATES_131018.PDF. Accessed 1 Sept 2017
+Li, J.-Y., McFadden, L.A., Parker, J.W., Young, E.F., Stern, S.A., Thomas, P.C., Russell, C.T., Sykes, M.V.:
+Photometric analysis of 1 Ceres and surface mapping from HST observations. Icarus 182, 143–160
+(2006). https://doi.org/10.1016/j.icarus.2005.12.012
+Li, J.-Y., Thomas, P.C., Carcich, B., Mutchler, M.J., McFadden, L.A., Russell, C.T., Weinstein-Weiss, S.S.,
+Rayman, M.D., Raymond, C.A.: Improved measurement of asteroid (4) Vesta’s rotational axis orientation.
+Icarus 211, 528–534 (2011). https://doi.org/10.1016/j.icarus.2010.09.019
+LRO Project and LGCWG: A standardized lunar coordinate system for the lunar reconnaissance orbiter and
+lunar datasets, Version 5, October 1. (2008). https://lunar.gsfc.nasa.gov/library/LunCoordWhitePaper10-08.pdf. Accessed 1 Sept 2017
+Ma, C., Arias, E.F., Eubanks, T.M., Fey, A.L., Gontier, A.-M., Jacobs, C.S., Sovers, O.J., Archinal, B.A.,
+Charlot, P.: The International celestial reference frame as realized by very long baseline interferometry.
+Astron. J. 116, 516–546 (1998)
+Margot, J.-L.: A Mercury orientation model including non-zero obliquity and librations. Celest. Mech. Dyn.
+Astr. 105, 329–336 (2009). https://doi.org/10.1007/s10569-009-9234-1
+Margot, J.-L., Peale, S.J., Solomon, S.C., Hauck, II, Steven, A., Ghigo, F.D., Jurgens, R.F., Yseboodt, M.,
+Giorgini, J.D., Padovan, S., Campbell, D.B.: Mercury’s moment of inertia from spin and gravity data. J.
+Geophys. Res. 117, E00L09 (2012). https://doi.org/10.1029/2012JE004161
+Mazarico, E., Genova, A., Goossens, S., Lemoine, F.G., Neumann, G.A., Zuber, M.T., Smith, D.E., Solomon,
+S.C.: The gravity field, orientation, and ephemeris of Mercury from MESSENGER observations after
+three years in orbit. J. Geophys. Res. Planets 119, 2417–2436 (2014)
+Meech, K., Valsecchi, G.B., Archinal, B., Schulz, R., Consolmagno, G.: Supporting editors, authors, and
+missions with IAU recommendations, Inquires of Heaven, No. 10, 4, August 31 (2012). Originally at
+http://www.astronomy2012.org/ih. Not Reachable 1 Sept 2017
+Merline, W.J., Drummond, J.D., Carry, B., Conrad, A., Tamblyn, P.M., Dumas, C., Kaasalainen, M., Erikson,
+A., Mottola, S., Durech, R.G., Behrend, R., Casalnuovo, G.B., Chinaglia, B., Christou, J.C., Chapman,
+C.R., Neyman, C.: The resolved asteroid program—size, shape, and pole of (52) Europa. Icarus 225,
+794–805 (2013)
+Miller, J.K., Konopliv, A.S., Antreasian, P.G., Bordi, J.J., Chesley, S., Helfrich, C.E., Owen, W.M., Wang,
+T.C., Williams, B.G., Yeomans, D.K., Scheeres, D.J.: Determination of shape, gravity, and rotational
+state of asteroid 433 eros. Icarus 155, 3–17 (2002)
+Mueller, B.E.A., Samarasinha, N.H., Rauer, H., Helbert, J.: Determination of a precise rotation period for the
+Deep Space 1 target, Comet 19P/Borrelly. Icarus 209, 745–752 (2010)
+NAIF: An overview of reference frames and coordinate systems in the SPICE context, navigation
+and ancillary information facility, Jet Propulsion Laboratory, California Institute of Technology,
+Pasadena. November (2014). https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_
+docs/17_frames_and_coordinate_systems.pdf. Accessed 1 Sept 2017
+NAIF: PCK required reading, navigation and ancillary information facility, Jet Propulsion Laboratory, California Institute of Technology, Pasadena, CA. January 22 (2013). https://naif.jpl.nasa.gov/pub/naif/
+toolkit_docs/C/req/pck.html. Accessed 1 Sept 2017. https://naif.jpl.nasa.gov/pub/naif/generic_kernels/
+pck/. Accessed 1 Sept 2017
+Nimmo, F., Umurhan, O., Lisse, C.M., Bierson, C.J., Lauer, T.R., Buie, M.W., Throop, H.B., Kammer, J.A.,
+Roberts, J.H., McKinnon, W.B., Zangari, A.M., Moore, J.M., Stern, S., Alan, Y., Leslie, A., Weaver,
+H.A., Olkin, C.B., Ennico, K.: Mean radius and shape of Pluto and Charon from New Horizons images.
+Icarus 287, 12–29 (2017). https://doi.org/10.1016/j.icarus.2016.06.027
+Ostro, S.J., Hudson, R.S., Nolan, M.C., Margot, J.-L., Scheeres, D.J., Campbell, D.B., Magri, C., Giosini,
+J.D., Yeomans, D.K.: Radar Observations of asteroid 216 Kleopatra. Science 288, 836–83 (2000)
+Parker, T.J. Golombek, M.P., Calef, F.J. Hare, T.M.: High-resolution basemaps for localization, mission planning, and geologic mapping at Meridian Planum and Gale crater, LPS XLIII, Abstract #2535 (2012)
+
+123
+
+Report of the IAU Working Group on Cartographic Coordinates…
+
+Page 45 of 46
+
+22
+
+PDS: Planetary Data System Standards Reference, Jet Propulsion Laboratory, California Institute of Technology, Pasadena. Version 3.8, February 27 (2009). https://pds.nasa.gov/documents/sr/StdRef_20090227_
+v3.8.pdf. Accessed 1 Sept 2017
+PDS SBN: Coordinate systems at PDS-SBN, April 10 (2014). https://pdssbn.astro.umd.edu/data_sb/resources/
+coordinate_systems.shtml. Accessed 1 Sept 2017
+Perry, M.E., Neumann, G.A., Phillips, R.J., Barnouin, O.S., Ernst, C.M., Kahan, D.S., Solomon, S.C., Zuber,
+M.T., Smith, D.E., Hauck, II, Steven, A., Peale, S.J., Margot, J.-L., Mazarico, E., Johnson, C.L., Gaskell,
+R.W., Roberts, J.H., McNutt Jr., R.L.: The low-degree shape of Mercury. Oberst. J. Geophys. Res. Lett.
+42, 6951–6958 (2015). https://doi.org/10.1002/2015GL065101
+Preusker, F., Scholten, F., Matz, K.-D., Roatsch, T., Willner, K., Hviid, S.F., Knollenberg, J., Jorda, L., Gutiérrez,
+P.J., Kührt, E., Mottola, S., A’Hearn, M.F., Thomas, N., Sierks, H., Barbieri, C., Lamy, P., Rodrigo, R.,
+Koschny, D., Rickman, H., Keller, H.U., Agarwal, J., Barucci, M.A., Bertaux, J.-L., Bertini, I., Cremonese,
+G., Da Deppo, V., Davidsson, B., Debei, S., De Cecco, M., Fornasier, S., Fulle, M., Groussin, O., Güttler,
+C., Ip, W.-H., Kramm, J.R., Küppers, M., Lara, L.M., Lazzarin, M., Lopez Moreno, J.J., Marzari, F.,
+Michalik, H., Naletto, G., Oklay, N., Tubiana, C., Vincent, J.-B.: Shape model, reference system definition,
+and cartographic mapping standards for comet 67P/Churyumov-Gerasimenko–Stereo-photogrammetric
+analysis of Rosetta/OSIRIS image data. A&A 583, A33 (2015)
+Preusker, F., Scholten, F., Matz, K.-D., Elgner, S., Jaumann, R., Roatsch, T., Joy, S.P., Polanskey, C.A.,
+Raymond, C.A., Russell, C.T.: Dawn at ceres—shape model and rotational state, LPS XLVII, Abstract
+#1954 (2016)
+Radebaugh, J., Thomson, B.J., Archinal, B., Hagerty, J., Gaddis, L., Lawrence, S.J., Sutton, S., the MAPSIT
+Steering Committee: Obtaining and Using Planetary Spatial Data into the Future: The Role of the Mapping
+and Planetary Spatial Infrastructure Team (MAPSIT), Planetary Science Vision 2050 Workshop, Abstract
+#8084 (2017)
+Rayman, M.D., Fraschetti, T.C., Raymond, C.A., Russell, C.T.: Dawn: a mission in development for exploration
+of main belt asteroids Vesta and Ceres. Acta Astronaut. 58, 605–616 (2006)
+Raymond, C., Roatsch, T.: Ceres coordinate system description, as of October 14 (2015). https://sbn.psi.edu/
+pds/resource/ceres_coord_sys_151014.pdf. Accessed 1 Sept 2017
+Riddle, A.C., Warwick, J.W.: Redefinition of system III longitude. Icarus 27, 457–459 (1976)
+Roncoli, R.: Lunar Constants and Models Document. JPL D-32296 (2005). https://ssd.jpl.nasa.gov/?lunar_
+doc. Accessed 1 Sept 2017
+Russell, C.T., Dougherty, M.K.: Magnetic fields of the outer planets. SSR (2010). https://doi.org/10.1007/
+s11214-009-9621-7
+Samarasinha, N.H., Mueller, B.E.A., Belton, M.J.S., Jorda, L.: Rotation of Cometary Nuclei in Comets II. In:
+Festou, M., Keller, H.U., Weaver, H.A., (eds.) University of Arizona Press, Tucson (2004)
+Schleicher, D.G., Woodney, L.M., Millis, R.L.: Comet 19P/Borrelly at multiple apparitions: seasonal variations
+in gas production and dust morphology. Icarus 162, 415–442 (2003)
+Scholten, F., Preusker, F., Jorda, L, and Hviid, S.: Reference Frames and Mapping Schemes of Comet
+67P/C-G, v2 (24 September 2015), RO-C-MULTI-5-67P-SHAPE-V1.0:CHEOPS_REF_FRAME_V1,
+NASA Planetary Data System and ESA Planetary Science Archive (2015). https://pdssbn.astro.umd.edu/
+holdings/ro-c-multi-5-67p-shape-v1.0/document/cheops_ref_frame_v1.pdf. Accessed 26 Nov 2017
+Seidelmann, P.K., Abalakin, V.K., Bursa, M., Davies, M.E., de Bergh, C., Lieske, J.H., Oberst, J., Simon,
+J.L., Standish, E.M., Stooke, P., Thomas, P.C.: Report of the IAU/IAG Working Group on Cartographic
+Coordinates and Rotational Elements of the Planets and Satellites: 2000. Celest. Mech. Dyn. Astron. 82,
+83–110 (2002)
+Seidelmann, P.K., Archinal, B.A., A’Hearn, M.F., Cruiskshank, D.P., Hilton, J.L., Keller, H.U., Oberst, J.,
+Simon, J.L., Stooke, P., Tholen, D.J., Thomas, P.C.: Report on the IAU/IAG Working Group on Cartographic Coordinates and Rotational Elements: 2003. Celest. Mech. Dyn. Astron. 91, 203–215 (2005)
+Seidelmann, P.K., Archinal, B.A., A’Hearn, M.F., Conrad, A., Consolmagno, G.J., Hestroffer, D., Hilton, J.L.,
+Krasinsky, G.A., Neumann, G., Oberst, J., Stooke, P., Tedesco, E., Tholen, D.J., Thomas, P.C., Williams,
+I.P.: Report of the IAU/IAG Working Group on Cartographic Coordinates and Rotational Elements: 2006.
+Celest. Mech. Dyn. Astron. 98, 155–180 (2007)
+Shepard, M.K., James, R., Patrick, A., Taylor, L.A., Rodriguez-Ford, A.C., Males, J.R., Morzinski, K.M.,
+Close, L.M., Kaasalainen, M., Viikinkoski, M., Timerson, B., Reddy, V., Magri, C., Nolan, M.C., Howell,
+E.S., Benner, L.A.M., Giorgini, J.D., Warner, B.D., Harris, A.W.: Radar observations and shape model
+of asteroid 16 Psyche. Icarus 281, 388–403 (2017)
+Smith, D., Neumann, B., Arvidson, R.E. Guinness, E.A., Slavney, S.: Mars global surveyor laser altimeter
+mission experiment gridded data record. NASA Planetary Data System, MGS-M-MOLA-5-MEGDRL3-V1.0, (2003). https://pds.nasa.gov/ds-view/pds/viewProfile.jsp?dsid=MGS-M-MOLA-5-MEGDRL3-V1.0. Accessed 1 Sept 2017
+
+123
+
+22
+
+Page 46 of 46
+
+B. A. Archinal et al.
+
+Soderblom, L.A., Boice, D.C., Britt, D.T., Brown, R.H., Buratti, B.J., Kirk, R.L., Lee, M., Nelson, R.M.,
+Oberst, J., Sandel, B.R., Stern, S.A., Thomas, N., Yelle, R.V.: Imaging borrelly. Icarus 167, 4–15 (2004)
+Stark, A.: The prime meridian of the planet Mercury. MESSENGER PDS Release (2016). https://naif.jpl.
+nasa.gov/pub/naif/pds/data/mess-e_v_h-spice-6-v1.0/messsp_1000/document/stark_prime_meridian.
+pdf. Accessed 1 Sept 2017
+Stark, A., Oberst, J., Preusker, F., Peale, S.J., Margot, J.-L., Phillips, R.J., Neumann, G.A., Smith, D.E., Zuber,
+M.T., Solomon, S.C.: First MESSENGER orbital observations of Mercury’s librations. Geophys. Res.
+Lett. 42, 7881–7889 (2015)
+Stark, A., Willner, K., Burmeister, S., Oberst, J.: Geodetic framework for martian satellite exploration I:
+reference rotation models. European Planetary Science Conference, V. 11, EPSC2017-868-1 (2017a).
+http://meetingorganizer.copernicus.org/EPSC2017/EPSC2017-868-1.pdf. Accessed 17 July 2017
+Stark, A., Oberst, J., Preusker, F., Burmeister, S., Steinbrügge, G., Hussmann, H.: The geodetic reference
+frames of Mercury after MESSENGER. J. Geodesy (2017b, submitted). Preprint available at http://arxiv.
+org/abs/1710.09686
+Stevenson, D.J.: A new spin on Saturn. Nature 441, 344–35 (2006)
+Thomas, P., Veverka, J.: Neptune’s small inner satellites. JGR 96(Supplement), 19261–19268 (1991)
+Thomas, P.C., Binzel, R.P., Gaffey, M.J., Zellner, B.H., Storrs, A.D., Wells, E.: Vesta: spin pole, size, and
+shape from HST images. Icarus 128, 88–94 (1997). https://doi.org/10.1006/icar.1997.5736
+Thomas, P.C., Joseph, J., Carcich, B., Veverka, J., Clark, B.E., Bell, J.F., Byrd, A.W., Chomko, R., Robinson,
+M., Murchie, S., Prockter, L., Cheng, A., Izenberg, N., Malin, M., Chapman, C., McFadden, L.A., Kirk,
+R., Gaffey, M., Lucey, P.G.: Eros: shape, topography, and slope processes. Icarus 155, 18–37 (2002)
+Thomas, P.C., Parker, J.W., McFadden, L.A., Russell, C.T., Stern, S.A., Sykes, M.V., Young, E.F.: Differentiation of the asteroid Ceres as revealed by its shape. Nature 437, 224–226 (2005)
+Thomas, P.C., Veverka, J., Belton, M.J.S., Hidy, A., A’Hearn, M.F., Farnham, T.L., Groussin, O., Li, J.-Y.,
+McFadden, L.A., Sunshine, J., Wellnitz, D., Lisse, C., Schultz, P., Meech, K.J., Delamere, W.A.: The
+shape, topography, and geology of Tempel 1 from Deep Impact observations. Icarus 187, 4–15 (2007)
+Thomas, P.C., A’Hearn, M.F., Veverka, J., Belton, M.J.S., Kissel, J., Klaasen, K.P., McFadden, L.A., Melosh,
+H.J., Schultz, P.H., Besse, S., Carcich, B.T., Farnham, T.L., Groussin, O., Hermalyn, B., Li, J.-Y., Lindler,
+D.J., Lisse, C.M., Meech, K., Richardson, J.E.: Shape, density, and geology of the nucleus of comet
+103P/Hartley 2. Icarus 222, 550–558 (2013a)
+Thomas, P.C., Burns, J.A., Hedman, M., Helfenstein, P., Morrison, S., Tiscareno, M.S., Veverka, J.: The inner
+small satellites of Saturn: A variety of worlds. Icarus 226, 999–1019 (2013b)
+Thomas, P.C., Tajeddine, R., Tiscareno, M.S., Burns, J.A., Joseph, J., Loredo, T.J., Helfenstein, P., Porco,
+C.: Enceladus’s measured physical libration requires a global subsurface ocean. Icarus 264, 37 (2016).
+https://doi.org/10.1016/j.icarus.2015.08.037
+Urban, S.E., Seidelmann, P.K. (eds.): Explanatory Supplement to the Astronomical Almanac, 3rd edn. University Science Books, Mill Valley (2012)
+Verma, A.K., Margot, J.L.: Mercury’s gravity, tides, and spin from MESSENGER radio science data. J.
+Geophys. Res. Planets 121, 1627–1640 (2016)
+Veverka, J., Klaasen, K., A’Hearn, M., Belton, M., Brownlee, D., Chesley, S., Clark, B., Economou, T.,
+Farquhar, R., Green, S.F., Groussin, O., Harris, A., Kissel, J., Li, J.-Y., Meech, K., Melosh, J., Richardson,
+J., Schultz, P., Silen, J., Sunshine, J., Thomas, P., Bhaskaran, S., Bodewits, D., Carcich, B., Cheuvront, A.,
+Farnham, T., Sackett, S., Wellnitz, D., Wolf, A.: Return to comet Tempel 1: overview of stardust-NExT
+results. Icarus 222, 424–435 (2013). https://doi.org/10.1016/j.icarus.2012.03.034
+Williams, J.G., Boggs, D.H., Folkner, W.M.: DE421 lunar orbit, physical librations, and surface coordinates.
+JPL Interoffice Memorandum IOM 335-JW,DB,WF-20080314-001, 14 March (2008). https://ssd.jpl.
+nasa.gov/pub/eph/planets/ioms/de421_moon_coord_iom.pdf. Accessed 1 Sept 2017
+Zangari, A.: A meta-analysis of coordinate systems and bibliography of their use on Pluto from Charon’s
+discovery to the present day. Icarus 246, 93–145 (2015). https://doi.org/10.1016/j.icarus.2014.10.040
+Zebker, H.A., Stiles, B., Hensley, S., Lorenz, R., Kirk, R.L., Lunine, J.: Size and shape of Saturn’s moon titan.
+Science 324, 921–923 (2009)
+Zubarev, A., Nadezhdina, I., Oberst, J., Hussmann, H., Stark, A.: New Ganymede control point network and
+global shape model. PSS 117, 246 (2015). https://doi.org/10.1016/j.pss.2015.06.022
+
+123
+
+
