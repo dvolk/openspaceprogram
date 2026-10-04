@@ -5,26 +5,19 @@
 # inertial spheres from physics -- "soi_law": "patched_conic" reproduces the
 # KSP wiki SOI values the old table hardcoded (src/bodylimits.h).
 import argparse
-import hashlib
 import math
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from sci_dist import stamp_system
+from sci_dist import stamp_system, phase0
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
 STAR_SOI = 1e18   # m; the root frame's inertial soi: the universe bound
 
 ROOT = os.path.dirname(HERE)
-
-def phase0(name, salt):
-    # Deterministic pseudo-random angle in [0, 2pi) seeded by body name
-    # (#141). sha256, not hash(): stable across runs and machines.
-    h = hashlib.sha256((salt + '|' + name).encode()).digest()
-    return int.from_bytes(h[:8], 'big') / 2**64 * TWOPI
 
 def spd(period):
     if not period:
@@ -72,7 +65,9 @@ def load_wiki_orbits(csv_path):
 WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 
 # Eerbon: legacy home + moon. Values from the pre-refactor setup_frames();
-# seed 0 keeps the original unseeded terrain.
+# seed 0 keeps the original unseeded terrain. Deliberately authored WITHOUT
+# spin_phase0/tilt_azimuth (#141): a frozen legacy fixture, not a showcase
+# for the new fields -- its spin stays node-locked by design.
 eerbon = {
     "home": "Eerbon",
     "soi_law": "patched_conic",

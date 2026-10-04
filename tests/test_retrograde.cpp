@@ -71,7 +71,8 @@ static double authored_orb_incl(const char *path, const std::string &name) {
 }
 
 static double azimuth(const glm::dvec3 &r) {
-    return std::atan2(r.z, r.x);
+    return std::atan2(r.z, r.x);   // (-pi, pi]: compare against constants
+                                   // inside this range, or wrap the delta
 }
 
 // Write a mutated system JSON (tmp/), require load_system to reject it with
@@ -101,9 +102,22 @@ static void expect_reject(const nlohmann::json &j, const char *tag,
 static double authored(const nlohmann::json &j, const std::string &name,
                        const char *section, const char *field) {
     for(auto &&b : j["bodies"]) {
-        if(b["name"] == name) { return b.at(section).at(field).get<double>(); }
+        if(b["name"] == name && b.contains(section)
+           && b[section].contains(field)) {
+            return b[section][field].get<double>();
+        }
     }
     return 0.0;
+}
+
+// j with bodies[name][section][field] removed (exercises the loader's
+// omission path, distinct from an authored 0.0).
+static nlohmann::json erased(nlohmann::json j, const std::string &name,
+                             const char *section, const char *field) {
+    for(auto &&b : j["bodies"]) {
+        if(b["name"] == name && b.contains(section)) { b[section].erase(field); }
+    }
+    return j;
 }
 
 // j with bodies[name][section][field] set to v (creates the field; asserts
@@ -131,7 +145,12 @@ static void with_loaded(const nlohmann::json &j, const char *tag, F &&fn) {
     o.close();
     try {
         System sys = load_system(tmp.c_str(), nullptr, nullptr);
-        fn(sys);
+        try {
+            fn(sys);
+        } catch(const std::exception &e) {
+            std::printf("FAIL %s: check threw: %s\n", tag, e.what());
+            ++g_failures;
+        }
         for(TerrainBody *b : sys.bodies) { delete b; }
     } catch(const std::exception &e) {
         std::printf("FAIL %s: unexpected load throw: %s\n", tag, e.what());
@@ -226,14 +245,30 @@ int main() {
     }
 
     // --- #141: the new epoch-phase fields -------------------------------
-    // Defaults pin: zeroed spin_phase0/tilt_azimuth must reproduce the
-    // pre-#141 Rz(axial_tilt) exactly (the loader treats 0 as absent, so
-    // any system that omits them loads byte-identically).
-    with_loaded(mutated(mutated(mutated(j, "Venus", "rotating", "spin_phase0", 0.0),
-                                "Venus", "rotating", "tilt_azimuth", 0.0),
+    // Generator<->loader loop: the shipped JSON must actually author the
+    // fields (key drift would leave every system node-locked with a green
+    // suite), and the loaded pole must sit at the authored tilt_azimuth.
+    const double ship_phase = authored(j, "Venus", "rotating", "spin_phase0");
+    const double ship_az = authored(j, "Venus", "rotating", "tilt_azimuth");
+    check(ship_phase != 0.0 && ship_az != 0.0,
+          "shipped solar_system.json authors the #141 fields");
+    if(venus) {
+        double d = azimuth(venus->rot_frame->initial_orient
+                           * venus->rot_frame->spin_axis) - ship_az;
+        if(d > PI) { d -= 2.0 * PI; }
+        if(d < -PI) { d += 2.0 * PI; }
+        check(std::fabs(d) < 1e-9,
+              "loaded Venus pole azimuth == authored tilt_azimuth");
+    }
+
+    // Defaults pin: OMITTED spin_phase0/tilt_azimuth must reproduce the
+    // pre-#141 Rz(axial_tilt) exactly (the omission path, not an authored
+    // 0.0), so any system that leaves them out loads byte-identically.
+    with_loaded(mutated(erased(erased(j, "Venus", "rotating", "spin_phase0"),
+                               "Venus", "rotating", "tilt_azimuth"),
                         "Venus", "rotating", "axial_tilt", 0.4),
-                "phase_defaults", [](System &sys) {
-        Frame *vf = sys.find("Venus")->rot_frame;
+                "phase_defaults", [](System &loaded) {
+        Frame *vf = loaded.find("Venus")->rot_frame;
         const double ct = std::cos(0.4), st = std::sin(0.4);
         const glm::dmat3 old(glm::dvec3(ct, -st, 0.0),
                              glm::dvec3(st,  ct, 0.0),
@@ -243,7 +278,7 @@ int main() {
         for(int c = 0; c < 3; c++) {
             delta += glm::length(io[c] - old[c]);
         }
-        check(delta < 1e-12, "zeroed phase fields reproduce the "
+        check(delta < 1e-12, "omitted phase fields reproduce the "
                              "pre-#141 initial_orient exactly");
     });
 
@@ -253,8 +288,8 @@ int main() {
     with_loaded(mutated(mutated(mutated(j, "Venus", "rotating", "axial_tilt", 0.0),
                                 "Venus", "rotating", "tilt_azimuth", 0.0),
                         "Venus", "rotating", "spin_phase0", 1.234),
-                "spin_phase0", [](System &sys) {
-        Frame *vf = sys.find("Venus")->rot_frame;
+                "spin_phase0", [](System &loaded) {
+        Frame *vf = loaded.find("Venus")->rot_frame;
         const glm::dvec3 lon0 = vf->initial_orient * glm::dvec3(1.0, 0.0, 0.0);
         check(std::fabs(azimuth(lon0) - 1.234) < 1e-9,
               "spin_phase0 places epoch longitude 0 at the authored azimuth");
@@ -265,11 +300,12 @@ int main() {
 
     // tilt_azimuth: the lean direction swings to the authored azimuth while
     // the tilt magnitude is preserved (frees the obliquity node from the
-    // ascending node).
+    // ascending node). Venus' authored spin_phase0 stays in place: the
+    // figure-axis pre-rotation maps +Y to +Y, so it cannot reach the pole.
     with_loaded(mutated(mutated(j, "Venus", "rotating", "axial_tilt", 0.3),
                         "Venus", "rotating", "tilt_azimuth", 2.0),
-                "tilt_azimuth", [](System &sys) {
-        Frame *vf = sys.find("Venus")->rot_frame;
+                "tilt_azimuth", [](System &loaded) {
+        Frame *vf = loaded.find("Venus")->rot_frame;
         const glm::dvec3 pole = vf->initial_orient * vf->spin_axis;
         check(std::fabs(azimuth(pole) - 2.0) < 1e-9,
               "tilt_azimuth swings the lean to the authored azimuth");

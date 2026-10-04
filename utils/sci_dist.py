@@ -24,6 +24,7 @@
 # generation JSON edit.
 #
 # SMa from the mean angular rate (Kepler III), matching system.cpp.
+import hashlib
 import math
 
 from sci_phase import (is_co_orbital, orb_w, phase_gap_rad, phasing_delta_v)
@@ -32,6 +33,15 @@ G = 6.674e-11
 K_DIST_MULT_MIN = 1.0
 K_DIST_MULT_MAX = 3.0
 K_NONHOME_MULT_FLOOR = 1.1
+
+
+def phase0(name, salt):
+    # Deterministic pseudo-random angle ~[0, 2pi] seeded by body name
+    # (#141 epoch spin phases). sha256, not hash(): stable across runs
+    # and machines. Shared by both system generators on purpose: the same
+    # body name must draw the same angle everywhere.
+    h = hashlib.sha256((salt + '|' + name).encode()).digest()
+    return int.from_bytes(h[:8], 'big') / 2**64 * 2.0 * math.pi
 
 
 def hohmann_delta_v(r1, r2, mu):

@@ -3,9 +3,9 @@
 mu, semimajor axis and the SOIs are derived by the loader: Kepler III for the orbit, and
 "soi_law": "hill" + the nesting lift for the spheres (src/bodylimits.h). No SOIs are emitted
 except the Sun's authored universe bound."""
-import re, math, json, os, sys, hashlib, html as htmllib
+import re, math, json, os, sys, html as htmllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sci_dist import stamp_science_mults, stamp_transfer_dv
+from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -18,12 +18,6 @@ SMALL_BODY_RHO = 2000.0        # kg/m^3, nominal small-moon density for estimate
 
 SUN_MASS   = 1.989e30   # kg
 SUN_RADIUS = 6.9634e8   # m
-
-def phase0(name, salt):
-    # Deterministic pseudo-random angle in [0, 2pi) seeded by body name
-    # (#141). sha256, not hash(): stable across runs and machines.
-    h = hashlib.sha256((salt + '|' + name).encode()).digest()
-    return int.from_bytes(h[:8], 'big') / 2**64 * TWO_PI
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -357,6 +351,8 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
             'spin_phase0': phase0(name, 'spin'),
         }
         if data.get('obliquity'):
+            # tilt_azimuth only where a tilt exists: with zero tilt it
+            # degenerates into a pure phase shift (loader comment, #141).
             body['rotating']['tilt_azimuth'] = phase0(name, 'tilt')
     # No rot_s -> no rotating block: the loader's dummy frame (zero spin,
     # derived near-body SOI) covers it.
