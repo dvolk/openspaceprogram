@@ -226,6 +226,10 @@ int main() {
         if(edaz > PI) { edaz -= 2.0 * PI; }
         if(edaz < -PI) { edaz += 2.0 * PI; }
         check(edaz < 0.0, "Earth sweeps prograde (azimuth DOWN) -- control");
+        // The authored calendar year must match the J2000 sky the orbital
+        // phases encode (kills the old hardcoded 4724 for real systems).
+        check(earth->cal.epoch_year == 2000,
+              "solar_system.json authors epoch_year 2000 (clock matches sky)");
     }
 
     // --- Venus: retrograde SPIN via axial_tilt > 90 deg --------------------

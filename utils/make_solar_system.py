@@ -579,7 +579,10 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
         bodies.append(build_moon(m, parent_body=by[m['parent']], home_body=home))
         by[m['name']] = bodies[-1]
         n += 1
-    doc = {'home': 'Earth', 'soi_law': 'hill', 'bodies': bodies}
+    # epoch_year 2000: the fact-sheet elements (and our derived orbital
+    # phases) are J2000-referenced, so the calendar clock matches the sky.
+    doc = {'home': 'Earth', 'soi_law': 'hill', 'epoch_year': 2000,
+           'bodies': bodies}
     stamp_science_mults(doc)
     if dry:
         return doc          # --check: the caller compares, nothing is written

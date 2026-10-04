@@ -1,6 +1,7 @@
 {
   "home": "Eerbon",
   "soi_law": "patched_conic",
+  "epoch_year": 4724,
   "bodies": [
     {
       "name": "Sun",

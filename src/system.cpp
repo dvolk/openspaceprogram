@@ -517,7 +517,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // Per-body calendar from its spin (day) and orbit (year) rates. The year
     // snaps to whole days (calendar.h) so boundaries fall on local midnight.
     // Stars get an invalid calendar (dummy zero-spin frame).
-    const int epoch_year = 4724;  // the year the game starts in
+    // The displayed year at t == 0. Solar systems author 2000: their orbital
+    // phases are J2000-referenced (fact sheets), so the clock matches the
+    // sky. The 4724 default preserves the fictional systems that predate
+    // the field (KSP lore).
+    const int epoch_year = doc.value("epoch_year", 4724);
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
         const double D = (b->rot_frame && b->rot_frame->rot_ang_speed > 0.0)

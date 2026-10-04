@@ -1,6 +1,7 @@
 {
   "home": "Earth",
   "soi_law": "hill",
+  "epoch_year": 2000,
   "bodies": [
     {
       "name": "Sun",

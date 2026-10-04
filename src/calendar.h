@@ -92,7 +92,7 @@ inline int cal_day_of_year(const Calendar &cal, const CalTime &ct) {
     return doy;
 }
 
-// "Year 4724   Day 12/427   08:14" -- the HUD / Transfer stamp.
+// "Year 2000   Day 12/427   08:14" -- the HUD / Transfer stamp.
 // Zero-alloc buffer-fill. Returns false when there is no calendar line.
 inline bool fmt_cal_time(const Calendar &cal, double t, char *buf, size_t n) {
     if(!cal.valid() || t < 0.0) { buf[0] = '\0'; return false; }
