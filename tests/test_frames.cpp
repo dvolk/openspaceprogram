@@ -98,7 +98,7 @@ static Frame *make_tree() {
     eerbon_rot->children = {};
     eerbon_rot->rotating = true;
     eerbon_rot->pos = glm::dvec3(0);
-    // UpdateOrbitRails re-derives orient as initial_orient * rotate(-ang, Y);
+    // UpdateOrbitRails re-derives orient as initial_orient * rotate(ang, Y);
     // at time 0 that must reproduce the initial 20-degree orientation.
     eerbon_rot->initial_orient = glm::dmat3(glm::rotate(ang, glm::dvec3(0, 1, 0)));
     eerbon_rot->orient = glm::dmat3(glm::rotate(ang, glm::dvec3(0, 1, 0)));
@@ -248,18 +248,19 @@ int main() {
     }
 
     printf("== stasis velocity ==\n");
-    // For a frame rotating about Y at rate w, stasis vel at (1,0,0) is (0,0,w).
+    // For a frame rotating about Y at rate w (prograde spin, issue #101),
+    // stasis vel at (1,0,0) is (0,0,-w).
     {
         double w = eerbon_rot->rot_ang_speed;
         glm::dvec3 sv = eerbon_rot->GetStasisVelocity(glm::dvec3(1, 0, 0));
         CHECK_NEAR(sv.x, 0.0, E, "stasis(1,0,0).x == 0");
         CHECK_NEAR(sv.y, 0.0, E, "stasis(1,0,0).y == 0");
-        CHECK_NEAR(sv.z, w, E, "stasis(1,0,0).z == w");
+        CHECK_NEAR(sv.z, -w, E, "stasis(1,0,0).z == -w");
     }
     {
         double w = eerbon_rot->rot_ang_speed;
         glm::dvec3 sv = eerbon_rot->GetStasisVelocity(glm::dvec3(0, 0, 1));
-        CHECK_NEAR(sv.x, -w, E, "stasis(0,0,1).x == -w");
+        CHECK_NEAR(sv.x, w, E, "stasis(0,0,1).x == w");
         CHECK_NEAR(sv.y, 0.0, E, "stasis(0,0,1).y == 0");
         CHECK_NEAR(sv.z, 0.0, E, "stasis(0,0,1).z == 0");
     }
@@ -269,7 +270,7 @@ int main() {
 
     printf("== tilted spin axis (axial tilt) ==\n");
     // A frame whose spin axis is tilted (here to +X) uses that axis for the
-    // stasis velocity: stasis = cross((-w,0,0), p).
+    // stasis velocity: stasis = cross((w,0,0), p).
     {
         Frame *N = new Frame;
         N->rotating = true;
@@ -277,15 +278,15 @@ int main() {
         N->spin_axis = glm::dvec3(1, 0, 0);   // spin about X (90-deg axial tilt)
         const double w = N->rot_ang_speed;
         glm::dvec3 sv = N->GetStasisVelocity(glm::dvec3(0, 1, 0));
-        CHECK_TRUE(dvec_close(sv, glm::dvec3(0, 0, -w), 1e-9),
-                   "tilted-spin: stasis(0,1,0) about X == (0,0,-w)");
+        CHECK_TRUE(dvec_close(sv, glm::dvec3(0, 0, w), 1e-9),
+                   "tilted-spin: stasis(0,1,0) about X == (0,0,w)");
         sv = N->GetStasisVelocity(glm::dvec3(0, 0, 1));
-        CHECK_TRUE(dvec_close(sv, glm::dvec3(0, w, 0), 1e-9),
-                   "tilted-spin: stasis(0,0,1) about X == (0,w,0)");
+        CHECK_TRUE(dvec_close(sv, glm::dvec3(0, -w, 0), 1e-9),
+                   "tilted-spin: stasis(0,0,1) about X == (0,-w,0)");
         delete N;
     }
     // The fictitious (centrifugal) term uses the same tilted axis: with
-    // omega = (-w,0,0) and p on +Y, -omega x (omega x p) == (0, +w^2, 0).
+    // omega = (w,0,0) and p on +Y, -omega x (omega x p) == (0, +w^2, 0).
     {
         Frame *N = new Frame;
         N->rotating = true;
@@ -537,7 +538,7 @@ int main() {
     printf("== stasis identity vs frame rotation ==\n");
     // A point FIXED in the rotating frame (v = 0) drifts through root space
     // at  R * stasis(pos)  (plus the frame origin's velocity, which is
-    // constant here). This links the rotate(-ang, Y) convention in
+    // constant here). This links the rotate(ang, Y) convention in
     // UpdateOrbitRails to the sign of GetStasisVelocity; the velocity
     // transforms in src/main.cpp rely on  v_root = R*(v + stasis(p)) + V,
     // so this identity is what makes frame switching state-preserving.

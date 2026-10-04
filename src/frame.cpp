@@ -58,7 +58,7 @@ void Frame::UpdateOrbitRails(double time) {
         // Unconditional rebuild: orient is a pure function of time; skipping
         // at ang == 0 would leave a stale epoch.
         const double ang = fmod(rot_ang_speed * time, 2 * std::numbers::pi);
-        orient = initial_orient * glm::dmat3(glm::rotate(-ang, spin_axis));
+        orient = initial_orient * glm::dmat3(glm::rotate(ang, spin_axis));
     }
 
     UpdateRootRelative();
