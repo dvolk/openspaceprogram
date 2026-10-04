@@ -1,7 +1,7 @@
 // test_retrograde.cpp -- pins the sanctioned retrograde encodings through the
 // REAL loader (load_system on res/systems/solar_system.json).
 //
-// The project's policy (utils/make_solar_system.py:172 and issue #139):
+// The project's policy (utils/make_solar_system.py:174 and issue #139):
 // rates are magnitudes; the SENSE lives in the orientation fields.
 //   - retrograde ORBIT: orb_ang_speed > 0 + orb_incl > 90 deg (the frame's
 //     orient flips the orbital normal; the rail stays locally prograde).
@@ -14,7 +14,7 @@
 // encodings are the ONLY supported ones -- and load_system now throws on
 // orb_ang_speed < 0 / rot_ang_speed < 0 instead of silently loading
 // prograde (the a = cbrt(mu/w^2) sign drop). The throw cases are tested
-// below on mutated copies of the real system JSON (written to tmp/).
+// below on sign-flipped copies of the real system JSON (written to tmp/).
 //
 // Build & run (from repo root): see Makefile ($(TESTDIR)/test_retrograde).
 
@@ -23,11 +23,16 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <numbers>
 #include <string>
 
 #include <nlohmann/json.hpp>
+
+static constexpr double PI = std::numbers::pi;
 
 static int g_failures = 0;
 
@@ -38,12 +43,20 @@ static void check(bool cond, const char *what) {
     }
 }
 
+static nlohmann::json read_json(const char *path) {
+    std::ifstream f(path);
+    if(!f.is_open()) {
+        std::printf("FAIL cannot open %s (run from the repo root)\n", path);
+        ++g_failures;
+        return nlohmann::json::object();
+    }
+    return nlohmann::json::parse(f);
+}
+
 // Authored orb_incl for a body, straight from the same JSON the loader read
 // (so the test tracks data edits instead of hard-coding a value).
 static double authored_orb_incl(const char *path, const std::string &name) {
-    std::ifstream f(path);
-    nlohmann::json j = nlohmann::json::parse(f);
-    for(auto &&b : j["bodies"]) {
+    for(auto &&b : read_json(path).value("bodies", nlohmann::json::array())) {
         if(b["name"] == name) {
             return b.value("inertial", nlohmann::json::object())
                        .value("orb_incl", 0.0);
@@ -56,29 +69,32 @@ static double azimuth(const glm::dvec3 &r) {
     return std::atan2(r.z, r.x);
 }
 
-// Negate one rate field in a copy of the system JSON (tmp/) and require
-// load_system to reject it.
+// Flip the sign of one rate field in a copy of the system JSON (tmp/) and
+// require load_system to reject it with the #139 message. Only the sign
+// differs from the legitimate file, so a pass can only come from the guard.
 static void expect_reject(const char *path, const std::string &name,
                           const char *section, const char *field,
-                          const char *tag) {
-    std::ifstream f(path);
-    nlohmann::json j = nlohmann::json::parse(f);
+                          const char *tag, const char *msg_needle) {
+    nlohmann::json j = read_json(path);
     for(auto &&b : j["bodies"]) {
-        if(b["name"] == name) { b[section][field] = -1e-5; }
+        if(b["name"] == name) {
+            b[section][field] = -std::fabs(b[section][field].get<double>());
+        }
     }
     std::filesystem::create_directories("tmp");
     const std::string tmp = std::string("tmp/test_retrograde_") + tag + ".json";
     std::ofstream o(tmp);
     o << j.dump();
     o.close();
-    bool threw = false;
+    const char *what = nullptr;
     try {
         load_system(tmp.c_str(), nullptr, nullptr);
-    } catch(const std::runtime_error &) {
-        threw = true;
+    } catch(const std::exception &e) {
+        what = e.what();
     }
-    std::printf("  (reject check: %s -> %s)\n", tag, threw ? "threw" : "LOADED");
-    check(threw, tag);
+    // Catch-all above so cleanup runs even on an unexpected exception type.
+    const bool rejected = what && std::strstr(what, msg_needle);
+    check(rejected, tag);
     std::remove(tmp.c_str());
 }
 
@@ -103,7 +119,7 @@ int main() {
     // into the parent frame. The orbital angular momentum must sit at the
     // authored inclination from the parent's +Y -- past 90 deg.
     const double incl = authored_orb_incl(sys_path, "Triton");
-    check(incl > M_PI_2, "Triton's authored orb_incl is retrograde (> 90 deg)");
+    check(incl > PI / 2.0, "Triton's authored orb_incl is retrograde (> 90 deg)");
     const glm::dvec3 h = tf->orient * glm::cross(tf->orbit_pos0, tf->orbit_vel0);
     const double h_ang = std::acos(h.y / glm::length(h));
     check(std::fabs(h_ang - incl) < 1e-6,
@@ -113,37 +129,40 @@ int main() {
 
     // Motion, not just geometry: prograde (h.Y > 0) sweeps the azimuth
     // atan2(z, x) DOWN (rail velocity is +Y x r_hat); retrograde sweeps it UP.
-    const double T = 2.0 * M_PI / tf->orb_ang_speed;
+    const double T = 2.0 * PI / tf->orb_ang_speed;
     sys.root->frame->UpdateOrbitRails(0.0);
     const double az0 = azimuth(tf->GetPositionRelTo(nf));
     sys.root->frame->UpdateOrbitRails(T / 8.0);
     double daz = azimuth(tf->GetPositionRelTo(nf)) - az0;
-    if(daz > M_PI) { daz -= 2.0 * M_PI; }
-    if(daz < -M_PI) { daz += 2.0 * M_PI; }
+    if(daz > PI) { daz -= 2.0 * PI; }
+    if(daz < -PI) { daz += 2.0 * PI; }
     check(daz > 0.0, "Triton sweeps counter-clockwise about Neptune's +Y "
                      "(retrograde motion over T/8)");
 
-    // The rail must close after exactly one authored period: pins w as the
-    // mean motion of the loaded conic (inclination must not distort it).
+    // Tripwire that the rail still propagates at all (propagateKepler folds
+    // whole periods, so this is near-exact by construction).
     sys.root->frame->UpdateOrbitRails(T);
     const glm::dvec3 rT = tf->GetPositionRelTo(nf);
     sys.root->frame->UpdateOrbitRails(0.0);
     const glm::dvec3 r0 = tf->GetPositionRelTo(nf);
     check(glm::length(rT - r0) < 1e-6 * glm::length(r0),
           "Triton's rail closes after 2*pi/w");
+    // Tripwire for the Y > 0 calendar gate: year_seconds is set from w
+    // directly, so this only fails if the gate or the rate goes away.
     check(triton->cal.year_seconds > 0.9 * T && triton->cal.year_seconds < 1.1 * T,
           "Triton's calendar year matches the orbital period (Y gate survives)");
 
     // Prograde control: the same sweep test must read the OTHER sign for a
     // normal body, so the Triton check above is discriminating, not vacuous.
     TerrainBody *earth = sys.find("Earth");
+    check(earth != nullptr, "Earth present in solar_system.json");
     if(earth) {
         sys.root->frame->UpdateOrbitRails(0.0);
         const double e0 = azimuth(earth->frame->GetPositionRelTo(sys.root->frame));
-        sys.root->frame->UpdateOrbitRails(M_PI / (2.0 * earth->frame->orb_ang_speed));
+        sys.root->frame->UpdateOrbitRails(PI / (2.0 * earth->frame->orb_ang_speed));
         double edaz = azimuth(earth->frame->GetPositionRelTo(sys.root->frame)) - e0;
-        if(edaz > M_PI) { edaz -= 2.0 * M_PI; }
-        if(edaz < -M_PI) { edaz += 2.0 * M_PI; }
+        if(edaz > PI) { edaz -= 2.0 * PI; }
+        if(edaz < -PI) { edaz += 2.0 * PI; }
         check(edaz < 0.0, "Earth sweeps prograde (azimuth DOWN) -- control");
     }
 
@@ -160,12 +179,18 @@ int main() {
         check(pole.y < 0.0, "Venus' pole is flipped (axial_tilt > 90 deg "
                             "reached initial_orient)");
         check(venus->cal.day_seconds > 0.0 && venus->cal.year_seconds > 0.0,
-              "Venus' calendar stays valid (the make_solar_system.py:172 trap)");
+              "Venus' calendar stays valid (the make_solar_system.py:174 trap)");
     }
 
     // --- the rejected channel: negative rates are data bugs, not retrograde
-    expect_reject(sys_path, "Triton", "inertial", "orb_ang_speed", "neg_orb");
-    expect_reject(sys_path, "Venus", "rotating", "rot_ang_speed", "neg_spin");
+    expect_reject(sys_path, "Triton", "inertial", "orb_ang_speed", "neg_orb",
+                  "negative orb_ang_speed");
+    expect_reject(sys_path, "Venus", "rotating", "rot_ang_speed", "neg_spin",
+                  "negative rot_ang_speed");
+
+    // Light-phase bodies own no Bullet/GL state, so teardown is safe and
+    // keeps sanitizer runs quiet.
+    for(TerrainBody *b : sys.bodies) { delete b; }
 
     if(g_failures == 0) {
         std::printf("test_retrograde: all checks passed\n");

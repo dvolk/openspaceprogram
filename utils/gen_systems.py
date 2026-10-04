@@ -22,6 +22,9 @@ ROOT = os.path.dirname(HERE)
 def spd(period):
     if not period:
         return 0.0
+    # Rates are magnitudes; retrograde lives in tilt/inclination (issue #139).
+    # Fail at generation, not at game load (load_system rejects negatives).
+    assert period > 0.0, "period must be positive; encode retrograde via tilt/inclination"
     return TWOPI / period
 
 def true_anomaly_from_mean(M, e):
@@ -321,7 +324,7 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
             omega = wiki["omega"] or 0.0
             raan = wiki["raan"] or 0.0
             M = wiki["M"] or 0.0
-            w = TWOPI / wiki["period"]
+            w = spd(wiki["period"])
             nu = true_anomaly_from_mean(M, e)
             inertial = {
                 "orb_ang_speed": w,

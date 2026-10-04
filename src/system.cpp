@@ -64,6 +64,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         TerrainBody *body = new TerrainBody;
         body->frame = nullptr;
         body->rot_frame = nullptr;
+        // Register before any throw below: BodyCleanup deletes these bodies,
+        // and ~TerrainBody frees frame/rot_frame, so a mid-build throw (data
+        // bugs like the rate checks) leaks nothing. main.cpp keeps running
+        // after a failed load, so a leak here would persist in the session.
+        sys.bodies.push_back(body);
 
         body->name       = bv.value("name", std::string("body"));
         const std::string type = bv.value("type", std::string("planet"));
@@ -234,6 +239,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 
         // --- inertial (non-rotating) frame ---------------------------------
         Frame *f = new Frame;
+        body->frame = f;                   // owned by body from here on
         f->name  = body->name + " (inertial)";
         f->body  = body;
         f->parent = nullptr;                 // wired in pass 2
@@ -286,7 +292,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                        glm::dvec3(-so * ci, -si, co * ci));
             }
         }
-        body->frame = f;
 
         // --- rotating (near-body) frame -------------------------------------
         // Every body gets one. Its SOI is DERIVED (bodylimits.h shellEdge):
@@ -297,6 +302,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         // radii and frame switching work uniformly.
         const double shell = shellEdge(s.atmosphere.top());
         Frame *rf = new Frame;
+        body->rot_frame = rf;              // owned by body from here on
         rf->name  = body->name + " (rotational)";
         rf->body  = body;
         rf->parent = f;                    // child of its own inertial frame
@@ -317,7 +323,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
             // Same policy as orb_ang_speed above: the SPIN sense lives in
             // axial_tilt (> 90 deg; the fact sheets' negative rotation
-            // periods are abs()'d by the generator, make_solar_system.py:172).
+            // periods are abs()'d by the generator, make_solar_system.py:174).
             // A negative rate would double-flip against the tilt and would
             // invalidate the calendar (D -> 0 gate), so reject it (#139).
             if(rf->rot_ang_speed < 0.0) {
@@ -341,14 +347,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         } else {
             rf->rot_ang_speed = 0.0;        // dummy: does not spin
         }
-        body->rot_frame = rf;
         f->rot_frame = rf;
         f->children.push_back(rf);
 
         // Heavy phase is NOT built here (deferred; see postHeavyPhase).
 
         body->refreshParamsCache();   // surface/radius/colour_func are final
-        sys.bodies.push_back(body);
 
         // Per-body progress so the caller can draw a "loading..." frame.
         if(progress) { progress(i, bodies.size(), body->name); }

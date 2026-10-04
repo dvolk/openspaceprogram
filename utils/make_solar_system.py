@@ -164,6 +164,9 @@ def parse_planet(page):
     L    = get(j2000, 'meanlongitude') * D2R
 
     period_s = period_d * DAY
+    # Orbital sense lives in inclination (fact sheets use i > 90 deg, never a
+    # signed period); load_system rejects negative rates (issue #139).
+    assert period_s > 0.0, 'sidereal orbit period must be positive'
     w        = TWO_PI / period_s
     omega    = varp - raan                   # arg of periapsis (in-plane)
     nu0      = true_anomaly(L - varp, e)
@@ -523,6 +526,8 @@ def build_moon(m, parent_body=None, home_body=None):
     name = m['name']
     radius_m = m['radius_m']
     mass_kg = m['mass_kg'] if m['measured'] else estimate_mass(radius_m)
+    # Same policy as parse_planet: positive rate, sense in the inclination.
+    assert not m['period_s'] or m['period_s'] > 0.0, name + ': orbital period must be positive'
     w = TWO_PI / m['period_s'] if m['period_s'] else 0.0
     # orientation (raan/omega) isn't in the fact sheets; spread epoch anomaly
     nu0 = (m['idx'] * GOLDEN) % TWO_PI

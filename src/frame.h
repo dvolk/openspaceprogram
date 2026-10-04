@@ -30,6 +30,9 @@ struct Frame {
        `pos` is its fixed offset instead. */
     glm::dvec3 orbit_pos0;
     glm::dvec3 orbit_vel0;
+    /* Magnitudes, always >= 0 (load_system rejects negative rates, issue
+       #139): the retrograde sense lives in the orientation -- orb_incl >
+       pi/2 flips the orbital plane, axial_tilt > pi/2 flips the pole. */
     double orb_ang_speed;
     double parent_mu; // gravitational parameter of the body orbited (0 =
                       // non-orbiting); the rail propagates under this
