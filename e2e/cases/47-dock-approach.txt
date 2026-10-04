@@ -1,5 +1,9 @@
 NAME dock-approach
-ARGS --dock-test approach --time-accel 1 --timeout 4
+# --timeout 8: the 30 ms T-burn is wall-clock quantized (catches 1 or 2
+# physics substeps), so the dock lands at sim t~1.04 OR t~1.46; the slow
+# mode overflowed a 4 s wall budget under battery load. Pre-existing flake,
+# not spin-related (identical distribution before/after issue #101).
+ARGS --dock-test approach --time-accel 1 --timeout 8
 ARGS --sim-press 500,30,T
 EXPECT Dock-test (approach)
 EXPECT [dock] t=
