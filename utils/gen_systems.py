@@ -71,7 +71,7 @@ WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 eerbon = {
     "home": "Eerbon",
     "soi_law": "patched_conic",
-    "epoch_year": 4724,   # the old game-wide hardcoded default, now explicit
+    "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
     "bodies": [
         {
             "name": "Sun",
@@ -388,7 +388,7 @@ MASS = {row[0]: row[5] for row in K}
 ksp = {
     "home": "Kerbin",
     "soi_law": "patched_conic",
-    "epoch_year": 4724,   # the old game-wide hardcoded default, now explicit
+    "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
     "bodies": [
         ksp_body(*row) for row in K
     ],
