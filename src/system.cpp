@@ -262,6 +262,17 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                     pos[2].get<double>());
             }
             f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
+            // Rates are magnitudes; the ORBITAL sense lives in orb_incl
+            // (> 90 deg flips the plane normal, and the rail's local prograde
+            // becomes parent-frame retrograde -- the source-data convention,
+            // see make_solar_system.py and test_retrograde). A negative rate
+            // would double-encode (and silently load prograde: a = cbrt(mu/w^2)
+            // drops the sign), so reject it like other data bugs (issue #139).
+            if(f->orb_ang_speed < 0.0) {
+                throw std::runtime_error("system: '" + body->name
+                        + "' has negative orb_ang_speed; encode retrograde "
+                        "orbits with orb_incl > pi/2, not a negative rate");
+            }
             // Optional orbital plane orientation (radians): orient =
             // R_Y(-raan) * R_X(i) maps the local orbital plane into the
             // parent frame.
@@ -304,6 +315,16 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(bv.contains("rotating") && bv["rotating"].is_object()) {
             const nlohmann::json &rot = bv["rotating"];
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
+            // Same policy as orb_ang_speed above: the SPIN sense lives in
+            // axial_tilt (> 90 deg; the fact sheets' negative rotation
+            // periods are abs()'d by the generator, make_solar_system.py:172).
+            // A negative rate would double-flip against the tilt and would
+            // invalidate the calendar (D -> 0 gate), so reject it (#139).
+            if(rf->rot_ang_speed < 0.0) {
+                throw std::runtime_error("system: '" + body->name
+                        + "' has negative rot_ang_speed; encode retrograde "
+                        "spin with axial_tilt > pi/2, not a negative rate");
+            }
             // Optional axial tilt (radians): lean the pole away from the
             // orbital normal toward +X, folded into initial_orient. The spin
             // stays about +Y (the figure axis) so the pole IS the spin axis --
