@@ -13,8 +13,10 @@
 // (system.cpp, D/Y > 0) silently invalidate negative rates, so these
 // encodings are the ONLY supported ones -- and load_system now throws on
 // orb_ang_speed < 0 / rot_ang_speed < 0 instead of silently loading
-// prograde (the a = cbrt(mu/w^2) sign drop). The throw cases are tested
-// below on sign-flipped copies of the real system JSON (written to tmp/).
+// prograde (the a = cbrt(mu/w^2) sign drop), and on rates so small the
+// derived orbit escapes the universe bound (the magnitude twin, #140).
+// The throw cases are tested below on single-field mutations of the real
+// system JSON (written to tmp/).
 //
 // Build & run (from repo root): see Makefile ($(TESTDIR)/test_retrograde).
 
@@ -69,18 +71,12 @@ static double azimuth(const glm::dvec3 &r) {
     return std::atan2(r.z, r.x);
 }
 
-// Flip the sign of one rate field in a copy of the system JSON (tmp/) and
-// require load_system to reject it with the #139 message. Only the sign
-// differs from the legitimate file, so a pass can only come from the guard.
-static void expect_reject(const char *path, const std::string &name,
-                          const char *section, const char *field,
-                          const char *tag, const char *msg_needle) {
-    nlohmann::json j = read_json(path);
-    for(auto &&b : j["bodies"]) {
-        if(b["name"] == name) {
-            b[section][field] = -std::fabs(b[section][field].get<double>());
-        }
-    }
+// Write a mutated system JSON (tmp/), require load_system to reject it with
+// the expected message, and clean up. The mutations differ from the
+// legitimate file only in the one field, so a pass can only come from the
+// specific guard named by msg_needle.
+static void expect_reject(const nlohmann::json &j, const char *tag,
+                          const char *msg_needle) {
     std::filesystem::create_directories("tmp");
     const std::string tmp = std::string("tmp/test_retrograde_") + tag + ".json";
     std::ofstream o(tmp);
@@ -96,6 +92,29 @@ static void expect_reject(const char *path, const std::string &name,
     const bool rejected = what && std::strstr(what, msg_needle);
     check(rejected, tag);
     std::remove(tmp.c_str());
+}
+
+// The authored value at bodies[name][section][field] (0 if absent).
+static double authored(const nlohmann::json &j, const std::string &name,
+                       const char *section, const char *field) {
+    for(auto &&b : j["bodies"]) {
+        if(b["name"] == name) { return b[section][field].get<double>(); }
+    }
+    return 0.0;
+}
+
+// j with bodies[name][section][field] replaced by v (asserts the path exists).
+static nlohmann::json mutated(nlohmann::json j, const std::string &name,
+                              const char *section, const char *field,
+                              double v) {
+    for(auto &&b : j["bodies"]) {
+        if(b["name"] == name) {
+            check(b.contains(section) && b[section].contains(field),
+                  "mutation target present in JSON");
+            b[section][field] = v;
+        }
+    }
+    return j;
 }
 
 int main() {
@@ -183,10 +202,23 @@ int main() {
     }
 
     // --- the rejected channel: negative rates are data bugs, not retrograde
-    expect_reject(sys_path, "Triton", "inertial", "orb_ang_speed", "neg_orb",
-                  "negative orb_ang_speed");
-    expect_reject(sys_path, "Venus", "rotating", "rot_ang_speed", "neg_spin",
-                  "negative rot_ang_speed");
+    nlohmann::json j = read_json(sys_path);
+    expect_reject(mutated(j, "Triton", "inertial", "orb_ang_speed",
+                          -std::fabs(authored(j, "Triton", "inertial",
+                                             "orb_ang_speed"))),
+                  "neg_orb", "negative orb_ang_speed");
+    expect_reject(mutated(j, "Venus", "rotating", "rot_ang_speed",
+                          -std::fabs(authored(j, "Venus", "rotating",
+                                             "rot_ang_speed"))),
+                  "neg_spin", "negative rot_ang_speed");
+
+    // #140: the magnitude twin. 1e-300 underflows w*w so a becomes inf;
+    // 1e-21 keeps a finite (~1e19 m) but far beyond the authored universe
+    // bound (solar_system.json: 1e14 m).
+    expect_reject(mutated(j, "Triton", "inertial", "orb_ang_speed", 1e-300),
+                  "tiny_orb", "overflows to infinity");
+    expect_reject(mutated(j, "Triton", "inertial", "orb_ang_speed", 1e-21),
+                  "wide_orb", "universe bound");
 
     // Light-phase bodies own no Bullet/GL state, so teardown is safe and
     // keeps sanitizer runs quiet.

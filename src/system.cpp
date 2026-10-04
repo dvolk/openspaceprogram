@@ -359,6 +359,16 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
 
     // --- pass 2: wire the parent/child frame tree --------------------------
+    // The root's authored universe bound (inertial.soi), if any: the tripwire
+    // below rejects orbits that do not fit inside it. 0 = not authored ->
+    // containment check skipped (issue #140).
+    double root_soi_bound = 0.0;
+    for(const nlohmann::json &bv : bodies) {
+        if(bv.value("orbits", std::string("")).empty()) {
+            root_soi_bound = bv.value("inertial", nlohmann::json::object())
+                                 .value("soi", 0.0);
+        }
+    }
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *body = sys.bodies[i];
         const nlohmann::json &bv = bodies[i];
@@ -393,6 +403,24 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             const double w = f->orb_ang_speed;
             // Semi-major axis from the mean angular rate (Kepler III).
             const double a = (w != 0.0) ? cbrt(mu / (w * w)) : 0.0;
+            // #140 tripwire (the magnitude twin of the rate-sign guard): a
+            // tiny w*w underflows and a becomes inf (NaN rails), or stays
+            // finite but absurd, parking the body beyond the universe bound
+            // forever. railStateFromElements only rejects a <= 0.
+            if(w != 0.0 && !std::isfinite(a)) {
+                throw std::runtime_error("system: '" + body->name
+                        + "': orb_ang_speed too small to place an orbit "
+                        "(semi-major axis overflows to infinity)");
+            }
+            if(w != 0.0 && root_soi_bound > 0.0 && a > root_soi_bound) {
+                char ab[32], sb[32];
+                std::snprintf(ab, sizeof ab, "%g", a);
+                std::snprintf(sb, sizeof sb, "%g", root_soi_bound);
+                throw std::runtime_error("system: '" + body->name
+                        + "': orbit (semi-major axis " + ab + " m) exceeds "
+                        "the universe bound " + sb + " m; orb_ang_speed is "
+                        "too small");
+            }
 
             // DERIVED inertial SOI (bodylimits.h): the system's law value,
             // lifted clear of the near-body shell's hysteresis band AND wide
