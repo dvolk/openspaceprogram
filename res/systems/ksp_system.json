@@ -92,7 +92,9 @@
       },
       "rotating": {
         "rot_ang_speed": 5.1927151299004845e-06,
-        "axial_tilt": 0.0005235987755982988
+        "spin_phase0": 0.34041004981157125,
+        "axial_tilt": 0.0005235987755982988,
+        "tilt_azimuth": 3.405444219766777
       },
       "transfer_dv": 5346.3,
       "science_mult": 2.3
@@ -161,7 +163,9 @@
       },
       "rotating": {
         "rot_ang_speed": 7.805199139353523e-05,
-        "axial_tilt": 0.0460766922526503
+        "spin_phase0": 5.793766978595183,
+        "axial_tilt": 0.0460766922526503,
+        "tilt_azimuth": 2.1155302494883603
       },
       "transfer_dv": 1624.1,
       "science_mult": 1.4
@@ -215,7 +219,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.00022237428091239023,
-        "axial_tilt": 0.020943951023931952
+        "spin_phase0": 1.6162586755720771,
+        "axial_tilt": 0.020943951023931952,
+        "tilt_azimuth": 1.3743918031421618
       },
       "transfer_dv": 1765.3,
       "science_mult": 1.8
@@ -300,7 +306,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.00029157665354214053,
-        "axial_tilt": 0.40910517666747087
+        "spin_phase0": 3.355854362286427,
+        "axial_tilt": 0.40910517666747087,
+        "tilt_azimuth": 3.6482047113650014
       },
       "transfer_dv": 0.0,
       "science_mult": 1.0
@@ -345,7 +353,9 @@
       },
       "rotating": {
         "rot_ang_speed": 4.520797578987212e-05,
-        "axial_tilt": 0.1165879940332212
+        "spin_phase0": 3.9710309389525795,
+        "axial_tilt": 0.1165879940332212,
+        "tilt_azimuth": 3.7295208645543285
       },
       "transfer_dv": 1297.4,
       "science_mult": 1.3
@@ -390,7 +400,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.00015552438879157392,
-        "axial_tilt": 0.20943951023931956
+        "spin_phase0": 6.018953479222931,
+        "axial_tilt": 0.20943951023931956,
+        "tilt_azimuth": 5.036940314487675
       },
       "transfer_dv": 1213.9,
       "science_mult": 1.3
@@ -439,7 +451,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.0002915709030370688,
-        "axial_tilt": 0.08726646259971647
+        "spin_phase0": 5.7079315976412275,
+        "axial_tilt": 0.08726646259971647,
+        "tilt_azimuth": 4.79547400780156
       },
       "transfer_dv": 1031.7,
       "science_mult": 1.4
@@ -505,7 +519,9 @@
       },
       "rotating": {
         "rot_ang_speed": 9.590013900271049e-05,
-        "axial_tilt": 0.4396484385773716
+        "spin_phase0": 2.803056015704051,
+        "axial_tilt": 0.4396484385773716,
+        "tilt_azimuth": 1.69332390337188
       },
       "transfer_dv": 1744.5,
       "science_mult": 1.4
@@ -550,7 +566,9 @@
       },
       "rotating": {
         "rot_ang_speed": 9.590013900271049e-05,
-        "axial_tilt": 0.0307177948351002
+        "spin_phase0": 3.5881601291284793,
+        "axial_tilt": 0.0307177948351002,
+        "tilt_azimuth": 1.4394346849465554
       },
       "transfer_dv": 514.1,
       "science_mult": 1.6
@@ -596,7 +614,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.0001805513019304479,
-        "axial_tilt": 0.06981317007977318
+        "spin_phase0": 1.2104151026277277,
+        "axial_tilt": 0.06981317007977318,
+        "tilt_azimuth": 2.3472503088922547
       },
       "transfer_dv": 3659.0,
       "science_mult": 1.9
@@ -656,7 +676,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.00017453292519943294,
-        "axial_tilt": 0.054628805587422516
+        "spin_phase0": 2.5478258958728723,
+        "axial_tilt": 0.054628805587422516,
+        "tilt_azimuth": 1.7724474593818857
       },
       "transfer_dv": 4469.6,
       "science_mult": 2.1
@@ -734,7 +756,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.00011859318070968057,
-        "axial_tilt": 0.008726646259971648
+        "spin_phase0": 5.656939976964919,
+        "axial_tilt": 0.008726646259971648,
+        "tilt_azimuth": 0.1901408037199327
       },
       "transfer_dv": 3206.4,
       "science_mult": 2.9
@@ -777,7 +801,9 @@
       },
       "rotating": {
         "rot_ang_speed": 5.9296590354840286e-05,
-        "axial_tilt": 0.03490658503988659
+        "spin_phase0": 5.956684335192913,
+        "axial_tilt": 0.03490658503988659,
+        "tilt_azimuth": 3.143104685602705
       },
       "transfer_dv": 3525.1,
       "science_mult": 3.0
@@ -820,7 +846,9 @@
       },
       "rotating": {
         "rot_ang_speed": 2.9648015378856705e-05,
-        "axial_tilt": 0.003490658503988659
+        "spin_phase0": 4.893141251613538,
+        "axial_tilt": 0.003490658503988659,
+        "tilt_azimuth": 5.699246638745579
       },
       "transfer_dv": 3659.1,
       "science_mult": 3.0
@@ -866,7 +894,9 @@
       },
       "rotating": {
         "rot_ang_speed": 1.1539218609089665e-05,
-        "axial_tilt": 0.4363323129985824
+        "spin_phase0": 1.521564365287916,
+        "axial_tilt": 0.4363323129985824,
+        "tilt_azimuth": 4.200850500322506
       },
       "transfer_dv": 3663.2,
       "science_mult": 3.0
@@ -912,7 +942,9 @@
       },
       "rotating": {
         "rot_ang_speed": 6.966586547754677e-06,
-        "axial_tilt": 0.17453292519943295
+        "spin_phase0": 5.920864742140642,
+        "axial_tilt": 0.17453292519943295,
+        "tilt_azimuth": 3.223738571298415
       },
       "transfer_dv": 3619.2,
       "science_mult": 3.0
@@ -958,7 +990,9 @@
       },
       "rotating": {
         "rot_ang_speed": 0.0003228769428149839,
-        "axial_tilt": 2.138028333693054
+        "spin_phase0": 1.8189477896248998,
+        "axial_tilt": 2.138028333693054,
+        "tilt_azimuth": 3.7527667696544906
       },
       "transfer_dv": 4714.8,
       "science_mult": 2.2

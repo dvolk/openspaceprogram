@@ -337,12 +337,28 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // tilting spin_axis instead makes the terrain pole/bands/rings
             // precess once per rotation.
             const double axial_tilt = rot.value("axial_tilt", 0.0);
-            if(axial_tilt != 0.0) {
+            // #141: rail-azimuth angles, same convention as lon_asc_node
+            // (applied as R_Y(-angle), so the named direction lands at
+            // azimuth +angle in atan2(z, x)). tilt_azimuth = the direction
+            // the pole leans (default 0 = toward +X, i.e. the ascending node
+            // -- the old permanent node-lock); spin_phase0 = the epoch
+            // azimuth of the longitude-0 point (exact for untilted bodies),
+            // the spin analogue of true_anomaly0. Both default 0, so every
+            // shipped system loads byte-identically.
+            const double tilt_az = rot.value("tilt_azimuth", 0.0);
+            const double phase0 = rot.value("spin_phase0", 0.0);
+            if(axial_tilt != 0.0 || tilt_az != 0.0 || phase0 != 0.0) {
                 const double ct = std::cos(axial_tilt), st = std::sin(axial_tilt);
-                rf->initial_orient = glm::dmat3(
-                    glm::dvec3(ct, -st, 0.0),
-                    glm::dvec3(st,  ct, 0.0),
-                    glm::dvec3(0.0, 0.0, 1.0));
+                glm::dmat3 m(glm::dvec3(ct, -st, 0.0),
+                             glm::dvec3(st,  ct, 0.0),
+                             glm::dvec3(0.0, 0.0, 1.0));
+                if(phase0 != 0.0) {
+                    m = m * glm::dmat3(glm::rotate(-phase0, glm::dvec3(0.0, 1.0, 0.0)));
+                }
+                if(tilt_az != 0.0) {
+                    m = glm::dmat3(glm::rotate(-tilt_az, glm::dvec3(0.0, 1.0, 0.0))) * m;
+                }
+                rf->initial_orient = m;
             }
         } else {
             rf->rot_ang_speed = 0.0;        // dummy: does not spin

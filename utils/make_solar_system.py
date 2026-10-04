@@ -3,7 +3,7 @@
 mu, semimajor axis and the SOIs are derived by the loader: Kepler III for the orbit, and
 "soi_law": "hill" + the nesting lift for the spheres (src/bodylimits.h). No SOIs are emitted
 except the Sun's authored universe bound."""
-import re, math, json, os, sys, html as htmllib
+import re, math, json, os, sys, hashlib, html as htmllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sci_dist import stamp_science_mults, stamp_transfer_dv
 
@@ -18,6 +18,12 @@ SMALL_BODY_RHO = 2000.0        # kg/m^3, nominal small-moon density for estimate
 
 SUN_MASS   = 1.989e30   # kg
 SUN_RADIUS = 6.9634e8   # m
+
+def phase0(name, salt):
+    # Deterministic pseudo-random angle in [0, 2pi) seeded by body name
+    # (#141). sha256, not hash(): stable across runs and machines.
+    h = hashlib.sha256((salt + '|' + name).encode()).digest()
+    return int.from_bytes(h[:8], 'big') / 2**64 * TWO_PI
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -344,7 +350,14 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         body['rotating'] = {
             'rot_ang_speed': TWO_PI / data['rot_s'],
             'axial_tilt': data.get('obliquity', 0.0),
+            # #141: epoch spin phase and obliquity-node azimuth. The fact
+            # sheets do not publish prime meridian at epoch, so draw a
+            # reproducible pseudo-random angle per body (seeded by name)
+            # instead of leaving both node-locked at 0.
+            'spin_phase0': phase0(name, 'spin'),
         }
+        if data.get('obliquity'):
+            body['rotating']['tilt_azimuth'] = phase0(name, 'tilt')
     # No rot_s -> no rotating block: the loader's dummy frame (zero spin,
     # derived near-body SOI) covers it.
     if rings is not None:

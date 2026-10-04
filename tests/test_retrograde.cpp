@@ -15,7 +15,10 @@
 // orb_ang_speed < 0 / rot_ang_speed < 0 instead of silently loading
 // prograde (the a = cbrt(mu/w^2) sign drop), and on rates so small the
 // derived orbit escapes the universe bound (the magnitude twin, #140).
-// The throw cases are tested below on single-field mutations of the real
+// #141 adds the epoch spin-phase fields (spin_phase0, tilt_azimuth): the
+// defaults must reproduce the pre-#141 initial_orient exactly, and the
+// authored values must land the epoch longitude/pole azimuth where named.
+// The throw and authoring cases run on targeted mutations of the real
 // system JSON (written to tmp/).
 //
 // Build & run (from repo root): see Makefile ($(TESTDIR)/test_retrograde).
@@ -98,28 +101,49 @@ static void expect_reject(const nlohmann::json &j, const char *tag,
 static double authored(const nlohmann::json &j, const std::string &name,
                        const char *section, const char *field) {
     for(auto &&b : j["bodies"]) {
-        if(b["name"] == name) { return b[section][field].get<double>(); }
+        if(b["name"] == name) { return b.at(section).at(field).get<double>(); }
     }
     return 0.0;
 }
 
-// j with bodies[name][section][field] replaced by v (asserts the path exists).
+// j with bodies[name][section][field] set to v (creates the field; asserts
+// the section exists).
 static nlohmann::json mutated(nlohmann::json j, const std::string &name,
                               const char *section, const char *field,
                               double v) {
     for(auto &&b : j["bodies"]) {
         if(b["name"] == name) {
-            check(b.contains(section) && b[section].contains(field),
-                  "mutation target present in JSON");
+            check(b.contains(section), "mutation target section present");
             b[section][field] = v;
         }
     }
     return j;
 }
 
+// Write a mutated JSON (tmp/), load it successfully, run fn on the loaded
+// System, then clean up. Used for the #141 authoring pins.
+template<class F>
+static void with_loaded(const nlohmann::json &j, const char *tag, F &&fn) {
+    std::filesystem::create_directories("tmp");
+    const std::string tmp = std::string("tmp/test_retrograde_") + tag + ".json";
+    std::ofstream o(tmp);
+    o << j.dump();
+    o.close();
+    try {
+        System sys = load_system(tmp.c_str(), nullptr, nullptr);
+        fn(sys);
+        for(TerrainBody *b : sys.bodies) { delete b; }
+    } catch(const std::exception &e) {
+        std::printf("FAIL %s: unexpected load throw: %s\n", tag, e.what());
+        ++g_failures;
+    }
+    std::remove(tmp.c_str());
+}
+
 int main() {
     const char *sys_path = "res/systems/solar_system.json";
     System sys = load_system(sys_path, nullptr, nullptr);
+    nlohmann::json j = read_json(sys_path);
 
     // --- Triton: retrograde ORBIT via orb_incl > 90 deg -------------------
     TerrainBody *triton = sys.find("Triton");
@@ -201,8 +225,59 @@ int main() {
               "Venus' calendar stays valid (the make_solar_system.py:174 trap)");
     }
 
+    // --- #141: the new epoch-phase fields -------------------------------
+    // Defaults pin: zeroed spin_phase0/tilt_azimuth must reproduce the
+    // pre-#141 Rz(axial_tilt) exactly (the loader treats 0 as absent, so
+    // any system that omits them loads byte-identically).
+    with_loaded(mutated(mutated(mutated(j, "Venus", "rotating", "spin_phase0", 0.0),
+                                "Venus", "rotating", "tilt_azimuth", 0.0),
+                        "Venus", "rotating", "axial_tilt", 0.4),
+                "phase_defaults", [](System &sys) {
+        Frame *vf = sys.find("Venus")->rot_frame;
+        const double ct = std::cos(0.4), st = std::sin(0.4);
+        const glm::dmat3 old(glm::dvec3(ct, -st, 0.0),
+                             glm::dvec3(st,  ct, 0.0),
+                             glm::dvec3(0.0, 0.0, 1.0));
+        const glm::dmat3 &io = vf->initial_orient;
+        double delta = 0.0;
+        for(int c = 0; c < 3; c++) {
+            delta += glm::length(io[c] - old[c]);
+        }
+        check(delta < 1e-12, "zeroed phase fields reproduce the "
+                             "pre-#141 initial_orient exactly");
+    });
+
+    // spin_phase0 on an untilted body: the epoch longitude-0 point sits at
+    // the authored rail azimuth, and the pole stays untilted (the phase is a
+    // pre-rotation about the figure axis, so spin stays about +Y, #101).
+    with_loaded(mutated(mutated(mutated(j, "Venus", "rotating", "axial_tilt", 0.0),
+                                "Venus", "rotating", "tilt_azimuth", 0.0),
+                        "Venus", "rotating", "spin_phase0", 1.234),
+                "spin_phase0", [](System &sys) {
+        Frame *vf = sys.find("Venus")->rot_frame;
+        const glm::dvec3 lon0 = vf->initial_orient * glm::dvec3(1.0, 0.0, 0.0);
+        check(std::fabs(azimuth(lon0) - 1.234) < 1e-9,
+              "spin_phase0 places epoch longitude 0 at the authored azimuth");
+        const glm::dvec3 pole = vf->initial_orient * vf->spin_axis;
+        check(glm::length(pole - glm::dvec3(0.0, 1.0, 0.0)) < 1e-9,
+              "spin_phase0 leaves the pole untilted (figure-axis pre-rotation)");
+    });
+
+    // tilt_azimuth: the lean direction swings to the authored azimuth while
+    // the tilt magnitude is preserved (frees the obliquity node from the
+    // ascending node).
+    with_loaded(mutated(mutated(j, "Venus", "rotating", "axial_tilt", 0.3),
+                        "Venus", "rotating", "tilt_azimuth", 2.0),
+                "tilt_azimuth", [](System &sys) {
+        Frame *vf = sys.find("Venus")->rot_frame;
+        const glm::dvec3 pole = vf->initial_orient * vf->spin_axis;
+        check(std::fabs(azimuth(pole) - 2.0) < 1e-9,
+              "tilt_azimuth swings the lean to the authored azimuth");
+        check(std::fabs(pole.y - std::cos(0.3)) < 1e-9,
+              "tilt_azimuth preserves the tilt magnitude");
+    });
+
     // --- the rejected channel: negative rates are data bugs, not retrograde
-    nlohmann::json j = read_json(sys_path);
     expect_reject(mutated(j, "Triton", "inertial", "orb_ang_speed",
                           -std::fabs(authored(j, "Triton", "inertial",
                                              "orb_ang_speed"))),

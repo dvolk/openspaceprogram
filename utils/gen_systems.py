@@ -5,6 +5,7 @@
 # inertial spheres from physics -- "soi_law": "patched_conic" reproduces the
 # KSP wiki SOI values the old table hardcoded (src/bodylimits.h).
 import argparse
+import hashlib
 import math
 import os
 import sys
@@ -18,6 +19,12 @@ G = 6.674e-11
 STAR_SOI = 1e18   # m; the root frame's inertial soi: the universe bound
 
 ROOT = os.path.dirname(HERE)
+
+def phase0(name, salt):
+    # Deterministic pseudo-random angle in [0, 2pi) seeded by body name
+    # (#141). sha256, not hash(): stable across runs and machines.
+    h = hashlib.sha256((salt + '|' + name).encode()).digest()
+    return int.from_bytes(h[:8], 'big') / 2**64 * TWOPI
 
 def spd(period):
     if not period:
@@ -368,10 +375,14 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
             b["inertial"] = inertial
         rotating = {
             "rot_ang_speed": spd(rot_s),
+            # #141: seeded-random epoch spin phase (see make_solar_system.py);
+            # tilt_azimuth frees the obliquity node from the ascending node.
+            "spin_phase0": phase0(name, "spin"),
         }
         # Axial tilt: lean the spin axis from the orbital normal (0 = omit).
         if tilt_deg:
             rotating["axial_tilt"] = math.radians(tilt_deg)
+            rotating["tilt_azimuth"] = phase0(name, "tilt")
         b["rotating"] = rotating
     return b
 
