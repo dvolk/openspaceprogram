@@ -71,14 +71,20 @@ struct Frame {
        the frame has no spin frame of its own. */
     Frame *getRotFrame() { return rot_frame ? rot_frame : this; }
 
+    // Spin angular velocity vector in LOCAL (body) axes. Positive
+    // rot_ang_speed is prograde (the +Y x r_hat orbital sense, issue
+    // #101); spin_axis is unit, so |omega| == |rot_ang_speed|. The ONE
+    // place the sense is encoded: the orient integration, stasis,
+    // fictitious accel and air co-rotation must all agree with this.
+    glm::dvec3 omega() const { return rot_ang_speed * spin_axis; }
+
     // A ship at (pos, vel) in this frame has inertial velocity
     //   root_orient * (vel + GetStasisVelocity(pos)) + root_vel.
-    // omega = rot_ang_speed * spin_axis (positive spin is prograde, the
-    // +Y x r_hat orbital sense -- issue #101). Frame switching F -> N:
+    // Frame switching F -> N:
     //   v_N = O(F,N) * (v_F + stasis_F(p_F)) + Vrel(F,N) - stasis_N(p_N)
     // (old frame's stasis added, new frame's subtracted).
     glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
-        return glm::cross(rot_ang_speed * spin_axis, pos);
+        return glm::cross(omega(), pos);
     }
 
     // Fictitious (Coriolis + centrifugal) acceleration for a ship integrated
@@ -86,7 +92,7 @@ struct Frame {
     //   v' = gravity - 2*omega x v - omega x (omega x p).
     // Zero for non-rotating frames.
     glm::dvec3 GetFictitiousAccel(const glm::dvec3 &pos, const glm::dvec3 &vel) {
-        const glm::dvec3 omega = rot_ang_speed * spin_axis;
-        return -2.0 * glm::cross(omega, vel) - glm::cross(omega, glm::cross(omega, pos));
+        const glm::dvec3 w = omega();
+        return -2.0 * glm::cross(w, vel) - glm::cross(w, glm::cross(w, pos));
     }
 };

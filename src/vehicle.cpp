@@ -1440,8 +1440,8 @@ double Vehicle::airDensityAtCom() const {
 /* The ship's velocity relative to the AIR (issues #60/#97). The air is at
    rest in the body's ROT frame, so inside that frame GetVel() is already
    air-relative. Outside it, subtract the co-rotation: omega = the rot
-   frame's spin in THIS frame's axes (frame.h stasis convention: a point at
-   rest in a frame moves at cross(rot_ang_speed * spin_axis, pos)). The
+   frame's spin (Frame::omega) rotated into this frame's axes; a point at
+   rest in a frame moves at cross(omega, pos). The
    loader sizes shells to contain their air (bodylimits.h), so live ships
    reach the corrected branch only transiently or via saves written under
    an older shell model -- but drag/lift/jets stay honest regardless of
@@ -1453,8 +1453,7 @@ glm::dvec3 Vehicle::airRelativeVel(const glm::dvec3 &com) {
     }
     Frame *R = m_parent->rot_frame;
     const glm::dmat3 o = R->GetOrientRelTo(frame);   // rot -> this frame
-    const glm::dvec3 omega = o * (R->rot_ang_speed * R->spin_axis);
-    return GetVel() - glm::cross(omega, com);
+    return GetVel() - glm::cross(o * R->omega(), com);
 }
 
 glm::dvec3 Vehicle::applyAeroForce(double h) {
