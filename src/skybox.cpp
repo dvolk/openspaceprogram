@@ -1,7 +1,8 @@
 #include "skybox.h"
 
 #include <SDL3_image/SDL_image.h>
-#include <map>
+#include <cassert>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <GL/glew.h>
@@ -25,37 +26,35 @@ GLuint loadCubemap(std::vector<const GLchar*> faces)
     GLuint textureID;
     glGenTextures(1, &textureID);
 
-    // Faces may repeat, so decode each distinct file once and share the surface.
-    std::map<std::string, SDL_Surface*> decoded;
-    for(const GLchar* path : faces) {
-        if(decoded.find(path) == decoded.end()) {
-            decoded[std::string(path)] = IMG_Load(resdir::path(path).c_str());
-        }
-    }
-
-    int width,height;
-    unsigned char* image_data;
-
+    // The upload below assumes tightly packed RGB24 rows; validate (and
+    // normalize) rather than silently skewing an RGBA or odd-sized face.
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+    int face_w = 0;
     for(GLuint i = 0; i < faces.size(); i++) {
-        SDL_Surface *image = decoded[std::string(faces[i])];
-        width = image->w;
-        height = image->h;
-        image_data = (unsigned char *)image->pixels;
-
+        SDL_Surface *loaded = IMG_Load(resdir::path(faces[i]).c_str());
+        assert(loaded && "skybox face failed to load");
+        SDL_Surface *image = loaded;
+        if(image->format != SDL_PIXELFORMAT_RGB24) {
+            image = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGB24);
+            assert(image && "skybox face conversion to RGB24 failed");
+        }
+        assert(image->w == image->h && (face_w == 0 || image->w == face_w)
+               && "skybox faces must be same-size squares");
+        face_w = image->w;
         glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
                      0,
-                     GL_RGB,
-                     width,
-                     height,
+                     GL_RGB8,
+                     image->w,
+                     image->h,
                      0,
                      GL_RGB,
                      GL_UNSIGNED_BYTE,
-                     image_data);
+                     (unsigned char *)image->pixels);
+        if(image != loaded) SDL_DestroySurface(image);
+        SDL_DestroySurface(loaded);
     }
-    for(auto& kv : decoded) {
-        SDL_DestroySurface(kv.second);
-    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     float aniso = max_anisotropy();
@@ -129,14 +128,23 @@ void Skybox::init(void) {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
     glBindVertexArray(0);
 
-    // Cubemap (Skybox)
+    // Cubemap (Skybox), GL face order (+X,-X,+Y,-Y,+Z,-Z). The real-star
+    // faces from utils/make_skybox.py are opt-in staging: if all six exist
+    // under tmp/newskybox/ use them, else the committed tiled placeholder.
+    static const char* baked[] = {
+        "tmp/newskybox/skybox_px.png", "tmp/newskybox/skybox_nx.png",
+        "tmp/newskybox/skybox_py.png", "tmp/newskybox/skybox_ny.png",
+        "tmp/newskybox/skybox_pz.png", "tmp/newskybox/skybox_nz.png"};
     std::vector<const GLchar*> faces;
-    faces.push_back("res/textures/skybox.png");
-    faces.push_back("res/textures/skybox.png");
-    faces.push_back("res/textures/skybox.png");
-    faces.push_back("res/textures/skybox.png");
-    faces.push_back("res/textures/skybox.png");
-    faces.push_back("res/textures/skybox.png");
+    bool have_baked = true;
+    for(const char* p : baked) {
+        if(!std::filesystem::exists(resdir::path(p))) { have_baked = false; break; }
+    }
+    if(have_baked) {
+        for(const char* p : baked) faces.push_back(p);
+    } else {
+        for(int i = 0; i < 6; i++) faces.push_back("res/textures/skybox.png");
+    }
     cubemapTexture = loadCubemap(faces);
 }
 
