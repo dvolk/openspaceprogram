@@ -540,7 +540,8 @@ int main() {
     // at  R * stasis(pos)  (plus the frame origin's velocity, which is
     // constant here). This links the rotate(ang, Y) convention in
     // UpdateOrbitRails to the sign of GetStasisVelocity; the velocity
-    // transforms in src/main.cpp rely on  v_root = R*(v + stasis(p)) + V,
+    // transforms (Vehicle::moveToFrame, render.cpp, tick.cpp, docktest.cpp)
+    // rely on  v_root = R*(v + stasis(p)) + V,
     // so this identity is what makes frame switching state-preserving.
     {
         Frame *N = eerbon_rot;
