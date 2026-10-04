@@ -519,8 +519,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // Stars get an invalid calendar (dummy zero-spin frame).
     // The displayed year at t == 0. Solar systems author 2000: their orbital
     // phases are J2000-referenced (fact sheets), so the clock matches the
-    // sky. The 4724 default preserves the fictional systems that predate
-    // the field (KSP lore).
+    // sky. The 4724 default preserves the systems that predate the field
+    // (it was game-wide when ksp_system was the only system).
     const int epoch_year = doc.value("epoch_year", 4724);
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
