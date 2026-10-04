@@ -20,8 +20,8 @@ SUN_MASS   = 1.989e30   # kg
 SUN_RADIUS = 6.9634e8   # m
 
 # IAU Working Group on Cartographic Coordinates and Rotational Elements,
-# 2015 report (Archinal et al.), Table 1 -- vendored at
-# utils/rss/WGCCRE2015reprint1.pdf. Rotational elements for the 8 planets:
+# 2015 report (Archinal et al.), Table 1 (Pluto from Table 3) -- vendored
+# at utils/rss/WGCCRE2015reprint1.pdf. Rotational elements:
 #   alpha0/delta0: ICRF equatorial coords of the IAU north pole at J2000;
 #   W0: prime meridian angle at the standard epoch (2000 Jan 1 12h TDB);
 #   dW deg/day: rotation sense (negative = retrograde; the IAU north pole
@@ -60,6 +60,10 @@ WGCCRE = {
     'Uranus':  (257.311, [], -15.175, [], 203.81, [], -501.1600928),
     'Neptune': (299.36, [(0.70, 357.85)], 43.46, [(-0.51, 357.85)],
                 249.978, [(-0.48, 357.85)], 541.1397757),
+    # Table 3 (dwarf planets): no periodic terms. Note (m) defines Pluto's
+    # 0 deg meridian as the mean sub-Charon meridian; main() re-anchors the
+    # phase to Charon's actual epoch rail position anyway (#144/#147).
+    'Pluto':   (132.993, [], -6.163, [], 302.695, [], 56.3625225),
 }
 
 OBLIQ_J2000 = 23.4392911   # deg, J2000 mean obliquity of the ecliptic
@@ -513,6 +517,12 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         inertial['orb_incl'] = data.get('i', 0.0)
         inertial['lon_asc_node'] = data.get('raan', 0.0)
         inertial['true_anomaly0'] = data.get('nu0', 0.0)
+        if data.get('incl_ref') == 'equator':
+            # #147: orb_incl/lon_asc_node are referred to the PARENT'S
+            # EQUATOR, not its orbital plane (loader composes the moon's
+            # orient under the parent's tilt). Default "orbit" omitted:
+            # hand-authored systems load as before.
+            inertial['incl_ref'] = 'equator'
     else:
         inertial['soi'] = data['soi']
         inertial['orb_ang_speed'] = 0.0
@@ -750,6 +760,7 @@ def build_moon(m, parent_body=None, home_body=None):
     sync = m['period_s'] and m['e'] is not None and m['e'] < 0.1
     data = dict(radius_m=radius_m, mass_kg=mass_kg, w=w,
                 e=m['e'], omega=0.0, i=m['i'], raan=0.0, nu0=nu0,
+                incl_ref=m.get('incl_ref', 'orbit'),
                 rot_s=m['period_s'] if sync else None,
                 sync_phase0=nu0 + math.pi if sync else None)
     c1, c2 = MOON_COLORS.get(name, DEFAULT_COLOR)
@@ -833,6 +844,37 @@ def main():
     for m in parse_pluto_moons_all():
         add(dict(m, parent='Pluto'))
 
+    # #147: inclination reference per moon row. The fact sheets refer
+    # REGULAR moons' inclination to the parent's EQUATOR and irregular
+    # (captured) moons' to the ECLIPTIC; each orbital table lists regular
+    # first and irregular after -- uraniansatfact spells the boundary out
+    # ("Satellites from Francisco out referenced to ecliptic plane instead
+    # of equator"), and the values agree (Io 0.04 deg vs Phoebe 174.8 deg).
+    # The first irregular name marks where the ecliptic reference starts.
+    # Earth's Moon says "Inclination to ecliptic" outright; Mars' and
+    # Pluto's moons are all regular (Charon's row says "inclination to
+    # Pluto"). Triton is irregular (157.3 deg to the ecliptic) even though
+    # it is big and synchronous.
+    ECLIPTIC_REF_FROM = {'Earth': None, 'Jupiter': 'Themisto',
+                         'Saturn': 'Kiviuq', 'Uranus': 'Francisco',
+                         'Neptune': 'Triton'}
+    past = set()
+    for m in moons:
+        p = m['parent']
+        if p not in ECLIPTIC_REF_FROM:
+            m['incl_ref'] = 'equator'
+            continue
+        b = ECLIPTIC_REF_FROM[p]
+        if b is None:
+            m['incl_ref'] = 'orbit'
+            continue
+        if m['name'] == b:
+            past.add(p)
+        m['incl_ref'] = 'orbit' if p in past else 'equator'
+    for p, b in ECLIPTIC_REF_FROM.items():
+        assert b is None or p in past, \
+            '%s: sheet lost the irregular boundary %r (table order changed?)' % (p, b)
+
     n_named = sum(1 for m in moons if m['named'])
     n_meas  = sum(1 for m in moons if m['measured'])
     print('master moon table: %d moons (%d named, %d with measured mass)'
@@ -840,21 +882,18 @@ def main():
     print()
 
     # #144 follow-up: Pluto and Charon are MUTUALLY tidally locked, and
-    # the IAU report DEFINES Pluto's lon 0 as the sub-Charon point (and
-    # Charon's as sub-Pluto). Override Pluto's seeded spin phase so the
-    # lon-0 MERIDIAN PLANE contains Charon at t=0 (Charon's own sync
-    # phase, nu0 + pi, faces Pluto exactly -- its tilt is 0). spin_phase0
-    # is a figure-axis angle, not an azimuth: with the 122 deg obliquity
-    # the lon-0 POINT sits ~54 deg off Charon's plane no matter the
-    # phase; the meridian-plane alignment is the best this data model
-    # allows until Charon orbits near Pluto's equator (issue #147).
+    # the IAU report DEFINES Pluto's lon 0 as the mean sub-Charon meridian
+    # (and Charon's as sub-Pluto). #147 put Charon on Pluto's EQUATOR, so
+    # Pluto's tilt is common-mode between its figure equator and Charon's
+    # rail: the lon-0 POINT can sit exactly sub-Charon, and the phase is
+    # just Charon's epoch rail azimuth. (Pre-#147 Charon orbited the
+    # ORBITAL plane, ~54 deg off the equator, so only a meridian-plane
+    # compromise existed.) The POLE stays the real Table 3 one; only the
+    # PHASE is game-anchored, because our Charon epoch phase is the
+    # synthetic golden-angle spread, not the real ephemeris.
     charon = next(m for m in moons if m['name'] == 'Charon')
     pluto = next(b for b in base_bodies if b['name'] == 'Pluto')
-    ch_az = (charon['idx'] * GOLDEN) % TWO_PI   # Charon's epoch position azimuth
-    prot = pluto['rotating']
-    dlt = ch_az - prot['tilt_azimuth']
-    prot['spin_phase0'] = math.atan2(math.sin(dlt),
-                                     math.cos(dlt) / math.cos(prot['axial_tilt']))
+    pluto['rotating']['spin_phase0'] = (charon['idx'] * GOLDEN) % TWO_PI
 
     core = {'Moon', 'Phobos', 'Deimos', 'Io', 'Europa', 'Ganymede',
             'Callisto', 'Mimas', 'Enceladus', 'Tethys', 'Dione', 'Rhea',

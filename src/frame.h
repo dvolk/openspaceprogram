@@ -41,6 +41,14 @@ struct Frame {
     // the tilt in initial_orient so the pole stays the spin axis.
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
 
+    // Loader-set on ROTATING frames: the tilt part of initial_orient
+    // (railAz(tilt_azimuth) * Rz(axial_tilt), WITHOUT the spin_phase0
+    // pre-rotation) -- the body's equator frame as an orientation. #147:
+    // equator-referred child rails compose under THIS, not under
+    // initial_orient: a moon's node/anomaly origin is an inertial-frame
+    // direction, not the parent's prime meridian.
+    glm::dmat3 equator_orient = glm::dmat3(1.0);
+
     // Non-rotating frame: `orient` holds the orbital-plane tilt (identity =
     // coplanar). Rotating frame: `orient` is the spin, `pos` is 0.
     /* relative to universe root (i.e. the sun) */

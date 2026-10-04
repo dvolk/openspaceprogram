@@ -294,7 +294,19 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // parent frame.
             const double orb_incl = in.value("orb_incl", 0.0);
             const double lon_asc_node = in.value("lon_asc_node", 0.0);
-            if(orb_incl != 0.0 || lon_asc_node != 0.0) {
+            // #147: what orb_incl/lon_asc_node are REFERRED to. "orbit"
+            // (default): the parent's orbital plane, composed here.
+            // "equator": the parent's equator (the fact sheets' convention
+            // for regular moons) -- composed in pass 2, where the parent's
+            // rotating frame (its axial tilt) is resolved.
+            const std::string incl_ref =
+                in.value("incl_ref", std::string("orbit"));
+            if(incl_ref != "orbit" && incl_ref != "equator") {
+                throw std::runtime_error("system: '" + body->name
+                        + "': inertial.incl_ref must be \"orbit\" or "
+                        "\"equator\", got \"" + incl_ref + "\"");
+            }
+            if(incl_ref == "orbit" && (orb_incl != 0.0 || lon_asc_node != 0.0)) {
                 const double ci = std::cos(orb_incl), si = std::sin(orb_incl);
                 const double co = std::cos(lon_asc_node), so = std::sin(lon_asc_node);
                 f->orient = glm::dmat3(glm::dvec3(co, 0.0, so),
@@ -367,11 +379,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 glm::dmat3 m(glm::dvec3(ct, -st, 0.0),
                              glm::dvec3(st,  ct, 0.0),
                              glm::dvec3(0.0, 0.0, 1.0));
-                if(phase0 != 0.0) {
-                    m = m * railAz(phase0);
-                }
                 if(tilt_az != 0.0) {
                     m = railAz(tilt_az) * m;
+                }
+                // #147: the tilt part alone (no spin-phase pre-rotation)
+                // is the body's equator frame; equator-referred child
+                // rails hang under it (pass 2), NOT under initial_orient.
+                rf->equator_orient = m;
+                if(phase0 != 0.0) {
+                    m = m * railAz(phase0);
                 }
                 rf->initial_orient = m;
             }
@@ -428,6 +444,34 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             }
             body->frame->parent = parent->frame;
             parent->frame->children.push_back(body->frame);
+
+            // #147: equator-referred moon rails. orient = parent's EQUATOR
+            // frame * R_Y(-raan) * R_X(i): the moon's plane tips WITH the
+            // parent's axis (Charon rides Pluto's equator, ~54 deg off
+            // Pluto's orbital plane; the giant planets' regular moons sit
+            // within a few degrees of their equators). The parent's
+            // equator_orient (tilt only, no spin phase) -- composing under
+            // full initial_orient would node-lock the moon's rail to the
+            // parent's prime meridian. Orientation only: the frame
+            // hierarchy stays inertial-to-inertial, so positions, rails
+            // and SOIs are untouched. The parent's rot frame always exists
+            // (pass 1 gives every body one; a tilt-free parent composes to
+            // the same result as "orbit").
+            {
+                const nlohmann::json &ine =
+                    bv.value("inertial", nlohmann::json::object());
+                if(ine.value("incl_ref", std::string("orbit")) == "equator") {
+                    const double orb_incl = ine.value("orb_incl", 0.0);
+                    const double lon_asc_node = ine.value("lon_asc_node", 0.0);
+                    const double ci = std::cos(orb_incl), si = std::sin(orb_incl);
+                    const double co = std::cos(lon_asc_node), so = std::sin(lon_asc_node);
+                    body->frame->orient =
+                        parent->rot_frame->equator_orient
+                        * glm::dmat3(glm::dvec3(co, 0.0, so),
+                                     glm::dvec3(-so * si, ci, co * si),
+                                     glm::dvec3(-so * ci, -si, co * ci));
+                }
+            }
 
             Frame *f = body->frame;
             const double mu = parent->mu;

@@ -705,8 +705,8 @@
       "rotating": {
         "rot_ang_speed": 1.1385591834674098e-05,
         "axial_tilt": 2.085842989058423,
-        "spin_phase0": 1.0683378798693972,
-        "tilt_azimuth": 4.085843328829564
+        "spin_phase0": 5.920975578682153,
+        "tilt_azimuth": -0.33549074435460763
       },
       "transfer_dv": 15501.9,
       "science_mult": 1.8
@@ -795,7 +795,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.3999632297286535
+        "true_anomaly0": 2.3999632297286535,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.000228033150940486,
@@ -842,7 +843,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.031241393610698498,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.799926459457307
+        "true_anomaly0": 4.799926459457307,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.760436311145907e-05,
@@ -899,7 +901,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.9167043820063743
+        "true_anomaly0": 0.9167043820063743,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 4.110592399599715e-05,
@@ -946,7 +949,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.008203047484373348,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.3166676117350278
+        "true_anomaly0": 3.3166676117350278,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.0478272486372952e-05,
@@ -993,7 +997,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.003141592653589793,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.716630841463681
+        "true_anomaly0": 5.716630841463681,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.0164443839668306e-05,
@@ -1040,7 +1045,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0033161255787892262,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.8334087640127485
+        "true_anomaly0": 1.8334087640127485,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 4.357479662608672e-06,
@@ -1087,7 +1093,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.2333719937414
+        "true_anomaly0": 4.2333719937414,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.0002467002471900318,
@@ -1134,7 +1141,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0008726646259971648,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.3501499162904693
+        "true_anomaly0": 0.3501499162904693,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00024382100236850532,
@@ -1181,7 +1189,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0066322511575784525,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.7501131460191246
+        "true_anomaly0": 2.7501131460191246,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00014597574800710267,
@@ -1228,7 +1237,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.150076375747776
+        "true_anomaly0": 5.150076375747776,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00010781623745949652,
@@ -4939,7 +4949,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.026703537555513242,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.718540147763356
+        "true_anomaly0": 2.718540147763356,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 7.716507848866653e-05,
@@ -4986,7 +4997,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.1185033774920115
+        "true_anomaly0": 5.1185033774920115,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.3073344654960304e-05,
@@ -5033,7 +5045,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.03246312408709453,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.2352813000410805
+        "true_anomaly0": 1.2352813000410805,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 3.852207602620953e-05,
@@ -5080,7 +5093,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.6352445297697358
+        "true_anomaly0": 3.6352445297697358,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.6570811357470143e-05,
@@ -5127,7 +5141,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.006108652381980153,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 6.035207759498391
+        "true_anomaly0": 6.035207759498391,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.6097853274251333e-05,
@@ -5186,7 +5201,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.005759586531581287,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.15198568204746
+        "true_anomaly0": 2.15198568204746,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 4.560685614160354e-06,
@@ -5233,7 +5249,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.007504915783575617,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.551948911776115
+        "true_anomaly0": 4.551948911776115,
+        "incl_ref": "equator"
       },
       "transfer_dv": 13550.8,
       "science_mult": 2.6
@@ -5275,7 +5292,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.2569124658935653,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.668726834325156
+        "true_anomaly0": 0.668726834325156,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 9.167009253770458e-07,
@@ -5322,7 +5340,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.0686900640538113
+        "true_anomaly0": 3.0686900640538113,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00015423552951522885,
@@ -5369,7 +5388,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.468653293782495
+        "true_anomaly0": 5.468653293782495,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00012647313420248766,
@@ -5416,7 +5436,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.585431216331564
+        "true_anomaly0": 1.585431216331564,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00012242769724988282,
@@ -5463,7 +5484,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.005235987755982988,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.9853944460602193
+        "true_anomaly0": 3.9853944460602193,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00012082082101084965,
@@ -5510,7 +5532,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.10217236860928836
+        "true_anomaly0": 0.10217236860928836,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00011863303779189299,
@@ -5557,7 +5580,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.5021355983379436
+        "true_anomaly0": 2.5021355983379436,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00011570732246050979,
@@ -5604,7 +5628,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.005934119456780721,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.902098828066542
+        "true_anomaly0": 4.902098828066542,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.0001047566294532273,
@@ -5651,7 +5676,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0024434609527920616,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.0188767506156111
+        "true_anomaly0": 1.0188767506156111,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00010471137820940301,
@@ -5698,7 +5724,8 @@
         "arg_peri": 0.0,
         "orb_incl": 1.7453292519943296e-05,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.4188399803442664
+        "true_anomaly0": 3.4188399803442664,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 8.999140226015394e-05,
@@ -5745,7 +5772,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.818803210072922
+        "true_anomaly0": 5.818803210072922,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 7.200203184795089e-05,
@@ -5792,7 +5820,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0017453292519943296,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.9355811326219907
+        "true_anomaly0": 1.9355811326219907,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 6.992505016002923e-05,
@@ -5839,7 +5868,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.335544362350646
+        "true_anomaly0": 4.335544362350646,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 6.379127383020211e-05,
@@ -5886,7 +5916,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.025708699881876476,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.45232228489971504
+        "true_anomaly0": 0.45232228489971504,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 3.852211683781672e-05,
@@ -5933,7 +5964,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.020210912738094333,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.8522855146283703
+        "true_anomaly0": 2.8522855146283703,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 3.852211683781672e-05,
@@ -5980,7 +6012,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.252248744357026
+        "true_anomaly0": 5.252248744357026,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.6540894951251965e-05,
@@ -6027,7 +6060,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.3690266669060946
+        "true_anomaly0": 1.3690266669060946,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.657095698287493e-05,
@@ -8562,7 +8596,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0757472895365539,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.8535583854948143
+        "true_anomaly0": 0.8535583854948143,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.144897955076121e-05,
@@ -8609,7 +8644,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.2535216152234696
+        "true_anomaly0": 3.2535216152234696,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.885361771639519e-05,
@@ -8656,7 +8692,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0022689280275926286,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.653484844952125
+        "true_anomaly0": 5.653484844952125,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.7548012479786185e-05,
@@ -8703,7 +8740,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0013962634015954637,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.770262767501194
+        "true_anomaly0": 1.770262767501194,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 8.353223425815073e-06,
@@ -8750,7 +8788,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.170225997229849
+        "true_anomaly0": 4.170225997229849,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.401529243748597e-06,
@@ -8797,7 +8836,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0013962634015954637,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.28700391977891826
+        "true_anomaly0": 0.28700391977891826,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00021705872289508047,
@@ -8844,7 +8884,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0017453292519943296,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.6869671495075735
+        "true_anomaly0": 2.6869671495075735,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00019320417685024014,
@@ -8891,7 +8932,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0033161255787892262,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.086930379236229
+        "true_anomaly0": 5.086930379236229,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00016733908487623746,
@@ -8938,7 +8980,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.00017453292519943296,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.2037083017852979
+        "true_anomaly0": 1.2037083017852979,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00015687393956992558,
@@ -8985,7 +9028,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0019198621771937625,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.603671531513953
+        "true_anomaly0": 3.603671531513953,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00015353542102064898,
@@ -9032,7 +9076,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 6.003634761242608
+        "true_anomaly0": 6.003634761242608,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00014748978768809468,
@@ -9079,7 +9124,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0010471975511965976,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.1204126837916775
+        "true_anomaly0": 2.1204126837916775,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.0001417042458757091,
@@ -9126,7 +9172,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.004886921905584123,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.520375913520333
+        "true_anomaly0": 4.520375913520333,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00013021890944101707,
@@ -9173,7 +9220,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0017453292519943296,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.6371538360694018
+        "true_anomaly0": 0.6371538360694018,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00011863303779189299,
@@ -9220,7 +9268,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0005235987755982988,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.037117065798057
+        "true_anomaly0": 3.037117065798057,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00011663015742129914,
@@ -9267,7 +9316,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.008203047484373348,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.437080295526712
+        "true_anomaly0": 5.437080295526712,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00011398440778437365,
@@ -9314,7 +9364,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.005585053606381855,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.5538582180757814
+        "true_anomaly0": 1.5538582180757814,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 9.545668429489193e-05,
@@ -9361,7 +9412,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0022689280275926286,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.9538214478044367
+        "true_anomaly0": 3.9538214478044367,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 7.8788788912709e-05,
@@ -9828,7 +9880,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.08272860654453122,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.220675746101243
+        "true_anomaly0": 5.220675746101243,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.0002470211965054906,
@@ -9875,7 +9928,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.003665191429188092,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.337453668650312
+        "true_anomaly0": 1.337453668650312,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.0002334688738347927,
@@ -9922,7 +9976,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.7374168983789673
+        "true_anomaly0": 3.7374168983789673,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00021730454398240099,
@@ -9969,7 +10024,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0008726646259971648,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 6.137380128107623
+        "true_anomaly0": 6.137380128107623,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.0001696160938703201,
@@ -10016,7 +10072,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.003490658503988659,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.2541580506566916
+        "true_anomaly0": 2.2541580506566916,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.00013111246320486359,
@@ -10063,7 +10120,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.654121280385404
+        "true_anomaly0": 4.654121280385404,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 7.654952859624252e-05,
@@ -10110,7 +10168,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.7708992029344728
+        "true_anomaly0": 0.7708992029344728,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 6.479647172712688e-05,
@@ -10550,7 +10609,8 @@
         "arg_peri": 0.0,
         "orb_incl": 8.726646259971648e-07,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.920975578682153
+        "true_anomaly0": 5.920975578682153,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.1385591834674098e-05,
@@ -10597,7 +10657,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.0377535012312222
+        "true_anomaly0": 2.0377535012312222,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 3.6072446511126188e-06,
@@ -10644,7 +10705,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.4377167309598775
+        "true_anomaly0": 4.4377167309598775,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.9264407310434766e-06,
@@ -10691,7 +10753,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.5544946535089466
+        "true_anomaly0": 0.5544946535089466,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.2605549321240408e-06,
@@ -10738,7 +10801,8 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.954457883237602
+        "true_anomaly0": 2.954457883237602,
+        "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.9037186431002718e-06,

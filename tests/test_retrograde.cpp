@@ -18,11 +18,14 @@
 // #141 adds the epoch spin-phase fields (spin_phase0, tilt_azimuth): the
 // defaults must reproduce the pre-#141 initial_orient exactly, and the
 // authored values must land the epoch longitude/pole azimuth where named.
-// #143 authors REAL epoch orientation for the 8 planets from the vendored
-// IAU WGCCRE 2015 report, and #144 tidally locks the regular moons (spin =
-// mean motion, near side facing the parent at t=0). Both rest on ONE sky
-// convention: rail azimuth = -ecliptic longitude (parse_planet negates the
-// fact sheets' physical angles; the WGCCRE mapping is a proper rotation).
+// #143 authors REAL epoch orientation for the 8 planets + Pluto from the
+// vendored IAU WGCCRE 2015 report, and #144 tidally locks the regular
+// moons (spin = mean motion, near side facing the parent at t=0). #147
+// refers regular moons' inclination to the parent's EQUATOR
+// (inertial.incl_ref), so their planes tip with the parent's axis. All
+// rest on ONE sky convention: rail azimuth = -ecliptic longitude (parse_
+// planet negates the fact sheets' physical angles; the WGCCRE mapping is
+// a proper rotation).
 // The throw and authoring cases run on targeted mutations of the real
 // system JSON (written to tmp/).
 //
@@ -381,6 +384,113 @@ int main() {
                   "Moon near side stays Earth-facing (synchronous rail, #144)");
         }
         sys.root->frame->UpdateOrbitRails(0.0);
+    }
+
+    // --- #147: regular moons ride the parent's EQUATOR -------------------
+    // The fact sheets refer regular moons' inclination to the parent's
+    // equator (irregulars to the ecliptic); inertial.incl_ref == "equator"
+    // makes the loader compose the moon's orient UNDER the parent's
+    // rot-frame tilt. Sharpest case: Pluto's 119.5 deg obliquity puts its
+    // equator ~54 deg off its orbital plane, and Charon (incl ~0 to
+    // Pluto) must ride that equator. Poles are compared in the universe
+    // frame (root_orient), so parent/child frames mix safely.
+    auto orbit_pole = [](Frame *f) {
+        return glm::normalize(f->root_orient * glm::dvec3(0.0, 1.0, 0.0));
+    };
+    auto spin_pole = [](TerrainBody *b) {
+        return glm::normalize(b->rot_frame->root_orient
+                              * b->rot_frame->spin_axis);
+    };
+    sys.root->frame->UpdateOrbitRails(0.0);
+    TerrainBody *charon = sys.find("Charon");
+    TerrainBody *pluto = sys.find("Pluto");
+    check(charon && pluto, "Charon and Pluto present in solar_system.json");
+    if(charon && pluto) {
+        check(glm::dot(orbit_pole(charon->frame), spin_pole(pluto))
+              > std::cos(1.0 * PI / 180.0),
+              "Charon's orbital plane == Pluto's equator (#147)");
+        // Pluto's pole is now REAL (WGCCRE Table 3; seeded pre-#147):
+        // the universe-frame pole must match (alpha0, delta0) pushed
+        // through the ecliptic -> rail embedding (rail = (x_ecl, z_ecl,
+        // -y_ecl), the make_solar_system.py _railvec_eq convention).
+        const double a0 = 132.993 * PI / 180.0, d0 = -6.163 * PI / 180.0;
+        const double eps = 23.4392911 * PI / 180.0;
+        const glm::dvec3 eq(std::cos(d0) * std::cos(a0),
+                            std::cos(d0) * std::sin(a0),
+                            std::sin(d0));
+        const glm::dvec3 ecl(eq.x,
+                             eq.y * std::cos(eps) + eq.z * std::sin(eps),
+                             -eq.y * std::sin(eps) + eq.z * std::cos(eps));
+        const glm::dvec3 want(ecl.x, ecl.z, -ecl.y);
+        check(glm::dot(spin_pole(pluto), want) > std::cos(1.0 * PI / 180.0),
+              "Pluto's universe-frame pole == the Table 3 sky pole (#147)");
+        // The mutual lock is now EXACT: with Charon on the equator,
+        // Pluto's tilt is common-mode and the lon-0 POINT sits sub-Charon
+        // (pre-#147 only the meridian plane could be aligned, the point
+        // staying ~54 deg off). Charon's lon 0 faces Pluto (note n).
+        const glm::dvec3 to_charon = glm::normalize(
+            charon->frame->root_pos - pluto->frame->root_pos);
+        const glm::dvec3 plon0 = pluto->rot_frame->root_orient
+                                 * glm::dvec3(1.0, 0.0, 0.0);
+        check(glm::dot(plon0, to_charon) > std::cos(1.0 * PI / 180.0),
+              "Pluto's lon 0 faces Charon exactly (mutual lock, #144/#147)");
+        const glm::dvec3 clon0 = charon->rot_frame->root_orient
+                                 * glm::dvec3(1.0, 0.0, 0.0);
+        check(glm::dot(clon0, -to_charon) > std::cos(1.0 * PI / 180.0),
+              "Charon's lon 0 faces Pluto (sub-Pluto meridian, #144)");
+    }
+    // Regular moons of tilted parents ride the equator...
+    TerrainBody *io = sys.find("Io");
+    TerrainBody *jupiter = sys.find("Jupiter");
+    check(io && jupiter, "Io and Jupiter present in solar_system.json");
+    if(io && jupiter) {
+        check(glm::dot(orbit_pole(io->frame), spin_pole(jupiter))
+              > std::cos(1.0 * PI / 180.0),
+              "Io's orbital plane == Jupiter's equator (#147)");
+    }
+    TerrainBody *phobos = sys.find("Phobos");
+    TerrainBody *mars = sys.find("Mars");
+    check(phobos && mars, "Phobos and Mars present in solar_system.json");
+    if(phobos && mars) {
+        check(glm::dot(orbit_pole(phobos->frame), spin_pole(mars))
+              > std::cos(3.0 * PI / 180.0),
+              "Phobos' orbital plane == Mars' equator (1.1 deg incl, #147)");
+    }
+    // ...and the ecliptic-referred rows must NOT have moved: the Moon
+    // stays near the ECLIPTIC (5.1 deg), far from Earth's tilted pole;
+    // Triton (157.3 deg to the ecliptic) stays far from Neptune's pole.
+    if(moon && earth) {
+        check(glm::dot(orbit_pole(moon->frame), orbit_pole(earth->frame))
+              > std::cos(6.0 * PI / 180.0),
+              "Moon still rides the ecliptic band (incl_ref orbit, #147)");
+        check(glm::dot(orbit_pole(moon->frame), spin_pole(earth))
+              < std::cos(15.0 * PI / 180.0),
+              "Moon's pole is NOT Earth's pole (not equator-referred, #147)");
+    }
+    if(triton && neptune) {
+        check(glm::dot(orbit_pole(triton->frame), spin_pole(neptune))
+              < std::cos(45.0 * PI / 180.0),
+              "Triton stays ecliptic-referred (irregular, #147)");
+    }
+    // Control: OMITTED incl_ref (the default "orbit" path) puts Charon
+    // back in Pluto's ORBITAL plane -- 119.5 deg of obliquity away from
+    // the equator -- so the equator pin above is discriminating, and
+    // hand-authored systems load exactly as before.
+    with_loaded(erased(j, "Charon", "inertial", "incl_ref"), "charon_orbit",
+                [&](System &loaded) {
+        TerrainBody *c = loaded.find("Charon");
+        TerrainBody *p = loaded.find("Pluto");
+        check(glm::dot(orbit_pole(c->frame), spin_pole(p))
+              < std::cos(100.0 * PI / 180.0),
+              "omitted incl_ref reproduces the old orbital-plane rail");
+    });
+    // A typo'd reference plane is a data bug, not a silent default.
+    {
+        nlohmann::json bad = j;
+        for(auto &&b : bad["bodies"]) {
+            if(b["name"] == "Io") { b["inertial"]["incl_ref"] = "ecliptic"; }
+        }
+        expect_reject(bad, "bad_incl_ref", "incl_ref");
     }
 
     // --- the rejected channel: negative rates are data bugs, not retrograde
