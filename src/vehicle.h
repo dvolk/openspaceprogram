@@ -268,6 +268,12 @@ public:
     /* Frame S's axes at park time. The ship is rigid, so there is nothing
        per-part left to snapshot. */
     glm::dmat3 railRot = glm::dmat3(1.0);
+    /* The instant rail_pos/rail_vel describe. It must equal frame->rail_time
+       whenever the two are composed -- moveToRailFrame() asserts it. The
+       frame tree is re-snapshotted once per tick, at the END of the tick, so
+       a rail state from earlier in the tick lands the ship where its parent
+       will be rather than where it was. */
+    double rail_epoch = 0.0;
 
     /* Per-part catalog spec / stage / tank contents / armed thrust all live
        on each Part now (see part.h). */
@@ -756,6 +762,12 @@ public:
 
     /* Re-anchor the rail state on another frame and re-home it (setSoi). */
     void moveToRailFrame(Frame *newFrame, double t);
+
+    /* The rail state in universe-root axes. A frame switch must not change
+       it: moveToRailFrame() is a change of coordinates, not of state, so
+       comparing this before and after catches any coordinate bug, not just
+       the epoch mismatch it was written for. */
+    void railRootState(glm::dvec3 &p, glm::dvec3 &v) const;
 
 private:
     /* The SoI boundary test shared by switchFrames (physics) and the

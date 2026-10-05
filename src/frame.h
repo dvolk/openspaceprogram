@@ -18,6 +18,14 @@ struct Frame {
 
     double soi; // sphere of influence
 
+    /* The instant `pos`/`vel`/`orient`/`root_*` describe: the argument of the
+       last UpdateOrbitRails(). Orbits and spin are a pure function of the
+       clock, so this is not extra state to maintain -- it is the clock value
+       these were derived from, written down so a caller composing a ship's
+       rail state with these transforms can CHECK it matches the ship's own
+       epoch (Vehicle::rail_epoch, moveToRailFrame). */
+    double rail_time = 0.0;
+
     /* relative to parent */
     glm::dvec3 pos;
     glm::dvec3 vel;

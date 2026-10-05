@@ -43,6 +43,7 @@ void Frame::UpdateRootRelative() {
 }
 
 void Frame::UpdateOrbitRails(double time) {
+    rail_time = time;   // everything below, and every child, is f(time)
     if(parent != NULL and not rotating) {
         // Propagate the epoch state on the true Kepler conic. Absolute sim
         // time -- must NOT scale with the timestep or the frame snaps when

@@ -3,6 +3,7 @@
 #include "vehicle.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -2702,6 +2703,7 @@ bool Vehicle::goOnRails() {
         rail_vel = vel_frame;
         rail_orient = glm::dmat3(1.0);
         railFrozen = true;
+        rail_epoch = frame->rail_time;
     } else {
         rail_pos = p;
         rail_vel = v;
@@ -2710,6 +2712,10 @@ bool Vehicle::goOnRails() {
         // not an SoI re-home: deliberately a bare write, not setSoi.
         frame = inertial;   // on rails, ship->frame == its inertial node
         railFrozen = false;
+        // Taken from the frame, not from g.time: the live Bullet pose this
+        // came from is expressed against the transforms as last snapshotted,
+        // so THAT is the instant rail_pos describes.
+        rail_epoch = inertial->rail_time;
     }
 
     // out of the world: the one body
@@ -2759,6 +2765,10 @@ static double railsSampleScale(const Frame *f) {
 void Vehicle::railsTick(double t, const double step) {
     if(!onRails || railFrozen) { return; }
     assert(frame->body != nullptr);
+    // The advance is analytic in `t`, so the caller must hand us the same
+    // instant the frame tree was last snapshotted at -- otherwise the conic
+    // and the frames disagree before a handoff can even be judged.
+    assert(t == frame->rail_time);
     /* The conic is exact for any step, but the SoI test only sees the END of
        one: at 1e7x a 25 km/s ship covers 5e9 m in a tick, more than a
        planet's whole sphere, so it can be inside an SoI for part of the step
@@ -2792,6 +2802,7 @@ void Vehicle::railsTick(double t, const double step) {
                         rail_pos, rail_vel);
         if(target == nullptr) { target = soiTarget(rail_pos, true); }
     }
+    rail_epoch = t;   // the whole advance lands ON the tick boundary
     // Where the ship actually ENDS beats what it crossed on the way: if the
     // endpoint test fires, the old single-step answer is the right one, and
     // the sampled crossing only fills in when it misses (a body crossed and
@@ -2807,10 +2818,74 @@ void Vehicle::railsHandoff(Frame *target, double t) {
     moveToRailFrame(target, t);
 }
 
+/* Squared Frobenius distance between two rotations: for a small relative
+   rotation of theta radians it is 2*theta^2, so 1e-20 is ~1e-10 rad. That is
+   ~1e6 times the round-off in composing these matrices and nowhere near
+   anything this path produces by accident. */
+static double rotDist2(const glm::dmat3 &a, const glm::dmat3 &b) {
+    double d2 = 0.0;
+    for(int c = 0; c < 3; c++) {
+        for(int r = 0; r < 3; r++) {
+            const double d = a[c][r] - b[c][r];
+            d2 += d * d;
+        }
+    }
+    return d2;
+}
+
+void Vehicle::railRootState(glm::dvec3 &p, glm::dvec3 &v) const {
+    p = frame->root_orient * rail_pos + frame->root_pos;
+    v = frame->root_orient * (rail_vel + frame->GetStasisVelocity(rail_pos))
+      + frame->root_vel;
+}
+
 void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
+    /* Epoch consistency, the invariant this whole path exists to protect.
+       The rail state and BOTH frames must describe the same instant: the
+       frame tree is re-snapshotted once per tick (tick.cpp, before the ship
+       loop) at the END of the tick, so composing a rail state from earlier in
+       the tick onto those transforms puts the ship where its parent WILL be,
+       not where it was -- off by |v_parent| * dt_stale. Measured 4.5e9 m for
+       a handoff at sub-step 8/32 at 1e7x, which also invented a recapture
+       flap. railsTick keeps the whole advance in one instant for this. */
+    assert(frame->rail_time == newFrame->rail_time);
+    assert(rail_epoch == frame->rail_time);
+
+    glm::dvec3 p0, v0;
+    railRootState(p0, v0);
+    // Cluster axes -> universe axes. The ship's attitude is part of its
+    // state, so a frame switch must not turn it either.
+    const glm::dmat3 att0 = frame->root_orient * rail_orient;
+
     const glm::dmat3 O = frame->GetOrientRelTo(newFrame);
     rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
     rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
     rail_orient = O * rail_orient;
     setSoi(newFrame, t);
+
+    /* A re-anchoring is a change of coordinates, not of state, so the
+       universe-root state must come back unchanged. GetPositionRelTo /
+       GetOrientRelTo / GetVelocityRelTo are themselves defined off
+       root_pos/root_vel/root_orient (frame.cpp), so this holds to fp
+       round-off; anything larger is a coordinate bug whatever caused it.
+       1e-10 relative is ~5 orders above the round-off at these magnitudes.
+       This is COMPLEMENTARY to the epoch asserts above, not a substitute:
+       they fire on a stale rail state (the mid-loop handoff), this fires on
+       a switch that is not a pure coordinate change. Verified against both:
+       dropping the GetPositionRelTo/GetVelocityRelTo terms trips this one
+       and passes those; handing off mid-advance trips those and passes this
+       one -- the staleness is a property of rail_pos against the frames,
+       not of the transform, so a continuity test cannot see it. */
+    glm::dvec3 p1, v1;
+    railRootState(p1, v1);
+    assert(glm::length(p1 - p0) < 1e-10 * std::max(1.0, glm::length(p0)));
+    assert(glm::length(v1 - v0) < 1e-10 * std::max(1.0, glm::length(v0)));
+    /* The attitude check is the one that catches a STALE EPOCH on a frame
+       whose root_orient moves: root_orient carries the spin, so composing
+       against a spin frame from another tick rotates the ship by
+       omega * dt_stale (Earth's spin over one 1e7x tick is 14.6 rad -- a
+       random attitude, not a small error). The rails path only visits
+       inertial nodes today, where root_orient is time-invariant, so this is
+       belt-and-braces until a railed ship can live in a body-fixed frame. */
+    assert(rotDist2(att0, newFrame->root_orient * rail_orient) < 1e-20);
 }
