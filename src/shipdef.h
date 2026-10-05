@@ -416,8 +416,14 @@ AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                        double rollDeg = 0.0, double offset = 0.0);
 
 /* Surface attach (KSP srfAttach): place the child's surface node at a
-   contact point on the parent. This is attachNodes with a synthetic parent
-   node -- the SAME solver, so stack and surface attach never drift. */
+   contact point on the parent, its node dir opposing the contact normal.
+   The POSITION is node mating exactly as for a stack port (a synthetic
+   parent node at the contact), so stack and surface attach never drift.
+   The ROLL is the one difference: a stack port's roll is authored, while a
+   surface contact has no authored port to reference, so its roll is pinned
+   to the stack axes -- the child's +Z stays parallel to the parent's +Z
+   projected into the contact plane -- instead of left to the shortest arc.
+   See surfaceMatingRot in the .cpp for why the shortest arc is not enough. */
 AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                          const glm::dvec3 &point, const glm::dvec3 &normal,
                          const Node &childNode, double rollDeg = 0.0,
@@ -456,9 +462,10 @@ struct SymClone {
 };
 
 /* The N-1 radial-symmetry clones of a surface attachment: each is the
-   primary placement rotated by k*360/N about the parent's own long axis.
-   The clone's roll absorbs the minimal-arc holonomy (zero for purely radial
-   contacts, nonzero on tilted ones). */
+   primary placement rotated by k*360/N about the parent's own long axis,
+   carrying the SAME roll -- the surface frame is referenced to that axis,
+   so re-solving the rotated contact lands on the rotated pose by
+   construction (no holonomy to absorb). */
 std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
                                            const glm::dmat3 &parentRot,
                                            const Node &childNode,

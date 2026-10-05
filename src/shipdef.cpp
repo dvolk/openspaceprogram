@@ -1,5 +1,6 @@
 #include "shipdef.h"
 
+#include <cassert>
 #include <cmath>
 #include <fstream>
 #include <map>
@@ -623,7 +624,8 @@ ShipDef load_ship_def(const char *path, const PartsCatalog &catalog) {
 
 /* The rotation taking unit direction `a` onto unit direction `b` by the
    shortest arc. The roll about that arc is the caller's to resolve (see
-   attachNodes). The anti-parallel case picks a deterministic perpendicular. */
+   attachNodes / surfaceMatingRot). The anti-parallel case picks a
+   deterministic perpendicular. */
 static glm::dmat3 rotationFromTo(const glm::dvec3 &a, const glm::dvec3 &b) {
     const double d = glm::clamp(glm::dot(a, b), -1.0, 1.0);
     if(d > 1.0 - 1e-12) { return glm::dmat3(1.0); }   // already aligned
@@ -637,29 +639,98 @@ static glm::dmat3 rotationFromTo(const glm::dvec3 &a, const glm::dvec3 &b) {
     return glm::mat3_cast(glm::angleAxis(std::acos(d), axis));
 }
 
+/* Finish a node mating: the child's pose in the shared frame. `rrel` is the
+   child frame relative to the parent frame; the authored roll goes about the
+   mating axis (-dP). The node positions coincide, pushed apart by `offset`
+   along the parent node dir. */
+static AttachPose matePose(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
+                           const glm::dvec3 &parentLocalPos, const glm::dvec3 &dP,
+                           const Node &childNode, const glm::dmat3 &rrel,
+                           double rollDeg, double offset)
+{
+    glm::dmat3 rot = rrel;
+    if(rollDeg != 0.0) {
+        rot = glm::mat3_cast(glm::angleAxis(glm::radians(rollDeg), -dP)) * rot;
+    }
+    AttachPose p;
+    p.childRot = parentRot * rot;
+    const glm::dvec3 contact = parentPos + parentRot * (parentLocalPos + dP * offset);
+    p.childPos = contact - p.childRot * childNode.pos;
+    return p;
+}
+
 AttachPose attachNodes(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
                        const Node &parentNode, const Node &childNode,
                        double rollDeg, double offset)
 {
     const glm::dvec3 dP = glm::normalize(parentNode.dir);   // parent-local outward
     const glm::dvec3 dC = glm::normalize(childNode.dir);    // child-local outward
-    const glm::dvec3 target = -dP;                          // child dir opposes parent's
+    /* Stack ports are authored square, so the shortest arc is the whole
+       story: the roll about it is authored (`rollDeg`), not implied. */
+    return matePose(parentPos, parentRot, parentNode.pos, dP, childNode,
+                    rotationFromTo(dC, -dP), rollDeg, offset);
+}
 
-    /* Relative rotation (child frame w.r.t. the parent frame): the minimal
-       arc taking the child's node dir onto the opposed parent dir, then the
-       authored roll about that mating axis. */
-    glm::dmat3 rrel = rotationFromTo(dC, target);
-    if(rollDeg != 0.0) {
-        rrel = glm::mat3_cast(glm::angleAxis(glm::radians(rollDeg), target)) * rrel;
+/* A unit vector perpendicular to the unit `d`, as close to `pref` as the
+   plane allows; when `pref` is parallel to `d`, a deterministic
+   perpendicular (the same choice rotationFromTo makes). */
+static glm::dvec3 perpToward(const glm::dvec3 &d, const glm::dvec3 &pref)
+{
+    glm::dvec3 u = pref - glm::dot(pref, d) * d;
+    if(glm::dot(u, u) < 1e-12) {
+        u = glm::cross(d, (std::fabs(d.x) < 0.9) ? glm::dvec3(1.0, 0.0, 0.0)
+                                                 : glm::dvec3(0.0, 1.0, 0.0));
     }
+    return glm::normalize(u);
+}
 
-    AttachPose p;
-    p.childRot = parentRot * rrel;
-    /* Coincide the node positions, pushed apart by `offset` along the parent
-       node dir. */
-    const glm::dvec3 contact = parentPos + parentRot * (parentNode.pos + dP * offset);
-    p.childPos = contact - p.childRot * childNode.pos;
-    return p;
+/* The mating rotation for a SURFACE edge, in the parent's local frame: the
+   child's node dir onto the opposed normal, with the ROLL referenced to the
+   stack axes instead of left to the shortest arc.
+   The shortest arc fixes only the node direction; the roll it happens to
+   pick depends on where the target sits on the sphere, so sliding the
+   contact around a cone twists the part about the axis pointing at the
+   parent and flips it 180 deg on the far side (a closed lap picks up the
+   enclosed solid angle). Parts are authored +Z = stack axis, so pin the
+   roll: the child's +Z stays parallel to the parent's +Z projected into the
+   contact plane. Deterministic, and independent of how the contact got
+   where it is.
+   Both up-references must be COVARIANT with a rotation about the parent's
+   long axis: radialSymmetryClones rotates the contact about that axis and
+   re-solves, and the ring is congruent only if the reference rotates with
+   it. That is why the axial-contact case below takes the LIMIT of the
+   projection rather than an arbitrary perpendicular. */
+static glm::dmat3 surfaceMatingRot(const glm::dvec3 &dC, const glm::dvec3 &target,
+                                   const glm::dvec3 &point)
+{
+    const glm::dvec3 Z(0.0, 0.0, 1.0);
+    /* Parent side: the parent's stack axis projected into the contact plane.
+       At an axial contact (a nose tip, or a flat cap hit dead-on) that
+       projection vanishes; its limit as the normal reaches the axis is minus
+       the contact's own radial direction, so take that -- continuous through
+       the shoulder, and covariant about the axis. At the exact centre of a
+       cap even the radial direction vanishes; there any deterministic
+       perpendicular will do. */
+    glm::dvec3 upP = Z - glm::dot(Z, target) * target;
+    if(glm::dot(upP, upP) < 1e-12) {
+        const glm::dvec3 radial = point - glm::dot(point, target) * target;
+        upP = (glm::dot(radial, radial) < 1e-12)
+            ? perpToward(target, glm::dvec3(1.0, 0.0, 0.0))
+            : -radial;
+    }
+    upP = glm::normalize(upP);
+    /* Child side: the child's stack axis projected perpendicular to its node
+       dir. A surface node pointing along the child's own axis makes that
+       vanish; the choice is then arbitrary, but it depends only on dC, so
+       every clone of a symmetry ring makes the same one and the ring stays
+       congruent. (No catalog part does this today: surface nodes are
+       synthesized perpendicular to the stack axis.) */
+    const glm::dvec3 upC = perpToward(dC, Z);
+    /* Orthonormal frames (node dir, up, dir x up) as columns. Both are
+       right-handed, so F * E^T is a rotation rather than a reflection. */
+    const glm::dmat3 E(dC, upC, glm::cross(dC, upC));
+    const glm::dmat3 F(target, upP, glm::cross(target, upP));
+    return F * glm::transpose(E);
 }
 
 AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRot,
@@ -667,13 +738,15 @@ AttachPose attachSurface(const glm::dvec3 &parentPos, const glm::dmat3 &parentRo
                          const Node &childNode, double rollDeg, double offset)
 {
     /* Surface attach IS node mating: a synthetic parent node at the contact
-       (position = the contact point, direction = the outward normal). One
-       solver, no separate surface geometry to drift. */
-    Node contact;
-    contact.id  = "srf-contact";
-    contact.pos = point;
-    contact.dir = normal;   // attachNodes normalizes
-    return attachNodes(parentPos, parentRot, contact, childNode, rollDeg, offset);
+       (position = the contact point, direction = the outward normal), so
+       there is no separate surface geometry to drift. Only the roll rule
+       differs from a stack port: surfaceMatingRot, not the shortest arc. */
+    assert(glm::length(normal) > 1e-9 && glm::length(childNode.dir) > 1e-9);
+    const glm::dvec3 dP = glm::normalize(normal);
+    const glm::dvec3 dC = glm::normalize(childNode.dir);
+    const glm::dvec3 target = -dP;      // the child's node dir opposes the normal
+    return matePose(parentPos, parentRot, point, dP, childNode,
+                    surfaceMatingRot(dC, target, point), rollDeg, offset);
 }
 
 double snapAngleDeg(double deg) {
@@ -740,11 +813,7 @@ std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
 {
     std::vector<SymClone> out;
     if(n <= 1) { return out; }
-    const AttachPose primary = attachSurface(parentPos, parentRot, point,
-                                             normal, childNode, rollDeg, offset);
     const glm::dvec3 axisL(0.0, 0.0, 1.0);          // the parent's long axis
-    const glm::dvec3 axisS = parentRot * axisL;     // ... in the shared frame
-    const glm::dvec3 nS = parentRot * glm::normalize(normal);
     const double step = 2.0 * std::acos(-1.0) / (double)n;
     for(int k = 1; k < n; k++) {
         const double th = step * (double)k;
@@ -753,28 +822,14 @@ std::vector<SymClone> radialSymmetryClones(const glm::dvec3 &parentPos,
         c.edge.point  = RzL * point;
         c.edge.normal = RzL * normal;
         c.edge.rollDeg = rollDeg;
-        /* The congruent target is the primary's pose rotated about the
-           parent's axis. Solving the rotated contact with the SAME roll
-           lands there only when the minimal arc to the rotated normal equals
-           the rotated minimal arc; in general the two differ by a roll about
-           the mating axis, so measure that residual and fold it into the
-           clone's roll. */
-        const glm::dmat3 RzS = glm::mat3_cast(glm::angleAxis(th, axisS));
-        const glm::dmat3 wantRot = RzS * primary.childRot;
-        const AttachPose guess = attachSurface(parentPos, parentRot,
-                                               c.edge.point, c.edge.normal,
-                                               childNode, rollDeg, offset);
-        // childRot(roll + d) == Rot(-nS_k, d) * childRot(roll), so the
-        // residual D = wantRot * guess^T is exactly Rot(axis, psi).
-        const glm::dvec3 axis = -(RzS * nS);
-        const glm::dmat3 D = wantRot * glm::transpose(guess.childRot);
-        glm::dvec3 u = glm::cross(axis, glm::dvec3(1.0, 0.0, 0.0));
-        if(glm::dot(u, u) < 1e-12) { u = glm::cross(axis, glm::dvec3(0.0, 1.0, 0.0)); }
-        u = glm::normalize(u);
-        const glm::dvec3 Du = D * u;
-        const double psi = std::atan2(glm::dot(glm::cross(axis, u), Du),
-                                      glm::dot(u, Du));
-        c.edge.rollDeg = rollDeg + glm::degrees(psi);
+        /* Congruent by construction -- no residual roll to measure and fold
+           in. RzL fixes the parent's axis, so it carries the whole solution
+           along with the contact: target -> RzL*target, upP -> RzL*upP (it
+           is built from Z, which RzL fixes, and the contact), target x upP
+           -> RzL*(target x upP) (RzL is a proper rotation), while E depends
+           only on the child's node dir and is untouched. Hence
+           rrel_k = RzL * rrel, and the roll -- a rotation about -dP --
+           commutes the same way. */
         c.pose = attachSurface(parentPos, parentRot, c.edge.point,
                                c.edge.normal, childNode, c.edge.rollDeg, offset);
         out.push_back(c);

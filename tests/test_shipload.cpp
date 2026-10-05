@@ -646,6 +646,65 @@ int main() {
         CHECK(vnear(p.childPos + p.childRot * cn->pos, pp + rot * pt));   // coincide
         CHECK(vnear(p.childRot * cn->dir, -(rot * nrm)));                 // opposed
     }
+    // SURFACE ROLL on a sloped surface: referenced to the stack axes, not
+    // left to the shortest arc. The capsule is a truncated cone (r 1.0 @
+    // z=-1 -> 0.25 @ z=+1), so its flank normal tilts atan(0.375) up. The
+    // child's stack axis must stay parallel to the parent's, projected into
+    // the contact plane, at EVERY azimuth. The shortest arc instead twisted
+    // as much as 180 deg by the far side and flipped there (the holonomy of
+    // a closed lap on the sphere), which is what the player saw as the ghost
+    // rotating while sliding and flipping when panning around.
+    {
+        const PartDef *bar = cat.find("barometer");
+        CHECK(bar != nullptr);
+        const Node *cn = bar->findSurfaceNode();
+        CHECK(cn != nullptr);
+        const double D2R = std::acos(-1.0) / 180.0;
+        const glm::dvec3 Z(0.0, 0.0, 1.0);
+        glm::dvec3 prevUp(0.0);
+        for(int deg = -180; deg <= 180; deg += 30) {
+            const double ph = (double)deg * D2R;
+            const glm::dvec3 n = glm::normalize(
+                glm::dvec3(std::cos(ph), std::sin(ph), 0.375));
+            AttachPose p = attachSurface(O, I, n, n, *cn, 0.0, 0.0);
+            // the node contract still holds at every azimuth
+            CHECK(vnear(p.childPos + p.childRot * cn->pos, n));      // coincide
+            CHECK(vnear(p.childRot * cn->dir, -n));                  // opposed
+            // upright against the parent's axis, not twisted by the arc
+            const glm::dvec3 up = p.childRot * Z;
+            CHECK(vnear(up, glm::normalize(Z - glm::dot(Z, n) * n)));
+            // and continuous across the far side: consecutive poses are
+            // close. The old shortest arc jumped 1.55 between the 150 and
+            // 180 rows of this loop; the new worst 30 deg step is 0.192, so
+            // 0.25 clears it without hiding a real discontinuity.
+            if(deg > -180) { CHECK(glm::length(up - prevUp) < 0.25); }
+            prevUp = up;
+        }
+    }
+    // the authored roll on a surface edge still means "about the mating
+    // axis", applied after the axis-referenced frame, and moves nothing
+    {
+        const Node *cn = cat.find("barometer")->findSurfaceNode();
+        CHECK(cn != nullptr);
+        const glm::dvec3 n = glm::normalize(glm::dvec3(1.0, 0.0, 0.375));
+        AttachPose p0 = attachSurface(O, I, n, n, *cn, 0.0, 0.0);
+        AttachPose p90 = attachSurface(O, I, n, n, *cn, 90.0, 0.0);
+        const glm::dmat3 Rz = glm::mat3_cast(
+            glm::angleAxis(std::acos(-1.0) / 2.0, -n));
+        CHECK(mnear(p90.childRot, Rz * p0.childRot));
+        CHECK(vnear(p90.childPos, p0.childPos));
+    }
+    // a CAP contact (normal along the parent's axis): "upright about the
+    // axis" is undefined, so the roll falls back to the shortest arc -- but
+    // the node contract still holds
+    {
+        const Node *cn = cat.find("barometer")->findSurfaceNode();
+        CHECK(cn != nullptr);
+        const glm::dvec3 n(0.0, 0.0, 1.0);
+        AttachPose p = attachSurface(O, I, n, n, *cn, 0.0, 0.0);
+        CHECK(vnear(p.childPos + p.childRot * cn->pos, n));
+        CHECK(vnear(p.childRot * cn->dir, -n));
+    }
 
     // --- node schema: synthesis, attachNodes, node-ref parsing -------------
     // a catalog part with no explicit nodes gets synthesized axial top/bottom
@@ -1085,9 +1144,10 @@ int main() {
             }
             CHECK(radialSymmetryClones(P, R, *cn, pt, nl, 25.0, 0.0, 1).empty());
         }
-        // B) tilted parent pose + tilted (non-radial) normal: exercises the
-        //    minimal-arc holonomy correction -- the clones must still be
-        //    congruent about the parent's OWN axis
+        // B) tilted parent pose + tilted (non-radial) normal: the congruence
+        //    is not trivial here (the normal is neither radial nor axial), and
+        //    the axis-referenced surface frame is what makes it exact -- the
+        //    stored edge data must still re-solve to the stored pose
         {
             const glm::dvec3 P(0, 0, -2);
             const glm::dmat3 R = glm::mat3_cast(
@@ -1117,6 +1177,95 @@ int main() {
                     CHECK(vnear(re.childPos, c.pose.childPos));
                     CHECK(mnear(re.childRot, c.pose.childRot));
                 }
+            }
+        }
+        // C) a SWEEP, not two hand-picked contacts: congruence has to hold
+        //    for every contact geometry, including the AXIAL ones (a flat
+        //    cap or a nose tip, where the parent's axis has no component in
+        //    the contact plane and the up-reference falls to the contact's
+        //    own radial direction). A hand-picked sample misses exactly
+        //    those, and they are where a non-covariant reference breaks the
+        //    ring. Sweeps: 3 parent poses x 5 contacts x 2 child node
+        //    layouts x n=2..6.
+        {
+            const double PI = std::acos(-1.0);
+            const glm::dvec3 P(0.5, -2.0, 1.0);
+            const glm::dmat3 rots[3] = {
+                glm::dmat3(1.0),
+                testOrient(),
+                glm::mat3_cast(glm::angleAxis(
+                    0.7, glm::normalize(glm::dvec3(1.0, 2.0, 3.0)))),
+            };
+            struct Contact { glm::dvec3 pt; glm::dvec3 nl; };
+            const Contact contacts[5] = {
+                // radial flank (what the JSON cylinder shorthand writes)
+                { glm::dvec3(1.5, 0.0, 0.4), glm::dvec3(1.0, 0.0, 0.0) },
+                // tilted cone flank (the capsule)
+                { glm::dvec3(0.8, 0.0, 0.6),
+                  glm::normalize(glm::dvec3(1.0, 0.0, 0.375)) },
+                // dead-on top cap, contact off the axis
+                { glm::dvec3(1.1, 0.0, 1.0), glm::dvec3(0.0, 0.0, 1.0) },
+                // dead-on bottom cap, contact off the axis
+                { glm::dvec3(0.0, 0.6, -1.0), glm::dvec3(0.0, 0.0, -1.0) },
+                // a near-axial normal, just off the degeneracy
+                { glm::dvec3(0.02, 0.0, 1.0),
+                  glm::normalize(glm::dvec3(0.02, 0.0, 1.0)) },
+            };
+            // a child whose surface node points ALONG its own stack axis: no
+            // catalog part does this, but the frame must stay congruent if
+            // one ever does (the child-side reference depends only on the
+            // node dir, so every clone makes the same choice)
+            Node axialSrf;
+            axialSrf.id = "srf";
+            axialSrf.pos = glm::dvec3(0.0, 0.0, 1.0);
+            axialSrf.dir = glm::dvec3(0.0, 0.0, 1.0);
+            axialSrf.surface = true;
+            const Node *kids[2] = { cn, &axialSrf };
+            for(int ri = 0; ri < 3; ri++) {
+            for(int ki = 0; ki < 2; ki++) {
+            for(int ci = 0; ci < 5; ci++) {
+                const glm::dmat3 R = rots[ri];
+                const Node *kid = kids[ki];
+                const glm::dvec3 pt = contacts[ci].pt, nl = contacts[ci].nl;
+                const glm::dvec3 axisS = R * glm::dvec3(0.0, 0.0, 1.0);
+                const AttachPose primary = attachSurface(P, R, pt, nl, *kid, 15.0, 0.0);
+                for(int n = 2; n <= 6; n++) {
+                    std::vector<SymClone> cl =
+                        radialSymmetryClones(P, R, *kid, pt, nl, 15.0, 0.0, n);
+                    CHECK(cl.size() == (size_t)(n - 1));
+                    for(int k = 1; k < n; k++) {
+                        const SymClone &c = cl[(size_t)k - 1];
+                        const double th = 2.0 * PI * (double)k / (double)n;
+                        const glm::dmat3 RzS = glm::mat3_cast(
+                            glm::angleAxis(th, axisS));
+                        CHECK(vnear(c.pose.childPos, P + RzS * (primary.childPos - P)));
+                        CHECK(mnear(c.pose.childRot, RzS * primary.childRot));
+                        AttachPose re = attachSurface(P, R, c.edge.point,
+                                                      c.edge.normal, *kid,
+                                                      c.edge.rollDeg, 0.0);
+                        CHECK(vnear(re.childPos, c.pose.childPos));
+                        CHECK(mnear(re.childRot, c.pose.childRot));
+                        CHECK(near(c.edge.rollDeg, 15.0));   // same roll, no patch
+                    }
+                }
+            }}}
+        }
+        // D) the one genuinely degenerate ring: a contact ON the axis with an
+        //    axial normal. Rotating it about the axis moves nothing, so all
+        //    N placements coincide and congruence is meaningless -- what must
+        //    hold is that they are identical, and that the node contract does.
+        {
+            const glm::dvec3 P(0.0, 0.0, 0.0);
+            const glm::dmat3 R(1.0);
+            const glm::dvec3 pt(0.0, 0.0, 1.0), nl(0.0, 0.0, 1.0);
+            const AttachPose primary = attachSurface(P, R, pt, nl, *cn, 0.0, 0.0);
+            CHECK(vnear(primary.childPos + primary.childRot * cn->pos, pt));
+            CHECK(vnear(primary.childRot * cn->dir, -nl));
+            std::vector<SymClone> cl = radialSymmetryClones(P, R, *cn, pt, nl, 0.0, 0.0, 4);
+            CHECK(cl.size() == 3);
+            for(size_t k = 0; k < cl.size(); k++) {
+                CHECK(vnear(cl[k].pose.childPos, primary.childPos));
+                CHECK(mnear(cl[k].pose.childRot, primary.childRot));
             }
         }
     }
