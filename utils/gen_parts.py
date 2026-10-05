@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate res/data/parts.json from the part meshes + physical constants.
 Size (radius/height/volume) comes from the mesh; behavior is derived from that
-geometry. Mass is DRY structure only -- propellant rides `capacity` + effectiveMass."""
+geometry. Mass is DRY structure only -- propellant rides `capacity` + effectiveMass.
+Source of truth for the committed JSON; --check verifies no drift."""
 
 import argparse
 import json
@@ -76,6 +77,8 @@ DRAG_CD = {
     "reaction_wheel": {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
     "materials_pod":  {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
+                       "drag_backward": 1.1},
+    "barometer":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
     "battery":        {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
@@ -184,6 +187,7 @@ PARTS = [
     ("kerbal",           "kerbal",         "meshes/kerbal.obj",                   "textures/kerbal.png"),
     ("cargo",            "cargo",          "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
     ("materials_pod",    "materials_pod",  "meshes/materials_pod.obj",           "textures/materials_pod.png"),
+    ("barometer",        "barometer",      "meshes/barometer.obj",                "textures/barometer.png"),
     ("wing",             "wing",           "meshes/wing.obj",                     "textures/wing.png"),
     ("rudder",           "rudder",         "meshes/wing.obj",                     "textures/rudder.png"),
     ("elevator",         "elevator",       "meshes/wing.obj",                     "textures/elevator.png"),
@@ -221,6 +225,10 @@ EXTRA_FIELDS = {
                           "inventory_capacity": 3, "experiment_storage": "courier"},
     "cargo":             {"inventory_capacity": 10},
     "materials_pod":     {"experiment_family": "materials study",
+                          "experiment_storage": "instrument"},
+    # barometer: tiny stick instrument, mass declared (mesh supplies shape only);
+    # scores biome-specific science only on the surface (res/data/experiments.json).
+    "barometer":         {"mass": 10, "experiment_family": "barometer",
                           "experiment_storage": "instrument"},
     "decoupler_r1":      {"mass": 50, "decoupler": True, "fuel_barrier": True},
     "decoupler_r1.5":    {"mass": 75, "decoupler": True, "fuel_barrier": True},
@@ -279,6 +287,7 @@ DISPLAY_BASE = {
     "kerbal":         "Kerbal",
     "cargo":          "Cargo Crate",
     "materials_pod":  "Materials Pod",
+    "barometer":      "Barometer",
     "wing":           "Wing",
     "rudder":         "Rudder",
     "elevator":       "Elevator",
@@ -288,7 +297,7 @@ DISPLAY_BASE = {
 
 def display_name_for(name, ptype, radius, height):
     base = DISPLAY_BASE.get(ptype, name)
-    if ptype in ("kerbal", "fuel_link"):
+    if ptype in ("kerbal", "fuel_link", "barometer"):
         return base
     if name == "decoupler_radial":
         return "Radial Decoupler"
@@ -384,7 +393,7 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["rcs_thrust"] = clean(RCS_THRUST_PER_M2 * radius * radius)
-    elif ptype in ("decoupler", "docking_port"):
+    elif ptype in ("decoupler", "docking_port", "barometer"):
         # mass is declared in EXTRA_FIELDS; radius/height follow the mesh
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
@@ -488,15 +497,52 @@ def summary_line(e):
     return "  %-24s mass=%7s%s%s" % (n, e["mass"], tor, draw)
 
 
+def check(parts, path):
+    """Verify the committed parts.json still matches this script."""
+    if not os.path.exists(path):
+        print(f"MISSING {path}")
+        return False
+    with open(path) as f:
+        committed = json.load(f)
+    out = []
+    cb = {x["name"]: x for x in committed.get("parts", [])}
+    gb = {x["name"]: x for x in parts}
+    for name in cb:
+        if name not in gb:
+            out.append(f"part {name}: in committed file, missing from generated")
+    for name in gb:
+        if name not in cb:
+            out.append(f"part {name}: in generated, missing from committed file")
+    for name in cb:
+        if name in gb and cb[name] != gb[name]:
+            for k in sorted(set(cb[name]) | set(gb[name])):
+                if cb[name].get(k) != gb[name].get(k):
+                    out.append(f"{name}.{k}: committed={cb[name].get(k)!r} "
+                               f"generated={gb[name].get(k)!r}")
+    if out:
+        print(f"DRIFT   {path}:")
+        for line in out:
+            print(f"    {line}")
+        return False
+    print(f"OK      {path}")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=os.path.join(REPO_ROOT, "res", "data", "parts.json"),
                     help="output parts.json (default: res/data/parts.json)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the catalog table without writing")
+    ap.add_argument("--check", action="store_true",
+                    help="verify the committed parts.json still matches this "
+                         "script, without writing anything; exit non-zero on drift")
     a = ap.parse_args()
 
     parts = [generate(*p) for p in PARTS]
+
+    if a.check:
+        raise SystemExit(0 if check(parts, a.out) else 1)
 
     print("generated catalog: %d parts" % len(parts))
     print("(Isp = EXHAUST_VELOCITY/9.81 = %.0f s; propellant = %.0f kg/m^3)" % (
