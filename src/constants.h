@@ -116,3 +116,22 @@ inline constexpr double kTerrainBand = 3000.0;
    Changes: where the HUD altitude/speed readout flips meaning.
    Where: the W_Hud window (gameui.cpp). */
 inline constexpr double kSurfaceModeAlt = 30e3;
+
+// -- orbital maps ---------------------------------------------------------------
+
+/* Wheel-zoom bounds [m/pixel] for the orbital maps (flight + tracking), one
+   shared pair so the two windows cannot drift apart. The upper bound decides
+   whether a whole planetary system fits on screen at once (10^10.5 spans
+   ~2e13 m across a 600 px map).
+   Changes: only how far the map scrolls in and out -- no physics, no science.
+   Where: the wheel-zoom clamps in the flight map and tracking map windows
+   (gameui.cpp). */
+inline constexpr float kMapMinScale = 100.0f;          // 10^2
+inline constexpr float kMapMaxScale = 3.16227766e10f;  // 10^10.5
+
+/* The map's scale [m/pixel] at startup and after "Reset view". Sits well
+   inside the zoom bounds: enough to see the focus body plus its immediate
+   moons without any scrolling.
+   Changes: what the map looks like before the player touches the wheel.
+   Where: Game::map_scale (game.h), the flight map's "Reset view" (gameui.cpp). */
+inline constexpr float kMapDefaultScale = 6000.0f;

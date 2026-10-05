@@ -10,6 +10,7 @@
 #include "audio.h"
 #include "camera.h"   // Camera, CameraMode
 #include "cli.h"      // GameArgs
+#include "constants.h" // kMapDefaultScale
 #include "display.h"  // Renderer
 #include "flightlog.h"
 #include "job.h"      // JobRunner
@@ -482,7 +483,7 @@ struct Game {
     float music_volume = 0.5f;     // ambient music (background, not the star)
 
     // --- Orbital map state (gameui.cpp draws with them) ---------------------
-    float map_scale = 6000.0f;   // meters per pixel
+    float map_scale = kMapDefaultScale;   // meters per pixel
     int map_plane = 0;           // 0 = equatorial, 1 = ecliptic, 2 = orbital
     // Pan offset from the window center, in pixels (P4 navigation).
     ImVec2 map_pan = ImVec2(0.0f, 0.0f);

@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "calendar.h"    // CalTime
-#include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip)
+#include "constants.h"   // kSurfaceModeAlt (the HUD's surface/orbital flip), map zoom bounds
 #include "version.h"     // VERSION
 #include "physics.h"     // GetAngVelocity
 #include "siminput.h"    // the --sim-press / --sim-mouse queues
@@ -127,9 +127,10 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
 // Every body's orbit (around its own parent) projected into the focus's
 // frame. Each body's ellipse is sampled from its rail's IMMUTABLE epoch
 // state in the parent frame (the cache key is bit-stable) and then
-// rotated/translated into the focus's frame at draw time. The star (no
-// parent) and orbits whose parent SoI is under 10 px are skipped (LOD); so
-// is any orbit whose apoapsis disc misses the view rect.
+// rotated/translated into the focus's frame at draw time. Orbits whose
+// parent SoI is under 10 px are skipped (LOD); so is any orbit whose
+// apoapsis disc misses the view rect. The star has no parent and so no
+// orbit, but it is drawn as the system's anchor -- see below.
 static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  const OrbitMap &map, ImDrawList *dl,
                                  const MapViewRect &view, double map_scale,
@@ -137,6 +138,26 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  ImU32 col_child, ImU32 col_sel, ImU32 ink,
                                  ImU32 soi_col) {
     std::vector<TerrainBody *> &planets = g.sys.bodies;
+    // The star: skipped by the loop below (no parent, no conic), so draw its
+    // disk + label first -- everything else orbits it, and a map without it
+    // has no obvious centre. When the star IS the focus the caller already
+    // draws it at the centre.
+    // Warm rather than the bodies' ink: it is the light source, and at
+    // system scale it is the one marker you want to pick out instantly.
+    if(TerrainBody *sun = g.sys.root; sun && sun != focus && sun->frame) {
+        const glm::dvec3 sun_f = sun->frame->GetPositionRelTo(focus->frame);
+        const ImVec2 sun_px = map.px(sun_f);
+        const float sun_r_px = map.bodyRadiusPx(sun->radius, 4.0f);
+        if(view.hitsDisc(sun_px.x, sun_px.y, sun_r_px)) {
+            const ImU32 col_sun =
+                ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.45f, 1.0f));
+            map.drawBody(dl, sun_f, sun->radius, col_sun, 4.0f);
+            if(view.contains(sun_px.x, sun_px.y, sun_r_px + 16.0f)) {
+                dl->AddText(ImVec2(sun_px.x + 6.0f, sun_px.y - sun_r_px - 12.0f),
+                            ink, sun->name.c_str());
+            }
+        }
+    }
     for(auto *b : planets) {
         Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
         const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
@@ -2231,7 +2252,7 @@ void drawUIMap(Game &g) {
             ImGui::SameLine();
             if(ImGui::Button("Reset view")) {
                 map_pan = ImVec2(0.0f, 0.0f);
-                map_scale = 6000.0f;
+                map_scale = kMapDefaultScale;
             }
         }
 
@@ -2256,11 +2277,8 @@ void drawUIMap(Game &g) {
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
-            // Clamp wheel zoom to the intended range (10^2..10^9.5).
-            const float min_scale = 100.0f;
-            const float max_scale = powf(10.0f, 9.5f);
-            if(new_scale < min_scale) { new_scale = min_scale; }
-            if(new_scale > max_scale) { new_scale = max_scale; }
+            if(new_scale < kMapMinScale) { new_scale = kMapMinScale; }
+            if(new_scale > kMapMaxScale) { new_scale = kMapMaxScale; }
             const ImVec2 mouse = ImGui::GetMousePos();
             const float u = mouse.x - (center_x + map_pan.x);
             const float v = mouse.y - (center_y + map_pan.y);
@@ -2272,7 +2290,7 @@ void drawUIMap(Game &g) {
             map_pan.x += g_io.MouseDelta.x;
             map_pan.y += g_io.MouseDelta.y;
         }
-    
+
         OrbitMap map;
         map.cx = center_x + map_pan.x;
         map.cy = center_y + map_pan.y;
@@ -3713,11 +3731,8 @@ void drawTrackingMap(Game &g) {
             const float factor = (g_io.MouseWheel > 0.0f) ? 0.8f : 1.25f;
             const float old_scale = map_scale;
             float new_scale = old_scale * factor;
-            // Clamp wheel zoom to the intended range (10^2..10^9.5).
-            const float min_scale = 100.0f;
-            const float max_scale = powf(10.0f, 9.5f);
-            if(new_scale < min_scale) { new_scale = min_scale; }
-            if(new_scale > max_scale) { new_scale = max_scale; }
+            if(new_scale < kMapMinScale) { new_scale = kMapMinScale; }
+            if(new_scale > kMapMaxScale) { new_scale = kMapMaxScale; }
             const ImVec2 mouse = ImGui::GetMousePos();
             const float u = mouse.x - (center_x + map_pan.x);
             const float v = mouse.y - (center_y + map_pan.y);
@@ -3729,13 +3744,13 @@ void drawTrackingMap(Game &g) {
             map_pan.x += g_io.MouseDelta.x;
             map_pan.y += g_io.MouseDelta.y;
         }
-    
+
         OrbitMap map;
         map.cx = center_x + map_pan.x;
         map.cy = center_y + map_pan.y;
         map.scale = map_scale;
         map.setPlane(plane_n);
-    
+
         // KSP-inspired palette (P4): your orbit is green, the transfer
         // is blue, other bodies are gray. The focus body, ship dot and
         // labels use a near-black/white ink that contrasts with the
