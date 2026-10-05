@@ -1,0 +1,18 @@
+NAME warp-ladder
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --timeout 12
+ARGS --sim-press 500,50,PERIOD
+ARGS --sim-press 1000,50,PERIOD
+ARGS --sim-press 1500,50,PERIOD
+ARGS --sim-press 2000,50,PERIOD
+ARGS --sim-press 2500,50,PERIOD
+ARGS --sim-press 3000,50,PERIOD
+ARGS --sim-press 3500,50,PERIOD
+ARGS --sim-press 4000,50,PERIOD
+ARGS --sim-press 4500,50,PERIOD
+EXPECT [toast] Time accel: 100000x (rails)
+EXPECT [toast] Time accel: 1000000x (rails)
+EXPECT [toast] Time accel: 10000000x (rails)
+EXPECT [toast] Max warp reached (10000000x)
+FORBID GL_
+FORBID error:

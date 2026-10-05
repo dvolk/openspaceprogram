@@ -1,0 +1,9 @@
+NAME soi-warp-max
+ARGS --system res/systems/old_system.json --startship racer,res/ships/racer.json,Moon,escape
+ARGS --time-accel 10000000
+ARGS --timeout 30
+EXPECT @@@ racer parked on rails around Moon
+EXPECT @@@ racer rails SoI switch: Moon (inertial) -> Eerbon (inertial)
+EXPECT SOI switch: 'racer' now around Eerbon (was Moon), warp -> 1
+FORBID GL_
+FORBID error:

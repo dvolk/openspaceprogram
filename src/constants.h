@@ -17,6 +17,20 @@
    railsSwitchFrames; the loader's SOI nesting lift (system.cpp). */
 inline constexpr double kSoiMargin = 10e3;
 
+/* Rails-warp SoI sampling. A rail state is tested for an SoI crossing only
+   at the END of a step (Vehicle::railsTick), so one step longer than a
+   body's SoI chord carries the ship clean through it unnoticed: at 1e7x a
+   50 Hz tick is 200 ks, so a 25 km/s interplanetary ship covers 4e9 m --
+   about a planet's whole Hill sphere, and every moon's SoI is far smaller.
+   The advance is therefore split until each sub-step covers at most this
+   fraction of the smallest SoI the ship could be handed to (>= 4 samples
+   across its chord), capped at kRailsMaxSubSteps as the cost bound -- past
+   the cap the sampling degrades to what a single step used to give, which
+   is why a tiny moon's SoI stays unresolvable at extreme warp.
+   Where: Vehicle::railsTick (vehicle.cpp), railsSubSteps (orbit.h). */
+inline constexpr double kRailsSoiFrac = 0.25;
+inline constexpr int kRailsMaxSubSteps = 32;
+
 /* Floor [m] for the near-body (rotating-frame) shell above sea level, for
    bodies whose atmosphere is shorter (or absent). 100 km is the historical
    flat shell every shipped body was authored with, so Kerbin and all

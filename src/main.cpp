@@ -811,6 +811,15 @@ int main(int argc, char **argv)
         time_accel = args.initial_time_accel;
     }
 
+    /* The CLI is not the ladder: --time-accel can ask for more than the
+       ceiling the warp keys stop at. Clamp it, so a typo cannot put 1e12 s of
+       sim on the clock in one tick. */
+    if(time_accel > kMaxWarp) {
+        printf("Time accel %dx is above the warp ceiling; clamping to %dx\n",
+               time_accel, kMaxWarp);
+        time_accel = kMaxWarp;
+    }
+
     /* Starting the game directly in rails warp (accel > 10): the active
        ship parks too (works on the pad -- that is the frozen mode), unless
        some ship is not rail-eligible, in which case clamp to the top

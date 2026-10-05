@@ -2740,20 +2740,64 @@ void Vehicle::leaveRails() {
            name.c_str(), frame->body->name.c_str());
 }
 
+/* The distance one rail sub-step may cover [m]: the smallest SoI the ship
+   could be handed to next. soiTarget (above) only tests the frame's DIRECT
+   children, so those are the only boundaries a step can skip -- and the
+   body's own spin frame is not one of them (soiTarget skips same-body
+   children, and its SoI is the near-body shell, which would pin every ship
+   to the sub-step cap). A leaf frame with no children falls back to its own
+   SoI. */
+static double railsSampleScale(const Frame *f) {
+    double best = f->soi;
+    for(const Frame *c : f->children) {
+        if(c->body == f->body) { continue; }
+        if(c->soi < best) { best = c->soi; }
+    }
+    return best;
+}
+
 void Vehicle::railsTick(double t, const double step) {
     if(!onRails || railFrozen) { return; }
-    propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
-                    rail_pos, rail_vel);
-    railsSwitchFrames(t);
+    /* The conic is exact for any step, but the SoI test below only sees the
+       END of one: at 1e7x a 25 km/s ship covers 4e9 m in a tick, more than
+       a planet's whole sphere, so it can be inside an SoI for part of the
+       step and never be sampled there. Split the advance so each sub-step
+       covers at most kRailsSoiFrac of the smallest SoI it could cross;
+       conicVMax is the periapsis speed of the current conic, so the travel
+       bound holds wherever on it the ship sits. kRailsMaxSubSteps caps the
+       cost, which means a tiny SoI (a 17 km moon) stays unresolvable at
+       extreme warp -- it already was, and no sub-step count fixes a body
+       the player cannot react to in 200 ks. A switch mid-loop re-homes the
+       ship, so mu is re-read per sub-step; the split itself is the one
+       planned at the start, and the next tick re-plans. */
+    const int n = railsSubSteps(conicVMax(rail_pos, rail_vel, frame->body->mu),
+                                step, railsSampleScale(frame) * kRailsSoiFrac,
+                                kRailsMaxSubSteps);
+    /* At most one handoff per tick, but always the whole advance: a ship
+       that leaves a frame mid-tick still gets the full step (the rail clock
+       must match g.time), and the next tick re-plans against the new frame.
+       Capping the handoffs matters because kSoiMargin (10 km) of hysteresis
+       is far narrower than a high-warp sub-step, so an escape that the
+       patched conic hands to the parent and then hands straight back --
+       solar-orbit recapture, real enough near a Hill boundary -- would
+       otherwise flap frames several times inside one tick. */
+    bool switched = false;
+    for(int i = 0; i < n; i++) {
+        propagateKepler(rail_pos, rail_vel, frame->body->mu, step / n,
+                        rail_pos, rail_vel);
+        if(!switched) { switched = railsSwitchFrames(t); }
+    }
     writeRailPose();
 }
 
-void Vehicle::railsSwitchFrames(double t) {
+bool Vehicle::railsSwitchFrames(double t) {
     if(Frame *target = soiTarget(rail_pos, true)) {
         printf("@@@ %s rails SoI switch: %s -> %s\n",
                name.c_str(), frame->name.c_str(), target->name.c_str());
         moveToRailFrame(target, t);
+        return true;
     }
+    return false;
 }
 
 void Vehicle::moveToRailFrame(Frame *newFrame, double t) {

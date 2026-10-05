@@ -743,11 +743,14 @@ public:
 
     /* Per-tick rail advance: propagate the conic, check SOI boundaries,
        refresh the parked transforms. A frozen (grounded) ship has nothing
-       to propagate. */
+       to propagate. At high warp the advance is sub-stepped so a boundary
+       crossing cannot be skipped (kRailsSoiFrac, constants.h), but at most
+       ONE handoff happens per tick -- see railsTick. */
     void railsTick(double t, const double step);
 
-    /* SOI bookkeeping for a railed ship (the switchFrames() analog). */
-    void railsSwitchFrames(double t);
+    /* SOI bookkeeping for a railed ship (the switchFrames() analog).
+       Returns true if the ship changed frames. */
+    bool railsSwitchFrames(double t);
 
     /* Re-anchor the rail state on another frame and re-home it (setSoi). */
     void moveToRailFrame(Frame *newFrame, double t);

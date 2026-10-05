@@ -39,6 +39,13 @@ struct Texture;
 // the Bullet world is not stepped. 11 == first accel above 10.
 static const int kRailsWarp = 11;
 
+/* Top of the decimal warp ladder (1, 10, then rails at 100 ... kMaxWarp),
+   i.e. the last WarpUp that is allowed. 1e7x is 200 ks per 50 Hz tick --
+   2.3 days of sim per frame, so a ~200 day interplanetary coast is about
+   two minutes of wall clock instead of half an hour. What that costs is
+   SoI sampling, not accuracy: see kRailsSoiFrac (constants.h). */
+static const int kMaxWarp = 10000000;
+
 // Toast lifetimes are wall-clock (sim time is paused or warped).
 static const double kToastLife = 3.0;
 static const int kToastVisible = 3;

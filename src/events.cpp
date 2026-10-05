@@ -447,8 +447,8 @@ void poll_events(Game &g) {
                 // Crossing into rails warp (>= kRailsWarp) requires every
                 // ship to be rail-eligible; otherwise the step is refused.
                 const int next = (g.time_accel == 0) ? 1 : g.time_accel * 10;
-                if(next > 100000) {
-                    g.toast("Max warp reached");
+                if(next > kMaxWarp) {
+                    g.toast("Max warp reached (%dx)", kMaxWarp);
                 } else if(next < kRailsWarp || g.enter_rails_warp()) {
                     // enter_rails_warp toasted the refusal reason itself.
                     g.time_accel = next;
