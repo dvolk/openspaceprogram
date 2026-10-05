@@ -2514,6 +2514,34 @@ glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {
     return forient * partPos(part) + fpos;
 }
 
+/* --- root-frame state helpers, shared by the two frame-switch guards -------
+   A state (pos, vel) expressed in `f`, mapped to universe-root axes. The
+   stasis term is what makes a rotating frame's stored velocity the
+   frame-coordinate velocity rather than the inertial one, so it must appear
+   on BOTH sides of a switch or the inertial velocity is wrong by 2*stasis. */
+static glm::dvec3 rootPosIn(Frame *f, const glm::dvec3 &pos) {
+    return f->root_orient * pos + f->root_pos;
+}
+
+static glm::dvec3 rootVelIn(Frame *f, const glm::dvec3 &pos, const glm::dvec3 &vel) {
+    return f->root_orient * (vel + f->GetStasisVelocity(pos)) + f->root_vel;
+}
+
+/* Squared Frobenius distance between two rotations: for a small relative
+   rotation of theta radians it is 2*theta^2, so 1e-20 is ~1e-10 rad. Measured
+   headroom over real round-off is ~2.5e10x, which is what you expect given the
+   comparisons below are identities (see moveToRailFrame). */
+static double rotDist2(const glm::dmat3 &a, const glm::dmat3 &b) {
+    double d2 = 0.0;
+    for(int c = 0; c < 3; c++) {
+        for(int r = 0; r < 3; r++) {
+            const double d = a[c][r] - b[c][r];
+            d2 += d * d;
+        }
+    }
+    return d2;
+}
+
 void Vehicle::moveToFrame(Frame *newFrame, double t) {
     // One rigid body, so a frame change is one pose write and one
     // velocity write; the transform is rigid, so the COM maps like any
@@ -2525,23 +2553,69 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
 
     glm::dvec3 sPos; glm::dmat3 sRot;
     frameS(sPos, sRot);
+
+    /* Both frames must be clocked at the same instant -- the invariant
+       moveToRailFrame documents at length. What must NOT be asserted here is
+       `t == frame->rail_time`: on this path t is deliberately one tick AHEAD
+       of the tree (updateProximity runs switchFrames at tick.cpp:169, before
+       UpdateOrbitRails at 171, so a woken ship is re-expressed against the
+       same transforms its live Bullet pose used), and the t threaded into
+       setSoi is a journal timestamp for flog.observe, not an epoch. Asserting
+       it would crash ordinary proximity play. */
+    assert(frame->rail_time == newFrame->rail_time);
+
+    const glm::dvec3 p0 = rootPosIn(frame, oldCom);
+    const glm::dvec3 v0 = rootVelIn(frame, oldCom, oldVel);
+    const glm::dmat3 att0 = frame->root_orient * sRot;
+
     placeShip(forient * sPos + fpos, forient * sRot);
 
-    // The stored velocity is the frame-coordinate velocity, so a ship's
-    // inertial velocity is R*(v + stasis(p)) + V. The OLD frame's stasis
-    // term is added here and the NEW frame's SUBTRACTED below, or the
-    // ship's inertial velocity is wrong by 2*stasis.
+    /* The stored velocity is the frame-coordinate velocity, so a ship's
+       inertial velocity is R*(v + stasis(p)) + V. The OLD frame's stasis term
+       is added here and the NEW frame's SUBTRACTED below, or the ship's
+       inertial velocity is wrong by 2*stasis.
+       Both halves gate together on purpose: with the add gated and the
+       subtract not, a same-frame call would leave the stored velocity short by
+       stasis. No caller does one today (all three check frame != newFrame
+       first), but the asymmetry is a trap, and the continuity asserts below
+       are only identities when the two halves match. */
+    const bool reanchor = (frame != newFrame);
     glm::dvec3 vel = oldVel;
-    if(frame != newFrame) { vel += frame->GetStasisVelocity(oldCom); }
+    if(reanchor) { vel += frame->GetStasisVelocity(oldCom); }
     vel = forient * vel + frame->GetVelocityRelTo(newFrame);
     const glm::dvec3 newCom = forient * oldCom + fpos;
-    const glm::dvec3 newVel = vel - newFrame->GetStasisVelocity(newCom);
+    const glm::dvec3 newVel = reanchor ? vel - newFrame->GetStasisVelocity(newCom)
+                                       : vel;
 
+    /* Logged before the asserts: the com/vel detail is exactly what you want
+       in the log when one of them fires. */
     printf("@@@ %s frame %s -> %s: com (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)"
            " vel (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)\n",
            name.c_str(), frame->name.c_str(), newFrame->name.c_str(),
            oldCom.x, oldCom.y, oldCom.z, newCom.x, newCom.y, newCom.z,
            oldVel.x, oldVel.y, oldVel.z, newVel.x, newVel.y, newVel.z);
+
+    /* Flushed before the asserts: stdout is block-buffered when redirected
+       and abort() never flushes, so without this the com/vel detail --
+       exactly what you want when one of these fires -- is lost from the log. */
+    fflush(stdout);
+    /* Continuity tripwires on THIS transform -- algebraic identities exactly
+       as in moveToRailFrame, so they fire on an edit to the arithmetic above
+       or on a root_orient that has drifted from orthonormal, and on nothing
+       else. That is still the class that matters here: the stasis terms are
+       the hazard, and dropping either one breaks these while the epoch assert
+       above stays silent. Verified: dropping the old-frame stasis term trips
+       the velocity check on the prox-fly scenario (exit 134).
+       Tolerances are ABSOLUTE, not relative: get_center_of_mass() reads
+       Bullet's COM while placeShip re-places from frameS()'s S-origin, and
+       kComRebuildTol (vehicle.h) already permits 0.01 m between those, so a
+       relative bound would fire on legitimate play. Round-off floor is ~1e-9 m
+       at the largest shipped radius (7.1e12 m) and ~1e-10 m/s on velocity, so
+       these sit 6-7 orders clear while a 2*stasis error (Earth's spin at the
+       surface, ~930 m/s) misses by nine. */
+    assert(glm::length(rootPosIn(newFrame, newCom) - p0) < 1e-2);
+    assert(glm::length(rootVelIn(newFrame, newCom, newVel) - v0) < 1e-6);
+    assert(rotDist2(att0, newFrame->root_orient * (forient * sRot)) < 1e-20);
 
     /* after placeShip: proceedToTransform zeroes both velocities */
     SetVelocity(hull, newVel);
@@ -2820,25 +2894,9 @@ void Vehicle::railsHandoff(Frame *target, double t) {
     moveToRailFrame(target, t);
 }
 
-/* Squared Frobenius distance between two rotations: for a small relative
-   rotation of theta radians it is 2*theta^2, so 1e-20 is ~1e-10 rad. Measured
-   headroom over real round-off is ~2.5e10x, which is what you expect given the
-   comparison is an identity (see moveToRailFrame). */
-static double rotDist2(const glm::dmat3 &a, const glm::dmat3 &b) {
-    double d2 = 0.0;
-    for(int c = 0; c < 3; c++) {
-        for(int r = 0; r < 3; r++) {
-            const double d = a[c][r] - b[c][r];
-            d2 += d * d;
-        }
-    }
-    return d2;
-}
-
 void Vehicle::railRootState(glm::dvec3 &p, glm::dvec3 &v) const {
-    p = frame->root_orient * rail_pos + frame->root_pos;
-    v = frame->root_orient * (rail_vel + frame->GetStasisVelocity(rail_pos))
-      + frame->root_vel;
+    p = rootPosIn(frame, rail_pos);
+    v = rootVelIn(frame, rail_pos, rail_vel);
 }
 
 void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
