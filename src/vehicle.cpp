@@ -2590,10 +2590,11 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     /* Logged before the asserts: the com/vel detail is exactly what you want
        in the log when one of them fires. */
     printf("@@@ %s frame %s -> %s: com (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)"
-           " vel (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)\n",
+           " vel (%.0f %.0f %.0f) -> (%.0f %.0f %.0f) |fpos| %.3g\n",
            name.c_str(), frame->name.c_str(), newFrame->name.c_str(),
            oldCom.x, oldCom.y, oldCom.z, newCom.x, newCom.y, newCom.z,
-           oldVel.x, oldVel.y, oldVel.z, newVel.x, newVel.y, newVel.z);
+           oldVel.x, oldVel.y, oldVel.z, newVel.x, newVel.y, newVel.z,
+           glm::length(fpos));
 
     /* Flushed before the asserts: stdout is block-buffered when redirected
        and abort() never flushes, so without this the com/vel detail --
@@ -2618,6 +2619,19 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
        read it as (oldCom - sRot*pOrigin, ...), so the COM -- NOT the S-origin
        -- is what is invariant across the switch. (A first version compared the
        S-origin and fired in 8 cases: placeShip's argument is not the hull COM.)
+       Proven: dropping the pOrigin correction from placeShip trips it (134).
+       NOT proven on the frame-offset term, and the reason is a coverage hole
+       rather than a weak assert: every live switch in the 134-case battery is
+       same-body, so fpos is not merely small but EXACTLY zero in all 26 of
+       them (measured by logging |fpos| at every call; run
+       tmp/e2e/runs/20261005T230431Z):
+         15 Kerbin (rot) -> Kerbin (inertial),  8 Kerbin (inertial) -> Kerbin (rot)
+          1 each rot -> inertial for Phobos, Mun, Jool
+       Because fpos is exactly zero in all of them, dropping it from the
+       placeShip argument is a no-op on every shipped case -- the guard cannot
+       see a frame-offset bug here. No shipped case drives a LIVE cross-body
+       SoI crossing: cross-body transitions go through moveToRailFrame on the
+       rails path, and the prox-fly ones are spawn-time switches (#161).
        Tolerances are measured, not guessed: over 53 switches (a targeted e2e
        subset plus a 20-body outer-system sweep) the residuals are 5.1e-11 m,
        4.7e-13 m/s and 1.2e-31 rad^2, with the position residual EXACTLY zero
