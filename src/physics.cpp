@@ -460,8 +460,9 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
     // Bullet's quaternion constructor is (x, y, z, w); GLM components are by name.
     t.setRotation(btQuaternion(gq.x, gq.y, gq.z, gq.w));
 
-    // proceedToTransform zeroes both velocities -- right for rails
-    // handoffs, a trap for live bodies.
+    // proceedToTransform is ONLY setCenterOfMassTransform (btRigidBody.cpp
+    // 221-224): it teleports the pose and leaves BOTH velocities alone.
+    // Callers that want them cleared must do it themselves.
     getRigidBody(b)->proceedToTransform(t);
 }
 

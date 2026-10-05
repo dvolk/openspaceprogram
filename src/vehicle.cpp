@@ -2604,20 +2604,55 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
        or on a root_orient that has drifted from orthonormal, and on nothing
        else. That is still the class that matters here: the stasis terms are
        the hazard, and dropping either one breaks these while the epoch assert
-       above stays silent. Verified: dropping the old-frame stasis term trips
-       the velocity check on the prox-fly scenario (exit 134).
-       Tolerances are ABSOLUTE, not relative: get_center_of_mass() reads
-       Bullet's COM while placeShip re-places from frameS()'s S-origin, and
-       kComRebuildTol (vehicle.h) already permits 0.01 m between those, so a
-       relative bound would fire on legitimate play. Round-off floor is ~1e-9 m
-       at the largest shipped radius (7.1e12 m) and ~1e-10 m/s on velocity, so
-       these sit 6-7 orders clear while a 2*stasis error (Earth's spin at the
-       surface, ~930 m/s) misses by nine. */
-    assert(glm::length(rootPosIn(newFrame, newCom) - p0) < 1e-2);
+       above stays silent. Verified in both directions: dropping the OLD-frame
+       stasis add, and dropping the NEW-frame subtract, each trips the velocity
+       check. The latter fires on Kerbin (inertial) -> Kerbin (rotational),
+       which is the direction the battery actually drives (8 such switches
+       across 8 cases); the prox-fly falsification is a spawn-time switch.
+       The second pair covers the PLACEMENT, not just the intent: newCom is
+       derived from oldCom, so the first pair cannot see a wrong placeShip
+       argument, a broken frameS or a stale `principal` teleporting the ship.
+       It compares the hull's actual transform after placeShip against the
+       mapped pre-switch state. placeShip(sPos, sRot) writes the hull transform
+       as (sPos + sRot*pOrigin, sRot*pBasis) (vehicle.cpp:471-475) while frameS
+       read it as (oldCom - sRot*pOrigin, ...), so the COM -- NOT the S-origin
+       -- is what is invariant across the switch. (A first version compared the
+       S-origin and fired in 8 cases: placeShip's argument is not the hull COM.)
+       Tolerances are measured, not guessed: over 53 switches (a targeted e2e
+       subset plus a 20-body outer-system sweep) the residuals are 5.1e-11 m,
+       4.7e-13 m/s and 1.2e-31 rad^2, with the position residual EXACTLY zero
+       in 48 of 53 -- `(F.root_pos - N.root_pos) + N.root_pos` is exact under
+       Sterbenz, and when N.root_orient is identity both sides evaluate the
+       same expression. Non-zero residuals appear only switching INTO a rotating
+       frame, and scale with |com| in the local frame, not with the root
+       radius. Hence 1e-6 m / 1e-6 m/s, ~5 orders clear. (An earlier version
+       justified an absolute 1e-2 m bound with kComRebuildTol -- wrong twice
+       over: nothing rebuilds the compound between the COM read and placeShip,
+       so that gap cannot arise here, and a 1e-10 RELATIVE bound would be ~70x
+       LOOSER than 1e-2 absolute out at Pluto.) */
+    assert(glm::length(rootPosIn(newFrame, newCom) - p0) < 1e-6);
     assert(glm::length(rootVelIn(newFrame, newCom, newVel) - v0) < 1e-6);
     assert(rotDist2(att0, newFrame->root_orient * (forient * sRot)) < 1e-20);
+    {
+        glm::dvec3 pOrigin; glm::dmat3 pBasis;
+        fromBt(principal, pOrigin, pBasis);
+        glm::dvec3 hullPos; glm::dmat3 hullRot;
+        fromBt(hull->btBody->getCenterOfMassTransform(), hullPos, hullRot);
+        assert(glm::length(rootPosIn(newFrame, hullPos) - p0) < 1e-6);
+        assert(rotDist2(frame->root_orient * (sRot * pBasis),
+                        newFrame->root_orient * hullRot) < 1e-20);
+    }
 
-    /* after placeShip: proceedToTransform zeroes both velocities */
+    /* Angular velocity is deliberately NOT asserted here: it is not
+       re-expressed by this switch, and proceedToTransform does not zero it
+       (btRigidBody.cpp:221-224 is only setCenterOfMassTransform), so a ship's
+       spin crosses a frame boundary untransformed and without the frame's own
+       omega -- the rotational analogue of the 2*stasis error, and live. An
+       ang-velocity continuity assert would fire immediately; it belongs with
+       the fix, not before it. */
+
+    /* placeShip teleports the pose; it does NOT clear velocities (see above),
+       so the live velocity is written back explicitly. */
     SetVelocity(hull, newVel);
 
     setSoi(newFrame, t);

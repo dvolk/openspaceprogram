@@ -67,8 +67,9 @@ glm::dvec3 getInertiaDiag(Body *body);
 void SetVelocity(Body *body, glm::dvec3 vel);
 void SetAngVelocity(Body *body, glm::dvec3 vel);
 void SetFriction(Body *body, double f);
-/* Teleports pose AND zeroes both velocities (proceedToTransform) --
-   right for rails handoffs, a trap for live bodies. */
+/* Teleports pose ONLY: proceedToTransform is just setCenterOfMassTransform,
+   so both linear and angular velocity survive the teleport untouched. Clear
+   them explicitly if that is what you want. */
 void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);
 
 glm::dvec3 GetPosition(Body *body);
