@@ -37,7 +37,15 @@ VabAsset &vabAsset(const PartDef *def) {
     if(m != nullptr && m->vs != nullptr && m->num_vertices >= 3) {
         a.hull = new btConvexHullShape(m->vs, (int)m->num_vertices,
                                        3 * sizeof(double));
-        a.hull->setMargin(0.1);
+        /* Zero, and explicitly so: Bullet's default convex margin is 0.04
+           (btCollisionMargin.h) and its convex raycast reports the hit on
+           the shape INFLATED by that margin. A margined pick point floats a
+           surface-attached part off the parent's skin by exactly the margin,
+           and these hulls only ever get raycast -- nothing collides against
+           them, so the skin buys nothing here. Small parts (the 0.1 m
+           barometer) stay pickable by zooming in rather than by padding the
+           pick target. */
+        a.hull->setMargin(0.0);
         a.obj = new btCollisionObject();
         a.obj->setCollisionShape(a.hull);
     }
