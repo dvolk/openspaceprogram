@@ -105,6 +105,41 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
     }
 
+    // --- debris belts (JSON "belts") --------------------------------------
+    // Optional array of named annuli orbiting the star, drawn on the orbital
+    // maps. Same entry shape as a body's "surface.rings" band. Strict unlike
+    // rings (which skip malformed bands): these are few, hand-authored, and a
+    // dropped belt is invisible in-game, so a typo must fail the load.
+    if(doc.contains("belts")) {
+        const nlohmann::json &bl = doc["belts"];
+        if(!bl.is_array()) {
+            throw std::runtime_error(std::string("system: \"belts\" in ") + path
+                    + " must be an array of {\"name\", \"inner\", \"outer\"}");
+        }
+        for(const nlohmann::json &bv : bl) {
+            if(!bv.is_object() || !bv.contains("name")
+               || !bv["name"].is_string() || bv["name"].get<std::string>().empty()) {
+                throw std::runtime_error(std::string("system: \"belts\" entry in ")
+                        + path + " needs a non-empty \"name\"");
+            }
+            BeltParams bp;
+            bp.name = bv["name"].get<std::string>();
+            if(!bv.contains("inner") || !bv["inner"].is_number()
+               || !bv.contains("outer") || !bv["outer"].is_number()) {
+                throw std::runtime_error("system: belt '" + bp.name
+                        + "' needs numeric \"inner\" and \"outer\" [m]");
+            }
+            bp.inner = bv["inner"].get<double>();
+            bp.outer = bv["outer"].get<double>();
+            if(bp.inner <= 0.0 || bp.outer <= bp.inner) {
+                throw std::runtime_error("system: belt '" + bp.name + "' needs"
+                        " 0 < inner < outer (got " + std::to_string(bp.inner)
+                        + ", " + std::to_string(bp.outer) + ")");
+            }
+            sys.belts.push_back(bp);
+        }
+    }
+
     // Rail azimuth a -> R_Y(-a): maps local +X to azimuth +a = atan2(z, x)
     // about the parent inertial frame's +Y. Same convention as lon_asc_node
     // in the inertial orient below.
@@ -637,9 +672,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // Recompute root-relative frame values before the first render.
     sys.root->frame->UpdateOrbitRails(0.0);
 
-    printf("Loaded system '%s': %zu bodies (home=%s)\n",
+    printf("Loaded system '%s': %zu bodies (home=%s, belts=%zu)\n",
            path, sys.bodies.size(),
-           sys.home ? sys.home->name.c_str() : "(none)");
+           sys.home ? sys.home->name.c_str() : "(none)", sys.belts.size());
 
     cleanup.commit = true;   // build complete: the caller now owns the bodies
     return sys;

@@ -10,6 +10,18 @@
     "+Z": "res/textures/skybox.png",
     "-Z": "res/textures/skybox.png"
   },
+  "belts": [
+    {
+      "name": "asteroid belt",
+      "inner": 314160000000.0,
+      "outer": 493680000000.0
+    },
+    {
+      "name": "Kuiper belt",
+      "inner": 4488000000000.0,
+      "outer": 7480000000000.0
+    }
+  ],
   "bodies": [
     {
       "name": "Sun",

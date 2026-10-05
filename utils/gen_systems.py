@@ -67,7 +67,9 @@ WIKI_ORBITS = load_wiki_orbits(os.path.join(HERE, "ksp_bodies.csv"))
 # Eerbon: legacy home + moon. Values from the pre-refactor setup_frames();
 # seed 0 keeps the original unseeded terrain. Deliberately authored WITHOUT
 # spin_phase0/tilt_azimuth (#141): a frozen legacy fixture, not a showcase
-# for the new fields -- its spin stays node-locked by design.
+# for the new fields -- its spin stays node-locked by design. Also without
+# "belts", which is why tests/test_belts.cpp uses it as the base for the
+# optional-field and malformed-belt pins.
 eerbon = {
     "home": "Eerbon",
     "soi_law": "patched_conic",
@@ -399,6 +401,22 @@ ksp = {
         "+Y": "res/textures/skybox.png", "-Y": "res/textures/skybox.png",
         "+Z": "res/textures/skybox.png", "-Z": "res/textures/skybox.png",
     },
+    # Debris belts (root "belts", src/system.cpp): named annuli around Kerbol,
+    # drawn on the Tracking map. Same entry shape as a body's surface.rings
+    # band. Radii [m] from Kerbol, placed against THIS system's planets rather
+    # than scaled from the real Solar System's AU numbers -- Kerbol's system is
+    # far more compressed than ours, so a naive AU scaling lands the Kuiper
+    # band 4.5x beyond Eeloo, where nothing is.
+    #   asteroid belt: the Duna..Dres gap (Duna apoapsis 21.8 Gm, Dres
+    #     periapsis 34.9 Gm), so it sits between the last rocky planet and the
+    #     belt dwarf rather than swallowing Dres.
+    #   Kuiper belt: from just outside Jool's apoapsis (72.2 Gm) to past
+    #     Eeloo's (113.6 Gm) -- Eeloo's 66.7..113.6 Gm orbit crosses it, the
+    #     way Pluto crosses the classical Kuiper belt.
+    "belts": [
+        {"name": "asteroid belt", "inner": 2.4e10, "outer": 3.3e10},
+        {"name": "Kuiper belt", "inner": 7.2e10, "outer": 1.4e11},
+    ],
     "bodies": [
         ksp_body(*row) for row in K
     ],
@@ -464,6 +482,8 @@ def check(obj, path):
         out.append(f"home: committed={committed.get('home')!r} generated={obj.get('home')!r}")
     if committed.get("skybox") != obj.get("skybox"):
         out.append(f"skybox: committed={committed.get('skybox')!r} generated={obj.get('skybox')!r}")
+    if committed.get("belts") != obj.get("belts"):
+        out.append(f"belts: committed={committed.get('belts')!r} generated={obj.get('belts')!r}")
     cb = {x["name"]: x for x in committed.get("bodies", [])}
     gb = {x["name"]: x for x in obj.get("bodies", [])}
     for name in cb:

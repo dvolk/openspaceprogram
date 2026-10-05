@@ -221,6 +221,87 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
 // Format a sim-clock time (s) on the home body's calendar lives in
 // calendar.h (fmt_cal_time / fmt_cal_compact / fmt_cal_duration).
 
+// The debris belts (JSON root "belts", parsed in src/system.cpp) as flat
+// annuli, drawn on the Tracking map only. Geometry is data; the colours are
+// still code-side, cycling by array position -- rock warm, ice cool, both
+// low-alpha so a band reads as a populated region rather than another orbit.
+static const ImVec4 kBeltCols[] = {
+    ImVec4(0.62f, 0.55f, 0.45f, 0.16f),
+    ImVec4(0.55f, 0.63f, 0.75f, 0.12f),
+};
+constexpr size_t kBeltColsN = sizeof(kBeltCols) / sizeof(kBeltCols[0]);
+
+// A belt is a FLAT ring in the star's equatorial plane, so it has to be
+// sampled in world space and projected: OrbitMap::drawRing draws a
+// screen-space circle, which is only correct for spheres (the SOI rings).
+// Sampling is what makes the band foreshorten when the map shows a plane
+// other than the star's equator (Ecliptic / Orbital) instead of always
+// reading top-down. The plane is assumed, not authored: a belt that needed
+// its own inclination would need a field for it here.
+static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
+                            ImDrawList *dl, const MapViewRect &view,
+                            double map_scale) {
+    if(g.sys.belts.empty()) { return; }
+    TerrainBody *sun = g.sys.root;
+    if(!sun || !sun->frame) { return; }
+    const glm::dvec3 sun_f = sun->frame->GetPositionRelTo(focus->frame);
+    // The belt plane's normal, in the focus's inertial frame (the same space
+    // map.setPlane() and the positions use): the star's pole. spin_axis is
+    // +Y in the body frame and the spin is about it, so the rotating frame's
+    // orientation gives the pole at any spin angle.
+    Frame *srf = sun->frame->getRotFrame();
+    const glm::dvec3 n =
+        glm::normalize(srf->GetOrientRelTo(focus->frame) * srf->spin_axis);
+    // Any orthonormal pair spanning the belt plane.
+    const glm::dvec3 ref = (std::abs(n.y) < 0.9) ? glm::dvec3(0.0, 1.0, 0.0)
+                                                 : glm::dvec3(1.0, 0.0, 0.0);
+    const glm::dvec3 u = glm::normalize(glm::cross(n, ref));
+    const glm::dvec3 v = glm::cross(n, u);
+    constexpr int N = 96;
+    // Reused across bands and frames, like OrbitMap::drawOrbit's buffer.
+    thread_local std::vector<ImVec2> pi, po;
+    pi.reserve(N); po.reserve(N);
+    for(size_t bi = 0; bi < g.sys.belts.size(); bi++) {
+        const BeltParams &band = g.sys.belts[bi];
+        const ImVec4 &col = kBeltCols[bi % kBeltColsN];
+        if((band.outer - band.inner) / map_scale < 1.0) { continue; }  // sub-pixel
+        pi.clear(); po.clear();
+        float l = 1e30f, t = 1e30f, r = -1e30f, b = -1e30f;
+        for(int i = 0; i < N; i++) {
+            const double a = 2.0 * std::numbers::pi * (double)i / (double)N;
+            const glm::dvec3 dir = std::cos(a) * u + std::sin(a) * v;
+            const glm::dvec2 qi = map.project(sun_f + band.inner * dir);
+            const glm::dvec2 qo = map.project(sun_f + band.outer * dir);
+            pi.push_back(ImVec2((float)qi.x, (float)qi.y));
+            po.push_back(ImVec2((float)qo.x, (float)qo.y));
+            // The outer loop's bbox bounds the whole annulus.
+            l = std::min(l, (float)qo.x); r = std::max(r, (float)qo.x);
+            t = std::min(t, (float)qo.y); b = std::max(b, (float)qo.y);
+        }
+        if(r < view.l || l > view.r || b < view.t || t > view.b) { continue; }
+        // Fill: a quad list between the two projected loops. ImGui has no
+        // annulus primitive, and stroking the mid-loop at a constant
+        // thickness would ignore the foreshortening we are drawing for.
+        const ImU32 fill = ImGui::GetColorU32(col);
+        const ImVec2 uv(0.0f, 0.0f);
+        dl->PrimReserve(6 * N, 6 * N);
+        for(int i = 0; i < N; i++) {
+            const int j = (i + 1) % N;
+            dl->PrimVtx(pi[i], uv, fill);
+            dl->PrimVtx(po[j], uv, fill);
+            dl->PrimVtx(pi[j], uv, fill);
+            dl->PrimVtx(pi[i], uv, fill);
+            dl->PrimVtx(po[i], uv, fill);
+            dl->PrimVtx(po[j], uv, fill);
+        }
+        ImVec4 rim = col;
+        rim.w = std::min(1.0f, rim.w * 2.8f);
+        const ImU32 rim_col = ImGui::GetColorU32(rim);
+        dl->AddPolyline(pi.data(), N, rim_col, 1.0f, ImDrawFlags_Closed);
+        dl->AddPolyline(po.data(), N, rim_col, 1.0f, ImDrawFlags_Closed);
+    }
+}
+
 // --- Telemetry window: a 2x2 grid of plots, each with a dropdown to pick
 // which time series to show.
 struct TeleSeriesDef { const char *name; const char *yaxis; };
@@ -3798,6 +3879,9 @@ void drawTrackingMap(Game &g) {
         // ship's orbit, so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
+            // The belts go down first: they are regions, so orbits, bodies
+            // and labels should all read through them.
+            drawDebrisBelts(g, focus, map, dl, view, map_scale);
             drawSystemBodyOrbits(g, focus, map, dl, view, map_scale,
                                  sel_body, col_child, col_sel, ink,
                                  soi_col);

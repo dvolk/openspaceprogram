@@ -13,6 +13,17 @@
 #include "shader.h"
 #include "job.h"
 
+// One debris belt (an entry in the root "belts" array): a named annulus
+// orbiting the STAR, inner/outer [m] from it. Deliberately the same shape as
+// a body's "surface.rings" band (terragen.h) -- a belt is that object with a
+// different centre -- so name/inner/outer is one vocabulary. The name is
+// documentation, as RingParams.name is; the array's order is the draw order.
+struct BeltParams {
+    std::string name;
+    double inner = 0.0;   // [m] from the star
+    double outer = 0.0;   // [m] from the star
+};
+
 struct System {
     std::vector<TerrainBody *> bodies;
     TerrainBody *root;      // the star (frame-tree root)
@@ -23,6 +34,11 @@ struct System {
     // is the loader's, not the data's. Required: every shipped system names
     // its own sky (see src/system.cpp).
     std::vector<std::string> skybox_faces;
+
+    // Debris belts from the root "belts" array, drawn on the orbital maps
+    // (gameui.cpp). Optional: absent means no bands. Belts orbit the star's
+    // equator; a body's own annuli are surface.rings, not this.
+    std::vector<BeltParams> belts;
 
     TerrainBody *find(const std::string &name) {
         for(auto&& b : bodies) {

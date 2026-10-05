@@ -803,6 +803,14 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
     doc = {'home': 'Earth', 'soi_law': 'hill', 'epoch_year': 2000,
            'skybox': {k: 'res/textures/skybox.png'
                       for k in ('+X', '-X', '+Y', '-Y', '+Z', '-Z')},
+           # Debris belts (root "belts", src/system.cpp): named annuli around
+           # the Sun, drawn on the Tracking map. Same entry shape as a body's
+           # surface.rings band. The real main belt (2.1..3.3 AU) and Kuiper
+           # belt (30..50 AU); the name is documentation, the array order is
+           # draw order, and the map assumes they lie in the Sun's equatorial
+           # plane.
+           'belts': [{'name': 'asteroid belt', 'inner': AU * 2.1, 'outer': AU * 3.3},
+                     {'name': 'Kuiper belt', 'inner': AU * 30.0, 'outer': AU * 50.0}],
            'bodies': bodies}
     stamp_science_mults(doc)
     if dry:

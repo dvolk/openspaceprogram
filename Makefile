@@ -269,6 +269,10 @@ $(TESTDIR)/test_retrograde: $(TESTDIR)/obj/test_retrograde.o $(TESTDIR)/obj/syst
 $(TESTDIR)/test_skybox: $(TESTDIR)/obj/test_skybox.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
+# The root "belts" array: annulus data for the orbital maps (src/system.cpp).
+$(TESTDIR)/test_belts: $(TESTDIR)/obj/test_belts.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
 # Local TestCrew : Vehicle stands in for Kerbal (eva.cpp is too heavy).
 $(TESTDIR)/test_contain: $(TESTDIR)/obj/test_contain.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
@@ -370,7 +374,8 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_flightlog test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
-        test_pick test_settings test_keys test_cli test_fmt test_retrograde test_skybox
+        test_pick test_settings test_keys test_cli test_fmt test_retrograde test_skybox \
+        test_belts
 
 # Short-name aliases: `make test_fuel` builds + runs one test (from the repo
 # root -- some need res/). `make test` runs the whole set.
@@ -422,6 +427,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_fmt
 	$(TESTDIR)/test_retrograde
 	$(TESTDIR)/test_skybox
+	$(TESTDIR)/test_belts
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
 # invariant + committed science-field invariants on every shipped system +
