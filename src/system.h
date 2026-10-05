@@ -18,6 +18,12 @@ struct System {
     TerrainBody *root;      // the star (frame-tree root)
     TerrainBody *home;      // calendar + default spawn body (JSON "home")
 
+    // The star field: six cubemap face names in GL order (+X,-X,+Y,-Y,+Z,-Z),
+    // from the JSON "skybox" object -- which keys them BY axis, so the order
+    // is the loader's, not the data's. Required: every shipped system names
+    // its own sky (see src/system.cpp).
+    std::vector<std::string> skybox_faces;
+
     TerrainBody *find(const std::string &name) {
         for(auto&& b : bodies) {
             if(b->name == name) { return b; }

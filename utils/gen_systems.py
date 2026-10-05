@@ -72,6 +72,11 @@ eerbon = {
     "home": "Eerbon",
     "soi_law": "patched_conic",
     "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
+    "skybox": {   # six cubemap faces, keyed by axis (src/system.cpp)
+        "+X": "res/textures/skybox.png", "-X": "res/textures/skybox.png",
+        "+Y": "res/textures/skybox.png", "-Y": "res/textures/skybox.png",
+        "+Z": "res/textures/skybox.png", "-Z": "res/textures/skybox.png",
+    },
     "bodies": [
         {
             "name": "Sun",
@@ -389,6 +394,11 @@ ksp = {
     "home": "Kerbin",
     "soi_law": "patched_conic",
     "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
+    "skybox": {   # six cubemap faces, keyed by axis (src/system.cpp)
+        "+X": "res/textures/skybox.png", "-X": "res/textures/skybox.png",
+        "+Y": "res/textures/skybox.png", "-Y": "res/textures/skybox.png",
+        "+Z": "res/textures/skybox.png", "-Z": "res/textures/skybox.png",
+    },
     "bodies": [
         ksp_body(*row) for row in K
     ],
@@ -452,6 +462,8 @@ def check(obj, path):
     out = []
     if committed.get("home") != obj.get("home"):
         out.append(f"home: committed={committed.get('home')!r} generated={obj.get('home')!r}")
+    if committed.get("skybox") != obj.get("skybox"):
+        out.append(f"skybox: committed={committed.get('skybox')!r} generated={obj.get('skybox')!r}")
     cb = {x["name"]: x for x in committed.get("bodies", [])}
     gb = {x["name"]: x for x in obj.get("bodies", [])}
     for name in cb:

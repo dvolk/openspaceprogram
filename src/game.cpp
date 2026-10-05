@@ -2,6 +2,7 @@
 #include "game.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdarg>
 #include <cmath>
 #include <cstdio>
@@ -19,6 +20,7 @@
 #include "datadir.h"  // settings.json's location
 #include "shipdef.h"  // PartDef (crew_capacity)
 #include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
+#include "skybox.h"   // Skybox::load (switchSystem swaps the star field)
 #include "terragen.h" // biomeAt / biomeName (the experiment's ground class)
 #include "uiwins.h"   // setWinOpen (W_FlightSummary)
 #include "calendar.h" // fmt_cal_duration (the recover [flight] line)
@@ -850,6 +852,9 @@ void Game::switchSystem(const std::string &path,
     // sys / home / sun / focusTargets never reference freed memory.
     std::vector<TerrainBody *> oldBodies = sys.bodies;
     sys = newSys;
+    // The star field belongs to the system, so it swaps with the system.
+    assert(skybox != nullptr);   // render.cpp draws with it unguarded
+    skybox->load(sys.skybox_faces);
     systemPath = path;   // the running system is now this one (save_game + load)
     home = sys.home;
     sun = sys.root;

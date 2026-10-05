@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 
@@ -57,6 +58,52 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         BodyCleanup(std::vector<TerrainBody *> &b_) : b(&b_), commit(false) {}
         ~BodyCleanup() { if(!commit && b) { for(TerrainBody *x : *b) { delete x; } } }
     } cleanup{ sys.bodies };
+
+    // --- the star field (JSON "skybox") -----------------------------------
+    // Six cubemap faces, each named by the axis it is: an object keyed
+    // "+X","-X","+Y","-Y","+Z","-Z". The keys are the point -- a bare array
+    // in GL order (+X,-X,+Y,-Y,+Z,-Z) loads fine when two faces are swapped,
+    // which is a mirrored sky rather than an error. The sky belongs to the
+    // system, so switching systems can change it (Game::switchSystem
+    // re-loads these faces).
+    static constexpr const char *kFaceKeys[6]
+        = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
+    if(!doc.contains("skybox")) {
+        throw std::runtime_error(std::string("system: no \"skybox\" in ") + path
+                + " -- name all six faces, e.g. {\"+X\": \"res/textures/skybox.png\", "
+                "\"-X\": ..., \"+Y\": ..., \"-Y\": ..., \"+Z\": ..., \"-Z\": ...}");
+    }
+    const nlohmann::json &sb = doc["skybox"];
+    if(!sb.is_object()) {
+        throw std::runtime_error(std::string("system: \"skybox\" must be an "
+                "object keyed by +X,-X,+Y,-Y,+Z,-Z"));
+    }
+    for(const char *key : kFaceKeys) {
+        if(!sb.contains(key) || !sb[key].is_string()
+           || sb[key].get<std::string>().empty()) {
+            throw std::runtime_error(std::string("system: \"skybox\" needs a "
+                    "non-empty image name under \"") + key + "\"");
+        }
+        sys.skybox_faces.push_back(sb[key].get<std::string>());
+    }
+    for(const auto &kv : sb.items()) {
+        const std::string &key = kv.key();
+        if(std::find(std::begin(kFaceKeys), std::end(kFaceKeys), key)
+           == std::end(kFaceKeys)) {
+            throw std::runtime_error(std::string("system: \"skybox\" has "
+                    "unknown face \"") + key + "\" (expected +X,-X,+Y,-Y,+Z,-Z)");
+        }
+    }
+    // Resolve the names here: resdir::path is what Skybox::load opens with,
+    // so the check and the open agree -- which also means a name outside
+    // "res/" is cwd-relative.
+    for(const std::string &face : sys.skybox_faces) {
+        std::error_code ec;
+        if(!std::filesystem::exists(resdir::path(face), ec)) {
+            throw std::runtime_error("system: \"skybox\" face '" + face
+                                     + "' does not exist");
+        }
+    }
 
     // Rail azimuth a -> R_Y(-a): maps local +X to azimuth +a = atan2(z, x)
     // about the parent inertial frame's +Y. Same convention as lon_asc_node

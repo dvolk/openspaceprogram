@@ -801,6 +801,8 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
     # epoch_year 2000: the fact-sheet elements (and our derived orbital
     # phases) are J2000-referenced, so the calendar clock matches the sky.
     doc = {'home': 'Earth', 'soi_law': 'hill', 'epoch_year': 2000,
+           'skybox': {k: 'res/textures/skybox.png'
+                      for k in ('+X', '-X', '+Y', '-Y', '+Z', '-Z')},
            'bodies': bodies}
     stamp_science_mults(doc)
     if dry:

@@ -40,10 +40,27 @@ Usage:
   python3 utils/make_skybox.py --verify        # pins against OUT's faces,
                                                # no EXRs (runs in test-py)
 
-The loader (src/skybox.cpp) picks up tmp/newskybox/skybox_<face>.png when
-all six exist, else the committed tiled res/textures/skybox.png. Faces
-stay out of git until the look is settled; copy them into res/textures/
-(and commit) when it is.
+The sky belongs to the SYSTEM: the loader reads a "skybox" object from the
+system JSON (src/system.cpp) naming all six cubemap faces, keyed by the axis
+each one is. To try a bake before its look is settled, point a system at the
+staged faces:
+
+  "skybox": {
+    "+X": "tmp/newskybox/skybox_px.png", "-X": "tmp/newskybox/skybox_nx.png",
+    "+Y": "tmp/newskybox/skybox_py.png", "-Y": "tmp/newskybox/skybox_ny.png",
+    "+Z": "tmp/newskybox/skybox_pz.png", "-Z": "tmp/newskybox/skybox_nz.png"
+  },
+
+The KEYS decide which image is which face, not the file names -- that is why
+the field is an object rather than six names in GL order, where a swapped
+pair would load happily and give a mirrored sky.
+
+Faces stay out of git until the look is settled; copy them into
+res/textures/ (and commit + name them in every res/systems/*.json) when it
+is. A named face that does not exist is a load error, so a typo in the
+field fails the system load rather than showing a mystery sky. Names
+outside "res/" resolve against the CURRENT directory (src/resdir.h), so
+run the game from the repo root while trying a staged bake.
 """
 import argparse
 import math

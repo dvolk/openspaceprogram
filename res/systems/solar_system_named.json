@@ -2,6 +2,14 @@
   "home": "Earth",
   "soi_law": "hill",
   "epoch_year": 2000,
+  "skybox": {
+    "+X": "res/textures/skybox.png",
+    "-X": "res/textures/skybox.png",
+    "+Y": "res/textures/skybox.png",
+    "-Y": "res/textures/skybox.png",
+    "+Z": "res/textures/skybox.png",
+    "-Z": "res/textures/skybox.png"
+  },
   "bodies": [
     {
       "name": "Sun",

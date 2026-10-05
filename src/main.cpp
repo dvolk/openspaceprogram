@@ -370,24 +370,41 @@ int main(int argc, char **argv)
     // to the load. The epoch initial value lets the first body (and the
     // final one, via the i+1<total guard) draw immediately.
     auto last_loading_draw = std::chrono::steady_clock::time_point{};
-    System sys = load_system(args.system_file.c_str(), terrainshader, sunshader,
-        [&](size_t i, size_t total, const std::string &name) {
-            if(pumpLoadingQuit()) { std::exit(1); }   // window closed mid-load
-            auto now = std::chrono::steady_clock::now();
-            if(now - last_loading_draw < std::chrono::milliseconds(100)
-               && i + 1 < total) {
-                return;   // not time for another frame yet (still responsive to quit)
-            }
-            last_loading_draw = now;
-            char buf[160];
-            snprintf(buf, sizeof(buf), "loading %s  %zu / %zu",
-                     name.c_str(), i + 1, total);
-            drawLoadingFrame(display, bigger, buf);
-        });
+    System sys;
+    try {
+        sys = load_system(args.system_file.c_str(), terrainshader, sunshader,
+            [&](size_t i, size_t total, const std::string &name) {
+                if(pumpLoadingQuit()) { std::exit(1); }   // window closed mid-load
+                auto now = std::chrono::steady_clock::now();
+                if(now - last_loading_draw < std::chrono::milliseconds(100)
+                   && i + 1 < total) {
+                    return;   // not time for another frame yet (still responsive to quit)
+                }
+                last_loading_draw = now;
+                char buf[160];
+                snprintf(buf, sizeof(buf), "loading %s  %zu / %zu",
+                         name.c_str(), i + 1, total);
+                drawLoadingFrame(display, bigger, buf);
+            });
+    } catch(const std::exception &e) {
+        // The loader throws on data bugs (a bad field, a missing skybox
+        // face): name the problem and leave, rather than letting the throw
+        // reach std::terminate.
+        printf("error: %s\n", e.what());
+        fflush(stdout);
+        return 1;
+    }
     TerrainBody *sun = sys.root;
     TerrainBody *home = sys.home;   // the system home: the VAB launch body,
                                     // the title backdrop, and the body the
                                     // --radial-test / --dock-test ships use.
+
+    // The star field comes from the system JSON, so the Skybox is built here
+    // -- before the boot --load path, whose ensureSystemForSave may switch
+    // systems -- and Game::switchSystem reloads its cubemap from there.
+    Skybox skybox;
+    skybox.init();
+    skybox.load(sys.skybox_faces);
 
     /* The experiment family table (res/data/experiments.json): the
        instruments' balance data (base value, runnable situations,
@@ -422,6 +439,7 @@ int main(int argc, char **argv)
     // focus targets, the UI window registry) plus the control transitions.
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
+    game.skybox = &skybox;  // set before any boot --load can switch systems
     // The running system (what save_game records + the load path compares
     // against). Set before the boot --load so ensureSystemForSave sees it.
     game.systemPath = args.system_file;
@@ -820,9 +838,6 @@ int main(int argc, char **argv)
     // the game; the transfer planner (the TRANSFER window) too -- it holds
     // sim-clock state, so Game owns it and the clock hook can invalidate it.
 
-    Skybox skybox;
-    skybox.init();
-
     // Two reference circles in the render frame's local axes. Each is its
     // own mesh so it can be drawn a distinct colour: the XZ plane (y=0, the
     // "flat" orbital/equatorial reference) and the XY plane (z=0, the
@@ -844,7 +859,6 @@ int main(int argc, char **argv)
     }
 
     // Hand the render resources to the game (render.cpp draws with them).
-    game.skybox = &skybox;
     game.skyboxshader = skyboxshader;
     game.lineshader = lineshader;
     game.partsshader = partsshader;
