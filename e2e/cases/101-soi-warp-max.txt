@@ -5,5 +5,6 @@ ARGS --timeout 30
 EXPECT @@@ racer parked on rails around Moon
 EXPECT @@@ racer rails SoI switch: Moon (inertial) -> Eerbon (inertial)
 EXPECT SOI switch: 'racer' now around Eerbon (was Moon), warp -> 1
+CHECK out.count("-> Moon (inertial)") == 0
 FORBID GL_
 FORBID error:

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <glm/glm.hpp>
 
@@ -289,8 +290,9 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
 
 /* Upper bound on the speed anywhere along the two-body conic through
    (pos, vel) under mu: the periapsis speed. Cheaper than the full element
-   set and what bounds the distance a rail step can cover. Falls back to
-   the current speed on a degenerate conic (radial, or r -> 0). */
+   set and what bounds the distance a rail step can cover. An exactly radial
+   conic has no finite bound and reports infinity; a state with no conic at
+   all (r == 0, mu <= 0) reports its own speed. */
 inline double conicVMax(const glm::dvec3 &pos, const glm::dvec3 &vel,
                         const double mu) {
     const double r = glm::length(pos);
@@ -305,7 +307,14 @@ inline double conicVMax(const glm::dvec3 &pos, const glm::dvec3 &vel,
     // it stays finite at eps == 0 (a = inf, e = 1, rp = p/2), where a(1-e)
     // would be inf * 0.
     const double rp = p / (1.0 + e);
-    if(!(rp > 0.0)) { return std::sqrt(v2); }
+    if(!(rp > 0.0)) {
+        /* Exactly radial (h = 0): the conic falls through the focus, so the
+           periapsis speed is unbounded. Report that, not the current speed --
+           the current speed UNDER-states the bound and would under-split the
+           advance, which is the unsafe direction. railsSubSteps pins to its
+           cap on an infinite speed. */
+        return std::numeric_limits<double>::infinity();
+    }
     return std::sqrt(std::max(0.0, mu * (2.0 / rp - 1.0 / a)));
 }
 

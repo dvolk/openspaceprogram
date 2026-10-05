@@ -2758,46 +2758,53 @@ static double railsSampleScale(const Frame *f) {
 
 void Vehicle::railsTick(double t, const double step) {
     if(!onRails || railFrozen) { return; }
-    /* The conic is exact for any step, but the SoI test below only sees the
-       END of one: at 1e7x a 25 km/s ship covers 4e9 m in a tick, more than
-       a planet's whole sphere, so it can be inside an SoI for part of the
-       step and never be sampled there. Split the advance so each sub-step
-       covers at most kRailsSoiFrac of the smallest SoI it could cross;
-       conicVMax is the periapsis speed of the current conic, so the travel
-       bound holds wherever on it the ship sits. kRailsMaxSubSteps caps the
-       cost, which means a tiny SoI (a 17 km moon) stays unresolvable at
-       extreme warp -- it already was, and no sub-step count fixes a body
-       the player cannot react to in 200 ks. A switch mid-loop re-homes the
-       ship, so mu is re-read per sub-step; the split itself is the one
-       planned at the start, and the next tick re-plans. */
+    assert(frame->body != nullptr);
+    /* The conic is exact for any step, but the SoI test only sees the END of
+       one: at 1e7x a 25 km/s ship covers 5e9 m in a tick, more than a
+       planet's whole sphere, so it can be inside an SoI for part of the step
+       and never be sampled there. Split the advance so each sub-step covers
+       at most kRailsSoiFrac of the smallest SoI it could cross; conicVMax is
+       the periapsis speed of the current conic, so the travel bound holds
+       wherever on it the ship sits. kRailsMaxSubSteps caps the cost, and it
+       binds in every shipped system: at 1e7x the pitch is ~1.6e8 m, which
+       resolves a planet's sphere (Earth's gets ~19 samples) and no moon. */
     const int n = railsSubSteps(conicVMax(rail_pos, rail_vel, frame->body->mu),
                                 step, railsSampleScale(frame) * kRailsSoiFrac,
                                 kRailsMaxSubSteps);
-    /* At most one handoff per tick, but always the whole advance: a ship
-       that leaves a frame mid-tick still gets the full step (the rail clock
-       must match g.time), and the next tick re-plans against the new frame.
-       Capping the handoffs matters because kSoiMargin (10 km) of hysteresis
-       is far narrower than a high-warp sub-step, so an escape that the
-       patched conic hands to the parent and then hands straight back --
-       solar-orbit recapture, real enough near a Hill boundary -- would
-       otherwise flap frames several times inside one tick. */
-    bool switched = false;
+    assert(n >= 1 && n <= kRailsMaxSubSteps);
+    /* The sub-steps only DETECT a boundary; the handoff waits until the whole
+       advance is done. tick.cpp calls UpdateOrbitRails(g.time) once per tick
+       before the ship loop, so every Frame is already at the END of the tick,
+       and moveToRailFrame composes rail_pos with those transforms. Re-homing
+       mid-loop would splice a state at t - f*step/n onto frames at t and
+       teleport the ship by the parent's motion over the remainder: measured
+       4.5e9 m for an Earth->Sun handoff at sub-step 8/32 at 1e7x, which also
+       invents a recapture flap (the ship lands outside the frame it was just
+       handed to and is handed straight back).
+       The frame tree is frozen for the tick either way, so the bodies
+       themselves move up to v_body*step between samples (the Moon 2e8 m, Io
+       3.5e9 m at 1e7x) -- sub-stepping the ship's conic cannot recover those
+       encounters. The next tick re-plans against whatever frame the handoff
+       left the ship in. */
+    Frame *target = nullptr;
     for(int i = 0; i < n; i++) {
         propagateKepler(rail_pos, rail_vel, frame->body->mu, step / n,
                         rail_pos, rail_vel);
-        if(!switched) { switched = railsSwitchFrames(t); }
+        if(target == nullptr) { target = soiTarget(rail_pos, true); }
     }
+    // Where the ship actually ENDS beats what it crossed on the way: if the
+    // endpoint test fires, the old single-step answer is the right one, and
+    // the sampled crossing only fills in when it misses (a body crossed and
+    // left inside one step).
+    if(Frame *final_target = soiTarget(rail_pos, true)) { target = final_target; }
+    if(target != nullptr) { railsHandoff(target, t); }
     writeRailPose();
 }
 
-bool Vehicle::railsSwitchFrames(double t) {
-    if(Frame *target = soiTarget(rail_pos, true)) {
-        printf("@@@ %s rails SoI switch: %s -> %s\n",
-               name.c_str(), frame->name.c_str(), target->name.c_str());
-        moveToRailFrame(target, t);
-        return true;
-    }
-    return false;
+void Vehicle::railsHandoff(Frame *target, double t) {
+    printf("@@@ %s rails SoI switch: %s -> %s\n",
+           name.c_str(), frame->name.c_str(), target->name.c_str());
+    moveToRailFrame(target, t);
 }
 
 void Vehicle::moveToRailFrame(Frame *newFrame, double t) {

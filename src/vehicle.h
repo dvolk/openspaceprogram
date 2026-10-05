@@ -741,24 +741,26 @@ public:
        ship back to the integrator. */
     void leaveRails();
 
-    /* Per-tick rail advance: propagate the conic, check SOI boundaries,
-       refresh the parked transforms. A frozen (grounded) ship has nothing
-       to propagate. At high warp the advance is sub-stepped so a boundary
-       crossing cannot be skipped (kRailsSoiFrac, constants.h), but at most
-       ONE handoff happens per tick -- see railsTick. */
+    /* Per-tick rail advance: propagate the conic, sampling for an SoI
+       boundary, then hand off ONCE at the end of the advance and refresh the
+       parked transforms. A frozen (grounded) ship has nothing to propagate.
+       The sampling split is what keeps a boundary from being skipped at high
+       warp (kRailsSoiFrac, constants.h); the handoff waits for the end
+       because the frame tree is clocked at the end of the tick -- see
+       railsTick. */
     void railsTick(double t, const double step);
 
-    /* SOI bookkeeping for a railed ship (the switchFrames() analog).
-       Returns true if the ship changed frames. */
-    bool railsSwitchFrames(double t);
+    /* Hand a railed ship to another frame (the switchFrames() analog),
+       including the log line. */
+    void railsHandoff(Frame *target, double t);
 
     /* Re-anchor the rail state on another frame and re-home it (setSoi). */
     void moveToRailFrame(Frame *newFrame, double t);
 
 private:
-    /* The SoI boundary test shared by switchFrames (physics) and
-       railsSwitchFrames. kSoiMargin (constants.h) of hysteresis on both
-       sides keeps a ship loitering at a boundary from flapping. */
+    /* The SoI boundary test shared by switchFrames (physics) and the
+       sampling loop in railsTick. kSoiMargin (constants.h) of hysteresis on
+       both sides keeps a ship loitering at a boundary from flapping. */
     Frame *soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody);
 };
 

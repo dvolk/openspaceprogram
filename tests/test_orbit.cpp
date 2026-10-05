@@ -665,14 +665,22 @@ int main() {
             const double want = sqrt(2.0 * MU / r);
             CHECK_NEAR(conicVMax(p, v, MU), want, 1e-9 * want);
         }
-        // Degenerate states must stay finite (railsTick divides by nothing,
-        // but a NaN speed would poison the sub-step count).
+        // Degenerate states: never NaN, and never a bound that UNDER-splits.
         {
-            CHECK(std::isfinite(conicVMax(glm::dvec3(0.0), glm::dvec3(0.0), MU)));
-            CHECK(std::isfinite(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
-                                          glm::dvec3(0.0), MU)));
-            CHECK(std::isfinite(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
-                                          glm::dvec3(0.0, 1.0e3, 0.0), 0.0)));
+            // No conic at all (r == 0, or no mu): the state's own speed.
+            CHECK_NEAR(conicVMax(glm::dvec3(0.0), glm::dvec3(0.0), MU), 0.0, 0.0);
+            CHECK_NEAR(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
+                                 glm::dvec3(0.0, 1.0e3, 0.0), 0.0), 1.0e3, 0.0);
+            // Exactly radial (h == 0): the conic falls through the focus, so
+            // no finite speed bounds it. Returning the current speed here --
+            // which is what the first cut did -- UNDER-splits the advance.
+            CHECK(std::isinf(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
+                                       glm::dvec3(0.0), MU)));
+            CHECK(std::isinf(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
+                                       glm::dvec3(3.0e3, 0.0, 0.0), MU)));
+            CHECK(railsSubSteps(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
+                                          glm::dvec3(0.0), MU),
+                                2.0e5, 1.0e9, 32) == 32);
         }
 
         // railsSubSteps: one step when the travel already fits the budget,
@@ -704,7 +712,9 @@ int main() {
                 return hits;
             };
             CHECK(inside(1) == 0);                // one step: flown straight over
-            CHECK(inside(n) >= 4);                // split: >= 4 samples inside
+            CHECK(inside(n) == 8);                // split: 8 samples inside
+            // A model of the sampling argument, not of railsTick itself: it
+            // pins the sub-step count, not the loop that consumes it.
         }
 
         // The split must not cost accuracy: the conic is exact either way,
