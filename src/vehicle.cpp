@@ -2765,9 +2765,11 @@ static double railsSampleScale(const Frame *f) {
 void Vehicle::railsTick(double t, const double step) {
     if(!onRails || railFrozen) { return; }
     assert(frame->body != nullptr);
-    // The advance is analytic in `t`, so the caller must hand us the same
-    // instant the frame tree was last snapshotted at -- otherwise the conic
-    // and the frames disagree before a handoff can even be judged.
+    // The caller must hand us the same instant the frame tree was last
+    // snapshotted at: the conic is advanced by `step`, but its RESULT is
+    // composed with those transforms, so if `t` and the tree disagree the
+    // state is inconsistent before any handoff can even be judged. Exact
+    // equality holds because UpdateOrbitRails() is handed this same g.time.
     assert(t == frame->rail_time);
     /* The conic is exact for any step, but the SoI test only sees the END of
        one: at 1e7x a 25 km/s ship covers 5e9 m in a tick, more than a
@@ -2802,7 +2804,7 @@ void Vehicle::railsTick(double t, const double step) {
                         rail_pos, rail_vel);
         if(target == nullptr) { target = soiTarget(rail_pos, true); }
     }
-    rail_epoch = t;   // the whole advance lands ON the tick boundary
+    rail_epoch = t;   // the advance ends at the caller's instant, == the tree's
     // Where the ship actually ENDS beats what it crossed on the way: if the
     // endpoint test fires, the old single-step answer is the right one, and
     // the sampled crossing only fills in when it misses (a body crossed and
@@ -2819,9 +2821,9 @@ void Vehicle::railsHandoff(Frame *target, double t) {
 }
 
 /* Squared Frobenius distance between two rotations: for a small relative
-   rotation of theta radians it is 2*theta^2, so 1e-20 is ~1e-10 rad. That is
-   ~1e6 times the round-off in composing these matrices and nowhere near
-   anything this path produces by accident. */
+   rotation of theta radians it is 2*theta^2, so 1e-20 is ~1e-10 rad. Measured
+   headroom over real round-off is ~2.5e10x, which is what you expect given the
+   comparison is an identity (see moveToRailFrame). */
 static double rotDist2(const glm::dmat3 &a, const glm::dmat3 &b) {
     double d2 = 0.0;
     for(int c = 0; c < 3; c++) {
@@ -2847,45 +2849,55 @@ void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
        the tick onto those transforms puts the ship where its parent WILL be,
        not where it was -- off by |v_parent| * dt_stale. Measured 4.5e9 m for
        a handoff at sub-step 8/32 at 1e7x, which also invented a recapture
-       flap. railsTick keeps the whole advance in one instant for this. */
+       flap. railsTick keeps the whole advance in one instant for this.
+       Exact double equality is deliberate: Game::time has exactly two writers
+       (tick.cpp, Game::setTime) and UpdateOrbitRails() is handed that same
+       double, so a mismatch is a genuine desync, never a rounding drift. */
     assert(frame->rail_time == newFrame->rail_time);
     assert(rail_epoch == frame->rail_time);
 
     glm::dvec3 p0, v0;
     railRootState(p0, v0);
-    // Cluster axes -> universe axes. The ship's attitude is part of its
-    // state, so a frame switch must not turn it either.
     const glm::dmat3 att0 = frame->root_orient * rail_orient;
+    // Round-off here scales with the FRAMES' root speeds, not the ship's: a
+    // ship can legitimately have near-zero ROOT speed (a retrograde burn
+    // cancelling the parent's orbital velocity) while its parent is doing
+    // 5.9e4 m/s, so |v0| alone is not a usable scale.
+    const double vscale = glm::length(rail_vel) + glm::length(frame->root_vel)
+                        + glm::length(newFrame->root_vel);
 
     const glm::dmat3 O = frame->GetOrientRelTo(newFrame);
     rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
     rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
     rail_orient = O * rail_orient;
     setSoi(newFrame, t);
+    // Re-anchored, not advanced: same instant, new frame. Taken from the frame
+    // so it cannot drift from the invariant the asserts above just checked.
+    rail_epoch = frame->rail_time;
 
-    /* A re-anchoring is a change of coordinates, not of state, so the
-       universe-root state must come back unchanged. GetPositionRelTo /
-       GetOrientRelTo / GetVelocityRelTo are themselves defined off
-       root_pos/root_vel/root_orient (frame.cpp), so this holds to fp
-       round-off; anything larger is a coordinate bug whatever caused it.
-       1e-10 relative is ~5 orders above the round-off at these magnitudes.
-       This is COMPLEMENTARY to the epoch asserts above, not a substitute:
-       they fire on a stale rail state (the mid-loop handoff), this fires on
-       a switch that is not a pure coordinate change. Verified against both:
-       dropping the GetPositionRelTo/GetVelocityRelTo terms trips this one
-       and passes those; handing off mid-advance trips those and passes this
-       one -- the staleness is a property of rail_pos against the frames,
-       not of the transform, so a continuity test cannot see it. */
+    /* Regression tripwires on THIS transform -- not general state checks.
+       Given GetPositionRelTo / GetOrientRelTo / GetVelocityRelTo as written
+       (frame.cpp:9-26, all defined off root_pos/root_vel/root_orient), these
+       three comparisons are algebraic identities: substituting
+       rail_pos' = O*rail_pos + transpose(N.rot)*(F.root_pos - N.root_pos)
+       into N.rot*rail_pos' + N.root_pos returns p0 exactly, and the
+       attitude one cancels N.rot*transpose(N.rot) outright. So they can only
+       fail on an edit to the transform above, or on a root_orient that has
+       drifted from orthonormal. Nothing else.
+       Verified both ways: dropping the GetPositionRelTo/GetVelocityRelTo terms
+       trips them; the f114ab0 mid-loop handoff passes them clean, and a
+       deliberately stale frame tree leaves the attitude residual at 8.8e-16
+       rad against a 1e-10 rad threshold -- so NO, these do not catch a stale
+       epoch, even though a stale epoch really does rotate the ship by
+       omega*dt_stale (Earth's spin over one 1e7x tick is 14.6 rad). Both sides
+       read the same stored root_orient, so the guard is blind to it. The epoch
+       asserts above are what see a stale state; these see a broken transform.
+       Tolerances from a 60k-handoff sweep over the four shipped systems:
+       position ~2e5x headroom, attitude ~2.5e10x, velocity ~7e3x on realistic
+       states (and ~5x if the scale were |v0|, hence vscale above). */
     glm::dvec3 p1, v1;
     railRootState(p1, v1);
     assert(glm::length(p1 - p0) < 1e-10 * std::max(1.0, glm::length(p0)));
-    assert(glm::length(v1 - v0) < 1e-10 * std::max(1.0, glm::length(v0)));
-    /* The attitude check is the one that catches a STALE EPOCH on a frame
-       whose root_orient moves: root_orient carries the spin, so composing
-       against a spin frame from another tick rotates the ship by
-       omega * dt_stale (Earth's spin over one 1e7x tick is 14.6 rad -- a
-       random attitude, not a small error). The rails path only visits
-       inertial nodes today, where root_orient is time-invariant, so this is
-       belt-and-braces until a railed ship can live in a body-fixed frame. */
+    assert(glm::length(v1 - v0) < 1e-10 * std::max(1.0, vscale));
     assert(rotDist2(att0, newFrame->root_orient * rail_orient) < 1e-20);
 }

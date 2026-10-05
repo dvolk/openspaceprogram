@@ -262,8 +262,13 @@ public:
     bool onRails = false;
     bool railFrozen = false;    // grounded park: no conic, pose fixed in the
                                 // (rotating) frame
-    glm::dvec3 rail_pos;      // m, cluster COM in ship->frame coords
-    glm::dvec3 rail_vel;      // m/s, inertial, ship->frame coords
+    /* Initialised, not just declared: three sites set onRails + railFrozen
+       directly instead of going through goOnRails() (game.cpp, ships.cpp,
+       save.cpp), so a railed-but-frozen vehicle can exist with the rail pose
+       never written. Harmless while railFrozen short-circuits railsTick, but
+       leaveRails() -> writeRailPose() would place the hull at garbage. */
+    glm::dvec3 rail_pos = glm::dvec3(0.0);   // m, cluster COM in ship->frame coords
+    glm::dvec3 rail_vel = glm::dvec3(0.0);   // m/s, inertial, ship->frame coords
     glm::dmat3 rail_orient = glm::dmat3(1.0); // cluster axes -> frame axes
     /* Frame S's axes at park time. The ship is rigid, so there is nothing
        per-part left to snapshot. */
@@ -763,13 +768,12 @@ public:
     /* Re-anchor the rail state on another frame and re-home it (setSoi). */
     void moveToRailFrame(Frame *newFrame, double t);
 
-    /* The rail state in universe-root axes. A frame switch must not change
-       it: moveToRailFrame() is a change of coordinates, not of state, so
-       comparing this before and after catches any coordinate bug, not just
-       the epoch mismatch it was written for. */
+private:
+    /* The rail state in universe-root axes, compared before/after a frame
+       switch by moveToRailFrame()'s continuity asserts. See the comment there
+       for what those asserts can and cannot detect. */
     void railRootState(glm::dvec3 &p, glm::dvec3 &v) const;
 
-private:
     /* The SoI boundary test shared by switchFrames (physics) and the
        sampling loop in railsTick. kSoiMargin (constants.h) of hysteresis on
        both sides keeps a ship loitering at a boundary from flapping. */
