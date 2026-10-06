@@ -207,8 +207,8 @@ def verify(faces, n):
         k = np.unravel_index(np.argmax(lum), lum.shape)
         L = float(lum[k])
         off = math.hypot(k[0] + r0 - row, k[1] + c0 - col)
-        assert L > 120, 'star pin failed: %s reads %.1f' % (name, L)
         assert off <= 2.0, 'star pin offset: %s peak %.1f texels away' % (name, off)
+        assert L > 120, 'star pin failed: %s reads %.1f' % (name, L)
     for name, ra, dec in STARS:
         star_pin(name, ra, dec)
 
