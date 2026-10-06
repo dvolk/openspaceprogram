@@ -20,9 +20,13 @@ struct OrbitMap {
 
     // Near-polar normals keep the canonical X/Z basis (stable equatorial view).
     // `x_axis` (optional) pins the screen-x direction INSIDE the plane: pass the
-    // focus's equator-frame +X (Frame::equatorX) for an equatorial plane, so the
-    // view does not spin as the axial tilt moves the normal (issue #173). Zero
-    // length means derive it, the old way.
+    // focus frame's +X for an equatorial plane, so flipping the plane combo
+    // tilts the picture instead of rotating it (issue #173). Zero length means
+    // derive it, the old way.
+    // A reference direction that lies nearly ALONG the normal cannot define a
+    // stable east: Uranus's 97.8 deg tilt puts its pole within 9 deg of the
+    // system +X, where the in-plane part is only 0.15 long and swings on
+    // rounding noise. Such an x_axis is ignored in favour of the node line.
     // Handedness of the pinned path: e2 = e1 x n, so a prograde body (which
     // moves along n x r_hat) sweeps counter-clockwise on screen -- the same way
     // the canonical X/Z case below already draws it.
@@ -30,7 +34,9 @@ struct OrbitMap {
                   const glm::dvec3 &x_axis = glm::dvec3(0.0)) {
         n = glm::normalize(normal);
         const glm::dvec3 t = x_axis - glm::dot(x_axis, n) * n;  // in-plane part
-        if(glm::dot(t, t) > 1e-12) {
+        // |t| is sin(angle from the normal): insist the reference lies at least
+        // ~26 deg inside the plane.
+        if(glm::length(t) > 0.44) {
             e1 = glm::normalize(t);
             e2 = glm::cross(e1, n);
             return;

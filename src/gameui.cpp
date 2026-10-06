@@ -2269,9 +2269,10 @@ void drawUIMap(Game &g) {
             // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the
             // rail normal and sits off the pole by exactly the axial tilt.
             plane_n = focus->frame->spinAxisRelTo(focus->frame);
-            // Pin screen-x to the node line the pole leans along, or the whole
-            // view rotates as soon as the normal stops being +Y.
-            plane_x = focus->frame->getRotFrame()->equatorX();
+            // Screen-x = the focus frame's +X, the same "east" the Ecliptic
+            // view's canonical basis uses, so flipping the plane combo tilts
+            // the picture instead of rotating it (~150 deg on Kerbin).
+            plane_x = glm::dvec3(1.0, 0.0, 0.0);
         } else if(map_plane == 1) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);
@@ -3798,9 +3799,9 @@ void drawTrackingMap(Game &g) {
         glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
         if(map_plane == 0) {
             // Same as the in-flight map: the focus's equator, not its rail
-            // plane, and screen-x pinned to the node line (#173).
+            // plane, and screen-x = the focus frame's +X (#173).
             plane_n = focus->frame->spinAxisRelTo(focus->frame);
-            plane_x = focus->frame->getRotFrame()->equatorX();
+            plane_x = glm::dvec3(1.0, 0.0, 0.0);
         } else if(map_plane == 1) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);

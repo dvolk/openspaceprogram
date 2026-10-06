@@ -19,6 +19,15 @@ static void expect_near(double got, double want, const char *what) {
     }
 }
 
+// For expectations copied from shipped-system geometry: the inputs are only
+// quoted to ~6 digits, so the derived basis can't be pinned to 1e-9.
+static void expect_close(double got, double want, double tol, const char *what) {
+    if(std::fabs(got - want) > tol) {
+        std::printf("FAIL %s: got %g, want %g (tol %g)\n", what, got, want, tol);
+        ++g_failures;
+    }
+}
+
 int main() {
     OrbitMap m;
     m.cx = 100.0;
@@ -61,8 +70,9 @@ int main() {
 
     // setPlane(): with no x_axis a +Y normal keeps the canonical X/Z basis. An
     // explicit x_axis pins screen-x INSIDE the plane, so an equatorial view
-    // does not spin when the axial tilt moves the normal (issue #173), and its
-    // handedness (e2 = e1 x n) matches the canonical case.
+    // shares its "east" with the ecliptic view instead of inventing one from
+    // the normal (issue #173), and its handedness (e2 = e1 x n) matches the
+    // canonical case.
     {
         OrbitMap s;
         s.setPlane(glm::dvec3(0, 1, 0));
@@ -88,6 +98,35 @@ int main() {
         // An x_axis parallel to the normal is unusable: fall back to derived.
         s.setPlane(glm::dvec3(st, ct, 0.0), glm::dvec3(st, ct, 0.0));
         expect_near(s.e1.z, -1.0, "degenerate x_axis falls back");
+    }
+    {
+        // The map's real call: an equatorial plane (Kerbin's pole, from
+        // ksp_system.json's 23.44 deg tilt) with the focus frame's +X as the
+        // screen-x reference.
+        const glm::dvec3 pole(-0.347824, 0.917477, 0.193014);
+        OrbitMap s;
+        s.setPlane(pole, glm::dvec3(1, 0, 0));
+        expect_close(s.e1.x, 0.937560, 1e-5, "kerbin eq e1 x");
+        expect_close(s.e1.y, 0.340373, 1e-5, "kerbin eq e1 y");
+        expect_close(s.e1.z, 0.071606, 1e-5, "kerbin eq e1 z");
+        // screen-x stays 20 deg from the ecliptic view's +X: switching planes
+        // tilts the picture by the axial tilt, it does not rotate it. (Pinning
+        // to the equator frame's own +X instead put it 143 deg away.)
+        expect_close(glm::dot(s.e1, glm::dvec3(1, 0, 0)), 0.937560, 1e-5,
+                     "kerbin eq shares east");
+        expect_close(glm::dot(glm::cross(s.n, s.e1), s.e2), -1.0, 1e-5,
+                     "kerbin eq prograde sense");
+    }
+    {
+        // Uranus (97.8 deg tilt): its pole sits 8 deg from the reference +X, so
+        // projecting +X into the equator plane leaves only 0.15 of direction --
+        // too little to pin screen-x on. Fall back to the node line.
+        const glm::dvec3 pole(0.989164, -0.135197, -0.057248);
+        OrbitMap s;
+        s.setPlane(pole, glm::dvec3(1, 0, 0));
+        expect_close(s.e1.x, -0.057778, 1e-5, "uranus eq e1 x");
+        expect_close(s.e1.y, 0.0, 1e-5, "uranus eq e1 y");
+        expect_close(s.e1.z, -0.998329, 1e-5, "uranus eq e1 z");
     }
 
     // contrastingColor(): a light background yields dark ink and vice versa,

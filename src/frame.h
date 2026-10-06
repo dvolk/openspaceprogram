@@ -105,15 +105,6 @@ struct Frame {
        here. That is a convention, not a measurement. */
     glm::dvec3 spinAxisRelTo(Frame *relTo);
 
-    /* The equator frame's +X -- the node line that the authored tilt_azimuth
-       leans the pole toward -- in the inertial (non-rot) frame's axes. Pairs
-       with spinAxisRelTo to pin an equatorial view's screen-x direction
-       instead of letting the map invent one (#173). Identity rot frame ->
-       (1,0,0). */
-    glm::dvec3 equatorX() const {
-        return equator_orient * glm::dvec3(1.0, 0.0, 0.0);
-    }
-
     // Spin angular velocity vector in LOCAL (body) axes. Positive
     // rot_ang_speed is prograde (the +Y x r_hat orbital sense, issue
     // #101); spin_axis is unit, so |omega| == |rot_ang_speed|. The ONE
