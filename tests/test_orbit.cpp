@@ -625,6 +625,7 @@ int main() {
                 {0.206, -0.5083, -3.0366},   // Mercury    (solar_system)
                 {0.249, -1.9855, -0.3430},   // Pluto
                 {0.0045, 0.0,     5.1185},   // Enceladus  nu0 > pi
+                {0.7512, 0.0,     0.7124},   // Nereid     most eccentric shipped
             };
             auto wrap = [](double d) {
                 while(d > M_PI) { d -= 2.0 * M_PI; }
@@ -647,6 +648,13 @@ int main() {
                 // energy: vis-viva on that same conic
                 const double E = 0.5 * glm::dot(v, v) - MU / glm::length(p);
                 CHECK_NEAR(E, -MU / (2.0 * a), 1e-12 * MU / a);
+                // elements -> state -> elements. true_anomaly is built from
+                // dot(e_vec, pos) and radial_vel*|h|/(mu*e), both free of any
+                // reference plane, so this is independent of #171 -- and a
+                // mirrored radial term returns -nu, which is what caught #172.
+                const OrbitElements oe = computeOrbitElements(p, v, MU);
+                CHECK_NEAR(oe.ecc, c.e, 1e-9);
+                CHECK_NEAR(wrap(oe.true_anomaly - c.nu), 0.0, 1e-9);
             }
         }
 
