@@ -4340,11 +4340,9 @@ void drawResearchAtlas(Game &g) {
                                          : g.atlasRows.front().rawName;
         }
 
-        // The ·, Δ, ×, — glyphs render in the bundled DejaVuSansMono; a --font
-        // override lacking them would show tofu.
-        ImGui::TextDisabled(
-            "select a body: research weight, approach Δv, science found, "
-            "and its physical + orbital numbers");
+        // The Δ, × and — in the rows below render in the bundled
+        // DejaVuSansMono; a --font override lacking them would show tofu.
+        ImGui::TextDisabled("select a body:");
         ImGui::Separator();
 
         // Split the window: the tree list on the left, the selected body's
