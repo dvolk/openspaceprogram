@@ -5,6 +5,8 @@
 
 #include <glm/glm.hpp>
 
+#include "orbit.h"
+
 struct TerrainBody;
 
 struct Frame {
@@ -130,3 +132,20 @@ struct Frame {
         return -2.0 * glm::cross(w, vel) - glm::cross(w, glm::cross(w, pos));
     }
 };
+
+/* Which plane the UI measures Inc/LAN/LPe against (#171). The SAME choice the
+   orbit map draws (Game::map_plane), so the numbers describe the picture on
+   screen; kRefOrbit is a view-only plane where Inc is 0 by construction and the
+   node is undefined. A future "Target" plane is one more case here. */
+enum RefPlaneMode { kRefEquator = 0, kRefEcliptic = 1, kRefOrbit = 2 };
+
+/* The reference plane of `focus` for a ship orbiting it, in the focus's
+   INERTIAL frame -- the frame a ship's orbit_pos/orbit_vel live in.
+   `h_hat` = normalize(orbit_pos x orbit_vel), used only by kRefOrbit. */
+RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat, int mode);
+
+// The display name of a RefPlaneMode, for labelling the readout: an
+// inclination without its plane is not a number, it is a guess. Abbreviated to
+// three letters so it fits the ORBITAL window's column.
+const char *refPlaneName(int mode);
+

@@ -86,6 +86,7 @@ void updateShipView(Game &g) {
     glm::dvec3 &surf_pos = view.surf_pos;
     glm::dvec3 &surf_vel = view.surf_vel;
     OrbitElements &o = view.o;
+    PlaneAngles &plane = view.plane;
     double &distance = view.distance;
     double &speed = view.speed;
     glm::dvec3 &up = view.up;
@@ -135,6 +136,15 @@ void updateShipView(Game &g) {
     }
 
     o = computeOrbitElements(orbit_pos, orbit_vel, mu);
+    /* Plane angles only where they are read (the ORBITAL window, --info-log),
+       and only in the plane the orbit map is drawing, so the numbers describe
+       the picture on screen (#171). */
+    const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
+    const double h_len = glm::length(h);
+    plane = orbitPlaneAngles(orbit_pos, orbit_vel, mu,
+                             uiRefPlane(ship->m_parent->frame,
+                                        h_len > 0.0 ? h / h_len : glm::dvec3(0.0, 1.0, 0.0),
+                                        g.map_plane));
     distance = o.distance;
     speed = o.speed;
 

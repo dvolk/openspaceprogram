@@ -1,0 +1,12 @@
+# The other half of #171: on an UNTILTED focus the rail plane IS the equator,
+# so the same rot-orbit bed reads inc=0.0000 (it read 90 before the fix), and
+# an orbit lying IN the reference plane has no node at all -- LAN must be
+# dashed rather than conjured from the ~1e-8 of integrator noise that an
+# integrated h always carries.
+NAME plane-readout-untilted
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --startship racer,res/ships/racer.json,Kerbol,rot-orbit
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(abs(o["inc"]) < 0.001 for o in orbit if o["t"] > 1.0)
+CHECK all(o["lan"] == "-" for o in orbit if o["t"] > 1.0)

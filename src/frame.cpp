@@ -31,6 +31,36 @@ glm::dvec3 Frame::spinAxisRelTo(Frame *relTo)
     return glm::normalize(rf->GetOrientRelTo(relTo) * rf->spin_axis);
 }
 
+RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat, int mode)
+{
+    RefPlane r;
+    if(mode == kRefEcliptic) {
+        // The system plane, in the focus's axes -- the same normal the
+        // Ecliptic map view projects onto.
+        r.n_hat = glm::transpose(focus->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
+        r.x_hat0 = glm::transpose(focus->root_orient) * glm::dvec3(1.0, 0.0, 0.0);
+    } else if(mode == kRefOrbit) {
+        // The ship's own plane: Inc is 0 by construction and the node is
+        // undefined, which is what the readout's dashes are for.
+        r.n_hat = h_hat;
+    } else {
+        // The focus's EQUATOR: its spin axis, with longitude from the
+        // equator frame's +X -- the direction an "incl_ref": "equator" rail
+        // measures its lon_asc_node from (#147), so the readout and the
+        // authored data agree.
+        r.n_hat = focus->spinAxisRelTo(focus);
+        r.x_hat0 = focus->getRotFrame()->equator_orient * glm::dvec3(1.0, 0.0, 0.0);
+    }
+    return r;
+}
+
+const char *refPlaneName(int mode)
+{
+    if(mode == kRefEcliptic) { return "ecl"; }
+    if(mode == kRefOrbit) { return "orb"; }
+    return "equ";
+}
+
 glm::dmat4 Frame::GetBodyDrawTransform(Frame *relTo)
 {
     Frame *rot = getRotFrame();

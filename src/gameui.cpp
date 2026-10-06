@@ -1427,7 +1427,12 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Bod: %s (%c)", ship->m_parent->name.c_str(),
                     ship->frame->isRotFrame() ? 'R' : 'I');
         ImGui::Text("Vel: %.1fm/s", speed);
-        ImGui::Text("Alt: %s", fmt_dist(distance, dist_s, sizeof dist_s));
+        /* R is a RADIUS from the focus, not an altitude: an 85 km orbit
+           around Kerbin reads 685 km here. ApA/PeA are apsis RADII for the
+           same reason. The SURFACE window has the real altitude (and
+           --info-log derives alt_asl); calling these "Alt" was #171's
+           sibling complaint. */
+        ImGui::Text("  R: %s", fmt_dist(distance, dist_s, sizeof dist_s));
         /* Every line below is always present; "-" = the quantity
            does not exist for this orbit class (escape trajectories have no
            apoapsis/period; a near-circular orbit has no apsis line). */
@@ -1442,11 +1447,18 @@ void drawUIReadouts(Game &g) {
         else { ImGui::Text("PeT: -"); }
         if(o.period > 0.0) { ImGui::Text("  T: %.1fs", o.period); }
         else { ImGui::Text("  T: -"); }
-        ImGui::Text("Inc: %.2f", glm::degrees(o.inclination));
+        /* Plane angles, measured in the plane the orbit map is showing -- the
+           label names it, because the number is meaningless without it (#171).
+           In the map's Orbital view the plane IS the orbit, so Inc reads 0 and
+           the node is undefined: dashes, not a confident random LAN. */
+        ImGui::Text("Inc: %.2f (%s)", glm::degrees(view.plane.inc),
+                    refPlaneName(g.map_plane));
         ImGui::Text("Ecc: %f", o.ecc);
         ImGui::Text("SMa: %s", fmt_dist(o.semi_major, dist_s, sizeof dist_s));
-        ImGui::Text("LAN: %.2f", glm::degrees(o.raan));
-        ImGui::Text("LPe: %.2f", glm::degrees(o.arg_periapsis));
+        if(view.plane.node_ok) { ImGui::Text("LAN: %.2f", glm::degrees(view.plane.lan)); }
+        else { ImGui::Text("LAN: -"); }
+        if(view.plane.peri_ok) { ImGui::Text("LPe: %.2f", glm::degrees(view.plane.lpe)); }
+        else { ImGui::Text("LPe: -"); }
         double prograde_angle = glm::angle(facing_dir, vel_dir);
         double retrograde_angle = glm::angle(facing_dir, - vel_dir);
         ImGui::Text("Prg: %.2f", glm::degrees(prograde_angle));
@@ -1524,15 +1536,23 @@ void drawUIReadouts(Game &g) {
                 ? biomeName(ps.biome) : "-";
             const double prograde_angle = glm::angle(facing_dir, vel_dir);
             const double retrograde_angle = glm::angle(facing_dir, -vel_dir);
-            printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s alt=%.6g m "
-                   "apo=%.6g m apo_t=%.6g s peri=%.6g m peri_t=%.6g s "
+            // lan/lpe in the map's plane, labelled with it (#171).
+            char lan_s[32], lpe_s[32];
+            if(view.plane.node_ok) { snprintf(lan_s, sizeof lan_s, "%.6g deg", glm::degrees(view.plane.lan)); }
+            else { snprintf(lan_s, sizeof lan_s, "-"); }
+            if(view.plane.peri_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
+            else { snprintf(lpe_s, sizeof lpe_s, "-"); }
+            // r/apo_r/peri_r are RADII from the focus, not altitudes; the
+            // [surfinfo] line below carries the real alt_asl / alt_agl.
+            printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s r=%.6g m "
+                   "apo_r=%.6g m apo_t=%.6g s peri_r=%.6g m peri_t=%.6g s "
                    "period=%.6g s inc=%.6g deg ecc=%.6g sma=%.6g m "
-                   "lan=%.6g deg lpe=%.6g deg prg=%.6g deg rtg=%.6g deg "
+                   "plane=%s lan=%s lpe=%s prg=%.6g deg rtg=%.6g deg "
                    "energy=%.6g J/kg\n",
                    time, b->name.c_str(), speed, distance,
                    o.apoapsis, o.time_to_apo, o.periapsis, o.time_to_peri,
-                   o.period, glm::degrees(o.inclination), o.ecc, o.semi_major,
-                   glm::degrees(o.raan), glm::degrees(o.arg_periapsis),
+                   o.period, glm::degrees(view.plane.inc), o.ecc, o.semi_major,
+                   refPlaneName(g.map_plane), lan_s, lpe_s,
                    glm::degrees(prograde_angle),
                    glm::degrees(retrograde_angle),
                    o.energy);

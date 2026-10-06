@@ -1,6 +1,11 @@
 #pragma once
 // Two-body orbital elements from a (pos, vel) state in the body's INERTIAL
-// frame. Header-only pure math. Angles in radians; plane = XY (normal +Z).
+// frame. Header-only pure math. Angles in radians.
+// Everything in OrbitElements is plane-free: radius, speed, a, e, apsis
+// radii, period, anomalies -- all built from |pos|, |vel|, |h|, e.e and
+// pos.vel, so no choice of reference plane can change them. Plane angles
+// (Inc/LAN/LPe) are a SEPARATE call, orbitPlaneAngles, because they mean
+// nothing without the plane they are measured in (issue #171).
 // time_to_peri / time_to_apo: seconds to the NEXT passage, -1 = never.
 
 #include <cassert>
@@ -15,13 +20,10 @@ struct OrbitElements {
     double ecc = 0.0;           // eccentricity
     double periapsis = 0.0;     // m, radius at periapsis
     double apoapsis = 0.0;      // m, radius at apoapsis (-1 for non-elliptic)
-    double inclination = 0.0;   // rad, from the +Z axis
     double period = 0.0;        // s (-1 for non-elliptic trajectories)
     double ang_momentum = 0.0;  // |h|, m^2/s
     double energy = 0.0;        // specific orbital energy, J/kg
     double radial_vel = 0.0;    // m/s, + = receding from the focus
-    double raan = 0.0;          // rad [0, 2pi), ascending node (0 if equatorial)
-    double arg_periapsis = 0.0; // rad [0, 2pi), (0 if circular or equatorial)
     double true_anomaly = 0.0;  // rad [0, 2pi) (0 if circular)
     double ecc_anomaly = 0.0;   // rad: eccentric anomaly E (elliptic) or
                                 //      hyperbolic anomaly H (hyperbolic)
@@ -56,18 +58,6 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     o.radial_vel = glm::dot(pos, vel) / distance;
     // Stays finite in the parabolic limit where (1-e)*a is 0 * inf.
     o.periapsis = h_len * h_len / (mu * (1.0 + o.ecc));
-    o.inclination = h_len > 0.0 ? acos(glm::clamp(h.z / h_len, -1.0, 1.0)) : 0.0;
-
-    // Undefined for equatorial/circular orbits; report 0, not NaN.
-    const glm::dvec3 node = glm::cross(glm::dvec3(0.0, 0.0, 1.0), h);
-    const double node_len = glm::length(node);
-    o.raan = node_len > 0.0 ? wrapAngleToPositive(atan2(node.y, node.x)) : 0.0;
-    o.arg_periapsis = 0.0;
-    if(node_len > 0.0 && o.ecc > 1e-9) {
-        const double c = glm::dot(node, ecc_vec) / (node_len * o.ecc);
-        o.arg_periapsis = acos(glm::clamp(c, -1.0, 1.0));
-        if(ecc_vec.z < 0.0) { o.arg_periapsis = std::numbers::pi * 2 - o.arg_periapsis; }
-    }
 
     // atan2 of (e sin nu, e cos nu) picks the quadrant directly.
     o.true_anomaly = 0.0;
@@ -111,6 +101,78 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
         o.time_to_apo = -1.0;
     }
     return o;
+}
+
+/* A reference plane to measure angles in. A normal is not enough: an in-plane
+   angle needs a zero direction too. y_hat = n_hat x x_hat0 then points along
+   INCREASING longitude -- for the body-rail frame (n_hat = +Y, x_hat0 = +X)
+   that is -Z, which is why railAz measures azimuth as atan2(-z, x) (#146). */
+struct RefPlane {
+    glm::dvec3 n_hat = glm::dvec3(0.0, 1.0, 0.0);
+    glm::dvec3 x_hat0 = glm::dvec3(1.0, 0.0, 0.0);
+};
+
+struct PlaneAngles {
+    double inc = 0.0;      // rad [0, pi], from n_hat
+    double lan = 0.0;      // rad [0, 2pi), ascending node, from x_hat0
+    double argp = 0.0;     // rad [0, 2pi), periapsis from the node, about h_hat
+    double lpe = 0.0;      // rad [0, 2pi), longitude of periapsis in the plane
+    bool node_ok = false;  // false: the orbit lies IN the plane -> lan/argp undefined
+    bool peri_ok = false;  // false: no periapsis to point at -> lpe undefined
+};
+
+/* Inc / LAN / argp / LPe of a (pos, vel) state measured IN a reference plane.
+   Textbook right-handed: node = n_hat x h_hat is the ASCENDING node and the
+   periapsis angle opens from that node about h_hat. tests/test_railangles.cpp
+   round-trips every authored orb_incl / lon_asc_node / arg_peri in the shipped
+   system files through this -- the test #171 would have failed.
+   The node guard is RELATIVE: |n_hat x h_hat| == sin(inc), and an in-game h
+   carries ~1e-8 relative noise, so a genuinely equatorial orbit would otherwise
+   print a random LAN with full confidence (the same reason the UI dashes the
+   apsides of a near-circular orbit).
+   LPe survives a degenerate node: an orbit lying in the plane still has a
+   periapsis POINTING somewhere, and its longitude is exactly what the rails
+   author as lon_asc_node + arg_peri for a coplanar body. */
+inline PlaneAngles orbitPlaneAngles(const glm::dvec3 &pos, const glm::dvec3 &vel,
+                                   double mu, const RefPlane &ref) {
+    PlaneAngles p;
+    const glm::dvec3 h = glm::cross(pos, vel);
+    const double h_len = glm::length(h);
+    if(!(h_len > 0.0) || !(mu > 0.0)) { return p; }
+    const glm::dvec3 h_hat = h / h_len;
+    p.inc = acos(glm::clamp(glm::dot(h_hat, ref.n_hat), -1.0, 1.0));
+
+    const glm::dvec3 y_hat = glm::cross(ref.n_hat, ref.x_hat0);
+    auto lon = [&](const glm::dvec3 &v) {
+        return wrapAngleToPositive(atan2(glm::dot(v, y_hat), glm::dot(v, ref.x_hat0)));
+    };
+
+    // Unnormalized eccentricity vector (|e_vec| == mu * e). The mu/r term sets
+    // its DIRECTION, so it cannot be dropped.
+    const double r = glm::length(pos);
+    const glm::dvec3 e_vec = (glm::dot(vel, vel) - mu / r) * pos
+                           - glm::dot(pos, vel) * vel;
+    p.peri_ok = glm::length(e_vec) > 1e-6 * mu;
+
+    const glm::dvec3 node = glm::cross(ref.n_hat, h_hat);
+    const double node_len = glm::length(node);
+    p.node_ok = node_len > 1e-6;
+    if(p.node_ok) {
+        p.lan = lon(node);
+        if(p.peri_ok) {
+            const glm::dvec3 node_hat = node / node_len;
+            const glm::dvec3 y_orb = glm::cross(h_hat, node_hat);
+            p.argp = wrapAngleToPositive(
+                atan2(glm::dot(e_vec, y_orb), glm::dot(e_vec, node_hat)));
+            // Both are already in [0, 2pi), so the sum needs a SUBTRACT to
+            // wrap -- wrapAngleToPositive only adds 2pi to a negative.
+            p.lpe = p.lan + p.argp;
+            if(p.lpe >= 2.0 * std::numbers::pi) { p.lpe -= 2.0 * std::numbers::pi; }
+        }
+    } else if(p.peri_ok) {
+        p.lpe = lon(e_vec);
+    }
+    return p;
 }
 
 // Stumpff C(z)/S(z): power series near z = 0, closed forms away from it.

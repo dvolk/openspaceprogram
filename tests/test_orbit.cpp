@@ -45,9 +45,9 @@ static void conic_state(double a, double e, double nu,
 
 static void check_all_finite(const OrbitElements &o, const char *label) {
     const double f[] = { o.distance, o.speed, o.semi_major, o.ecc,
-                         o.periapsis, o.apoapsis, o.inclination, o.period,
-                         o.ang_momentum, o.energy, o.radial_vel, o.raan,
-                         o.arg_periapsis, o.true_anomaly, o.ecc_anomaly,
+                         o.periapsis, o.apoapsis, o.period,
+                         o.ang_momentum, o.energy, o.radial_vel,
+                         o.true_anomaly, o.ecc_anomaly,
                          o.mean_anomaly, o.time_to_peri, o.time_to_apo };
     for(size_t i = 0; i < sizeof(f) / sizeof(f[0]); i++) {
         if(!std::isfinite(f[i])) {
@@ -73,11 +73,7 @@ int main() {
         CHECK_NEAR(o.periapsis, rc, 1e-6 * rc);
         CHECK_NEAR(o.apoapsis, rc, 1e-6 * rc);
         CHECK_NEAR(o.period, T, 1e-9 * T);
-        CHECK_NEAR(o.inclination, 0.0, 1e-12);        // h along +Z
         CHECK_NEAR(o.energy, -MU / (2.0 * rc), 1e-6 * MU / rc);
-        // h || Z -> equatorial -> node undefined -> 0, not NaN
-        CHECK_NEAR(o.raan, 0.0, 1e-12);
-        CHECK_NEAR(o.arg_periapsis, 0.0, 1e-12);      // circular -> undefined
         // countdowns: periapsis a full period away, apoapsis half
         CHECK_NEAR(o.time_to_peri, T, 1e-9 * T);
         CHECK_NEAR(o.time_to_apo, T / 2.0, 1e-9 * T);
@@ -167,33 +163,115 @@ int main() {
         CHECK(o.radial_vel < 0.0);
     }
 
-    // --- tilted orbit: inclination, RAAN, argument of periapsis ---------------
+    /* --- plane angles, in the BODY-RAIL convention (issue #171) --------------
+       The rails live in the XZ plane with normal +Y and prograde = +Y x r_hat,
+       so rail longitude is atan2(-z, x) (railAz, #146). These states are built
+       exactly the way railStateFromElements builds them, which is what makes
+       the expected angles the ones a system file would author. Measuring from
+       +Z instead -- the old computeOrbitElements contract -- made every
+       rail-plane orbit read 90 deg tilted. */
+    const RefPlane rail{glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(1.0, 0.0, 0.0)};
     {
-        // in-plane ellipse rotated 90 deg about X: i=90, node along +X,
-        // periapsis still on the node -> arg_pe = 0
+        // Prograde and IN the rail plane, periapsis at rail longitude 0:
+        // inc 0, and the orbit lying in the plane leaves NO node, so LAN is
+        // undefined -- but the periapsis still points somewhere, so LPe lives.
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
-                                               glm::dvec3(0, 0, vp), MU);
-        check_all_finite(o, "tilted w=0");
-        CHECK_NEAR(o.inclination, M_PI / 2.0, 1e-12);
-        CHECK_NEAR(o.raan, 0.0, 1e-12);
-        CHECK_NEAR(o.arg_periapsis, 0.0, 1e-9);
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(rp, 0, 0),
+                                               glm::dvec3(0, 0, -vp), MU, rail);
+        CHECK_NEAR(p.inc, 0.0, 1e-12);
+        CHECK(!p.node_ok);
+        CHECK(p.peri_ok);
+        CHECK_NEAR(p.lpe, 0.0, 1e-9);
     }
     {
-        // periapsis along +Z (the spawn convention): i=90, raan=0, arg_pe=90
+        // Same orbit, periapsis at rail longitude 90: r_hat = (cos f, 0, -sin f)
+        // with f = 90, and prograde vel = +Y x r_hat.
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        OrbitElements o = computeOrbitElements(glm::dvec3(0, 0, rp),
-                                               glm::dvec3(-vp, 0, 0), MU);
-        check_all_finite(o, "tilted w=90");
-        CHECK_NEAR(o.inclination, M_PI / 2.0, 1e-12);
-        CHECK_NEAR(o.raan, 0.0, 1e-12);
-        CHECK_NEAR(o.arg_periapsis, M_PI / 2.0, 1e-9);
-        CHECK_NEAR(o.periapsis, rp, 1e-6 * rp);
-        CHECK_NEAR(o.apoapsis, ra, 1e-6 * ra);
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, 0, -rp),
+                                               glm::dvec3(-vp, 0, 0), MU, rail);
+        CHECK_NEAR(p.inc, 0.0, 1e-12);
+        CHECK(!p.node_ok);
+        CHECK_NEAR(p.lpe, M_PI / 2.0, 1e-9);
+    }
+    {
+        // Retrograde in the rail plane (h along -Y): inc 180, node undefined,
+        // periapsis at rail longitude 270. This is the state the old +Z test
+        // called "i=90, raan=0, arg_pe=90".
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, 0, rp),
+                                               glm::dvec3(-vp, 0, 0), MU, rail);
+        CHECK_NEAR(p.inc, M_PI, 1e-12);
+        CHECK(!p.node_ok);
+        CHECK_NEAR(p.lpe, 3.0 * M_PI / 2.0, 1e-9);
+    }
+    {
+        // That first orbit rotated 90 deg about X: the plane normal becomes +Z,
+        // so inc 90 and the node is the rail +X (lan 0); periapsis sits ON the
+        // node, so argp 0.
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(rp, 0, 0),
+                                               glm::dvec3(0, vp, 0), MU, rail);
+        CHECK_NEAR(p.inc, M_PI / 2.0, 1e-12);
+        CHECK(p.node_ok);
+        CHECK_NEAR(p.lan, 0.0, 1e-9);
+        CHECK_NEAR(p.argp, 0.0, 1e-9);
+        CHECK_NEAR(p.lpe, 0.0, 1e-9);
+    }
+    {
+        // Same plane, periapsis 90 deg past the node: argp 90, lpe 90.
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, rp, 0),
+                                               glm::dvec3(-vp, 0, 0), MU, rail);
+        CHECK_NEAR(p.inc, M_PI / 2.0, 1e-12);
+        CHECK_NEAR(p.lan, 0.0, 1e-9);
+        CHECK_NEAR(p.argp, M_PI / 2.0, 1e-9);
+        CHECK_NEAR(p.lpe, M_PI / 2.0, 1e-9);
+    }
+    {
+        // LPe must stay inside [0, 2pi): here lan 270 + argp 180 is 450, and
+        // the naive wrap (adding 2pi to a negative) would leave 450 on screen.
+        // h along -X puts the node at rail longitude 270; periapsis at -Z is
+        // 180 past it, so the periapsis longitude is 90.
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, 0, -rp),
+                                               glm::dvec3(0, -vp, 0), MU, rail);
+        CHECK_NEAR(p.inc, M_PI / 2.0, 1e-12);
+        CHECK_NEAR(p.lan, 3.0 * M_PI / 2.0, 1e-9);
+        CHECK_NEAR(p.argp, M_PI, 1e-9);
+        CHECK_NEAR(p.lpe, M_PI / 2.0, 1e-9);
+    }
+    {
+        // Circular: no periapsis to point at, so LPe is undefined (the UI
+        // dashes it) while inc still reads.
+        const double rc = 1.0e6, vc = sqrt(MU / rc);
+        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(rc, 0, 0),
+                                               glm::dvec3(0, 0, -vc), MU, rail);
+        CHECK_NEAR(p.inc, 0.0, 1e-12);
+        CHECK(!p.peri_ok);
+    }
+    {
+        // Near-equatorial noise guard: an in-game h carries ~1e-8 relative
+        // jitter, so a genuinely equatorial orbit must NOT report a confident
+        // random LAN. sin(inc) ~ 1e-8 must fall inside the node guard.
+        const double rc = 1e6, vc = sqrt(MU / rc);
+        const glm::dvec3 h_hat = glm::normalize(glm::dvec3(1e-8, 1.0, 0.0));
+        const glm::dvec3 pos(rc, 0, 0);
+        const glm::dvec3 vel = vc * glm::normalize(glm::cross(h_hat, pos));
+        const PlaneAngles p = orbitPlaneAngles(pos, vel, MU, rail);
+        CHECK(p.inc < 1e-7);
+        CHECK(!p.node_ok);
     }
 
     // --- hyperbolic at periapsis ----------------------------------------------

@@ -305,15 +305,31 @@ void tick(Game &g) {
                           + g.ship->frame->GetPositionRelTo(inertial);
                 }
                 OrbitElements o = computeOrbitElements(o_pos, o_vel, mu);
+                // Measured in the plane the orbit map shows, like the flight
+                // readout (#171). lan/lpe trail the line so ORBIT_RE (e2e)
+                // keeps matching.
+                const glm::dvec3 h = glm::cross(o_pos, o_vel);
+                const double h_len = glm::length(h);
+                const PlaneAngles pa = orbitPlaneAngles(
+                    o_pos, o_vel, mu,
+                    uiRefPlane(g.ship->m_parent->frame,
+                               h_len > 0.0 ? h / h_len : glm::dvec3(0.0, 1.0, 0.0),
+                               g.map_plane));
+                char lan_s[32], lpe_s[32];
+                if(pa.node_ok) { snprintf(lan_s, sizeof lan_s, "%.4f deg", glm::degrees(pa.lan)); }
+                else { snprintf(lan_s, sizeof lan_s, "-"); }
+                if(pa.peri_ok) { snprintf(lpe_s, sizeof lpe_s, "%.4f deg", glm::degrees(pa.lpe)); }
+                else { snprintf(lpe_s, sizeof lpe_s, "-"); }
                 printf("[orbitlog] t=%.1fs frame=\"%s\" r=%.6g m v=%.6g m/s "
                        "sma=%.6g m ecc=%.6g peri=%.6g m apo=%.6g m "
                        "inc=%.4f deg T=%.6g s ttAp=%.6g s ttPe=%.6g s "
-                       "|h|=%.6f m2/s E=%.6f J/kg\n",
+                       "|h|=%.6f m2/s E=%.6f J/kg plane=%s lan=%s lpe=%s\n",
                        g.time, g.ship->frame->name.c_str(), o.distance, o.speed,
                        o.semi_major, o.ecc, o.periapsis, o.apoapsis,
-                       glm::degrees(o.inclination), o.period,
+                       glm::degrees(pa.inc), o.period,
                        o.time_to_apo, o.time_to_peri,
-                       o.ang_momentum, o.energy);
+                       o.ang_momentum, o.energy,
+                       refPlaneName(g.map_plane), lan_s, lpe_s);
                 fflush(stdout);
             }
         }

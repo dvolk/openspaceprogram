@@ -37,6 +37,9 @@ ORBIT_RE = re.compile(
     r"peri=([-\d.e+]+) m\s+apo=([-\d.e+]+) m\s+inc=([-\d.e+]+) deg\s+"
     r"T=([-\d.e+]+) s\s+ttAp=([-\d.e+]+) s\s+ttPe=([-\d.e+]+) s\s+"
     r"\|h\|=([-\d.e+]+) m2/s\s+E=([-\d.e+]+) J/kg"
+    # Plane angles (#171) trail the line; optional so nothing else breaks.
+    # lan/lpe are either a number followed by " deg" or a bare "-".
+    r"(?:\s+plane=(\w+)\s+lan=(\S+)(?: deg)?\s+lpe=(\S+)(?: deg)?)?"
 )
 DBG_RE = re.compile(
     r"\[dbg\]\s+t=([\d.]+)s\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
@@ -165,13 +168,16 @@ def parse_cases(path):
 def parse_orbit(out):
     rows = []
     for m in ORBIT_RE.finditer(out):
-        (t, frame, r, v, sma, ecc, peri, apo, inc, T, ttAp, ttPe, h, E) = m.groups()
+        (t, frame, r, v, sma, ecc, peri, apo, inc, T, ttAp, ttPe, h, E,
+         plane, lan, lpe) = m.groups()
         rows.append({
             "t": float(t), "frame": frame, "r": float(r), "v": float(v),
             "sma": float(sma), "ecc": float(ecc), "peri": float(peri),
             "apo": float(apo), "inc": float(inc), "T": float(T),
             "ttAp": float(ttAp), "ttPe": float(ttPe), "h": float(h),
             "E": float(E),
+            # None on a line without the #171 tail.
+            "plane": plane, "lan": lan, "lpe": lpe,
         })
     return rows
 

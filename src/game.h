@@ -95,6 +95,9 @@ struct ShipView {
     glm::dvec3 orbit_pos;
     glm::dvec3 orbit_vel;
     OrbitElements o;
+    // Inc/LAN/LPe of the same conic, measured in the plane the orbit map is
+    // showing (Game::map_plane) -- see orbitPlaneAngles / uiRefPlane (#171).
+    PlaneAngles plane;
     double distance = 0;  // |orbit_pos|
     double speed = 0;     // |orbit_vel|
     double mu = 0;        // the parent body's mu (the conic's)
@@ -501,7 +504,11 @@ struct Game {
 
     // --- Orbital map state (gameui.cpp draws with them) ---------------------
     float map_scale = kMapDefaultScale;   // meters per pixel
-    int map_plane = 0;           // 0 = equatorial, 1 = ecliptic, 2 = orbital
+    // RefPlaneMode (frame.h): equatorial / ecliptic / orbital. Not just a view
+    // control -- the flight readout's Inc/LAN/LPe are measured in this plane
+    // too, so the numbers describe the picture (#171). ImGui::Combo needs an
+    // int*, hence the type.
+    int map_plane = kRefEquator;
     // Pan offset from the window center, in pixels (P4 navigation).
     ImVec2 map_pan = ImVec2(0.0f, 0.0f);
     // Right-clicking the map cycles chrome: 0 = full window, 1 = bare map,

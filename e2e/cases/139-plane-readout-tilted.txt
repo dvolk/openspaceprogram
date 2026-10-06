@@ -1,0 +1,16 @@
+# The flight readout measures Inc/LAN/LPe in the plane the orbit map shows
+# (#171); the default is the focus's EQUATOR, not the +Z that no rail lives in.
+# The rot-orbit bed is built in the focus's RAIL plane, so on a tilted Kerbin
+# it reads exactly the axial tilt, 23.4400, with the node of that plane pair
+# at equator longitude 270.0000. Before #171 the same orbit read inc=90
+# lan=180.
+NAME plane-readout-tilted
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(o["plane"] == "equ" for o in orbit if o["t"] > 1.0)
+CHECK all(abs(o["inc"] - 23.44) < 0.01 for o in orbit if o["t"] > 1.0)
+CHECK all(abs(float(o["lan"]) - 270.0) < 0.01 for o in orbit if o["t"] > 1.0)
+# Circular to ~1e-7: no periapsis to point at, so LPe is dashed, not jittering.
+CHECK all(o["lpe"] == "-" for o in orbit if o["t"] > 1.0)
