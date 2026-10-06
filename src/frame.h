@@ -93,6 +93,27 @@ struct Frame {
        the frame has no spin frame of its own. */
     Frame *getRotFrame() { return rot_frame ? rot_frame : this; }
 
+    /* The body's spin axis -- the normal of its equatorial plane -- in relTo's
+       axes. The ONE spelling of "the body's pole": an Equatorial map plane is
+       this, NOT the frame's +Y, which is the normal of the plane the body's
+       own RAIL lives in (issue #173). Spin is about the pole, so `orient` and
+       `initial_orient` give the same axis; we take orient because
+       GetOrientRelTo already relativizes against the tree.
+       A body whose rot frame carries no tilt returns relTo's +Y, i.e. the
+       system plane: the loader always makes a rot frame (system.cpp) and only
+       a `rotating` block tilts it, so every star in the shipped systems lands
+       here. That is a convention, not a measurement. */
+    glm::dvec3 spinAxisRelTo(Frame *relTo);
+
+    /* The equator frame's +X -- the node line that the authored tilt_azimuth
+       leans the pole toward -- in the inertial (non-rot) frame's axes. Pairs
+       with spinAxisRelTo to pin an equatorial view's screen-x direction
+       instead of letting the map invent one (#173). Identity rot frame ->
+       (1,0,0). */
+    glm::dvec3 equatorX() const {
+        return equator_orient * glm::dvec3(1.0, 0.0, 0.0);
+    }
+
     // Spin angular velocity vector in LOCAL (body) axes. Positive
     // rot_ang_speed is prograde (the +Y x r_hat orbital sense, issue
     // #101); spin_axis is unit, so |omega| == |rot_ang_speed|. The ONE

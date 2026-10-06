@@ -246,12 +246,11 @@ static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
     if(!sun || !sun->frame) { return; }
     const glm::dvec3 sun_f = sun->frame->GetPositionRelTo(focus->frame);
     // The belt plane's normal, in the focus's inertial frame (the same space
-    // map.setPlane() and the positions use): the star's pole. spin_axis is
-    // +Y in the body frame and the spin is about it, so the rotating frame's
-    // orientation gives the pole at any spin angle.
-    Frame *srf = sun->frame->getRotFrame();
-    const glm::dvec3 n =
-        glm::normalize(srf->GetOrientRelTo(focus->frame) * srf->spin_axis);
+    // map.setPlane() and the positions use): the star's pole. Spin is about the
+    // pole, so the rotating frame's orientation gives it at any spin angle. No
+    // shipped system tilts its star, so this lands on the system plane -- a
+    // convention, documented on Frame::spinAxisRelTo (#173).
+    const glm::dvec3 n = sun->frame->spinAxisRelTo(focus->frame);
     // Any orthonormal pair spanning the belt plane.
     const glm::dvec3 ref = (std::abs(n.y) < 0.9) ? glm::dvec3(0.0, 1.0, 0.0)
                                                  : glm::dvec3(1.0, 0.0, 0.0);
@@ -2265,7 +2264,15 @@ void drawUIMap(Game &g) {
         // OrbitMap derives an in-plane basis from it.
         TerrainBody *focus = ship->m_parent;
         glm::dvec3 plane_n(0.0, 1.0, 0.0);
-        if(map_plane == 1) {
+        glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
+        if(map_plane == 0) {
+            // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the
+            // rail normal and sits off the pole by exactly the axial tilt.
+            plane_n = focus->frame->spinAxisRelTo(focus->frame);
+            // Pin screen-x to the node line the pole leans along, or the whole
+            // view rotates as soon as the normal stops being +Y.
+            plane_x = focus->frame->getRotFrame()->equatorX();
+        } else if(map_plane == 1) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);
         } else if(map_plane == 2) {
@@ -2376,7 +2383,7 @@ void drawUIMap(Game &g) {
         map.cx = center_x + map_pan.x;
         map.cy = center_y + map_pan.y;
         map.scale = map_scale;
-        map.setPlane(plane_n);
+        map.setPlane(plane_n, plane_x);
         const ImVec2 focus_px = map.px(glm::dvec3(0.0, 0.0, 0.0));
 
         // The body selected in the TRANSFER window (a child of the
@@ -3788,7 +3795,13 @@ void drawTrackingMap(Game &g) {
         // derives an in-plane basis from it. "Orbital" needs a ship, so
         // without one it stays on the equatorial plane.
         glm::dvec3 plane_n(0.0, 1.0, 0.0);
-        if(map_plane == 1) {
+        glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
+        if(map_plane == 0) {
+            // Same as the in-flight map: the focus's equator, not its rail
+            // plane, and screen-x pinned to the node line (#173).
+            plane_n = focus->frame->spinAxisRelTo(focus->frame);
+            plane_x = focus->frame->getRotFrame()->equatorX();
+        } else if(map_plane == 1) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);
         } else if(map_plane == 2 && ship) {
@@ -3836,7 +3849,7 @@ void drawTrackingMap(Game &g) {
         map.cx = center_x + map_pan.x;
         map.cy = center_y + map_pan.y;
         map.scale = map_scale;
-        map.setPlane(plane_n);
+        map.setPlane(plane_n, plane_x);
 
         // KSP-inspired palette (P4): your orbit is green, the transfer
         // is blue, other bodies are gray. The focus body, ship dot and

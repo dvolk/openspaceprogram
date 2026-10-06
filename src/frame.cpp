@@ -25,6 +25,12 @@ glm::dmat3 Frame::GetOrientRelTo(Frame *relTo)
     return glm::transpose(relTo->root_orient) * root_orient;
 }
 
+glm::dvec3 Frame::spinAxisRelTo(Frame *relTo)
+{
+    Frame *rf = getRotFrame();
+    return glm::normalize(rf->GetOrientRelTo(relTo) * rf->spin_axis);
+}
+
 glm::dmat4 Frame::GetBodyDrawTransform(Frame *relTo)
 {
     Frame *rot = getRotFrame();

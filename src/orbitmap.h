@@ -19,12 +19,30 @@ struct OrbitMap {
     glm::dvec3 e2 = glm::dvec3(0.0, 0.0, 1.0);
 
     // Near-polar normals keep the canonical X/Z basis (stable equatorial view).
-    void setPlane(const glm::dvec3 &normal) {
+    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: pass the
+    // focus's equator-frame +X (Frame::equatorX) for an equatorial plane, so the
+    // view does not spin as the axial tilt moves the normal (issue #173). Zero
+    // length means derive it, the old way.
+    // Handedness of the pinned path: e2 = e1 x n, so a prograde body (which
+    // moves along n x r_hat) sweeps counter-clockwise on screen -- the same way
+    // the canonical X/Z case below already draws it.
+    void setPlane(const glm::dvec3 &normal,
+                  const glm::dvec3 &x_axis = glm::dvec3(0.0)) {
         n = glm::normalize(normal);
+        const glm::dvec3 t = x_axis - glm::dot(x_axis, n) * n;  // in-plane part
+        if(glm::dot(t, t) > 1e-12) {
+            e1 = glm::normalize(t);
+            e2 = glm::cross(e1, n);
+            return;
+        }
         if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
             e1 = glm::dvec3(1.0, 0.0, 0.0);
             e2 = glm::dvec3(0.0, 0.0, 1.0);
         } else {
+            // Historical basis. Note it ends up with the OPPOSITE handedness to
+            // the two paths above (e2 = n x e1), so Ecliptic/Orbital views draw
+            // prograde the other way from Equatorial -- issue #181. Left alone
+            // here, where flipping it would change two views silently.
             e1 = glm::normalize(glm::cross(glm::dvec3(0.0, 1.0, 0.0), n));
             e2 = glm::cross(n, e1);
         }

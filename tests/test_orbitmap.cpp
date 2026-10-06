@@ -59,6 +59,37 @@ int main() {
         expect_near(m.bodyRadiusPx(-100.0, 3.0f), 3.0, "bodyRadiusPx negative radius");
     }
 
+    // setPlane(): with no x_axis a +Y normal keeps the canonical X/Z basis. An
+    // explicit x_axis pins screen-x INSIDE the plane, so an equatorial view
+    // does not spin when the axial tilt moves the normal (issue #173), and its
+    // handedness (e2 = e1 x n) matches the canonical case.
+    {
+        OrbitMap s;
+        s.setPlane(glm::dvec3(0, 1, 0));
+        expect_near(s.e1.x, 1.0, "derived +Y e1 x");
+        expect_near(s.e2.z, 1.0, "derived +Y e2 z");
+        // Same normal with x pinned to (1,0,0) must give the SAME basis, so an
+        // untilted focus (every shipped star) draws exactly as before.
+        s.setPlane(glm::dvec3(0, 1, 0), glm::dvec3(1, 0, 0));
+        expect_near(s.e1.x, 1.0, "pinned +Y e1 x");
+        expect_near(s.e2.z, 1.0, "pinned +Y e2 z");
+    }
+    {
+        // A 30 deg tilt about +Z: pole (sin, cos, 0), node line (cos, -sin, 0).
+        const double t = std::acos(-1.0) / 6.0;
+        const double st = std::sin(t), ct = std::cos(t);
+        OrbitMap s;
+        s.setPlane(glm::dvec3(st, ct, 0.0));
+        expect_near(s.e1.z, -1.0, "derived tilt e1 z");   // Y x n -> -Z
+        s.setPlane(glm::dvec3(st, ct, 0.0), glm::dvec3(ct, -st, 0.0));
+        expect_near(s.e1.x, ct, "pinned tilt e1 x");      // the node line
+        expect_near(s.e1.y, -st, "pinned tilt e1 y");
+        expect_near(s.e2.z, 1.0, "pinned tilt e2 z");     // e1 x n
+        // An x_axis parallel to the normal is unusable: fall back to derived.
+        s.setPlane(glm::dvec3(st, ct, 0.0), glm::dvec3(st, ct, 0.0));
+        expect_near(s.e1.z, -1.0, "degenerate x_axis falls back");
+    }
+
     // contrastingColor(): a light background yields dark ink and vice versa,
     // so the orbit stays visible in both the light and dark ImGui styles.
     {
