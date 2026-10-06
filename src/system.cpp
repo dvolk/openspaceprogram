@@ -621,9 +621,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 // than asserting (an assert also vanishes under NDEBUG).
                 if(!in.contains("true_anomaly0") && e != 0.0) {
                     throw std::runtime_error(
-                        "system: '" + body->name + "' authors inertial.pos with"
-                        " nonzero ecc: the rail keeps only the direction, so"
-                        " author true_anomaly0");
+                        "system: '" + body->name + "' authors nonzero ecc with no"
+                        " true_anomaly0: the epoch falls back to the DIRECTION of"
+                        " inertial.pos (zero when pos is omitted), so the radius"
+                        " is not the authored one -- author true_anomaly0");
                 }
                 if(!railStateFromElements(a, e, arg_peri, nu0, mu,
                                           f->orbit_pos0, f->orbit_vel0)) {
