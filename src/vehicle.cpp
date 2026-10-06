@@ -336,7 +336,14 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                          ? sc.alt_frac * top
                          : sc.alt_frac * shell;
         const double r = sc.abs_r > 0.0 ? sc.abs_r : home->radius + sea + alt;
-        const glm::dvec3 rhat_local = sc.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
+        /* A polar bed sits over the body's GEOGRAPHIC pole (issue #174). The
+           frame's +Y is the normal of the body's own RAIL plane: for a tilted
+           body that is off the spin axis by exactly the axial tilt (Kerbin
+           23.44 deg), so a "polar" orbit built about it never passes over the
+           poles. Untilted bodies take spinAxisRelTo == (0,1,0): no change. */
+        const glm::dvec3 rhat_local = sc.polar
+            ? home->frame->spinAxisRelTo(home->frame)
+            : glm::dvec3(0, 0, 1);
         shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 
         // Circular orbital speed (vis-viva with semi-major axis == r); the
@@ -347,7 +354,8 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                            : sqrt(home->mu / r);
 
         // Prograde: perpendicular to the radius vector, in the system's sense
-        // of rotation (+y axis); polar orbits go around the spin axis instead.
+        // of rotation (+y axis). A polar bed's radius is the spin axis, so its
+        // velocity takes +x instead -- any system axis but the radius's own.
         // Normalize: with an inclined body orbit rhat is not orthogonal to
         // the reference axis, and the raw cross product is short by cos(incl).
         const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);

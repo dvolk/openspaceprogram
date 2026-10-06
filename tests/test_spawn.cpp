@@ -295,7 +295,11 @@ int main() {
                 velWorld = (xhat * e - zhat) * (h / p);
             }
         } else {
-            const glm::dvec3 rhat_local = c.polar ? glm::dvec3(0, 1, 0) : glm::dvec3(0, 0, 1);
+            /* Mirrors spawn_vehicle: a polar bed sits over the body's
+               geographic pole (#174), not the rail-plane normal. */
+            const glm::dvec3 rhat_local = c.polar
+                ? c.bodyFrame->spinAxisRelTo(c.bodyFrame)
+                : glm::dvec3(0, 0, 1);
             worldPos = center + c.bodyFrame->root_orient * (rhat_local * c.r);
             // Circular orbital speed (vis-viva with semi-major axis == r);
             // the escape scenario leaves at esc x local escape velocity.
@@ -343,6 +347,17 @@ int main() {
         glm::dvec3 intended = c.bodyFrame->root_vel + velWorld;
         snprintf(buf, sizeof buf, "%s: implied inertial vel == body vel + orbital vel", c.desc);
         CHECK_TRUE(glm::length(implied - intended) < 1e-6 * speed, buf);
+
+        // A polar bed's orbit plane must contain the body's SPIN axis. The
+        // frame's +Y (the rail normal) is off it by the axial tilt, so this
+        // fails for any tilted body whose bed was built about +Y (#174).
+        if(c.polar) {
+            const glm::dvec3 h = glm::normalize(glm::cross(worldPos - center, velWorld));
+            const glm::dvec3 pole = c.bodyFrame->spinAxisRelTo(c.bodyFrame);
+            snprintf(buf, sizeof buf, "%s: polar plane contains the spin axis (off by %.3g)",
+                     c.desc, std::fabs(glm::dot(h, pole)));
+            CHECK_TRUE(std::fabs(glm::dot(h, pole)) < 1e-9, buf);
+        }
 
         // (b) Ship must stay put under the main-loop SOI logic: not outside the
         //     resolved frame's SOI, and not inside any of its children's SOIs.

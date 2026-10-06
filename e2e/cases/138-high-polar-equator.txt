@@ -1,0 +1,18 @@
+# The high-polar bed must be polar about the body's SPIN axis, not its rail
+# normal (#174). Kerbin's 23.44 deg axial tilt is what separates them: about
+# the rail normal every body reads exactly inc=90, which is why this number is
+# pinned rather than eyeballed. About the spin axis Kerbin reads 85.8938. An
+# untilted focus (Kerbol) still reads 90.0000.
+#
+# NB the pinned value is a convention artifact, not the polar-ness: inc is
+# measured from the parent's +Z (#171), so the same bed reports 89.6405 on Mun
+# (lan 0), 52.2238 on Duna (lan 135.5 deg) and 16.5832 on Minmus (lan 78 deg).
+# If #171 measures inc against the focus's equator, a polar bed reads 90.0000
+# again -- for the right reason -- and this case must be re-pinned.
+NAME high-polar-equator
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --startship racer,res/ships/racer.json,Kerbin,high-polar
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(abs(o["inc"] - 85.8938) < 0.01 for o in orbit if o["t"] > 1.0)
+CHECK all(o["ecc"] < 0.01 and o["peri"] > 700000.0 for o in orbit if o["t"] > 1.0)
