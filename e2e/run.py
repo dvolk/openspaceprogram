@@ -4,7 +4,8 @@
 Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
 Case keys: NAME ARGS EXPECT FORBID CHECK LIMIT WRITE. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/terrain/surf/
-xfer/porkchop/surfmap) plus first/last/re. Full battery and --jobs>2 need
+xfer/porkchop/surfmap) plus first/last/re. ARGS tokenizes like a shell, so
+a value may be quoted to carry spaces. Full battery and --jobs>2 need
 --force. Artifacts land in tmp/e2e/runs/<stamp>/ + history.csv.
 """
 
@@ -15,6 +16,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -130,7 +132,10 @@ def parse_cases(path):
             if key == "NAME":
                 name = rest
             elif key == "ARGS":
-                args.extend(rest.split())
+                # shlex, not split(): a value may be quoted to carry spaces
+                # (--ui-click 2000,"Game Menu/Tracking Station"). No shipped
+                # case quotes anything, so plain tokens tokenize identically.
+                args.extend(shlex.split(rest))
             elif key == "EXPECT":
                 expect.append(rest)
             elif key == "FORBID":

@@ -38,7 +38,12 @@ endif
 # -MMD -MP: .d files (header changes must rebuild, else stale layout).
 # MWROOT/assimp/include first (cmake config.h). GLEW_STATIC (static, not
 # dllimport). -Wno-deprecated-enum-enum-conversion (implot, GCC).
-CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-deprecated-enum-enum-conversion -std=c++20 -DGLEW_STATIC -I./middleware/glm/ -I./middleware/bullet3/src -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
+# IMGUI_ENABLE_TEST_ENGINE: turns imgui's IMGUI_TEST_ENGINE_ITEM_ADD /
+# _ITEM_INFO macros into real calls, which src/uiinput.cpp implements to
+# register every drawn widget's label + rect (--ui-click / --ui-list).
+# Inert unless ctx->TestEngineHookItems is set. Changing this needs a clean:
+# make does not track compiler flags.
+CXXFLAGS=$(CFGFLAGS) -MMD -MP $(CFGLTO) $(SECT) $(ARCH) $(PGOFLAGS) $(CXX_OPT) -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-deprecated-enum-enum-conversion -std=c++20 -DGLEW_STATIC -DIMGUI_ENABLE_TEST_ENGINE -I./middleware/glm/ -I./middleware/bullet3/src -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
 
 LINKER=$(CXX) $(CFGFLAGS) $(LD_OPT) -o
 LDLIBS=$(GL_LIBS) $(ASSIMP_LIB)
@@ -207,7 +212,9 @@ $(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
 # heavy tests link with $(LTO). src/ pattern rule must precede tests/.
 # After deleting a test source, `make clean` (stale .o is otherwise reused).
 
-TCC   = -O2 -std=c++20 -DGLEW_STATIC
+# TCC carries the imgui define: src TUs compiled here include
+# imgui_internal.h, whose status-flag enum changes with it.
+TCC   = -O2 -std=c++20 -DGLEW_STATIC -DIMGUI_ENABLE_TEST_ENGINE
 TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
         -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ \
         -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include

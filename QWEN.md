@@ -18,6 +18,7 @@
 - If unsure if something is working, first thing to do is add some debug prints and run the game.
 - There's a cli flag to send keys to the game: --sim-press START_MS,DURATION_MS,KEY triples. DURATION_MS=0 for single kp, eg --sim-press 1000,1000,I,2000,0,SPACE to thrust for 1s then stage after 1s. Use this to test the game.
 - There's a cli flag to send mouse input: --sim-mouse TIME_MS,DURATION_MS,X,Y,BTN quintuples.
+- For imgui widgets prefer --ui-click AT_MS,"Window/Label" over --sim-mouse pixels: it clicks through imgui's own hit-testing, so a renamed/moved/hidden button fails the test instead of clicking empty space. --ui-list MS dumps the live window+label+rect registry for writing paths (src/uiinput.cpp).
 - Save ALL temporary files in ./tmp/. Don't overwrite or delete files, as I'm quite nosy.
 - Written reports in ./reports/<subject>YYYY_MM_DD are immutable snapshots of how the project was. Avoid reading and never edit after work is started. Supporting code, logs, graphics, figures are welcome in reports.
 - For visual confirmation ask me to check.

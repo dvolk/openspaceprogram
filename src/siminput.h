@@ -71,6 +71,18 @@ struct SimMouseAction {
     bool released;    // button-up already emitted
 };
 
+/* --ui-click: a synthetic imgui click for e2e testing, addressed by the
+   widget's "Window/Label" path rather than by window pixels (uiinput.h).
+   The click lands on the first frame, from at_ms on, whose PRECEDING imgui
+   pass drew a matching on-screen item. */
+struct UiClick {
+    Uint32 at_ms;      // when to start looking (after the loop starts)
+    std::string path;  // "Window/Label"; with no '/', the label in any window
+    bool down_sent;    // the press was queued (the item was found)
+    bool up_sent;      // the release was queued
+    bool done;         // clicked, or gave up (a diagnostic was printed)
+};
+
 /* --sim-mode: a scripted runtime display-mode change for e2e testing. */
 struct SimModeChange {
     Uint32 at_ms;     // when the change applies (after the loop starts)

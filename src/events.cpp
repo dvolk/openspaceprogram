@@ -8,6 +8,7 @@
 
 #include "eva.h"        // Kerbal (the space-key jump edge)
 #include "siminput.h"   // SimKeyPress, SimMouseAction
+#include "uiinput.h"    // emit_ui_input (--ui-click / --ui-list)
 #include "gldebug.h"    // check_gl_error()
 #include "uiwins.h"     // winOpen / setWinOpen (Esc closes the Flight Summary)
 #include "vab.h"        // vabRotate / vabDeleteSelected (the editor keys)
@@ -138,6 +139,12 @@ void emit_sim_events(Game &g) {
             }
         }
     }
+
+    /* --ui-click / --ui-list: arms imgui's item registry and the frame hook
+       that aims clicks at it (src/uiinput.cpp). The hook, not this call, does
+       the work -- it has to run inside imgui's NewFrame, after the SDL3
+       backend has queued the live cursor. */
+    emit_ui_input(g);
 }
 
 /* Flight-scene one-shot key actions. Time-warp slots are scene-neutral and

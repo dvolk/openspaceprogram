@@ -1,0 +1,12 @@
+NAME ui-click-new-game
+ARGS --timeout 8
+ARGS --ui-click 1500,"Title Menu/New Game"
+ARGS --ui-click 2500,"New Game/Start"
+EXPECT path="Title Menu/New Game" window="Title Menu" label="New Game"
+EXPECT path="New Game/Start" window="New Game" label="Start"
+EXPECT [scene] title -> spacecenter (enterSpaceCenter)
+EXPECT [game] new game: Space Center, no ship, paused
+FORBID FAILED
+FORBID error:
+FORBID GL_
+EXPECT Timeout reached (8.

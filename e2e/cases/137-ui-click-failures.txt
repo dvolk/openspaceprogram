@@ -1,0 +1,11 @@
+# --ui-click must fail loudly, not click something else. Two of the ways a
+# path is wrong: no such widget, and a label that several widgets share (the
+# Controls window's rebind buttons all render as "rebind"). Pins that the
+# failure is reported rather than resolved to an arbitrary match -- the whole
+# point of naming widgets instead of aiming at pixels.
+NAME ui-click-failures
+ARGS --timeout 6 --ui-click 1500,"Title Menu/Controls" --ui-click 2500,"Controls/rebind" --ui-click 2500,"Title Menu/No Such Button"
+EXPECT path="Controls/rebind" FAILED ambiguous
+EXPECT path="Title Menu/No Such Button" FAILED not found
+FORBID FAILED MISMATCH
+FORBID error:

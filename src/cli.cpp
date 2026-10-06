@@ -287,6 +287,29 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "use. Repeat the flag to append more quadruples.")
         ->delimiter(',');
 
+    /* --ui-click: a click on an imgui widget, addressed by its "Window/Label"
+       path rather than by window pixels (src/uiinput.cpp). No ->delimiter:
+       the path may contain commas, so each value stays one string and the
+       split at the first comma happens below. */
+    std::vector<std::string> ui_click;
+    app.add_option("--ui-click", ui_click,
+                   "Synthetic imgui click for e2e testing: AT_MS,WINDOW/LABEL "
+                   "(e.g. 1500,\"Title Menu/New Game\", 3000,\"Game Menu/"
+                   "Tracking Station\"). The click lands on the first frame "
+                   "from AT_MS on whose previous imgui frame drew a matching "
+                   "item, through imgui's own input queue -- so the widget "
+                   "must exist and be on screen, unlike the --*-at hooks that "
+                   "call the action directly. WINDOW may be omitted to match "
+                   "the label in any window; labels are exact, minus the ## "
+                   "suffix. Repeat the flag, or space-separate the values, "
+                   "for more clicks.")
+        ->expected(-1);
+
+    app.add_option("--ui-list", args.ui_list_ms,
+                   "Dump every clickable imgui item (window, label, rect) at "
+                   "this loop time in ms, for writing --ui-click paths "
+                   "(test hook; -1 = never)");
+
     app.add_flag("--selftest-spawn", args.selftest_spawn,
                  "Exercise the runtime spawn/remove path: spawn a copy of "
                  "the active ship, remove it, then spawn-select-remove the "
@@ -748,6 +771,43 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             m.done = false;
             args.sim_mode_changes.push_back(m);
         }
+    }
+
+    /* --ui-click: split each AT_MS,WINDOW/LABEL value at the FIRST comma --
+       the path itself may contain commas. */
+    for(const std::string &spec : ui_click) {
+        const size_t comma = spec.find(',');
+        if(comma == std::string::npos) {
+            printf("error: --ui-click expects AT_MS,WINDOW/LABEL (e.g. "
+                   "1500,\"Title Menu/New Game\"); got '%s'\n", spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        const std::string ts = spec.substr(0, comma);
+        char *end = nullptr;
+        const unsigned long t = strtoul(ts.c_str(), &end, 10);
+        // The end-pointer test alone would accept "-5" (strtoul wraps); the
+        // range test also keeps the Uint32 cast honest.
+        if(ts.empty() || end != ts.c_str() + ts.size() || t > 0xFFFFFFFFUL) {
+            printf("error: --ui-click time '%s' is not a loop time in ms "
+                   "(0..4294967295)\n", ts.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        const std::string path = spec.substr(comma + 1);
+        if(path.empty()) {
+            printf("error: --ui-click '%s' has an empty WINDOW/LABEL path\n",
+                   spec.c_str());
+            *exit_code = 1;
+            return false;
+        }
+        UiClick c;
+        c.at_ms = (Uint32)t;
+        c.path = path;
+        c.down_sent = false;
+        c.up_sent = false;
+        c.done = false;
+        args.ui_clicks.push_back(c);
     }
 
     // Any of the --free-cam-* options opts in to starting in free-cam mode.

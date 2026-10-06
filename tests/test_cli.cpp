@@ -77,6 +77,58 @@ int main() {
         assert(args.recover_ms == 2000);
     }
 
+    // 3c) --ui-click: one value per click, split at the FIRST comma so the
+    //     path keeps its own commas (and its spaces, which the shell / the
+    //     e2e ARGS line quote away). --ui-list is the one-shot dump time.
+    {
+        GameArgs args;
+        const char *argv[] = {"osp",
+                              "--ui-click", "1500,Title Menu/New Game",
+                              "--ui-click", "3000,Game Menu/Tracking Station",
+                              "--ui-click", "2500,Save/Load,slot 1",
+                              "--ui-list", "1200"};
+        bool ok = false;
+        int code = -1;
+        run(9, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.ui_list_ms == 1200);
+        assert(args.ui_clicks.size() == 3);
+        assert(args.ui_clicks[0].at_ms == 1500);
+        assert(args.ui_clicks[0].path == "Title Menu/New Game");
+        assert(args.ui_clicks[1].at_ms == 3000);
+        assert(args.ui_clicks[1].path == "Game Menu/Tracking Station");
+        // Only the first comma splits: the path keeps the rest of them.
+        assert(args.ui_clicks[2].at_ms == 2500);
+        assert(args.ui_clicks[2].path == "Save/Load,slot 1");
+    }
+
+    // 3d) --ui-click without the AT_MS comma fails (the path alone is not a
+    //     time). The message goes to stdout through printf, which the cout
+    //     capture above does not see, so only the outcome is checked.
+    {
+        GameArgs args;
+        const char *argv[] = {"osp", "--ui-click", "Title Menu/New Game"};
+        bool ok = true;
+        int code = 0;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+        assert(args.ui_clicks.empty());
+    }
+
+    // 3e) a negative or oversized AT_MS fails rather than wrapping into a
+    //     click at some surprising loop time (strtoul accepts "-5").
+    {
+        GameArgs args;
+        const char *argv[] = {"osp", "--ui-click", "-5,Title Menu/New Game"};
+        bool ok = true;
+        int code = 0;
+        run(3, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+        assert(args.ui_clicks.empty());
+    }
+
     // 4) an unknown flag fails with a nonzero exit code (main() exits with
     //    it) and prints nothing to stdout (CLI11 routes errors to stderr).
     {

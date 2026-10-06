@@ -1,0 +1,9 @@
+# The live imgui item registry (--ui-list): what a --ui-click path must name.
+# Pins the dump format and, with it, the title menu's labels -- a renamed or
+# hidden button now shows up as a missing EXPECT instead of a silent pass.
+NAME ui-list-title
+ARGS --timeout 4 --ui-list 1200
+EXPECT [uilist] window="Title Menu" label="New Game"
+EXPECT [uilist] window="Title Menu" label="Quit game"
+FORBID error:
+EXPECT Timeout reached (4.
