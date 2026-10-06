@@ -171,6 +171,11 @@ int main() {
        +Z instead -- the old computeOrbitElements contract -- made every
        rail-plane orbit read 90 deg tilted. */
     const RefPlane rail{glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(1.0, 0.0, 0.0)};
+    /* The angles call takes the elements, not the raw state -- it only needs
+       h_hat / ecc_dir / ecc, which computeOrbitElements already derives. */
+    auto railAngles = [&](const glm::dvec3 &pos, const glm::dvec3 &vel) {
+        return orbitPlaneAngles(computeOrbitElements(pos, vel, MU), rail);
+    };
     {
         // Prograde and IN the rail plane, periapsis at rail longitude 0:
         // inc 0, and the orbit lying in the plane leaves NO node, so LAN is
@@ -178,11 +183,11 @@ int main() {
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(rp, 0, 0),
-                                               glm::dvec3(0, 0, -vp), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(rp, 0, 0), glm::dvec3(0, 0, -vp));
         CHECK_NEAR(p.inc, 0.0, 1e-12);
+        CHECK(p.lon_ok);
         CHECK(!p.node_ok);
-        CHECK(p.peri_ok);
+        CHECK(p.lpe_ok);
         CHECK_NEAR(p.lpe, 0.0, 1e-9);
     }
     {
@@ -191,8 +196,7 @@ int main() {
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, 0, -rp),
-                                               glm::dvec3(-vp, 0, 0), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(0, 0, -rp), glm::dvec3(-vp, 0, 0));
         CHECK_NEAR(p.inc, 0.0, 1e-12);
         CHECK(!p.node_ok);
         CHECK_NEAR(p.lpe, M_PI / 2.0, 1e-9);
@@ -204,8 +208,7 @@ int main() {
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, 0, rp),
-                                               glm::dvec3(-vp, 0, 0), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(0, 0, rp), glm::dvec3(-vp, 0, 0));
         CHECK_NEAR(p.inc, M_PI, 1e-12);
         CHECK(!p.node_ok);
         CHECK_NEAR(p.lpe, 3.0 * M_PI / 2.0, 1e-9);
@@ -217,8 +220,7 @@ int main() {
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(rp, 0, 0),
-                                               glm::dvec3(0, vp, 0), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(rp, 0, 0), glm::dvec3(0, vp, 0));
         CHECK_NEAR(p.inc, M_PI / 2.0, 1e-12);
         CHECK(p.node_ok);
         CHECK_NEAR(p.lan, 0.0, 1e-9);
@@ -230,8 +232,7 @@ int main() {
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, rp, 0),
-                                               glm::dvec3(-vp, 0, 0), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(0, rp, 0), glm::dvec3(-vp, 0, 0));
         CHECK_NEAR(p.inc, M_PI / 2.0, 1e-12);
         CHECK_NEAR(p.lan, 0.0, 1e-9);
         CHECK_NEAR(p.argp, M_PI / 2.0, 1e-9);
@@ -245,8 +246,7 @@ int main() {
         const double rp = 1.0e6, ra = 4.0e6;
         const double a = (rp + ra) / 2.0;
         const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(0, 0, -rp),
-                                               glm::dvec3(0, -vp, 0), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(0, 0, -rp), glm::dvec3(0, -vp, 0));
         CHECK_NEAR(p.inc, M_PI / 2.0, 1e-12);
         CHECK_NEAR(p.lan, 3.0 * M_PI / 2.0, 1e-9);
         CHECK_NEAR(p.argp, M_PI, 1e-9);
@@ -256,10 +256,66 @@ int main() {
         // Circular: no periapsis to point at, so LPe is undefined (the UI
         // dashes it) while inc still reads.
         const double rc = 1.0e6, vc = sqrt(MU / rc);
-        const PlaneAngles p = orbitPlaneAngles(glm::dvec3(rc, 0, 0),
-                                               glm::dvec3(0, 0, -vc), MU, rail);
+        const PlaneAngles p = railAngles(glm::dvec3(rc, 0, 0), glm::dvec3(0, 0, -vc));
         CHECK_NEAR(p.inc, 0.0, 1e-12);
-        CHECK(!p.peri_ok);
+        CHECK(!p.lpe_ok);
+    }
+    {
+        // A barely-elliptical orbit still has an ecc_dir, but it is noise:
+        // e = 1e-5 is below the guard, so LPe dashes rather than reporting a
+        // direction that jitters freely.
+        const double rp = 1.0e6, ra = rp * (1.0 + 2.0e-5);
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, 0, -vp), MU);
+        CHECK(o.ecc < 1e-4);
+        const PlaneAngles p = orbitPlaneAngles(o, rail);
+        CHECK(!p.lpe_ok);
+        CHECK(p.inc < 1e-12);
+    }
+    {
+        // A reference whose zero direction is not IN the plane has no usable
+        // longitude at all; the inclination still reads. Here x_hat0 is the
+        // normal itself, so projecting it leaves nothing.
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, 0, -vp), MU);
+        const glm::dvec3 n = glm::normalize(glm::dvec3(0.0, 1.0, 1.0));
+        const PlaneAngles p = orbitPlaneAngles(o, RefPlane{n, n});
+        CHECK_NEAR(p.inc, M_PI / 4.0, 1e-12);
+        CHECK(!p.lon_ok);
+        CHECK(!p.node_ok);
+        CHECK(!p.lpe_ok);
+        // A zero direction merely SLOPPY about the plane still works: it gets
+        // projected, which is what lets a slightly-off reference keep reading
+        // -- and it reads the SAME longitude as the exact one (+X already lies
+        // in this plane).
+        const glm::dvec3 sloppy = glm::normalize(n * 0.4 + glm::dvec3(1.0, 0.0, 0.0));
+        const PlaneAngles q = orbitPlaneAngles(o, RefPlane{n, sloppy});
+        const PlaneAngles exact = orbitPlaneAngles(o, RefPlane{n, glm::dvec3(1.0, 0.0, 0.0)});
+        CHECK(q.lon_ok);
+        CHECK(q.node_ok);
+        CHECK_NEAR(q.inc, M_PI / 4.0, 1e-12);
+        CHECK_NEAR(q.lan, exact.lan, 1e-12);
+        CHECK_NEAR(q.lpe, exact.lpe, 1e-12);
+    }
+    {
+        // A reference with no zero direction (the map's Orbital view) reports
+        // the inclination and nothing else.
+        const double rp = 1.0e6, ra = 4.0e6;
+        const double a = (rp + ra) / 2.0;
+        const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
+        const OrbitElements o = computeOrbitElements(glm::dvec3(rp, 0, 0),
+                                                     glm::dvec3(0, 0, -vp), MU);
+        RefPlane own{glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(1.0, 0.0, 0.0), false};
+        const PlaneAngles p = orbitPlaneAngles(o, own);
+        CHECK_NEAR(p.inc, 0.0, 1e-12);
+        CHECK(!p.lon_ok);
+        CHECK(!p.node_ok);
+        CHECK(!p.lpe_ok);
     }
     {
         // Near-equatorial noise guard: an in-game h carries ~1e-8 relative
@@ -269,7 +325,7 @@ int main() {
         const glm::dvec3 h_hat = glm::normalize(glm::dvec3(1e-8, 1.0, 0.0));
         const glm::dvec3 pos(rc, 0, 0);
         const glm::dvec3 vel = vc * glm::normalize(glm::cross(h_hat, pos));
-        const PlaneAngles p = orbitPlaneAngles(pos, vel, MU, rail);
+        const PlaneAngles p = railAngles(pos, vel);
         CHECK(p.inc < 1e-7);
         CHECK(!p.node_ok);
     }

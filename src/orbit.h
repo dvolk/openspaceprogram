@@ -31,6 +31,13 @@ struct OrbitElements {
                                 //      e sinh H - H (hyperbolic)
     double time_to_peri = 0.0;  // s until next periapsis (-1 = none)
     double time_to_apo = 0.0;   // s until next apoapsis (-1 = none)
+    // Directions, in the frame the state came from. Plane-free (they do not
+    // depend on any reference plane), so they are here rather than in
+    // PlaneAngles: h_hat is the orbit normal and ecc_dir points at periapsis
+    // (zero when circular). orbitPlaneAngles and the map's periapsis marker
+    // both consume them instead of recomputing cross(pos,vel).
+    glm::dvec3 h_hat = glm::dvec3(0.0);   // zero for a degenerate (radial) state
+    glm::dvec3 ecc_dir = glm::dvec3(0.0);
 };
 
 inline double wrapAngleToPositive(const double theta) {
@@ -55,6 +62,8 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
     o.ang_momentum = h_len;
     const glm::dvec3 ecc_vec = glm::cross(vel, h) / mu - pos / distance;
     o.ecc = glm::length(ecc_vec);
+    o.h_hat = h_len > 0.0 ? h / h_len : glm::dvec3(0.0);
+    o.ecc_dir = o.ecc > 0.0 ? ecc_vec / o.ecc : glm::dvec3(0.0);
     o.radial_vel = glm::dot(pos, vel) / distance;
     // Stays finite in the parabolic limit where (1-e)*a is 0 * inf.
     o.periapsis = h_len * h_len / (mu * (1.0 + o.ecc));
@@ -110,6 +119,11 @@ inline OrbitElements computeOrbitElements(const glm::dvec3 &pos, const glm::dvec
 struct RefPlane {
     glm::dvec3 n_hat = glm::dvec3(0.0, 1.0, 0.0);
     glm::dvec3 x_hat0 = glm::dvec3(1.0, 0.0, 0.0);
+    // False when the plane carries no natural zero direction: the map's
+    // Orbital view measures against the orbit's OWN plane, where every
+    // in-plane direction is equally arbitrary, so no longitude is defined
+    // there at all (only the inclination is).
+    bool has_zero = true;
 };
 
 struct PlaneAngles {
@@ -117,60 +131,68 @@ struct PlaneAngles {
     double lan = 0.0;      // rad [0, 2pi), ascending node, from x_hat0
     double argp = 0.0;     // rad [0, 2pi), periapsis from the node, about h_hat
     double lpe = 0.0;      // rad [0, 2pi), longitude of periapsis in the plane
+    bool lon_ok = false;   // false: this reference has no usable zero -> no longitude at all
     bool node_ok = false;  // false: the orbit lies IN the plane -> lan/argp undefined
-    bool peri_ok = false;  // false: no periapsis to point at -> lpe undefined
+    bool lpe_ok = false;   // false: no periapsis direction worth pointing at -> lpe undefined
 };
 
-/* Inc / LAN / argp / LPe of a (pos, vel) state measured IN a reference plane.
+/* Inc / LAN / argp / LPe of an orbit measured IN a reference plane. Takes the
+   elements rather than the raw state: h_hat and ecc_dir are already in there,
+   and recomputing cross(pos,vel) a third time per frame is what this fixed.
    Textbook right-handed: node = n_hat x h_hat is the ASCENDING node and the
    periapsis angle opens from that node about h_hat. tests/test_railangles.cpp
    round-trips every authored orb_incl / lon_asc_node / arg_peri in the shipped
    system files through this -- the test #171 would have failed.
-   The node guard is RELATIVE: |n_hat x h_hat| == sin(inc), and an in-game h
-   carries ~1e-8 relative noise, so a genuinely equatorial orbit would otherwise
-   print a random LAN with full confidence (the same reason the UI dashes the
-   apsides of a near-circular orbit).
+
+   Three separate "undefined" flags, because there are three distinct ways to
+   be undefined and the UI dashes each one:
+   - lon_ok: the reference must supply a zero direction that lies IN the plane
+     (projected, so a slightly off x_hat0 still works; 0.44 is the same
+     ~26 deg tolerance OrbitMap::setPlane uses for the same reason).
+   - node_ok: |n_hat x h_hat| == sin(inc) must clear 1e-6. The guard is
+     RELATIVE because an in-game h carries ~1e-8 of noise, so a genuinely
+     equatorial orbit would otherwise print a random LAN with full confidence.
+   - lpe_ok: what is printed is the periapsis DIRECTION, and that is
+     noise-dominated once e drops to ~1e-4 (the ~1e-8 relative jitter in h and
+     v^2 is then a percent of e). Below it the window dashes LPe, in the same
+     spirit as the ApT/PeT dashes for a near-circular orbit.
    LPe survives a degenerate node: an orbit lying in the plane still has a
    periapsis POINTING somewhere, and its longitude is exactly what the rails
    author as lon_asc_node + arg_peri for a coplanar body. */
-inline PlaneAngles orbitPlaneAngles(const glm::dvec3 &pos, const glm::dvec3 &vel,
-                                   double mu, const RefPlane &ref) {
+inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref) {
     PlaneAngles p;
-    const glm::dvec3 h = glm::cross(pos, vel);
-    const double h_len = glm::length(h);
-    if(!(h_len > 0.0) || !(mu > 0.0)) { return p; }
-    const glm::dvec3 h_hat = h / h_len;
-    p.inc = acos(glm::clamp(glm::dot(h_hat, ref.n_hat), -1.0, 1.0));
+    if(glm::dot(o.h_hat, o.h_hat) < 0.5) { return p; }   // radial / degenerate state
+    p.inc = acos(glm::clamp(glm::dot(o.h_hat, ref.n_hat), -1.0, 1.0));
+    if(!ref.has_zero) { return p; }
 
-    const glm::dvec3 y_hat = glm::cross(ref.n_hat, ref.x_hat0);
+    const glm::dvec3 x_in = ref.x_hat0 - glm::dot(ref.x_hat0, ref.n_hat) * ref.n_hat;
+    const double x_in_len = glm::length(x_in);
+    p.lon_ok = x_in_len > 0.44;
+    if(!p.lon_ok) { return p; }
+    const glm::dvec3 x_hat = x_in / x_in_len;
+    const glm::dvec3 y_hat = glm::cross(ref.n_hat, x_hat);
     auto lon = [&](const glm::dvec3 &v) {
-        return wrapAngleToPositive(atan2(glm::dot(v, y_hat), glm::dot(v, ref.x_hat0)));
+        return wrapAngleToPositive(atan2(glm::dot(v, y_hat), glm::dot(v, x_hat)));
     };
 
-    // Unnormalized eccentricity vector (|e_vec| == mu * e). The mu/r term sets
-    // its DIRECTION, so it cannot be dropped.
-    const double r = glm::length(pos);
-    const glm::dvec3 e_vec = (glm::dot(vel, vel) - mu / r) * pos
-                           - glm::dot(pos, vel) * vel;
-    p.peri_ok = glm::length(e_vec) > 1e-6 * mu;
-
-    const glm::dvec3 node = glm::cross(ref.n_hat, h_hat);
+    const glm::dvec3 node = glm::cross(ref.n_hat, o.h_hat);
     const double node_len = glm::length(node);
     p.node_ok = node_len > 1e-6;
+    p.lpe_ok = o.ecc > 1e-4;
     if(p.node_ok) {
         p.lan = lon(node);
-        if(p.peri_ok) {
+        if(p.lpe_ok) {
             const glm::dvec3 node_hat = node / node_len;
-            const glm::dvec3 y_orb = glm::cross(h_hat, node_hat);
+            const glm::dvec3 y_orb = glm::cross(o.h_hat, node_hat);
             p.argp = wrapAngleToPositive(
-                atan2(glm::dot(e_vec, y_orb), glm::dot(e_vec, node_hat)));
+                atan2(glm::dot(o.ecc_dir, y_orb), glm::dot(o.ecc_dir, node_hat)));
             // Both are already in [0, 2pi), so the sum needs a SUBTRACT to
             // wrap -- wrapAngleToPositive only adds 2pi to a negative.
             p.lpe = p.lan + p.argp;
             if(p.lpe >= 2.0 * std::numbers::pi) { p.lpe -= 2.0 * std::numbers::pi; }
         }
-    } else if(p.peri_ok) {
-        p.lpe = lon(e_vec);
+    } else if(p.lpe_ok) {
+        p.lpe = lon(o.ecc_dir);
     }
     return p;
 }

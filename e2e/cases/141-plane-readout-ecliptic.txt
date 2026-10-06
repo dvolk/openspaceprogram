@@ -1,0 +1,14 @@
+# The Ecliptic slot of the map combo (#171). The same Kerbin rot-orbit bed
+# that reads inc=23.4400 lan=270.0000 against Kerbin's EQUATOR (case 139)
+# reads inc=0 against the SYSTEM plane, because the bed is built in Kerbin's
+# rail plane and Kerbin orbits IN the system plane. An orbit lying in its own
+# reference plane has no node, so LAN dashes instead of naming a direction
+# conjured from the ~1e-8 of integrator noise an integrated h always carries.
+NAME plane-readout-ecliptic
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --map-plane 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(o["plane"] == "ecl" for o in orbit if o["t"] > 1.0)
+CHECK all(abs(o["inc"]) < 0.001 for o in orbit if o["t"] > 1.0)
+CHECK all(o["lan"] == "-" for o in orbit if o["t"] > 1.0)

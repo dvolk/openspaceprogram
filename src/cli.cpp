@@ -316,11 +316,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "approach Δv, science found) plus its dossier -- radius, "
                    "mass, gravity, escape velocity, day length, axial tilt, "
                    "air, and the orbit's semi-major axis / eccentricity / "
-                   "apsides / period / plane tilt (system, parent and "
-                   "equatorial references) / node / periapsis longitude. "
+                   "apsides / period / plane tilt (ecl, parent, eq.) / node "
+                   "(ecl, parent) / periapsis longitude. "
                    "The same strings the "
                    "Research Lab's Atlas draws, so the terminal and the "
                    "window cannot disagree (test hook; -1 = never)");
+
+    app.add_option("--map-plane", args.map_plane,
+                   "Test hook: start the orbit map in this plane slot "
+                   "(0 equatorial, 1 ecliptic, 2 orbital). The flight "
+                   "readout measures Inc/LAN/LPe in the plane the map shows, "
+                   "so this pins those branches without driving the combo "
+                   "widget (default -1 = leave it alone)")
+        ->check(CLI::Range(-1, 2));
 
     app.add_flag("--selftest-spawn", args.selftest_spawn,
                  "Exercise the runtime spawn/remove path: spawn a copy of "

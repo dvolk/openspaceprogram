@@ -1,0 +1,15 @@
+# The Orbital slot of the map combo (#171): measured against the ship's OWN
+# plane the inclination is 0 by construction, and every in-plane direction is
+# equally arbitrary there -- there is no zero longitude, so LAN and LPe both
+# dash rather than reporting an angle from an axis nobody chose. This is the
+# one reference with no authored system data to check it against, which is
+# why it gets pinned here and per body in tests/test_railangles.cpp.
+NAME plane-readout-orbital
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --map-plane 2 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(o["plane"] == "orb" for o in orbit if o["t"] > 1.0)
+CHECK all(abs(o["inc"]) < 0.001 for o in orbit if o["t"] > 1.0)
+CHECK all(o["lan"] == "-" for o in orbit if o["t"] > 1.0)
+CHECK all(o["lpe"] == "-" for o in orbit if o["t"] > 1.0)

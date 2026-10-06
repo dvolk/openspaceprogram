@@ -308,17 +308,12 @@ void tick(Game &g) {
                 // Measured in the plane the orbit map shows, like the flight
                 // readout (#171). lan/lpe trail the line so ORBIT_RE (e2e)
                 // keeps matching.
-                const glm::dvec3 h = glm::cross(o_pos, o_vel);
-                const double h_len = glm::length(h);
                 const PlaneAngles pa = orbitPlaneAngles(
-                    o_pos, o_vel, mu,
-                    uiRefPlane(g.ship->m_parent->frame,
-                               h_len > 0.0 ? h / h_len : glm::dvec3(0.0, 1.0, 0.0),
-                               g.map_plane));
+                    o, uiRefPlane(g.ship->m_parent->frame, o.h_hat, g.map_plane));
                 char lan_s[32], lpe_s[32];
                 if(pa.node_ok) { snprintf(lan_s, sizeof lan_s, "%.4f deg", glm::degrees(pa.lan)); }
                 else { snprintf(lan_s, sizeof lan_s, "-"); }
-                if(pa.peri_ok) { snprintf(lpe_s, sizeof lpe_s, "%.4f deg", glm::degrees(pa.lpe)); }
+                if(pa.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.4f deg", glm::degrees(pa.lpe)); }
                 else { snprintf(lpe_s, sizeof lpe_s, "-"); }
                 printf("[orbitlog] t=%.1fs frame=\"%s\" r=%.6g m v=%.6g m/s "
                        "sma=%.6g m ecc=%.6g peri=%.6g m apo=%.6g m "

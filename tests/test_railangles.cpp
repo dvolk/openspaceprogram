@@ -62,14 +62,6 @@ static double angleDiff(double a, double b) {
     return d;
 }
 
-// The routine under test: textbook right-handed plane angles measured against
-// the rail reference FRAME. #171's bug was measuring inclination from +Z and
-// the node from cross((0,0,1), h) -- a plane the rails do not live in.
-static PlaneAngles measure(const glm::dvec3 &pos, const glm::dvec3 &vel, double mu,
-                          const glm::dvec3 &n_hat, const glm::dvec3 &x_hat0) {
-    return orbitPlaneAngles(pos, vel, mu, RefPlane{n_hat, x_hat0});
-}
-
 static void checkSystem(const char *path) {
     nlohmann::json doc = read_json(path);
     System sys = load_system(path, nullptr, nullptr);
@@ -98,14 +90,40 @@ static void checkSystem(const char *path) {
             x_hat0 = par->rot_frame->equator_orient * glm::dvec3(1.0, 0.0, 0.0);
         }
 
-        const PlaneAngles a = measure(pos, vel, fr->parent_mu, n_hat, x_hat0);
+        char what[160];
+        /* uiRefPlane is what the ORBITAL readout and the map combo build their
+           reference from; the loader is what the authored angles were measured
+           against. If the two drift apart, the window and the system file
+           disagree and nothing here notices. */
+        if(equator_ref) {
+            const RefPlane ui = uiRefPlane(par, glm::dvec3(0.0, 1.0, 0.0), kRefEquator);
+            snprintf(what, sizeof what, "%s/%s uiRefPlane matches the loader's equatorial reference",
+                     path, bj["name"].get<std::string>().c_str());
+            CHECK_TRUE(glm::dot(ui.n_hat, n_hat) > 1.0 - 1e-12
+                    && glm::dot(ui.x_hat0, x_hat0) > 1.0 - 1e-12, what);
+        }
+
+        const OrbitElements o = computeOrbitElements(pos, vel, fr->parent_mu);
+        const PlaneAngles a = orbitPlaneAngles(o, RefPlane{n_hat, x_hat0});
         const double incl = in.value("orb_incl", 0.0);
         const double lan = in.value("lon_asc_node", 0.0);
         const double argp = in.value("arg_peri", 0.0);
         const double ecc = in.value("ecc", 0.0);
-        char what[160];
+        const double two = 2.0 * std::acos(-1.0);
         snprintf(what, sizeof what, "%s/%s d_inc", path, bj["name"].get<std::string>().c_str());
-        CHECK_NEAR(what, angleDiff(a.inc, incl), 0.0, 1e-9);
+        /* 1e-7 rad (5.7e-6 deg) rather than the atan2-level 1e-9: acos flattens
+           near dot = 1, so an orbit authored IN the plane cannot read tighter
+           than ~1.5e-8 no matter how exact the state is. */
+        CHECK_NEAR(what, angleDiff(a.inc, incl), 0.0, 1e-7);
+        // The state must carry the authored eccentricity too, or the LPe
+        // comparison below is checking a different orbit.
+        snprintf(what, sizeof what, "%s/%s d_ecc", path, bj["name"].get<std::string>().c_str());
+        CHECK_NEAR(what, o.ecc, ecc, 1e-9);
+        /* Every shipped reference supplies a zero direction lying in its own
+           plane. If one did not, all the longitude checks below would be
+           skipped silently and the test would still pass. */
+        snprintf(what, sizeof what, "%s/%s lon_ok", path, bj["name"].get<std::string>().c_str());
+        CHECK_TRUE(a.lon_ok, what);
 
         // The node is degenerate exactly for a body authored IN the reference
         // plane; the guard has to agree, or the readout dashes a real LAN (or
@@ -114,6 +132,14 @@ static void checkSystem(const char *path) {
         snprintf(what, sizeof what, "%s/%s node_ok %d (authored incl %.6g)",
                  path, bj["name"].get<std::string>().c_str(), (int)a.node_ok, incl);
         CHECK_TRUE(a.node_ok == authored_node, what);
+        // Same for the periapsis guard: state the rule instead of letting the
+        // check below skip whenever it trips.
+        snprintf(what, sizeof what, "%s/%s lpe_ok %d (authored ecc %.6g)",
+                 path, bj["name"].get<std::string>().c_str(), (int)a.lpe_ok, ecc);
+        CHECK_TRUE(a.lpe_ok == (o.ecc > 1e-4), what);
+        snprintf(what, sizeof what, "%s/%s lpe in [0, 2pi) = %.9g",
+                 path, bj["name"].get<std::string>().c_str(), a.lpe);
+        CHECK_TRUE(a.lpe >= 0.0 && a.lpe < two, what);
 
         if(a.node_ok) {
             snprintf(what, sizeof what, "%s/%s d_lan", path, bj["name"].get<std::string>().c_str());
@@ -121,11 +147,27 @@ static void checkSystem(const char *path) {
         }
         /* LPe is the angle that survives a degenerate node: a coplanar body
            still states where its periapsis points, as lon_asc_node + arg_peri
-           (0 + arg_peri). Circular bodies have none, so skip those. */
-        if(a.peri_ok && ecc > 1e-6) {
+           (0 + arg_peri). A circular body has no periapsis direction, which is
+           what lpe_ok says above, so this runs whenever there is one. */
+        if(a.lpe_ok) {
             snprintf(what, sizeof what, "%s/%s d_lpe", path, bj["name"].get<std::string>().c_str());
             CHECK_NEAR(what, angleDiff(a.lpe, lan + argp), 0.0, 1e-9);
         }
+        /* The map's Orbital view measures against the orbit's OWN plane, where
+           no direction is privileged: inc must read 0 and no longitude may be
+           printed at all. Pinned per body because it is the one reference with
+           no authored data to check it against. */
+        RefPlane own(o.h_hat, glm::dvec3(1.0, 0.0, 0.0), false);
+        const PlaneAngles oa = orbitPlaneAngles(o, own);
+        /* acos(dot(h_hat, h_hat)) cannot read 0 tighter than ~1.5e-8 rad: the
+           normal is unit to double precision, so its squared length is 1 +- eps
+           and acos flattens there. 1e-6 rad is 0.00006 deg, far inside what any
+           readout prints, and still catches a wrong-plane regression. */
+        snprintf(what, sizeof what, "%s/%s own-plane inc", path, bj["name"].get<std::string>().c_str());
+        CHECK_NEAR(what, oa.inc, 0.0, 1e-6);
+        snprintf(what, sizeof what, "%s/%s own-plane dashes lon/node/lpe",
+                 path, bj["name"].get<std::string>().c_str());
+        CHECK_TRUE(!oa.lon_ok && !oa.node_ok && !oa.lpe_ok, what);
         ++checked;
     }
     std::printf("  %s: %d bodies round-tripped\n", path, checked);

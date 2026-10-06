@@ -977,6 +977,7 @@ int main(int argc, char **argv)
     game.researchMs = args.research_ms;
     game.researchCloseMs = args.research_close_ms;
     game.atlasDumpMs = args.atlas_dump_ms;
+    if(args.map_plane >= 0) { game.map_plane = args.map_plane; }
     game.switchSystemPath = args.switch_system_path;
     game.switchSystemMs = args.switch_system_ms;
     game.vabHooks.placeMs = args.vab_place_ms;

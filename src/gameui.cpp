@@ -1449,15 +1449,16 @@ void drawUIReadouts(Game &g) {
         else { ImGui::Text("  T: -"); }
         /* Plane angles, measured in the plane the orbit map is showing -- the
            label names it, because the number is meaningless without it (#171).
-           In the map's Orbital view the plane IS the orbit, so Inc reads 0 and
-           the node is undefined: dashes, not a confident random LAN. */
+           In the map's Orbital view the plane IS the orbit: Inc reads 0 by
+           construction, and there is no node and no chosen zero longitude, so
+           LAN and LPe both dash rather than print a confident random number. */
         ImGui::Text("Inc: %.2f (%s)", glm::degrees(view.plane.inc),
                     refPlaneName(g.map_plane));
         ImGui::Text("Ecc: %f", o.ecc);
         ImGui::Text("SMa: %s", fmt_dist(o.semi_major, dist_s, sizeof dist_s));
         if(view.plane.node_ok) { ImGui::Text("LAN: %.2f", glm::degrees(view.plane.lan)); }
         else { ImGui::Text("LAN: -"); }
-        if(view.plane.peri_ok) { ImGui::Text("LPe: %.2f", glm::degrees(view.plane.lpe)); }
+        if(view.plane.lpe_ok) { ImGui::Text("LPe: %.2f", glm::degrees(view.plane.lpe)); }
         else { ImGui::Text("LPe: -"); }
         double prograde_angle = glm::angle(facing_dir, vel_dir);
         double retrograde_angle = glm::angle(facing_dir, - vel_dir);
@@ -1540,7 +1541,7 @@ void drawUIReadouts(Game &g) {
             char lan_s[32], lpe_s[32];
             if(view.plane.node_ok) { snprintf(lan_s, sizeof lan_s, "%.6g deg", glm::degrees(view.plane.lan)); }
             else { snprintf(lan_s, sizeof lan_s, "-"); }
-            if(view.plane.peri_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
+            if(view.plane.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
             else { snprintf(lpe_s, sizeof lpe_s, "-"); }
             // r/apo_r/peri_r are RADII from the focus, not altitudes; the
             // [surfinfo] line below carries the real alt_asl / alt_agl.
@@ -2285,18 +2286,22 @@ void drawUIMap(Game &g) {
         TerrainBody *focus = ship->m_parent;
         glm::dvec3 plane_n(0.0, 1.0, 0.0);
         glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
-        if(map_plane == 0) {
+        if(map_plane == kRefEquator) {
             // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the
             // rail normal and sits off the pole by exactly the axial tilt.
             plane_n = focus->frame->spinAxisRelTo(focus->frame);
             // Screen-x = the focus frame's +X, the same "east" the Ecliptic
             // view's canonical basis uses, so flipping the plane combo tilts
             // the picture instead of rotating it (~150 deg on Kerbin).
+            // This is a SCREEN choice, not the readout's zero longitude: LAN
+            // measures from equator_orient * +X, where the pole leans
+            // (uiRefPlane). Nothing draws a node marker, so the two never
+            // visibly disagree -- do not "align" them without adding one.
             plane_x = glm::dvec3(1.0, 0.0, 0.0);
-        } else if(map_plane == 1) {
+        } else if(map_plane == kRefEcliptic) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);
-        } else if(map_plane == 2) {
+        } else if(map_plane == kRefOrbit) {
             const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
             const double hl = glm::length(h);
             if(hl > 1e-9) { plane_n = h / hl; }
@@ -3817,15 +3822,15 @@ void drawTrackingMap(Game &g) {
         // without one it stays on the equatorial plane.
         glm::dvec3 plane_n(0.0, 1.0, 0.0);
         glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
-        if(map_plane == 0) {
+        if(map_plane == kRefEquator) {
             // Same as the in-flight map: the focus's equator, not its rail
             // plane, and screen-x = the focus frame's +X (#173).
             plane_n = focus->frame->spinAxisRelTo(focus->frame);
             plane_x = glm::dvec3(1.0, 0.0, 0.0);
-        } else if(map_plane == 1) {
+        } else if(map_plane == kRefEcliptic) {
             plane_n = glm::transpose(focus->frame->root_orient) *
                       glm::dvec3(0.0, 1.0, 0.0);
-        } else if(map_plane == 2 && ship) {
+        } else if(map_plane == kRefOrbit && ship) {
             const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
             const double hl = glm::length(h);
             if(hl > 1e-9) { plane_n = h / hl; }
@@ -4289,16 +4294,32 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             line("plane tilt (eq.)", fmt_deg(tilt_eq, v, sizeof v));
         }
     }
-    /* Node and periapsis longitude, in the system plane, from the same epoch
-       rail state the flight readout measures a ship on (RefPlane{} is the
-       system plane: +Y normal, +X zero longitude). Dashed when undefined --
-       an orbit lying IN the system plane has no node, and a circular one has
-       no periapsis to point at. */
-    const PlaneAngles pa = orbitPlaneAngles(fr->root_orient * fr->orbit_pos0,
-                                           fr->root_orient * fr->orbit_vel0,
-                                           fr->parent_mu, RefPlane{});
+    /* Node and periapsis longitude in the system plane -- the reference the
+       flight readout uses when the map is on Ecliptic, so the dossier and the
+       HUD can be compared (RefPlane{} is the system plane: +Y normal, +X zero
+       longitude). Dashed when undefined: an orbit lying IN the system plane
+       has no node, and a near-circular one has no periapsis direction to
+       point at. The authored node, though, lives in the PARENT's plane, and
+       for a moon of an inclined planet that is a different number again: Bop
+       authors lon_asc_node 10.0 and reads 61.22 in the system plane. So the
+       parent-plane node joins the list whenever it differs. */
+    const PlaneAngles pa = orbitPlaneAngles(
+        computeOrbitElements(fr->root_orient * fr->orbit_pos0,
+                             fr->root_orient * fr->orbit_vel0,
+                             fr->parent_mu),
+        RefPlane{});
     line("node (ecl)", pa.node_ok ? fmt_deg(pa.lan, v, sizeof v) : "-");
-    line("periapsis lon (ecl)", pa.peri_ok ? fmt_deg(pa.lpe, v, sizeof v) : "-");
+    const PlaneAngles pp = orbitPlaneAngles(
+        computeOrbitElements(fr->orient * fr->orbit_pos0,
+                             fr->orient * fr->orbit_vel0,
+                             fr->parent_mu),
+        RefPlane{});   // parent axes: +Y is the parent's rail-plane normal
+    const double lan_gap = pa.node_ok && pp.node_ok
+        ? std::fabs(std::remainder(pa.lan - pp.lan, 2.0 * std::numbers::pi)) : 1.0;
+    if(pp.node_ok && lan_gap > 1e-4) {
+        line("node (parent)", fmt_deg(pp.lan, v, sizeof v));
+    }
+    line("periapsis lon (ecl)", pa.lpe_ok ? fmt_deg(pa.lpe, v, sizeof v) : "-");
 }
 
 // Walk the frame tree from `b`, appending one row per body (in tree order).
@@ -4486,7 +4507,7 @@ void dumpAtlas(Game &g) {
                r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
         for(const AtlasFact &fa : r.facts) {
             if(fa.header) { printf("[atlas]   [%s]\n", fa.label.c_str()); }
-            else { printf("[atlas]   %-19s %s\n", fa.label.c_str(),
+            else { printf("[atlas]   %-20s %s\n", fa.label.c_str(),
                                             fa.value.c_str()); }
         }
     }

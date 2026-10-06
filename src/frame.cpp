@@ -40,9 +40,12 @@ RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat, int mode)
         r.n_hat = glm::transpose(focus->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
         r.x_hat0 = glm::transpose(focus->root_orient) * glm::dvec3(1.0, 0.0, 0.0);
     } else if(mode == kRefOrbit) {
-        // The ship's own plane: Inc is 0 by construction and the node is
-        // undefined, which is what the readout's dashes are for.
+        // The ship's own plane. Inc is 0 by construction and the node is
+        // undefined; and there is no zero longitude either -- every in-plane
+        // direction is equally arbitrary, so keeping the default x_hat0 here
+        // would print a LPe measured from an axis nobody chose.
         r.n_hat = h_hat;
+        r.has_zero = false;
     } else {
         // The focus's EQUATOR: its spin axis, with longitude from the
         // equator frame's +X -- the direction an "incl_ref": "equator" rail

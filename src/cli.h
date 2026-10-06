@@ -93,6 +93,7 @@ struct GameArgs {
     std::vector<UiClick> ui_clicks;  // --ui-click: imgui clicks by "Window/Label"
     int ui_list_ms = -1;             // --ui-list: dump the clickable items at this loop time
     int atlas_dump_ms = -1;          // --atlas-dump: print the System Atlas rows + dossiers at this loop time
+    int map_plane = -1;              // --map-plane: the orbit map's plane combo (0 equ, 1 ecl, 2 orb)
 
     bool selftest_spawn = false;
     bool orbit_log = false;
