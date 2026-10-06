@@ -1630,6 +1630,17 @@ void Game::remove_ship(Vehicle *v) {
     for(auto *s : collectVehicles(sys)) {
         if(s->dockTargetShip == v) { s->dockTargetShip = nullptr; s->dockTargetPort = nullptr; }
     }
+    // The transfer planner's target list holds v's name pointer + handle
+    // until the next rebuild (draw3d), and the map draws the conic label
+    // later in this same UI pass: if v was the transfer target, drop the
+    // selection now so nothing reads the freed ship this frame.
+    if(xferPlanner.xfer_target >= 0
+       && xferPlanner.xfer_target < (int)xferPlanner.xferTargets.size()
+       && xferPlanner.xferTargets[xferPlanner.xfer_target].ship == v) {
+        xferPlanner.xfer_target = -1;
+        xferPlanner.xfer.valid = false;
+        xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
+    }
     delete v;
 
     // drop any selection references that dangled off the removed ship

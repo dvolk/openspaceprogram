@@ -2487,7 +2487,13 @@ void drawUIMap(Game &g) {
         // valid solution). It is a Kepler orbit under the focus's mu,
         // starting at the ship with velocity sol.v_departure and
         // propagated over sol.tof. The arc's end is the arrival point.
-        if(xfer.valid) {
+        // The solution belongs to the target the solve USED: xfer.valid
+        // lags the TRANSFER window (drawn earlier in this same UI pass)
+        // by a frame -- clearing/moving the combo there is not re-validated
+        // until the next planner.update(), so pairing xfer.sol with the
+        // live xfer_target read xferTargets[-1] when "none" was clicked.
+        if(xfer.valid && xfer_target == xfer.target &&
+           xfer.target >= 0 && xfer.target < (int)xferTargets.size()) {
             const TransferSolution &sol = xfer.sol;
             // Even-in-anomaly (not uniform-in-time) so the leg draws with an
             // even outline, like the closed orbits (see sampleTransferArc).
@@ -2498,7 +2504,7 @@ void drawUIMap(Game &g) {
             map.drawDot(dl, arrival, 4.0f, col_xfer);
             char xfer_label[96];
             snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
-                     xferTargets[xfer_target].name, sol.total_dv);
+                     xferTargets[xfer.target].name, sol.total_dv);
             const ImVec2 apx = map.px(arrival);
             dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
                         xfer_label);

@@ -44,7 +44,11 @@ public:
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
     float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
     struct {
-        int target = -2;        // target index at last compute
+        int target = -2;        // target index at last compute (the solve's
+                                // owner: xfer.valid can outlive xfer_target
+                                // by a frame -- UI passes edit xfer_target
+                                // between update()s, so pair the solution
+                                // with THIS index, never the live one)
         bool auto_tof = true;
         double tof_log = -1.0;
         int frame = 0;          // per-frame counter while a target is set

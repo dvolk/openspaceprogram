@@ -114,6 +114,10 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     if(xfer_target < 0) {
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
+        // Forget the solved target too: xfer.frame only advances while a
+        // target is set, so without this, re-picking the SAME index clears
+        // no dirty term and leaves the solution blank for up to 30 frames.
+        xfer.target = -2;
     } else {
         xfer.frame++;
         const bool dirty = xfer.target != xfer_target
