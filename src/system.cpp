@@ -616,9 +616,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     : atan2(-f->pos.z, f->pos.x) - arg_peri;
                 // The pos fallback keeps only the DIRECTION: the rail puts the
                 // body at the conic's own radius, so an eccentric orbit
-                // authored by position would silently lose that radius.
-                assert((in.contains("true_anomaly0") || e == 0.0)
-                       && "inertial.pos with nonzero ecc: author true_anomaly0");
+                // authored by position would silently lose that radius (#175).
+                // A data bug, so it throws like every other guard here rather
+                // than asserting (an assert also vanishes under NDEBUG).
+                if(!in.contains("true_anomaly0") && e != 0.0) {
+                    throw std::runtime_error(
+                        "system: '" + body->name + "' authors inertial.pos with"
+                        " nonzero ecc: the rail keeps only the direction, so"
+                        " author true_anomaly0");
+                }
                 if(!railStateFromElements(a, e, arg_peri, nu0, mu,
                                           f->orbit_pos0, f->orbit_vel0)) {
                     throw std::runtime_error("system: bad orbital elements "

@@ -541,6 +541,16 @@ int main() {
     expect_reject(mutated(j, "Triton", "inertial", "orb_ang_speed", 1e-21),
                   "wide_orb", "universe bound");
 
+    // #175: a body authored by inertial.pos cannot also carry an eccentricity.
+    // The pos fallback keeps only the DIRECTION, so the authored radius would
+    // be silently replaced by the conic's own. old_system.json is a shipped
+    // system that authors pos (solar_system.json authors anomalies instead).
+    {
+        nlohmann::json old = read_json("res/systems/old_system.json");
+        expect_reject(mutated(old, "Eerbon", "inertial", "ecc", 0.2),
+                      "pos_with_ecc", "true_anomaly0");
+    }
+
     // Light-phase bodies own no Bullet/GL state, so teardown is safe and
     // keeps sanitizer runs quiet.
     for(TerrainBody *b : sys.bodies) { delete b; }
