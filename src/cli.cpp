@@ -310,6 +310,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "this loop time in ms, for writing --ui-click paths "
                    "(test hook; -1 = never)");
 
+    app.add_option("--atlas-dump", args.atlas_dump_ms,
+                   "Print the System Atlas at this loop time in ms: one "
+                   "[atlas] line per body (tree order, research weight, "
+                   "approach Δv, science found) plus its dossier -- radius, "
+                   "mass, gravity, escape velocity, day length, axial tilt, "
+                   "air, and the orbit's semi-major axis / eccentricity / "
+                   "apsides / period / plane tilt. The same strings the "
+                   "Research Lab's Atlas draws, so the terminal and the "
+                   "window cannot disagree (test hook; -1 = never)");
+
     app.add_flag("--selftest-spawn", args.selftest_spawn,
                  "Exercise the runtime spawn/remove path: spawn a copy of "
                  "the active ship, remove it, then spawn-select-remove the "

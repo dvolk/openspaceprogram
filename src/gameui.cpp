@@ -4067,7 +4067,12 @@ void drawResearchLab(Game &g) {
 // One row per body: name (indented by depth), its research VALUE (a plain-
 // english tier for "findings worth ×N of home" -- the exact × is a tooltip),
 // the APPROACH Δv (the cost to get there, rounded to 50; "—" = home/star),
-// and how much of the body's science has been DISCOVERED.
+// and how much of the body's science has been DISCOVERED. Selecting a body
+// adds its DOSSIER: the physical and orbital numbers (radius, mass, gravity,
+// escape velocity, day length, tilt, air, and the orbit's a/e/apsides/period/
+// tilt) -- the system JSON read back in friendly units, so sanity-checking
+// what the flight windows show does not need the data file open. --atlas-dump
+// prints the same rows to stdout.
 //
 // The rows are PRE-BUILT, not computed per frame (the Lab's issue #87 pattern):
 // buildAtlasRows fills g.atlasRows on scene entry, drawResearchAtlas walks
@@ -4093,6 +4098,149 @@ size_t atlasTotalSlots() {
         total += (size_t)d.valid_in.size();
     }
     return (total > 0) ? total : 1;   // a missing table must not divide by 0
+}
+
+/* The dossier: what the Atlas knows about a body without opening the system
+   JSON, so the lab can sanity-check the flight readouts. Every line is either
+   authored there (radius / mass / g / the atmosphere block) or derived from it
+   (mu, escape velocity, the orbit from the mean angular rate), so a line that
+   disagrees with what the game flies means the derivation is wrong, not the
+   data. Two derivations worth naming:
+   - The orbit is inverted from orb_ang_speed (Kepler III) exactly as the
+     loader places the body, and e comes from the epoch rail state's angular
+     momentum -- these are the rails' own numbers, not the JSON's.
+   - "plane tilt" is measured against the PARENT's own orbital plane (the
+     frame's orient; +Y is its normal). A system authoring "incl_ref":
+     "equator" states its orb_incl against the parent's EQUATOR instead, so
+     when the two readings differ the dossier shows both. */
+void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
+    char v[64], w[64];
+    auto line = [&](const char *label, const char *value) {
+        f.push_back(AtlasFact{ label, value, false });
+    };
+    auto head = [&](const char *title) {
+        f.push_back(AtlasFact{ title, std::string(), true });
+    };
+
+    head("body");
+    line("type", b.isStar() ? "star"
+               : (b.type == BodyType::Moon ? "moon" : "planet"));
+    line("radius", fmt_dist((double)b.radius, v, sizeof v));
+    line("mass", fmt_mass((double)b.mass, v, sizeof v));
+    snprintf(v, sizeof v, "%.2f m/s2", b.g);
+    line("surface gravity", v);
+    // Both at the mean radius under the body's own mu: what a launch must
+    // reach, and what an arrival burn must shed.
+    line("escape velocity",
+         fmt_speed(std::sqrt(2.0 * b.mu / (double)b.radius), v, sizeof v));
+    line("surface orbit",
+         fmt_speed(std::sqrt(b.mu / (double)b.radius), v, sizeof v));
+    line("day length", b.cal.day_seconds > 0.0
+                         ? fmt_time(b.cal.day_seconds, v, sizeof v)
+                         : "none (no spin)");
+    if(b.rot_frame != nullptr) {
+        // The pole IS the spin frame's +Y, and initial_orient carries the
+        // authored tilt (tilt_azimuth turns the lean's direction, leaving its
+        // angle, so col1.y alone gives the tilt).
+        const double pole = glm::clamp(b.rot_frame->initial_orient[1].y,
+                                       -1.0, 1.0);
+        line("axial tilt", fmt_deg(std::acos(pole), v, sizeof v));
+        line("surface shell", fmt_dist(b.rot_frame->soi, v, sizeof v));
+    }
+    if(b.frame != nullptr) {
+        // The star's inertial frame carries the authored universe bound, not
+        // an SoI (it has no parent whose tide could dominate).
+        line(b.frame->parent == nullptr ? "universe bound" : "SoI",
+             fmt_dist(b.frame->soi, v, sizeof v));
+    }
+
+    head("surface");
+    if(b.isStar()) { line("ground", "none (a star)"); }
+    else if(b.surface.bands) { line("ground", "none (gas giant)"); }
+    else { line("ground", "solid"); }
+    if(!b.isStar() && !b.surface.bands) {
+        if(b.surface.has_sea) {
+            snprintf(v, sizeof v, "yes, %+.0f m", (double)b.surface.sea_level);
+            line("seas", v);
+        } else { line("seas", "none"); }
+        // The authored relief; the MEASURED highest ground only once the
+        // heavy phase has sampled the heightfield (max_height starts at 1 m).
+        line("relief", fmt_dist((double)b.surface.amplitude, v, sizeof v));
+        if(b.ready) {
+            line("highest ground",
+                 fmt_dist((double)b.surface.max_height, v, sizeof v));
+        }
+    }
+    const AtmosphereParams &at = b.surface.atmosphere;
+    if(at.enabled) {
+        line("atmosphere top", fmt_dist(at.top(), v, sizeof v));
+        if(at.scale_height > 0.0) {
+            line("scale height", fmt_dist(at.scale_height, v, sizeof v));
+        }
+        // The block can exist for the drawn rim alone, with no drag air
+        // behind it (AtmosphereParams: the two halves are independent).
+        if(at.sea_level_density > 0.0) {
+            snprintf(v, sizeof v, "%.3f kg/m3", at.sea_level_density);
+            line("air density", v);
+        } else {
+            line("air density", "none (rim only)");
+        }
+    } else { line("atmosphere", "none"); }
+    for(const RingParams &r : b.surface.rings) {
+        line(r.name.empty() ? "ring band" : r.name.c_str(),
+             (std::string(fmt_dist(r.inner, v, sizeof v)) + " - "
+              + fmt_dist(r.outer, w, sizeof w)).c_str());
+    }
+
+    head("orbit");
+    const Frame *fr = b.frame;
+    if(fr == nullptr) { return; }
+    if(fr->parent == nullptr || fr->parent->body == nullptr) {
+        line("about", "nothing (the star)");
+        return;
+    }
+    const TerrainBody *par = fr->parent->body;
+    line("about", par->name.c_str());
+    if(fr->orb_ang_speed <= 0.0 || fr->parent_mu <= 0.0) {
+        line("orbit", "fixed offset (not orbiting)");
+        return;
+    }
+    const double n = fr->orb_ang_speed;
+    const double a = std::cbrt(fr->parent_mu / (n * n));
+    line("semi-major axis", fmt_dist(a, v, sizeof v));
+    // p = h^2/mu = a(1-e^2), read off the epoch rail state.
+    const double h = glm::length(glm::cross(fr->orbit_pos0, fr->orbit_vel0));
+    const double e = std::sqrt(std::max(0.0, 1.0 - (h * h / fr->parent_mu) / a));
+    snprintf(v, sizeof v, "%.4f", e);
+    line("eccentricity", v);
+    // From the parent's centre (what ORBITAL's PeA/ApA show) and above its
+    // mean sea level (what a periapsis-raising burn is measured in).
+    const double surf = (double)par->radius + (double)par->surface.sea_level;
+    line("periapsis", fmt_dist(a * (1.0 - e), v, sizeof v));
+    line("periapsis alt", fmt_dist(a * (1.0 - e) - surf, v, sizeof v));
+    if(e < 1.0) {
+        line("apoapsis", fmt_dist(a * (1.0 + e), v, sizeof v));
+        line("apoapsis alt", fmt_dist(a * (1.0 + e) - surf, v, sizeof v));
+    }
+    line("period", fmt_time(2.0 * std::numbers::pi / n, v, sizeof v));
+    const double tilt_orbit =
+        std::acos(glm::clamp(fr->orient[1].y, -1.0, 1.0));
+    line("plane tilt", fmt_deg(tilt_orbit, v, sizeof v));
+    if(par->rot_frame != nullptr) {
+        // The same plane against the PARENT'S EQUATOR. A system authoring
+        // "incl_ref": "equator" states its orb_incl this way (the regular
+        // moons ride their planet's equator, not its orbital plane), so a
+        // reader comparing the two references sees both numbers instead of
+        // a mismatch. Only shown when they differ.
+        const glm::dvec3 paxis =
+            par->rot_frame->initial_orient * glm::dvec3(0.0, 1.0, 0.0);
+        const glm::dvec3 nrm = fr->orient * glm::dvec3(0.0, 1.0, 0.0);
+        const double tilt_eq =
+            std::acos(glm::clamp(glm::dot(paxis, nrm), -1.0, 1.0));
+        if(std::fabs(tilt_eq - tilt_orbit) > 1e-4) {
+            line("plane tilt (eq.)", fmt_deg(tilt_eq, v, sizeof v));
+        }
+    }
 }
 
 // Walk the frame tree from `b`, appending one row per body (in tree order).
@@ -4123,6 +4271,7 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
     auto it = covered.find(b->name);
     const size_t cov = (it != covered.end()) ? it->second.size() : 0;
     r.discovered = (int)std::min<size_t>(100, (size_t)std::lround(100.0 * cov / total));
+    atlasDossier(*b, r.facts);
     out.push_back(std::move(r));
 
     if(b->frame == nullptr) { return; }
@@ -4194,8 +4343,8 @@ void drawResearchAtlas(Game &g) {
         // The ·, Δ, ×, — glyphs render in the bundled DejaVuSansMono; a --font
         // override lacking them would show tofu.
         ImGui::TextDisabled(
-            "select a body to see its research weight, approach Δv, and "
-            "science found");
+            "select a body: research weight, approach Δv, science found, "
+            "and its physical + orbital numbers");
         ImGui::Separator();
 
         // Split the window: the tree list on the left, the selected body's
@@ -4249,10 +4398,42 @@ void drawResearchAtlas(Game &g) {
                 ImGui::TextUnformatted("science found");
                 ImGui::TableNextColumn();
                 ImGui::Text("%d%%", row->discovered);
+                // The dossier: the body's physical + orbital numbers, in
+                // sections. Pre-built strings, so this window and --atlas-dump
+                // print the same text (one derivation, two renderings).
+                for(const AtlasFact &fa : row->facts) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    if(fa.header) {
+                        ImGui::TextDisabled("%s", fa.label.c_str());
+                        continue;
+                    }
+                    ImGui::TextUnformatted(fa.label.c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(fa.value.c_str());
+                }
                 ImGui::EndTable();
             }
         }
         ImGui::EndChild();
     });
+}
+
+/* --atlas-dump MS: every Atlas row (tree order + dossier) to stdout, for
+   reading the system in a terminal and for e2e to pin. Prints the SAME
+   pre-built strings the window draws -- one derivation, two renderings, so
+   the terminal readout cannot drift from the lab. */
+void dumpAtlas(Game &g) {
+    buildAtlasRows(g);
+    for(const AtlasRow &r : g.atlasRows) {
+        printf("[atlas] %s weight=%s approach_dv=%ld discovered=%d%%\n",
+               r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
+        for(const AtlasFact &fa : r.facts) {
+            if(fa.header) { printf("[atlas]   [%s]\n", fa.label.c_str()); }
+            else { printf("[atlas]   %-17s %s\n", fa.label.c_str(),
+                                            fa.value.c_str()); }
+        }
+    }
+    fflush(stdout);
 }
 

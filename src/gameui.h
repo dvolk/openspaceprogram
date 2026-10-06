@@ -37,8 +37,12 @@ void drawTrackingShipList(Game &g);
 // The Research Lab archive (Root, Research-lab-only).
 void drawResearchLab(Game &g);
 // The System Atlas (Research-lab-only): the system as a tree, each body's
-// research value + approach Δv + science found.
+// research value + approach Δv + science found, and (selected) a dossier of
+// its physical + orbital numbers.
 void drawResearchAtlas(Game &g);
+// --atlas-dump MS: print every Atlas row + dossier to stdout (test hook /
+// terminal readout; the same strings the window draws).
+void dumpAtlas(Game &g);
 // Scene enter hook: pre-build g.labRows and g.atlasRows so the frame walk is cheap.
 void researchLabEnter(Game &g);
 

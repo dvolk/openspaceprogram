@@ -976,6 +976,7 @@ int main(int argc, char **argv)
     game.trackingCloseMs = args.tracking_close_ms;
     game.researchMs = args.research_ms;
     game.researchCloseMs = args.research_close_ms;
+    game.atlasDumpMs = args.atlas_dump_ms;
     game.switchSystemPath = args.switch_system_path;
     game.switchSystemMs = args.switch_system_ms;
     game.vabHooks.placeMs = args.vab_place_ms;
@@ -1327,6 +1328,16 @@ int main(int argc, char **argv)
             game.researchCloseFired = true;
             if(sceneIs(game, SceneId::ResearchLab)) { popScene(game); }
             else { printf("[hook] --research-close: not in the research lab, ignored\n"); }
+        }
+        /* --atlas-dump: the System Atlas (rows + dossiers) as text. Reads the
+           system, not the window, so it works from any scene -- the terminal
+           sanity check on the loaded data, and the e2e cover for the dossier
+           (imgui Text rows are not clickable items, so --ui-list cannot see
+           them). */
+        if(game.atlasDumpMs >= 0 && !game.atlasDumpFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.atlasDumpMs) {
+            game.atlasDumpFired = true;
+            dumpAtlas(game);
         }
         /* --switch-system: the headless hook for the in-process system switch
            (Game::switchSystem). Before the scene is read, since it tears the

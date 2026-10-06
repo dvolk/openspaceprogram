@@ -301,6 +301,10 @@ struct Game {
     int researchCloseMs = -1;
     bool researchCloseFired = false;
 
+    // --atlas-dump MS: headless System Atlas dump (rows + dossiers) to stdout.
+    int atlasDumpMs = -1;
+    bool atlasDumpFired = false;
+
     // --switch-system FILE / --switch-at MS: headless in-process system swap.
     std::string switchSystemPath;
     int switchSystemMs = -1;

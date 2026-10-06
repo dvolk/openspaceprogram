@@ -329,12 +329,22 @@ inline const char *valueWord(double v) {
     return "extraordinary";
 }
 
+// One System Atlas dossier line (see buildAtlasRows): a label/value pair,
+// or a section title when header is set (value is then unused). Pre-built as
+// display strings -- the atlas draws them verbatim, and --atlas-dump prints
+// the same strings, so the terminal and the window cannot disagree.
+struct AtlasFact {
+    std::string label;
+    std::string value;
+    bool header = false;
+};
+
 // One pre-built System Atlas row (the lab renders these; see buildAtlasRows).
 // valueWord/valueExact = the body's research weight; dv = approach Δv rounded
 // to 50 (0 = home/the star: no approach); discovered = % of the study-situations
 // covered on this body (see buildAtlasRows for the definition + limits).
 // rawName is the body's plain name (the selection key); name is the indented
-// display string.
+// display string. facts = the body/orbit dossier below the research rows.
 struct AtlasRow {
     std::string rawName;      // the body's plain name (selection key)
     std::string name;         // indented + "(home)" marker (display)
@@ -342,6 +352,7 @@ struct AtlasRow {
     double valueExact = 0.0;  // the raw science_mult (tooltip)
     long dv = 0;              // approach Δv (rounded to 50), or 0
     int discovered = 0;       // 0-100
+    std::vector<AtlasFact> facts;
 };
 
 // One entry per bank. A 0 calendar degrades to name-only.
