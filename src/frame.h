@@ -13,10 +13,10 @@ struct Frame {
     Frame *parent; /* NULL if root */
     TerrainBody *body;
     std::vector<Frame *> children;
-    bool rotating;
+    bool rotating = false;
     Frame *rot_frame = nullptr; /* the body's spin frame; null if none. */
 
-    double soi; // sphere of influence
+    double soi = 0.0; // sphere of influence
 
     /* The instant `pos`/`vel`/`orient`/`root_*` describe: the argument of the
        last UpdateOrbitRails() called on the TREE ROOT (tick.cpp, Game::
@@ -30,8 +30,8 @@ struct Frame {
     double rail_time = 0.0;
 
     /* relative to parent */
-    glm::dvec3 pos;
-    glm::dvec3 vel;
+    glm::dvec3 pos = glm::dvec3(0.0);
+    glm::dvec3 vel = glm::dvec3(0.0);
     glm::dmat3 initial_orient = glm::dmat3(1.0);
     glm::dmat3 orient = glm::dmat3(1.0);
     /* Epoch (t = 0) orbital state relative to the parent, in the local
@@ -39,15 +39,15 @@ struct Frame {
        see railStateFromElements). UpdateOrbitRails derives pos/vel from
        it with propagateKepler. Zero for a non-orbiting frame, where
        `pos` is its fixed offset instead. */
-    glm::dvec3 orbit_pos0;
-    glm::dvec3 orbit_vel0;
+    glm::dvec3 orbit_pos0 = glm::dvec3(0.0);
+    glm::dvec3 orbit_vel0 = glm::dvec3(0.0);
     /* Magnitudes, always >= 0 (load_system rejects negative rates, issue
        #139): the retrograde sense lives in the orientation -- orb_incl >
        pi/2 flips the orbital plane, axial_tilt > pi/2 flips the pole. */
-    double orb_ang_speed;
-    double parent_mu; // gravitational parameter of the body orbited (0 =
-                      // non-orbiting); the rail propagates under this
-    double rot_ang_speed;
+    double orb_ang_speed = 0.0;
+    double parent_mu = 0.0; // gravitational parameter of the body orbited (0 =
+                            // non-orbiting); the rail propagates under this
+    double rot_ang_speed = 0.0;
     // Spin axis in local (body) frame. Always (0,1,0): a tilted body carries
     // the tilt in initial_orient so the pole stays the spin axis.
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
