@@ -369,7 +369,7 @@ int main() {
         c->body = NULL;
         c->orb_ang_speed = 1.0;   // nonzero => the rail is active
         c->parent_mu = mu;
-        // epoch on +Z: prograde (+Y x r_hat) there is +X
+        // epoch at longitude pi/2, i.e. on -Z: prograde (+Y x r_hat) there is -X
         railStateFromElements(r, 0.0, 0.0, M_PI / 2.0, mu,
                               c->orbit_pos0, c->orbit_vel0);
         c->pos = c->orbit_pos0;
@@ -380,15 +380,15 @@ int main() {
         c->root_orient = glm::dmat3(1.0);
         root->children.push_back(c);
 
-        CHECK_TRUE(dvec_close(c->orbit_vel0, glm::dvec3(vc, 0, 0), 1e-9 * vc),
-                   "rail: circular epoch vel at +Z == +X * sqrt(mu/r)");
+        CHECK_TRUE(dvec_close(c->orbit_vel0, glm::dvec3(-vc, 0, 0), 1e-9 * vc),
+                   "rail: circular epoch vel at -Z == -X * sqrt(mu/r)");
 
         const double T = 2.0 * M_PI * sqrt(r * r * r / mu);
         root->UpdateOrbitRails(T / 4.0);
-        // a quarter period sweeps 90 deg prograde (+Z -> +X)
-        CHECK_TRUE(dvec_close(c->pos, glm::dvec3(r, 0, 0), 1e-3),
+        // a quarter period sweeps 90 deg of INCREASING longitude (-Z -> -X)
+        CHECK_TRUE(dvec_close(c->pos, glm::dvec3(-r, 0, 0), 1e-3),
                    "rail: circular quarter-period position");
-        CHECK_TRUE(dvec_close(c->vel, glm::dvec3(0, 0, -vc), 1e-9 * vc),
+        CHECK_TRUE(dvec_close(c->vel, glm::dvec3(0, 0, vc), 1e-9 * vc),
                    "rail: circular quarter-period velocity (prograde)");
         // orbital velocity composes into root_vel (root parent)
         CHECK_TRUE(dvec_close(c->root_vel, c->vel, 1e-9 * vc),
@@ -429,7 +429,7 @@ int main() {
         c->body = NULL;
         c->orb_ang_speed = 1.0;
         c->parent_mu = mu;
-        // epoch at periapsis on +Z (arg_peri = pi/2, nu = 0): prograde +X
+        // epoch at periapsis on -Z (arg_peri = pi/2, nu = 0): prograde -X
         railStateFromElements(a, e, M_PI / 2.0, 0.0, mu,
                               c->orbit_pos0, c->orbit_vel0);
         c->pos = c->orbit_pos0;
@@ -440,16 +440,17 @@ int main() {
         c->root_orient = glm::dmat3(1.0);
         root->children.push_back(c);
 
-        CHECK_TRUE(dvec_close(c->orbit_pos0, glm::dvec3(0, 0, rp), 1e-3),
-                   "rail: elliptic epoch at periapsis radius on +Z");
-        CHECK_TRUE(dvec_close(c->orbit_vel0, glm::dvec3(vp, 0, 0), 1e-9 * vp),
-                   "rail: elliptic epoch vel == +X * vis-viva at periapsis");
+        CHECK_TRUE(dvec_close(c->orbit_pos0, glm::dvec3(0, 0, -rp), 1e-3),
+                   "rail: elliptic epoch at periapsis radius on -Z");
+        CHECK_TRUE(dvec_close(c->orbit_vel0, glm::dvec3(-vp, 0, 0), 1e-9 * vp),
+                   "rail: elliptic epoch vel == -X * vis-viva at periapsis");
 
         root->UpdateOrbitRails(T / 2.0);
-        // half a period later: apoapsis on -Z, prograde there is -X
-        CHECK_TRUE(dvec_close(c->pos, glm::dvec3(0, 0, -ra), 1e-3),
-                   "rail: elliptic T/2 position == apoapsis on -Z");
-        CHECK_TRUE(dvec_close(c->vel, glm::dvec3(-va, 0, 0), 1e-9 * va),
+        // half a period later: longitude pi/2 -> 3pi/2, apoapsis on +Z,
+        // prograde there is +X
+        CHECK_TRUE(dvec_close(c->pos, glm::dvec3(0, 0, ra), 1e-3),
+                   "rail: elliptic T/2 position == apoapsis on +Z");
+        CHECK_TRUE(dvec_close(c->vel, glm::dvec3(va, 0, 0), 1e-9 * va),
                    "rail: elliptic T/2 velocity (prograde at apoapsis)");
         const double r1 = glm::length(c->pos), v1 = glm::length(c->vel);
         CHECK_NEAR(v1 * v1 / 2.0 - mu / r1, E0, 1e-6 * fabs(E0),

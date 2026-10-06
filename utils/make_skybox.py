@@ -17,9 +17,9 @@ The skybox shader samples the cubemap at the ROOT-frame direction (the
 So a star at sky direction (RA, Dec) must sit at the rail-embedded
 direction of that same sky point:
   rail = (x_ecl, z_ecl, -y_ecl) -- the SAME embedding as the orbital
-  rails and the #143 WGCCRE orientations (rail azimuth = -ecliptic
-  longitude, +Y = ecliptic north). A mirrored bake gives a mirrored sky;
-  the star pins below are the tripwire.
+  rails and the #143 WGCCRE orientations (rail longitude atan2(-z, x) =
+  ecliptic longitude, +Y = ecliptic north; #146). A mirrored bake gives a
+  mirrored sky; the star pins below are the tripwire.
 
 Face math follows the GL cubemap table (OpenGL 4.6 core Table 8.19,
 identical to ES 3.2 Table 8.20): per major axis, s=(sc/|ma|+1)/2,

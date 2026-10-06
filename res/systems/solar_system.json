@@ -101,16 +101,16 @@
       "inertial": {
         "orb_ang_speed": 8.266781726111516e-07,
         "ecc": 0.20563069,
-        "arg_peri": -0.508323304918994,
+        "arg_peri": 0.508323304918994,
         "orb_incl": 0.1222580451741752,
-        "lon_asc_node": -0.8435467744873678,
-        "true_anomaly0": -3.036579402685546
+        "lon_asc_node": 0.8435467744873678,
+        "true_anomaly0": 3.036579402685546
       },
       "rotating": {
         "rot_ang_speed": 1.2399326882596827e-06,
         "axial_tilt": 0.000593411945678072,
-        "spin_phase0": -0.6690607563514785,
-        "tilt_azimuth": 1.9237687625801383
+        "spin_phase0": 0.6690607563514785,
+        "tilt_azimuth": -1.9237687625801383
       },
       "transfer_dv": 17145.8,
       "science_mult": 1.9
@@ -171,16 +171,16 @@
       "inertial": {
         "orb_ang_speed": 3.2363920127827824e-07,
         "ecc": 0.00677323,
-        "arg_peri": -0.9573530627587608,
+        "arg_peri": 0.9573530627587608,
         "orb_incl": 0.0592488666503767,
-        "lon_asc_node": -1.3383305132010905,
-        "true_anomaly0": -0.8716649110392808
+        "lon_asc_node": 1.3383305132010905,
+        "true_anomaly0": 0.8716649110392808
       },
       "rotating": {
         "rot_ang_speed": 2.9923691869737844e-07,
         "axial_tilt": 3.095515961337143,
-        "spin_phase0": 0.2730763364246065,
-        "tilt_azimuth": 1.9001980855336564
+        "spin_phase0": -0.2730763364246065,
+        "tilt_azimuth": -1.9001980855336564
       },
       "transfer_dv": 5202.4,
       "science_mult": 1.3
@@ -279,16 +279,16 @@
       "inertial": {
         "orb_ang_speed": 1.9909885714794665e-07,
         "ecc": 0.01671022,
-        "arg_peri": -1.9933026650579555,
+        "arg_peri": 1.9933026650579555,
         "orb_incl": 8.726646259971648e-07,
-        "lon_asc_node": 0.1965352438817743,
-        "true_anomaly0": 0.05281697643495413
+        "lon_asc_node": -0.1965352438817743,
+        "true_anomaly0": -0.05281697643495413
       },
       "rotating": {
         "rot_ang_speed": 7.292106590880652e-05,
         "axial_tilt": 0.40910517666747087,
-        "spin_phase0": -0.1739712648579453,
-        "tilt_azimuth": -1.7673311776290597
+        "spin_phase0": 0.1739712648579453,
+        "tilt_azimuth": 1.7673311776290597
       },
       "transfer_dv": 0.0,
       "science_mult": 1.0
@@ -347,16 +347,16 @@
       "inertial": {
         "orb_ang_speed": 1.0585759726109988e-07,
         "ecc": 0.09341233,
-        "arg_peri": -4.999710317835753,
+        "arg_peri": 4.999710317835753,
         "orb_incl": 0.03229923767033226,
-        "lon_asc_node": -0.8653087613317094,
-        "true_anomaly0": -0.36782881388231586
+        "lon_asc_node": 0.8653087613317094,
+        "true_anomaly0": 0.36782881388231586
       },
       "rotating": {
         "rot_ang_speed": 7.088235959185674e-05,
         "axial_tilt": 0.4396484385773716,
-        "spin_phase0": -0.8366936069047993,
-        "tilt_azimuth": 0.9516074945999382
+        "spin_phase0": 0.8366936069047993,
+        "tilt_azimuth": -0.9516074945999382
       },
       "transfer_dv": 5594.2,
       "science_mult": 1.3
@@ -442,16 +442,16 @@
       "inertial": {
         "orb_ang_speed": 1.678489516693838e-08,
         "ecc": 0.04839266,
-        "arg_peri": 1.497532640783931,
+        "arg_peri": -1.497532640783931,
         "orb_incl": 0.022781782726281983,
-        "lon_asc_node": -1.7550359006292962,
-        "true_anomaly0": -0.35925508569284076
+        "lon_asc_node": 1.7550359006292962,
+        "true_anomaly0": 0.35925508569284076
       },
       "rotating": {
         "rot_ang_speed": 0.00017585181380295513,
         "axial_tilt": 0.054628805587422516,
-        "spin_phase0": 0.33686891926800583,
-        "tilt_azimuth": -2.210977390123576
+        "spin_phase0": -0.33686891926800583,
+        "tilt_azimuth": 2.210977390123576
       },
       "transfer_dv": 14436.0,
       "science_mult": 1.8
@@ -529,16 +529,16 @@
       "inertial": {
         "orb_ang_speed": 6.761257652006661e-09,
         "ecc": 0.0541506,
-        "arg_peri": 0.37146017003120524,
+        "arg_peri": -0.37146017003120524,
         "orb_incl": 0.04336200713409832,
-        "lon_asc_node": -1.9847018570370527,
-        "true_anomaly0": 0.7799209041603328
+        "lon_asc_node": 1.9847018570370527,
+        "true_anomaly0": -0.7799209041603328
       },
       "rotating": {
         "rot_ang_speed": 0.00016378840578024865,
         "axial_tilt": 0.4665265090580843,
-        "spin_phase0": -0.6800629028107282,
-        "tilt_azimuth": 0.5258096518900025
+        "spin_phase0": 0.6800629028107282,
+        "tilt_azimuth": -0.5258096518900025
       },
       "transfer_dv": 15732.6,
       "science_mult": 1.8
@@ -590,16 +590,16 @@
       "inertial": {
         "orb_ang_speed": 2.3699235521267574e-09,
         "ecc": 0.04716771,
-        "arg_peri": -1.688333081809502,
+        "arg_peri": 1.688333081809502,
         "orb_incl": 0.013436591779403545,
-        "lon_asc_node": -1.2955558093602884,
-        "true_anomaly0": -2.5107618558626776
+        "lon_asc_node": 1.2955558093602884,
+        "true_anomaly0": 2.5107618558626776
       },
       "rotating": {
         "rot_ang_speed": 0.00010123719559131843,
         "axial_tilt": 1.706408409674856,
-        "spin_phase0": -2.9631454757036724,
-        "tilt_azimuth": -0.05781022071066346
+        "spin_phase0": 2.9631454757036724,
+        "tilt_azimuth": 0.05781022071066346
       },
       "transfer_dv": 15941.5,
       "science_mult": 1.9
@@ -651,16 +651,16 @@
       "inertial": {
         "orb_ang_speed": 1.2082279223500606e-09,
         "ecc": 0.00858587,
-        "arg_peri": 1.5140790602245375,
+        "arg_peri": -1.5140790602245375,
         "orb_incl": 0.03087784152750808,
-        "lon_asc_node": -2.2989771867912894,
-        "true_anomaly0": 1.7554152462230683
+        "lon_asc_node": 2.2989771867912894,
+        "true_anomaly0": -1.7554152462230683
       },
       "rotating": {
         "rot_ang_speed": 0.00010833825276190748,
         "axial_tilt": 0.4942772441647941,
-        "spin_phase0": -0.8554148725538674,
-        "tilt_azimuth": 3.075707806068925
+        "spin_phase0": 0.8554148725538674,
+        "tilt_azimuth": -3.075707806068925
       },
       "transfer_dv": 15709.0,
       "science_mult": 1.8
@@ -717,16 +717,16 @@
       "inertial": {
         "orb_ang_speed": 8.030261944172967e-10,
         "ecc": 0.24880766,
-        "arg_peri": -1.9855439784011397,
+        "arg_peri": 1.9855439784011397,
         "orb_incl": 0.29917997705373794,
-        "lon_asc_node": -1.9251587278747897,
-        "true_anomaly0": -0.3430450284457705
+        "lon_asc_node": 1.9251587278747897,
+        "true_anomaly0": 0.3430450284457705
       },
       "rotating": {
         "rot_ang_speed": 1.1385591834674098e-05,
         "axial_tilt": 2.085842989058423,
-        "spin_phase0": 5.920975578682153,
-        "tilt_azimuth": -0.33549074435460763
+        "spin_phase0": 0.36220972849743305,
+        "tilt_azimuth": 0.33549074435460763
       },
       "transfer_dv": 15501.9,
       "science_mult": 1.8
@@ -773,7 +773,7 @@
       "rotating": {
         "rot_ang_speed": 2.6616957278072153e-06,
         "axial_tilt": 0.0,
-        "spin_phase0": 3.141592653589793
+        "spin_phase0": -3.141592653589793
       },
       "transfer_dv": 4019.9,
       "science_mult": 1.2
@@ -815,13 +815,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.01884955592153876,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.3999632297286535,
+        "true_anomaly0": 3.8832220774509327,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 0.000228033150940486,
         "axial_tilt": 0.0,
-        "spin_phase0": 5.541555883318447
+        "spin_phase0": 0.7416294238611396
       },
       "transfer_dv": 1333.1,
       "science_mult": 1.4
@@ -863,13 +863,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.031241393610698498,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.799926459457307,
+        "true_anomaly0": 1.4832588477222792,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.760436311145907e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 7.9415191130471
+        "spin_phase0": -1.6583338058675139
       },
       "transfer_dv": 1816.5,
       "science_mult": 1.4
@@ -921,13 +921,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.9167043820063743,
+        "true_anomaly0": 5.366480925173212,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 4.110592399599715e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 4.058297035596167
+        "spin_phase0": 2.224888271583419
       },
       "transfer_dv": 21276.2,
       "science_mult": 2.9
@@ -969,13 +969,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.008203047484373348,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.3166676117350278,
+        "true_anomaly0": 2.9665176954445585,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.0478272486372952e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 6.458260265324821
+        "spin_phase0": -0.17507495814523466
       },
       "transfer_dv": 22492.9,
       "science_mult": 3.0
@@ -1017,13 +1017,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.003141592653589793,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.716630841463681,
+        "true_anomaly0": 0.566554465715905,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.0164443839668306e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 8.858223495053474
+        "spin_phase0": -2.575038187873888
       },
       "transfer_dv": 22827.1,
       "science_mult": 3.0
@@ -1065,13 +1065,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0033161255787892262,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.8334087640127485,
+        "true_anomaly0": 4.449776543166838,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 4.357479662608672e-06,
         "axial_tilt": 0.0,
-        "spin_phase0": 4.975001417602542
+        "spin_phase0": 1.3081838895770446
       },
       "transfer_dv": 22552.6,
       "science_mult": 3.0
@@ -1113,13 +1113,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.026703537555513242,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.718540147763356,
+        "true_anomaly0": 3.56464515941623,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 7.716507848866653e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 5.860132801353149
+        "spin_phase0": 0.42305250582643694
       },
       "transfer_dv": 10377.1,
       "science_mult": 2.4
@@ -1161,13 +1161,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.1185033774920115,
+        "true_anomaly0": 1.1646819296875748,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.3073344654960304e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 8.260096031081805
+        "spin_phase0": -1.9769107239022183
       },
       "transfer_dv": 11537.0,
       "science_mult": 2.5
@@ -1209,13 +1209,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.03246312408709453,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.2352813000410805,
+        "true_anomaly0": 5.047904007138506,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 3.852207602620953e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 4.376873953630874
+        "spin_phase0": 1.9063113535487126
       },
       "transfer_dv": 12286.2,
       "science_mult": 2.5
@@ -1257,13 +1257,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.00034906585039886593,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.6352445297697358,
+        "true_anomaly0": 2.6479407774098505,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.6570811357470143e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 6.776837183359529
+        "spin_phase0": -0.49365187617994266
       },
       "transfer_dv": 12913.8,
       "science_mult": 2.5
@@ -1305,13 +1305,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.006108652381980153,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 6.035207759498391,
+        "true_anomaly0": 0.24797754768119518,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.6097853274251333e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 9.176800413088184
+        "spin_phase0": -2.893615105908598
       },
       "transfer_dv": 13427.8,
       "science_mult": 2.6
@@ -1365,13 +1365,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.005759586531581287,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 2.15198568204746,
+        "true_anomaly0": 4.131199625132126,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 4.560685614160354e-06,
         "axial_tilt": 0.0,
-        "spin_phase0": 5.293578335637253
+        "spin_phase0": 0.989606971542333
       },
       "transfer_dv": 13632.0,
       "science_mult": 2.6
@@ -1413,13 +1413,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.2569124658935653,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.668726834325156,
+        "true_anomaly0": 5.61445847285443,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 9.167009253770458e-07,
         "axial_tilt": 0.0,
-        "spin_phase0": 3.810319487914949
+        "spin_phase0": 2.472865819264637
       },
       "transfer_dv": 12958.2,
       "science_mult": 2.5
@@ -1461,13 +1461,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0757472895365539,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 0.8535583854948143,
+        "true_anomaly0": 5.429626921684772,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.144897955076121e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 3.9951510390846074
+        "spin_phase0": 2.288034268094979
       },
       "transfer_dv": 7297.3,
       "science_mult": 2.2
@@ -1509,13 +1509,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0006981317007977319,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.2535216152234696,
+        "true_anomaly0": 3.0296636919561166,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 2.885361771639519e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 6.395114268813263
+        "spin_phase0": -0.1119289616336765
       },
       "transfer_dv": 7809.2,
       "science_mult": 2.3
@@ -1557,13 +1557,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0022689280275926286,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.653484844952125,
+        "true_anomaly0": 0.6297004622274613,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.7548012479786185e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 8.795077498541918
+        "spin_phase0": -2.5118921913623318
       },
       "transfer_dv": 8028.8,
       "science_mult": 2.3
@@ -1605,13 +1605,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0013962634015954637,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 1.770262767501194,
+        "true_anomaly0": 4.512922539678392,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 8.353223425815073e-06,
         "axial_tilt": 0.0,
-        "spin_phase0": 4.911855421090987
+        "spin_phase0": 1.3713298860885992
       },
       "transfer_dv": 8101.3,
       "science_mult": 2.3
@@ -1653,13 +1653,13 @@
         "arg_peri": 0.0,
         "orb_incl": 0.0012217304763960308,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 4.170225997229849,
+        "true_anomaly0": 2.112959309949737,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 5.401529243748597e-06,
         "axial_tilt": 0.0,
-        "spin_phase0": 7.311818650819642
+        "spin_phase0": -1.028633343640056
       },
       "transfer_dv": 8052.3,
       "science_mult": 2.3
@@ -1711,12 +1711,12 @@
         "arg_peri": 0.0,
         "orb_incl": 2.746188311550478,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 3.170862432663128
+        "true_anomaly0": 3.112322874516458
       },
       "rotating": {
         "rot_ang_speed": 1.2374316626962385e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 6.312455086252921
+        "spin_phase0": -0.029269779073334945
       },
       "transfer_dv": 8931.7,
       "science_mult": 2.3
@@ -1758,13 +1758,13 @@
         "arg_peri": 0.0,
         "orb_incl": 8.726646259971648e-07,
         "lon_asc_node": 0.0,
-        "true_anomaly0": 5.920975578682153,
+        "true_anomaly0": 0.36220972849743305,
         "incl_ref": "equator"
       },
       "rotating": {
         "rot_ang_speed": 1.1385591834674098e-05,
         "axial_tilt": 0.0,
-        "spin_phase0": 9.062568232271946
+        "spin_phase0": -2.77938292509236
       },
       "transfer_dv": 458.8,
       "science_mult": 1.9

@@ -17,15 +17,15 @@
 // derived orbit escapes the universe bound (the magnitude twin, #140).
 // #141 adds the epoch spin-phase fields (spin_phase0, tilt_azimuth): the
 // defaults must reproduce the pre-#141 initial_orient exactly, and the
-// authored values must land the epoch longitude/pole azimuth where named.
+// authored values must land the epoch longitude/pole longitude where named.
 // #143 authors REAL epoch orientation for the 8 planets + Pluto from the
 // vendored IAU WGCCRE 2015 report, and #144 tidally locks the regular
 // moons (spin = mean motion, near side facing the parent at t=0). #147
 // refers regular moons' inclination to the parent's EQUATOR
 // (inertial.incl_ref), so their planes tip with the parent's axis. All
-// rest on ONE sky convention: rail azimuth = -ecliptic longitude (parse_
-// planet negates the fact sheets' physical angles; the WGCCRE mapping is
-// a proper rotation).
+// rest on ONE sky convention: rail longitude atan2(-z, x) = ecliptic
+// longitude, so the fact sheets' physical angles are authored UN-negated
+// (#146) and the WGCCRE mapping is a proper rotation.
 // The throw and authoring cases run on targeted mutations of the real
 // system JSON (written to tmp/).
 //
@@ -78,9 +78,11 @@ static double authored_orb_incl(const char *path, const std::string &name) {
     return 0.0;
 }
 
-static double azimuth(const glm::dvec3 &r) {
-    return std::atan2(r.z, r.x);   // (-pi, pi]: compare against constants
-                                   // inside this range, or wrap the delta
+static double longitude(const glm::dvec3 &r) {
+    return std::atan2(-r.z, r.x);  // rail longitude = ecliptic longitude
+                                   // (#146). (-pi, pi]: compare against
+                                   // constants inside this range, or wrap
+                                   // the delta
 }
 
 // Write a mutated system JSON (tmp/), require load_system to reject it with
@@ -197,17 +199,18 @@ int main() {
     check(h.y < 0.0, "Triton's orbit normal is below Neptune's orbital plane "
                      "(retrograde sense reached the rail)");
 
-    // Motion, not just geometry: prograde (h.Y > 0) sweeps the azimuth
-    // atan2(z, x) DOWN (rail velocity is +Y x r_hat); retrograde sweeps it UP.
+    // Motion, not just geometry: prograde (h.Y > 0) sweeps the rail
+    // longitude atan2(-z, x) UP (rail velocity is +Y x r_hat); retrograde
+    // sweeps it DOWN.
     const double T = 2.0 * PI / tf->orb_ang_speed;
     sys.root->frame->UpdateOrbitRails(0.0);
-    const double az0 = azimuth(tf->GetPositionRelTo(nf));
+    const double az0 = longitude(tf->GetPositionRelTo(nf));
     sys.root->frame->UpdateOrbitRails(T / 8.0);
-    double daz = azimuth(tf->GetPositionRelTo(nf)) - az0;
+    double daz = longitude(tf->GetPositionRelTo(nf)) - az0;
     if(daz > PI) { daz -= 2.0 * PI; }
     if(daz < -PI) { daz += 2.0 * PI; }
-    check(daz > 0.0, "Triton sweeps counter-clockwise about Neptune's +Y "
-                     "(retrograde motion over T/8)");
+    check(daz < 0.0, "Triton sweeps retrograde about Neptune's +Y "
+                     "(longitude DOWN over T/8)");
 
     // Tripwire that the rail still propagates at all (propagateKepler folds
     // whole periods, so this is near-exact by construction).
@@ -228,12 +231,12 @@ int main() {
     check(earth != nullptr, "Earth present in solar_system.json");
     if(earth) {
         sys.root->frame->UpdateOrbitRails(0.0);
-        const double e0 = azimuth(earth->frame->GetPositionRelTo(sys.root->frame));
+        const double e0 = longitude(earth->frame->GetPositionRelTo(sys.root->frame));
         sys.root->frame->UpdateOrbitRails(PI / (2.0 * earth->frame->orb_ang_speed));
-        double edaz = azimuth(earth->frame->GetPositionRelTo(sys.root->frame)) - e0;
+        double edaz = longitude(earth->frame->GetPositionRelTo(sys.root->frame)) - e0;
         if(edaz > PI) { edaz -= 2.0 * PI; }
         if(edaz < -PI) { edaz += 2.0 * PI; }
-        check(edaz < 0.0, "Earth sweeps prograde (azimuth DOWN) -- control");
+        check(edaz > 0.0, "Earth sweeps prograde (longitude UP) -- control");
         // The authored calendar year must match the J2000 sky the orbital
         // phases encode (kills the old hardcoded 4724 for real systems).
         check(earth->cal.epoch_year == 2000,
@@ -265,12 +268,12 @@ int main() {
     check(ship_phase != 0.0 && ship_az != 0.0,
           "shipped solar_system.json authors the #141 fields");
     if(venus) {
-        double d = azimuth(venus->rot_frame->initial_orient
+        double d = longitude(venus->rot_frame->initial_orient
                            * venus->rot_frame->spin_axis) - ship_az;
         if(d > PI) { d -= 2.0 * PI; }
         if(d < -PI) { d += 2.0 * PI; }
         check(std::fabs(d) < 1e-9,
-              "loaded Venus pole azimuth == authored tilt_azimuth");
+              "loaded Venus pole longitude == authored tilt_azimuth");
     }
 
     // Defaults pin: OMITTED spin_phase0/tilt_azimuth must reproduce the
@@ -295,7 +298,7 @@ int main() {
     });
 
     // spin_phase0 on an untilted body: the epoch longitude-0 point sits at
-    // the authored rail azimuth, and the pole stays untilted (the phase is a
+    // the authored rail longitude, and the pole stays untilted (the phase is a
     // pre-rotation about the figure axis, so spin stays about +Y, #101).
     with_loaded(mutated(mutated(mutated(j, "Venus", "rotating", "axial_tilt", 0.0),
                                 "Venus", "rotating", "tilt_azimuth", 0.0),
@@ -303,14 +306,14 @@ int main() {
                 "spin_phase0", [](System &loaded) {
         Frame *vf = loaded.find("Venus")->rot_frame;
         const glm::dvec3 lon0 = vf->initial_orient * glm::dvec3(1.0, 0.0, 0.0);
-        check(std::fabs(azimuth(lon0) - 1.234) < 1e-9,
-              "spin_phase0 places epoch longitude 0 at the authored azimuth");
+        check(std::fabs(longitude(lon0) - 1.234) < 1e-9,
+              "spin_phase0 places epoch longitude 0 at the authored longitude");
         const glm::dvec3 pole = vf->initial_orient * vf->spin_axis;
         check(glm::length(pole - glm::dvec3(0.0, 1.0, 0.0)) < 1e-9,
               "spin_phase0 leaves the pole untilted (figure-axis pre-rotation)");
     });
 
-    // tilt_azimuth: the lean direction swings to the authored azimuth while
+    // tilt_azimuth: the lean direction swings to the authored longitude while
     // the tilt magnitude is preserved (frees the obliquity node from the
     // ascending node). Venus' authored spin_phase0 stays in place: the
     // figure-axis pre-rotation maps +Y to +Y, so it cannot reach the pole.
@@ -319,14 +322,14 @@ int main() {
                 "tilt_azimuth", [](System &loaded) {
         Frame *vf = loaded.find("Venus")->rot_frame;
         const glm::dvec3 pole = vf->initial_orient * vf->spin_axis;
-        check(std::fabs(azimuth(pole) - 2.0) < 1e-9,
-              "tilt_azimuth swings the lean to the authored azimuth");
+        check(std::fabs(longitude(pole) - 2.0) < 1e-9,
+              "tilt_azimuth swings the lean to the authored longitude");
         check(std::fabs(pole.y - std::cos(0.3)) < 1e-9,
               "tilt_azimuth preserves the tilt magnitude");
     });
 
     // --- #143: real epoch sky (WGCCRE 2015 + fact-sheet phases) ---------
-    // One convention end to end: rail azimuth = -ecliptic longitude. The
+    // One convention end to end: rail longitude = ecliptic longitude. The
     // sharpest cross-check is seasonal: t=0 is J2000.0 (mid-January), so
     // the Sun must sit SOUTH of Earth's equator -- dot(pole, earth->sun)
     // reads about -sin(obliquity). With the pre-fix mirrored orbital
@@ -342,7 +345,7 @@ int main() {
         // The rot frame hangs off the INERTIAL frame, so the authored
         // tilt_azimuth/spin_phase0 are orbital-frame angles; the generator
         // pre-rotates the sky pole by inv(orient). Skip that and the
-        // universe-frame pole is off by Earth's raan (11.3 deg azimuth).
+        // universe-frame pole is off by Earth's raan (11.3 deg longitude).
         const double eps = 23.4392911 * PI / 180.0;   // J2000 obliquity
         const glm::dvec3 want(0.0, std::cos(eps), -std::sin(eps));
         const glm::dvec3 upole = glm::normalize(earth->rot_frame->root_orient
@@ -477,7 +480,7 @@ int main() {
                                           orbit_pole(neptune->frame))) - it) < 1e-6,
               "Triton stays ecliptic-referred at its authored incl (irregular, #147)");
     }
-    // lon_asc_node under incl_ref=equator is an azimuth IN THE EQUATOR
+    // lon_asc_node under incl_ref=equator is a longitude IN THE EQUATOR
     // PLANE (no shipped moon has a nonzero node, so pin it synthetically):
     // pulling the node line back through the parent's equator frame must
     // read the authored angle, and the incl must sit off the EQUATOR pole.
@@ -489,8 +492,8 @@ int main() {
             Frame *peq = loaded.find("Jupiter")->rot_frame;
             const glm::dvec3 n = glm::transpose(peq->equator_orient)
                                  * (iof->orient * glm::dvec3(1.0, 0.0, 0.0));
-            check(std::fabs(azimuth(n) - node) < 1e-9,
-                  "equator-referred lon_asc_node reads as an azimuth in the "
+            check(std::fabs(longitude(n) - node) < 1e-9,
+                  "equator-referred lon_asc_node reads as a longitude in the "
                   "parent's equator plane (#147)");
             const double ang = std::acos(glm::dot(
                 glm::normalize(iof->orient * glm::dvec3(0.0, 1.0, 0.0)),

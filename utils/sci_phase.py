@@ -37,9 +37,10 @@ def is_co_orbital(a1, a2, rel_tol=CO_ORBITAL_REL_TOL):
 
 
 def orbit_angle_rad(body):
-    """Epoch position angle [rad] in the parent frame (X-Z plane, y up).
-    Mirrors system.cpp: true_anomaly0 + arg_peri when authored, else the
-    circular orbit through inertial.pos, else on +X (angle 0)."""
+    """Epoch rail LONGITUDE [rad] in the parent frame (X-Z plane, y up).
+    Mirrors system.cpp: arg_peri + true_anomaly0 when authored (both are
+    physical longitudes, #146), else the circular orbit through inertial.pos
+    read as atan2(-z, x), else on +X (angle 0)."""
     inertial = body.get("inertial") or {}
     if "true_anomaly0" in inertial:
         return float(inertial.get("arg_peri") or 0.0) \
@@ -47,7 +48,7 @@ def orbit_angle_rad(body):
     pos = inertial.get("pos")
     if not isinstance(pos, list) or len(pos) < 3:
         return 0.0
-    return math.atan2(float(pos[2]), float(pos[0]))
+    return math.atan2(-float(pos[2]), float(pos[0]))
 
 
 def phase_gap_rad(b1, b2):
@@ -80,11 +81,13 @@ if __name__ == "__main__":
     # Co-orbital test: Shay vs Kerbin SMa are equal to ~1e-8.
     assert is_co_orbital(13600958.1, 13600957.7)
     assert not is_co_orbital(13600958.1, 20727858.2)
-    # Epoch angle mirrors system.cpp: true_anomaly0 wins over pos.
+    # Epoch angle mirrors system.cpp: true_anomaly0 wins over pos, and an
+    # authored pos is read as the longitude atan2(-z, x). Shay's vector is
+    # the committed ksp_system.json one (gen_systems.py pos_at_longitude).
     b_ta = {"name": "H", "inertial": {"orb_ang_speed": w,
               "arg_peri": 0.0, "true_anomaly0": 3.14}}
     b_pos = {"name": "T", "inertial": {"orb_ang_speed": w,
-               "pos": [-6781153547, 0, 11788622128]}}
+               "pos": [-6818669465, 0, 11766962302]}}
     gap = phase_gap_rad(b_ta, b_pos)
     assert abs(gap - math.pi / 3.0) < 1e-3, gap   # Kerbin->Shay L4: 60 deg
     # Gap is symmetric and takes the short arc (240 -> 120).

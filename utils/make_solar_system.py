@@ -86,9 +86,9 @@ def _wgccre_epoch(name):
 def _railvec_eq(x, y, z):
     """ICRF equatorial vector -> our rail frame. A PROPER rotation
     (det +1): ecliptic via obliquity eps, then rail = (x_ecl, z_ecl,
-    -y_ecl). Rail azimuth atan2(z, x) = -ecliptic longitude, +Y =
+    -y_ecl). Rail longitude atan2(-z, x) = ecliptic longitude, +Y =
     ecliptic north -- the only embedding consistent with the rail's
-    prograde motion sweeping azimuth DOWN (system.cpp railAz)."""
+    prograde motion sweeping longitude UP (system.cpp railAz)."""
     e = math.radians(OBLIQ_J2000)
     xe = x
     ye = y * math.cos(e) + z * math.sin(e)
@@ -103,10 +103,10 @@ def _rail_from_eq(alpha_deg, delta_deg):
 
 
 def _railAz(a):
-    """The loader's railAz(a) = R_Y(-a) (system.cpp): maps local +X to
-    rail azimuth +a. 3x3 as row tuples."""
+    """The loader's railAz(a) = R_Y(+a) (system.cpp): maps local +X to
+    rail longitude +a = atan2(-z, x). 3x3 as row tuples."""
     c, s = math.cos(a), math.sin(a)
-    return ((c, 0.0, -s), (0.0, 1.0, 0.0), (s, 0.0, c))
+    return ((c, 0.0, s), (0.0, 1.0, 0.0), (-s, 0.0, c))
 
 def _rx(a):
     c, s = math.cos(a), math.sin(a)
@@ -166,15 +166,14 @@ def wgccre_orientation(name, axial_tilt, incl, raan):
     assert abs(ang - axial_tilt) <= math.radians(1.0), \
         name + ': WGCCRE pole vs fact-sheet obliquity mismatch'
     assert math.sin(axial_tilt) > 1e-6, name + ': degenerate axial_tilt'
-    tilt_az = math.atan2(p[2], p[0])
+    tilt_az = math.atan2(-p[2], p[0])
     # Undo the loader's composition initial_orient =
     # railAz(tilt_az) * Rz_tilt(axial_tilt) * railAz(spin_phase0) to
     # recover spin_phase0 from the desired epoch prime-meridian direction.
-    ca, sa = math.cos(tilt_az), math.sin(tilt_az)
-    u = (r0[0] * ca + r0[2] * sa, r0[1], -r0[0] * sa + r0[2] * ca)
+    u = _mv(_railAz(-tilt_az), r0)
     ct, st = math.cos(axial_tilt), math.sin(axial_tilt)
     v = (ct * u[0] - st * u[1], st * u[0] + ct * u[1], u[2])
-    spin_phase0 = math.atan2(v[2], v[0])
+    spin_phase0 = math.atan2(-v[2], v[0])
     # Round-trip through the loader's exact composition: the authored
     # triple must land the pole and the meridian where the report says
     # (catches transcription and inversion slips, which are otherwise
@@ -330,13 +329,10 @@ def parse_planet(page):
     a_m  = get(j2000, 'semimajoraxis') * AU
     e    = get(j2000, 'orbitaleccentricity')
     i    = get(j2000, 'orbitalinclination') * D2R
-    # The loader authors RAIL AZIMUTHS (atan2(z, x) about parent +Y;
-    # system.cpp railAz). Prograde rail motion sweeps azimuth DOWN, so the
-    # physical ecliptic-referenced angles embed as rail azimuth -angle
-    # (+X = vernal equinox, +Y = ecliptic north; incl keeps its sign).
-    # Authoring the physical signs directly mirrors the system, and the
-    # #143 WGCCRE orientations would then fight the orbital phases (wrong
-    # seasons).
+    # The loader authors RAIL LONGITUDES (atan2(-z, x) about parent +Y;
+    # system.cpp railAz), which are ecliptic longitudes, so the fact sheets'
+    # physical angles go in UN-negated (#146): +X = vernal equinox,
+    # +Y = ecliptic north, incl keeps its sign.
     node   = get(j2000, 'longitudeofascendingnode') * D2R
     varp   = get(j2000, 'longitudeofperihelion') * D2R
     L      = get(j2000, 'meanlongitude') * D2R
@@ -346,12 +342,12 @@ def parse_planet(page):
     # signed period); load_system rejects negative rates (issue #139).
     assert period_s > 0.0, 'sidereal orbit period must be positive'
     w        = TWO_PI / period_s
-    raan     = -node
-    omega    = node - varp                  # -physical arg of periapsis
+    raan     = node
+    omega    = varp - node                  # physical arg of periapsis
     # t=0 is 2000-01-01 00:00 but the fact-sheet elements are epoch
     # J2000.0 = that date at 12h: roll the mean anomaly back half a day
     # (matches _wgccre_epoch's d = -0.5; keeps midnight anchored at t=0).
-    nu0      = -true_anomaly((L - varp) - 0.5 * w * DAY, e)
+    nu0      = true_anomaly((L - varp) - 0.5 * w * DAY, e)
 
     return dict(mass_kg=mass_kg, radius_m=radius_m, g=g,
                 # obliquity > 90 deg encodes retrograde; keep the rate positive
@@ -747,10 +743,11 @@ def build_moon(m, parent_body=None, home_body=None):
     # is what makes the tiniest moons landable).
     # #144: every regular moon is tidally locked (the fact sheets' rotation
     # column says "Synchronous"), so spin at the mean motion with the near
-    # side facing the parent at t=0: the longitude-0 point must point AWAY
-    # from the parent's position azimuth (arg_peri + nu0 = nu0 here), hence
-    # +pi. A uniform spin on an eccentric Kepler rail reproduces the
-    # first-order physical libration (~+-2e rad) for free. tilt_azimuth
+    # side facing the parent at t=0: the longitude-0 point must sit at the
+    # ANTIPODE of the parent's position longitude (arg_peri + nu0 = nu0
+    # here), hence -pi. A uniform spin on an eccentric Kepler rail
+    # reproduces the first-order physical libration (~+-2e rad) for free.
+    # tilt_azimuth
     # stays omitted: node-locked is exactly the Cassini state these moons
     # sit in. The e < 0.1 gate keeps captured irregulars (Phoebe, Nereid,
     # the retrograde swarms) unspun as before; Hyperion (e=0.12) is left
@@ -763,7 +760,7 @@ def build_moon(m, parent_body=None, home_body=None):
                 e=m['e'], omega=0.0, i=m['i'], raan=0.0, nu0=nu0,
                 incl_ref=m.get('incl_ref', 'orbit'),
                 rot_s=m['period_s'] if sync else None,
-                sync_phase0=nu0 + math.pi if sync else None)
+                sync_phase0=nu0 - math.pi if sync else None)
     c1, c2 = MOON_COLORS.get(name, DEFAULT_COLOR)
     surface = rock(radius_m, c1, c2)
     if name in MOON_ATMOS:
@@ -841,8 +838,10 @@ def main():
             m['idx'] = len(moons)
             # Epoch anomaly spread (fact sheets carry no moon raan/omega);
             # stashed so main()'s Pluto/Charon lock and build_moon cannot
-            # desync on the formula.
-            m['nu0'] = (m['idx'] * GOLDEN) % TWO_PI
+            # desync on the formula. Arbitrary, so the direction is a
+            # convention: negative keeps the spread where the pre-#146
+            # azimuth convention put it.
+            m['nu0'] = (-m['idx'] * GOLDEN) % TWO_PI
             moons.append(m)
 
     add(dict(parse_earth_moon(), parent='Earth'))

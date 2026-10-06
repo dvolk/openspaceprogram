@@ -41,6 +41,14 @@ def true_anomaly_from_mean(M, e):
     sinnu = (math.sqrt(1.0 - e * e) * sinE) / (1.0 - e * cosE)
     return math.atan2(sinnu, cosnu) % TWOPI
 
+def pos_at_longitude(lon, r):
+    """inertial.pos for a body at rail LONGITUDE lon [rad], radius r [m].
+
+    The loader reads an authored pos back as atan2(-z, x) (system.cpp, #146),
+    which is why the z component carries the minus sign.
+    """
+    return [int(round(r * math.cos(lon))), 0, int(round(-r * math.sin(lon)))]
+
 def load_wiki_orbits(csv_path):
     """Per-body orbital elements from ksp_bodies.csv."""
     import csv
@@ -349,26 +357,19 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
                 inertial["ecc"] = e
             b["inertial"] = inertial
         else:
-            # Non-wiki body (Shay): Kerbin's L4 trojan, phase_deg ahead along
-            # the orbit (decreasing in-plane angle from Kerbin's wiki epoch).
+            # Non-wiki body (Shay): Kerbin's L4 trojan, phase_deg AHEAD of
+            # Kerbin along its direction of motion (increasing longitude).
             kb = WIKI_ORBITS.get("Kerbin")
             if phase_deg and kb and kb.get("period"):
                 kb_lon = (kb["raan"] or 0.0) + (kb["omega"] or 0.0) \
                     + true_anomaly_from_mean(kb["M"] or 0.0, kb["e"] or 0.0)
-                th = kb_lon - math.radians(phase_deg)
-                pos = [sma * math.cos(th), 0.0, sma * math.sin(th)]
-                pos = [int(round(p)) for p in pos]
+                pos = pos_at_longitude(kb_lon + math.radians(phase_deg), sma)
             elif phase_deg:
-                th = math.radians(phase_deg)
-                if typ == "planet":
-                    pos = [-sma * math.sin(th), 0.0, -sma * math.cos(th)]
-                else:
-                    pos = [-sma * math.cos(th), 0.0, -sma * math.sin(th)]
-                pos = [int(round(p)) for p in pos]
+                pos = pos_at_longitude(math.radians(phase_deg), sma)
             elif typ == "planet":
-                pos = [0, 0, -sma]
+                pos = [0, 0, -sma]              # longitude +90 deg
             else:
-                pos = [-sma, 0, 0]
+                pos = [-sma, 0, 0]              # longitude 180 deg
             inertial = {
                 "pos": pos,
                 "orb_ang_speed": spd(orb_s),

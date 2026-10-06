@@ -537,8 +537,10 @@ int main() {
     }
 
     // --- railStateFromElements: epoch state in the body-rail convention ------
-    // (XZ plane, +Y normal, prograde = +Y x r_hat: at +X the velocity is -Z,
-    //  at -Z it is -X -- the direction the old R_Y rotation rails produced.)
+    // (XZ plane, +Y normal, prograde = +Y x r_hat = INCREASING rail longitude
+    //  atan2(-z, x): at +X the velocity is -Z, at -Z it is -X -- the direction
+    //  the old R_Y rotation rails produced. Authored angles are physical, so a
+    //  positive longitude puts the body at -Z, not +Z.)
     {
         const double a = 1.0e8;
         const double vc = sqrt(MU / a);
@@ -554,11 +556,11 @@ int main() {
         CHECK_NEAR(v.y, 0.0, 1e-12);
         CHECK_NEAR(v.z, -vc, 1e-12 * vc);
 
-        // circular, quarter phase: position at +Z, prograde +X
+        // circular, quarter phase: longitude pi/2 sits at -Z, prograde is -X
         CHECK(railStateFromElements(a, 0.0, 0.0, 0.5 * M_PI, MU, p, v));
         CHECK_NEAR(p.x, 0.0, 1e-9 * a);
-        CHECK_NEAR(p.z, a, 1e-9 * a);
-        CHECK_NEAR(v.x, vc, 1e-12 * vc);
+        CHECK_NEAR(p.z, -a, 1e-9 * a);
+        CHECK_NEAR(v.x, -vc, 1e-12 * vc);
         CHECK_NEAR(v.z, 0.0, 1e-12 * vc);
 
         // circular energy + angular momentum
@@ -587,32 +589,33 @@ int main() {
         // elliptic MID-ORBIT (nu = pi/2): maximal radial component, the case
         // the apsis pins can't catch. r = p (semi-latus rectum); the state
         // must satisfy vis-viva, i.e. |v| = sqrt(MU(2/r - 1/a)) -- NOT the
-        // total speed stacked onto the radial component.
+        // total speed stacked onto the radial component. Past periapsis
+        // (nu > 0) the body moves OUTWARD.
         const double pl = a * (1.0 - e * e);          // semi-latus rectum
         const double sm = sqrt(MU / pl);              // sqrt(mu/p)
         CHECK(railStateFromElements(a, e, 0.0, 0.5 * M_PI, MU, p, v));
         CHECK_NEAR(glm::length(p), pl, 1e-9 * pl);
-        CHECK_NEAR(p.z, pl, 1e-9 * pl);
-        CHECK_NEAR(v.x, sm, 1e-12 * sm);              // transverse = h/r = sm
-        CHECK_NEAR(v.z, -sm * e, 1e-12 * sm);         // radial: -sin(nu), see #172
+        CHECK_NEAR(p.z, -pl, 1e-9 * pl);              // longitude pi/2 => -Z
+        CHECK_NEAR(v.x, -sm, 1e-12 * sm);             // transverse = h/r = sm
+        CHECK_NEAR(v.z, -sm * e, 1e-12 * sm);         // +sm*e OUTWARD along -Z
         const double vm = sqrt(MU * (2.0 / pl - 1.0 / a));
         CHECK_NEAR(glm::length(v), vm, 1e-12 * vm);   // vis-viva
 
-        // argument of periapsis rotates the ellipse in-plane
+        // argument of periapsis rotates the ellipse in-plane: periapsis at
+        // longitude pi/2 lands on -Z, prograde there is -X
         CHECK(railStateFromElements(a, e, 0.5 * M_PI, 0.0, MU, p, v));
         CHECK_NEAR(p.x, 0.0, 1e-9 * rp);
-        CHECK_NEAR(p.z, rp, 1e-9 * rp);
-        CHECK_NEAR(v.x, vp, 1e-12 * vp);
+        CHECK_NEAR(p.z, -rp, 1e-9 * rp);
+        CHECK_NEAR(v.x, -vp, 1e-12 * vp);
         CHECK_NEAR(v.z, 0.0, 1e-12 * vp);
 
-        // Round trip through the eccentricity vector (#172): the state must
-        // put periapsis at the authored arg_peri and the body at
-        // arg_peri + true_anomaly. A velocity that mirrors the ellipse (the
-        // bug this pins) recovers periapsis at arg_peri + 2*true_anomaly
-        // instead: -125.7 deg for Gilly, +153.0 deg for Bop. The pairs are
-        // the authored ones from both shipped systems; wrap() keeps
-        // |arg_peri| > pi (Eeloo) and |nu0| > pi (Enceladus) comparable to
-        // atan2's range.
+        // Round trip through the eccentricity vector (#172): the angles are
+        // physical, so the recovered periapsis rail LONGITUDE atan2(-ev.z, ev.x)
+        // must equal the authored arg_peri and the body must sit at longitude
+        // arg_peri + true_anomaly. Only those two discriminate a mirrored
+        // radial term (|e_vec|, radius and energy are sign-invariant); negating
+        // it puts periapsis at arg_peri + 2*true_anomaly, -125.7 deg off for
+        // Gilly. wrap() keeps |ap| > pi (Eeloo) / |nu0| > pi (Enceladus) legal.
         {
             struct RailPair { double e, ap, nu; };
             const RailPair cases[] = {
@@ -635,8 +638,8 @@ int main() {
                 const glm::dvec3 ev =
                     glm::cross(v, h) / MU - p / glm::length(p);
                 CHECK_NEAR(glm::length(ev), c.e, 1e-9);
-                CHECK_NEAR(wrap(atan2(ev.z, ev.x) - c.ap), 0.0, 1e-9);
-                CHECK_NEAR(wrap(atan2(p.z, p.x) - (c.ap + c.nu)), 0.0, 1e-9);
+                CHECK_NEAR(wrap(atan2(-ev.z, ev.x) - c.ap), 0.0, 1e-9);
+                CHECK_NEAR(wrap(atan2(-p.z, p.x) - (c.ap + c.nu)), 0.0, 1e-9);
                 // radius on the conic the elements describe
                 const double pc = a * (1.0 - c.e * c.e);
                 CHECK_NEAR(glm::length(p), pc / (1.0 + c.e * cos(c.nu)),

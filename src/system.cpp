@@ -140,19 +140,23 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
     }
 
-    // Rail azimuth a -> R_Y(-a): maps local +X to azimuth +a = atan2(z, x)
-    // about the parent inertial frame's +Y. Same convention as lon_asc_node
-    // in the inertial orient below.
+    // Rail longitude a -> R_Y(+a): maps local +X to longitude +a, measured as
+    // atan2(-z, x) about the parent inertial frame's +Y. That is the ecliptic
+    // longitude of the sky embedding (rail = (x_ecl, z_ecl, -y_ecl), a proper
+    // rotation -- make_skybox.py), and prograde motion sweeps it UP. Authored
+    // angles therefore go in un-negated and read like the fact sheets (#146).
     auto railAz = [](double a) {
         const double c = std::cos(a), s = std::sin(a);
-        return glm::dmat3(glm::dvec3(c, 0.0, s),
+        return glm::dmat3(glm::dvec3(c, 0.0, -s),
                           glm::dvec3(0.0, 1.0, 0.0),
-                          glm::dvec3(-s, 0.0, c));
+                          glm::dvec3(s, 0.0, c));
     };
 
     // railAz(raan) * R_X(incl): the orbital-plane orientation from the
-    // authored pair. Used by pass 1 (orbit-referred) and pass 2
-    // (equator-referred, #147) -- one spelling, no duplicated literal.
+    // authored pair -- frame +X on the ascending node at ecliptic longitude
+    // raan, frame +Y the orbit normal at (raan - 90 deg, 90 deg - incl).
+    // Used by pass 1 (orbit-referred) and pass 2 (equator-referred, #147) --
+    // one spelling, no duplicated literal.
     auto planeOrient = [&railAz](double incl, double raan) {
         const double ci = std::cos(incl), si = std::sin(incl);
         return railAz(raan) * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
@@ -383,7 +387,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         "orbits with orb_incl > pi/2, not a negative rate");
             }
             // Optional orbital plane orientation (radians): orient =
-            // R_Y(-raan) * R_X(i) maps the local orbital plane into the
+            // R_Y(+raan) * R_X(i) maps the local orbital plane into the
             // parent frame.
             const double orb_incl = in.value("orb_incl", 0.0);
             const double lon_asc_node = in.value("lon_asc_node", 0.0);
@@ -456,15 +460,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // tilting spin_axis instead makes the terrain pole/bands/rings
             // precess once per rotation.
             const double axial_tilt = rot.value("axial_tilt", 0.0);
-            // #141: rail-azimuth angles, same convention as lon_asc_node
-            // (railAz above: the named direction lands at azimuth +a =
-            // atan2(z, x) about the parent inertial frame's +X, i.e. the
+            // #141: rail-longitude angles, same convention as lon_asc_node
+            // (railAz above: the named direction lands at longitude +a =
+            // atan2(-z, x) about the parent inertial frame's +X, i.e. the
             // orbit's node line). tilt_azimuth = the direction the pole
             // leans (default 0 = toward +X, the ascending node -- the old
             // permanent node-lock). spin_phase0 = the epoch spin angle
             // about the figure axis +Y -- for an untilted body that is the
-            // rail azimuth of the longitude-0 point (the spin analogue of
-            // true_anomaly0), but for tilted bodies the azimuth reading
+            // rail longitude of the longitude-0 point (the spin analogue of
+            // true_anomaly0), but for tilted bodies the longitude reading
             // degrades past ~90 deg tilt; the figure-axis angle is the
             // sound meaning. Free-form angles: negative is legal, like
             // lon_asc_node. Systems that OMIT them load byte-identically
@@ -543,7 +547,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             parent->frame->children.push_back(body->frame);
 
             // #147: equator-referred moon rails. orient = parent's EQUATOR
-            // frame * R_Y(-raan) * R_X(i): the moon's plane tips WITH the
+            // frame * R_Y(+raan) * R_X(i): the moon's plane tips WITH the
             // parent's axis (Charon rides Pluto's equator, ~54 deg off
             // Pluto's orbital plane; the giant planets' regular moons sit
             // within a few degrees of their equators). The parent's
@@ -609,7 +613,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 const double arg_peri = in.value("arg_peri", 0.0);
                 const double nu0 = in.contains("true_anomaly0")
                     ? in["true_anomaly0"].get<double>()
-                    : atan2(f->pos.z, f->pos.x) - arg_peri;
+                    : atan2(-f->pos.z, f->pos.x) - arg_peri;
+                // The pos fallback keeps only the DIRECTION: the rail puts the
+                // body at the conic's own radius, so an eccentric orbit
+                // authored by position would silently lose that radius.
+                assert((in.contains("true_anomaly0") || e == 0.0)
+                       && "inertial.pos with nonzero ecc: author true_anomaly0");
                 if(!railStateFromElements(a, e, arg_peri, nu0, mu,
                                           f->orbit_pos0, f->orbit_vel0)) {
                     throw std::runtime_error("system: bad orbital elements "

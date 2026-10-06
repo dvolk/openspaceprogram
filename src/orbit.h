@@ -287,28 +287,29 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
 }
 
 /* Epoch state from elements, in the BODY-RAIL convention: orbital plane = XZ
-   (normal +Y), prograde = +Y x r_hat. Authored angles are rail azimuths
-   (#146), so phi = arg_peri + true_anomaly is the position angle -- but
-   prograde motion sweeps that azimuth DOWN, which makes true_anomaly count
-   AGAINST the direction of motion and the radial term negative (#172).
+   (normal +Y), prograde = +Y x r_hat = INCREASING rail longitude atan2(-z, x).
+   arg_peri and true_anomaly are physical angles, un-negated (system.cpp
+   railAz, #146): the body sits at longitude arg_peri + true_anomaly, hence the
+   -sin(phi) below, and the radial term keeps its textbook sign.
    Plane tilt is NOT applied here -- the frame's orient carries it.
    a > 0, 0 <= e < 1 (bodies don't escape). Returns false on bad input. */
 inline bool railStateFromElements(double a, double e,
                                   double arg_peri, double true_anomaly,
                                   double mu,
                                   glm::dvec3 &pos, glm::dvec3 &vel) {
+    assert(std::isfinite(arg_peri) && std::isfinite(true_anomaly));
     if(!(a > 0.0) || !(mu > 0.0) || !(e >= 0.0 && e < 1.0)) { return false; }
 
     const double p = a * (1.0 - e * e);             // semi-latus rectum
     const double r = p / (1.0 + e * cos(true_anomaly));
-    const double phi = arg_peri + true_anomaly;     // in-plane position angle
-    const glm::dvec3 rhat(cos(phi), 0.0, sin(phi));
+    const double phi = arg_peri + true_anomaly;     // rail longitude
+    const glm::dvec3 rhat(cos(phi), 0.0, -sin(phi));
     pos = r * rhat;
 
     // Transverse component is h/r, NOT the total vis-viva speed (that
     // over-counts whenever the radial part is nonzero).
     const double s = sqrt(mu / p);
-    const double vr = -s * e * sin(true_anomaly);
+    const double vr = s * e * sin(true_anomaly);
     const double vt = s * (1.0 + e * cos(true_anomaly));
     vel = vr * rhat + vt * glm::cross(glm::dvec3(0.0, 1.0, 0.0), rhat);
     return true;
