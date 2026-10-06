@@ -542,7 +542,7 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
             # (Cassini-type state), so omitting tilt_azimuth is correct.
             body['rotating']['spin_phase0'] = data['sync_phase0']
         else:
-            # #141: epoch spin phase and obliquity-node azimuth. The fact
+            # #141: epoch spin phase and obliquity-node longitude. The fact
             # sheets do not publish prime meridian at epoch, so draw a
             # reproducible pseudo-random angle per body (seeded by name)
             # instead of leaving both node-locked at 0.
@@ -747,11 +747,10 @@ def build_moon(m, parent_body=None, home_body=None):
     # ANTIPODE of the parent's position longitude (arg_peri + nu0 = nu0
     # here), hence -pi. A uniform spin on an eccentric Kepler rail
     # reproduces the first-order physical libration (~+-2e rad) for free.
-    # tilt_azimuth
-    # stays omitted: node-locked is exactly the Cassini state these moons
-    # sit in. The e < 0.1 gate keeps captured irregulars (Phoebe, Nereid,
-    # the retrograde swarms) unspun as before; Hyperion (e=0.12) is left
-    # unspun on purpose -- its rotation is chaotic, not synchronous. The
+    # tilt_azimuth stays omitted: node-locked is exactly the Cassini state
+    # these moons sit in. The e < 0.1 gate keeps captured irregulars (Phoebe,
+    # Nereid, the retrograde swarms) unspun as before; Hyperion (e=0.12) is
+    # left unspun on purpose -- its rotation is chaotic, not synchronous. The
     # Moon's 1.5 deg equator-to-orbit tilt is omitted (the fact sheet's
     # 6.7 deg is referred to the ecliptic, not our rail; #143 covers
     # real tilts once the moon rows carry them).
@@ -909,7 +908,7 @@ def main():
     # (and Charon's as sub-Pluto). #147 put Charon on Pluto's EQUATOR, so
     # Pluto's tilt is common-mode between its figure equator and Charon's
     # rail: the lon-0 POINT can sit exactly sub-Charon, and the phase is
-    # just Charon's epoch rail azimuth. (Pre-#147 Charon orbited the
+    # just Charon's epoch rail longitude. (Pre-#147 Charon orbited the
     # ORBITAL plane, ~54 deg off the equator, so only a meridian-plane
     # compromise existed.) The POLE stays the real Table 3 one; only the
     # PHASE is game-anchored, because our Charon epoch phase is the

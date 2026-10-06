@@ -462,13 +462,14 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             const double axial_tilt = rot.value("axial_tilt", 0.0);
             // #141: rail-longitude angles, same convention as lon_asc_node
             // (railAz above: the named direction lands at longitude +a =
-            // atan2(-z, x) about the parent inertial frame's +X, i.e. the
-            // orbit's node line). tilt_azimuth = the direction the pole
-            // leans (default 0 = toward +X, the ascending node -- the old
-            // permanent node-lock). spin_phase0 = the epoch spin angle
-            // about the figure axis +Y -- for an untilted body that is the
-            // rail longitude of the longitude-0 point (the spin analogue of
-            // true_anomaly0), but for tilted bodies the longitude reading
+            // atan2(-z, x) about the parent inertial frame's +Y, measured
+            // from +X, i.e. the orbit's node line). tilt_azimuth = the
+            // direction the pole leans (default 0 = toward +X, the ascending
+            // node -- the old permanent node-lock). spin_phase0 = the
+            // epoch spin angle about the figure axis +Y -- for an untilted
+            // body that is the rail longitude of the longitude-0 point (the
+            // spin analogue of true_anomaly0), but for tilted bodies the
+            // longitude reading
             // degrades past ~90 deg tilt; the figure-axis angle is the
             // sound meaning. Free-form angles: negative is legal, like
             // lon_asc_node. Systems that OMIT them load byte-identically
