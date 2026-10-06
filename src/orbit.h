@@ -287,7 +287,11 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
 }
 
 /* Epoch state from elements, in the BODY-RAIL convention: orbital plane = XZ
-   (normal +Y). Plane tilt is NOT applied here -- the frame's orient carries it.
+   (normal +Y), prograde = +Y x r_hat. Authored angles are rail azimuths
+   (#146), so phi = arg_peri + true_anomaly is the position angle -- but
+   prograde motion sweeps that azimuth DOWN, which makes true_anomaly count
+   AGAINST the direction of motion and the radial term negative (#172).
+   Plane tilt is NOT applied here -- the frame's orient carries it.
    a > 0, 0 <= e < 1 (bodies don't escape). Returns false on bad input. */
 inline bool railStateFromElements(double a, double e,
                                   double arg_peri, double true_anomaly,
@@ -304,7 +308,7 @@ inline bool railStateFromElements(double a, double e,
     // Transverse component is h/r, NOT the total vis-viva speed (that
     // over-counts whenever the radial part is nonzero).
     const double s = sqrt(mu / p);
-    const double vr = s * e * sin(true_anomaly);
+    const double vr = -s * e * sin(true_anomaly);
     const double vt = s * (1.0 + e * cos(true_anomaly));
     vel = vr * rhat + vt * glm::cross(glm::dvec3(0.0, 1.0, 0.0), rhat);
     return true;

@@ -594,7 +594,7 @@ int main() {
         CHECK_NEAR(glm::length(p), pl, 1e-9 * pl);
         CHECK_NEAR(p.z, pl, 1e-9 * pl);
         CHECK_NEAR(v.x, sm, 1e-12 * sm);              // transverse = h/r = sm
-        CHECK_NEAR(v.z, sm * e, 1e-12 * sm);          // radial = sm * e * sin(nu)
+        CHECK_NEAR(v.z, -sm * e, 1e-12 * sm);         // radial: -sin(nu), see #172
         const double vm = sqrt(MU * (2.0 / pl - 1.0 / a));
         CHECK_NEAR(glm::length(v), vm, 1e-12 * vm);   // vis-viva
 
@@ -604,6 +604,48 @@ int main() {
         CHECK_NEAR(p.z, rp, 1e-9 * rp);
         CHECK_NEAR(v.x, vp, 1e-12 * vp);
         CHECK_NEAR(v.z, 0.0, 1e-12 * vp);
+
+        // Round trip through the eccentricity vector (#172): the state must
+        // put periapsis at the authored arg_peri and the body at
+        // arg_peri + true_anomaly. A velocity that mirrors the ellipse (the
+        // bug this pins) recovers periapsis at arg_peri + 2*true_anomaly
+        // instead: -125.7 deg for Gilly, +153.0 deg for Bop. The pairs are
+        // the authored ones from both shipped systems; wrap() keeps
+        // |arg_peri| > pi (Eeloo) and |nu0| > pi (Enceladus) comparable to
+        // atan2's range.
+        {
+            struct RailPair { double e, ap, nu; };
+            const RailPair cases[] = {
+                {0.550,  0.1745,  2.0449},   // Gilly      (ksp_system)
+                {0.235,  0.4363,  1.3351},   // Bop
+                {0.260,  4.5379,  3.1406},   // Eeloo      arg_peri > pi
+                {0.206, -0.5083, -3.0366},   // Mercury    (solar_system)
+                {0.249, -1.9855, -0.3430},   // Pluto
+                {0.0045, 0.0,     5.1185},   // Enceladus  nu0 > pi
+            };
+            auto wrap = [](double d) {
+                while(d > M_PI) { d -= 2.0 * M_PI; }
+                while(d < -M_PI) { d += 2.0 * M_PI; }
+                return d;
+            };
+            for(const RailPair &c : cases) {
+                CHECK(railStateFromElements(a, c.e, c.ap, c.nu, MU, p, v));
+                const glm::dvec3 h = glm::cross(p, v);
+                CHECK(h.y > 0.0);                 // prograde about +Y
+                const glm::dvec3 ev =
+                    glm::cross(v, h) / MU - p / glm::length(p);
+                CHECK_NEAR(glm::length(ev), c.e, 1e-9);
+                CHECK_NEAR(wrap(atan2(ev.z, ev.x) - c.ap), 0.0, 1e-9);
+                CHECK_NEAR(wrap(atan2(p.z, p.x) - (c.ap + c.nu)), 0.0, 1e-9);
+                // radius on the conic the elements describe
+                const double pc = a * (1.0 - c.e * c.e);
+                CHECK_NEAR(glm::length(p), pc / (1.0 + c.e * cos(c.nu)),
+                           1e-9 * a);
+                // energy: vis-viva on that same conic
+                const double E = 0.5 * glm::dot(v, v) - MU / glm::length(p);
+                CHECK_NEAR(E, -MU / (2.0 * a), 1e-12 * MU / a);
+            }
+        }
 
         // propagate periapsis -> apoapsis is exactly half a period, and the
         // state must land on the apoapsis solution above (elements preserved)
