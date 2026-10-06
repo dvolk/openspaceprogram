@@ -6,8 +6,7 @@
 // "PeT" and time-to-next-PERIAPSIS as "ApT". The contract now:
 //   time_to_peri = (2pi - M) / n           (full period at periapsis itself)
 //   time_to_apo  = (pi - M) / n  mod T     (full period at apoapsis itself)
-// plus the hyperbolic case (no apoapsis, no period, one periapsis passage),
-// and the rails-warp SoI sampling bound (conicVMax / railsSubSteps).
+// plus the hyperbolic case (no apoapsis, no period, one periapsis passage).
 #include "orbit.h"
 
 #include <cmath>
@@ -625,113 +624,6 @@ int main() {
         CHECK(!railStateFromElements(a, -0.1, 0.0, 0.0, MU, p, v));
         CHECK(!railStateFromElements(a, 1.0, 0.0, 0.0, MU, p, v));
         CHECK(!railStateFromElements(a, 0.0, 0.0, 0.0, 0.0, p, v));
-    }
-
-    // --- rails-warp sampling: conicVMax + railsSubSteps --------------------
-    {
-        // conicVMax is the conic's periapsis speed, and bounds |v| anywhere
-        // on it. Ellipses first. (1e-6, not 1e-9: recovering e from 1 - p/a
-        // cancels near circular, and the ~1e-8 residue rides straight into
-        // rp.)
-        for(double e : {0.0, 0.3, 0.9}) {
-            const double a = 2.0e7;
-            const double rp = a * (1.0 - e);
-            const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-            for(int i = 0; i < 16; i++) {
-                glm::dvec3 p, v;
-                conic_state(a, e, TWOPI * i / 16.0, p, v);
-                CHECK_NEAR(conicVMax(p, v, MU), vp, 1e-6 * vp);
-                CHECK(glm::length(v) <= vp * (1.0 + 1e-6));
-            }
-        }
-        // Hyperbola (a < 0, e > 1): the same p/(1+e) periapsis, above the
-        // v_inf floor.
-        {
-            const double a = -4.0e7, e = 1.6;
-            const double rp = a * (1.0 - e);        // both factors negative
-            CHECK(rp > 0.0);
-            const double vp = sqrt(MU * (2.0 / rp - 1.0 / a));
-            glm::dvec3 p, v;
-            conic_state(a, e, 0.9, p, v);
-            CHECK_NEAR(conicVMax(p, v, MU), vp, 1e-9 * vp);
-            CHECK(conicVMax(p, v, MU) > sqrt(MU / -a));
-        }
-        // Parabolic state (eps == 0, a infinite): rp = p/(1+e) = p/2 = r,
-        // where a(1-e) would have been inf * 0. This state sits AT periapsis,
-        // so the bound is just its own speed.
-        {
-            const double r = 1.0e6;
-            const glm::dvec3 p(r, 0.0, 0.0), v(0.0, sqrt(2.0 * MU / r), 0.0);
-            const double want = sqrt(2.0 * MU / r);
-            CHECK_NEAR(conicVMax(p, v, MU), want, 1e-9 * want);
-        }
-        // Degenerate states: never NaN, and never a bound that UNDER-splits.
-        {
-            // No conic at all (r == 0, or no mu): the state's own speed.
-            CHECK_NEAR(conicVMax(glm::dvec3(0.0), glm::dvec3(0.0), MU), 0.0, 0.0);
-            CHECK_NEAR(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
-                                 glm::dvec3(0.0, 1.0e3, 0.0), 0.0), 1.0e3, 0.0);
-            // Exactly radial (h == 0): the conic falls through the focus, so
-            // no finite speed bounds it. Returning the current speed here --
-            // which is what the first cut did -- UNDER-splits the advance.
-            CHECK(std::isinf(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
-                                       glm::dvec3(0.0), MU)));
-            CHECK(std::isinf(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
-                                       glm::dvec3(3.0e3, 0.0, 0.0), MU)));
-            CHECK(railsSubSteps(conicVMax(glm::dvec3(1.0e6, 0.0, 0.0),
-                                          glm::dvec3(0.0), MU),
-                                2.0e5, 1.0e9, 32) == 32);
-        }
-
-        // railsSubSteps: one step when the travel already fits the budget,
-        // ceil() of the ratio otherwise, capped after that.
-        CHECK(railsSubSteps(1.0e4, 2.0e5, 1.0e12, 32) == 1);
-        CHECK(railsSubSteps(0.0, 2.0e5, 1.0e9, 32) == 1);
-        CHECK(railsSubSteps(1.0e4, 0.0, 1.0e9, 32) == 1);
-        CHECK(railsSubSteps(1.0e4, 2.0e5, 0.0, 32) == 1);
-        CHECK(railsSubSteps(1.0e4, 2.0e5, 1.0e9, 32) == 2);
-        CHECK(railsSubSteps(1.0e4, 2.0e5, 4.0e8, 32) == 5);
-        CHECK(railsSubSteps(1.0e4, 2.0e5, 3.9e8, 32) == 6);   // ceil, not round
-        CHECK(railsSubSteps(1.0e4, 2.0e5, 1.0, 32) == 32);
-
-        /* The regression the split exists for. An SoI crossing is only
-           tested at the END of a rail step, so at 1e7x (200 ks per 50 Hz
-           tick) a 25 km/s ship covers 5e9 m per step and a 1.5e9 m SoI --
-           Earth's Hill sphere -- can sit wholly between two samples.
-           Straight-line proxy along a diameter chord, both ends outside. */
-        {
-            const double soi = 1.5e9, v = 2.5e4, dt = 2.0e5;
-            const int n = railsSubSteps(v, dt, soi * 0.25, 32);
-            CHECK(n == 14);                       // 5e9 m / (0.25 * 1.5e9)
-            auto inside = [&](int steps) {
-                int hits = 0;
-                for(int i = 1; i <= steps; i++) {
-                    const double x = -1.6e9 + 5.0e9 * i / steps;
-                    if(std::fabs(x) < soi) { hits++; }
-                }
-                return hits;
-            };
-            CHECK(inside(1) == 0);                // one step: flown straight over
-            CHECK(inside(n) == 8);                // split: 8 samples inside
-            // A model of the sampling argument, not of railsTick itself: it
-            // pins the sub-step count, not the loop that consumes it.
-        }
-
-        // The split must not cost accuracy: the conic is exact either way,
-        // so n sub-steps land on the same state as one big step.
-        {
-            glm::dvec3 p0, v0;
-            conic_state(-4.0e7, 1.6, 0.9, p0, v0);
-            const double dt = 2.0e5;
-            glm::dvec3 pa = p0, va = v0;
-            propagateKepler(pa, va, MU, dt, pa, va);
-            glm::dvec3 pb = p0, vb = v0;
-            for(int i = 0; i < 32; i++) {
-                propagateKepler(pb, vb, MU, dt / 32.0, pb, vb);
-            }
-            CHECK(glm::length(pb - pa) < 1e-6 * glm::length(pa));
-            CHECK(glm::length(vb - va) < 1e-6 * glm::length(va));
-        }
     }
 
     if(failures == 0) {

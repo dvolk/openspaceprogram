@@ -14,24 +14,8 @@
    Changes: where surface <-> orbital physics flips (and with it the science
    HighOrbit boundary, which is one margin above the near-body shell).
    Where: Vehicle::soiTarget (vehicle.cpp), used by switchFrames and the
-   sampling loop in railsTick; the loader's SOI nesting lift (system.cpp). */
+   rails path; the loader's SOI nesting lift (system.cpp). */
 inline constexpr double kSoiMargin = 10e3;
-
-/* Rails-warp SoI sampling. A rail state is tested for an SoI crossing only
-   at the END of a step (Vehicle::railsTick), so one step longer than a
-   body's SoI chord carries the ship clean through it unnoticed: at 1e7x a
-   50 Hz tick is 200 ks, so a 25 km/s interplanetary ship covers 5e9 m --
-   more than a planet's whole Hill sphere, and 100x most moons'. The advance
-   is therefore split until each sub-step covers at most this fraction of the
-   smallest SoI the ship could be handed to (8 samples across its chord),
-   capped at kRailsMaxSubSteps as the cost bound. The cap binds in every
-   shipped system -- one tiny moon sets the scale for the whole frame -- so
-   what this resolves is a planet's sphere (~19 samples at 1e7x) and NOT any
-   moon: the pitch is ~1.6e8 m, and the frame tree is frozen for the tick, so
-   the moons themselves move further than that.
-   Where: Vehicle::railsTick (vehicle.cpp), railsSubSteps (orbit.h). */
-inline constexpr double kRailsSoiFrac = 0.25;
-inline constexpr int kRailsMaxSubSteps = 32;
 
 /* Floor [m] for the near-body (rotating-frame) shell above sea level, for
    bodies whose atmosphere is shorter (or absent). 100 km is the historical

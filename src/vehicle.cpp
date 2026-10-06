@@ -2602,48 +2602,29 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     fflush(stdout);
     /* Continuity tripwires on THIS transform -- algebraic identities exactly
        as in moveToRailFrame, so they fire on an edit to the arithmetic above
-       or on a root_orient that has drifted from orthonormal, and on nothing
-       else. That is still the class that matters here: the stasis terms are
-       the hazard, and dropping either one breaks these while the epoch assert
-       above stays silent. Verified in both directions: dropping the OLD-frame
-       stasis add, and dropping the NEW-frame subtract, each trips the velocity
-       check. The latter fires on Kerbin (inertial) -> Kerbin (rotational),
-       which is the direction the battery actually drives (8 such switches
-       across 8 cases); the prox-fly falsification is a spawn-time switch.
+       or on a root_orient that has drifted from orthonormal. That is still
+       the class that matters here: the stasis terms are the hazard, and
+       dropping either one breaks these while the epoch assert above stays
+       silent (verified both ways: dropping the OLD-frame stasis add, and
+       dropping the NEW-frame subtract, which fires on Kerbin (inertial) ->
+       Kerbin (rotational) -- the direction the e2e battery drives).
        The second pair covers the PLACEMENT, not just the intent: newCom is
        derived from oldCom, so the first pair cannot see a wrong placeShip
        argument, a broken frameS or a stale `principal` teleporting the ship.
        It compares the hull's actual transform after placeShip against the
-       mapped pre-switch state. placeShip(sPos, sRot) writes the hull transform
-       as (sPos + sRot*pOrigin, sRot*pBasis) (vehicle.cpp:471-475) while frameS
-       read it as (oldCom - sRot*pOrigin, ...), so the COM -- NOT the S-origin
-       -- is what is invariant across the switch. (A first version compared the
-       S-origin and fired in 8 cases: placeShip's argument is not the hull COM.)
-       Proven: dropping the pOrigin correction from placeShip trips it (134).
-       NOT proven on the frame-offset term, and the reason is a coverage hole
-       rather than a weak assert: every live switch in the 134-case battery is
-       same-body, so fpos is not merely small but EXACTLY zero in all 26 of
-       them (measured by logging |fpos| at every call; run
-       tmp/e2e/runs/20261005T230431Z):
-         15 Kerbin (rot) -> Kerbin (inertial),  8 Kerbin (inertial) -> Kerbin (rot)
-          1 each rot -> inertial for Phobos, Mun, Jool
-       Because fpos is exactly zero in all of them, dropping it from the
-       placeShip argument is a no-op on every shipped case -- the guard cannot
-       see a frame-offset bug here. No shipped case drives a LIVE cross-body
-       SoI crossing: cross-body transitions go through moveToRailFrame on the
-       rails path, and the prox-fly ones are spawn-time switches (#161).
-       Tolerances are measured, not guessed: over 53 switches (a targeted e2e
-       subset plus a 20-body outer-system sweep) the residuals are 5.1e-11 m,
-       4.7e-13 m/s and 1.2e-31 rad^2, with the position residual EXACTLY zero
-       in 48 of 53 -- `(F.root_pos - N.root_pos) + N.root_pos` is exact under
-       Sterbenz, and when N.root_orient is identity both sides evaluate the
-       same expression. Non-zero residuals appear only switching INTO a rotating
-       frame, and scale with |com| in the local frame, not with the root
-       radius. Hence 1e-6 m / 1e-6 m/s, ~5 orders clear. (An earlier version
-       justified an absolute 1e-2 m bound with kComRebuildTol -- wrong twice
-       over: nothing rebuilds the compound between the COM read and placeShip,
-       so that gap cannot arise here, and a 1e-10 RELATIVE bound would be ~70x
-       LOOSER than 1e-2 absolute out at Pluto.) */
+       mapped pre-switch state; the COM -- NOT the S-origin -- is what is
+       invariant across the switch, since placeShip writes the hull transform
+       as (sPos + sRot*pOrigin, ...) while frameS read it as
+       (oldCom - sRot*pOrigin, ...).
+       NOT proven on the frame-offset term: every live switch the battery
+       drives is same-body, so fpos is exactly zero in all of them (#161).
+       Tolerances measured over 53 switches (an e2e subset plus a 20-body
+       outer-system sweep): residuals 5.1e-11 m, 4.7e-13 m/s, 1.2e-31 rad^2,
+       hence 1e-6 m / 1e-6 m/s, ~5 orders clear. The position residual is
+       exactly zero in 48 of 53 -- `(F.root_pos - N.root_pos) + N.root_pos`
+       is exact under Sterbenz -- and non-zero residuals appear only
+       switching INTO a rotating frame, scaling with |com| in the local frame
+       rather than with the root radius. */
     assert(glm::length(rootPosIn(newFrame, newCom) - p0) < 1e-6);
     assert(glm::length(rootVelIn(newFrame, newCom, newVel) - v0) < 1e-6);
     assert(rotDist2(att0, newFrame->root_orient * (forient * sRot)) < 1e-20);
@@ -2869,22 +2850,6 @@ void Vehicle::leaveRails() {
            name.c_str(), frame->body->name.c_str());
 }
 
-/* The distance one rail sub-step may cover [m]: the smallest SoI the ship
-   could be handed to next. soiTarget (above) only tests the frame's DIRECT
-   children, so those are the only boundaries a step can skip -- and the
-   body's own spin frame is not one of them (soiTarget skips same-body
-   children, and its SoI is the near-body shell, which would pin every ship
-   to the sub-step cap). A leaf frame with no children falls back to its own
-   SoI. */
-static double railsSampleScale(const Frame *f) {
-    double best = f->soi;
-    for(const Frame *c : f->children) {
-        if(c->body == f->body) { continue; }
-        if(c->soi < best) { best = c->soi; }
-    }
-    return best;
-}
-
 void Vehicle::railsTick(double t, const double step) {
     if(!onRails || railFrozen) { return; }
     assert(frame->body != nullptr);
@@ -2894,53 +2859,26 @@ void Vehicle::railsTick(double t, const double step) {
     // state is inconsistent before any handoff can even be judged. Exact
     // equality holds because UpdateOrbitRails() is handed this same g.time.
     assert(t == frame->rail_time);
-    /* The conic is exact for any step, but the SoI test only sees the END of
-       one: at 1e7x a 25 km/s ship covers 5e9 m in a tick, more than a
-       planet's whole sphere, so it can be inside an SoI for part of the step
-       and never be sampled there. Split the advance so each sub-step covers
-       at most kRailsSoiFrac of the smallest SoI it could cross; conicVMax is
-       the periapsis speed of the current conic, so the travel bound holds
-       wherever on it the ship sits. kRailsMaxSubSteps caps the cost, and it
-       binds in every shipped system: at 1e7x the pitch is ~1.6e8 m, which
-       resolves a planet's sphere (Earth's gets ~19 samples) and no moon. */
-    const int n = railsSubSteps(conicVMax(rail_pos, rail_vel, frame->body->mu),
-                                step, railsSampleScale(frame) * kRailsSoiFrac,
-                                kRailsMaxSubSteps);
-    assert(n >= 1 && n <= kRailsMaxSubSteps);
-    /* The sub-steps only DETECT a boundary; the handoff waits until the whole
-       advance is done. tick.cpp calls UpdateOrbitRails(g.time) once per tick
-       before the ship loop, so every Frame is already at the END of the tick,
-       and moveToRailFrame composes rail_pos with those transforms. Re-homing
-       mid-loop would splice a state at t - f*step/n onto frames at t and
-       teleport the ship by the parent's motion over the remainder: measured
-       4.5e9 m for an Earth->Sun handoff at sub-step 8/32 at 1e7x, which also
-       invents a recapture flap (the ship lands outside the frame it was just
-       handed to and is handed straight back).
-       The frame tree is frozen for the tick either way, so the bodies
-       themselves move up to v_body*step between samples (the Moon 2e8 m, Io
-       3.5e9 m at 1e7x) -- sub-stepping the ship's conic cannot recover those
-       encounters. The next tick re-plans against whatever frame the handoff
-       left the ship in. */
-    Frame *target = nullptr;
-    for(int i = 0; i < n; i++) {
-        propagateKepler(rail_pos, rail_vel, frame->body->mu, step / n,
-                        rail_pos, rail_vel);
-        if(target == nullptr) { target = soiTarget(rail_pos, true); }
-    }
+    /* One advance, one SoI test at the end of it. propagateKepler is exact
+       for any step; the SoI TEST is not -- at 1e7x one 50 Hz tick is 200 ks,
+       so a 24 km/s ship covers 4.8e9 m and can fly clean through a planet's
+       whole sphere (Mars' Hill radius is 1.08e9 m) and the encounter is
+       simply missed. That is the deal: the player brings the warp down for
+       an encounter. Sampling the conic MID-step to catch such a crossing
+       cannot be made honest, because the handoff has to land on the frame
+       tree's instant (the end of the tick) while the crossing happened
+       earlier in it: the ship is handed to a body it has already left and
+       is handed straight back the next tick -- the Sun->Mars->Sun flap and
+       the warp kill of #164. */
+    propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
+                    rail_pos, rail_vel);
     rail_epoch = t;   // the advance ends at the caller's instant, == the tree's
-    // Where the ship actually ENDS beats what it crossed on the way: if the
-    // endpoint test fires, the old single-step answer is the right one, and
-    // the sampled crossing only fills in when it misses (a body crossed and
-    // left inside one step).
-    if(Frame *final_target = soiTarget(rail_pos, true)) { target = final_target; }
-    if(target != nullptr) { railsHandoff(target, t); }
+    if(Frame *target = soiTarget(rail_pos, true)) {
+        printf("@@@ %s rails SoI switch: %s -> %s\n",
+               name.c_str(), frame->name.c_str(), target->name.c_str());
+        moveToRailFrame(target, t);
+    }
     writeRailPose();
-}
-
-void Vehicle::railsHandoff(Frame *target, double t) {
-    printf("@@@ %s rails SoI switch: %s -> %s\n",
-           name.c_str(), frame->name.c_str(), target->name.c_str());
-    moveToRailFrame(target, t);
 }
 
 void Vehicle::railRootState(glm::dvec3 &p, glm::dvec3 &v) const {
@@ -2949,14 +2887,11 @@ void Vehicle::railRootState(glm::dvec3 &p, glm::dvec3 &v) const {
 }
 
 void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
-    /* Epoch consistency, the invariant this whole path exists to protect.
-       The rail state and BOTH frames must describe the same instant: the
-       frame tree is re-snapshotted once per tick (tick.cpp, before the ship
-       loop) at the END of the tick, so composing a rail state from earlier in
-       the tick onto those transforms puts the ship where its parent WILL be,
-       not where it was -- off by |v_parent| * dt_stale. Measured 4.5e9 m for
-       a handoff at sub-step 8/32 at 1e7x, which also invented a recapture
-       flap. railsTick keeps the whole advance in one instant for this.
+    /* Epoch consistency: the rail state and BOTH frames must describe the
+       same instant. The frame tree is re-snapshotted once per tick (tick.cpp,
+       before the ship loop) at the END of the tick, so composing a rail state
+       from earlier in the tick onto those transforms puts the ship where its
+       parent WILL be, not where it was -- off by |v_parent| * dt_stale.
        Exact double equality is deliberate: Game::time has exactly two writers
        (tick.cpp, Game::setTime) and UpdateOrbitRails() is handed that same
        double, so a mismatch is a genuine desync, never a rounding drift. */
@@ -2977,31 +2912,36 @@ void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
     rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
     rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
     rail_orient = O * rail_orient;
+
+    /* The ship must end up INSIDE the frame it was handed to. soiTarget
+       selects a child by a distance test at the same instant this transform
+       uses, so for the endpoint-only test this is a tautology -- it is here
+       to fail loudly if a target is ever chosen from a sample the ship has
+       since left, which is what put mars_explorer into Mars' frame at a
+       point already outside Mars' sphere and straight back out the next
+       tick (#164). Checked before setSoi, which re-homes `frame`; the upward
+       case (newFrame == the OLD frame's parent) is exempt: leaving a frame
+       only says the ship is outside THAT frame, and whether the parent's
+       sphere reaches it is the next tick's business. */
+    assert(newFrame == frame->parent
+           || glm::length(rail_pos) < newFrame->soi);
+
     setSoi(newFrame, t);
     // Re-anchored, not advanced: same instant, new frame. Taken from the frame
     // so it cannot drift from the invariant the asserts above just checked.
     rail_epoch = frame->rail_time;
 
-    /* Regression tripwires on THIS transform -- not general state checks.
-       Given GetPositionRelTo / GetOrientRelTo / GetVelocityRelTo as written
+    /* Continuity tripwires on THIS transform, not general state checks: given
+       GetPositionRelTo / GetOrientRelTo / GetVelocityRelTo as written
        (frame.cpp:9-26, all defined off root_pos/root_vel/root_orient), these
-       three comparisons are algebraic identities: substituting
-       rail_pos' = O*rail_pos + transpose(N.rot)*(F.root_pos - N.root_pos)
-       into N.rot*rail_pos' + N.root_pos returns p0 exactly, and the
-       attitude one cancels N.rot*transpose(N.rot) outright. So they can only
-       fail on an edit to the transform above, or on a root_orient that has
-       drifted from orthonormal. Nothing else.
-       Verified both ways: dropping the GetPositionRelTo/GetVelocityRelTo terms
-       trips them; the f114ab0 mid-loop handoff passes them clean, and a
-       deliberately stale frame tree leaves the attitude residual at 8.8e-16
-       rad against a 1e-10 rad threshold -- so NO, these do not catch a stale
-       epoch, even though a stale epoch really does rotate the ship by
-       omega*dt_stale (Earth's spin over one 1e7x tick is 14.6 rad). Both sides
-       read the same stored root_orient, so the guard is blind to it. The epoch
-       asserts above are what see a stale state; these see a broken transform.
-       Tolerances from a 60k-handoff sweep over the four shipped systems:
-       position ~2e5x headroom, attitude ~2.5e10x, velocity ~7e3x on realistic
-       states (and ~5x if the scale were |v0|, hence vscale above). */
+       three comparisons are algebraic identities. They fire on an edit to the
+       arithmetic above, or on a root_orient that has drifted from orthonormal,
+       and on nothing else -- in particular NOT on a stale epoch, since both
+       sides read the same stored root_orient. The epoch asserts at the top of
+       this function are what see a stale state; these see a broken transform.
+       Tolerances measured over ~60k handoffs across the four shipped systems
+       (swept before this path was simplified; the transform itself is
+       unchanged): position ~2e5x headroom, attitude ~2.5e10x, velocity ~7e3x. */
     glm::dvec3 p1, v1;
     railRootState(p1, v1);
     assert(glm::length(p1 - p0) < 1e-10 * std::max(1.0, glm::length(p0)));

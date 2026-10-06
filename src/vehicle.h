@@ -752,20 +752,17 @@ public:
        ship back to the integrator. */
     void leaveRails();
 
-    /* Per-tick rail advance: propagate the conic, sampling for an SoI
-       boundary, then hand off ONCE at the end of the advance and refresh the
-       parked transforms. A frozen (grounded) ship has nothing to propagate.
-       The sampling split is what keeps a boundary from being skipped at high
-       warp (kRailsSoiFrac, constants.h); the handoff waits for the end
-       because the frame tree is clocked at the end of the tick -- see
-       railsTick. */
+    /* Per-tick rail advance: propagate the conic, test the END of the
+       advance for an SoI boundary, hand off there, refresh the parked
+       transforms. A frozen (grounded) ship has nothing to propagate. The
+       test only sees the endpoint, so a step longer than a body's whole
+       sphere flies clean past it -- see railsTick. */
     void railsTick(double t, const double step);
 
-    /* Hand a railed ship to another frame (the switchFrames() analog),
-       including the log line. */
-    void railsHandoff(Frame *target, double t);
-
-    /* Re-anchor the rail state on another frame and re-home it (setSoi). */
+    /* Re-anchor the rail state on another frame and re-home it (setSoi).
+       Preconditions it asserts: the rail state and BOTH frames describe the
+       same instant, and the target contains the ship at that instant (the
+       endpoint soiTarget test guarantees the latter for a child handoff). */
     void moveToRailFrame(Frame *newFrame, double t);
 
 private:
@@ -774,9 +771,9 @@ private:
        for what those asserts can and cannot detect. */
     void railRootState(glm::dvec3 &p, glm::dvec3 &v) const;
 
-    /* The SoI boundary test shared by switchFrames (physics) and the
-       sampling loop in railsTick. kSoiMargin (constants.h) of hysteresis on
-       both sides keeps a ship loitering at a boundary from flapping. */
+    /* The SoI boundary test shared by switchFrames (physics) and the rails
+       path. kSoiMargin (constants.h) of hysteresis on both sides keeps a
+       ship loitering at a boundary from flapping. */
     Frame *soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody);
 };
 

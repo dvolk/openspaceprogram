@@ -43,7 +43,13 @@ static const int kRailsWarp = 11;
    i.e. the last WarpUp that is allowed. 1e7x is 200 ks per 50 Hz tick --
    2.3 days of sim per frame, so a ~200 day interplanetary coast is about
    two minutes of wall clock instead of half an hour. What that costs is
-   SoI sampling, not accuracy: see kRailsSoiFrac (constants.h). */
+   SoI resolution, not accuracy: railsTick tests the SoI only at the END of
+   a tick, so a tick that travels further than a body's sphere flies clean
+   past it and the encounter is missed outright (one 1e7x tick at 24 km/s
+   covers ~5e9 m; Mars' Hill radius in solar_system.json is 1.08e9 m). The
+   player brings the warp down for an encounter. The warp at which the
+   endpoint test stays honest scales with the smallest SoI in the frame:
+   ~1e6x for the solar system's planets, ~1e4x for ksp_system's Moho. */
 static const int kMaxWarp = 10000000;
 
 // Toast lifetimes are wall-clock (sim time is paused or warped).

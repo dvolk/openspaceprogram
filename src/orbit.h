@@ -3,10 +3,8 @@
 // frame. Header-only pure math. Angles in radians; plane = XY (normal +Z).
 // time_to_peri / time_to_apo: seconds to the NEXT passage, -1 = never.
 
-#include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <limits>
 #include <numbers>
 #include <glm/glm.hpp>
 
@@ -286,49 +284,6 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double fdot = (sqrt_mu / (r * r0)) * chi * (z * stumpffS(z) - 1.0);
     const double gdot = 1.0 - (chi2 / r) * stumpffC(z);
     vel = fdot * pos0 + gdot * vel0;
-}
-
-/* Upper bound on the speed anywhere along the two-body conic through
-   (pos, vel) under mu: the periapsis speed. Cheaper than the full element
-   set and what bounds the distance a rail step can cover. An exactly radial
-   conic has no finite bound and reports infinity; a state with no conic at
-   all (r == 0, mu <= 0) reports its own speed. */
-inline double conicVMax(const glm::dvec3 &pos, const glm::dvec3 &vel,
-                        const double mu) {
-    const double r = glm::length(pos);
-    const double v2 = glm::dot(vel, vel);
-    if(!(r > 0.0) || !(mu > 0.0)) { return std::sqrt(v2); }
-    const glm::dvec3 h = glm::cross(pos, vel);
-    const double eps = 0.5 * v2 - mu / r;
-    const double a = -mu / (2.0 * eps);        // signed: + ellipse, - hyperbola
-    const double p = glm::dot(h, h) / mu;      // semi-latus rectum
-    const double e = std::sqrt(std::max(0.0, 1.0 - p / a));
-    // Periapsis radius as p/(1+e): the same expression for every conic, and
-    // it stays finite at eps == 0 (a = inf, e = 1, rp = p/2), where a(1-e)
-    // would be inf * 0.
-    const double rp = p / (1.0 + e);
-    if(!(rp > 0.0)) {
-        /* Exactly radial (h = 0): the conic falls through the focus, so the
-           periapsis speed is unbounded. Report that, not the current speed --
-           the current speed UNDER-states the bound and would under-split the
-           advance, which is the unsafe direction. railsSubSteps pins to its
-           cap on an infinite speed. */
-        return std::numeric_limits<double>::infinity();
-    }
-    return std::sqrt(std::max(0.0, mu * (2.0 / rp - 1.0 / a)));
-}
-
-/* How many sub-steps one rails advance of `dt` needs so that no sub-step
-   covers more than `max_travel` metres. See kRailsSoiFrac / kRailsMaxSubSteps
-   (constants.h): the SoI test only sees the END of a step, so the sampling
-   distance, not the conic, is what limits the step. The conic itself is
-   exact for any dt (see propagateKepler). */
-inline int railsSubSteps(const double v_max, const double dt,
-                         const double max_travel, const int max_steps) {
-    if(!(v_max > 0.0) || !(dt > 0.0) || !(max_travel > 0.0)) { return 1; }
-    const double want = v_max * dt / max_travel;
-    if(!(want > 1.0)) { return 1; }
-    return (want >= (double)max_steps) ? max_steps : (int)std::ceil(want);
 }
 
 /* Epoch state from elements, in the BODY-RAIL convention: orbital plane = XZ
