@@ -437,11 +437,13 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_belts
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
-# invariant + committed science-field invariants on every shipped system +
-# skybox face pins when staged faces exist (no EXRs needed).
+# invariant + the sci_dist moon-home warning + committed science-field
+# invariants on every shipped system + skybox face pins when staged faces
+# exist (no EXRs needed).
 .PHONY: test-py
 test-py:
 	python3 utils/sci_phase.py
+	python3 utils/sci_dist.py --self-test
 	python3 utils/sci_dist.py --check res/systems/*.json
 	[ ! -f tmp/newskybox/skybox_px.png ] || python3 utils/make_skybox.py --verify
 

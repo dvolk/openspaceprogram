@@ -26,6 +26,7 @@
 # SMa from the mean angular rate (Kepler III), matching system.cpp.
 import hashlib
 import math
+import sys
 
 from sci_phase import (is_co_orbital, orb_w, phase_gap_rad, phasing_delta_v)
 
@@ -126,7 +127,9 @@ def transfer_dv(node, home):
     if node.parent.parent is None and home.parent is node.parent:
         return _sibling_leg_dv(home.body, home.sma, node.body, node.sma,
                                node.parent.mu)
-    # Moon (or moon-of-moon): last leg from the parent's parking orbit.
+    # Moon (or moon-of-moon): last leg from the parent's parking orbit. A
+    # PLANET reaching this line means home is not a planet of the star;
+    # stamp_transfer_dv warns about that (same bodies, same fall-through).
     return hohmann_delta_v(node.parent.radius, node.sma, node.parent.mu)
 
 
@@ -145,6 +148,17 @@ def stamp_transfer_dv(body, parent, home):
         body["transfer_dv"] = round(
             _sibling_leg_dv(home, body_sma(home, parent), body, sma, mu), 1)
         return
+    if parent_is_star:
+        # A planet reaching here means home is not a planet of this star (a
+        # moon home, or no home), so there is no heliocentric hop to price and
+        # the moon-leg formula below silently prices a hop out of the star's
+        # own radius: ~34 km/s for every planet in ksp_system.json, Mun->Kerbin
+        # included. Warn, but keep the number -- the value model is unchanged.
+        sys.stderr.write(
+            "sci_dist: home %s is not a planet of %s, so %s has no heliocentric"
+            " hop: priced with the moon-leg formula (from %s's radius)\n"
+            % (home.get("name") if home else "<none>", parent.get("name"),
+               body.get("name"), parent.get("name")))
     body["transfer_dv"] = round(
         hohmann_delta_v(float(parent.get("radius") or 0.0), sma, mu), 1)
 
@@ -246,11 +260,43 @@ def check_fields(doc, path):
     return bad
 
 
+def self_test():
+    """The moon-home fall-through must warn, and must not change the number."""
+    import contextlib
+    import io
+    star = {"name": "Star", "mass": 1.0e26, "radius": 1.0e8}
+    planet = {"name": "Pla", "orbits": "Star",
+              "inertial": {"orb_ang_speed": 1.0e-7}}
+    moon = {"name": "Moon", "orbits": "Pla",
+            "inertial": {"orb_ang_speed": 1.0e-5}}
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        doc = stamp_system({"home": "Moon", "bodies": [star, planet, moon]})
+    dv = {b["name"]: b["transfer_dv"] for b in doc["bodies"]}
+    # The number is still the nonsense one: a Hohmann out of the star's own
+    # radius. The warning is the fix, not a behaviour change.
+    want = round(hohmann_delta_v(star["radius"], body_sma(planet, star),
+                                 G * star["mass"]), 1)
+    assert dv["Pla"] == want, (dv["Pla"], want)
+    assert "Moon" in err.getvalue() and "Pla" in err.getvalue(), err.getvalue()
+    # A planet home -- every shipped system -- stays silent.
+    err2 = io.StringIO()
+    with contextlib.redirect_stderr(err2):
+        doc2 = stamp_system({"home": "Pla",
+                             "bodies": [dict(star), dict(planet), dict(moon)]})
+    assert err2.getvalue() == "", err2.getvalue()
+    assert doc2["bodies"][1]["transfer_dv"] == 0.0    # Pla is home
+    print("sci_dist self-test ok: moon-home warns, planet-home silent")
+
+
 if __name__ == "__main__":
     # Preview table: sci_dist.py <system.json> [...]
     # --check: invariants on the committed fields, no recompute, no writes.
+    # --self-test: the moon-home warning, on a synthetic 3-body system.
     import json
-    import sys
+    if sys.argv[1:2] == ["--self-test"]:
+        self_test()
+        sys.exit(0)
     if sys.argv[1:2] == ["--check"]:
         failed = False
         for path in sys.argv[2:]:
