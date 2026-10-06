@@ -37,10 +37,12 @@ def is_co_orbital(a1, a2, rel_tol=CO_ORBITAL_REL_TOL):
 
 
 def orbit_angle_rad(body):
-    """Epoch rail LONGITUDE [rad] in the parent frame (X-Z plane, y up).
-    Mirrors system.cpp: arg_peri + true_anomaly0 when authored (both are
-    physical longitudes, #146), else the circular orbit through inertial.pos
-    read as atan2(-z, x), else on +X (angle 0)."""
+    """Epoch rail LONGITUDE [rad], X-Z plane, y up. Two branches, and they are
+    NOT in the same frame (#177): `arg_peri + true_anomaly0` is the angle in
+    the body's OWN rail plane, i.e. before planeOrient(orb_incl, lon_asc_node),
+    while an authored `pos` is read as atan2(-z, x) in the PARENT's frame. They
+    agree only when the body's plane is the parent's (incl = raan = 0), which is
+    true of every co-orbital pair this module prices. Falls back to +X (0)."""
     inertial = body.get("inertial") or {}
     if "true_anomaly0" in inertial:
         return float(inertial.get("arg_peri") or 0.0) \
