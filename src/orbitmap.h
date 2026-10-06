@@ -32,9 +32,10 @@ struct OrbitMap {
     // (Uranus: -93.3). Forced by the geometry, not a bug: the rules are
     // complementary, since |Y x n| is 0.99 exactly where the +X projection is
     // 0.15.
-    // Handedness of the pinned path: e2 = e1 x n, so a prograde body (which
-    // moves along n x r_hat) sweeps counter-clockwise on screen -- the same way
-    // the canonical X/Z case below already draws it.
+    // Handedness, the same on all three paths below: e2 = e1 x n, so e1 x e2
+    // = -n and a prograde body (which moves along n x r_hat) sits at +e1
+    // moving along -e2 -- counter-clockwise on screen, whichever plane is
+    // showing. Pinned by test_orbitmap; #181 was the derived path breaking it.
     void setPlane(const glm::dvec3 &normal,
                   const glm::dvec3 &x_axis = glm::dvec3(0.0)) {
         n = glm::normalize(normal);
@@ -50,12 +51,12 @@ struct OrbitMap {
             e1 = glm::dvec3(1.0, 0.0, 0.0);
             e2 = glm::dvec3(0.0, 0.0, 1.0);
         } else {
-            // Historical basis. Note it ends up with the OPPOSITE handedness to
-            // the two paths above (e2 = n x e1), so Ecliptic/Orbital views draw
-            // prograde the other way from Equatorial -- issue #181. Left alone
-            // here, where flipping it would change two views silently.
+            // Derived basis: the node line between the plane and the rail
+            // plane as screen-x. Same e2 = e1 x n as the two paths above, so
+            // every view draws prograde the same way (#181 -- this used
+            // e2 = n x e1, which mirrored the sweep against Equatorial).
             e1 = glm::normalize(glm::cross(glm::dvec3(0.0, 1.0, 0.0), n));
-            e2 = glm::cross(n, e1);
+            e2 = glm::cross(e1, n);
         }
     }
 

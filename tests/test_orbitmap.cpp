@@ -28,6 +28,18 @@ static void expect_close(double got, double want, double tol, const char *what) 
     }
 }
 
+/* The sweep sense (#181). A prograde body moves along n x r_hat, so at +e1 its
+   screen velocity is (n x e1) read on (e1, e2): it must come out (0, -1) --
+   counter-clockwise -- for every path that builds the basis FROM the normal.
+   Equivalent to e1 x e2 = -n, but stated as the thing a player can see. The
+   derived path used e2 = n x e1, so an inclined ship's Orbital view swept the
+   other way from its own Equatorial view: same orbit, mirrored, one combo
+   click apart. */
+static void expect_sweep(const OrbitMap &s, const char *what) {
+    expect_near(glm::dot(glm::cross(s.n, s.e1), s.e1), 0.0, what);
+    expect_near(glm::dot(glm::cross(s.n, s.e1), s.e2), -1.0, what);
+}
+
 int main() {
     OrbitMap m;
     m.cx = 100.0;
@@ -91,13 +103,77 @@ int main() {
         OrbitMap s;
         s.setPlane(glm::dvec3(st, ct, 0.0));
         expect_near(s.e1.z, -1.0, "derived tilt e1 z");   // Y x n -> -Z
+        expect_near(s.e2.x, ct, "derived tilt e2 x");     // e1 x n
+        expect_near(s.e2.y, -st, "derived tilt e2 y");
+        expect_sweep(s, "derived tilt sweep");
         s.setPlane(glm::dvec3(st, ct, 0.0), glm::dvec3(ct, -st, 0.0));
         expect_near(s.e1.x, ct, "pinned tilt e1 x");      // the node line
         expect_near(s.e1.y, -st, "pinned tilt e1 y");
         expect_near(s.e2.z, 1.0, "pinned tilt e2 z");     // e1 x n
+        expect_sweep(s, "pinned tilt sweep");
         // An x_axis parallel to the normal is unusable: fall back to derived.
         s.setPlane(glm::dvec3(st, ct, 0.0), glm::dvec3(st, ct, 0.0));
         expect_near(s.e1.z, -1.0, "degenerate x_axis falls back");
+        expect_sweep(s, "degenerate x_axis sweep");
+    }
+    {
+        /* Every normal the game can hand setPlane(), through both the derived
+           and the pinned path -- including normals below the rail plane (a
+           ship that has slewed past retrograde). The sweep must read the same
+           way at 10 deg from +Y and at 170. */
+        const double kAng[] = { 0.17, 1.0, 1.4, 2.0, 3.0, -1.2 };
+        for(const double ang : kAng) {
+            const glm::dvec3 n = glm::normalize(
+                glm::dvec3(std::sin(ang), std::cos(ang), 0.2 * std::sin(3.0 * ang)));
+            char what[64];
+            OrbitMap d;
+            d.setPlane(n);
+            snprintf(what, sizeof what, "derived sweep ang %.2f", ang);
+            expect_sweep(d, what);
+            /* An x_axis that is exactly IN the plane (cross(n, ref) is, by
+               construction), so its in-plane part has length 1 and the pinned
+               path always runs. (Using Y x n here instead lands within 0.17 of
+               the normal at the near-polar angles and quietly falls back to
+               derived -- which is how this test first fooled itself.) */
+            const glm::dvec3 ref = (std::fabs(n.z) < 0.5) ? glm::dvec3(0.0, 0.0, 1.0)
+                                                          : glm::dvec3(1.0, 0.0, 0.0);
+            OrbitMap p;
+            p.setPlane(n, glm::cross(n, ref));
+            snprintf(what, sizeof what, "pinned sweep ang %.2f", ang);
+            expect_sweep(p, what);
+        }
+    }
+    {
+        /* The claim #181 is about, in the game's own terms: a Kerbin-ish focus
+           (23.44 deg tilt) with a ship inclined 45 deg to the system plane.
+           All three combo slots then take a DIFFERENT path -- Equatorial pins
+           the basis, Ecliptic takes the canonical one, Orbital derives it --
+           and all three must draw that orbit sweeping the same way. Before
+           #181 the Orbital view alone read +1. */
+        const glm::dvec3 pole(-0.347824, 0.917477, 0.193014);
+        const double t = std::acos(-1.0) / 4.0;
+        OrbitMap eq, ec, ob;
+        eq.setPlane(pole, glm::dvec3(1, 0, 0));
+        ec.setPlane(glm::dvec3(0.0, 1.0, 0.0));
+        ob.setPlane(glm::dvec3(std::sin(t), std::cos(t), 0.0));
+        expect_sweep(eq, "combo Equatorial sweep");
+        expect_sweep(ec, "combo Ecliptic sweep");
+        expect_sweep(ob, "combo Orbital sweep");
+    }
+    {
+        /* The canonical branch is a FIXED screen basis for near-polar normals,
+           not one built from n: it stays put as a normal crosses +Y or -Y, so
+           the picture does not mirror mid-slew. That is why the sweep check
+           above does not cover it for a normal pointing below the plane, and
+           the fixed basis is pinned here so changing it is a decision rather
+           than a surprise. */
+        OrbitMap s;
+        s.setPlane(glm::dvec3(0.0, 1.0, 0.0));
+        expect_near(s.e1.x, 1.0, "canonical +Y e1 x");
+        expect_near(s.e2.z, 1.0, "canonical +Y e2 z");
+        s.setPlane(glm::dvec3(0.0, -1.0, 0.0));
+        expect_near(s.e1.x, 1.0, "canonical -Y e1 x");
+        expect_near(s.e2.z, 1.0, "canonical -Y e2 z");
     }
     {
         // The map's real call: an equatorial plane (Kerbin's pole, from
@@ -114,8 +190,7 @@ int main() {
         // to the equator frame's own +X instead put it 143 deg away.)
         expect_close(glm::dot(s.e1, glm::dvec3(1, 0, 0)), 0.937560, 1e-5,
                      "kerbin eq shares east");
-        expect_close(glm::dot(glm::cross(s.n, s.e1), s.e2), -1.0, 1e-5,
-                     "kerbin eq prograde sense");
+        expect_sweep(s, "kerbin eq prograde sense");
     }
     {
         // Uranus (97.8 deg tilt): its pole sits 8 deg from the reference +X, so
@@ -127,6 +202,7 @@ int main() {
         expect_close(s.e1.x, -0.057778, 1e-5, "uranus eq e1 x");
         expect_close(s.e1.y, 0.0, 1e-5, "uranus eq e1 y");
         expect_close(s.e1.z, -0.998329, 1e-5, "uranus eq e1 z");
+        expect_sweep(s, "uranus eq prograde sense");
     }
 
     // contrastingColor(): a light background yields dark ink and vice versa,
