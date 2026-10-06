@@ -7,6 +7,10 @@
 #                           moon (orbits anything else) parent -> moon
 #                           home / root               0
 #                           Display + path composition (moons of moons later).
+#                           "home -> planet" needs home to orbit that same
+#                           star; with a moon home there is no heliocentric
+#                           hop, so the planet falls back to the moon leg and
+#                           the stamp warns on stderr.
 #   science_mult     [1..3] score weight, quantized to 0.1 (half-up).
 #                           Baked at generation: the game reads this and
 #                           does NOT recompute it.
@@ -103,6 +107,21 @@ def build_nodes(bodies):
     return by
 
 
+def resolve_home(doc, by):
+    """The home node, or the first orbiting body when doc['home'] is missing or
+    names nothing. Stamping and scoring MUST resolve it identically: they used
+    to differ (stamp saw None, scoring fell back), which left transfer_dv and
+    science_mult pricing different hops -- 4173.4 vs 224.2 m/s for the same
+    planet on a 4-body probe. The game loader throws for a bad name instead."""
+    home = by.get(doc.get("home") or "")
+    if home is not None:
+        return home
+    for n in by.values():
+        if n.parent is not None:
+            return n
+    return None
+
+
 def body_sma(body, parent):
     """SMa [m] from mean angular rate (Kepler III), matching system.cpp."""
     w = float((body.get("inertial") or {}).get("orb_ang_speed") or 0.0)
@@ -128,8 +147,9 @@ def transfer_dv(node, home):
         return _sibling_leg_dv(home.body, home.sma, node.body, node.sma,
                                node.parent.mu)
     # Moon (or moon-of-moon): last leg from the parent's parking orbit. A
-    # PLANET reaching this line means home is not a planet of the star;
-    # stamp_transfer_dv warns about that (same bodies, same fall-through).
+    # PLANET reaching this line means home is not a planet of this star;
+    # stamp_transfer_dv warns about the same fall-through, over every body
+    # (path_dv only walks the chain up to home, so it sees a subset).
     return hohmann_delta_v(node.parent.radius, node.sma, node.parent.mu)
 
 
@@ -148,17 +168,19 @@ def stamp_transfer_dv(body, parent, home):
         body["transfer_dv"] = round(
             _sibling_leg_dv(home, body_sma(home, parent), body, sma, mu), 1)
         return
-    if parent_is_star:
-        # A planet reaching here means home is not a planet of this star (a
-        # moon home, or no home), so there is no heliocentric hop to price and
-        # the moon-leg formula below silently prices a hop out of the star's
-        # own radius: ~34 km/s for every planet in ksp_system.json, Mun->Kerbin
-        # included. Warn, but keep the number -- the value model is unchanged.
+    if (parent_is_star and home is not None
+            and home.get("name") != parent.get("name")):
+        # A planet reaching here means home is a moon (or a planet of some
+        # other star), so there is no heliocentric hop to price and the moon-leg
+        # formula below prices a hop out of the star's own radius: ~34 km/s for
+        # every planet in ksp_system.json, Mun's own parent included. Warn, but
+        # keep the number -- the value model is unchanged. Home being the star
+        # itself is excluded: there a hop genuinely does start at its radius.
         sys.stderr.write(
             "sci_dist: home %s is not a planet of %s, so %s has no heliocentric"
             " hop: priced with the moon-leg formula (from %s's radius)\n"
-            % (home.get("name") if home else "<none>", parent.get("name"),
-               body.get("name"), parent.get("name")))
+            % (home.get("name"), parent.get("name"), body.get("name"),
+               parent.get("name")))
     body["transfer_dv"] = round(
         hohmann_delta_v(float(parent.get("radius") or 0.0), sma, mu), 1)
 
@@ -184,13 +206,7 @@ def stamp_science_mults(doc):
     """Set science_mult on every body (needs the full system for max path)."""
     assert _quantize_01(K_NONHOME_MULT_FLOOR) == K_NONHOME_MULT_FLOOR
     by = build_nodes(doc["bodies"])
-    home_name = doc.get("home") or ""
-    home = by.get(home_name)
-    if home is None:
-        for n in by.values():
-            if n.parent is not None:
-                home = n
-                break
+    home = resolve_home(doc, by)
     dvs = {name: path_dv(home, n) for name, n in by.items()} if home else {}
     max_dv = max(dvs.values()) if dvs else 0.0
     for name, n in by.items():
@@ -215,7 +231,10 @@ def stamp_system(doc):
     """Add both science fields to every body (call once the list is complete)."""
     by = build_nodes(doc["bodies"])
     home_name = doc.get("home") or ""
-    home = by.get(home_name)
+    home = resolve_home(doc, by)
+    if home_name and home is not None and home.name != home_name:
+        sys.stderr.write("sci_dist: home %r is not a body in this system:"
+                         " falling back to %s\n" % (home_name, home.name))
     home_body = home.body if home else None
     for b in doc["bodies"]:
         parent_name = b.get("orbits") or ""
@@ -261,32 +280,61 @@ def check_fields(doc, path):
 
 
 def self_test():
-    """The moon-home fall-through must warn, and must not change the number."""
+    """Home resolution, and the moon-home fall-through warning."""
     import contextlib
     import io
-    star = {"name": "Star", "mass": 1.0e26, "radius": 1.0e8}
-    planet = {"name": "Pla", "orbits": "Star",
-              "inertial": {"orb_ang_speed": 1.0e-7}}
-    moon = {"name": "Moon", "orbits": "Pla",
-            "inertial": {"orb_ang_speed": 1.0e-5}}
-    err = io.StringIO()
-    with contextlib.redirect_stderr(err):
-        doc = stamp_system({"home": "Moon", "bodies": [star, planet, moon]})
-    dv = {b["name"]: b["transfer_dv"] for b in doc["bodies"]}
-    # The number is still the nonsense one: a Hohmann out of the star's own
+
+    def bodies():
+        return [{"name": "Star", "mass": 1.0e26, "radius": 1.0e8},
+                {"name": "Pla", "orbits": "Star",
+                 "inertial": {"orb_ang_speed": 1.0e-7}},
+                {"name": "Moon", "orbits": "Pla",
+                 "inertial": {"orb_ang_speed": 1.0e-5}}]
+
+    def stamped(home):
+        doc = {"bodies": bodies()}
+        if home is not None:
+            doc["home"] = home
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            stamp_system(doc)
+        return ({b["name"]: b["transfer_dv"] for b in doc["bodies"]},
+                err.getvalue())
+
+    # Moon home: exactly one warning, naming home and the priced body.
+    dv, msg = stamped("Moon")
+    assert msg.count("sci_dist:") == 1, msg
+    assert ("home Moon is not a planet of Star, so Pla has no heliocentric"
+            in msg), msg
+    # The number is still the nonsense one -- a Hohmann out of the star's own
     # radius. The warning is the fix, not a behaviour change.
-    want = round(hohmann_delta_v(star["radius"], body_sma(planet, star),
-                                 G * star["mass"]), 1)
+    want = round(hohmann_delta_v(1.0e8, body_sma(bodies()[1], bodies()[0]),
+                                 G * 1.0e26), 1)
     assert dv["Pla"] == want, (dv["Pla"], want)
-    assert "Moon" in err.getvalue() and "Pla" in err.getvalue(), err.getvalue()
-    # A planet home -- every shipped system -- stays silent.
-    err2 = io.StringIO()
-    with contextlib.redirect_stderr(err2):
-        doc2 = stamp_system({"home": "Pla",
-                             "bodies": [dict(star), dict(planet), dict(moon)]})
-    assert err2.getvalue() == "", err2.getvalue()
-    assert doc2["bodies"][1]["transfer_dv"] == 0.0    # Pla is home
-    print("sci_dist self-test ok: moon-home warns, planet-home silent")
+
+    # Planet home (every shipped system): silent, home priced at 0.
+    dv, msg = stamped("Pla")
+    assert msg == "", msg
+    assert dv["Pla"] == 0.0, dv
+
+    # Star home: a hop really does start at the star's radius -- no warning.
+    dv, msg = stamped("Star")
+    assert msg == "", msg
+    assert dv["Pla"] == want, (dv["Pla"], want)
+
+    # Unresolvable home: name the typo, fall back to the first orbiting body,
+    # and stamp with that fallback -- scoring already used it, so the two
+    # committed fields used to price different hops.
+    dv, msg = stamped("Nope")
+    assert ("home 'Nope' is not a body in this system: falling back to Pla"
+            in msg), msg
+    assert "not a planet of" not in msg, msg
+    assert dv["Pla"] == 0.0, dv
+    dv, msg = stamped(None)
+    assert msg == "", msg
+    assert dv["Pla"] == 0.0, dv
+
+    print("sci_dist self-test ok: home resolution + moon-home warning")
 
 
 if __name__ == "__main__":
