@@ -316,7 +316,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "approach Δv, science found) plus its dossier -- radius, "
                    "mass, gravity, escape velocity, day length, axial tilt, "
                    "air, and the orbit's semi-major axis / eccentricity / "
-                   "apsides / period / plane tilt. The same strings the "
+                   "apsides / period / plane tilt (system, parent and "
+                   "equatorial references) / node / periapsis longitude. "
+                   "The same strings the "
                    "Research Lab's Atlas draws, so the terminal and the "
                    "window cannot disagree (test hook; -1 = never)");
 

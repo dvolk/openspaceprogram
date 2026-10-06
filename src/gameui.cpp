@@ -4143,10 +4143,11 @@ size_t atlasTotalSlots() {
    - The orbit is inverted from orb_ang_speed (Kepler III) exactly as the
      loader places the body, and e comes from the epoch rail state's angular
      momentum -- these are the rails' own numbers, not the JSON's.
-   - "plane tilt" is measured against the PARENT's own orbital plane (the
-     frame's orient; +Y is its normal). A system authoring "incl_ref":
-     "equator" states its orb_incl against the parent's EQUATOR instead, so
-     when the two readings differ the dossier shows both. */
+   - "plane tilt" is stated against three named references -- the system
+     plane (ecl), the parent's orbital plane (parent) and the parent's
+     equator (eq.) -- because for a moon of an inclined planet those are
+     three different numbers, and "incl_ref" in the system JSON picks which
+     one the authored orb_incl means. See the block that computes them. */
 void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     char v[64], w[64];
     auto line = [&](const char *label, const char *value) {
@@ -4257,24 +4258,47 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         line("apoapsis alt", fmt_dist(a * (1.0 + e) - surf, v, sizeof v));
     }
     line("period", fmt_time(2.0 * std::numbers::pi / n, v, sizeof v));
-    const double tilt_orbit =
+    /* Plane tilt in three references, because for a moon of an inclined
+       planet they are three different numbers: Bop authors orb_incl 15 deg
+       against JOOL's plane, which itself sits 1.30 deg off the system plane.
+       (ecl) is the SYSTEM plane -- the same one the flight readout's "ecl"
+       and the map's Ecliptic view measure in, and the only one that means the
+       same thing at every depth of the tree. (parent) is the plane the body's
+       own rail is authored against when "incl_ref": "orbit"; (eq.) is the
+       parent's EQUATOR, which is what "incl_ref": "equator" states. A line is
+       dropped only when it repeats the (ecl) one. */
+    const glm::dvec3 nrm = fr->orient * glm::dvec3(0.0, 1.0, 0.0);   // parent axes
+    const double tilt_parent =
         std::acos(glm::clamp(fr->orient[1].y, -1.0, 1.0));
-    line("plane tilt", fmt_deg(tilt_orbit, v, sizeof v));
+    // root_orient carries the whole parent chain, so this is the same normal
+    // in the system frame -- and rails never spin their own frame, so it is
+    // constant in time.
+    const glm::dvec3 nrm_root =
+        glm::normalize(fr->root_orient * glm::dvec3(0.0, 1.0, 0.0));
+    const double tilt_ecl = std::acos(glm::clamp(nrm_root.y, -1.0, 1.0));
+    line("plane tilt (ecl)", fmt_deg(tilt_ecl, v, sizeof v));
+    if(std::fabs(tilt_parent - tilt_ecl) > 1e-4) {
+        line("plane tilt (parent)", fmt_deg(tilt_parent, v, sizeof v));
+    }
     if(par->rot_frame != nullptr) {
-        // The same plane against the PARENT'S EQUATOR. A system authoring
-        // "incl_ref": "equator" states its orb_incl this way (the regular
-        // moons ride their planet's equator, not its orbital plane), so a
-        // reader comparing the two references sees both numbers instead of
-        // a mismatch. Only shown when they differ.
-        const glm::dvec3 paxis =
-            par->rot_frame->initial_orient * glm::dvec3(0.0, 1.0, 0.0);
-        const glm::dvec3 nrm = fr->orient * glm::dvec3(0.0, 1.0, 0.0);
+        const glm::dvec3 paxis = glm::normalize(
+            par->rot_frame->initial_orient * glm::dvec3(0.0, 1.0, 0.0));
         const double tilt_eq =
             std::acos(glm::clamp(glm::dot(paxis, nrm), -1.0, 1.0));
-        if(std::fabs(tilt_eq - tilt_orbit) > 1e-4) {
+        if(std::fabs(tilt_eq - tilt_ecl) > 1e-4) {
             line("plane tilt (eq.)", fmt_deg(tilt_eq, v, sizeof v));
         }
     }
+    /* Node and periapsis longitude, in the system plane, from the same epoch
+       rail state the flight readout measures a ship on (RefPlane{} is the
+       system plane: +Y normal, +X zero longitude). Dashed when undefined --
+       an orbit lying IN the system plane has no node, and a circular one has
+       no periapsis to point at. */
+    const PlaneAngles pa = orbitPlaneAngles(fr->root_orient * fr->orbit_pos0,
+                                           fr->root_orient * fr->orbit_vel0,
+                                           fr->parent_mu, RefPlane{});
+    line("node (ecl)", pa.node_ok ? fmt_deg(pa.lan, v, sizeof v) : "-");
+    line("periapsis lon (ecl)", pa.peri_ok ? fmt_deg(pa.lpe, v, sizeof v) : "-");
 }
 
 // Walk the frame tree from `b`, appending one row per body (in tree order).
@@ -4462,7 +4486,7 @@ void dumpAtlas(Game &g) {
                r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
         for(const AtlasFact &fa : r.facts) {
             if(fa.header) { printf("[atlas]   [%s]\n", fa.label.c_str()); }
-            else { printf("[atlas]   %-17s %s\n", fa.label.c_str(),
+            else { printf("[atlas]   %-19s %s\n", fa.label.c_str(),
                                             fa.value.c_str()); }
         }
     }
