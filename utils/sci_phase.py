@@ -55,7 +55,22 @@ def orbit_angle_rad(body):
 
 def phase_gap_rad(b1, b2):
     """Shorter epoch angle [rad] between two bodies of the same parent
-    (drift either way; the short arc is the cheap one)."""
+    (drift either way; the short arc is the cheap one).
+
+    Only meaningful when the two bodies share an orbital plane: as #177
+    documents, orbit_angle_rad returns the body's OWN rail-plane angle for an
+    authored-elements body and a parent-frame longitude for a pos-authored
+    one, so differencing bodies on different planes yields a plausible wrong
+    separation -- and so a plausible wrong dv. Asserted, not assumed."""
+    i1 = b1.get("inertial") or {}
+    i2 = b2.get("inertial") or {}
+    incl1, incl2 = i1.get("orb_incl", 0.0), i2.get("orb_incl", 0.0)
+    raan1, raan2 = i1.get("lon_asc_node", 0.0), i2.get("lon_asc_node", 0.0)
+    assert abs(incl1 - incl2) < 1e-12 and abs(raan1 - raan2) < 1e-12, \
+        ("phase_gap_rad: %s and %s are on different planes (incl %.6f/%.6f, "
+         "lon_asc_node %.6f/%.6f); the rail-angle difference is not their "
+         "separation (see #177)"
+         % (b1["name"], b2["name"], incl1, incl2, raan1, raan2))
     d = abs(orbit_angle_rad(b1) - orbit_angle_rad(b2)) % (2.0 * math.pi)
     return min(d, 2.0 * math.pi - d)
 
@@ -103,4 +118,19 @@ if __name__ == "__main__":
         "arg_peri": 0.2617993877991494, "true_anomaly0": 3.140508989974855}}
     assert abs(orbit_angle_rad(moho)
                - (0.2617993877991494 + 3.140508989974855)) < 1e-12
+    # The coplanar precondition must be loud. Two bodies with equal SMAs on
+    # different planes would otherwise return a plausible wrong gap, and so a
+    # plausible wrong dv (#177). b_pos authors no plane angles at all, so it
+    # stands in for the flat plane.
+    for off_name, off_inertial in (("lon_asc_node", {"lon_asc_node": 0.3}),
+                                   ("orb_incl", {"orb_incl": 0.2})):
+        b_off = {"name": "Off", "inertial": {"orb_ang_speed": w,
+                   "true_anomaly0": 1.0}}
+        b_off["inertial"].update(off_inertial)
+        raised = False
+        try:
+            phase_gap_rad(b_off, b_pos)
+        except AssertionError:
+            raised = True
+        assert raised, "phase_gap_rad accepted a different %s" % off_name
     print("sci_phase self-test ok: 60deg/1T drift = %.1f m/s" % got)
