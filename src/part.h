@@ -68,9 +68,13 @@ struct Part {
        (they are owned by Vehicle::crew). An item here is ALSO in `contents`. */
     std::vector<Part *> ownedContents;
 
-    /* Authored pose in the SHIP-LOCAL frame S (the root part's frame at
-       build time). Pure geometry: fixed at attach time, never mutated after.
-       A part's world pose is DERIVED from these (see Vehicle). */
+    /* Pose in the VEHICLE's frame S -- one S per Vehicle, anchored at its root
+       part (Vehicle::rootPart), NOT at this part. Written at attach time; the
+       only later writes are the rigid re-bases in absorbShip /
+       extractSubtreeAsShip, which move a docked ship's parts into the
+       survivor's S and back out again on split. The world pose is DERIVED from
+       these (Vehicle::partWorldPose); the parent edge is topology, never a
+       pose frame. */
     glm::dvec3 localPos = glm::dvec3(0.0);
     glm::dmat3 localRot = glm::dmat3(1.0);
 

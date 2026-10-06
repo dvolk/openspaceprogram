@@ -8,6 +8,8 @@
 //     keeps its exact WORLD pose (partWorldPose before == after), even though
 //     its ship-local pose is re-based into the survivor's frame S and the
 //     survivor's COM (hence hull transform) shifts to take on the new mass.
+//     The re-base is pinned by value too: Part::localPos lives in the OWNING
+//     vehicle's S, so B's root leaves S_B's origin for z = -1.875 in A's S.
 //   - SEAM: the joint is recorded (survivor port, absorbed root, its name),
 //     which is what undock splits back apart.
 //   - TOPOLOGY: the absorbed ship's root now hangs off the survivor's port;
@@ -155,6 +157,11 @@ static void test_absorb() {
     const glm::dvec3 tankB0 = worldPos(B.v, tankB);
     const glm::dvec3 tankA0 = worldPos(A.v, tankA);
     const glm::dvec3 portA0 = worldPos(A.v, portA);
+    /* ...and B's ship-local poses, which must NOT survive it: localPos lives
+       in the owning vehicle's S, so B's root sits at the origin of S_B only
+       while B owns it. */
+    const glm::dvec3 portBlocal0 = portB->localPos;
+    const glm::dvec3 tankBlocal0 = tankB->localPos;
 
     A.v->absorbShip(B.v, portA);
 
@@ -183,6 +190,21 @@ static void test_absorb() {
     CHECK_NEAR(glm::length(portA1 - portA0), 0.0, 1e-9, "absorb: portA world pose kept");
     CHECK_NEAR(glm::length(portB1 - portB0), 0.0, 1e-9, "absorb: portB world pose kept");
     CHECK_NEAR(glm::length(tankB1 - tankB0), 0.0, 1e-9, "absorb: tankB world pose kept");
+
+    /* The frame convention, by value: localPos is in the OWNING vehicle's S,
+       so the merge re-bases B's parts into A's. S_A sits at the world origin
+       and S_B at z = -1.875, both identity, so the re-base is a pure -1.875
+       shift: B's root -- authored at its own S origin -- lands at z = -1.875,
+       and its tank a tank-stack below that. The parent edge (portB->parent ==
+       portA) carries no pose of its own. */
+    CHECK_NEAR(glm::length(portBlocal0), 0.0, 1e-9,
+               "absorb: B's root starts at S_B's origin");
+    CHECK_NEAR(glm::length(tankBlocal0 - glm::dvec3(0.0, 0.0, -1.625)), 0.0, 1e-9,
+               "absorb: B's tank starts in S_B");
+    CHECK_NEAR(glm::length(portB->localPos - glm::dvec3(0.0, 0.0, -1.875)), 0.0, 1e-9,
+               "absorb: absorbed root re-based into the survivor's S");
+    CHECK_NEAR(glm::length(tankB->localPos - glm::dvec3(0.0, 0.0, -3.5)), 0.0, 1e-9,
+               "absorb: absorbed child re-based into the survivor's S");
 
     /* The merged COM sits between the two tanks' COMs (mass-weighted), and
        the hull mass is the sum -- a sanity check that rebuildCompound ran. */
