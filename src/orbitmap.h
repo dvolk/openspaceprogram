@@ -26,7 +26,12 @@ struct OrbitMap {
     // A reference direction that lies nearly ALONG the normal cannot define a
     // stable east: Uranus's 97.8 deg tilt puts its pole within 9 deg of the
     // system +X, where the in-plane part is only 0.15 long and swings on
-    // rounding noise. Such an x_axis is ignored in favour of the node line.
+    // rounding noise. Such an x_axis is ignored in favour of the node line --
+    // and the node line is the only direction the two planes share, so a
+    // ~90 deg tilted focus turns the picture ~90 deg when you switch planes
+    // (Uranus: -93.3). Forced by the geometry, not a bug: the rules are
+    // complementary, since |Y x n| is 0.99 exactly where the +X projection is
+    // 0.15.
     // Handedness of the pinned path: e2 = e1 x n, so a prograde body (which
     // moves along n x r_hat) sweeps counter-clockwise on screen -- the same way
     // the canonical X/Z case below already draws it.
