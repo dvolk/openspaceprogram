@@ -2160,6 +2160,12 @@ void drawPartWindows(Game &g) {
     }
 }
 
+/* The focus frame's +X, passed to OrbitMap::setPlane as the screen-x reference.
+   The Equatorial and Orbital slots both pin to it so switching between them
+   tilts the picture instead of rotating it (#173, #185); the Ecliptic slot
+   leaves it zero and lets setPlane derive the basis from the node line. */
+static const glm::dvec3 kFocusEast(1.0, 0.0, 0.0);
+
 /* The orbit map's plane for one combo slot: a normal in the focus's inertial
    frame, plus the screen-x reference (zero length = let OrbitMap derive the
    basis). Both maps and --map-dump go through here, so the three slots have one
@@ -2181,7 +2187,7 @@ static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
         // +X, where the pole leans (uiRefPlane). Nothing draws a node marker,
         // so the two never visibly disagree -- do not "align" them without
         // adding one.
-        plane_x = glm::dvec3(1.0, 0.0, 0.0);
+        plane_x = kFocusEast;
     } else if(mode == kRefEcliptic) {
         plane_n = glm::transpose(focusFrame->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
     } else if(mode == kRefOrbit && have_ship) {
@@ -2195,17 +2201,16 @@ static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
            (+X, +Z), so a ship pitching through a near-equatorial inclination
            watched its whole map turn a quarter turn at 8.13 deg (measured:
            tmp/t185jump.cpp). With +X pinned the two agree to 0.1 deg across
-           that boundary, and the Orbital view of an equatorial bed becomes
-           pixel-identical to the Equatorial view of the same plane -- they
-           share the normal, so clicking between them does nothing at all.
-           The singularity did not disappear, it moved: it now sits where +X
-           leaves the plane (h within 26 deg of the rail's +X longitude), and
-           there the node line is well-conditioned, so it is one clean quarter
-           turn rather than noise-driven swing. That is the same residual the
-           Equatorial slot already has on a ~90 deg tilted focus (Uranus).
-           Screen choice only, exactly as above: the ORBITAL readout still has
-           no zero longitude to measure from (uiRefPlane's has_zero). */
-        plane_x = glm::dvec3(1.0, 0.0, 0.0);
+           that boundary, and the basis stays continuous for every h the game
+           can produce -- the one exception is h exactly along the focus +-X, a
+           single point, which setPlane guards against dividing by zero.
+           An equatorial bed's h IS the focus pole, so its Equatorial and
+           Orbital slots share a normal and now draw pixel-identical pictures:
+           the map does not move when you switch between them. The ORBITAL
+           readout's LAN/LPe do go blank there, though -- that plane has no zero
+           longitude to measure from (uiRefPlane's has_zero), and that is a
+           measurement fact, not this screen choice. */
+        plane_x = kFocusEast;
     }
 }
 

@@ -16,11 +16,13 @@ FORBID GL_
 FORBID error:
 CHECK len(mapb) == 3
 CHECK all(r["sweep"] == -1 for r in mapb)
-# Equatorial and Orbital really are the same plane here, so this is one plane
-# drawn by two different paths that must agree -- not three unrelated views.
-CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-6
-CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-6
-CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-6
+# Equatorial and Orbital really are the same plane here, and since #185 both
+# pin screen-x to the focus +X, so they draw pixel-identical pictures: moving
+# the combo between those two slots moves nothing. Tolerances are 1e-5 because
+# the basis is printed to 6 decimals, which alone costs up to ~1.5e-6 in a dot.
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-5
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-5
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-5
 CHECK all(abs(sum(a*a for a in r["e2"]) - 1.0) < 1e-5 for r in mapb)
 # The Ecliptic slot is the one still on the canonical branch: a fixed (X, Z)
 # basis for a normal within 8.13 deg of the rail normal, sweep still -1.

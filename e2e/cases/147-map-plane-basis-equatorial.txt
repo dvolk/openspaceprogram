@@ -19,14 +19,19 @@ CHECK all(r["sweep"] == -1 for r in mapb)
 CHECK all(abs(sum(a*a for a in r["e1"]) - 1.0) < 1e-5 for r in mapb)
 CHECK all(abs(sum(a*b for a,b in zip(r["n"], r["e1"]))) < 1e-5 for r in mapb)
 # One plane, two slots: same normal, and now the same basis, so switching the
-# combo between Equatorial and Orbital draws an identical picture.
-CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-6
-CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-6
-CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-6
+# combo between Equatorial and Orbital draws an identical picture. Tolerances
+# are 1e-5 because the basis prints to 6 decimals, which alone costs up to
+# ~1.5e-6 in a dot.
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-5
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-5
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-5
 # The basis is the focus +X projected into the plane, not the node line: 0.9376
-# of it is screen-east in the Ecliptic view too, so the three slots share an
-# east and switching between them tilts rather than rotates.
+# of it is screen-east in this focus's Ecliptic view too, so on Kerbin all three
+# slots agree on an east and switching between them tilts rather than rotates.
+# (Kerbin's rail lies in the system plane, so its Ecliptic slot is canonical;
+# a focus whose rail is tilted off it puts that slot on the node line instead,
+# and there the three do NOT share an east.)
 CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], (1.0, 0.0, 0.0))) - 0.937560) < 1e-5
 # The node line it used to draw, kept as a number so a revert cannot pass this
 # case by pinning some other in-plane direction instead.
-CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], (0.4852, 0.0, 0.8744))) - 0.5175) < 1e-3
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], (0.485214, 0.0, 0.874394))) - 0.5175) < 1e-3

@@ -24,15 +24,24 @@ struct OrbitMap {
     // approaching the rail normal keeps a stable basis instead of handing over
     // to the near-polar branch below (#185). Zero length means derive it from
     // the node line, which is what the Ecliptic slot does.
-    // A reference direction that lies nearly ALONG the normal cannot define a
-    // stable east: Uranus's 97.8 deg tilt puts its pole within 9 deg of the
-    // system +X, where the in-plane part is only 0.15 long and swings on
-    // rounding noise. Such an x_axis is ignored in favour of the node line --
-    // and the node line is the only direction the two planes share, so a
-    // ~90 deg tilted focus turns the picture ~90 deg when you switch planes
-    // (Uranus: -93.3). Forced by the geometry, not a bug: the rules are
-    // complementary, since |Y x n| is 0.99 exactly where the +X projection is
-    // 0.15.
+    // A reference direction that lies ALONG the normal cannot define an east at
+    // all: its in-plane part is zero and normalizing it would divide by zero.
+    // That is the only case the fallback below exists for, so the floor is a
+    // NaN guard, not a conditioning choice.
+    // It used to be 0.44 (~26 deg), on the theory that a short in-plane part
+    // "swings on rounding noise" -- Uranus's 97.8 deg tilt puts its pole 8 deg
+    // from the system +X, leaving |t| = 0.15. That theory does not survive
+    // doubles: the pole is reproducible to ~1e-16, so 1e-16/0.15 is 7e-16 rad of
+    // swing, invisible at any zoom. What the floor really did was swap to the
+    // node line 26 deg EARLY, and the two bases sit anywhere from 0 to 180 deg
+    // apart across that swap depending on where the cone is crossed -- so an
+    // orbit whose h merely passed through the cone flipped for no reason
+    // (measured: tmp/t185polar.cpp, 169.8 deg for a sweep 5 deg off polar; 1.1
+    // deg now).
+    // What no choice of screen-x escapes is the singularity itself: e1 has to
+    // flip sign as h crosses the reference axis, so every rule has one singular
+    // great circle. Pinning to +X puts it at h ~ +-X; the node line put it at
+    // h ~ +-Y, which is where every near-equatorial orbit lives (#185).
     // Handedness, the same on all three paths below: e2 = e1 x n, so e1 x e2
     // = -n and a prograde body (which moves along n x r_hat) sits at +e1
     // moving along -e2 -- counter-clockwise on screen, whichever plane is
@@ -43,9 +52,10 @@ struct OrbitMap {
                   const glm::dvec3 &x_axis = glm::dvec3(0.0)) {
         n = glm::normalize(normal);
         const glm::dvec3 t = x_axis - glm::dot(x_axis, n) * n;  // in-plane part
-        // |t| is sin(angle from the normal): insist the reference lies at least
-        // ~26 deg inside the plane.
-        if(glm::length(t) > 0.44) {
+        // 1e-9 holds the direction error under ~1e-7 rad even with ~1e-16 of
+        // per-frame jitter in the normal, and leaves the exactly-antiparallel
+        // case (t == 0, where normalize would return NaN) to the fallback.
+        if(glm::length(t) > 1e-9) {
             e1 = glm::normalize(t);
             e2 = glm::cross(e1, n);
             return;

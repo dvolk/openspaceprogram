@@ -226,7 +226,14 @@ int main() {
         eq.setPlane(pole, glm::dvec3(1, 0, 0));
         ob.setPlane(pole, glm::dvec3(1, 0, 0));
         expect_near(glm::dot(eq.n, ob.n), 1.0, "venus slots share the normal");
-        expect_near(glm::dot(eq.e1, ob.e1), 1.0, "venus slots share the basis");
+        /* Pinned to numbers, not to each other: two setPlane calls with
+           identical arguments agree whatever the code does, so dotting their
+           results tests nothing (a 30 deg rotation of the pinned e1 left that
+           assertion green). These are the values --map-dump prints. */
+        expect_close(ob.e1.x, 0.999889, 1e-5, "venus orb e1 x");
+        expect_close(ob.e1.y, -0.014885, 1e-5, "venus orb e1 y");
+        expect_close(ob.e1.z, 0.000649, 1e-5, "venus orb e1 z");
+        expect_close(ob.e2.z, -0.999050, 1e-5, "venus orb e2 z");
         expect_sweep(eq, "venus Equatorial sweep");
         expect_sweep(ob, "venus Orbital sweep");
     }
@@ -274,16 +281,46 @@ int main() {
                         "0.1 deg slew\n", worst_pinned);
             ++g_failures;
         }
-        /* The residual, pinned so that changing the tolerance stays a decision:
-           the singularity moved rather than went away. |t| = cos t crosses the
-           0.44 floor at 63.89 deg, and there the pinned basis (cos t, -sin t, 0)
-           is exactly perpendicular to the node line (0, 0, -1) it falls back to
-           -- one clean quarter turn, at a normal 26 deg from the rail's +X
-           longitude instead of 8 deg from the rail normal. The same shape the
-           Equatorial slot already has on a ~90 deg tilted focus. */
-        expect_close(glm::dot(basis(63.8, true).e1, basis(64.0, true).e1),
-                     0.0, 1e-6, "residual quarter turn at the +X degeneracy");
-        expect_sweep(basis(64.0, true), "residual fallback sweep");
+        /* The 0.44 floor #185 shipped with was the bigger hazard, not the
+           singularity: it swapped to the node line 26 deg EARLY, and across that
+           swap the two bases sit anywhere from 0 to 180 deg apart depending on
+           where the cone is crossed. So an orbit whose h only passed NEAR +-X
+           flipped for no reason. Sweep a normal 5 deg off the rail plane all the
+           way round -- a polar orbit changing its node longitude, which never
+           reaches +-X -- and it must stay smooth: 169.8 deg per 0.1 deg of slew
+           with the floor, 1.1 deg without it (tmp/t185polar.cpp). */
+        double worst_near_polar = 0.0;
+        auto off_polar = [&](double deg) {
+            const double r = deg * kPi / 180.0;
+            return glm::normalize(glm::dvec3(std::cos(r),
+                                             std::sin(5.0 * kPi / 180.0),
+                                             std::sin(r)));
+        };
+        for(double d = 0.0; d < 360.0; d += 0.1) {
+            OrbitMap a, b;
+            a.setPlane(off_polar(d), glm::dvec3(1.0, 0.0, 0.0));
+            b.setPlane(off_polar(d + 0.1), glm::dvec3(1.0, 0.0, 0.0));
+            const double turn = std::acos(std::min(1.0, std::max(-1.0,
+                glm::dot(a.e1, b.e1)))) * 180.0 / kPi;
+            if(turn > worst_near_polar) { worst_near_polar = turn; }
+        }
+        if(worst_near_polar > 5.0) {
+            std::printf("FAIL near-polar sweep snaps: worst turn %.1f deg per "
+                        "0.1 deg of slew\n", worst_near_polar);
+            ++g_failures;
+        }
+        /* The singularity itself, pinned so it stays a decision and not an
+           accident: this sweep crosses h = +X at 90 deg, where +X has no
+           in-plane part left, so e1 = (cos t, -sin t, 0) changes sign with
+           cos t -- a full half turn. No rule for picking an in-plane basis is
+           continuous over the whole sphere, so SOME crossing must flip; the
+           question is only where. The node line flipped at h ~ +-Y, where every
+           near-equatorial orbit lives; pinning to +X moves it to h ~ +X. */
+        expect_close(glm::dot(basis(89.9, true).e1, basis(90.1, true).e1),
+                     -0.999994, 1e-5, "pinned rule flips at h ~ +X");
+        expect_close(glm::dot(basis(89.9, false).e1, basis(90.1, false).e1),
+                     1.0, 1e-5, "node-line rule is smooth at h ~ +X");
+        expect_sweep(basis(64.0, true), "64 deg tilt stays orthonormal");
     }
     {
         /* The consequence a player can click: an equatorial bed's h IS the focus
@@ -295,7 +332,8 @@ int main() {
         OrbitMap eq, ob;
         eq.setPlane(pole, glm::dvec3(1, 0, 0));
         ob.setPlane(pole, glm::dvec3(1, 0, 0));
-        expect_near(glm::dot(eq.e1, ob.e1), 1.0, "kerbin -eq bed: slots agree");
+        // The absolute numbers below are what do the work: eq and ob are the
+        // same call, so comparing their bases would prove nothing.
         expect_close(ob.e1.x, 0.937560, 1e-5, "kerbin -eq bed orb e1 x");
         expect_close(ob.e1.y, 0.340373, 1e-5, "kerbin -eq bed orb e1 y");
         expect_close(ob.e1.z, 0.071606, 1e-5, "kerbin -eq bed orb e1 z");
@@ -324,16 +362,25 @@ int main() {
         expect_sweep(s, "kerbin eq prograde sense");
     }
     {
-        // Uranus (97.8 deg tilt): its pole sits 8 deg from the reference +X, so
-        // projecting +X into the equator plane leaves only 0.15 of direction --
-        // too little to pin screen-x on. Fall back to the node line.
+        /* Uranus (97.8 deg tilt): its pole sits 8.2 deg from the reference +X,
+           so the in-plane part of +X is only 0.147 long. That used to be treated
+           as too short to pin screen-x on and fell back to the node line --
+           113.2 deg away, so Uranus's Equatorial view turned 113 deg for a
+           conditioning worry that does not exist in doubles (1e-16 of pole
+           jitter over |t| = 0.147 is 7e-16 rad). It pins now. */
         const glm::dvec3 pole(0.989164, -0.135197, -0.057248);
         OrbitMap s;
         s.setPlane(pole, glm::dvec3(1, 0, 0));
-        expect_close(s.e1.x, -0.057778, 1e-5, "uranus eq e1 x");
-        expect_close(s.e1.y, 0.0, 1e-5, "uranus eq e1 y");
-        expect_close(s.e1.z, -0.998329, 1e-5, "uranus eq e1 z");
+        expect_close(s.e1.x, 0.146818, 1e-5, "uranus eq e1 x");
+        expect_close(s.e1.y, 0.910868, 1e-5, "uranus eq e1 y");
+        expect_close(s.e1.z, 0.385699, 1e-5, "uranus eq e1 z");
         expect_sweep(s, "uranus eq prograde sense");
+        // The node line it replaced, kept so the change in this view is visible
+        // in the test rather than a silent edit of three numbers.
+        OrbitMap old;
+        old.setPlane(pole);
+        expect_close(glm::dot(s.e1, old.e1), -0.394, 1e-3,
+                     "Uranus moved 113 deg off the node line");
     }
 
     // contrastingColor(): a light background yields dark ink and vice versa,
