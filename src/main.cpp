@@ -672,31 +672,46 @@ int main(int argc, char **argv)
     Texture * normal_plus_indicator_texture = get_texture("res/textures/normal_plus_icon.png", false);
     Texture * normal_minus_indicator_texture = get_texture("res/textures/normal_minus_icon.png", false);
 
-    glm::vec4 billboardcolor = glm::vec4(1, 1, 1, 1.0); // TODO should these be different colors?
+    // Marker hues: one per direction family, so a glance at the ring around
+    // the ship says which marker is which. billboardshader.fs tints with this
+    // uniform and ignores the texture RGB, so the colour lives here, not in
+    // the icon PNGs. Prograde takes the orbit map's green (gameui.cpp
+    // col_ship) so the world and the map read the same; the others stay clear
+    // of it. Each pair (radial in/out, normal +/-) shares a hue and is told
+    // apart by its glyph; prograde/retrograde get separate hues because they
+    // are the two you slew to by name.
+    const glm::vec4 front_color       = glm::vec4(1.00f, 1.00f, 1.00f, 1.0f);
+    const glm::vec4 prograde_color    = glm::vec4(0.20f, 0.80f, 0.40f, 1.0f);
+    const glm::vec4 retrograde_color  = glm::vec4(1.00f, 0.25f, 0.25f, 1.0f);
+    const glm::vec4 radial_color      = glm::vec4(0.75f, 0.35f, 1.00f, 1.0f);
+    const glm::vec4 normal_color      = glm::vec4(0.30f, 0.55f, 1.00f, 1.0f);
 
     Billboard *front_indicator =
-        mk_billboard(billboardshader, front_indicator_texture, 1.0, 1.0, billboardcolor);
+        mk_billboard(billboardshader, front_indicator_texture, 1.0, 1.0, front_color);
     Billboard *prograde_indicator =
-        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, billboardcolor);
+        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, prograde_color);
     Billboard *retrograde_indicator =
-        mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, billboardcolor);
+        mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, retrograde_color);
     Billboard *radial_in_indicator =
-        mk_billboard(billboardshader, radial_in_indicator_texture, 1.0, 1.0, billboardcolor);
+        mk_billboard(billboardshader, radial_in_indicator_texture, 1.0, 1.0, radial_color);
     Billboard *radial_out_indicator =
-        mk_billboard(billboardshader, radial_out_indicator_texture, 1.0, 1.0, billboardcolor);
+        mk_billboard(billboardshader, radial_out_indicator_texture, 1.0, 1.0, radial_color);
     Billboard *normal_plus_indicator =
-        mk_billboard(billboardshader, normal_plus_indicator_texture, 1.0, 1.0, billboardcolor);
+        mk_billboard(billboardshader, normal_plus_indicator_texture, 1.0, 1.0, normal_color);
     Billboard *normal_minus_indicator =
-        mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, billboardcolor);
-    // Transfer burn direction (TRANSFER window): the prograde icon in
-    // KSP blue, pointing where the departure burn should point.
+        mk_billboard(billboardshader, normal_minus_indicator_texture, 1.0, 1.0, normal_color);
+    // Transfer burn direction (TRANSFER window): the prograde icon in amber,
+    // pointing where the departure burn should point. Not the KSP blue it
+    // used -- that hue belongs to normal now, and a blue marker in the ring
+    // is ambiguous exactly when a transfer is plotted.
     Billboard *burn_indicator =
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0,
-                     glm::vec4(0.2f, 0.45f, 1.0f, 1.0f));
-    // Target ship's relative velocity, two pink markers: the prograde
+                     glm::vec4(0.95f, 0.70f, 0.15f, 1.0f));
+    // Target ship's relative velocity, two cyan markers: the prograde
     // (diamond) icon for you − target, the retrograde (X) icon for
-    // target − you.
-    const glm::vec4 relvelcolor = glm::vec4(1.0f, 0.4f, 0.9f, 1.0f);
+    // target − you. Cyan, not the old pink: magenta sat next door to radial
+    // purple while reusing the prograde/retrograde glyphs.
+    const glm::vec4 relvelcolor = glm::vec4(0.15f, 0.85f, 1.0f, 1.0f);
     Billboard *relvel_indicator =
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, relvelcolor);
     Billboard *relvel_retro_indicator =
