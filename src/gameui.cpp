@@ -2160,6 +2160,37 @@ void drawPartWindows(Game &g) {
     }
 }
 
+/* The orbit map's plane for one combo slot: a normal in the focus's inertial
+   frame, plus the screen-x reference (zero length = let OrbitMap derive the
+   basis). Both maps and --map-dump go through here, so the three slots have one
+   spelling rather than three that can drift -- #173 was exactly such a drift
+   (the Equatorial slot was drawing the rail plane, not the equator). */
+static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
+                          const glm::dvec3 &orbit_vel, bool have_ship, int mode,
+                          glm::dvec3 &plane_n, glm::dvec3 &plane_x) {
+    plane_n = glm::dvec3(0.0, 1.0, 0.0);
+    plane_x = glm::dvec3(0.0, 0.0, 0.0);   // zero: OrbitMap derives the basis
+    if(mode == kRefEquator) {
+        // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the rail
+        // normal and sits off the pole by exactly the axial tilt.
+        plane_n = focusFrame->spinAxisRelTo(focusFrame);
+        // Screen-x = the focus frame's +X, the same "east" the Ecliptic view's
+        // canonical basis uses, so flipping the plane combo tilts the picture
+        // instead of rotating it (~150 deg on Kerbin). This is a SCREEN choice,
+        // not the readout's zero longitude: LAN measures from equator_orient *
+        // +X, where the pole leans (uiRefPlane). Nothing draws a node marker,
+        // so the two never visibly disagree -- do not "align" them without
+        // adding one.
+        plane_x = glm::dvec3(1.0, 0.0, 0.0);
+    } else if(mode == kRefEcliptic) {
+        plane_n = glm::transpose(focusFrame->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
+    } else if(mode == kRefOrbit && have_ship) {
+        const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
+        const double hl = glm::length(h);
+        if(hl > 1e-9) { plane_n = h / hl; }
+    }
+}
+
 // The orbital map: right-clicking the window cycles its chrome (full
 // window -> bare map -> no window), the map square draws the focus
 // body's neighborhood (child-body orbits, SOI rings, the ship's
@@ -2284,28 +2315,9 @@ void drawUIMap(Game &g) {
         // The plane is a normal in the focus's inertial frame;
         // OrbitMap derives an in-plane basis from it.
         TerrainBody *focus = ship->m_parent;
-        glm::dvec3 plane_n(0.0, 1.0, 0.0);
-        glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
-        if(map_plane == kRefEquator) {
-            // The focus's EQUATOR, not its rail plane (#173): (0,1,0) is the
-            // rail normal and sits off the pole by exactly the axial tilt.
-            plane_n = focus->frame->spinAxisRelTo(focus->frame);
-            // Screen-x = the focus frame's +X, the same "east" the Ecliptic
-            // view's canonical basis uses, so flipping the plane combo tilts
-            // the picture instead of rotating it (~150 deg on Kerbin).
-            // This is a SCREEN choice, not the readout's zero longitude: LAN
-            // measures from equator_orient * +X, where the pole leans
-            // (uiRefPlane). Nothing draws a node marker, so the two never
-            // visibly disagree -- do not "align" them without adding one.
-            plane_x = glm::dvec3(1.0, 0.0, 0.0);
-        } else if(map_plane == kRefEcliptic) {
-            plane_n = glm::transpose(focus->frame->root_orient) *
-                      glm::dvec3(0.0, 1.0, 0.0);
-        } else if(map_plane == kRefOrbit) {
-            const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
-            const double hl = glm::length(h);
-            if(hl > 1e-9) { plane_n = h / hl; }
-        }
+        glm::dvec3 plane_n, plane_x;
+        mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, true, map_plane,
+                      plane_n, plane_x);
 
         // KSP-inspired palette (P4): your orbit is green, the transfer
         // is blue, other bodies are gray. The focus body, ship dot and
@@ -3819,22 +3831,10 @@ void drawTrackingMap(Game &g) {
 
         // The map plane: a normal in the focus's inertial frame; OrbitMap
         // derives an in-plane basis from it. "Orbital" needs a ship, so
-        // without one it stays on the equatorial plane.
-        glm::dvec3 plane_n(0.0, 1.0, 0.0);
-        glm::dvec3 plane_x(0.0, 0.0, 0.0);  // zero: OrbitMap derives the basis
-        if(map_plane == kRefEquator) {
-            // Same as the in-flight map: the focus's equator, not its rail
-            // plane, and screen-x = the focus frame's +X (#173).
-            plane_n = focus->frame->spinAxisRelTo(focus->frame);
-            plane_x = glm::dvec3(1.0, 0.0, 0.0);
-        } else if(map_plane == kRefEcliptic) {
-            plane_n = glm::transpose(focus->frame->root_orient) *
-                      glm::dvec3(0.0, 1.0, 0.0);
-        } else if(map_plane == kRefOrbit && ship) {
-            const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
-            const double hl = glm::length(h);
-            if(hl > 1e-9) { plane_n = h / hl; }
-        }
+        // without one it stays on the default (rail) plane.
+        glm::dvec3 plane_n, plane_x;
+        mapPlaneBasis(focus->frame, orbit_pos, orbit_vel, ship != nullptr,
+                      map_plane, plane_n, plane_x);
     
         // The map fills the window (the whole viewport here); the focus sits
         // at its center plus the pan offset. (mapW/mapH are defined at the
@@ -4510,6 +4510,36 @@ void dumpAtlas(Game &g) {
             else { printf("[atlas]   %-20s %s\n", fa.label.c_str(),
                                             fa.value.c_str()); }
         }
+    }
+    fflush(stdout);
+}
+
+/* --map-dump MS: print the basis each map plane slot produces for the active
+   ship. The map is pure drawing, so nothing else in the test stack can see a
+   flipped e2 -- #181 was exactly that, invisible to every check but an
+   eyeball. Reads the same mapPlaneBasis the two maps call, so the dump cannot
+   disagree with the picture. */
+void dumpMapBasis(Game &g) {
+    Vehicle *ship = g.ship;
+    if(!ship || !ship->m_parent || !ship->m_parent->frame) { return; }
+    Frame *focus_frame = ship->m_parent->frame;
+    const double now_ms = (double)(SDL_GetTicks() - g.loop_start_ms);
+    static const int kSlots[] = { kRefEquator, kRefEcliptic, kRefOrbit };
+    for(const int slot : kSlots) {
+        glm::dvec3 plane_n, plane_x;
+        mapPlaneBasis(focus_frame, g.view.orbit_pos, g.view.orbit_vel, true,
+                      slot, plane_n, plane_x);
+        OrbitMap m;
+        m.setPlane(plane_n, plane_x);
+        /* A prograde body at +e1 moves along n x e1, which must read -e2 on
+           screen in every slot (#181). +1 here means that slot draws the sweep
+           the other way from the others. */
+        const double sweep = glm::dot(glm::cross(m.n, m.e1), m.e2);
+        printf("[mapdump] t=%.1fs slot=%s n=(%.6f,%.6f,%.6f) e1=(%.6f,%.6f,%.6f) "
+               "e2=(%.6f,%.6f,%.6f) sweep=%+d\n",
+               now_ms / 1000.0, refPlaneName(slot),
+               m.n.x, m.n.y, m.n.z, m.e1.x, m.e1.y, m.e1.z,
+               m.e2.x, m.e2.y, m.e2.z, sweep >= 0.0 ? 1 : -1);
     }
     fflush(stdout);
 }

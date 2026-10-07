@@ -330,6 +330,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "widget (default -1 = leave it alone)")
         ->check(CLI::Range(-1, 2));
 
+    app.add_option("--map-dump", args.map_dump_ms,
+                   "Test hook: print the orbit map's in-plane basis (n, e1, "
+                   "e2 and the prograde sweep sign) for all three plane slots "
+                   "at this loop time in ms -- one [mapdump] line per slot, "
+                   "from the same code the map windows use (test hook; "
+                   "-1 = never)");
+
     app.add_flag("--selftest-spawn", args.selftest_spawn,
                  "Exercise the runtime spawn/remove path: spawn a copy of "
                  "the active ship, remove it, then spawn-select-remove the "

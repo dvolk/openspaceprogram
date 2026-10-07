@@ -4,7 +4,7 @@
 Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
 Case keys: NAME ARGS EXPECT FORBID CHECK LIMIT WRITE. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/terrain/surf/
-xfer/porkchop/surfmap) plus first/last/re. ARGS tokenizes like a shell, so
+xfer/porkchop/surfmap/mapb) plus first/last/re. ARGS tokenizes like a shell, so
 a value may be quoted to carry spaces. Full battery and --jobs>2 need
 --force. Artifacts land in tmp/e2e/runs/<stamp>/ + history.csv.
 """
@@ -40,6 +40,12 @@ ORBIT_RE = re.compile(
     # Plane angles (#171) trail the line; optional so nothing else breaks.
     # lan/lpe are either a number followed by " deg" or a bare "-".
     r"(?:\s+plane=(\w+)\s+lan=(\S+)(?: deg)?\s+lpe=(\S+)(?: deg)?)?"
+)
+MAP_RE = re.compile(
+    r"\[mapdump\]\s+t=([\d.]+)s\s+slot=(\w+)\s+"
+    r"n=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
+    r"e1=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
+    r"e2=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+sweep=([-+]\d+)"
 )
 DBG_RE = re.compile(
     r"\[dbg\]\s+t=([\d.]+)s\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
@@ -178,6 +184,20 @@ def parse_orbit(out):
             "E": float(E),
             # None on a line without the #171 tail.
             "plane": plane, "lan": lan, "lpe": lpe,
+        })
+    return rows
+
+
+def parse_mapb(out):
+    rows = []
+    for m in MAP_RE.finditer(out):
+        (t, slot, nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z, sweep) = m.groups()
+        rows.append({
+            "t": float(t), "slot": slot,
+            "n": (float(nx), float(ny), float(nz)),
+            "e1": (float(e1x), float(e1y), float(e1z)),
+            "e2": (float(e2x), float(e2y), float(e2z)),
+            "sweep": int(sweep),
         })
     return rows
 
@@ -522,16 +542,17 @@ def run_case(case):
     shake = parse_shake(out)
     terrain = parse_terrain(out)
     surf = parse_surf(out)
+    mapb = parse_mapb(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
         "terrain": terrain,
-        "surf": surf,
+        "surf": surf, "mapb": mapb,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,
-        "set": set,
+        "set": set, "sum": sum,
         "re": re,
     }
     # `ns` must be globals: free vars in a CHECK generator/comprehension

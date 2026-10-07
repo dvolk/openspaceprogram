@@ -977,6 +977,7 @@ int main(int argc, char **argv)
     game.researchMs = args.research_ms;
     game.researchCloseMs = args.research_close_ms;
     game.atlasDumpMs = args.atlas_dump_ms;
+    game.mapDumpMs = args.map_dump_ms;
     if(args.map_plane >= 0) { game.map_plane = args.map_plane; }
     game.switchSystemPath = args.switch_system_path;
     game.switchSystemMs = args.switch_system_ms;
@@ -1339,6 +1340,14 @@ int main(int argc, char **argv)
            && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.atlasDumpMs) {
             game.atlasDumpFired = true;
             dumpAtlas(game);
+        }
+        /* --map-dump: the orbit map's plane basis per combo slot. Needs a
+           ship (the Orbital slot is the ship's own plane), so unlike the atlas
+           dump it is a no-op before one exists. */
+        if(game.mapDumpMs >= 0 && !game.mapDumpFired
+           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.mapDumpMs) {
+            game.mapDumpFired = true;
+            dumpMapBasis(game);
         }
         /* --switch-system: the headless hook for the in-process system switch
            (Game::switchSystem). Before the scene is read, since it tears the

@@ -43,6 +43,9 @@ void drawResearchAtlas(Game &g);
 // --atlas-dump MS: print every Atlas row + dossier to stdout (test hook /
 // terminal readout; the same strings the window draws).
 void dumpAtlas(Game &g);
+// --map-dump MS: print the in-plane basis each orbit-map plane slot produces
+// for the active ship (test hook; the same basis the maps draw with).
+void dumpMapBasis(Game &g);
 // Scene enter hook: pre-build g.labRows and g.atlasRows so the frame walk is cheap.
 void researchLabEnter(Game &g);
 

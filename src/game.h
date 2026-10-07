@@ -308,6 +308,10 @@ struct Game {
     int atlasDumpMs = -1;
     bool atlasDumpFired = false;
 
+    // --map-dump MS: the orbit map's plane basis per combo slot, to stdout.
+    int mapDumpMs = -1;
+    bool mapDumpFired = false;
+
     // --switch-system FILE / --switch-at MS: headless in-process system swap.
     std::string switchSystemPath;
     int switchSystemMs = -1;
