@@ -3,11 +3,13 @@
 # what each slot actually draws with, from the same mapPlaneBasis the two map
 # windows call.
 #
-# Kerbin on a POLAR bed, so the three slots take two different paths through
-# OrbitMap::setPlane: Equatorial and Orbital both pin their screen-x to the
-# focus frame's +X (against different normals), Ecliptic takes the canonical
-# X/Z one. All three must agree on handedness -- a prograde body at +e1 moves
-# along -e2, printed as sweep=-1.
+# Kerbin on a POLAR bed. All three slots pin their screen-x to the focus
+# frame's +X, so all three take OrbitMap::setPlane's pinned path -- below it,
+# the canonical branch only answers the no-ship default and the node-line branch
+# only the tests.
+# Kerbin's Ecliptic normal is exactly +Y, so that slot's basis reads the same
+# X/Z it always did. All three must agree on handedness -- a prograde body at
+# +e1 moves along -e2, printed as sweep=-1.
 NAME map-plane-basis
 ARGS --time-accel 1 --timeout 6 --map-dump 2500 --startship racer,res/ships/racer.json,Kerbin,high-polar
 FORBID GL_

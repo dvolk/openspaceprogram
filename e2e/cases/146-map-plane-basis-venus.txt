@@ -6,10 +6,11 @@
 # slots drew the SAME plane with mirrored sweeps -- the exact #181 symptom, on
 # shipped data, and invisible to case 143 because Kerbin's normals all sit
 # above the rail plane.
-# #185 then moved the Orbital slot onto the pinned path, so the two slots now
-# share a basis outright. The canonical branch is left to the Ecliptic slot:
-# Venus's RAIL is 3.4 deg off the system plane, so that slot still lands there.
-# The branch is not dead, it just has one caller left.
+# #185 then moved the Orbital slot onto the pinned path, so the two slots share
+# a basis outright. Its follow-up pinned the Ecliptic slot too: that slot's e2
+# is now the in-plane (0, 0.0592, 0.9982) below rather than the canonical
+# branch's fixed +Z, which sat 3.4 deg out of Venus's ecliptic plane. The
+# canonical branch now only answers the no-ship default.
 NAME map-plane-basis-venus
 ARGS --system res/systems/solar_system.json --time-accel 1 --timeout 6 --map-dump 2500 --startship racer,res/ships/racer.json,Venus,rot-orbit-eq
 FORBID GL_
@@ -24,7 +25,11 @@ CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-5
 CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-5
 CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-5
 CHECK all(abs(sum(a*a for a in r["e2"]) - 1.0) < 1e-5 for r in mapb)
-# The Ecliptic slot is the one still on the canonical branch: a fixed (X, Z)
-# basis for a normal within 8.13 deg of the rail normal, sweep still -1.
+# The Ecliptic slot pins its east like the other two now. Same (1,0,0) --
+# Venus's ecliptic normal has n.x = 0, so +X is already in plane -- but e2 comes
+# from e1 x n instead of the canonical branch's fixed +Z, and is therefore IN
+# the drawn plane. Unpinning this slot puts e2 back at (0,0,1), 3.4 deg out of
+# plane, which is what these two numbers catch.
 CHECK abs(mapb[1]["e1"][0] - 1.0) < 1e-6
-CHECK abs(mapb[1]["e2"][2] - 1.0) < 1e-6
+CHECK abs(mapb[1]["e2"][1] - 0.059214) < 1e-5
+CHECK abs(mapb[1]["e2"][2] - 0.998245) < 1e-5

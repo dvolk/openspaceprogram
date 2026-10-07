@@ -18,12 +18,13 @@ struct OrbitMap {
     glm::dvec3 e1 = glm::dvec3(1.0, 0.0, 0.0);
     glm::dvec3 e2 = glm::dvec3(0.0, 0.0, 1.0);
 
-    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: both the
-    // Equatorial and the Orbital slot pass the focus frame's +X, so flipping the
-    // plane combo tilts the picture instead of rotating it (#173), and a normal
+    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: all
+    // three combo slots pass the focus frame's +X, so flipping the plane combo
+    // tilts the picture instead of rotating it (#173, #185), and a normal
     // approaching the rail normal keeps a stable basis instead of handing over
-    // to the near-polar branch below (#185). Zero length means derive it from
-    // the node line, which is what the Ecliptic slot does.
+    // to the near-polar branch below. Zero length means derive it from the node
+    // line; no mapPlaneBasis slot does that any more, so the derived and
+    // canonical paths below only serve the no-ship default and the tests.
     // A reference direction that lies ALONG the normal cannot define an east at
     // all: its in-plane part is zero and normalizing it would divide by zero.
     // That is the only case the fallback below exists for, so the floor is a
@@ -61,11 +62,14 @@ struct OrbitMap {
             return;
         }
         if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
-            // Only reachable with no usable x_axis, i.e. the Ecliptic slot of a
-            // focus whose rail sits within 8.13 deg of the system plane (and the
-            // no-ship default). The derived basis degenerates here -- |Y x n|
-            // tends to 0 -- so this branch keeps a fixed screen basis, with e2
-            // following the sign of n so e1 x e2 = -n still holds:
+            // Only reachable with no usable x_axis. Pinning all three slots
+            // (#185 follow-up) left that to the no-ship default, whose normal
+            // is exactly +-Y, so the 8.13 deg band around it has no game caller
+            // any more -- the branch and the derived one below stay because
+            // setPlane's contract still has to answer a zero x_axis, and the
+            // tests hold that answer. The derived basis degenerates here --
+            // |Y x n| tends to 0 -- so this branch keeps a fixed screen basis,
+            // with e2 following the sign of n so e1 x e2 = -n still holds:
             // e1 x n = X x (0,+-1,0) = +-Z. The sign matters for any normal
             // below the rail plane (a retrograde rail, a retrograde orbit);
             // #181 found the Orbital slot hitting this case on Venus, and #185

@@ -202,9 +202,10 @@ int main() {
         expect_sweep(s, "canonical -Y sweep");
         /* At the edge of the band (8 deg off the rail normal, so |n.Y| = 0.9903
            > 0.99) the fixed basis is 8 deg out of plane by design, so only the
-           sweep sign is pinned -- and it still reads -n below the plane. This is
-           the Ecliptic slot's case on a near-ecliptic focus; the Orbital slot
-           left it in #185. */
+           sweep sign is pinned -- and it still reads -n below the plane. No map
+           slot reaches this branch any more, since all three pass an x_axis;
+           this is setPlane's contract for a zero one, which the no-ship default
+           still uses. */
         const double r = 8.0 * std::acos(-1.0) / 180.0;
         OrbitMap edge;
         edge.setPlane(glm::dvec3(std::sin(r), std::cos(r), 0.0));

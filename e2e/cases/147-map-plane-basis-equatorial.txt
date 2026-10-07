@@ -26,11 +26,11 @@ CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-5
 CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-5
 CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-5
 # The basis is the focus +X projected into the plane, not the node line: 0.9376
-# of it is screen-east in this focus's Ecliptic view too, so on Kerbin all three
-# slots agree on an east and switching between them tilts rather than rotates.
-# (Kerbin's rail lies in the system plane, so its Ecliptic slot is canonical;
-# a focus whose rail is tilted off it puts that slot on the node line instead,
-# and there the three do NOT share an east.)
+# of it is screen-east in this focus's Ecliptic view too, so all three slots
+# agree on an east and switching between them tilts rather than rotates. That
+# holds on every focus now; before the Ecliptic slot was pinned, one whose rail
+# is tilted off the system plane put that slot on the node line instead -- 119
+# deg from the others on Iapetus, 180 on Triton.
 CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], (1.0, 0.0, 0.0))) - 0.937560) < 1e-5
 # The node line it used to draw, kept as a number so a revert cannot pass this
 # case by pinning some other in-plane direction instead.

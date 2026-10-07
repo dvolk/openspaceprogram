@@ -2161,9 +2161,11 @@ void drawPartWindows(Game &g) {
 }
 
 /* The focus frame's +X, passed to OrbitMap::setPlane as the screen-x reference.
-   The Equatorial and Orbital slots both pin to it so switching between them
-   tilts the picture instead of rotating it (#173, #185); the Ecliptic slot
-   leaves it zero and lets setPlane derive the basis from the node line. */
+   All three combo slots pin to it, so switching the plane combo tilts the
+   picture rather than rotating it (#173, #185) -- on a focus whose rail is
+   tilted off the system plane, leaving the Ecliptic slot to derive its basis
+   from the node line put its screen-east 119 deg from the other two on Iapetus
+   and 180 deg on Triton. */
 static const glm::dvec3 kFocusEast(1.0, 0.0, 0.0);
 
 /* The orbit map's plane for one combo slot: a normal in the focus's inertial
@@ -2190,6 +2192,15 @@ static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
         plane_x = kFocusEast;
     } else if(mode == kRefEcliptic) {
         plane_n = glm::transpose(focusFrame->root_orient) * glm::dvec3(0.0, 1.0, 0.0);
+        /* Pinned like the other two slots. Unpinned, a focus whose rail sits
+           more than 8.13 deg off the system plane pushed setPlane off its
+           canonical branch onto the node line, so this slot's screen-east
+           disagreed with the other two's by 119 deg on Iapetus, 125 on Pluto,
+           180 on Triton -- switching the combo rotated the picture instead of
+           tilting it. It also drops the canonical branch's fixed e2, which is
+           only in plane when the normal is exactly +-Y (on Venus it sits 3.4
+           deg out of the drawn plane). */
+        plane_x = kFocusEast;
     } else if(mode == kRefOrbit && have_ship) {
         const glm::dvec3 h = glm::cross(orbit_pos, orbit_vel);
         const double hl = glm::length(h);
