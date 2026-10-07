@@ -9,6 +9,8 @@
 // Pinned here:
 //   - the shipped showcase systems carry both bands, in the right order,
 //     with sane radii that reach the loader,
+//   - ksp_system's outer band starts just inside its outermost rail's
+//     apoapsis, so that body grazes the belt rather than living in it,
 //   - "belts" is optional: a system without it loads with none,
 //   - malformed belts throw, naming the belt.
 //
@@ -16,6 +18,8 @@
 
 #include "system.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -83,6 +87,24 @@ static nlohmann::json two_bands() {
     });
 }
 
+// Apoapsis [m] of the outermost rail about the star, from the authored JSON:
+// Kepler III inverts "orb_ang_speed" the same way the loader does (system.cpp
+// uses the same G), so a retune of the rail moves this with it.
+static double outermost_apoapsis(const nlohmann::json &doc) {
+    const double G = 6.674e-11;
+    const std::string star = doc["bodies"][0]["name"].get<std::string>();
+    const double mu = G * doc["bodies"][0]["mass"].get<double>();
+    double apo = 0.0;
+    for(const nlohmann::json &b : doc["bodies"]) {
+        if(b.value("orbits", "") != star || !b.contains("inertial")) { continue; }
+        const double n = b["inertial"].value("orb_ang_speed", 0.0);
+        if(n <= 0.0) { continue; }
+        const double a = std::cbrt(mu / (n * n));
+        apo = std::max(apo, a * (1.0 + b["inertial"].value("ecc", 0.0)));
+    }
+    return apo;
+}
+
 int main() {
     // --- the shipped systems carry both bands, in draw order --------------
     for(const std::string &slug : { std::string("ksp_system"),
@@ -106,6 +128,25 @@ int main() {
         // overlap and the map shows one smeared region.
         check(belts[0].outer < belts[1].inner,
               ("bands do not overlap: " + slug).c_str());
+    }
+
+    // --- the outer band sits at the edge of the planetary system ----------
+    // ksp_system's outermost rail is Eeloo (e 0.26, apo 113.6 Gm). Its band
+    // starts just inside that apoapsis, so Eeloo grazes the belt's inner edge
+    // the way Neptune sits on the shipped solar system's Kuiper inner edge with
+    // Pluto (e 0.25) dipping in. A band starting well inside the outermost
+    // orbit reads as that orbit's own neighbourhood, not as the far edge of the
+    // system -- which is what 72 Gm did, putting Eeloo's whole ellipse inside.
+    {
+        const std::string path = "res/systems/ksp_system.json";
+        const std::vector<BeltParams> belts = load_belts(path);
+        const double apo = outermost_apoapsis(read_json(path.c_str()));
+        if(belts.size() == 2) {
+            check(belts[1].inner < apo && belts[1].inner > 0.9 * apo,
+                  "ksp Kuiper inner edge grazes Eeloo's apoapsis");
+            check(belts[1].outer > 1.2 * apo,
+                  "ksp Kuiper band reaches beyond Eeloo");
+        }
     }
 
     // --- "belts" is optional ----------------------------------------------
