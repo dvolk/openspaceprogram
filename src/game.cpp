@@ -96,6 +96,8 @@ static SettingsData collect_settings(Game &g) {
     s.world_drawing = g.world_drawing;
     s.draw_starfield = g.draw_starfield;
     s.draw_skylines = g.draw_skylines;
+    s.sky_dim = g.sky_dim;
+    s.sky_dim_cone = g.sky_dim_cone;
     for(const std::string &fx : PostFX::Available()) {
         if(g.postfx->IsEnabled(fx)) { s.postfx_enabled.push_back(fx); }
         std::vector<FXParam> params = PostFX::Params(fx);
@@ -130,6 +132,10 @@ static void apply_settings_args(const SettingsData &s, GameArgs &args) {
     if(!args.cli_given.fov)           { args.camFovDeg     = s.camFovDeg; }
     if(!args.cli_given.terrain_px)    { args.terrain_px    = s.terrain_px; }
     if(!args.cli_given.cam_shake)    { args.cam_shake     = s.cam_shake; }
+    // The star-field fade lives on the Game, but main.cpp seeds it from
+    // args once the Game exists -- so the file's value has to land here.
+    if(!args.cli_given.sky_dim)       { args.sky_dim       = s.sky_dim; }
+    if(!args.cli_given.sky_dim_cone)  { args.sky_dim_cone  = s.sky_dim_cone; }
 }
 
 static void apply_settings_game(Game &g, const SettingsData &s) {

@@ -28,6 +28,8 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["world_drawing"] = s.world_drawing;
     j["starfield"] = s.draw_starfield;
     j["reference_circles"] = s.draw_skylines;
+    j["sky_dim"] = s.sky_dim;
+    j["sky_dim_cone"] = s.sky_dim_cone;
     j["postfx"] = s.postfx_enabled;   // enabled effect names, pass order
     nlohmann::json params = nlohmann::json::object();
     for(const auto &fx : s.postfx_params) {
@@ -101,6 +103,18 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     if(j.contains("reference_circles") &&
        j["reference_circles"].is_boolean()) {
         s.draw_skylines = j["reference_circles"].get<bool>();
+    }
+    // Clamp to the --sky-dim / --sky-dim-cone ranges: a hand-edited file
+    // must not put the fade outside the range the sliders can show.
+    if(j.contains("sky_dim") && j["sky_dim"].is_number()) {
+        s.sky_dim = j["sky_dim"].get<float>();
+        if(s.sky_dim < 0.0f) { s.sky_dim = 0.0f; }
+        if(s.sky_dim > 1.0f) { s.sky_dim = 1.0f; }
+    }
+    if(j.contains("sky_dim_cone") && j["sky_dim_cone"].is_number()) {
+        s.sky_dim_cone = j["sky_dim_cone"].get<float>();
+        if(s.sky_dim_cone < 1.0f) { s.sky_dim_cone = 1.0f; }
+        if(s.sky_dim_cone > 179.0f) { s.sky_dim_cone = 179.0f; }
     }
     // postfx: unknown names are ignored here and at apply time.
     if(j.contains("postfx") && j["postfx"].is_array()) {

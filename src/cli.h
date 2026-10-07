@@ -25,6 +25,8 @@ struct GameArgs {
         bool exhaust_scale = false;  // --exhaust-scale
         bool cam_shake = false;      // --cam-shake
         bool time_accel = false;     // --time-accel (overrides a paused load)
+        bool sky_dim = false;        // --sky-dim
+        bool sky_dim_cone = false;   // --sky-dim-cone
     } cli_given;
 
     std::string system_file = "res/systems/ksp_system.json";

@@ -877,6 +877,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         app.get_option("--cam-shake")->count() > 0;
     args.cli_given.time_accel =
         app.get_option("--time-accel")->count() > 0;
+    args.cli_given.sky_dim =
+        app.get_option("--sky-dim")->count() > 0;
+    args.cli_given.sky_dim_cone =
+        app.get_option("--sky-dim-cone")->count() > 0;
 
     if(!args.save_name.empty() && !args.load_name.empty()) {
         printf("error: --save and --load are mutually exclusive\n");

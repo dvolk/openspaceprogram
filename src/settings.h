@@ -22,6 +22,10 @@ struct SettingsData {
     bool world_drawing = true;
     bool draw_starfield = true;
     bool draw_skylines = false;
+    // star-field exposure (render.cpp skyGain); cone half-angle in degrees,
+    // the same units as --sky-dim-cone
+    float sky_dim = 0.25f;
+    float sky_dim_cone = 25.0f;
     // postfx: enabled effect names (pass order) + param values (stored even
     // when the effect is off, so re-enabling restores them).
     std::vector<std::string> postfx_enabled;
