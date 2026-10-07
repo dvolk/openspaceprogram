@@ -69,13 +69,18 @@ static void expect_reject(const nlohmann::json &j, const char *tag,
     std::ofstream o(tmp);
     o << j.dump();
     o.close();
-    const char *what = nullptr;
+    // Copy the message out of the catch: e.what() points into the exception,
+    // so a const char* kept past its destruction reads freed memory and the
+    // needle match becomes luck of the allocator.
+    bool threw = false;
+    std::string what;
     try {
         load_system(tmp.c_str(), nullptr, nullptr);
     } catch(const std::exception &e) {
+        threw = true;
         what = e.what();
     }
-    check(what && std::strstr(what, msg_needle), tag);
+    check(threw && what.find(msg_needle) != std::string::npos, tag);
     std::remove(tmp.c_str());
 }
 
