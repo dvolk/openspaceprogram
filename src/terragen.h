@@ -16,8 +16,10 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,6 +37,49 @@ struct PaletteStop {
     float t;
     glm::vec3 color;
 };
+
+/* How a body's sea is rendered (system JSON "surface.ocean", a string;
+   default "mesh").
+   Mesh: the terrain keeps its true relief everywhere and a transparent
+   shell sphere at sea_level paints the water (waves, specular glint, real
+   islands).
+   Flat: the terrain itself is clamped flat at sea_level and painted
+   sea_color -- no waves, no reflections, but scale-proof. The shell is a
+   128-ring UV sphere, so its flat faces sit ~radius/13300 BELOW the sea-level
+   sphere: ~45 m on Kerbin, lost in 5 km of relief; ~480 m on Earth, where any
+   sea floor shallower than that sticks out above the water. A big body opts
+   out. (The water showing the floor through it is deliberate -- DrawOcean
+   depth-tests but never depth-writes, so the sea floor reads through the
+   surface. What must not happen is the floor rising above the shell.)
+   Adding a mode: extend this enum, oceanModeName() and parseOceanMode()
+   below, then decide what the three s.ocean_mode sites do for it -- the
+   height clamp and the colour override here, and the shell mesh in
+   TerrainBody::BuildOcean (which builds for Mesh only, so a new mode gets
+   no shell until it asks for one). */
+enum class OceanMode : unsigned char {
+    Mesh,   // "mesh": the ocean shell sphere at sea level
+    Flat,   // "flat": sea floor clamped to sea level, terrain painted blue
+};
+
+// The JSON spelling of a mode (the parse's error message, the Atlas fact).
+// A switch, not a ternary: a third mode must not silently report "mesh".
+inline const char *oceanModeName(OceanMode m) {
+    switch(m) {
+    case OceanMode::Mesh: return "mesh";
+    case OceanMode::Flat: return "flat";
+    }
+    assert(!"ocean mode has no name");
+    return "?";
+}
+
+// Parse the "ocean" string. An unrecognised value is a data bug, not a
+// fallback: a typo would silently swap the renderer.
+inline OceanMode parseOceanMode(const std::string &v, const std::string &body) {
+    if(v == "mesh") return OceanMode::Mesh;
+    if(v == "flat") return OceanMode::Flat;
+    throw std::runtime_error("system: '" + body + "': unknown \"ocean\" mode \""
+                             + v + "\" (expected \"mesh\" or \"flat\")");
+}
 
 // Per-body atmosphere (optional "surface.atmosphere" block), in two
 // independent halves: the RENDER half (a Fresnel limb-glow shell; see
@@ -103,6 +148,7 @@ struct Surface {
     bool has_sea = false;
     float sea_level = 0.0f;      // [m] above base radius; floor is flat here
     glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
+    OceanMode ocean_mode = OceanMode::Mesh;  // how the sea renders (see above)
     std::vector<PaletteStop> palette;  // empty => type-based default palette
     float max_height = 1.0f;     // [m] highest relief above sea level
                                  // (measured by the heavy phase,
@@ -268,8 +314,10 @@ inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
 }
 
 // Height (m, from the body center) at a unit direction, band-limited by
-// `fade`. Gas giants are a smooth sphere. The ocean mesh (a separate shell
-// at sea_level) covers the below-sea-level terrain.
+// `fade`. Gas giants are a smooth sphere. A Flat-sea body has its sea floor
+// clamped to sea_level: the clamp IS the sea, so physics, spawning and
+// rendering all agree the water is solid at sea level. A Mesh-sea body
+// renders its true relief below the ocean shell.
 inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
                                float fade) {
     const Surface &s = t.surface;
@@ -277,6 +325,9 @@ inline float terrainHeightFade(const glm::vec3& p, const TerrainParams& t,
         return t.radius;
     }
     float relief = terrainRelief(p, t, fade);
+    if (s.ocean_mode == OceanMode::Flat && s.has_sea && relief < s.sea_level) {
+        relief = s.sea_level;
+    }
     return t.radius + relief;
 }
 
@@ -335,6 +386,17 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
                                            brightness,
                                            brightness);
 
+    // A Flat-sea body paints its own sea: the clamped floor is the water.
+    // (A Mesh-sea body leaves the below-sea terrain its palette colour and
+    //  the ocean shell paints the water instead.) Decided at FULL height
+    //  detail like the rest of the palette, while the clamp above runs at the
+    //  grid's band-limited detail: with a non-zero sea_level a coarse patch
+    //  therefore gets a flat sea-level plain coloured by its inland palette.
+    //  No shipped sea body has a non-zero sea_level (issue #193).
+    if (s.ocean_mode == OceanMode::Flat && s.has_sea
+        && height <= t.radius + s.sea_level) {
+        color = s.sea_color;
+    }
     return color;
 }
 

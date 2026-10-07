@@ -79,7 +79,10 @@ void surfmapCompute(Game &g) {
             for(int i = 0; i < w; i++) {
                 const glm::dvec3 d = surfmapDir(i, j, w, h);
                 // Ocean box on and at/below sea level: flat sea covers the
-                // floor (same coverage as the 3D ocean shell).
+                // floor (same coverage as the 3D ocean shell). Redundant on a
+                // Flat-sea body: its terrain is already painted sea_color and
+                // the clamp makes this the same predicate, so both branches
+                // yield the same pixel (issue #193).
                 const bool under_sea = ocean && tp.surface.has_sea
                     && terrainHeight((glm::vec3)d, tp)
                        <= (double)tp.radius + (double)tp.surface.sea_level;

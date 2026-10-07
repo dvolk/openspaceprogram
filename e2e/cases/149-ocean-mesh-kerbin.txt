@@ -1,0 +1,16 @@
+# Kerbin keeps the ocean shell (waves, specular glint): with no "surface.ocean"
+# in its JSON a sea body defaults to "mesh" (terragen.h OceanMode). The default
+# is the nice renderer on purpose -- only a body too big for the shell's fixed
+# tessellation opts out (see case 148).
+#
+# The "ocean shell" fact is the shell the loader actually BUILT, so this pins
+# the mode's effect rather than its spelling: a guard that stopped building
+# shells for mesh bodies would fail here.
+NAME ocean-mesh-kerbin
+ARGS --timeout 6 --atlas-dump 4000
+FORBID GL_
+FORBID error:
+# Kerbin's own dossier block: the non-greedy span stops at Kerbin's "seas" fact,
+# not Laythe's or Shay's, and its shell fact is printed right after it.
+CHECK re.search(r"\[atlas\] Kerbin weight=.*?seas\s+yes, \+0 m, mesh sea\n\[atlas\]\s+ocean shell", out, re.S)
+CHECK "flat sea" not in out

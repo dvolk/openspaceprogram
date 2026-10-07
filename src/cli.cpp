@@ -590,7 +590,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "terrain and its depth without the transparent limb glow)");
     app.add_flag("--no-ocean", args.no_ocean,
                  "Skip the ocean surface shells (debug: see the sea floor "
-                 "terrain without the water layer)");
+                 "terrain without the water layer; only \"ocean\": \"mesh\" "
+                 "bodies have a shell)");
     app.add_flag("--no-rings", args.no_rings,
                  "Skip the planetary ring annuli (debug: see the planet and "
                  "its depth without the rings)");

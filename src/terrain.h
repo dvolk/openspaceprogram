@@ -386,9 +386,12 @@ struct TerrainBody {
     }
 
     // Build the ocean surface shell on demand: a UV sphere at sea level
-    // (land pokes through via the depth test).
+    // (land pokes through via the depth test). Only the Mesh mode has a
+    // shell: Flat paints the sea on the terrain itself, and a future mode
+    // gets one only if it asks.
     void BuildOcean(Shader *oceanshader) {
-        if(ocean != nullptr || !surface.has_sea) return;
+        if(ocean != nullptr || !surface.has_sea
+           || surface.ocean_mode != OceanMode::Mesh) return;
         // Slight offset above sea level: without it the terrain and ocean
         // surfaces are coplanar at the coastline and z-fight.
         float shell_radius = radius + surface.sea_level + 0.1f;

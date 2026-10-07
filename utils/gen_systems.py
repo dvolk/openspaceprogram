@@ -170,7 +170,7 @@ K = [
 ]
 
 # Optional "surface" block: palette (elevation 0..1 -> color), sea_*/,
-# amplitude, bands/* for gas giants.
+# ocean ("mesh" | "flat", default "mesh"), amplitude, bands/* for gas giants.
 SURFACES = {
     "Kerbol": {
         "palette": [[0.0, [1.00, 0.80, 0.35]], [1.0, [1.00, 1.00, 0.75]]],

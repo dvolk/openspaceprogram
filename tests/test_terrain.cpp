@@ -1,9 +1,10 @@
 // test_terrain.cpp -- unit tests for the pure terrain core (src/terragen.h,
-// glm + STL only): the height model (bounds, band-limit fade), the surface
-// color (palette, gas-giant bands), the grid builder (vertex/index
-// counts, band-limited on-surface vertices, the anchor-relative bake --
-// patch-scale vertex data with a sub-cm double round trip -- index range,
-// the skirt ring dropped below the terrain), and the patch-tree LOD maths
+// glm + STL only): the height model (bounds, band-limit fade, the sea-floor
+// clamp by ocean mode), the surface color (palette, gas-giant bands, sea
+// paint), the grid builder (vertex/index counts, band-limited on-surface
+// vertices, the anchor-relative bake -- patch-scale vertex data with a
+// sub-cm double round trip -- index range, the skirt ring dropped below
+// the terrain), and the patch-tree LOD maths
 // (the size measure, the projected-pixel measure, the body-frame camera).
 // Links camera.o (no GL / Bullet / imgui) so the LOD's pixel measure is
 // pinned against the projection matrix the renderer really builds
@@ -114,8 +115,9 @@ int main() {
         check(ok, "height: finite and bounded by the amplitude");
     }
 
-    // 2. No sea floor clamp: terrain renders at its true height even
-    //    below sea level (the ocean mesh covers it).
+    // 2. The sea floor by ocean mode: "mesh" keeps the true relief below
+    //    sea level (the shell sphere paints the water); "flat" clamps the
+    //    floor to sea level, so the terrain itself IS the sea.
     {
         TerrainParams t = kerbin();
         t.surface.has_sea = true;
@@ -128,7 +130,47 @@ int main() {
             // renders its true relief (well below 10000 here).
             if(std::fabs(h - (t.radius + 10000.0f)) < 1.0f) { ok = false; break; }
         }
-        check(ok, "sea floor: terrain is NOT clamped to sea level");
+        check(ok, "sea floor: mesh ocean is NOT clamped to sea level");
+
+        t.surface.ocean_mode = OceanMode::Flat;
+        ok = true;
+        for(const auto &p : dirs) {
+            const float h = terrainHeight(p, t);
+            // With the sea level ABOVE the max relief, every point sits
+            // exactly on the flat sea floor.
+            if(!std::isfinite(h)
+               || std::fabs(h - (t.radius + 10000.0f)) > 1e-3f) {
+                ok = false; break;
+            }
+        }
+        check(ok, "sea floor: flat ocean clamps the height to sea level");
+
+        // A real coastline: the sea level INSIDE the relief range. Under Flat
+        // a basin goes exactly flat and the land keeps exactly its mesh
+        // height -- nothing is left at an intermediate height. The all-sea
+        // case above cannot see this, so a clamp applied unconditionally (or
+        // not at all) still passes it.
+        t.surface.sea_level = 800.0f;
+        ok = true;
+        int n_land = 0, n_sea = 0;
+        for(const auto &p : dirs) {
+            t.surface.ocean_mode = OceanMode::Mesh;
+            const float hm = terrainHeight(p, t);
+            t.surface.ocean_mode = OceanMode::Flat;
+            const float hf = terrainHeight(p, t);
+            if(!std::isfinite(hm) || !std::isfinite(hf)) { ok = false; break; }
+            if(hm <= t.radius + t.surface.sea_level) {
+                n_sea++;
+                if(std::fabs(hf - (t.radius + t.surface.sea_level)) > 1e-3f) {
+                    ok = false; break;
+                }
+            } else {
+                n_land++;
+                if(std::fabs(hf - hm) > 1e-3f) { ok = false; break; }
+            }
+        }
+        check(ok && n_land > 0 && n_sea > 0,
+              "sea floor: flat ocean clamps basins and leaves land alone");
     }
 
     // 3. The band-limit fade: a finer grid (smaller cell angle) keeps at
@@ -159,8 +201,9 @@ int main() {
         check(ok, "color: finite and in [0,1]");
     }
 
-    // 5. Sea color is NOT baked into terrain vertices (the ocean mesh
-    //    provides the water color); below-sea terrain keeps palette colors.
+    // 5. Sea color by ocean mode: "mesh" leaves the below-sea terrain its
+    //    palette color (the shell paints the water); "flat" paints the
+    //    clamped floor with sea_color.
     {
         TerrainParams t = kerbin();
         t.surface.has_sea = true;
@@ -174,7 +217,32 @@ int main() {
             if(glm::distance(c, t.surface.sea_color) < 1e-6f) { ok = false; break; }
             if(!finite_v(c)) { ok = false; break; }
         }
-        check(ok, "sea color: terrain is NOT painted with sea_color");
+        check(ok, "sea color: mesh ocean is NOT painted with sea_color");
+
+        t.surface.ocean_mode = OceanMode::Flat;
+        ok = true;
+        for(const auto &p : dirs) {
+            // Every sample is below sea level here, so the whole surface
+            // is the flat sea: exactly sea_color, no palette, no jitter.
+            if(glm::distance(terrainSurfaceColor(p, t), t.surface.sea_color)
+               > 1e-6f) { ok = false; break; }
+        }
+        check(ok, "sea color: flat ocean paints the floor with sea_color");
+
+        // The same coastline as the height check: above sea level the paint
+        // reverts to the palette, so the sea edge is where the land starts.
+        t.surface.sea_level = 800.0f;
+        int n_land = 0, n_sea = 0;
+        for(const auto &p : dirs) {
+            const glm::vec3 c = terrainSurfaceColor(p, t);
+            if(glm::distance(c, t.surface.sea_color) < 1e-6f) {
+                n_sea++;
+            } else {
+                n_land++;
+            }
+        }
+        check(n_land > 0 && n_sea > 0,
+              "sea color: flat ocean paints basins only");
     }
 
     // 6. Gas giant (bands): a smooth sphere, color by latitude band.
@@ -663,6 +731,47 @@ int main() {
               "atmo: an authored height wins over the derivation");
         AtmosphereParams none;                // no drag model at all
         check(none.top() == 0.0, "atmo: no atmosphere has no top");
+    }
+
+    // 15. The ocean mode string (system JSON "surface.ocean"). The shipped
+    //     spellings parse; anything else is a data bug, since a typo would
+    //     silently swap the renderer.
+    {
+        check(parseOceanMode("mesh", "Kerbin") == OceanMode::Mesh,
+              "ocean: \"mesh\" parses");
+        check(parseOceanMode("flat", "Earth") == OceanMode::Flat,
+              "ocean: \"flat\" parses");
+        bool threw = false;
+        try { parseOceanMode("Mesh", "Kerbin"); }   // case matters
+        catch(const std::runtime_error &) { threw = true; }
+        check(threw, "ocean: an unknown mode is rejected");
+        check(std::string(oceanModeName(OceanMode::Mesh)) == "mesh"
+              && std::string(oceanModeName(OceanMode::Flat)) == "flat",
+              "ocean: mode names round-trip through the parser");
+        // The default is the shell: a body that says nothing about its sea
+        // keeps waves and reflections (only the big ones opt out).
+        check(Surface().ocean_mode == OceanMode::Mesh, "ocean: default is mesh");
+
+        // A flat sea floor still classifies as Ocean. The clamp puts it
+        // exactly AT sea level, so biomeAt's `alt <= 0` cut is load-bearing:
+        // a `<` there would reclassify a whole planet's ocean as lowland and
+        // silently re-key ocean science.
+        TerrainParams fl = kerbin();
+        fl.surface.has_sea = true;
+        fl.surface.sea_level = 800.0f;
+        fl.surface.ocean_mode = OceanMode::Flat;
+        bool any_sea = false;
+        bool biome_ok = true;
+        for(const auto &p : dirs) {
+            fl.surface.ocean_mode = OceanMode::Mesh;
+            const bool below
+                = terrainHeight(p, fl) <= fl.radius + fl.surface.sea_level;
+            fl.surface.ocean_mode = OceanMode::Flat;
+            if(!below) continue;
+            any_sea = true;
+            if(biomeAt(p, fl) != Biome::Ocean) { biome_ok = false; break; }
+        }
+        check(biome_ok && any_sea, "ocean: a flat sea floor is still ocean");
     }
 
     if(g_failures == 0) {

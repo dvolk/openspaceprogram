@@ -4242,8 +4242,18 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     else { line("ground", "solid"); }
     if(!b.isStar() && !b.surface.bands) {
         if(b.surface.has_sea) {
-            snprintf(v, sizeof v, "yes, %+.0f m", (double)b.surface.sea_level);
+            snprintf(v, sizeof v, "yes, %+.0f m, %s sea",
+                     (double)b.surface.sea_level,
+                     oceanModeName(b.surface.ocean_mode));
             line("seas", v);
+            // The shell the loader actually BUILT, not the authored mode: a
+            // flat-sea body never has one, and a mesh body has none until its
+            // heavy phase lands. This is the fact the renderer uses, so the
+            // e2e cases can pin the mode's effect rather than its spelling.
+            if(b.ocean != nullptr) {
+                line("ocean shell", fmt_dist((double)b.ocean_radius,
+                                             v, sizeof v));
+            }
         } else { line("seas", "none"); }
         // The authored relief; the MEASURED highest ground only once the
         // heavy phase has sampled the heightfield (max_height starts at 1 m).

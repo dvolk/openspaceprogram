@@ -658,6 +658,13 @@ def build_base():
                      'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,
          {'amplitude': 8000, 'sea_level': 0.0, 'sea_color': [0.0, 0.18, 0.50],
+          # The ocean shell is a 128-ring UV sphere, so its flat faces sag
+          # ~radius/13300 below sea level: ~480 m here, and the sea floor
+          # pokes through the water. The flat sea (floor clamped to sea
+          # level, terrain painted sea_color) has no waves or reflections
+          # but works at any scale. Kerbin (600 km, ~45 m of sag) keeps the
+          # shell.
+          'ocean': 'flat',
           'palette': [[0.0, [0.55, 0.50, 0.35]],
                       [0.12, [0.12, 0.42, 0.15]],
                       [0.35, [0.30, 0.42, 0.18]],

@@ -213,6 +213,24 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                         c[1].get<float>(),
                                         c[2].get<float>());
             }
+            // How the sea renders (terragen.h OceanMode). Absent = "mesh".
+            // has_sea / sea_level are resolved above, so a body that names a
+            // renderer but has no sea is a data bug like a bad mode is: the
+            // key would do nothing at all.
+            if(sv.contains("ocean")) {
+                if(!sv["ocean"].is_string()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"ocean\" must be a string");
+                }
+                if(!s.has_sea) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"ocean\" needs a sea"
+                                             " (\"has_sea\" or"
+                                             " \"surface.sea_level\")");
+                }
+                s.ocean_mode = parseOceanMode(sv["ocean"].get<std::string>(),
+                                              body->name);
+            }
             if(sv.contains("palette") && sv["palette"].is_array()) {
                 for(const nlohmann::json &stop : sv["palette"]) {
                     if(!stop.is_array() || stop.size() < 2

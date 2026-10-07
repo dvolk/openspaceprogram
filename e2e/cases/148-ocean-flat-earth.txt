@@ -1,0 +1,20 @@
+# Earth's sea renders flat ("surface.ocean": "flat" in the system JSON).
+# The ocean shell is a 128-ring UV sphere, so its flat faces sit ~radius/13300
+# below the sea-level sphere: ~45 m on Kerbin, invisible, but ~480 m on Earth,
+# where the sea floor sticks out above the water. Earth opts out and paints its
+# sea on a floor clamped to sea_level instead (terragen.h OceanMode).
+#
+# The dossier reports both the authored mode and the shell the loader actually
+# built, so this pins the effect and not just the data: a BuildOcean guard that
+# regressed and handed Earth a shell too would fail here. The two modes' math is
+# pinned in test_terrain.cpp.
+NAME ocean-flat-earth
+ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
+FORBID GL_
+FORBID error:
+# Earth's own dossier block: the "seas" fact sits a dozen lines under the body
+# header, so match from the header with a non-greedy span.
+CHECK re.search(r"\[atlas\] Earth weight=.*?seas\s+yes, \+0 m, flat sea", out, re.S)
+# Earth is the only sea body in the shipped Solar System, so a flat sea means
+# the whole system renders without a single ocean shell.
+CHECK "ocean shell" not in out
