@@ -1,15 +1,18 @@
-// test_skybox.cpp -- the system JSON "skybox" object (src/system.cpp).
+// test_skybox.cpp -- the system JSON "skybox" field (src/system.cpp).
 //
 // The star field moved from code (src/skybox.cpp used to hard-code which
 // faces to use) into the system JSON, so the sky is data: every shipped
-// system names its own, and a system switch can change it. The field is an
-// object naming all six cubemap faces, keyed by the axis each one is
-// ("+X","-X","+Y","-Y","+Z","-Z") -- keys rather than six names in GL order,
-// because a swapped pair in an array loads happily and gives a mirrored sky.
-// Pinned here:
-//   - every committed res/systems/*.json declares all six faces,
-//   - each key's image lands on ITS face (the loader reads by key, never by
-//     iteration order),
+// system names its own, and a system switch can change it. The field is a
+// DIRECTORY holding skybox_px/nx/py/ny/pz/nz.png; the loader builds the six
+// names itself in GL cubemap order, so the data cannot reorder them. (It
+// used to be an object keyed by axis; the guard against a mirrored sky moved
+// to the alignment pins in utils/skybox/skybox_common.py, which test-py runs
+// against the committed faces.) Pinned here:
+//   - every committed res/systems/*.json names a directory whose six faces
+//     resolve from here,
+//   - the loader derives them in px,nx,py,ny,pz,nz order -- skybox.cpp
+//     uploads faces[i] to GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+//   - a directory outside "res/" works, which is how a staged bake is tried,
 //   - malformed or missing faces throw: a typo in a hand-edited JSON should
 //     fail the load, not render a mystery sky.
 //
@@ -79,39 +82,45 @@ static void expect_reject(const nlohmann::json &j, const char *tag,
     std::remove(tmp.c_str());
 }
 
-// Six dummy images (tmp/), one per face, returned in GL order
-// (+X,-X,+Y,-Y,+Z,-Z). load_system only resolves names -- the GL upload is
-// Skybox::load's job, and that needs a context -- so empty files suffice.
-static std::vector<std::string> make_faces() {
+// Write a mutated system (tmp/), load it, expect success (the caller checks
+// the faces).
+static std::vector<std::string> load_mutated(const nlohmann::json &j,
+                                             const char *tag) {
     std::filesystem::create_directories("tmp");
-    std::vector<std::string> faces;
-    for(const char *axis : { "+X", "-X", "+Y", "-Y", "+Z", "-Z" }) {
-        const std::string p = std::string("tmp/test_skybox_face") + axis + ".png";
-        std::ofstream(p) << 'x';
-        faces.push_back(p);
-    }
+    const std::string tmp = std::string("tmp/test_skybox_") + tag + ".json";
+    std::ofstream(tmp) << j.dump();
+    const std::vector<std::string> faces = load_faces(tmp);
+    std::remove(tmp.c_str());
     return faces;
 }
 
-// A skybox object naming `faces` (GL order) under the six axis keys.
-static nlohmann::json face_object(const std::vector<std::string> &faces) {
-    return { { "+X", faces[0] }, { "-X", faces[1] }, { "+Y", faces[2] },
-             { "-Y", faces[3] }, { "+Z", faces[4] }, { "-Z", faces[5] } };
+// Six dummy images under tmp/, one per axis name, returned as the directory
+// name a system JSON would hold. load_system only resolves names -- the GL
+// upload is Skybox::load's job, and that needs a context -- so empty files
+// suffice. Deliberately NOT under res/: a cwd-relative skybox directory is
+// how a staged bake gets tried in game, so it must load.
+static std::string make_face_dir() {
+    const std::string dir = "tmp/test_skybox_faces";
+    std::filesystem::create_directories(dir);
+    for(const char *suff : { "px", "nx", "py", "ny", "pz", "nz" }) {
+        std::ofstream(dir + "/skybox_" + suff + ".png") << 'x';
+    }
+    return dir;
 }
 
 int main() {
-    // --- every committed system names its six faces ------------------------
+    // --- every committed system names a sky it can load --------------------
     const std::vector<std::string> slugs = list_systems("res/systems");
     check(!slugs.empty(), "res/systems lists systems");
     for(const std::string &slug : slugs) {
         const std::string path = "res/systems/" + slug + ".json";
         const nlohmann::json doc = read_json(path.c_str());
-        check(doc.contains("skybox") && doc["skybox"].is_object(),
-              ("committed system declares a skybox object: " + slug).c_str());
+        check(doc.contains("skybox") && doc["skybox"].is_string(),
+              ("committed system names a skybox directory: " + slug).c_str());
         const std::vector<std::string> faces = load_faces(path);
         // WHICH sky is the author's call (pointing a system at a staged
-        // bake must not turn `make test` red); that it names six images
-        // that resolve from here is the rule.
+        // bake must not turn `make test` red); that it resolves to six
+        // images from here is the rule.
         check(faces.size() == 6, ("six skybox faces: " + slug).c_str());
         for(const std::string &face : faces) {
             check(std::filesystem::exists(resdir::path(face)),
@@ -119,17 +128,22 @@ int main() {
         }
     }
 
-    // --- each key lands on its own face ------------------------------------
+    // --- the loader fixes the face order, not the data ---------------------
     const char *base = "res/systems/old_system.json";
     {
-        const std::vector<std::string> faces = make_faces();
+        const std::string dir = make_face_dir();
         nlohmann::json j = read_json(base);
-        j["skybox"] = face_object(faces);
-        const std::string tmp = "tmp/test_skybox_keys.json";
-        std::ofstream(tmp) << j.dump();
-        check(load_faces(tmp) == faces, "each axis key maps to its GL slot");
-        std::remove(tmp.c_str());
-        for(const std::string &p : faces) { std::remove(p.c_str()); }
+        j["skybox"] = dir;
+        const std::vector<std::string> want = { dir + "/skybox_px.png",
+            dir + "/skybox_nx.png", dir + "/skybox_py.png",
+            dir + "/skybox_ny.png", dir + "/skybox_pz.png",
+            dir + "/skybox_nz.png" };
+        check(load_mutated(j, "order") == want,
+              "six names derived in GL cubemap order");
+        // A trailing slash is the same directory, not a missing face.
+        j["skybox"] = dir + "/";
+        check(load_mutated(j, "slash") == want, "trailing slash tolerated");
+        std::filesystem::remove_all(dir);
     }
 
     // --- malformed data throws ---------------------------------------------
@@ -138,53 +152,47 @@ int main() {
         j.erase("skybox");
         expect_reject(j, "missing skybox rejected", "no \"skybox\"");
     }
-    {
+    {   // the old axis-keyed object form is gone, not quietly accepted
         nlohmann::json j = read_json(base);
-        j["skybox"] = { { "+X", "res/textures/skybox.png" } };
-        expect_reject(j, "partial face list rejected", "needs a non-empty image name");
+        j["skybox"] = { { "+X", "res/skybox/v1/skybox_px.png" },
+                        { "-X", "res/skybox/v1/skybox_nx.png" },
+                        { "+Y", "res/skybox/v1/skybox_py.png" },
+                        { "-Y", "res/skybox/v1/skybox_ny.png" },
+                        { "+Z", "res/skybox/v1/skybox_pz.png" },
+                        { "-Z", "res/skybox/v1/skybox_nz.png" } };
+        expect_reject(j, "object form rejected", "must be a directory name");
     }
-    {   // the px/nx spelling (the bake's file names) is not the key spelling
-        nlohmann::json j = read_json(base);
-        j["skybox"] = { { "px", "res/textures/skybox.png" },
-                        { "+X", "res/textures/skybox.png" },
-                        { "-X", "res/textures/skybox.png" },
-                        { "+Y", "res/textures/skybox.png" },
-                        { "-Y", "res/textures/skybox.png" },
-                        { "+Z", "res/textures/skybox.png" },
-                        { "-Z", "res/textures/skybox.png" } };
-        expect_reject(j, "unknown face key rejected", "unknown face");
-    }
-    {   // six names in GL order: rejected, not silently accepted (a swapped
-        // pair in that form would load as a mirrored sky)
+    {   // six names in GL order: never accepted (a swapped pair in that form
+        // would load as a mirrored sky)
         nlohmann::json j = read_json(base);
         j["skybox"] = nlohmann::json::array();
-        for(int i = 0; i < 6; i++) { j["skybox"].push_back("res/textures/skybox.png"); }
-        expect_reject(j, "array form rejected", "must be an object");
+        for(const char *suff : { "px", "nx", "py", "ny", "pz", "nz" }) {
+            j["skybox"].push_back(std::string("res/skybox/v1/skybox_") + suff + ".png");
+        }
+        expect_reject(j, "array form rejected", "must be a directory name");
     }
     {
         nlohmann::json j = read_json(base);
-        j["skybox"] = "res/textures/skybox.png";
-        expect_reject(j, "single-name form rejected", "must be an object");
+        j["skybox"] = "";
+        expect_reject(j, "empty directory rejected", "must be a directory name");
     }
     {
         nlohmann::json j = read_json(base);
-        j["skybox"] = { { "+X", 0 },
-                        { "-X", "res/textures/skybox.png" },
-                        { "+Y", "res/textures/skybox.png" },
-                        { "-Y", "res/textures/skybox.png" },
-                        { "+Z", "res/textures/skybox.png" },
-                        { "-Z", "res/textures/skybox.png" } };
-        expect_reject(j, "non-string face rejected", "needs a non-empty image name");
+        j["skybox"] = 0;
+        expect_reject(j, "non-string skybox rejected", "must be a directory name");
     }
     {
         nlohmann::json j = read_json(base);
-        j["skybox"] = { { "+X", "res/textures/no_such_sky.png" },
-                        { "-X", "res/textures/skybox.png" },
-                        { "+Y", "res/textures/skybox.png" },
-                        { "-Y", "res/textures/skybox.png" },
-                        { "+Z", "res/textures/skybox.png" },
-                        { "-Z", "res/textures/skybox.png" } };
+        j["skybox"] = "res/skybox/no_such_set";
+        expect_reject(j, "missing directory rejected", "does not exist");
+    }
+    {   // one face short: the directory exists, the set does not
+        const std::string dir = make_face_dir();
+        std::filesystem::remove(dir + "/skybox_nz.png");
+        nlohmann::json j = read_json(base);
+        j["skybox"] = dir;
         expect_reject(j, "missing face rejected", "does not exist");
+        std::filesystem::remove_all(dir);
     }
 
     if(g_failures == 0) { std::printf("test_skybox: OK\n"); return 0; }

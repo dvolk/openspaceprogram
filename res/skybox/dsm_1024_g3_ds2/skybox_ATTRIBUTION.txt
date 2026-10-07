@@ -1,0 +1,3 @@
+skybox_px/nx/py/ny/pz/nz.png are baked by utils/skybox/make_skybox.py
+from NASA's Deep Star Maps 2020 (https://svs.gsfc.nasa.gov/4851/) --
+public domain, credit requested.

@@ -30,9 +30,9 @@ struct System {
     TerrainBody *home;      // calendar + default spawn body (JSON "home")
 
     // The star field: six cubemap face names in GL order (+X,-X,+Y,-Y,+Z,-Z),
-    // from the JSON "skybox" object -- which keys them BY axis, so the order
-    // is the loader's, not the data's. Required: every shipped system names
-    // its own sky (see src/system.cpp).
+    // derived by the loader from the JSON "skybox" directory -- it names the
+    // six files, so the order is the loader's, not the data's. Required:
+    // every shipped system names its own sky (see src/system.cpp).
     std::vector<std::string> skybox_faces;
 
     // Debris belts from the root "belts" array, drawn on the orbital maps

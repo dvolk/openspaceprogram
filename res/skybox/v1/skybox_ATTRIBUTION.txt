@@ -1,0 +1,4 @@
+skybox_px/nx/py/ny/pz/nz.png are six copies of the placeholder star field
+that shipped as res/textures/skybox.png before the Deep Star Maps bakes
+(1024x1024, author unknown). Kept as "v1" because old_system.json and
+ksp_system.json still load it.

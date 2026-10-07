@@ -60,49 +60,38 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     } cleanup{ sys.bodies };
 
     // --- the star field (JSON "skybox") -----------------------------------
-    // Six cubemap faces, each named by the axis it is: an object keyed
-    // "+X","-X","+Y","-Y","+Z","-Z". The keys are the point -- a bare array
-    // in GL order (+X,-X,+Y,-Y,+Z,-Z) loads fine when two faces are swapped,
-    // which is a mirrored sky rather than an error. The sky belongs to the
-    // system, so switching systems can change it (Game::switchSystem
-    // re-loads these faces).
-    static constexpr const char *kFaceKeys[6]
-        = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
+    // A DIRECTORY holding skybox_px/nx/py/ny/pz/nz.png. The loader builds the
+    // six names itself, in GL cubemap order, so the data cannot reorder them:
+    // the only way to end up with a mirrored sky is to put the wrong image at
+    // the wrong name, and the alignment pins in utils/skybox/skybox_common.py
+    // catch that (test-py runs them against the committed set). The sky
+    // belongs to the system, so switching systems can change it
+    // (Game::switchSystem re-loads these faces).
+    static constexpr const char *kFaceSuffs[6]
+        = { "px", "nx", "py", "ny", "pz", "nz" };
     if(!doc.contains("skybox")) {
         throw std::runtime_error(std::string("system: no \"skybox\" in ") + path
-                + " -- name all six faces, e.g. {\"+X\": \"res/textures/skybox.png\", "
-                "\"-X\": ..., \"+Y\": ..., \"-Y\": ..., \"+Z\": ..., \"-Z\": ...}");
+                + " -- name a directory holding skybox_px/nx/py/ny/pz/nz.png, "
+                "e.g. \"res/skybox/v1\"");
     }
     const nlohmann::json &sb = doc["skybox"];
-    if(!sb.is_object()) {
-        throw std::runtime_error(std::string("system: \"skybox\" must be an "
-                "object keyed by +X,-X,+Y,-Y,+Z,-Z"));
+    if(!sb.is_string() || sb.get<std::string>().empty()) {
+        throw std::runtime_error(std::string("system: \"skybox\" must be a "
+                "directory name, e.g. \"res/skybox/v1\""));
     }
-    for(const char *key : kFaceKeys) {
-        if(!sb.contains(key) || !sb[key].is_string()
-           || sb[key].get<std::string>().empty()) {
-            throw std::runtime_error(std::string("system: \"skybox\" needs a "
-                    "non-empty image name under \"") + key + "\"");
-        }
-        sys.skybox_faces.push_back(sb[key].get<std::string>());
-    }
-    for(const auto &kv : sb.items()) {
-        const std::string &key = kv.key();
-        if(std::find(std::begin(kFaceKeys), std::end(kFaceKeys), key)
-           == std::end(kFaceKeys)) {
-            throw std::runtime_error(std::string("system: \"skybox\" has "
-                    "unknown face \"") + key + "\" (expected +X,-X,+Y,-Y,+Z,-Z)");
-        }
-    }
-    // Resolve the names here: resdir::path is what Skybox::load opens with,
-    // so the check and the open agree -- which also means a name outside
-    // "res/" is cwd-relative.
-    for(const std::string &face : sys.skybox_faces) {
+    std::string dir = sb.get<std::string>();
+    if(dir.back() == '/') { dir.pop_back(); }
+    // Resolve with resdir::path here: it is what Skybox::load opens with, so
+    // the check and the open agree -- which also means a directory outside
+    // "res/" (a staging/ bake under test) is cwd-relative.
+    for(const char *suff : kFaceSuffs) {
+        std::string face = dir + "/skybox_" + suff + ".png";
         std::error_code ec;
         if(!std::filesystem::exists(resdir::path(face), ec)) {
             throw std::runtime_error("system: \"skybox\" face '" + face
                                      + "' does not exist");
         }
+        sys.skybox_faces.push_back(face);
     }
 
     // --- debris belts (JSON "belts") --------------------------------------

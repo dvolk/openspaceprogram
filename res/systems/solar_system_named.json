@@ -2,14 +2,7 @@
   "home": "Earth",
   "soi_law": "hill",
   "epoch_year": 2000,
-  "skybox": {
-    "+X": "res/textures/skybox.png",
-    "-X": "res/textures/skybox.png",
-    "+Y": "res/textures/skybox.png",
-    "-Y": "res/textures/skybox.png",
-    "+Z": "res/textures/skybox.png",
-    "-Z": "res/textures/skybox.png"
-  },
+  "skybox": "res/skybox/dsm_1024_g3_ds2",
   "belts": [
     {
       "name": "asteroid belt",

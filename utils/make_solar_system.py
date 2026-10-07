@@ -797,8 +797,10 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
     # epoch_year 2000: the fact-sheet elements (and our derived orbital
     # phases) are J2000-referenced, so the calendar clock matches the sky.
     doc = {'home': 'Earth', 'soi_law': 'hill', 'epoch_year': 2000,
-           'skybox': {k: 'res/textures/skybox.png'
-                      for k in ('+X', '-X', '+Y', '-Y', '+Z', '-Z')},
+           # A directory of skybox_{px,nx,py,ny,pz,nz}.png (src/system.cpp).
+           # The real sky for the real Solar System: Deep Star Maps 2020 at
+           # gain 3.0 (see res/skybox/dsm_1024_g3_ds2/skybox_params.json).
+           'skybox': 'res/skybox/dsm_1024_g3_ds2',
            # Debris belts (root "belts", src/system.cpp): named annuli around
            # the Sun, drawn on the Tracking map. Same entry shape as a body's
            # surface.rings band. The real main belt (2.1..3.3 AU) and Kuiper

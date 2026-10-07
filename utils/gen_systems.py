@@ -82,11 +82,7 @@ eerbon = {
     "home": "Eerbon",
     "soi_law": "patched_conic",
     "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
-    "skybox": {   # six cubemap faces, keyed by axis (src/system.cpp)
-        "+X": "res/textures/skybox.png", "-X": "res/textures/skybox.png",
-        "+Y": "res/textures/skybox.png", "-Y": "res/textures/skybox.png",
-        "+Z": "res/textures/skybox.png", "-Z": "res/textures/skybox.png",
-    },
+    "skybox": "res/skybox/v1",   # a directory of skybox_{px,nx,py,ny,pz,nz}.png
     "bodies": [
         {
             "name": "Sun",
@@ -397,11 +393,7 @@ ksp = {
     "home": "Kerbin",
     "soi_law": "patched_conic",
     "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
-    "skybox": {   # six cubemap faces, keyed by axis (src/system.cpp)
-        "+X": "res/textures/skybox.png", "-X": "res/textures/skybox.png",
-        "+Y": "res/textures/skybox.png", "-Y": "res/textures/skybox.png",
-        "+Z": "res/textures/skybox.png", "-Z": "res/textures/skybox.png",
-    },
+    "skybox": "res/skybox/v1",   # a directory of skybox_{px,nx,py,ny,pz,nz}.png
     # Debris belts (root "belts", src/system.cpp): named annuli around Kerbol,
     # drawn on the Tracking map. Same entry shape as a body's surface.rings
     # band. Radii [m] from Kerbol, placed against THIS system's planets rather

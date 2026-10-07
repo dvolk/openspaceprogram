@@ -444,14 +444,16 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
 # invariant + the sci_dist moon-home warning + committed science-field
-# invariants on every shipped system + skybox face pins when staged faces
-# exist (no EXRs needed).
+# invariants on every shipped system + the skybox alignment pins against the
+# COMMITTED faces (no EXRs needed). Those pins are what catch a face set
+# whose images sit under the wrong axis names -- the system JSON names a
+# directory, so the file names carry the face identity.
 .PHONY: test-py
 test-py:
 	python3 utils/sci_phase.py
 	python3 utils/sci_dist.py --self-test
 	python3 utils/sci_dist.py --check res/systems/*.json
-	[ ! -f tmp/newskybox/skybox_px.png ] || python3 utils/make_skybox.py --verify
+	python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2
 
 # E2E battery (e2e/run.py). Headless via xvfb-run when no display.
 # JOBS=N overrides parallel cases (default 2).

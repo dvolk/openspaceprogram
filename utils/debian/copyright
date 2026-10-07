@@ -6,6 +6,12 @@ Files: res/*
 Copyright: 2024-2026 Open Space Program contributors
 License: CC-BY-SA-3.0
 
+# Provenance note, not a separate licence: res/skybox/dsm_1024_g3_ds2/ is
+# baked from NASA's Deep Star Maps 2020 (public domain). The CC-BY-SA claim
+# above covers our bake -- the composite and tone-map choices -- and cannot
+# cover the star field itself, which anyone may take from NASA unencumbered.
+# See res/skybox/dsm_1024_g3_ds2/skybox_ATTRIBUTION.txt.
+
 Files: *
 Copyright: 2024-2026 Denis Volk
 License: AGPL-3.0

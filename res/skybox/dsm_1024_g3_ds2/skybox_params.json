@@ -1,0 +1,1 @@
+{"cmd": "python3 utils/skybox/make_skybox.py --size 1024 --gain 3.0 --ds 2", "size": 1024, "gain": 3.0, "ds": 2}
