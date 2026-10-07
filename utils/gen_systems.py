@@ -403,12 +403,15 @@ ksp = {
     #   asteroid belt: the Duna..Dres gap (Duna apoapsis 21.8 Gm, Dres
     #     periapsis 34.9 Gm), so it sits between the last rocky planet and the
     #     belt dwarf rather than swallowing Dres.
-    #   Kuiper belt: from just outside Jool's apoapsis (72.2 Gm) to past
-    #     Eeloo's (113.6 Gm) -- Eeloo's 66.7..113.6 Gm orbit crosses it, the
-    #     way Pluto crosses the classical Kuiper belt.
+    #   Kuiper belt: starts just inside Eeloo's apoapsis (113.6 Gm) and reaches
+    #     past it, so Eeloo's 66.7..113.6 Gm ellipse grazes the inner edge the
+    #     way Neptune sits on our Kuiper edge with Pluto dipping in. A band
+    #     starting well inside the outermost orbit (72 Gm, just past Jool)
+    #     reads as that orbit's own neighbourhood, not the far edge of the
+    #     system. tests/test_belts.cpp pins the graze.
     "belts": [
         {"name": "asteroid belt", "inner": 2.4e10, "outer": 3.3e10},
-        {"name": "Kuiper belt", "inner": 7.2e10, "outer": 1.4e11},
+        {"name": "Kuiper belt", "inner": 1.08e11, "outer": 1.8e11},
     ],
     "bodies": [
         ksp_body(*row) for row in K
