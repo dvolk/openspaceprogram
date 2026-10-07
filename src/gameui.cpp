@@ -4521,9 +4521,13 @@ void dumpAtlas(Game &g) {
    disagree with the picture. */
 void dumpMapBasis(Game &g) {
     Vehicle *ship = g.ship;
-    if(!ship || !ship->m_parent || !ship->m_parent->frame) { return; }
+    if(!ship || !ship->m_parent || !ship->m_parent->frame) {
+        // Say so: a silent no-op reads as "the map has no basis to report".
+        printf("[mapdump] no active ship, nothing to dump\n");
+        fflush(stdout);
+        return;
+    }
     Frame *focus_frame = ship->m_parent->frame;
-    const double now_ms = (double)(SDL_GetTicks() - g.loop_start_ms);
     static const int kSlots[] = { kRefEquator, kRefEcliptic, kRefOrbit };
     for(const int slot : kSlots) {
         glm::dvec3 plane_n, plane_x;
@@ -4535,11 +4539,13 @@ void dumpMapBasis(Game &g) {
            screen in every slot (#181). +1 here means that slot draws the sweep
            the other way from the others. */
         const double sweep = glm::dot(glm::cross(m.n, m.e1), m.e2);
+        // Sim time, like [orbitlog] / [orbinfo]: a CHECK that filters on t=
+        // must mean the same instant across the logs.
         printf("[mapdump] t=%.1fs slot=%s n=(%.6f,%.6f,%.6f) e1=(%.6f,%.6f,%.6f) "
                "e2=(%.6f,%.6f,%.6f) sweep=%+d\n",
-               now_ms / 1000.0, refPlaneName(slot),
+               g.time, refPlaneName(slot),
                m.n.x, m.n.y, m.n.z, m.e1.x, m.e1.y, m.e1.z,
-               m.e2.x, m.e2.y, m.e2.z, sweep >= 0.0 ? 1 : -1);
+               m.e2.x, m.e2.y, m.e2.z, sweep > 0.0 ? 1 : -1);
     }
     fflush(stdout);
 }

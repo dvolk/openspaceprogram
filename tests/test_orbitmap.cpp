@@ -30,14 +30,30 @@ static void expect_close(double got, double want, double tol, const char *what) 
 
 /* The sweep sense (#181). A prograde body moves along n x r_hat, so at +e1 its
    screen velocity is (n x e1) read on (e1, e2): it must come out (0, -1) --
-   counter-clockwise -- for every path that builds the basis FROM the normal.
-   Equivalent to e1 x e2 = -n, but stated as the thing a player can see. The
-   derived path used e2 = n x e1, so an inclined ship's Orbital view swept the
-   other way from its own Equatorial view: same orbit, mirrored, one combo
-   click apart. */
+   counter-clockwise -- for every path through setPlane. Equivalent to
+   e1 x e2 = -n, but stated as the thing a player can see. The derived path
+   used e2 = n x e1, so an inclined ship's Orbital view swept the other way
+   from its own Equatorial view: same orbit, mirrored, one combo click apart.
+   The first line is the orthogonality half -- note it must be dot(n, e1), NOT
+   dot(cross(n, e1), e1), which is identically zero for any pair of vectors and
+   would test nothing. */
 static void expect_sweep(const OrbitMap &s, const char *what) {
-    expect_near(glm::dot(glm::cross(s.n, s.e1), s.e1), 0.0, what);
+    expect_near(glm::dot(s.n, s.e1), 0.0, what);
     expect_near(glm::dot(glm::cross(s.n, s.e1), s.e2), -1.0, what);
+}
+
+/* The same claim, SIGN only. The canonical branch keeps a FIXED basis rather
+   than one built from n, so e1 is not exactly in-plane unless the normal is
+   exactly +-Y: Venus's pole sits 0.85 deg off -Y, which leaves 0.9989 of the
+   sweep and 0.015 of e1 out of the plane. That is the branch working as
+   designed, not a defect, so what gets pinned here is the thing a player
+   actually sees -- which way the orbit travels. */
+static void expect_sweep_sign(const OrbitMap &s, const char *what) {
+    const double sw = glm::dot(glm::cross(s.n, s.e1), s.e2);
+    if(sw >= 0.0) {
+        std::printf("FAIL %s: sweep %+.6f, want negative\n", what, sw);
+        ++g_failures;
+    }
 }
 
 int main() {
@@ -171,9 +187,31 @@ int main() {
         s.setPlane(glm::dvec3(0.0, 1.0, 0.0));
         expect_near(s.e1.x, 1.0, "canonical +Y e1 x");
         expect_near(s.e2.z, 1.0, "canonical +Y e2 z");
+        expect_sweep(s, "canonical +Y sweep");
+        /* Below the rail plane the fixed basis keeps its axes but flips e2's
+           SIGN, so the handedness still reads -n. Venus is the shipped case:
+           it spins retrograde, so an equatorial bed's h (the Orbital slot's
+           normal) is ~-Y and lands here, while the Equatorial slot pins its
+           basis to the focus +X. Before the sign followed n, those two slots
+           drew the SAME plane with mirrored sweeps -- the #181 symptom again,
+           found by --map-dump rather than by an eyeball. */
         s.setPlane(glm::dvec3(0.0, -1.0, 0.0));
         expect_near(s.e1.x, 1.0, "canonical -Y e1 x");
-        expect_near(s.e2.z, 1.0, "canonical -Y e2 z");
+        expect_near(s.e2.z, -1.0, "canonical -Y e2 z");
+        expect_sweep(s, "canonical -Y sweep");
+    }
+    {
+        /* Venus-shaped focus: pole ~ -Y (177 deg tilt), ship in an equatorial
+           bed, so the Equatorial and Orbital slots share one normal and take
+           different paths (pinned vs canonical). They must agree on the sweep.
+           Numbers from --map-dump on solar_system. */
+        const glm::dvec3 pole(-0.014899, -0.998939, 0.043584);
+        OrbitMap eq, ob;
+        eq.setPlane(pole, glm::dvec3(1, 0, 0));
+        ob.setPlane(pole);
+        expect_near(glm::dot(eq.n, ob.n), 1.0, "venus slots share the normal");
+        expect_sweep(eq, "venus Equatorial sweep");
+        expect_sweep_sign(ob, "venus Orbital sweep");
     }
     {
         // The map's real call: an equatorial plane (Kerbin's pole, from

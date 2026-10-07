@@ -35,7 +35,9 @@ struct OrbitMap {
     // Handedness, the same on all three paths below: e2 = e1 x n, so e1 x e2
     // = -n and a prograde body (which moves along n x r_hat) sits at +e1
     // moving along -e2 -- counter-clockwise on screen, whichever plane is
-    // showing. Pinned by test_orbitmap; #181 was the derived path breaking it.
+    // showing. Pinned by test_orbitmap; #181 was the derived path breaking it,
+    // and the canonical branch breaks it for any normal below the rail plane
+    // (a retrograde spin, or a retrograde orbit) unless e2 follows n's sign.
     void setPlane(const glm::dvec3 &normal,
                   const glm::dvec3 &x_axis = glm::dvec3(0.0)) {
         n = glm::normalize(normal);
@@ -48,8 +50,17 @@ struct OrbitMap {
             return;
         }
         if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
+            // Fixed screen basis (see above), but e2 still follows the sign of
+            // n so e1 x e2 = -n holds here too: e1 x n = X x (0,+-1,0) = +-Z.
+            // Venus spins retrograde (pole ~ -Y), so its Orbital slot lands on
+            // this branch with n ~ -Y and drew the sweep the other way from its
+            // own Equatorial slot -- the #181 symptom, caught by --map-dump.
+            // Safe to branch on the sign: a normal cannot get from +Y to -Y
+            // without passing |n.y| < 0.99, which takes the derived branch, so
+            // this never mirrors a picture mid-slew.
             e1 = glm::dvec3(1.0, 0.0, 0.0);
-            e2 = glm::dvec3(0.0, 0.0, 1.0);
+            e2 = n.y < 0.0 ? glm::dvec3(0.0, 0.0, -1.0)
+                           : glm::dvec3(0.0, 0.0, 1.0);
         } else {
             // Derived basis: the node line between the plane and the rail
             // plane as screen-x. Same e2 = e1 x n as the two paths above, so

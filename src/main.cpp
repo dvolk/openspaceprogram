@@ -1341,14 +1341,6 @@ int main(int argc, char **argv)
             game.atlasDumpFired = true;
             dumpAtlas(game);
         }
-        /* --map-dump: the orbit map's plane basis per combo slot. Needs a
-           ship (the Orbital slot is the ship's own plane), so unlike the atlas
-           dump it is a no-op before one exists. */
-        if(game.mapDumpMs >= 0 && !game.mapDumpFired
-           && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.mapDumpMs) {
-            game.mapDumpFired = true;
-            dumpMapBasis(game);
-        }
         /* --switch-system: the headless hook for the in-process system switch
            (Game::switchSystem). Before the scene is read, since it tears the
            current system down and lands on the Title screen -- the only
@@ -1454,6 +1446,18 @@ int main(int argc, char **argv)
             // The 3D pass: the world + active ship (flight), or the
             // physics-free build tree (Vab).
             sc.draw3d(game);
+
+            /* --map-dump: the orbit map's plane basis per combo slot, AFTER
+               the 3D pass -- draw3d is what fills Game::view (updateShipView),
+               and the Orbital slot is the ship's own plane. Dumped before it,
+               the view is still zero and the slot silently reports the rail
+               normal with a perfectly plausible sweep sign. Needs a ship, so
+               unlike the atlas dump it is a no-op in the VAB. */
+            if(game.mapDumpMs >= 0 && !game.mapDumpFired
+               && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.mapDumpMs) {
+                game.mapDumpFired = true;
+                dumpMapBasis(game);
+            }
 
             /*
               ImGui stuff below

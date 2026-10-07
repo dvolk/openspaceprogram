@@ -63,6 +63,11 @@ static const double eerbon_radius = 600000.0;
 static const double eerbon_mu = 3.5316000e12;
 static const double moon_radius = 200000.0;
 static const double moon_mu = 6.5138398e10;
+// Eerbon's axial tilt (Kerbin's value, folded into the rot frame's
+// initial_orient by load_system). File scope because the rail-vs-equatorial
+// bed check needs cos() of it, and a hand-copied decimal there would burn
+// tolerance for no reason.
+static const double eerbon_tilt = 0.40910517666747087;
 
 // Real tree / SOIs / body data from setup_frames() + body setup in main.cpp.
 static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_rot,
@@ -106,8 +111,7 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
        spawn_vehicle when it fed a root-frame faceAlong to placeShipAtCom
        as if it were frame-local. */
     {
-        const double tilt = 0.40910517666747087;
-        const double ct = std::cos(tilt), st = std::sin(tilt);
+        const double ct = std::cos(eerbon_tilt), st = std::sin(eerbon_tilt);
         eerbon_rot->initial_orient = glm::dmat3(
             glm::dvec3(ct, -st, 0.0),
             glm::dvec3(st,  ct, 0.0),
@@ -389,10 +393,14 @@ int main() {
             } else {
                 snprintf(buf, sizeof buf, "%s: rail bed sits off the pole by the axial tilt (dot %.6f)",
                          c.desc, dn);
-                CHECK_TRUE(std::fabs(dn - 0.9174770) < 1e-5, buf);
+                CHECK_TRUE(std::fabs(dn - std::cos(eerbon_tilt)) < 1e-9, buf);
             }
-            // Circular either way: vhat must be orthogonal to rhat, which is
-            // what the normalize buys when the body's own orbit is inclined.
+            /* Circular, either way -- a sanity check on THIS fixture's state,
+               not on spawn_vehicle (the test builds no Vehicle). It catches a
+               wrong speed or a vhat not perpendicular to rhat in the mirror.
+               It does NOT cover the normalize in spawn_vehicle: that only
+               matters when the home body's own orbit is inclined, which the
+               Eeloo block below pins directly. */
             const glm::dvec3 lp = glm::transpose(c.bodyFrame->root_orient) * (worldPos - center);
             const glm::dvec3 lv = glm::transpose(c.bodyFrame->root_orient) * velWorld;
             const OrbitElements oe = computeOrbitElements(lp, lv, c.mu);
