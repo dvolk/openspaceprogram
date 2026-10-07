@@ -595,6 +595,19 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Skip the planetary ring annuli (debug: see the planet and "
                  "its depth without the rings)");
 
+    app.add_option("--sky-dim", args.sky_dim,
+                   "Star-field exposure prototype: the gain the sky fades to "
+                   "while the sun is in view and the camera is in sunlight "
+                   "(0..1; 1 = no fade, 0 = the stars vanish)")
+        ->check(CLI::Range(0.0f, 1.0f));
+    app.add_option("--sky-dim-cone", args.sky_dim_cone,
+                   "Half-angle [deg] of the \"sun in view\" cone behind "
+                   "--sky-dim; the fade runs out by 2.5x that angle")
+        ->check(CLI::Range(1.0f, 179.0f));
+    app.add_flag("--sky-dim-log", args.sky_dim_log,
+                 "Print the star-field fade's inputs once a second "
+                 "(sun angle off the view axis, in-view and lit factors, gain)");
+
     // it's like a google maps link
     app.add_option("--free-cam-pos", args.free_cam_pos,
                    "Start in the free camera at this world position: X Y Z "

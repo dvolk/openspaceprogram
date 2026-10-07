@@ -432,6 +432,17 @@ struct Game {
     bool draw_starfield = true;
     bool draw_skylines = false;
 
+    // Star-field exposure prototype (render.cpp skyGain): the gain the sky
+    // fades to while the sun is in view and the camera is in sunlight, and the
+    // half-angle of that "in view" cone. sky_dim = 1 disables the fade.
+    float sky_dim = 0.25f;
+    float sky_dim_cone = 25.0f;   // deg: half-angle of the "sun in view" cone
+    // Live fade amount (0..1), low-passed in wall-clock seconds. Both inputs
+    // are binary tests, so without this the sky steps instead of ramping.
+    double sky_fade = 0.0;
+    Uint32 sky_fade_last_ms = 0;
+    Uint32 sky_dim_log_last_ms = 0;   // --sky-dim-log cadence stamp
+
     // --- control-axis flips (the Settings window writes, tick.cpp reads) --
     // Each inverts one manual attitude axis away from the default (see tick.cpp).
     bool flip_pitch = false;

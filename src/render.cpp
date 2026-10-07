@@ -1,6 +1,7 @@
 // render.cpp -- the 3D render pass (see render.h).
 #include "render.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <cstdlib>
@@ -193,6 +194,86 @@ void updateShipView(Game &g) {
     latitude = asin(dir.y);
 }
 
+/* Prototype: fake exposure for the star field. The sky is authored in the same
+   8-bit space as the sun's disk and the pipeline has no HDR headroom, so the
+   brightest stars land at the same value as the star itself. Fade the sky
+   toward g.sky_dim while BOTH hold:
+     - the sun is inside a cone of half-angle g.sky_dim_cone around the view
+       axis. Keyed on a fixed angle rather than the frustum, so it does not pop
+       as the sun crosses a frame edge; the sun's angular radius joins the
+       angle, so a sun that fills the screen counts however it moves;
+     - the ship is in sunlight, by the same ray the hull's shading uses.
+   g.sky_dim >= 1 disables it. Deliberately crude: an HDR target plus a tone map
+   would get this right (and for the terrain too), but this is cheap enough to
+   judge the LOOK before committing to that. */
+static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
+                     TerrainBody *localBody, const glm::dvec3 &lit_at) {
+    if(g.sky_dim >= 1.0f) { return 1.0f; }
+    const glm::dvec3 cam_p = camera->GetPos();
+    const glm::dvec3 sun_p = sun->frame->GetPositionRelTo(rf);
+    const double sun_d = glm::length(sun_p - cam_p);
+    if(sun_d <= 0.0) { return 1.0f; }   // inside the star: nothing to fade to
+    const glm::dvec3 sun_dir = (sun_p - cam_p) / sun_d;
+
+    // Smooth 1 -> 0 as x rises from lo to hi.
+    auto fade = [](double lo, double hi, double x) {
+        const double t = std::clamp((hi - x) / (hi - lo), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    };
+    // Angle from the view axis to the sun's NEAR limb, so a wide sun is "in
+    // view" well before its centre reaches the cone.
+    const double axl = std::acos(std::clamp(glm::dot(sun_dir,
+                                                    glm::normalize(camera->GetForward())),
+                                            -1.0, 1.0));
+    const double limb = axl - std::asin(std::clamp(sun->radius / sun_d, 0.0, 1.0));
+    // Game stores the cone in degrees (the CLI and Settings units).
+    const double cone = glm::radians((double)g.sky_dim_cone);
+    const double in_view = fade(cone, cone * 2.5, limb);
+
+    // "The ship is lit": the SAME ray the hull's own shading uses
+    // (ComputeTerrainShadow, terrain.cpp: sphere reject, then a march of the
+    // sun ray against the analytic height field), so the sky fades exactly when
+    // the parts flip to night. A hemisphere test through the body's centre is
+    // NOT the visible horizon: from 100 km over Kerbin the limb sits 31 deg
+    // below the terminator plane, so the sun is plainly in view while that test
+    // still calls the ship unlit -- the "sun coming up, no dim" case.
+    // Sampled at the ship's COM (NOT the frame origin: off-rails the ship's
+    // frame sits at its parent's centre and the position lives in `com`),
+    // falling back to the camera with no ship (SpaceCenter / title).
+    double lit = 1.0;
+    if(localBody && localBody->frame) {
+        lit = ComputeTerrainShadow(localBody, rf, lit_at, sun) > 0.5f ? 1.0 : 0.0;
+    }
+    // Both inputs are hard tests -- the raycast returns lit or shadowed, the
+    // cone test snaps as you turn -- so low-pass the whole fade. Wall-clock
+    // seconds, like the camera shake above: a sim-time constant would race at
+    // high time accel and still step at 1x. tau is a compromise between a
+    // terminator crossing (want it gradual) and turning to face the sun (want
+    // it to keep up).
+    const double target = in_view * lit;
+    const Uint32 now_ms = SDL_GetTicks();
+    const double frame_dt = (now_ms - g.sky_fade_last_ms) * 0.001;
+    g.sky_fade_last_ms = now_ms;
+    const double tau = 0.4;
+    const double alpha = frame_dt > 0.0 ? 1.0 - std::exp(-frame_dt / tau) : 1.0;
+    g.sky_fade += alpha * (target - g.sky_fade);
+    const double t = g.sky_fade;
+    const float gain = (float)(1.0 + (g.sky_dim - 1.0) * t);
+    // --sky-dim-log: the fade's inputs, so the look can be tuned from the
+    // command line instead of by eye alone. Wall-clock cadence: a sim-second
+    // cadence would print a thousand lines a second at high time accel, and
+    // the ramp below is measured in wall-clock seconds.
+    if(g.args.sky_dim_log && now_ms - g.sky_dim_log_last_ms >= 200) {
+        g.sky_dim_log_last_ms = now_ms;
+        std::printf("[skydim] t=%.1fs sun_off=%.1f limb=%.1f in_view=%.2f "
+                    "lit=%.2f fade=%.2f gain=%.3f\n", g.time,
+                    axl * 180.0 / std::numbers::pi,
+                    limb * 180.0 / std::numbers::pi, in_view, lit, t, gain);
+        std::fflush(stdout);
+    }
+    return gain;
+}
+
 void draw3d(Game &g) {
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
@@ -287,7 +368,9 @@ void draw3d(Game &g) {
     if(g.draw_starfield) {
         glDepthMask(GL_FALSE);
         glDisable(GL_DEPTH_TEST);
-        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(rf));
+        g.skybox->Draw(camera, g.skyboxshader, sun->frame->GetOrientRelTo(rf),
+                       skyGain(g, rf, sun, camera, localBody,
+                               ship ? com : camera->GetPos()));
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
     }

@@ -314,7 +314,7 @@ int main(int argc, char **argv)
 
     Shader *skyboxshader = get_shader("res/shaders/skyboxShader",
                                       { "position" },
-                                      { "projectionview" });
+                                      { "projectionview", "gain" });
 
     Shader *lineshader = get_shader("res/shaders/lineShader2",
                                     { "position" },
@@ -957,6 +957,11 @@ int main(int argc, char **argv)
     // Stamped on the game: the sim-event emitter (events.cpp) and the
     // timeout check below both measure "ms since the loop started" from it.
     game.loop_start_ms = SDL_GetTicks();
+
+    // Star-field exposure prototype: the CLI seeds it, the Settings window
+    // edits it live, render.cpp's skyGain reads it per frame.
+    game.sky_dim = args.sky_dim;
+    game.sky_dim_cone = args.sky_dim_cone;
 
     // The headless VAB hooks are stamped on the game too, so the code that
     // fires them lives with the editor (vabFireHooks / vabUpdate) rather

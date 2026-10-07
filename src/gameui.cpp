@@ -385,6 +385,8 @@ void drawUIReadouts(Game &g) {
     bool &world_drawing = g.world_drawing;
     bool &draw_starfield = g.draw_starfield;
     bool &draw_skylines = g.draw_skylines;
+    float &sky_dim = g.sky_dim;
+    float &sky_dim_cone = g.sky_dim_cone;
     // The Settings window writes these; tick.cpp reads.
     bool &flip_pitch = g.flip_pitch;
     bool &flip_yaw = g.flip_yaw;
@@ -572,6 +574,12 @@ void drawUIReadouts(Game &g) {
         ImGui::Checkbox("World draw", &world_drawing);
         ImGui::Checkbox("Starfield", &draw_starfield);
         ImGui::Checkbox("Reference circles", &draw_skylines);
+        // Prototype (render.cpp skyGain): how far the stars fade while the sun
+        // is in view and the camera is in sunlight. 1 = no fade. Live, so the
+        // look can be judged without a restart.
+        ImGui::SliderFloat("Sky dim", &sky_dim, 0.0f, 1.0f, "%.2f");
+        // Half-angle of the "sun in view" cone (same units as --sky-dim-cone).
+        ImGui::SliderFloat("Sky dim cone", &sky_dim_cone, 1.0f, 179.0f, "%.0f");
         // Post-processing: one checkbox per effect (the passes run in this
         // order); an effect that exposes parameters also gets a slider per
         // parameter (range + neutral value from the effect's definition).

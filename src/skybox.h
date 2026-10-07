@@ -27,7 +27,10 @@ struct Skybox {
     // a hand-editable system JSON, so a bad sky is data, not an invariant.
     void load(const std::vector<std::string> &faces);
 
-    void Draw(const Camera * camera, Shader * shader, const glm::dmat3 &skyRot);
+    // `gain` fades the whole star field (1.0 = as authored); render.cpp
+    // drives it from the sun's position in view. See skyboxShader.fs.
+    void Draw(const Camera * camera, Shader * shader, const glm::dmat3 &skyRot,
+              float gain);
 
     unsigned int vao = 0, vbo = 0, cubemap = 0;   // really GLuint (texture.h)
 };

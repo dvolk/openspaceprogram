@@ -168,7 +168,8 @@ void Skybox::load(const std::vector<std::string> &faces) {
 }
 
 void Skybox::Draw(const Camera * camera,
-                  Shader * skyboxShader, const glm::dmat3 &skyRot) {
+                  Shader * skyboxShader, const glm::dmat3 &skyRot,
+                  float gain) {
     const glm::dmat4 view = camera->GetView();
     // The cubemap is at rest in the root (inertial) frame; skyRot maps
     // root -> ship frame so the starfield drifts with the ship's rotation.
@@ -178,6 +179,7 @@ void Skybox::Draw(const Camera * camera,
 
     skyboxShader->Bind();
     skyboxShader->setUniform_mat4(0, projection * _view);
+    skyboxShader->setUniform_vec1("gain", gain);
 
     glBindVertexArray(vao);
     glActiveTexture(GL_TEXTURE0);

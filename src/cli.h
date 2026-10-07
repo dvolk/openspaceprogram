@@ -146,6 +146,13 @@ struct GameArgs {
     bool no_ocean = false;        // --no-ocean
     bool no_rings = false;        // --no-rings
 
+    // Star-field exposure prototype (render.cpp skyGain). --sky-dim is the
+    // gain the sky fades to with the sun in view (1 = off); --sky-dim-cone is
+    // the half-angle of that cone in degrees.
+    float sky_dim = 0.25f;
+    float sky_dim_cone = 25.0f;
+    bool sky_dim_log = false;     // --sky-dim-log: the fade's inputs, 1/s
+
     std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
