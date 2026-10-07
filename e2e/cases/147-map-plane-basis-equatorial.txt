@@ -1,0 +1,32 @@
+# The Orbital slot pins its screen-x to the focus frame's +X, like the
+# Equatorial slot already did (#185).
+#
+# Kerbin on an EQUATORIAL bed (#182), where the ship's h IS the focus pole: the
+# Equatorial and Orbital slots then describe literally the same plane, so this
+# is one plane drawn by two slots that must agree, not two unrelated views.
+# Before, Orbital derived its basis from the node line and drew that plane
+# turned 58.8 deg from its own Equatorial view; and as h approached the rail
+# normal (any near-equatorial inclination change) the derived basis handed over
+# to the canonical one 90 deg away, snapping the whole map a quarter turn at
+# 8.13 deg. tmp/t185jump.cpp measured both.
+NAME map-plane-basis-equatorial
+ARGS --time-accel 1 --timeout 6 --map-dump 2500 --startship racer,res/ships/racer.json,Kerbin,rot-orbit-eq
+FORBID GL_
+FORBID error:
+CHECK len(mapb) == 3
+CHECK [r["slot"] for r in mapb] == ["equ", "ecl", "orb"]
+CHECK all(r["sweep"] == -1 for r in mapb)
+CHECK all(abs(sum(a*a for a in r["e1"]) - 1.0) < 1e-5 for r in mapb)
+CHECK all(abs(sum(a*b for a,b in zip(r["n"], r["e1"]))) < 1e-5 for r in mapb)
+# One plane, two slots: same normal, and now the same basis, so switching the
+# combo between Equatorial and Orbital draws an identical picture.
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-6
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-6
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-6
+# The basis is the focus +X projected into the plane, not the node line: 0.9376
+# of it is screen-east in the Ecliptic view too, so the three slots share an
+# east and switching between them tilts rather than rotates.
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], (1.0, 0.0, 0.0))) - 0.937560) < 1e-5
+# The node line it used to draw, kept as a number so a revert cannot pass this
+# case by pinning some other in-plane direction instead.
+CHECK abs(sum(a*b for a,b in zip(mapb[2]["e1"], (0.4852, 0.0, 0.8744))) - 0.5175) < 1e-3

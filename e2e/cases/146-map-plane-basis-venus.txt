@@ -1,11 +1,15 @@
 # The retrograde-spin focus (#181 follow-up, found by --map-dump). Venus is
 # tilted 177 deg, so its pole points at ~-Y: with the equatorial bed (#182) the
-# Orbital slot's normal is ~-Y and takes the canonical branch, while the
-# Equatorial slot pins its basis to the focus +X. The canonical branch used a
+# Orbital slot's normal is ~-Y and took the canonical branch, while the
+# Equatorial slot pinned its basis to the focus +X. The canonical branch used a
 # fixed e2 = +Z regardless of which side the plane was seen from, so those two
 # slots drew the SAME plane with mirrored sweeps -- the exact #181 symptom, on
 # shipped data, and invisible to case 143 because Kerbin's normals all sit
 # above the rail plane.
+# #185 then moved the Orbital slot onto the pinned path, so the two slots now
+# share a basis outright. The canonical branch is left to the Ecliptic slot:
+# Venus's RAIL is 3.4 deg off the system plane, so that slot still lands there.
+# The branch is not dead, it just has one caller left.
 NAME map-plane-basis-venus
 ARGS --system res/systems/solar_system.json --time-accel 1 --timeout 6 --map-dump 2500 --startship racer,res/ships/racer.json,Venus,rot-orbit-eq
 FORBID GL_
@@ -15,4 +19,10 @@ CHECK all(r["sweep"] == -1 for r in mapb)
 # Equatorial and Orbital really are the same plane here, so this is one plane
 # drawn by two different paths that must agree -- not three unrelated views.
 CHECK abs(sum(a*b for a,b in zip(mapb[0]["n"], mapb[2]["n"])) - 1.0) < 1e-6
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e1"], mapb[2]["e1"])) - 1.0) < 1e-6
+CHECK abs(sum(a*b for a,b in zip(mapb[0]["e2"], mapb[2]["e2"])) - 1.0) < 1e-6
 CHECK all(abs(sum(a*a for a in r["e2"]) - 1.0) < 1e-5 for r in mapb)
+# The Ecliptic slot is the one still on the canonical branch: a fixed (X, Z)
+# basis for a normal within 8.13 deg of the rail normal, sweep still -1.
+CHECK abs(mapb[1]["e1"][0] - 1.0) < 1e-6
+CHECK abs(mapb[1]["e2"][2] - 1.0) < 1e-6

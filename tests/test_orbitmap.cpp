@@ -6,6 +6,7 @@
 
 #include "orbitmap.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include <cstdio>
@@ -199,19 +200,111 @@ int main() {
         expect_near(s.e1.x, 1.0, "canonical -Y e1 x");
         expect_near(s.e2.z, -1.0, "canonical -Y e2 z");
         expect_sweep(s, "canonical -Y sweep");
+        /* At the edge of the band (8 deg off the rail normal, so |n.Y| = 0.9903
+           > 0.99) the fixed basis is 8 deg out of plane by design, so only the
+           sweep sign is pinned -- and it still reads -n below the plane. This is
+           the Ecliptic slot's case on a near-ecliptic focus; the Orbital slot
+           left it in #185. */
+        const double r = 8.0 * std::acos(-1.0) / 180.0;
+        OrbitMap edge;
+        edge.setPlane(glm::dvec3(std::sin(r), std::cos(r), 0.0));
+        expect_near(edge.e1.x, 1.0, "canonical band edge keeps e1 fixed");
+        expect_sweep_sign(edge, "canonical band edge sweep");
+        edge.setPlane(glm::dvec3(std::sin(r), -std::cos(r), 0.0));
+        expect_near(edge.e2.z, -1.0, "canonical band edge below the plane");
+        expect_sweep_sign(edge, "canonical band edge sweep below");
     }
     {
         /* Venus-shaped focus: pole ~ -Y (177 deg tilt), ship in an equatorial
-           bed, so the Equatorial and Orbital slots share one normal and take
-           different paths (pinned vs canonical). They must agree on the sweep.
-           Numbers from --map-dump on solar_system. */
+           bed, so the Equatorial and Orbital slots share one normal. #185 put
+           both on the pinned path, so they agree exactly rather than needing a
+           sign fix-up on one of them -- which is how #181's symptom appeared,
+           when the Orbital slot took the canonical branch instead. Numbers from
+           --map-dump on solar_system. */
         const glm::dvec3 pole(-0.014899, -0.998939, 0.043584);
         OrbitMap eq, ob;
         eq.setPlane(pole, glm::dvec3(1, 0, 0));
-        ob.setPlane(pole);
+        ob.setPlane(pole, glm::dvec3(1, 0, 0));
         expect_near(glm::dot(eq.n, ob.n), 1.0, "venus slots share the normal");
+        expect_near(glm::dot(eq.e1, ob.e1), 1.0, "venus slots share the basis");
         expect_sweep(eq, "venus Equatorial sweep");
-        expect_sweep_sign(ob, "venus Orbital sweep");
+        expect_sweep(ob, "venus Orbital sweep");
+    }
+    {
+        /* #185: the Orbital slot's normal sweeping through the rail normal.
+           With no x_axis the derived basis hands over to the canonical one at
+           8.13 deg, and the two are a quarter turn apart there -- the map
+           rotates under the player's cursor mid-burn. With the focus +X pinned
+           (what mapPlaneBasis now passes) the basis is (cos t, -sin t, 0) all
+           the way through, so it turns by exactly as much as the normal does.
+           t = angle of the normal off the rail normal, about +Z. */
+        const double kPi = std::acos(-1.0);
+        auto basis = [&](double deg, bool pinned) {
+            const double r = deg * kPi / 180.0;
+            OrbitMap m;
+            const glm::dvec3 n(std::sin(r), std::cos(r), 0.0);
+            if(pinned) { m.setPlane(n, glm::dvec3(1.0, 0.0, 0.0)); }
+            else       { m.setPlane(n); }
+            return m;
+        };
+        // Exactly the rail normal: both spellings must give the same picture, so
+        // an equatorial orbit's view does not change at all.
+        {
+            const OrbitMap a = basis(0.0, false), b = basis(0.0, true);
+            expect_near(glm::dot(a.e1, b.e1), 1.0, "equatorial view unchanged");
+            expect_near(glm::dot(a.e2, b.e2), 1.0, "equatorial view e2 too");
+        }
+        // The defect being fixed, as a number: no x_axis, 0.1 deg of slew across
+        // 8.13 deg, and the picture turns 90 deg.
+        expect_close(glm::dot(basis(8.1, false).e1, basis(8.2, false).e1),
+                     0.0, 1e-3, "unpinned basis snaps 90 deg at 8.13 deg");
+        // With the x_axis the same slew turns it by 0.1 deg, and e1 tracks the
+        // normal exactly (e1 = (cos t, -sin t, 0) for this sweep).
+        expect_close(std::acos(basis(8.1, true).e1.x) * 180.0 / kPi,
+                     8.1, 1e-9, "pinned e1 tracks the normal");
+        double worst_pinned = 0.0;
+        for(double d = 0.0; d < 60.0; d += 0.1) {
+            const double turn = std::acos(std::min(1.0, std::max(-1.0,
+                glm::dot(basis(d, true).e1, basis(d + 0.1, true).e1))))
+                * 180.0 / kPi;
+            if(turn > worst_pinned) { worst_pinned = turn; }
+        }
+        if(worst_pinned > 0.2) {
+            std::printf("FAIL pinned basis snaps: worst turn %.3f deg over a "
+                        "0.1 deg slew\n", worst_pinned);
+            ++g_failures;
+        }
+        /* The residual, pinned so that changing the tolerance stays a decision:
+           the singularity moved rather than went away. |t| = cos t crosses the
+           0.44 floor at 63.89 deg, and there the pinned basis (cos t, -sin t, 0)
+           is exactly perpendicular to the node line (0, 0, -1) it falls back to
+           -- one clean quarter turn, at a normal 26 deg from the rail's +X
+           longitude instead of 8 deg from the rail normal. The same shape the
+           Equatorial slot already has on a ~90 deg tilted focus. */
+        expect_close(glm::dot(basis(63.8, true).e1, basis(64.0, true).e1),
+                     0.0, 1e-6, "residual quarter turn at the +X degeneracy");
+        expect_sweep(basis(64.0, true), "residual fallback sweep");
+    }
+    {
+        /* The consequence a player can click: an equatorial bed's h IS the focus
+           pole, so the Equatorial and Orbital slots share a normal and both pin
+           to the focus +X -- identical pictures, where the Orbital slot used to
+           draw the same plane turned 58.8 deg. Kerbin's pole and the e1 that
+           --map-dump now reports. */
+        const glm::dvec3 pole(-0.347824, 0.917477, 0.193014);
+        OrbitMap eq, ob;
+        eq.setPlane(pole, glm::dvec3(1, 0, 0));
+        ob.setPlane(pole, glm::dvec3(1, 0, 0));
+        expect_near(glm::dot(eq.e1, ob.e1), 1.0, "kerbin -eq bed: slots agree");
+        expect_close(ob.e1.x, 0.937560, 1e-5, "kerbin -eq bed orb e1 x");
+        expect_close(ob.e1.y, 0.340373, 1e-5, "kerbin -eq bed orb e1 y");
+        expect_close(ob.e1.z, 0.071606, 1e-5, "kerbin -eq bed orb e1 z");
+        // What it used to be, kept as a number so nobody "simplifies" the
+        // Orbital slot back to a derived basis and calls it equivalent.
+        OrbitMap old;
+        old.setPlane(pole);
+        expect_close(glm::dot(eq.e1, old.e1), 0.517532, 1e-5,
+                     "derived Orbital basis was 58.8 deg off Equatorial");
     }
     {
         // The map's real call: an equatorial plane (Kerbin's pole, from

@@ -18,11 +18,12 @@ struct OrbitMap {
     glm::dvec3 e1 = glm::dvec3(1.0, 0.0, 0.0);
     glm::dvec3 e2 = glm::dvec3(0.0, 0.0, 1.0);
 
-    // Near-polar normals keep the canonical X/Z basis (stable equatorial view).
-    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: pass the
-    // focus frame's +X for an equatorial plane, so flipping the plane combo
-    // tilts the picture instead of rotating it (issue #173). Zero length means
-    // derive it, the old way.
+    // `x_axis` (optional) pins the screen-x direction INSIDE the plane: both the
+    // Equatorial and the Orbital slot pass the focus frame's +X, so flipping the
+    // plane combo tilts the picture instead of rotating it (#173), and a normal
+    // approaching the rail normal keeps a stable basis instead of handing over
+    // to the near-polar branch below (#185). Zero length means derive it from
+    // the node line, which is what the Ecliptic slot does.
     // A reference direction that lies nearly ALONG the normal cannot define a
     // stable east: Uranus's 97.8 deg tilt puts its pole within 9 deg of the
     // system +X, where the in-plane part is only 0.15 long and swings on
@@ -50,11 +51,16 @@ struct OrbitMap {
             return;
         }
         if(glm::abs(glm::dot(n, glm::dvec3(0.0, 1.0, 0.0))) > 0.99) {
-            // Fixed screen basis (see above), but e2 still follows the sign of
-            // n so e1 x e2 = -n holds here too: e1 x n = X x (0,+-1,0) = +-Z.
-            // Venus spins retrograde (pole ~ -Y), so its Orbital slot lands on
-            // this branch with n ~ -Y and drew the sweep the other way from its
-            // own Equatorial slot -- the #181 symptom, caught by --map-dump.
+            // Only reachable with no usable x_axis, i.e. the Ecliptic slot of a
+            // focus whose rail sits within 8.13 deg of the system plane (and the
+            // no-ship default). The derived basis degenerates here -- |Y x n|
+            // tends to 0 -- so this branch keeps a fixed screen basis, with e2
+            // following the sign of n so e1 x e2 = -n still holds:
+            // e1 x n = X x (0,+-1,0) = +-Z. The sign matters for any normal
+            // below the rail plane (a retrograde rail, a retrograde orbit);
+            // #181 found the Orbital slot hitting this case on Venus, and #185
+            // moved that slot onto the pinned path above, which agrees with this
+            // one to 0.1 deg rather than 90.
             // Safe to branch on the sign: a normal cannot get from +Y to -Y
             // without passing |n.y| < 0.99, which takes the derived branch, so
             // this never mirrors a picture mid-slew.
