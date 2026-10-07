@@ -816,6 +816,14 @@ struct ScenarioDef {
                      // flying beds: science bands are top() fractions, so
                      // the beds always land in their band); airless bodies
                      // fall back to the shell fraction
+    /* Which plane a non-polar orbit bed sits in (#182). False (the default)
+       is the body's own RAIL plane: the plane its system-file rails live
+       in, so on ksp_system it is where Mun and Minmus actually go, and it
+       is the case that exercises a tilted body's plane angles. True is the
+       body's EQUATOR: where solar_system's moons orbit, and what a pad
+       launch would give. "Flat" means a different plane per system, so the
+       beds offer both rather than picking one. */
+    bool eq_plane = false;
 };
 
 /* Look up a scenario by name; throws listing the available names if

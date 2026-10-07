@@ -1,0 +1,13 @@
+# The -eq beds sit in the focus's EQUATOR (#182). The ordinary beds sit in the
+# body's RAIL plane, so a "flat" spawn on a tilted body reads its axial tilt
+# (case 139 pins Kerbin rot-orbit at 23.4400). rot-orbit-eq reads 0.0000 on
+# every body instead -- and an orbit lying IN the reference plane has no node,
+# so LAN dashes rather than naming a direction conjured from integrator noise.
+NAME spawn-equatorial-kerbin
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit-eq
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(o["plane"] == "equ" for o in orbit if o["t"] > 1.0)
+CHECK all(abs(o["inc"]) < 0.001 for o in orbit if o["t"] > 1.0)
+CHECK all(o["lan"] == "-" for o in orbit if o["t"] > 1.0)

@@ -112,6 +112,11 @@ static Frame *make_tree(Frame *&out_sun, Frame *&out_eerbon, Frame *&out_eerbon_
             glm::dvec3(ct, -st, 0.0),
             glm::dvec3(st,  ct, 0.0),
             glm::dvec3(0.0, 0.0, 1.0));
+        /* load_system splits initial_orient into the tilt part (equator_orient,
+           the body's EQUATOR frame -- what an -eq bed hangs off and what
+           incl_ref:"equator" rails measure from, #147) and the spin-phase
+           pre-rotation. No spin_phase0 here, so the two coincide. */
+        eerbon_rot->equator_orient = eerbon_rot->initial_orient;
     }
     eerbon_rot->rot_ang_speed = 0.00029157090303706880702966723086;
     eerbon_rot->orb_ang_speed = 0;
@@ -173,6 +178,7 @@ struct SpawnCase {
     double r;             // orbit radius from body center (pad: surface radius)
     double mu;
     bool polar;           // polar plane (body local +Y) vs equatorial (+Z)
+    bool eq_plane;        // -eq bed: the body's EQUATOR, not its rail plane (#182)
     Frame *bodyFrame;     // frame whose root_pos is the body's world pos
     Frame *expectedFrame;
     bool ellipse;         // 10x1000 km ASL elliptical case (overrides r/polar)
@@ -194,12 +200,12 @@ int main() {
     // Helper: r = radius + alt_frac * (rot soi - radius); rot soi = radius + 100 km.
     auto add = [&](const char *desc, bool on_pad, double alt_frac, bool polar,
                    double bodyRadius, double bodyMu, Frame *bodyFrame,
-                   Frame *expectedFrame) {
+                   Frame *expectedFrame, bool eq_plane = false) {
         SpawnCase c;
         c.desc = desc; c.on_pad = on_pad;
         c.r = on_pad ? bodyRadius
                      : bodyRadius + alt_frac * 100000.0;
-        c.mu = bodyMu; c.polar = polar; c.bodyFrame = bodyFrame;
+        c.mu = bodyMu; c.polar = polar; c.eq_plane = eq_plane; c.bodyFrame = bodyFrame;
         c.expectedFrame = expectedFrame;
         c.ellipse = false; c.ell_phase = -1; c.rp = 0; c.ra = 0; c.esc = 0.0;
         cases.push_back(c);
@@ -212,7 +218,7 @@ int main() {
         SpawnCase c;
         c.desc = desc; c.on_pad = false;
         c.r = bodyRadius + 0.85 * 100000.0;
-        c.mu = bodyMu; c.polar = false; c.bodyFrame = bodyFrame;
+        c.mu = bodyMu; c.polar = false; c.eq_plane = false; c.bodyFrame = bodyFrame;
         c.expectedFrame = expectedFrame;
         c.ellipse = false; c.ell_phase = -1; c.rp = 0; c.ra = 0; c.esc = esc;
         cases.push_back(c);
@@ -224,7 +230,7 @@ int main() {
                        Frame *bodyFrame, Frame *expectedFrame) {
         SpawnCase c;
         c.desc = desc; c.on_pad = false;
-        c.r = 0; c.mu = bodyMu; c.polar = false; c.bodyFrame = bodyFrame;
+        c.r = 0; c.mu = bodyMu; c.polar = false; c.eq_plane = false; c.bodyFrame = bodyFrame;
         c.expectedFrame = expectedFrame;
         c.ellipse = true; c.ell_phase = phase;
         c.rp = bodyRadius + 10e3;
@@ -238,6 +244,10 @@ int main() {
     // Orbit scenarios around Eerbon (rot soi = 700 km):
     //   0.85 -> 685 km (inside rot soi), 1.25 -> 725 km (outside), 5 -> 1100 km.
     add("rot-orbit (Eerbon)",      false, 0.85, false, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
+    // The -eq bed (#182): same radius, same frame, the body's EQUATOR plane
+    // instead of its rail plane. Eerbon is tilted 23.44 deg, so the two are
+    // genuinely different orbits here.
+    add("rot-orbit-eq (Eerbon)",   false, 0.85, false, eerbon_radius, eerbon_mu, eerbon, eerbon_rot, true);
     add("inertial-orbit (Eerbon)", false, 1.25, false, eerbon_radius, eerbon_mu, eerbon, eerbon);
     add("high-orbit (Eerbon)",     false, 5.0,  false, eerbon_radius, eerbon_mu, eerbon, eerbon);
     add("high-polar (Eerbon)",     false, 5.0,  true,  eerbon_radius, eerbon_mu, eerbon, eerbon);
@@ -296,10 +306,13 @@ int main() {
             }
         } else {
             /* Mirrors spawn_vehicle: a polar bed sits over the body's
-               geographic pole (#174), not the rail-plane normal. */
-            const glm::dvec3 rhat_local = c.polar
-                ? c.bodyFrame->spinAxisRelTo(c.bodyFrame)
-                : glm::dvec3(0, 0, 1);
+               geographic pole (#174), an -eq bed hangs off its EQUATOR frame
+               (#182), and the default sits in the rail plane (local +Z). */
+            const glm::dvec3 pole = c.bodyFrame->spinAxisRelTo(c.bodyFrame);
+            const glm::dvec3 rhat_local = c.polar ? pole
+                                       : c.eq_plane ? c.bodyFrame->rot_frame->equator_orient
+                                                                    * glm::dvec3(1, 0, 0)
+                                       : glm::dvec3(0, 0, 1);
             worldPos = center + c.bodyFrame->root_orient * (rhat_local * c.r);
             // Circular orbital speed (vis-viva with semi-major axis == r);
             // the escape scenario leaves at esc x local escape velocity.
@@ -308,7 +321,8 @@ int main() {
             glm::dvec3 rhat = glm::normalize(worldPos - center);
             glm::dvec3 vhat = glm::normalize(
                 c.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
-                        : glm::cross(glm::dvec3(0, 1, 0), rhat));
+              : c.eq_plane ? glm::cross(c.bodyFrame->root_orient * pole, rhat)
+              : glm::cross(glm::dvec3(0, 1, 0), rhat));
             velWorld = speed * vhat;
         }
         const double speed = glm::length(velWorld);
@@ -357,6 +371,33 @@ int main() {
             snprintf(buf, sizeof buf, "%s: polar plane contains the spin axis (off by %.3g)",
                      c.desc, std::fabs(glm::dot(h, pole)));
             CHECK_TRUE(std::fabs(glm::dot(h, pole)) < 1e-9, buf);
+        }
+
+        /* Rail vs equatorial beds on a TILTED body (#182) -- Eerbon carries
+           Kerbin's 23.44 deg tilt, so the two planes are 23.44 deg apart here.
+           Pinning both halves matters: an -eq check alone would also pass if
+           every bed became equatorial, which is the half of #182 that was
+           deliberately NOT changed (ksp_system's moons ride the rail plane). */
+        if(!c.polar && !c.ellipse && c.esc == 0.0 && c.bodyFrame == eerbon) {
+            const glm::dvec3 h = glm::normalize(glm::cross(worldPos - center, velWorld));
+            const glm::dvec3 pole = c.bodyFrame->spinAxisRelTo(c.bodyFrame);
+            const double dn = glm::dot(h, pole);
+            if(c.eq_plane) {
+                snprintf(buf, sizeof buf, "%s: bed normal IS the spin axis (dot %.9f)",
+                         c.desc, dn);
+                CHECK_TRUE(dn > 1.0 - 1e-9, buf);
+            } else {
+                snprintf(buf, sizeof buf, "%s: rail bed sits off the pole by the axial tilt (dot %.6f)",
+                         c.desc, dn);
+                CHECK_TRUE(std::fabs(dn - 0.9174770) < 1e-5, buf);
+            }
+            // Circular either way: vhat must be orthogonal to rhat, which is
+            // what the normalize buys when the body's own orbit is inclined.
+            const glm::dvec3 lp = glm::transpose(c.bodyFrame->root_orient) * (worldPos - center);
+            const glm::dvec3 lv = glm::transpose(c.bodyFrame->root_orient) * velWorld;
+            const OrbitElements oe = computeOrbitElements(lp, lv, c.mu);
+            snprintf(buf, sizeof buf, "%s: bed is circular (ecc %.3e)", c.desc, oe.ecc);
+            CHECK_TRUE(oe.ecc < 1e-9, buf);
         }
 
         // (b) Ship must stay put under the main-loop SOI logic: not outside the

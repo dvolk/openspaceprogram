@@ -1,0 +1,14 @@
+# The -eq beds on the worst-tilted body in the shipped systems (#182). Uranus
+# sits 97.77 deg over, so its rail plane is not merely tilted from its equator
+# but PAST 90 deg: the ordinary rot-orbit bed reads inc 97.7700 (equ) there and
+# is retrograde to every Uranus moon, which is what made the readout look wrong
+# when it started measuring against the equator (#171). rot-orbit-eq is
+# coplanar with Ariel and the rest, and reads 0.0000.
+NAME spawn-equatorial-uranus
+ARGS --system res/systems/solar_system.json --time-accel 1 --timeout 6 --orbit-log --orbit-interval 1 --startship racer,res/ships/racer.json,Uranus,rot-orbit-eq
+FORBID GL_
+FORBID error:
+CHECK len(orbit) > 3
+CHECK all(o["plane"] == "equ" for o in orbit if o["t"] > 1.0)
+CHECK all(abs(o["inc"]) < 0.001 for o in orbit if o["t"] > 1.0)
+CHECK all(o["lan"] == "-" for o in orbit if o["t"] > 1.0)

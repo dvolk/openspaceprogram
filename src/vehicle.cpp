@@ -234,6 +234,13 @@ static const ScenarioDef kScenarios[] = {
     {"pad",            true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"pad-polar",      true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
     {"rot-orbit",      false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
+    /* The same bed about the body's EQUATOR rather than its own rail plane
+       (#182) -- the trailing atmo_frac=false, eq_plane=true. The two differ
+       by exactly the axial tilt, so which one is "flat" is a property of the
+       system: on ksp_system Mun and Minmus ride the rail plane, on
+       solar_system Ariel and the rest ride the equator (and the rail bed
+       there is retrograde to every Uranus moon). */
+    {"rot-orbit-eq",   false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0, false, true},
     {"inertial-orbit", false, kInertialOrbitFrac, false, -1, 0.0, 0.0, 0.0, 0.0},
     {"high-orbit",     false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
     {"high-polar",     false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
@@ -336,14 +343,20 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                          ? sc.alt_frac * top
                          : sc.alt_frac * shell;
         const double r = sc.abs_r > 0.0 ? sc.abs_r : home->radius + sea + alt;
-        /* A polar bed sits over the body's GEOGRAPHIC pole (issue #174). The
-           frame's +Y is the normal of the body's own RAIL plane: for a tilted
-           body that is off the spin axis by exactly the axial tilt (Kerbin
-           23.44 deg), so a "polar" orbit built about it never passes over the
-           poles. Untilted bodies take spinAxisRelTo == (0,1,0): no change. */
-        const glm::dvec3 rhat_local = sc.polar
-            ? home->frame->spinAxisRelTo(home->frame)
-            : glm::dvec3(0, 0, 1);
+        /* Which plane the bed's orbit sits in, in the home frame's axes.
+           A polar bed sits over the body's GEOGRAPHIC pole (issue #174): the
+           frame's +Y is the normal of the body's own RAIL plane, off the spin
+           axis by exactly the axial tilt (Kerbin 23.44 deg), so a "polar"
+           orbit built about it never passes over the poles. An -eq bed (#182)
+           hangs off the EQUATOR frame instead: equator_orient is the tilt-only
+           part of the rot frame's initial_orient, so its +X lies IN the
+           equator and its +Y is the pole. On an untilted body both reduce to
+           the rail bed's geometry, a quarter-period apart in longitude. */
+        const glm::dvec3 pole = home->frame->spinAxisRelTo(home->frame);
+        const glm::dvec3 rhat_local = sc.polar ? pole
+                                   : sc.eq_plane ? home->rot_frame->equator_orient
+                                                                 * glm::dvec3(1, 0, 0)
+                                   : glm::dvec3(0, 0, 1);
         shipWorldPos = center + home->frame->root_orient * (rhat_local * r);
 
         // Circular orbital speed (vis-viva with semi-major axis == r); the
@@ -353,15 +366,16 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                            ? sc.esc_frac * sqrt(2.0 * home->mu / r)
                            : sqrt(home->mu / r);
 
-        // Prograde: perpendicular to the radius vector, in the system's sense
-        // of rotation (+y axis). A polar bed's radius is the spin axis, so its
-        // velocity takes +x instead -- any system axis but the radius's own.
+        // Prograde, about the plane's OWN normal: the rail bed uses the
+        // system's +y, an -eq bed the body's pole. A polar bed's radius IS the
+        // pole, so any axis but the radius's own works and +x is cheapest.
         // Normalize: with an inclined body orbit rhat is not orthogonal to
         // the reference axis, and the raw cross product is short by cos(incl).
         const glm::dvec3 rhat = glm::normalize(shipWorldPos - center);
         const glm::dvec3 vhat = glm::normalize(
             sc.polar ? glm::cross(glm::dvec3(1, 0, 0), rhat)
-                     : glm::cross(glm::dvec3(0, 1, 0), rhat));
+          : sc.eq_plane ? glm::cross(home->frame->root_orient * pole, rhat)
+          : glm::cross(glm::dvec3(0, 1, 0), rhat));
         velWorld = speed * vhat;
     }
 
