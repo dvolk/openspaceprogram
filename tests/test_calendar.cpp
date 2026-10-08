@@ -183,7 +183,7 @@ int main() {
         CHECK(civil_month_days(2004, 2) == 29);   // /4
 
         const double CIV = 86400.0;
-        Calendar g = Calendar::makeCivil(days_from_civil(2000, 1, 1),
+        Calendar g = Calendar::makeCivil(days_from_civil(2000, 1, 1), 0.0,
                                          365.256 * CIV, 86400.101);
         CHECK(g.valid() && g.civil);
         CHECK(g.day_seconds == 86400.0);          // civil day, NOT the solar day
@@ -200,7 +200,7 @@ int main() {
         CalTime leap = g.at(59.0 * CIV + 12.0 * 3600.0);
         CHECK(leap.month == 2 && leap.day == 29 && leap.hh == 12);
         // Century rule: 2100-02-28 -> 2100-03-01 (no Feb 29).
-        Calendar c100 = Calendar::makeCivil(days_from_civil(2100, 1, 1), 0.0, 86400.0);
+        Calendar c100 = Calendar::makeCivil(days_from_civil(2100, 1, 1), 0.0, 0.0, 86400.0);
         CalTime mar100 = c100.at(59.0 * CIV + 1.0);   // 31 + 28 = 59
         CHECK(mar100.year == 2100 && mar100.month == 3 && mar100.day == 1);
         // June solstice 2000-06-21 01:38.
@@ -214,6 +214,15 @@ int main() {
         CHECK(std::string(gbuf) == "2000-06-21  01:38 UTC");
         CHECK(fmt_cal_compact(g, t_sol, gbuf, sizeof gbuf));
         CHECK(std::string(gbuf) == "2000-06-21  01:38");
+        // Non-midnight epoch: 2000-01-01T12:00:00Z starts at noon.
+        Calendar noon0 = Calendar::makeCivil(days_from_civil(2000, 1, 1),
+                                             12.0 * 3600.0, 0.0, 86400.0);
+        CalTime n0 = noon0.at(0.0);
+        CHECK(n0.year == 2000 && n0.month == 1 && n0.day == 1
+              && n0.hh == 12 && n0.mm == 0 && n0.ss == 0);
+        CalTime n1 = noon0.at(12.0 * 3600.0);
+        CHECK(n1.year == 2000 && n1.month == 1 && n1.day == 2
+              && n1.hh == 0 && n1.mm == 0);
         // Derived path is untouched (byte-identical pins above).
         CHECK(!cal.civil);
     }

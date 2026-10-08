@@ -826,27 +826,44 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // drift (sidereal year 365.256 d vs Gregorian 365.2425) is documented
     // in calendar.h -- year_seconds is the seasonal handle.
     long civil_epoch_days = 0;
+    double civil_epoch_sod = 0.0;   // seconds-of-day at t=0
     bool use_civil = false;
     if(doc.contains("epoch_utc") && doc["epoch_utc"].is_string()) {
         const std::string s = doc["epoch_utc"].get<std::string>();
-        int y = 0, mo = 1, d = 1;
-        if(std::sscanf(s.c_str(), "%d-%d-%d", &y, &mo, &d) == 3) {
-            civil_epoch_days = days_from_civil(y, (unsigned)mo, (unsigned)d);
-            use_civil = true;
-        } else {
+        int y = 0, mo = 1, d = 1, hh = 0, mi = 0, se = 0;
+        const int nf = std::sscanf(s.c_str(), "%d-%d-%dT%d:%d:%d",
+                                   &y, &mo, &d, &hh, &mi, &se);
+        const int nd = std::sscanf(s.c_str(), "%d-%d-%d", &y, &mo, &d);
+        const bool ok = (nf == 6 || nd == 3)
+            && mo >= 1 && mo <= 12
+            && d >= 1 && d <= civil_month_days(y, mo)
+            && hh >= 0 && hh <= 23 && mi >= 0 && mi <= 59
+            && se >= 0 && se <= 59;
+        if(!ok) {
             throw std::runtime_error(
                 std::string("system: bad epoch_utc '") + s
                 + "' (want YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)");
         }
+        civil_epoch_days = days_from_civil(y, (unsigned)mo, (unsigned)d);
+        if(nf == 6) {
+            civil_epoch_sod = (double)hh * 3600.0 + (double)mi * 60.0 + (double)se;
+        }
+        use_civil = true;
     }
     // The measure walks the rail tree; every body shares one sun (the star).
+    // Civil (#202) is the HOME clock only: "Local:" for the ship's body
+    // stays that body's own derived day (the Moon's synodic month), and a
+    // non-spinning body keeps an invalid calendar.
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
         const double D = measureSolarDay(sys.root->frame, b, sys.root);
         const double Y = (b->frame && b->frame->orb_ang_speed > 0.0)
                        ? 2.0 * std::numbers::pi / b->frame->orb_ang_speed : 0.0;
-        b->cal = use_civil ? Calendar::makeCivil(civil_epoch_days, Y, D)
-                           : Calendar::make(D, Y, epoch_year);
+        if(use_civil && b == sys.home) {
+            b->cal = Calendar::makeCivil(civil_epoch_days, civil_epoch_sod, Y, D);
+        } else {
+            b->cal = Calendar::make(D, Y, epoch_year);
+        }
     }
 
     // Recompute root-relative frame values before the first render.

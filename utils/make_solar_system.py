@@ -808,7 +808,10 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
         n += 1
     # epoch_year 2000: the fact-sheet elements (and our derived orbital
     # phases) are J2000-referenced, so the calendar clock matches the sky.
+    # epoch_utc (#202): proleptic-Gregorian civil clock. t=0 is already
+    # 2000-01-01 00:00 UT (the _wgccre_epoch d=-0.5 convention).
     doc = {'home': 'Earth', 'soi_law': 'hill', 'epoch_year': 2000,
+           'epoch_utc': '2000-01-01T00:00:00Z',
            # A directory of skybox_{px,nx,py,ny,pz,nz}.png (src/system.cpp).
            # The real sky for the real Solar System: Deep Star Maps 2020 at
            # gain 3.0 (see res/skybox/dsm_1024_g3_ds2/skybox_params.json).

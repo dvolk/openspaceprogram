@@ -89,6 +89,7 @@ struct Calendar {
     int epoch_year = 1;         // the year number at t == 0 (derived)
     bool civil = false;         // Gregorian/UTC (#202)
     long epoch_days = 0;        // civil: days_from_civil of the epoch
+    double epoch_sod = 0.0;     // civil: seconds-of-day at t=0 (THH:MM:SS)
 
     bool valid() const { return day_seconds > 0.0; }
     bool has_year() const { return civil || days_per_year >= 12; }
@@ -120,36 +121,39 @@ struct Calendar {
 
     // Proleptic-Gregorian civil calendar (#202). `solar_day` is the measured
     // solar day (body panel only); the clock always runs 86400 s days.
-    static Calendar makeCivil(long epoch_days, double Y, double solar_day) {
+    // `epoch_sod`: seconds of day at t=0 (from epoch_utc's THH:MM:SS).
+    static Calendar makeCivil(long epoch_days, double epoch_sod,
+                              double Y, double solar_day) {
         Calendar c;
         c.civil = true;
         c.epoch_days = epoch_days;
+        c.epoch_sod = epoch_sod;
         c.day_seconds = 86400.0;
         c.solar_day_seconds = solar_day;
         c.year_seconds = Y;
         // Only used to split fmt_cal_duration's "1y .."; a civil year is
         // 365 or 366 d, 365 is the duration approximation.
         c.days_per_year = 365;
-        int y = 0, m = 1;
-        unsigned mm = 1, dd = 1;
-        civil_from_days(epoch_days, y, mm, dd);
-        m = (int)mm;
+        int y = 0;
+        unsigned m = 1, d = 1;
+        civil_from_days(epoch_days, y, m, d);
         c.epoch_year = y;
-        (void)m;
         return c;
     }
 
     CalTime at(double t) const {
         CalTime h;
-        if(day_seconds <= 0.0 || t < 0.0) { return h; }
         h.civil = civil;
-
-        const long day_count = (long)std::floor(t / day_seconds);
-        long total = (long)std::lround(std::fmod(t, day_seconds)
-                                       * 86400.0 / day_seconds);
-        if(total >= 86400) { total = 86399; }
+        if(day_seconds <= 0.0 || t < 0.0) { return h; }
 
         if(civil) {
+            // t is measured from the civil epoch instant (epoch_sod into
+            // that date), so a non-midnight epoch_utc works.
+            double el = epoch_sod + t;
+            long day_count = (long)std::floor(el / 86400.0);
+            long total = (long)std::lround((el - (double)day_count * 86400.0)
+                                           * 1.0);
+            if(total >= 86400) { total = 86399; day_count += 1; }
             int y = 0;
             unsigned m = 1, d = 1;
             civil_from_days(epoch_days + day_count, y, m, d);
@@ -157,7 +161,18 @@ struct Calendar {
             h.month = (int)m;
             h.day = (int)d;
             h.has_year = true;
-        } else if(has_year()) {
+            h.hh = (int)(total / 3600);
+            h.mm = (int)((total % 3600) / 60);
+            h.ss = (int)(total % 60);
+            return h;
+        }
+
+        const long day_count = (long)std::floor(t / day_seconds);
+        long total = (long)std::lround(std::fmod(t, day_seconds)
+                                       * 86400.0 / day_seconds);
+        if(total >= 86400) { total = 86399; }
+
+        if(has_year()) {
             h.year = epoch_year + (int)(day_count / days_per_year);
             int doy = (int)(day_count % days_per_year);  // 0-based day of year
             h.month = 12;

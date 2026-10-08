@@ -1363,9 +1363,10 @@ void drawUIReadouts(Game &g) {
                             ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
             }
-            // Mean solar time at surface lon 0 (#202): the subsolar point's
-            // equirect lon is the hour angle, so LMT = lon/15 deg. Makes
-            // --start-time's "pad in daylight" checkable against the clock.
+            // Solar time at surface lon 0 (#202): the subsolar point is
+            // local noon, so lon 0 reads 12h - lon/15 (east-positive lon,
+            // #200). Geometric (includes e != 0), not a mean-time table.
+            // Makes --start-time's "pad in daylight" checkable.
             if(g.sun && g.sun != sys.home && sys.home->frame) {
                 const glm::dvec3 to_sun = g.sun->frame->root_pos
                                         - sys.home->frame->root_pos;
@@ -1381,9 +1382,10 @@ void drawUIReadouts(Game &g) {
                     double sod = 12.0 - glm::degrees(lon) / 15.0;
                     while(sod < 0.0) { sod += 24.0; }
                     while(sod >= 24.0) { sod -= 24.0; }
-                    ImGui::Text("Solar:  %02d:%02d:%02d  (mean, at lon 0)",
-                                (int)sod, (int)(60.0 * (sod - (int)sod)),
-                                (int)(3600.0 * (sod - (int)sod)) % 60);
+                    int ssec = (int)std::lround(sod * 3600.0);
+                    if(ssec >= 86400) { ssec = 86399; }
+                    ImGui::Text("Solar:  %02d:%02d:%02d  (at lon 0)",
+                                ssec / 3600, (ssec / 60) % 60, ssec % 60);
                 }
             }
         }
