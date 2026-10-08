@@ -378,8 +378,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "computed (P key or the window's button)");
     app.add_option("--porkchop-n", args.porkchop_n,
                    "Porkchop plot grid size (porkchop-n x porkchop-n); the "
-                   "size knob, a Settings-window hook later (default 40, "
-                   "~15 ms at 40 x 40)")
+                   "size knob, a Settings-window hook later. Cost is n^2: "
+                   "~25 ms at 40 x 40, ~0.9 s at the default 256 x 256. The "
+                   "sweep runs on a worker thread, so the frame rate is "
+                   "unaffected and the last grid stays on screen")
         ->check(CLI::Range(1, 2048));
     app.add_option("--porkchop-bench", args.porkchop_bench,
                    "On the plot trigger (P), sweep these grid sizes back to "

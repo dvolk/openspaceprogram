@@ -106,7 +106,7 @@ struct GameArgs {
     bool debug_accel = false;   // --debug-accel: per-substep thrust/velocity dump
     bool xfer_log = false;
     bool porkchop_log = false;   // --porkchop-log: the launch-window grid min
-    int porkchop_n = 40;        // --porkchop-n: the plot grid size
+    int porkchop_n = 256;       // --porkchop-n: the plot grid size
     std::vector<int> porkchop_bench; // --porkchop-bench: sweep these sizes off one snapshot
     std::string porkchop_dump;       // --porkchop-dump DIR: write each grid as CSV
 

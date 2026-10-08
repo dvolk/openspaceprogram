@@ -943,7 +943,7 @@ void drawUIReadouts(Game &g) {
         // Rebuilding per frame -- the old behaviour, whatever the window's
         // "cheap to leave open" comment claimed -- is a full RGBA fill plus a
         // GL upload every frame for a plot that only moves when you press P:
-        // 6.4 KB at the default 40x40, tens of MB at the --porkchop-n /
+        // 256 KB at the default 256x256, tens of MB at the --porkchop-n /
         // --porkchop-bench caps. px keeps its peak capacity, so the largest
         // grid ever swept also stays resident.
         static Texture *pc_tex = nullptr;
