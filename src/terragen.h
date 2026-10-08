@@ -19,11 +19,17 @@
 #include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/noise.hpp>
 
 #include "constants.h"  // kAtmoScaleHeights
@@ -139,12 +145,89 @@ struct RingParams {
     float opacity = 0.8f;  // 0..1 band transparency
 };
 
+/* Authored equirectangular elevation (metres vs sea level), shared across
+   TerrainParams snapshots and worker threads (the ptr is copied by value;
+   the samples are immutable). Layout matches src/surfmap.h: lon 0 at the
+   LEFT edge, north up, col 0 = lon 0, row 0 = north pole. Loaded from the
+   HM16 container utils/gen_heightmap.py writes (staging/heightmap/NOTES.md).
+   Absent = procedural FBM terrain (Surface::heightmap is null). */
+struct Heightmap {
+    int w = 0, h = 0;
+    std::vector<int16_t> m;   // metres vs sea level, row-major, row 0 = north
+
+    // Bilinear sample at a unit direction in the body's ROTATING frame.
+    // Longitude wraps; latitude clamps at the poles. Does NOT apply
+    // seed_rot: the map is geographic (or whatever the bake authored).
+    float sample(const glm::vec3 &p) const {
+        if(w <= 0 || h <= 0) { return 0.0f; }
+        const float lat = std::asin(glm::clamp(p.y, -1.0f, 1.0f));
+        float lon = std::atan2(p.x, p.z);
+        if(lon < 0.0f) { lon += 2.0f * glm::pi<float>(); }
+        const float u = lon / (2.0f * glm::pi<float>()) * (float)w;
+        float v = (glm::pi<float>() * 0.5f - lat) / glm::pi<float>()
+                * (float)(h - 1);
+        v = glm::clamp(v, 0.0f, (float)h - 1.000001f);
+        const int i0 = ((int)u % w + w) % w;
+        const int j0 = std::min((int)v, h - 2);
+        const float fu = u - std::floor(u);
+        const float fv = v - (float)j0;
+        const int i1 = (i0 + 1) % w;
+        const float a = (float)m[(size_t)j0 * w + i0] * (1.0f - fu)
+                      + (float)m[(size_t)j0 * w + i1] * fu;
+        const float b = (float)m[(size_t)(j0 + 1) * w + i0] * (1.0f - fu)
+                      + (float)m[(size_t)(j0 + 1) * w + i1] * fu;
+        return a * (1.0f - fv) + b * fv;
+    }
+};
+
+// HM16 container (see utils/gen_heightmap.py). Throws on a bad file: a
+// named heightmap is data, and a typo must not silently fall back to noise.
+inline std::shared_ptr<const Heightmap> loadHeightmap(const std::string &path) {
+    std::ifstream f(path, std::ios::binary);
+    if(!f.is_open()) {
+        throw std::runtime_error("heightmap: cannot open " + path
+                                 + " (bake with utils/gen_heightmap.py)");
+    }
+    char magic[4];
+    uint32_t w = 0, h = 0, fmt = 0;
+    f.read(magic, 4);
+    f.read(reinterpret_cast<char *>(&w), 4);
+    f.read(reinterpret_cast<char *>(&h), 4);
+    f.read(reinterpret_cast<char *>(&fmt), 4);
+    if(!f || std::memcmp(magic, "HM16", 4) != 0) {
+        throw std::runtime_error("heightmap: " + path + " is not an HM16 file");
+    }
+    if(fmt != 1) {
+        throw std::runtime_error("heightmap: " + path
+                                 + ": unknown format " + std::to_string(fmt));
+    }
+    if(w < 2 || h < 2 || w > 65536 || h > 65536) {
+        throw std::runtime_error("heightmap: " + path + ": bad size");
+    }
+    auto hm = std::make_shared<Heightmap>();
+    hm->w = (int)w;
+    hm->h = (int)h;
+    hm->m.resize((size_t)w * (size_t)h);
+    f.read(reinterpret_cast<char *>(hm->m.data()),
+           (std::streamsize)(hm->m.size() * sizeof(int16_t)));
+    if(!f) {
+        throw std::runtime_error("heightmap: " + path + ": truncated samples");
+    }
+    return hm;
+}
+
 // Per-body terrain + color parameters (the optional "surface" JSON block).
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
     int octaves = 9;             // noise octaves: continents 0..5, mountains 2..N-1
     float persistence = 0.5f;    // octave amplitude falloff
     float frequency = 1.0f;      // feature-size multiplier (unit-sphere noise)
+    /* Optional authored macro relief (system JSON "surface.heightmap").
+       When set, it replaces the continents FBM; `detail_amplitude` [m] is
+       the fine noise residual added on top. No mountain-fold: the map
+       already carries the major ranges. */
+    std::shared_ptr<const Heightmap> heightmap;
+    float detail_amplitude = 250.0f;
     bool has_sea = false;
     float sea_level = 0.0f;      // [m] above base radius; floor is flat here
     glm::vec3 sea_color = glm::vec3(0.1f, 0.1f, 0.8f);
@@ -292,13 +375,24 @@ inline float terrainFbmOctaves(const glm::vec3& q, int first, int last,
 }
 
 // Signed relief [m] relative to the base radius at unit direction p (before
-// the sea-floor clamp). The mountains are a smooth fold (1 - m^2) of a
-// mid-band FBM: rounded crests and gradual flanks (the shading is
-// normal-based). `fade` band-limits both noises (see terrainFbmOctaves).
+// the sea-floor clamp). Procedural: the mountains are a smooth fold
+// (1 - m^2) of a mid-band FBM (rounded crests; shading is normal-based).
+// Heightmap body: authored metres + a fine noise residual (no fold -- the
+// map already has the ranges). `fade` band-limits the noise (terrainFbmOctaves).
 inline float terrainRelief(const glm::vec3& p, const TerrainParams& t,
                            float fade) {
     const Surface &s = t.surface;
     const glm::vec3 q = (s.seed_rot * p) * s.frequency + terrain_noise_off;
+
+    if (s.heightmap) {
+        float h = s.heightmap->sample(p);
+        if (s.detail_amplitude > 0.0f && s.octaves > 2) {
+            h += terrainFbmOctaves(q, 2, s.octaves, s.persistence, fade)
+               * s.detail_amplitude;
+        }
+        return h;
+    }
+
     const int base_octaves = std::min(s.octaves, 6);
 
     const float continents =

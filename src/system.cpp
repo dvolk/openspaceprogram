@@ -249,6 +249,20 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                               return a.t < b.t;
                           });
             }
+            // Optional authored macro relief (terragen.h Heightmap). The
+            // path is game-asset style ("res/..." or a cwd-relative staging
+            // bake); a missing/bad file is a data bug, not a silent fallback.
+            if(sv.contains("heightmap")) {
+                if(!sv["heightmap"].is_string()
+                   || sv["heightmap"].get<std::string>().empty()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"heightmap\" must be a "
+                                               "file path");
+                }
+                s.heightmap = loadHeightmap(
+                    resdir::path(sv["heightmap"].get<std::string>()));
+            }
+            s.detail_amplitude = sv.value("detail_amplitude", s.detail_amplitude);
             s.bands = sv.value("bands", false);
             if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
                 s.band_count = std::max(1, sv["band_count"].get<int>());

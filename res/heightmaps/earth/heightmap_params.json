@@ -1,0 +1,14 @@
+{
+  "source": [
+    "staging/heightmaps/earth/data/gebco_08_rev_elev_5400x2700.tif",
+    "staging/heightmaps/earth/data/gebco_08_rev_bath_5400x2700.tif"
+  ],
+  "elev_scale_m_per_count": 25.098039215686274,
+  "bath_scale_m_per_count": 31.372549019607842,
+  "layout": "game equirect: lon 0 left, north up (src/surfmap.h)",
+  "width": 2700,
+  "height": 1350,
+  "format": "HM16 int16 metres vs sea level",
+  "min_m": -8000.0,
+  "max_m": 6280.7841796875
+}

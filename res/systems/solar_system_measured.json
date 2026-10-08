@@ -196,6 +196,8 @@
           0.18,
           0.5
         ],
+        "heightmap": "res/heightmaps/earth/earth_hm.i16",
+        "detail_amplitude": 250,
         "ocean": "flat",
         "palette": [
           [

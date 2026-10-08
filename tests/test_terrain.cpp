@@ -774,6 +774,101 @@ int main() {
         check(biome_ok && any_sea, "ocean: a flat sea floor is still ocean");
     }
 
+    // Heightmap (optional authored macro relief). Synthetic HM16 so the
+    // tests do not need the GEBCO bake; loadHeightmap is pinned against a
+    // file we write here.
+    {
+        // 4x3 grid, game layout (lon 0 left, north up). Distinct values so
+        // a transpose/roll would fail the samples below.
+        auto hm = std::make_shared<Heightmap>();
+        hm->w = 4;
+        hm->h = 3;
+        hm->m = {
+            10, 20, 30, 40,     // north row
+            50, 60, 70, 80,     // equator
+            90, 100, 110, 120,  // south row
+        };
+        // Directions matching surfmapDir: lon 0 = +Z, lon 90 = +X, north = +Y.
+        // Columns sit at lon 0/90/180/270 (u = 0..3); rows at lat +90/0/-90.
+        // Poles have no unique longitude, so pin off-pole cells where
+        // bilinear is exact (lat 45 mixes the north and equator rows).
+        auto dir_at = [](float lon_deg, float lat_deg) {
+            const float lon = glm::radians(lon_deg);
+            const float lat = glm::radians(lat_deg);
+            const float cl = std::cos(lat);
+            return glm::vec3(cl * std::sin(lon), std::sin(lat), cl * std::cos(lon));
+        };
+        check(std::fabs(hm->sample(dir_at(0, 45)) - 30.0f) < 0.5f,
+              "heightmap: lon 0 lat 45 mixes north/equator (10,50)");
+        check(std::fabs(hm->sample(dir_at(0, 0)) - 50.0f) < 0.5f,
+              "heightmap: lon 0 equator = column 0");
+        check(std::fabs(hm->sample(dir_at(90, 0)) - 60.0f) < 0.5f,
+              "heightmap: lon 90 equator = column 1");
+        check(std::fabs(hm->sample(dir_at(180, 0)) - 70.0f) < 0.5f,
+              "heightmap: lon 180 equator = column 2");
+        check(std::fabs(hm->sample(dir_at(270, 0)) - 80.0f) < 0.5f,
+              "heightmap: lon 270 equator = column 3");
+        check(std::fabs(hm->sample(dir_at(0, -45)) - 70.0f) < 0.5f,
+              "heightmap: lon 0 lat -45 mixes equator/south (50,90)");
+        // Continuity across the prime-meridian column wrap (lon near 360).
+        const float a = hm->sample(dir_at(359.0f, 0.0f));
+        const float b = hm->sample(dir_at(1.0f, 0.0f));
+        check(std::fabs(a - b) < 20.0f, "heightmap: u wraps without a seam jump");
+
+        // Composition: heightmap is the base, detail_amplitude adds noise.
+        TerrainParams t = kerbin();
+        t.radius = 6000000.0f;
+        t.surface.heightmap = hm;
+        t.surface.detail_amplitude = 0.0f;
+        t.surface.octaves = 9;
+        const glm::vec3 p = glm::normalize(glm::vec3(0, 0.2f, 1));
+        const float h0 = terrainHeight(p, t);
+        check(std::fabs(h0 - (t.radius + hm->sample(p))) < 1.0f,
+              "heightmap: detail 0 => terrainHeight is map metres");
+        t.surface.detail_amplitude = 200.0f;
+        const float h1 = terrainHeight(p, t);
+        check(std::isfinite(h1) && std::fabs(h1 - h0) > 1.0f,
+              "heightmap: fine noise residual is added on top");
+
+        // Flat sea clamps the map's negative floor (bathymetry ready for a
+        // future Mesh shell, invisible under Flat).
+        t.surface.detail_amplitude = 0.0f;
+        t.surface.has_sea = true;
+        t.surface.sea_level = 0.0f;
+        t.surface.ocean_mode = OceanMode::Flat;
+        // Force a deep sample: south-east of the synthetic map (~90..120 m).
+        // Put sea_level above it instead so the clamp is obvious.
+        t.surface.sea_level = 100.0f;
+        const glm::vec3 deep = glm::normalize(glm::vec3(0, -0.5f, 1));
+        check(std::fabs(terrainHeight(deep, t) - (t.radius + 100.0f)) < 1e-3f,
+              "heightmap: flat sea clamps below-sea map values");
+
+        // HM16 round-trip through the loader.
+        {
+            const char *path = "tmp/test_hm16.i16";
+            std::FILE *f = std::fopen(path, "wb");
+            check(f != nullptr, "heightmap: can write a temp HM16");
+            if(f) {
+                std::fwrite("HM16", 1, 4, f);
+                const uint32_t hdr[3] = { 4, 3, 1 };
+                std::fwrite(hdr, 4, 3, f);
+                for(int16_t v : hm->m) { std::fwrite(&v, 2, 1, f); }
+                std::fclose(f);
+                bool ok = false;
+                try {
+                    auto loaded = loadHeightmap(path);
+                    ok = loaded && loaded->w == 4 && loaded->h == 3
+                         && loaded->m == hm->m;
+                } catch(const std::exception &) { ok = false; }
+                check(ok, "heightmap: HM16 load round-trips");
+            }
+            bool threw = false;
+            try { loadHeightmap("tmp/does_not_exist_hm16.i16"); }
+            catch(const std::runtime_error &) { threw = true; }
+            check(threw, "heightmap: a missing file is an error, not a fallback");
+        }
+    }
+
     if(g_failures == 0) {
         std::printf("test_terrain: all checks passed\n");
         return 0;

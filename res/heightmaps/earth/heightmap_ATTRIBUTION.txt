@@ -1,0 +1,6 @@
+earth_hm.i16 is baked by utils/heightmaps/gen_earth_hm.py from
+NASA Earth Observatory Blue Marble: Next Generation topography +
+bathymetry (GEBCO 2008, British Oceanographic Data Centre):
+  https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/
+Credit: Jesse Allen, NASA Earth Observatory, using data from
+GEBCO produced by the British Oceanographic Data Centre.

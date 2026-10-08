@@ -459,6 +459,7 @@ test-py:
 	python3 utils/sci_dist.py --check res/systems/*.json
 	python3 utils/gen_systems.py --check
 	python3 utils/make_solar_system.py --check
+	python3 utils/heightmaps/gen_earth_hm.py --verify
 	python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2
 
 # E2E battery (e2e/run.py). Headless via xvfb-run when no display.

@@ -658,6 +658,11 @@ def build_base():
                      'coverage': 0.9, 'freq': 8.0}}, False),
         ('earthfact.html', 'Earth', 3.0,
          {'amplitude': 8000, 'sea_level': 0.0, 'sea_color': [0.0, 0.18, 0.50],
+          # Authored macro relief (GEBCO 2008 merge;
+          # utils/heightmaps/gen_earth_hm.py + staging/heightmaps/earth/NOTES.md).
+          # Fine noise is residual only.
+          'heightmap': 'res/heightmaps/earth/earth_hm.i16',
+          'detail_amplitude': 250,
           # The ocean shell is a 128-ring UV sphere, so its flat faces sag
           # ~radius/13300 below sea level: ~480 m here, and the sea floor
           # pokes through the water. The flat sea (floor clamped to sea

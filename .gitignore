@@ -37,11 +37,12 @@ screenshot_*.png
 tmp/
 
 # Staged work awaiting a decision: candidate artifacts and the source data
-# they were baked from. The decision record (staging/<area>/NOTES.md) stays
-# tracked -- keep the reasoning, drop the bytes.
-staging/*/bakes/
-staging/*/data/
-staging/*/preview/
+# they were baked from. The decision record (staging/**/NOTES.md) stays
+# tracked -- keep the reasoning, drop the bytes. Nested one level deeper
+# (staging/<area>/<name>/...) so each body/source can have its own dir.
+staging/**/bakes/
+staging/**/data/
+staging/**/preview/
 
 # Agent tooling local state (mimocode: plans, node_modules, cron lock) -- local,
 # never commit
