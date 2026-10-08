@@ -6,8 +6,9 @@
 // #201's measureSolarDay), pinned for Eerbon / KSP-Kerbin rates:
 //   home spin   rot_ang_speed = 2.9157090303706880702966723086e-4 rad/s
 //   home orbit  orb_ang_speed = 6.8269186570822291594437651e-7 rad/s
-// -> solar day = 21,599.6 s (the canonical 6 h; the sidereal 21,549 s is
-//    NOT what the clock uses -- see #201)
+// -> solar day = 21,600.0 s (the canonical 6 h; the sidereal 21,549 s is
+//    NOT what the clock uses -- see #201). measureSolarDay on those rates
+//    reads 21600.0; this file is pure Calendar::make and takes D as input.
 // -> year = 9,203,545 s = 426.1 solar days  -> snapped to 426 days
 // -> 11 x 36-day months + a 30-day 12th month
 // -> epoch year 4724, so t = 0 is Yr 4724 Mo 1 Day 1 00:00:00
@@ -36,7 +37,7 @@ static int failures = 0;
 
 int main() {
     // Solar day of the Eerbon/Kerbin rates (measureSolarDay, #201).
-    const double D = 21599.573;                  // 6 h solar, not 21549 sidereal
+    const double D = 21600.0;                    // 6 h solar, not 21549 sidereal
     const double TWOPI = 6.2831853071795864765;
     const double Y = TWOPI / 6.8269186570822291594437651e-7; // Eerbon orbit
     const int EPOCH = 4724;
@@ -45,7 +46,7 @@ int main() {
     Calendar cal = Calendar::make(D, Y, EPOCH);
     CHECK(cal.valid());
     CHECK(cal.has_year());
-    CHECK_NEAR(D, 21599.6, 1.0);                 // 6 h solar home day
+    CHECK_NEAR(D, 21600.0, 1.0);                 // 6 h solar home day
     CHECK_NEAR(Y, 9203545.0, 1.0);               // 106.5 real-day home year
     CHECK(cal.days_per_year == 426);             // round(9203545 / 21599.6)
     int sum = 0;

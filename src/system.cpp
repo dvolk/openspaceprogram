@@ -43,6 +43,8 @@ void updateChain(Frame *f, double t) {
         if(f->parent != nullptr) {
             f->root_pos = f->parent->root_orient * f->orient * f->pos
                         + f->parent->root_pos;
+            f->root_vel = f->parent->root_orient * f->orient * f->vel
+                        + f->parent->root_vel;
             f->root_orient = f->parent->root_orient * f->orient;
         }
     } else if(f->parent == nullptr) {
@@ -53,14 +55,14 @@ void updateChain(Frame *f, double t) {
 
 // Direction TOWARD the star in `body`'s rotating frame (same math as
 // surfmap.cpp:sunDirRot). False when there is no terminator.
-bool subsolarLonAt(Frame *root, TerrainBody *body, const TerrainBody *sun,
+bool subsolarLonAt(TerrainBody *body, TerrainBody *sun,
                    double t, double &lon) {
     if(sun == nullptr || body == sun || body->frame == nullptr
        || sun->frame == nullptr || body->frame->getRotFrame() == nullptr) {
         return false;
     }
     updateChain(body->frame->getRotFrame(), t);
-    updateChain(const_cast<Frame *>(sun->frame), t);
+    updateChain(sun->frame, t);
     const glm::dvec3 to_sun = sun->frame->root_pos - body->frame->root_pos;
     const double l = glm::length(to_sun);
     if(l < 1e-9) { return false; }
@@ -80,22 +82,6 @@ double wrapPi(double a) {
     return a - pi;
 }
 
-// Unwrapped sweep of the subsolar longitude from 0 to t (radians).
-bool solarSweep(Frame *root, TerrainBody *body, const TerrainBody *sun,
-                double lon0, double t, double dt, double &out) {
-    double lon_prev = lon0;
-    double acc = 0.0;
-    const int n = std::max(1, (int)std::lround(t / dt));
-    for(int i = 1; i <= n; i++) {
-        double lon = 0.0;
-        const double ti = t * (double)i / (double)n;
-        if(!subsolarLonAt(root, body, sun, ti, lon)) { return false; }
-        acc += wrapPi(lon - lon_prev);
-        lon_prev = lon;
-    }
-    out = acc;
-    return true;
-}
 } // namespace
 
 double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun) {
@@ -104,27 +90,31 @@ double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun) {
         (body && body->rot_frame && body->rot_frame->rot_ang_speed > 0.0)
         ? twopi / body->rot_frame->rot_ang_speed
         : 0.0;
-    if(sidereal <= 0.0 || root == nullptr) { return 0.0; }
+    if(sidereal <= 0.0 || body->frame == nullptr) { return 0.0; }
+
+    // Probe over the HELIOCENTRIC year (the frame that directly orbits the
+    // star), not the body's own orbital period. A moon's local orbit does
+    // not close the sun: it inherits the parent's true-anomaly rate and
+    // the answer wobbles with epoch (Earth e=0.0167 is +-0.3% over a
+    // sidereal month). One solar year averages that out. Not the apparent
+    // first-return at t=0 either (that is 86429 s on Jan 1, walking
+    // through the equation of time).
+    Frame *helio = body->frame;
+    while(helio->parent != nullptr && helio->parent->parent != nullptr) {
+        helio = helio->parent;
+    }
+    double t_probe = sidereal;   // no solar orbit: the sun is fixed
+    if(helio->orb_ang_speed > 0.0) {
+        t_probe = twopi / helio->orb_ang_speed;
+    }
 
     double lon0 = 0.0;
-    if(!subsolarLonAt(root, body, sun, 0.0, lon0)) {
+    if(!subsolarLonAt(body, sun, 0.0, lon0)) {
         return sidereal;   // no sun: solar day == sidereal
     }
 
-    // MEAN solar day over one orbital period: T * 2pi / |sweep(T)|.
-    // Not the apparent first-return at t=0 (that is 86428 s on Jan 1 and
-    // still walks through the equation of time). Averaging over an orbit
-    // gives the mean, which is what a calendar clock needs -- and it is
-    // the same number for prograde, retrograde spin (#139), retrograde
-    // orbit, and the tidally locked Moon (synodic month).
-    double t_probe = sidereal;   // no orbit: the sun is fixed, sweep = spin
-    if(body->frame && body->frame->orb_ang_speed > 0.0) {
-        t_probe = twopi / body->frame->orb_ang_speed;
-    }
-
-    // Step finely enough that the spin alone cannot alias across pi, and
-    // densely enough that a short probe (tidally locked: probe == sidereal)
-    // still resolves the mean (64 samples minimum).
+    // Step finely enough that the spin alone cannot alias across pi
+    // (64 samples minimum; 8192 cap keeps a 12-y Jupiter year cheap).
     const int n = (int)std::min(8192.0,
                      std::max(64.0, std::ceil(8.0 * t_probe / sidereal)));
     double lon_prev = lon0;
@@ -132,7 +122,7 @@ double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun) {
     for(int i = 1; i <= n; i++) {
         double lon = 0.0;
         const double t = t_probe * (double)i / (double)n;
-        if(!subsolarLonAt(root, body, sun, t, lon)) { return sidereal; }
+        if(!subsolarLonAt(body, sun, t, lon)) { return sidereal; }
         sweep += wrapPi(lon - lon_prev);
         lon_prev = lon;
     }
@@ -817,10 +807,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
 
     // --- calendars ----------------------------------------------------------
-    // Per-body calendar from a SOLAR day (#201: the first return of the
-    // subsolar surface longitude, NOT the sidereal 2*pi/spin -- that drifts
-    // 3m56s/solar-day against the sun on Earth and is simply wrong for
-    // Venus / Triton / the tidally locked Moon) and the orbital period (year).
+    // Per-body calendar from a SOLAR day (#201: the geometric mean of the
+    // subsolar surface longitude over a heliocentric year, NOT the sidereal
+    // 2*pi/spin -- that drifts 3m56s/solar-day against the sun on Earth and
+    // is simply wrong for Venus / Triton / the tidally locked Moon) and the
+    // orbital period (year).
     // The year snaps to whole days (calendar.h) so boundaries fall on local
     // midnight. Stars get an invalid calendar (dummy zero-spin frame).
     // The displayed year at t == 0. Solar systems author 2000: their orbital

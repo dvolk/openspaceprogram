@@ -57,13 +57,16 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress = nullptr);
 
-// Geometric solar day (#201): the first return of the subsolar surface
-// longitude (equirect.h) to its t=0 value. Handles prograde and retrograde
-// spin/orbit and the tidally locked case (synodic month) -- do NOT use
-// 2*pi/(spin-orb), which is wrong for those encodings and divides by ~0
-// when they match. Returns 0 when the body does not spin (no day). Falls
-// back to the sidereal day when there is no sun or the sweep fails to
-// close. Used to size the per-body Calendar; safe to call at load.
+// Geometric MEAN solar day (#201): T * 2pi / |unwrapped subsolar-lon
+// sweep over T|, where T is the heliocentric year (the period of the
+// frame that directly orbits the star) so moons average out the parent's
+// true-anomaly rate. Handles prograde and retrograde spin/orbit and the
+// tidally locked case -- do NOT use 2*pi/(spin-orb), which is wrong for
+// those encodings and divides by ~0 when they match. Returns 0 when the
+// body does not spin. Falls back to the sidereal day when there is no
+// sun or the sweep is degenerate. Sizes the per-body Calendar.
+// Call at load: the measure walks frame chains and leaves them at t=T
+// (load_system re-runs UpdateOrbitRails(0) afterwards).
 double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun);
 
 // The heavy phase per body: `sync` builds synchronously (the player's bodies

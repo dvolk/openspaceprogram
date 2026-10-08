@@ -434,7 +434,7 @@ int main() {
               "#201 Earth solar day = 86400.101 s (not the sidereal 86164)");
         // June solstice 2000-06-21 01:38 is 172 d + 1h38m after the epoch.
         // With a solar-day clock that is Day 173 ~01:38; with the old
-        // sidereal day it drifted to Day 173 13:34.
+        // sidereal day it drifts to Day 173 12:56.
         {
             const double t_sol = 172.0 * 86400.0 + 1.0 * 3600.0 + 38.0 * 60.0;
             const CalTime ct = earth->cal.at(t_sol);
@@ -442,7 +442,7 @@ int main() {
             check(doy >= 172 && doy <= 173,
                   "#201 June solstice lands on Day ~173 (not week-drifted)");
             check(ct.hh == 1 && ct.mm >= 0 && ct.mm <= 59,
-                  "#201 June solstice clock reads ~01:00-01:59 (was 13:xx)");
+                  "#201 June solstice clock reads ~01:00-01:59 (was 12:xx)");
         }
     }
 
@@ -456,15 +456,11 @@ int main() {
               "Moon spin rate == orbital rate (synchronous, #144)");
         // #201: tidally locked, so the solar day is the synodic month
         // (2 551 447 s = 29.53 d), NOT the sidereal 27.3 d.
-        // Geometric mean over one lunar orbit lands on 2558898 s. The
-        // textbook phase-cycle synodic month is 2 551 447 s; the 0.3%
-        // gap is the 5 deg lunar orbital inclination (ecliptic sun vs
-        // orbital-plane equator) and is stable. The regression that
-        // matters: NOT the sidereal 2 360 595 s.
-        check(std::fabs(moon->cal.day_seconds - 2558898.0) < 2000.0,
-              "#201 Moon solar day = synodic, not sidereal (~2 558 898 s)");
-        check(moon->cal.day_seconds > 2.5e6,
-              "#201 Moon solar day is clearly longer than its sidereal month");
+        // Geometric mean over a heliocentric year = the synodic month
+        // (2 551 447 s). NOT the sidereal 2 360 595 s -- that is the
+        // bug #201 fixes for a locked moon.
+        check(std::fabs(moon->cal.day_seconds - 2551447.0) < 3600.0,
+              "#201 Moon solar day = synodic month (~2 551 447 s)");
         // Longitude 0 faces Earth at t=0 and stays facing it a half period
         // later: uniform spin vs Keplerian sweep differs only by the
         // physical libration, bounded by ~2e. A non-spinning Moon would
