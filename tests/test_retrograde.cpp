@@ -25,13 +25,16 @@
 // (inertial.incl_ref), so their planes tip with the parent's axis. All
 // rest on ONE sky convention: rail longitude atan2(-z, x) = ecliptic
 // longitude, so the fact sheets' physical angles are authored UN-negated
-// (#146) and the WGCCRE mapping is a proper rotation.
+// (#146) and the WGCCRE mapping is a proper rotation. #200 makes surface
+// lon share that zero (rot-frame +X = map lon 0), and the cross-convention
+// pins below are the ones that fail if the two drift apart again.
 // The throw and authoring cases run on targeted mutations of the real
 // system JSON (written to tmp/).
 //
 // Build & run (from repo root): see Makefile ($(TESTDIR)/test_retrograde).
 
 #include "system.h"
+#include "equirect.h"
 #include "frame.h"
 
 #include <cmath>
@@ -366,6 +369,57 @@ int main() {
                                 * glm::dvec3(1.0, 0.0, 0.0);
         check(glm::dot(lon0, glm::normalize(to_sun)) < -0.88,
               "calendar midnight at epoch: lon 0 faces away from the sun (#143)");
+
+        // --- #200: cross-convention pins (surface lon vs the sky) -----
+        // Every check above measures the meridian in the DATA side's own
+        // convention. These two weld it to the terrain/surfmap axis
+        // (equirect.h) and to the stars. They are the ones that fail when
+        // the two longitude zeros drift apart (#200 was 90 deg of that).
+        {
+            // (A) Sun in Earth's rot frame (surfmap.cpp:sunDirRot) must
+            // read surface lon ~= pi -- the ANTI-solar / midnight column
+            // of the map. Tolerance ~1 deg: the real equation of time on
+            // Jan 1 is 3.3 min = 0.83 deg (not a bug).
+            const glm::dvec3 to_sun_w =
+                sys.root->frame->root_pos - earth->frame->root_pos;
+            const double sl = glm::length(to_sun_w);
+            check(sl > 1e-9, "#200 sun direction is defined");
+            if(sl > 1e-9) {
+                const glm::dmat3 to_rot =
+                    glm::transpose(earth->frame->getRotFrame()->root_orient);
+                const glm::dvec3 sun_dir = to_rot * (to_sun_w / sl);
+                double slon, slat;
+                equirectLonLat(sun_dir, slon, slat);
+                double d = std::fabs(slon - PI);
+                if(d > PI) { d = 2.0 * PI - d; }   // wrap
+                check(d < 1.0 * PI / 180.0,
+                      "#200 anti-solar point at surface lon 180 (midnight "
+                      "column), not 90 deg off");
+            }
+            // (B) Surface (lon 0, lat 0) in the universe frame must have
+            // RA = GMST(2000-01-01 00:00) = 99.9678 deg. Wires terrain to
+            // the STARS (the sun and skybox both live in the rail frame, so
+            // (A) alone would still pass a rotated skybox).
+            // GMST = 280.46061837 + 360.98564736629 * d, d = -0.5 at epoch.
+            const double gmst_deg =
+                280.46061837 + 360.98564736629 * (-0.5);
+            const double gmst = gmst_deg * PI / 180.0;
+            // Greenwich at Dec 0, RA = GMST (ICRF equatorial).
+            const glm::dvec3 eq_want(std::cos(gmst), std::sin(gmst), 0.0);
+            // ICRF equatorial -> rail: ecliptic via -eps, then
+            // rail = (x_ecl, z_ecl, -y_ecl)  (make_solar_system._railvec_eq).
+            const double c = std::cos(-eps), s = std::sin(-eps);
+            const glm::dvec3 ecl(eq_want.x,
+                                 eq_want.y * c - eq_want.z * s,
+                                 eq_want.y * s + eq_want.z * c);
+            const glm::dvec3 rail_want(ecl.x, ecl.z, -ecl.y);
+            const glm::dvec3 surf0 = earth->frame->getRotFrame()->root_orient
+                                     * equirectDir(0.0, 0.0);
+            check(glm::dot(glm::normalize(surf0),
+                           glm::normalize(rail_want))
+                  > std::cos(1.0 * PI / 180.0),
+                  "#200 surface lon-0/lat-0 RA == GMST (terrain <-> stars)");
+        }
     }
 
     // --- #144: the Moon is tidally locked --------------------------------

@@ -22,7 +22,8 @@
 #include "fmt.h"         // fmt_dist / fmt_time
 #include "orbitsample.h" // OrbitSampleCache + open-arc sampling
 #include "orbitmap.h"    // OrbitMap + contrastingColor
-#include "surfmap.h"     // lon/lat <-> pixel math + surfmapCompute
+#include "equirect.h"    // equirectLonLat / equirectDir
+#include "surfmap.h"     // surfmapShade / surfmapWraps + surfmapCompute
 #include "texture.h"     // make_texture_r8
 #include "vab.h"         // the editor ops (drawVabUI)
 #include "staging.h"     // computeStaging
@@ -1146,8 +1147,13 @@ void drawUIReadouts(Game &g) {
         const bool sm_hover = ImGui::IsItemHovered();
 
         // The overlay (graticule, orbit, apsides, ship dot) on the map
-        // rect. (lon, lat) -> pixels: lon 0..2pi left -> right, lat +pi/2
-        // (north, buffer row 0) top -> -pi/2 bottom.
+        // rect. Screen (u, v) from (lon, lat): lon 0..2pi left -> right,
+        // lat +pi/2 top -> -pi/2 bottom. Scales by the IMAGE size (image-
+        // edge poles) rather than equirectPixel's (h-1) texture rows --
+        // deliberate: continuous screen coords for drawing, so the ship
+        // dot and the hover inverse stay consistent with each other (they
+        // disagree with the colour sample by at most half a map row near
+        // the poles).
         ImDrawList *dl = ImGui::GetWindowDrawList();
         const ImVec4 sm_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         const ImU32 sm_ink = contrastingColor(sm_bg);
@@ -1219,7 +1225,7 @@ void drawUIReadouts(Game &g) {
                     const double l = glm::length(pr);
                     if(l < 1e-9) { return false; }
                     double lon, lat;
-                    surfmapLonLat(pr / l, lon, lat);
+                    equirectLonLat(pr / l, lon, lat);
                     px = map_px(lon, lat);
                     return true;
                 };
@@ -1233,7 +1239,7 @@ void drawUIReadouts(Game &g) {
                     const double l = glm::length(pr);
                     if(l < 1e-9) { continue; }
                     double lon, lat;
-                    surfmapLonLat(pr / l, lon, lat);
+                    equirectLonLat(pr / l, lon, lat);
                     if(prev_lon > -1.0e299 && surfmapWraps(prev_lon, lon)) {
                         if(seg.size() >= 2) {
                             dl->AddPolyline(seg.data(), (int)seg.size(),
@@ -1287,7 +1293,7 @@ void drawUIReadouts(Game &g) {
             const double sl = glm::length(sp);
             if(sl > 1e-9) {
                 double lon, lat;
-                surfmapLonLat(sp / sl, lon, lat);
+                equirectLonLat(sp / sl, lon, lat);
                 const ImVec2 p = map_px(lon, lat);
                 // A dot crossing the antimeridian (within the ring
                 // radius of an edge) gets a twin on the other. Clip to the
@@ -1313,16 +1319,14 @@ void drawUIReadouts(Game &g) {
         if(sm_hover) {
             // The hovered pixel inverts map_px. The unit direction feeds
             // GetTerrainHeight straight -- the map is baked in the same
-            // rotating frame (surfmap.h), so no transform. "elev" is
+            // rotating frame (equirect.h), so no transform. "elev" is
             // above SEA LEVEL, like the Surface window's ASL.
             const ImVec2 sm_mouse = ImGui::GetMousePos();
             const double u = (sm_mouse.x - sm_p0.x) / sm_img_w;
             const double v = (sm_mouse.y - sm_p0.y) / sm_img_h;
             const double lon = u * 2.0 * std::numbers::pi;
             const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
-            const double cl = std::cos(lat);
-            const glm::vec3 dir(cl * std::sin(lon), std::sin(lat),
-                                cl * std::cos(lon));
+            const glm::vec3 dir = equirectDir(lon, lat);
             char elev_s[32];
             ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s",
                                 glm::degrees(lat), glm::degrees(lon),
@@ -1338,8 +1342,8 @@ void drawUIReadouts(Game &g) {
                                 ship->m_parent->name.c_str(),
                                 sm_body->name.c_str());
         }
-        ImGui::TextDisabled("equirectangular: lon 0 at the left edge, "
-                            "north up   computed at t=%.1fs",
+        ImGui::TextDisabled("equirectangular: lon 0 at the left edge "
+                            "(+X), north up   computed at t=%.1fs",
                             g.surfmap_computed_at);
     });
 

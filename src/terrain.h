@@ -357,8 +357,10 @@ struct TerrainBody {
         clouds->texture = make_coverage_texture(1, 1, &solid, true);
         cloud_radius = shell_radius;
 
-        // The bake layout MUST match the deck shader's UV (cloudShader.vs):
-        // u = lon/2pi + 0.5 (lon 0 = +Z), v = 0.5 - lat/pi (row 0 = north).
+        // The bake layout MUST match the deck shader's UV (cloudShader.vs)
+        // and equirect.h: u = lon/2pi (lon 0 at the LEFT edge), v from
+        // north to south as pixel centres. dir comes from equirectDir so
+        // the axis is the shared one.
         const int W = 2048, H = 1024;
         // Snapshots for the worker (job.h: no game state, GL or imgui).
         const glm::mat3 rot = surface.seed_rot;
@@ -369,14 +371,12 @@ struct TerrainBody {
             // Worker thread: pure math over the snapshots above.
             std::vector<unsigned char> px((size_t)W * H);
             for(int py = 0; py < H; py++) {
-                const float lat = (0.5f - (py + 0.5f) / (float)H) * (float)std::numbers::pi;
-                const float cl = (float)std::cos(lat);
-                const float sl = (float)std::sin(lat);
+                const float lat = (0.5f - (py + 0.5f) / (float)H)
+                                  * (float)std::numbers::pi;
                 for(int pxi = 0; pxi < W; pxi++) {
                     const float lon = ((pxi + 0.5f) / (float)W)
-                                      * 2.0f * (float)std::numbers::pi - (float)std::numbers::pi;
-                    const glm::vec3 dir(cl * std::sin(lon), sl,
-                                        cl * std::cos(lon));
+                                      * 2.0f * (float)std::numbers::pi;
+                    const glm::vec3 dir = equirectDir(lon, lat);
                     px[(size_t)py * W + pxi] =
                         (unsigned char)(cloudCover(dir, rot, cp) * 255.0f
                                         + 0.5f);

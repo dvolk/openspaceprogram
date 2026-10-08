@@ -315,8 +315,9 @@ Mesh *TerrainBody::create_atmosphere_mesh(float radius, int res) {
                 std::cos(theta),
                 std::sin(theta) * std::sin(phi));
             // The color slot carries the UNWRAPPED sphere params for the
-            // cloud deck (a continuous longitude across the seam). The
-            // atmosphere shader ignores color.
+            // cloud deck (a continuous longitude across the seam). phi is
+            // atan2(z, x) from +X toward +Z; surface lon (equirect.h) is
+            // -phi (mod 2pi). The atmosphere shader ignores color.
             verts.push_back(PosNorColVertex(dir * radius, dir,
                 glm::vec3(phi / (2.0f * (float)std::numbers::pi),
                           theta / (float)std::numbers::pi, 0.0f)));

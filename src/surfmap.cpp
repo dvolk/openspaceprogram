@@ -77,7 +77,7 @@ void surfmapCompute(Game &g) {
         double sr = 0.0, sg = 0.0, sb = 0.0;   // stored (shaded) means
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
-                const glm::dvec3 d = surfmapDir(i, j, w, h);
+                const glm::dvec3 d = equirectDirAt(i, j, w, h);
                 // Ocean box on and at/below sea level: flat sea covers the
                 // floor (same coverage as the 3D ocean shell). Redundant on a
                 // Flat-sea body: its terrain is already painted sea_color and

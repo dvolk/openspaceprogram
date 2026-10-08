@@ -488,9 +488,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // direction the pole leans (default 0 = toward +X, the ascending
             // node -- the old permanent node-lock). spin_phase0 = the
             // epoch spin angle about the figure axis +Y -- for an untilted
-            // body that is the rail longitude of the longitude-0 point (the
-            // spin analogue of true_anomaly0), but for tilted bodies the
-            // longitude reading
+            // body that is the rail longitude of the longitude-0 point (rot
+            // frame +X = surface lon 0, equirect.h; the spin analogue of
+            // true_anomaly0), but for tilted bodies the longitude reading
             // degrades past ~90 deg tilt; the figure-axis angle is the
             // sound meaning. Free-form angles: negative is legal, like
             // lon_asc_node. Systems that OMIT them load byte-identically

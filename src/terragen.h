@@ -34,6 +34,7 @@
 #include <glm/gtc/noise.hpp>
 
 #include "constants.h"  // kAtmoScaleHeights
+#include "equirect.h"   // equirectLonLat / equirectPixel
 
 typedef struct {
     float r, g, b;
@@ -148,8 +149,8 @@ struct RingParams {
 
 /* Authored equirectangular elevation (metres vs sea level), shared across
    TerrainParams snapshots and worker threads (the ptr is copied by value;
-   the samples are immutable). Layout matches src/surfmap.h: lon 0 at the
-   LEFT edge, north up, col 0 = lon 0, row 0 = north pole. Loaded from the
+   the samples are immutable). Layout is equirect.h: lon 0 at the LEFT
+   edge, north up, col 0 = lon 0, row 0 = north pole. Loaded from the
    HM16 container utils/heightmaps/gen_earth_hm.py writes
    (staging/heightmaps/earth/NOTES.md). Absent = procedural FBM terrain
    (Surface::heightmap is null). */
@@ -173,12 +174,9 @@ struct Heightmap {
     float sample(const glm::vec3 &p) const {
         assert(w >= 2 && h >= 2 && (int)m.size() == w * h);
         if(w < 2 || h < 2) { return 0.0f; }
-        const float lat = std::asin(glm::clamp(p.y, -1.0f, 1.0f));
-        float lon = std::atan2(p.x, p.z);
-        if(lon < 0.0f) { lon += 2.0f * glm::pi<float>(); }
-        const float u = lon / (2.0f * glm::pi<float>()) * (float)w;
-        float v = (glm::pi<float>() * 0.5f - lat) / glm::pi<float>()
-                * (float)(h - 1);
+        float lon, lat, u, v;
+        equirectLonLat(p, lon, lat);
+        equirectPixel(lon, lat, w, h, u, v);
         v = glm::clamp(v, 0.0f, (float)h - 1.000001f);
         const int i0 = ((int)u % w + w) % w;
         const int j0 = std::min((int)v, h - 2);

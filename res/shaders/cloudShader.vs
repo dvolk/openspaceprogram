@@ -17,13 +17,16 @@ void main()
     worldPos0 = (Normal * vec4(position, 1.0)).xyz;
     worldNormal0 = (Normal * vec4(normal, 0.0)).xyz;
 
-    // Equirectangular UV (the layout the coverage bake uses; the baker in
-    // TerrainBody::BuildClouds must agree): lon = atan2(x, z) is the game's
-    // convention (lon 0 = +Z), row 0 = north pole (v=0). Taken from the
-    // mesh's UNWRAPPED sphere params (color slot), not atan(position):
-    // atan has a branch cut, and interpolating u across it stretches one
-    // meridian of the coverage map into a pole-to-pole smear. With phi
-    // unwrapped, u = 0.75 - phi/2pi varies continuously over [-0.25, 0.75]
-    // and the texture's REPEAT wrap closes the seam. v = theta/pi.
-    uv0 = vec2(0.75 - uvParam.x, uvParam.y);
+    // Equirectangular UV -- the layout the coverage bake uses (see
+    // equirect.h and TerrainBody::BuildClouds): u = lon/2pi with lon 0 at
+    // the LEFT edge, v = theta/pi (row 0 = north). create_atmosphere_mesh
+    // carries unwrapped phi = atan2(z, x) from +X toward +Z; surface lon
+    // is -phi (mod 2pi), so u = -phi/2pi. Taken from the mesh's UNWRAPPED
+    // sphere params (color slot), not atan(position): atan has a branch
+    // cut, and interpolating u across it stretches one meridian of the
+    // coverage map into a pole-to-pole smear. With phi unwrapped,
+    // u = -uvParam.x varies continuously over [-1, 0] and the texture's
+    // REPEAT wrap closes the seam. v = theta/pi.
+    // Pinned by test_surfmap ("cloud UV") against this same identity.
+    uv0 = vec2(-uvParam.x, uvParam.y);
 }

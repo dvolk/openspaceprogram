@@ -190,8 +190,7 @@ void updateShipView(Game &g) {
 
     const glm::dvec3 dir = glm::normalize(surf_pos);
 
-    longitude = atan2(dir.x, dir.z);
-    latitude = asin(dir.y);
+    equirectLonLat(dir, longitude, latitude);
 }
 
 /* Prototype: fake exposure for the star field. The sky is authored in the same

@@ -792,15 +792,12 @@ int main() {
         hm->recomputeRange();
         check(hm->minMetres() == 10.0f && hm->maxMetres() == 120.0f,
               "heightmap: sample range covers the authored min/max");
-        // Directions matching surfmapDir: lon 0 = +Z, lon 90 = +X, north = +Y.
+        // Directions via equirect.h: lon 0 = +X, lon 90 = -Z, north = +Y.
         // Columns sit at lon 0/90/180/270 (u = 0..3); rows at lat +90/0/-90.
         // Poles have no unique longitude, so pin off-pole cells where
         // bilinear is exact (lat 45 mixes the north and equator rows).
         auto dir_at = [](float lon_deg, float lat_deg) {
-            const float lon = glm::radians(lon_deg);
-            const float lat = glm::radians(lat_deg);
-            const float cl = std::cos(lat);
-            return glm::vec3(cl * std::sin(lon), std::sin(lat), cl * std::cos(lon));
+            return equirectDir(glm::radians(lon_deg), glm::radians(lat_deg));
         };
         check(std::fabs(hm->sample(dir_at(0, 45)) - 30.0f) < 0.5f,
               "heightmap: lon 0 lat 45 mixes north/equator (10,50)");

@@ -8,8 +8,10 @@ Both 8-bit greyscale equirectangular, lon -180 left, north up. Use the
 GeoTIFFs (never the JPEG twins: lossy coastlines).
 
 Merge -> signed metres vs sea level -> downsample -> int16 LE. Game layout
-matches src/surfmap.h (lon 0 at the LEFT edge, north up), so the bake rolls
-the NASA half-turn (their lon 0 is the image centre).
+matches src/equirect.h (lon 0 at the LEFT edge, north up), so the bake rolls
+the NASA half-turn (their lon 0 is the image centre). Geographic lon/lat
+only -- which body-frame axis lon 0 sits on lives in equirectLonLat /
+Heightmap::sample, not in this file.
 
 Output (default res/heightmaps/earth/ -- the committed game asset):
   earth_hm.i16           self-describing heightmap (see HM16 below)
@@ -84,7 +86,7 @@ def load_merged(src_dir):
 
 
 def to_game_layout(m):
-    """NASA (lon -180 left) -> game (lon 0 left, see src/surfmap.h)."""
+    """NASA (lon -180 left) -> game (lon 0 left, see src/equirect.h)."""
     return np.roll(m, m.shape[1] // 2, axis=1)
 
 
@@ -154,7 +156,7 @@ def write_meta(out_dir, src_dir, w, h, m):
         ],
         'elev_scale_m_per_count': ELEV_SCALE,
         'bath_scale_m_per_count': BATH_SCALE,
-        'layout': 'game equirect: lon 0 left, north up (src/surfmap.h)',
+        'layout': 'game equirect: lon 0 left, north up (src/equirect.h)',
         'width': w,
         'height': h,
         'format': 'HM16 int16 metres vs sea level',
