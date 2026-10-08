@@ -2,13 +2,14 @@
 // Runs from the repo root:
 //   make test   (or: g++ -O2 -std=c++20 -I./src tests/test_calendar.cpp -o test_calendar && ./test_calendar)
 //
-// Pinned against the Eerbon system data (system.json), whose home planet's
-// rates are the same as KSP's Kerbin:
+// D here is the SOLAR day (what system.cpp feeds Calendar::make after
+// #201's measureSolarDay), pinned for Eerbon / KSP-Kerbin rates:
 //   home spin   rot_ang_speed = 2.9157090303706880702966723086e-4 rad/s
 //   home orbit  orb_ang_speed = 6.8269186570822291594437651e-7 rad/s
-// -> day  = 21,549 s (5 h 59 m)
-// -> year = 9,203,545 s = 427.09 days  -> snapped to 427 days
-// -> 11 x 36-day months + a 31-day 12th month
+// -> solar day = 21,599.6 s (the canonical 6 h; the sidereal 21,549 s is
+//    NOT what the clock uses -- see #201)
+// -> year = 9,203,545 s = 426.1 solar days  -> snapped to 426 days
+// -> 11 x 36-day months + a 30-day 12th month
 // -> epoch year 4724, so t = 0 is Yr 4724 Mo 1 Day 1 00:00:00
 #include "calendar.h"
 
@@ -34,8 +35,9 @@ static int failures = 0;
     } while(0)
 
 int main() {
+    // Solar day of the Eerbon/Kerbin rates (measureSolarDay, #201).
+    const double D = 21599.573;                  // 6 h solar, not 21549 sidereal
     const double TWOPI = 6.2831853071795864765;
-    const double D = TWOPI / 2.9157090303706880702966723086e-4; // Eerbon spin
     const double Y = TWOPI / 6.8269186570822291594437651e-7; // Eerbon orbit
     const int EPOCH = 4724;
 
@@ -43,14 +45,14 @@ int main() {
     Calendar cal = Calendar::make(D, Y, EPOCH);
     CHECK(cal.valid());
     CHECK(cal.has_year());
-    CHECK_NEAR(D, 21549.0, 1.0);                 // 5 h 59 m home day
+    CHECK_NEAR(D, 21599.6, 1.0);                 // 6 h solar home day
     CHECK_NEAR(Y, 9203545.0, 1.0);               // 106.5 real-day home year
-    CHECK(cal.days_per_year == 427);             // round(9203545 / 21549)
+    CHECK(cal.days_per_year == 426);             // round(9203545 / 21599.6)
     int sum = 0;
     for(int m = 0; m < 12; m++) { sum += cal.month_days[m]; }
     CHECK(sum == cal.days_per_year);
     for(int m = 0; m < 11; m++) { CHECK(cal.month_days[m] == 36); }
-    CHECK(cal.month_days[11] == 31);             // 11*36 + 31 = 427
+    CHECK(cal.month_days[11] == 30);             // 11*36 + 30 = 426
 
     // Tiny years: lround(N/12) can empty the 12th month; the floor-split
     // fallback keeps every month >= 1 and the sum exact.
@@ -91,7 +93,7 @@ int main() {
     CalTime m12 = cal.at(396.0 * D + 1.0);       // the short 12th month
     CHECK(m12.month == 12 && m12.day == 1);
 
-    CalTime ny = cal.at(427.0 * D + 1.0);        // new year at midnight
+    CalTime ny = cal.at(426.0 * D + 1.0);        // new year at midnight
     CHECK(ny.year == EPOCH + 1 && ny.month == 1 && ny.day == 1);
     CHECK(ny.hh == 0 && ny.mm == 0 && ny.ss <= 5); // 1 sim s = ~4 dial s
 
@@ -123,9 +125,9 @@ int main() {
     // --- fmt_cal_time / fmt_cal_compact -----------------------------------------
     char buf[64];
     CHECK(fmt_cal_time(cal, 0.0, buf, sizeof buf));
-    CHECK(std::string(buf) == "Year 4724   Day 1/427   00:00");
+    CHECK(std::string(buf) == "Year 4724   Day 1/426   00:00");
     CHECK(fmt_cal_time(cal, 3.0 * D + D * 0.5, buf, sizeof buf));
-    CHECK(std::string(buf) == "Year 4724   Day 4/427   12:00");
+    CHECK(std::string(buf) == "Year 4724   Day 4/426   12:00");
     CHECK(fmt_cal_compact(cal, 0.0, buf, sizeof buf));
     CHECK(std::string(buf) == "Yr 4724 Day 1  00:00");
     CHECK(fmt_cal_compact(cal, 3.0 * D + D * 0.5, buf, sizeof buf));
@@ -151,7 +153,7 @@ int main() {
     CHECK(std::string(buf) == "3h 04m");
     fmt_cal_duration(cal, 2.0 * D + 3.0 * dial_h + 4.0 * dial_m, buf, sizeof buf);
     CHECK(std::string(buf) == "2d 3h 04m");
-    // 1 year + 2 days + 3h 04m (the snapped 427-day year).
+    // 1 year + 2 days + 3h 04m (the snapped 426-day year).
     fmt_cal_duration(cal,
                      (double)cal.days_per_year * D + 2.0 * D
                          + 3.0 * dial_h + 4.0 * dial_m,

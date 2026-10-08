@@ -265,6 +265,10 @@ int main() {
                             "reached initial_orient)");
         check(venus->cal.day_seconds > 0.0 && venus->cal.year_seconds > 0.0,
               "Venus' calendar stays valid (the make_solar_system.py:174 trap)");
+        // #201: retrograde spin (axial_tilt > 90). Mean solar day is
+        // 116.75 Earth days; 2*pi/(spin-orb) is garbage here.
+        check(venus->cal.day_seconds > 9.5e6 && venus->cal.day_seconds < 1.1e7,
+              "#201 Venus solar day ~116.75 d (retrograde spin encodes right)");
     }
 
     // --- #141: the new epoch-phase fields -------------------------------
@@ -420,6 +424,26 @@ int main() {
                   > std::cos(1.0 * PI / 180.0),
                   "#200 surface lon-0/lat-0 RA == GMST (terrain <-> stars)");
         }
+
+        // --- #201: the calendar day is the SOLAR day ---------------------
+        // measureSolarDay is what system.cpp feeds Calendar::make. Pin the
+        // three encodings that break a 2*pi/(spin-orb) shortcut: prograde
+        // Earth, the tidally locked Moon (synodic month), and (below) the
+        // retrograde-spin Venus.
+        check(std::fabs(earth->cal.day_seconds - 86400.101) < 0.5,
+              "#201 Earth solar day = 86400.101 s (not the sidereal 86164)");
+        // June solstice 2000-06-21 01:38 is 172 d + 1h38m after the epoch.
+        // With a solar-day clock that is Day 173 ~01:38; with the old
+        // sidereal day it drifted to Day 173 13:34.
+        {
+            const double t_sol = 172.0 * 86400.0 + 1.0 * 3600.0 + 38.0 * 60.0;
+            const CalTime ct = earth->cal.at(t_sol);
+            const int doy = cal_day_of_year(earth->cal, ct);
+            check(doy >= 172 && doy <= 173,
+                  "#201 June solstice lands on Day ~173 (not week-drifted)");
+            check(ct.hh == 1 && ct.mm >= 0 && ct.mm <= 59,
+                  "#201 June solstice clock reads ~01:00-01:59 (was 13:xx)");
+        }
     }
 
     // --- #144: the Moon is tidally locked --------------------------------
@@ -430,6 +454,17 @@ int main() {
                         - moon->frame->orb_ang_speed)
               < 1e-12 * moon->frame->orb_ang_speed,
               "Moon spin rate == orbital rate (synchronous, #144)");
+        // #201: tidally locked, so the solar day is the synodic month
+        // (2 551 447 s = 29.53 d), NOT the sidereal 27.3 d.
+        // Geometric mean over one lunar orbit lands on 2558898 s. The
+        // textbook phase-cycle synodic month is 2 551 447 s; the 0.3%
+        // gap is the 5 deg lunar orbital inclination (ecliptic sun vs
+        // orbital-plane equator) and is stable. The regression that
+        // matters: NOT the sidereal 2 360 595 s.
+        check(std::fabs(moon->cal.day_seconds - 2558898.0) < 2000.0,
+              "#201 Moon solar day = synodic, not sidereal (~2 558 898 s)");
+        check(moon->cal.day_seconds > 2.5e6,
+              "#201 Moon solar day is clearly longer than its sidereal month");
         // Longitude 0 faces Earth at t=0 and stays facing it a half period
         // later: uniform spin vs Keplerian sweep differs only by the
         // physical libration, bounded by ~2e. A non-spinning Moon would

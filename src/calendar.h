@@ -1,11 +1,14 @@
 #pragma once
-// A home-planet calendar from a body's spin + orbital rates.
-// day D = 2*pi / spin_rate; year Y = 2*pi / orbital_rate (0 if no orbit).
+// A home-planet calendar from a body's day and year lengths.
+// D = the SOLAR day (mean sun at the same surface longitude), Y = the
+// orbital period (0 if no orbit). The caller measures D -- system.cpp uses
+// measureSolarDay (#201), NOT 2*pi/spin_rate (sidereal: that slides off
+// the sun at 3m56s per Earth day and is wrong for Venus / Triton / the
+// tidally locked Moon). Pure math: a function of (D, Y, epoch, t) only.
 // The calendar year is SNAPPED to a whole number of days round(Y/D) so
 // boundaries fall on local midnight. 12 months (first 11 get
 // round(Y/D/12) days, the 12th the remainder). A body whose year is
 // shorter than 12 days gets no year/months -- just a day count.
-// Pure math: a function of (D, Y, epoch, t) only.
 
 #include <cmath>
 #include <cstdio>
@@ -20,7 +23,7 @@ struct CalTime {
 };
 
 struct Calendar {
-    double day_seconds = 0.0;   // D, sim seconds; 0 = body doesn't spin
+    double day_seconds = 0.0;   // D = solar day, sim seconds; 0 = no spin
     double year_seconds = 0.0;  // Y (TRUE orbital period), sim seconds; 0 = none
     int days_per_year = 0;      // round(Y / D); 0 = no year
     int month_days[12] = {0};   // 12 months, summing to days_per_year

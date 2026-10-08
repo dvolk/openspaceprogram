@@ -12,9 +12,136 @@
 
 #include <nlohmann/json.hpp>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/transform.hpp>  // glm::rotate (updateChain)
+
+#include "equirect.h"  // equirectLonLat (subsolar surface longitude)
 #include "orbit.h"  // railStateFromElements
 #include "resdir.h"
 #include "bodylimits.h"  // the derived shell + SOI laws + the ordering asserts
+
+namespace {
+// Advance just the parent chain of `f` to time t (a single-node version of
+// UpdateOrbitRails). Measuring every body's solar day must not walk the
+// whole forest per sample.
+void updateChain(Frame *f, double t) {
+    if(f == nullptr) { return; }
+    updateChain(f->parent, t);
+    if(f->parent != nullptr && !f->rotating) {
+        if(f->orb_ang_speed != 0) {
+            propagateKepler(f->orbit_pos0, f->orbit_vel0, f->parent_mu,
+                            t, f->pos, f->vel);
+        }
+        f->root_pos = f->parent->root_orient * f->orient * f->pos
+                    + f->parent->root_pos;
+        f->root_vel = f->parent->root_orient * f->orient * f->vel
+                    + f->parent->root_vel;
+        f->root_orient = f->parent->root_orient * f->orient;
+    } else if(f->rotating) {
+        const double ang = std::fmod(f->rot_ang_speed * t, 2.0 * std::numbers::pi);
+        f->orient = f->initial_orient * glm::dmat3(glm::rotate(ang, f->spin_axis));
+        if(f->parent != nullptr) {
+            f->root_pos = f->parent->root_orient * f->orient * f->pos
+                        + f->parent->root_pos;
+            f->root_orient = f->parent->root_orient * f->orient;
+        }
+    } else if(f->parent == nullptr) {
+        // root: root_pos/root_orient stay at their load-time values
+    }
+    f->rail_time = t;
+}
+
+// Direction TOWARD the star in `body`'s rotating frame (same math as
+// surfmap.cpp:sunDirRot). False when there is no terminator.
+bool subsolarLonAt(Frame *root, TerrainBody *body, const TerrainBody *sun,
+                   double t, double &lon) {
+    if(sun == nullptr || body == sun || body->frame == nullptr
+       || sun->frame == nullptr || body->frame->getRotFrame() == nullptr) {
+        return false;
+    }
+    updateChain(body->frame->getRotFrame(), t);
+    updateChain(const_cast<Frame *>(sun->frame), t);
+    const glm::dvec3 to_sun = sun->frame->root_pos - body->frame->root_pos;
+    const double l = glm::length(to_sun);
+    if(l < 1e-9) { return false; }
+    const glm::dmat3 to_rot =
+        glm::transpose(body->frame->getRotFrame()->root_orient);
+    const glm::dvec3 dir = to_rot * (to_sun / l);
+    double lat = 0.0;
+    equirectLonLat(dir, lon, lat);
+    return true;
+}
+
+// Wrap to (-pi, pi].
+double wrapPi(double a) {
+    const double pi = std::numbers::pi;
+    a = std::fmod(a + pi, 2.0 * pi);
+    if(a < 0.0) { a += 2.0 * pi; }
+    return a - pi;
+}
+
+// Unwrapped sweep of the subsolar longitude from 0 to t (radians).
+bool solarSweep(Frame *root, TerrainBody *body, const TerrainBody *sun,
+                double lon0, double t, double dt, double &out) {
+    double lon_prev = lon0;
+    double acc = 0.0;
+    const int n = std::max(1, (int)std::lround(t / dt));
+    for(int i = 1; i <= n; i++) {
+        double lon = 0.0;
+        const double ti = t * (double)i / (double)n;
+        if(!subsolarLonAt(root, body, sun, ti, lon)) { return false; }
+        acc += wrapPi(lon - lon_prev);
+        lon_prev = lon;
+    }
+    out = acc;
+    return true;
+}
+} // namespace
+
+double measureSolarDay(Frame *root, TerrainBody *body, TerrainBody *sun) {
+    const double twopi = 2.0 * std::numbers::pi;
+    const double sidereal =
+        (body && body->rot_frame && body->rot_frame->rot_ang_speed > 0.0)
+        ? twopi / body->rot_frame->rot_ang_speed
+        : 0.0;
+    if(sidereal <= 0.0 || root == nullptr) { return 0.0; }
+
+    double lon0 = 0.0;
+    if(!subsolarLonAt(root, body, sun, 0.0, lon0)) {
+        return sidereal;   // no sun: solar day == sidereal
+    }
+
+    // MEAN solar day over one orbital period: T * 2pi / |sweep(T)|.
+    // Not the apparent first-return at t=0 (that is 86428 s on Jan 1 and
+    // still walks through the equation of time). Averaging over an orbit
+    // gives the mean, which is what a calendar clock needs -- and it is
+    // the same number for prograde, retrograde spin (#139), retrograde
+    // orbit, and the tidally locked Moon (synodic month).
+    double t_probe = sidereal;   // no orbit: the sun is fixed, sweep = spin
+    if(body->frame && body->frame->orb_ang_speed > 0.0) {
+        t_probe = twopi / body->frame->orb_ang_speed;
+    }
+
+    // Step finely enough that the spin alone cannot alias across pi, and
+    // densely enough that a short probe (tidally locked: probe == sidereal)
+    // still resolves the mean (64 samples minimum).
+    const int n = (int)std::min(8192.0,
+                     std::max(64.0, std::ceil(8.0 * t_probe / sidereal)));
+    double lon_prev = lon0;
+    double sweep = 0.0;
+    for(int i = 1; i <= n; i++) {
+        double lon = 0.0;
+        const double t = t_probe * (double)i / (double)n;
+        if(!subsolarLonAt(root, body, sun, t, lon)) { return sidereal; }
+        sweep += wrapPi(lon - lon_prev);
+        lon_prev = lon;
+    }
+
+    // |sweep| = 2pi * (solar days per probe). Tiny sweep = the body is
+    // locked to the sun (no day); fall back so the clock still runs.
+    if(std::fabs(sweep) < 1e-6) { return sidereal; }
+    return t_probe * twopi / std::fabs(sweep);
+}
 
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
@@ -690,18 +817,21 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
 
     // --- calendars ----------------------------------------------------------
-    // Per-body calendar from its spin (day) and orbit (year) rates. The year
-    // snaps to whole days (calendar.h) so boundaries fall on local midnight.
-    // Stars get an invalid calendar (dummy zero-spin frame).
+    // Per-body calendar from a SOLAR day (#201: the first return of the
+    // subsolar surface longitude, NOT the sidereal 2*pi/spin -- that drifts
+    // 3m56s/solar-day against the sun on Earth and is simply wrong for
+    // Venus / Triton / the tidally locked Moon) and the orbital period (year).
+    // The year snaps to whole days (calendar.h) so boundaries fall on local
+    // midnight. Stars get an invalid calendar (dummy zero-spin frame).
     // The displayed year at t == 0. Solar systems author 2000: their orbital
     // phases are J2000-referenced (fact sheets), so the clock matches the
     // sky. Default 1 (the fictional systems start there, like the game they
     // evoke); the old game-wide 4724 predates this field and meant nothing.
     const int epoch_year = doc.value("epoch_year", 1);
+    // The measure walks the rail tree; every body shares one sun (the star).
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
-        const double D = (b->rot_frame && b->rot_frame->rot_ang_speed > 0.0)
-                       ? 2.0 * std::numbers::pi / b->rot_frame->rot_ang_speed : 0.0;
+        const double D = measureSolarDay(sys.root->frame, b, sys.root);
         const double Y = (b->frame && b->frame->orb_ang_speed > 0.0)
                        ? 2.0 * std::numbers::pi / b->frame->orb_ang_speed : 0.0;
         b->cal = Calendar::make(D, Y, epoch_year);
