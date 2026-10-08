@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -788,6 +789,9 @@ int main() {
             50, 60, 70, 80,     // equator
             90, 100, 110, 120,  // south row
         };
+        hm->recomputeRange();
+        check(hm->minMetres() == 10.0f && hm->maxMetres() == 120.0f,
+              "heightmap: sample range covers the authored min/max");
         // Directions matching surfmapDir: lon 0 = +Z, lon 90 = +X, north = +Y.
         // Columns sit at lon 0/90/180/270 (u = 0..3); rows at lat +90/0/-90.
         // Poles have no unique longitude, so pin off-pole cells where
@@ -829,6 +833,21 @@ int main() {
         const float h1 = terrainHeight(p, t);
         check(std::isfinite(h1) && std::fabs(h1 - h0) > 1.0f,
               "heightmap: fine noise residual is added on top");
+        // Residual scales with detail_amplitude (not surface.amplitude).
+        {
+            const glm::vec3 q = (t.surface.seed_rot * p) * t.surface.frequency
+                              + terrain_noise_off;
+            const float expect = terrainFbmOctaves(q, 2, t.surface.octaves,
+                                                   t.surface.persistence,
+                                                   1e30f) * 200.0f;
+            check(std::fabs((h1 - h0) - expect) < 1.0f,
+                  "heightmap: residual is detail_amplitude * FBM");
+        }
+        // amplitude is ignored on a heightmap body (no continents FBM scale).
+        t.surface.detail_amplitude = 0.0f;
+        t.surface.amplitude = 25000.0f;
+        check(std::fabs(terrainHeight(p, t) - (t.radius + hm->sample(p))) < 1.0f,
+              "heightmap: surface.amplitude does not scale the map");
 
         // Flat sea clamps the map's negative floor (bathymetry ready for a
         // future Mesh shell, invisible under Flat).
@@ -866,6 +885,53 @@ int main() {
             try { loadHeightmap("tmp/does_not_exist_hm16.i16"); }
             catch(const std::runtime_error &) { threw = true; }
             check(threw, "heightmap: a missing file is an error, not a fallback");
+
+            // Loader corruption: bad magic, unknown format, bad size,
+            // truncated samples. Each must throw (never silently fallback).
+            auto write_raw = [](const char *path, const void *data, size_t n) {
+                std::FILE *f = std::fopen(path, "wb");
+                if(!f) { return false; }
+                std::fwrite(data, 1, n, f);
+                std::fclose(f);
+                return true;
+            };
+            auto expect_throw = [&](const char *path, const char *what) {
+                bool t = false;
+                try { loadHeightmap(path); }
+                catch(const std::runtime_error &) { t = true; }
+                check(t, what);
+            };
+            {
+                const char bad_magic[16] = { 'X','M','1','6', 4,0,0,0,
+                                             3,0,0,0, 1,0,0,0 };
+                write_raw("tmp/test_hm16_badmagic.i16", bad_magic, 16);
+                expect_throw("tmp/test_hm16_badmagic.i16",
+                             "heightmap: bad magic is rejected");
+            }
+            {
+                unsigned char buf[16 + 4 * 3 * 2] = { 0 };
+                std::memcpy(buf, "HM16", 4);
+                buf[4] = 4; buf[8] = 3; buf[12] = 2;   // format 2
+                write_raw("tmp/test_hm16_badfmt.i16", buf, sizeof buf);
+                expect_throw("tmp/test_hm16_badfmt.i16",
+                             "heightmap: unknown format is rejected");
+            }
+            {
+                unsigned char buf[16] = { 0 };
+                std::memcpy(buf, "HM16", 4);
+                buf[4] = 1; buf[8] = 1; buf[12] = 1;   // 1x1: too small
+                write_raw("tmp/test_hm16_badsize.i16", buf, 16);
+                expect_throw("tmp/test_hm16_badsize.i16",
+                             "heightmap: bad size is rejected");
+            }
+            {
+                unsigned char buf[16 + 4] = { 0 };   // 4x3 needs 24 sample bytes
+                std::memcpy(buf, "HM16", 4);
+                buf[4] = 4; buf[8] = 3; buf[12] = 1;
+                write_raw("tmp/test_hm16_trunc.i16", buf, sizeof buf);
+                expect_throw("tmp/test_hm16_trunc.i16",
+                             "heightmap: truncated samples are rejected");
+            }
         }
     }
 

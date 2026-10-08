@@ -249,11 +249,19 @@ struct TerrainBody {
         float maxh;
         if (surface.bands) {
             maxh = 0.0f;   // gas giant: smooth sphere
+        } else if (surface.heightmap) {
+            // Authored map: the true peak, not a point-sample (2048 Fibonacci
+            // directions missed Earth's by ~1 km and saturated the palette).
+            // The fine residual is bounded by terrainFbmOctaves ~ [-1,1] *
+            // detail_amplitude.
+            const float map_hi = surface.heightmap->maxMetres();
+            const float detail = std::max(0.0f, surface.detail_amplitude);
+            maxh = std::max(1.0f, (map_hi + detail - surface.sea_level) * 1.05f);
         } else {
             const TerrainParams tp0 = params();
             const int N = 2048;
             const float golden = 2.39996322972865332f;   // golden angle
-            float hi = 0.0f;
+            float hi = -FLT_MAX;
             for (int i = 0; i < N; i++) {
                 const float y = 1.0f - 2.0f * (i + 0.5f) / (float)N;
                 const float rr = std::sqrt(std::max(0.0f, 1.0f - y * y));

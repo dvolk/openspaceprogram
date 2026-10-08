@@ -28,8 +28,8 @@ Use the GeoTIFFs, never the JPEG twins (lossy ringing on coastlines).
 
 ```text
 python3 utils/heightmaps/gen_earth_hm.py            # -> res/heightmaps/earth/
-python3 utils/heightmaps/gen_earth_hm.py --verify   # pin known elevations
-python3 utils/heightmaps/gen_earth_hm.py --check    # drift check (test-py)
+python3 utils/heightmaps/gen_earth_hm.py --verify   # pin known elevations (test-py)
+python3 utils/heightmaps/gen_earth_hm.py --check    # re-bake vs res/ (needs the TIFFs)
 ```
 
 Output is one self-describing `earth_hm.i16` (see the script header) plus a

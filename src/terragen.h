@@ -26,6 +26,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -149,17 +150,29 @@ struct RingParams {
    TerrainParams snapshots and worker threads (the ptr is copied by value;
    the samples are immutable). Layout matches src/surfmap.h: lon 0 at the
    LEFT edge, north up, col 0 = lon 0, row 0 = north pole. Loaded from the
-   HM16 container utils/gen_heightmap.py writes (staging/heightmap/NOTES.md).
-   Absent = procedural FBM terrain (Surface::heightmap is null). */
+   HM16 container utils/heightmaps/gen_earth_hm.py writes
+   (staging/heightmaps/earth/NOTES.md). Absent = procedural FBM terrain
+   (Surface::heightmap is null). */
 struct Heightmap {
     int w = 0, h = 0;
     std::vector<int16_t> m;   // metres vs sea level, row-major, row 0 = north
+
+    // Exact sample range (for max_height / palette). Scans once and caches;
+    // hand-built maps still get the right answer.
+    float minMetres() const { return range_.first; }
+    float maxMetres() const { return range_.second; }
+    void recomputeRange() const {
+        if(m.empty()) { range_ = { 0.0f, 0.0f }; return; }
+        const auto mm = std::minmax_element(m.begin(), m.end());
+        range_ = { (float)*mm.first, (float)*mm.second };
+    }
 
     // Bilinear sample at a unit direction in the body's ROTATING frame.
     // Longitude wraps; latitude clamps at the poles. Does NOT apply
     // seed_rot: the map is geographic (or whatever the bake authored).
     float sample(const glm::vec3 &p) const {
-        if(w <= 0 || h <= 0) { return 0.0f; }
+        assert(w >= 2 && h >= 2 && (int)m.size() == w * h);
+        if(w < 2 || h < 2) { return 0.0f; }
         const float lat = std::asin(glm::clamp(p.y, -1.0f, 1.0f));
         float lon = std::atan2(p.x, p.z);
         if(lon < 0.0f) { lon += 2.0f * glm::pi<float>(); }
@@ -178,15 +191,20 @@ struct Heightmap {
                       + (float)m[(size_t)(j0 + 1) * w + i1] * fu;
         return a * (1.0f - fv) + b * fv;
     }
+
+private:
+    // Filled by recomputeRange() (loadHeightmap and the tests call it).
+    mutable std::pair<float, float> range_ = { 0.0f, 0.0f };
 };
 
-// HM16 container (see utils/gen_heightmap.py). Throws on a bad file: a
-// named heightmap is data, and a typo must not silently fall back to noise.
+// HM16 container (see utils/heightmaps/gen_earth_hm.py). Throws on a bad
+// file: a named heightmap is data, and a typo must not silently fall back
+// to noise.
 inline std::shared_ptr<const Heightmap> loadHeightmap(const std::string &path) {
     std::ifstream f(path, std::ios::binary);
     if(!f.is_open()) {
         throw std::runtime_error("heightmap: cannot open " + path
-                                 + " (bake with utils/gen_heightmap.py)");
+                                 + " (bake with utils/heightmaps/gen_earth_hm.py)");
     }
     char magic[4];
     uint32_t w = 0, h = 0, fmt = 0;
@@ -213,6 +231,7 @@ inline std::shared_ptr<const Heightmap> loadHeightmap(const std::string &path) {
     if(!f) {
         throw std::runtime_error("heightmap: " + path + ": truncated samples");
     }
+    hm->recomputeRange();
     return hm;
 }
 

@@ -13,11 +13,10 @@ the NASA half-turn (their lon 0 is the image centre).
 
 Output (default res/heightmaps/earth/ -- the committed game asset):
   earth_hm.i16           self-describing heightmap (see HM16 below)
-  heightmap_preview.png  grey = 0 at sea level, for eyeballing
   heightmap_params.json  bake provenance
   heightmap_ATTRIBUTION.txt
 
-Previews also land in staging/heightmaps/earth/preview/ (gitignored).
+The grey preview PNG goes to staging/heightmaps/earth/preview/ (gitignored).
 
 HM16 container (little-endian):
   0   4s   magic "HM16"
@@ -125,7 +124,7 @@ def read_hm16(path):
 
 
 def sample_dir(m, lon_deg, lat_deg):
-    """Bilinear, game layout (matches heightmapSample in src/terragen.h)."""
+    """Bilinear, game layout (matches Heightmap::sample in src/terragen.h)."""
     h, w = m.shape
     u = (lon_deg % 360.0) / 360.0 * w
     v = (90.0 - lat_deg) / 180.0 * (h - 1)
