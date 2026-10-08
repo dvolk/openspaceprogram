@@ -374,6 +374,8 @@ void TransferPlanner::porkchopCompute() {
             if(still_target && res) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
+                pc_rev++;   // the heatmap texture is a cache of pc; this is its
+                           // invalidation (see pc_rev)
                 // The index just validated, not the one captured at post: the
                 // target list is rebuilt every frame, so a sibling ship joining
                 // or leaving shifts it, and a pc_target that disagrees with

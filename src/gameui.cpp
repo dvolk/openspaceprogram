@@ -2,6 +2,7 @@
 #include "gameui.h"
 
 #include <algorithm>
+#include <cassert>
 #include <climits>
 #include <cmath>
 #include <numbers>
@@ -937,35 +938,51 @@ void drawUIReadouts(Game &g) {
         double lo = pc.dv_min;
         double hi = (pc.dv_hi > lo) ? pc.dv_hi : lo;
         const int w = pc.n_dep, h = pc.n_tof;
-        std::vector<unsigned char> px((size_t)w * h * 4);
-        for(int j = 0; j < h; j++) {
-            for(int i = 0; i < w; i++) {
-                const double dv = pc.total_dv[(size_t)j * w + i];
-                unsigned char *p = &px[((size_t)j * w + i) * 4];
-                if(std::isnan(dv)) {
-                    p[0] = p[1] = p[2] = 80;   // gray = no solution
-                } else {
-                    const float t = (float)((dv - lo) / (hi - lo));
-                    const unsigned int c = ramp_color(t);
-                    p[0] = (unsigned char)(c & 0xff);
-                    p[1] = (unsigned char)((c >> 8) & 0xff);
-                    p[2] = (unsigned char)((c >> 16) & 0xff);
-                }
-                p[3] = 255;
-            }
-        }
-        // One texture, re-uploaded on each compute (and when --porkchop-n
-        // changes the size).
+        // The heatmap is a CACHE of pc: px and the texture only change when a
+        // sweep lands, so gate both on pc_rev (bumped where pc is published).
+        // Rebuilding per frame -- the old behaviour, whatever the window's
+        // "cheap to leave open" comment claimed -- is a full RGBA fill plus a
+        // GL upload every frame for a plot that only moves when you press P:
+        // 6.4 KB at the default 40x40, tens of MB at the --porkchop-n /
+        // --porkchop-bench caps. px keeps its peak capacity, so the largest
+        // grid ever swept also stays resident.
         static Texture *pc_tex = nullptr;
-        static int tex_w = 0, tex_h = 0;
-        if(!pc_tex || tex_w != w || tex_h != h) {
-            if(pc_tex) { delete pc_tex; }
-            pc_tex = make_texture_r8(w, h, px.data());
-            tex_w = w;
-            tex_h = h;
-        } else {
-            upload_texture_r8(pc_tex, w, h, px.data());
+        static std::vector<unsigned char> px;   // persists across frames
+        static int tex_w = 0, tex_h = 0, tex_rev = -1;
+        // One read of the stamp: tex_rev must name the pixels built below.
+        const int rev = planner.pc_rev;
+        if(rev != tex_rev) {
+            px.resize((size_t)w * h * 4);
+            for(int j = 0; j < h; j++) {
+                for(int i = 0; i < w; i++) {
+                    const double dv = pc.total_dv[(size_t)j * w + i];
+                    unsigned char *p = &px[((size_t)j * w + i) * 4];
+                    if(std::isnan(dv)) {
+                        p[0] = p[1] = p[2] = 80;   // gray = no solution
+                    } else {
+                        const float t = (float)((dv - lo) / (hi - lo));
+                        const unsigned int c = ramp_color(t);
+                        p[0] = (unsigned char)(c & 0xff);
+                        p[1] = (unsigned char)((c >> 8) & 0xff);
+                        p[2] = (unsigned char)((c >> 16) & 0xff);
+                    }
+                    p[3] = 255;
+                }
+            }
+            if(!pc_tex || tex_w != w || tex_h != h) {
+                if(pc_tex) { delete pc_tex; }
+                pc_tex = make_texture_r8(w, h, px.data());
+                tex_w = w;
+                tex_h = h;
+            } else {
+                upload_texture_r8(pc_tex, w, h, px.data());
+            }
+            tex_rev = rev;
         }
+        // The fill above indexes total_dv as w x h and the Image below derefs
+        // the texture: both must match the grid that is on screen.
+        assert(pc.total_dv.size() == (size_t)w * h && pc_tex
+               && tex_w == w && tex_h == h);
         // The color bar: a 1 x 64 viridis strip, lo at the bottom.
         static Texture *bar_tex = nullptr;
         if(!bar_tex) {

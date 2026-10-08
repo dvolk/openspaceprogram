@@ -2,9 +2,16 @@ NAME porkchop
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --timeout 15 --porkchop-log --porkchop-n 40 --orbit-interval 0.5
 ARGS --transfer-target Mun
-ARGS --sim-press 3000,0,P
+# Open the plot itself: W_Porkchop is not open by default, so pressing P alone
+# never draws the heatmap -- the texture create/upload path stays untested.
+# Two sweeps so both branches run: create, then re-upload into a same-size
+# texture. A mismatched glTexSubImage2D raises GL_INVALID_VALUE, printed as
+# GL_... and caught by FORBID below.
+ARGS --ui-click 2000,"Windows/Transfer"
+ARGS --ui-click 2600,"Transfer/Porkchop"
+ARGS --sim-press 3000,0,P,8000,0,P
 EXPECT [porkchop]
-CHECK len(porkchop) >= 1
+CHECK len(porkchop) >= 2
 CHECK last(porkchop)["n_dep"] == 40 and last(porkchop)["n_tof"] == 40
 CHECK last(porkchop)["dv_min"] > 100 and last(porkchop)["dv_min"] < 5000
 CHECK last(porkchop)["dv_hi"] > last(porkchop)["dv_min"]

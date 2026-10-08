@@ -65,6 +65,17 @@ public:
     PorkchopResult pc;   // valid when pc.valid
     int pc_target = -1;  // target index the current pc grid was swept for
     int pc_in_flight = 0;
+    // Bumped whenever pc is replaced (the ONLY writer is the sweep's
+    // continuation). The Porkchop window redraws its heatmap off this, so a
+    // grid that is merely still on screen costs nothing per frame. Covers the
+    // grid's CONTENTS only: the sites that merely invalidate pc (target change,
+    // clock jump) leave rev alone, which is safe because the window returns
+    // before its texture block when !pc.valid. NOT pc_computed_at: that is
+    // g.time at POST time, so two sweeps posted in the same sim instant (clock
+    // paused, headless) share a stamp and the second grid would never reach the
+    // screen -- and it already means "the departure epoch of this grid" for
+    // "Send best".
+    int pc_rev = 0;
     // Custom dep/ToF ranges; off = auto range (see Porkchop window).
     bool   pcCustomDep = false;
     float  pcDepLo = 0.0f;
