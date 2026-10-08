@@ -379,7 +379,28 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--porkchop-n", args.porkchop_n,
                    "Porkchop plot grid size (porkchop-n x porkchop-n); the "
                    "size knob, a Settings-window hook later (default 40, "
-                   "~15 ms at 40 x 40)");
+                   "~15 ms at 40 x 40)")
+        ->check(CLI::Range(1, 2048));
+    app.add_option("--porkchop-bench", args.porkchop_bench,
+                   "On the plot trigger (P), sweep these grid sizes back to "
+                   "back off ONE ship/target snapshot and log each, so the "
+                   "grids differ only in resolution. Swept ascending; the live "
+                   "plot keeps the largest, e.g. --porkchop-bench 40,128,256")
+        // CLI11 has no delimiter by default, so without this its number lexer
+        // reads "40,128" as the single integer 40128 -- a 40128^2 grid is 13 GB.
+        ->delimiter(',')
+        // Range bounds each size; expected() bounds how many. A sweep is ONE
+        // job, so an unbounded list is unbounded worker time the process must
+        // wait out before it can exit or switch system.
+        ->expected(1, 8)
+        // A grid is n^2 doubles: 4096^2 is 134 MB and ~5 min of worker time.
+        // Looser than --porkchop-n's cap because this is an offline sweep,
+        // not the live plot.
+        ->check(CLI::Range(1, 4096));
+    app.add_option("--porkchop-dump", args.porkchop_dump,
+                   "Directory to write each computed porkchop grid into as "
+                   "CSV (one row per ToF sample, NaN = no solution); implies "
+                   "--porkchop-bench's per-grid logging");
 
     app.add_flag("--surfmap-log", args.surfmap_log,
                  "Print the surface map's albedo + shaded RGB means to stdout "

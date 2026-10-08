@@ -44,6 +44,13 @@ public:
     // True while any posted job has not fully landed.
     bool busy() const;
 
+    // True once abort()/join() has asked the worker to stop. A long job body
+    // should check this between its own steps: abort() drops QUEUED jobs but
+    // still joins the in-flight one, so an uncancellable body stalls the
+    // caller (load, system swap, exit) for its whole remaining runtime.
+    // Safe to call from the worker.
+    bool stopping() const;
+
     // Block until every posted job has finished. Idempotent (the dtor joins too).
     void join();
 

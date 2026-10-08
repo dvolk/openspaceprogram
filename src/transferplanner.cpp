@@ -4,11 +4,18 @@
 #include "game.h"   // the complete Game (transferplanner.h only forward-declares it)
 #include "bodylimits.h"  // shellEdge (the capture-orbit radius)
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <cctype>
+#include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace {
 // Ship/target state lifted into the parent's INERTIAL frame -- the frame the
@@ -66,6 +73,67 @@ InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
             + tsf->GetVelocityRelTo(inertial);
     }
     return d;
+}
+
+// One [porkchop] line per swept grid (the shape e2e/run.py parses).
+void logPorkchop(double t_now, const std::string &target,
+                 const PorkchopResult &res, double sweep_ms) {
+    if(res.valid) {
+        printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
+               "dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s sweep=%.1f ms\n",
+               t_now, target.c_str(), res.n_dep, res.n_tof,
+               res.dv_min, res.dv_hi, res.t_dep_min, res.tof_min, sweep_ms);
+    } else {
+        printf("[porkchop] t=%.1fs target=\"%s\" no-solution sweep=%.1f ms\n",
+               t_now, target.c_str(), sweep_ms);
+    }
+    fflush(stdout);
+}
+
+/* The grid as CSV for offline analysis: a comment header carrying the grid
+   shape, the axis ranges and the argmin, then one row per ToF sample (the
+   ImPlot ToF-major layout), NaN where no conic solved. The sim time is in the
+   filename because re-sweeping is the whole point of --porkchop-bench, and a
+   fixed name would destroy the previous dump. */
+void dumpPorkchop(const std::string &dir, const std::string &target,
+                  double t_now, const PorkchopResult &res) {
+    std::string safe;
+    for(const char c : target) {
+        safe += (std::isalnum((unsigned char)c) || c == '-' || c == '_') ? c : '_';
+    }
+    char tb[32];
+    std::snprintf(tb, sizeof tb, "t%.0f", t_now);
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    const std::string path = dir + "/porkchop_" + safe + "_" + tb + "_"
+        + std::to_string(res.n_dep) + "x" + std::to_string(res.n_tof) + ".csv";
+    std::ofstream f(path);
+    if(!f) {
+        // Deliberately NOT tagged "[porkchop]": an e2e EXPECT on that tag must
+        // not be satisfied by a failure line.
+        printf("[porkchop-dump] FAILED: %s\n", path.c_str());
+        fflush(stdout);
+        return;
+    }
+    f.precision(9);   // set BEFORE the header, or the ranges print at 6 digits
+    f << "# n_dep,n_tof,t_dep_lo,t_dep_hi,tof_lo,tof_hi,dv_min,t_dep_min,tof_min (s; m/s)\n"
+      << "# " << res.n_dep << "," << res.n_tof << ","
+      << res.t_dep_lo << "," << res.t_dep_hi << "," << res.tof_lo << ","
+      << res.tof_hi << "," << res.dv_min << "," << res.t_dep_min << ","
+      << res.tof_min << "\n";
+    for(int j = 0; j < res.n_tof; j++) {
+        for(int i = 0; i < res.n_dep; i++) {
+            if(i) { f << ','; }
+            f << res.total_dv[(size_t)j * res.n_dep + i];
+        }
+        f << '\n';
+    }
+    f.close();
+    if(!f) {
+        // Truncated (disk full, EIO): say so rather than leave a quiet partial.
+        printf("[porkchop-dump] TRUNCATED: %s\n", path.c_str());
+        fflush(stdout);
+    }
 }
 } // namespace
 
@@ -198,10 +266,19 @@ void TransferPlanner::invalidateClockState() {
     xfer.valid = false;
     xferTargets.clear();
     xfer_target = -1;
+    // A sweep interrupted by the swap never runs its continuation (abort()
+    // drops the queued ones, restart() drops the landed one), and that
+    // continuation is the only other place pc_in_flight is cleared -- without
+    // this the window shows "sweeping" and disables Compute forever.
+    pc_in_flight = 0;
 }
 
 void TransferPlanner::porkchopCompute() {
     if(xfer_target < 0 || xfer_target >= (int)xferTargets.size()) { return; }
+    // One sweep at a time. The window's button is disabled while a sweep is in
+    // flight but the P key is not, and a --porkchop-bench list can queue
+    // minutes of worker time that abort() would then have to wait out.
+    if(pc_in_flight > 0) { return; }
     const XferTarget &t = xferTargets[xfer_target];
 
     // Snapshot ship/target state at t = 0 in the parent's INERTIAL frame.
@@ -227,40 +304,62 @@ void TransferPlanner::porkchopCompute() {
     // Snapshot pure values only (no game refs) so the worker is safe to run.
     const glm::dvec3 r1 = s1.r, v1 = s1.v, r2 = d.r, v2 = d.v;
     const double mu_p = s1.mu_parent, mu_t = d.mu, r_cap = d.r_cap;
-    const int n = g.args.porkchop_n;
+    /* --porkchop-bench sweeps several sizes off THIS one snapshot, so the
+       grids differ only in resolution (separate runs would also move the
+       snapshot with the wall clock, since P fires on a frame boundary).
+       Swept ascending; the live plot keeps the largest. */
+    std::vector<int> sizes = g.args.porkchop_bench;
+    if(sizes.empty()) { sizes.push_back(g.args.porkchop_n); }
+    // A repeated size would redo identical work and rewrite the same CSV.
+    std::sort(sizes.begin(), sizes.end());
+    sizes.erase(std::unique(sizes.begin(), sizes.end()), sizes.end());
+    const bool dump = !g.args.porkchop_dump.empty();
+    // A bench sweep exists to be read, so it implies --porkchop-log.
+    const bool log = g.args.porkchop_log || dump || !g.args.porkchop_bench.empty();
+    const std::string dump_dir = g.args.porkchop_dump;
     const bool capture = d.capture;
-    const bool log = g.args.porkchop_log;
     const std::string tname = t.name;
     const double t_now = g.time;
-    const int target_idx = xfer_target;
     const int epoch = g.cache_epoch;      // drop the result if the world changes
+    JobRunner *jobs = &g.jobs;           // stopping() is thread-safe (job.h)
 
     pc_in_flight++;
     g.jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
                                   t_dep_lo,t_dep_hi,tof_lo,tof_hi,
-                                  n,capture,log,tname,t_now,target_idx,epoch,this]()
+                                  sizes,capture,log,tname,t_now,
+                                  epoch,dump,dump_dir,jobs,this]()
                 -> std::function<void()> {
         // Worker: PURE (no game state, GL, or imgui). shared_ptr because the
         // std::function continuation capture must be copyable, not moved.
-        std::shared_ptr<PorkchopResult> res =
-            std::make_shared<PorkchopResult>(porkchopGrid(
-                r1,v1,r2,v2,mu_p,mu_t,r_cap,
-                t_dep_lo,t_dep_hi,tof_lo,tof_hi,
-                n,n,capture));
-        if(log) {
-            if(res->valid) {
-                printf("[porkchop] t=%.1fs target=\"%s\" %dx%d dv_min=%.6g m/s "
-                       "dv_hi=%.6g m/s t_dep_min=%.6g s tof_min=%.6g s\n",
-                       t_now, tname.c_str(), res->n_dep, res->n_tof,
-                       res->dv_min, res->dv_hi, res->t_dep_min, res->tof_min);
-            } else {
-                printf("[porkchop] t=%.1fs target=\"%s\" no-solution\n",
-                       t_now, tname.c_str());
+        std::shared_ptr<PorkchopResult> res;
+        for(const int n : sizes) {
+            // abort()/join() (load, system swap, exit) drops QUEUED jobs but
+            // still joins the IN-FLIGHT body, so a multi-grid sweep must notice
+            // the stop between grids or it holds the main thread for its whole
+            // remaining runtime.
+            if(jobs->stopping()) { break; }
+            res.reset();   // the previous grid is done with; don't peak at 2
+            const auto t0 = std::chrono::steady_clock::now();
+            try {
+                res = std::make_shared<PorkchopResult>(porkchopGrid(
+                    r1,v1,r2,v2,mu_p,mu_t,r_cap,
+                    t_dep_lo,t_dep_hi,tof_lo,tof_hi,
+                    n,n,capture));
+            } catch(const std::exception &e) {
+                // Swallowed by JobRunner, which then skips the continuation --
+                // and the continuation is what clears pc_in_flight. Catching
+                // here keeps the "sweeping" indicator from wedging the window.
+                printf("[porkchop] sweep FAILED (%dx%d): %s\n", n, n, e.what());
+                fflush(stdout);
+                break;
             }
-            fflush(stdout);
+            const double ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t0).count();
+            if(log) { logPorkchop(t_now, tname, *res, ms); }
+            if(dump) { dumpPorkchop(dump_dir, tname, t_now, *res); }
         }
         // Main-thread continuation: publish the result, clear "sweeping".
-        return [this, res, t_now, tname, target_idx, epoch]() {
+        return [this, res, t_now, tname, epoch]() {
             // Epoch bumped after we posted: the grid is for the old world
             // (load does NOT abort jobs). Drop it before touching the target
             // list -- a SHIP target list was freed by the load (UAF risk).
@@ -272,10 +371,14 @@ void TransferPlanner::porkchopCompute() {
             const bool still_target = (xfer_target >= 0
                 && xfer_target < (int)xferTargets.size()
                 && xferTargets[xfer_target].name == tname);
-            if(still_target) {
+            if(still_target && res) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
-                pc_target = target_idx;
+                // The index just validated, not the one captured at post: the
+                // target list is rebuilt every frame, so a sibling ship joining
+                // or leaving shifts it, and a pc_target that disagrees with
+                // xfer_target makes update() drop this grid on the next frame.
+                pc_target = xfer_target;
             }
             if(pc_in_flight > 0) { pc_in_flight--; }
         };

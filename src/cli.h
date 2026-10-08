@@ -107,6 +107,8 @@ struct GameArgs {
     bool xfer_log = false;
     bool porkchop_log = false;   // --porkchop-log: the launch-window grid min
     int porkchop_n = 40;        // --porkchop-n: the plot grid size
+    std::vector<int> porkchop_bench; // --porkchop-bench: sweep these sizes off one snapshot
+    std::string porkchop_dump;       // --porkchop-dump DIR: write each grid as CSV
 
     bool eva_log = false;        // --eva-log: the kerbal's mode + pos/vel
     bool surfmap_log = false;    // --surfmap-log: the map's albedo/shaded means

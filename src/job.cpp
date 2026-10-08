@@ -65,6 +65,11 @@ bool JobRunner::busy() const {
     return in_flight_ > 0;
 }
 
+bool JobRunner::stopping() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return stop_;
+}
+
 void JobRunner::join() {
     {
         std::lock_guard<std::mutex> lk(mu_);

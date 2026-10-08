@@ -834,8 +834,11 @@ void drawUIReadouts(Game &g) {
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                "   sweeping ...");
         }
-        ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n)",
-                            g.args.porkchop_n, g.args.porkchop_n);
+        // The grid ON SCREEN, not the configured size: --porkchop-bench leaves
+        // the largest swept grid as the live plot, so the two can disagree.
+        ImGui::TextDisabled("grid %d x %d   (size: --porkchop-n / --porkchop-bench)",
+                            pc.valid ? pc.n_dep : g.args.porkchop_n,
+                            pc.valid ? pc.n_tof : g.args.porkchop_n);
         if(pc_busy) {
             ImGui::TextDisabled("(the last grid stays shown until the new one "
                                 "lands)");

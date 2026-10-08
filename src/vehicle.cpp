@@ -259,6 +259,18 @@ static const ScenarioDef kScenarios[] = {
     {"neptune",        false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
     {"oort",           false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
     {"interstellar",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e17},
+    /* Heliocentric beds that match a planet's orbit (abs_r = that planet's
+       SEMI-MAJOR AXIS in res/systems/solar_system*.json, whose Sun mass sets
+       the matching circular speed). The transfer planner only lists children
+       of the orbited body, so a planet->planet transfer needs the ship in a
+       SUN-centred orbit like the origin planet's: spawn on the Sun with one of
+       these and the planets become targetable. Circular at a, so it matches
+       the origin planet's period but not its instantaneous radius (the real
+       orbits are eccentric) nor its heliocentric longitude. */
+    {"heli-mercury",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 5.7914e10},
+    {"heli-earth",     false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.4961e11},
+    {"heli-jupiter",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 7.7815e11},
+    {"heli-uranus",    false, 0.0,  false, -1, 0.0,     0.0, 0.0, 2.8698e12},
 };
 
 const ScenarioDef *scenario_by_name(const std::string &name) {
@@ -304,6 +316,19 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                           System &sys, double slot_offset, double t)
 {
     if(sc.on_pad) { return; } // already on the pad, set up in main
+
+    /* An abs_r bed pins an ABSOLUTE radius, which only means something about
+       the body it was authored against (heli-* = a planet's orbit about the
+       star). On any other home the ship lands far outside that body's SOI with
+       a circular speed computed from the wrong mu -- a near-radial fall, and
+       nothing says so. */
+    if(sc.abs_r > 0.0 && sys.root != home) {
+        printf("warning: scenario '%s' pins r = %.4g m, which is not an orbit "
+               "about %s (the system root is %s): the ship will not be in %s's "
+               "frame and its spawn speed comes from the wrong mu\n",
+               sc.name, sc.abs_r, home->name.c_str(),
+               sys.root ? sys.root->name.c_str() : "(none)", home->name.c_str());
+    }
 
     const glm::dvec3 center = home->frame->root_pos;
     glm::dvec3 shipWorldPos, velWorld;
