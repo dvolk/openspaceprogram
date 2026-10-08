@@ -164,6 +164,60 @@ int main() {
     fmt_cal_duration(star, 42.0, buf, sizeof buf);
     CHECK(std::string(buf) == "42s");
 
+    // --- #202: proleptic-Gregorian civil calendar ---------------------------
+    {
+        // days_from_civil / civil_from_days round-trip + known pins.
+        CHECK(days_from_civil(1970, 1, 1) == 0);
+        CHECK(days_from_civil(2000, 1, 1) == 10957);
+        CHECK(days_from_civil(2000, 3, 1) == 10957 + 60);   // 2000 is a leap year
+        {
+            int y = 0; unsigned m = 0, d = 0;
+            civil_from_days(10957, y, m, d);
+            CHECK(y == 2000 && m == 1 && d == 1);
+            civil_from_days(0, y, m, d);
+            CHECK(y == 1970 && m == 1 && d == 1);
+        }
+        CHECK(civil_month_days(2000, 2) == 29);   // /400
+        CHECK(civil_month_days(1900, 2) == 28);   // /100
+        CHECK(civil_month_days(2001, 2) == 28);
+        CHECK(civil_month_days(2004, 2) == 29);   // /4
+
+        const double CIV = 86400.0;
+        Calendar g = Calendar::makeCivil(days_from_civil(2000, 1, 1),
+                                         365.256 * CIV, 86400.101);
+        CHECK(g.valid() && g.civil);
+        CHECK(g.day_seconds == 86400.0);          // civil day, NOT the solar day
+        CHECK_NEAR(g.solar_day_seconds, 86400.101, 0.001);
+        CalTime g0 = g.at(0.0);
+        CHECK(g0.year == 2000 && g0.month == 1 && g0.day == 1
+              && g0.hh == 0 && g0.mm == 0 && g0.ss == 0 && g0.civil);
+        // 2000-01-31 -> 2000-02-01 (31-day month)
+        CalTime feb = g.at(31.0 * CIV + 1.0);
+        CHECK(feb.year == 2000 && feb.month == 2 && feb.day == 1);
+        // Leap day exists in 2000.
+        CalTime mar = g.at(60.0 * CIV + 1.0);
+        CHECK(mar.month == 3 && mar.day == 1);
+        CalTime leap = g.at(59.0 * CIV + 12.0 * 3600.0);
+        CHECK(leap.month == 2 && leap.day == 29 && leap.hh == 12);
+        // Century rule: 2100-02-28 -> 2100-03-01 (no Feb 29).
+        Calendar c100 = Calendar::makeCivil(days_from_civil(2100, 1, 1), 0.0, 86400.0);
+        CalTime mar100 = c100.at(59.0 * CIV + 1.0);   // 31 + 28 = 59
+        CHECK(mar100.year == 2100 && mar100.month == 3 && mar100.day == 1);
+        // June solstice 2000-06-21 01:38.
+        const double t_sol = 172.0 * CIV + 1.0 * 3600.0 + 38.0 * 60.0;
+        CalTime sol = g.at(t_sol);
+        CHECK(sol.year == 2000 && sol.month == 6 && sol.day == 21
+              && sol.hh == 1 && sol.mm == 38);
+        CHECK(cal_day_of_year(g, sol) == 173);
+        char gbuf[64];
+        CHECK(fmt_cal_time(g, t_sol, gbuf, sizeof gbuf));
+        CHECK(std::string(gbuf) == "2000-06-21  01:38 UTC");
+        CHECK(fmt_cal_compact(g, t_sol, gbuf, sizeof gbuf));
+        CHECK(std::string(gbuf) == "2000-06-21  01:38");
+        // Derived path is untouched (byte-identical pins above).
+        CHECK(!cal.civil);
+    }
+
     if(failures == 0) {
         printf("test_calendar: all checks passed\n");
         return 0;

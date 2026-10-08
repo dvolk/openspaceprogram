@@ -1351,7 +1351,10 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Time: %f", time);
         if(sys.home && sys.home->cal.valid()) {
             CalTime ct = sys.home->cal.at(time);
-            if(ct.has_year) {
+            if(ct.civil) {
+                ImGui::Text("Clock:  %04d-%02d-%02d  %02d:%02d:%02d UTC",
+                            ct.year, ct.month, ct.day, ct.hh, ct.mm, ct.ss);
+            } else if(ct.has_year) {
                 ImGui::Text("Clock:  Yr %d  Mo %d  Day %d  %02d:%02d:%02d  (%s time)",
                             ct.year, ct.month, ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
@@ -1359,6 +1362,29 @@ void drawUIReadouts(Game &g) {
                 ImGui::Text("Clock:  Day %d  %02d:%02d:%02d  (%s time)",
                             ct.day, ct.hh, ct.mm, ct.ss,
                             sys.home->name.c_str());
+            }
+            // Mean solar time at surface lon 0 (#202): the subsolar point's
+            // equirect lon is the hour angle, so LMT = lon/15 deg. Makes
+            // --start-time's "pad in daylight" checkable against the clock.
+            if(g.sun && g.sun != sys.home && sys.home->frame) {
+                const glm::dvec3 to_sun = g.sun->frame->root_pos
+                                        - sys.home->frame->root_pos;
+                const double sl = glm::length(to_sun);
+                if(sl > 1e-9) {
+                    const glm::dmat3 to_rot = glm::transpose(
+                        sys.home->frame->getRotFrame()->root_orient);
+                    const glm::dvec3 dir = to_rot * (to_sun / sl);
+                    double lon = 0.0, lat = 0.0;
+                    equirectLonLat(dir, lon, lat);
+                    // Subsolar lon is where it is noon; lon 0's solar time
+                    // is behind by lon hours (east is earlier / negative HA).
+                    double sod = 12.0 - glm::degrees(lon) / 15.0;
+                    while(sod < 0.0) { sod += 24.0; }
+                    while(sod >= 24.0) { sod -= 24.0; }
+                    ImGui::Text("Solar:  %02d:%02d:%02d  (mean, at lon 0)",
+                                (int)sod, (int)(60.0 * (sod - (int)sod)),
+                                (int)(3600.0 * (sod - (int)sod)) % 60);
+                }
             }
         }
         // Local date + time on the body the ship is currently in,
@@ -1368,7 +1394,11 @@ void drawUIReadouts(Game &g) {
         if(local_body && local_body != sys.home &&
            local_body->cal.valid()) {
             CalTime lt = local_body->cal.at(time);
-            if(lt.has_year) {
+            if(lt.civil) {
+                ImGui::Text("Local:  %s  %04d-%02d-%02d  %02d:%02d:%02d",
+                            local_body->name.c_str(),
+                            lt.year, lt.month, lt.day, lt.hh, lt.mm, lt.ss);
+            } else if(lt.has_year) {
                 ImGui::Text("Local:  %s  Yr %d  Mo %d  Day %d  %02d:%02d:%02d",
                             local_body->name.c_str(),
                             lt.year, lt.month, lt.day,
@@ -4241,8 +4271,10 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
          fmt_speed(std::sqrt(2.0 * b.mu / (double)b.radius), v, sizeof v));
     line("surface orbit",
          fmt_speed(std::sqrt(b.mu / (double)b.radius), v, sizeof v));
-    line("day length", b.cal.day_seconds > 0.0
-                         ? fmt_time(b.cal.day_seconds, v, sizeof v)
+    // solar_day_seconds: the measured solar day (#201). Civil clocks run
+    // 86400 s days (#202) -- show the physical day here, not the civil one.
+    line("day length", b.cal.solar_day_seconds > 0.0
+                         ? fmt_time(b.cal.solar_day_seconds, v, sizeof v)
                          : "none (no spin)");
     if(b.rot_frame != nullptr) {
         // The pole IS the spin frame's +Y, and initial_orient carries the

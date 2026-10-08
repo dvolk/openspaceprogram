@@ -2,6 +2,7 @@
   "home": "Earth",
   "soi_law": "hill",
   "epoch_year": 2000,
+  "epoch_utc": "2000-01-01T00:00:00Z",
   "skybox": "res/skybox/dsm_1024_g3_ds2",
   "belts": [
     {

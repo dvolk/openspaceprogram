@@ -819,13 +819,34 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // sky. Default 1 (the fictional systems start there, like the game they
     // evoke); the old game-wide 4724 predates this field and meant nothing.
     const int epoch_year = doc.value("epoch_year", 1);
+    // #202: optional proleptic-Gregorian civil calendar. The system's t=0
+    // is this civil epoch (the solar-system data is already 2000-01-01
+    // 00:00 UT). The CLOCK runs a fixed 86400 s civil day; the measured
+    // solar day stays on solar_day_seconds for the body panel. Seasonal
+    // drift (sidereal year 365.256 d vs Gregorian 365.2425) is documented
+    // in calendar.h -- year_seconds is the seasonal handle.
+    long civil_epoch_days = 0;
+    bool use_civil = false;
+    if(doc.contains("epoch_utc") && doc["epoch_utc"].is_string()) {
+        const std::string s = doc["epoch_utc"].get<std::string>();
+        int y = 0, mo = 1, d = 1;
+        if(std::sscanf(s.c_str(), "%d-%d-%d", &y, &mo, &d) == 3) {
+            civil_epoch_days = days_from_civil(y, (unsigned)mo, (unsigned)d);
+            use_civil = true;
+        } else {
+            throw std::runtime_error(
+                std::string("system: bad epoch_utc '") + s
+                + "' (want YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)");
+        }
+    }
     // The measure walks the rail tree; every body shares one sun (the star).
     for(size_t i = 0; i < sys.bodies.size(); i++) {
         TerrainBody *b = sys.bodies[i];
         const double D = measureSolarDay(sys.root->frame, b, sys.root);
         const double Y = (b->frame && b->frame->orb_ang_speed > 0.0)
                        ? 2.0 * std::numbers::pi / b->frame->orb_ang_speed : 0.0;
-        b->cal = Calendar::make(D, Y, epoch_year);
+        b->cal = use_civil ? Calendar::makeCivil(civil_epoch_days, Y, D)
+                           : Calendar::make(D, Y, epoch_year);
     }
 
     // Recompute root-relative frame values before the first render.

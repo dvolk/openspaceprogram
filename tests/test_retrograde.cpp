@@ -267,7 +267,8 @@ int main() {
               "Venus' calendar stays valid (the make_solar_system.py:174 trap)");
         // #201: retrograde spin (axial_tilt > 90). Mean solar day is
         // 116.75 Earth days; 2*pi/(spin-orb) is garbage here.
-        check(venus->cal.day_seconds > 9.5e6 && venus->cal.day_seconds < 1.1e7,
+        check(venus->cal.solar_day_seconds > 9.5e6
+              && venus->cal.solar_day_seconds < 1.1e7,
               "#201 Venus solar day ~116.75 d (retrograde spin encodes right)");
     }
 
@@ -430,19 +431,27 @@ int main() {
         // three encodings that break a 2*pi/(spin-orb) shortcut: prograde
         // Earth, the tidally locked Moon (synodic month), and (below) the
         // retrograde-spin Venus.
-        check(std::fabs(earth->cal.day_seconds - 86400.101) < 0.5,
+        check(std::fabs(earth->cal.solar_day_seconds - 86400.101) < 0.5,
               "#201 Earth solar day = 86400.101 s (not the sidereal 86164)");
+        // #202: solar_system authors epoch_utc, so the CLOCK runs a fixed
+        // 86400 s civil day while solar_day_seconds keeps the measure.
+        check(earth->cal.civil && earth->cal.day_seconds == 86400.0,
+              "#202 epoch_utc selects a civil 86400 s day (not the solar day)");
+        check(earth->cal.epoch_days == days_from_civil(2000, 1, 1),
+              "#202 civil epoch is 2000-01-01");
         // June solstice 2000-06-21 01:38 is 172 d + 1h38m after the epoch.
         // With a solar-day clock that is Day 173 ~01:38; with the old
         // sidereal day it drifts to Day 173 12:56.
         {
             const double t_sol = 172.0 * 86400.0 + 1.0 * 3600.0 + 38.0 * 60.0;
             const CalTime ct = earth->cal.at(t_sol);
+            // Civil calendar (#202): 2000-06-21 01:38 UTC exactly.
+            check(ct.year == 2000 && ct.month == 6 && ct.day == 21
+                  && ct.hh == 1 && ct.mm == 38,
+                  "#202 June solstice is 2000-06-21 01:38 UTC");
             const int doy = cal_day_of_year(earth->cal, ct);
-            check(doy >= 172 && doy <= 173,
-                  "#201 June solstice lands on Day ~173 (not week-drifted)");
-            check(ct.hh == 1 && ct.mm >= 0 && ct.mm <= 59,
-                  "#201 June solstice clock reads ~01:00-01:59 (was 12:xx)");
+            check(doy == 173,
+                  "#201/202 June solstice is Day 173 (was week-drifted)");
         }
     }
 
@@ -459,7 +468,7 @@ int main() {
         // Geometric mean over a heliocentric year = the synodic month
         // (2 551 447 s). NOT the sidereal 2 360 595 s -- that is the
         // bug #201 fixes for a locked moon.
-        check(std::fabs(moon->cal.day_seconds - 2551447.0) < 3600.0,
+        check(std::fabs(moon->cal.solar_day_seconds - 2551447.0) < 3600.0,
               "#201 Moon solar day = synodic month (~2 551 447 s)");
         // Longitude 0 faces Earth at t=0 and stays facing it a half period
         // later: uniform spin vs Keplerian sweep differs only by the
