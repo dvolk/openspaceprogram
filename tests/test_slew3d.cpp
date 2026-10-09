@@ -41,6 +41,9 @@
 #include <cstdio>
 #include <algorithm>
 
+#include "cli.h"       // GameArgs (the shipped --physics-hz default)
+#include "timestep.h"  // substepCount() -- the tick loop's substep plan
+
 static int g_failures = 0;
 static int g_checks = 0;
 
@@ -240,7 +243,9 @@ int main() {
     // 2000 N m wheel.
     Body b{9400.0, 1300.0, 2000.0};
     const double E0 = 0.30; // ~17 deg off prograde at engagement
-    const double dt = 1.0/50.0;
+    // The tick rate the game actually runs (--physics-hz default), so the
+    // substep grid below matches the one the law sees in-game.
+    const double dt = 1.0 / GameArgs{}.physics_hz;
 
     printf("== Slew 3-DOF: full-transverse law damps the third-axis spin ==\n");
 
@@ -254,7 +259,7 @@ int main() {
     // Returns h for a given warp; `steps` = 12 s of sim time.
     auto setup = [&](double warp, double &h, int &steps) {
         const double step = dt * warp;
-        int n = 3; int need = (int)(step/0.1 + 0.5); if(need > n) n = need; if(n > 2000) n = 2000;
+        const int n = substepCount(step);
         h = step / n;
         steps = (int)(12.0 / h);
     };

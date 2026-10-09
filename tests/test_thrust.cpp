@@ -13,13 +13,14 @@
 //          harness MUST catch the old bug (vacuous-test guard, as in
 //          test_attitude.cpp).
 //
-//   2. Fuel flow (src/main.cpp Vehicle::ApplyThrust / consumeResourceMass)
+//   2. Fuel flow (src/vehicle.cpp Vehicle::ApplyThrust / consumeResourceMass)
 //      A tick's fuel = (kg/s) x the tick's simulated time. Ticks per simulated
-//      second = 50/time_accel, so the burn rate per simulated second must equal
-//      the nominal kg/s at ANY warp. Previously the per-call amount was divided
-//      by a hardcoded 60 ("since fps = 60") while the logic tick runs at 50 Hz,
-//      so the ship burned 50/60 of the nominal rate -- inconsistent with the
-//      thrust model (49984 N = 11.36 kg/s x 4400 m/s, both propellants).
+//      second = physics_hz/time_accel, so the burn rate per simulated second
+//      equals the nominal kg/s at ANY warp AND at any --physics-hz. Previously
+//      the per-call amount was divided by a hardcoded 60 ("since fps = 60")
+//      while the logic tick then ran at 50 Hz, so the ship burned 50/60 of the
+//      nominal rate -- inconsistent with the thrust model (49984 N = 11.36 kg/s
+//      x 4400 m/s, both propellants).
 //
 //   3. getInertiaDiag (src/physics.cpp) -- tests the REAL function. A part has
 //      no rigid body, so its inertia comes from its shape at the Body's mass.
@@ -33,8 +34,8 @@
 // Thrust-model constants: the standard ship (see test_attitude.cpp):
 //   thrust 49984 N = 11.36 kg/s (H2 + LOX, 5.68 each) x 4400 m/s,
 //   835.66 kg propellant (417.83 H2 + 417.83 LOX), dry mass 1833.92 kg,
-//   logic tick dt = 1/50 s (src/main.cpp). The F/mdot below are harness
-//   constants for the delivery-pattern tests -- any F works there.
+//   logic tick dt = 1/--physics-hz (default 1/60 s). The F/mdot below are
+//   harness constants for the delivery-pattern tests -- any F works there.
 //
 // Build & run (from repo root) -- also part of `make test`:
 //   see the test: rule in the Makefile.
@@ -48,7 +49,9 @@
 #include "btcommon.h"
 
 #include "body.h"
+#include "cli.h"      // GameArgs (the shipped --physics-hz default)
 #include "physics.h"
+#include "timestep.h"  // substepCount() -- the tick loop's substep plan
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -132,9 +135,9 @@ static void test_inertia_diag() {
 /*
  * 1. Substep thrust delivery, on a real Bullet world.
  *
- * Mirrors the src/main.cpp tick structure:
+ * Mirrors the src/tick.cpp structure:
  *   step = dt * time_accel
- *   n    = max(3, round(step / 0.1))
+ *   n    = substepCount(step)
  *   h    = step / n
  *   for t in ticks:
  *       [old: apply F once]
@@ -144,8 +147,9 @@ static void test_inertia_diag() {
  *
  * Returns the final velocity along the thrust axis.
  */
-static double delivered_velocity(double F, double m, double time_accel,
-                                 bool per_substep, int ticks) {
+static double delivered_velocity(double F, double m, double dt,
+                                 double time_accel, bool per_substep,
+                                 int ticks) {
     btDefaultCollisionConfiguration conf;
     btCollisionDispatcher dispatcher(&conf);
     btDbvtBroadphase broadphase;
@@ -160,12 +164,8 @@ static double delivered_velocity(double F, double m, double time_accel,
     btRigidBody *rb = new btRigidBody(ci);
     world.addRigidBody(rb);
 
-    const double dt = 1.0 / 50.0;
     const double step = dt * time_accel;
-    const double kMaxSubStep = 0.1;
-    int n = 3;
-    int need = (int)(step / kMaxSubStep + 0.5);
-    if(need > n) { n = need; }
+    const int n = substepCount(step);
     const double h = step / n;
 
     for(int t = 0; t < ticks; t++) {
@@ -193,37 +193,35 @@ static void test_substep_delivery() {
     const double F = 49984.0;
     const double m = 1833.92;
 
-    struct Case {
-        double ta;      // time acceleration
-        int ticks;      // physics ticks (50/ta per simulated second)
-        int n;          // substeps per tick, per the main-loop formula
-    };
-    const Case cases[] = {
-        {1.0,  50, 3},  // 1.0 s of sim time
-        {10.0, 5,  3},  // 1.0 s of sim time
-        {25.0, 2,  5},  // 1.0 s of sim time
-    };
+    /* Model the tick rate the game actually runs (--physics-hz default) and
+       derive the tick and substep counts from it, so the case list stays
+       correct when the rate changes instead of pinning one rate's numbers. */
+    const double tick_hz = GameArgs{}.physics_hz;
+    const double dt = 1.0 / tick_hz;
 
-    for(const Case &c : cases) {
-        const double T = c.ticks * (1.0 / 50.0) * c.ta; // simulated seconds
+    const double ta_grid[] = {1.0, 10.0, 25.0};
+    for(double ta : ta_grid) {
+        const int ticks = (int)(tick_hz / ta + 0.5);  // ticks covering ~1 s
+        const int n = substepCount(dt * ta);          // substeps per tick
+        const double T = ticks * dt * ta;             // simulated seconds
         const double v_full = F / m * T;
 
-        const double v_new = delivered_velocity(F, m, c.ta, true, c.ticks);
-        const double v_old = delivered_velocity(F, m, c.ta, false, c.ticks);
+        const double v_new = delivered_velocity(F, m, dt, ta, true, ticks);
+        const double v_old = delivered_velocity(F, m, dt, ta, false, ticks);
 
         char buf[192];
         snprintf(buf, sizeof buf,
-                 "NEW pattern ta=%g: delivered v == F/m*T (%.1f m/s)", c.ta, v_full);
+                 "NEW pattern ta=%g: delivered v == F/m*T (%.1f m/s)", ta, v_full);
         CHECK_NEAR(v_new, v_full, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "OLD pattern ta=%g: delivered v == F/m*T/n (%.1f m/s) "
-                 "[harness must see the 1/n loss]", c.ta, v_full / c.n);
-        CHECK_NEAR(v_old, v_full / c.n, 1e-3, buf);
+                 "[harness must see the 1/n loss]", ta, v_full / n);
+        CHECK_NEAR(v_old, v_full / n, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "ta=%g: new pattern delivers the FULL thrust (old lost %d-1 of %d substeps)",
-                 c.ta, c.n - 1, c.n);
+                 ta, n - 1, n);
         CHECK_TRUE(v_new > 0.99 * v_full && v_old < 0.5 * v_full, buf);
     }
 }
@@ -233,8 +231,13 @@ static void test_substep_delivery() {
  * any time acceleration (mirrors Vehicle::ApplyThrust' per-tick flow).
  */
 static double fuel_per_simsec(double mdot, double time_accel, bool new_model) {
-    const double dt = 1.0 / 50.0;
-    const double ticks_per_simsec = 50.0 / time_accel;
+    /* The NEW model is rate-agnostic: ticks/s x the tick's simulated time is
+       exactly kg/s at any --physics-hz. The OLD model is pinned to the 50 Hz
+       tick it happened at -- the only rate where the hardcoded /60 leaves the
+       50/60 shortfall the harness must catch. */
+    const double hz = new_model ? GameArgs{}.physics_hz : 50.0;
+    const double dt = 1.0 / hz;
+    const double ticks_per_simsec = hz / time_accel;
     const double per_tick = new_model
         ? mdot * (dt * time_accel)  // new: kg/s x tick's simulated time
         : mdot / 60.0;             // old: hardcoded "/60 (since fps = 60)"

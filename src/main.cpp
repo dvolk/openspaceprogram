@@ -211,7 +211,7 @@ int main(int argc, char **argv)
     load_settings_args(args);
 
     Renderer display(args.screen_width, args.screen_height, args.window_mode,
-                     args.msaa_samples, args.gl_debug);
+                     args.msaa_samples, args.gl_debug, args.vsync);
     check_gl_error();
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: resolve keycodes to scancodes now that SDL is initialized
@@ -909,7 +909,7 @@ int main(int argc, char **argv)
        copy of the active ship, remove it, then spawn-select-remove the
        active one. Each step is checked against the expected fleet size +
        active index. */
-    int spawn_test_ticks = 0;
+    int spawn_test_frames = 0;
     if(args.selftest_spawn) {
         /* A free kerbal has a def but remove_ship refuses it (a crew member
            is not deletable), so the spawn-copy-then-remove steps cannot run. */
@@ -960,7 +960,7 @@ int main(int argc, char **argv)
 
             if(ok) {
                 printf("selftest-spawn: all checks passed; running 30 ticks for stability\n");
-                spawn_test_ticks = 30;
+                spawn_test_frames = 30;
             } else {
                 printf("selftest-spawn: FAIL (bookkeeping mismatch)\n");
                 running = false;
@@ -1019,20 +1019,22 @@ int main(int argc, char **argv)
     printf("\n");
     fflush(stdout);
 
-    // --frame-cap: budget per loop iteration (0 = uncapped). Physics stays
-    // at its fixed 50 Hz off the wall clock regardless of this.
+    // --frame-cap: budget per loop iteration (0 = uncapped). The logic tick
+    // runs at --physics-hz off the wall clock regardless of this.
     const int cap_ms = (args.frame_cap > 0) ? (int)(1000.0 / (double)args.frame_cap) : 0;
     if (cap_ms > 0) {
         printf("frame cap: %d fps\n", args.frame_cap);
     } else {
         printf("frame cap: off (uncapped)\n");
     }
+    printf("logic tick: %.0f Hz (%.1f ms)\n",
+           args.physics_hz, 1000.0 / args.physics_hz);
 
     // Per-frame phase timing. The push into the Game::perf_* series runs
     // EVERY frame (the Telemetry window reads them); --perf only controls
     // the console output. The "logic" phase is where the Part*/Body*
     // indirection lives (tick -> physics_tick -> ships -> parts -> bodies);
-    // the per-substep number is the one to compare across refactors.
+    // the per-tick number is the one to compare across refactors.
     const bool perf_on = args.perf;
     double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0,
            p_present = 0.0, p_total = 0.0;                                     // cumulative ms
@@ -1058,7 +1060,7 @@ int main(int argc, char **argv)
         const double dt = std::chrono::duration<double>(now - perf_w_start).count();
         if(dt < 1.0 || w_frames == 0) { return; }
         printf("perf  logic=%7.3fms  render=%7.3fms  events=%6.3fms  jobs=%6.3fms"
-               "  present=%7.3fms   %6.1ffps   %d phys steps (%.3fms/step)\n",
+               "  present=%7.3fms   %6.1ffps   %d logic ticks (%.3fms/tick)\n",
                w_logic / (double)w_frames, w_render / (double)w_frames,
                w_events / (double)w_frames, w_jobs / (double)w_frames,
                w_present / (double)w_frames,
@@ -1086,7 +1088,7 @@ int main(int argc, char **argv)
         printf("  (render = issuing GL draw commands; present = SwapBuffers,\n"
                "   which blocks on vsync -- display pacing, not render cost)\n");
         if(p_steps > 0) {
-            printf("  physics %lld substeps, %.4f ms/substep (the logic phase)\n",
+            printf("  logic %lld ticks, %.4f ms/tick (the logic phase)\n",
                    p_steps, p_logic / (double)p_steps);
         }
     };
@@ -1129,11 +1131,12 @@ int main(int argc, char **argv)
             }
         }
 
-        // --selftest-spawn: a few post spawn/remove physics ticks, then exit.
-        if(spawn_test_ticks > 0) {
-            spawn_test_ticks--;
-            if(spawn_test_ticks == 0) {
-                printf("selftest-spawn: 30 ticks after spawn/remove, no crash; OK\n");
+        // --selftest-spawn: a few render frames of physics after spawn/remove,
+        // then exit. Counted in LOOP ITERATIONS, not logic ticks.
+        if(spawn_test_frames > 0) {
+            spawn_test_frames--;
+            if(spawn_test_frames == 0) {
+                printf("selftest-spawn: 30 frames after spawn/remove, no crash; OK\n");
                 fflush(stdout);
                 running = false;
             }
@@ -1551,16 +1554,24 @@ int main(int argc, char **argv)
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
             p_render += f_render; p_present += f_present;
             p_total += perf_ms(pf_iter, pf_d);
-            p_frames++; p_steps += game.phys_steps;
+            p_frames++; p_steps += game.logic_ticks;
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
             w_render += f_render; w_present += f_present;
-            w_frames++; w_steps += game.phys_steps;
+            w_frames++; w_steps += game.logic_ticks;
             perf_roll();
         }
-        game.phys_steps = 0;   // tick() re-arms it next frame
+        game.logic_ticks = 0;   // tick() re-arms it next frame
 
-        // --frame-cap: burn the rest of the frame budget. Without this the
-        // iteration spins at full speed whenever the swap isn't vsync-gated.
+        /* --frame-cap: burn the rest of the frame budget. Without this the
+           iteration spins at full speed whenever the swap isn't vsync-gated --
+           measured, not merely requested, because the offscreen EGL path
+           reports swap interval 1 and then never waits.
+           used_ms is sampled AFTER SwapBuffers, so a blocking swap already
+           counts against the budget and no sleep lands on top of it: at
+           cap == panel rate the retrace alone fills the frame. A cap BELOW a
+           faster panel's retrace grid cannot be met by sleeping (the swap
+           quantises anyway) -- that needs a swap interval > 1, which --vsync N
+           exposes. */
         if (cap_ms > 0) {
             const Uint32 used_ms = SDL_GetTicks() - iter_start_ms;
             if (used_ms < (Uint32)cap_ms) {

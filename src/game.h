@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL.h>   // Uint32
 
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -40,13 +41,13 @@ struct Texture;
 static const int kRailsWarp = 11;
 
 /* Top of the decimal warp ladder (1, 10, then rails at 100 ... kMaxWarp),
-   i.e. the last WarpUp that is allowed. 1e7x is 200 ks per 50 Hz tick --
-   2.3 days of sim per frame, so a ~200 day interplanetary coast is about
+   i.e. the last WarpUp that is allowed. 1e7x is 167 ks per 60 Hz tick --
+   1.9 days of sim per frame, so a ~200 day interplanetary coast is about
    two minutes of wall clock instead of half an hour. What that costs is
    SoI resolution, not accuracy: railsTick tests the SoI only at the END of
    a tick, so a tick that travels further than a body's sphere flies clean
    past it and the encounter is missed outright (one 1e7x tick at 24 km/s
-   covers ~5e9 m; Mars' Hill radius in solar_system.json is 1.08e9 m). The
+   covers ~4e9 m; Mars' Hill radius in solar_system.json is 1.08e9 m). The
    player brings the warp down for an encounter. The warp at which the
    endpoint test stays honest scales with the smallest SoI in the frame:
    ~1e6x for the solar system's planets, ~1e4x for ksp_system's Moho. */
@@ -361,10 +362,11 @@ struct Game {
     // --- the fixed-timestep loop (tick.cpp) ---------------------------------
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
-    const double dt = 1.0/50.0;   // TODO explain why 50
+    const double dt = 1.0 / args.physics_hz;   // --physics-hz (60 default)
     bool redraw = false;         // a frame of logic ran: RENDER should draw
-    // Physics substeps executed by tick(); --perf reads/resets once per frame.
-    long long phys_steps = 0;
+    // Logic ticks executed by tick(); --perf reads/resets once per frame.
+    // Counts TICKS, not the Bullet substeps inside each one.
+    long long logic_ticks = 0;
 
     // --- background jobs (job.h) --------------------------------------------
     // Porkchop, surface map, terrain subdivision. jobs.poll() runs the
@@ -382,6 +384,21 @@ struct Game {
     Uint32 eva_log_last_ms = 0;
     Uint32 drag_log_last_ms = 0;
     Uint32 terrain_log_last_ms = 0;
+
+    // --- --pose-jitter (render.cpp) -----------------------------------------
+    // The previous DRAWN sample plus what it was taken against. Re-armed
+    // whenever the ship, its Frame, or the wall-clock gap changes, so a
+    // handoff / ship switch / scene stay never reads as a jitter spike.
+    // Render-only: nothing in tick()/physics reads these.
+    // prev_ship / prev_frame are compared as identities only, never
+    // dereferenced, so a stale one cannot crash -- at worst a same-address
+    // reuse within the 0.25 s staleness window misses a re-arm.
+    bool pose_jitter_armed = false;
+    Vehicle *pose_jitter_prev_ship = nullptr;
+    Frame *pose_jitter_prev_frame = nullptr;
+    std::chrono::steady_clock::time_point pose_jitter_prev_t;
+    glm::dvec3 pose_jitter_prev = glm::dvec3(0.0);
+    glm::dvec3 pose_jitter_prev_nose = glm::dvec3(0.0, 0.0, 1.0);
 
     // --- input / selection state -------------------------------------------
     bool running = true;

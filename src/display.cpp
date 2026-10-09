@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <cstring>
+#include <string>
 
 #include <GL/glew.h>
 #include <SDL3/SDL.h>
@@ -13,7 +14,7 @@
 using namespace std;
 
 Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
-                   bool gl_debug)
+                   bool gl_debug, int vsync)
 {
     int gl_major = 4;
     int gl_minor = 5;
@@ -94,9 +95,16 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
         check_gl_error();
     }
 
+    /* Own the swap interval instead of inheriting the driver default. With
+       vsync on, SwapBuffers blocking IS the render clock, so the fixed
+       physics tick can only phase-lock to a rate we know; with it off, the
+       --frame-cap sleep is the pacer and its accuracy is SDL_Delay's.
+       After the exclusive-mode block: a CRTC mode change can reset it. */
+    m_vsync = vsync;
+    applySwapInterval();
+
     GLenum glew_status = glewInit();
     check_gl_error();
-
     // SDL offscreen creates an EGL context: glewInit's GLX pass returns
     // GLEW_ERROR_NO_GLX_DISPLAY, but the core GL entry points are already filled in.
     if (glew_status == GLEW_ERROR_NO_GLX_DISPLAY && GLEW_VERSION_4_5)
@@ -226,6 +234,10 @@ void Renderer::setWindowMode(WindowMode mode, int width, int height) {
                                        "fullscreen", "exclusive"};
     printf("display mode: %dx%d (%s)\n", m_screen_width, m_screen_height,
            mode_names[static_cast<size_t>(mode)]);
+    // A mode change is what resets the swap interval, and the panel rate can
+    // change with it (the Settings dropdown lists "%dx%d @ %dHz"), so re-apply
+    // and re-print rather than leave the startup line stale.
+    applySwapInterval();
     check_gl_error();
 }
 
@@ -284,6 +296,34 @@ std::vector<Resolution> Renderer::displayModes() {
                   return a.refresh < b.refresh;
               });
     return out;
+}
+
+void Renderer::applySwapInterval() {
+    // The driver may not grant the request, so read back what it actually
+    // gave us rather than assume. A failed read-back gets its own sentinel:
+    // -1 is a legitimate value (adaptive vsync), so it must not double as
+    // "unknown".
+    if(!SDL_GL_SetSwapInterval(m_vsync)) {
+        printf("vsync: SDL_GL_SetSwapInterval(%d) failed (%s)\n",
+               m_vsync, SDL_GetError());
+    }
+    const int kSwapUnknown = -999;
+    int granted = kSwapUnknown;
+    if(!SDL_GL_GetSwapInterval(&granted)) { granted = kSwapUnknown; }
+    // A granted interval > 0 only means SwapBuffers BLOCKS where there is a
+    // retrace to wait for: the headless/offscreen EGL path reports 1 and then
+    // never waits (measured present ~0.02 ms). Claim the wait only when a
+    // panel rate is actually known.
+    const int hz = currentRefresh();
+    printf("vsync: requested %d, granted %s (%s); display %s\n",
+           m_vsync,
+           granted == kSwapUnknown ? "unknown" : std::to_string(granted).c_str(),
+           hz <= 0                 ? "no panel rate: pacer unverified" :
+           granted >  0            ? "SwapBuffers blocks N refreshes" :
+           granted == 0            ? "immediate, no retrace wait" :
+           granted  <  0           ? "adaptive" :
+                                     "read-back failed",
+           hz > 0 ? std::string(std::to_string(hz) + " Hz").c_str() : "unknown");
 }
 
 int Renderer::currentRefresh() {

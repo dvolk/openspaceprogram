@@ -4,6 +4,7 @@
 #include "version.h"   // VERSION (the embedded build string, `make version`)
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -577,11 +578,50 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "idling a CPU core at 100% even while paused")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_option("--vsync", args.vsync,
+                   "Swap interval: 1 = wait one display refresh per swap "
+                   "(default), 0 = immediate. The game used to leave this at "
+                   "the driver default, so the render clock was whatever the "
+                   "driver felt like -- and the fixed physics tick can only "
+                   "phase-lock to a render clock that is a known rate. With "
+                   "vsync on, SwapBuffers blocks the retrace, so --frame-cap "
+                   "only bites when the panel is FASTER than the cap (a cap "
+                   "below a faster panel's retrace grid needs an interval > 1, "
+                   "not a sleep); with it off the --frame-cap sleep is the "
+                   "pacer, at SDL_Delay's accuracy. N > 1 blocks N retraces per "
+                   "swap (interval 2 on a 120 Hz panel = 60 fps); -1 asks for "
+                   "adaptive. Startup prints what the driver actually granted")
+        ->check(CLI::Range(-1, 4));
+
+    app.add_option("--physics-hz", args.physics_hz,
+                   "Fixed logic/physics tick rate in Hz (default 60). The "
+                   "tick is what quantizes every drawn pose, so a tick rate "
+                   "the render clock cannot land on gives a beat: at 50 Hz "
+                   "against a 60 Hz panel one render frame in five runs no "
+                   "tick at all and redraws an identical pose. 60 locks to "
+                   "60/120/180/240 Hz panels because display refreshes are "
+                   "multiples of 60, not 50. Raising it costs proportional "
+                   "logic time and changes every simulated trajectory; the "
+                   "10-tick catch-up clamp and the warp substep cap both "
+                   "scale with it. 5..1000")
+        ->check(CLI::Range(5.0, 1000.0));
+
     app.add_flag("--perf", args.perf,
                  "Print a per-frame phase timing breakdown (events / logic / "
-                 "jobs / render + fps + physics substeps): a rolling line "
+                 "jobs / render + fps + logic ticks): a rolling line "
                  "every second and a summary at exit. Off by default; the "
                  "timing overhead is negligible when off");
+
+    app.add_flag("--pose-jitter", args.pose_jitter,
+                 "Print one line per RENDER frame: the sim time (t) and wall "
+                 "frame time (fdt), the physics ticks that ran, the tick-window "
+                 "position (alpha), the ship's distance from the local body's "
+                 "centre (r), how far that offset MOVED since the previous drawn "
+                 "frame (gap) and the same for attitude in degrees (dang; -1 = "
+                 "unmeasurable, no controller part). Separates logic-tick pose "
+                 "quantization (gap swings 0..2x while fdt is steady) from "
+                 "frame-pacing jitter (fdt varies). Diagnostic only: nothing "
+                 "here feeds physics");
 
     app.add_option("--fov", args.camFovDeg,
                    "Camera vertical field of view in degrees (default 60; "
@@ -665,6 +705,56 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     else if(msaa == "2x") { args.msaa_samples = 2; }
     else if(msaa == "4x") { args.msaa_samples = 4; }
     else if(msaa == "8x") { args.msaa_samples = 8; }
+
+    /* CLI11's numeric validators are range checks -- `val < min || val > max`
+       -- and both comparisons are false for NaN, while the float lexer happily
+       parses "nan". A non-finite value that reaches the sim fails silently and
+       nastily: a NaN dt never satisfies the tick loop's `accumulator >= dt`, so
+       the sim freezes with no warning, and a NaN --timeout never expires, so the
+       run hangs (which is how the whole e2e harness would die). The declared
+       ranges still catch out-of-bounds values at parse time; this catches
+       non-finite ones for every numeric knob in one place. */
+    {
+        const std::pair<const char *, double> numeric[] = {
+            {"--physics-hz", args.physics_hz},
+            {"--start-time", args.start_time},
+            {"--timeout", args.timeout_seconds},
+            {"--exhaust-scale", args.exhaust_scale},
+            {"--cam-shake", args.cam_shake},
+            {"--drag-cd", args.drag_cd},
+            {"--orbit-interval", args.orbit_interval},
+            {"--prox-fly-on", args.prox_fly_on},
+            {"--prox-fly-off", args.prox_fly_off},
+            {"--prox-ground-on", args.prox_ground_on},
+            {"--prox-ground-off", args.prox_ground_off},
+            {"--prox-warp", args.prox_warp},
+            {"--sky-dim", args.sky_dim},
+            {"--sky-dim-cone", args.sky_dim_cone},
+            {"--font-size", args.font_size},
+            {"--fov", args.camFovDeg},
+        };
+        for(const auto &[name, value] : numeric) {
+            if(!std::isfinite(value)) {
+                printf("error: %s must be a finite number (got %g)\n", name, value);
+                *exit_code = 1;
+                return false;
+            }
+        }
+        const std::pair<const char *, const std::vector<double> &> vectors[] = {
+            {"--free-cam-pos", args.free_cam_pos},
+            {"--free-cam-fwd", args.free_cam_fwd},
+            {"--free-cam-up", args.free_cam_up},
+        };
+        for(const auto &[name, values] : vectors) {
+            for(double v : values) {
+                if(!std::isfinite(v)) {
+                    printf("error: %s must be finite numbers (got %g)\n", name, v);
+                    *exit_code = 1;
+                    return false;
+                }
+            }
+        }
+    }
 
     /* --sim-press: fold the flat START_MS,DURATION_MS,KEY list into press
        entries. */

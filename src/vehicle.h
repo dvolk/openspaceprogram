@@ -103,8 +103,12 @@ public:
 
     /* the controller part (the cockpit, or the first reaction wheel by
        default): the camera basis and the stick frame are built from its
-       local axes. */
-    Part *controller;
+       local axes. Set by finalize(); null before that, and save.cpp +
+       --pose-jitter test it, so it must start null rather than
+       indeterminate. The camera-basis readers do NOT test it (they call
+       partAxis(controller, ...) unguarded) -- safe only because finalize()
+       has run before anything draws. */
+    Part *controller = nullptr;
     /* --- the ship as ONE rigid body (btCompoundShape) -------------------
 
        A ship is a SINGLE btRigidBody whose collision shape is a compound of
@@ -649,8 +653,9 @@ public:
 
     // Single place to control the ship. While paused (simActive == false)
     // every command is dropped.
-    /* step = the tick's simulated duration (dt * time_accel); only Thrust
-       uses it (to scale this tick's fuel flow). */
+    /* step = the tick's simulated duration (dt * time_accel). Thrust scales
+       this tick's fuel flow by it and ThrottleUp/Down scale their ramp by it,
+       so both are no-ops at step == 0 -- pass the real dt, never the default. */
     void Command(ShipCmd cmd, bool simActive, double step = 0.0);
 
     /* The COM velocity. */

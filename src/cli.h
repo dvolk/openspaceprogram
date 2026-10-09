@@ -160,7 +160,10 @@ struct GameArgs {
     std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
+    int vsync = 1;           // --vsync: 0 = off, 1 = one refresh per swap
+    double physics_hz = 60.0;  // --physics-hz: the fixed logic tick rate
     bool perf = false;   // --perf: print a per-frame phase timing breakdown
+    bool pose_jitter = false;  // --pose-jitter: the drawn pose per render frame
     float camFovDeg = 60.0f;
     // terrain LOD: a patch subdivides while it projects wider than this [px].
     int terrain_px = 512;

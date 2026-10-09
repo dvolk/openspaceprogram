@@ -2413,10 +2413,14 @@ void Vehicle::Command(ShipCmd cmd, bool simActive, double step) {
         return;
     switch(cmd.type) {
         case ThrottleUp:
-            adjustThrottle(+0.01);
+            // A rate, not a per-tick step: the ramp must feel the same at any
+            // --physics-hz. 0.6/s is the 0.01-per-tick it was at 60 Hz.
+            assert(step > 0.0 && "throttle ramp needs the tick's duration");
+            adjustThrottle(0.6f * (float)step);
             break;
         case ThrottleDown:
-            adjustThrottle(-0.01);
+            assert(step > 0.0 && "throttle ramp needs the tick's duration");
+            adjustThrottle(-0.6f * (float)step);
             break;
         case Thrust:
             ApplyThrust(step);
@@ -2982,8 +2986,8 @@ void Vehicle::railsTick(double t, const double step) {
     // equality holds because UpdateOrbitRails() is handed this same g.time.
     assert(t == frame->rail_time);
     /* One advance, one SoI test at the end of it. propagateKepler is exact
-       for any step; the SoI TEST is not -- at 1e7x one 50 Hz tick is 200 ks,
-       so a 24 km/s ship covers 4.8e9 m and can fly clean through a planet's
+       for any step; the SoI TEST is not -- at 1e7x one 60 Hz tick is 167 ks,
+       so a 24 km/s ship covers 4.0e9 m and can fly clean through a planet's
        whole sphere (Mars' Hill radius is 1.08e9 m) and the encounter is
        simply missed. That is the deal: the player brings the warp down for
        an encounter. Sampling the conic MID-step to catch such a crossing

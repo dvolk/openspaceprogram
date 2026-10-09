@@ -2,6 +2,7 @@
 #include "render.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <numbers>
 #include <cstdlib>
@@ -393,6 +394,62 @@ void draw3d(Game &g) {
 
     for(auto&& planet : planets) {
         planet->transform = planet->frame->GetBodyDrawTransform(rf);
+    }
+
+    /* --pose-jitter: is the DRAWN relative pose quantized to the logic tick?
+       The ship is pinned at renderOrigin, so what the image moves with is the
+       ship's offset from the SOI body it is drawn against. In-SOI the ship's
+       Frame IS that body's frame (so the body draws at a constant offset and
+       the ship's motion lives entirely in its Bullet pose), and Bullet holds
+       that pose in the Frame's OWN axes -- so the COM alone is the drawn
+       offset. Do NOT subtract frame->root_pos: that is universe-root axes and
+       would measure the planet's own orbital motion instead. At a steady
+       speed the per-frame offset (gap) should track fdt; a render-rate/tick
+       beat shows up as gap collapsing to 0 on frames that ran no tick. Steady
+       gap with a ragged fdt is frame PACING, which interpolation cannot fix.
+       Wall time is steady_clock, NOT SDL_GetTicks: a 60 Hz frame is 16.7 ms
+       and the 1 ms tick granularity is +-6% -- the very signal this flag
+       exists to separate from quantization. dang is -1 where attitude is not
+       measurable. Render-only diagnostic. */
+    if(g.args.pose_jitter && ship && localBody && localBody->frame) {
+        const auto now = std::chrono::steady_clock::now();
+        /* Re-arm across any discontinuity, or its jump reads exactly like a
+           jitter spike: a different ship (switch / EVA / recover), a Frame
+           handoff (the COM is re-expressed in the new frame's axes), or a gap
+           longer than a few frames (VAB and Tracking Station never reach
+           draw3d, so the diagnostic is blind for the whole stay). */
+        const bool stale =
+            !g.pose_jitter_armed
+            || g.pose_jitter_prev_ship != ship
+            || g.pose_jitter_prev_frame != ship->frame
+            || std::chrono::duration<double>(
+                   now - g.pose_jitter_prev_t).count() > 0.25;
+        if(!stale) {
+            const double fdt = std::chrono::duration<double>(
+                now - g.pose_jitter_prev_t).count();
+            const double gap = glm::length(com - g.pose_jitter_prev);
+            // Attitude steps the same way, and the orbit camera's basis comes
+            // straight from the ship's axes (above), so a stepped attitude
+            // rotates the whole image.
+            double dang = -1.0;
+            if(ship->controller) {
+                const glm::dvec3 nose = ship->partAxis(ship->controller, 2);
+                dang = glm::angle(nose, g.pose_jitter_prev_nose);
+            }
+            printf("[jitter] t=%9.3f fdt=%6.2f ticks=%2d alpha=%.3f "
+                   "r=%12.1f gap=%10.4f dang=%9.6f\n",
+                   g.time, 1000.0 * fdt, (int)g.logic_ticks, g.accumulator / g.dt,
+                   glm::length(com), gap, dang);
+            fflush(stdout);
+        }
+        g.pose_jitter_prev = com;
+        if(ship->controller) {
+            g.pose_jitter_prev_nose = ship->partAxis(ship->controller, 2);
+        }
+        g.pose_jitter_prev_ship = ship;
+        g.pose_jitter_prev_frame = ship->frame;
+        g.pose_jitter_prev_t = now;
+        g.pose_jitter_armed = true;
     }
 
     for(auto&& planet : planets) {

@@ -10,14 +10,14 @@
 //      authority -- no command can be more forceful than a maxed manual
 //      stick. (The thrust analogue: T = mdot x ve N.)
 //
-//   2. Slew law, per SUBSTEP (src/main.cpp Vehicle::slewToward):
+//   2. Slew law, per SUBSTEP (src/vehicle.cpp Vehicle::slewToward):
 //         w_des = min(sqrt(2*alpha*E), E/(2h))      (the braking curve,
 //                                                     capped so a substep
 //                                                     at w_des cannot
 //                                                     cross the target)
 //         dw    = clamp(w_des - w, -alpha*h, +alpha*h)
-//         (x, w) integrated semi-implicitly over h, h = step/n,
-//          n = max(3, round(step/0.1)) -- the main loop's substep count.
+//         (x, w) integrated semi-implicitly over h, h = step/n, with n from
+//         src/physics.h substepCount(step) -- the tick loop's substep plan.
 //      This is the per-substep form of the law test_attitude.cpp pins
 //      per-tick (v_des = sqrt(2*A*|x|/step), dv = clamp(v_des - v, -A, A),
 //      A = the per-tick domega authority). The two agree when the step is
@@ -72,7 +72,9 @@
 #include "btcommon.h"
 
 #include "body.h"
+#include "cli.h"      // GameArgs (the shipped --physics-hz default)
 #include "physics.h"
+#include "timestep.h"  // substepCount() -- the tick loop's substep plan
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -96,19 +98,6 @@ static int g_checks = 0;
         }                                                                      \
     } while (0)
 
-/*
- * The main loop's substep count (src/main.cpp): n = max(3, round(step/0.1)),
- * capped at 2000. h = step/n.
- */
-static int main_loop_n(double step) {
-    const double kMaxSubStep = 0.1;
-    int n = 3;
-    int need = (int)(step / kMaxSubStep + 0.5);
-    if(need > n) { n = need; }
-    if(n > 2000) { n = 2000; }
-    return n;
-}
-
 struct RunResult {
     bool converged;
     int crossings;     // times the trajectory crossed the target
@@ -128,7 +117,7 @@ static RunResult run_slew(double A, double step, double x0, double v0,
                           int budget, bool per_substep) {
     double x = x0, v = v0;
     int crossings = 0;
-    const int n = per_substep ? main_loop_n(step) : 1;
+    const int n = per_substep ? substepCount(step) : 1;
     const double h = step / n;
     const double alpha = A / step; // rad/s^2
     double max_ratio = 0.0;
@@ -195,7 +184,7 @@ static RunResult run_slew(double A, double step, double x0, double v0,
 //   dw = -v * min(1, alpha*h/|v|)  ->  |v| drops by min(|v|, alpha*h)
 // Monotonic, no sign flip, reaches exactly 0.
 static bool killrot_converges(double A, double step, double v0, int budget) {
-    const int n = main_loop_n(step);
+    const int n = substepCount(step);
     const double h = step / n;
     const double alpha = A / step;
     double v = v0;
@@ -363,9 +352,9 @@ static void test_inertia_and_angvel_readers() {
  * substep; applied once per tick it only acts during the first substep,
  * cutting the delivered domega to 1/n.
  *
- * Mirrors the src/main.cpp tick structure:
+ * Mirrors the src/tick.cpp structure:
  *   step = dt * time_accel
- *   n    = max(3, round(step / 0.1))
+ *   n    = substepCount(step)
  *   h    = step / n
  *   for t in ticks:
  *       [old: apply tau once]
@@ -375,8 +364,9 @@ static void test_inertia_and_angvel_readers() {
  *
  * Returns the final angular velocity along the torque axis.
  */
-static double delivered_angular_velocity(double tau, double m, double time_accel,
-                                         bool per_substep, int ticks) {
+static double delivered_angular_velocity(double tau, double m, double dt,
+                                         double time_accel, bool per_substep,
+                                         int ticks) {
     btDefaultCollisionConfiguration conf;
     btCollisionDispatcher dispatcher(&conf);
     btDbvtBroadphase broadphase;
@@ -391,9 +381,8 @@ static double delivered_angular_velocity(double tau, double m, double time_accel
     btRigidBody *rb = new btRigidBody(ci);
     world.addRigidBody(rb);
 
-    const double dt = 1.0 / 50.0;
     const double step = dt * time_accel;
-    const int n = main_loop_n(step);
+    const int n = substepCount(step);
     const double h = step / n;
 
     for(int t = 0; t < ticks; t++) {
@@ -420,39 +409,37 @@ static void test_torque_delivery() {
     const double tau = 2000.0; // N m, the wheel rating
     const double m = 4.5;
 
-    struct Case {
-        double ta;   // time acceleration
-        int ticks;   // physics ticks (50/ta per simulated second)
-        int n;       // substeps per tick, per the main-loop formula
-    };
-    const Case cases[] = {
-        {1.0,  50, 3},  // 1.0 s of sim time
-        {10.0, 5,  3},  // 1.0 s of sim time
-        {100.0, 1,  20}, // 1.0 s of sim time
-    };
+    /* Model the tick rate the game actually runs (--physics-hz default) and
+       derive the tick and substep counts from it, so the case list stays
+       correct when the rate changes instead of pinning one rate's numbers. */
+    const double tick_hz = GameArgs{}.physics_hz;
+    const double dt = 1.0 / tick_hz;
 
-    for(const Case &c : cases) {
-        const double T = c.ticks * (1.0 / 50.0) * c.ta; // simulated seconds
-        const double I = (2.0 / 3.0) * m;               // unit box
+    const double ta_grid[] = {1.0, 10.0, 100.0};
+    for(double ta : ta_grid) {
+        const int ticks = (int)(tick_hz / ta + 0.5);  // ticks covering ~1 s
+        const int n = substepCount(dt * ta);          // substeps per tick
+        const double T = ticks * dt * ta;             // simulated seconds
+        const double I = (2.0 / 3.0) * m;             // unit box
         const double w_full = tau / I * T;
 
-        const double w_new = delivered_angular_velocity(tau, m, c.ta, true, c.ticks);
-        const double w_old = delivered_angular_velocity(tau, m, c.ta, false, c.ticks);
+        const double w_new = delivered_angular_velocity(tau, m, dt, ta, true, ticks);
+        const double w_old = delivered_angular_velocity(tau, m, dt, ta, false, ticks);
 
         char buf[192];
         snprintf(buf, sizeof buf,
                  "NEW pattern ta=%g: delivered w == tau/I*T (%.1f rad/s)",
-                 c.ta, w_full);
+                 ta, w_full);
         CHECK_NEAR(w_new, w_full, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "OLD pattern ta=%g: delivered w == tau/I*T/n (%.1f rad/s) "
-                 "[harness must see the 1/n loss]", c.ta, w_full / c.n);
-        CHECK_NEAR(w_old, w_full / c.n, 1e-3, buf);
+                 "[harness must see the 1/n loss]", ta, w_full / n);
+        CHECK_NEAR(w_old, w_full / n, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "ta=%g: new pattern delivers the FULL torque (old lost %d-1 of %d substeps)",
-                 c.ta, c.n - 1, c.n);
+                 ta, n - 1, n);
         CHECK_TRUE(w_new > 0.99 * w_full && w_old < 0.5 * w_full, buf);
     }
 }

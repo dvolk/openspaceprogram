@@ -26,7 +26,7 @@ class Renderer
 public:
     Renderer(int width, int height,
              WindowMode mode = WindowMode::Windowed,
-             int msaa_samples = 4, bool gl_debug = false);
+             int msaa_samples = 4, bool gl_debug = false, int vsync = 1);
 
     void Clear(float r, float g, float b, float a);
     void SwapBuffers();
@@ -53,7 +53,13 @@ public:
 protected:
 private:
 
+    // Apply m_vsync and report what the driver actually granted. Called by the
+    // constructor AND by setWindowMode: a display-mode change is exactly what
+    // resets the swap interval, and the panel rate may change with it.
+    void applySwapInterval();
+
     bool m_gl_debug;
+    int m_vsync = 1;
     int m_screen_width;
     int m_screen_height;
     SDL_Window *m_window;

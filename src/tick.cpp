@@ -7,6 +7,7 @@
 #include "eva.h"                 // evaArmCommands (the kerbal's controls)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "physics.h"             // physics_tick()
+#include "timestep.h"            // substepCount()
 
 void tick(Game &g) {
     double newTime = (double)(SDL_GetTicks()) * 0.001;
@@ -14,6 +15,10 @@ void tick(Game &g) {
     g.currentTime = newTime;
     g.accumulator += frameTime;
 
+    /* Spiral-of-death clamp: at most 10 ticks of catch-up, i.e. 10/physics_hz
+       seconds of wall-clock hitch tolerance -- 167 ms at the 60 Hz default,
+       but only 10 ms at --physics-hz 1000. A frame slower than that silently
+       drops sim time. */
     if(g.accumulator > 10 * g.dt) {
         g.accumulator = 10 * g.dt;
     }
@@ -55,17 +60,23 @@ void tick(Game &g) {
         };
 
         if (g.camera->mode == CAM_FREE) {
-            if (slotActive(Slot::CamForward)) { g.camera->MoveForward(g.cam_speed); }
-            else if (slotActive(Slot::CamBack)) { g.camera->MoveForward(-g.cam_speed); }
+            /* cam_speed (the [/] ladder, shown as "Cam speed" in the HUD) and
+               the roll step are per-TICK amounts. They were tuned at 50 Hz, so
+               scaling by dt*60 re-bases them onto the 60 Hz default -- 20%
+               faster than the old per-tick constants -- and keeps the free
+               cam's felt speed independent of --physics-hz. */
+            const double cam_rate = g.dt * 60.0;
+            if (slotActive(Slot::CamForward)) { g.camera->MoveForward(g.cam_speed * cam_rate); }
+            else if (slotActive(Slot::CamBack)) { g.camera->MoveForward(-g.cam_speed * cam_rate); }
 
-            if (slotActive(Slot::CamStrafeLeft)) { g.camera->MoveRight(-g.cam_speed); }
-            else if (slotActive(Slot::CamStrafeRight)) { g.camera->MoveRight(g.cam_speed); }
+            if (slotActive(Slot::CamStrafeLeft)) { g.camera->MoveRight(-g.cam_speed * cam_rate); }
+            else if (slotActive(Slot::CamStrafeRight)) { g.camera->MoveRight(g.cam_speed * cam_rate); }
 
-            if (slotActive(Slot::CamRollLeft)) { g.camera->Roll(-0.05); }
-            else if (slotActive(Slot::CamRollRight)) { g.camera->Roll(0.05); }
+            if (slotActive(Slot::CamRollLeft)) { g.camera->Roll(-0.05 * cam_rate); }
+            else if (slotActive(Slot::CamRollRight)) { g.camera->Roll(0.05 * cam_rate); }
 
-            if (slotActive(Slot::CamUp)) { g.camera->MoveUp(g.cam_speed); }
-            else if (slotActive(Slot::CamDown)) { g.camera->MoveUp(-g.cam_speed); }
+            if (slotActive(Slot::CamUp)) { g.camera->MoveUp(g.cam_speed * cam_rate); }
+            else if (slotActive(Slot::CamDown)) { g.camera->MoveUp(-g.cam_speed * cam_rate); }
         }
 
         // Piloting (orbit / first person). Free cam is a flier: no sticks.
@@ -133,8 +144,10 @@ void tick(Game &g) {
             if (slotActive(Slot::Thrust) || g.thrust_latched) { g.ship->Command(ShipCmd(Thrust), game_running, g.dt * g.time_accel); }
             if (slotActive(Slot::KillRot)) { g.ship->Command(ShipCmd(KillRot), game_running); }
 
-            if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running); }
-            if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running); }
+            // Throttle is a control input, so it ramps on WALL time (g.dt),
+            // not on the warped sim interval Thrust takes.
+            if (slotActive(Slot::ThrottleUp)) { g.ship->Command(ShipCmd(ThrottleUp), game_running, g.dt); }
+            if (slotActive(Slot::ThrottleDown)) { g.ship->Command(ShipCmd(ThrottleDown), game_running, g.dt); }
 
             // RCS translation (ship-relative): each held slot arms one of
             // the ship's own axes; applyRcsForce resolves the direction.
@@ -151,7 +164,7 @@ void tick(Game &g) {
         // Advance the analytic clock by exactly the physics timestep --
         // the frame tree and the ship integration must share the clock.
         g.time += g.dt * g.time_accel;
-        g.phys_steps++;   // one substep ran (the --perf breakdown counts these)
+        g.logic_ticks++;   // one logic tick ran (its substeps are not counted)
 
         if(g.time_accel != 0) {
             /* Re-snapshot the ship list for THIS step: updateDocking() can
@@ -194,11 +207,7 @@ void tick(Game &g) {
             // >=3 substeps matches the old low-accel behavior; grow so the
             // substep stays <= kMaxSubStep at high time-accel.
             const double step = g.dt * g.time_accel;
-            const double kMaxSubStep = 0.1;
-            int n = 3;
-            int need = (int)(step / kMaxSubStep + 0.5);
-            if (need > n) { n = need; }
-            if (n > 2000) { n = 2000; }
+            const int n = substepCount(step);
             const double h = step / n;
             for (int i = 0; i < n; i++) {
                 // every NON-RAILED ship feels gravity + drag + control each

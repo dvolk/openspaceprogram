@@ -63,6 +63,8 @@
 #include <cmath>
 #include <cstdio>
 
+#include "timestep.h"   // substepCount() -- the tick loop's substep plan
+
 static int g_failures = 0;
 static int g_checks = 0;
 
@@ -82,18 +84,7 @@ struct RunResult {
     bool bad;      // NaN/Inf
 };
 
-/* The main loop's substep count (src/main.cpp):
-   n = max(3, round(step / 0.1)), capped at 2000. h = step/n. */
-static int main_loop_n(double step) {
-    const double kMaxSubStep = 0.1;
-    int n = 3;
-    int need = (int)(step / kMaxSubStep + 0.5);
-    if(need > n) { n = need; }
-    if(n > 2000) { n = 2000; }
-    return n;
-}
-
-// The NEW law, per SUBSTEP (mirrors src/main.cpp Vehicle::slewToward +
+// The NEW law, per SUBSTEP (mirrors src/vehicle.cpp Vehicle::slewToward +
 // Bullet's semi-implicit step): A = per-tick |domega| authority
 // (rad/s per tick), step = tick duration (s), x = signed error angle,
 // v = angular velocity (x increases with v). v_des points toward the
@@ -104,7 +95,7 @@ static RunResult run_new(double A, double step, double x0, double v0,
                          int budget) {
     double x = x0, v = v0;
     int crossings = 0;
-    const int n = main_loop_n(step);
+    const int n = substepCount(step);
     const double h = step / n;
     for(int t = 0; t < budget; t++) {
         for(int i = 0; i < n; i++) {
