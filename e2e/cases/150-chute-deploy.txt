@@ -1,0 +1,7 @@
+NAME chute-deploy
+ARGS --time-accel 1 --startship chutetest,res/ships/chutetest.json,Kerbin,pad
+ARGS --timeout 6 --drag-log
+ARGS --sim-press 2000,0,SPACE
+EXPECT [chute] t=
+FORBID GL_
+FORBID error:

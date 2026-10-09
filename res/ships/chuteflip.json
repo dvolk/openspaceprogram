@@ -1,0 +1,10 @@
+{
+  "name": "chuteflip",
+  "testship": true,
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule", "id": "capsule_1", "stage": 1 },
+    { "part": "chute",   "id": "chute_1",   "parent": "capsule_1",
+      "parentNode": "bottom", "childNode": "bottom", "stage": 1 }
+  ]
+}

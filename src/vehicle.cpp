@@ -107,6 +107,13 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
                 get_texture(std::string("res/") + pd.shroud_texture);
         }
 
+        // Parachute canopy (optional, see PartDef.chute_mesh).
+        if(!pd.chute_mesh.empty()) {
+            part->chute_mesh = get_mesh(std::string("res/") + pd.chute_mesh);
+            part->chute_texture =
+                get_texture(std::string("res/") + pd.chute_texture);
+        }
+
         if(i == 0) {
             ship->setRoot(part);
         } else {
@@ -1333,6 +1340,17 @@ int Vehicle::activeStage() { return activeStage_; }
 
 void Vehicle::advanceStage() { if(activeStage_ > minStage_) { activeStage_--; } }
 
+int Vehicle::deployChutes(int stage) {
+    int n = 0;
+    for(Part *p : parts) {
+        if(p->chute != ChuteStowed || !p->isChute()) { continue; }
+        if(p->stage != stage) { continue; }
+        p->chute = ChuteDeployed;
+        n++;
+    }
+    return n;
+}
+
 int Vehicle::numStages() { return totalStages_; }
 
 float Vehicle::getThrust() {
@@ -1516,6 +1534,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
     lastDragAlpha = 0.0;
     lastDragArea = 0.0;
     lastDragCd = 0.0;
+    lastChuteCdA = 0.0;
     lastControlDeflections.clear();  // a no-air substep reports no steering
 
     // --drag-cd 0 = no aero at all (the master off switch). The lift term
@@ -1629,6 +1648,46 @@ glm::dvec3 Vehicle::applyAeroForce(double h) {
             moment += glm::cross(rcp, fdrag);
             ftotal += fdrag;
         }
+    }
+
+    // CHUTE drag (deployed parachutes, PartDef.chute_area): a FIXED Cd·A
+    // per chute, independent of the hull silhouette -- the deployed canopy
+    // is not a collision shape, so the silhouette pass above cannot see it
+    // and it must not join the hull's cd mean. (The STOWED package's own
+    // hull still counts there, as any part's does.)
+    for(Part *p : parts) {
+        if(p->chute != ChuteDeployed || !p->isChute()) { continue; }
+        // The canopy anchor (PartDef::chuteCanopyOffset: the same point the
+        // canopy is drawn at). Its offset from the COM is the weathervane
+        // restoring moment that hangs the ship under its canopy (same
+        // mechanism as the control-surface term).
+        const glm::dvec3 ri = partPosS(p)
+            + sRot * (p->localRot[2] * PartDef::chuteCanopyOffset(*p->def))
+            - com;
+        // The flow AT THE CANOPY: the COM air-relative velocity plus the
+        // rotation sweep (ω x r). The sweep term IS the harness damping:
+        // without it the restoring torque drives the rotation but nothing
+        // pushes back on it, and rotational energy grows without bound
+        // (the ship tumbles under its own canopy; observed |ω| ~ 78 rad/s).
+        const glm::dvec3 vp = vrel + glm::cross(GetAngVelocity(hull), ri);
+        const double vpl = glm::length(vp);
+        if(vpl <= 0.0) { continue; }
+        const double qpt = 0.5 * rho * vpl * vpl;
+        // Deployment limiter (kChuteAccelLimit): the canopy never pulls
+        // harder than a_lim on the ship. Physical (real canopies are
+        // deployment-limited) AND numerical: capping the force caps the
+        // weathervane torque at r·m·a_lim, keeping the restoring
+        // oscillation's frequency inside the substep's stability envelope
+        // at any q (an unlimited 25 m^2 canopy at 780 m/s whips the ship
+        // past the explicit solver's limit outright).
+        const double area = std::min(p->def->chute_area,
+                                     kChuteAccelLimit * getMass() / qpt);
+        const glm::dvec3 fchute = -(vp / vpl) * (qpt * area);
+        ApplyForce(hull, ri, fchute);            // translation + (ri x fchute)
+        moment += glm::cross(ri, fchute);
+        ftotal += fchute;
+        lastChuteCdA += area;  // the EFFECTIVE (limited) area: the drag log
+                               // then shows the limiter working.
     }
 
     // LIFT (per part): each lifting surface generates lift on its OWN area at
@@ -2329,6 +2388,22 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
         if(p->shroud != nullptr && hasChildBelow(p)) {
             DrawModelAt(camera, p->shroud, p->body->shader,
                         p->shroud_texture, model, sunlightVec, shadow, xformShip);
+        }
+
+        /* Deployed parachute canopy (see PartDef.chute_mesh/chute_area): a
+           flat quad at the canopy anchor above the part, scaled to the
+           canopy area. Placeholder visual -- the physics is analytic (the
+           chute block in applyAeroForce) and acts at this SAME anchor, so
+           the picture and the moment arm agree. */
+        if(p->chute == ChuteDeployed && p->chute_mesh != nullptr) {
+            const double side = std::sqrt(p->def->chute_area);
+            const glm::dmat4 cmodel = model
+                * glm::translate(glm::dvec3(
+                      0.0, 0.0, PartDef::chuteCanopyOffset(*p->def)))
+                * glm::scale(glm::dvec3(side, side, side));
+            DrawModelAt(camera, p->chute_mesh, p->body->shader,
+                        p->chute_texture, cmodel,
+                        sunlightVec, shadow, xformShip);
         }
     }
 }

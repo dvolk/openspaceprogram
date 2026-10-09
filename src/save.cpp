@@ -208,6 +208,7 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         sp.id = p->id;
         sp.parent = (p->parent != nullptr) ? p->parent->uid : 0;
         sp.stage = p->stage;
+        sp.chute = p->chute;
         sp.pos = p->localPos;
         sp.rot = p->localRot;
         sp.mass = p->body->mass;
@@ -306,8 +307,15 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
         Part *p = new Part;
         p->body = b;
         p->def = pd;
+        // the parachute canopy overlay (see PartDef.chute_mesh): resolved at
+        // build time in build_ship_structure, so the load path must too.
+        if(!pd->chute_mesh.empty()) {
+            p->chute_mesh = get_mesh(std::string("res/") + pd->chute_mesh);
+            p->chute_texture = get_texture(std::string("res/") + pd->chute_texture);
+        }
         p->id = sp.id;
         p->stage = sp.stage;
+        p->chute = (sp.chute > 0) ? ChuteDeployed : ChuteStowed;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             p->resources.capacity[r] = pd->capacity[r];
             p->resources.current[r] = (r < (int)sp.fuel.size()) ? (float)sp.fuel[r] : 0.0f;

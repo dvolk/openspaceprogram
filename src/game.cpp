@@ -1527,6 +1527,18 @@ void Game::stage() {
         return;
     }
 
+    /* Chutes on this stage deploy on this press -- BEFORE the decoupler
+       extractions, while every part is still on this ship, so a chute
+       riding a subtree about to be dropped deploys with it (KSP: the
+       drogue on a spent booster fires on the same press that separates
+       it). One-shot: a deployed chute stays deployed. */
+    const int chutes = a->deployChutes(st);
+    if(chutes > 0) {
+        printf("[chute] t=%.1fs deployed %d chute(s) on stage %d\n",
+               time, chutes, st);
+        toast("Chute deployed (%d)", chutes);
+    }
+
     /* The decouplers on this stage (the roots of the dropped subtrees),
        shallowest-first. */
     std::vector<Part *> decs;

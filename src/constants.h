@@ -69,6 +69,18 @@ inline constexpr double kAtmoScaleHeights = 10.0;
    drag.h). */
 inline constexpr double kRhoFloor = 1e-15;
 
+/* Parachute deployment limiter [m/s^2]: a deployed canopy never
+   decelerates the ship by more than this (Vehicle::applyAeroForce clamps
+   the canopy's EFFECTIVE area to a_lim·m/q, so the pull saturates at
+   a_lim). Physical -- real canopies are deployment-limited, and KSP
+   chutes carry limiter stats -- and numerical: it caps the weathervane
+   torque at r·m·a_lim, keeping the restoring oscillation inside the aero
+   substep's stability envelope at any dynamic pressure. ~5g: enough to
+   tame a descent in seconds, low enough that no q can whip the ship.
+   Changes: descent g-load under canopy, and the q at which the full
+   canopy area finally inflates. */
+inline constexpr double kChuteAccelLimit = 50.0;
+
 // -- science situations -------------------------------------------------------
 
 /* FlyingLow/FlyingHigh split, as a fraction of the atmosphere top:

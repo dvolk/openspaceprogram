@@ -30,6 +30,15 @@ inline uint64_t nextPartUid() {
     return ++n;
 }
 
+/* Parachute deployment state (Part::chute). Stowed: inert structure, no
+   aero. Deployed: the canopy's def.chute_area joins the aero pass as an
+   additive drag term at the part (Vehicle::applyAeroForce). One-shot for
+   now; a Semi state (KSP drogue/main, per-state area) slots in here. */
+enum ChuteState {
+    ChuteStowed = 0,
+    ChuteDeployed = 1
+};
+
 struct Part {
     Body *body;                 // OWNED (render assets are registry-shared)
     const PartDef *def;         // non-owning; points into the PartsCatalog
@@ -37,6 +46,11 @@ struct Part {
        them) and null for parts without a shroud. */
     Mesh *shroud = nullptr;
     Texture *shroud_texture = nullptr;
+    /* The parachute canopy overlay (see PartDef.chute_mesh): NON-OWNING,
+       null for non-chute parts. Resolved at build/load, drawn while
+       chute == ChuteDeployed. */
+    Mesh *chute_mesh = nullptr;
+    Texture *chute_texture = nullptr;
     /* GLOBALLY unique instance identity. Distinct across every part of every
        ship -- `id` below is NOT once ships merge. Never 0. */
     uint64_t uid;
@@ -50,6 +64,9 @@ struct Part {
     int stage = 1;              // from the ship def (1 = single stage)
     int fuelGroup = -1;         // fuel-group id (Vehicle::buildFuelGroups); -1 = a fuel barrier
     float armedThrust = 0.0f;   // N armed this tick (disarmed by clearThrust)
+    /* Parachute state (see ChuteState above); inert for non-chute parts.
+       Set by Vehicle::deployChutes on the stage press; save-persisted. */
+    ChuteState chute = ChuteStowed;
 
     /* The part-tree edge: the part this one is welded to (nullptr for the
        root). Topology only -- no physics handle. */
@@ -96,6 +113,7 @@ struct Part {
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isDockingPort() const { return def != nullptr && def->docking_port; }
+    bool isChute() const { return def != nullptr && def->chute_area > 0.0; }
     bool isFuelBarrier() const { return def != nullptr && def->fuel_barrier; }
     bool isCapsule() const { return def != nullptr && def->crew_capacity > 0; }
     bool isContainer() const { return def != nullptr && def->inventory_capacity > 0; }

@@ -1097,6 +1097,23 @@
       "drag_backward": 0.2
     },
     {
+      "name": "chute",
+      "type": "chute",
+      "display_name": "Parachute (2m)",
+      "mesh": "meshes/nose_cap.obj",
+      "texture": "textures/nose_cap.png",
+      "mass": 150.0,
+      "radius": 1.0,
+      "height": 0.5,
+      "chute_area": 25.0,
+      "chute_mesh": "meshes/chute_canopy.obj",
+      "chute_texture": "textures/chute.png",
+      "drag": 0.9,
+      "drag_forward": 0.6,
+      "drag_side": 0.9,
+      "drag_backward": 1.2
+    },
+    {
       "name": "fuel_link",
       "type": "fuel_link",
       "display_name": "Fuel Link",

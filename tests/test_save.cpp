@@ -78,6 +78,7 @@ int main() {
     tank.id = "fuel_tank_1";
     tank.parent = 101;       // the capsule, by uid
     tank.stage = 2;
+    tank.chute = 1;          // deployed (ChuteDeployed, part.h)
     tank.pos = glm::dvec3(0.0, 0.0, -2.25);
     tank.rot = glm::dmat3(1.0);
     tank.mass = 896.7;
@@ -128,6 +129,7 @@ int main() {
         CHECK(a.id == b.id);
         CHECK(a.parent == b.parent);
         CHECK(a.stage == b.stage);
+        CHECK(a.chute == b.chute);
         CHECK(vnear(a.pos, b.pos));
         CHECK(mnear(a.rot, b.rot));
         CHECK(near(a.mass, b.mass));
@@ -641,6 +643,7 @@ int main() {
     CHECK(partOut.uid == 0);          // absent -- load refuses a part with no uid
     CHECK(partOut.parent == 0);       // 0 = the root
     CHECK(partOut.stage == 1);
+    CHECK(partOut.chute == 0);       // absent = stowed (older saves)
     CHECK(vnear(partOut.pos, glm::dvec3(0.0)));
     CHECK(mnear(partOut.rot, glm::dmat3(1.0)));
     CHECK(near(partOut.hull_margin, -1.0));

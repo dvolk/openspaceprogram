@@ -1,0 +1,22 @@
+NAME chute-terminal
+ARGS --time-accel 2 --startship chutetest,res/ships/chutetest.json,Kerbin,flying-low
+ARGS --timeout 16 --drag-log --att-log
+ARGS --sim-press 2000,0,SPACE
+EXPECT [chute] t=
+CHECK any(d.get("chute", 0) > 0 for d in drag)
+# flying-low is a circular-orbit bed: the ship enters at ~1.2 km/s, the
+# deployed chute (deployment-limited, kChuteAccelLimit) drags it to chute
+# terminal velocity (~48 m/s analytic at this mass/density; hull-only
+# terminal would stay >200 m/s). min() over the deployed rows, not last():
+# the log samples on wall-clock, so "last" depends on whether the sim
+# keeps up with --time-accel.
+CHECK min(d["v"] for d in drag if d.get("chute", 0) > 0) < 60
+CHECK min(d["v"] for d in drag if d.get("chute", 0) > 0) > 10
+# the ship must HANG under the canopy, not tumble: the harness damping
+# (omega x r at the canopy anchor) makes the rotation DECAY. The old bug
+# (no sweep term) left |w| ~78 rad/s SUSTAINED forever; a settled ship
+# ends sub-1 rad/s. Peak |w| is not pinned: the hull's own weathervane
+# at Mach 3.5 legitimately whips the ship tens of rad/s pre-deploy.
+CHECK last(att)["wnorm"] < 1
+FORBID GL_
+FORBID error:

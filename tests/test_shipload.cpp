@@ -100,6 +100,15 @@ int main() {
     const PartDef *ft  = cat.find("fuel_tank");
     CHECK(cap != nullptr && rw != nullptr && eng != nullptr && ft != nullptr);
 
+    // the chute part: behavior is the chute_area field (deployed Cd·A).
+    // Non-chute parts must read 0 (Part::isChute is def-driven).
+    {
+        const PartDef *ch = cat.find("chute");
+        CHECK(ch != nullptr);
+        CHECK(ch != nullptr && near(ch->chute_area, 25.0));
+        CHECK(cap != nullptr && cap->chute_area == 0.0);
+    }
+
     // the EVA kerbal: a crew-mass part with no ship behaviors (no wheel or
     // thruster) but a small hydrazine tank for its RCS suit -- the mass is
     // the DRY suit (the propellant rides capacity / effectiveMass, like the
@@ -1485,6 +1494,38 @@ int main() {
         f << "{ \"parts\": [ { \"part\": \"capsule\", \"stage\": 0 } ] }";
         f.close();
         CHECK(expect_throw([&](){ load_ship_def(bad, cat); }));
+        std::remove(bad);
+    }
+
+    // a negative chute_area must be rejected at catalog load
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"chute_area\": -1 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+
+    // a chute (chute_area > 0) without its canopy pair is a catalog bug
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"chute_area\": 10 } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        std::remove(bad);
+    }
+    // and a half-set canopy pair likewise
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"chute_area\": 10, \"chute_mesh\": \"c\" } ] }";
+        f.close();
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);
     }
 

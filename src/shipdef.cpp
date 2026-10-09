@@ -19,7 +19,7 @@ PartDef::PartDef()
       drag(0.0), drag_forward(0.0), drag_side(0.0), drag_backward(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
-      max_deflection(0.0) {
+      max_deflection(0.0), chute_area(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0f);
     propellant_rate.resize((int)ResourceType::Num, 0.0);
 }
@@ -352,6 +352,24 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.max_deflection = pv.value("max_deflection", 0.0);
         if(d.max_deflection < 0.0) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
+        }
+        /* parachute (see PartDef.chute_area): deployed canopy Cd·A (m^2).
+           Omitted -> 0 (not a chute). A chute must ship its canopy: the
+           overlay pair is all-or-nothing (like shroud) and REQUIRED when
+           chute_area > 0. */
+        d.chute_area = pv.value("chute_area", 0.0);
+        if(d.chute_area < 0.0) {
+            throw std::runtime_error(ctx + "\"chute_area\" must be >= 0 (m^2)");
+        }
+        d.chute_mesh = pv.value("chute_mesh", std::string(""));
+        d.chute_texture = pv.value("chute_texture", std::string(""));
+        if((d.chute_mesh.empty()) != (d.chute_texture.empty())) {
+            throw std::runtime_error(ctx
+                                     + "\"chute_mesh\" and \"chute_texture\" must be set together");
+        }
+        if(d.chute_area > 0.0 && d.chute_mesh.empty()) {
+            throw std::runtime_error(ctx + "\"chute_area\" > 0 requires "
+                                          "\"chute_mesh\"/\"chute_texture\"");
         }
 
         /* Attachment nodes. An explicit "nodes" array wins; otherwise

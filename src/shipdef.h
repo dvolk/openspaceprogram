@@ -232,6 +232,27 @@ struct PartDef {
     double cl_control;
     double max_deflection;
 
+    /* Parachute (Vehicle::applyAeroForce): the deployed canopy's effective
+       Cd·A [m^2]. > 0 -> a chute part (Part::isChute); 0 = not a chute.
+       The canopy is NOT a collision shape -- its drag is analytic, added
+       per part at the canopy's anchor (the offset from the COM is the
+       weathervane restoring moment). Staged deployment (Game::stage).
+       chute_mesh/chute_texture: the canopy overlay drawn when deployed
+       (all-or-nothing, like shroud/shroud_texture). */
+    double chute_area;
+    std::string chute_mesh;     // canopy mesh subpath under res/
+    std::string chute_texture;  // canopy texture subpath under res/
+
+    /* The canopy's anchor above the part, along the part's +Z (the stack
+       axis): half the part off its face, then a suspension gap scaling with
+       the canopy's own size. SHARED by the aero force point and the draw
+       so the physics and the picture agree (Vehicle::applyAeroForce,
+       Vehicle::Draw). */
+    static double chuteCanopyOffset(const PartDef &d) {
+        const double side = std::sqrt(d.chute_area);
+        return d.height / 2.0 + 0.75 * side;
+    }
+
     PartDef();
 
     /* Total propellant mass flow (kg/s) at full throttle. */

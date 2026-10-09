@@ -288,7 +288,9 @@ public:
                                  // scales rocket ve and the whole jet thrust;
                                  // synced per tick
     double drag_cd = 1.2;        // test knob (--drag-cd): the drag coefficient
-                                 // (src/drag.h); 0 = no drag; synced per tick
+                                 // (src/drag.h); 0 = no drag; synced per tick.
+                                 // HULL silhouette only: chute Cd·A (below)
+                                 // is a separate fixed term, not scaled by it.
 
     /* The last substep's aero (applyAeroForce), for the --drag-log. */
     glm::dvec3 lastAeroForce = glm::dvec3(0.0);   // total (lift + drag)
@@ -299,6 +301,12 @@ public:
     double lastDragAlpha = 0.0;  // pitch angle of attack (rad) of the last substep
     double lastDragArea = 0.0;  // the ship's silhouette facing the flow (m^2)
     double lastDragCd = 0.0;  // area-weighted mean of the parts' cds
+    /* The deployed chutes' EFFECTIVE Cd·A (m^2) last substep (0 = none):
+       the nominal chute_area, shrunk by the deployment limiter
+       (kChuteAccelLimit) while q is high. The chute drag is NOT in
+       lastDragArea/lastDragCd -- it is a separate additive term (the
+       canopy is not part of the collision hull). */
+    double lastChuteCdA = 0.0;
 
     /* The last substep's control-surface deflections (applyAeroForce), for
        the --drag-log. Stored as a PartDef* (no per-substep string copies). */
@@ -453,6 +461,13 @@ public:
     int activeStage();
     /* Step to the previous stage (clamped at the lowest one). */
     void advanceStage();
+
+    /* Deploy every STOWED chute whose stage == `stage` (the stage the
+       counter just reached): Game::stage calls it on the press, before the
+       decoupler extractions, so chutes riding dropped subtrees deploy too.
+       One-shot: an already-deployed chute stays deployed. Returns the
+       number deployed. */
+    int deployChutes(int stage);
 
     /* Total number of stages on the ship (the highest stage number at build
        time), for the "stage X of N" readout. */

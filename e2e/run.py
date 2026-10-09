@@ -91,6 +91,7 @@ DRAG_RE = re.compile(
     r"(?:\s+\|tau\|=([-\d.]+) Nm)?"
     r"\s+Cd=([-\d.]+)"
     r"(?:\s+A=([-\d.]+) m2)?(?:\s+AoA=([-\d.e+]+) deg)?"
+    r"(?:\s+Chute=([-\d.]+) m2)?"
 )
 SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
@@ -369,7 +370,7 @@ def parse_surf(out):
 def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
-        (t, alt, rho, v, F, L, tau, cd, a, aoa) = m.groups()
+        (t, alt, rho, v, F, L, tau, cd, a, aoa, chute) = m.groups()
         row = {
             "t": float(t), "alt": float(alt), "rho": float(rho),
             "v": float(v), "F": float(F), "cd": float(cd),
@@ -382,6 +383,8 @@ def parse_drag(out):
             row["a"] = float(a)
         if aoa is not None:
             row["aoa"] = float(aoa)
+        if chute is not None:
+            row["chute"] = float(chute)
         rows.append(row)
     return rows
 

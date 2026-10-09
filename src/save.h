@@ -62,6 +62,9 @@ struct SavePart {
     std::string id;          // def-authored instance id; NOT unique across a merge
     uint64_t parent = 0;     // the parent's uid; 0 for the root
     int stage = 1;
+    /* Parachute deployment state (ChuteState in part.h): 0 = stowed
+       (absent on older saves), 1 = deployed. */
+    int chute = 0;
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dmat3 rot = glm::dmat3(1.0);
     double mass = 0.0;
@@ -290,6 +293,7 @@ inline nlohmann::json savePartToJson(const SavePart &p) {
     j["id"]     = p.id;
     if(p.parent != 0) { j["parent"] = p.parent; }
     j["stage"]  = p.stage;
+    if(p.chute != 0) { j["chute"] = p.chute; }
     if(p.pos != glm::dvec3(0.0)) { j["pos"] = std::vector<double>({p.pos.x, p.pos.y, p.pos.z}); }
     if(p.rot != glm::dmat3(1.0)) { j["rot"] = mat3ToVec(p.rot); }
     j["mass"]   = p.mass;
@@ -311,6 +315,7 @@ inline SavePart savePartFromJson(const nlohmann::json &j) {
     if(j.contains("id") && j["id"].is_string()) { p.id = j["id"].get<std::string>(); }
     p.parent = readUid(j, "parent");
     if(j.contains("stage") && j["stage"].is_number()) { p.stage = j["stage"].get<int>(); }
+    if(j.contains("chute") && j["chute"].is_number()) { p.chute = j["chute"].get<int>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
     if(j.contains("mass") && j["mass"].is_number()) { p.mass = j["mass"].get<double>(); }

@@ -1,0 +1,14 @@
+NAME chute-flip
+# chuteflip mates the chute bottom-to-bottom, so its +Z (and the canopy
+# anchor) point DOWN, below the COM: the weathervane must flip the ship
+# until the anchor leads the flow -- nose down (nose z < -0.5), AoA -> 0.
+# Contrast 151 (chutetest, chute on top): same physics, anchor above the
+# COM, so it hangs nose-UP (AoA -> 180).
+ARGS --time-accel 2 --startship chuteflip,res/ships/chuteflip.json,Kerbin,flying-low
+ARGS --timeout 16 --drag-log --att-log
+ARGS --sim-press 2000,0,SPACE
+EXPECT [chute] t=
+CHECK last(att)["nose"][2] < -0.5
+CHECK last(att)["wnorm"] < 1
+FORBID GL_
+FORBID error:
