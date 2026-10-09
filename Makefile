@@ -563,10 +563,12 @@ artifacts: icon-check
 	rm -rf "$$STAGE"
 	@$(MAKE) --no-print-directory appimage
 	@$(MAKE) --no-print-directory deb
+	@# Braces required below: "$$DEBVER_" reads as the variable DEBVER_, which
+	@# silently dropped the .deb from SHA256SUMS. && so a miss fails the target.
 	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
 	DEBVER=$$(printf '%s' "$$VER" | sed -e 's/^v//' -e 's/-/~/g')-1; \
 	ARCH=$$(dpkg --print-architecture); \
-	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz osp-$$VER-x86_64.AppImage openspaceprogram_$$DEBVER_$$ARCH.deb > SHA256SUMS); \
+	(cd $(DISTDIR) && sha256sum osp-$$VER-linux.tar.xz osp-$$VER-windows.zip osp-$$VER-linux+windows.tar.xz osp-$$VER-x86_64.AppImage openspaceprogram_$${DEBVER}_$${ARCH}.deb > SHA256SUMS) && \
 	ls -lh $(DISTDIR)
 
 # AppImage via utils/make_appimage.sh. FHS AppDir so resdir::root() finds
