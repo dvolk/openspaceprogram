@@ -1032,12 +1032,12 @@ int main(int argc, char **argv)
 
     /* --idle-fps: while the window is occluded or minimized the compositor
        says nobody can see the surface, so the loop idles instead of issuing
-       ~0.9 ms of GL commands plus a swap that goes nowhere. Throttled, NOT
-       skipped: draw3d is not a pixel pass -- it re-poses the camera
-       (render.cpp:300-362), runs the terrain LOD that owns the ground's
-       collision bodies (:458) and refreshes the g.view snapshot the UI pass
-       reads (:486) -- so skipping a draw would change what the simulation
-       does, not merely what appears.
+       ~1 ms of GL commands on the title screen (2-3 ms in flight) plus a swap
+       that goes nowhere. Throttled, NOT skipped: draw3d is not a pixel pass --
+       it re-poses the camera (render.cpp:300-362), runs the terrain LOD that
+       owns the ground's collision bodies (:458) and refreshes the g.view
+       snapshot the UI pass reads (:486) -- so skipping a draw would change
+       what the simulation does, not merely what appears.
        The logic tick is untouched: tick() accumulates off the wall clock, so
        a minimized window still warps at full rate (minimizing for a long
        transfer is the point). Held commands read SDL_GetKeyboardState
@@ -1048,16 +1048,31 @@ int main(int argc, char **argv)
        10 Hz instead of 60, and sdl-mixer's own stop-fade is time-based so it
        is unaffected.
        Floor: tick.cpp's spiral-of-death clamp takes at most 10 ticks per
-       frame, so an idle interval longer than 10/dt silently loses sim time to
-       the wall clock. Cap the interval at 80% of that budget: at 60 Hz that
-       leaves the 100 ms default alone, at 240 Hz it raises it to 33 ms. */
-    const double idle_budget_ms = 10.0 * 1000.0 / args.physics_hz;
+       frame, so an idle frame slower than 10/dt silently loses sim time to
+       the wall clock. The idle rate is therefore never slower than
+       physics_hz/8 -- 80% of that budget. The 20% is a bet on what an idle
+       frame still costs (the LOD continuations land in fewer, fatter batches,
+       so jobs rises while hidden), not a guarantee: at --physics-hz 480 the
+       floor is 60 fps, which the machine cannot reach anyway (measured 61.7
+       fps hidden, 2876 ticks/6.03 s = 477 Hz, against 61.8 fps and 477 Hz
+       visible -- the clamp, not the idle path, is what binds). Note this
+       bounds IDLE_MS only -- a --frame-cap slower than physics_hz/10 loses
+       sim time with or without a hidden window, and the [idle] line prints
+       the ceiling the effective budget can actually hold rather than
+       certifying the tick rate. */
+    const double idle_fps = std::max((double)args.idle_fps,
+                                     args.physics_hz / 8.0);
     const int idle_ms = (args.idle_fps > 0)
-        ? (int)std::min(1000.0 / (double)args.idle_fps, idle_budget_ms * 0.8)
-        : 0;
-    if(idle_ms > 0) {
-        printf("idle: %d ms/frame while the window is occluded/minimized\n",
+        ? std::max(1, (int)(1000.0 / idle_fps)) : 0;
+    if(args.idle_fps > 0) {
+        printf("idle: %d ms/frame while the window is occluded/minimized",
                idle_ms);
+        if(idle_fps > (double)args.idle_fps) {
+            printf(" (--idle-fps %d raised to %.1f: the 10-tick catch-up "
+                   "clamp at %.0f Hz allows no slower frame)",
+                   args.idle_fps, idle_fps, args.physics_hz);
+        }
+        printf("\n");
     } else {
         printf("idle: off (--idle-fps 0)\n");
     }
@@ -1071,7 +1086,7 @@ int main(int argc, char **argv)
     double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0,
            p_present = 0.0, p_total = 0.0;                                     // cumulative ms
     long long p_frames = 0, p_steps = 0;                                       // cumulative counts
-    long long p_idled = 0;                                       // frames at idle_ms
+    long long p_idled = 0;                                    // frames run hidden
     double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_render = 0.0,
            w_present = 0.0;                                                    // rolling-window ms
     long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
@@ -1122,8 +1137,11 @@ int main(int argc, char **argv)
         printf("  %-7s avg %9.4f ms  (frame total, incl. frame-cap sleep)\n",
                "total", p_total / (double)p_frames);
         if(p_idled > 0) {
-            printf("  idled   %lld of those frames at %d ms (window "
-                   "occluded/minimized)\n", p_idled, idle_ms);
+            // No interval here: with a --frame-cap slower than the idle
+            // budget, the cap is what paced those frames. The interval the
+            // idle path asked for is on the [idle] transition line.
+            printf("  idled   %lld of those frames (window "
+                   "occluded/minimized)\n", p_idled);
         }
         printf("  (render = issuing GL draw commands; present = SwapBuffers,\n"
                "   which blocks on vsync -- display pacing, not render cost)\n");
@@ -1147,21 +1165,26 @@ int main(int argc, char **argv)
            missed event cannot wedge the loop in either state.
            --force-occluded is the headless stand-in -- a compositor never
            occludes an offscreen window, so without it this path has no
-           automated cover. --idle-fps 0 keeps the window's state irrelevant. */
-        const bool hidden = display.isHidden()
-            || (args.force_occluded_ms >= 0
-                && (int)(iter_start_ms - game.loop_start_ms)
-                   >= args.force_occluded_ms);
+           automated cover. --idle-fps 0 short-circuits the query. */
+        const bool idling = idle_ms > 0
+            && (display.isHidden()
+                || (args.force_occluded_ms >= 0
+                    && (int)(iter_start_ms - game.loop_start_ms)
+                       >= args.force_occluded_ms));
         // While idling, trade render frames for a sleep. The logic tick keeps
         // its own rate (tick() reads the wall clock) and the draw stays whole,
-        // so nothing but the frame RATE changes.
-        const bool idling = hidden && idle_ms > 0;
+        // so nothing but the frame RATE changes. iter_cap_ms is a budget floor
+        // for the iteration, not a period: a blocking swap already fills it.
         const int iter_cap_ms = idling ? std::max(cap_ms, idle_ms) : cap_ms;
         if(idling != idled_last) {
             idled_last = idling;
             if(idling) {
-                printf("[idle] window hidden: %d ms/frame (logic still "
-                       "%.0f Hz)\n", iter_cap_ms, args.physics_hz);
+                // The ceiling this budget can hold, not a promise about
+                // --physics-hz: a --frame-cap slower than physics_hz/10 loses
+                // sim time hidden or not (tick.cpp's 10-tick clamp).
+                printf("[idle] window hidden: %d ms/frame budget "
+                       "(sim ceiling %.0f Hz at 10 ticks/frame)\n",
+                       iter_cap_ms, 10000.0 / (double)iter_cap_ms);
             } else {
                 printf("[idle] window visible: drawing every frame\n");
             }

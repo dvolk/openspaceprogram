@@ -1,0 +1,10 @@
+NAME idle-rate-floor
+ARGS --physics-hz 240 --idle-fps 10 --force-occluded 0 --timeout 3 --perf
+# The idle rate may never be slower than physics_hz/8: tick.cpp's
+# spiral-of-death clamp takes at most 10 ticks per frame, so a 100 ms idle
+# frame at 240 Hz would need 24 ticks and silently drop 14 of them. The
+# request is raised and startup must say so rather than obey it.
+EXPECT idle: 33 ms/frame while the window is occluded/minimized (--idle-fps 10 raised to 30.0
+EXPECT [idle] window hidden: 33 ms/frame budget (sim ceiling 303 Hz at 10 ticks/frame)
+CHECK int(re.search(r"perf summary \((\d+) frames", out).group(1)) > 60
+FORBID error:
