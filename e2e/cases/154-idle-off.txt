@@ -1,0 +1,9 @@
+NAME idle-off
+ARGS --force-occluded 0 --idle-fps 0 --timeout 2 --perf
+EXPECT idle: off (--idle-fps 0)
+# --idle-fps 0: a hidden window changes nothing, so neither the transition
+# line nor the counter may appear (a counter that counts hidden frames while
+# not idling would print "at 0 ms" and lie).
+FORBID [idle]
+FORBID idled
+FORBID error:

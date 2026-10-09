@@ -578,6 +578,29 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "idling a CPU core at 100% even while paused")
         ->check(CLI::NonNegativeNumber);
 
+    app.add_option("--idle-fps", args.idle_fps,
+                   "Render frames per second while the window is occluded or "
+                   "minimized (default 10; 0 = never idle). The compositor "
+                   "says nobody can see the surface, so the loop idles instead "
+                   "of issuing ~0.9ms of GL commands plus a swap that goes "
+                   "nowhere. It is throttled, NOT skipped: draw3d also re-poses "
+                   "the camera, runs the terrain LOD that owns the ground's "
+                   "collision bodies, and refreshes the g.view snapshot the UI "
+                   "reads, so skipping a draw would change the simulation and "
+                   "not just the image. The logic tick keeps running at "
+                   "--physics-hz off the wall clock, so a minimized window "
+                   "still warps at full rate. The idle interval is capped at "
+                   "80% of the 10-tick catch-up clamp, so a request slower than "
+                   "physics_hz/10 is raised to it")
+        ->check(CLI::NonNegativeNumber);
+
+    app.add_option("--force-occluded", args.force_occluded_ms,
+                   "Pretend the window is occluded from this many ms after the "
+                   "main loop starts (-1 = off). Headless cover for --idle-fps: "
+                   "a compositor never occludes an offscreen window, so without "
+                   "this the idle path has no automated test")
+        ->check(CLI::Range(-1, 1000000000));
+
     app.add_option("--vsync", args.vsync,
                    "Swap interval: 1 = wait one display refresh per swap "
                    "(default), 0 = immediate. The game used to leave this at "

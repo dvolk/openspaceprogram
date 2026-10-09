@@ -1,0 +1,9 @@
+NAME idle-headless-never
+ARGS --timeout 2 --perf
+EXPECT idle: 100 ms/frame while the window is occluded/minimized
+# The offscreen driver must never report the window occluded/minimized: if it
+# ever does, every e2e run silently drops to 10 fps and the render/present
+# columns of --perf stop meaning anything.
+FORBID [idle]
+FORBID idled
+FORBID error:

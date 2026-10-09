@@ -1030,6 +1030,38 @@ int main(int argc, char **argv)
     printf("logic tick: %.0f Hz (%.1f ms)\n",
            args.physics_hz, 1000.0 / args.physics_hz);
 
+    /* --idle-fps: while the window is occluded or minimized the compositor
+       says nobody can see the surface, so the loop idles instead of issuing
+       ~0.9 ms of GL commands plus a swap that goes nowhere. Throttled, NOT
+       skipped: draw3d is not a pixel pass -- it re-poses the camera
+       (render.cpp:300-362), runs the terrain LOD that owns the ground's
+       collision bodies (:458) and refreshes the g.view snapshot the UI pass
+       reads (:486) -- so skipping a draw would change what the simulation
+       does, not merely what appears.
+       The logic tick is untouched: tick() accumulates off the wall clock, so
+       a minimized window still warps at full rate (minimizing for a long
+       transfer is the point). Held commands read SDL_GetKeyboardState
+       (tick.cpp:46), a live snapshot, so they still land every tick; only
+       one-shot presses quantise to the idle interval, and a minimized window
+       receives no input anyway. Per-frame audio work (the engine-hum gain,
+       one-shot reaping) does drop to the idle rate -- the hum modulates at
+       10 Hz instead of 60, and sdl-mixer's own stop-fade is time-based so it
+       is unaffected.
+       Floor: tick.cpp's spiral-of-death clamp takes at most 10 ticks per
+       frame, so an idle interval longer than 10/dt silently loses sim time to
+       the wall clock. Cap the interval at 80% of that budget: at 60 Hz that
+       leaves the 100 ms default alone, at 240 Hz it raises it to 33 ms. */
+    const double idle_budget_ms = 10.0 * 1000.0 / args.physics_hz;
+    const int idle_ms = (args.idle_fps > 0)
+        ? (int)std::min(1000.0 / (double)args.idle_fps, idle_budget_ms * 0.8)
+        : 0;
+    if(idle_ms > 0) {
+        printf("idle: %d ms/frame while the window is occluded/minimized\n",
+               idle_ms);
+    } else {
+        printf("idle: off (--idle-fps 0)\n");
+    }
+
     // Per-frame phase timing. The push into the Game::perf_* series runs
     // EVERY frame (the Telemetry window reads them); --perf only controls
     // the console output. The "logic" phase is where the Part*/Body*
@@ -1039,6 +1071,7 @@ int main(int argc, char **argv)
     double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0,
            p_present = 0.0, p_total = 0.0;                                     // cumulative ms
     long long p_frames = 0, p_steps = 0;                                       // cumulative counts
+    long long p_idled = 0;                                       // frames at idle_ms
     double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_render = 0.0,
            w_present = 0.0;                                                    // rolling-window ms
     long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
@@ -1088,6 +1121,10 @@ int main(int argc, char **argv)
         }
         printf("  %-7s avg %9.4f ms  (frame total, incl. frame-cap sleep)\n",
                "total", p_total / (double)p_frames);
+        if(p_idled > 0) {
+            printf("  idled   %lld of those frames at %d ms (window "
+                   "occluded/minimized)\n", p_idled, idle_ms);
+        }
         printf("  (render = issuing GL draw commands; present = SwapBuffers,\n"
                "   which blocks on vsync -- display pacing, not render cost)\n");
         if(p_steps > 0) {
@@ -1099,9 +1136,37 @@ int main(int argc, char **argv)
     /* main loop timing from
        http://gafferongames.com/game-physics/fix-your-timestep/
     */
+    bool idled_last = false;   // so the [idle] line prints on transitions only
     while (running == true) {
         const Uint32 iter_start_ms = SDL_GetTicks();
         pf_iter = std::chrono::steady_clock::now();
+
+        /* Can anyone see this window? Read from the window flags every frame
+           rather than latching SDL_EVENT_WINDOW_OCCLUDED / _MINIMIZED: a
+           window that starts behind others is occluded from frame one, and a
+           missed event cannot wedge the loop in either state.
+           --force-occluded is the headless stand-in -- a compositor never
+           occludes an offscreen window, so without it this path has no
+           automated cover. --idle-fps 0 keeps the window's state irrelevant. */
+        const bool hidden = display.isHidden()
+            || (args.force_occluded_ms >= 0
+                && (int)(iter_start_ms - game.loop_start_ms)
+                   >= args.force_occluded_ms);
+        // While idling, trade render frames for a sleep. The logic tick keeps
+        // its own rate (tick() reads the wall clock) and the draw stays whole,
+        // so nothing but the frame RATE changes.
+        const bool idling = hidden && idle_ms > 0;
+        const int iter_cap_ms = idling ? std::max(cap_ms, idle_ms) : cap_ms;
+        if(idling != idled_last) {
+            idled_last = idling;
+            if(idling) {
+                printf("[idle] window hidden: %d ms/frame (logic still "
+                       "%.0f Hz)\n", iter_cap_ms, args.physics_hz);
+            } else {
+                printf("[idle] window visible: drawing every frame\n");
+            }
+            fflush(stdout);
+        }
 
         // --timeout: auto-exit once the wall-clock budget is spent.
         if(args.timeout_seconds > 0.0) {
@@ -1453,7 +1518,10 @@ int main(int argc, char **argv)
           per frame. Skipping this block would also starve imgui of a frame
           boundary (its events are consumed in poll_events regardless) and
           drop the SwapBuffers that IS the render clock under vsync.
-          The braces are a scope for `sc`, not a gate.
+          The braces are a scope for `sc`, not a gate. The one signal that
+          could justify a gate -- the compositor reporting the surface hidden --
+          is handled by idling the loop instead (--idle-fps), because this pass
+          also produces state the sim and the UI read.
         */
         {
             check_gl_error();
@@ -1567,6 +1635,7 @@ int main(int argc, char **argv)
             p_render += f_render; p_present += f_present;
             p_total += perf_ms(pf_iter, pf_d);
             p_frames++; p_steps += game.logic_ticks;
+            if(idling) { p_idled++; }
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
             w_render += f_render; w_present += f_present;
             w_frames++; w_steps += game.logic_ticks;
@@ -1583,11 +1652,14 @@ int main(int argc, char **argv)
            cap == panel rate the retrace alone fills the frame. A cap BELOW a
            faster panel's retrace grid cannot be met by sleeping (the swap
            quantises anyway) -- that needs a swap interval > 1, which --vsync N
-           exposes. */
-        if (cap_ms > 0) {
+           exposes.
+           While the window is hidden this sleep IS the pacer: a compositor
+           tends to stop scheduling retraces for a surface nobody sees, so the
+           blocking swap can stop pacing the loop on its own. */
+        if (iter_cap_ms > 0) {
             const Uint32 used_ms = SDL_GetTicks() - iter_start_ms;
-            if (used_ms < (Uint32)cap_ms) {
-                SDL_Delay(cap_ms - used_ms);
+            if (used_ms < (Uint32)iter_cap_ms) {
+                SDL_Delay(iter_cap_ms - used_ms);
             }
         }
     }

@@ -160,6 +160,10 @@ struct GameArgs {
     std::string font_path = "res/fonts/DejaVuSansMono.ttf";
     float font_size = 14.0f;
     int frame_cap = 60;
+    // --idle-fps: render rate while the window is occluded/minimized (0 = never idle).
+    int idle_fps = 10;
+    // --force-occluded MS: pretend the window is hidden from MS on (-1 = off).
+    int force_occluded_ms = -1;
     int vsync = 1;           // --vsync: 0 = off, 1 = one refresh per swap
     double physics_hz = 60.0;  // --physics-hz: the fixed logic tick rate
     bool perf = false;   // --perf: print a per-frame phase timing breakdown

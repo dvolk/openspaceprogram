@@ -44,6 +44,12 @@ public:
     // Sample count the window was actually created with (the driver may
     // grant fewer than requested, or zero with no multisample visual).
     int msaaSamples() const;
+    // True while the compositor reports the surface fully covered (occluded)
+    // or the window minimized: nobody can see the image. Polled from the
+    // window flags rather than latched from SDL_EVENT_WINDOW_OCCLUDED /
+    // _MINIMIZED, so a window that starts hidden reads correctly and a missed
+    // event cannot wedge the caller in either state.
+    bool isHidden() const;
 
     SDL_Window *get_display() { return m_window; }
     int get_width() { return m_screen_width; }

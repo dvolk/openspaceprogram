@@ -340,6 +340,11 @@ int Renderer::msaaSamples() const {
     return granted;
 }
 
+bool Renderer::isHidden() const {
+    const SDL_WindowFlags f = SDL_GetWindowFlags(m_window);
+    return (f & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_MINIMIZED)) != 0;
+}
+
 void Renderer::Clear(float r, float g, float b, float a)
 {
     check_gl_error();
