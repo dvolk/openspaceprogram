@@ -31,11 +31,21 @@ if [ "$OS" = windows ]; then
     SDL3_DRIVERS="-DSDL_OPENGL=ON -DSDL_OPENGLES=OFF \
                   -DSDL_X11=OFF -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF"
 else
+    # SDL3 auto-detects optional system libs and, with SDL_DEPS_SHARED=OFF,
+    # links the ones it does not dlopen directly into libSDL3.a -- deps the
+    # Makefile's SDL3_SYS does not carry, so a host that happens to have the
+    # -dev package fails to link osp. Pin the ones we don't want OFF:
+    # fribidi/libthai shape RTL/Thai text in SDL's messagebox (the X11 driver's
+    # vtable always pulls that TU in, even though the game never calls
+    # SDL_ShowMessageBox); pipewire is a second audio backend and PulseAudio
+    # already talks to PipeWire's compat server.
     SDL3_DRIVERS="-DSDL_OPENGL=ON -DSDL_OPENGLES=ON -DSDL_LIBUDEV=OFF \
                   -DSDL_DUMMYVIDEO=OFF -DSDL_DUMMYCAMERA=OFF \
                   -DSDL_X11=ON -DSDL_X11_SHARED=OFF -DSDL_X11_XTEST=OFF \
+                  -DSDL_FRIBIDI=OFF -DSDL_LIBTHAI=OFF \
                   -DSDL_WAYLAND=OFF -DSDL_VULKAN=OFF -DSDL_OFFSCREEN=ON \
-                  -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_SNDIO=OFF -DSDL_JACK=OFF"
+                  -DSDL_ALSA=ON -DSDL_PULSEAUDIO=ON -DSDL_PIPEWIRE=OFF \
+                  -DSDL_SNDIO=OFF -DSDL_JACK=OFF"
 fi
 
 # Mirrors the Makefile's MWROOT so middleware is shared across game configs.
@@ -96,6 +106,27 @@ cmake -S middleware/sdl3 -B "$MWROOT/sdl3" \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" \
     -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build "$MWROOT/sdl3" -j"$JOBS"
+
+# SDL3 auto-detects more optional system libs than the pins above cover, and
+# SDL_DEPS_SHARED=OFF makes the ones it does not dlopen direct link deps that
+# SDL3_SYS lacks. Catch a new one here, not at the osp link (or, worse, deep
+# inside `make deb`'s dpkg-buildpackage).
+if [ "$OS" != windows ]; then
+    SDL3_STATIC="$MWROOT/sdl3/libSDL3.a"
+    if [ ! -f "$SDL3_STATIC" ]; then
+        echo "error: $SDL3_STATIC missing -- cmake built no static archive" >&2
+        exit 1
+    fi
+    stray=$(nm -u "$SDL3_STATIC" 2>/dev/null | awk '$1 == "U" {print $2}' |
+            { grep -E '^(fribidi_|th_|pw_|decor_)' || true; } | sort -u) ||
+        { echo "error: nm -u $SDL3_STATIC failed (binutils installed?)" >&2; exit 1; }
+    if [ -n "$stray" ]; then
+        echo "error: libSDL3.a needs system libs the Makefile does not link:" >&2
+        sed 's/^/  /' <<<"$stray" >&2
+        echo "  pin the matching SDL_* option OFF, or add the lib to SDL3_SYS" >&2
+        exit 1
+    fi
+fi
 
 echo "=== building SDL_image3 (static, PNG-only) ==="
 # PNG-only (the game loads/saves PNG). Vendored libpng+zlib; SDL3_DIR pins our SDL3.
