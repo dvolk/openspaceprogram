@@ -55,6 +55,11 @@ if [ "$OS" = windows ]; then
         echo "error: x86_64-w64-mingw32-g++ not found (apt install g++-mingw-w64-x86-64)" >&2
         exit 1
     }
+    # release/osp.rc (the exe's icon + version info) is compiled by windres.
+    command -v x86_64-w64-mingw32-windres >/dev/null 2>&1 || {
+        echo "error: x86_64-w64-mingw32-windres not found (apt install binutils-mingw-w64-x86-64)" >&2
+        exit 1
+    }
 fi
 
 # Pinned submodules + sdl3-image's nested libpng/zlib (PNG build needs those only).

@@ -1,0 +1,46 @@
+// Windows resources for osp.exe, compiled by `make OS=windows` (WINDRES
+// rule). The icon is what Explorer, the taskbar and Alt-Tab show; SDL3
+// reuses the first RT_GROUP_ICON for the window class, so the in-game
+// window icon comes from here too. `make icon` regenerates the .ico from
+// release/openspaceprogram.png.
+#include <winres.h>
+#include "../src/version.h"
+
+1 ICON "openspaceprogram.ico"
+
+// VER_MAJ/MIN/PATCH come from -D on the windres line (the leading vN.N.N of
+// `git describe`). The strings carry the full describe output, which is
+// what support requests actually quote.
+#ifndef VER_MAJ
+#define VER_MAJ 0
+#endif
+#ifndef VER_MIN
+#define VER_MIN 0
+#endif
+#ifndef VER_PATCH
+#define VER_PATCH 0
+#endif
+
+1 VERSIONINFO
+FILEVERSION VER_MAJ,VER_MIN,VER_PATCH,0
+PRODUCTVERSION VER_MAJ,VER_MIN,VER_PATCH,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "Open Space Program"
+            VALUE "FileVersion", VERSION
+            VALUE "InternalName", "osp"
+            VALUE "OriginalFilename", "osp.exe"
+            VALUE "ProductName", "Open Space Program"
+            VALUE "ProductVersion", VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04b0
+    END
+END

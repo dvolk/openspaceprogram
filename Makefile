@@ -103,6 +103,23 @@ else
 STATIC_LD=
 endif
 
+# windows: shell icon + version info embedded in the exe (release/osp.rc).
+# SDL3 registers the window class with the first RT_GROUP_ICON it finds, so
+# this also drives the taskbar / Alt-Tab icon. RES_OBJ is empty on linux.
+ifeq ($(OS),windows)
+WINDRES=x86_64-w64-mingw32-windres
+RES_OBJ=$(OBJDIR)/osp_res.o
+# VERSIONINFO's numeric fields want N,N,N: the leading vN.N(.N) of git
+# describe, zero-padded. An untagged tree yields 0.0.0 there while the
+# string fields still carry the full describe. Recursive on purpose -- a
+# `:=` would read src/version.h before the `version` target refreshes it.
+VER_NUM=$(shell sed -n 's/^\#define VERSION "v\{0,1\}\([0-9]\+\)\.\([0-9]\+\)\(\.\([0-9]\+\)\)\?.*/\1 \2 \4/p' $(SRCDIR)/version.h 2>/dev/null)
+VER=$(if $(VER_NUM),$(VER_NUM),0) 0 0 0
+WINDRESFLAGS=-DVER_MAJ=$(word 1,$(VER)) -DVER_MIN=$(word 2,$(VER)) -DVER_PATCH=$(word 3,$(VER))
+else
+RES_OBJ=
+endif
+
 # -Wno-lto-type-mismatch: SDL2 EGL API vs EGL impl, only visible under LTO.
 LFLAGS=$(CFGLTO) $(ARCH) $(PGOFLAGS) $(LDFLAGS) $(STATIC_LD) -Wall -Wno-lto-type-mismatch $(LDLIBS) $(IMGUI_LIBS) $(BULLET3_OBJS)
 
@@ -173,12 +190,21 @@ endif
 
 # Middleware .a files are prereqs (built by bootstrap.sh, not this make) so a
 # rebuilt lib forces a relink. Missing .a before bootstrap = a clear error.
-$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(ASSIMP_A) $(SDL3_A) $(SDLIMG_A) $(SDLMIXER_A) $(GLEW_A) $(BULLET3_OBJS)
-	$(LINKER) $@ $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(OBJECTS) $(LFLAGS)
+$(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(RES_OBJ) $(ASSIMP_A) $(SDL3_A) $(SDLIMG_A) $(SDLMIXER_A) $(GLEW_A) $(BULLET3_OBJS)
+	$(LINKER) $@ $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(OBJECTS) $(RES_OBJ) $(LFLAGS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# The exe's icon/version resources (windows only). src/version.h hangs off
+# the phony `version` target, so this recompiles on every windows build --
+# cheap, and it keeps the VERSIONINFO strings in step with the binary.
+ifeq ($(OS),windows)
+$(RES_OBJ): release/osp.rc $(SRCDIR)/version.h release/openspaceprogram.ico
+	@mkdir -p $(dir $@)
+	$(WINDRES) $(WINDRESFLAGS) -i $< -o $@
+endif
 
 # Embed git version in src/version.h (gameui.cpp). Phony re-check; rewrites
 # only on change (a change lands one build later). VERSION=1.0 overrides.
@@ -477,6 +503,22 @@ E2E_JOBS = $(if $(JOBS),--jobs $(JOBS),)
 e2e: all
 	python3 e2e/run.py $(E2E_JOBS) --force --game $(BINDIR)/$(TARGET)
 
+# Regenerate the windows .ico from the master PNG (needs ImageMagick; IM6
+# users: MAGICK=convert). Sizes cover Explorer/taskbar up to 500% DPI;
+# committed so the cross build needs no image tooling.
+MAGICK ?= magick
+.PHONY: icon
+icon:
+	$(MAGICK) release/openspaceprogram.png -define icon:auto-resize=16,24,32,48,64,128,256 release/openspaceprogram.ico
+
+# Advisory: the .ico is a hand-regenerated artifact, so it can silently
+# predate the PNG it was baked from. Warn before packaging.
+.PHONY: icon-check
+icon-check:
+	@if [ release/openspaceprogram.png -nt release/openspaceprogram.ico ]; then \
+		echo "warning: release/openspaceprogram.png is newer than the .ico -- run make icon" >&2; \
+	fi
+
 # Release artifacts in dist/ (gitignored). Per-OS trees use the same
 # <os>-<march>-<mtune> ARCHDIR tokens.
 DISTDIR=dist
@@ -490,10 +532,12 @@ WINE_CASES ?= smoke vab-launch vab-launch-orbit vab-launch-body
 # Package only (no test/e2e gates). Version from `version` target; dirty
 # trees keep -dirty in the name.
 .PHONY: artifacts
-artifacts:
+artifacts: icon-check
 	@$(MAKE) --no-print-directory version
 	@$(MAKE) --no-print-directory all
 	@$(MAKE) --no-print-directory OS=windows all
+	@x86_64-w64-mingw32-objdump -h "$(WINDOWS_BIN)" | grep -q '\.rsrc' || \
+		{ echo "error: $(WINDOWS_BIN) has no .rsrc -- release/osp.rc did not get linked" >&2; exit 1; }
 	@VER=$$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h); \
 	if [ -z "$$VER" ]; then \
 		echo "error: no version string (src/version.h missing?)" >&2; exit 1; \
@@ -547,7 +591,7 @@ deb:
 
 # Full gates first (unit + native e2e + wine smoke), then package.
 .PHONY: release
-release:
+release: icon-check
 	@$(MAKE) --no-print-directory test
 	@$(MAKE) --no-print-directory e2e
 	@$(MAKE) --no-print-directory OS=windows all
