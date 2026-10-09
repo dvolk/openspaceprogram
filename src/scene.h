@@ -64,8 +64,8 @@ struct SceneDef {
     WinSet wins;             // the windows this scene owns (uiwins.h)
     void (*enter)(Game &);   // pushed on top: the camera is already captured
     void (*exit)(Game &);    // popped, or unwound by enterFlight
-    // Per-frame half; only the TOP scene's run. A scene with sim == false
-    // still needs a redraw (the loop forces one -- no tick marks the frame).
+    // Per-frame half; only the TOP scene's run. The render block in main.cpp
+    // is unconditional: no scene can opt out of being drawn (see #209).
     void (*update)(Game &);
     void (*draw3d)(Game &);   // the world / build-tree pass
     void (*drawUi)(Game &);   // this scene's imgui windows

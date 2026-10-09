@@ -1045,8 +1045,11 @@ int main(int argc, char **argv)
     // This frame's marks. pf_swap sits between the last draw call and the
     // SwapBuffers, so "render" = issuing the GL commands and "present" =
     // the SwapBuffers (which blocks on vsync -- display pacing, not render
-    // cost).
-    std::chrono::steady_clock::time_point pf_iter, pf_a, pf_b, pf_c, pf_swap, pf_d;
+    // cost). Value-initialised: they outlive the iteration, and an
+    // indeterminate time_point would make perf_ms() UB rather than 0 if a
+    // future path ever reaches the timing block without setting one.
+    std::chrono::steady_clock::time_point pf_iter{}, pf_a{}, pf_b{}, pf_c{},
+                                        pf_swap{}, pf_d{};
     const std::chrono::steady_clock::time_point perf_loop_start =
         std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point perf_w_start = perf_loop_start;
@@ -1436,14 +1439,23 @@ int main(int argc, char **argv)
         // Audio: reap finished one-shots and complete any engine stop-fade.
         // No-op when audio is unavailable.
         game.audio.update();
-        // pf_swap defaults to pf_c so a frame that skips the render block
-        // (redraw false) records render = present = 0.
-        pf_c = std::chrono::steady_clock::now(); pf_swap = pf_c;
+        pf_c = std::chrono::steady_clock::now();
 
         /*
           RENDERING
+
+          No render gate: every frame draws. Nothing here could decide a
+          frame was stale -- every scene's update runs the sim, so a frame
+          with zero logic ticks is only a sub-dt render frame, and even that
+          differs: draw3d derives the camera pose from camera and attitude
+          state the events phase also mutates, camShakeStep advances on the
+          wall clock, and jobs.poll() lands finished terrain subdivisions
+          per frame. Skipping this block would also starve imgui of a frame
+          boundary (its events are consumed in poll_events regardless) and
+          drop the SwapBuffers that IS the render clock under vsync.
+          The braces are a scope for `sc`, not a gate.
         */
-        if(game.redraw == true) {
+        {
             check_gl_error();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL3_NewFrame();

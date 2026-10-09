@@ -363,7 +363,6 @@ struct Game {
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
     const double dt = 1.0 / args.physics_hz;   // --physics-hz (60 default)
-    bool redraw = false;         // a frame of logic ran: RENDER should draw
     // Logic ticks executed by tick(); --perf reads/resets once per frame.
     // Counts TICKS, not the Bullet substeps inside each one.
     long long logic_ticks = 0;

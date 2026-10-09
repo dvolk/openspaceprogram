@@ -441,6 +441,4 @@ void tick(Game &g) {
 
         g.accumulator -= g.dt;
     }
-
-    g.redraw = true;
 }
