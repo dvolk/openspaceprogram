@@ -67,22 +67,24 @@ public:
 
     // --- placement (the ships land in the body's list, not here) ---------
     // `t` (sim time) is the flight-journal stamp for the placement.
+    // `site`: the pad to stand on (on_pad scenarios). nullptr -> the first
+    // VAB_LAUNCH_PAD on the body (or the polar site for pad-polar).
     // Build one ship from defPath and place it on body hb. Does NOT apply
     // the scenario -- spawn_vehicle is the caller's job.
     Vehicle *place_ship(const std::string &shipDefPath, const std::string &wantName,
                         TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                        double t);
+                        double t, const StaticBuilding *site = nullptr);
 
     // Same, from an already-loaded def (the VAB Launch builds one in memory).
     Vehicle *place_ship_def(const ShipDef &def, const std::string &defPath,
                             const std::string &wantName,
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                            double t);
+                            double t, const StaticBuilding *site = nullptr);
 
     // Runtime spawn: place + apply the scenario + park on rails.
     Vehicle *spawn_ship(const std::string &defPath, const std::string &wantName,
                         TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                        double t);
+                        double t, const StaticBuilding *site = nullptr);
 
     // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts.
     // Called from buildDebugStartShips; runtime copies (spawn_ship) do NOT
@@ -102,9 +104,6 @@ public:
                                   System &sys, double t);
 
 private:
-    // Ensure the (body, pad-site) pad exists; build it on demand.
-    void place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double pad_height);
-
     // One crew kerbal aboard (ship, part); nullptr if the part is no capsule.
     Kerbal *spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double t);
 

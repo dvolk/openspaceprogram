@@ -15,6 +15,7 @@
 
 #include "../middleware/imgui/imgui.h"   // ImGui::GetIO().WantCaptureMouse
 
+#include "buildings.h" // find_launch_site
 #include "datadir.h" // datadir::ships (VAB Save target -- never the install tree)
 #include "mesh.h"     // get_mesh (the part mesh's vertex array)
 #include "resdir.h"   // resdir::path
@@ -578,8 +579,16 @@ void vabLaunch(Game &g) {
     }
     const std::string scName = g.vab.scenarioName.empty() ? "pad" : g.vab.scenarioName;
     const ScenarioDef *sc = scenario_by_name(scName);
+    const StaticBuilding *site = nullptr;
+    if(sc->on_pad) {
+        site = find_launch_site(hb, g.vab.siteName, sc->polar);
+        if(site == nullptr) {
+            g.toast("No launch site on %s", hb->name.c_str());
+            return;
+        }
+    }
     /* defPath "": the ship was built in memory -- no file to respawn from. */
-    Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time);
+    Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);
     // Non-pad scenarios place the ship in orbit (like the fleet spawn).
     // Left live (NOT on rails) so it is player-controlled.
     if(!sc->on_pad) { spawn_vehicle(v, *sc, hb, g.sys, 0.0, g.time); }
@@ -634,6 +643,9 @@ void vabOpen(Game &g) { pushScene(g, SceneId::Vab); }
 /* Scene table's enter hook -- scene.cpp calls it from pushScene. */
 void vabEnter(Game &g) {
     // Seed the launch config once (home body + pad); left alone afterwards.
+    // siteName stays "" = the default site, so pad-polar still picks the
+    // polar pad (find_launch_site's preferPolar). An explicit combo pick
+    // overrides that.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
     vabClearHover(g);

@@ -77,6 +77,7 @@ struct GameArgs {
     int switch_system_ms = -1;      // --switch-at: loop time for --switch-system
     std::string vab_scenario;  // --vab-scenario: seed the VAB launch scenario (empty = "pad")
     std::string vab_body;      // --vab-body: seed the VAB launch body (empty = home body)
+    std::string vab_site;      // --vab-site: seed the VAB launch site (building id)
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // --start-time: the sim clock's t0 (s)

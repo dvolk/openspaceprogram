@@ -47,7 +47,13 @@ TerrainBody::~TerrainBody() {
     delete rot_frame;
 }
 
-/* A space pad (terrain.h): drawn like terrain, culled off-body. */
+glm::dvec3 StaticBuilding::origin() const {
+    // Body centre is the origin: dir * (terrain height + origin offset).
+    const double h = (double)parent->GetTerrainHeight(glm::vec3(dir));
+    return dir * (h + height_m);
+}
+
+/* A world building (terrain.h): drawn like terrain, culled off-body. */
 void StaticBuilding::Draw(const Camera *camera, const TerrainBody *current,
                           Frame *renderFrame) {
     if(current == parent) {

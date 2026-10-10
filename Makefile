@@ -249,7 +249,7 @@ TLIBS = $(BULLET3_OBJS) $(GL_LIBS) $(ASSIMP_LIB)
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
                $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o $(TESTDIR)/obj/terrain.o \
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
-               $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o
+               $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o
 
 $(TESTDIR)/obj/%.o: src/%.cpp
 	@mkdir -p $(TESTDIR)/obj
@@ -314,6 +314,10 @@ $(TESTDIR)/test_railangles: $(TESTDIR)/obj/test_railangles.o $(TESTDIR)/obj/syst
 # The abs_r scenario beds (heli-*) must still match the rails of the system
 # files their radii were read off.
 $(TESTDIR)/test_scenarios: $(TESTDIR)/obj/test_scenarios.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
+	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
+
+# Building catalog + system world_buildings (src/buildings.cpp).
+$(TESTDIR)/test_buildings: $(TESTDIR)/obj/test_buildings.o $(TESTDIR)/obj/buildings.o $(TESTDIR)/obj/system.o $(TCOMMON_OBJS)
 	$(CXX) -O2 $(LTO) -o $@ $^ $(TLIBS)
 
 # Local TestCrew : Vehicle stands in for Kerbal (eva.cpp is too heavy).
@@ -418,7 +422,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt test_retrograde test_skybox \
-        test_belts test_railangles test_scenarios
+        test_belts test_railangles test_scenarios test_buildings
 
 # Short-name aliases: `make test_fuel` builds + runs one test (from the repo
 # root -- some need res/). `make test` runs the whole set.
@@ -473,6 +477,7 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 	$(TESTDIR)/test_belts
 	$(TESTDIR)/test_railangles
 	$(TESTDIR)/test_scenarios
+	$(TESTDIR)/test_buildings
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
 # invariant + the sci_dist moon-home warning + committed science-field

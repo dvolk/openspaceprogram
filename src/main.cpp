@@ -48,6 +48,7 @@
 #include "radialtest.h"
 #include "docktest.h"
 #include "ships.h"
+#include "buildings.h"
 #include "game.h"
 #include "events.h"
 #include "tick.h"
@@ -418,6 +419,13 @@ int main(int argc, char **argv)
        Ships sharing a (body, scenario) pair are slotted. */
     Ships ships(args.parts_file, partsshader, sun);
 
+    /* World buildings (res/data/buildings.json + the system's world_buildings):
+       placed once physics + the part shader are live, before any ship stands
+       on a pad. */
+    BuildingsCatalog buildings =
+        load_buildings_catalog(resdir::path("res/data/buildings.json").c_str());
+    place_world_buildings(sys, buildings, partsshader, sun);
+
     /* An instrument naming a family with no def would silently fall back to
        the base-10 generic behavior -- a parts.json typo should not hide.
        The kerbal suit's own family is hard-coded in game.cpp (runExperiment,
@@ -440,6 +448,7 @@ int main(int argc, char **argv)
     Game game(display, postfx, ships, sys, sun, home, args, sim_win_id);
     game.bigger = bigger;   // the UI pass (gameui.cpp) draws with it
     game.skybox = &skybox;  // set before any boot --load can switch systems
+    game.buildings = std::move(buildings);   // switchSystem re-places pads
     // The running system (what save_game records + the load path compares
     // against). Set before the boot --load so ensureSystemForSave sees it.
     game.systemPath = args.system_file;
@@ -780,6 +789,7 @@ int main(int argc, char **argv)
         // dropdowns show (vabOpen already seeded the defaults).
         if(!args.vab_scenario.empty()) { game.vab.scenarioName = args.vab_scenario; }
         if(!args.vab_body.empty())     { game.vab.bodyName = args.vab_body; }
+        if(!args.vab_site.empty())     { game.vab.siteName = args.vab_site; }
     }
 
     // --surfmap-body: pin the Surface Map's body so M / Refresh map it

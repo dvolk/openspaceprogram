@@ -3413,12 +3413,17 @@ void drawVabUI(Game &g) {
             ImGui::TextDisabled("(no ships)");
         }
 
-        // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH
+        // line 2: where + how to launch (vabLaunch resolves both), then LAUNCH.
+        // Pad scenarios also pick a launch SITE (world building).
         ImGui::SetNextItemWidth(160);
         if(ImGui::BeginCombo("##vabbody", g.vab.bodyName.c_str())) {
             for(size_t i = 0; i < g.sys.bodies.size(); i++) {
                 const char *nm = g.sys.bodies[i]->name.c_str();
-                if(ImGui::Selectable(nm, g.vab.bodyName == nm)) { g.vab.bodyName = nm; }
+                if(ImGui::Selectable(nm, g.vab.bodyName == nm)) {
+                    g.vab.bodyName = nm;
+                    // A site id is only valid on one body; drop a stale pick.
+                    g.vab.siteName.clear();
+                }
             }
             ImGui::EndCombo();
         }
@@ -3430,6 +3435,42 @@ void drawVabUI(Game &g) {
                 if(ImGui::Selectable(nm, g.vab.scenarioName == nm)) { g.vab.scenarioName = nm; }
             }
             ImGui::EndCombo();
+        }
+        // Launch site: only meaningful for pad scenarios. Body-filtered.
+        {
+            const ScenarioDef *scn = nullptr;
+            try { scn = scenario_by_name(g.vab.scenarioName.empty() ? "pad"
+                                         : g.vab.scenarioName); }
+            catch(...) { scn = nullptr; }
+            if(scn != nullptr && scn->on_pad) {
+                TerrainBody *hb = g.home;
+                if(!g.vab.bodyName.empty()) {
+                    if(TerrainBody *b = g.sys.find(g.vab.bodyName)) { hb = b; }
+                }
+                std::string siteLabel = g.vab.siteName.empty() ? "(default)" : g.vab.siteName;
+                if(hb != nullptr) {
+                    for(auto *p : hb->pads) {
+                        if(p->id == g.vab.siteName) { siteLabel = p->display_name; break; }
+                    }
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(160);
+                if(ImGui::BeginCombo("##vabsite", siteLabel.c_str())) {
+                    if(hb != nullptr) {
+                        for(auto *p : hb->pads) {
+                            if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
+                            // Unique id: two pads may share a display name.
+                            ImGui::PushID(p->id.c_str());
+                            if(ImGui::Selectable(p->display_name.c_str(),
+                                                 g.vab.siteName == p->id)) {
+                                g.vab.siteName = p->id;
+                            }
+                            ImGui::PopID();
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
         }
         ImGui::SameLine();
         if(ImGui::Button("LAUNCH")) { vabLaunch(g); }

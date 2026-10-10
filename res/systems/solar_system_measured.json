@@ -16,6 +16,35 @@
       "outer": 7480000000000.0
     }
   ],
+    "world_buildings": [
+      {
+        "id": "main_space_port",
+        "type": "space_port",
+        "display_name": "Main space port",
+        "lat_deg": 0.286473,
+        "lon_deg": 270.286477,
+        "height_m": 5.0,
+        "heading_deg": 0.0,
+        "flags": [
+          "VAB_LAUNCH_PAD"
+        ],
+        "body": "Earth"
+      },
+      {
+        "id": "polar_pad",
+        "type": "space_port",
+        "display_name": "Polar pad",
+        "lat_deg": 90.0,
+        "lon_deg": 0.0,
+        "height_m": 5.0,
+        "heading_deg": 0.0,
+        "flags": [
+          "VAB_LAUNCH_PAD",
+          "POLAR_PAD"
+        ],
+        "body": "Earth"
+      }
+    ],
   "bodies": [
     {
       "name": "Sun",

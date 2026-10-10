@@ -16,6 +16,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -701,18 +702,34 @@ struct TerrainBody {
 float ComputeTerrainShadow(TerrainBody *planet, const Frame *posFrame,
                            const glm::dvec3 &posInFrame, TerrainBody *sun);
 
-// A space pad -- a static building shared by every ship standing on the
-// same (body, pad site). Drawn like terrain (culls itself off-body).
+// A world building (space pad) -- static, shared by every ship standing on
+// the same site. Drawn like terrain (culls itself off-body).
 //
 // Owned by its body (TerrainBody::pads). Render assets are shared (the
 // get_mesh/get_texture registries own them), so ~TerrainBody only frees the
-// rigid Body. Draw is defined in terrain.cpp.
+// rigid Body. Draw is defined in terrain.cpp. Placed from the system JSON
+// "world_buildings" (buildings.h).
 class StaticBuilding {
 public:
-    TerrainBody *parent;
+    TerrainBody *parent = nullptr;
     TerrainBody *sun = nullptr; // the star (light source)
-    Body *body;
-    bool polar = false; // the pad site (default vs polar) -- the de-dup key
+    Body *body = nullptr;
+
+    std::string id;           // instance id (unique on the body)
+    std::string display_name; // for the VAB launch-site picker
+    std::vector<std::string> flags;
+    glm::dvec3 dir = glm::dvec3(0.0, 1.0, 0.0); // unit up (body rotating frame)
+    double height_m = 5.0;    // origin above terrain
+    double heading_deg = 0.0; // spin about local up
+
+    bool hasFlag(const std::string &f) const {
+        for(size_t i = 0; i < flags.size(); i++) {
+            if(flags[i] == f) { return true; }
+        }
+        return false;
+    }
+    // Building origin in the body's rotating frame.
+    glm::dvec3 origin() const;
 
     void Draw(const Camera* camera, const TerrainBody *current, Frame *renderFrame);
 };

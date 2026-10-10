@@ -1,0 +1,10 @@
+{
+  "buildings": [
+    {
+      "name": "space_port",
+      "display_name": "Space port",
+      "mesh": "meshes/space_port.obj",
+      "texture": "textures/space_port.png"
+    }
+  ]
+}

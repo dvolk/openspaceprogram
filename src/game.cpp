@@ -19,6 +19,7 @@
 #include "settings.h" // SettingsData + the settings.json JSON mapping
 #include "datadir.h"  // settings.json's location
 #include "shipdef.h"  // PartDef (crew_capacity)
+#include "buildings.h" // place_world_buildings
 #include "shader.h"   // get_shader (switchSystem re-fetches the registry shaders)
 #include "skybox.h"   // Skybox::load (switchSystem swaps the star field)
 #include "terragen.h" // biomeAt / biomeName (the experiment's ground class)
@@ -905,6 +906,11 @@ void Game::switchSystem(const std::string &path,
     }
     postHeavyPhase(sys, sync, jobs, atmosphereshader, cloudshader,
                    oceanshader, ringshader, args.cloud_mesh);
+    // World buildings travel with the system: re-place the new file's set.
+    place_world_buildings(sys, buildings, partsshader, sun);
+    // Launch-site ids are per-system; drop a sticky pick.
+    vab.siteName.clear();
+    vab.bodyName.clear();
 
     enterTitle(*this);
     parkTitleCamera();

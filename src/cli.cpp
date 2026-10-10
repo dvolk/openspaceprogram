@@ -197,6 +197,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-body", args.vab_body,
                    "Seed the VAB's launch body (the top-bar dropdown's "
                    "value; empty = the home body)");
+    app.add_option("--vab-site", args.vab_site,
+                   "Seed the VAB's launch site (the top-bar site dropdown's "
+                   "world-building id; empty = the first VAB_LAUNCH_PAD)");
 
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,

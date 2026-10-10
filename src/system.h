@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "buildings.h"
 #include "terrain.h"
 #include "frame.h"
 #include "shader.h"
@@ -39,6 +40,11 @@ struct System {
     // (gameui.cpp). Optional: absent means no bands. Belts orbit the star's
     // equator; a body's own annuli are surface.rings, not this.
     std::vector<BeltParams> belts;
+
+    // World buildings (the root "world_buildings" array). Optional. Parsed
+    // here; place_world_buildings (buildings.h) instantiates them onto
+    // TerrainBody::pads once physics + a shader are live.
+    std::vector<WorldBuilding> world_buildings;
 
     TerrainBody *find(const std::string &name) {
         for(auto&& b : bodies) {

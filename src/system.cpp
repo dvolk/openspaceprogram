@@ -246,6 +246,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
     }
 
+    // --- world buildings (JSON "world_buildings") -------------------------
+    // Optional. Instances only -- place_world_buildings (buildings.h) turns
+    // them into TerrainBody::pads once physics + a shader are live.
+    sys.world_buildings = parse_world_buildings(doc, path);
+
     // Rail longitude a -> R_Y(+a): maps local +X to longitude +a, measured as
     // atan2(-z, x) about the parent inertial frame's +Y. That is the ecliptic
     // longitude of the sky embedding (rail = (x_ecl, z_ecl, -y_ecl), a proper
@@ -869,9 +874,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // Recompute root-relative frame values before the first render.
     sys.root->frame->UpdateOrbitRails(0.0);
 
-    printf("Loaded system '%s': %zu bodies (home=%s, belts=%zu)\n",
+    printf("Loaded system '%s': %zu bodies (home=%s, belts=%zu, buildings=%zu)\n",
            path, sys.bodies.size(),
-           sys.home ? sys.home->name.c_str() : "(none)", sys.belts.size());
+           sys.home ? sys.home->name.c_str() : "(none)", sys.belts.size(),
+           sys.world_buildings.size());
 
     cleanup.commit = true;   // build complete: the caller now owns the bodies
     return sys;

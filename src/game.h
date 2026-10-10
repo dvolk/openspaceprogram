@@ -129,9 +129,10 @@ struct VabState {
     glm::dvec3 center = glm::dvec3(0.0);   // bbox center of the parts (S frame)
 
     // LAUNCH config. Names, not pointers, so they survive and are easy to
-    // inspect; "" falls back to g.home / "pad".
+    // inspect; "" falls back to g.home / "pad" / the default launch site.
     std::string bodyName;      // body to launch from ("" -> g.home)
     std::string scenarioName;  // scenario to launch ("" -> "pad")
+    std::string siteName;      // launch building id ("" -> first VAB_LAUNCH_PAD)
 
     int hover = -1;        // build-part index under the mouse; -1 = none
     int selected = -1;     // build-part index selected (click); -1 = none
@@ -427,6 +428,7 @@ struct Game {
     Shader *skyboxshader = nullptr;
     Shader *lineshader = nullptr;
     Shader *partsshader = nullptr;
+    BuildingsCatalog buildings;   // world-building types (res/data/buildings.json)
     Mesh *engine_plume_mesh = nullptr;
     Texture *engine_plume_texture = nullptr;
     Mesh *skyline_xz = nullptr;

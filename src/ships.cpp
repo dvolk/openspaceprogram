@@ -6,11 +6,13 @@
 
 #include <cstdio>
 #include <fstream>
+#include <numbers>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
 
 #include "body.h"     // create_body
+#include "buildings.h" // find_launch_site
 #include "eva.h"      // Kerbal (the crew characters)
 #include "mesh.h"     // get_mesh
 #include "physics.h"  // setPosRot
@@ -97,36 +99,18 @@ Ships::Ships(const std::string &parts_file, Shader *partsshader, TerrainBody *su
 {
 }
 
-void Ships::place_pad(TerrainBody *hb, bool polar, const glm::dvec3 &dir, double pad_height)
-{
-    for(auto *p : hb->pads) {
-        if(p->parent == hb && p->polar == polar) { return; }
-    }
-    const glm::dvec3 start = dir * (double)hb->GetTerrainHeight(dir);
-    // The pad's render assets are SHARED (the registries own them).
-    Mesh *m = get_mesh("res/meshes/space_port.obj");
-    Texture *t = get_texture("res/textures/space_port.png");
-    StaticBuilding *sp = new StaticBuilding;
-    sp->body = create_body(m, partsshader, t, 0, 0, 0, 0);
-    setPosRot(sp->body, start + dir * pad_height, faceAlong(dir));
-    sp->parent = hb;
-    sp->sun = sun;
-    sp->polar = polar;
-    hb->pads.push_back(sp);
-}
-
 Vehicle *Ships::place_ship(const std::string &shipDefPath, const std::string &wantName,
                            TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                           double t)
+                           double t, const StaticBuilding *site)
 {
     return place_ship_def(load_ship_def(resdir::path(shipDefPath).c_str(), part_catalog),
-                          shipDefPath, wantName, hb, sc, sys, t);
+                          shipDefPath, wantName, hb, sc, sys, t, site);
 }
 
 Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
                                const std::string &wantName,
                                TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                               double t)
+                               double t, const StaticBuilding *site)
 {
     // slot = how many ships already sit on this (body, scenario)
     int slot = 0;
@@ -139,16 +123,24 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     if(nm.empty()) { nm = "Ship"; }
     nm = dedupName(sys, nm);
 
-    // the pad top is this far above the terrain surface (space_port.obj
-    // spans local z in [-10, 0], placed at dir * (terrain + pad_height))
-    const double pad_height = 5.0;
-    const bool pad_polar = sc->on_pad && sc->polar;
-    const glm::dvec3 pad_dir = pad_polar
-        ? glm::dvec3(0.0, 1.0, 0.0)
-        : glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
-    const glm::dmat3 pad_orient = faceAlong(pad_dir);
-    place_pad(hb, false, glm::normalize(glm::dvec3(0.005, 0.005, 1.0)), pad_height); // default site
-    if(pad_polar) { place_pad(hb, true, pad_dir, pad_height); }                      // polar site
+    /* Pad scenarios stand on a world building (system JSON world_buildings).
+       No site -> the first VAB_LAUNCH_PAD (or the polar one for pad-polar). */
+    glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
+    glm::dmat3 pad_orient = faceAlong(pad_dir);
+    double pad_height = 5.0;
+    if(sc->on_pad) {
+        if(site == nullptr) {
+            site = find_launch_site(hb, "", sc->polar);
+        }
+        if(site == nullptr) {
+            throw std::runtime_error(std::string("fleet: no launch site on ")
+                                     + hb->name + " (add a world_buildings "
+                                     + "entry with flag VAB_LAUNCH_PAD)");
+        }
+        pad_dir = site->dir;
+        pad_orient = buildingOrient(pad_dir, site->heading_deg * std::numbers::pi / 180.0);
+        pad_height = site->height_m;
+    }
 
     /* the kerbal def (root part type "kerbal") builds the EVA subclass
        (src/eva.h); every other def builds a plain ship */
@@ -165,7 +157,10 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     v->frame = hb->rot_frame;
     // lateral pad slot (pad local X) so pad ships stand side by side; for
     // orbit scenarios this is only staging -- spawn_vehicle repositions.
-    const glm::dvec3 base = pad_dir * ((double)hb->GetTerrainHeight(pad_dir) + pad_height)
+    const glm::dvec3 pad_origin = (sc->on_pad && site != nullptr)
+        ? site->origin()
+        : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + pad_height);
+    const glm::dvec3 base = pad_origin
         + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
     build_ship(v, def, partsshader, base, pad_orient);
     if(is_kerbal) {
@@ -182,9 +177,9 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
 
 Vehicle *Ships::spawn_ship(const std::string &defPath, const std::string &wantName,
                            TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                           double t)
+                           double t, const StaticBuilding *site)
 {
-    Vehicle *v = place_ship(defPath, wantName, hb, sc, sys, t);
+    Vehicle *v = place_ship(defPath, wantName, hb, sc, sys, t, site);
     spawn_vehicle(v, *sc, hb, sys, ORBIT_SLOT_SPACING * (double)v->slot, t);
     v->goOnRails();
     // N = v's position in the canonical order, M = the whole fleet.
