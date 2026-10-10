@@ -506,9 +506,10 @@ struct Game {
     TimeSeries perf_events;
     TimeSeries perf_logic;
     TimeSeries perf_jobs;
-    TimeSeries perf_render;
+    TimeSeries perf_refresh;   // the 3D state pass (render.cpp refreshWorld)
+    TimeSeries perf_render;    // the paint pass + imgui (GL command issue)
     TimeSeries perf_present;
-    // Which series each of the 4 Telemetry cells is showing (0..6, see the
+    // Which series each of the 4 Telemetry cells is showing (0..7, see the
     // kSeries table in gameui.cpp). Defaults to the first four.
     int telemetry_sel[4] = {0, 1, 2, 3};
 

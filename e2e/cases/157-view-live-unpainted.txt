@@ -1,0 +1,15 @@
+NAME view-live-unpainted
+ARGS --time-accel 5 --timeout 6 --frame-cap 60
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --info-log --terrain-log --orbit-interval 1 --research 0
+# The Research Lab paints no 3D world, but the state pass (SceneDef::refresh)
+# still runs there (#212): g.view advances -- lon is the ground sliding under
+# the ship -- and the terrain LOD keeps tracking the camera, which is what
+# gives the ground its collision bodies (#24). Before the split the lab's
+# draw3d row was an empty function, so both froze at the moment of the push
+# and no [terrain] line appeared at all.
+EXPECT [scene] flight -> research (push)
+CHECK len(surf) >= 3 and abs(surf[-1]["lon"] - surf[0]["lon"]) > 0.5
+CHECK len(terrain) >= 3 and terrain[-1]["t"] > terrain[0]["t"]
+FORBID GL_
+FORBID error:

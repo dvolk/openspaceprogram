@@ -64,10 +64,17 @@ struct SceneDef {
     WinSet wins;             // the windows this scene owns (uiwins.h)
     void (*enter)(Game &);   // pushed on top: the camera is already captured
     void (*exit)(Game &);    // popped, or unwound by enterFlight
-    // Per-frame half; only the TOP scene's run. The render block in main.cpp
-    // is unconditional: no scene can opt out of being drawn (see #209).
+    // Per-frame half; only the TOP scene's run.
     void (*update)(Game &);
-    void (*draw3d)(Game &);   // the world / build-tree pass
+    // Per-frame 3D STATE: camera re-pose, terrain LOD, Game::view, the
+    // transfer planner. Every scene runs it, painted or not -- the LOD owns
+    // the ground's collision bodies and g.view is the snapshot the UI reads,
+    // so a scene that shows no world still needs it. The VAB takes the ship
+    // state without the LOD: its camera is parked at the build tree (#212).
+    void (*refresh)(Game &);
+    // The pixels. A scene may opt out (noPaint), but the frame loop itself is
+    // unconditional -- nothing decides a frame was stale (#209).
+    void (*paint)(Game &);
     void (*drawUi)(Game &);   // this scene's imgui windows
     void (*keys)(Game &, SDL_Scancode, Uint16 mod, bool repeat);
 };

@@ -306,19 +306,21 @@ static void drawDebrisBelts(Game &g, TerrainBody *focus, const OrbitMap &map,
 // --- Telemetry window: a 2x2 grid of plots, each with a dropdown to pick
 // which time series to show.
 struct TeleSeriesDef { const char *name; const char *yaxis; };
-static const TeleSeriesDef kSeries[7] = {
+static const TeleSeriesDef kSeries[8] = {
     {"specific orbital energy", "J/kg"},
     {"angular momentum", "m^2/s"},
     {"frame: events", "ms"},
     {"frame: logic", "ms"},
     {"frame: jobs", "ms"},
+    {"frame: refresh", "ms"},
     {"frame: render", "ms"},
     {"frame: present", "ms"},
 };
-static const int kNumSeries = 7;
+static const int kNumSeries = 8;
 
-// Resolve a series index (0..6) to its ring buffer. 0-1 live on the active
-// ship's view; 2-6 are the per-frame timings on Game.
+// Resolve a series index (0..7) to its ring buffer. 0-1 live on the active
+// ship's view; 2-7 are the per-frame timings on Game. "refresh" is the 3D
+// state pass (camera, LOD, g.view) and "render" the paint pass + imgui (#212).
 static TimeSeries *telemetry_series(Game &g, int idx) {
     switch(idx) {
         case 0: return &g.view.energy_series;
@@ -326,8 +328,9 @@ static TimeSeries *telemetry_series(Game &g, int idx) {
         case 2: return &g.perf_events;
         case 3: return &g.perf_logic;
         case 4: return &g.perf_jobs;
-        case 5: return &g.perf_render;
-        case 6: return &g.perf_present;
+        case 5: return &g.perf_refresh;
+        case 6: return &g.perf_render;
+        case 7: return &g.perf_present;
         default: return nullptr;
     }
 }

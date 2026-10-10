@@ -1,7 +1,9 @@
-// render.cpp -- the 3D render pass (see render.h).
+// render.cpp -- the 3D pass: its state half (refreshWorld / refreshVab) and
+// its paint half (paintWorld / paintVab). See render.h.
 #include "render.h"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <numbers>
@@ -74,9 +76,9 @@ static void camShakeStep(Game &g, Vehicle *ship) {
 }
 
 // The active ship's per-frame state snapshot (Game::view). Reads only ship
-// + frame state -- no camera -- so a scene that runs the sim without the GL
-// pass (the live Tracking Station) can refresh it each frame.
-void updateShipView(Game &g) {
+// + frame state -- no camera -- so refreshWorld can fill it in every scene,
+// including the ones that paint no world (the live Tracking Station).
+static void updateShipView(Game &g) {
     Vehicle *ship = g.ship;
     if(ship == nullptr) { return; }
     ShipView &view = g.view;
@@ -274,24 +276,67 @@ static float skyGain(Game &g, Frame *rf, TerrainBody *sun, Camera *camera,
     return gain;
 }
 
-void draw3d(Game &g) {
-    TransferPlanner &planner = g.xferPlanner;
+/* The ship-side half of the state pass: the g.view snapshot, the transfer
+   planner's target list + solution, and the P/M one-shot computes. refreshWorld
+   runs it after the camera and the LOD; refreshVab runs it on its own -- the
+   editor parks its camera at the build tree and draws no world, but the sim
+   keeps coasting underneath, so the readouts and the planner still want this
+   frame's ship state (#212). `com` is the frame's ship COM (zero with no ship),
+   passed in rather than recomputed: get_center_of_mass walks the part tree. */
+static void refreshShipState(Game &g, const glm::dvec3 &com) {
+    // The active ship's per-frame state (g.view): the one snapshot the UI
+    // readouts read, so it is state rather than a side effect of drawing.
+    updateShipView(g);
+
+    /* Transfer planner: rebuild targets, recompute the solution (com / vel are
+       this frame's ship COM / velocity). */
+    g.xferPlanner.update(com, g.view.vel);
+
+    // P key: the one-shot flag is set in poll_events; it runs here, where the
+    // planner + this frame's ship snapshot both exist.
+    if(g.porkchop_compute_requested) {
+        g.xferPlanner.porkchopCompute();
+        g.porkchop_compute_requested = false;
+    }
+
+    // M key: one-shot, same pattern as P. The sweep runs on the background
+    // worker; the last map stays on screen until the job lands.
+    if(g.surfmap_compute_requested) {
+        surfmapCompute(g);
+        g.surfmap_compute_requested = false;
+    }
+}
+
+/* The STATE half of the 3D pass (#212): the per-frame world state the sim and
+   the UI read, and no draw calls in it. Runs every frame in every scene that
+   has a world, painted or not:
+     - the camera re-pose (first person rides the controller; orbit follows
+       the focus, takes its basis from the ship's attitude or the body's
+       rotating frame, and adds the shake offset), then renderOrigin and
+       ComputeView;
+     - each body's draw transform, the cache GeoPatch::Draw reads;
+     - the terrain LOD, which owns the ground's Bullet collision bodies --
+       "the ground exists only where the camera is" (#24) -- so skipping it
+       changes collision outcomes, not merely pixels;
+     - the ship snapshot and the transfer planner (refreshShipState).
+   The pixels live in paintWorld(). Keeping the two apart is what lets a frame
+   skip the paint without skipping the simulation's inputs. */
+void refreshWorld(Game &g) {
     Vehicle *ship = g.ship;
     // Render frame: the active ship's frame, or the home body's frame when
     // there is no ship. Every Draw site transforms world geometry into it.
     Frame *rf = ship ? ship->frame : g.home->frame;
-    // The body "we're on" (pads cull to it; drawn at origin).
+    // The body "we're on": the LOD and the --terrain-log key on it.
     TerrainBody *localBody = ship ? ship->m_parent : g.home;
     const std::vector<TerrainBody *> &planets = g.sys.bodies;
-    TerrainBody *sun = g.sun;
     Camera *camera = g.camera;
-    PostFX *postfx = g.postfx;
 
-    // Per-frame state lives in g.view so the UI readouts read one snapshot.
-    ShipView &view = g.view;
-    glm::dvec3 &pos = view.pos;
-    glm::dvec3 &vel = view.vel;
-    glm::dvec3 &facing = view.facing;
+    /* The orbit basis below takes the ship's attitude whenever the focus is the
+       "ship" entry, and that entry exists only while a ship is active
+       (Game::syncShipFocus). Both are invariants, not inputs to handle:
+       #208 is the same hazard read from the other side. */
+    assert(g.focusBody >= 0 && g.focusBody < (int)g.focusTargets.size());
+    assert(g.focusTargets[g.focusBody].body != nullptr || ship != nullptr);
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
     // First person: eye at the controller's top (stack +Z face), looking
@@ -361,6 +406,66 @@ void draw3d(Game &g) {
     camera->renderOrigin = com;
     camera->ComputeView();
 
+    // The cache GeoPatch::Draw composes into its modelview (terrain.cpp).
+    for(auto&& planet : planets) {
+        planet->transform = planet->frame->GetBodyDrawTransform(rf);
+    }
+
+    for(auto&& planet : planets) {
+        // LOD may post async subdivision jobs; their continuations run in
+        // jobs.poll() BEFORE the paint pass draws.
+        planet->Update(camera, g.args.terrain_px, g.jobs);
+
+        /* --terrain-log: the local body's tree as the LOD just left it.
+           deep_off is the camera-to-nearest-deepest-leaf distance (a patch
+           width or two is healthy); collision counts leaves with a Bullet
+           body (the ground exists only where the camera is -- issue #24).
+           Lives with the LOD, not the paint: a scene that draws no world still
+           moves the ground under the camera. */
+        if(g.args.terrain_log && planet == localBody && planet->ready) {
+            const Uint32 now_ms = SDL_GetTicks();
+            if(now_ms - g.terrain_log_last_ms >= g.orbit_log_interval_ms) {
+                g.terrain_log_last_ms = now_ms;
+                const TerrainLodStats s =
+                    planet->lodStats(planet->CameraInBodyFrame(camera));
+                printf("[terrain] t=%.1fs body=\"%s\" patches=%d deepest=%d "
+                       "max_depth=%d collision=%d deep_off=%.6g m "
+                       "cam_r=%.6g m\n",
+                       g.time, planet->name.c_str(), s.patches, s.deepest,
+                       planet->max_depth, s.collision, s.deep_off, s.cam_r);
+                fflush(stdout);
+            }
+        }
+    }
+
+    // The ship snapshot + the transfer planner: state, not a side effect of
+    // drawing.
+    refreshShipState(g, com);
+}
+
+/* The PAINT half of the 3D pass (#212): the pixels and nothing else. Reads the
+   state refreshWorld left this frame -- the camera pose, planet->transform,
+   g.view -- and must not be called without it. The postfx Begin/End pair lives
+   in main.cpp around the clear and this call, so no path can leave an FBO
+   bound with no blit. */
+void paintWorld(Game &g) {
+    TransferPlanner &planner = g.xferPlanner;
+    Vehicle *ship = g.ship;
+    Frame *rf = ship ? ship->frame : g.home->frame;
+    TerrainBody *localBody = ship ? ship->m_parent : g.home;
+    const std::vector<TerrainBody *> &planets = g.sys.bodies;
+    TerrainBody *sun = g.sun;
+    Camera *camera = g.camera;
+
+    // The snapshot refreshWorld filled this frame: the flight markers point
+    // along these vectors.
+    ShipView &view = g.view;
+    glm::dvec3 &pos = view.pos;
+    glm::dvec3 &vel = view.vel;
+    glm::dvec3 &facing = view.facing;
+
+    const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
+
     // Starfield first, as a pure background -- depth test and depth write
     // both off. Every body draws over it, including far ones whose
     // reverse-Z depth has collapsed to the 0.0 background value.
@@ -392,10 +497,6 @@ void draw3d(Game &g) {
         }
     }
 
-    for(auto&& planet : planets) {
-        planet->transform = planet->frame->GetBodyDrawTransform(rf);
-    }
-
     /* --pose-jitter: is the DRAWN relative pose quantized to the logic tick?
        The ship is pinned at renderOrigin, so what the image moves with is the
        ship's offset from the SOI body it is drawn against. In-SOI the ship's
@@ -416,8 +517,8 @@ void draw3d(Game &g) {
         /* Re-arm across any discontinuity, or its jump reads exactly like a
            jitter spike: a different ship (switch / EVA / recover), a Frame
            handoff (the COM is re-expressed in the new frame's axes), or a gap
-           longer than a few frames (VAB and Tracking Station never reach
-           draw3d, so the diagnostic is blind for the whole stay). */
+           longer than a few frames (VAB and Tracking Station never reach the
+           paint pass, so the diagnostic is blind for the whole stay). */
         const bool stale =
             !g.pose_jitter_armed
             || g.pose_jitter_prev_ship != ship
@@ -452,38 +553,11 @@ void draw3d(Game &g) {
         g.pose_jitter_armed = true;
     }
 
-    for(auto&& planet : planets) {
-        // LOD may post async subdivision jobs; their continuations run in
-        // jobs.poll() BEFORE this pass draws.
-        planet->Update(camera, g.args.terrain_px, g.jobs);
-
-        /* --terrain-log: the local body's tree as the LOD just left it.
-           deep_off is the camera-to-nearest-deepest-leaf distance (a patch
-           width or two is healthy); collision counts leaves with a Bullet
-           body (the ground exists only where the camera is -- issue #24). */
-        if(g.args.terrain_log && planet == localBody && planet->ready) {
-            const Uint32 now_ms = SDL_GetTicks();
-            if(now_ms - g.terrain_log_last_ms >= g.orbit_log_interval_ms) {
-                g.terrain_log_last_ms = now_ms;
-                const TerrainLodStats s =
-                    planet->lodStats(planet->CameraInBodyFrame(camera));
-                printf("[terrain] t=%.1fs body=\"%s\" patches=%d deepest=%d "
-                       "max_depth=%d collision=%d deep_off=%.6g m "
-                       "cam_r=%.6g m\n",
-                       g.time, planet->name.c_str(), s.patches, s.deepest,
-                       planet->max_depth, s.collision, s.deep_off, s.cam_r);
-                fflush(stdout);
-            }
-        }
-
-        if(g.world_drawing == true) {
+    if(g.world_drawing == true) {
+        for(auto&& planet : planets) {
             planet->Draw(camera, sun, rf);
         }
     }
-
-    // The active ship's per-frame state (g.view): between the world draw
-    // and the atmosphere rims (where it always ran).
-    updateShipView(g);
 
     // Atmosphere rims: transparent Fresnel shells over the opaque bodies.
     // Depth-write off. Cloud decks draw first (under the rim).
@@ -601,24 +675,6 @@ void draw3d(Game &g) {
     }
     /* end draw RCS plume */
 
-    /* Transfer planner: rebuild targets, recompute the solution (com / vel
-       are this render pass's ship COM / velocity). */
-    planner.update(com, vel);
-
-    // P key: the one-shot flag is set in poll_events; it runs here, where
-    // the planner + this pass's ship snapshot both exist.
-    if(g.porkchop_compute_requested) {
-        planner.porkchopCompute();
-        g.porkchop_compute_requested = false;
-    }
-
-    // M key: one-shot, same pattern as P. The sweep runs on the background
-    // worker; the last map stays on screen until the job lands.
-    if(g.surfmap_compute_requested) {
-        surfmapCompute(g);
-        g.surfmap_compute_requested = false;
-    }
-
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -708,8 +764,6 @@ void draw3d(Game &g) {
         debug_draw(camera);
         glEnable(GL_DEPTH_TEST);
     }
-
-    postfx->End();  // no-op unless --postfx effects are active
 }
 
 /* The shroud condition for the VAB build tree: same shared test as
@@ -724,7 +778,14 @@ static bool vabChildBelow(const BuildShip &bs, size_t i) {
     return false;
 }
 
-void drawVab(Game &g) {
+/* The editor's state half (#212): the camera looks at the build tree, not the
+   world, so no LOD and no world camera -- running the LOD here would build
+   ground collision around the build centre. But the sim keeps coasting while
+   you build, so the ship snapshot and the transfer planner still want this
+   frame: without them the VAB's ORBITAL/SURFACE readouts sit at whatever the
+   last world scene left (or at zero on a --vab boot), and --map-dump reports
+   the rail normal with a perfectly plausible sweep sign. */
+void refreshVab(Game &g) {
     /* Center the render frame on the build tree; ref = identity so
        screen-up is world +Z (the ship stands nose-up, as on the pad). */
     Camera *cam = g.camera;
@@ -733,6 +794,15 @@ void drawVab(Game &g) {
     cam->Follow(g.vab.center);
     cam->ComputeView();
 
+    const glm::dvec3 com =
+        g.ship ? g.ship->get_center_of_mass() : glm::dvec3(0.0);
+    refreshShipState(g, com);
+}
+
+/* The editor's paint half: the build tree at its solved poses plus the armed
+   part's ghost. */
+void paintVab(Game &g) {
+    Camera *cam = g.camera;
     glm::vec3 sunlight = glm::normalize(glm::vec3(0.4f, 0.8f, 0.35f));
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         const BuildPart &bp = g.vab.build.parts[i];

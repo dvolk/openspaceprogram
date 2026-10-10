@@ -1,14 +1,24 @@
-// render.h -- the 3D render pass (draw3d) and overlays.
+// render.h -- the 3D pass, split into its state half and its paint half (#212).
+// A scene runs refresh every frame and paints only what it puts on screen;
+// the state half is not optional -- it owns the terrain LOD (hence the
+// ground's collision bodies) and the Game::view snapshot the UI reads.
 #pragma once
 
 #include "game.h"   // Game
 
-// Draw one 3D frame for g, computing g.view along the way.
-void draw3d(Game &g);
+// Per-frame world state, and no draw calls in it (the LOD does delete GL
+// buffers when patches collapse): camera re-pose + renderOrigin + ComputeView,
+// each body's draw transform, the terrain LOD, the Game::view snapshot and the
+// transfer planner.
+void refreshWorld(Game &g);
 
-// Compute Game::view from the active ship's live state. Split out so scenes
-// that run the sim without drawing the world can refresh it. No-op w/o ship.
-void updateShipView(Game &g);
+// The world's pixels: skybox, pads/ships/planets, ocean/clouds/atmosphere/
+// rings, engine + RCS plumes, the flight markers, skylines, debug draw.
+// Reads what refreshWorld left this frame; never call it without refreshWorld.
+void paintWorld(Game &g);
 
-// The VAB scene's 3D pass: the physics-free build tree at its solved poses.
-void drawVab(Game &g);
+// The VAB scene's halves: the editor camera re-pose plus the ship state (no
+// LOD -- its camera is parked at the build tree), then the physics-free build
+// tree at its solved poses.
+void refreshVab(Game &g);
+void paintVab(Game &g);

@@ -584,12 +584,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "says nobody can see the surface, so the loop idles instead "
                    "of issuing ~1ms of GL commands on the title screen and "
                    "2-3ms in flight, plus a swap that goes nowhere. It is "
-                   "throttled, NOT skipped: draw3d also re-poses the camera, "
-                   "runs the terrain LOD that owns the ground's collision "
-                   "bodies, and refreshes the g.view snapshot the UI reads, so "
-                   "skipping a draw would change the simulation and not just "
-                   "the image. The logic tick keeps running at --physics-hz off "
-                   "the wall clock, so a minimized window still warps at full "
+                   "throttled, NOT skipped: the 3D state pass also re-poses "
+                   "the camera, runs the terrain LOD that owns the ground's "
+                   "collision bodies, and refreshes the g.view snapshot the UI "
+                   "reads, so skipping a draw would change the simulation and "
+                   "not just the image. The logic tick keeps running at "
+                   "--physics-hz off the wall clock, so a minimized window "
+                   "still warps at full "
                    "rate. The idle rate is never slower than physics_hz/8 (80% "
                    "of tick.cpp's 10-tick catch-up clamp); a slower request is "
                    "raised to it and startup says so. On X11 SDL reports "
@@ -635,7 +636,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--perf", args.perf,
                  "Print a per-frame phase timing breakdown (events / logic / "
-                 "jobs / render + fps + logic ticks): a rolling line "
+                 "jobs / refresh (the 3D state pass) / render (the paint pass) "
+                 "+ fps + logic ticks): a rolling line "
                  "every second and a summary at exit. Off by default; the "
                  "timing overhead is negligible when off");
 

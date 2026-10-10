@@ -7,7 +7,7 @@
 #include "events.h"    // flightKeyActions / vabKeyActions
 #include "game.h"
 #include "gameui.h"    // the flight widget set + drawVabUI
-#include "render.h"    // draw3d / drawVab
+#include "render.h"    // refreshWorld / paintWorld / refreshVab / paintVab
 #include "tick.h"      // tick
 #include "vab.h"       // vabEnter / vabExit / vabUpdate
 
@@ -28,8 +28,6 @@ void flightDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
-// The two draw signatures that do not line up with the table's.
-void vabDraw3d(Game &g) { drawVab(g); }
 // The VAB's per-frame step: editor mouse half, then the world tick (time
 // passes while you build). Launch is the caller's: vabFireHooks runs first.
 void vabUpdateLive(Game &g) {
@@ -79,11 +77,12 @@ void spaceCenterDrawUi(Game &g) {
     drawSaveLoad(g);
 }
 
-// Tracking Station renders no 3D world, but MUST refresh g.view (the live
-// sim coasts the ships and the map reads the snapshot).
-void trackingDraw3d(Game &g) {
-    updateShipView(g);
-}
+/* A scene that shows no 3D world still runs refreshWorld: the live sim coasts
+   the ships, the map and the shared readouts read the g.view snapshot, and the
+   terrain LOD is what gives the ground its collision bodies -- so the state
+   pass is not optional and only the pixels stop (#212). The Tracking Station's
+   old "renders no 3D world, but MUST refresh g.view" row collapses into this. */
+void noPaint(Game &) {}
 
 // The full-screen map is the scene's identity (force it open), then the
 // ship list (whose "Back"/"Fly" are the navigation), then shared windows.
@@ -94,9 +93,6 @@ void trackingDrawUi(Game &g) {
     drawUIReadouts(g);
     drawSaveLoad(g);
 }
-
-// Research Lab draws no 3D: the studio clear is its whole backdrop.
-void labDraw3d(Game &) {}
 
 // Research Lab widgets: the archive (Root) + the System Atlas, then shared
 // windows. The lab is drawn first -- the Atlas docks right of it.
@@ -110,33 +106,49 @@ void researchLabDrawUi(Game &g) {
 
 }   // namespace
 
+/* Rows: name / sim / pilot / backdrop / wins, then enter / exit, then the
+   per-frame update / refresh / paint / drawUi / keys. Every scene refreshes
+   every frame; only the scenes that show a world paint it. Designated
+   initializers because update / refresh / paint share one signature, so a
+   swapped pair would compile silently and paint with no state. */
 const SceneDef kScenes[(size_t)SceneId::COUNT] = {
-    // name      sim    pilot backdrop     wins          enter      exit
     // Title runs the sim + world so the backdrop body turns behind the menu;
     // its key map is the flight one (vessel keys no-op with no vessel).
-    { "title",  true,  false, Backdrop::Sky,    kTitleWins,
-      floorEnter,  floorExit,
-      tick,        draw3d,    titleDrawUi,  flightKeyActions },
-    { "flight", true,  true,  Backdrop::Sky,    kFlightWins,
-      floorEnter,  floorExit,
-      tick,        draw3d,    flightDrawUi, flightKeyActions },
+    { .name = "title", .sim = true, .pilot = false, .backdrop = Backdrop::Sky,
+      .wins = kTitleWins, .enter = floorEnter, .exit = floorExit,
+      .update = tick, .refresh = refreshWorld, .paint = paintWorld,
+      .drawUi = titleDrawUi, .keys = flightKeyActions },
+    { .name = "flight", .sim = true, .pilot = true, .backdrop = Backdrop::Sky,
+      .wins = kFlightWins, .enter = floorEnter, .exit = floorExit,
+      .update = tick, .refresh = refreshWorld, .paint = paintWorld,
+      .drawUi = flightDrawUi, .keys = flightKeyActions },
     // The editor: flat studio clear; live sim (time passes while you build);
     // the build tree itself is physics-free.
-    { "vab",    true, false, Backdrop::Studio, kVabWins,
-      vabEnter,    vabExit,
-      vabUpdateLive, vabDraw3d, vabDrawUi, vabKeyActions },
+    { .name = "vab", .sim = true, .pilot = false, .backdrop = Backdrop::Studio,
+      .wins = kVabWins, .enter = vabEnter, .exit = vabExit,
+      .update = vabUpdateLive, .refresh = refreshVab, .paint = paintVab,
+      .drawUi = vabDrawUi, .keys = vabKeyActions },
     // The hub: live view of the running sim, not steered (pilot is false).
-    { "spacecenter", true, false, Backdrop::Sky, kSpaceCenterWins,
-      spaceCenterEnter, floorExit,
-      tick, draw3d, spaceCenterDrawUi, hubKeyActions },
-    // Tracking Station: live sim, no world draw (the map covers it).
-    { "tracking", true, false, Backdrop::Sky, kTrackingWins,
-      floorEnter, floorExit,
-      tick, trackingDraw3d, trackingDrawUi, trackingKeyActions },
-    // Research Lab: studio backdrop, live sim behind it.
-    { "research", true, false, Backdrop::Studio, kResearchWins,
-      researchLabEnter, floorExit,
-      tick, labDraw3d, researchLabDrawUi, labKeyActions },
+    { .name = "spacecenter", .sim = true, .pilot = false,
+      .backdrop = Backdrop::Sky, .wins = kSpaceCenterWins,
+      .enter = spaceCenterEnter, .exit = floorExit,
+      .update = tick, .refresh = refreshWorld, .paint = paintWorld,
+      .drawUi = spaceCenterDrawUi, .keys = hubKeyActions },
+    // Tracking Station: live sim, no world paint (the map covers it) -- but
+    // the world still refreshes, which is what the map's snapshot and the
+    // ground's collision bodies come from.
+    { .name = "tracking", .sim = true, .pilot = false,
+      .backdrop = Backdrop::Sky, .wins = kTrackingWins,
+      .enter = floorEnter, .exit = floorExit,
+      .update = tick, .refresh = refreshWorld, .paint = noPaint,
+      .drawUi = trackingDrawUi, .keys = trackingKeyActions },
+    // Research Lab: studio backdrop, live sim behind it. Same deal: the
+    // readouts the lab shares read g.view, so the world refreshes unseen.
+    { .name = "research", .sim = true, .pilot = false,
+      .backdrop = Backdrop::Studio, .wins = kResearchWins,
+      .enter = researchLabEnter, .exit = floorExit,
+      .update = tick, .refresh = refreshWorld, .paint = noPaint,
+      .drawUi = researchLabDrawUi, .keys = labKeyActions },
 };
 
 const char *sceneName(SceneId id) { return kScenes[(size_t)id].name; }

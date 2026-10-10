@@ -760,7 +760,7 @@ int main(int argc, char **argv)
     }
 
     /* --vab: open the editor scene with a ship def loaded as a physics-free
-       build tree. The flight ships still exist in the world but drawVab
+       build tree. The flight ships still exist in the world but paintVab
        draws only the build tree. vabOpen parks the (boot) camera and aims
        the orbit at the build. */
     if(!args.vab.empty()) {
@@ -1033,11 +1033,13 @@ int main(int argc, char **argv)
     /* --idle-fps: while the window is occluded or minimized the compositor
        says nobody can see the surface, so the loop idles instead of issuing
        ~1 ms of GL commands on the title screen (2-3 ms in flight) plus a swap
-       that goes nowhere. Throttled, NOT skipped: draw3d is not a pixel pass --
-       it re-poses the camera (render.cpp:300-362), runs the terrain LOD that
-       owns the ground's collision bodies (:458) and refreshes the g.view
-       snapshot the UI pass reads (:486) -- so skipping a draw would change
-       what the simulation does, not merely what appears.
+       that goes nowhere. Throttled, NOT skipped: the 3D pass is not only a
+       pixel pass -- sc.refresh re-poses the camera, runs the terrain LOD that
+       owns the ground's collision bodies and fills the g.view snapshot the UI
+       pass reads, so skipping a draw outright would change what the
+       simulation does, not merely what appears. #212 split that state half
+       from the paint half, so a later gate CAN drop the pixels and keep the
+       state; --idle-fps does not use it -- it just slows the whole loop down.
        The logic tick is untouched: tick() accumulates off the wall clock, so
        a minimized window still warps at full rate (minimizing for a long
        transfer is the point). Held commands read SDL_GetKeyboardState
@@ -1083,21 +1085,23 @@ int main(int argc, char **argv)
     // indirection lives (tick -> physics_tick -> ships -> parts -> bodies);
     // the per-tick number is the one to compare across refactors.
     const bool perf_on = args.perf;
-    double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_render = 0.0,
-           p_present = 0.0, p_total = 0.0;                                     // cumulative ms
+    double p_events = 0.0, p_logic = 0.0, p_jobs = 0.0, p_refresh = 0.0,
+           p_render = 0.0, p_present = 0.0, p_total = 0.0;                     // cumulative ms
     long long p_frames = 0, p_steps = 0;                                       // cumulative counts
     long long p_idled = 0;                                    // frames run hidden
-    double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_render = 0.0,
-           w_present = 0.0;                                                    // rolling-window ms
+    double w_events = 0.0, w_logic = 0.0, w_jobs = 0.0, w_refresh = 0.0,
+           w_render = 0.0, w_present = 0.0;                                    // rolling-window ms
     long long w_frames = 0, w_steps = 0;                                       // rolling-window counts
-    // This frame's marks. pf_swap sits between the last draw call and the
-    // SwapBuffers, so "render" = issuing the GL commands and "present" =
+    // This frame's marks. pf_refresh sits between the jobs phase and the imgui
+    // frame, so "refresh" = the 3D state pass (camera re-pose, terrain LOD,
+    // g.view) and "render" = issuing the GL draw commands. pf_swap sits
+    // between the last draw call and the SwapBuffers, so "present" =
     // the SwapBuffers (which blocks on vsync -- display pacing, not render
     // cost). Value-initialised: they outlive the iteration, and an
     // indeterminate time_point would make perf_ms() UB rather than 0 if a
     // future path ever reaches the timing block without setting one.
     std::chrono::steady_clock::time_point pf_iter{}, pf_a{}, pf_b{}, pf_c{},
-                                        pf_swap{}, pf_d{};
+                                        pf_refresh{}, pf_swap{}, pf_d{};
     const std::chrono::steady_clock::time_point perf_loop_start =
         std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point perf_w_start = perf_loop_start;
@@ -1110,14 +1114,16 @@ int main(int argc, char **argv)
         const auto now = std::chrono::steady_clock::now();
         const double dt = std::chrono::duration<double>(now - perf_w_start).count();
         if(dt < 1.0 || w_frames == 0) { return; }
-        printf("perf  logic=%7.3fms  render=%7.3fms  events=%6.3fms  jobs=%6.3fms"
-               "  present=%7.3fms   %6.1ffps   %d logic ticks (%.3fms/tick)\n",
-               w_logic / (double)w_frames, w_render / (double)w_frames,
+        printf("perf  logic=%7.3fms  refresh=%7.3fms  render=%7.3fms"
+               "  events=%6.3fms  jobs=%6.3fms  present=%7.3fms"
+               "   %6.1ffps   %d logic ticks (%.3fms/tick)\n",
+               w_logic / (double)w_frames, w_refresh / (double)w_frames,
+               w_render / (double)w_frames,
                w_events / (double)w_frames, w_jobs / (double)w_frames,
                w_present / (double)w_frames,
                (double)w_frames / dt, (int)w_steps,
                (w_steps > 0) ? (w_logic / (double)w_steps) : 0.0);
-        w_events = w_logic = w_jobs = w_render = w_present = 0.0;
+        w_events = w_logic = w_jobs = w_refresh = w_render = w_present = 0.0;
         w_frames = 0; w_steps = 0;
         perf_w_start = now;
     };
@@ -1127,9 +1133,11 @@ int main(int argc, char **argv)
             std::chrono::steady_clock::now() - perf_loop_start).count();
         printf("\n=== perf summary (%lld frames over %.2f s, %.1f fps) ===\n",
                p_frames, wall, (wall > 0.0) ? (double)p_frames / wall : 0.0);
-        const char *names[5] = {"events", "logic", "jobs", "render", "present"};
-        const double vals[5] = {p_events, p_logic, p_jobs, p_render, p_present};
-        for(int i = 0; i < 5; i++) {
+        const char *names[6] = {"events", "logic", "jobs", "refresh", "render",
+                                "present"};
+        const double vals[6] = {p_events, p_logic, p_jobs, p_refresh, p_render,
+                                p_present};
+        for(int i = 0; i < 6; i++) {
             printf("  %-7s avg %9.4f ms  (%5.1f%%)\n", names[i],
                    vals[i] / (double)p_frames,
                    (p_total > 0.0) ? (vals[i] * 100.0 / p_total) : 0.0);
@@ -1143,8 +1151,10 @@ int main(int argc, char **argv)
             printf("  idled   %lld of those frames (window "
                    "occluded/minimized)\n", p_idled);
         }
-        printf("  (render = issuing GL draw commands; present = SwapBuffers,\n"
-               "   which blocks on vsync -- display pacing, not render cost)\n");
+        printf("  (refresh = the 3D state pass: camera re-pose, terrain LOD,\n"
+               "   g.view; render = issuing GL draw commands; present =\n"
+               "   SwapBuffers, which blocks on vsync -- display pacing,\n"
+               "   not render cost)\n");
         if(p_steps > 0) {
             printf("  logic %lld ticks, %.4f ms/tick (the logic phase)\n",
                    p_steps, p_logic / (double)p_steps);
@@ -1532,21 +1542,53 @@ int main(int argc, char **argv)
         /*
           RENDERING
 
-          No render gate: every frame draws. Nothing here could decide a
-          frame was stale -- every scene's update runs the sim, so a frame
-          with zero logic ticks is only a sub-dt render frame, and even that
-          differs: draw3d derives the camera pose from camera and attitude
-          state the events phase also mutates, camShakeStep advances on the
-          wall clock, and jobs.poll() lands finished terrain subdivisions
-          per frame. Skipping this block would also starve imgui of a frame
-          boundary (its events are consumed in poll_events regardless) and
-          drop the SwapBuffers that IS the render clock under vsync.
-          The braces are a scope for `sc`, not a gate. The one signal that
-          could justify a gate -- the compositor reporting the surface hidden --
-          is handled by idling the loop instead (--idle-fps), because this pass
-          also produces state the sim and the UI read.
+          Two halves (#212): the state pass (sc.refresh) and the paint pass
+          (sc.paint).
+
+          The state pass is unconditional and issues no draw calls (the LOD
+          does delete GL buffers when patches collapse): it re-poses the
+          camera from camera + attitude state the events phase also mutates
+          (camShakeStep advances on the wall clock), runs the terrain LOD --
+          which owns the ground's Bullet collision bodies -- and fills the
+          g.view snapshot the UI reads. Every scene runs it, including the two
+          that show no world and the VAB, which takes the ship state without
+          the LOD (its camera is parked at the build tree).
+
+          The paint pass is the pixels, and no scene opts out of the frame
+          yet: nothing here could decide a frame was stale -- every scene's
+          update runs the sim, so a frame with zero logic ticks is only a
+          sub-dt render frame, and even that differs (jobs.poll() lands
+          finished terrain subdivisions per frame). Skipping the block would
+          also starve imgui of a frame boundary (its events are consumed in
+          poll_events regardless) and drop the SwapBuffers that IS the render
+          clock under vsync. The one signal that could justify a gate -- the
+          compositor reporting the surface hidden -- is handled by idling the
+          loop instead (--idle-fps).
+          Whoever adds a paint gate must force a paint when
+          screenshot_requested is set: display.SaveScreenshot glReadPixels'es
+          the back buffer, so a shot on a frame whose paint was skipped saves
+          garbage.
         */
         {
+            // The scene cannot change inside the render block, so read it once.
+            const SceneDef &sc = curScene(game);
+            sc.refresh(game);
+            pf_refresh = std::chrono::steady_clock::now();
+
+            /* --map-dump: the orbit map's plane basis per combo slot, AFTER
+               the state pass -- sc.refresh is what fills Game::view
+               (updateShipView), and the Orbital slot is the ship's own plane.
+               Dumped before it, the view is still zero and the slot silently
+               reports the rail normal with a perfectly plausible sweep sign.
+               Needs an active ship, so with none it says so rather than
+               dumping zeros; every scene's refresh fills the view, the VAB
+               included (#212). */
+            if(game.mapDumpMs >= 0 && !game.mapDumpFired
+               && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.mapDumpMs) {
+                game.mapDumpFired = true;
+                dumpMapBasis(game);
+            }
+
             check_gl_error();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL3_NewFrame();
@@ -1559,8 +1601,6 @@ int main(int argc, char **argv)
             }
 
             postfx->Begin();  // no-op unless --postfx effects are active
-            // The scene cannot change inside the render block, so read it once.
-            const SceneDef &sc = curScene(game);
             // The VAB gets a desaturated steel-blue studio backdrop (no
             // skybox is drawn there); flight clears to black under the skybox.
             if(sc.backdrop == Backdrop::Studio) {
@@ -1569,21 +1609,12 @@ int main(int argc, char **argv)
                 display.Clear(0, 0, 0, 1);
             }
 
-            // The 3D pass: the world + active ship (flight), or the
-            // physics-free build tree (Vab).
-            sc.draw3d(game);
-
-            /* --map-dump: the orbit map's plane basis per combo slot, AFTER
-               the 3D pass -- draw3d is what fills Game::view (updateShipView),
-               and the Orbital slot is the ship's own plane. Dumped before it,
-               the view is still zero and the slot silently reports the rail
-               normal with a perfectly plausible sweep sign. Needs a ship, so
-               unlike the atlas dump it is a no-op in the VAB. */
-            if(game.mapDumpMs >= 0 && !game.mapDumpFired
-               && (int)(SDL_GetTicks() - game.loop_start_ms) >= game.mapDumpMs) {
-                game.mapDumpFired = true;
-                dumpMapBasis(game);
-            }
+            // The pixels: the world + active ship (flight), or the
+            // physics-free build tree (Vab). Begin/End stay together here --
+            // Begin binds the offscreen target, End blits it back, and the
+            // clear has to land between them (#212).
+            sc.paint(game);
+            postfx->End();  // no-op unless --postfx effects are active
 
             /*
               ImGui stuff below
@@ -1641,7 +1672,8 @@ int main(int argc, char **argv)
         const double f_events  = perf_ms(pf_iter, pf_a);
         const double f_logic   = perf_ms(pf_a, pf_b);
         const double f_jobs    = perf_ms(pf_b, pf_c);
-        const double f_render  = perf_ms(pf_c, pf_swap);  // issue GL cmds
+        const double f_refresh = perf_ms(pf_c, pf_refresh);  // 3D state pass
+        const double f_render  = perf_ms(pf_refresh, pf_swap);  // issue GL cmds
         const double f_present = perf_ms(pf_swap, pf_d);  // SwapBuffers (vsync)
         // Always push into the Telemetry window's series (wall-clock x-axis,
         // s since loop start).
@@ -1650,17 +1682,18 @@ int main(int argc, char **argv)
         game.perf_events.push(perf_t, f_events);
         game.perf_logic.push(perf_t, f_logic);
         game.perf_jobs.push(perf_t, f_jobs);
+        game.perf_refresh.push(perf_t, f_refresh);
         game.perf_render.push(perf_t, f_render);
         game.perf_present.push(perf_t, f_present);
         // --perf: fold into the console running totals + print the rolling line.
         if(perf_on) {
             p_events += f_events; p_logic += f_logic; p_jobs += f_jobs;
-            p_render += f_render; p_present += f_present;
+            p_refresh += f_refresh; p_render += f_render; p_present += f_present;
             p_total += perf_ms(pf_iter, pf_d);
             p_frames++; p_steps += game.logic_ticks;
             if(idling) { p_idled++; }
             w_events += f_events; w_logic += f_logic; w_jobs += f_jobs;
-            w_render += f_render; w_present += f_present;
+            w_refresh += f_refresh; w_render += f_render; w_present += f_present;
             w_frames++; w_steps += game.logic_ticks;
             perf_roll();
         }
