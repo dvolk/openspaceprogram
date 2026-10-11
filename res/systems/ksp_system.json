@@ -15,20 +15,10 @@
       "outer": 180000000000.0
     }
   ],
+  "world_buildings_files": [
+    "res/data/ksp_launch_sites.json"
+  ],
   "world_buildings": [
-    {
-      "id": "main_space_port",
-      "type": "space_port",
-      "display_name": "Main space port",
-      "body": "Kerbin",
-      "lat_deg": 0.286473,
-      "lon_deg": 270.286477,
-      "height_m": 5.0,
-      "heading_deg": 0.0,
-      "flags": [
-        "VAB_LAUNCH_PAD"
-      ]
-    },
     {
       "id": "polar_pad",
       "type": "space_port",
@@ -41,32 +31,6 @@
       "flags": [
         "VAB_LAUNCH_PAD",
         "POLAR_PAD"
-      ]
-    },
-    {
-      "id": "moho_pad",
-      "type": "space_port",
-      "display_name": "Moho pad",
-      "body": "Moho",
-      "lat_deg": 0.286473,
-      "lon_deg": 270.286477,
-      "height_m": 5.0,
-      "heading_deg": 0.0,
-      "flags": [
-        "VAB_LAUNCH_PAD"
-      ]
-    },
-    {
-      "id": "duna_pad",
-      "type": "space_port",
-      "display_name": "Duna pad",
-      "body": "Duna",
-      "lat_deg": 0.286473,
-      "lon_deg": 270.286477,
-      "height_m": 5.0,
-      "heading_deg": 0.0,
-      "flags": [
-        "VAB_LAUNCH_PAD"
       ]
     }
   ],

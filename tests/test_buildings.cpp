@@ -9,6 +9,8 @@
 //     files and cross-source duplicate ids all throw,
 //   - the shipped Earth site table (res/data/earth_launch_sites.json) reaches
 //     the solar systems, in order, with Baikonur as the default,
+//   - every shipped system's DEFAULT site (its first VAB_LAUNCH_PAD) is a
+//     real pad rather than the pole, and its site fragment reaches it,
 //   - buildingOrient: +Z along up, heading spins about that axis,
 //   - every shipped system carries at least one VAB_LAUNCH_PAD on its home,
 //   - no two pads on a body are on top of each other,
@@ -308,6 +310,15 @@ int main() {
         if(logical.find("solar_system") != std::string::npos) {
             CHECK(sys.world_buildings.size() >= 15);
         }
+        // The fictional systems name a site fragment too (#226): 3 Kerbol
+        // sites + its inline pole pad, 1 Eerbon site + its own. Exact counts
+        // so a fragment that stops loading is a failure, not a smaller pass.
+        if(logical == "res/systems/ksp_system.json") {
+            CHECK(sys.world_buildings.size() == 4);
+        }
+        if(logical == "res/systems/old_system.json") {
+            CHECK(sys.world_buildings.size() == 2);
+        }
         bool homePad = false;
         for(const WorldBuilding &w : sys.world_buildings) {
             TerrainBody *wb = sys.find(w.body);
@@ -328,6 +339,34 @@ int main() {
             }
             // ... and the deck it puts on that body reaches the ground
             if(wb != nullptr) { check_pad_grounding(logical, w, wb); }
+        }
+        /* A body's DEFAULT site is the first VAB_LAUNCH_PAD ON THAT BODY
+           (find_launch_site filters by body, and so does the VAB dropdown),
+           with fragments merged before a system's inline pads -- so on the
+           home world this is exactly what the "(default)" entry and a bare
+           LAUNCH mean. A home defaulting to the pole is a merge-order bug,
+           not a choice: pad-polar is opt-in via ScenarioDef.polar. */
+        const WorldBuilding *dflt = nullptr;
+        if(sys.home != nullptr) {
+            for(const WorldBuilding &w : sys.world_buildings) {
+                if(w.body == sys.home->name && w.hasFlag("VAB_LAUNCH_PAD")) {
+                    dflt = &w;
+                    break;
+                }
+            }
+        }
+        CHECK(dflt != nullptr);
+        if(dflt != nullptr) {
+            CHECK(!dflt->hasFlag("POLAR_PAD"));
+            if(logical.find("solar_system") != std::string::npos) {
+                CHECK(dflt->id == "baikonur");
+            } else {
+                CHECK(dflt->id == "main_space_port");
+                // The fictional systems' tables are hand-authored data no
+                // generator writes, so nothing else watches their numbers:
+                // pin the home pad's spot, as alcantara does for Earth's.
+                CHECK(dflt->lat_deg == 0.286473 && dflt->lon_deg == 270.286477);
+            }
         }
         // Two pads on one body must not overlap: a deck is 26 x 56 m and pad
         // ships stand 20 m apart, so this floor catches a copy-paste

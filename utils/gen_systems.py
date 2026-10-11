@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # Generate res/systems/{old,ksp}_system.json. Angular speeds = 2*pi / period.
 # Source of truth for the committed JSONs; --check verifies no drift.
+# One exception: the launch SITES are hand-authored fragments under
+# res/data/ (res/data/{old,ksp}_launch_sites.json). This script names them via
+# "world_buildings_files" and emits each system's inline polar pad, but never
+# writes a site table -- pads used to be hand-edited inside generated output,
+# where a regenerate silently dropped them and --check never looked (#226).
 # SOIs are NOT emitted: the loader derives the near-body shells and the
 # inertial spheres from physics -- "soi_law": "patched_conic" reproduces the
 # KSP wiki SOI values the old table hardcoded (src/bodylimits.h).
@@ -83,6 +88,24 @@ eerbon = {
     "soi_law": "patched_conic",
     "epoch_year": 1,   # fictional systems start at Year 1 (loader default; explicit)
     "skybox": "res/skybox/v1",   # a directory of skybox_{px,nx,py,ny,pz,nz}.png
+    # Launch pads. The sites live in a hand-authored "world_buildings"
+    # fragment that the loader merges (src/buildings.cpp); this script names
+    # the file and never writes it, so regenerating the system JSON cannot
+    # clobber a coordinate -- which is how the pads went stale in the first
+    # place, being hand-edited inside generated output. Merged fragments come
+    # BEFORE the inline array below, and the merged list's first
+    # VAB_LAUNCH_PAD is the game's default site.
+    "world_buildings_files": ["res/data/old_launch_sites.json"],
+    # Game fiction, not a site: the pad-polar scenario's bed (flag POLAR_PAD)
+    # sits at the geographic north pole. Inline because it belongs to THIS
+    # system, not to the site table.
+    "world_buildings": [
+        {"id": "polar_pad", "type": "space_port",
+         "display_name": "Polar pad", "body": "Eerbon",
+         "lat_deg": 90.0, "lon_deg": 0.0, "height_m": 5.0,
+         "heading_deg": 0.0,
+         "flags": ["VAB_LAUNCH_PAD", "POLAR_PAD"]},
+    ],
     "bodies": [
         {
             "name": "Sun",
@@ -413,6 +436,20 @@ ksp = {
         {"name": "asteroid belt", "inner": 2.4e10, "outer": 3.3e10},
         {"name": "Kuiper belt", "inner": 1.08e11, "outer": 1.8e11},
     ],
+    # Launch pads: same split as eerbon above. The Kerbol table spans three
+    # bodies (Kerbin, Moho, Duna), so it is named for the system, while
+    # res/data/earth_launch_sites.json is named for the one body it serves.
+    "world_buildings_files": ["res/data/ksp_launch_sites.json"],
+    # Game fiction, not a site: the pad-polar scenario's bed (flag POLAR_PAD)
+    # sits at the geographic north pole. Inline because it belongs to THIS
+    # system, not to the site table.
+    "world_buildings": [
+        {"id": "polar_pad", "type": "space_port",
+         "display_name": "Polar pad", "body": "Kerbin",
+         "lat_deg": 90.0, "lon_deg": 0.0, "height_m": 5.0,
+         "heading_deg": 0.0,
+         "flags": ["VAB_LAUNCH_PAD", "POLAR_PAD"]},
+    ],
     "bodies": [
         ksp_body(*row) for row in K
     ],
@@ -474,12 +511,20 @@ def check(obj, path):
     with open(path) as f:
         committed = _json.load(f)
     out = []
-    if committed.get("home") != obj.get("home"):
-        out.append(f"home: committed={committed.get('home')!r} generated={obj.get('home')!r}")
-    if committed.get("skybox") != obj.get("skybox"):
-        out.append(f"skybox: committed={committed.get('skybox')!r} generated={obj.get('skybox')!r}")
-    if committed.get("belts") != obj.get("belts"):
-        out.append(f"belts: committed={committed.get('belts')!r} generated={obj.get('belts')!r}")
+    # Whole-document compare, bodies excepted: this script is the source of
+    # truth for EVERY root key, so anything that differs is drift. It used to
+    # whitelist home/skybox/belts -- and a whitelist is exactly why the pads
+    # went unnoticed (#226): they were hand-edited inside generated output,
+    # so a regenerate dropped them and nothing compared them. Bodies are
+    # compared by name below instead, which reports a rename or a dropped
+    # body as itself rather than as a cascade of positional noise.
+    deep_diff({k: v for k, v in committed.items() if k != "bodies"},
+              {k: v for k, v in obj.items() if k != "bodies"}, "", out)
+    # A reference to a missing fragment throws at load, so catch the typo here
+    # where the message names the key rather than as a failed system load.
+    for name in obj.get("world_buildings_files", []):
+        if not os.path.exists(os.path.join(ROOT, name)):
+            out.append(f"world_buildings_files: '{name}' not found under {ROOT}")
     cb = {x["name"]: x for x in committed.get("bodies", [])}
     gb = {x["name"]: x for x in obj.get("bodies", [])}
     for name in cb:
@@ -488,6 +533,12 @@ def check(obj, path):
     for name in gb:
         if name not in cb:
             out.append(f"body {name}: in generated, missing from committed file")
+    # Order too: the array order is this script's to choose and it is the
+    # loader's bodies vector, so a hand-reorder of the JSON is drift as well.
+    cn = [x["name"] for x in committed.get("bodies", [])]
+    gn = [x["name"] for x in obj.get("bodies", [])]
+    if cn != gn and sorted(cn) == sorted(gn):
+        out.append("bodies: same names in a different order")
     for name in cb:
         if name in gb:
             body_out = []

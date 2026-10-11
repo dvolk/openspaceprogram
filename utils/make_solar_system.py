@@ -972,8 +972,17 @@ def main():
             doc = emit(base_bodies, moons, pred, path, label, dry=True)
             with open(path) as f:
                 committed = json.load(f)
-            good = _comparable(committed) == _comparable(doc)
+            same = _comparable(committed) == _comparable(doc)
+            # That compare only checks the world_buildings_files REFERENCE;
+            # a fragment that does not exist still matches it and throws at
+            # load, so check the file behind it too (#226's trap).
+            missing = [n for n in doc.get('world_buildings_files', [])
+                       if not os.path.exists(os.path.join(ROOT, n))]
+            good = same and not missing
             print(('OK      ' if good else 'DRIFT   ') + path)
+            for n in missing:
+                print('    world_buildings_files: %r not found under %s'
+                      % (n, ROOT))
             ok = ok and good
         return 0 if ok else 1
     for pred, path, label in targets:
