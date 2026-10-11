@@ -6,14 +6,18 @@
 #include "pick.h"
 
 #include "body.h"      // Body (pointer members only, no Bullet include)
+#include "buildings.h" // buildingOrient (a pad's local axes)
 #include "camera.h"    // Camera
 #include "frame.h"     // Frame (the per-ship frame transform)
 #include "game.h"      // Game (the fleet, the camera)
 #include "ships.h"     // Ships
+#include "terrain.h"   // TerrainBody (its ships) + StaticBuilding
 #include "vehicle.h"   // Vehicle (parts)
 
 #include "btcommon.h"  // complete Bullet types (double precision)
 #include <BulletCollision/CollisionDispatch/btCollisionWorld.h>
+
+#include <numbers>
 
 PickRay pickRay(const Camera &cam, int W, int H, int px, int py) {
     // NDC of the pixel (top-left origin -> y flipped).
@@ -51,7 +55,7 @@ bool castRay(const PickRay &ray, btCollisionObject *obj,
                  (ray.origin + ray.dir * L).z);
 
     btTransform rayFrom, rayTo;
-    rayFrom.setIdentity();
+    rayFrom.setIdentity();   // btTransform() {} leaves BOTH members uninitialised
     rayTo.setIdentity();
     rayFrom.setOrigin(from);
     rayTo.setOrigin(to);
@@ -129,4 +133,85 @@ bool pickShipPart(Game &g, int px, int py,
     part = bestPart;
     hit = bestHit;
     return true;
+}
+
+/* Is a launch pad's deck clear? (#231: a second ship placed on an occupied
+   pad used to just stand inside the first.)
+
+   One deck holds one ship. space_port.obj's z=0 face is a hexagon out to
+   x = 8.66, and two grounded ships sit inside each other's 10 m grounded
+   proximity radius, so they wake on the first tick and torque each other --
+   an occupied pad is a collision, not a cosmetic stack.
+
+   The deck is the hull's box: local x +-13, y -41..15 at z = 0, the same box
+   test_buildings measures when it checks that a pad's deck reaches the ground
+   under its footprint. Rays go up the pad's own axis sampled on a grid across
+   that box. The centre sample is load-bearing: the VAB places a ship dead on
+   the pad and a part is only ~2.3 m across, so a grid that samples +-10 m and
+   never 0 misses it outright (verified -- take the 0 back out and the launch
+   goes through). The off-centre samples catch a ship that LANDED there. A
+   part between two sample lines 15 m apart is missed: this answers "is
+   something standing on this deck", which is all a launch decision needs, not
+   "where exactly is it".
+
+   Rays start 5 m UNDER the deck plane so that a ship which settles into the
+   pad's contact slop is still above the start. They pass through the pad hull
+   and the ground on the way up, which costs nothing because only ship parts
+   are cast against at all -- and terrain cannot fake a hit even if it were,
+   since the rays run radially outward and the heightmap is single-valued.
+
+   Deliberately not exhaustive: a ship parked clear of the footprint, or
+   hovering above it, is not what a launch decision needs to know. */
+Vehicle *findPadOccupant(const StaticBuilding *site) {
+    if(site == nullptr || site->parent == nullptr) { return nullptr; }
+    TerrainBody *hb = site->parent;
+    const glm::dmat3 deck = buildingOrient(
+        site->dir, site->heading_deg * std::numbers::pi / 180.0);
+    const glm::dvec3 org = site->origin();   // pad centre, in the rotating frame
+    static const double lat[] = { -9.0, 0.0, 9.0 };
+    static const double along[] = { -30.0, -15.0, 0.0, 15.0, 30.0 };
+    const double sink = 5.0;    // m below the deck the rays start from
+    const double reach = 120.0;  // m above the deck a hit still counts for
+    // 120 m is taller than anything we build and far below the lowest thing
+    // in orbit, which keeps a ship over the pad from reading as standing on it.
+
+    Frame *rot = hb->frame->getRotFrame();
+    for(Vehicle *s : hb->ships) {
+        btCompoundShape *cs = s->compoundShape();
+        if(cs == nullptr) { continue; }
+        /* Aboard crew are owned by their ship (Vehicle::crew) and never in
+           this list, so they cannot turn up here. A free EVA kerbal CAN, and
+           a kerbal standing on the deck is a genuine obstruction -- the
+           caller names whatever it finds. */
+        // Cheap reject before the per-ship frame hop: a body can carry a
+        // wide fleet and only one ship is ever near a given pad.
+        const glm::dvec3 comRot = s->frame->GetOrientRelTo(rot)
+                                * s->get_center_of_mass()
+                                + s->frame->GetPositionRelTo(rot);
+        if(glm::length(comRot - org) > reach + sink + 60.0) { continue; }
+
+        /* The pad's pose is in the body's ROTATING frame; a ship's Bullet
+           transforms live in the ship's OWN frame. rayTestSingle needs no
+           collision world, so a ship on rails -- one the proximity system has
+           parked out of it -- still answers. */
+        const glm::dmat3 O = rot->GetOrientRelTo(s->frame);
+        const glm::dvec3 P = rot->GetPositionRelTo(s->frame);
+        const btTransform hull = s->hull->btBody->getCenterOfMassTransform();
+        const glm::dvec3 up = O * site->dir;
+        for(size_t i = 0; i < sizeof(lat) / sizeof(lat[0]); i++) {
+            for(size_t k = 0; k < sizeof(along) / sizeof(along[0]); k++) {
+                PickRay ray{ O * (org + deck * glm::dvec3(lat[i], along[k], -sink)) + P,
+                             up };
+                PickBodyHit hit;
+                for(int c = 0; c < cs->getNumChildShapes(); c++) {
+                    if(!castRay(ray, s->hull->btBody, cs->getChildShape(c),
+                                hull * cs->getChildTransform(c), hit)) {
+                        continue;
+                    }
+                    if(hit.dist <= sink + reach) { return s; }
+                }
+            }
+        }
+    }
+    return nullptr;
 }

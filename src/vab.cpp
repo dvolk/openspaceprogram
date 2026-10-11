@@ -586,6 +586,21 @@ void vabLaunch(Game &g) {
             g.toast("No launch site on %s", hb->name.c_str());
             return;
         }
+        /* One deck, one ship (#231). Standing a second ship inside the first
+           is not a cosmetic stack: they are inside each other's 10 m grounded
+           proximity radius, so the railed one wakes on the first tick and the
+           pair torque each other. Refuse and name the obstruction -- the
+           player can go delete it from the Ship List's "x", or pick another
+           site. Offered deletion is the follow-up; for now the message says
+           what is in the way. */
+        if(Vehicle *blocker = findPadOccupant(site)) {
+            g.toast("Launch refused: %s is on %s",
+                    blocker->name.c_str(), site->display_name.c_str());
+            printf("[vab] launch refused: '%s' occupies '%s'\n",
+                   blocker->name.c_str(), site->id.c_str());
+            fflush(stdout);
+            return;
+        }
     }
     /* defPath "": the ship was built in memory -- no file to respawn from. */
     Vehicle *v = g.ships.place_ship_def(def, "", def.name, hb, sc, g.sys, g.time, site);

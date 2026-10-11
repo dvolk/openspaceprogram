@@ -1,0 +1,11 @@
+# The occupancy check is per pad, not per body: a ship parked on Kerbin's
+# polar pad must not refuse a launch from the main space port. Guards the
+# check from over-tightening into "any ship anywhere on this home body",
+# which the COM proximity reject makes tempting.
+NAME vab-pad-neighbour-clear
+ARGS --vab res/ships/tanker.json --startship racer,res/ships/racer.json,Kerbin,pad-polar
+ARGS --vab-launch 2000 --timeout 12
+EXPECT [vab] launched 'tanker' (7 parts)
+FORBID launch refused
+FORBID GL_
+FORBID error:
