@@ -81,14 +81,8 @@ public:
                             TerrainBody *hb, const ScenarioDef *sc, System &sys,
                             double t, const StaticBuilding *site = nullptr);
 
-    // Runtime spawn: place + apply the scenario + park on rails.
-    Vehicle *spawn_ship(const std::string &defPath, const std::string &wantName,
-                        TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                        double t, const StaticBuilding *site = nullptr);
-
     // Startup crew: one kerbal ABOARD each of `ship`'s capsule parts.
-    // Called from buildDebugStartShips; runtime copies (spawn_ship) do NOT
-    // get crew.
+    // Called from buildDebugStartShips only.
     void spawn_crew(Vehicle *ship, System &sys, double t);
 
     // Apply each ship's scenario (the startup spawn_vehicle pass).

@@ -370,7 +370,6 @@ void drawUIReadouts(Game &g) {
     // read the same).
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
-    Ships &ships = g.ships;
     System &sys = g.sys;
     GameArgs &args = g.args;
     Camera *camera = g.camera;
@@ -1673,7 +1672,10 @@ void drawUIReadouts(Game &g) {
             // refuses it -- so it gets no "x" to click.
             if(!v->isEva()) {
                 ImGui::SameLine();
-                if(ImGui::SmallButton("x")) {
+                // The "##rm_<name>" suffix is invisible on screen but makes
+                // the row addressable by --ui-click ("x" alone is ambiguous
+                // the moment two ships are listed), so e2e can drive removal.
+                if(ImGui::SmallButton(("x##rm_" + v->name).c_str())) {
                     g.remove_ship(v);
                     removed = true;   // the ship was deleted; stop iterating
                 }
@@ -1682,15 +1684,6 @@ void drawUIReadouts(Game &g) {
         ImGui::PopID();
     }
     ImGui::Separator();
-    if(ImGui::Button("Spawn a copy of the active ship")) {
-        if(ship == nullptr) {
-            g.toast("Spawn: no active ship");
-        } else if(!ship->defPath.empty()) {
-            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys, g.time);
-        } else {
-            printf("Spawn: active ship has no def (test ship)\n");
-        }
-    }
     ImGui::Text("click name - select    x - remove (not crew)");
     });
 
@@ -3788,7 +3781,6 @@ void drawVabUI(Game &g) {
 
 void drawTrackingShipList(Game &g) {
     Vehicle *ship = g.ship;
-    Ships &ships = g.ships;
     System &sys = g.sys;
     drawWin(g, W_TrackingShipList, [&] {
     // Back to the hub (the frame below); Esc does the same (trackingKeyActions).
@@ -3827,7 +3819,10 @@ void drawTrackingShipList(Game &g) {
             // refuses it -- so it gets no "x" to click.
             if(!v->isEva()) {
                 ImGui::SameLine();
-                if(ImGui::SmallButton("x")) {
+                // The "##rm_<name>" suffix is invisible on screen but makes
+                // the row addressable by --ui-click ("x" alone is ambiguous
+                // the moment two ships are listed), so e2e can drive removal.
+                if(ImGui::SmallButton(("x##rm_" + v->name).c_str())) {
                     g.remove_ship(v);
                     removed = true;   // the ship was deleted; stop iterating
                 }
@@ -3849,15 +3844,6 @@ void drawTrackingShipList(Game &g) {
         ImGui::PopID();
     }
     ImGui::Separator();
-    if(ImGui::Button("Spawn a copy of the active ship")) {
-        if(ship == nullptr) {
-            g.toast("Spawn: no active ship");
-        } else if(!ship->defPath.empty()) {
-            ships.spawn_ship(ship->defPath, "", ship->home, ship->scenario, sys, g.time);
-        } else {
-            printf("Spawn: active ship has no def (test ship)\n");
-        }
-    }
     ImGui::Text("click name - select    x - remove (not crew)");
     });
 }

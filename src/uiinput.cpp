@@ -59,12 +59,16 @@ bool pastDeadline(Uint32 now, Uint32 at) {
     return now >= at && now - at >= kUiClickRetryMs;
 }
 
-/* imgui names carry the "##id" / "###id" disambiguators, which the user does
-   not type; compare without them, and without allocating. */
-bool baseEq(std::string_view a, std::string_view b) {
-    const size_t ha = a.find('#'), hb = b.find('#');
-    if(ha != std::string_view::npos) { a = a.substr(0, ha); }
-    if(hb != std::string_view::npos) { b = b.substr(0, hb); }
+/* Compare a --ui-click path segment against a registered label EXACTLY.
+   imgui's "##id" / "###id" disambiguators are part of the registered label
+   and --ui-list prints them, so the dump is the one source of truth for what
+   a path must name. Stripping them (as this used to) would let a path typed
+   from the visible text match, but it also makes every suffixed widget
+   unaddressable: rows registered "x##rm_a" and "x##rm_b" both collapse to
+   "x", so the click cannot pick one. The only reader of these paths is a
+   test author reading --ui-list, so exactness is what helps them -- and a
+   wrong guess fails loudly ("not found"), never on a lookalike. */
+bool exactEq(std::string_view a, std::string_view b) {
     return a == b;
 }
 
@@ -79,14 +83,14 @@ void findMatches(const std::string &path, std::vector<const UiItem *> &out) {
         const std::string_view win(path.data(), slash);
         const std::string_view lab(path.data() + slash + 1, path.size() - slash - 1);
         for(const UiItem &it : g_done) {
-            if(baseEq(it.window, win) && baseEq(it.label, lab)) {
+            if(exactEq(it.window, win) && exactEq(it.label, lab)) {
                 out.push_back(&it);
             }
         }
         if(!out.empty()) { return; }
     }
     for(const UiItem &it : g_done) {
-        if(baseEq(it.label, path)) { out.push_back(&it); }
+        if(exactEq(it.label, path)) { out.push_back(&it); }
     }
 }
 

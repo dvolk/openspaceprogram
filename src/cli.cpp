@@ -342,12 +342,6 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "from the same code the map windows use (test hook; "
                    "-1 = never)");
 
-    app.add_flag("--selftest-spawn", args.selftest_spawn,
-                 "Exercise the runtime spawn/remove path: spawn a copy of "
-                 "the active ship, remove it, then spawn-select-remove the "
-                 "active one (handoff), checking bookkeeping each step, and "
-                 "exit after a few physics ticks");
-
     app.add_flag("--orbit-log", args.orbit_log,
                  "Periodically print the ship's orbital elements to stdout "
                  "(for measuring orbital stability)");

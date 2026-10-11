@@ -912,73 +912,6 @@ int main(int argc, char **argv)
     game.relvel_indicator = relvel_indicator;
     game.relvel_retro_indicator = relvel_retro_indicator;
 
-    /* Runtime spawn: Ships::spawn_ship (ships.cpp) -- place + apply the
-       scenario + park on rails; appended at the end so it is never the
-       active one. */
-
-    /* --selftest-spawn: exercise the runtime spawn/remove path. Spawn a
-       copy of the active ship, remove it, then spawn-select-remove the
-       active one. Each step is checked against the expected fleet size +
-       active index. */
-    int spawn_test_frames = 0;
-    if(args.selftest_spawn) {
-        /* A free kerbal has a def but remove_ship refuses it (a crew member
-           is not deletable), so the spawn-copy-then-remove steps cannot run. */
-        if(ship->defPath.empty() || ship->isEva()) {
-            printf("selftest-spawn: SKIP (%s)\n",
-                   ship->isEva() ? "active ship is a crew member"
-                                 : "active ship has no def: test ship");
-            running = false;
-        } else {
-            const size_t base = collectVehicles(sys).size();
-            Vehicle *origShip = ship;
-            bool ok = true;
-            printf("== selftest-spawn: %zu ships at start, active: %s ==\n",
-                   base, ship->name.c_str());
-
-            // 1) spawn a copy of the active ship -> appended at the end;
-            //    the active ship must be untouched
-            Vehicle *sp = ships.spawn_ship(ship->defPath, "", ship->home,
-                                           ship->scenario, sys, game.time);
-            printf("spawn 1: size=%zu active=%s\n",
-                   collectVehicles(sys).size(), ship->name.c_str());
-            if(collectVehicles(sys).size() != base + 1 || ship != origShip) { ok = false; }
-
-            // 2) remove the ship we just spawned -> size back to base,
-            //    active unchanged
-            game.remove_ship(sp);
-            printf("remove 1: size=%zu active=%s\n",
-                   collectVehicles(sys).size(), ship->name.c_str());
-            if(collectVehicles(sys).size() != base || ship != origShip) { ok = false; }
-
-            // 3) spawn again, select it, remove it (the active one) -> the
-            //    control must hand off and the size return to base
-            Vehicle *sp2 = ships.spawn_ship(ship->defPath, "", ship->home,
-                                            ship->scenario, sys, game.time);
-            game.select_ship(sp2);
-            printf("spawn 2 + select: active=%s size=%zu\n",
-                   ship->name.c_str(), collectVehicles(sys).size());
-            if(ship != sp2) { ok = false; }
-            game.remove_ship(sp2);
-            /* The handoff must be checked BEFORE the printf below reads
-               ship->name: sp2 is deleted, so a failed handoff would leave
-               `ship` pointing at freed memory. */
-            if(ship == sp2 || ship == nullptr) { ok = false; }
-            printf("remove 2 (active): active=%s size=%zu\n",
-                   ship ? ship->name.c_str() : "(none)",
-                   collectVehicles(sys).size());
-            if(collectVehicles(sys).size() != base) { ok = false; }
-
-            if(ok) {
-                printf("selftest-spawn: all checks passed; running 30 ticks for stability\n");
-                spawn_test_frames = 30;
-            } else {
-                printf("selftest-spawn: FAIL (bookkeeping mismatch)\n");
-                running = false;
-            }
-        }
-    }
-
     // --timeout: wall-clock budget for the whole run (0 = run until closed).
     // Stamped on the game: the sim-event emitter (events.cpp) and the
     // timeout check below both measure "ms since the loop started" from it.
@@ -1239,17 +1172,6 @@ int main(int argc, char **argv)
                     }
                     fflush(stdout);
                 }
-                running = false;
-            }
-        }
-
-        // --selftest-spawn: a few render frames of physics after spawn/remove,
-        // then exit. Counted in LOOP ITERATIONS, not logic ticks.
-        if(spawn_test_frames > 0) {
-            spawn_test_frames--;
-            if(spawn_test_frames == 0) {
-                printf("selftest-spawn: 30 frames after spawn/remove, no crash; OK\n");
-                fflush(stdout);
                 running = false;
             }
         }

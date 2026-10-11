@@ -197,20 +197,6 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     return v;
 }
 
-Vehicle *Ships::spawn_ship(const std::string &defPath, const std::string &wantName,
-                           TerrainBody *hb, const ScenarioDef *sc, System &sys,
-                           double t, const StaticBuilding *site)
-{
-    Vehicle *v = place_ship(defPath, wantName, hb, sc, sys, t, site);
-    spawn_vehicle(v, *sc, hb, sys, ORBIT_SLOT_SPACING * (double)v->slot, t);
-    v->goOnRails();
-    // N = v's position in the canonical order, M = the whole fleet.
-    int n = 0, i = 0;
-    for(auto *x : collectVehicles(sys)) { n++; if(x == v) { i = n; } }
-    printf("Spawned '%s' (ship %d of %d)\n", v->name.c_str(), i, n);
-    return v;
-}
-
 std::string Ships::dedupName(System &sys, const std::string &nm)
 {
     std::string candidate = nm;
