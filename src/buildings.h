@@ -1,10 +1,11 @@
 // buildings.h -- building types (catalog) + world instances (system JSON).
 //
 // Catalog (res/data/buildings.json) is global, like parts.json. Instances
-// live in the system JSON under "world_buildings" and are placed onto
-// TerrainBody::pads at system load. lat/lon are DEGREES in the JSON and
-// convert through equirectDir (radians). height_m is the building ORIGIN
-// above the terrain surface along local up; heading_deg spins about that up.
+// live in the system JSON under "world_buildings" (or in the fragments its
+// "world_buildings_files" array names) and are placed onto TerrainBody::pads
+// at system load. lat/lon are DEGREES in the JSON and convert through
+// equirectDir (radians). height_m is the building ORIGIN above the terrain
+// surface along local up; heading_deg spins about that up.
 #pragma once
 
 #include <string>
@@ -62,6 +63,22 @@ struct WorldBuilding {
 // Throws on bad/missing fields. `path` is for error messages.
 std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
                                                  const std::string &path);
+
+/* The inline array PLUS the fragments named by the root
+   "world_buildings_files" array (optional; empty if absent). A fragment is a
+   JSON file with its own "world_buildings" array -- the same spelling, so it
+   is a drop-in piece of a system (res/data/earth_launch_sites.json) -- and a
+   "res/..." name resolves through resdir like any other asset. Fragments may
+   not name more fragments.
+
+   Fragment entries come FIRST, then the inline array: find_launch_site's
+   default site is the first VAB_LAUNCH_PAD in the merged list, so a system's
+   inline pads can never pre-empt a site file's chosen default.
+
+   Throws on a bad entry, an unreadable fragment, or an id used twice (in one
+   array or across two). `path` is the system JSON, for error messages. */
+std::vector<WorldBuilding> parse_world_buildings_all(
+    const nlohmann::json &doc, const std::string &path);
 
 /* Building orientation: +Z along `up` (radial), then spun `heading` rad
    about that axis. Ship placement uses the same matrix so a headed pad

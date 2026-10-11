@@ -1,0 +1,187 @@
+{
+  "note": "A world_buildings fragment (src/buildings.cpp): the system JSON names it under \"world_buildings_files\" and the loader merges these entries into its own \"world_buildings\". lat_deg/lon_deg are DEGREES, lon east-positive (west longitudes negative); equirect.h maps them onto the body's rotating frame and the heightmap is geographic, so these are the sites' real coordinates -- the launch centre's own position, not the nearest town's. They are given to 4 dp, far finer than res/heightmaps/earth/earth_hm.i16 samples (0.133 deg, ~14.8 km): a site smaller than one map pixel (an island, a barrier beach) reads as sea level there, and with \"ocean\": \"flat\" its pad deck lands at sea level rather than at its true elevation. height_m lifts the deck above the ground sampled at the site's own dir; space_port.obj's 10 m of slab carries it down through the relief across the rest of the footprint (tests/test_buildings.cpp pins both). The FIRST entry is the game's default site: find_launch_site falls back to the first VAB_LAUNCH_PAD, and merged fragments come before a system's inline world_buildings.",
+  "world_buildings": [
+    {
+      "id": "baikonur",
+      "type": "space_port",
+      "display_name": "Baikonur",
+      "body": "Earth",
+      "lat_deg": 45.9646,
+      "lon_deg": 63.3052,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "plesetsk",
+      "type": "space_port",
+      "display_name": "Plesetsk",
+      "body": "Earth",
+      "lat_deg": 62.9248,
+      "lon_deg": 40.5728,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "vostochny",
+      "type": "space_port",
+      "display_name": "Vostochny",
+      "body": "Earth",
+      "lat_deg": 51.8833,
+      "lon_deg": 128.3081,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "jiuquan",
+      "type": "space_port",
+      "display_name": "Jiuquan",
+      "body": "Earth",
+      "lat_deg": 40.9581,
+      "lon_deg": 100.2917,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "taiyuan",
+      "type": "space_port",
+      "display_name": "Taiyuan",
+      "body": "Earth",
+      "lat_deg": 38.8489,
+      "lon_deg": 111.6081,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "xichang",
+      "type": "space_port",
+      "display_name": "Xichang",
+      "body": "Earth",
+      "lat_deg": 28.2458,
+      "lon_deg": 102.0281,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "wenchang",
+      "type": "space_port",
+      "display_name": "Wenchang",
+      "body": "Earth",
+      "lat_deg": 19.6094,
+      "lon_deg": 110.9511,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "sriharikota",
+      "type": "space_port",
+      "display_name": "Sriharikota",
+      "body": "Earth",
+      "lat_deg": 13.72,
+      "lon_deg": 80.2322,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "thumba",
+      "type": "space_port",
+      "display_name": "Thumba",
+      "body": "Earth",
+      "lat_deg": 8.55,
+      "lon_deg": 76.9167,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "semnan",
+      "type": "space_port",
+      "display_name": "Semnan",
+      "body": "Earth",
+      "lat_deg": 35.2,
+      "lon_deg": 53.85,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "pameungpeuk",
+      "type": "space_port",
+      "display_name": "Pameungpeuk",
+      "body": "Earth",
+      "lat_deg": -7.6667,
+      "lon_deg": 107.7167,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "alcantara",
+      "type": "space_port",
+      "display_name": "Alcântara",
+      "body": "Earth",
+      "lat_deg": -2.3394,
+      "lon_deg": -44.4175,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "barreira_do_inferior",
+      "type": "space_port",
+      "display_name": "Barreira do Inferior",
+      "body": "Earth",
+      "lat_deg": -5.8333,
+      "lon_deg": -35.2,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "sutherland",
+      "type": "space_port",
+      "display_name": "Sutherland",
+      "body": "Earth",
+      "lat_deg": -32.5667,
+      "lon_deg": 20.6,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    }
+  ]
+}

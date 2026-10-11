@@ -168,8 +168,11 @@ struct TerrainBody {
     // the body still simulates but Draw/Update skip it.
     bool ready = false;
     Surface surface;
-    Frame *frame; // owner
-    Frame *rot_frame; // owner
+    // Nulled like patches[] above: ~TerrainBody deletes both unconditionally,
+    // so a body whose frames were never attached (a test fixture, a load that
+    // threw mid-way) must not free whatever the stack held there.
+    Frame *frame = nullptr; // owner
+    Frame *rot_frame = nullptr; // owner
     Calendar cal; // this body's day/year (from its spin + orbit rates)
     glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec;

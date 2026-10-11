@@ -41,9 +41,10 @@ struct System {
     // equator; a body's own annuli are surface.rings, not this.
     std::vector<BeltParams> belts;
 
-    // World buildings (the root "world_buildings" array). Optional. Parsed
-    // here; place_world_buildings (buildings.h) instantiates them onto
-    // TerrainBody::pads once physics + a shader are live.
+    // World buildings: the root "world_buildings" array PLUS the fragments
+    // named by the root "world_buildings_files" array (buildings.h merges
+    // them, fragments first). Optional. Parsed here; place_world_buildings
+    // instantiates them onto TerrainBody::pads once physics + a shader live.
     std::vector<WorldBuilding> world_buildings;
 
     TerrainBody *find(const std::string &name) {

@@ -5,8 +5,13 @@
 //   - res/data/buildings.json parses (at least the space_port type),
 //   - world instances: id/type/body/lat/lon required; degrees -> equirectDir;
 //     height_m/heading_deg defaults; flags; duplicate ids throw,
+//   - "world_buildings_files" fragments: merge order, missing/nested/empty
+//     files and cross-source duplicate ids all throw,
+//   - the shipped Earth site table (res/data/earth_launch_sites.json) reaches
+//     the solar systems, in order, with Baikonur as the default,
 //   - buildingOrient: +Z along up, heading spins about that axis,
 //   - every shipped system carries at least one VAB_LAUNCH_PAD on its home,
+//   - no two pads on a body are on top of each other,
 //   - every pad's deck actually reaches the ground under its footprint.
 
 #include "buildings.h"
@@ -173,6 +178,75 @@ int main() {
         CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
     }
 
+    // --- world_buildings_files: named fragments merge in ------------------
+    {
+        // The shipped Earth table reaches the solar systems, and the merge
+        // order survives: the merged list's first VAB_LAUNCH_PAD IS the
+        // game's default site (find_launch_site's fallback), so the inline
+        // pole pad must not come first.
+        const std::string p = "res/systems/solar_system.json";
+        std::vector<WorldBuilding> ws = parse_world_buildings_all(read_json(p.c_str()), p);
+        CHECK(ws.size() >= 15);   // 14 real sites + the pole pad
+        CHECK(!ws.empty() && ws[0].id == "baikonur");
+        bool pole = false;
+        for(const WorldBuilding &w : ws) {
+            if(w.id == "polar_pad") { pole = true; }
+        }
+        CHECK(pole);
+        // The table's own coordinates survive the parse (lon is east-positive,
+        // so a west site is negative -- equirectDir takes either spelling).
+        for(const WorldBuilding &w : ws) {
+            if(w.id != "alcantara") { continue; }
+            CHECK(w.lat_deg == -2.3394 && w.lon_deg == -44.4175);
+            CHECK(vnear(w.dir(), equirectDir(-44.4175 * std::numbers::pi / 180.0,
+                                             -2.3394 * std::numbers::pi / 180.0)));
+        }
+    }
+    CHECK(expect_throw([]() {
+        nlohmann::json doc = nlohmann::json::parse(
+            R"({"world_buildings_files": ["res/no_such_sites.json"]})");
+        parse_world_buildings_all(doc, "mem");
+    }));
+    {
+        // A fragment names pads, not more fragments.
+        std::filesystem::create_directories("tmp");
+        const std::string nest = "tmp/test_buildings_nest.json";
+        std::ofstream(nest)
+            << R"({"world_buildings_files": ["res/data/earth_launch_sites.json"]})";
+        nlohmann::json doc;
+        doc["world_buildings_files"] = { nest };
+        CHECK(expect_throw([&]() { parse_world_buildings_all(doc, "mem"); }));
+        std::remove(nest.c_str());
+    }
+    {
+        // A named file with no pads at all is a typo, whether the key is
+        // missing or the array is empty: either way the system would quietly
+        // fall back to its inline pads.
+        std::filesystem::create_directories("tmp");
+        const std::string bare = "tmp/test_buildings_bare.json";
+        const std::string empty = "tmp/test_buildings_empty.json";
+        std::ofstream(bare) << R"({"note": "no world_buildings here"})";
+        std::ofstream(empty) << R"({"world_buildings": []})";
+        for(const std::string &f : { bare, empty }) {
+            nlohmann::json doc;
+            doc["world_buildings_files"] = { f };
+            CHECK(expect_throw([&]() { parse_world_buildings_all(doc, "mem"); }));
+        }
+        std::remove(bare.c_str());
+        std::remove(empty.c_str());
+    }
+    {
+        // An id used by a fragment AND the inline array would shadow one of
+        // them in the VAB picker / --vab-site.
+        nlohmann::json doc;
+        doc["world_buildings_files"] = { "res/data/earth_launch_sites.json" };
+        doc["world_buildings"] = nlohmann::json::array({
+            { {"id", "baikonur"}, {"type", "space_port"}, {"body", "Earth"},
+              {"lat_deg", 0.0}, {"lon_deg", 0.0} }
+        });
+        CHECK(expect_throw([&]() { parse_world_buildings_all(doc, "mem"); }));
+    }
+
     // --- buildingOrient --------------------------------------------------
     {
         const glm::dvec3 up = glm::normalize(glm::dvec3(0.0, 1.0, 0.0));
@@ -228,6 +302,12 @@ int main() {
             continue;
         }
         CHECK(sys.world_buildings.size() >= 1);
+        // Every solar_system variant names the same site file, so each must
+        // carry the whole table: the >= 1 above and homePad below would both
+        // pass on the inline pole pad alone if a variant lost the reference.
+        if(logical.find("solar_system") != std::string::npos) {
+            CHECK(sys.world_buildings.size() >= 15);
+        }
         bool homePad = false;
         for(const WorldBuilding &w : sys.world_buildings) {
             TerrainBody *wb = sys.find(w.body);
@@ -248,6 +328,29 @@ int main() {
             }
             // ... and the deck it puts on that body reaches the ground
             if(wb != nullptr) { check_pad_grounding(logical, w, wb); }
+        }
+        // Two pads on one body must not overlap: a deck is 26 x 56 m and pad
+        // ships stand 20 m apart, so this floor catches a copy-paste
+        // coordinate slip while still leaving room for two real pads at one
+        // complex (the shipped Earth sites are ~679 km apart at closest).
+        for(size_t i = 0; i < sys.world_buildings.size(); i++) {
+            for(size_t k = i + 1; k < sys.world_buildings.size(); k++) {
+                const WorldBuilding &a = sys.world_buildings[i];
+                const WorldBuilding &b = sys.world_buildings[k];
+                if(a.body != b.body) { continue; }
+                TerrainBody *wb = sys.find(a.body);
+                if(wb == nullptr) { continue; }
+                // Chord x radius: over these separations it is the arc to
+                // within a metre, and we only care about the order of magnitude.
+                const double m = glm::length(a.dir() - b.dir())
+                               * (double)wb->radius;
+                if(m < 200.0) {
+                    printf("FAIL %s: pads '%s' and '%s' sit %g m apart on %s\n",
+                           logical.c_str(), a.id.c_str(), b.id.c_str(), m,
+                           a.body.c_str());
+                    failures++;
+                }
+            }
         }
         if(!homePad) {
             printf("FAIL %s: no VAB_LAUNCH_PAD on home '%s'\n",

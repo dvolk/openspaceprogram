@@ -246,10 +246,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
     }
 
-    // --- world buildings (JSON "world_buildings") -------------------------
+    // --- world buildings (JSON "world_buildings" + "world_buildings_files") --
     // Optional. Instances only -- place_world_buildings (buildings.h) turns
-    // them into TerrainBody::pads once physics + a shader are live.
-    sys.world_buildings = parse_world_buildings(doc, path);
+    // them into TerrainBody::pads once physics + a shader are live. The
+    // "_files" array merges named fragments (res/data/earth_launch_sites.json)
+    // in ahead of the inline array, so a system can name a site table instead
+    // of restating every coordinate.
+    sys.world_buildings = parse_world_buildings_all(doc, path);
 
     // Rail longitude a -> R_Y(+a): maps local +X to longitude +a, measured as
     // atan2(-z, x) about the parent inertial frame's +Y. That is the ecliptic

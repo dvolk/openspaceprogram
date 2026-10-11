@@ -824,6 +824,24 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
            # plane.
            'belts': [{'name': 'asteroid belt', 'inner': AU * 2.1, 'outer': AU * 3.3},
                      {'name': 'Kuiper belt', 'inner': AU * 30.0, 'outer': AU * 50.0}],
+           # Launch pads. The real sites live in ONE table --
+           # res/data/earth_launch_sites.json is a "world_buildings" fragment
+           # the loader merges (src/buildings.cpp) -- so a coordinate has one
+           # home instead of four copies, one per solar_system variant. The
+           # merged list's first VAB_LAUNCH_PAD is the game's default site, so
+           # the table's order is deliberate: Baikonur.
+           'world_buildings_files': ['res/data/earth_launch_sites.json'],
+           # Game fiction, not a site: the pad-polar scenario's bed (flag
+           # POLAR_PAD) sits at the geographic north pole, where the flat-sea
+           # clamp puts the Arctic ice exactly at sea level. Inline because it
+           # belongs to this system, not to the real-world table.
+           'world_buildings': [
+               {'id': 'polar_pad', 'type': 'space_port',
+                'display_name': 'Polar pad', 'body': 'Earth',
+                'lat_deg': 90.0, 'lon_deg': 0.0, 'height_m': 5.0,
+                'heading_deg': 0.0,
+                'flags': ['VAB_LAUNCH_PAD', 'POLAR_PAD']},
+           ],
            'bodies': bodies}
     stamp_science_mults(doc)
     if dry:

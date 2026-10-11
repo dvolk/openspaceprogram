@@ -86,20 +86,18 @@ glm::dvec3 WorldBuilding::dir() const {
     return equirectDir(lon, lat);
 }
 
-std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
-                                                 const std::string &path) {
+// One "world_buildings" array -> entries. `src` names where the array came
+// from (a system JSON or a fragment file) so every message says which.
+// Duplicate ids within the array throw here; across arrays, in
+// parse_world_buildings_all.
+static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr,
+                                                       const std::string &src) {
     std::vector<WorldBuilding> out;
-    if(!doc.contains("world_buildings")) { return out; }
-    const nlohmann::json &arr = doc["world_buildings"];
-    if(!arr.is_array()) {
-        throw std::runtime_error(std::string("system: \"world_buildings\" in ")
-                                 + path + " must be an array");
-    }
     for(size_t i = 0; i < arr.size(); i++) {
         const nlohmann::json &ev = arr[i];
         if(!ev.is_object()) {
             throw std::runtime_error(std::string("system: world_buildings entry ")
-                                     + std::to_string(i) + " of " + path
+                                     + std::to_string(i) + " of " + src
                                      + " must be an object");
         }
         WorldBuilding w;
@@ -108,7 +106,7 @@ std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
         w.display_name = ev.value("display_name", std::string(""));
         w.body = ev.value("body", std::string(""));
         const std::string ctx = "system: world_buildings[" + std::to_string(i)
-                                + "] of " + path + ": ";
+                                + "] of " + src + ": ";
         if(w.id.empty()) { throw std::runtime_error(ctx + "missing \"id\""); }
         if(w.type.empty()) { throw std::runtime_error(ctx + "missing \"type\""); }
         if(w.body.empty()) { throw std::runtime_error(ctx + "missing \"body\""); }
@@ -152,6 +150,91 @@ std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
             }
         }
         out.push_back(w);
+    }
+    return out;
+}
+
+std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
+                                                 const std::string &path) {
+    if(!doc.contains("world_buildings")) { return {}; }
+    const nlohmann::json &arr = doc["world_buildings"];
+    if(!arr.is_array()) {
+        throw std::runtime_error(std::string("system: \"world_buildings\" in ")
+                                 + path + " must be an array");
+    }
+    return parse_building_array(arr, path);
+}
+
+std::vector<WorldBuilding> parse_world_buildings_all(
+        const nlohmann::json &doc, const std::string &path) {
+    std::vector<WorldBuilding> out;
+    if(doc.contains("world_buildings_files")) {
+        if(!doc["world_buildings_files"].is_array()) {
+            throw std::runtime_error(std::string("system: \"world_buildings_files\" in ")
+                                     + path + " must be an array of file names");
+        }
+        for(const nlohmann::json &fv : doc["world_buildings_files"]) {
+            if(!fv.is_string() || fv.get<std::string>().empty()) {
+                throw std::runtime_error(std::string("system: \"world_buildings_files\" entry of ")
+                                         + path + " must be a non-empty file name");
+            }
+            const std::string name = fv.get<std::string>();
+            std::ifstream f(resdir::path(name));
+            if(!f.is_open()) {
+                throw std::runtime_error("system: '" + path + "': cannot open"
+                                         " world_buildings_files entry '" + name + "'");
+            }
+            nlohmann::json frag;
+            try {
+                frag = nlohmann::json::parse(f, nullptr, true);
+            } catch(const std::exception &e) {
+                throw std::runtime_error("system: '" + path + "': bad JSON in"
+                                         " world_buildings_files entry '" + name
+                                         + "': " + e.what());
+            }
+            // One level only: a fragment that names fragments turns a data
+            // file into a graph, and a typo into an unbounded merge.
+            if(frag.contains("world_buildings_files")) {
+                throw std::runtime_error("system: '" + path + "': world buildings"
+                                         " file '" + name + "' nests"
+                                         " \"world_buildings_files\"");
+            }
+            if(!frag.contains("world_buildings")) {
+                throw std::runtime_error("system: '" + path + "': world buildings"
+                                         " file '" + name + "' has no"
+                                         " \"world_buildings\" array");
+            }
+            const nlohmann::json &farr = frag["world_buildings"];
+            if(!farr.is_array()) {
+                throw std::runtime_error("system: \"world_buildings\" in '" + name
+                                         + "' must be an array");
+            }
+            // A file named for its pads that carries none is a typo, same as
+            // the missing key above: an empty table would silently drop the
+            // whole site list and leave the system on its inline pads.
+            if(farr.empty()) {
+                throw std::runtime_error("system: '" + path + "': world buildings"
+                                         " file '" + name + "' names no pads");
+            }
+            for(const WorldBuilding &w : parse_building_array(farr, name)) {
+                out.push_back(w);
+            }
+        }
+    }
+    // Fragments first: find_launch_site's default is the first VAB_LAUNCH_PAD
+    // in this list, so the site file picks the default, not an inline pad.
+    for(const WorldBuilding &w : parse_world_buildings(doc, path)) {
+        out.push_back(w);
+    }
+    // The id is the handle --vab-site and the VAB picker use, so an id used
+    // twice would silently shadow one of the two.
+    for(size_t i = 0; i < out.size(); i++) {
+        for(size_t k = i + 1; k < out.size(); k++) {
+            if(out[i].id == out[k].id) {
+                throw std::runtime_error("system: '" + path + "': duplicate world"
+                                         " building id '" + out[i].id + "'");
+            }
+        }
     }
     return out;
 }
