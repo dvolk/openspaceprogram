@@ -1,0 +1,12 @@
+# The other half of the gate in case 168: on the title screen "Quit game"
+# still quits in one click. drawMenuWindow is shared by both menus, so without
+# gameRunning() this button would grow a pointless confirm -- there is no game
+# to lose. Pinned by the absence of a card plus an early exit (no timeout).
+NAME question-quit-title-free
+ARGS --timeout 5
+ARGS --ui-click 1500,"Title Menu/Quit game"
+EXPECT label="Quit game"
+FORBID [ask]
+FORBID Timeout reached
+FORBID GL_
+FORBID error:

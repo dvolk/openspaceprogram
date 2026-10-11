@@ -2896,8 +2896,21 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
         }
         // The scene's exits (hub: "Return to title"), just above the app's own.
         if(navBottom) { navBottom(g, bw); }
+        /* Quitting discards everything since the last manual save: there is
+           no autosave and no save-on-quit. So a live game is asked first, and
+           the title screen -- where nothing is at stake -- keeps the one
+           click. gameRunning() is the scene stack's own "a game is in charge"
+           (stack floor is not Title), not a predicate invented here. */
         if(ImGui::Button("Quit game", ImVec2(bw, 0.0f))) {
-            running = false;
+            if(!gameRunning(g)) {
+                running = false;
+            } else {
+                g.ask("Quit the game?\n\nEverything since your last save is lost.",
+                      {"Quit", "Stay"},
+                      [&g](int choice) {
+                    if(choice == 0) { g.running = false; }
+                });
+            }
         }
         ImGui::PopFont();
         // The build's git version (src/version.h, `make version`), grayed
