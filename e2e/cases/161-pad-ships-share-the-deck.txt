@@ -1,0 +1,25 @@
+# Every pad ship stands ON its site deck. Ships used to be nudged 20 m
+# sideways per (body, scenario) slot, back when spawning one also invented a
+# pad under it; with the pads as world content that offset walked each ship
+# past the deck edge (space_port.obj's top face is a hexagon out to x = 8.66)
+# and left it hanging at deck height over bare terrain, up to 200 m from the
+# site for the debug fleet. So both vessels here read the pad's authored
+# lat/lon (main_space_port: 0.286473, 270.286477) -- 1e-3 deg is ~10 m on
+# Kerbin, and the old slot-1 offset alone was 20 m.
+#
+# Occupancy itself is deliberately unhandled (#231): two ships on one pad
+# share the pose, and since they sit inside each other's 10 m grounded
+# proximity radius they wake and shove -- hence the 10 m bound rather than a
+# tight one, and --orbit-interval 0.25 so the rows sample the whole settle.
+# The debug fleet's startships.json is knowingly a pile for the same reason.
+NAME pad-ships-share-the-deck
+ARGS --time-accel 1 --timeout 5 --info-log --orbit-interval 0.25 --startship racer,res/ships/racer.json,Kerbin,pad --startship tanker,res/ships/tanker.json,Kerbin,pad
+ARGS --sim-press 2000,50,F6
+# "3 of 4" counts the two aboard kerbals as vessels even though F6 steps over
+# them; 06-ship-switch pins the same quirk.
+EXPECT Active ship 3 of 4: tanker
+FORBID GL_
+FORBID error:
+CHECK len(surf) > 10
+CHECK all(abs(s["lat"] - 0.286473) < 1e-3 and abs(s["lon"] - 270.286477) < 1e-3 for s in surf)
+CHECK all(s["sit"] == "landed" for s in surf)

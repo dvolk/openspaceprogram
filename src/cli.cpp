@@ -39,15 +39,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "One start ship: name,def,body,scenario -- all four "
                    "required (e.g. racer,res/ships/racer.json,Kerbin,pad). "
                    "Repeat the flag for more ships; ships sharing a "
-                   "body+scenario get their own pad/orbit slot. --startships "
-                   "is the same list as a JSON file (and overrides it)");
+                   "body+scenario are spaced apart in orbit but all stand on "
+                   "the same pad. --startships is the same list as a JSON "
+                   "file (and overrides it)");
 
     app.add_option("--startships", args.startships_file,
                    "Start-ship-list JSON: one entry per ship, each naming all "
                    "four of name, ship def, body and scenario (the game "
                    "errors if any is missing). Ships sharing a body+scenario "
-                   "get their own pad/orbit slot. Overrides --startship. Try "
-                   "e2e/fixtures/startships.json");
+                   "are spaced apart in orbit but all stand on the same pad. "
+                   "Overrides --startship. Try e2e/fixtures/startships.json");
 
     app.add_option("--save", args.save_name,
                    "Save the game (the live fleet + crew + clock) when the "

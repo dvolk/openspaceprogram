@@ -8,7 +8,7 @@
 
 /* The result of building one --radial-test ship: the ship itself (the
    caller owns it and pushes it into its fleet) plus the bookkeeping main()
-   needs to slot it -- the resolved starting scenario and its pad slot
+   needs to slot it -- the resolved starting scenario and its orbit slot
    (always 0: the radial-test ship is the only one on its body+scenario). */
 struct RadialTestShip {
     Vehicle *v;

@@ -1626,7 +1626,7 @@ void drawUIReadouts(Game &g) {
                    o.energy);
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
-                   "vs=%.6g m/s hs=%.6g m/s lat=%.6g deg lon=%.6g deg "
+                   "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
                    "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg "
                    "acc=%.6g m/s2 body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,

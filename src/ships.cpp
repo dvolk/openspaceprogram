@@ -4,6 +4,7 @@
 // (TerrainBody::ships) or, when aboard, by their ship (Vehicle::crew).
 #include "ships.h"
 
+#include <cassert>
 #include <cstdio>
 #include <fstream>
 #include <numbers>
@@ -112,10 +113,17 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
                                TerrainBody *hb, const ScenarioDef *sc, System &sys,
                                double t, const StaticBuilding *site)
 {
-    // slot = how many ships already sit on this (body, scenario)
+    /* slot = how many live vessels already share this (body, scenario), which
+       only ever feeds spawn_vehicle's orbit spread. Pads do not slot: a pad
+       ship stands on its site. A character parked inside a capsule is not a
+       vessel; one that has walked out is (Kerbal::home/scenario come from its
+       ship, so a free EVA kerbal does take a slot). */
     int slot = 0;
-    for(auto *s : collectVehicles(sys)) {
-        if(s->home == hb && s->scenario == sc) { slot++; }
+    if(!sc->on_pad) {
+        for(auto *s : collectVehicles(sys)) {
+            if(s->isCrewAboard()) { continue; }
+            if(s->home == hb && s->scenario == sc) { slot++; }
+        }
     }
 
     // name: the caller's, else the def's; de-duplicated across the system
@@ -123,11 +131,15 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     if(nm.empty()) { nm = "Ship"; }
     nm = dedupName(sys, nm);
 
+    /* A named site only means anything for a pad scenario: supportMargin below
+       reads the site's hull as what the ship rests on, which is a lie if the
+       base comes from terrain instead. */
+    assert(site == nullptr || sc->on_pad);
+
     /* Pad scenarios stand on a world building (system JSON world_buildings).
        No site -> the first VAB_LAUNCH_PAD (or the polar one for pad-polar). */
     glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     glm::dmat3 pad_orient = faceAlong(pad_dir);
-    double pad_height = 5.0;
     if(sc->on_pad) {
         if(site == nullptr) {
             site = find_launch_site(hb, "", sc->polar);
@@ -139,7 +151,6 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
         }
         pad_dir = site->dir;
         pad_orient = buildingOrient(pad_dir, site->heading_deg * std::numbers::pi / 180.0);
-        pad_height = site->height_m;
     }
 
     /* the kerbal def (root part type "kerbal") builds the EVA subclass
@@ -155,13 +166,18 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     v->m_parent = hb;
     v->sun = sun;
     v->frame = hb->rot_frame;
-    // lateral pad slot (pad local X) so pad ships stand side by side; for
-    // orbit scenarios this is only staging -- spawn_vehicle repositions.
-    const glm::dvec3 pad_origin = (sc->on_pad && site != nullptr)
+    /* A pad ship stands ON its site deck. Two ships on one pad share that
+       pose: whether an occupied pad is a problem, and what to do about it
+       (survey the deck, offer to move or delete the intruder), is a gameplay
+       decision, not placement arithmetic. The lateral per-slot offset here was
+       the debug era's doing, when spawning a ship also invented a pad under
+       it; with the pads as world content it walked every ship but the first
+       off the deck and left it hanging at deck height over bare terrain.
+       Non-pad scenarios only need a staging pose -- spawn_vehicle repositions
+       them -- so the 5 m lift is throwaway there. */
+    const glm::dvec3 base = (sc->on_pad && site != nullptr)
         ? site->origin()
-        : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + pad_height);
-    const glm::dvec3 base = pad_origin
-        + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
+        : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + 5.0);
     // What the vessel will actually rest on: a pad is a static convex hull,
     // so its own margin is what the ship's hull margin meets. Non-pad
     // scenarios get repositioned by spawn_vehicle, so the lift is throwaway

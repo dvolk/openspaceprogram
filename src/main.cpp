@@ -416,7 +416,8 @@ int main(int argc, char **argv)
     /* The ships are built from JSON: the parts catalog (res/data/parts.json)
        supplies each part's mass + behavior, the ship defs supply the stack
        order + offsets, and the start-ship list supplies one entry per ship.
-       Ships sharing a (body, scenario) pair are slotted. */
+       Ships sharing a (body, scenario) pair get spaced apart in orbit; pad
+       ships all stand on the same site. */
     Ships ships(args.parts_file, partsshader, sun);
 
     /* World buildings (res/data/buildings.json + the system's world_buildings):
@@ -637,7 +638,7 @@ int main(int argc, char **argv)
         check_gl_error();
         // Scenarios first (they are what position the ships), then park the
         // idle ones -- both before the camera is constructed, so it focuses
-        // on the spawn point. Shared with the title screen's New Game.
+        // on the spawn point.
         game.settleFleet(first);
         /* The active (player-controlled) ship: the first one built; F6 / the
            SHIPS window switch it. Assigned directly rather than through

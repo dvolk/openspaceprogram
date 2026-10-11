@@ -85,7 +85,8 @@ public:
     Frame *frame = nullptr;
     // Ownership bookkeeping: a ship lives in the ships list of its SOI body
     // (terrain.h). `home` is the body the ship was built on (fixed),
-    // `scenario` its starting scenario, `slot` its pad/orbit slot.
+    // `scenario` its starting scenario, `slot` its orbit slot (how many live
+    // vessels already shared that body+scenario at build time; pads ignore it).
     // `crew` are the characters aboard THIS ship (their capsule slot is
     // Kerbal::aboardPart, eva.h).
     TerrainBody *home = nullptr;
@@ -863,9 +864,10 @@ const char *scenario_name_at(size_t i);
 // coordinate axis most orthogonal to dir (never singular for a unit dir).
 glm::dmat3 faceAlong(const glm::dvec3 &dir);
 
-/* slot_offset (m): lateral separation for ships sharing a scenario --
+/* slot_offset (m): lateral separation for ships sharing an orbit scenario --
    applied along the orbit binormal so each ship's orbit stays essentially
-   the same shape. 0 for a lone ship (and no-op for pad scenarios). */
+   the same shape. 0 for a lone ship. Pad scenarios ignore it: a pad ship
+   stands on its site, whoever else is standing there too. */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                    System &sys, double slot_offset, double t);
 

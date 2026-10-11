@@ -323,9 +323,10 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir)
     return glm::dmat3(x, y, z);
 }
 
-/* slot_offset (m): lateral separation for ships sharing a scenario --
+/* slot_offset (m): lateral separation for ships sharing an orbit scenario --
    applied along the orbit binormal, so each ship's orbit stays essentially
-   the same shape. 0 for a lone ship (and no-op for pad scenarios). */
+   the same shape. 0 for a lone ship. Pad scenarios ignore it: the ship is
+   already standing on its site (Ships::place_ship_def). */
 void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                           System &sys, double slot_offset, double t)
 {

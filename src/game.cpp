@@ -925,9 +925,9 @@ void Game::switchSystem(const std::string &path,
 }
 
 void Game::settleFleet(Vehicle *active) {
-    /* Apply each ship's scenario. Ships sharing a body+scenario group get
-       their own slot (20 m apart) so they do not spawn on top of each other;
-       ships placed with a null scenario are skipped. */
+    /* Apply each ship's scenario. Ships sharing an orbit scenario get spaced
+       apart by their slot so they do not spawn on one conic; pad ships stand
+       on their site and ships placed with a null scenario are skipped. */
     ships.apply_scenarios(sys, time);
     /* Idle ships park on rails: flying ones coast on their conic, pad ships
        freeze in the surface frame. Ships that are neither in free fall nor
