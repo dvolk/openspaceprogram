@@ -56,5 +56,9 @@ void drawSaveLoad(Game &g);
 // The VAB editor's widgets.
 void drawVabUI(Game &g);
 
+// Draw the question card (Game::ask). After the scene's UI pass, before
+// drawToasts: above every window, below the toasts.
+void drawQuestion(Game &g);
+
 // Draw live toasts on the foreground list (must float above all windows).
 void drawToasts(Game &g);

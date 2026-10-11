@@ -5,6 +5,8 @@
 #include <SDL3/SDL.h>   // Uint32
 
 #include <chrono>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -199,6 +201,17 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
     }
     return { biomeAt(dir, body->params()), situation };
 }
+
+/* The question card (drawQuestion, gameui.cpp): one prompt, a row of choices,
+   answered on a LATER frame. Immediate mode has no blocking ask(), so a
+   caller asks and the answer arrives through onAnswer -- which therefore must
+   capture IDENTITY (a name, a building id), never a pointer to the subject:
+   the subject can be gone by the time the player answers. */
+struct Question {
+    std::string text;
+    std::vector<std::string> labels;   // one button each, in order
+    std::function<void(int choice)> onAnswer;
+};
 
 struct Game {
     // --- borrowed subsystems (main creates + deletes) ---------------------
@@ -693,6 +706,14 @@ struct Game {
     // toast() minus the on-screen part: just the "[toast] ..." console line.
     // Scene transitions use this (the move is visible; the line stays an anchor).
     void toastLog(const char *fmt, ...);
+    /* Put up the question card, replacing any question already up. onAnswer
+       runs on a later frame with the chosen index (see Question). */
+    void ask(std::string text, std::vector<std::string> labels,
+             std::function<void(int choice)> onAnswer);
+    /* Close the card, then run its onAnswer. Closing first so a callback may
+       ask() again. No-op with no card up. */
+    void answerQuestion(int choice);
+    std::unique_ptr<Question> question;   // null = no card up
     // Open (or focus) the part window for (ship, part). (mx,my) is the mouse
     // at pick; the window opens near it.
     void openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,

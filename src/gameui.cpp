@@ -2741,6 +2741,51 @@ void drawUIMap(Game &g) {
     });
 }
 
+/* The question card (Game::ask). Deliberately NOT in the window table
+   (uiwins.h), following drawToasts rather than drawWin: a card must show in
+   every scene and must not vanish on TAB, and the table's three gates --
+   scene membership, TAB hiding, default_open -- are each a way for a dialog
+   to compile, run, and silently never draw. ui::Window still gives it the
+   shared slot layout.
+
+   Called after the scene's whole UI pass and before drawToasts, so it sits
+   above every window while toasts still float above it. */
+void drawQuestion(Game &g) {
+    if(!g.question) { return; }
+    static const ui::Options opts = []{
+        ui::Options o;
+        o.slot = ui::Slot::Center;
+        o.fixed = true;              // no move, no resize; re-placed each frame
+        o.fixed_width = 34.0f;       // font/DPI-relative; height fits content
+        return o;
+    }();
+
+    int choice = -1;
+    const bool drew = ui::Window("Question", opts, [&]{
+        ImGui::TextWrapped("%s", g.question->text.c_str());
+        ImGui::Spacing();
+        const int n = (int)g.question->labels.size();
+        if(n == 0) { return; }
+        // Equal-width buttons across the card. Fixed width is what keeps a
+        // long label from overflowing the button, which is what killed the
+        // inline arm/confirm this replaces.
+        const float gap = ImGui::GetStyle().ItemSpacing.x;
+        const float bw = (ImGui::GetContentRegionAvail().x - gap * (n - 1)) / n;
+        for(int i = 0; i < n; i++) {
+            if(i > 0) { ImGui::SameLine(); }
+            if(ImGui::Button(g.question->labels[i].c_str(), ImVec2(bw, 0.0f))) {
+                choice = i;
+            }
+        }
+    });
+    // The invariant whose absence let the last attempt come back "done" while
+    // drawing nothing: a pending question must produce pixels.
+    assert(drew && "question pending but the card did not draw");
+    // Answered after End(): answerQuestion destroys g.question, and the body
+    // above is still reading it.
+    if(choice >= 0) { g.answerQuestion(choice); }
+}
+
 void drawToasts(Game &g) {
     const double now = SDL_GetTicks() * 0.001;
     std::vector<const ToastMsg *> live;
@@ -2925,11 +2970,22 @@ static void navSpaceCenter(Game &g, float bw) {
 }
 
 /* The hub's bottom nav row: the exits, drawn by the shell between the shared
-   toggles and "Quit game". */
+   toggles and "Quit game".
+
+   The confirm lives on the card, not on the button. An earlier attempt armed
+   on the first click and confirmed on the second, which overflowed the button
+   and read as a glitch (dropped in 0eb0597). Esc at a hub-as-floor stays
+   instant: one Esc from a live flight was always the argument for not gating
+   it, and the card is for the button a player aims at. */
 static void navSpaceCenterExit(Game &g, float bw) {
     if(ImGui::Button("Return to title", ImVec2(bw, 0.0f))) {
-        setWinOpen(W_SpaceCenterMenu, false);
-        g.quitToTitle();
+        g.ask("Return to the title screen?\n\nThe current flight is left behind.",
+              {"Return", "Stay"},
+              [&g](int choice) {
+            if(choice != 0) { return; }
+            setWinOpen(W_SpaceCenterMenu, false);
+            g.quitToTitle();
+        });
     }
 }
 

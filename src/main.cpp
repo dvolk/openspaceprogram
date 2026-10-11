@@ -1562,6 +1562,11 @@ int main(int argc, char **argv)
             // The imgui pass: the live scene's widget set.
             sc.drawUi(game);
 
+            // A pending question (g.ask) over every window of whatever scene
+            // is live -- deliberately outside the scene's widget set, so a
+            // card cannot be hidden by scene membership or TAB.
+            drawQuestion(game);
+
             // One-shot messages (g.toast): above everything, including the
             // menu (drawToasts, gameui.cpp).
             drawToasts(game);

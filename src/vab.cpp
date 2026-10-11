@@ -589,16 +589,34 @@ void vabLaunch(Game &g) {
         /* One deck, one ship (#231). Standing a second ship inside the first
            is not a cosmetic stack: they are inside each other's 10 m grounded
            proximity radius, so the railed one wakes on the first tick and the
-           pair torque each other. Refuse and name the obstruction -- the
-           player can go delete it from the Ship List's "x", or pick another
-           site. Offered deletion is the follow-up; for now the message says
-           what is in the way. */
+           pair torque each other. Ask rather than tell -- the out is right
+           there. Nothing silently relocates. */
         if(Vehicle *blocker = findPadOccupant(site)) {
-            g.toast("Launch refused: %s is on %s",
-                    blocker->name.c_str(), site->display_name.c_str());
             printf("[vab] launch refused: '%s' occupies '%s'\n",
                    blocker->name.c_str(), site->id.c_str());
             fflush(stdout);
+            /* Deferred by construction: the card answers on a later frame, so
+               the callback re-finds the occupant instead of holding this
+               pointer, and re-resolves the site by ID rather than trusting
+               the player hasn't changed the dropdown. remove_ship's own
+               guards (crew aboard, last ship) do the refusing -- a pad ship
+               always carries crew, so clearing one today means EVA-ing its
+               crew out first. A crew policy for pad clearing is the open
+               half of #231. */
+            TerrainBody *padBody = hb;
+            std::string siteId = site->id;
+            g.ask(blocker->name + " is standing on " + site->display_name
+                    + ". Clear the pad?",
+                  {"Clear the pad", "Cancel"},
+                  [&g, padBody, siteId](int choice) {
+                if(choice != 0) { return; }
+                Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId, false));
+                if(occ == nullptr) {
+                    g.toast("The pad is clear now");
+                    return;
+                }
+                g.remove_ship(occ);
+            });
             return;
         }
     }

@@ -1,0 +1,25 @@
+# The question card (Game::ask + drawQuestion), at the site an inline
+# arm/confirm once occupied: the first click armed "Return to title" and the
+# second confirmed, which overflowed the button and read as a glitch, so
+# 0eb0597 dropped it. The confirm was wanted; the inline form was not.
+#
+# The card is drawn OUTSIDE the window table (uiwins.h), following drawToasts.
+# That is deliberate and it is the whole risk surface: drawWin gates on scene
+# membership, TAB hiding and default_open, and each gate is a way for a dialog
+# to compile, run and silently never draw -- which is how a previous attempt
+# came back "done" showing nothing. So this pins that the card exists as LIVE
+# imgui widgets (--ui-list reads the live registry, not a source grep), and
+# that declining routes: "Stay" answers and nothing transitions.
+NAME question-stay
+ARGS --new-game 1000 --timeout 8
+ARGS --ui-click 2500,"Game Menu/Return to title"
+ARGS --ui-list 3000
+ARGS --ui-click 3400,"Question/Stay"
+EXPECT [ask] Return to the title screen?
+EXPECT [Return | Stay]
+EXPECT window="Question" label="Return"
+EXPECT window="Question" label="Stay"
+EXPECT [ask] answered 1
+FORBID [scene] spacecenter -> title
+FORBID GL_
+FORBID error:

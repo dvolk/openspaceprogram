@@ -243,6 +243,50 @@ void Game::toastLog(const char *fmt, ...) {
     fflush(stdout);
 }
 
+// "A | B | C" for the [ask] line, so a test can assert the choices exist.
+static std::string joinLabels(const std::vector<std::string> &labels) {
+    std::string out;
+    for(size_t i = 0; i < labels.size(); i++) {
+        if(i) { out += " | "; }
+        out += labels[i];
+    }
+    return out;
+}
+
+// A question's text wraps on screen; the log line must not, or an e2e EXPECT
+// (a substring of one line) can never match the choices that follow it.
+static std::string oneLine(const std::string &s) {
+    std::string out = s;
+    for(char &c : out) {
+        if(c == '\n' || c == '\r') { c = ' '; }
+    }
+    return out;
+}
+
+/* The question card is drawn by the UI pass (drawQuestion, gameui.cpp); this
+   only holds the pending question. Mirrored to stdout like a toast, because a
+   card the player can dismiss is also a card a test must be able to see. */
+void Game::ask(std::string text, std::vector<std::string> labels,
+               std::function<void(int choice)> onAnswer) {
+    question = std::make_unique<Question>();
+    question->text = std::move(text);
+    question->labels = std::move(labels);
+    question->onAnswer = std::move(onAnswer);
+    printf("[ask] %s  [%s]\n", oneLine(question->text).c_str(),
+           joinLabels(question->labels).c_str());
+    fflush(stdout);
+}
+
+void Game::answerQuestion(int choice) {
+    if(!question) { return; }
+    printf("[ask] answered %d\n", choice);
+    fflush(stdout);
+    // Close before firing: an answer may open the next question.
+    auto fn = std::move(question->onAnswer);
+    question.reset();
+    if(fn) { fn(choice); }
+}
+
 /* Part windows: open (or focus) the window for a picked part. Picking the
    same part again just re-focuses (one window per part). */
 void Game::openPartWindow(Vehicle *ship, size_t part, const glm::dvec3 &point,
