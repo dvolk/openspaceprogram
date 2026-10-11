@@ -418,7 +418,9 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
 }
 
 // Rebuild one kerbal (a one-part Vehicle) from its ship def + aboard state.
-// The kerbal's fuel (its RCS suit) is NOT saved -- it seeds full on load.
+// The suit tank's contents ARE saved (SaveShip::suit_fuel) and restored
+// below -- build_ship's init() re-seeds them full, so the restore is what
+// keeps a partly-burned suit partly-burned across a save/load.
 // An aboard kerbal is parked inside its capsule (out of the world); its mass
 // is carried by the containment edge, so the capsule's compound is rebuilt
 // AFTER the edge is set. `savedUidToPart` spans every ship file and is what
