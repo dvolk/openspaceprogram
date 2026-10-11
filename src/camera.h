@@ -23,6 +23,17 @@ public:
     int viewport_w = 1;   // window size [px]; setViewport() on create/resize
     int viewport_h = 1;   // used for screen-space terrain LOD (GeoPatch::Update)
 
+    /* Frustum half-angle sines/cosines (vertical fov, horizontal = fov*aspect),
+       rebuilt whenever the projection is. For the draw-pass culling test:
+       with (xv,yv,zv) a point in VIEW space (zv = depth in front of the
+       camera), it is inside the side planes iff
+         zv*frustumSinX - fabs(xv)*frustumCosX >= 0   (same for Y)
+       and a bounding sphere of radius r is not provably outside iff that
+       quantity is >= -r. There is no far plane: the projection is
+       reverse-Z infinite-far (camera.cpp). */
+    double frustumSinX = 1.0, frustumCosX = 0.0;
+    double frustumSinY = 1.0, frustumCosY = 0.0;
+
     // Origin of the render frame in world coords (e.g. the active ship's
     // COM). The view is built in this frame so the float32 MVP cast
     // quantizes ship-relative numbers, not planet-scale ones. Geometry drawn
@@ -91,6 +102,10 @@ private:
     // Unit focus->camera offset in the ref frame, from the turntable angles.
     // Pitch positive toward ref -ẑ so Pitch()/RotateY() keep their old feel.
     glm::dvec3 orbitOffset() const;
+
+    // Refresh frustumSinX/CosX/SinY/CosY from fov and aspect (call whenever
+    // either changes -- the projection is rebuilt at the same sites).
+    void computeFrustumAngles();
 
     // Shared view-matrix construction (NaN-safe when looking along up).
     // cam is the camera position in the render frame; Orbit passes the more

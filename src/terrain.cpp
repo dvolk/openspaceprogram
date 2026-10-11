@@ -177,7 +177,39 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     body->alive.insert(this);
 }
 
+/* Conservative bounding-sphere frustum test for one patch (#120). The sphere
+   is centred on the patch's surface centroid; a radius of 2x the patch width
+   covers the corner bulge (half-diagonal ~0.71w), the skirt flare (one grid
+   cell = w/48) and the relief across the patch -- that last term is the only
+   one the bound is not PROVEN to cover: it assumes the height across a patch
+   varies by less than 1.29x its width, which the grid's band-limiting
+   (terragen.h: wavelengths below 2 grid cells are filtered) gives for the
+   shipped bodies, but which nothing asserts. Storing a per-patch min/max
+   height at build time would make it exact. View-space test against the side
+   planes and the near plane; there is no far plane (reverse-Z infinite-far
+   projection). Returns true when the patch provably cannot contribute a
+   pixel. Internal nodes are tested too, so one rejection drops a subtree. */
+static bool patchCulled(const GeoPatch *p, const TerrainBody *body,
+                        const Camera *camera) {
+    const glm::dvec3 wc = body->transform
+        * glm::dvec4(p->centroid_height * (glm::dvec3)p->centroid, 1.0);
+    const glm::dvec4 vs = camera->GetView()
+                        * glm::dvec4(wc - camera->GetRenderOrigin(), 1.0);
+    const double zv = -vs.z;                       // depth in front of camera
+    const double rad = p->width_m * 2.0;
+    const double mNear = zv - (double)camera->zNear + rad;
+    const double mX = zv * camera->frustumSinX - std::fabs(vs.x) * camera->frustumCosX + rad;
+    const double mY = zv * camera->frustumSinY - std::fabs(vs.y) * camera->frustumCosY + rad;
+    if(mNear < 0) { return true; }
+    if(mX < 0) { return true; }
+    if(mY < 0) { return true; }
+    return false;
+}
+
 void GeoPatch::Draw(const Camera* camera, bool skirt_pass) {
+    if(patchCulled(this, body, camera)) {
+        return;   // the whole subtree is off-frustum
+    }
     if(kids[0] == NULL) {
         // Per-patch MVP: the mesh is baked relative to `anchor`, composed
         // into the modelview in DOUBLE, so the float32 uniform and the

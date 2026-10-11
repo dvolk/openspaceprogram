@@ -15,8 +15,20 @@ static glm::mat4 reverseZInfinitePerspective(float fov, float aspect, float zNea
         0.0f, 0.0f, zNear, 0.0f);  // col 3: clip.w = -view.z
 }
 
+// Half-angle sines/cosines for the draw-pass culling test (see camera.h).
+// fov is VERTICAL; the horizontal half-angle comes from fov*aspect.
+void Camera::computeFrustumAngles() {
+    const double hy = (double)fov * 0.5;
+    // tan(horizontal half) = tan(vertical half) * aspect.
+    const double hx = std::atan(std::tan(hy) * (double)aspect);
+    frustumSinY = std::sin(hy); frustumCosY = std::cos(hy);
+    frustumSinX = std::sin(hx); frustumCosX = std::cos(hx);
+}
+
 void Camera::setAspect(float _aspect) {
+    this->aspect = _aspect;
     this->projection = reverseZInfinitePerspective(fov, _aspect, zNear);
+    computeFrustumAngles();
 }
 
 void Camera::setViewport(int w, int h) {
@@ -27,6 +39,7 @@ void Camera::setViewport(int w, int h) {
 void Camera::setFov(float _fov) {
     this->fov = _fov;
     this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
+    computeFrustumAngles();
 }
 
 const glm::dvec3& Camera::GetPos() const {
@@ -52,6 +65,7 @@ glm::dmat4 *Camera::GetView_() {
 Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear, float zFar)
     : fov(fov), aspect(aspect), zNear(zNear), zFar(zFar) {
     this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
+    computeFrustumAngles();
     // Derive pos/forward/up once so a caller that reads them before the
     // first ComputeView() gets sensible values.
     this->mode = CAM_ORBIT;
