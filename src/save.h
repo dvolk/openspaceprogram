@@ -753,6 +753,44 @@ inline std::string find_slot(const std::string &base, const std::string &slot) {
     return n == 1 ? found + "/" + slot : "";
 }
 
+// The most recently WRITTEN save under base, as "<game dir>/<slot>"; "" when
+// base holds none. Recency is the save.json mtime, NOT the game dir's start
+// stamp: the save a player means by "last" is the one they last wrote, which
+// may belong to a playthrough started long ago. Ties break on the path so the
+// pick never depends on directory_iterator order.
+//
+// The game layout only -- a legacy flat saves/<slot>/ is not a game and is
+// not offered, the same call list_games makes.
+inline std::string latestSave(const std::string &base) {
+    namespace fs = std::filesystem;
+    std::vector<std::pair<std::string, fs::file_time_type>> slots;
+    std::error_code ec;
+    auto it = fs::directory_iterator(base, ec);
+    if(ec) { return ""; }   // base missing or not a directory
+    for(const auto &entry : it) {
+        if(!fs::is_directory(entry)) { continue; }
+        const std::string game = entry.path().filename().string();
+        for(const std::string &slot : list_saves(entry.path().string())) {
+            // The FILE's mtime, not the slot dir's: a save overwrites
+            // save.json in place, which does not move the dir's mtime.
+            const fs::path meta = entry.path() / slot / "save.json";
+            ec.clear();
+            const fs::file_time_type t = fs::last_write_time(meta, ec);
+            if(ec) { continue; }   // stat failed: skip rather than throw
+            slots.push_back({game + "/" + slot, t});
+        }
+    }
+    if(slots.empty()) { return ""; }
+    const auto newest = std::max_element(slots.begin(), slots.end(),
+                                         [](const auto &a, const auto &b) {
+                                             if(a.second != b.second) {
+                                                 return a.second < b.second;
+                                             }
+                                             return a.first < b.first;
+                                         });
+    return newest->first;
+}
+
 // ---- quicksaves: a rotating pool of 100 slots in a game dir -------------
 // quicksave-00 .. quicksave-99. F5 writes quicksave-<max NN + 1>; once the
 // pool is full (or max NN is 99) it OVERWRITES the oldest slot by mtime. F9

@@ -1027,6 +1027,69 @@ int main() {
         CHECK(latestQuicksave(base) == "quicksave-99");
         fs::remove_all("tmp/test_save_quickfull");
     }
+    {
+        // latestSave: the newest save anywhere under saves/, which is what the
+        // title menu's "Load last save" offers. Recency is the save.json
+        // WRITE time, not the game dir's start stamp -- the playthrough you
+        // were just in is usually not the newest one you started.
+        const std::string base = "tmp/test_save_latest";
+        fs::remove_all(base);
+        auto slot = [&](const std::string &s, int age) {
+            fs::create_directories(base + "/" + s);
+            {
+                std::ofstream f(base + "/" + s + "/save.json");
+                f << "{}";
+            }
+            std::error_code ec;
+            fs::last_write_time(base + "/" + s + "/save.json",
+                fs::file_time_type::clock::now() - std::chrono::seconds(age),
+                ec);
+        };
+        CHECK(latestSave(base).empty());
+        CHECK(latestSave("tmp/test_save_no_saves_dir").empty());
+
+        slot("20260101_000000-old_game/save1", 10);
+        CHECK(latestSave(base) == "20260101_000000-old_game/save1");
+        // A newer game dir whose slot was written earlier does not take over:
+        // the dir stamp is when the game STARTED, not when it was saved.
+        slot("20260909_000000-new_game/quicksave-00", 500);
+        CHECK(latestSave(base) == "20260101_000000-old_game/save1");
+        // ...and the newest write wins across the game boundary.
+        slot("20260909_000000-new_game/quicksave-01", 1);
+        CHECK(latestSave(base) == "20260909_000000-new_game/quicksave-01");
+        // A game dir with no slot, a dir that is not a slot (no save.json) and
+        // a legacy flat saves/<slot>/ are all invisible -- the same call
+        // list_games makes. The flat one is stamped newest on purpose.
+        fs::create_directories(base + "/20261010_000000-empty_game");
+        fs::create_directories(base + "/20261011_000000-no_slot/save1");
+        fs::create_directories(base + "/legacy_flat");
+        {
+            std::ofstream f(base + "/legacy_flat/save.json");
+            f << "{}";
+        }
+        std::error_code ec;
+        fs::last_write_time(base + "/legacy_flat/save.json",
+            fs::file_time_type::clock::now() + std::chrono::seconds(1000), ec);
+        CHECK(latestSave(base) == "20260909_000000-new_game/quicksave-01");
+        fs::remove_all(base);
+
+        // An exact mtime tie breaks on the path, so the answer never depends
+        // on directory_iterator order.
+        auto tie_slot = [&](const std::string &s) {
+            fs::create_directories(base + "/" + s);
+            {
+                std::ofstream f(base + "/" + s + "/save.json");
+                f << "{}";
+            }
+            std::error_code tec;
+            const auto same = fs::file_time_type::clock::now();
+            fs::last_write_time(base + "/" + s + "/save.json", same, tec);
+        };
+        tie_slot("20260101_000000-aaa/save1");
+        tie_slot("20260101_000000-bbb/save1");
+        CHECK(latestSave(base) == "20260101_000000-bbb/save1");
+        fs::remove_all(base);
+    }
 
     if(failures) {
         printf("test_save: %d FAILURE(S)\n", failures);

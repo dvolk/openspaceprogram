@@ -2924,6 +2924,29 @@ static void drawMenuWindow(Game &g, Win win, bool isRoot, const char *heading,
 /* The per-scene navigation blocks, drawn between the heading and the shared
    items. Each closes its own menu before the transition it starts. */
 static void navTitle(Game &g, float bw) {
+    /* "Load last save" only exists when there is something to resume, and
+       "last" means the newest save by WRITE time, not the newest game dir
+       (save.h:latestSave). The scan walks saves/, and this menu is Root --
+       open every frame at the title -- so the answer refreshes at ~1 Hz
+       rather than per frame. It is cached as a path, never a pointer: the
+       slot can be deleted from the Save/Load window between frames, and
+       loadFrom fails (and toasts) if the dir is gone by the click. */
+    static const double kRescanSec = 1.0;
+    static double nextRescan = 0.0;
+    static std::string last;
+    if(ImGui::GetTime() >= nextRescan) {
+        nextRescan = ImGui::GetTime() + kRescanSec;
+        last = latestSave(datadir::saves());
+    }
+    // Above "New Game": resuming beats starting over when there is a save.
+    if(!last.empty() && ImGui::Button("Load last save", ImVec2(bw, 0.0f))) {
+        const size_t slash = last.find('/');   // latestSave: "<game>/<slot>"
+        const std::string game = gameDirName(last.substr(0, slash));
+        const std::string slot = last.substr(slash + 1);
+        if(g.loadFrom(datadir::saves() + "/" + last)) {
+            g.toast("Loaded %s / %s", game.c_str(), slot.c_str());
+        }
+    }
     // Opens the New Game setup sheet (system + difficulty) rather than
     // starting immediately; there is no game to go back to yet.
     if(ImGui::Button("New Game", ImVec2(bw, 0.0f))) {

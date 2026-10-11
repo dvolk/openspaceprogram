@@ -2,11 +2,13 @@
 """E2E battery: run e2e/cases/*.txt against the game binary.
 
 Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
-Case keys: NAME ARGS EXPECT FORBID CHECK LIMIT WRITE. CHECK sees out and
+Case keys: NAME ARGS EXPECT FORBID CHECK LIMIT WRITE SEED. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/terrain/surf/
 xfer/porkchop/surfmap/mapb) plus first/last/re. ARGS tokenizes like a shell, so
-a value may be quoted to carry spaces. Full battery and --jobs>2 need
---force. Artifacts land in tmp/e2e/runs/<stamp>/ + history.csv.
+a value may be quoted to carry spaces. SEED <fixture> <path-under-data-dir>
+[AGE_DAYS] stages an existing save into the case's scratch --data-dir. Full
+battery and --jobs>2 need --force. Artifacts land in tmp/e2e/runs/<stamp>/ +
+history.csv.
 """
 
 import argparse
@@ -131,6 +133,7 @@ def parse_cases(path):
     forbid = []
     check = []
     writes = []
+    seeds = []
     limit = DEFAULT_LIMIT
     with open(path) as f:
         for raw in f:
@@ -158,6 +161,21 @@ def parse_cases(path):
             elif key == "WRITE":
                 wpath, _, wcontent = rest.partition(" ")
                 writes.append((wpath.strip(), wcontent.strip()))
+            elif key == "SEED":
+                # SEED <fixture dir> <dest under the scratch data dir>
+                # [AGE_DAYS]: stages an existing save tree, which is how a
+                # case reaches the state "the player already has saves"
+                # without running the game twice. AGE_DAYS re-stamps the
+                # seeded save.json that many days old, because a checkout
+                # gives every fixture the same mtime and "which save is
+                # last?" is decided by mtime.
+                src, _, rest2 = rest.partition(" ")
+                dst, _, age = rest2.partition(" ")
+                src, dst, age = src.strip(), dst.strip(), age.strip()
+                if not src or not dst:
+                    raise ValueError("%s: SEED needs <fixture> <dest>"
+                                     % os.path.basename(path))
+                seeds.append((src, dst, int(age) if age else None))
             else:
                 raise ValueError("%s: unknown key %r" % (os.path.basename(path), key))
     if not args:
@@ -169,6 +187,7 @@ def parse_cases(path):
         "forbid": forbid,
         "check": check,
         "writes": writes,
+        "seeds": seeds,
         "limit": limit,
     }
 
@@ -471,12 +490,16 @@ def run_case(case):
         pass
 
     # Scratch --data-dir per case so settings/saves cannot leak between runs.
+    # saves/ is wiped, not just settings.json: a case that saves leaves the
+    # slot on disk, and a later run of any case that asks "does the player
+    # have a save?" would answer for the previous run instead.
     data_dir = os.path.join(REPO_ROOT, "tmp", "e2e", "data", case["name"])
     os.makedirs(data_dir, exist_ok=True)
     try:
         os.remove(os.path.join(data_dir, "settings.json"))
     except FileNotFoundError:
         pass
+    shutil.rmtree(os.path.join(data_dir, "saves"), ignore_errors=True)
 
     # WRITE staging (after cleanup so a fixture is live for exactly this
     # case). settings.json goes in the scratch data dir (datadir.h).
@@ -486,6 +509,18 @@ def run_case(case):
                   else os.path.join(REPO_ROOT, wpath))
         with open(target, "w") as wf:
             wf.write(wcontent)
+
+    # SEED staging: an existing save tree under the scratch data dir, so a
+    # case can boot straight into "there is a save to resume".
+    for src, dst, age_days in case.get("seeds", []):
+        shutil.copytree(os.path.join(REPO_ROOT, src),
+                        os.path.join(data_dir, dst))
+        if age_days is not None:
+            # copytree preserves the fixture's mtime, and every fixture shares
+            # one (the checkout time), so an age has to be stamped explicitly.
+            meta = os.path.join(data_dir, dst, "save.json")
+            t = time.time() - age_days * 86400.0
+            os.utime(meta, (t, t))
 
     cmd = build_cmd(game, case["args"] + ["--data-dir", data_dir])
     env = launch_env(game)
