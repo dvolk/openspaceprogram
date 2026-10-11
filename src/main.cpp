@@ -1086,8 +1086,9 @@ int main(int argc, char **argv)
                    vals[i] / (double)p_frames,
                    (p_total > 0.0) ? (vals[i] * 100.0 / p_total) : 0.0);
         }
-        printf("  %-7s avg %9.4f ms  (frame total, incl. frame-cap sleep)\n",
-               "total", p_total / (double)p_frames);
+        printf("  %-7s avg %9.4f ms  (frame work only, EXCLUDES the "
+               "--frame-cap sleep)\n", "total",
+               p_total / (double)p_frames);
         if(p_idled > 0) {
             // No interval here: with a --frame-cap slower than the idle
             // budget, the cap is what paced those frames. The interval the
