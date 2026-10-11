@@ -808,9 +808,13 @@ struct System;
 void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader);
 
 /* Instantiate a ship def on a pad: build the part tree, seed the tanks full,
-   place the ship's lowest point on the pad top, and enter the physics world. */
+   place the ship's inflated hull bottom on the pad top, and enter the physics
+   world. `supportMargin` is the collision margin (m) of the surface at `base`
+   (a pad's own hull margin), which the ship's hull margin adds to. Pass 0 when
+   `base` is throwaway -- the caller re-places the vessel right after. */
 void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
-                const glm::dvec3 &base, const glm::dmat3 &orient);
+                const glm::dvec3 &base, const glm::dmat3 &orient,
+                double supportMargin);
 
 /* Starting scenario (chosen at the CLI on startup). The pad scenarios are
    already set up in main (the ship is built on the pad); the orbit scenarios

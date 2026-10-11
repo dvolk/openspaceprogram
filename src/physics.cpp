@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <algorithm>
 
 #include "physics.h"
 #include "body.h"
@@ -19,16 +20,31 @@
 
 PhysicsEngine *physics;
 
-/* The default convex-hull collision margin (m), overridable per part
-   (res/data/parts.json), per ship (ShipDef::hull_margin, which wins) and
-   wholesale by OSP_HULL_MARGIN. build_ship's pad lift assumes the default
-   (shift = -lowest + 0.6 = terrain 0.5 + hull 0.1). The margin also reaches
-   the mass properties: a convex hull inherits a BOX inertia over the AABB
-   inflated by the margin -- not a free parameter. */
-static double hull_margin() {
-    const char *e = getenv("OSP_HULL_MARGIN");
-    if(e && e[0]) { return strtod(e, NULL); }
-    return 0.1;
+/* Collision margins (m). A convex hull and whatever it rests on each carry a
+   margin, and the two SUM to the visible gap: a ship on raw terrain floats
+   hull + terrain above the mesh, a ship on a space pad floats hull + hull
+   (a pad is a static convex hull, buildings.cpp). Anything that places a
+   vessel on a floor must read these rather than bake in a constant -- see
+   build_ship's lift and Kerbal::restAlt.
+
+   The margin also reaches the mass properties: a convex hull inherits a BOX
+   inertia over the AABB inflated by the margin, and Bullet's
+   btPolyhedralConvexShape::calculateLocalInertia adds the margin a SECOND
+   time on top of the already-inflated AABB. Not a free parameter. */
+static double envMargin(const char *name, double fallback) {
+    const char *e = getenv(name);
+    // A negative margin would invert the shape's AABB; the JSON paths reject
+    // it, so the env knobs reject it too.
+    if(e && e[0]) { return std::max(0.0, strtod(e, NULL)); }
+    return fallback;
+}
+
+double hullMargin() { return envMargin("OSP_HULL_MARGIN", 0.1); }
+
+double terrainMargin() { return envMargin("OSP_TERRAIN_MARGIN", 0.5); }
+
+double effectiveHullMargin(const Body *body) {
+    return (body->hull_margin >= 0.0) ? body->hull_margin : hullMargin();
 }
 
 class GLDebugDrawer : public btIDebugDraw {
@@ -223,7 +239,7 @@ btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m,
 
     btBvhTriangleMeshShape *terrain
         = new btBvhTriangleMeshShape(mesh_interface, true, true);
-    terrain->setMargin(0.5);
+    terrain->setMargin((btScalar)terrainMargin());
 
     btDefaultMotionState* myMotionState =
         new btDefaultMotionState(startTransform);
@@ -291,8 +307,7 @@ void PhysicsEngine::BuildHull(Body *body) {
 
     /* the body carries the part's resolved margin (ship def > catalog,
        see resolveHullMargin); -1 when neither sets one */
-    const double margin = (body->hull_margin >= 0.0)
-                        ? body->hull_margin : hull_margin();
+    const double margin = effectiveHullMargin(body);
     hull->setMargin(margin);
     body->shape = hull;
 }

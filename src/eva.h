@@ -40,9 +40,11 @@ struct Kerbal : Vehicle {
         return (aboardPart != nullptr) ? aboardPart->owner : nullptr;
     }
 
-    // Capsule-center altitude above the analytic surface when standing at rest.
+    // Capsule-center altitude above the analytic surface when standing at
+    // rest: half the suit plus the two collision skins that meet there (see
+    // the margin block in physics.cpp).
     double restAlt() const {
-        return parts[0]->def->height / 2.0 + 0.6;
+        return parts[0]->def->height / 2.0 + hullMargin() + terrainMargin();
     }
 
     // Per-substep EVA law: walking + jump + upright on the ground, RCS +

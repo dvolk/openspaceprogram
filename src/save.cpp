@@ -442,7 +442,9 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
        load's `built` list yet, so the rollback would not free it -- delete
        it here. ~Vehicle drops the partially-attached parts. */
     try {
-        build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0));
+        // base 0 + no support margin: the saved pose is applied below, so
+        // build_ship's pad lift is throwaway here.
+        build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0), 0.0);
     } catch(...) {
         delete k;
         throw;

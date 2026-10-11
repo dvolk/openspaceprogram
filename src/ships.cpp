@@ -162,7 +162,13 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
         : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + pad_height);
     const glm::dvec3 base = pad_origin
         + pad_orient * glm::dvec3(20.0 * (double)slot, 0.0, 0.0);
-    build_ship(v, def, partsshader, base, pad_orient);
+    // What the vessel will actually rest on: a pad is a static convex hull,
+    // so its own margin is what the ship's hull margin meets. Non-pad
+    // scenarios get repositioned by spawn_vehicle, so the lift is throwaway
+    // there -- name raw terrain anyway rather than a made-up number.
+    const double supportMargin = site != nullptr
+        ? effectiveHullMargin(site->body) : terrainMargin();
+    build_ship(v, def, partsshader, base, pad_orient, supportMargin);
     if(is_kerbal) {
         // frictionless feet: foot friction would pair with the walk force
         // into a tipping couple (see src/eva.cpp).
@@ -227,7 +233,9 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     // build it AT the capsule COM (it will be parked there, inside the ship)
     const glm::dvec3 capCom = ship->partPos(capPart);
     const glm::dmat3 capOrient = ship->partRot(capPart);
-    build_ship(k, def, partsshader, capCom, capOrient);
+    // build_ship's pad lift is throwaway here: the kerbal is parked at the
+    // capsule COM right below.
+    build_ship(k, def, partsshader, capCom, capOrient, 0.0);
     SetFriction(k->hull, 0.0);   // frictionless feet (see place_ship)
 
     // park inside the capsule (out of the physics world). The ship is

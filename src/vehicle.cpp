@@ -199,20 +199,27 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
 }
 
 void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
-                       const glm::dvec3 &base, const glm::dmat3 &orient)
+                       const glm::dvec3 &base, const glm::dmat3 &orient,
+                       double supportMargin)
 {
     build_ship_structure(ship, def, partsshader);
     ship->init();  // seed the tanks full (a pad ship lifts off with a full load)
-    /* Place it on the pad: the lowest point at the pad top, lifted by the
-       collision margins (terrain 0.5 + hull 0.1) so the inflated shapes just
-       touch instead of popping apart on the first solve. For orbit scenarios
-       this is only staging -- spawn_vehicle repositions. */
+    /* Place it on the pad: the inflated hull bottom at the pad top plus the
+       support's own margin, so the inflated shapes just touch instead of
+       popping apart on the first solve. Read the bottom off the part HULLS
+       (getAabb already inflates each by its own margin, and the transform
+       puts it in S) rather than the catalog radius/height, which are nominal
+       and leave the ship hanging high enough to fall for half a second. For
+       orbit scenarios this is only staging -- spawn_vehicle repositions. */
     double lowest = 1e30;
     for(size_t i = 0; i < ship->parts.size(); i++) {
         const Part *p = ship->parts[i];
-        lowest = std::min(lowest, p->localPos.z - p->def->height / 2.0);
+        btVector3 lo, hi;
+        p->body->shape->getAabb(Vehicle::toBt(p->localPos, p->localRot), lo, hi);
+        lowest = std::min(lowest, (double)lo.getZ());
     }
-    const glm::dvec3 shift = glm::dvec3(0.0, 0.0, -lowest + 0.6);
+    assert(lowest < 1e30 && "build_ship: a built ship has no parts to measure");
+    const glm::dvec3 shift = glm::dvec3(0.0, 0.0, supportMargin - lowest);
     // One write, not one per part: place frame S where the pad staging wants it.
     ship->placeShip(base + orient * shift, orient);
     ship->enterWorld();

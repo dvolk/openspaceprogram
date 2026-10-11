@@ -49,6 +49,19 @@ private:
 
 btRigidBody *addTerrainCollision(Mesh *m, const glm::dvec3 &anchor);
 void removeTerrainCollision(btRigidBody *b);
+
+/* The default convex-hull collision margin (m): OSP_HULL_MARGIN, else 0.1.
+   Every hull that carries no margin of its own gets this -- ship parts AND
+   static buildings (space pads), which are convex hulls too. */
+double hullMargin();
+/* The terrain triangle-mesh collision margin (m): OSP_TERRAIN_MARGIN, else
+   0.5. Only raw terrain uses this; a ship standing on a pad meets the pad's
+   hull margin instead. */
+double terrainMargin();
+/* The margin (m) a Body's hull actually got: its own hull_margin when set
+   (>= 0), else hullMargin(). Mirrors what BuildHull applies. */
+double effectiveHullMargin(const Body *body);
+
 void NeverSleep(Body *body);
 /* Unregister a body's rigid body from the world (call before `delete body`). */
 void RemoveBody(Body *body);
