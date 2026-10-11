@@ -2772,13 +2772,30 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
                         newFrame->root_orient * hullRot) < 1e-20);
     }
 
-    /* Angular velocity is deliberately NOT asserted here: it is not
-       re-expressed by this switch, and proceedToTransform does not zero it
-       (btRigidBody.cpp:221-224 is only setCenterOfMassTransform), so a ship's
-       spin crosses a frame boundary untransformed and without the frame's own
-       omega -- the rotational analogue of the 2*stasis error, and live. An
-       ang-velocity continuity assert would fire immediately; it belongs with
-       the fix, not before it. */
+    /* Angular velocity is the rotational analogue of the stasis terms just
+       above. The hull stores the spin RELATIVE to its frame, in that frame's
+       axes, so a switch must re-express it: add the OLD frame's omega, rotate
+       into the new frame's axes, subtract the NEW frame's. Leaving it alone
+       keeps |w| but rotates the spin axis by the frames' relative rotation --
+       measured at 257 rad/s of inertial-omega error on a 195 rad/s roll
+       crossing Mun (rotational) -> Mun (inertial), i.e. the tumble silently
+       re-axises on every launch and every reentry. With frame == newFrame the
+       expression is the identity, so (unlike the velocity) it needs no
+       reanchor gate. */
+    const glm::dvec3 wOld = GetAngVelocity(hull);
+    SetAngVelocity(hull, forient * (wOld + frame->omega()) - newFrame->omega());
+
+    /* Continuity tripwire, same shape as the pos/vel/attitude ones above: an
+       algebraic identity that fires only if the transform is wrong or
+       root_orient has drifted from orthonormal. */
+    {
+        const glm::dvec3 wNew = GetAngVelocity(hull);
+        const glm::dvec3 wiOld = frame->root_orient * (wOld + frame->omega());
+        const glm::dvec3 wiNew = newFrame->root_orient * (wNew + newFrame->omega());
+        const double wscale = glm::length(wiOld) + glm::length(frame->omega())
+                            + glm::length(newFrame->omega());
+        assert(glm::length(wiNew - wiOld) < 1e-9 * std::max(1.0, wscale));
+    }
 
     /* placeShip teleports the pose; it does NOT clear velocities (see above),
        so the live velocity is written back explicitly. */
