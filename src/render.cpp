@@ -624,9 +624,13 @@ void paintWorld(Game &g) {
             glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
+            // Additive and translucent: it must not write depth, or the plume
+            // occludes whatever is drawn after it (the skylines read depth).
+            glDepthMask(GL_FALSE);
             glDisable(GL_CULL_FACE);
             g.engine_plume_mesh->Draw();
             glEnable(GL_CULL_FACE);
+            glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
@@ -667,9 +671,11 @@ void paintWorld(Game &g) {
         glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE);
+        glDepthMask(GL_FALSE);   // additive/translucent: no depth writes
         glDisable(GL_CULL_FACE);
         g.engine_plume_mesh->Draw();
         glEnable(GL_CULL_FACE);
+        glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
@@ -754,6 +760,9 @@ void paintWorld(Game &g) {
         // XY plane (vertical / meridian reference): magenta
         g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
         g.skyline_xy->Draw(GL_LINE_LOOP);
+        // Restore: the width is global state and the Bullet debug drawer
+        // draws its GL_LINES with whatever the last setter left.
+        glLineWidth(1.0f);
     }
 
     glDisable(GL_BLEND);
