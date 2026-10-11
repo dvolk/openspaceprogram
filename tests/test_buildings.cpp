@@ -292,6 +292,26 @@ int main() {
         CHECK(!tb.ready);
     }   // ~TerrainBody on a never-attached body must not abort
 
+    /* Same rule for the value types the body hands around (#230): free_shell
+       deletes Shell::mesh and ::texture unconditionally (the shader is shared
+       and never freed), and RootGeoms crosses to the main thread as a value.
+       const makes the compiler reject either the moment a member is added
+       without an initializer.
+       These two and the TerrainBody above live HERE, not in test_terrain,
+       because that binary is deliberately the GL/Bullet-free pure core
+       (terragen.h + camera.o): ~TerrainBody is out-of-line in terrain.cpp and
+       terrain.h needs Mesh/Texture/Shader. test_buildings is the test that
+       links terrain.o, so it is also the only place a half-built body's
+       destruction runs -- if ~TerrainBody ever grows a loop over a container,
+       the abort lands here, and that is the #227 invariant failing loudly
+       rather than a stray crash. */
+    {
+        const TerrainBody::Shell sh;
+        CHECK(sh.mesh == nullptr && sh.shader == nullptr && sh.texture == nullptr);
+        const TerrainBody::RootGeoms rg;
+        CHECK(rg.max_depth == 0 && rg.max_height == 0.0f);
+    }
+
     // --- find_launch_site ------------------------------------------------
     {
         TerrainBody tb;

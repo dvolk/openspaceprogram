@@ -41,9 +41,13 @@ typedef struct {
 } COLOUR;
 
 // One stop on a body's land-color ramp: elevation fraction t in [0,1].
+// Initialized (#230): a half-filled stop is read per vertex by
+// terrainSurfaceColor, and GLM is built without GLM_ENABLE_INIT_BY_DEFAULT,
+// so an unset color is a random colour rather than a crash. Brace init still
+// works -- a default member initializer keeps this an aggregate.
 struct PaletteStop {
-    float t;
-    glm::vec3 color;
+    float t = 0.0f;
+    glm::vec3 color = glm::vec3(0.0f);
 };
 
 /* How a body's sea is rendered (system JSON "surface.ocean", a string;

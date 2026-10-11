@@ -141,6 +141,20 @@ static Frame *make_tree() {
 }
 
 int main() {
+    /* #179: a Frame the loader never wired must read null/zero, not stack
+       garbage. The const IS the guard -- a const object whose default
+       constructor leaves any member unset is ill-formed, so this line stops
+       compiling the moment anyone adds a Frame member without an
+       initializer. The CHECKs only document which sentinel is which. */
+    {
+        const Frame f;
+        CHECK_TRUE(f.parent == nullptr, "fresh Frame has no parent");
+        CHECK_TRUE(f.body == nullptr, "fresh Frame has no body");
+        CHECK_TRUE(f.rot_frame == nullptr, "fresh Frame has no spin frame");
+        CHECK_TRUE(glm::length(f.root_pos) == 0.0, "fresh Frame root_pos is the origin");
+        CHECK_TRUE(glm::length(f.root_vel) == 0.0, "fresh Frame root_vel is zero");
+    }
+
     Frame *sun = make_tree();
     // Recompute all root-relative values (parents before children, recursively).
     sun->UpdateOrbitRails(0.0);

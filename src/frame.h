@@ -12,8 +12,14 @@ struct TerrainBody;
 struct Frame {
     std::string name;
 
-    Frame *parent; /* NULL if root */
-    TerrainBody *body;
+    /* Initialized here rather than left to the loader (#179). Frame has no
+       destructor and nothing ever deletes these, so this is the read-garbage
+       half of the bug class rather than the invalid-free half: getNonRotFrame
+       follows parent, and root_pos/root_vel (below) are what the relativize
+       helpers read -- a frame whose rails were never walked should report the
+       origin, not whatever the heap happened to hold. */
+    Frame *parent = nullptr;   // null if root
+    TerrainBody *body = nullptr;
     std::vector<Frame *> children;
     bool rotating = false;
     Frame *rot_frame = nullptr; /* the body's spin frame; null if none. */
@@ -65,8 +71,8 @@ struct Frame {
     // Non-rotating frame: `orient` holds the orbital-plane tilt (identity =
     // coplanar). Rotating frame: `orient` is the spin, `pos` is 0.
     /* relative to universe root (i.e. the sun) */
-    glm::dvec3 root_pos;
-    glm::dvec3 root_vel;
+    glm::dvec3 root_pos = glm::dvec3(0.0);
+    glm::dvec3 root_vel = glm::dvec3(0.0);
     glm::dmat3 root_orient = glm::dmat3(1.0);
 
     void UpdateRootRelative();

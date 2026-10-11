@@ -105,10 +105,18 @@ int main() {
 
     // 0. A hand-built snapshot starts at sentinels, not stack garbage (#227):
     //    the loader can bail mid-body, and the async job copies these values.
+    //    The const is the guard -- a const object whose default constructor
+    //    leaves any member unset is ill-formed, so a future member without an
+    //    initializer stops the build. The checks just name the sentinels.
     {
         const TerrainParams t;
         check(t.radius == 0.0f, "TerrainParams radius defaults to 0");
         check(t.colour_func == nullptr, "TerrainParams colour_func defaults to null");
+        // A half-filled palette stop is read per vertex by the colour path,
+        // and GLM does not zero by default (#230).
+        const PaletteStop ps;
+        check(ps.t == 0.0f, "PaletteStop t defaults to 0");
+        check(glm::length(ps.color) == 0.0f, "PaletteStop color defaults to black");
     }
 
     // 1. The height: finite everywhere, relief bounded by the amplitude

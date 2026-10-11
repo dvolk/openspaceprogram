@@ -131,11 +131,14 @@ struct TerrainBody {
     Shader *shader = nullptr;   // shared, not owned; set by the type switch
     /* A demand-built shell: a PROCEDURAL mesh (unique to the body) drawn
        with a shared shader, and for the clouds a baked coverage texture.
-       The body OWNS the mesh and the texture; the shader is shared. */
+       The body OWNS the mesh and the texture; the shader is shared. Nulled
+       because free_shell (terrain.cpp) deletes mesh and texture
+       unconditionally -- a shell kind that forgot one of them would delete
+       garbage, which is how #227 started (#230). */
     struct Shell {
-        Mesh *mesh;
-        Shader *shader;
-        Texture *texture;
+        Mesh *mesh = nullptr;       // owner
+        Shader *shader = nullptr;   // shared
+        Texture *texture = nullptr; // owner (clouds only)
     };
     Shell *atmosphere = nullptr; // Fresnel rim shell (built on demand)
     float atm_radius = 0.0f;     // shell radius [m]; 0 = no atmosphere
@@ -238,8 +241,11 @@ struct TerrainBody {
     // JobRunner worker and the GL/Bullet part on the main thread.
     // radius/mass are already set by the light phase (load_system).
     struct RootGeoms {
-        int max_depth;
-        float max_height;
+        // Initialized: this crosses to the main thread as a value, and a
+        // field BuildRootGeoms forgets to set would otherwise be garbage
+        // rather than obviously zero (#230).
+        int max_depth = 0;
+        float max_height = 0.0f;
         std::array<GridGeom, 6> geoms;
     };
 
