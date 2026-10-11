@@ -178,17 +178,26 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
 }
 
 /* Conservative bounding-sphere frustum test for one patch (#120). The sphere
-   is centred on the patch's surface centroid; a radius of 2x the patch width
-   covers the corner bulge (half-diagonal ~0.71w), the skirt flare (one grid
-   cell = w/48) and the relief across the patch -- that last term is the only
-   one the bound is not PROVEN to cover: it assumes the height across a patch
-   varies by less than 1.29x its width, which the grid's band-limiting
-   (terragen.h: wavelengths below 2 grid cells are filtered) gives for the
-   shipped bodies, but which nothing asserts. Storing a per-patch min/max
-   height at build time would make it exact. View-space test against the side
-   planes and the near plane; there is no far plane (reverse-Z infinite-far
-   projection). Returns true when the patch provably cannot contribute a
-   pixel. Internal nodes are tested too, so one rejection drops a subtree. */
+   is centred on the patch's surface centroid (its anchor direction, at the
+   full-detail height) with a radius of 2x the patch width w (the mean edge
+   chord). What that has to cover:
+     - the corner bulge: ~0.71w for a subdivided patch, but ~0.82w for the six
+       ROOT faces, whose corners open wider than the mean edge (spherical
+       excess) -- so the leaf margin is already tighter than it looks;
+     - the skirt flare: one grid cell, ~0.021w;
+     - the relief across the patch.
+   That last term is the one nothing PROVES. Covering it needs relief <= 1.18w
+   for a leaf, and a parent sphere must also contain its children's spheres,
+   which tightens it to about 0.65w for the internal-node test that lets one
+   rejection drop a whole subtree. The grid's band-limiting (terragen.h:
+   wavelengths below 2 grid cells are filtered) gives that margin for the
+   shipped bodies -- Kerbin's deepest leaf has ~45-90 m of relief against a
+   436 m budget -- but a body with large surface.amplitude and small radius
+   could break it, and the failure mode is silent popping at the frustum edge.
+   Storing a per-patch min/max height at build time would make it exact.
+   View-space test against the side planes and the near plane; there is no far
+   plane (reverse-Z infinite-far projection). Returns true when the patch
+   provably cannot contribute a pixel. */
 static bool patchCulled(const GeoPatch *p, const TerrainBody *body,
                         const Camera *camera) {
     const glm::dvec3 wc = body->transform

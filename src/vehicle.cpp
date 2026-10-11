@@ -2381,13 +2381,15 @@ void Vehicle::Draw(const Camera* camera, Frame *renderFrame) {
     const glm::dmat4 xformShip = xform * glm::translate(get_center_of_mass());
 
     /* One planet-shadow test per ship per frame, not one per part (#119).
-       The test marches the sun chord through the terrain shell at ~1 km
-       spacing, so it costs ~48us; a 51-part ship was paying 2.4ms/frame,
-       more than the rest of the render phase combined. Its resolution is
-       also ~50x coarser than a ship, so sampling it per part buys nothing:
-       over a full Kerbin sol (pad, heavy_asp, --time-accel 2000) the part
-       shadows disagreed with the COM shadow in 1.4% of draws during the
-       terminator crossing and 0% everywhere else. */
+       The test marches the sun chord through the terrain shell in up to 128
+       GetTerrainHeight samples (dt = max(100 m, chord/128): ~100-250 m at the
+       pad, ~9 km on a long limb chord), so it costs ~48us; a 51-part ship was
+       paying 2.4ms/frame, more than the rest of the render phase combined.
+       That resolution is far coarser than a ship in either regime, so
+       sampling it per part buys nothing: over a full Kerbin sol (pad,
+       heavy_asp, --time-accel 2000) the part shadows disagreed with the COM
+       shadow in 1.4% of draws during the terminator crossing and 0%
+       everywhere else. */
     const float shadow = ComputeTerrainShadow(m_parent, frame,
                                               get_center_of_mass(), sun);
 

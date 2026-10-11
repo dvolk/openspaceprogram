@@ -624,8 +624,12 @@ void paintWorld(Game &g) {
             glBindTexture(GL_TEXTURE_2D, g.engine_plume_texture->id);
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            // Additive and translucent: it must not write depth, or the plume
-            // occludes whatever is drawn after it (the skylines read depth).
+            // Additive and translucent, so it must not write depth -- that is
+            // what every other translucent pass here does (ocean/atmosphere/
+            // clouds/rings in terrain.h). Nothing after the plume reads depth
+            // today: the depth test is off from the billboard pass (above the
+            // skylines) to the end of paintWorld. So this is hygiene and
+            // future-proofing, not a live fix.
             glDepthMask(GL_FALSE);
             glDisable(GL_CULL_FACE);
             g.engine_plume_mesh->Draw();

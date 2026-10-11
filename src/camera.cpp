@@ -26,6 +26,11 @@ void Camera::computeFrustumAngles() {
 }
 
 void Camera::setAspect(float _aspect) {
+    // This used to not store aspect at all: it passed _aspect straight into
+    // the projection, which was fine until something read the member back.
+    // setFov() did (and still does), so after any window resize, moving the
+    // FOV slider in Settings rebuilt the projection with the BOOT aspect and
+    // the horizontal fov snapped back to its launch value.
     this->aspect = _aspect;
     this->projection = reverseZInfinitePerspective(fov, _aspect, zNear);
     computeFrustumAngles();
