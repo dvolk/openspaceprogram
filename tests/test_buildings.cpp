@@ -6,10 +6,12 @@
 //   - world instances: id/type/body/lat/lon required; degrees -> equirectDir;
 //     height_m/heading_deg defaults; flags; duplicate ids throw,
 //   - buildingOrient: +Z along up, heading spins about that axis,
-//   - every shipped system carries at least one VAB_LAUNCH_PAD on its home.
+//   - every shipped system carries at least one VAB_LAUNCH_PAD on its home,
+//   - every pad's deck actually reaches the ground under its footprint.
 
 #include "buildings.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -49,6 +51,50 @@ static nlohmann::json read_json(const char *path) {
     std::ifstream f(path);
     if(!f.is_open()) { throw std::runtime_error(std::string("open ") + path); }
     return nlohmann::json::parse(f, nullptr, true);
+}
+
+/* A pad deck is a flat tangent-plane slab; the ground under it is not. That
+   is why the building is buried at all: height_m lifts the deck clear of the
+   surface sampled at the pad's own dir, and the mesh's own depth carries it
+   down through whatever the relief does across the rest of the footprint.
+   Pinned so a terrain-noise tweak or a moved pad cannot leave a corner of the
+   deck floating over a dip, or bury the deck inside a hill (a pad ship would
+   spawn in the ground). Footprint and depth are res/meshes/space_port.obj --
+   a 12-vertex box with its top face exactly at the building origin
+   (x -12.99..12.99, y -41.11..15.00, z -10.00..0.00); re-derive from the
+   OBJ's v lines if that mesh changes. */
+static void check_pad_grounding(const std::string &logical,
+                                const WorldBuilding &w, TerrainBody *hb) {
+    const double halfX = 13.0, yMin = -41.0, yMax = 15.0, slabDepth = 10.0;
+    const glm::dvec3 up = w.dir();
+    const glm::dvec3 org = up * (w.height_m
+                                 + (double)hb->GetTerrainHeight(glm::vec3(up)));
+    const glm::dmat3 orient =
+        buildingOrient(up, w.heading_deg * std::numbers::pi / 180.0);
+    double lo = 1e30, hi = -1e30;
+    for(double u = -halfX; u <= halfX; u += 2.0) {
+        for(double v = yMin; v <= yMax; v += 2.0) {
+            // A point on the deck plane: its radius IS the deck height there,
+            // so the difference is how far the deck sits above that ground.
+            const glm::dvec3 q = org + orient * glm::dvec3(u, v, 0.0);
+            const double clear = glm::length(q)
+                - (double)hb->GetTerrainHeight(glm::vec3(glm::normalize(q)));
+            lo = std::min(lo, clear);
+            hi = std::max(hi, clear);
+        }
+    }
+    if(lo <= 0.0) {
+        printf("FAIL %s: pad '%s' deck sits %g m BELOW the ground across its "
+               "footprint (a pad ship would spawn inside the terrain)\n",
+               logical.c_str(), w.id.c_str(), -lo);
+        failures++;
+    }
+    if(hi >= slabDepth) {
+        printf("FAIL %s: pad '%s' deck sits %g m above the lowest ground on "
+               "its footprint, past the %g m slab -- a corner floats\n",
+               logical.c_str(), w.id.c_str(), hi, slabDepth);
+        failures++;
+    }
 }
 
 int main() {
@@ -184,7 +230,8 @@ int main() {
         CHECK(sys.world_buildings.size() >= 1);
         bool homePad = false;
         for(const WorldBuilding &w : sys.world_buildings) {
-            if(sys.find(w.body) == nullptr) {
+            TerrainBody *wb = sys.find(w.body);
+            if(wb == nullptr) {
                 printf("FAIL %s: '%s' names unknown body '%s'\n",
                        logical.c_str(), w.id.c_str(), w.body.c_str());
                 failures++;
@@ -199,6 +246,8 @@ int main() {
                        logical.c_str(), w.id.c_str(), w.type.c_str());
                 failures++;
             }
+            // ... and the deck it puts on that body reaches the ground
+            if(wb != nullptr) { check_pad_grounding(logical, w, wb); }
         }
         if(!homePad) {
             printf("FAIL %s: no VAB_LAUNCH_PAD on home '%s'\n",
