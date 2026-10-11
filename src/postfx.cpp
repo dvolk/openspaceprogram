@@ -259,16 +259,19 @@ void PostFX::RebuildTargets(int width, int height)
                                GL_TEXTURE_2D, m_colorTex[i], 0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                                   GL_RENDERBUFFER, m_depthRB[i]);
+        // Validate EACH target. This used to run once after the loop, when
+        // only target 1 was still bound -- so target 0, the one the scene
+        // actually renders into, was never checked.
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if(status != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "PostFX: framebuffer " << i << " incomplete ("
+                      << status << ")" << std::endl;
+        }
         check_gl_error();
     }
 
-    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     check_gl_error();
-
-    if(status != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "PostFX: framebuffer incomplete (" << status << ")" << std::endl;
-    }
 }
 
 void PostFX::Resize(int width, int height)
@@ -299,6 +302,10 @@ void PostFX::End()
     // No effects: the scene already rendered straight to the window (Begin
     // was a no-op). The UI draws on top after this.
     if(!Active()) return;
+    // Mirror Begin()'s guard: if it bailed there is no target to ping-pong
+    // against, and sampling texture id 0 would black the screen while the
+    // scene sits already presented underneath.
+    if(m_fbo[0] == 0) return;
 
     glDisable(GL_DEPTH_TEST);
     check_gl_error();

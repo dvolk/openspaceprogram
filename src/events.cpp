@@ -391,9 +391,17 @@ void poll_events(Game &g) {
             g.postfx->Resize(ev.window.data1, ev.window.data2);
             check_gl_error();
 
-            g.camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
-            // the terrain LOD (screen-px budget) reads the live one
-            g.camera->setViewport(ev.window.data1, ev.window.data2);
+            /* A minimized window reports 0x0, and PostFX::Resize keeps its old
+               targets for that. The camera must do the same: w/h == 0 makes
+               the aspect inf or NaN, which builds a degenerate projection and
+               poisons the frustum angles the terrain cull reads -- so the cull
+               silently stops culling until a real size arrives (and stays
+               broken if the WM never re-emits the event). */
+            if(ev.window.data1 > 0 && ev.window.data2 > 0) {
+                g.camera->setAspect((float)ev.window.data1 / (float)ev.window.data2);
+                // the terrain LOD (screen-px budget) reads the live one
+                g.camera->setViewport(ev.window.data1, ev.window.data2);
+            }
             check_gl_error();
         }
         if(ev.type == SDL_EVENT_KEY_DOWN && g.rebind_capture_slot >= 0) {
