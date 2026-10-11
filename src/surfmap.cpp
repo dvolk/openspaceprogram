@@ -57,6 +57,14 @@ void surfmapCompute(Game &g) {
     // read would race that write).
     const TerrainParams tp = body->params();
     const bool ocean = g.surfmap_sea;     // the "Ocean" box (per-pixel below)
+    /* What the window's overlay marks: launch sites on THIS body. Counted
+       here because the worker never touches game state, and logged so e2e
+       can pin the marker filter -- a mistyped flag name draws no sites at
+       all and still compiles clean. */
+    int n_sites = 0;
+    for(const StaticBuilding *p : body->pads) {
+        if(p->hasFlag("VAB_LAUNCH_PAD")) { n_sites++; }
+    }
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
     const double t_now = g.time;
@@ -67,7 +75,7 @@ void surfmapCompute(Game &g) {
     // worker body never touches game state (a by-value capture would copy
     // the non-copyable Game).
     g.jobs.post("Surface map", [&g, tp, sun_dir, w, h, baked, ocean, log,
-                                body_name, t_now, epoch]()
+                                n_sites, body_name, t_now, epoch]()
                 -> std::function<void()> {
         // Worker: build the pixel buffer (pure). shared_ptr because the
         // std::function continuation capture must be copyable.
@@ -102,13 +110,14 @@ void surfmapCompute(Game &g) {
         if(log) {
             // albedo = before the terminator; shaded = as stored.
             // shade=on: a terminator was baked. ocean=on: the sea was painted.
+            // sites: launch pads the window overlays as markers.
             printf("[surfmap] t=%.1fs body=\"%s\" %dx%d "
                    "albedo=[%.4f %.4f %.4f] shaded=[%.4f %.4f %.4f] "
-                   "shade=%s ocean=%s\n",
+                   "shade=%s ocean=%s sites=%d\n",
                    t_now, body_name.c_str(), w, h,
                    ar / npx, ag / npx, ab / npx,
                    sr / npx, sg / npx, sb / npx,
-                   baked ? "on" : "off", ocean ? "on" : "off");
+                   baked ? "on" : "off", ocean ? "on" : "off", n_sites);
             fflush(stdout);
         }
         // Main-thread continuation (JobRunner::poll): publish the cache

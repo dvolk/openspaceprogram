@@ -65,7 +65,8 @@ PORKCHOP_RE = re.compile(
 SURFMAP_RE = re.compile(
     r"\[surfmap\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+"
     r"(\d+)x(\d+)\s+albedo=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+"
-    r"shaded=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+shade=(on|off)"
+    r"shaded=\[([\d.]+) ([\d.]+) ([\d.]+)\]\s+shade=(on|off)\s+"
+    r"ocean=(on|off)\s+sites=(\d+)"
 )
 ATT_RE = re.compile(
     r"\[attlog\]\s+t=([\d.]+)s\s+"
@@ -246,13 +247,13 @@ def parse_porkchop(out):
 def parse_surfmap(out):
     rows = []
     for m in SURFMAP_RE.finditer(out):
-        (t, body, w, h, ar, ag, ab, sr, sg, sb, shade) = m.groups()
+        (t, body, w, h, ar, ag, ab, sr, sg, sb, shade, ocean, sites) = m.groups()
         rows.append({
             "t": float(t), "body": body,
             "w": int(w), "h": int(h),
             "albedo": (float(ar), float(ag), float(ab)),
             "shaded": (float(sr), float(sg), float(sb)),
-            "shade": shade,
+            "shade": shade, "ocean": ocean, "sites": int(sites),
         })
     return rows
 

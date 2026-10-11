@@ -16,6 +16,8 @@
 //     null and every loader-filled scalar 0 (#227),
 //   - every shipped system carries at least one VAB_LAUNCH_PAD on its home,
 //   - no two pads on a body are on top of each other,
+//   - every pad's lat/lon round-trips through the equirect projection the
+//     Surface Map marks sites with,
 //   - every pad's deck actually reaches the ground under its footprint.
 
 #include "buildings.h"
@@ -385,6 +387,34 @@ int main() {
                 printf("FAIL %s: '%s' has unknown type '%s'\n",
                        logical.c_str(), w.id.c_str(), w.type.c_str());
                 failures++;
+            }
+            /* The Surface Map projects a site as equirectLonLat(p->dir), the
+               inverse of the equirectDir that built dir from these degrees.
+               Pin the round-trip: a convention slip (lon sign, degrees vs
+               radians, rotating vs non-rotating frame) would put a marker on
+               the far side of the planet, and nothing else watches it. The
+               pole pad is the interesting case -- cos(90 deg) is ~6e-17, not
+               0, so its longitude survives atan2 and lands back where it was
+               authored rather than at an arbitrary meridian. */
+            {
+                double rlon, rlat;
+                equirectLonLat(w.dir(), rlon, rlat);
+                const double rlat_deg = rlat * 180.0 / std::numbers::pi;
+                // lon unwraps to [0, 2pi), so a west-negative authoring is
+                // the same meridian one turn away.
+                double rlon_deg = rlon * 180.0 / std::numbers::pi
+                                - w.lon_deg;
+                if(rlon_deg > 180.0) { rlon_deg -= 360.0; }
+                if(rlon_deg < -180.0) { rlon_deg += 360.0; }
+                if(std::fabs(rlat_deg - w.lat_deg) > 1e-9
+                   || std::fabs(rlon_deg) > 1e-9) {
+                    printf("FAIL %s: pad '%s' projects to lat %.10f lon "
+                           "%.10f but is authored %.10f/%.10f\n",
+                           logical.c_str(), w.id.c_str(), rlat_deg,
+                           rlon * 180.0 / std::numbers::pi,
+                           w.lat_deg, w.lon_deg);
+                    failures++;
+                }
             }
             // ... and the deck it puts on that body reaches the ground
             if(wb != nullptr) { check_pad_grounding(logical, w, wb); }

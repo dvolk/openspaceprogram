@@ -559,6 +559,9 @@ struct Game {
     TerrainBody *surfmap_body = nullptr;
     bool surfmap_shade = true;    // bake the terminator (the "Sun shading" box)
     bool surfmap_sea = false;     // paint the sea (the "Ocean" box)
+    // Name every launch-site marker on the map (the "Site labels" box).
+    // Overlay-only, so unlike the two above it needs no re-bake.
+    bool surfmap_site_labels = true;
     // The last computed map (surfmapCompute publishes it atomically).
     std::vector<unsigned char> surfmap_px;  // RGBA8, w*h
     int surfmap_w = 0;

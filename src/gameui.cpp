@@ -1095,6 +1095,10 @@ void drawUIReadouts(Game &g) {
             surfmapCompute(g);   // re-bake with / without the sea
         }
         if(sm_busy) { ImGui::EndDisabled(); }
+        ImGui::SameLine();
+        // Overlay-only: no re-bake, so no need to disable it mid-sweep.
+        bool sml = g.surfmap_site_labels;
+        if(ImGui::Checkbox("Site labels", &sml)) { g.surfmap_site_labels = sml; }
         ImGui::TextDisabled("map %dx%d   (size: --surfmap-n)",
                             g.surfmap_w, g.surfmap_h);
         if(sm_busy) {
@@ -1279,6 +1283,73 @@ void drawUIReadouts(Game &g) {
             }
         }
 
+        /* Launch sites on the mapped body. StaticBuilding::dir is a unit up
+           in the body's ROTATING frame -- the very frame the map's pixels are
+           baked in (equirect.h) -- so a site's pixel is equirectLonLat
+           straight, no transform. Amber triangles outlined in dark: the
+           graticule is white and the orbit + ship dot are green, and the map
+           under them runs from dark ocean to pale cloud.
+           Names are the "Site labels" box. Earth carries 15 sites and they
+           are ~100 px apart on a small window, so the box is for a window you
+           have made big; either way the cursor line names the nearest one. */
+        struct SiteMark { ImVec2 px; const std::string *name; };
+        std::vector<SiteMark> site_marks;
+        for(const StaticBuilding *p : sm_body->pads) {
+            if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
+            double lon, lat;
+            equirectLonLat(p->dir, lon, lat);
+            site_marks.push_back({ map_px(lon, lat), &p->display_name });
+        }
+        if(!site_marks.empty()) {
+            const ImU32 site_fill =
+                ImGui::GetColorU32(ImVec4(0.95f, 0.72f, 0.20f, 1.0f));
+            const ImU32 site_edge =
+                ImGui::GetColorU32(ImVec4(0.0f, 0.0f, 0.0f, 0.65f));
+            const ImU32 site_text =
+                ImGui::GetColorU32(ImVec4(1.0f, 0.92f, 0.65f, 1.0f));
+            const float sr = 5.0f;
+            dl->PushClipRect(sm_p0, ImVec2(sm_p0.x + sm_img_w,
+                                           sm_p0.y + sm_img_h), true);
+            for(const SiteMark &m : site_marks) {
+                // An up-pointing triangle reads as "you launch from here".
+                const ImVec2 a(m.px.x, m.px.y - sr);
+                const ImVec2 b(m.px.x - sr, m.px.y + sr * 0.8f);
+                const ImVec2 c(m.px.x + sr, m.px.y + sr * 0.8f);
+                dl->AddTriangleFilled(a, b, c, site_fill);
+                dl->AddTriangle(a, b, c, site_edge, 1.0f);
+                /* A site within a glyph of an edge is half clipped, and the
+                   map's two edges are the SAME meridian, so the other half
+                   belongs on the far side (as for the ship dot). */
+                if(m.px.x - sm_p0.x < sr || sm_p0.x + sm_img_w - m.px.x < sr) {
+                    const ImVec2 q(m.px.x < sm_p0.x + sm_img_w * 0.5f
+                                       ? m.px.x + sm_img_w : m.px.x - sm_img_w,
+                                   m.px.y);
+                    dl->AddTriangleFilled(ImVec2(q.x, q.y - sr),
+                                          ImVec2(q.x - sr, q.y + sr * 0.8f),
+                                          ImVec2(q.x + sr, q.y + sr * 0.8f),
+                                          site_fill);
+                    dl->AddTriangle(ImVec2(q.x, q.y - sr),
+                                    ImVec2(q.x - sr, q.y + sr * 0.8f),
+                                    ImVec2(q.x + sr, q.y + sr * 0.8f),
+                                    site_edge, 1.0f);
+                }
+                if(!g.surfmap_site_labels) { continue; }
+                const char *nm = m.name->c_str();
+                const ImVec2 ts = ImGui::CalcTextSize(nm);
+                // Right of the glyph; left of it rather than off the map.
+                float tx = m.px.x + sr + 3.0f;
+                if(tx + ts.x > sm_p0.x + sm_img_w) {
+                    tx = m.px.x - sr - 3.0f - ts.x;
+                }
+                const float ty = m.px.y - ts.y * 0.5f;
+                // AddText has no outline: a dark copy a pixel down-right is
+                // what keeps a label readable over pale cloud.
+                dl->AddText(ImVec2(tx + 1.0f, ty + 1.0f), site_edge, nm);
+                dl->AddText(ImVec2(tx, ty), site_text, nm);
+            }
+            dl->PopClipRect();
+        }
+
         // The ship's position: a bright dot (you are here) with a green
         // ring, the same mark as the Orbital Map. Only on the ship's own
         // body. The dot is the SUB-SATELLITE point: the ship's COM rigidly
@@ -1330,12 +1401,31 @@ void drawUIReadouts(Game &g) {
             const double lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
             const glm::vec3 dir = equirectDir(lon, lat);
             char elev_s[32];
-            ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s",
+            // The nearest site under the cursor, so a marker is still
+            // identifiable with the labels box off -- or where a label fell
+            // off the map edge. One suffix on the same line, never a second
+            // line: this window auto-resizes, so a line appearing would
+            // jitter its height as the mouse moves.
+            char site_s[64] = "";
+            const SiteMark *near = nullptr;
+            float best = 14.0f * 14.0f;
+            for(const SiteMark &m : site_marks) {
+                const float dx = m.px.x - sm_mouse.x;
+                const float dy = m.px.y - sm_mouse.y;
+                const float d2 = dx * dx + dy * dy;
+                if(d2 < best) { best = d2; near = &m; }
+            }
+            if(near != nullptr) {
+                snprintf(site_s, sizeof(site_s), "  site: %s",
+                         near->name->c_str());
+            }
+            ImGui::TextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s",
                                 glm::degrees(lat), glm::degrees(lon),
                                 fmt_dist((double)sm_body->GetTerrainHeight(dir)
                                          - (double)sm_body->radius
                                          - (double)sm_body->surface.sea_level,
-                                         elev_s, sizeof elev_s));
+                                         elev_s, sizeof elev_s),
+                                site_s);
         }
         if(ship && ship->m_parent && sm_body != ship->m_parent) {
             ImGui::TextDisabled("ship is in %s's SOI -- its orbit (about "
