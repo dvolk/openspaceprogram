@@ -116,10 +116,19 @@ enum class BodyType : unsigned char {
 };
 
 struct TerrainBody {
-    // Value-initialized so ~TerrainBody (which unconditionally deletes all
-    // six slots) is safe for a body whose AttachRoot never ran.
+    /* EVERY member is initialized, deliberately. A half-built body is always
+       destructed: load_system registers each body before the first throw it
+       can hit (system.cpp, so a data bug leaks nothing), a body whose
+       AttachRoot never ran is still destroyed at shutdown, and tests build one
+       on the stack. An uninitialized scalar there reads whatever the heap or
+       stack happened to hold -- which was a live bug, not a theoretical one:
+       ~TerrainBody freed a stack address and test_buildings aborted with
+       `free(): invalid size` (#227). The numeric sentinels below are not
+       "valid physics"; they mean "the loader has not set this yet", and
+       load_system fills all four -- mu derived from mass, not read from the
+       JSON -- before anything can read them. */
     GeoPatch *patches[6] = { nullptr };
-    Shader *shader;
+    Shader *shader = nullptr;   // shared, not owned; set by the type switch
     /* A demand-built shell: a PROCEDURAL mesh (unique to the body) drawn
        with a shared shader, and for the clouds a baked coverage texture.
        The body OWNS the mesh and the texture; the shader is shared. */
@@ -140,10 +149,10 @@ struct TerrainBody {
        only the meshes. */
     std::vector<Mesh *> ring_meshes;
     Shader *ring_shader = nullptr;
-    float radius;
-    double mu;
-    double g; // [m/s^2]
-    float mass;
+    float radius = 0.0f;   // [m]
+    double mu = 0.0;       // gravitational parameter [m^3/s^2]
+    double g = 0.0;        // [m/s^2]
+    float mass = 0.0f;     // [kg]
     /* Science distance fields (system JSON, written by utils/sci_dist.py).
        science_mult is the score body weight (hand-editable); transfer_dv is
        the approach leg [m/s] for display: home->planet for planets,
@@ -160,7 +169,7 @@ struct TerrainBody {
        banded gas giant have none (can still be orbited; findings there are
        global "of the body", biome left empty). */
     bool hasClassifiableSurface() const { return !isStar() && !surface.bands; }
-    double seed = 0;   // noise-domain offset; 0 = legacy pattern
+    double seed = 0.0;   // noise-domain offset; 0 = legacy pattern
     // Subdivision stop (set by AttachRoot from the radius). One extra level
     // per radius doubling keeps mesh density per surface area comparable.
     int max_depth = 14;
@@ -168,14 +177,12 @@ struct TerrainBody {
     // the body still simulates but Draw/Update skip it.
     bool ready = false;
     Surface surface;
-    // Nulled like patches[] above: ~TerrainBody deletes both unconditionally,
-    // so a body whose frames were never attached (a test fixture, a load that
-    // threw mid-way) must not free whatever the stack held there.
-    Frame *frame = nullptr; // owner
-    Frame *rot_frame = nullptr; // owner
+    // Owned, and deleted unconditionally by ~TerrainBody (block comment above).
+    Frame *frame = nullptr;
+    Frame *rot_frame = nullptr;
     Calendar cal; // this body's day/year (from its spin + orbit rates)
     glm::dmat4 transform = glm::dmat4(1.0);
-    glm::vec3 sunlightVec;
+    glm::vec3 sunlightVec = glm::vec3(0.0f);   // written by Draw, once ready
 
     // Main-thread-only liveness registry (GeoPatch ctor inserts, dtor
     // erases): an in-flight terrain job's continuation checks its target
@@ -207,7 +214,7 @@ struct TerrainBody {
     // culls itself when the active ship is off-body.
     std::vector<StaticBuilding *> pads;
 
-    COLOUR (*colour_func)(float v, float vmin, float vmax);
+    COLOUR (*colour_func)(float v, float vmin, float vmax) = nullptr;
 
     // Thin delegate to the pure height function (terragen.h).
     float GetTerrainHeight(const glm::vec3& p) const {

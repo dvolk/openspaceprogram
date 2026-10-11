@@ -282,9 +282,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     for(size_t i = 0; i < bodies.size(); i++) {
         const nlohmann::json &bv = bodies[i];
 
+        // TerrainBody's own member initializers cover every owner pointer
+        // (frame/rot_frame/patches[]), so the body is destructible from here
+        // on with nothing set yet (terrain.h, #227).
         TerrainBody *body = new TerrainBody;
-        body->frame = nullptr;
-        body->rot_frame = nullptr;
         // Register before any throw below: BodyCleanup deletes these bodies,
         // and ~TerrainBody frees frame/rot_frame, so a mid-build throw (data
         // bugs like the rate checks) leaks nothing. main.cpp keeps running

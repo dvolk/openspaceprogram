@@ -103,6 +103,14 @@ static double edge03(const glm::vec3 q[4]) {
 int main() {
     const std::vector<glm::vec3> dirs = sampleDirs();
 
+    // 0. A hand-built snapshot starts at sentinels, not stack garbage (#227):
+    //    the loader can bail mid-body, and the async job copies these values.
+    {
+        const TerrainParams t;
+        check(t.radius == 0.0f, "TerrainParams radius defaults to 0");
+        check(t.colour_func == nullptr, "TerrainParams colour_func defaults to null");
+    }
+
     // 1. The height: finite everywhere, relief bounded by the amplitude
     //    (the model normalizes its max to exactly amplitude).
     {

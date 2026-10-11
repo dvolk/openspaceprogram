@@ -12,6 +12,8 @@
 //   - every shipped system's DEFAULT site (its first VAB_LAUNCH_PAD) is a
 //     real pad rather than the pole, and its site fragment reaches it,
 //   - buildingOrient: +Z along up, heading spins about that axis,
+//   - a default-constructed TerrainBody is destructible: every owner pointer
+//     null and every loader-filled scalar 0 (#227),
 //   - every shipped system carries at least one VAB_LAUNCH_PAD on its home,
 //   - no two pads on a body are on top of each other,
 //   - every pad's deck actually reaches the ground under its footprint.
@@ -262,6 +264,33 @@ int main() {
         CHECK(vnear(glm::dvec3(m90[0]), glm::dvec3(m0[1]), 1e-9)
               || vnear(glm::dvec3(m90[0]), -glm::dvec3(m0[1]), 1e-9));
     }
+
+    // --- a body nothing has built yet --------------------------------------
+    /* #227: ~TerrainBody deletes patches[]/frame/rot_frame unconditionally and
+       load_system registers each body before the first throw it can hit, so a
+       half-built body is ALWAYS destructed. With uninitialized members that
+       was a free() of stack garbage and this binary aborted.
+       The const IS the pin: a const object whose default constructor leaves
+       any member unset is ill-formed, so the compiler rejects the line the
+       moment anyone adds a member without an initializer. The CHECKs below
+       only document which sentinel is meant to be which -- a fresh stack slot
+       can pass them by luck, so they are not the guard. */
+    {
+        const TerrainBody tb;
+        CHECK(tb.shader == nullptr);
+        CHECK(tb.frame == nullptr);
+        CHECK(tb.rot_frame == nullptr);
+        for(int i = 0; i < 6; i++) { CHECK(tb.patches[i] == nullptr); }
+        CHECK(tb.atmosphere == nullptr && tb.clouds == nullptr
+              && tb.ocean == nullptr);
+        CHECK(tb.radius == 0.0f);
+        CHECK(tb.mu == 0.0);
+        CHECK(tb.g == 0.0);
+        CHECK(tb.mass == 0.0f);
+        CHECK(tb.colour_func == nullptr);
+        CHECK(glm::length(tb.sunlightVec) == 0.0f);
+        CHECK(!tb.ready);
+    }   // ~TerrainBody on a never-attached body must not abort
 
     // --- find_launch_site ------------------------------------------------
     {

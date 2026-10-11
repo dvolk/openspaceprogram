@@ -353,12 +353,15 @@ inline float cloudCover(const glm::vec3 &dir, const glm::mat3 &seedRot,
     return t * t * (3.0f - 2.0f * t);
 }
 
-// Everything the height/color functions and the grid builder need from a
-// body, as VALUES: the async terrain job snapshots one for the worker.
+/* Everything the height/color functions and the grid builder need from a body,
+   as VALUES: the async terrain job snapshots one for the worker, and
+   TerrainBody caches one by reference (refreshParamsCache fills all three).
+   Members are initialized so a hand-built one -- a test fixture, or a body the
+   loader never finished -- reads 0/nullptr rather than stack garbage (#227). */
 struct TerrainParams {
     Surface surface;
-    float radius;
-    COLOUR (*colour_func)(float, float, float);
+    float radius = 0.0f;
+    COLOUR (*colour_func)(float, float, float) = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -483,7 +486,10 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
 
     COLOUR c;
     if (s.palette.empty()) {
-        // no palette in the JSON: fall back to the type-based default
+        // no palette in the JSON: fall back to the type-based default, which
+        // load_system picks by body type. Null here means the snapshot came
+        // from a body the loader never finished.
+        assert(t.colour_func != nullptr);
         c = (*t.colour_func)(h, t.radius - 1, t.radius + 3000);
     } else {
         const float tt = (h - (t.radius + s.sea_level)) / s.max_height;
