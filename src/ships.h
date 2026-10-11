@@ -94,9 +94,9 @@ public:
     // Apply each ship's scenario (the startup spawn_vehicle pass).
     void apply_scenarios(System &sys, double t);
 
-    // Register a ship built out-of-band (the --radial-test ship).
-    void add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int slot,
-                  double t);
+    // Register a ship built out-of-band (the --radial-test ship). Its builder
+    // already placed it, so it takes no orbit slot.
+    void add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, double t);
 
     // Build the start ships from the resolved entries. Returns the first
     // ship built (the natural active one) or nullptr for an empty list.

@@ -107,6 +107,5 @@ RadialTestShip build_radial_test_ship(const std::string &mode,
     RadialTestShip r;
     r.v = v;
     r.sc = sc;
-    r.slot = 0;
     return r;
 }

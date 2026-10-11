@@ -53,7 +53,6 @@ int main() {
     ship.is_crew = false;
     ship.home = "Kerbin";
     ship.scenario = "rot-orbit";
-    ship.slot = 2;
 
     // part 0: the root (identity pose -- the save omits pos/rot for it)
     SavePart root;
@@ -119,7 +118,6 @@ int main() {
     CHECK(out.is_crew == ship.is_crew);
     CHECK(out.home == ship.home);
     CHECK(out.scenario == ship.scenario);
-    CHECK(out.slot == ship.slot);
     CHECK(out.parts.size() == ship.parts.size());
     for(size_t i = 0; i < out.parts.size() && i < ship.parts.size(); i++) {
         const SavePart &a = out.parts[i];
@@ -627,11 +625,19 @@ int main() {
 
     // a ship that mentions a key with the wrong type keeps the default
     nlohmann::json bad = nlohmann::json::object();
-    bad["slot"] = "two";   // a string where a number is expected
+    bad["active_stage"] = "one";   // a string where a number is expected
     bad["throttle"] = true;  // a bool where a number is expected
     SaveShip badShip = saveShipFromJson(bad);
-    CHECK(badShip.slot == 0);
+    CHECK(badShip.active_stage == 1);
     CHECK(badShip.throttle == 0.0f);
+
+    // "slot" is retired (nothing reads a loaded ship's slot: placement
+    // recomputes it), but saves written before it went away still carry it --
+    // an unknown key must load, not throw.
+    nlohmann::json retired = nlohmann::json::object();
+    retired["slot"] = 2;
+    SaveShip retiredShip = saveShipFromJson(retired);
+    CHECK(retiredShip.parts.empty());
 
     // a part that omits the optional keys keeps the struct defaults
     nlohmann::json part = nlohmann::json::object();

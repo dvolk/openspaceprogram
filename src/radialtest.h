@@ -7,13 +7,11 @@
 #include "vehicle.h"  // Vehicle, ScenarioDef, PartDef, PartsCatalog, TerrainBody
 
 /* The result of building one --radial-test ship: the ship itself (the
-   caller owns it and pushes it into its fleet) plus the bookkeeping main()
-   needs to slot it -- the resolved starting scenario and its orbit slot
-   (always 0: the radial-test ship is the only one on its body+scenario). */
+   caller owns it and pushes it into its fleet) plus the starting scenario
+   main() registers it with. The builder places it, so there is no slot. */
 struct RadialTestShip {
     Vehicle *v;
     const ScenarioDef *sc;
-    int slot;
 };
 
 /* Build one passive-tank spin-test ship for the given --radial-test mode

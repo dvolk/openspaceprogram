@@ -199,7 +199,6 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
     }
     s.home = (v->home != nullptr) ? v->home->name : "";
     s.scenario = (v->scenario != nullptr) ? v->scenario->name : "";
-    s.slot = v->slot;
     for(size_t i = 0; i < v->parts.size(); i++) {
         Part *p = v->parts[i];
         SavePart sp;
@@ -383,7 +382,9 @@ Vehicle *buildShipFromSaveParts(Game &g, const SaveShip &s,
     v->home = g.sys.find(s.home);
     if(v->home == nullptr) { v->home = g.home; }
     v->scenario = scn;   // resolved before `new Vehicle` (see top of this fn)
-    v->slot = s.slot;
+    // Vehicle::slot is deliberately NOT restored: nothing reads a loaded
+    // ship's slot (apply_scenarios runs only on the start-ship path), and the
+    // next placement recomputes it from the live fleet.
     v->sun = g.sun;
     // Restore the journal BEFORE setSoi, so setSoi's observe is a no-op on
     // the unchanged body and the mission history survives the load.

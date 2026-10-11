@@ -302,12 +302,11 @@ void Ships::apply_scenarios(System &sys, double t) {
     }
 }
 
-void Ships::add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, int slot,
-                     double t)
+void Ships::add_ship(Vehicle *v, TerrainBody *home, const ScenarioDef *sc, double t)
 {
     v->home = home;
     v->scenario = sc;
-    v->slot = slot;
+    v->slot = 0;   // the builder placed it; there is no slot to space out
     v->setSoi(v->frame, t);   // register + journal (the builder set frame)
 }
 

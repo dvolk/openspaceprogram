@@ -609,7 +609,7 @@ int main(int argc, char **argv)
         if(!args.radial_test.empty()) {
             RadialTestShip rts = build_radial_test_ship(
                 args.radial_test, ships.catalog(), home, sun, partsshader);
-            ships.add_ship(rts.v, home, rts.sc, rts.slot, game.time);
+            ships.add_ship(rts.v, home, rts.sc, game.time);
             first = rts.v;
         } else if(!args.dock_test.empty()) {
             DockTestShips dts = build_dock_test_ships(
@@ -618,8 +618,8 @@ int main(int argc, char **argv)
                null scenario: apply_scenarios skips them. The probe is the
                ACTIVE ship; the station parks on rails until proximity wakes
                it. */
-            ships.add_ship(dts.probe, home, nullptr, 0, game.time);
-            ships.add_ship(dts.station, home, nullptr, 1, game.time);
+            ships.add_ship(dts.probe, home, nullptr, game.time);
+            ships.add_ship(dts.station, home, nullptr, game.time);
             first = dts.probe;
         } else {
             // A typo in any field (unknown body / scenario, an unreadable

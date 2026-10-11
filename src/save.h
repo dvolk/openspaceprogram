@@ -120,7 +120,6 @@ struct SaveShip {
     // ship (is_crew false)
     std::string home;         // home body name
     std::string scenario;     // scenario name ("" = none)
-    int slot = 0;
     std::vector<SavePart> parts;
     std::vector<SaveFuelLink> fuel_links;
     uint64_t controller = 0;  // part uid (0 = the default rule)
@@ -417,7 +416,6 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     }
     j["home"]         = s.home;
     if(!s.scenario.empty()) { j["scenario"] = s.scenario; }
-    j["slot"]         = s.slot;
     nlohmann::json parts = nlohmann::json::array();
     for(auto &&p : s.parts) { parts.push_back(savePartToJson(p)); }
     j["parts"] = parts;
@@ -477,7 +475,6 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }
     if(j.contains("scenario") && j["scenario"].is_string()) { s.scenario = j["scenario"].get<std::string>(); }
-    if(j.contains("slot") && j["slot"].is_number()) { s.slot = j["slot"].get<int>(); }
     if(j.contains("parts") && j["parts"].is_array()) {
         for(auto &&p : j["parts"]) { if(p.is_object()) { s.parts.push_back(savePartFromJson(p)); } }
     }
