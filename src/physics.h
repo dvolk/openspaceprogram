@@ -99,3 +99,7 @@ void debug_draw(const Camera * camera);
 /* Step the global physics world one substep. The caller re-applies the forces
    before EVERY call -- stepSimulation clears accumulated forces on exit. */
 void physics_tick(float timeStep);
+
+/* Create the global physics world. Must run before any Body is built with
+   collision (the system loader, place_world_buildings, build_ship_structure). */
+void create_physics(void);

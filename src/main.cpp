@@ -258,7 +258,6 @@ int main(int argc, char **argv)
     drawLoadingFrame(display, bigger, "loading...");
 
     // start bullet; see physics.cpp
-    void create_physics(void);
     create_physics();
     check_gl_error();
 
