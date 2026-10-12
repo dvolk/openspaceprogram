@@ -123,6 +123,10 @@ DRAG_CD = {
                        "drag_backward": 0.2},
     "aileron":        {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
                        "drag_backward": 0.2},
+    # parachute: the stowed hull is blunt, the deployed canopy dominates (the
+    # Cd.A figure lives in EXTRA_FIELDS.chute_area, not here)
+    "chute":          {"drag": 0.9, "drag_forward": 0.6, "drag_side": 0.9,
+                       "drag_backward": 1.2},
 }
 
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
@@ -192,6 +196,8 @@ PARTS = [
     ("rudder",           "rudder",         "meshes/wing.obj",                     "textures/rudder.png"),
     ("elevator",         "elevator",       "meshes/wing.obj",                     "textures/elevator.png"),
     ("aileron",          "aileron",        "meshes/wing.obj",                     "textures/aileron.png"),
+    # the parachute rides the nose-cap hull; the canopy is an overlay mesh
+    ("chute",            "chute",          "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -240,6 +246,11 @@ EXTRA_FIELDS = {
     "docking_port_r2.25":{"mass": 110, "docking_port": True, "fuel_barrier": True,
                          "height": 0.5625},
     "fuel_link":         {"fuel_link": True},
+    # chute: the hull is a nose cap; mass is declared (hull + folded canopy)
+    # and the deployed canopy's Cd.A (m^2) + overlay art are not geometry.
+    "chute":             {"mass": 150.0, "chute_area": 25.0,
+                          "chute_mesh": "meshes/chute_canopy.obj",
+                          "chute_texture": "textures/chute.png"},
 }
 
 for _n, _f in EXTRA_FIELDS.items():
@@ -292,6 +303,7 @@ DISPLAY_BASE = {
     "rudder":         "Rudder",
     "elevator":       "Elevator",
     "aileron":        "Aileron",
+    "chute":          "Parachute",
     "fuel_link":      "Fuel Link",
 }
 
@@ -393,7 +405,7 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["rcs_thrust"] = clean(RCS_THRUST_PER_M2 * radius * radius)
-    elif ptype in ("decoupler", "docking_port", "barometer"):
+    elif ptype in ("decoupler", "docking_port", "barometer", "chute"):
         # mass is declared in EXTRA_FIELDS; radius/height follow the mesh
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
