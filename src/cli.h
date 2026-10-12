@@ -139,6 +139,9 @@ struct GameArgs {
 
     std::vector<std::string> postfx_spec;
     bool gl_debug = false;
+    // --gl-error-checks: the glGetError drains without the debug callback
+    // (gldebug.h). The e2e runner sets it for cases that FORBID GL_.
+    bool gl_error_checks = false;
     int msaa_samples = 4;   // --msaa: the window's sample count (0 = none)
 
     int screen_width = 1920;

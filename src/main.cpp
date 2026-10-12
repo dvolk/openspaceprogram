@@ -211,6 +211,14 @@ int main(int argc, char **argv)
     // Game + PostFX fields once the Game exists.
     load_settings_args(args);
 
+    /* The glGetError drains (gldebug.h) are opt-in: ~100 sites, most in the
+       draw path. --gl-debug turns them on with the debug callback;
+       --gl-error-checks turns on ONLY the drains, which is what the e2e runner
+       appends for every case that FORBIDs GL_ (the "GL_<ENUM> - file:line"
+       lines those drains print are that assertion's only producer). Set before
+       the Renderer so its own sites are covered. */
+    set_gl_error_checks(args.gl_debug || args.gl_error_checks);
+
     Renderer display(args.screen_width, args.screen_height, args.window_mode,
                      args.msaa_samples, args.gl_debug, args.vsync);
     check_gl_error();

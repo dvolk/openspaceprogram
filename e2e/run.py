@@ -568,7 +568,17 @@ def run_case(case):
             t = time.time() - age_days * 86400.0
             os.utime(meta, (t, t))
 
-    cmd = build_cmd(game, case["args"] + ["--data-dir", data_dir])
+    # FORBID GL_ is the suite's GL-error tripwire: the game prints
+    # "GL_<ENUM> - file:line" from its glGetError drains, and those drains are
+    # off by default (the call can flush the command buffer, ~100 sites). A
+    # case that forbids GL_ is asking for the check, so turn the drains on for
+    # it. --gl-debug would also do it, but it installs the debug callback too,
+    # whose driver chatter (Mesa performance warnings) trips the same FORBID.
+    args = list(case["args"])
+    if any("GL_" in s for s in case["forbid"]):
+        args.append("--gl-error-checks")
+
+    cmd = build_cmd(game, args + ["--data-dir", data_dir])
     env = launch_env(game)
     if SHOW_CMD:
         # Quoted so the line pastes straight into a shell (the --ui-click

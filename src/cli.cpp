@@ -559,7 +559,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--gl-debug", args.gl_debug,
                  "Enable the OpenGL debug output callback (GL_DEBUG_* "
-                 "messages print as they occur)");
+                 "messages print as they occur) and the glGetError drains");
+
+    app.add_flag("--gl-error-checks", args.gl_error_checks,
+                 "Drain glGetError at every check_gl_error() site (printing "
+                 "GL_<ENUM> - file:line) without the debug callback. Off by "
+                 "default because the drain can flush the command buffer; the "
+                 "e2e runner sets it for any case that FORBIDs GL_");
 
     std::string msaa;
     app.add_option("--msaa", msaa,

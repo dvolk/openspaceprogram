@@ -4,6 +4,11 @@
 #include <GL/glew.h>
 #include <iostream>
 
+static bool g_gl_error_checks = false;
+
+void set_gl_error_checks(bool on) { g_gl_error_checks = on; }
+bool gl_error_checks_on() { return g_gl_error_checks; }
+
 void _check_gl_error(const char *file, int line) {
     GLenum err;
     int drained = 0;

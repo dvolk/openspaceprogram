@@ -82,9 +82,11 @@ Shader::~Shader()
 
 void Shader::Bind()
 {
-    //printf("program: %d\n", m_program);
+    // No check_gl_error() here: glUseProgram cannot generate an error unless
+    // the program handle is already bogus, and this sits in the draw path (a
+    // shader is bound per part, so the drain tracked the draw count). Any real
+    // error surfaces at the draw that follows.
     glUseProgram(m_program);
-    check_gl_error();
 }
 
 void Shader::registerAttribs(std::vector<const char *> names) {
