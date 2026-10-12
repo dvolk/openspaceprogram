@@ -2,11 +2,16 @@
 """E2E battery: run e2e/cases/*.txt against the game binary.
 
 Usage: python3 e2e/run.py [selectors] [--jobs N] [--force] [--game PATH]
-Case keys: NAME ARGS EXPECT FORBID CHECK LIMIT WRITE SEED. CHECK sees out and
-the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/terrain/surf/
+[--limit S] [--show-cmd]. --limit overrides every case's LIMIT (a slow box,
+or a case you want to drive by hand); --show-cmd prints the exact command +
+env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
+CHECK LIMIT WRITE SEED EXIT. CHECK sees out and
+the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
 xfer/porkchop/surfmap/mapb) plus first/last/re. ARGS tokenizes like a shell, so
 a value may be quoted to carry spaces. SEED <fixture> <path-under-data-dir>
-[AGE_DAYS] stages an existing save into the case's scratch --data-dir. Full
+[AGE_DAYS] stages an existing save into the case's scratch --data-dir. EXIT
+<code> is the exit code the case demands (default 0) -- without it a game that
+correctly refuses a bad boot flag looks identical to one that crashed. Full
 battery and --jobs>2 need --force. Artifacts land in tmp/e2e/runs/<stamp>/ +
 history.csv.
 """
@@ -32,6 +37,13 @@ CASES_DIR = os.path.join(REPO_ROOT, "e2e", "cases")
 GAME = None
 DEFAULT_LIMIT = 120.0
 DEFAULT_JOBS = 2
+# --limit: run every case under this wall-clock ceiling instead of its own
+# LIMIT (raise it to drive one case by hand on a slow box; the case's own
+# --timeout still decides when the game exits). --show-cmd: print the exact
+# command line + env before each case, so a failure can be re-run under
+# gdb/valgrind without reconstructing the invocation by hand.
+LIMIT = None
+SHOW_CMD = False
 
 ORBIT_RE = re.compile(
     r"\[orbitlog\]\s+t=([\d.]+)s\s+frame=\"([^\"]*)\"\s+r=([-\d.e+]+) m\s+"
@@ -100,6 +112,14 @@ SHAKE_RE = re.compile(
     r"\[shakelog\]\s+t=([\d.]+)s\s+a=([-\d.]+) m/s2\s+"
     r"amp=([-\d.]+) m\s+off=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]"
 )
+# --cam-log: the camera the render pass left this frame. yaw/pitch are what a
+# --sim-mouse drag is supposed to change; rmb/cap say whether the gesture
+# reached the camera at all (a part window under the cursor eats the drag).
+CAM_RE = re.compile(
+    r"\[camlog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+focus=\"([^\"]*)\"\s+"
+    r"yaw=([-+\d.]+) rad\s+pitch=([-+\d.]+) rad\s+dist=([-+\d.]+) m\s+"
+    r"fwd=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+rmb=(\d)\s+cap=(\d)"
+)
 TERRAIN_RE = re.compile(
     r"\[terrain\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+patches=(\d+)\s+"
     r"deepest=(\d+)\s+max_depth=(\d+)\s+collision=(\d+)\s+"
@@ -135,6 +155,10 @@ def parse_cases(path):
     writes = []
     seeds = []
     limit = DEFAULT_LIMIT
+    # EXIT: the exit code the case demands. Default 0; a boot-time refusal
+    # (a bad --vab def, an unknown --startship body) is a PASS only if the
+    # process exits nonzero, which no case could ask for before this key.
+    want_exit = 0
     with open(path) as f:
         for raw in f:
             line = raw.strip()
@@ -158,6 +182,8 @@ def parse_cases(path):
                 check.append(rest)
             elif key == "LIMIT":
                 limit = float(rest)
+            elif key == "EXIT":
+                want_exit = int(rest)
             elif key == "WRITE":
                 wpath, _, wcontent = rest.partition(" ")
                 writes.append((wpath.strip(), wcontent.strip()))
@@ -189,6 +215,7 @@ def parse_cases(path):
         "writes": writes,
         "seeds": seeds,
         "limit": limit,
+        "exit": want_exit,
     }
 
 
@@ -354,6 +381,20 @@ def parse_shake(out):
         rows.append({
             "t": float(t), "a": float(a), "amp": float(amp),
             "off": (float(ox), float(oy), float(oz)),
+        })
+    return rows
+
+
+def parse_cam(out):
+    rows = []
+    for m in CAM_RE.finditer(out):
+        (t, mode, focus, yaw, pitch, dist,
+         fx, fy, fz, rmb, cap) = m.groups()
+        rows.append({
+            "t": float(t), "mode": mode, "focus": focus,
+            "yaw": float(yaw), "pitch": float(pitch), "dist": float(dist),
+            "fwd": (float(fx), float(fy), float(fz)),
+            "rmb": int(rmb), "cap": int(cap),
         })
     return rows
 
@@ -524,18 +565,32 @@ def run_case(case):
 
     cmd = build_cmd(game, case["args"] + ["--data-dir", data_dir])
     env = launch_env(game)
+    if SHOW_CMD:
+        # Quoted so the line pastes straight into a shell (the --ui-click
+        # paths carry spaces).
+        print("cmd  %s: %s" % (case["name"],
+                               " ".join(shlex.quote(a) for a in cmd)),
+              flush=True)
+        if env:
+            extra = {k: v for k, v in env.items() if os.environ.get(k) != v}
+            if extra:
+                print("env  %s: %s" % (case["name"],
+                                       " ".join("%s=%s" % kv
+                                                for kv in sorted(extra.items()))),
+                      flush=True)
     diag = []
     timed_out = False
     exit_code = None
     out = ""
     # Own process group so a timeout can kill wine + the game PE + Xvfb.
     t0 = time.monotonic()
+    limit = LIMIT if LIMIT is not None else case["limit"]
     proc = subprocess.Popen(
         cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, env=env, start_new_session=True,
     )
     try:
-        out_bytes, _ = proc.communicate(timeout=case["limit"])
+        out_bytes, _ = proc.communicate(timeout=limit)
         out = out_bytes.decode("utf-8", "replace")
         exit_code = proc.returncode
     except subprocess.TimeoutExpired as e:
@@ -555,9 +610,10 @@ def run_case(case):
 
     # 1) exit code
     if timed_out:
-        diag.append("runner timeout after %.0fs (LIMIT)" % case["limit"])
-    elif exit_code != 0:
-        diag.append("exit code %d (expected 0)" % exit_code)
+        diag.append("runner timeout after %.0fs (%s)"
+                    % (limit, "--limit" if LIMIT is not None else "LIMIT"))
+    elif exit_code != case["exit"]:
+        diag.append("exit code %s (expected %s)" % (exit_code, case["exit"]))
 
     # 2) EXPECT / FORBID
     missing = [s for s in case["expect"] if s not in out]
@@ -579,6 +635,7 @@ def run_case(case):
     drainlog = parse_drainlog(out)
     drag = parse_drag(out)
     shake = parse_shake(out)
+    cam = parse_cam(out)
     terrain = parse_terrain(out)
     surf = parse_surf(out)
     mapb = parse_mapb(out)
@@ -586,6 +643,7 @@ def run_case(case):
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
+        "cam": cam,
         "terrain": terrain,
         "surf": surf, "mapb": mapb,
         "first": first, "last": last,
@@ -816,11 +874,25 @@ def main():
                              "--jobs > 2), despite the warning above")
     parser.add_argument("--game", default=None,
                         help="game binary to launch (default: ./osp)")
+    parser.add_argument("--limit", type=float, default=None,
+                        help="wall-clock ceiling per case, in seconds, "
+                             "overriding every case's LIMIT (the game still "
+                             "exits on its own --timeout; this only decides "
+                             "when the runner kills the process tree)")
+    parser.add_argument("--show-cmd", action="store_true",
+                        help="print each case's exact command line (and the "
+                             "env it differs in) before running it, so a "
+                             "failure can be re-run under gdb/valgrind "
+                             "without rebuilding the invocation by hand")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
-    global GAME
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit must be > 0")
+    global GAME, LIMIT, SHOW_CMD
     GAME = args.game
+    LIMIT = args.limit
+    SHOW_CMD = args.show_cmd
     if wine_for(GAME or ""):
         renderer = "wine+xvfb"
     elif have_render_node():

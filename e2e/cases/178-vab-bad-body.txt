@@ -1,0 +1,11 @@
+# --vab-body pins where the VAB launch will stand, so a typo must not fall back
+# to home silently: the case would measure a launch it never asked for (#16).
+# --surfmap-body already made the same call for the same reason (#72).
+NAME vab-bad-body
+ARGS --timeout 4 --vab res/ships/racer.json --vab-body Nope
+EXPECT error: --vab-body 'Nope' is not a body in
+EXIT 1
+FORBID terminate called
+FORBID [vab] launched
+FORBID GL_
+LIMIT 60

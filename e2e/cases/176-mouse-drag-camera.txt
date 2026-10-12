@@ -1,0 +1,25 @@
+# --sim-mouse is documented as the way to move the view ("yaw = -dx/200 rad,
+# pitch = +dy/200 rad"), but until --cam-log nothing in stdout said where the
+# view WAS -- so 08-mouse-orbit could only assert that the game started, and a
+# drag that never reached the camera passed anyway. That blind spot already
+# cost a review a false camera finding. A 200x100 px drag must land yaw -1.0 /
+# pitch +0.5 exactly, and cap=0 says imgui never ate the gesture. The FORBID on
+# [pick] is the trap itself: a 0-duration RMB press is a part PICK, and the part
+# window it opens under the cursor truncates the NEXT drag mid-gesture
+# (measured yaw -0.7 instead of -1.0) with no word about it.
+NAME mouse-drag-camera
+ARGS --timeout 6 --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --cam-log
+ARGS --sim-mouse 1000,0,900,500,0
+ARGS --sim-mouse 1200,500,1100,600,RMB
+EXPECT [camlog]
+CHECK len(cam) >= 2
+CHECK cam[0]["mode"] == "orbit"
+CHECK abs((last(cam)["yaw"] - cam[0]["yaw"]) + 1.0) < 0.02
+CHECK abs((last(cam)["pitch"] - cam[0]["pitch"]) - 0.5) < 0.02
+CHECK last(cam)["cap"] == 0
+FORBID [pick]
+FORBID GL_
+FORBID error:
+LIMIT 60
