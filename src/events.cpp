@@ -457,8 +457,15 @@ void poll_events(Game &g) {
            live card and the card's callback then ran from a different scene
            (its [g] captures outliving the scene that asked). */
         if(modal) {
+            /* Re-read g.question, do not trust the batch latch for the pointer:
+               answerQuestion() below destroys the card (and a card's callback
+               may open the NEXT one), so a second ESC in the same batch
+               dereferenced a null unique_ptr -- two taps of ESC on a confirm
+               card is a segfault. The batch stays modal either way: swallowing
+               the extra press beats letting it reach the scene. */
             if(ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat
-               && ev.key.scancode == SDL_SCANCODE_ESCAPE) {
+               && ev.key.scancode == SDL_SCANCODE_ESCAPE
+               && g.question != nullptr) {
                 // ESC = the card's last choice, which is "Cancel" in every card.
                 const int n = (int)g.question->labels.size();
                 if(n > 0) { g.answerQuestion(n - 1); }

@@ -1,0 +1,19 @@
+# Two ESC presses inside ONE event batch (the second half of #234). The first
+# answers the card and destroys it; the modal branch in poll_events still read
+# g.question for the second and dereferenced a null unique_ptr -- SIGSEGV, exit
+# 139, no output. A player reaches this by tapping ESC twice on a confirm card:
+# the harness pushes both presses in one frame, and a slow frame batches two
+# real taps the same way. The batch stays modal either way, so the extra press
+# is swallowed rather than dispatched to the scene.
+NAME question-modal-esc-twice
+ARGS --new-game 1000 --timeout 9
+ARGS --ui-click 2500,"Game Menu/Return to title"
+ARGS --sim-press 4400,0,ESCAPE,4400,0,ESCAPE
+EXPECT [ask] Return to the title screen?
+EXPECT [ask] answered 1
+EXPECT Timeout reached (9.
+CHECK out.count("[ask] answered") == 1
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 60
