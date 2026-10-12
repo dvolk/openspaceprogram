@@ -623,7 +623,13 @@ static std::string saveSystemFile(const std::string &dir) {
     // Same permissive parse as load_game (comments allowed).
     try { j = nlohmann::json::parse(f, nullptr, true); }
     catch(const std::exception &) { return ""; }
-    return saveMetaFromJson(j).system;
+    // Peek the one key this helper needs instead of going through
+    // saveMetaFromJson: that reader REFUSES a save from another format, and
+    // this peek runs before the load path exists to report the refusal.
+    if(j.contains("system") && j["system"].is_string()) {
+        return j["system"].get<std::string>();
+    }
+    return "";
 }
 
 bool Game::newGame() {

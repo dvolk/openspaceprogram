@@ -155,8 +155,13 @@ struct SaveShip {
 
 // The global save state (dir/save.json). `ships` is the ordered list of
 // slugs (ships/<slug>.json), in the canonical fleet order (collectVehicles).
+/* The format this build writes and will read. Bump it on any change an older
+   reader could MISREAD (a renamed or repurposed key); an additive change
+   needs nothing, because the permissive reads below default it. */
+static const int kSaveFormat = 1;
+
 struct SaveMeta {
-    int format = 1;
+    int format = kSaveFormat;
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
     std::string system;      // the system file (res/systems/ksp_system.json)
     std::string parts;       // the parts catalog file (res/data/parts.json)
@@ -530,6 +535,20 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
 inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     SaveMeta m;
     if(j.contains("format") && j["format"].is_number()) { m.format = j["format"].get<int>(); }
+    /* The one read that is NOT permissive. Every other read below keeps the
+       struct's default for an absent key, which is right for an ADDITIVE
+       schema change and wrong for a RENAMED one: a save written by another
+       format would load as a fleet of half-defaulted ships (a missing "pos"
+       parks the ship at the body's centre, alt = -radius, with no warning).
+       Refuse across formats instead -- the project owes no save backward
+       compatibility, so a loud refusal beats a silent misread. Absent key =
+       the current format (a save predating the field). */
+    if(m.format != kSaveFormat) {
+        throw std::runtime_error("save: format " + std::to_string(m.format)
+                                 + " is not this build's format "
+                                 + std::to_string(kSaveFormat)
+                                 + " (no save backward compatibility is promised)");
+    }
     if(j.contains("saved_at") && j["saved_at"].is_string()) { m.saved_at = j["saved_at"].get<std::string>(); }
     if(j.contains("system") && j["system"].is_string()) { m.system = j["system"].get<std::string>(); }
     if(j.contains("parts") && j["parts"].is_string()) { m.parts = j["parts"].get<std::string>(); }

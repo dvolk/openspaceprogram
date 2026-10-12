@@ -4,7 +4,8 @@
 //
 // Covers: SaveMeta + SaveShip <-> nlohmann round-trip (every field), the
 // permissive reads (an absent/unknown key keeps the struct's default, an
-// older/newer file never crashes), and the mat3/vec3 serialization.
+// unknown key never crashes), the one non-permissive read (a save from
+// another "format" is refused), and the mat3/vec3 serialization.
 //
 // Also the uid keying of the cross-part references (see save.h): two parts
 // sharing an `id` -- the shape a docked pair of same-def ships saves as --
@@ -604,6 +605,19 @@ int main() {
     CHECK(near(emptyMeta.exhaust_scale, 1.0));  // missing -> the 1.0 default
     CHECK(emptyMeta.science_score == 0);
     CHECK(emptyMeta.recovered.empty());
+
+    /* ...except "format": a save from ANOTHER format is refused, not
+       half-parsed into defaults. Every other read defaults silently, so a
+       renamed key would load as a fleet of zeroed poses (a missing "pos"
+       parks the ship at the body centre) and the load would report success. */
+    nlohmann::json future = nlohmann::json::object();
+    future["format"] = kSaveFormat + 1;
+    bool refused_format = false;
+    try { saveMetaFromJson(future); }
+    catch(const std::runtime_error &) { refused_format = true; }
+    CHECK(refused_format);
+    // the format this build writes is the one it reads
+    CHECK(saveMetaToJson(SaveMeta()).at("format").get<int>() == kSaveFormat);
 
     // a hand-edited scale is clamped to the CLI range (0.5-5)
     nlohmann::json wild = nlohmann::json::object();
