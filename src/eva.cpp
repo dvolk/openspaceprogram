@@ -46,9 +46,15 @@ void evaArmCommands(Game &g, const std::function<bool(Slot)> &active) {
     const double rest = k->restAlt();
     k->grounded = BodyInContact(k->hull) || alt < rest + kGroundBand;
     if(k->jumping) {
-        // Stay ungrounded until floor contact clears (altitude release never
-        // fires when the jump apex is below the band, as on high-gravity terrain).
-        if(BodyInContact(k->hull)) { k->grounded = false; }
+        /* Release once the jump's outward kick is spent. Releasing when
+           contact clears never fires for a hop that never leaves contact --
+           a jump into the pad wall eats the kick, the kerbal slides back
+           onto the floor and stays in contact indefinitely -- and releasing
+           on altitude never fires when the apex is under the band (high
+           gravity). Either way the latch sticks and the kerbal is stuck in
+           space mode, where W burns suit RCS instead of walking. Gravity
+           spends the kick on any body. */
+        if(glm::dot(k->GetVel(), radial) > 0.0) { k->grounded = false; }
         else { k->jumping = false; }
     }
     k->mode = k->grounded ? EVA_GROUND : EVA_SPACE;

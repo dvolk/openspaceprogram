@@ -1,0 +1,15 @@
+{
+  "active_ship": "kerbal",
+  "exhaust_scale": 1.0,
+  "experiments": "res/data/experiments.json",
+  "format": 1,
+  "parts": "res/data/parts.json",
+  "saved_at": "2026-10-12T14:33:59Z",
+  "ships": [
+    "v0",
+    "v1"
+  ],
+  "system": "res/systems/solar_system.json",
+  "time": 26848.84999999959,
+  "time_accel": 1
+}

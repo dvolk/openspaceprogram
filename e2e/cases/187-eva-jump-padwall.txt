@@ -1,0 +1,28 @@
+# A jump that never leaves contact must still end. The post-jump latch used to
+# release when Bullet contact cleared, but a kerbal that hops into the launch
+# pad's wall has the wall eat the kick and slides back onto the floor: contact
+# never breaks (measured in the stuck state: contact=1, radial velocity ~0,
+# altitude inside the standing band, contact normal exactly radial), the latch
+# sticks, and it glides along the ground in space mode forever -- W burns suit
+# hydrazine as RCS instead of walking and the suit never stands back up. The
+# latch now releases on the outward kick being spent, which gravity guarantees.
+NAME eva-jump-padwall
+# --timeout is load-bearing, not slack: the wall bump spins the suit up to the
+# 6 rad/s slew cap and it needs ~2 s to right itself, so an 8 s run leaves that
+# spin inside the last-4 s window and the |w| check fails.
+ARGS --load e2e/fixtures/save_eva_padwall --time-accel 1 --timeout 12 --eva-log --att-log --orbit-interval 0.5 --sim-press 3000,5000,W --sim-press 4000,0,SPACE --frame-cap 30
+EXPECT Loaded game from e2e/fixtures/save_eva_padwall (active: kerbal)
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 10
+# Checked over the last 4 s of the run, not a fixed offset from the start: when
+# the bump happens moves with frame pacing.
+CHECK all(e["mode"] == "ground" for e in eva if e["t"] > last(eva)["t"] - 4.0)
+# Stuck in space mode, the held W burns the suit tank: 0.36 kg here vs 0.03 kg
+# when the latch releases.
+CHECK first(eva)["mass"] - last(eva)["mass"] < 0.2
+CHECK max(a["wnorm"] for a in att if a["t"] > last(att)["t"] - 4.0) < 1.0
+# "Stood back up" = the long axis (nose = local +Z) along the local vertical,
+# measured against the kerbal's own position rather than a pre-jump sample (the
+# first sample lands mid-settle, |w| ~0.9 rad/s).
+CHECK all(sum(n*p for n,p in zip(a["nose"], last(eva)["pos"])) / sum(p*p for p in last(eva)["pos"])**0.5 > 0.9 for a in att if a["t"] > last(att)["t"] - 4.0)

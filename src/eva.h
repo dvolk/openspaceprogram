@@ -26,7 +26,7 @@ struct Kerbal : Vehicle {
     // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
     EvaMode mode = EVA_GROUND;
     bool grounded = true;
-    bool jumping = false;        // post-jump: ignore grounded until floor contact clears
+    bool jumping = false;        // post-jump: ignore grounded until the outward kick is spent
     bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)
     bool jumpRequested = false;  // armed this tick; the first substep fires it
     glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
