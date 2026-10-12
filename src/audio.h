@@ -35,6 +35,10 @@ public:
     bool init();
     void shutdown();
 
+    // Trace every audio event as [aud] lines (--audio-log). Set it before
+    // init(); AUDIO_DEBUG=1 still turns the same trace on for a whole session.
+    void setDebug(bool on) { dbg_ = on; }
+
     bool enabled() const { return mixer_ != nullptr; }
 
     // Device sample rate (0 when disabled); backends negotiate differently.

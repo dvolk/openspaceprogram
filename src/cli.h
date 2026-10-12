@@ -123,6 +123,7 @@ struct GameArgs {
     bool att_log = false;          // log the ship's nose + angular velocity
     bool shake_log = false;       // --shake-log: the cam-shake state per interval
     bool cam_log = false;         // --cam-log: the live camera pose + who ate the input
+    bool audio_log = false;       // --audio-log: the [aud] audio-event trace (was AUDIO_DEBUG=1 only)
     bool terrain_log = false;     // --terrain-log: the local body's patch-tree LOD
     bool tq_log = false;           // --tq-log: COM-lag x net-force spurious-torque probe
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links

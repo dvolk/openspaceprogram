@@ -244,6 +244,17 @@ int main(int argc, char **argv)
     const float glyph_extra_advance_x = 0.0f;
     ImFontConfig font_cfg;
     font_cfg.GlyphExtraAdvanceX = glyph_extra_advance_x;
+    /* --font is a boot-time path like every other pin, so check it here:
+       imgui answers a missing TTF with an assert and SIGABRT -- a core dump
+       for what is nearly always a typo (the same class as --vab, #16). */
+    {
+        const std::string fontfile = resdir::path(args.font_path);
+        if(!std::filesystem::exists(fontfile)) {
+            printf("error: --font '%s' not found (looked for %s)\n",
+                   args.font_path.c_str(), fontfile.c_str());
+            return 1;
+        }
+    }
     io.Fonts->AddFontFromFileTTF(resdir::path(args.font_path).c_str(),
                                  args.font_size, &font_cfg);
     // The big face (2x size) for the HUD + main menu (gameui.cpp).
@@ -417,6 +428,8 @@ int main(int argc, char **argv)
 
     // Sound (audio.h): a silent no-op when there is no playback device or
     // the assets are missing. Music starts here and loops the whole session.
+    // --audio-log must be set before init(), which is where the trace prints.
+    game.audio.setDebug(args.audio_log);
     if(game.audio.init()) {
         game.audio.setMusic("res/audio/ville_seppanen-1_g.ogg");
     }

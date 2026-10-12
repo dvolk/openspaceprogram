@@ -470,6 +470,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "this line a mouse case whose drag never reached the camera "
                  "still passes");
 
+    app.add_flag("--audio-log", args.audio_log,
+                 "Trace every audio event to stdout as [aud] lines: the "
+                 "device that opened, each clip loaded (format + length), "
+                 "each one-shot played with its gain, and the loop fades -- "
+                 "the instrument for 'did that part's sound fire?'. Same "
+                 "trace the AUDIO_DEBUG=1 environment variable turns on, "
+                 "which nothing in --help used to mention");
+
     app.add_flag("--terrain-log", args.terrain_log,
                  "Periodically print the local body's terrain LOD to stdout: "
                  "the alive patch count, the deepest leaf depth, how many "

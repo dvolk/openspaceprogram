@@ -7,7 +7,10 @@
 
 bool Audio::init() {
     if(mixer_ != nullptr) { return true; }
-    dbg_ = (getenv("AUDIO_DEBUG") != nullptr);
+    // AUDIO_DEBUG=1 stays a session-wide trace with no flag and no rebuild;
+    // --audio-log sets dbg_ before this runs, so OR the env in rather than
+    // overwrite the flag.
+    if(getenv("AUDIO_DEBUG") != nullptr) { dbg_ = true; }
     if(!MIX_Init()) {
         printf("audio: unavailable (%s) -- running silent\n", SDL_GetError());
         return false;
