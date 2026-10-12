@@ -151,6 +151,11 @@ struct SaveShip {
     std::vector<SavePart> suit_inventory;
     /* The kerbal's suit experiments (Part::experiments on the suit). */
     std::vector<Experiment> suit_experiments;
+    /* The kerbal's QE yaw offset (Kerbal::viewYaw, eva.h): how far the suit is
+       rotated about the view axis away from camera-facing. It is accumulated
+       state, not re-derivable from the pose, so a save that drops it lets the
+       space-mode attitude law slew the suit back to camera-facing on load. */
+    double view_yaw = 0.0;
 };
 
 // The global save state (dir/save.json). `ships` is the ordered list of
@@ -419,6 +424,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         if(!s.suit_experiments.empty()) {
             j["suit_experiments"] = experimentListToJson(s.suit_experiments);
         }
+        j["view_yaw"] = s.view_yaw;
         return j;
     }
     j["home"]         = s.home;
@@ -478,6 +484,8 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         if(j.contains("suit_experiments")) {
             s.suit_experiments = experimentListFromJson(j["suit_experiments"]);
         }
+        // Absent (a save predating the field) leaves 0 = camera-facing.
+        if(j.contains("view_yaw") && j["view_yaw"].is_number()) { s.view_yaw = j["view_yaw"].get<double>(); }
         return s;
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }

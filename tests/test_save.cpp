@@ -304,6 +304,28 @@ int main() {
     SaveShip crewOldOut = saveShipFromJson(saveShipToJson(crewOld));
     CHECK(crewOldOut.suit_fuel.empty());
 
+    /* #238: the QE yaw offset. It is accumulated state the space attitude law
+       chases every substep, so a load that drops it slews the suit back to
+       camera-facing even though the pose round-tripped. */
+    SaveShip crewYaw;
+    crewYaw.name = "kerbal";
+    crewYaw.defPath = "./res/ships/kerbal.json";
+    crewYaw.is_crew = true;
+    crewYaw.view_yaw = 3.025;
+    CHECK(near(saveShipFromJson(saveShipToJson(crewYaw)).view_yaw, 3.025));
+    // A save that predates the field (or names it with junk) stays 0 = the
+    // camera-facing default, rather than reading past the end of the object.
+    CHECK(saveShipFromJson(nlohmann::json::parse(
+              R"({"name":"kerbal","is_crew":true})")).view_yaw == 0.0);
+    CHECK(saveShipFromJson(nlohmann::json::parse(
+              R"({"name":"kerbal","is_crew":true,"view_yaw":"nope"})")).view_yaw == 0.0);
+    // The field is crew-only: a ship must not pick up a stray key.
+    SaveShip yawShip;
+    yawShip.name = "racer";
+    yawShip.is_crew = false;
+    CHECK(!saveShipToJson(yawShip).contains("view_yaw"));
+    CHECK(saveShipFromJson(saveShipToJson(yawShip)).view_yaw == 0.0);
+
     // --- science: experiments on a suit + on a part, and the meta score ----
     {
         Experiment e1;

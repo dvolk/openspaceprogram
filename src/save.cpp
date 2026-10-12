@@ -182,6 +182,11 @@ SaveShip saveShipFromVehicle(Vehicle *v) {
         s.pose.vel = v->GetVel();
         s.pose.angvel = GetAngVelocity(v->hull);
         s.onRails = v->onRails;
+        /* The QE yaw offset. The saved pose already holds the ATTITUDE the
+           law was chasing, but the space law steers toward camera-facing +
+           this offset every substep: without it the suit slews back to
+           camera-facing on load (see Kerbal::applyEva, eva.cpp). */
+        s.view_yaw = k->viewYaw;
         /* the suit tank contents (the kerbal's part 0 is the suit). Saved
            so a kerbal that burned some does not get a free re-seed. */
         if(!v->parts.empty()) {
@@ -478,6 +483,8 @@ Kerbal *buildKerbalFromSave(Game &g, const SaveShip &s,
     // Restore the journal BEFORE either setSoi below, so its observe is a
     // no-op on the unchanged body.
     k->flog = s.flog;
+    // The QE yaw offset the space attitude law chases (see saveShipFromVehicle).
+    k->viewYaw = s.view_yaw;
     if(s.aboard.empty()) {
         // free (on EVA): live in the world, at its saved pose
         TerrainBody *body = g.sys.find(s.pose.body);

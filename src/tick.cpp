@@ -425,15 +425,20 @@ void tick(Game &g) {
                 const glm::dvec3 p = k->get_center_of_mass();
                 const glm::dvec3 v = k->GetVel();
                 const glm::dvec3 face = k->partAxis(k->controller, 1);
+                // viewyaw=, not yaw=: [camlog] already uses yaw= for the camera
+                // azimuth, and the two are the other half of the same attitude
+                // law (#241). Ground rows print the offset anyway -- it is the
+                // one that applies on the next space transition.
                 printf("[evalog] t=%.1fs mode=%s grounded=%d "
                        "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] "
-                       "face=[%.3f %.3f %.3f] alt=%.2f m "
+                       "face=[%.3f %.3f %.3f] alt=%.2f m viewyaw=%.3f "
                        "mass=%.3fkg\n",
                        g.time, (k->mode == EVA_GROUND) ? "ground" : "space",
                        (int)k->grounded, p.x, p.y, p.z, v.x, v.y, v.z,
                        face.x, face.y, face.z,
                        glm::length(p) - (double)k->m_parent->GetTerrainHeight(
                            glm::vec3(glm::normalize(p))),
+                       k->viewYaw,
                        k->getMass());
                 fflush(stdout);
             }

@@ -1,0 +1,14 @@
+{
+  "active_ship": "kerbal",
+  "exhaust_scale": 1.0,
+  "experiments": "res/data/experiments.json",
+  "format": 1,
+  "parts": "res/data/parts.json",
+  "saved_at": "2026-10-12T16:24:05Z",
+  "ships": [
+    "v0"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 5.083333333333321,
+  "time_accel": 1
+}

@@ -1,0 +1,35 @@
+# A space-walking kerbal's QE yaw offset must survive a save/load. The space
+# attitude law steers toward camera-facing + Kerbal::viewYaw every substep
+# (eva.cpp), and viewYaw is accumulated state the pose cannot express. SaveShip
+# captured pose, vel, angvel, suit fuel, inventory and journal but nothing from
+# Kerbal, so a loaded kerbal slewed itself back to camera-facing: ~3.4 rad/s of
+# spin and the long axis 86 degrees from where the player left it.
+#
+# Scope: this pins the SUIT's half. The law's other input is the camera
+# turntable, which is still not saved -- drag the camera, save, load, and the
+# suit slews 118 degrees to the fresh camera. See #241.
+#
+# Fixture mint (re-mint the fixture and the golden vector below together):
+#   ./osp --time-accel 1 --timeout 5 --frame-cap 30 --orbit-interval 1 \
+#         --sim-press 2000,1000,Q --startship kerbal,res/ships/kerbal.json,Kerbin,inertial-orbit \
+#         --save e2e/fixtures/save_eva_yaw
+NAME eva-yaw-reload
+ARGS --load e2e/fixtures/save_eva_yaw --time-accel 1 --timeout 6 --eva-log --att-log --orbit-interval 1 --frame-cap 30
+EXPECT Loaded game from e2e/fixtures/save_eva_yaw (active: kerbal)
+FORBID GL_
+FORBID error:
+CHECK len(eva) > 5
+CHECK all(e["mode"] == "space" for e in eva)
+# The fixture really is yawed, so the checks below are not vacuous.
+CHECK abs(first(eva)["viewyaw"]) > 1.0
+# No keys are pressed, so the offset must not move.
+CHECK abs(last(eva)["viewyaw"] - first(eva)["viewyaw"]) < 0.05
+# Smoke test only: the snap-back runs ~0.5 s and --orbit-interval samples once a
+# second, so this catches it by luck. The golden below is the actual pin -- do
+# not delete it as redundant with this.
+CHECK max(a["wnorm"] for a in att) < 1.0
+# The pin: the long axis stays at the attitude the save recorded. Golden, not
+# first-vs-last -- the snap-back completes inside the first attlog interval, so a
+# first-anchored comparison measures two camera-facing samples and passes. The
+# vector is the fixture's ships/v0.json pose.rot column 2 (the nose).
+CHECK all(sum(n*g for n,g in zip(a["nose"], (0.0013, 0.9975, 0.0707))) > 0.99 for a in att)
