@@ -123,8 +123,9 @@ DRAG_CD = {
                        "drag_backward": 0.2},
     "aileron":        {"drag": 0.1, "drag_forward": 0.2, "drag_side": 1.0,
                        "drag_backward": 0.2},
-    # parachute: the stowed hull is blunt, the deployed canopy dominates (the
-    # Cd.A figure lives in EXTRA_FIELDS.chute_area, not here)
+    # parachute: stowed it is the nose-cap silhouette, but the deployed canopy
+    # dominates the aero pass (the Cd.A figure lives in EXTRA_FIELDS.chute_area,
+    # not here), so it gets its own Cd family rather than nose_cap's.
     "chute":          {"drag": 0.9, "drag_forward": 0.6, "drag_side": 0.9,
                        "drag_backward": 1.2},
 }
@@ -245,19 +246,22 @@ EXTRA_FIELDS = {
     "docking_port_r1.5": {"mass": 75, "docking_port": True, "fuel_barrier": True},
     "docking_port_r2.25":{"mass": 110, "docking_port": True, "fuel_barrier": True,
                          "height": 0.5625},
-    "fuel_link":         {"fuel_link": True},
-    # chute: the hull is a nose cap; mass is declared (hull + folded canopy)
-    # and the deployed canopy's Cd.A (m^2) + overlay art are not geometry.
+    # chute: rides the nose-cap hull. Mass is DECLARED (like the decouplers and
+    # the barometer) because a stowed canopy's mass is not hull volume;
+    # chute_area is the deployed canopy's Cd.A (m^2, src/drag.h) and the canopy
+    # art is an overlay, so neither derives from the mesh.
     "chute":             {"mass": 150.0, "chute_area": 25.0,
                           "chute_mesh": "meshes/chute_canopy.obj",
                           "chute_texture": "textures/chute.png"},
+    "fuel_link":         {"fuel_link": True},
 }
 
+# every overlay-art path in the table must name its own asset directory
 for _n, _f in EXTRA_FIELDS.items():
-    if "shroud" in _f:
-        assert _f["shroud"].startswith("meshes/"), _f["shroud"]
-    if "shroud_texture" in _f:
-        assert _f["shroud_texture"].startswith("textures/"), _f["shroud_texture"]
+    for _k, _pfx in (("shroud", "meshes/"), ("shroud_texture", "textures/"),
+                     ("chute_mesh", "meshes/"), ("chute_texture", "textures/")):
+        if _k in _f:
+            assert _f[_k].startswith(_pfx), _f[_k]
 
 
 def mesh_geom(mesh_file):
@@ -472,6 +476,8 @@ def summary_line(e):
     n = e["name"]
     if "fuel_link" in e:
         return "  %-24s virtual one-way fuel link" % n
+    if "chute_area" in e:
+        return "  %-24s Cd.A=%5s m^2  mass=%7s" % (n, e["chute_area"], e["mass"])
     if "lift_area" in e:
         return "  %-24s S=%5s  cl=%4s  A_stall=%s  mass=%7s" % (
             n, e["lift_area"], e["cl"], e["stall_angle"], e["mass"])
@@ -525,6 +531,13 @@ def check(parts, path):
     for name in gb:
         if name not in cb:
             out.append(f"part {name}: in generated, missing from committed file")
+    # Order too: the array order is this script's to choose and it is the
+    # catalog's own order (the VAB palette lists it verbatim), so a
+    # hand-reorder of the JSON is drift as well -- same pin as gen_systems.py.
+    cn = [x["name"] for x in committed.get("parts", [])]
+    gn = [x["name"] for x in parts]
+    if cn != gn and sorted(cn) == sorted(gn):
+        out.append("parts: same names in a different order")
     for name in cb:
         if name in gb and cb[name] != gb[name]:
             for k in sorted(set(cb[name]) | set(gb[name])):
