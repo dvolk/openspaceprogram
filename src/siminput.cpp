@@ -7,15 +7,15 @@
 #include <map>
 
 SDL_Keycode sim_parse_key(const std::string &s) {
-    // decimal SDL keycode, e.g. 32 = SPACE
-    if(!s.empty()) {
-        char *end = nullptr;
-        const unsigned long v = strtoul(s.c_str(), &end, 10);
-        if(end != s.c_str() && *end == '\0') {
-            return (SDL_Keycode)v;
-        }
-    }
+    /* Names first, decimal second. The decimal escape (32 = SPACE) used to be
+       tried FIRST, so "3" parsed as keycode 3 and the digit keys were
+       unreachable from --sim-press (#108) -- which is why the scene-switch
+       e2e case has to send the raw keycodes 49..52 instead of 1234. A bare
+       number is still accepted as long as it is not a name. */
     static const std::map<std::string, SDL_Keycode> names = {
+        {"0", SDLK_0}, {"1", SDLK_1}, {"2", SDLK_2}, {"3", SDLK_3},
+        {"4", SDLK_4}, {"5", SDLK_5}, {"6", SDLK_6}, {"7", SDLK_7},
+        {"8", SDLK_8}, {"9", SDLK_9},
         {"A", SDLK_A}, {"B", SDLK_B}, {"C", SDLK_C}, {"D", SDLK_D},
         {"E", SDLK_E}, {"F", SDLK_F}, {"G", SDLK_G}, {"H", SDLK_H},
         {"I", SDLK_I}, {"J", SDLK_J}, {"K", SDLK_K}, {"L", SDLK_L},
@@ -44,6 +44,15 @@ SDL_Keycode sim_parse_key(const std::string &s) {
     std::map<std::string, SDL_Keycode>::const_iterator it = names.find(up);
     if(it != names.end()) {
         return it->second;
+    }
+    // Decimal SDL keycode escape, e.g. 32 = SPACE. Second, so a digit name
+    // above wins (see #108).
+    if(!s.empty()) {
+        char *end = nullptr;
+        const unsigned long v = strtoul(s.c_str(), &end, 10);
+        if(end != s.c_str() && *end == '\0') {
+            return (SDL_Keycode)v;
+        }
     }
     return 0; // unknown
 }
