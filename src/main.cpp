@@ -1618,10 +1618,12 @@ int main(int argc, char **argv)
                          stamp, screenshot_count + 1);   // 1-indexed (count = shots so far)
                 /* F12 is a user feature, so it answers: quicksave/quickload and
                    every warp step already toast, and a silent shot is
-                   indistinguishable from a dead key. The toast is one centered
-                   line in the big font, so it stays short -- SaveScreenshot
-                   prints the full path itself, and the directory is fixed and
-                   documented in the readme. */
+                   indistinguishable from a dead key. The toast never lands in
+                   a shot, though -- a screenshot frame draws no toasts at all
+                   (drawToasts), so a burst of shots cannot photograph the
+                   previous one's message. SaveScreenshot prints the full path
+                   itself, and the directory is fixed and documented in the
+                   readme. */
                 if(display.SaveScreenshot(fname)) {
                     screenshot_count++;
                     game.toast("Screenshot saved");

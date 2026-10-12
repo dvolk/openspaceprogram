@@ -2852,6 +2852,12 @@ void drawQuestion(Game &g) {
 }
 
 void drawToasts(Game &g) {
+    /* A frame that is about to be screenshotted draws no toasts. They live
+       kToastLife (3 s) and land dead centre, so a burst of F12 presses
+       photographs the previous shot's message. The queue is untouched, so
+       lifetimes are unaffected: an in-flight toast blinks out for this one
+       frame and returns. */
+    if(g.screenshot_requested) { return; }
     const double now = SDL_GetTicks() * 0.001;
     std::vector<const ToastMsg *> live;
     for(const ToastMsg &t : g.toasts) {
