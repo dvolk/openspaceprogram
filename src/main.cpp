@@ -1553,8 +1553,18 @@ int main(int argc, char **argv)
                 char fname[256];
                 snprintf(fname, sizeof(fname), "%s/osp_%s_%03d.png", shot_dir.c_str(),
                          stamp, screenshot_count + 1);   // 1-indexed (count = shots so far)
+                /* F12 is a user feature, so it answers: quicksave/quickload and
+                   every warp step already toast, and a silent shot is
+                   indistinguishable from a dead key. The toast is one centered
+                   line in the big font, so it stays short -- SaveScreenshot
+                   prints the full path itself, and the directory is fixed and
+                   documented in the readme. */
                 if(display.SaveScreenshot(fname)) {
                     screenshot_count++;
+                    game.toast("Screenshot saved");
+                } else {
+                    // SaveScreenshot already printed the path and SDL_GetError.
+                    game.toast("Screenshot failed");
                 }
                 screenshot_requested = false;
             }
