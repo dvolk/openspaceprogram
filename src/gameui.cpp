@@ -507,6 +507,39 @@ void drawUIReadouts(Game &g) {
         {
             static const char *const mode_names[] =
                 {"windowed", "borderless", "fullscreen", "exclusive"};
+            /* The mode list and the refresh rate are SDL queries: displayModes()
+               mallocs and copies the whole mode array, dedups it in O(n^2) and
+               sorts it, currentRefresh() adds two more SDL calls, and the combo
+               labels are then snprintf'd into a fresh string (~50 entries here).
+               Refresh at ~1 Hz while the window is open instead of per frame --
+               same gate as navTitle's latestSave probe. The lag costs at most a
+               second, and only on the Hz a row is labelled with: the mode list
+               belongs to the display, not to our window, so neither a
+               window-mode nor a resolution change can alter it (the resize
+               itself lands through SIZE_CHANGED in events.cpp). */
+            static const double kModeRefreshSec = 1.0;
+            static double nextModeRefresh = 0.0;
+            static std::vector<Resolution> modes;
+            static int cur_refresh = 0;
+            static std::string items;
+            auto refreshModes = [&] {
+                nextModeRefresh = ImGui::GetTime() + kModeRefreshSec;
+                modes = g.display.displayModes();
+                cur_refresh = g.display.currentRefresh();
+                items.clear();
+                char buf[48];
+                for(size_t i = 0; i < modes.size(); i++) {
+                    // Same WxH at several refresh rates: the Hz is what
+                    // tells the entries apart (0 = unknown, omit it).
+                    snprintf(buf, sizeof(buf),
+                             modes[i].refresh > 0 ? "%dx%d @ %dHz" : "%dx%d",
+                             modes[i].width, modes[i].height,
+                             modes[i].refresh);
+                    items += buf;
+                    items += '\0';
+                }
+                items += '\0';
+            };
             int wm = (int)args.window_mode;
             if(ImGui::Combo("Window mode", &wm,
                             "windowed\0borderless\0fullscreen\0exclusive\0")) {
@@ -515,13 +548,14 @@ void drawUIReadouts(Game &g) {
                                         args.screen_width, args.screen_height);
                 g.toast("Window mode: %s", mode_names[wm]);
             }
+            if(ImGui::GetTime() >= nextModeRefresh) {
+                refreshModes();
+            }
             // Resolution: the display's supported modes (+ the current one).
             // The selection is an exact WxH match (among those, the refresh
             // closest to the display's current one), falling back to the
             // nearest WxH (the WM may have clamped it out of the list).
-            const std::vector<Resolution> modes = g.display.displayModes();
             if(!modes.empty()) {
-                const int cur_refresh = g.display.currentRefresh();
                 int sel_exact = -1, best_exact = INT_MAX;
                 int sel_any = 0, best_any = INT_MAX;
                 for(size_t i = 0; i < modes.size(); i++) {
@@ -538,19 +572,6 @@ void drawUIReadouts(Game &g) {
                     }
                 }
                 int sel = (sel_exact >= 0) ? sel_exact : sel_any;
-                std::string items;
-                char buf[48];
-                for(size_t i = 0; i < modes.size(); i++) {
-                    // Same WxH at several refresh rates: the Hz is what
-                    // tells the entries apart (0 = unknown, omit it).
-                    snprintf(buf, sizeof(buf),
-                             modes[i].refresh > 0 ? "%dx%d @ %dHz" : "%dx%d",
-                             modes[i].width, modes[i].height,
-                             modes[i].refresh);
-                    items += buf;
-                    items += '\0';
-                }
-                items += '\0';
                 const bool native_fs =
                     (args.window_mode == WindowMode::Fullscreen);
                 ImGui::BeginDisabled(native_fs);
@@ -3436,19 +3457,34 @@ void drawSaveLoad(Game &g) {
     static int gameSel = 0;    // index into the games list
     static int slotSel = 0;    // index into the selected game's slots
     static int prevGameSel = -2;   // a game switch re-picks the first slot
+    /* Both lists are directory scans -- list_games walks saves/ and then
+       reopens every game dir, ~8 opendir cycles and ~55 allocations per call
+       on this box -- so they refresh at ~1 Hz while the window is open, not
+       per frame (navTitle's latestSave probe is the same gate). A save or a
+       delete resets the timer, so your own action shows up on the next frame. */
+    static const double kRescanSec = 1.0;
+    static double nextRescan = 0.0;
+    static std::vector<GameEntry> games;
+    static std::vector<std::string> slots;
 
     drawWin(g, W_SaveLoad, [&] {
         // The lists are directory scans, so read them only while the window
         // is open, and clamp the selections if the lists grew or shrank (a
         // save / delete). Clamp BOTH bounds: a frame with an empty list parks
         // the index at -1, and a later `list[-1]` is an out-of-bounds read.
-        std::vector<GameEntry> games = list_games(datadir::saves());
+        const bool due = ImGui::GetTime() >= nextRescan;
+        if(due) {
+            nextRescan = ImGui::GetTime() + kRescanSec;
+            games = list_games(datadir::saves());
+        }
         if(gameSel < 0 || gameSel >= (int)games.size()) {
             gameSel = (int)games.size() - 1;
         }
-        std::vector<std::string> slots;
-        if(gameSel >= 0) {
-            slots = list_saves(datadir::saves() + "/" + games[gameSel].dirName);
+        if(due || gameSel != prevGameSel) {
+            slots.clear();
+            if(gameSel >= 0) {
+                slots = list_saves(datadir::saves() + "/" + games[gameSel].dirName);
+            }
         }
         if(gameSel != prevGameSel) { slotSel = 0; prevGameSel = gameSel; }
         if(slotSel < 0 || slotSel >= (int)slots.size()) {
@@ -3474,6 +3510,7 @@ void drawSaveLoad(Game &g) {
                 try {
                     save_game(g, dir);
                     g.toast("Saved to %s/%s", g.gameName.c_str(), nameBuf);
+                    nextRescan = 0.0;   // the new slot joins the list next frame
                 } catch(const std::exception &e) {
                     g.toast("Save failed: %s", e.what());
                 }
@@ -3539,6 +3576,7 @@ void drawSaveLoad(Game &g) {
                     g.toast("Deleted %s/%s", games[gameSel].name.c_str(),
                             slots[slotSel].c_str());
                     slotSel = 0;   // the slot list shrank under the selection
+                    nextRescan = 0.0;   // and the deleted row goes away next frame
                 } catch(const std::exception &e) {
                     g.toast("Delete failed: %s", e.what());
                 }
