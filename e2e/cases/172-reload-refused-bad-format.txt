@@ -1,0 +1,23 @@
+NAME reload-refused-bad-format
+# A save that declares another format is refused loudly, not half-parsed into
+# defaults. Every other save read is permissive (an absent key keeps the struct
+# default), so a renamed key would load as a fleet of zeroed poses -- a missing
+# pose.pos parks the ship at the body's centre, alt = -radius -- and the load
+# would report success. src/save.h kSaveFormat is the gate; the refusal lands in
+# ensureSystemForSave BEFORE any system switch, so the running game survives.
+ARGS --system res/systems/ksp_system.json --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --reload e2e/fixtures/save_bad_format --reload-at 2000
+ARGS --orbit-log --orbit-interval 0.5
+ARGS --timeout 8
+EXPECT [load] refused e2e/fixtures/save_bad_format: its "format" is not this build's format 1
+EXPECT Timeout reached (8.
+EXPECT [orbitlog]
+CHECK len(orbit) >= 4
+FORBID terminate called
+FORBID Loaded game from e2e/fixtures/save_bad_format
+FORBID switched system
+FORBID Segmentation
+FORBID GL_
+FORBID error:
+LIMIT 120

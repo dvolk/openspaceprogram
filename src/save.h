@@ -183,9 +183,11 @@ struct SaveMeta {
 };
 
 // ---- pure JSON (de)serialization (inline: header-only, unit-testable) ----
-// Reads are permissive (j.contains(k) && type check) so a hand-edited or
-// older/newer file never crashes the load -- an absent/unknown key keeps the
-// struct's default.
+// Reads are permissive (j.contains(k) && type check) so a hand-edited file or
+// an unknown key never crashes the load -- an absent/unknown key keeps the
+// struct's default. The ONE exception is SaveMeta's "format", refused across
+// formats (see saveMetaFromJson): permissive reads are right for an additive
+// schema change and silently wrong for a renamed key.
 
 inline std::vector<double> mat3ToVec(const glm::dmat3 &m) {
     std::vector<double> v(9);
@@ -534,7 +536,6 @@ inline nlohmann::json saveMetaToJson(const SaveMeta &m) {
 
 inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
     SaveMeta m;
-    if(j.contains("format") && j["format"].is_number()) { m.format = j["format"].get<int>(); }
     /* The one read that is NOT permissive. Every other read below keeps the
        struct's default for an absent key, which is right for an ADDITIVE
        schema change and wrong for a RENAMED one: a save written by another
@@ -542,7 +543,17 @@ inline SaveMeta saveMetaFromJson(const nlohmann::json &j) {
        parks the ship at the body's centre, alt = -radius, with no warning).
        Refuse across formats instead -- the project owes no save backward
        compatibility, so a loud refusal beats a silent misread. Absent key =
-       the current format (a save predating the field). */
+       the current format (a save predating the field).
+       A format that is PRESENT but not an integer is refused too: "99", null
+       and true are all a header this build cannot read, and 1.5 would
+       otherwise truncate down into the accepted range. */
+    if(j.contains("format")) {
+        if(!j["format"].is_number_integer()) {
+            throw std::runtime_error(std::string("save: \"format\" must be an "
+                                     "integer, got ") + j["format"].type_name());
+        }
+        m.format = j["format"].get<int>();
+    }
     if(m.format != kSaveFormat) {
         throw std::runtime_error("save: format " + std::to_string(m.format)
                                  + " is not this build's format "

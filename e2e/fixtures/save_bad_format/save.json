@@ -1,0 +1,13 @@
+{
+  "active_ship": "racer",
+  "format": 99,
+  "parts": "res/data/parts.json",
+  "saved_at": "2026-10-12T00:00:00Z",
+  "ships": [
+    "v0",
+    "v1"
+  ],
+  "system": "res/systems/ksp_system.json",
+  "time": 3.0800000000000023,
+  "time_accel": 1
+}

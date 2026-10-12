@@ -615,17 +615,28 @@ static std::string baseName(const std::string &p) {
 }
 
 // The system file a save records (dir/save.json's "system"), or "" when the
-// file is missing / unreadable / predates the field.
-static std::string saveSystemFile(const std::string &dir) {
+// file is missing / unreadable / predates the field. `format_ok` (optional)
+// reports whether the save declares a format THIS build can read. This peek
+// must not throw -- it runs before the load path exists to report a refusal
+// (an uncaught throw here aborted the process) -- but ensureSystemForSave
+// needs the answer BEFORE switchSystem, because a switch tears the running
+// game down (fleet gone, science reset) and the load that follows may refuse.
+static std::string saveSystemFile(const std::string &dir, bool *format_ok = nullptr) {
+    if(format_ok != nullptr) { *format_ok = true; }
     std::ifstream f(dir + "/save.json");
     if(!f) { return ""; }
     nlohmann::json j;
     // Same permissive parse as load_game (comments allowed).
     try { j = nlohmann::json::parse(f, nullptr, true); }
     catch(const std::exception &) { return ""; }
-    // Peek the one key this helper needs instead of going through
-    // saveMetaFromJson: that reader REFUSES a save from another format, and
-    // this peek runs before the load path exists to report the refusal.
+    // Peek the keys this helper needs directly rather than through
+    // saveMetaFromJson, which REFUSES a foreign format (src/save.h, kSaveFormat).
+    if(j.contains("format")) {
+        if(format_ok != nullptr) {
+            *format_ok = j["format"].is_number_integer()
+                         && j["format"].get<int>() == kSaveFormat;
+        }
+    }
     if(j.contains("system") && j["system"].is_string()) {
         return j["system"].get<std::string>();
     }
@@ -730,7 +741,19 @@ std::string Game::ensureGameDir() {
 // and the boot --load path.
 bool Game::ensureSystemForSave(const std::string &dir, bool *switched) {
     if(switched != nullptr) { *switched = false; }
-    const std::string sysfile = saveSystemFile(dir);
+    bool format_ok = true;
+    const std::string sysfile = saveSystemFile(dir, &format_ok);
+    if(!format_ok) {
+        /* Refuse HERE, not only in load_game. A cross-system load switches
+           first, and switchSystem tears the running game down (fleet deleted,
+           science reset) -- by the time load_game throws, a save this build
+           could have refused for free has already cost the player their career. */
+        printf("[load] refused %s: its \"format\" is not this build's format %d\n",
+               dir.c_str(), kSaveFormat);
+        fflush(stdout);
+        toast("Load failed: this save's format is not this build's");
+        return false;
+    }
     if(sysfile.empty() || baseName(sysfile) == baseName(systemPath)) {
         return true;   // same system (or none recorded) -- nothing to switch
     }

@@ -599,7 +599,7 @@ int main() {
 
     // --- permissive reads: an empty / partial document never crashes -------
     SaveMeta emptyMeta = saveMetaFromJson(nlohmann::json::object());
-    CHECK(emptyMeta.format == 1);            // the defaults survive
+    CHECK(emptyMeta.format == kSaveFormat);   // the defaults survive
     CHECK(emptyMeta.ships.empty());
     CHECK(emptyMeta.active_ship.empty());
     CHECK(near(emptyMeta.exhaust_scale, 1.0));  // missing -> the 1.0 default
@@ -610,12 +610,27 @@ int main() {
        half-parsed into defaults. Every other read defaults silently, so a
        renamed key would load as a fleet of zeroed poses (a missing "pos"
        parks the ship at the body centre) and the load would report success. */
+    auto format_refused = [](const nlohmann::json &j) {
+        try { saveMetaFromJson(j); }
+        catch(const std::runtime_error &) { return true; }
+        return false;
+    };
     nlohmann::json future = nlohmann::json::object();
     future["format"] = kSaveFormat + 1;
-    bool refused_format = false;
-    try { saveMetaFromJson(future); }
-    catch(const std::runtime_error &) { refused_format = true; }
-    CHECK(refused_format);
+    CHECK(format_refused(future));
+    // a save from an OLDER format too -- the gate is equality, not "newer"
+    nlohmann::json past = nlohmann::json::object();
+    past["format"] = kSaveFormat - 1;
+    CHECK(format_refused(past));
+    // a format that is present but not an integer is a header this build
+    // cannot read: "99"/null/true must not load, and 1.5 must not truncate
+    // its way into the accepted range
+    const nlohmann::json weird[] = {std::string("99"), nullptr, true, 1.5};
+    for(const nlohmann::json &w : weird) {
+        nlohmann::json j = nlohmann::json::object();
+        j["format"] = w;
+        CHECK(format_refused(j));
+    }
     // the format this build writes is the one it reads
     CHECK(saveMetaToJson(SaveMeta()).at("format").get<int>() == kSaveFormat);
 
