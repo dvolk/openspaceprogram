@@ -95,7 +95,11 @@ struct GeoPatch {
     // Post the async subdivision job (main thread). The worker builds the
     // four children's GridGeoms (pure math, terragen.h); the main-thread
     // continuation does the GL upload + Bullet collision and attaches them.
-    void requestSubdivide(JobRunner &jobs);
+    // px_width: the patch's projected size [screen px] that made it want
+    // children -- also the queue priority, so the single worker drills the
+    // patches that are most wrong on screen first instead of walking the tree
+    // in posting order (see GeoPatch::Update).
+    void requestSubdivide(JobRunner &jobs, double px_width);
 
     int CountChildren() {
         int ret = 1;

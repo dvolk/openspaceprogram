@@ -4,9 +4,10 @@
 //
 // Pins the worker / main-thread handoff: the job BODY runs off the calling
 // thread, its returned continuation runs on the thread that calls poll(),
-// jobs land in the order they were posted, a throwing body does not kill the
-// worker, and busy() / poll() report the right state (including the running
-// job's label for the "working on it" indicator).
+// equal-priority jobs land in the order they were posted and a higher
+// priority jumps the queue, a throwing body does not kill the worker, and
+// busy() / poll() report the right state (including the running job's label
+// for the "working on it" indicator).
 #include "job.h"
 
 #include <atomic>
@@ -17,6 +18,7 @@
 #include <stdexcept>   // std::runtime_error (the throwing-body case)
 #include <string>
 #include <thread>
+#include <vector>
 
 static int failures = 0;
 #define CHECK(cond) do { \
@@ -77,7 +79,7 @@ int main() {
     }
 
     // =========================================================================
-    // 2. Ordering: two jobs land in the order they were posted.
+    // 2. Ordering: two equal-priority jobs land in the order they were posted.
     // =========================================================================
     {
         JobRunner jr;
@@ -92,6 +94,60 @@ int main() {
         pump(jr);
         CHECK(!jr.busy());
         CHECK(order[0] == 1 && order[1] == 2);
+    }
+
+    // =========================================================================
+    // 2b. Priority: the highest-priority queued job runs next, and ties keep
+    //     posting order. This is what lets terrain subdivision drill toward
+    //     the camera instead of walking the tree (terrain.cpp).
+    //
+    // A blocker runs first so A..D are all QUEUED before the worker takes any
+    // of them: posted into an idle runner, A could be picked up the instant
+    // it is posted, and the ordering under test would not exist.
+    // =========================================================================
+    {
+        JobRunner jr;
+        std::atomic<bool> release{false};
+        std::atomic<bool> in_body{false};
+        jr.post("blocker", [&]() -> std::function<void()> {
+            in_body = true;
+            while(!release.load()) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+            return []() {};
+        });
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::seconds(2);
+        while(!in_body.load() && std::chrono::steady_clock::now() < deadline) {
+            jr.poll();
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+        CHECK(in_body.load());   // the queue below is really a queue
+
+        std::vector<std::string> ran;
+        // `name` is captured by value: it is a parameter, and the continuation
+        // runs after rec() has returned (the literals it points to live
+        // forever). `ran` is a block local that outlives pump(), so a
+        // reference is fine -- and only the continuation touches it.
+        auto rec = [&](const char *name, double prio) {
+            jr.post(name, [name, &ran]() -> std::function<void()> {
+                return [name, &ran]() { ran.push_back(name); };
+            }, prio);
+        };
+        rec("a", 0.0);
+        rec("b", 10.0);
+        rec("c", 5.0);
+        rec("d", 10.0);
+        release.store(true);
+        pump(jr);
+        CHECK(!jr.busy());
+        // b, d tie at 10.0 (posting order), then c at 5.0, then a at the
+        // default end. The blocker's continuation records nothing.
+        CHECK(ran.size() == 4);
+        if(ran.size() == 4) {
+            CHECK(ran[0] == "b" && ran[1] == "d" && ran[2] == "c"
+                  && ran[3] == "a");
+        }
     }
 
     // =========================================================================

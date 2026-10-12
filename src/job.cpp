@@ -13,8 +13,12 @@ void JobRunner::run() {
             std::unique_lock<std::mutex> lk(mu_);
             cv_.wait(lk, [&] { return stop_ || !tasks_.empty(); });
             if(stop_ && tasks_.empty()) { break; }
-            t = std::move(tasks_.front());
-            tasks_.pop_front();
+            // Highest priority first (UrgentFirst, ties in posting order).
+            // pop_heap swaps the front task to the back, so the exit is a
+            // move-and-pop-back rather than a pop_front.
+            std::pop_heap(tasks_.begin(), tasks_.end(), UrgentFirst());
+            t = std::move(tasks_.back());
+            tasks_.pop_back();
         }
         {
             std::lock_guard<std::mutex> lk(mu_);

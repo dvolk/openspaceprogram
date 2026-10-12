@@ -3,6 +3,7 @@
 #include "terrain.h"
 
 #include <array>
+#include <cassert>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -82,7 +83,12 @@ GeoPatch::~GeoPatch() {
     delete mesh;   // owned (procedural grid); the shader is shared
 }
 
-void GeoPatch::requestSubdivide(JobRunner &jobs) {
+void GeoPatch::requestSubdivide(JobRunner &jobs, double px_width) {
+    // px_width is also the queue priority (job.h::post). Update only gets
+    // here when px_width > max_patch_px, and max_patch_px >= kTerrainPxMin
+    // (the --terrain-px floor), so a subdivision always outranks the one-shot
+    // jobs that post at the default 0.0 -- surface map bakes, porkchop sweeps.
+    assert(px_width > 0.0 && "a subdivision request is past its LOD budget");
     subdivide_in_flight = true;
     TerrainBody *body = this->body;
     Shader *shader = body->shader;
@@ -112,11 +118,13 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
         return [body, shader, child_depth, geoms, parent]() {
             // Drop the built grids if the parent is gone (a grandparent's
             // collapse freed the subtree) or no longer wants children.
-            // patchAlive is a POINTER check: continuations run in job order
-            // inside one poll(), all before the frame's Update posts
-            // anything new, so a reallocated address cannot come back with
-            // its flag already set. Break that ordering and this needs a
-            // per-patch id instead.
+            // patchAlive is a POINTER check: every continuation lands inside
+            // one poll(), all before the frame's Update posts anything new, so
+            // a reallocated address cannot come back with its flag already
+            // set. A parent's continuation always precedes its child's -- the
+            // child patch does not exist until that continuation attaches it,
+            // so the queue's priority order cannot invert that either. Break
+            // the poll()/Update ordering and this needs a per-patch id.
             if(!body->patchAlive(parent) || !parent->subdivide_in_flight) {
                 return;
             }
@@ -131,7 +139,7 @@ void GeoPatch::requestSubdivide(JobRunner &jobs) {
             }
             parent->subdivide_in_flight = false;
         };
-    });
+    }, px_width);
 }
 
 GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, const GridGeom &geom) {
@@ -263,7 +271,19 @@ void GeoPatch::Update(const glm::dvec3 &cam_bf, double px_per_rad,
     // re-posting.
     if(depth < body->max_depth and px_width > (double)max_patch_px and
        kids[0] == NULL and !subdivide_in_flight) {
-        requestSubdivide(jobs);
+        /* px_width is the queue priority, and that is the whole point of
+           passing it: the worker has one thread, so a patch that is 4000 px
+           wide against a 128 px budget must not queue behind the thousands of
+           frontier patches that are barely over it. Update walks the tree in
+           posting order, which spreads the worker over the widest part of the
+           tree (mid-depth, far away) and leaves the camera's own column
+           shallow -- and max_depth is where the collision meshes are built,
+           so "shallow under the camera" means no ground under the ship.
+           Ranking by px_width drills that column instead: a child cannot post
+           until its parent's continuation attaches it, so the path to
+           max_depth is ~max_depth jobs, and each of them outranks the
+           frontier. */
+        requestSubdivide(jobs, px_width);
     }
     else if(px_width < (double)max_patch_px * 0.5) {
         delete kids[0];
