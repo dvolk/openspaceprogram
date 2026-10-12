@@ -913,6 +913,14 @@ void BuildShip::recomputePoses() {
             bp.localRot = glm::dmat3(1.0);
             continue;
         }
+        /* Construction order (shipdef.h): a parent must precede its child.
+           removePart / detachSubtree / graftTree / fromShipDef all remap
+           parent indices by hand and every one of them -- plus subtreeMask,
+           which indexes a vector<bool> by the parent -- assumes it. Solving
+           against a later index would silently use that part's STALE pose
+           (or run off the end), so this is a tripwire, not a fix. */
+        assert(bp.parent < (int)i &&
+               "BuildShip part must come after its parent");
         const BuildPart &pp = parts[(size_t)bp.parent];
         const AttachPose ap = solveEdge(pp.localPos, pp.localRot,
                                         *pp.def, *bp.def, bp.attach,
