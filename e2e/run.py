@@ -524,11 +524,11 @@ def run_case(case):
     if not os.path.exists(game):
         return False, ["%s not found; run `make` first"
                        % os.path.relpath(game, REPO_ROOT)], "", 0.0
-    # Clean ImGui layout: persisted imgui.ini would make UI clicks flaky.
-    try:
-        os.remove(os.path.join(REPO_ROOT, "imgui.ini"))
-    except FileNotFoundError:
-        pass
+    # Nothing to clean for ImGui layout: main.cpp sets io.IniFilename =
+    # nullptr, so the game neither reads nor writes imgui.ini (#45 turned out
+    # to be a race on a file that can never exist). If the ini is ever
+    # re-enabled it lands in the process cwd -- the repo root, shared by every
+    # parallel case -- and then it needs a per-case path, not this delete.
 
     # Scratch --data-dir per case so settings/saves cannot leak between runs.
     # saves/ is wiped, not just settings.json: a case that saves leaves the
