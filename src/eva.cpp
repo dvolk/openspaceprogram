@@ -141,7 +141,10 @@ void Kerbal::applyEva(double h) {
                 haveFuel = inventoryDrain(parts[0], (int)ResourceType::Hydrazine, flow);
             }
             if(haveFuel) {
-                ApplyCentralForce(b, kRcsForce * rcsDir);
+                ApplyCentralForce(b, kRcsForce * rcsWorldDir());
+                // The render pass draws the COM puff off this (render.cpp),
+                // exactly as it does for a ship's applyRcsForce.
+                rcsFiring = true;
             }
         }
         // Upright on screen, facing the camera direction, plus QE yaw.

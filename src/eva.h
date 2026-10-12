@@ -30,9 +30,15 @@ struct Kerbal : Vehicle {
     bool jumpPressed = false;    // space KEYDOWN edge (events.cpp)
     bool jumpRequested = false;  // armed this tick; the first substep fires it
     glm::dvec3 walkDir = glm::dvec3(0.0);  // tangent walk heading, unit or 0
-    glm::dvec3 rcsDir = glm::dvec3(0.0);   // RCS translation dir, unit or 0
+    /* The RCS translation dir comes from the inherited Vehicle::rcsDir, armed
+       here in the RENDER frame (camera basis) rather than in ship axes: EVA
+       thrust follows the view, not the suit's own rotation, which lags it
+       during a slew. rcsWorldDir() below is the identity for that reason. */
     double viewYaw = 0.0;        // QE yaw about the view axis, rad (accumulated)
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
+
+    // Already world axes -- see the rcsDir note above.
+    glm::dvec3 rcsWorldDir() const override { return rcsDir; }
 
     bool isEva() const override { return true; }
     bool isCrewAboard() const override { return isAboard(); }

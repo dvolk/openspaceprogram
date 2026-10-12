@@ -550,18 +550,23 @@ public:
     void applyRotationForce(double h);
 
     /* --- RCS translation (hydrazine mono, KSP-style) --------------------
-       Field-driven (Part::isRcs). The armed direction rcsDir is
-       SHIP-RELATIVE. The force is applied AT the COM (ApplyCentralForce):
-       the COM-translation approximation. */
-    glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed dir in ship axes (right, up, nose); 0 = off
+       Field-driven (Part::isRcs). The armed direction rcsDir is in whatever
+       frame the vehicle's own control law arms it in -- ship axes for a ship,
+       the render frame for the EVA suit (Kerbal::rcsWorldDir). The force is
+       applied AT the COM (ApplyCentralForce): the COM-translation
+       approximation. */
+    glm::dvec3 rcsDir = glm::dvec3(0.0);  // armed dir (see above); 0 = off
     /* burned this tick (applyRcsForce drew hydrazine): the render pass
        draws the COM plume off this. */
     bool rcsFiring = false;
     void clearRcs();
     /* The armed RCS direction in WORLD axes (unit; (0,0,0) when disarmed).
        Resolved at the point of use, so the direction tracks the ship's live
-       attitude substep by substep. */
-    glm::dvec3 rcsWorldDir() const;
+       attitude substep by substep. Virtual because the armed direction's own
+       frame is the control law's business: a ship arms in ship axes and
+       resolves through the root part, an EVA suit arms in the render frame
+       and needs no resolution. */
+    virtual glm::dvec3 rcsWorldDir() const;
     Part *firstRcsPart();
     double maxRcsThrust();
     void applyRcsForce(double h);

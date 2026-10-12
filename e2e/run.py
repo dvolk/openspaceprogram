@@ -93,7 +93,7 @@ EVA_RE = re.compile(
     r"pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"face=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
-    r"(?:\s+viewyaw=([-\d.]+))?(?:\s+mass=([-\d.]+)kg)?"
+    r"(?:\s+viewyaw=([-\d.]+))?(?:\s+rcs=(\d+))?(?:\s+mass=([-\d.]+)kg)?"
 )
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
@@ -326,7 +326,7 @@ def parse_eva(out):
     rows = []
     for m in EVA_RE.finditer(out):
         (t, mode, grounded, px, py, pz, vx, vy, vz,
-         fx, fy, fz, alt, viewyaw, mass) = m.groups()
+         fx, fy, fz, alt, viewyaw, rcs, mass) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "grounded": int(grounded),
             "pos": (float(px), float(py), float(pz)),
@@ -336,6 +336,8 @@ def parse_eva(out):
             # viewyaw, not yaw: cam["yaw"] is the camera azimuth (and the other
             # input to the same attitude law, #241).
             "viewyaw": float(viewyaw) if viewyaw is not None else None,
+            # what the render pass gates the RCS puff on (#242).
+            "rcs": int(rcs) if rcs is not None else None,
             "mass": float(mass) if mass is not None else None,
         })
     return rows

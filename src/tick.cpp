@@ -432,13 +432,13 @@ void tick(Game &g) {
                 printf("[evalog] t=%.1fs mode=%s grounded=%d "
                        "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] "
                        "face=[%.3f %.3f %.3f] alt=%.2f m viewyaw=%.3f "
-                       "mass=%.3fkg\n",
+                       "rcs=%d mass=%.3fkg\n",
                        g.time, (k->mode == EVA_GROUND) ? "ground" : "space",
                        (int)k->grounded, p.x, p.y, p.z, v.x, v.y, v.z,
                        face.x, face.y, face.z,
                        glm::length(p) - (double)k->m_parent->GetTerrainHeight(
                            glm::vec3(glm::normalize(p))),
-                       k->viewYaw,
+                       k->viewYaw, (int)k->rcsFiring,
                        k->getMass());
                 fflush(stdout);
             }
