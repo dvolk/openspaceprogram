@@ -156,7 +156,16 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
         s.music_volume = j["music_volume"].get<float>();
     }
     if(j.contains("fov") && j["fov"].is_number()) {
+        // Clamp: a hand-edited file bypasses the CLI's 10-120 range and the
+        // slider's. Out-of-range fov is not cosmetic here -- the projection and
+        // the terrain-cull half-angles both go through tan(fov/2), so a value
+        // outside (0,180)deg empties the world silently. Clamping HERE rather
+        // than only in Camera keeps args.camFovDeg honest: the slider label and
+        // the Debug window's copy-pasteable --fov line both print that field,
+        // and the CLI rejects what an unclamped one would print.
         s.camFovDeg = j["fov"].get<float>();
+        if(!(s.camFovDeg >= 10.0f)) { s.camFovDeg = 10.0f; }   // !< also catches NaN
+        if(s.camFovDeg > 120.0f) { s.camFovDeg = 120.0f; }
     }
     if(j.contains("terrain_px") && j["terrain_px"].is_number_integer()) {
         s.terrain_px = j["terrain_px"].get<int>();

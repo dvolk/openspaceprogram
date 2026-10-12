@@ -1,6 +1,28 @@
 #include "camera.h"
 
+#include <algorithm>
 #include <cmath>
+#include <numbers>
+
+/* One fov range everywhere: --fov validates [10,120] (cli.cpp), the Settings
+   slider is [10,120], and settings.json is clamped to the same range on load
+   (settings.cpp). This is the last line of defence, not the boundary -- for a
+   caller that hands over garbage. It matters because outside (0,180)deg
+   tan(fov/2) goes negative, and that sign lands on BOTH the projection scale
+   and computeFrustumAngles' half angles, so every patchCulled() test in the
+   draw pass rejects: the world renders empty and nothing anywhere reports an
+   error. A rectilinear camera past ~120deg is visually broken anyway (89.5deg
+   vertical puts the horizontal half-angle at 89.7deg on 16:9), so this range
+   is a clamp, not a warning. */
+static float clampFovRad(float fov) {
+    const float deg = (float)std::numbers::pi / 180.0f;
+    if(!std::isfinite(fov)) {
+        // std::clamp passes NaN straight through (both comparisons false), and
+        // NaN here is the same silent empty world the clamp exists to stop.
+        return 60.0f * deg;
+    }
+    return std::clamp(fov, 10.0f * deg, 120.0f * deg);
+}
 
 // Reverse-Z infinite-far perspective (1.0 near -> 0.0 far). Pairs with
 // glClipControl(GL_ZERO_TO_ONE) / glDepthFunc(GL_GEQUAL) in display.cpp.
@@ -42,7 +64,7 @@ void Camera::setViewport(int w, int h) {
 }
 
 void Camera::setFov(float _fov) {
-    this->fov = _fov;
+    this->fov = clampFovRad(_fov);
     this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
     computeFrustumAngles();
 }
@@ -55,21 +77,18 @@ const glm::dvec3& Camera::GetForward() const {
     return forward;
 }
 
-glm::mat4 Camera::GetProjection() const {
+const glm::mat4 &Camera::GetProjection() const {
     return projection;
 }
 
-glm::dmat4 Camera::GetView() const {
+const glm::dmat4 &Camera::GetView() const {
     return view;
 }
 
-glm::dmat4 *Camera::GetView_() {
-    return &view;
-}
-
 Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear, float zFar)
-    : fov(fov), aspect(aspect), zNear(zNear), zFar(zFar) {
-    this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
+    : fov(clampFovRad(fov)), aspect(aspect), zNear(zNear), zFar(zFar) {
+    // Uses the clamped member, not the parameter (which shadows it).
+    this->projection = reverseZInfinitePerspective(this->fov, aspect, zNear);
     computeFrustumAngles();
     // Derive pos/forward/up once so a caller that reads them before the
     // first ComputeView() gets sensible values.

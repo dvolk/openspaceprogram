@@ -9,7 +9,12 @@
 //     unchanged -- the old trackball rolled the view by the loop's enclosed
 //     solid angle (the "cockpit chairs tilt when I come back to the same
 //     view" bug).
-// Exits nonzero on a jump, a NaN, a non-closing loop, or a holonomy roll.
+//   - fov is clamped to the range the CLI and the Settings slider use
+//     ([10,120]deg), including a NaN, and setAspect STORES the aspect, so a
+//     later setFov cannot rebuild the projection or the frustum half-angles
+//     with a stale one.
+// Exits nonzero on a jump, a NaN, a non-closing loop, a holonomy roll, an
+// escaped fov, or a stale aspect.
 //
 // Build & run (from repo root):
 //   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp \
@@ -19,6 +24,7 @@
 #include "camera.h"
 #include <cstdio>
 #include <cmath>
+#include <limits>
 
 static void printvec(const char* n, glm::dvec3 v) {
     printf("  %-8s (% .4f % .4f % .4f)\n", n, v.x, v.y, v.z);
@@ -42,7 +48,7 @@ int main() {
     printf("(no sudden roll), stay finite, and clamp just short of the pole.\n\n");
 
     {
-        Camera cam(glm::dvec3(0, 0, 0), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
+        Camera cam(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
         cam.distance = 1000.0;
         cam.ComputeView();
 
@@ -101,7 +107,7 @@ int main() {
     printf("trackball rolled by the loop's enclosed solid angle here.\n\n");
 
     {
-        Camera cam(glm::dvec3(0, 0, 0), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
+        Camera cam(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
         cam.distance = 1000.0;
         cam.ComputeView();
         const glm::dvec3 up_start = cam.up;
@@ -157,7 +163,7 @@ int main() {
 
     printf("\n=== Yaw 360deg loop closes and stays finite ===\n");
     {
-        Camera cam(glm::dvec3(0, 0, 0), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
+        Camera cam(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
         cam.distance = 1000.0;
         cam.ComputeView();
         const glm::dvec3 off0 = cam.pos;
@@ -174,13 +180,89 @@ int main() {
 
     printf("\n=== Wheel zoom is proportional and clamped ===\n");
     {
-        Camera cam(glm::dvec3(0, 0, 0), 60.0f, 16.0f / 9.0f, 1.0f, 1e13f);
+        Camera cam(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
         for (int i = 0; i < 400; i++) { cam.wheel(1.0); }
         printf("after 400 zoom-in notches: distance %.3f (min 2)\n", cam.distance);
         if (cam.distance < 2.0) { bad = true; }
         for (int i = 0; i < 800; i++) { cam.wheel(-1.0); }
         printf("after 800 zoom-out notches: distance %.3g (max 1e9)\n", cam.distance);
         if (cam.distance > 1e9) { bad = true; }
+    }
+
+    printf("\n=== FOV is clamped to the CLI/slider range ===\n");
+    {
+        // One range everywhere: --fov validates [10,120] (cli.cpp), the Settings
+        // slider is [10,120], and settings_read clamps the file's value to the
+        // same. Camera's clamp is the last line of defence, and it matters
+        // because outside (0,180)deg tan(fov/2) goes negative: the projection's
+        // scale flips sign AND computeFrustumAngles' half-angle goes negative
+        // with it, so every patchCulled() test in the draw pass rejects and the
+        // world renders empty with nothing anywhere reporting an error.
+        Camera cam(glm::dvec3(0, 0, 0), 200.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
+        printf("fov 200deg -> %.1f deg, projection x-scale %.6f\n",
+               glm::degrees(cam.fov), cam.projection[0][0]);
+        if (std::fabs(glm::degrees(cam.fov) - 120.0) > 1e-3) {
+            printf("FAIL: 200deg did not clamp to the 120deg the slider allows\n");
+            bad = true;
+        }
+        if (cam.projection[0][0] <= 0.0f || cam.projection[1][1] <= 0.0f) {
+            printf("FAIL: a non-positive projection scale inverts the view\n");
+            bad = true;
+        }
+        // The cull's side-plane test needs the half-angles inside (0,90)deg:
+        // a negative sin/cos rejects every patch.
+        if (cam.frustumSinX <= 0.0 || cam.frustumCosX <= 0.0 ||
+            cam.frustumSinY <= 0.0 || cam.frustumCosY <= 0.0) {
+            printf("FAIL: frustum half-angles left (0,90)deg\n");
+            bad = true;
+        }
+        cam.setFov(-30.0f * deg);
+        printf("setFov(-30deg) -> %.1f deg (floor 10)\n", glm::degrees(cam.fov));
+        if (std::fabs(glm::degrees(cam.fov) - 10.0) > 1e-3 ||
+            cam.frustumSinX <= 0.0 || cam.frustumCosX <= 0.0) {
+            printf("FAIL: setFov escaped the range or the half-angles went negative\n");
+            bad = true;
+        }
+        // std::clamp passes NaN straight through (both comparisons are false),
+        // so the guard has to catch it before tan() does: a NaN fov is the same
+        // silent empty world, only with a NaN projection instead of a negative
+        // one. It falls back to the boot default rather than to a bound.
+        cam.setFov(std::numeric_limits<float>::quiet_NaN());
+        printf("setFov(NaN) -> %.1f deg (falls back to the default)\n",
+               glm::degrees(cam.fov));
+        if (!std::isfinite(cam.fov) ||
+            std::fabs(glm::degrees(cam.fov) - 60.0) > 1e-3) {
+            printf("FAIL: a NaN fov reached the projection\n");
+            bad = true;
+        }
+    }
+
+    printf("\n=== setAspect stores the aspect, not just uses it ===\n");
+    {
+        // Both the projection and the frustum angles read the `aspect`
+        // member. setAspect used to pass its argument straight into the
+        // projection without storing it, so a LATER setFov rebuilt both with
+        // the boot aspect: resize the window, then move the FOV slider, and
+        // the horizontal fov snapped back to its launch value.
+        Camera cam(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
+        cam.setAspect(4.0f / 3.0f);
+        cam.setFov(60.0f * deg);
+        // projection col0 row0 = (1/tan(fov/2)) / aspect (fov is vertical).
+        const double want = 1.0 / (std::tan(30.0 * deg) * (4.0 / 3.0));
+        const double boot = 1.0 / (std::tan(30.0 * deg) * (16.0 / 9.0));
+        const double got = cam.projection[0][0];
+        printf("4/3 then setFov: x-scale %.6f (want %.6f, a stale 16/9 gives %.6f)\n",
+               got, want, boot);
+        if (std::fabs(got - want) > 1e-4) {
+            printf("FAIL: setFov rebuilt the projection with a stale aspect\n");
+            bad = true;
+        }
+        // And the cull's horizontal half-angle follows the current aspect.
+        const double want_hx = std::atan(std::tan(30.0 * deg) * (4.0 / 3.0));
+        if (std::fabs(cam.frustumSinX - std::sin(want_hx)) > 1e-6) {
+            printf("FAIL: frustumSinX does not follow the current aspect\n");
+            bad = true;
+        }
     }
 
     if (!bad) { printf("\nPASS\n"); }

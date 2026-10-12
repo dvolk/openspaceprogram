@@ -90,9 +90,11 @@ public:
     const glm::dvec3& GetPos() const;
     const glm::dvec3& GetRenderOrigin() const { return renderOrigin; }
     const glm::dvec3& GetForward() const;
-    glm::mat4 GetProjection() const;
-    glm::dmat4 GetView() const;
-    glm::dmat4 *GetView_();
+    // Both by reference: the draw-pass cull reads GetView once per visited
+    // terrain patch and the per-leaf MVP reads GetProjection once per leaf, so
+    // by value was a 64-128 byte copy per node.
+    const glm::mat4 &GetProjection() const;
+    const glm::dmat4 &GetView() const;
 
     // Start (or return) to Free mode at an explicit pose (the --free-cam-*
     // init). Orthogonalises up against forward, then recomputes the view.

@@ -1,8 +1,9 @@
 // test_settings.cpp -- settings.h/.cpp: the SettingsData <-> settings.json
 // mapping. Round-trip stability, absent-key tolerance (a field the file
 // does not mention keeps the current value -- the load path starts a
-// SettingsData from the live state), mistyped-key tolerance, and the
-// window-mode name mapping (unknown words keep the current value).
+// SettingsData from the live state), mistyped-key tolerance, range clamping
+// on the hand-edited path (the CLI's range guards do not reach the file), and
+// the window-mode name mapping (unknown words keep the current value).
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -155,6 +156,20 @@ int main() {
     assert(cs.cam_shake == 0.0f);
     settings_read(nlohmann::json::parse(R"({"cam_shake": 2.5})"), cs);
     assert(cs.cam_shake == 2.5f);   // in range: untouched
+
+    // 7) a hand-edited fov outside the CLI's 10-120 range is clamped. This one
+    //    is not cosmetic: the projection and the terrain-cull half-angles both
+    //    go through tan(fov/2), so a value outside (0,180)deg makes every
+    //    terrain patch fail the cull and the world renders empty.
+    SettingsData fv;
+    settings_read(nlohmann::json::parse(R"({"fov": 200})"), fv);
+    assert(fv.camFovDeg == 120.0f);
+    settings_read(nlohmann::json::parse(R"({"fov": 0})"), fv);
+    assert(fv.camFovDeg == 10.0f);
+    settings_read(nlohmann::json::parse(R"({"fov": -30})"), fv);
+    assert(fv.camFovDeg == 10.0f);
+    settings_read(nlohmann::json::parse(R"({"fov": 60})"), fv);
+    assert(fv.camFovDeg == 60.0f);   // in range: untouched
 
     printf("test_settings: all checks passed\n");
     return 0;
