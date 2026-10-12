@@ -76,8 +76,11 @@ const WinDef kWins[W_Count] = {
     [W_Hud] = {
         .name = "HUD", .label = "Top HUD",
         // Docked panel: fixed chrome; still re-fits on a relayout (F10).
+        // Open by default: it is the only place the calendar clock is drawn
+        // in flight, and its big-font speed/altitude line is the one readout
+        // readable at a glance while flying.
         .opts = { .slot = ui::Slot::TopCenter, .fixed = true,
-                  .default_open = false, .flags = ImGuiWindowFlags_NoTitleBar },
+                  .default_open = true, .flags = ImGuiWindowFlags_NoTitleBar },
         .role = WinRole::Persistent, .inList = true,
     },
     [W_Windows] = {
