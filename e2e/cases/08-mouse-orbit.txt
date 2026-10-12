@@ -1,7 +1,17 @@
+# The RMB drag IS the camera control: --sim-mouse walks the cursor from its
+# previous position (900,500) to (1100,600), so dx=+200 dy=+100 and the
+# documented turntable rule (yaw = -dx/200, pitch = +dy/200) must land on
+# yaw -1.0 / pitch +0.5 exactly. Before --cam-log this case asserted only
+# "Main loop starting" -- a drag that never reached the camera (imgui ate it,
+# or the RMB gating broke) passed anyway. rmb=1 says the game saw the button
+# held, cap=0 says imgui never captured the gesture.
 NAME mouse-orbit
-ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --orbit-interval 0.25
 ARGS --sim-mouse 1000,0,900,500,0
 ARGS --sim-mouse 1200,500,1100,600,RMB
 EXPECT Main loop starting
+CHECK len(cam) >= 2 and last(cam)["mode"] == "orbit"
+CHECK abs(last(cam)["yaw"] + 1.0) < 1e-4 and abs(last(cam)["pitch"] - 0.5) < 1e-4
+CHECK any(r["rmb"] == 1 for r in cam) and all(r["cap"] == 0 for r in cam)
 FORBID GL_
 FORBID error:
