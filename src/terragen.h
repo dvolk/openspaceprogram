@@ -178,6 +178,14 @@ struct Heightmap {
     float sample(const glm::vec3 &p) const {
         assert(w >= 2 && h >= 2 && (int)m.size() == w * h);
         if(w < 2 || h < 2) { return 0.0f; }
+        /* p must be a real direction. equirectLonLat does not normalize, so
+           a zero p would sample a plausible lie at lon 0 / lat 0, and a NaN
+           (a glm::normalize of a zero vector upstream) makes (int)u / (int)v
+           undefined, landing the row offset far outside the map: memory
+           unsafety rather than a wrong height. A non-finite pose is fatal by
+           policy -- asserts are live in every config, release included. */
+        assert(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z)
+               && p.x * p.x + p.y * p.y + p.z * p.z > 0.0f);
         float lon, lat, u, v;
         equirectLonLat(p, lon, lat);
         equirectPixel(lon, lat, w, h, u, v);

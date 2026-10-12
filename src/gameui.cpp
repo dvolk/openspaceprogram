@@ -26,6 +26,7 @@
 #include "surfmap.h"     // surfmapShade / surfmapWraps + surfmapCompute
 #include "texture.h"     // make_texture_r8
 #include "vab.h"         // the editor ops (drawVabUI)
+#include "render.h"      // updateShipView (re-take a stale g.view snapshot)
 #include "staging.h"     // computeStaging
 #include "shipdef.h"     // list_vab_ship_defs
 #include "resdir.h"      // resdir::path
@@ -360,6 +361,22 @@ static void draw_telemetry_cell(Game &g, int idx) {
     }
 }
 
+/* g.view is the state pass's snapshot of the ship that pass saw. The imgui
+   pass changes the active ship itself -- the VAB's LAUNCH builds one, the
+   fleet list's name row switches and its "x" deletes -- and can change the
+   LIVE SCENE mid-pass too (LAUNCH calls enterFlight, and drawWin re-tests
+   scene membership on every call, which is how the HUD came to be drawing
+   inside the VAB at all: W_Hud is not in kVabWinIds). Windows drawn after
+   that read a snapshot of some other ship, or none at all -- zeros on a
+   shipless boot, which made the HUD sample terrain along
+   glm::normalize(pos) = NaN (#235). Re-take it when the stamp disagrees.
+   These are the two entry points that can run after a switch: the other
+   g.view consumers (paintWorld, the map-basis dump, refreshShipState's
+   planner) all run inside the state pass, ahead of any click. */
+static void syncShipView(Game &g) {
+    if(g.ship != nullptr && g.view.ship != g.ship) { updateShipView(g); }
+}
+
 /* The flight windows below assume there IS an active vessel, and they are
    right to: Flight is only the live scene when there is one. A shipless boot
    lands on the title and a shipless load on the Space Center hub; remove_ship
@@ -397,6 +414,7 @@ void drawUIReadouts(Game &g) {
     bool &flip_roll = g.flip_roll;
 
     // The per-frame state the 3D pass computed (render.cpp).
+    syncShipView(g);
     ShipView &view = g.view;
     glm::dvec3 &pos = view.pos;
     glm::dvec3 &vel = view.vel;
@@ -433,10 +451,15 @@ void drawUIReadouts(Game &g) {
             const double asl = distance
                 - ((double)ship->m_parent->radius
                    + (double)ship->m_parent->surface.sea_level);
-            const double agl = distance - ship->m_parent->GetTerrainHeight(glm::normalize(pos));
             const bool surface_mode = ship->frame->isRotFrame()
                                    && asl < kSurfaceModeAlt;
-            const double alt = surface_mode ? agl : asl;
+            /* AGL is a full-detail terrain sample, so ask for it only in the
+               mode that displays it: the orbital readout discarded it (a
+               ternary evaluates only its taken branch, like `spd` below). */
+            const double alt = surface_mode
+                ? distance
+                  - (double)ship->m_parent->GetTerrainHeight(glm::normalize(pos))
+                : asl;
             const double spd = surface_mode ? glm::length(surf_vel) : speed;
             ImGui::PushFont(g.bigger);
             /* fmt_dist, not a fixed unit: at oort distances a meter count
@@ -2385,6 +2408,10 @@ static void mapPlaneBasis(Frame *focusFrame, const glm::dvec3 &orbit_pos,
 // trajectory + apside markers, the other ships, the transfer conic),
 // and the controls above it edit the map state on the game.
 void drawUIMap(Game &g) {
+    // flightDrawUi draws the map AFTER the windows, and the Ship List is one
+    // of them: a switch there leaves the conic below describing the previous
+    // vessel while `ship` below is the new one (see syncShipView).
+    syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     OrbitElements &o = g.view.o;

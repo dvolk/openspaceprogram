@@ -22,3 +22,9 @@ void paintWorld(Game &g);
 // tree at its solved poses.
 void refreshVab(Game &g);
 void paintVab(Game &g);
+
+// The Game::view snapshot on its own (no camera, no LOD). refreshWorld and
+// refreshVab both take it through refreshShipState; the UI takes it when the
+// active ship changed during the imgui pass and this frame's snapshot
+// describes the previous one (#235).
+void updateShipView(Game &g);

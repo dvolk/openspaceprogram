@@ -78,10 +78,15 @@ static void camShakeStep(Game &g, Vehicle *ship) {
 // The active ship's per-frame state snapshot (Game::view). Reads only ship
 // + frame state -- no camera -- so refreshWorld can fill it in every scene,
 // including the ones that paint no world (the live Tracking Station).
-static void updateShipView(Game &g) {
+// Exported because the imgui pass can change the active ship itself (the
+// VAB's LAUNCH, the fleet list's name row / "x") and the windows drawn later
+// in that same frame must not read a snapshot of some other ship: they
+// re-take it when ShipView::ship disagrees with Game::ship (#235).
+void updateShipView(Game &g) {
     Vehicle *ship = g.ship;
-    if(ship == nullptr) { return; }
+    if(ship == nullptr) { g.view.ship = nullptr; return; }
     ShipView &view = g.view;
+    view.ship = ship;
     double &mu = view.mu;
     glm::dvec3 &pos = view.pos;
     glm::dvec3 &vel = view.vel;

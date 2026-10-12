@@ -88,15 +88,24 @@ struct PartSel {
 // The active ship's per-frame state (render frame), written by render.cpp
 // and read by the UI readouts and the transfer planner.
 struct ShipView {
-    // render-frame (ship->frame) state
-    glm::dvec3 pos;      // the ship's COM
-    glm::dvec3 vel;
+    /* Which ship this snapshot describes (nullptr = none). The state pass
+       takes it once per frame, but the imgui pass changes the active ship
+       itself -- the VAB's LAUNCH builds one, the fleet list's name row
+       switches and its "x" deletes -- and the windows drawn after that in
+       the same frame then read a snapshot taken before it happened. On a
+       shipless boot it was never taken at all, which is how the HUD ended
+       up sampling terrain along a zero-length direction (#235). */
+    Vehicle *ship = nullptr;
+    // render-frame (ship->frame) state. Initialized: a snapshot that was
+    // never filled reads as zeros, not as stack garbage.
+    glm::dvec3 pos = glm::dvec3(0.0);
+    glm::dvec3 vel = glm::dvec3(0.0);
     // the surface frame (the body's rotating frame, when the ship is on one)
-    glm::dvec3 surf_pos;
-    glm::dvec3 surf_vel;
+    glm::dvec3 surf_pos = glm::dvec3(0.0);
+    glm::dvec3 surf_vel = glm::dvec3(0.0);
     // the orbit conic, in the ship's non-rotating (inertial) frame
-    glm::dvec3 orbit_pos;
-    glm::dvec3 orbit_vel;
+    glm::dvec3 orbit_pos = glm::dvec3(0.0);
+    glm::dvec3 orbit_vel = glm::dvec3(0.0);
     OrbitElements o;
     // Inc/LAN/LPe of the same conic, measured in the plane the orbit map is
     // showing (Game::map_plane) -- see orbitPlaneAngles / uiRefPlane (#171).
@@ -105,11 +114,11 @@ struct ShipView {
     double speed = 0;     // |orbit_vel|
     double mu = 0;        // the parent body's mu (the conic's)
     // attitude readouts (render frame)
-    glm::dvec3 up;
-    glm::dvec3 facing;
-    glm::dvec3 other;
-    glm::dvec3 facing_dir;
-    glm::dvec3 vel_dir;
+    glm::dvec3 up = glm::dvec3(0.0);
+    glm::dvec3 facing = glm::dvec3(0.0);
+    glm::dvec3 other = glm::dvec3(0.0);
+    glm::dvec3 facing_dir = glm::dvec3(0.0);
+    glm::dvec3 vel_dir = glm::dvec3(0.0);
     // surface + orientation scalars (the SURFACE window)
     double ver_speed = 0;
     double hor_speed2 = 0;
