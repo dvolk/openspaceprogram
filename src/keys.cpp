@@ -60,6 +60,10 @@ void KeyBindings::resetDefaults() {
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
+    // Attitude-to-velocity on free letters (Z/B): a burn should not require
+    // opening a window and clicking a button mid-flight.
+    add(Slot::SlewPrograde,  SDL_SCANCODE_Z);
+    add(Slot::SlewRetrograde,SDL_SCANCODE_B);
     // RCS translation (shares physical keys with other groups; those are
     // one-shot edges, so the held RCS commands never collide in orbit mode).
     add(Slot::RcsForward,    SDL_SCANCODE_N);
@@ -163,6 +167,8 @@ const char *slotName(Slot s) {
         case Slot::KillRot:        return "kill_rot";
         case Slot::ThrottleUp:     return "throttle_up";
         case Slot::ThrottleDown:   return "throttle_down";
+        case Slot::SlewPrograde:   return "slew_prograde";
+        case Slot::SlewRetrograde: return "slew_retrograde";
         case Slot::RcsForward:     return "rcs_forward";
         case Slot::RcsBack:        return "rcs_back";
         case Slot::RcsUp:          return "rcs_up";
@@ -238,6 +244,8 @@ const char *slotLabel(Slot s) {
         case Slot::KillRot:        return "Kill rotation";
         case Slot::ThrottleUp:     return "Throttle up";
         case Slot::ThrottleDown:   return "Throttle down";
+        case Slot::SlewPrograde:   return "Autopilot: prograde";
+        case Slot::SlewRetrograde: return "Autopilot: retrograde";
         case Slot::RcsForward:     return "RCS forward";
         case Slot::RcsBack:        return "RCS back";
         case Slot::RcsUp:          return "RCS up";
@@ -283,6 +291,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::RollLeft: case Slot::RollRight:
         case Slot::Thrust: case Slot::ThrustLatch: case Slot::KillRot:
         case Slot::ThrottleUp: case Slot::ThrottleDown:
+        case Slot::SlewPrograde: case Slot::SlewRetrograde:
         case Slot::RcsForward: case Slot::RcsBack:
         case Slot::RcsUp: case Slot::RcsDown: case Slot::RcsLeft: case Slot::RcsRight:
             return SlotGroup::Flight;

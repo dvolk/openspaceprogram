@@ -1,0 +1,25 @@
+# One-key attitude-to-velocity (Slot::SlewPrograde / Slot::SlewRetrograde, Z/B).
+# Before these bindings the only way to point the ship at its velocity vector
+# was to open the Autopilot window -- which ships closed -- and click a button
+# mid-burn, which is what made the transfer workflow unusable. Z and B toggle
+# the same slewRequest the window's buttons set, so they must be mutually
+# exclusive (B while prograde holds switches, it does not stack) and pressing
+# the held one again must release it. The toast is the point too: an engaged
+# autopilot keeps turning the ship with no key held, so it has to be visible
+# outside the window. --slew-log pins that the key reached the SIM, not just
+# the toast: mode= is the slewRequest tick.cpp applies.
+NAME autopilot-keys
+ARGS --timeout 12 --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --slew-log
+ARGS --sim-press 2000,0,Z
+ARGS --sim-press 5000,0,B
+ARGS --sim-press 8000,0,B
+EXPECT [toast] Autopilot: Prograde engaged
+EXPECT [toast] Autopilot: Retrograde engaged
+EXPECT [toast] Autopilot: Retrograde off
+EXPECT mode=prograde
+EXPECT mode=retrograde
+FORBID Autopilot: Prograde off
+FORBID GL_
+FORBID error:

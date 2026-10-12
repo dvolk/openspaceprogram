@@ -1879,6 +1879,10 @@ void drawUIReadouts(Game &g) {
             }
             if(ImGui::Button(label)) {
                 ship->setSlewRequest(engaged ? SlewNone : m);
+                /* Toast it: an engaged autopilot keeps turning the ship with
+                   no key held, so it must be visible outside this window (the
+                   window ships closed, and Z/B engage the same state). */
+                g.toast("Autopilot: %s %s", label, engaged ? "off" : "engaged");
             }
             if(engaged) {
                 ImGui::PopStyleColor(3);

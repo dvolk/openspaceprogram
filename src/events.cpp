@@ -147,6 +147,23 @@ void emit_sim_events(Game &g) {
     emit_ui_input(g);
 }
 
+/* Toggle one autopilot mode, exactly as the Autopilot window's buttons do
+   (mutually exclusive, held until toggled again). The window ships closed, so
+   the Z/B keys are the only way to point the ship at its velocity vector
+   mid-flight; the toast is what makes the engaged state visible at all.
+   Gated on isEva() because tick.cpp applies slewRequest only to ships, so a
+   toast there would promise a slew that never happens. Free cam is NOT a
+   reason to refuse: the ship is still simulating, and the window's buttons
+   engage it from free cam too. */
+static void toggleSlew(Game &g, SlewMode m, const char *name) {
+    Vehicle *ship = g.ship;
+    if(ship == nullptr || ship->isEva()) { return; }
+    const bool engaged = (ship->slewRequest == m);
+    ship->setSlewRequest(engaged ? SlewNone : m);
+    printf("Autopilot: %s %s\n", name, engaged ? "off" : "engaged");
+    g.toast("Autopilot: %s %s", name, engaged ? "off" : "engaged");
+}
+
 /* Flight-scene one-shot key actions. Time-warp slots are scene-neutral and
    dispatched in poll_events. */
 void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
@@ -302,6 +319,18 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         if(sceneIs(g, SceneId::Flight)) {
             pushScene(g, SceneId::SpaceCenter);
         }
+    }
+    /* One-key attitude-to-velocity: Z holds prograde, B holds retrograde.
+       These are the Autopilot window's toggles on keys -- the window ships
+       closed, and opening a window to point the ship mid-burn is the friction
+       that makes the transfer workflow unusable. One-shot (auto-repeat). */
+    if(slotFired(Slot::SlewPrograde, ksc, kmod, g.binds) && !repeat) {
+        // Same words as the window's buttons, so a toast reads the same
+        // whichever way the mode was engaged.
+        toggleSlew(g, SlewPrograde, "Prograde");
+    }
+    if(slotFired(Slot::SlewRetrograde, ksc, kmod, g.binds) && !repeat) {
+        toggleSlew(g, SlewRetrograde, "Retrograde");
     }
     // Thrust latch: keeps engines lit with the key released. A plain
     // thrust-key press takes manual control. One-shot (auto-repeat).
