@@ -736,9 +736,19 @@ int main(int argc, char **argv)
        draws only the build tree. vabOpen parks the (boot) camera and aims
        the orbit at the build. */
     if(!args.vab.empty()) {
-        ShipDef vdef = load_ship_def(resdir::path(args.vab).c_str(),
-                                     ships.catalog());
-        game.vab.build = BuildShip::fromShipDef(vdef);
+        /* A bad --vab def is a harness typo, not a game state. load_ship_def
+           throws; uncaught, that reached the top of main as "terminate called
+           after throwing an instance of 'std::runtime_error'" + SIGABRT (#16),
+           while the identical mistake through --startship already prints a
+           clean "error: ship: ..." and exits 1. Same report here. */
+        try {
+            ShipDef vdef = load_ship_def(resdir::path(args.vab).c_str(),
+                                         ships.catalog());
+            game.vab.build = BuildShip::fromShipDef(vdef);
+        } catch(const std::exception &e) {
+            printf("error: --vab: %s\n", e.what());
+            return 1;
+        }
         game.vab.armed = args.vab_arm;   // test hook: pre-arm a palette part
         vabOpen(game);
     } else if(args.vab_empty) {
@@ -748,11 +758,46 @@ int main(int argc, char **argv)
         vabOpen(game);
     }
     if(sceneIs(game, SceneId::Vab)) {
-        // --vab-scenario / --vab-body: override the launch config the top-bar
-        // dropdowns show (vabOpen already seeded the defaults).
-        if(!args.vab_scenario.empty()) { game.vab.scenarioName = args.vab_scenario; }
-        if(!args.vab_body.empty())     { game.vab.bodyName = args.vab_body; }
-        if(!args.vab_site.empty())     { game.vab.siteName = args.vab_site; }
+        /* --vab-scenario / --vab-body / --vab-site: override the launch config
+           the top-bar dropdowns show (vabOpen already seeded the defaults).
+           All three are pins a test relies on, so a miss is a hard error
+           (#16): --vab-scenario used to abort at LAUNCH with an uncaught
+           throw, and a bad body or site fell back to home / the default pad
+           silently, so the case measured a launch it never asked for. Same
+           call --surfmap-body already makes (#72). */
+        if(!args.vab_scenario.empty()) {
+            try {
+                scenario_by_name(args.vab_scenario);
+            } catch(const std::exception &e) {
+                printf("error: --vab-scenario: %s\n", e.what());
+                return 1;
+            }
+            game.vab.scenarioName = args.vab_scenario;
+        }
+        TerrainBody *vab_body = home;
+        if(!args.vab_body.empty()) {
+            TerrainBody *b = sys.find(args.vab_body);
+            if(b == nullptr) {
+                printf("error: --vab-body '%s' is not a body in %s\n",
+                       args.vab_body.c_str(), game.systemPath.c_str());
+                return 1;
+            }
+            vab_body = b;
+            game.vab.bodyName = args.vab_body;
+        }
+        if(!args.vab_site.empty()) {
+            // nullptr here means "not a VAB_LAUNCH_PAD on the launch body":
+            // find_launch_site only falls through to the default when the
+            // requested id is empty.
+            if(vab_body == nullptr
+               || find_launch_site(vab_body, args.vab_site, false) == nullptr) {
+                printf("error: --vab-site '%s' is not a launch pad on %s\n",
+                       args.vab_site.c_str(),
+                       vab_body ? vab_body->name.c_str() : "<no launch body>");
+                return 1;
+            }
+            game.vab.siteName = args.vab_site;
+        }
     }
 
     // --surfmap-body: pin the Surface Map's body so M / Refresh map it
@@ -1114,11 +1159,16 @@ int main(int argc, char **argv)
             if(elapsed_s >= args.timeout_seconds) {
                 printf("Timeout reached (%.1f s); exiting main loop.\n", elapsed_s);
                 fflush(stdout);
-                // --save: capture the live game state into the save directory
-                // before the loop exits. A bare name is a slot of the CURRENT
-                // game under the data dir's saves/; a path is used as-is.
-                if(!args.save_name.empty()) {
-                    std::string save_dir = args.save_name;
+                /* --save / --resave: capture the live game state into the save
+                   directory before the loop exits. A bare name is a slot of the
+                   CURRENT game under the data dir's saves/; a path is used
+                   as-is. --resave is the same write with no --save/--load
+                   exclusion, so one process can load a save, fly it, and write
+                   it back for a round-trip diff (#51). */
+                const std::string save_name = !args.save_name.empty()
+                                            ? args.save_name : args.resave_name;
+                if(!save_name.empty()) {
+                    std::string save_dir = save_name;
                     if(save_dir.find('/') == std::string::npos) {
                         const std::string gamedir = game.ensureGameDir();
                         if(gamedir.empty()) {

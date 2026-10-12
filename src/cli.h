@@ -41,6 +41,9 @@ struct GameArgs {
     // --load replaces the fleet at startup. Bare names resolve under saves/.
     std::string save_name;
     std::string load_name;
+    // --resave: the same capture as --save, but legal with --load -- that is
+    // the point (the load -> fly -> save round trip in one process, #51).
+    std::string resave_name;
     std::string data_dir;   // --data-dir: user data directory; empty = per-OS default
 
     std::string radial_test;
@@ -119,6 +122,7 @@ struct GameArgs {
     bool slew_log_enabled = false;  // log the prograde/retrograde autopilot state
     bool att_log = false;          // log the ship's nose + angular velocity
     bool shake_log = false;       // --shake-log: the cam-shake state per interval
+    bool cam_log = false;         // --cam-log: the live camera pose + who ate the input
     bool terrain_log = false;     // --terrain-log: the local body's patch-tree LOD
     bool tq_log = false;           // --tq-log: COM-lag x net-force spurious-torque probe
     bool fuel_log = false;        // --fuel-log: per-fuel-group fuel mass + links

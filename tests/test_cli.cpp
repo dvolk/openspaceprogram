@@ -142,6 +142,52 @@ int main() {
         assert(out.empty());
     }
 
+    // 5) sim_parse_key: the --sim-press key vocabulary. Names must beat the
+    //    decimal escape (#108: "3" parsed as keycode 3, so the digit keys were
+    //    unreachable from --sim-press), and every key the Controls window can
+    //    bind has to be nameable -- "[" and "]" are the DEFAULT camera-speed
+    //    keys and had no name at all, leaving a raw keycode as the only way to
+    //    press one.
+    {
+        assert(sim_parse_key("3") == SDLK_3);
+        assert(sim_parse_key("32") == SDLK_SPACE);      // the decimal escape
+        assert(sim_parse_key("[") == SDLK_LEFTBRACKET);
+        assert(sim_parse_key("LEFTBRACKET") == SDLK_LEFTBRACKET);
+        assert(sim_parse_key("]") == SDLK_RIGHTBRACKET);
+        assert(sim_parse_key("RIGHTBRACKET") == SDLK_RIGHTBRACKET);
+        assert(sim_parse_key("MINUS") == SDLK_MINUS);
+        assert(sim_parse_key("EQUALS") == SDLK_EQUALS);
+        assert(sim_parse_key("SLASH") == SDLK_SLASH);
+        assert(sim_parse_key("BACKSPACE") == SDLK_BACKSPACE);
+        assert(sim_parse_key("LALT") == SDLK_LALT);
+        assert(sim_parse_key("nope") == 0);
+    }
+
+    // 6) --resave: legal alongside --load -- that pairing is the whole point
+    //    (load a save, fly it, write it back, all in one process, #51) -- and,
+    //    like --save, it needs --timeout, since the write lands when the
+    //    wall-clock budget is spent.
+    {
+        GameArgs args;
+        const char *argv[] = {"osp", "--load", "in", "--resave", "out",
+                              "--timeout", "5"};
+        bool ok = false;
+        int code = -1;
+        run(7, (char **)argv, args, ok, code);
+        assert(ok);
+        assert(args.load_name == "in");
+        assert(args.resave_name == "out");
+    }
+    {
+        GameArgs args;
+        const char *argv[] = {"osp", "--load", "in", "--resave", "out"};
+        bool ok = true;
+        int code = 0;
+        run(5, (char **)argv, args, ok, code);
+        assert(!ok);
+        assert(code == 1);
+    }
+
     printf("test_cli: all checks passed\n");
     return 0;
 }

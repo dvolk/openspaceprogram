@@ -441,6 +441,34 @@ void refreshWorld(Game &g) {
     // The ship snapshot + the transfer planner: state, not a side effect of
     // drawing.
     refreshShipState(g, com);
+
+    /* --cam-log: the camera as this frame left it. --sim-mouse is documented
+       as the way to move the view ("yaw = -dx/200 rad, pitch = +dy/200 rad"),
+       but nothing in stdout said where the view WAS, so a mouse case whose
+       drag never reached the camera passed anyway (the axis-06 review burned a
+       false camera finding on exactly that). rmb= and cap= are the two gates
+       in events.cpp's mouse handlers: a right-button drag only looks when rmb
+       is armed AND imgui is not capturing the mouse -- so a part window opened
+       under the cursor silently eats the next drag. cap= is the value the game
+       itself tests this frame (the same one poll_events reads), and the
+       turntable numbers are what a drag is supposed to change. */
+    if(g.args.cam_log) {
+        const Uint32 now_ms = SDL_GetTicks();
+        if(now_ms - g.cam_log_last_ms >= g.orbit_log_interval_ms) {
+            g.cam_log_last_ms = now_ms;
+            const char *mode = camera->mode == CAM_ORBIT ? "orbit"
+                             : camera->mode == CAM_FREE  ? "free" : "first";
+            printf("[camlog] t=%.3fs mode=%s focus=\"%s\" "
+                   "yaw=%+.5f rad pitch=%+.5f rad dist=%.3f m "
+                   "fwd=[%+.4f %+.4f %+.4f] rmb=%d cap=%d\n",
+                   g.time, mode, g.focusTargets[g.focusBody].name,
+                   camera->orbitYaw, camera->orbitPitch, camera->distance,
+                   camera->forward.x, camera->forward.y, camera->forward.z,
+                   g.rmbCam ? 1 : 0,
+                   ImGui::GetIO().WantCaptureMouse ? 1 : 0);
+            fflush(stdout);
+        }
+    }
 }
 
 /* The PAINT half of the 3D pass (#212): the pixels and nothing else. Reads the

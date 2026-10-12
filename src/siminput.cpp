@@ -11,7 +11,13 @@ SDL_Keycode sim_parse_key(const std::string &s) {
        tried FIRST, so "3" parsed as keycode 3 and the digit keys were
        unreachable from --sim-press (#108) -- which is why the scene-switch
        e2e case has to send the raw keycodes 49..52 instead of 1234. A bare
-       number is still accepted as long as it is not a name. */
+       number is still accepted as long as it is not a name.
+
+       The set below is the one the Controls window can bind (keys.cpp's
+       scancode -> display-name table): every key the game can be played with
+       has to be nameable here, or the only way to drive it from e2e is a raw
+       keycode nobody can read. "[" and "]" are the default camera-speed keys,
+       so they were the gap. Keep the two lists in step. */
     static const std::map<std::string, SDL_Keycode> names = {
         {"0", SDLK_0}, {"1", SDLK_1}, {"2", SDLK_2}, {"3", SDLK_3},
         {"4", SDLK_4}, {"5", SDLK_5}, {"6", SDLK_6}, {"7", SDLK_7},
@@ -25,10 +31,27 @@ SDL_Keycode sim_parse_key(const std::string &s) {
         {"Y", SDLK_Y}, {"Z", SDLK_Z},
         {"SPACE", SDLK_SPACE}, {"TAB", SDLK_TAB},
         {"RETURN", SDLK_RETURN}, {"ENTER", SDLK_RETURN},
-        {"ESCAPE", SDLK_ESCAPE},
-        {"PERIOD", SDLK_PERIOD}, {"COMMA", SDLK_COMMA},
+        {"ESCAPE", SDLK_ESCAPE}, {"BACKSPACE", SDLK_BACKSPACE},
+        {"PERIOD", SDLK_PERIOD}, {".", SDLK_PERIOD},
+        // No "," alias: --sim-press splits its values on commas, so a lone
+        // comma can never arrive as a key name.
+        {"COMMA", SDLK_COMMA},
+        {"MINUS", SDLK_MINUS}, {"-", SDLK_MINUS},
+        {"EQUALS", SDLK_EQUALS}, {"=", SDLK_EQUALS},
+        /* SDL's spelling ("LEFTBRACKET") and the character the Controls
+           window shows ("["), which is what a player reads on screen. */
+        {"LEFTBRACKET", SDLK_LEFTBRACKET},
+        {"[", SDLK_LEFTBRACKET},
+        {"RIGHTBRACKET", SDLK_RIGHTBRACKET},
+        {"]", SDLK_RIGHTBRACKET},
+        {"BACKSLASH", SDLK_BACKSLASH}, {"\\", SDLK_BACKSLASH},
+        {"SEMICOLON", SDLK_SEMICOLON}, {";", SDLK_SEMICOLON},
+        {"APOSTROPHE", SDLK_APOSTROPHE}, {"'", SDLK_APOSTROPHE},
+        {"GRAVE", SDLK_GRAVE}, {"`", SDLK_GRAVE},
+        {"SLASH", SDLK_SLASH}, {"/", SDLK_SLASH},
         {"LSHIFT", SDLK_LSHIFT}, {"RSHIFT", SDLK_RSHIFT},
         {"LCTRL", SDLK_LCTRL}, {"RCTRL", SDLK_RCTRL},
+        {"LALT", SDLK_LALT}, {"RALT", SDLK_RALT},
         {"LEFT", SDLK_LEFT}, {"RIGHT", SDLK_RIGHT},
         {"UP", SDLK_UP}, {"DOWN", SDLK_DOWN},
         {"F1", SDLK_F1}, {"F2", SDLK_F2}, {"F3", SDLK_F3}, {"F4", SDLK_F4},

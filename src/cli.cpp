@@ -63,6 +63,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "A bare name resolves to the data dir's saves/<name> "
                    "(legacy flat) or the unique saves/<game>/<name>; a path "
                    "is used as-is. Mutually exclusive with --save");
+    app.add_option("--resave", args.resave_name,
+                   "Write this save dir when the --timeout budget is spent -- "
+                   "the same capture as --save, but legal alongside --load, "
+                   "which is the whole point: load a save, run it, write it "
+                   "back, and diff the two trees. That is how a save/load "
+                   "drift (a field the writer drops or the reader misreads) "
+                   "gets caught in one process instead of two runs plus a "
+                   "committed fixture. Same name rules as --save");
     app.add_option("--data-dir", args.data_dir,
                    "User data directory (saves/ + settings.json). Default: "
                    "the per-OS user data directory (on Linux: "
@@ -253,11 +261,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--sim-press", sim_press,
                    "Synthetic keypresses for e2e testing: a flat list of "
                    "START_MS,DURATION_MS,KEY triples (e.g. 500,200,SPACE, "
-                   "1500,100,I; spaces also separate values). KEY is an SDL "
-                   "key name (A..Z, SPACE, TAB, F1-F12, ...) or a decimal "
-                   "SDL keycode. The key is pressed START_MS after the main "
-                   "loop starts and held for DURATION_MS. Repeat the flag "
-                   "to append more triples.")
+                   "1500,100,I; spaces also separate values). KEY is a name in "
+                   "the Controls window's vocabulary (A..Z, 0..9, SPACE, TAB, "
+                   "ESCAPE, BACKSPACE, F1-F12, LEFT/RIGHT/UP/DOWN, LSHIFT/"
+                   "RSHIFT/LCTRL/RCTRL/LALT/RALT, and the punctuation the "
+                   "Controls list shows: - = [ ] \\ ; ' ` / .) or a decimal SDL "
+                   "keycode. The key is pressed START_MS after the main loop "
+                   "starts and held for DURATION_MS. Repeat the flag to append "
+                   "more triples.")
         ->delimiter(',');
 
     std::vector<std::string> sim_mouse;
@@ -275,8 +286,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "move only; 4/WHEEL_UP and 5/WHEEL_DOWN = one wheel notch "
                    "(zoom in / out in orbit camera; X,Y and DURATION "
                    "ignored, one notch per entry). DURATION_MS>0 with a "
-                   "button = a drag (held); 0 = a quick click. Repeat the "
-                   "flag to append more quintuples.")
+                   "button = a drag (held); 0 = a quick click. CAUTION in "
+                   "flight: a 0-duration RMB press is a part PICK -- it opens "
+                   "that part's window, and a window under the cursor then "
+                   "captures the mouse, so the NEXT RMB drag is silently "
+                   "truncated mid-gesture. Give a camera drag its own "
+                   "DURATION_MS>0 and check it with --cam-log (yaw/pitch plus "
+                   "the rmb=/cap= gates). Repeat the flag to append more "
+                   "quintuples.")
         ->delimiter(',');
 
     std::vector<std::string> sim_mode;
@@ -442,6 +459,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "acceleration, the amplitude, the offset) to stdout; the "
                  "instrument for the cam-shake e2e test");
 
+    app.add_flag("--cam-log", args.cam_log,
+                 "Periodically print the live camera to stdout: mode, the "
+                 "orbit turntable (yaw/pitch/dist), the view direction, and "
+                 "the two flags that decide what a --sim-mouse gesture "
+                 "actually does -- rmb= whether a right-button drag is armed, "
+                 "cap= whether imgui ate the mouse (a window under the cursor "
+                 "swallows the drag). --sim-mouse is documented to move the "
+                 "camera, yet nothing else in stdout proves it moved: without "
+                 "this line a mouse case whose drag never reached the camera "
+                 "still passes");
+
     app.add_flag("--terrain-log", args.terrain_log,
                  "Periodically print the local body's terrain LOD to stdout: "
                  "the alive patch count, the deepest leaf depth, how many "
@@ -553,10 +581,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                                "Exclusive fullscreen: change the display "
                                "mode to --width/--height (low latency, the "
                                "only way to go non-native on X11). Note: "
-                               "SDL 2.32's X11 driver never restores the "
-                               "previous mode on exit (X11_QuitModes is a "
-                               "no-op), so restore it yourself with xrandr "
-                               "if it matters");
+                               "the vendored SDL3's X11 driver never "
+                               "restores the previous mode on exit "
+                               "(X11_QuitModes is a no-op), so restore it "
+                               "yourself with xrandr if it matters");
     fs_opt->excludes(bl_opt);
     fs_opt->excludes(ex_opt);
     bl_opt->excludes(ex_opt);
@@ -1036,6 +1064,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     }
     if(!args.save_name.empty() && args.timeout_seconds <= 0.0) {
         printf("error: --save needs --timeout (the save is taken when the "
+               "wall-clock budget is spent)\n");
+        *exit_code = 1;
+        return false;
+    }
+    if(!args.resave_name.empty() && args.timeout_seconds <= 0.0) {
+        printf("error: --resave needs --timeout (the save is taken when the "
                "wall-clock budget is spent)\n");
         *exit_code = 1;
         return false;

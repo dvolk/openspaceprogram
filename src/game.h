@@ -394,6 +394,7 @@ struct Game {
     Uint32 info_log_last_ms = 0;
     Uint32 att_log_last_ms = 0;
     Uint32 shake_log_last_ms = 0;
+    Uint32 cam_log_last_ms = 0;
     Uint32 eva_log_last_ms = 0;
     Uint32 drag_log_last_ms = 0;
     Uint32 terrain_log_last_ms = 0;
