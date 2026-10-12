@@ -183,8 +183,13 @@ void Skybox::Draw(const Camera * camera,
 
     glBindVertexArray(vao);
     glActiveTexture(GL_TEXTURE0);
-    glUniform1i(glGetUniformLocation(skyboxShader->m_program, "skybox"), 0);
+    // The "skybox" sampler is pinned to unit 0 once, where the shader is
+    // created (main.cpp) -- no per-frame glGetUniformLocation here.
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
+    // Hygiene, not a fix: each texture TARGET has its own binding slot per
+    // unit, so a leftover cube map on unit 0 cannot disturb the 2D samplers
+    // that use it. It stops being harmless when a second samplerCube appears.
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 }

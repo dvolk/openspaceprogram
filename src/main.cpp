@@ -295,7 +295,24 @@ int main(int argc, char **argv)
 
     Shader *skyboxshader = get_shader("res/shaders/skyboxShader",
                                       { "position" },
-                                      { "projectionview", "gain" });
+                                      { "projectionview", "gain", "skybox" });
+    /* Which unit the cubemap sampler reads is program state, not per-frame
+       state: pin it once here (Skybox::Draw used to resolve the location by
+       name every frame). A linked sampler defaults to 0, so this buys
+       explicitness rather than a fix -- what it really removes is the
+       per-frame glGetUniformLocation. glUniform needs the program CURRENT, so
+       bind it for the write and put the previous binding back: at this point
+       in the boot nothing is bound, and Mesa answers GL_INVALID_OPERATION
+       "program not linked" if you skip the Bind (e2e 14-postfx, which forbids
+       any GL_ in the output, catches it). */
+    {
+        GLint prev_program = 0;
+        glGetIntegerv(GL_CURRENT_PROGRAM, &prev_program);
+        skyboxshader->Bind();
+        skyboxshader->setUniform_i("skybox", 0);
+        glUseProgram(prev_program);
+    }
+    // Skybox::Draw binds the texture to unit 0.
 
     Shader *lineshader = get_shader("res/shaders/lineShader2",
                                     { "position" },
