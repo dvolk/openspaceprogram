@@ -1783,7 +1783,10 @@ void drawUIReadouts(Game &g) {
                     ship->activeStage(), ship->numStages());
         ImGui::Text("Mass: %.3fkg", ship->getMass());
         ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
-        ImGui::Text("Thrust Util: %.0f%%", ship->thruster_util * 100);
+        /* "Throttle", not "Thrust Util": this is the engine command value the
+           R/F keys ramp (0..1), not a utilisation ratio. The line below it is
+           the actual newtons, which is what "thrust utilization" would mean. */
+        ImGui::Text("Throttle: %.0f%%", ship->thruster_util * 100);
         ImGui::Text("Thrust: %.2fN", ship->getThrust());
         ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
         ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
