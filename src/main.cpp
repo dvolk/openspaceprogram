@@ -610,8 +610,9 @@ int main(int argc, char **argv)
                    (double)first->getMass(), (double)first->getDeltaV());
         }
         /* --autopilot: engage a slew mode on the active ship (a test hook;
-           the Autopilot window is the only in-game way to engage these).
-           slewRequest is applied every tick and held until toggled. */
+           in-game these are the Autopilot window's toggles, plus Z/B for
+           prograde/retrograde). slewRequest is applied every tick and held
+           until toggled. */
         if(!args.autopilot.empty() && first != nullptr) {
             int m = 0;  // SlewMode (vehicle.h)
             if(args.autopilot == "prograde")        { m = 1; }

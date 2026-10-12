@@ -79,9 +79,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--autopilot", args.autopilot,
                    "Engage a slew mode on the active ship at startup: "
                    "prograde | retrograde | radial-out | radial-in | normal | "
-                   "anti-normal | kill-rot. A test hook -- the Autopilot "
-                   "window is the only in-game way to engage these, and it "
-                   "can't be clicked headless (default: none)")
+                   "anti-normal | kill-rot. A test hook -- in-game these are "
+                   "the Autopilot window's toggles (clickable headless with "
+                   "--ui-click) plus Z/B for prograde/retrograde "
+                   "(default: none)")
         ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
                                "radial-in", "normal", "anti-normal",
                                "kill-rot"}));
