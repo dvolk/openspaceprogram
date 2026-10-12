@@ -1936,8 +1936,7 @@ void drawPartWindows(Game &g) {
 
         // the human-readable part name (catalog display_name); fall back to
         // the machine id for catalogs that predate the field
-        const char *disp = def->display_name.empty() ? def->name.c_str()
-                                                     : def->display_name.c_str();
+        const char *disp = def->label().c_str();
 
         // window title "<ship> > <part>". The ##suffix is a hidden ImGui
         // window id, unique per (ship, part).
@@ -2244,9 +2243,7 @@ void drawPartWindows(Game &g) {
                    a vector erase invalidates the range-for's iterator. */
                 std::vector<Part *> items = cont->ownedContents;
                 for(Part *item : items) {
-                    const char *in = item->def->display_name.empty()
-                        ? item->def->name.c_str()
-                        : item->def->display_name.c_str();
+                    const char *in = item->def->label().c_str();
                     ImGui::PushID(item);
                     ImGui::Text("  %s  (%.1f kg)", in,
                                 item->effectiveMass());
@@ -3663,9 +3660,7 @@ void drawVabUI(Game &g) {
         ImGui::Separator();
         const int sel = g.vab.selected;
         BuildPart &bp = g.vab.build.parts[(size_t)sel];
-        const char *selName = (bp.def != nullptr && !bp.def->display_name.empty())
-            ? bp.def->display_name.c_str()
-            : (bp.def != nullptr ? bp.def->name.c_str() : "?");
+        const char *selName = bp.def != nullptr ? bp.def->label().c_str() : "?";
         ImGui::Text("selected: %s (%s)", bp.id.c_str(), selName);
         if(sel == 0) {
             ImGui::TextDisabled("root -- cannot rotate or delete");
@@ -3788,7 +3783,7 @@ void drawVabUI(Game &g) {
         // machine id). The ##id keeps the ImGui id unique per part.
         char lbl[256];
         snprintf(lbl, sizeof(lbl), "%s##%s",
-                 pd.display_name.empty() ? pd.name.c_str() : pd.display_name.c_str(),
+                 pd.label().c_str(),
                  pd.name.c_str());
         if(ImGui::Selectable(lbl, armed)) {
             g.vab.armed = armed ? std::string("") : pd.name;
@@ -3823,9 +3818,8 @@ void drawVabUI(Game &g) {
             // the palette rows do.
             const PartDef *ad = g.ships.catalog().find(g.vab.armed);
             ImGui::Text("armed: %s",
-                        (ad != nullptr && !ad->display_name.empty())
-                        ? ad->display_name.c_str()
-                        : g.vab.armed.c_str());
+                        ad != nullptr ? ad->label().c_str()
+                                      : g.vab.armed.c_str());
         }
         if(g.vab.ghostValid) {
             ImGui::Text("roll: %.0f deg (Q/E)", g.vab.ghostRollUsed);

@@ -467,7 +467,7 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
     }
     if(!to->canReceive()) {
         toast("Can't store here: %s (not a holder)",
-              to->def ? to->def->display_name.c_str() : "?");
+              to->def ? to->def->label().c_str() : "?");
         return;
     }
     // Copy by value: `erase` below invalidates any reference into
@@ -481,8 +481,8 @@ void Game::moveExperiment(Part *from, Part *to, size_t which) {
         return;
     }
     const std::string name = experimentName(e);
-    const std::string fromName = from->def ? from->def->display_name : "?";
-    const std::string toName = to->def ? to->def->display_name : "?";
+    const std::string fromName = from->def ? from->def->label() : "?";
+    const std::string toName = to->def ? to->def->label() : "?";
     from->experiments.erase(from->experiments.begin() + (std::ptrdiff_t)which);
     to->experiments.push_back(e);
     toast("Moved: %s  (%s -> %s)", name.c_str(), fromName.c_str(), toName.c_str());
@@ -1230,7 +1230,7 @@ Vehicle *Game::dropItem(Part *item) {
 
     /* build the 1-part ship */
     Vehicle *nv = new Vehicle();
-    nv->name = item->def->display_name.empty() ? item->def->name : item->def->display_name;
+    nv->name = item->def->label();
     nv->defPath = "";
     nv->setSoi(carrier->frame, time);   // list + journal start at the drop
     nv->home = carrier->home;
@@ -1624,8 +1624,7 @@ void Game::stage() {
             /* Name: the parent ship's name, qualified by the decoupler part
                so several ships from one staging stay distinguishable. */
             std::string base = a->name;
-            const std::string qual =
-                d->def->display_name.empty() ? d->def->name : d->def->display_name;
+            const std::string qual = d->def->label();
             if(!qual.empty()) { base += " " + qual; }
             // The pop: a one-shot "slam" as the part separates. balance 0.4
             // pulls the file's full-scale transient down to sit with the

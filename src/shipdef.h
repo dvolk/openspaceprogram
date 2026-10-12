@@ -255,6 +255,13 @@ struct PartDef {
 
     PartDef();
 
+    /* The human-readable name: display_name, else the machine id (catalogs
+       that predate the field). One home for the fallback the UI used to
+       spell out inline in seven places (#37); mirrors BuildingDef::label(). */
+    const std::string &label() const {
+        return display_name.empty() ? name : display_name;
+    }
+
     /* Total propellant mass flow (kg/s) at full throttle. */
     double totalPropellantRate() const {
         double s = 0.0;
