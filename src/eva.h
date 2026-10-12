@@ -16,6 +16,13 @@ struct Game;
 enum EvaMode { EVA_GROUND, EVA_SPACE };
 
 struct Kerbal : Vehicle {
+    /* Frictionless feet: foot friction would pair with the COM walk force
+       (eva.cpp applyEva) into a tipping couple the attitude authority
+       cannot out-torque, so a gripped kerbal rolls itself over as soon as
+       it walks. Vehicle::hullFriction carries this through every build
+       path, including a save/load rebuild. */
+    Kerbal() { hullFriction = 0.0; }
+
     // --- per-ticked armed state (evaArmCommands writes, applyEva consumes) ---
     EvaMode mode = EVA_GROUND;
     bool grounded = true;

@@ -136,6 +136,12 @@ public:
        OWNS both btBody and shape. hull's render assets are null: the ship
        is drawn part by part. */
     Body *hull = nullptr;
+    /* The hull rigid body's Coulomb friction. rebuildCompound() writes it
+       into every body it mints, so it is the single source of truth: a
+       subclass that needs different grip (the EVA kerbal's frictionless
+       feet, src/eva.h) sets it once in its constructor and every build
+       path -- live spawn, crew spawn, save/load -- gets it for free. */
+    double hullFriction = kDefaultHullFriction;
     btTransform principal = btTransform::getIdentity();
     /* the parts in the compound, in child-index order. A child index is
        rebuild-scoped, so anything mapping a collision hit back to a Part

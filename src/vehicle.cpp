@@ -554,16 +554,12 @@ void Vehicle::rebuildCompound() {
     if(wasInWorld) { RemoveBody(hull); }
     glm::dvec3 sPos(0.0), vCom(0.0), omega(0.0), oldOrigin(0.0);
     glm::dmat3 sRot(1.0);
-    /* a rebuild makes a new rigid body, so the friction has to be carried
-       over explicitly (an EVA kerbal's feet are set frictionless once). */
-    btScalar friction = 4.0;          // RegisterObject's value
     if(have) {
         frameS(sPos, sRot);
         vCom = GetVelocity(hull);
         omega = GetAngVelocity(hull);
         glm::dmat3 ignore;
         fromBt(principal, oldOrigin, ignore);
-        friction = hull->btBody->getFriction();
     }
 
     delete hull; hull = nullptr;
@@ -610,7 +606,7 @@ void Vehicle::rebuildCompound() {
     hull->mass  = (double)total;
     btRigidBody::btRigidBodyConstructionInfo ci(total, nullptr, nc,
                                                 inertiaDiag);
-    ci.m_friction = friction;
+    ci.m_friction = (btScalar)hullFriction;
     hull->btBody = new btRigidBody(ci);
     NeverSleep(hull);
 
@@ -2256,6 +2252,10 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->home = home;
     nv->sun = sun;
     nv->scenario = nullptr;
+    // A split survivor is the same physical vessel: keep the grip the
+    // original was built with (a plain Vehicle here, so the subclass's own
+    // setting would otherwise be lost with the subclass).
+    nv->hullFriction = hullFriction;
 
     /* Part list in the original order: parent before child -- the save
        format resolves each part's parent by reference. Rebase the poses

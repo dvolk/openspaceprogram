@@ -62,6 +62,13 @@ double terrainMargin();
    (>= 0), else hullMargin(). Mirrors what BuildHull applies. */
 double effectiveHullMargin(const Body *body);
 
+/* Coulomb friction of a hull that sets none of its own: what
+   PhysicsEngine::RegisterObject gives a static body and what
+   Vehicle::hullFriction (vehicle.h) starts at. Bullet's own construction
+   default (0.5) is NOT this -- a hull built without saying so would be
+   slipperier than the terrain it stands on. */
+inline constexpr double kDefaultHullFriction = 4.0;
+
 void NeverSleep(Body *body);
 /* Unregister a body's rigid body from the world (call before `delete body`). */
 void RemoveBody(Body *body);
@@ -79,7 +86,6 @@ glm::dvec3 getInertiaDiag(Body *body);
 
 void SetVelocity(Body *body, glm::dvec3 vel);
 void SetAngVelocity(Body *body, glm::dvec3 vel);
-void SetFriction(Body *body, double f);
 /* Teleports pose ONLY: proceedToTransform is just setCenterOfMassTransform,
    so both linear and angular velocity survive the teleport untouched. Clear
    them explicitly if that is what you want. */

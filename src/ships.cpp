@@ -185,11 +185,6 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     const double supportMargin = site != nullptr
         ? effectiveHullMargin(site->body) : terrainMargin();
     build_ship(v, def, partsshader, base, pad_orient, supportMargin);
-    if(is_kerbal) {
-        // frictionless feet: foot friction would pair with the walk force
-        // into a tipping couple (see src/eva.cpp).
-        SetFriction(v->hull, 0.0);
-    }
     v->setVelocity(glm::dvec3(0, 0, 0));
     // The bookkeeping re-home: enters the body's ships list and starts the
     // flight journal at `t`.
@@ -238,7 +233,6 @@ Kerbal *Ships::spawn_crew_kerbal(Vehicle *ship, size_t part, System &sys, double
     // build_ship's pad lift is throwaway here: the kerbal is parked at the
     // capsule COM right below.
     build_ship(k, def, partsshader, capCom, capOrient, 0.0);
-    SetFriction(k->hull, 0.0);   // frictionless feet (see place_ship)
 
     // park inside the capsule (out of the physics world). The ship is
     // heavier with crew aboard through the containment edge (effectiveMass).

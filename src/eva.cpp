@@ -120,8 +120,8 @@ void Kerbal::applyEva(double h) {
         if(alen > amax) { a *= amax / alen; }
         ApplyCentralForce(b, b->mass * a);
 
-        // Feet are frictionless (ships.cpp) so the COM steering force cannot
-        // tip the capsule; overwriting the pose stalls translation instead.
+        // Feet are frictionless (the Kerbal ctor, eva.h) so the COM steering
+        // force cannot tip the capsule; overwriting the pose stalls translation instead.
         const glm::dvec3 faceHint = (glm::length2(walkDir) > 0.0)
             ? walkDir : partAxis(controller, 1);
         slewTo(evaStandTarget(radial, faceHint), h, kGroundTorque);

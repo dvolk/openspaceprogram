@@ -281,7 +281,7 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     btRigidBody::btRigidBodyConstructionInfo
         rbInfo(body->mass, myMotionState, hull, localInertia);
 
-    rbInfo.m_friction = 4.0;
+    rbInfo.m_friction = (btScalar)kDefaultHullFriction;
 
     btRigidBody *b = new btRigidBody(rbInfo);
 
@@ -457,10 +457,6 @@ void SetVelocity(Body *b, glm::dvec3 vel) {
 void SetAngVelocity(Body *b, glm::dvec3 vel) {
     btVector3 btvel = btVector3(vel.x, vel.y, vel.z);
     getRigidBody(b)->setAngularVelocity(btvel);
-}
-
-void SetFriction(Body *b, double f) {
-    getRigidBody(b)->setFriction((btScalar)f);
 }
 
 void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
