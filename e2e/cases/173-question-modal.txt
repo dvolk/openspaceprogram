@@ -1,0 +1,31 @@
+# The question card (Game::ask) is modal (#234). Two holes, both pinned here.
+#
+# 1) A click aimed at a widget BEHIND the card used to land on that widget:
+#    the card drew on top of everything but took nothing away, so a confirm
+#    could be answered AND the click under it could open a window, toggle a
+#    checkbox or pick a part. The scrim drawn under the card (drawQuestionScrim,
+#    gameui.cpp) makes imgui hover nothing there, which --ui-click reports as a
+#    MISMATCH instead of a clean click -- and the 5400ms dump proves the window
+#    that click aimed at never opened. The stray click aims at "Controls"
+#    (rect y 599..633) rather than "Settings" (y 561..595) on purpose: the
+#    card's own buttons sit at y 565..585, so a click in that band could land
+#    on a card button, which would answer the card and pass for the wrong
+#    reason.
+#
+# 2) The game's OWN key handling ran while a card was up, so ESC popped a scene
+#    under the live card and the card's callback then ran from a scene the
+#    question was never asked in. ESC is now the card's last choice ("Cancel"
+#    in every card) and no other key or mouse event is dispatched.
+NAME question-modal
+ARGS --new-game 1000 --timeout 9
+ARGS --ui-click 2500,"Game Menu/Return to title"
+ARGS --ui-click 3400,"Game Menu/Controls"
+ARGS --sim-press 4400,0,ESCAPE
+ARGS --ui-list 5400
+EXPECT [ask] Return to the title screen?
+EXPECT path="Game Menu/Controls" FAILED MISMATCH nothing was hovered at release
+EXPECT [ask] answered 1
+FORBID window="Controls"
+FORBID [scene] spacecenter -> title
+FORBID GL_
+FORBID error:

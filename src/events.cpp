@@ -415,6 +415,13 @@ void hubKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
 void poll_events(Game &g) {
     SDL_Event ev;
 
+    /* Modality is decided ONCE per batch: answerQuestion() runs the card's
+       callback synchronously inside this loop, so re-reading g.question per
+       event would let a second event in the same batch reach the scene under
+       a card that is still up (the harness can push two presses in one frame,
+       and a slow frame batches them too). */
+    const bool modal = (g.question != nullptr);
+
     while (SDL_PollEvent(&ev)) {
         ImGui_ImplSDL3_ProcessEvent(&ev);
         if (ev.type == SDL_EVENT_QUIT) {
@@ -441,6 +448,28 @@ void poll_events(Game &g) {
                 g.camera->setViewport(ev.window.data1, ev.window.data2);
             }
             check_gl_error();
+        }
+        /* A pending question card is modal (#234). imgui still receives every
+           event -- the card's buttons are ordinary widgets, and the
+           full-viewport scrim drawn under it (drawQuestion) is what stops
+           clicks reaching the windows behind -- but the game's OWN key and
+           mouse handling stands down. Without this, ESC popped a scene under a
+           live card and the card's callback then ran from a different scene
+           (its [g] captures outliving the scene that asked). */
+        if(modal) {
+            if(ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat
+               && ev.key.scancode == SDL_SCANCODE_ESCAPE) {
+                // ESC = the card's last choice, which is "Cancel" in every card.
+                const int n = (int)g.question->labels.size();
+                if(n > 0) { g.answerQuestion(n - 1); }
+            }
+            /* An RMB camera drag that started before the card must not stay
+               armed: its release is swallowed here, and g.rmbCam is cleared
+               nowhere else -- the camera would keep following the mouse with
+               no button held. Reachable in the VAB: hold RMB to orbit the
+               build view, click Launch, the pad card appears, let go. */
+            g.rmbCam = false;
+            continue;
         }
         if(ev.type == SDL_EVENT_KEY_DOWN && g.rebind_capture_slot >= 0) {
             // A rebind capture is in progress: the next non-modifier key

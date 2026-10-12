@@ -2745,6 +2745,30 @@ void drawUIMap(Game &g) {
     });
 }
 
+/* The modal scrim: a full-viewport window drawn UNDER the card so a pending
+   question cannot be clicked through (#234). It carries no widgets and no
+   background of its own (the dimming is a plain filled rect), but imgui
+   hit-tests it, so every window behind it stops taking clicks.
+
+   NOT flagged NoBringToFrontOnFocus: that flag makes CreateNewWindow
+   push_front() the window (imgui.cpp:6791), which is the BACK of the display
+   order -- it is meant for fixed background layers. The scrim has to be the
+   front-most window apart from the card, which drawQuestion enforces. */
+static void drawQuestionScrim() {
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->Pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(vp->Size, ImGuiCond_Always);
+    ImGui::Begin("##question_scrim", nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
+               | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar
+               | ImGuiWindowFlags_NoSavedSettings
+               | ImGuiWindowFlags_NoBackground);
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
+        IM_COL32(0, 0, 0, 110));
+    ImGui::End();
+}
+
 /* The question card (Game::ask). Deliberately NOT in the window table
    (uiwins.h), following drawToasts rather than drawWin: a card must show in
    every scene and must not vanish on TAB, and the table's three gates --
@@ -2756,6 +2780,7 @@ void drawUIMap(Game &g) {
    above every window while toasts still float above it. */
 void drawQuestion(Game &g) {
     if(!g.question) { return; }
+    drawQuestionScrim();
     static const ui::Options opts = []{
         ui::Options o;
         o.slot = ui::Slot::Center;
@@ -2785,6 +2810,15 @@ void drawQuestion(Game &g) {
     // The invariant whose absence let the last attempt come back "done" while
     // drawing nothing: a pending question must produce pixels.
     assert(drew && "question pending but the card did not draw");
+    /* Keep the card in front of the scrim. Both are appended at creation, so
+       the card starts ahead; but clicking the scrim focuses it and FocusWindow
+       moves the focused window to the display front, which would leave the
+       scrim over the card for the next frame's hit-test pass. Re-fronting the
+       card every frame makes the end-of-frame order deterministic:
+       ... scrim, card. */
+    if(ImGuiWindow *card = ImGui::FindWindowByName("Question")) {
+        ImGui::BringWindowToDisplayFront(card);
+    }
     // Answered after End(): answerQuestion destroys g.question, and the body
     // above is still reading it.
     if(choice >= 0) { g.answerQuestion(choice); }

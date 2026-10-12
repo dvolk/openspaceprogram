@@ -268,6 +268,11 @@ static std::string oneLine(const std::string &s) {
    card the player can dismiss is also a card a test must be able to see. */
 void Game::ask(std::string text, std::vector<std::string> labels,
                std::function<void(int choice)> onAnswer) {
+    /* A card with no buttons can never be answered: drawQuestion draws the
+       text and returns, and ESC (the cancel key) has no last choice to pick.
+       Every caller passes at least one; assert it rather than let a future
+       card wedge the game with no way out. */
+    assert(!labels.empty());
     question = std::make_unique<Question>();
     question->text = std::move(text);
     question->labels = std::move(labels);
