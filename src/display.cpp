@@ -170,12 +170,18 @@ Renderer::Renderer(int width, int height, WindowMode mode, int msaa_samples,
             check_gl_error();
 
             GLuint unusedIds = 0;
+            /* count=0 + all-GL_DONT_CARE covers EVERY message, and the last
+               argument says whether to enable or DISABLE that set: false here
+               silenced the whole debug stream, so --gl-debug registered a
+               callback that could never fire (verified by planting a
+               GL_INVALID_OPERATION after this point -- silent before the
+               flip, reported after). */
             glDebugMessageControl(GL_DONT_CARE,
                                   GL_DONT_CARE,
                                   GL_DONT_CARE,
                                   0,
                                   &unusedIds,
-                                  false);
+                                  true);
             check_gl_error();
             glDebugMessageCallback(openglCallbackFunction, nullptr);
             check_gl_error();
