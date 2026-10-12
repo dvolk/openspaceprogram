@@ -872,31 +872,11 @@ void Game::switchSystem(const std::string &path,
             boot uses (the caller's sync set + the star synchronous).
          7. land on the shipless title backdrop. */
     // The shaders are registry singletons: re-fetch the same files the boot
-    // used (cache hit, not a recompile).
-    Shader *terrainshader = get_shader("res/shaders/terrainShader",
-        { "position", "normal", "color" },
-        { "MVP", "Normal", "lightDirection", "color", "anchor" });
-    Shader *sunshader = get_shader("res/shaders/sunShader",
-        { "position", "normal", "color" },
-        { "MVP", "Normal", "lightDirection", "color" });
-    Shader *atmosphereshader = get_shader("res/shaders/atmosphereShader",
-        { "position", "normal" },
-        { "MVP", "Normal", "cameraPos", "color", "intensity", "power",
-          "lightDirection", "inside", "planetCenter" });
-    Shader *cloudshader = get_shader("res/shaders/cloudShader",
-        { "position", "normal", "uvParam" },
-        { "MVP", "Normal", "cameraPos", "color", "lightDirection", "drift",
-          "planetCenter", "coverage_tex" });
-    Shader *oceanshader = get_shader("res/shaders/oceanShader",
-        { "position", "normal" },
-        { "MVP", "Normal", "cameraPos", "seaColor", "lightDirection",
-          "time", "planetCenter" });
-    Shader *ringshader = get_shader("res/shaders/ringShader",
-        { "position", "normal" },
-        { "MVP", "Normal", "lightDirection", "albedo", "opacity",
-          "planetRadius" });
+    // used (cache hit, not a recompile). One spec table (shader.cpp) so this
+    // and the boot cannot register the same program differently.
+    const WorldShaders world = get_world_shaders();
     // Load FIRST: a failure here throws with the running game still intact.
-    System newSys = load_system(path.c_str(), terrainshader, sunshader, nullptr);
+    System newSys = load_system(path.c_str(), world.terrain, world.sun, nullptr);
 
     unloadGame();
     // Re-point at the NEW (live) system before the old bodies are deleted, so
@@ -948,8 +928,8 @@ void Game::switchSystem(const std::string &path,
         titleBody = pickTitleBody();
         if(titleBody != nullptr) { sync.push_back(titleBody); }
     }
-    postHeavyPhase(sys, sync, jobs, atmosphereshader, cloudshader,
-                   oceanshader, ringshader, args.cloud_mesh);
+    postHeavyPhase(sys, sync, jobs, world.atmosphere, world.cloud,
+                   world.ocean, world.ring, args.cloud_mesh);
     // World buildings travel with the system: re-place the new file's set.
     place_world_buildings(sys, buildings, partsshader, sun);
     // Launch-site ids are per-system; drop a sticky pick.

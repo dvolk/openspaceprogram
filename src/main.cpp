@@ -269,49 +269,11 @@ int main(int argc, char **argv)
                                      { "MVP", "Normal", "lightDirection", "shadow",
                                        "alpha", "tint", "flatLight" });
 
-    Shader *terrainshader = get_shader("res/shaders/terrainShader",
-                                       { "position", "normal", "color" },
-                                       { "MVP", "Normal", "lightDirection", "color",
-                                         "anchor" });
-
-    Shader *sunshader = get_shader("res/shaders/sunShader",
-                                   { "position", "normal", "color" },
-                                   { "MVP", "Normal", "lightDirection", "color" });
-
-    // Atmosphere shell: Fresnel limb glow from orbit, interior sky dome
-    // from the surface (the `inside` flag). See reports/atmosphere2026_08_25.
-    Shader *atmosphereshader = get_shader("res/shaders/atmosphereShader",
-                                          { "position", "normal" },
-                                          { "MVP", "Normal", "cameraPos",
-                                            "color", "intensity", "power",
-                                            "lightDirection", "inside",
-                                            "planetCenter" });
-
-    // Cloud deck: a shell between the terrain and the atmosphere rim.
-    // Coverage is baked (BuildClouds) on the job worker. "uvParam" binds
-    // the mesh's color slot (attrib location 2): the unwrapped sphere
-    // params the deck UV is built from.
-    Shader *cloudshader = get_shader("res/shaders/cloudShader",
-                                     { "position", "normal", "uvParam" },
-                                     { "MVP", "Normal", "cameraPos", "color",
-                                       "lightDirection", "drift", "planetCenter",
-                                       "coverage_tex" });
-
-    // Ocean surface: a transparent shell at sea level with animated wave
-    // normals, Fresnel reflection and a specular sun glint. Land pokes
-    // through via the depth test.
-    Shader *oceanshader = get_shader("res/shaders/oceanShader",
-                                     { "position", "normal" },
-                                     { "MVP", "Normal", "cameraPos", "seaColor",
-                                       "lightDirection", "time", "planetCenter" });
-
-    // Planetary rings: flat annuli in the body's equatorial plane, drawn
-    // over the opaque terrain. Two-sided Lambert (the sun can be above or
-    // below the plane).
-    Shader *ringshader = get_shader("res/shaders/ringShader",
-                                    { "position", "normal" },
-                                    { "MVP", "Normal", "lightDirection",
-                                      "albedo", "opacity", "planetRadius" });
+    // The terrain/sun/atmosphere/cloud/ocean/ring set: specified once in
+    // shader.cpp, because Game::switchSystem needs the same programs (and
+    // get_shader's FIRST registration wins, so a second hand-written copy
+    // could silently disagree about uniform indices).
+    const WorldShaders world = get_world_shaders();
 
     Shader *skyboxshader = get_shader("res/shaders/skyboxShader",
                                       { "position" },
@@ -373,7 +335,7 @@ int main(int argc, char **argv)
     auto last_loading_draw = std::chrono::steady_clock::time_point{};
     System sys;
     try {
-        sys = load_system(args.system_file.c_str(), terrainshader, sunshader,
+        sys = load_system(args.system_file.c_str(), world.terrain, world.sun,
             [&](size_t i, size_t total, const std::string &name) {
                 if(pumpLoadingQuit()) { std::exit(1); }   // window closed mid-load
                 auto now = std::chrono::steady_clock::now();
@@ -563,8 +525,8 @@ int main(int argc, char **argv)
                 if(TerrainBody *b = sys.find(n)) { sync.push_back(b); }
             }
             sync.push_back(home);
-            postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
-                           oceanshader, ringshader, args.cloud_mesh);
+            postHeavyPhase(sys, sync, game.jobs, world.atmosphere, world.cloud,
+                           world.ocean, world.ring, args.cloud_mesh);
         }
         try {
             load_game(game, load_dir);
@@ -603,8 +565,8 @@ int main(int argc, char **argv)
             sync.push_back(home);   // the hub frames it and the first launch
                                     // leaves from it
         }
-        postHeavyPhase(sys, sync, game.jobs, atmosphereshader, cloudshader,
-                       oceanshader, ringshader, args.cloud_mesh);
+        postHeavyPhase(sys, sync, game.jobs, world.atmosphere, world.cloud,
+                       world.ocean, world.ring, args.cloud_mesh);
 
         if(!args.radial_test.empty()) {
             RadialTestShip rts = build_radial_test_ship(

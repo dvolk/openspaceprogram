@@ -18,6 +18,22 @@ Shader *get_shader(const std::string &path,
                    const std::vector<const char *> &attribs,
                    const std::vector<const char *> &uniforms);
 
+/* The six world shaders, registered ONCE. The boot (main.cpp) and
+   Game::switchSystem (game.cpp) both need this exact set, and get_shader's
+   first registration wins -- a second caller with a different attrib or
+   uniform list only prints an ERROR and keeps the first program, so the
+   positional indices silently disagree. The lists used to be hand-copied
+   into both call sites; this is their one home. */
+struct WorldShaders {
+    Shader *terrain;
+    Shader *sun;
+    Shader *atmosphere;
+    Shader *cloud;
+    Shader *ocean;
+    Shader *ring;
+};
+WorldShaders get_world_shaders();
+
 class Shader
 {
 public:

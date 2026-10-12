@@ -291,3 +291,50 @@ Shader *get_shader(const std::string &path,
     s_shaders[key] = s;
     return s;
 }
+
+/* The world shader set (see shader.h). Each entry is the file plus its
+   attrib/uniform registration -- positional, so the ORDER is part of the
+   contract. The boot and Game::switchSystem both call this; the registry
+   hands them the same program. */
+WorldShaders get_world_shaders() {
+    auto load = [](const char *path, std::vector<const char *> attribs,
+                   std::vector<const char *> uniforms) {
+        return get_shader(path, attribs, uniforms);
+    };
+    WorldShaders w;
+    w.terrain = load("res/shaders/terrainShader",
+                     { "position", "normal", "color" },
+                     { "MVP", "Normal", "lightDirection", "color", "anchor" });
+    w.sun = load("res/shaders/sunShader",
+                 { "position", "normal", "color" },
+                 { "MVP", "Normal", "lightDirection", "color" });
+    // Atmosphere shell: Fresnel limb glow from orbit, interior sky dome
+    // from the surface (the `inside` flag). See reports/atmosphere2026_08_25.
+    w.atmosphere = load("res/shaders/atmosphereShader",
+                        { "position", "normal" },
+                        { "MVP", "Normal", "cameraPos", "color", "intensity",
+                          "power", "lightDirection", "inside", "planetCenter" });
+    // Cloud deck: a shell between the terrain and the atmosphere rim.
+    // Coverage is baked (BuildClouds) on the job worker. "uvParam" binds
+    // the mesh's color slot (attrib location 2): the unwrapped sphere
+    // params the deck UV is built from.
+    w.cloud = load("res/shaders/cloudShader",
+                   { "position", "normal", "uvParam" },
+                   { "MVP", "Normal", "cameraPos", "color", "lightDirection",
+                     "drift", "planetCenter", "coverage_tex" });
+    // Ocean surface: a transparent shell at sea level with animated wave
+    // normals, Fresnel reflection and a specular sun glint. Land pokes
+    // through via the depth test.
+    w.ocean = load("res/shaders/oceanShader",
+                   { "position", "normal" },
+                   { "MVP", "Normal", "cameraPos", "seaColor",
+                     "lightDirection", "time", "planetCenter" });
+    // Planetary rings: flat annuli in the body's equatorial plane, drawn
+    // over the opaque terrain. Two-sided Lambert (the sun can be above or
+    // below the plane).
+    w.ring = load("res/shaders/ringShader",
+                  { "position", "normal" },
+                  { "MVP", "Normal", "lightDirection", "albedo", "opacity",
+                    "planetRadius" });
+    return w;
+}
