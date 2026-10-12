@@ -188,6 +188,15 @@ else
 	ln -sfn $(BINDIR)/$(TARGET) osp
 endif
 
+# Compilation database for editors / clang-tidy (compile_commands.json).
+# `bear -- make` on a WARM tree writes an EMPTY database -- bear only records
+# the compiles that actually happen, and an up-to-date tree compiles nothing.
+# -B forces every TU through the compiler (a full recompile, ~40s here), so
+# the database is always complete.
+.PHONY: compdb
+compdb:
+	bear -- $(MAKE) -B
+
 # Middleware .a files are prereqs (built by bootstrap.sh, not this make) so a
 # rebuilt lib forces a relink. Missing .a before bootstrap = a clear error.
 $(BINDIR)/$(TARGET): $(OBJECTS) $(IMGUI_OBJS) $(IMPLLOT_OBJS) $(RES_OBJ) $(ASSIMP_A) $(SDL3_A) $(SDLIMG_A) $(SDLMIXER_A) $(GLEW_A) $(BULLET3_OBJS)
@@ -415,6 +424,14 @@ $(TESTDIR)/obj/cli.o: src/version.h
 $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/obj/siminput.o
 	$(CXX) -o $@ $^
 
+# The GLM <-> Bullet 3x3 orientation convention (physics.cpp setPosRot /
+# GetOrient) is one transpose away from being wrong: Bullet stores matrices
+# row-major, GLM column-major. This pins the quaternion round trip AND the
+# physical rotation it produces, so a "cleanup" that goes back to element-wise
+# conversion fails loudly. Bullet only -- no GL, no SDL.
+$(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
+	$(CXX) -o $@ $^ $(TLIBS)
+
 TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_power test_staging test_staging_dv test_dock test_contain test_inertia test_inventory \
         test_rotation test_shipload test_save test_crew test_calendar \
@@ -422,7 +439,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_thrust test_fuel \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt test_retrograde test_skybox \
-        test_belts test_railangles test_scenarios test_buildings
+        test_belts test_railangles test_scenarios test_buildings test_orient
 
 # Short-name aliases: `make test_fuel` builds + runs one test (from the repo
 # root -- some need res/). `make test` runs the whole set.
@@ -432,75 +449,49 @@ $(TESTS):
 	$(TESTDIR)/$@
 
 .PHONY: test
-test: $(addprefix $(TESTDIR)/,$(TESTS))
-	$(TESTDIR)/test_frames
-	$(TESTDIR)/test_spawn
-	$(TESTDIR)/test_attitude
-	$(TESTDIR)/test_slew3d
-	$(TESTDIR)/test_thrust
-	$(TESTDIR)/test_fuel
-	$(TESTDIR)/test_power
-	$(TESTDIR)/test_staging
-	$(TESTDIR)/test_staging_dv
-	$(TESTDIR)/test_dock
-	$(TESTDIR)/test_contain
-	$(TESTDIR)/test_inertia
-	$(TESTDIR)/test_inventory
-	$(TESTDIR)/test_rotation
-	$(TESTDIR)/test_shipload
-	$(TESTDIR)/test_save
-	$(TESTDIR)/test_crew
-	$(TESTDIR)/test_calendar
-	$(TESTDIR)/test_flightlog
-	$(TESTDIR)/test_science
-	$(TESTDIR)/test_bodylimits
-	$(TESTDIR)/test_orbit
-	$(TESTDIR)/test_orbitsample
-	$(TESTDIR)/test_transfer
-	$(TESTDIR)/test_porkchop
-	$(TESTDIR)/test_surfmap
-	$(TESTDIR)/test_eva
-	$(TESTDIR)/test_terrain
-	$(TESTDIR)/test_drag
-	$(TESTDIR)/test_audio
-	$(TESTDIR)/test_jet
-	$(TESTDIR)/test_jobs
-	$(TESTDIR)/test_orbitmap
-	$(TESTDIR)/test_orbitcam
-	$(TESTDIR)/test_pick
-	$(TESTDIR)/test_settings
-	$(TESTDIR)/test_keys
-	$(TESTDIR)/test_cli
-	$(TESTDIR)/test_fmt
-	$(TESTDIR)/test_retrograde
-	$(TESTDIR)/test_skybox
-	$(TESTDIR)/test_belts
-	$(TESTDIR)/test_railangles
-	$(TESTDIR)/test_scenarios
-	$(TESTDIR)/test_buildings
+test: test-gen $(addprefix $(TESTDIR)/,$(TESTS))
+	@$(foreach t,$(TESTS),$(TESTDIR)/$(t) || exit 1; )
 
 # Python data-gen self-tests: the sci_phase "mirrors system.cpp epoch state"
-# invariant + the sci_dist moon-home warning + committed science-field
-# invariants on every shipped system + the skybox alignment pins against the
-# COMMITTED faces (no EXRs needed). Those pins are what catch a face set
-# whose images sit under the wrong axis names -- the system JSON names a
-# directory, so the file names carry the face identity.
-# The generator --check runs pin that res/systems/*.json AND res/data/parts.json
-# ARE generated output: a hand-tuned field in a committed file otherwise
-# diverges from its source silently, since nothing else regenerates these
-# files (#186: the ksp Kuiper radii sat 1.5x out for two days). parts.json is
-# the one that bites -- its generator had no row for the parachute, so the
-# next regenerate would have deleted the part from the catalog.
-.PHONY: test-py
-test-py:
+# invariant, the sci_dist moon-home warning, committed science-field
+# invariants on every shipped system, and the skybox alignment pins against
+# the COMMITTED faces (no EXRs needed) -- those pins are what catch a face set
+# whose images sit under the wrong axis names, since the system JSON names a
+# directory and the file names carry the face identity.
+#
+# Split by what they need to RUN:
+# test-gen  -- pure stdlib (math/json), so it belongs inside `make test`.
+#              These are the pins that catch a committed res/systems/*.json
+#              drifting from its generator (#186: the ksp Kuiper radii sat
+#              1.5x out for two days because nothing regenerated them).
+# test-py   -- adds the three pins that import third-party modules
+#              (trimesh for the part meshes, numpy+PIL for the heightmap and
+#              skybox faces). parts.json is the one that bites -- its
+#              generator had no row for the parachute, so the next regenerate
+#              would have deleted the part from the catalog. They run here and
+#              in CI; on a box without the modules they are reported as
+#              skipped instead of quietly vanishing (#220).
+.PHONY: test-gen
+test-gen:
 	python3 utils/sci_phase.py
 	python3 utils/sci_dist.py --self-test
 	python3 utils/sci_dist.py --check res/systems/*.json
 	python3 utils/gen_systems.py --check
 	python3 utils/make_solar_system.py --check
-	python3 utils/gen_parts.py --check
-	python3 utils/heightmaps/gen_earth_hm.py --verify
-	python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2
+
+# Which of the optional modules are MISSING (empty = all present).
+PY_MISSING = $(shell python3 -c "import importlib.util as u; print(' '.join(m for m in ('trimesh','numpy','PIL') if u.find_spec(m) is None))" 2>/dev/null)
+
+.PHONY: test-py
+test-py: test-gen
+	@if [ -n "$(PY_MISSING)" ]; then \
+		echo "test-py: SKIP parts/heightmap/skybox pins -- missing python module(s): $(PY_MISSING)" >&2; \
+		echo "         (pip install trimesh numpy pillow, or run these in CI)" >&2; \
+	else \
+		python3 utils/gen_parts.py --check && \
+		python3 utils/heightmaps/gen_earth_hm.py --verify && \
+		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \
+	fi
 
 # E2E battery (e2e/run.py). Headless via xvfb-run when no display.
 # JOBS=N overrides parallel cases (default 2).
