@@ -485,10 +485,12 @@ test: $(addprefix $(TESTDIR)/,$(TESTS))
 # COMMITTED faces (no EXRs needed). Those pins are what catch a face set
 # whose images sit under the wrong axis names -- the system JSON names a
 # directory, so the file names carry the face identity.
-# The two generator --check runs pin that res/systems/*.json IS generated
-# output: a hand-tuned field in a committed system otherwise diverges from
-# its source silently, since nothing else regenerates these files (#186: the
-# ksp Kuiper radii sat 1.5x out for two days).
+# The generator --check runs pin that res/systems/*.json AND res/data/parts.json
+# ARE generated output: a hand-tuned field in a committed file otherwise
+# diverges from its source silently, since nothing else regenerates these
+# files (#186: the ksp Kuiper radii sat 1.5x out for two days). parts.json is
+# the one that bites -- its generator had no row for the parachute, so the
+# next regenerate would have deleted the part from the catalog.
 .PHONY: test-py
 test-py:
 	python3 utils/sci_phase.py
@@ -496,6 +498,7 @@ test-py:
 	python3 utils/sci_dist.py --check res/systems/*.json
 	python3 utils/gen_systems.py --check
 	python3 utils/make_solar_system.py --check
+	python3 utils/gen_parts.py --check
 	python3 utils/heightmaps/gen_earth_hm.py --verify
 	python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2
 
