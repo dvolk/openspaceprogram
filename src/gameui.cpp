@@ -3843,20 +3843,30 @@ void drawVabUI(Game &g) {
     ImGui::End();
 
     /* Staging table: one row per stage period (flight order -- the first
-       burn at the top), with vacuum delta-v and TWR against the home
-       body's surface gravity. Fuel links are honoured. Recomputed every
-       frame -- the build is small and this is pure math. */
+       burn at the top), with vacuum delta-v and TWR against the SURFACE
+       GRAVITY OF THE BODY THIS BUILD IS SET UP TO LAUNCH FROM. Fuel links
+       are honoured. Recomputed every frame -- the build is small and this
+       is pure math.
+
+       The gravity follows the top bar's launch-body dropdown, not home: the
+       min-TWR cell is red-flagged as "cannot lift off", and that verdict is
+       a property of the body you are actually launching from (the same stack
+       that is stuck on Kerbin's pad at g 9.81 lifts off Moho's at g 2.70). */
     drawWin(g, W_Staging, [&] {
-        const double gHome = (g.sys.home != nullptr) ? g.sys.home->g : 9.81;
+        TerrainBody *lbody = g.sys.home;
+        if(!g.vab.bodyName.empty()) {
+            if(TerrainBody *b = g.sys.find(g.vab.bodyName)) { lbody = b; }
+        }
+        const double gLaunch = (lbody != nullptr) ? lbody->g : 9.81;
         ImGui::Text("TWR on %s  (g = %.2f m/s^2)",
-                    g.sys.home != nullptr ? g.sys.home->name.c_str() : "?",
-                    gHome);
+                    lbody != nullptr ? lbody->name.c_str() : "?",
+                    gLaunch);
         if(g.vab.build.parts.empty()) {
             ImGui::TextDisabled("empty build -- place a part");
             return;
         }
         const std::vector<StageRow> rows =
-            computeStaging(g.vab.build, gHome, g.args.exhaust_scale);
+            computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
         if(rows.empty()) {
             ImGui::TextDisabled("nothing to stage");
             return;
