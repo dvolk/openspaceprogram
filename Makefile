@@ -97,8 +97,15 @@ BULLET3_OBJS=$(MWROOT)/bullet3/src/BulletDynamics/libBulletDynamics.a $(MWROOT)/
 endif
 
 # windows: fully static exe (no runtime DLLs).
+# --stack=8M: mingw's 1 MB default main-thread reserve is not enough. The exe
+# died inside ___chkstk_ms (GCC's dynamic-stack-allocation probe) before it
+# could print --version, while the same code runs on Linux's 8 MB default;
+# 8388608 matches Linux and the four wine e2e cases go from 120 s timeouts to
+# 4/4 PASS. The frame that needs it is still unidentified: -Wframe-larger-than=4096
+# over our TUs is clean, so it is a VLA/alloca-sized frame or one inside the
+# cmake-built middleware (which never sees our warning flags).
 ifeq ($(OS),windows)
-STATIC_LD=-static
+STATIC_LD=-static -Wl,--stack=8388608
 else
 STATIC_LD=
 endif
