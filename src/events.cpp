@@ -172,18 +172,22 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
                 g.camera->toOrbit(g.focusWorldPos(g.focusBody));
                 printf("Camera: orbiting %s (C = first person, Shift-C = free)\n",
                        g.focusTargets[g.focusBody].name);
+                g.toast("Camera: orbiting %s", g.focusTargets[g.focusBody].name);
             } else {
                 g.camera->toFirst();
                 printf("Camera: first person (C = orbit, Shift-C = free)\n");
+                g.toast("Camera: first person");
             }
         } else {
             // Kerbal / no ship: C is orbit <-> free (no first person).
             if(g.camera->mode == CAM_ORBIT) {
                 g.camera->toFree();
+                g.toast("Camera: free");
             } else {
                 g.camera->toOrbit(g.focusWorldPos(g.focusBody));
                 printf("Camera: orbiting %s (G = switch body, C = free)\n",
                        g.focusTargets[g.focusBody].name);
+                g.toast("Camera: orbiting %s", g.focusTargets[g.focusBody].name);
             }
         }
     }
@@ -193,9 +197,11 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         if(g.camera->mode == CAM_FREE) {
             g.camera->toOrbit(g.focusWorldPos(g.focusBody));
             printf("Camera: orbiting %s\n", g.focusTargets[g.focusBody].name);
+            g.toast("Camera: orbiting %s", g.focusTargets[g.focusBody].name);
         } else {
             g.camera->toFree();
             printf("Camera: free (Shift-C = orbit)\n");
+            g.toast("Camera: free flight (Shift-C to leave)");
         }
     }
     if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds) && !repeat) {
@@ -208,10 +214,13 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
                 : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
             g.camera->distance = d;
             printf("Orbit camera targeting %s\n", g.focusTargets[g.focusBody].name);
+            g.toast("Camera target: %s", g.focusTargets[g.focusBody].name);
         } else if(g.camera->mode == CAM_FIRST) {
             printf("In first person; press C for the orbit view first.\n");
+            g.toast("In first person; press C for the orbit view");
         } else {
             printf("In free flight; press C or Shift-C to leave free cam.\n");
+            g.toast("In free flight; press C or Shift-C to leave");
         }
     }
     if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
