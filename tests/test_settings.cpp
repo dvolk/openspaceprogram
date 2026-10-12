@@ -171,6 +171,21 @@ int main() {
     settings_read(nlohmann::json::parse(R"({"fov": 60})"), fv);
     assert(fv.camFovDeg == 60.0f);   // in range: untouched
 
+    // 8) a hand-edited terrain_px outside the CLI's 128-1024 range is clamped.
+    //    Also not cosmetic: collision meshes only exist at max_depth, and an
+    //    LOD budget the single async builder cannot reach never drills the
+    //    tree that far, so the ship stands on nothing. This is the path a
+    //    settings.json saved by the old 32/64 Settings ladder takes.
+    SettingsData tp;
+    settings_read(nlohmann::json::parse(R"({"terrain_px": 32})"), tp);
+    assert(tp.terrain_px == kTerrainPxMin);
+    settings_read(nlohmann::json::parse(R"({"terrain_px": 4})"), tp);
+    assert(tp.terrain_px == kTerrainPxMin);
+    settings_read(nlohmann::json::parse(R"({"terrain_px": 99999})"), tp);
+    assert(tp.terrain_px == kTerrainPxMax);
+    settings_read(nlohmann::json::parse(R"({"terrain_px": 256})"), tp);
+    assert(tp.terrain_px == 256);   // in range: untouched
+
     printf("test_settings: all checks passed\n");
     return 0;
 }

@@ -1,6 +1,7 @@
 // cli.cpp -- command-line parsing (CLI11) + the --sim-press / --sim-mouse
 // folding. Fills GameArgs (cli.h).
 #include "cli.h"
+#include "settings.h"   // kTerrainPxMin/Max (the --terrain-px range)
 #include "version.h"   // VERSION (the embedded build string, `make version`)
 
 #include <cctype>
@@ -703,10 +704,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "wider than this [REAL screen px] (512 = default; "
                    "256 = finer, ~2x the patches; 1024 = coarsest). "
                    "The fine end is expensive: the budget is per patch, so "
-                   "32 asks for tens of thousands of them and the single "
-                   "async builder never catches up (the tree stays shallow "
-                   "under the camera). Adjustable in the Settings window")
-        ->check(CLI::Range(32, 1024));
+                   "the low end asks for tens of thousands of them and the "
+                   "single async builder never catches up (the tree stays "
+                   "shallow under the camera) -- and since collision meshes "
+                   "only exist at max depth, that means no ground under the "
+                   "ship. Adjustable in the Settings window")
+        ->check(CLI::Range(kTerrainPxMin, kTerrainPxMax));
 
     app.add_option("--cloud-mesh", args.cloud_mesh,
                    "Cloud deck sphere resolution (lat = lon = N rings; "

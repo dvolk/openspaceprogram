@@ -30,6 +30,7 @@
 #include "staging.h"     // computeStaging
 #include "shipdef.h"     // list_vab_ship_defs
 #include "resdir.h"      // resdir::path
+#include "settings.h"    // kTerrainPxMin/Max (the Settings ladder's bounds)
 #include "system.h"      // list_systems
 #include "save.h"        // save_game / load_game / list_saves / delete_save
 #include "datadir.h"     // the saves/ directory's location
@@ -708,13 +709,20 @@ void drawUIReadouts(Game &g) {
         }
         // Terrain LOD: a patch subdivides while it projects wider than
         // args.terrain_px [real screen px] (read live by GeoPatch::Update).
-        // The slider is a 6-step detail level, right = finer: 512px is the
-        // default. The 64/32 steps are there for poking at the LOD, not for
-        // playing: the budget is per patch, so they ask for tens of thousands
-        // of patches and the single async builder never catches up.
+        // The slider is a 4-step detail level, right = finer: 512px is the
+        // default. The 64/32 steps are gone -- the budget is per patch, so
+        // they ask for tens of thousands of them and the single async builder
+        // never drills the tree to max_depth, which is where the collision
+        // meshes live (terrain.cpp): the ship is left standing on nothing.
         {
-            const int terrain_px_table[] = { 1024, 512, 256, 128, 64, 32 };
-            const int nlevels = 6;
+            constexpr int terrain_px_table[] = { 1024, 512, 256, 128 };
+            constexpr int nlevels = 4;
+            // The ladder is the third consumer of the range (CLI check,
+            // settings.json clamp); a step outside it would be unreachable
+            // from the CLI and clamped away on the next load.
+            static_assert(terrain_px_table[0] <= kTerrainPxMax
+                          && terrain_px_table[nlevels - 1] >= kTerrainPxMin,
+                          "Settings terrain ladder outside the --terrain-px range");
             int terrain_level = 0, best = -1;
             for (int i = 0; i < nlevels; i++) {
                 const int d = std::abs(args.terrain_px - terrain_px_table[i]);

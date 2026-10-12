@@ -168,7 +168,14 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
         if(s.camFovDeg > 120.0f) { s.camFovDeg = 120.0f; }
     }
     if(j.contains("terrain_px") && j["terrain_px"].is_number_integer()) {
+        // Clamp: a hand-edited file (and a settings.json saved by the old
+        // 32/64 Settings ladder) bypasses both the CLI range and the ladder.
+        // The fine end is not cosmetic: collision meshes only exist at
+        // max_depth, and an unreachable LOD budget never drills the async
+        // tree there, so the ground under the ship disappears (settings.h).
         s.terrain_px = j["terrain_px"].get<int>();
+        if(s.terrain_px < kTerrainPxMin) { s.terrain_px = kTerrainPxMin; }
+        if(s.terrain_px > kTerrainPxMax) { s.terrain_px = kTerrainPxMax; }
     }
     if(j.contains("cam_shake") && j["cam_shake"].is_number()) {
         // Clamp: a hand-edited file bypasses the CLI's 0-3 range.
