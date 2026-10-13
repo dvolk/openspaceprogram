@@ -65,6 +65,15 @@ inline constexpr int kLambertMaxRev = 1;
 // band can hold two, the pair that merges at the band's minimum-energy edge.
 inline constexpr int kLambertLegMax = 4 * (kLambertMaxRev + 1);
 
+// Fractional offsets from a band wall where the sample grid gets an extra
+// probe. F blows up at the walls and the CHEAP leg of an outer band sits hard
+// against one of them -- a phasing leg's root was 1.4% into band 1, inside the
+// dead zone of a uniform 48-sample step, and quoting the next root out costs
+// four orders of magnitude. Nothing closer than 1e-3: that is where F stops
+// being a number at all, and a root that close to the wall is a conic whose
+// dv no cost function would pick.
+inline constexpr double kWallProbeFrac[] = {1e-3, 3e-3, 1e-2, 3e-2};
+
 /* Every leg of one revolution band for one sign of A, appended to legs[*n]
    up to cap. A = sin(dnu) * sqrt(r1 r2 / (1 - cos dnu)), and the geometry only
    fixes cos dnu, so the sign of A is a free choice: A > 0 is the arc that
@@ -80,38 +89,48 @@ inline void lambertBand(const glm::dvec3 &r1, const glm::dvec3 &r2,
     auto F = [&](double z) -> double {
         const double C = stumpffC(z);
         const double S = stumpffS(z);
-        // C has zeros exactly at the band walls, so guard the division too:
-        // an unguarded NaN there compares false against everything and would
-        // happily "bracket" against the previous sample.
-        if(!(std::fabs(C) > 1e-30)) return 1e20;
+        // C vanishes at the band walls and y < 0 is the radial limit (that
+        // chord cannot be reached). Both mean "no conic here" and answer NaN,
+        // which no comparison can mistake for a sign.
+        if(!(std::fabs(C) > 1e-30)) return std::numeric_limits<double>::quiet_NaN();
         const double y = r1l + r2l + A * (z * S - 1.0) / std::sqrt(C);
-        if(y < 0.0) return 1e20; // invalid z
+        if(y < 0.0) return std::numeric_limits<double>::quiet_NaN();
         return std::pow(y / C, 1.5) * S + A * std::sqrt(y) - std::sqrt(mu) * tof;
     };
-    // A sample is usable only if F is finite and inside the physical domain
-    // (y >= 0). Anything else BREAKS the bracket: straddling a wall or a
-    // sentinel with a sign change finds a root of the sentinel, not a conic.
-    auto usable = [](double fz) { return std::fabs(fz) < 1e19; };
+    // A magnitude threshold here would be a size limit on the star system: F
+    // carries units of L^1.5, so "huge" means something different at every
+    // radius. Only NaN is out of play; +inf at a wall is real mathematics and
+    // brackets legitimately.
+    auto usable = [](double fz) { return !std::isnan(fz); };
 
     const double target = std::sqrt(mu) * std::fabs(tof);
+    const double band = z_hi - z_lo;
     double z_prev = 0.0, f_prev = 0.0;
     bool have_prev = false;
-    for(int i = 0; i <= samples && *n < cap; i++) {
-        const double z = z_lo + (z_hi - z_lo) * i / (double)samples;
+
+    auto bisect = [&](double lo, double hi, double f_lo, double *zroot) -> bool {
+        double zz = 0.5 * (lo + hi);
+        for(int iter = 0; iter < 100; iter++) {
+            zz = 0.5 * (lo + hi);
+            const double fzz = F(zz);
+            // A domain edge INSIDE the bracket: the sign change is the edge,
+            // not a conic. Give this bracket up rather than converge onto it.
+            if(!usable(fzz)) { return false; }
+            if(std::fabs(fzz) < 1e-10 * (target + 1.0)) { break; }
+            if((fzz < 0.0) != (f_lo < 0.0)) { hi = zz; } else { lo = zz; f_lo = fzz; }
+            if((hi - lo) < 1e-12 * (1.0 + std::fabs(zz))) { break; }
+        }
+        *zroot = zz;
+        return true;
+    };
+
+    // One sample: bracket against the previous usable one. Returns false once
+    // the cap is full and the caller must stop walking.
+    auto visit = [&](double z) -> bool {
         const double fz = F(z);
-        if(!usable(fz)) { have_prev = false; continue; }
-        if(have_prev && f_prev * fz < 0.0) {
-            // Bisect this bracket.
-            double lo = z_prev, hi = z, f_lo = f_prev;
-            double zz = 0.5 * (lo + hi);
-            for(int iter = 0; iter < 100; iter++) {
-                zz = 0.5 * (lo + hi);
-                const double fzz = F(zz);
-                if(!usable(fzz)) { lo = zz; continue; }   // back out of the guard
-                if(std::fabs(fzz) < 1e-10 * (target + 1.0)) { break; }
-                if(fzz * f_lo < 0.0) { hi = zz; } else { lo = zz; f_lo = fzz; }
-                if((hi - lo) < 1e-12 * (1.0 + std::fabs(zz))) { break; }
-            }
+        if(!usable(fz)) { have_prev = false; return *n < cap; }
+        double zz = 0.0;
+        if(have_prev && (f_prev < 0.0) != (fz < 0.0) && bisect(z_prev, z, f_prev, &zz)) {
             const double C = stumpffC(zz);
             const double S = stumpffS(zz);
             const double y = r1l + r2l + A * (zz * S - 1.0) / std::sqrt(C);
@@ -127,6 +146,22 @@ inline void lambertBand(const glm::dvec3 &r1, const glm::dvec3 &r2,
         }
         z_prev = z; f_prev = fz;
         have_prev = true;
+        return *n < cap;
+    };
+
+    for(int i = 0; i <= samples; i++) {
+        const double za = z_lo + band * i / (double)samples;
+        const double zb = z_lo + band * (i + 1) / (double)samples;
+        if(!visit(za)) { return; }
+        // Emit the wall probes that fall in this step, in ascending z.
+        for(int p = 0; p < (int)(sizeof(kWallProbeFrac) / sizeof(*kWallProbeFrac)); p++) {
+            const double zl = z_lo + band * kWallProbeFrac[p];
+            if(zl > za && zl < zb && !visit(zl)) { return; }
+        }
+        for(int p = (int)(sizeof(kWallProbeFrac) / sizeof(*kWallProbeFrac)) - 1; p >= 0; p--) {
+            const double zh = z_hi - band * kWallProbeFrac[p];
+            if(zh > za && zh < zb && !visit(zh)) { return; }
+        }
     }
 }
 

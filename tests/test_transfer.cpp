@@ -365,6 +365,45 @@ int main() {
         CHECK(!sol.retrograde);
     }
 
+    // =========================================================================
+    // 12. The cheap leg of an outer band sits hard against the band wall
+    //     (#136). Same co-orbital setup, only 10 deg apart, ToF = one period
+    //     plus those 10 deg: the answer is then the CIRCULAR ORBIT ITSELF,
+    //     lapped once, so dv_dep has to be ~0. Its root is 1.4% of the way
+    //     into band 1 -- inside the dead zone of a uniform 48-sample step,
+    //     where the first version of the band scan quoted 8.9 km/s instead.
+    // =========================================================================
+    {
+        const double r = 7.0e6;
+        const double vc = std::sqrt(MU / r);
+        const double T = 2.0 * M_PI * std::sqrt(r * r * r / MU);
+        const double dnu = 10.0 * M_PI / 180.0;
+        const double tof = T * (1.0 + dnu / (2.0 * M_PI));
+        glm::dvec3 r1v(r, 0, 0), v1v(0, vc, 0);
+        glm::dvec3 r2v(r * std::cos(dnu), r * std::sin(dnu), 0.0);
+
+        LambertLeg legs[kLambertLegMax];
+        const int nleg = solveLambertLegs(r1v, r2v, MU, tof, legs);
+        double best = 1e300;
+        int nrev = 0;
+        for(int k = 0; k < nleg; k++) {
+            glm::dvec3 p, v;
+            propagateKepler(r1v, legs[k].v1, MU, tof, p, v);
+            CHECK_NEAR(glm::length(p - r2v), 0.0, 1e-3 * r);
+            const double dv = glm::length(legs[k].v1 - v1v);
+            if(legs[k].rev > 0) { nrev++; }
+            best = std::min(best, dv);
+        }
+        CHECK(nrev > 0);
+        CHECK(best < 1e-3 * vc);
+
+        // And the planner has to report that burn, not the 10 km/s one.
+        TransferSolution sol = planTransfer(r1v, v1v, r1v, v1v, MU,
+                                            0.0, 0.0, tof, tof, 1, false);
+        CHECK(sol.valid);
+        CHECK_NEAR(sol.dv_departure, best, 1e-6 * vc + 1e-6);
+    }
+
     if(failures == 0) {
         printf("test_transfer: all checks passed\n");
         return 0;
