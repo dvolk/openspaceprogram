@@ -135,9 +135,11 @@ void updateShipView(Game &g) {
 
     o = computeOrbitElements(orbit_pos, orbit_vel, mu);
     /* Plane angles measured in the plane the orbit map is drawing, so the
-       numbers match the picture (#171). */
-    plane = orbitPlaneAngles(o, uiRefPlane(ship->m_parent->frame, o.h_hat,
-                                           g.map_plane));
+       numbers match the picture (#171). The plane itself is stored too: the 3D
+       orbital-plane overlay draws this one, so the rings and the readout cannot
+       describe different planes. */
+    view.ref_plane = uiRefPlane(ship->m_parent->frame, o.h_hat, g.map_plane);
+    plane = orbitPlaneAngles(o, view.ref_plane);
     distance = o.distance;
     speed = o.speed;
 
@@ -396,6 +398,83 @@ void refreshWorld(Game &g) {
                    camera->forward.x, camera->forward.y, camera->forward.z,
                    g.rmbCam ? 1 : 0,
                    ImGui::GetIO().WantCaptureMouse ? 1 : 0);
+            fflush(stdout);
+        }
+    }
+}
+
+/* The orbital-plane overlay (Settings "Orbital plane"): a ring in the ship's
+   orbital plane, a ring in the orbit map's reference plane (Game::map_plane, so
+   the dihedral here is the Inc the map and HUD print), and a tick at each point
+   where the two cross -- the node line, where a plane change is cheapest (both
+   nodes get the same white: for a symmetric plane change either is fine). Like
+   the reference circles these are CAMERA-CENTRED: the view's translation is
+   dropped, so each plane shows as its horizon line and the rings fix
+   orientation only, not where the plane sits relative to the ground. The caller
+   binds g.lineshader and passes proj * dmat3(view). */
+static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
+    Vehicle *ship = g.ship;
+    /* The orbit state and the stored reference plane both live in the focus
+       body's INERTIAL frame; the render frame may be the body's ROTATING one, in
+       which case the rings turn with the ground -- which is the point when
+       flying. Assert that pairing, not just non-nullness: a mismatch skews the
+       rings silently. */
+    assert(ship->m_parent != nullptr && ship->m_parent->frame != nullptr
+           && ship->m_parent->frame == ship->frame->getNonRotFrame());
+    Frame *inertial = ship->m_parent->frame;
+    const OrbitElements &o = g.view.o;
+    const glm::dvec3 &h_hat = o.h_hat;
+    if(glm::dot(h_hat, h_hat) < 0.5) { return; }   // radial / degenerate state
+    // No orbit, no plane: a landed or suborbital ship's h_hat is pos x vel of an
+    // object on the ground, and its node line is arithmetic noise.
+    if(o.periapsis <= ship->m_parent->radius) { return; }
+    const glm::dmat3 to_inertial = ship->frame->GetOrientRelTo(inertial);
+    const glm::dvec3 n_orb = glm::transpose(to_inertial) * h_hat;
+    const glm::dvec3 n_ref = glm::transpose(to_inertial) * g.view.ref_plane.n_hat;
+    // Same convention as orbitPlaneAngles: n_ref x h_hat is the ASCENDING node.
+    const glm::dvec3 node = glm::cross(n_ref, n_orb);
+    /* Coplanar -- map_plane == kRefOrbit (the reference IS the orbit plane), a
+       genuinely equatorial orbit, or an escape the other way round -- means one
+       ring and no node to point at. Reuse the HUD's own gate rather than a
+       second threshold: rotation preserves |node|, so the ticks and the LAN dash
+       can never disagree. */
+    const bool coplanar = !g.view.plane.node_ok;
+    glm::dvec3 u, v;
+    planeTangentBasis(n_orb, coplanar ? glm::dvec3(0.0) : node, u, v);
+    // The ring mesh is the XY circle, so the basis columns map +X -> u, +Y -> v,
+    // +Z -> the plane normal.
+    g.lineshader->setUniform_mat4(0, VP * glm::dmat4(glm::dmat3(u, v, n_orb)));
+    g.lineshader->setUniform_vec4(1, glm::vec4(0.0f, 1.0f, 1.0f, 0.5f));  // orbit: cyan
+    g.ref_circle_xy->Draw(GL_LINE_LOOP);
+    if(!coplanar) {
+        // Pin both bases to the node line: each ring then has a vertex on the
+        // crossings, and the ticks sit at the ring's +/-X -- the same u for both
+        // planes, so one marker mesh serves either basis.
+        planeTangentBasis(n_ref, node, u, v);
+        g.lineshader->setUniform_mat4(0, VP * glm::dmat4(glm::dmat3(u, v, n_ref)));
+        g.lineshader->setUniform_vec4(1, glm::vec4(1.0f, 1.0f, 0.0f, 0.5f));  // reference: yellow
+        g.ref_circle_xy->Draw(GL_LINE_LOOP);
+        g.lineshader->setUniform_vec4(1, glm::vec4(1.0f, 1.0f, 1.0f, 0.7f));  // nodes: white
+        g.ref_node_ticks->Draw(GL_LINES);
+    }
+    /* --plane-log: the two normals as this frame drew them, in the RENDER frame.
+       inc is rotation-invariant, so it must equal the [orbitlog] inc measured in
+       the inertial frame; the components only match [mapdump]'s when the render
+       frame IS the inertial one. In the ROTATING frame they must instead match
+       the body's own axes: the equator's normal is exactly +Y there. */
+    if(g.args.plane_log) {
+        const Uint32 now_ms = SDL_GetTicks();
+        if(now_ms - g.plane_log_last_ms >= g.orbit_log_interval_ms) {
+            g.plane_log_last_ms = now_ms;
+            const double inc = std::acos(glm::clamp(glm::dot(n_orb, n_ref),
+                                                    -1.0, 1.0));
+            printf("[planelog] t=%.1fs frame=%s plane=%s inc=%.4f deg "
+                   "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
+                   "node=(%.6f,%.6f,%.6f) ticks=%s\n",
+                   g.time, ship->frame->isRotFrame() ? "rot" : "inertial",
+                   refPlaneName(g.map_plane), inc * 180.0 / std::numbers::pi,
+                   n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
+                   node.x, node.y, node.z, coplanar ? "-" : "drawn");
             fflush(stdout);
         }
     }
@@ -680,16 +759,24 @@ void paintWorld(Game &g) {
     // horizon_indicator->pos = groundHed;
     // horizon_indicator->Draw(camera, std::numbers::pi);
 
-    if(g.draw_skylines) {
+    /* Both overlays drop the view's TRANSLATION, so every ring is centred on the
+       camera: they read as orientation rings around the viewpoint rather than
+       lines painted at a fixed place in the world. */
+    if(g.draw_ref_circles || g.draw_orbit_plane) {
         glLineWidth(4);
         g.lineshader->Bind();
-        g.lineshader->setUniform_mat4(0, glm::dmat4(camera->GetProjection()) * glm::dmat4(glm::dmat3(camera->GetView())));
-        // XZ plane (flat / orbital-equatorial reference): green
-        g.lineshader->setUniform_vec4(1, glm::vec4(0, 1, 0, 0.5));
-        g.skyline_xz->Draw(GL_LINE_LOOP);
-        // XY plane (vertical / meridian reference): magenta
-        g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
-        g.skyline_xy->Draw(GL_LINE_LOOP);
+        const glm::dmat4 VP = glm::dmat4(camera->GetProjection())
+                            * glm::dmat4(glm::dmat3(camera->GetView()));
+        if(g.draw_ref_circles) {
+            g.lineshader->setUniform_mat4(0, VP);
+            // XZ plane (flat / orbital-equatorial reference): green
+            g.lineshader->setUniform_vec4(1, glm::vec4(0, 1, 0, 0.5));
+            g.ref_circle_xz->Draw(GL_LINE_LOOP);
+            // XY plane (vertical / meridian reference): magenta
+            g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
+            g.ref_circle_xy->Draw(GL_LINE_LOOP);
+        }
+        if(ship && g.draw_orbit_plane) { drawOrbitPlane(g, VP); }
         // Restore: the width is global state, and the Bullet debug drawer draws
         // GL_LINES with whatever the last setter left.
         glLineWidth(1.0f);

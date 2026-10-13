@@ -356,7 +356,8 @@ void drawUIReadouts(Game &g) {
     bool &physics_debug_drawing = g.physics_debug_drawing;
     bool &world_drawing = g.world_drawing;
     bool &draw_starfield = g.draw_starfield;
-    bool &draw_skylines = g.draw_skylines;
+    bool &draw_ref_circles = g.draw_ref_circles;
+    bool &draw_orbit_plane = g.draw_orbit_plane;
     float &sky_dim = g.sky_dim;
     float &sky_dim_cone = g.sky_dim_cone;
     // The Settings window writes these; tick.cpp reads.
@@ -545,7 +546,11 @@ void drawUIReadouts(Game &g) {
         ImGui::Checkbox("Physics debug draw", &physics_debug_drawing);
         ImGui::Checkbox("World draw", &world_drawing);
         ImGui::Checkbox("Starfield", &draw_starfield);
-        ImGui::Checkbox("Reference circles", &draw_skylines);
+        ImGui::Checkbox("Reference circles", &draw_ref_circles);
+        // render.cpp drawOrbitPlane: the orbit plane (cyan), the orbit map's
+        // reference plane (yellow) and a tick where they cross (white), so Inc
+        // reads as an angle and the plane-change burn direction is on screen.
+        ImGui::Checkbox("Orbital plane", &draw_orbit_plane);
         // Prototype (render.cpp skyGain): how far stars fade while the sun is in view
         // and the camera is in sunlight.
         ImGui::SliderFloat("Sky dim", &sky_dim, 0.0f, 1.0f, "%.2f");

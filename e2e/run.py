@@ -7,9 +7,9 @@ or a case you want to drive by hand); --show-cmd prints the exact command +
 env so a failure re-runs under a debugger. Case keys: NAME ARGS EXPECT FORBID
 CHECK LIMIT WRITE SEED EXIT. CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/drag/shake/cam/terrain/surf/
-xfer/porkchop/surfmap/mapb) plus first/last/re. ARGS tokenizes like a shell, so
-a value may be quoted to carry spaces. SEED <fixture> <path-under-data-dir>
-[AGE_DAYS] stages an existing save into the case's scratch --data-dir. EXIT
+xfer/porkchop/surfmap/mapb/plane) plus first/last/re. ARGS tokenizes like a
+shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
+data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir. EXIT
 <code> is the exit code the case demands (default 0) -- without it a game that
 correctly refuses a bad boot flag looks identical to one that crashed. Full
 battery and --jobs>2 need --force. Artifacts land in tmp/e2e/runs/<stamp>/ +
@@ -64,6 +64,14 @@ MAP_RE = re.compile(
 DBG_RE = re.compile(
     r"\[dbg\]\s+t=([\d.]+)s\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"alt=([-\d.]+) m\s+vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+\|v\|=([-\d.]+) m/s"
+)
+# --plane-log (render.cpp drawOrbitPlane): the two plane normals the orbital-plane
+# overlay drew, in the RENDER frame, plus the dihedral between them.
+PLANE_RE = re.compile(
+    r"\[planelog\]\s+t=([\d.]+)s\s+frame=(\w+)\s+plane=(\w+)\s+inc=([-\d.]+)\s+deg\s+"
+    r"n_orb=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
+    r"n_ref=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
+    r"node=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+ticks=(\S+)"
 )
 XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
@@ -247,6 +255,24 @@ def parse_mapb(out):
             "e1": (float(e1x), float(e1y), float(e1z)),
             "e2": (float(e2x), float(e2y), float(e2z)),
             "sweep": int(sweep),
+        })
+    return rows
+
+
+def parse_plane(out):
+    rows = []
+    for m in PLANE_RE.finditer(out):
+        (t, frame, plane_name, inc, ox, oy, oz, rx, ry, rz,
+         nx, ny, nz, ticks) = m.groups()
+        rows.append({
+            "t": float(t), "frame": frame, "plane": plane_name,
+            "inc": float(inc),
+            "n_orb": (float(ox), float(oy), float(oz)),
+            "n_ref": (float(rx), float(ry), float(rz)),
+            # n_ref x n_orb: the ascending node (orbit.h's convention).
+            "node": (float(nx), float(ny), float(nz)),
+            # "-" when the planes are coplanar: no node to point at.
+            "ticks": ticks,
         })
     return rows
 
@@ -662,13 +688,14 @@ def run_case(case):
     terrain = parse_terrain(out)
     surf = parse_surf(out)
     mapb = parse_mapb(out)
+    plane = parse_plane(out)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "att": att, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "drag": drag, "shake": shake,
         "cam": cam,
         "terrain": terrain,
-        "surf": surf, "mapb": mapb,
+        "surf": surf, "mapb": mapb, "plane": plane,
         "first": first, "last": last,
         "abs": abs, "len": len, "any": any, "all": all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,

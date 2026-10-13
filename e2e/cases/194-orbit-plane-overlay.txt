@@ -1,0 +1,34 @@
+# The orbital-plane overlay (Settings "Orbital plane", render.cpp
+# drawOrbitPlane): a ring in the ship's orbital plane, a ring in the orbit map's
+# reference plane, and a tick at each point where they cross. Pixels cannot be
+# asserted, so --plane-log prints what the overlay actually drew: the two plane
+# normals in the RENDER frame plus the dihedral between them.
+#
+# The inertial orbit scenario is where the render frame IS the focus body's
+# inertial frame -- the same frame --map-dump reports the orbit map's plane basis
+# in -- so the overlay's n_orb / n_ref must equal the map's slot=orb / slot=equ
+# normals to the digit. That is the cross-check between the 3D overlay and the 2D
+# map: two code paths (render.cpp drawOrbitPlane, gameui.cpp mapPlaneBasis) that
+# must never describe different planes. The dihedral must also equal [orbitlog]'s
+# Inc, which tick.cpp computes in the inertial frame by a third path.
+# What this scenario CANNOT pin is the inertial->render-frame transform itself --
+# there it is identity -- so case 195 pins that in the rotating frame.
+NAME orbit-plane-overlay
+ARGS --time-accel 1 --timeout 9 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --plane-log --orbit-log --orbit-interval 1 --map-dump 7000
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2500,"Game Menu/Settings"
+ARGS --ui-click 3500,"Settings/Orbital plane"
+EXPECT [planelog]
+FORBID FAILED
+FORBID GL_
+FORBID error:
+CHECK len(plane) > 3
+CHECK len(mapb) == 3
+CHECK all(p["frame"] == "inertial" for p in plane if p["t"] > 1.0)
+# [mapdump] rows come out in dumpMapBasis's slot order: 0 = equ, 2 = orb.
+CHECK all(abs(p["n_orb"][0] - mapb[2]["n"][0]) < 1e-6 and abs(p["n_orb"][1] - mapb[2]["n"][1]) < 1e-6 and abs(p["n_orb"][2] - mapb[2]["n"][2]) < 1e-6 for p in plane if p["t"] > 1.0)
+CHECK all(abs(p["n_ref"][0] - mapb[0]["n"][0]) < 1e-6 and abs(p["n_ref"][1] - mapb[0]["n"][1]) < 1e-6 and abs(p["n_ref"][2] - mapb[0]["n"][2]) < 1e-6 for p in plane if p["t"] > 1.0)
+CHECK all(abs(p["inc"] - min(o["inc"] for o in orbit)) < 0.001 for p in plane if p["t"] > 1.0)
+# 23.44 deg here, so the node ticks point at a real direction and get drawn.
+CHECK all(p["ticks"] == "drawn" for p in plane if p["t"] > 1.0)

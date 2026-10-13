@@ -87,7 +87,8 @@ static SettingsData collect_settings(Game &g) {
     s.physics_debug_drawing = g.physics_debug_drawing;
     s.world_drawing = g.world_drawing;
     s.draw_starfield = g.draw_starfield;
-    s.draw_skylines = g.draw_skylines;
+    s.draw_ref_circles = g.draw_ref_circles;
+    s.draw_orbit_plane = g.draw_orbit_plane;
     s.sky_dim = g.sky_dim;
     s.sky_dim_cone = g.sky_dim_cone;
     for(const std::string &fx : PostFX::Available()) {
@@ -148,7 +149,8 @@ static void apply_settings_game(Game &g, const SettingsData &s) {
     g.physics_debug_drawing = s.physics_debug_drawing;
     g.world_drawing = s.world_drawing;
     g.draw_starfield = s.draw_starfield;
-    g.draw_skylines = s.draw_skylines;
+    g.draw_ref_circles = s.draw_ref_circles;
+    g.draw_orbit_plane = s.draw_orbit_plane;
     g.ui_style = s.ui_style;
     g.window_rounding = s.window_rounding;
     g.ui_alpha = s.ui_alpha;

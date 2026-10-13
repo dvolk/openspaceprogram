@@ -1,0 +1,23 @@
+# The coplanar gate on NOISE rather than on an alias. With an equatorial orbit
+# (rot-orbit-eq) measured against the body's EQUATOR, the two normals are parallel
+# to within an in-game h's integrator noise (~1e-8), so |n_ref x n_orb| lands right
+# at the 1e-6 gate orbitPlaneAngles already uses to dash LAN for an in-plane orbit
+# (#142). The overlay reuses that gate (g.view.plane.node_ok) rather than carrying
+# its own threshold, so the ticks and the LAN dash cannot disagree: one ring, no
+# node ticks, and the node vector is logged as the noise the gate suppresses.
+NAME orbit-plane-coplanar
+ARGS --time-accel 1 --timeout 7 --startship racer,res/ships/racer.json,Kerbin,rot-orbit-eq
+ARGS --plane-log --orbit-log --orbit-interval 1 --map-plane 0
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2500,"Game Menu/Settings"
+ARGS --ui-click 3500,"Settings/Orbital plane"
+EXPECT [planelog]
+FORBID FAILED
+FORBID GL_
+FORBID error:
+CHECK len(plane) > 3
+CHECK all(abs(p["inc"]) < 0.001 for p in plane if p["t"] > 1.0)
+CHECK all(p["ticks"] == "-" for p in plane if p["t"] > 1.0)
+CHECK all(abs(p["node"][0]) < 1e-6 and abs(p["node"][1]) < 1e-6 and abs(p["node"][2]) < 1e-6 for p in plane if p["t"] > 1.0)
+# The HUD agrees: an in-plane orbit dashes LAN for the same reason.
+CHECK all(o["lan"] == "-" for o in orbit if o["t"] > 1.0)

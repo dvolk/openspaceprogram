@@ -28,7 +28,8 @@ struct SettingsData {
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
-    bool draw_skylines = false;
+    bool draw_ref_circles = false;
+    bool draw_orbit_plane = false;
     // star-field exposure (render.cpp skyGain); cone half-angle in degrees,
     // the same units as --sky-dim-cone
     float sky_dim = 0.25f;

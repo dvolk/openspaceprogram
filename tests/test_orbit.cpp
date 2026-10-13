@@ -1,4 +1,5 @@
-// test_orbit: two-body orbital elements + time-to-apsis (src/orbit.h).
+// test_orbit: two-body orbital elements + time-to-apsis (src/orbit.h), plus the
+// planeTangentBasis the orbital-plane overlay draws with.
 // Runs from the repo root:
 //   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit && ./test_orbit)
 //
@@ -811,6 +812,53 @@ int main() {
         CHECK(!railStateFromElements(a, -0.1, 0.0, 0.0, MU, p, v));
         CHECK(!railStateFromElements(a, 1.0, 0.0, 0.0, MU, p, v));
         CHECK(!railStateFromElements(a, 0.0, 0.0, 0.0, 0.0, p, v));
+    }
+
+    /* planeTangentBasis: the basis the orbital-plane overlay rotates its ring
+       mesh by (render.cpp drawOrbitPlane). Handedness is the point -- the same
+       matrix maps the mesh's +Z onto the plane normal, so a left-handed basis
+       is a reflection, and the node line's +u would land on the DESCENDING
+       node while the readout still printed the ascending one. */
+    {
+        auto check_basis = [&](const glm::dvec3 &n, const glm::dvec3 &pin,
+                               const glm::dvec3 &want_u) {
+            glm::dvec3 u, v;
+            planeTangentBasis(n, pin, u, v);
+            CHECK_NEAR(glm::length(u), 1.0, 1e-12);
+            CHECK_NEAR(glm::length(v), 1.0, 1e-12);
+            CHECK_NEAR(glm::dot(u, n), 0.0, 1e-12);
+            CHECK_NEAR(glm::dot(v, n), 0.0, 1e-12);
+            CHECK_NEAR(glm::dot(u, v), 0.0, 1e-12);
+            CHECK_NEAR(glm::length(glm::cross(u, v) - n), 0.0, 1e-12);
+            if(glm::dot(want_u, want_u) > 0.0) {
+                CHECK_NEAR(glm::length(u - want_u), 0.0, 1e-12);
+            }
+        };
+        const glm::dvec3 n_y(0.0, 1.0, 0.0);
+        check_basis(n_y, glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(1.0, 0.0, 0.0));
+        // A pin off the plane is a DIRECTION, not a vector to keep: u is its
+        // projection, normalized.
+        check_basis(n_y, glm::dvec3(0.0, 5.0, -4.0), glm::dvec3(0.0, 0.0, -1.0));
+        // A pin parallel to the normal projects to nothing, and no pin at all:
+        // both fall back to an arbitrary axis, which must still be a rotation.
+        check_basis(n_y, glm::dvec3(0.0, -3.0, 0.0), glm::dvec3(0.0));
+        check_basis(n_y, glm::dvec3(0.0), glm::dvec3(0.0));
+        // The fallback's seed axis must not be the normal itself.
+        const glm::dvec3 n_x(1.0, 0.0, 0.0);
+        check_basis(n_x, glm::dvec3(0.0, 0.0, 1.0), glm::dvec3(0.0, 0.0, 1.0));
+        check_basis(n_x, glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0));
+        // The overlay's real shape: a tilted orbit normal pinned to the node
+        // line, which is perpendicular to both normals by construction.
+        const glm::dvec3 n = glm::normalize(glm::dvec3(0.3, 0.9, 0.32));
+        const glm::dvec3 node = glm::normalize(
+            glm::cross(glm::dvec3(0.0, 1.0, 0.0), n));
+        check_basis(n, node, node);
+        // Pinning both planes' bases to that node line makes u shared, which is
+        // what puts a vertex of each ring ON the crossings.
+        glm::dvec3 u1, v1, u2, v2;
+        planeTangentBasis(n, node, u1, v1);
+        planeTangentBasis(n_y, node, u2, v2);
+        CHECK_NEAR(glm::length(u1 - u2), 0.0, 1e-12);
     }
 
     if(failures == 0) {

@@ -371,8 +371,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "Periodically print the ship's orbital elements to stdout "
                  "(for measuring orbital stability)");
 
+    app.add_flag("--plane-log", args.plane_log,
+                 "Test hook: with the Orbital plane overlay on (Settings), "
+                 "periodically print the plane normals it drew -- render-frame "
+                 "components, the ascending node and the dihedral, so a wrong "
+                 "frame transform shows up as a number");
+
     app.add_option("--orbit-interval", args.orbit_interval,
-                   "Wall-clock seconds between --orbit-log lines (default: 1)")
+                   "Wall-clock seconds between --orbit-log / --plane-log lines "
+                   "(default: 1)")
         ->check(CLI::PositiveNumber);
 
     app.add_flag("--dbg-log", args.dbg_log,

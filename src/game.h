@@ -16,7 +16,7 @@
 #include "display.h"  // Renderer
 #include "flightlog.h"
 #include "job.h"      // JobRunner
-#include "orbit.h"    // OrbitElements
+#include "orbit.h"    // OrbitElements, RefPlane, PlaneAngles
 #include "postfx.h"   // PostFX
 #include "scene.h"    // SceneId, SceneFrame, Backdrop
 #include "science.h"  // Experiment
@@ -94,8 +94,10 @@ struct ShipView {
     glm::dvec3 orbit_vel = glm::dvec3(0.0);
     OrbitElements o;
     // Inc/LAN/LPe measured in the plane the orbit map shows (Game::map_plane), so
-    // the numbers describe the picture (#171).
+    // the numbers describe the picture (#171). The plane itself is kept as well:
+    // the 3D orbital-plane overlay draws THIS one, not a second opinion.
     PlaneAngles plane;
+    RefPlane ref_plane;
     double distance = 0;  // |orbit_pos|
     double speed = 0;     // |orbit_vel|
     double mu = 0;        // the parent body's mu (the conic's)
@@ -372,6 +374,7 @@ struct Game {
     Uint32 eva_log_last_ms = 0;
     Uint32 drag_log_last_ms = 0;
     Uint32 terrain_log_last_ms = 0;
+    Uint32 plane_log_last_ms = 0;
 
     // --- --pose-jitter (render.cpp) -----------------------------------------
     /* The previous DRAWN sample plus what it was taken against. Re-armed whenever
@@ -415,8 +418,9 @@ struct Game {
     BuildingsCatalog buildings;   // world-building types (res/data/buildings.json)
     Mesh *engine_plume_mesh = nullptr;
     Texture *engine_plume_texture = nullptr;
-    Mesh *skyline_xz = nullptr;
-    Mesh *skyline_xy = nullptr;
+    Mesh *ref_circle_xz = nullptr;
+    Mesh *ref_circle_xy = nullptr;
+    Mesh *ref_node_ticks = nullptr;  // ring's +/-X ticks: the plane overlay's nodes
     Billboard *front_indicator = nullptr;
     Billboard *prograde_indicator = nullptr;
     Billboard *retrograde_indicator = nullptr;
@@ -432,7 +436,8 @@ struct Game {
     bool physics_debug_drawing = false;
     bool world_drawing = true;
     bool draw_starfield = true;
-    bool draw_skylines = false;
+    bool draw_ref_circles = false;   // the render frame's XZ + XY rings
+    bool draw_orbit_plane = false;   // orbital plane + reference plane + node line
 
     // render.cpp skyGain: the gain the sky fades to when the sun is in view and the
     // camera is in sunlight. sky_dim = 1 disables the fade.

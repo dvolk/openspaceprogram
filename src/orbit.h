@@ -185,6 +185,29 @@ inline PlaneAngles orbitPlaneAngles(const OrbitElements &o, const RefPlane &ref)
     return p;
 }
 
+/* Orthonormal tangent basis (u, v) of the plane with unit normal n_hat, for
+   DRAWING a plane: u x v == n_hat. `pin` (a direction; zero = no preference)
+   is projected into the plane and becomes u, so pinning two planes' bases to
+   their shared node line puts a vertex of each ring ON the crossings. A pin
+   parallel to n_hat projects to nothing and falls back to an arbitrary axis.
+   tests/test_orbit.cpp pins the handedness and both fallbacks. */
+inline void planeTangentBasis(const glm::dvec3 &n_hat, const glm::dvec3 &pin,
+                              glm::dvec3 &u, glm::dvec3 &v) {
+    // A non-unit normal would scale the basis instead of rotating it, so the
+    // ring drawn with it comes out squashed.
+    assert(std::fabs(glm::length(n_hat) - 1.0) < 1e-9);
+    u = projectVecOntoPlane(pin, n_hat);
+    const double u_len = glm::length(u);
+    if(u_len <= 1e-9) {
+        const glm::dvec3 seed = std::fabs(n_hat.x) < 0.9
+            ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 0.0, 1.0);
+        u = glm::normalize(projectVecOntoPlane(seed, n_hat));
+    } else {
+        u /= u_len;
+    }
+    v = glm::cross(n_hat, u);
+}
+
 // Stumpff C(z)/S(z): power series near z = 0, closed forms away from it.
 inline double stumpffC(const double z) {
     if(z > 1e-6) { return (1.0 - cos(sqrt(z))) / z; }

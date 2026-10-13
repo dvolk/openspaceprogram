@@ -27,7 +27,8 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
     j["physics_debug_drawing"] = s.physics_debug_drawing;
     j["world_drawing"] = s.world_drawing;
     j["starfield"] = s.draw_starfield;
-    j["reference_circles"] = s.draw_skylines;
+    j["reference_circles"] = s.draw_ref_circles;
+    j["orbital_plane"] = s.draw_orbit_plane;
     j["sky_dim"] = s.sky_dim;
     j["sky_dim_cone"] = s.sky_dim_cone;
     j["postfx"] = s.postfx_enabled;   // enabled effect names, pass order
@@ -102,7 +103,10 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
     }
     if(j.contains("reference_circles") &&
        j["reference_circles"].is_boolean()) {
-        s.draw_skylines = j["reference_circles"].get<bool>();
+        s.draw_ref_circles = j["reference_circles"].get<bool>();
+    }
+    if(j.contains("orbital_plane") && j["orbital_plane"].is_boolean()) {
+        s.draw_orbit_plane = j["orbital_plane"].get<bool>();
     }
     // Clamp to the --sky-dim / --sky-dim-cone ranges: a hand-edited file must
     // not put the fade outside the range the sliders can show.

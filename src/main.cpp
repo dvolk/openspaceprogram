@@ -812,22 +812,39 @@ int main(int argc, char **argv)
     // Game owns the transfer planner: it holds sim-clock state, so the clock
     // hook can invalidate it.
 
-    // Two reference circles in the render frame's local axes, one mesh each so
-    // they can differ in colour: XZ (y=0, equatorial), XY (z=0, meridian).
-    Mesh *skyline_xz = new Mesh;
-    Mesh *skyline_xy = new Mesh;
+    /* Reference overlays, all radius 1000 in the render frame's units and drawn
+       with the line shader (render.cpp): XZ (normal +Y, equatorial) and XY
+       (normal +Z, meridian) for the render frame's own planes, plus two ticks at
+       the XY ring's +/-X. The XY ring and the ticks are also the orbital-plane
+       overlay's ring and node markers, which rotate them by a basis built from
+       the orbit normal -- so the XY ring's normal (+Z) is the axis the basis maps
+       onto the plane normal. The markers are ticks, not a diameter: a line
+       through the ring's centre points AT the camera (the rings are camera-
+       centred), so it projects to a point. */
+    Mesh *ref_circle_xz = new Mesh;
+    Mesh *ref_circle_xy = new Mesh;
+    Mesh *ref_node_ticks = new Mesh;
     {
-        float r = 1000;
-        int n = 128;
+        const float r = 1000;
+        const float tick = 40;
+        const int n = 128;
         PosInterface xzinterface;
         PosInterface xyinterface;
-        for(int i = 1; i < 128; i++) {
-            const double a = (2 * std::numbers::pi) * float(i-1)/float(n);
+        PosInterface tickinterface;
+        for(int i = 0; i < n; i++) {
+            const double a = (2 * std::numbers::pi) * float(i)/float(n);
             xzinterface.positions.push_back(glm::vec3(r * cos(a), 0, r * sin(a)));
             xyinterface.positions.push_back(glm::vec3(r * cos(a), r * sin(a), 0));
         }
-        skyline_xz->InitMesh(xzinterface);
-        skyline_xy->InitMesh(xyinterface);
+        // Span the ring's +Z, which the basis maps onto the plane normal: the
+        // tick then sticks out of the ring line instead of hiding along it.
+        tickinterface.positions.push_back(glm::vec3(r, 0, -tick));
+        tickinterface.positions.push_back(glm::vec3(r, 0, tick));
+        tickinterface.positions.push_back(glm::vec3(-r, 0, -tick));
+        tickinterface.positions.push_back(glm::vec3(-r, 0, tick));
+        ref_circle_xz->InitMesh(xzinterface);
+        ref_circle_xy->InitMesh(xyinterface);
+        ref_node_ticks->InitMesh(tickinterface);
     }
 
     game.skyboxshader = skyboxshader;
@@ -835,8 +852,9 @@ int main(int argc, char **argv)
     game.partsshader = partsshader;
     game.engine_plume_mesh = engine_plume_mesh;
     game.engine_plume_texture = engine_plume_texture;
-    game.skyline_xz = skyline_xz;
-    game.skyline_xy = skyline_xy;
+    game.ref_circle_xz = ref_circle_xz;
+    game.ref_circle_xy = ref_circle_xy;
+    game.ref_node_ticks = ref_node_ticks;
     game.front_indicator = front_indicator;
     game.prograde_indicator = prograde_indicator;
     game.retrograde_indicator = retrograde_indicator;

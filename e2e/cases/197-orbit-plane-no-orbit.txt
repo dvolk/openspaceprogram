@@ -1,0 +1,18 @@
+# The overlay's "no orbit, no plane" gate. A ship on the pad still has an h_hat --
+# it is co-rotating with the ground -- so without a periapsis-vs-surface test the
+# overlay draws a cyan ring, a yellow ring and two node ticks for a plane that
+# belongs to nothing, and calls the node "where a plane change is cheapest".
+#
+# The checkbox is still clicked, so FORBID [planelog] means the gate fired rather
+# than the overlay never having been enabled: a click that misses its widget
+# prints FAILED, which the next line forbids.
+NAME orbit-plane-no-orbit
+ARGS --time-accel 1 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --plane-log --orbit-interval 1
+ARGS --sim-press 1500,0,ESCAPE
+ARGS --ui-click 2500,"Game Menu/Settings"
+ARGS --ui-click 3500,"Settings/Orbital plane"
+FORBID [planelog]
+FORBID FAILED
+FORBID GL_
+FORBID error:

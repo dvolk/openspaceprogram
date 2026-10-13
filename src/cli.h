@@ -105,6 +105,7 @@ struct GameArgs {
     int map_dump_ms = -1;            // print the map's plane basis per slot
 
     bool orbit_log = false;
+    bool plane_log = false;      // the drawn orbital/reference plane normals
     double orbit_interval = 1.0;
     bool dbg_log = false;
     bool info_log = false;       // dump Orbit/Surface Info to stdout

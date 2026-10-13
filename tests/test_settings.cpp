@@ -20,7 +20,8 @@ int main() {
     s.physics_debug_drawing = true;
     s.world_drawing = false;
     s.draw_starfield = true;
-    s.draw_skylines = true;
+    s.draw_ref_circles = true;
+    s.draw_orbit_plane = true;
     s.postfx_enabled.push_back("crt");
     s.postfx_enabled.push_back("color");
     s.postfx_params["color"]["gamma"] = 1.25f;
@@ -53,7 +54,8 @@ int main() {
     assert(r.physics_debug_drawing == true);
     assert(r.world_drawing == false);
     assert(r.draw_starfield == true);
-    assert(r.draw_skylines == true);
+    assert(r.draw_ref_circles == true);
+    assert(r.draw_orbit_plane == true);
     assert(r.postfx_enabled.size() == 2);
     assert(r.postfx_enabled[0] == "crt");
     assert(r.postfx_enabled[1] == "color");
@@ -71,6 +73,22 @@ int main() {
     assert(r.flip_pitch == true);
     assert(r.flip_yaw == false);
     assert(r.flip_roll == true);
+
+    /* The two plane toggles share a neighbourhood in the file, so pin that each
+       key feeds its OWN field: with one key present and the field starting
+       opposite, a swapped reader trips one of these. */
+    {
+        SettingsData t;
+        t.draw_ref_circles = true;
+        settings_read(nlohmann::json::parse(R"({"orbital_plane": true})"), t);
+        assert(t.draw_orbit_plane == true);
+        assert(t.draw_ref_circles == true);
+        SettingsData u;
+        u.draw_orbit_plane = true;
+        settings_read(nlohmann::json::parse(R"({"reference_circles": true})"), u);
+        assert(u.draw_ref_circles == true);
+        assert(u.draw_orbit_plane == true);
+    }
 
     // 2) absent keys keep the current value (the load path's starting
     //    state, mimicking collect_settings): only the file's fields move.
