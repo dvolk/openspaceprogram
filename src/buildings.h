@@ -89,7 +89,7 @@ glm::dmat3 buildingOrient(const glm::dvec3 &up, double heading_rad);
 void place_world_buildings(System &sys, const BuildingsCatalog &cat,
                            Shader *shader, TerrainBody *sun);
 
-// Find a launch site on `body`: `siteId` if non-empty, else the first pad
-// with flag "VAB_LAUNCH_PAD". `preferPolar` prefers a "POLAR_PAD" site.
-StaticBuilding *find_launch_site(TerrainBody *body, const std::string &siteId,
-                                 bool preferPolar);
+/* The body's launch site for `siteId`: that pad, if the body carries one with
+   that id flagged "VAB_LAUNCH_PAD", else nullptr. An empty `siteId` asks for
+   the body's default -- its first VAB_LAUNCH_PAD. */
+StaticBuilding *find_launch_site(TerrainBody *body, const std::string &siteId);

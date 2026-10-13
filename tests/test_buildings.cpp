@@ -328,14 +328,11 @@ int main() {
         mk("scenic", {"NOT_A_PAD"});
         mk("main", {"VAB_LAUNCH_PAD"});
         mk("pole", {"VAB_LAUNCH_PAD", "POLAR_PAD"});
-        CHECK(find_launch_site(&tb, "", false)->id == "main");
-        CHECK(find_launch_site(&tb, "", true)->id == "pole");
-        CHECK(find_launch_site(&tb, "pole", false)->id == "pole");
-        // a sticky equatorial pick must not pre-empt pad-polar
-        CHECK(find_launch_site(&tb, "main", true)->id == "pole");
-        CHECK(find_launch_site(&tb, "scenic", false) == nullptr); // not a pad
-        CHECK(find_launch_site(&tb, "nope", false) == nullptr);
-        CHECK(find_launch_site(nullptr, "", false) == nullptr);
+        CHECK(find_launch_site(&tb, "")->id == "main");        // default = first
+        CHECK(find_launch_site(&tb, "pole")->id == "pole");    // any named pad
+        CHECK(find_launch_site(&tb, "scenic") == nullptr);     // not a pad
+        CHECK(find_launch_site(&tb, "nope") == nullptr);
+        CHECK(find_launch_site(nullptr, "") == nullptr);
         for(auto *p : tb.pads) { delete p; }
         tb.pads.clear();
     }
@@ -423,8 +420,8 @@ int main() {
            (find_launch_site filters by body, and so does the VAB dropdown),
            with fragments merged before a system's inline pads -- so on the
            home world this is exactly what the "(default)" entry and a bare
-           LAUNCH mean. A home defaulting to the pole is a merge-order bug,
-           not a choice: pad-polar is opt-in via ScenarioDef.polar. */
+           LAUNCH mean. A home defaulting to the pole is a merge-order bug:
+           the polar pad lives in the inline array precisely so it cannot. */
         const WorldBuilding *dflt = nullptr;
         if(sys.home != nullptr) {
             for(const WorldBuilding &w : sys.world_buildings) {

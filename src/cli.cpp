@@ -37,19 +37,21 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "Experiment family JSON (default: res/data/experiments.json)");
 
     app.add_option("--startship", args.startship,
-                   "One start ship: name,def,body,scenario -- all four "
-                   "required (e.g. racer,res/ships/racer.json,Kerbin,pad). "
+                   "One start ship: name,def,body,scenario[,site] -- the "
+                   "first four required, the fifth an optional pad id (e.g. "
+                   "racer,res/ships/racer.json,Kerbin,pad,polar_pad). "
                    "Repeat the flag for more ships; ships sharing a "
-                   "body+scenario are spaced apart in orbit but all stand on "
+                   "body+scenario are spaced apart in orbit but default to "
                    "the same pad. --startships is the same list as a JSON "
                    "file (and overrides it)");
 
     app.add_option("--startships", args.startships_file,
                    "Start-ship-list JSON: one entry per ship, each naming all "
                    "four of name, ship def, body and scenario (the game "
-                   "errors if any is missing). Ships sharing a body+scenario "
-                   "are spaced apart in orbit but all stand on the same pad. "
-                   "Overrides --startship. Try e2e/fixtures/startships.json");
+                   "errors if any is missing), plus an optional \"site\" pad "
+                   "id. Ships sharing a body+scenario are spaced apart in "
+                   "orbit but default to the same pad. Overrides --startship. "
+                   "Try e2e/fixtures/startships.json");
 
     app.add_option("--save", args.save_name,
                    "Save the game (the live fleet + crew + clock) when the "

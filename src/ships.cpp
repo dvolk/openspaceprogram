@@ -68,6 +68,14 @@ DebugStartShips loadDebugStartShips(const char *path) {
         e.name = ev["name"].get<std::string>();
         e.body = ev["body"].get<std::string>();
         e.scenario = ev["scenario"].get<std::string>();
+        if(ev.contains("site")) {
+            if(!ev["site"].is_string()) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"site\" must be a string");
+            }
+            e.site = ev["site"].get<std::string>();
+        }
         list.ships.push_back(e);
     }
     return list;
@@ -133,7 +141,7 @@ Vehicle *Ships::place_ship_def(const ShipDef &def, const std::string &defPath,
     glm::dmat3 pad_orient = faceAlong(pad_dir);
     if(sc->on_pad) {
         if(site == nullptr) {
-            site = find_launch_site(hb, "", sc->polar);
+            site = find_launch_site(hb, "");
         }
         if(site == nullptr) {
             throw std::runtime_error(std::string("fleet: no launch site on ")
@@ -286,7 +294,30 @@ Vehicle *Ships::buildDebugStartShips(const std::vector<DebugStartShip> &entries,
                                      + "' (available: " + avail + ")");
         }
         const ScenarioDef *sc = scenario_by_name(fe.scenario);
-        Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, t);
+        /* A named pad only means anything on a pad bed: place_ship's
+           supportMargin reads the site's hull as what the ship rests on, a lie
+           if the base comes from terrain instead. */
+        const StaticBuilding *site = nullptr;
+        if(!fe.site.empty()) {
+            if(!sc->on_pad) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": \"site\" needs an on_pad scenario, "
+                                         "not '" + fe.scenario + "'");
+            }
+            site = find_launch_site(hb, fe.site);
+            if(site == nullptr) {
+                std::string avail;
+                for(const StaticBuilding *p : hb->pads) {
+                    if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
+                    if(!avail.empty()) { avail += ", "; }
+                    avail += p->id;
+                }
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": '" + fe.site + "' is not a launch pad on "
+                                         + hb->name + " (available: " + avail + ")");
+            }
+        }
+        Vehicle *v = place_ship(fe.ship, fe.name, hb, sc, sys, t, site);
         spawn_crew(v, sys, t);
         if(first == nullptr) { first = v; }
     }

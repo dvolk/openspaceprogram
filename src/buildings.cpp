@@ -287,27 +287,15 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
     }
 }
 
-StaticBuilding *find_launch_site(TerrainBody *body, const std::string &siteId,
-                                 bool preferPolar) {
+StaticBuilding *find_launch_site(TerrainBody *body, const std::string &siteId) {
     if(body == nullptr) { return nullptr; }
-    /* Explicit pick must be a launch pad; under preferPolar it counts only if
-       itself polar, so a stale equatorial pick cannot pre-empt the polar bed. */
-    if(!siteId.empty()) {
-        for(auto *p : body->pads) {
-            if(p->id != siteId) { continue; }
-            if(!p->hasFlag("VAB_LAUNCH_PAD")) { return nullptr; }
-            if(!preferPolar || p->hasFlag("POLAR_PAD")) { return p; }
-            break;
-        }
-        if(!preferPolar) { return nullptr; }
-    }
-    StaticBuilding *polar = nullptr, *first = nullptr;
+    StaticBuilding *first = nullptr;
     for(auto *p : body->pads) {
         if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
         if(first == nullptr) { first = p; }
-        if(preferPolar && polar == nullptr && p->hasFlag("POLAR_PAD")) {
-            polar = p;
-        }
+        if(!siteId.empty() && p->id == siteId) { return p; }
     }
-    return preferPolar && polar != nullptr ? polar : first;
+    /* A named site that is missing, or is a building that is not a pad, is a
+       config error rather than a request for the default. */
+    return siteId.empty() ? first : nullptr;
 }

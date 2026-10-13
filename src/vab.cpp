@@ -574,7 +574,7 @@ void vabLaunch(Game &g) {
     const ScenarioDef *sc = scenario_by_name(scName);
     const StaticBuilding *site = nullptr;
     if(sc->on_pad) {
-        site = find_launch_site(hb, g.vab.siteName, sc->polar);
+        site = find_launch_site(hb, g.vab.siteName);
         if(site == nullptr) {
             g.toast("No launch site on %s", hb->name.c_str());
             return;
@@ -599,7 +599,7 @@ void vabLaunch(Game &g) {
                   {"Clear the pad", "Cancel"},
                   [&g, padBody, siteId](int choice) {
                 if(choice != 0) { return; }
-                Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId, false));
+                Vehicle *occ = findPadOccupant(find_launch_site(padBody, siteId));
                 if(occ == nullptr) {
                     g.toast("The pad is clear now");
                     return;
@@ -663,8 +663,8 @@ void vabOpen(Game &g) { pushScene(g, SceneId::Vab); }
 /* Scene table's enter hook. */
 void vabEnter(Game &g) {
     // Seed the launch config once (home body + pad); left alone afterwards.
-    // siteName stays "" = the default site, so pad-polar still picks the
-    // polar pad; an explicit combo pick overrides that.
+    // An empty siteName means "the body's default site" (its first
+    // VAB_LAUNCH_PAD) until the top-bar combo picks one.
     if(g.vab.bodyName.empty() && g.home != nullptr) { g.vab.bodyName = g.home->name; }
     if(g.vab.scenarioName.empty()) { g.vab.scenarioName = "pad"; }
     vabClearHover(g);

@@ -831,10 +831,11 @@ def emit(base_bodies, moons, pred, out_path, label, dry=False):
            # merged list's first VAB_LAUNCH_PAD is the game's default site, so
            # the table's order is deliberate: Baikonur.
            'world_buildings_files': ['res/data/earth_launch_sites.json'],
-           # Game fiction, not a site: the pad-polar scenario's bed (flag
-           # POLAR_PAD) sits at the geographic north pole, where the flat-sea
-           # clamp puts the Arctic ice exactly at sea level. Inline because it
-           # belongs to this system, not to the real-world table.
+           # A second pad at the geographic north pole (flag POLAR_PAD),
+           # where the flat-sea clamp puts the Arctic ice exactly at sea
+           # level. Inline because it belongs to this system, not to the
+           # real-world table -- and inline keeps it out of the default-site
+           # race.
            'world_buildings': [
                {'id': 'polar_pad', 'type': 'space_port',
                 'display_name': 'Polar pad', 'body': 'Earth',

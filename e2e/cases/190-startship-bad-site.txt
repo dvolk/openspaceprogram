@@ -1,0 +1,12 @@
+# --startship's optional 5th field names the pad a start ship stands on. A typo
+# must fail at boot with the loader's own message -- which lists the body's pads
+# -- instead of quietly falling back to the default site or aborting mid-loop
+# (the #16 lesson case 180 pins for --vab-scenario).
+NAME startship-bad-site
+ARGS --timeout 4 --vab res/ships/racer.json --startship racer,res/ships/racer.json,Kerbin,pad,moon_pad
+EXPECT error: start ships: entry 0: 'moon_pad' is not a launch pad on Kerbin (available: main_space_port, polar_pad)
+EXIT 1
+FORBID terminate called
+FORBID [vab] launched
+FORBID GL_
+LIMIT 60

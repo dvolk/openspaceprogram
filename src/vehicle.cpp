@@ -222,7 +222,6 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
 // only "pad" shows in the VAB dropdown unless --dev-scenarios.
 static const ScenarioDef kScenarios[] = {
     {"pad",            false, true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"pad-polar",      true,  true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
     {"rot-orbit",      true,  false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
     /* Same bed about the EQUATOR rather than the rail plane (#182): they differ by
        exactly the axial tilt. */

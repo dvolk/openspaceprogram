@@ -96,9 +96,10 @@ eerbon = {
     # BEFORE the inline array below, and the merged list's first
     # VAB_LAUNCH_PAD is the game's default site.
     "world_buildings_files": ["res/data/old_launch_sites.json"],
-    # Game fiction, not a site: the pad-polar scenario's bed (flag POLAR_PAD)
-    # sits at the geographic north pole. Inline because it belongs to THIS
-    # system, not to the site table.
+    # A second pad at the geographic north pole (flag POLAR_PAD). Inline
+    # because it belongs to THIS system, not to the site table -- and inline
+    # keeps it out of the default-site race, since the merged fragment's first
+    # VAB_LAUNCH_PAD is the game's default.
     "world_buildings": [
         {"id": "polar_pad", "type": "space_port",
          "display_name": "Polar pad", "body": "Eerbon",
@@ -440,9 +441,10 @@ ksp = {
     # bodies (Kerbin, Moho, Duna), so it is named for the system, while
     # res/data/earth_launch_sites.json is named for the one body it serves.
     "world_buildings_files": ["res/data/ksp_launch_sites.json"],
-    # Game fiction, not a site: the pad-polar scenario's bed (flag POLAR_PAD)
-    # sits at the geographic north pole. Inline because it belongs to THIS
-    # system, not to the site table.
+    # A second pad at the geographic north pole (flag POLAR_PAD). Inline
+    # because it belongs to THIS system, not to the site table -- and inline
+    # keeps it out of the default-site race, since the merged fragment's first
+    # VAB_LAUNCH_PAD is the game's default.
     "world_buildings": [
         {"id": "polar_pad", "type": "space_port",
          "display_name": "Polar pad", "body": "Kerbin",

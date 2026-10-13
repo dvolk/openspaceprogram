@@ -163,8 +163,8 @@ void postHeavyPhase(System &sys, const std::vector<TerrainBody *> &sync,
     }
 }
 
-// Split "name,def,body,scenario" into four required, non-empty fields;
-// false if the shape is wrong.
+// Split "name,def,body,scenario[,site]" into four required non-empty fields
+// plus the optional pad id; false if the shape is wrong.
 static bool splitStartship(const std::string &spec, DebugStartShip &out) {
     std::vector<std::string> f;
     std::string cur;
@@ -173,12 +173,13 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out) {
         else { cur += c; }
     }
     f.push_back(cur);
-    if(f.size() != 4) { return false; }
+    if(f.size() != 4 && f.size() != 5) { return false; }
     for(const std::string &x : f) { if(x.empty()) { return false; } }
     out.name = f[0];
     out.ship = f[1];
     out.body = f[2];
     out.scenario = f[3];
+    if(f.size() == 5) { out.site = f[4]; }
     return true;
 }
 
@@ -378,7 +379,8 @@ int main(int argc, char **argv)
     loadExperimentDefs(resdir::path(args.experiments_file).c_str());
 
     /* parts.json gives mass + behavior, the defs give stack order + offsets.
-       Ships sharing a (body, scenario) get spaced apart; pad ships share a site. */
+       Ships sharing a (body, scenario) get spaced apart; each pad ship stands
+       on its named site, else the body's default. */
     Ships ships(args.parts_file, partsshader, sun);
 
     /* World buildings: placed once physics + the part shader are live, before
@@ -448,12 +450,13 @@ int main(int argc, char **argv)
             return 1;
         }
     } else if(!args.startship.empty()) {
-        // inline form: each --startship is "name,def,body,scenario"
+        // inline form: each --startship is "name,def,body,scenario[,site]"
         for(size_t i = 0; i < args.startship.size(); i++) {
             DebugStartShip e;
             if(!splitStartship(args.startship[i], e)) {
                 printf("error: --startship #%zu '%s': expected "
-                       "name,def,body,scenario (four non-empty fields)\n",
+                       "name,def,body,scenario[,site] (four or five non-empty "
+                       "fields)\n",
                        i + 1, args.startship[i].c_str());
                 return 1;
             }
@@ -726,7 +729,7 @@ int main(int argc, char **argv)
             // nullptr means "not a VAB_LAUNCH_PAD on the launch body":
             // find_launch_site defaults only for an empty id.
             if(vab_body == nullptr
-               || find_launch_site(vab_body, args.vab_site, false) == nullptr) {
+               || find_launch_site(vab_body, args.vab_site) == nullptr) {
                 printf("error: --vab-site '%s' is not a launch pad on %s\n",
                        args.vab_site.c_str(),
                        vab_body ? vab_body->name.c_str() : "<no launch body>");

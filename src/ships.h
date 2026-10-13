@@ -16,12 +16,14 @@
 #include "terrain.h"  // TerrainBody, StaticBuilding
 #include "vehicle.h"  // Vehicle, ScenarioDef
 
-// One ship the game spawns at boot. All four fields are required.
+// One ship the game spawns at boot. The first four fields are required; `site`
+// is an optional pad id, meaningful only for an on_pad scenario.
 struct DebugStartShip {
     std::string ship;      // ship def path
     std::string name;      // display name
     std::string body;      // the body it sits on (a name in the system)
     std::string scenario;  // the spawn scenario (a --startship field)
+    std::string site;      // pad id ("" = the body's default site)
 };
 
 // The parsed "ships" array.
@@ -64,7 +66,7 @@ public:
     // --- placement (the ships land in the body's list, not here) ---------
     // `t` (sim time) is the flight-journal stamp for the placement.
     // `site`: the pad to stand on (on_pad scenarios); nullptr -> the body's
-    // first VAB_LAUNCH_PAD (or the polar site for pad-polar).
+    // default site, its first VAB_LAUNCH_PAD.
     // Scenario is NOT applied -- spawn_vehicle is the caller's job.
     Vehicle *place_ship(const std::string &shipDefPath, const std::string &wantName,
                         TerrainBody *hb, const ScenarioDef *sc, System &sys,

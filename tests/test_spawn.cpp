@@ -244,7 +244,6 @@ int main() {
 
     // Pad scenarios: on the surface (frame must be the rotating one).
     add("pad (Eerbon)",            true,  0.0,  false, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
-    add("pad-polar (Eerbon)",      true,  0.0,  true,  eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
     // Orbit scenarios around Eerbon (rot soi = 700 km):
     //   0.85 -> 685 km (inside rot soi), 1.25 -> 725 km (outside), 5 -> 1100 km.
     add("rot-orbit (Eerbon)",      false, 0.85, false, eerbon_radius, eerbon_mu, eerbon, eerbon_rot);
