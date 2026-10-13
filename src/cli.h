@@ -82,6 +82,7 @@ struct GameArgs {
     std::string vab_scenario;  // VAB launch scenario (empty = "pad")
     std::string vab_body;      // VAB launch body (empty = home body)
     std::string vab_site;      // VAB launch site (building id)
+    bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     std::string dock_test;
     int initial_time_accel = 1;
     double start_time = 0.0;   // the sim clock's t0 (s)

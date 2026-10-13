@@ -210,6 +210,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--vab-site", args.vab_site,
                    "Seed the VAB's launch site (the top-bar site dropdown's "
                    "world-building id; empty = the first VAB_LAUNCH_PAD)");
+    app.add_flag("--dev-scenarios", args.dev_scenarios,
+                 "Add the dev-only start beds (orbit, ellipse, escape, "
+                 "distance-ladder, heliocentric) to the VAB's scenario "
+                 "dropdown. Without it the dropdown offers only the "
+                 "player-facing beds (currently just \"pad\"); the dev beds "
+                 "still resolve by name here and in --startship, so this "
+                 "gates the UI only");
 
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,

@@ -1,5 +1,9 @@
-// test_scenarios.cpp -- the abs_r scenario beds must still match the system
-// files they were authored against.
+// test_scenarios.cpp -- the scenario table's dev gate, and the abs_r scenario
+// beds must still match the system files they were authored against.
+//
+// The VAB dropdown hides the dev-only beds unless --dev-scenarios, so the table
+// must keep at least one player-facing bed and every bed must still resolve by
+// name (see check_vab_gate).
 //
 // heli-* pins a circular heliocentric radius so the transfer planner can be
 // handed a planet-like origin orbit (it only lists children of the orbited
@@ -18,6 +22,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -80,7 +85,46 @@ static void check_system(const char *path) {
     }
 }
 
+/* The VAB dropdown's dev gate. The dropdown shows only the non-dev beds, so the
+   table must keep at least one -- and today that is exactly "pad". Hiding is a
+   UI filter, never a lookup one: every bed, dev or not, still resolves by name
+   for --vab-scenario, --startship, the save fixtures and this test. */
+static void check_vab_gate() {
+    int shown = 0;
+    for(size_t i = 0; i < scenario_count(); i++) {
+        const std::string sname = scenario_name_at(i);
+        if(!scenario_dev_only_at(i)) {
+            shown++;
+            if(sname != "pad") {
+                printf("  scenario '%s' is not dev-only: the VAB dropdown would "
+                       "offer it to a player without --dev-scenarios\n",
+                       sname.c_str());
+                failures++;
+            }
+        }
+        try {
+            if(scenario_by_name(sname) == nullptr) {
+                printf("  scenario '%s' is enumerated but does not resolve\n",
+                       sname.c_str());
+                failures++;
+            }
+        } catch(const std::exception &e) {
+            printf("  scenario '%s' is enumerated but does not resolve: %s\n",
+                   sname.c_str(), e.what());
+            failures++;
+        }
+    }
+    if(shown == 0) {
+        printf("  no scenario is player-facing: the VAB dropdown would be "
+               "empty even without --dev-scenarios\n");
+        failures++;
+    }
+    printf("  %d of %zu beds show in the VAB without --dev-scenarios\n",
+           shown, scenario_count());
+}
+
 int main() {
+    check_vab_gate();
     // The files the heli-* radii were read off. ksp_system/old_system are not
     // checked: they have no Mercury/Earth/Jupiter/Uranus.
     const char *paths[] = {

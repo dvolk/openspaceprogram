@@ -218,37 +218,38 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
     }
 }
 
-// Starting scenarios (see ScenarioDef in vehicle.h).
+// Starting scenarios (see ScenarioDef in vehicle.h). Column 2 is dev_only:
+// only "pad" shows in the VAB dropdown unless --dev-scenarios.
 static const ScenarioDef kScenarios[] = {
-    {"pad",            true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"pad-polar",      true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
-    {"rot-orbit",      false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"pad",            false, true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"pad-polar",      true,  true,  0.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
+    {"rot-orbit",      true,  false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
     /* Same bed about the EQUATOR rather than the rail plane (#182): they differ by
        exactly the axial tilt. */
-    {"rot-orbit-eq",   false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0, false, true},
-    {"inertial-orbit", false, kInertialOrbitFrac, false, -1, 0.0, 0.0, 0.0, 0.0},
-    {"high-orbit",     false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"high-polar",     false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
+    {"rot-orbit-eq",   true,  false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0, false, true},
+    {"inertial-orbit", true,  false, kInertialOrbitFrac, false, -1, 0.0, 0.0, 0.0, 0.0},
+    {"high-orbit",     true,  false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
+    {"high-polar",     true,  false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
     /* In-atmosphere "flying" beds (science.h). atmo_frac is a fraction of the
        atmosphere top, matching the science bands, so a bed lands in its band on
        every body (#99). */
-    {"flying-low",     false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
-    {"flying-high",    false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
-    {"ellipse-peri",   false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
-    {"ellipse-apo",    false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
-    {"ellipse-mid",    false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
-    {"escape",         false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
+    {"flying-low",     true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
+    {"flying-high",    true,  false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
+    {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
+    {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
+    {"ellipse-mid",    true,  false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
+    {"escape",         true,  false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
     /* the absolute-radius distance ladder (see ScenarioDef) */
-    {"neptune",        false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
-    {"oort",           false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
-    {"interstellar",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e17},
+    {"neptune",        true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
+    {"oort",           true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
+    {"interstellar",   true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e17},
     /* Heliocentric beds at a planet's semi-major axis (abs_r from
        res/systems/solar_system*.json). The transfer planner only lists children of the
        orbited body, so a planet->planet transfer needs a Sun-centred start. */
-    {"heli-mercury",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 5.7914e10},
-    {"heli-earth",     false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.4961e11},
-    {"heli-jupiter",   false, 0.0,  false, -1, 0.0,     0.0, 0.0, 7.7815e11},
-    {"heli-uranus",    false, 0.0,  false, -1, 0.0,     0.0, 0.0, 2.8698e12},
+    {"heli-mercury",   true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 5.7914e10},
+    {"heli-earth",     true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.4961e11},
+    {"heli-jupiter",   true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 7.7815e11},
+    {"heli-uranus",    true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 2.8698e12},
 };
 
 const ScenarioDef *scenario_by_name(const std::string &name) {
@@ -270,6 +271,10 @@ size_t scenario_count() {
 
 const char *scenario_name_at(size_t i) {
     return kScenarios[i].name;   // caller bounds-checks against scenario_count()
+}
+
+bool scenario_dev_only_at(size_t i) {
+    return kScenarios[i].dev_only;
 }
 
 // Nose (local +Z) along `dir`; roll axis = the coordinate axis most orthogonal to

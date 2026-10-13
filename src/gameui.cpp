@@ -3333,6 +3333,10 @@ void drawVabUI(Game &g) {
         if(ImGui::BeginCombo("##vabscn", g.vab.scenarioName.c_str())) {
             for(size_t i = 0; i < scenario_count(); i++) {
                 const char *nm = scenario_name_at(i);
+                /* Dev beds are hidden without --dev-scenarios. A dev bed armed
+                   at boot by --vab-scenario keeps its label on the combo but
+                   cannot be re-picked: switching away drops it for good. */
+                if(!g.args.dev_scenarios && scenario_dev_only_at(i)) { continue; }
                 if(ImGui::Selectable(nm, g.vab.scenarioName == nm)) { g.vab.scenarioName = nm; }
             }
             ImGui::EndCombo();

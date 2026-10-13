@@ -654,6 +654,11 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
    and speed; abs_r pins an ABSOLUTE radius. */
 struct ScenarioDef {
     const char *name;
+    /* Dev-only beds stay out of the VAB dropdown unless --dev-scenarios. The
+       name resolves either way: --vab-scenario, --startship, saves and the
+       e2e fixtures all name dev beds, so this gates the picker, not the
+       scenario. No default: adding a bed means deciding this. */
+    bool dev_only;
     bool on_pad;
     double alt_frac; // circular: fraction of the near-body shell (rot SOI -
                      // radius), or of the atmosphere top if atmo_frac
@@ -677,6 +682,7 @@ const ScenarioDef *scenario_by_name(const std::string &name);
 // Enumerate the scenario table (the VAB dropdown); index < scenario_count().
 size_t scenario_count();
 const char *scenario_name_at(size_t i);
+bool scenario_dev_only_at(size_t i);
 
 // Nose (local +Z) along `dir`; roll axis = the axis most orthogonal to it.
 glm::dmat3 faceAlong(const glm::dvec3 &dir);
