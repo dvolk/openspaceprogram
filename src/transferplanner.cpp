@@ -231,12 +231,12 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "
                        "dv_cap=%.6g m/s total=%.6g m/s tof=%.6g s "
                        "v_inf=%.6g m/s r_cap=%.6g m "
-                       "burn=[%.4f %.4f %.4f]\n",
+                       "burn=[%.4f %.4f %.4f] retrograde=%d\n",
                        g.time, tn, xfer.sol.dv_departure,
                        xfer.sol.dv_capture, xfer.sol.total_dv,
                        xfer.sol.tof, xfer.sol.v_inf, xfer.sol.r_cap,
                        xfer.burn_dir.x, xfer.burn_dir.y,
-                       xfer.burn_dir.z);
+                       xfer.burn_dir.z, xfer.sol.retrograde ? 1 : 0);
             } else {
                 printf("[xferlog] t=%.1fs target=\"%s\" no-solution\n",
                        g.time, tn);

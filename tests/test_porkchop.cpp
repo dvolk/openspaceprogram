@@ -156,6 +156,52 @@ int main() {
         for(double v : pc.total_dv) { CHECK(std::isnan(v)); }
     }
 
+    // =========================================================================
+    // 5. Both directions are priced (#197): every cell must equal the CHEAPER
+    //    of the two legs at that geometry, and this window must actually
+    //    contain cells where the minor arc costs >5x the reflex arc -- the
+    //    spikes the old single-branch solver reported as real.
+    // =========================================================================
+    {
+        const double r1 = 1.0e6, r2 = 2.0e6;
+        const double v1_circ = std::sqrt(MU / r1);
+        glm::dvec3 ship_pos(r1, 0, 0), ship_vel(0, v1_circ, 0);
+        glm::dvec3 tgt_pos(-r2, 0, 0), tgt_vel(0, -std::sqrt(MU / r2), 0);
+
+        const double t_dep_lo = 0.0, t_dep_hi = 2.0e4;
+        const double tof_lo = 1000.0, tof_hi = 20000.0;
+        const int n_dep = 12, n_tof = 24;
+        PorkchopResult pc = porkchopGrid(ship_pos, ship_vel, tgt_pos, tgt_vel,
+                                         MU, 0.0, 0.0, t_dep_lo, t_dep_hi,
+                                         tof_lo, tof_hi, n_dep, n_tof);
+        CHECK(pc.valid);
+
+        int reflex_wins = 0;
+        for(int i = 0; i < n_dep; i++) {
+            const double t_dep = t_dep_lo + (t_dep_hi - t_dep_lo) * i / (n_dep - 1);
+            glm::dvec3 r1d, v1d;
+            propagateKepler(ship_pos, ship_vel, MU, t_dep, r1d, v1d);
+            for(int j = 0; j < n_tof; j++) {
+                const double tof = tof_lo + (tof_hi - tof_lo) * j / (n_tof - 1);
+                glm::dvec3 r2a, v2a;
+                propagateKepler(tgt_pos, tgt_vel, MU, t_dep + tof, r2a, v2a);
+                LambertLeg legs[2];
+                const int nleg = solveLambertLegs(r1d, r2a, MU, tof, legs);
+                const double cell = pc.total_dv[(size_t)j * n_dep + i];
+                if(nleg == 0) { CHECK(std::isnan(cell)); continue; }
+                double best = 1e300, minor = 1e300;
+                for(int k = 0; k < nleg; k++) {
+                    const double dv = glm::length(legs[k].v1 - v1d);
+                    best = std::min(best, dv);
+                    if(!legs[k].a_neg) { minor = dv; }
+                }
+                CHECK_NEAR(cell, best, 1e-9 * best);
+                if(nleg > 1 && minor > 5.0 * best) { reflex_wins++; }
+            }
+        }
+        CHECK(reflex_wins > 0);
+    }
+
     if(failures == 0) {
         printf("test_porkchop: all checks passed\n");
         return 0;

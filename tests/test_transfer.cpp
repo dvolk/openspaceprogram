@@ -250,6 +250,71 @@ int main() {
         CHECK(!solveLambert(r1v, r2v, MU, T1 / 20.0, v1, v2));
     }
 
+    // =========================================================================
+    // 9. Both directions (#197). The target sits 210 deg AHEAD in the
+    //    prograde sense, so the arc turning < 180 deg is the RETROGRADE one:
+    //    pricing only it costs an order of magnitude more than the reflex arc
+    //    the ship actually wants. Pins: two legs, both real solutions, wound
+    //    opposite ways, and planTransfer picking the cheap prograde one.
+    // =========================================================================
+    {
+        const double r1 = 1.0e6, r2 = 2.0e6;
+        const double v1_circ = std::sqrt(MU / r1);
+        const double v2_circ = std::sqrt(MU / r2);
+        const double T1 = 2.0 * M_PI * std::sqrt(r1 * r1 * r1 / MU);
+        const double tof = 1.6 * T1;
+        // Where the transfer has to ARRIVE: 210 deg prograde from r1.
+        const double dnu = 210.0 * M_PI / 180.0;
+        glm::dvec3 r1v(r1, 0, 0), v1v(0, v1_circ, 0);
+        glm::dvec3 r2v(r2 * std::cos(dnu), r2 * std::sin(dnu), 0.0);
+        // Phase the target so planTransfer propagates it exactly onto r2v.
+        const double w2 = std::sqrt(MU / (r2 * r2 * r2));
+        const double theta0 = dnu - w2 * tof;
+        glm::dvec3 tg_pos(r2 * std::cos(theta0), r2 * std::sin(theta0), 0.0);
+        glm::dvec3 tg_vel(-v2_circ * std::sin(theta0), v2_circ * std::cos(theta0), 0.0);
+
+        LambertLeg legs[2];
+        const int nleg = solveLambertLegs(r1v, r2v, MU, tof, legs);
+        CHECK(nleg == 2);
+        if(nleg == 2) {
+            double dv[2];
+            for(int k = 0; k < 2; k++) {
+                // Each leg must be a real solution: fly it and land on r2.
+                glm::dvec3 p, v;
+                propagateKepler(r1v, legs[k].v1, MU, tof, p, v);
+                CHECK_NEAR(glm::length(p - r2v), 0.0, 1e-3 * r2);
+                dv[k] = glm::length(legs[k].v1 - v1v);
+            }
+            // Opposite winding: one prograde, one retrograde.
+            CHECK(glm::dot(glm::cross(r1v, legs[0].v1),
+                           glm::cross(r1v, legs[1].v1)) < 0.0);
+            // The whole point of the issue: the two are not remotely comparable.
+            const double lo = std::min(dv[0], dv[1]), hi = std::max(dv[0], dv[1]);
+            CHECK(hi > 5.0 * lo);
+
+            // And the planner must report the cheap one, flagged prograde.
+            TransferSolution sol = planTransfer(r1v, v1v, tg_pos, tg_vel,
+                                                MU, 0.0, 0.0, tof, tof, 1);
+            CHECK(sol.valid);
+            CHECK_NEAR(sol.dv_departure, lo, 1e-6 * lo);
+            CHECK(!sol.retrograde);
+        }
+    }
+
+    // =========================================================================
+    // 10. The 180 deg special case yields ONE leg, not two: the branches
+    //     collapse into the unique coplanar conic, so a caller looping the
+    //     legs must not see the same transfer twice.
+    // =========================================================================
+    {
+        const double r1 = 1.0e6, r2 = 2.0e6;
+        const double a_t = (r1 + r2) / 2.0;
+        const double T_t = 2.0 * M_PI * std::sqrt(a_t * a_t * a_t / MU);
+        glm::dvec3 r1v(r1, 0, 0), r2v(-r2, 0, 0);
+        LambertLeg legs[2];
+        CHECK(solveLambertLegs(r1v, r2v, MU, T_t / 2.0, legs) == 1);
+    }
+
     if(failures == 0) {
         printf("test_transfer: all checks passed\n");
         return 0;
