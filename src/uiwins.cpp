@@ -137,7 +137,9 @@ const WinDef kWins[W_Count] = {
     [W_Transfer] = {
         .name = "Transfer", .label = "Transfer",
         // Not auto-fit: stays where the user puts it as the solution appears.
-        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(420.0f, 350.0f),
+        // 350 -> 328: manual ToF used to echo its own line under the slider,
+        // and that row is ~22 px at the 14 px default font.
+        .opts = { .slot = ui::Slot::Center, .initial_size = ImVec2(420.0f, 328.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },

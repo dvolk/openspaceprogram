@@ -719,12 +719,25 @@ void drawUIReadouts(Game &g) {
             }
             ImGui::Separator();
         }
-        ImGui::Checkbox("Auto ToF (min dv)", &xfer_auto);
+        if(ImGui::Checkbox("Auto ToF (min dv)", &xfer_auto) && !xfer_auto
+           && xfer.valid) {
+            // Seed manual mode from what auto just recommended. The stored
+            // default is log10(3600) -- one hour -- which solves for no planet,
+            // so switching to manual used to blank the window.
+            xfer_tof_log = (float)std::log10(xfer.sol.tof);
+        }
         if(!xfer_auto) {
+            // The human ToF rides on the slider row: the solution block below
+            // already prints a ToF line, and echoing it here as a second row
+            // read as the window showing two different answers.
+            ImGui::PushItemWidth(150.0f);
             ImGui::SliderFloat("log10(ToF s)", &xfer_tof_log,
                                1.8, 7.5, "%.2f");
+            ImGui::SameLine();
             char tof_s[40];
-            ImGui::Text("ToF: %s", fmt_time(std::pow(10.0, xfer_tof_log), tof_s, sizeof tof_s));
+            ImGui::TextDisabled("%s", fmt_time(std::pow(10.0, xfer_tof_log),
+                                               tof_s, sizeof tof_s));
+            ImGui::PopItemWidth();
         }
         if(!xfer.valid) {
             ImGui::Text("No transfer solution for this target / ToF.");
@@ -802,18 +815,14 @@ void drawUIReadouts(Game &g) {
         // three). On = the sliders, whose ends scale with the target: a fixed
         // ceiling cannot express a Mars window, let alone a 1-revolution
         // phasing leg, and it silently clamped the seeded range to a week.
+        // No readout here: the x:/y: lines under the plot already give the
+        // range actually swept, and this window has no rows to spare at 720p.
         const double period = planner.pc_period > 0.0 ? planner.pc_period : 86400.0;
         // 3x/9x the auto end, but never below the week the sliders used to
         // stop at: a moon's three periods are hours, and a player exploring
         // past them should not find the handle shorter than before.
         const float dep_max = (float)std::max(3.0 * period, 604800.0);
         const float tof_max = (float)std::max(9.0 * period, 604800.0);
-        {
-            char a1[40], a2[40];
-            ImGui::TextDisabled("auto: depart 0 .. %s   ToF 60 s .. %s",
-                                fmt_time(period, a1, sizeof a1),
-                                fmt_time(3.0 * period, a2, sizeof a2));
-        }
         if(ImGui::Checkbox("Departure range", &planner.pcCustomDep)
            && planner.pcCustomDep) {
             // Just enabled: start from what the last sweep actually used.
@@ -854,9 +863,7 @@ void drawUIReadouts(Game &g) {
             ImGui::PopItemWidth();
         }
         if(planner.pcCustomDep || planner.pcCustomTof) {
-            ImGui::TextDisabled("(press Compute / P to re-sweep. Bounding the "
-                                "ToF is how you ask for the cheapest window "
-                                "that arrives by then.)");
+            ImGui::TextDisabled("(press Compute / P to re-sweep)");
         }
 
         if(!pc.valid) {
