@@ -659,7 +659,11 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     ensure_dir(gdir);
     gameId = baseName(gdir);
     gameName = name;
-    printf("[game] new game '%s' -> %s\n", name.c_str(), gdir.c_str());
+    /* The difficulty rides in the line because it changes every engine's
+       thrust for the whole game: a save whose burns look wrong is read
+       before the save file is opened. */
+    printf("[game] new game '%s' (exhaust %.2fx) -> %s\n", name.c_str(),
+           exhaustScale, gdir.c_str());
     fflush(stdout);
     return newGame();
 }

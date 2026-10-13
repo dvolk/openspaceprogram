@@ -2836,6 +2836,12 @@ static bool safeGameName(const std::string &n) {
     return true;
 }
 
+/* The New Game sheet's difficulty band. Narrower than the range --exhaust-scale
+   and the save loader allow (0.5-5): past these the game stops being a game, and
+   the CLI + hand-edited saves stay the door to the extremes. */
+static constexpr float kExhaustUiMin = 0.8f;
+static constexpr float kExhaustUiMax = 2.0f;
+
 /* The New Game setup sheet: the game's name, which star system to load, and the
    exhaust-velocity scale (difficulty). The system list is a directory scan of
    res/systems, cached and re-read only when its mtime changes. */
@@ -2889,9 +2895,10 @@ void drawNewGame(Game &g) {
 
     drawWin(g, W_NewGame, [&] {
         // Re-seed the draft difficulty on every open, so Cancel / X discard the slider
-        // edits.
+        // edits. Clamped to the sheet's band: a --exhaust-scale 5 boot would
+        // otherwise park the knob at 2.0 while Start committed 5.
         if(ImGui::IsWindowAppearing()) {
-            exhaustSel = g.args.exhaust_scale;
+            exhaustSel = std::clamp(g.args.exhaust_scale, kExhaustUiMin, kExhaustUiMax);
         }
         ImGui::TextWrapped(
             "Name the game, choose a star system and engine performance, "
@@ -2925,8 +2932,8 @@ void drawNewGame(Game &g) {
         // Draft until Start (see exhaustSel above). Lower is harder (less thrust/delta-v).
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::SliderFloat("##newgame_exhaust", &exhaustSel,
-                           0.5f, 5.0f, "%.2fx");
-        ImGui::TextDisabled("0.5x harder  ·  1.0x stock  ·  5.0x easier");
+                           kExhaustUiMin, kExhaustUiMax, "%.2fx");
+        ImGui::TextDisabled("0.8x harder  ·  1.0x stock  ·  2.0x easier");
         ImGui::TextDisabled("Stored in the save file.");
 
         ImGui::Spacing();
