@@ -1471,6 +1471,12 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", pos.x, pos.y, pos.z);
         ImGui::Text("Vel: %.3fm/s", speed);
         ImGui::Text("xyz(%0.f, %0.f, %0.f)", vel.x, vel.y, vel.z);
+        /* Specific orbital energy, J/kg -- the parent's mu is part of the number, so name
+           the body (it jumps at an SOI handoff). Redundant with Orbit Info's SMa
+           (energy = -mu/2a), hence debug-only: as raw state it is a live integrator check,
+           though drag and the per-part gravity-gradient exchange move it too. */
+        ImGui::Text("Orb energy (%s): %.6g J/kg", ship->m_parent->name.c_str(),
+                    o.energy);
 
         // --- power balance (the electrical system) -------------------------
         double gen = 0.0, constDraw = 0.0, charge = 0.0, capacity = 0.0;
@@ -1548,7 +1554,6 @@ void drawUIReadouts(Game &g) {
         double retrograde_angle = glm::angle(facing_dir, - vel_dir);
         ImGui::Text("Prg: %.2f", glm::degrees(prograde_angle));
         ImGui::Text("Rtg: %.2f", glm::degrees(retrograde_angle));
-        ImGui::Text("Eng: %.2f J", o.energy);
     });
 
     // Initial size comes from o_telemetry.initial_size: content-fit would clip a 2x2 grid.
@@ -1599,9 +1604,9 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Acc: %.1fm/s2", ship->feltAccel());
     });
 
-    /* --info-log: the same quantities ORBITAL and SURFACE display, raw SI (the
-       instrument-log convention in fmt.h that e2e CHECK parses). Independent of whether
-       the windows are open. */
+    /* --info-log: the quantities ORBITAL and SURFACE display plus the energy the
+       DEBUG window shows, raw SI (the instrument-log convention in fmt.h that e2e
+       CHECK parses). Independent of whether the windows are open. */
     if(args.info_log && ship) {
         const Uint32 now_ms = SDL_GetTicks();
         if(now_ms - g.info_log_last_ms >= g.orbit_log_interval_ms) {
